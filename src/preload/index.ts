@@ -74,6 +74,12 @@ const api: BearWardenAPI = {
     revealCustomField: (request) => ipcRenderer.invoke(IPC_CHANNELS.itemRevealCustomField, request),
     copyCustomField: (request) => ipcRenderer.invoke(IPC_CHANNELS.itemCopyCustomField, request)
   },
+  generator: {
+    generate: (request) => ipcRenderer.invoke(IPC_CHANNELS.generatorGenerate, request),
+    history: () => ipcRenderer.invoke(IPC_CHANNELS.generatorHistoryList),
+    clearHistory: () => ipcRenderer.invoke(IPC_CHANNELS.generatorHistoryClear),
+    copyHistory: (request) => ipcRenderer.invoke(IPC_CHANNELS.generatorHistoryCopy, request)
+  },
   sync: {
     status: () => ipcRenderer.invoke(IPC_CHANNELS.syncStatus),
     connect: (request) => ipcRenderer.invoke(IPC_CHANNELS.syncConnect, request),

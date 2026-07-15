@@ -1,8 +1,10 @@
-import { randomUUID } from 'node:crypto'
+import { randomInt as nodeRandomInt, randomUUID } from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type {
   EditorSecretsRequest,
   EditorSecretsView,
+  CredentialGeneratorRequest,
+  CredentialGeneratorResult,
   FolderCreateRequest,
   FolderDeleteRequest,
   FolderReorderRequest,
@@ -10,6 +12,10 @@ import type {
   CustomFieldRequest,
   ItemFieldRequest,
   FolderView,
+  GeneratorCredentialAlgorithm,
+  GeneratorCredentialCategory,
+  GeneratorHistoryEntry,
+  GeneratorHistoryLocator,
   LoginCreateRequest,
   LoginAuthorizeRequest,
   LoginAuthorizeManyRequest,
@@ -59,6 +65,15 @@ import {
 import { resolveBitwardenUrls } from './bitwarden-http'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import {
+  generateCatchAllEmail,
+  generatePassphrase,
+  generatePassword,
+  generatePlusAddressedEmail,
+  generateRandomWordUsername,
+  type RandomInt
+} from './credential-generator'
+import { loadEffLongWordlist } from './eff-wordlist'
+import {
   completeSyncMetadata,
   fingerprintLogin,
   legacyCustomFieldBaselineUpgrades,
@@ -90,7 +105,8 @@ const ARCHIVE_DATA_VERSION = 9
 const REPROMPT_DATA_VERSION = 10
 const MULTIPLE_URIS_DATA_VERSION = 11
 const PASSWORD_HISTORY_DATA_VERSION = 12
-const DATA_VERSION = 12
+const GENERATOR_HISTORY_DATA_VERSION = 13
+const DATA_VERSION = 13
 const MIN_MASTER_PASSWORD_LENGTH = 12
 const MAX_MASTER_PASSWORD_LENGTH = 1024
 const MAX_NAME_LENGTH = 256
@@ -104,6 +120,8 @@ const MAX_CUSTOM_FIELDS = 1_000
 const MAX_CUSTOM_FIELD_NAME_LENGTH = 5_000
 const MAX_CUSTOM_FIELD_VALUE_LENGTH = 5_000
 const MAX_PASSWORD_HISTORY = 5
+const MAX_GENERATOR_HISTORY = 200
+const MAX_GENERATED_CREDENTIAL_LENGTH = 512
 const MAX_SSH_PRIVATE_KEY_LENGTH = 1024 * 1024
 const MAX_SYNC_SECRET_LENGTH = 16_384
 const MAX_TWO_FACTOR_CODE_LENGTH = 256
@@ -157,6 +175,7 @@ interface VaultData {
   updatedAt: string
   folders: FolderView[]
   logins: StoredLogin[]
+  generatorHistory: GeneratorHistoryEntry[]
   sync: PersistedSyncData | null
 }
 
@@ -170,6 +189,7 @@ export interface VaultServiceOptions {
   createId?: () => string
   createSyncClient?: (sync: PersistedSyncData) => BitwardenSyncClient
   fetch?: typeof fetch
+  randomInt?: RandomInt
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -295,6 +315,76 @@ function parsePasswordHistory(value: unknown): VaultPasswordHistoryEntry[] {
 function clonePasswordHistory(
   entries: readonly VaultPasswordHistoryEntry[]
 ): VaultPasswordHistoryEntry[] {
+  return entries.map((entry) => ({ ...entry }))
+}
+
+function generatorCategoryForAlgorithm(
+  algorithm: GeneratorCredentialAlgorithm
+): GeneratorCredentialCategory {
+  if (algorithm === 'password' || algorithm === 'passphrase') return 'password'
+  if (algorithm === 'username') return 'username'
+  return 'email'
+}
+
+function isGeneratorCategory(value: unknown): value is GeneratorCredentialCategory {
+  return value === 'password' || value === 'username' || value === 'email'
+}
+
+function isGeneratorAlgorithm(value: unknown): value is GeneratorCredentialAlgorithm {
+  return (
+    value === 'password' ||
+    value === 'passphrase' ||
+    value === 'username' ||
+    value === 'subaddress' ||
+    value === 'catchall'
+  )
+}
+
+function parseGeneratorHistory(value: unknown): GeneratorHistoryEntry[] {
+  if (!Array.isArray(value) || value.length > MAX_GENERATOR_HISTORY) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  const credentials = new Set<string>()
+  return value.map((entry) => {
+    if (!isRecord(entry)) throw new VaultError('CORRUPT_VAULT')
+    const keys = Object.keys(entry)
+    if (
+      keys.some(
+        (key) =>
+          key !== 'credential' &&
+          key !== 'category' &&
+          key !== 'generationDate' &&
+          key !== 'algorithm'
+      ) ||
+      !Object.hasOwn(entry, 'credential') ||
+      !Object.hasOwn(entry, 'category') ||
+      !Object.hasOwn(entry, 'generationDate') ||
+      typeof entry.credential !== 'string' ||
+      entry.credential.length === 0 ||
+      entry.credential.length > MAX_GENERATED_CREDENTIAL_LENGTH ||
+      credentials.has(entry.credential) ||
+      !isGeneratorCategory(entry.category) ||
+      typeof entry.generationDate !== 'number' ||
+      !Number.isSafeInteger(entry.generationDate) ||
+      entry.generationDate < 0 ||
+      entry.generationDate > 8_640_000_000_000_000 ||
+      (entry.algorithm !== undefined &&
+        (!isGeneratorAlgorithm(entry.algorithm) ||
+          generatorCategoryForAlgorithm(entry.algorithm) !== entry.category))
+    ) {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+    credentials.add(entry.credential)
+    return {
+      credential: entry.credential,
+      category: entry.category,
+      generationDate: entry.generationDate,
+      ...(entry.algorithm === undefined ? {} : { algorithm: entry.algorithm })
+    }
+  })
+}
+
+function cloneGeneratorHistory(entries: readonly GeneratorHistoryEntry[]): GeneratorHistoryEntry[] {
   return entries.map((entry) => ({ ...entry }))
 }
 
@@ -893,6 +983,7 @@ function parseVaultData(value: unknown): VaultData {
       REPROMPT_DATA_VERSION,
       MULTIPLE_URIS_DATA_VERSION,
       PASSWORD_HISTORY_DATA_VERSION,
+      GENERATOR_HISTORY_DATA_VERSION,
       DATA_VERSION
     ].includes(value.version) ||
     !Array.isArray(value.folders) ||
@@ -951,6 +1042,10 @@ function parseVaultData(value: unknown): VaultData {
     updatedAt: value.updatedAt,
     folders,
     logins,
+    generatorHistory:
+      dataVersion < GENERATOR_HISTORY_DATA_VERSION
+        ? []
+        : parseGeneratorHistory(value.generatorHistory),
     sync
   }
 }
@@ -1274,6 +1369,7 @@ function cloneData(data: VaultData): VaultData {
       customFields: cloneCustomFields(login.customFields),
       passwordHistory: clonePasswordHistory(login.passwordHistory)
     })),
+    generatorHistory: cloneGeneratorHistory(data.generatorHistory),
     sync: data.sync
       ? {
           ...data.sync,
@@ -1495,6 +1591,7 @@ export class VaultService {
   private readonly createId: () => string
   private readonly createSyncClient: (sync: PersistedSyncData) => BitwardenSyncClient
   private readonly fetch: typeof fetch
+  private readonly randomInt: RandomInt
   private readonly websiteIconCache = new Map<string, string | null>()
   private readonly websiteIconRequests = new Map<string, Promise<string | null>>()
 
@@ -1506,6 +1603,7 @@ export class VaultService {
     this.now = options.now ?? (() => new Date())
     this.createId = options.createId ?? randomUUID
     this.fetch = options.fetch ?? fetch
+    this.randomInt = options.randomInt ?? nodeRandomInt
     this.createSyncClient =
       options.createSyncClient ??
       (() => {
@@ -1528,6 +1626,7 @@ export class VaultService {
         updatedAt: now,
         folders: [],
         logins: [],
+        generatorHistory: [],
         sync: null
       }
       const generation = this.generation
@@ -1864,6 +1963,113 @@ export class VaultService {
       const login = this.findLogin(this.requireData(), request.id)
       this.assertActiveLogin(login)
       return clonePasswordHistory(login.passwordHistory)
+    })
+  }
+
+  generateCredential(request: CredentialGeneratorRequest): Promise<CredentialGeneratorResult> {
+    return this.exclusive(async () => {
+      const current = this.requireData()
+      let credential: string
+      const algorithm = request.algorithm
+      if (algorithm === 'password') {
+        credential = generatePassword(request.options, this.randomInt)
+      } else if (algorithm === 'passphrase') {
+        credential = generatePassphrase(request.options, loadEffLongWordlist(), this.randomInt)
+      } else if (algorithm === 'username') {
+        credential = generateRandomWordUsername(
+          request.options,
+          loadEffLongWordlist(),
+          this.randomInt
+        )
+      } else if (algorithm === 'subaddress') {
+        credential = generatePlusAddressedEmail(request.email, this.randomInt)
+      } else if (algorithm === 'catchall') {
+        credential = generateCatchAllEmail(request.domain, this.randomInt)
+      } else {
+        throw new VaultError('INVALID_INPUT')
+      }
+      if (credential.length === 0 || credential.length > MAX_GENERATED_CREDENTIAL_LENGTH) {
+        throw new VaultError('INTERNAL_ERROR')
+      }
+
+      const category = generatorCategoryForAlgorithm(algorithm)
+      const generationDate = Date.parse(this.nowIso())
+      const generated: GeneratorHistoryEntry & { algorithm: GeneratorCredentialAlgorithm } = {
+        credential,
+        category,
+        generationDate,
+        algorithm
+      }
+      const existingIndex = current.generatorHistory.findIndex(
+        (entry) => entry.credential === credential
+      )
+      if (existingIndex >= 0) {
+        const existing = current.generatorHistory[existingIndex]!
+        return {
+          ...generated,
+          historyLocator: {
+            index: existingIndex,
+            generationDate: existing.generationDate,
+            category: existing.category,
+            ...(existing.algorithm === undefined ? {} : { algorithm: existing.algorithm })
+          }
+        }
+      }
+
+      const next = cloneData(current)
+      next.generatorHistory.unshift(generated)
+      next.generatorHistory.splice(MAX_GENERATOR_HISTORY)
+      next.updatedAt = new Date(generationDate).toISOString()
+      const generation = this.generation
+      await this.persist(next)
+      if (generation !== this.generation) throw new VaultError('LOCKED')
+      this.data = next
+      return {
+        ...generated,
+        historyLocator: { index: 0, generationDate, category, algorithm }
+      }
+    })
+  }
+
+  generatorHistory(): Promise<GeneratorHistoryEntry[]> {
+    return this.exclusive(async () => cloneGeneratorHistory(this.requireData().generatorHistory))
+  }
+
+  clearGeneratorHistory(): Promise<void> {
+    return this.exclusive(async () => {
+      const current = this.requireData()
+      if (current.generatorHistory.length === 0) return
+      const next = cloneData(current)
+      next.generatorHistory = []
+      next.updatedAt = this.nowIso()
+      const generation = this.generation
+      await this.persist(next)
+      if (generation !== this.generation) throw new VaultError('LOCKED')
+      this.data = next
+    })
+  }
+
+  copyGeneratorHistory(request: GeneratorHistoryLocator): Promise<void> {
+    return this.exclusive(async () => {
+      if (
+        !Number.isSafeInteger(request.index) ||
+        request.index < 0 ||
+        !Number.isSafeInteger(request.generationDate) ||
+        !isGeneratorCategory(request.category) ||
+        (request.algorithm !== undefined && !isGeneratorAlgorithm(request.algorithm))
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      const entry = this.requireData().generatorHistory[request.index]
+      if (
+        !entry ||
+        entry.generationDate !== request.generationDate ||
+        entry.category !== request.category ||
+        entry.algorithm !== request.algorithm
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      await this.platform.copyText(entry.credential)
     })
   }
 

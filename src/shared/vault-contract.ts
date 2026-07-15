@@ -474,11 +474,7 @@ export interface CustomFieldRequest extends LoginIdRequest {
 
 export type GeneratorCredentialCategory = 'password' | 'username' | 'email'
 export type GeneratorCredentialAlgorithm =
-  | 'password'
-  | 'passphrase'
-  | 'username'
-  | 'subaddress'
-  | 'catchall'
+  'password' | 'passphrase' | 'username' | 'subaddress' | 'catchall'
 
 export interface GeneratorPasswordOptions {
   length?: number
@@ -525,7 +521,7 @@ export interface GeneratorHistoryLocator {
   index: number
   generationDate: number
   category: GeneratorCredentialCategory
-  algorithm: GeneratorCredentialAlgorithm
+  algorithm?: GeneratorCredentialAlgorithm
 }
 
 export interface CredentialGeneratorResult extends GeneratorHistoryEntry {

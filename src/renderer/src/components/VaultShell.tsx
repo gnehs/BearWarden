@@ -46,6 +46,7 @@ import {
   RotateCcw,
   Settings2,
   Search,
+  Sparkles,
   Star,
   Trash2,
   X
@@ -80,6 +81,7 @@ import {
 import { FolderDragPreview, ItemDragPreview } from './DragPreview'
 import { FolderRow, type ItemSelectionModifiers } from './DndRows'
 import LoginEditor, { type LoginDraft } from './LoginEditor'
+import CredentialGeneratorDialog from './CredentialGeneratorDialog'
 import {
   isCurrentSelectedDetailResponse,
   protectedDetailInvalidationIds
@@ -705,6 +707,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [emptyTrashDialogOpen, setEmptyTrashDialogOpen] = useState(false)
   const [passwordHistoryDialogOpen, setPasswordHistoryDialogOpen] = useState(false)
+  const [generatorDialogOpen, setGeneratorDialogOpen] = useState(false)
   const [repromptPrompt, setRepromptPrompt] = useState<RepromptPromptState | null>(null)
   const [repromptBusy, setRepromptBusy] = useState(false)
   const [authorizationTokenState, setAuthorizationTokenState] = useState<Record<string, string>>({})
@@ -2768,6 +2771,15 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     </small>
                   </div>
                   <div className="list-header-actions">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      onClick={() => setGeneratorDialogOpen(true)}
+                    >
+                      <Sparkles data-icon="inline-start" />
+                      產生器
+                    </Button>
                     {scope.kind === 'trash' && trashItems.length > 0 && (
                       <Button
                         variant="outline"
@@ -3344,6 +3356,15 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             count={selectedLogin.passwordHistoryCount}
             onClose={() => setPasswordHistoryDialogOpen(false)}
             onReveal={revealPasswordHistory}
+          />
+        )}
+        {generatorDialogOpen && (
+          <CredentialGeneratorDialog
+            onClose={() => setGeneratorDialogOpen(false)}
+            onGenerate={(request) => window.bearwarden.generator.generate(request)}
+            onListHistory={() => window.bearwarden.generator.history()}
+            onCopyHistory={(locator) => window.bearwarden.generator.copyHistory(locator)}
+            onClearHistory={() => window.bearwarden.generator.clearHistory()}
           />
         )}
         {repromptPrompt && (

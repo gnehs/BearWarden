@@ -9,10 +9,12 @@ import {
   type AppSettingsUpdate,
   type CustomFieldRequest,
   type EditorSecretsRequest,
+  type CredentialGeneratorRequest,
   type FolderCreateRequest,
   type FolderDeleteRequest,
   type FolderReorderRequest,
   type FolderUpdateRequest,
+  type GeneratorHistoryLocator,
   type LoginCreateRequest,
   type LoginAuthorizeRequest,
   type LoginAuthorizeManyRequest,
@@ -217,6 +219,163 @@ function parseTouchIdEnable(value: unknown): TouchIdEnableRequest {
 
 function parseNoInput(value: unknown): void {
   if (value !== undefined) throw new VaultError('INVALID_INPUT')
+}
+
+function parseGeneratorBooleanOptions(
+  record: RecordValue,
+  keys: readonly string[]
+): Record<string, boolean> {
+  const result: Record<string, boolean> = {}
+  for (const key of keys) {
+    const value = record[key]
+    if (value === undefined) continue
+    if (typeof value !== 'boolean') throw new VaultError('INVALID_INPUT')
+    result[key] = value
+  }
+  return result
+}
+
+function parseGeneratorInteger(
+  record: RecordValue,
+  key: string,
+  minimum: number,
+  maximum: number
+): number | undefined {
+  const value = record[key]
+  if (value === undefined) return undefined
+  if (
+    !Number.isSafeInteger(value) ||
+    typeof value !== 'number' ||
+    value < minimum ||
+    value > maximum
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return value
+}
+
+function parseGeneratorRequest(value: unknown): CredentialGeneratorRequest {
+  const request = exactRecord(value, ['algorithm', 'options', 'email', 'domain'])
+  if (request.algorithm === 'password') {
+    if (request.email !== undefined || request.domain !== undefined)
+      throw new VaultError('INVALID_INPUT')
+    const options = exactRecord(request.options, [
+      'length',
+      'uppercase',
+      'lowercase',
+      'numbers',
+      'special',
+      'minUppercase',
+      'minLowercase',
+      'minNumber',
+      'minSpecial',
+      'avoidAmbiguous'
+    ])
+    return {
+      algorithm: 'password',
+      options: {
+        ...parseGeneratorBooleanOptions(options, [
+          'uppercase',
+          'lowercase',
+          'numbers',
+          'special',
+          'avoidAmbiguous'
+        ]),
+        ...optionalDefined('length', parseGeneratorInteger(options, 'length', 5, 128)),
+        ...optionalDefined('minUppercase', parseGeneratorInteger(options, 'minUppercase', 0, 128)),
+        ...optionalDefined('minLowercase', parseGeneratorInteger(options, 'minLowercase', 0, 128)),
+        ...optionalDefined('minNumber', parseGeneratorInteger(options, 'minNumber', 0, 9)),
+        ...optionalDefined('minSpecial', parseGeneratorInteger(options, 'minSpecial', 0, 9))
+      }
+    }
+  }
+  if (request.algorithm === 'passphrase') {
+    if (request.email !== undefined || request.domain !== undefined)
+      throw new VaultError('INVALID_INPUT')
+    const options = exactRecord(request.options, [
+      'wordCount',
+      'separator',
+      'capitalize',
+      'includeNumber'
+    ])
+    const separator = options.separator
+    if (
+      separator !== undefined &&
+      (typeof separator !== 'string' || separator.length !== 1 || /[\p{Cc}\p{Cf}]/u.test(separator))
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    return {
+      algorithm: 'passphrase',
+      options: {
+        ...parseGeneratorBooleanOptions(options, ['capitalize', 'includeNumber']),
+        ...optionalDefined('wordCount', parseGeneratorInteger(options, 'wordCount', 3, 20)),
+        ...optionalDefined('separator', separator as string | undefined)
+      }
+    }
+  }
+  if (request.algorithm === 'username') {
+    if (request.email !== undefined || request.domain !== undefined)
+      throw new VaultError('INVALID_INPUT')
+    const options = exactRecord(request.options, ['capitalize', 'includeNumber'])
+    return {
+      algorithm: 'username',
+      options: parseGeneratorBooleanOptions(options, ['capitalize', 'includeNumber'])
+    }
+  }
+  if (request.algorithm === 'subaddress') {
+    if (request.options !== undefined || request.domain !== undefined)
+      throw new VaultError('INVALID_INPUT')
+    const email = requiredString(request, 'email')
+    if (email.length === 0 || email.length > 254) throw new VaultError('INVALID_INPUT')
+    return { algorithm: 'subaddress', email }
+  }
+  if (request.algorithm === 'catchall') {
+    if (request.options !== undefined || request.email !== undefined)
+      throw new VaultError('INVALID_INPUT')
+    const domain = requiredString(request, 'domain')
+    if (domain.length === 0 || domain.length > 254) throw new VaultError('INVALID_INPUT')
+    return { algorithm: 'catchall', domain }
+  }
+  throw new VaultError('INVALID_INPUT')
+}
+
+function optionalDefined<Key extends string, Value>(
+  key: Key,
+  value: Value | undefined
+): { [Property in Key]?: Value } {
+  return value === undefined ? {} : ({ [key]: value } as { [Property in Key]: Value })
+}
+
+function parseGeneratorHistoryLocator(value: unknown): GeneratorHistoryLocator {
+  const record = exactRecord(value, ['index', 'generationDate', 'category', 'algorithm'])
+  if (
+    typeof record.index !== 'number' ||
+    !Number.isSafeInteger(record.index) ||
+    record.index < 0 ||
+    record.index >= 200 ||
+    typeof record.generationDate !== 'number' ||
+    !Number.isSafeInteger(record.generationDate) ||
+    record.generationDate < 0 ||
+    record.generationDate > 8_640_000_000_000_000 ||
+    (record.category !== 'password' &&
+      record.category !== 'username' &&
+      record.category !== 'email') ||
+    (record.algorithm !== undefined &&
+      record.algorithm !== 'password' &&
+      record.algorithm !== 'passphrase' &&
+      record.algorithm !== 'username' &&
+      record.algorithm !== 'subaddress' &&
+      record.algorithm !== 'catchall')
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return {
+    index: record.index,
+    generationDate: record.generationDate,
+    category: record.category,
+    ...(record.algorithm === undefined ? {} : { algorithm: record.algorithm })
+  }
 }
 
 function isRecord(value: unknown): value is RecordValue {
@@ -1156,6 +1315,20 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     const request = parseCustomFieldRequest(input)
     return runAuthorized(event, request, () => vault.copyCustomField(request))
   })
+  registerHandler(IPC_CHANNELS.generatorGenerate, getMainWindow, (_event, input) =>
+    vault.generateCredential(parseGeneratorRequest(input))
+  )
+  registerHandler(IPC_CHANNELS.generatorHistoryList, getMainWindow, (_event, input) => {
+    parseNoInput(input)
+    return vault.generatorHistory()
+  })
+  registerHandler(IPC_CHANNELS.generatorHistoryClear, getMainWindow, (_event, input) => {
+    parseNoInput(input)
+    return vault.clearGeneratorHistory()
+  })
+  registerHandler(IPC_CHANNELS.generatorHistoryCopy, getMainWindow, (_event, input) =>
+    vault.copyGeneratorHistory(parseGeneratorHistoryLocator(input))
+  )
   registerHandler(IPC_CHANNELS.syncStatus, getMainWindow, () => vault.syncStatus())
   registerHandler(IPC_CHANNELS.syncConnect, getMainWindow, async (_event, input) => {
     const result = await vault.connectSync(parseSyncConnect(input))

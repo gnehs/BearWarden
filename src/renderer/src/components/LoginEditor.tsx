@@ -11,6 +11,7 @@ import {
   ListPlus,
   Plus,
   Save,
+  Sparkles,
   TextCursorInput,
   Trash2,
   X
@@ -85,6 +86,7 @@ import { Spinner } from './ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 import { Textarea } from './ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
+import CredentialGeneratorDialog from './CredentialGeneratorDialog'
 
 type EditorSecretField = VaultEditorSecretField
 type EditorTab = 'details' | 'custom' | 'organize'
@@ -308,6 +310,7 @@ function LoginEditor({
         }
       : null
   )
+  const [generatorTarget, setGeneratorTarget] = useState<'password' | 'username' | null>(null)
   const [draft, setDraft] = useState<LoginDraft>(() => ({
     ...emptyFields,
     ...login,
@@ -729,6 +732,18 @@ function LoginEditor({
             />
           )}
           <InputGroupAddon align={options?.multiline ? 'block-end' : 'inline-end'}>
+            {field === 'password' && !options?.multiline && (
+              <InputGroupButton
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label="產生密碼"
+                onClick={() => setGeneratorTarget('password')}
+                disabled={busy || secretsUnavailable}
+              >
+                <Sparkles />
+              </InputGroupButton>
+            )}
             <InputGroupButton
               type="button"
               variant="ghost"
@@ -909,14 +924,28 @@ function LoginEditor({
                   <>
                     <Field>
                       <FieldLabel htmlFor="editor-username">使用者名稱</FieldLabel>
-                      <Input
-                        id="editor-username"
-                        value={draft.username}
-                        onChange={(event) => update('username', event.target.value)}
-                        autoComplete="off"
-                        maxLength={320}
-                        disabled={busy}
-                      />
+                      <InputGroup>
+                        <InputGroupInput
+                          id="editor-username"
+                          value={draft.username}
+                          onChange={(event) => update('username', event.target.value)}
+                          autoComplete="off"
+                          maxLength={320}
+                          disabled={busy}
+                        />
+                        <InputGroupAddon align="inline-end">
+                          <InputGroupButton
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label="產生使用者名稱"
+                            onClick={() => setGeneratorTarget('username')}
+                            disabled={busy}
+                          >
+                            <Sparkles />
+                          </InputGroupButton>
+                        </InputGroupAddon>
+                      </InputGroup>
                     </Field>
                     {secretInput('password', '密碼')}
                     {secretInput('totp', '驗證碼密鑰', {
@@ -1709,6 +1738,29 @@ function LoginEditor({
           {secretLoadState === 'loading' ? '載入中…' : '儲存'}
         </Button>
       </footer>
+      {generatorTarget && (
+        <CredentialGeneratorDialog
+          initialTab={generatorTarget}
+          onClose={() => setGeneratorTarget(null)}
+          onGenerate={(request) => window.bearwarden.generator.generate(request)}
+          onListHistory={() => window.bearwarden.generator.history()}
+          onCopyHistory={(locator) => window.bearwarden.generator.copyHistory(locator)}
+          onClearHistory={() => window.bearwarden.generator.clearHistory()}
+          useCategories={generatorTarget === 'password' ? ['password'] : ['username', 'email']}
+          onUseCredential={(generated) => {
+            if (generatorTarget === 'password' && generated.category === 'password') {
+              updateSecret('password', generated.credential)
+              setGeneratorTarget(null)
+            } else if (
+              generatorTarget === 'username' &&
+              (generated.category === 'username' || generated.category === 'email')
+            ) {
+              update('username', generated.credential)
+              setGeneratorTarget(null)
+            }
+          }}
+        />
+      )}
     </form>
   )
 }
