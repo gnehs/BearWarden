@@ -40,6 +40,7 @@ const api: BearWardenAPI = {
     delete: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginDelete, request),
     setFavorite: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginSetFavorite, request),
     move: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginMove, request),
+    moveMany: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginMoveMany, request),
     revealPassword: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginRevealPassword, request),
     copyUsername: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginCopyUsername, request),
     copyPassword: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginCopyPassword, request),

@@ -11,6 +11,7 @@ import type {
   LoginIdRequest,
   LoginListRequest,
   LoginMoveRequest,
+  LoginMoveManyRequest,
   LoginSummary,
   LoginUpdateRequest,
   LoginView,
@@ -25,6 +26,7 @@ import type {
   TotpCodeView,
   VaultStatus
 } from '../shared/vault-contract'
+import { MAX_LOGIN_MOVE_MANY_IDS } from '../shared/vault-contract'
 import {
   BitwardenDirectError,
   type BitwardenFolder,
@@ -1297,6 +1299,30 @@ export class VaultService {
       login.folderId = this.normalizeFolderId(data, request.folderId)
       login.updatedAt = now
       return toSummary(login)
+    })
+  }
+
+  moveLogins(request: LoginMoveManyRequest): Promise<LoginSummary[]> {
+    return this.mutate((data, now) => {
+      if (
+        !Array.isArray(request.ids) ||
+        request.ids.length === 0 ||
+        request.ids.length > MAX_LOGIN_MOVE_MANY_IDS
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      request.ids.forEach(assertUuid)
+      if (new Set(request.ids).size !== request.ids.length) {
+        throw new VaultError('INVALID_INPUT')
+      }
+
+      const folderId = this.normalizeFolderId(data, request.folderId)
+      const logins = request.ids.map((id) => this.findLogin(data, id))
+      return logins.map((login) => {
+        login.folderId = folderId
+        login.updatedAt = now
+        return toSummary(login)
+      })
     })
   }
 

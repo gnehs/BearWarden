@@ -2,7 +2,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { LoginSummary } from '../../../shared/vault-contract'
 import { cn } from '@renderer/lib/utils'
-import { ItemRow } from './DndRows'
+import { ItemRow, type ItemSelectionModifiers } from './DndRows'
 
 const GROUP_HEADER_HEIGHT = 31
 const ITEM_ROW_HEIGHT = 66
@@ -16,8 +16,8 @@ export interface VirtualizedItemGroup {
 interface VirtualizedItemListProps {
   groups: readonly VirtualizedItemGroup[]
   scopeTitle: string
-  selectedId: string | null
-  onSelect: (id: string) => void
+  selectedIds: ReadonlySet<string>
+  onSelect: (id: string, modifiers: ItemSelectionModifiers) => void
   onPrefetch?: (id: string) => void
   onFavorite: (item: LoginSummary) => void
   onContextMenu: (id: string, position: { x: number; y: number }) => void
@@ -42,7 +42,7 @@ type VirtualizedRow =
 export function VirtualizedItemList({
   groups,
   scopeTitle,
-  selectedId,
+  selectedIds,
   onSelect,
   onPrefetch,
   onFavorite,
@@ -154,7 +154,7 @@ export function VirtualizedItemList({
             >
               <ItemRow
                 item={row.item}
-                selected={selectedId === row.item.id}
+                selected={selectedIds.has(row.item.id)}
                 onSelect={onSelect}
                 onPrefetch={onPrefetch}
                 onFavorite={onFavorite}

@@ -61,6 +61,7 @@ const emptyItemFields: VaultItemFields = {
 async function createHarness(options: VaultServiceOptions = {}): Promise<{
   directory: string
   filePath: string
+  store: EncryptedVaultStore<unknown>
   service: VaultService
   copyText: ReturnType<typeof vi.fn>
   openExternal: ReturnType<typeof vi.fn>
@@ -72,8 +73,9 @@ async function createHarness(options: VaultServiceOptions = {}): Promise<{
   const openExternal = vi.fn()
   let idIndex = 0
   let clock = Date.parse('2026-07-14T00:00:00.000Z')
+  const store = new EncryptedVaultStore<unknown>(filePath)
   const service = new VaultService(
-    new EncryptedVaultStore(filePath),
+    store,
     {
       copyText,
       openExternal
@@ -84,7 +86,7 @@ async function createHarness(options: VaultServiceOptions = {}): Promise<{
       ...options
     }
   )
-  return { directory, filePath, service, copyText, openExternal }
+  return { directory, filePath, store, service, copyText, openExternal }
 }
 
 function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient & {
@@ -574,6 +576,50 @@ describe('VaultService encrypted local data', () => {
     expect((await service.getLogin({ id: card.id })).folderId).toBeNull()
     await service.deleteLogin({ id: note.id })
     expect((await service.listLogins()).map((item) => item.id)).not.toContain(note.id)
+  })
+
+  it('moves multiple logins atomically', async () => {
+    const { service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const source = await service.createFolder({ name: 'Source' })
+    const destination = await service.createFolder({ name: 'Destination' })
+    const first = await service.createLogin({ name: 'First', folderId: source.id })
+    const second = await service.createLogin({ name: 'Second', folderId: source.id })
+    const write = vi.spyOn(store, 'write')
+
+    const moved = await service.moveLogins({
+      ids: [first.id, second.id],
+      folderId: destination.id
+    })
+
+    expect(moved.map((login) => login.id)).toEqual([first.id, second.id])
+    expect(moved.every((login) => login.folderId === destination.id)).toBe(true)
+    expect(new Set(moved.map((login) => login.updatedAt))).toHaveLength(1)
+    expect(write).toHaveBeenCalledOnce()
+    expect(
+      (await service.listLogins({ folderId: destination.id })).map((login) => login.id)
+    ).toEqual([first.id, second.id])
+  })
+
+  it('does not partially move logins when any id is invalid or missing', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const source = await service.createFolder({ name: 'Source' })
+    const destination = await service.createFolder({ name: 'Destination' })
+    const first = await service.createLogin({ name: 'First', folderId: source.id })
+    const second = await service.createLogin({ name: 'Second', folderId: source.id })
+    const original = await service.listLogins()
+
+    await expect(
+      service.moveLogins({ ids: [first.id, 'not-a-uuid'], folderId: destination.id })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    expect(await service.listLogins()).toEqual(original)
+
+    await expect(
+      service.moveLogins({ ids: [first.id, IDS[5]!], folderId: destination.id })
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    expect(await service.listLogins()).toEqual(original)
+    expect((await service.getLogin({ id: second.id })).folderId).toBe(source.id)
   })
 
   it('migrates V1 through V3 login records to V5 items', async () => {

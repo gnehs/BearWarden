@@ -15,6 +15,7 @@ export const IPC_CHANNELS = {
   loginDelete: 'login:delete',
   loginSetFavorite: 'login:set-favorite',
   loginMove: 'login:move',
+  loginMoveMany: 'login:move-many',
   loginRevealPassword: 'login:reveal-password',
   loginCopyUsername: 'login:copy-username',
   loginCopyPassword: 'login:copy-password',
@@ -169,6 +170,13 @@ export interface LoginFavoriteRequest extends LoginIdRequest {
 }
 
 export interface LoginMoveRequest extends LoginIdRequest {
+  folderId: string | null
+}
+
+export const MAX_LOGIN_MOVE_MANY_IDS = 1_000
+
+export interface LoginMoveManyRequest {
+  ids: string[]
   folderId: string | null
 }
 
@@ -348,6 +356,7 @@ export interface BearWardenAPI {
     delete: (request: LoginIdRequest) => Promise<void>
     setFavorite: (request: LoginFavoriteRequest) => Promise<LoginSummary>
     move: (request: LoginMoveRequest) => Promise<LoginSummary>
+    moveMany: (request: LoginMoveManyRequest) => Promise<LoginSummary[]>
     revealPassword: (request: LoginIdRequest) => Promise<string>
     copyUsername: (request: LoginIdRequest) => Promise<void>
     copyPassword: (request: LoginIdRequest) => Promise<void>

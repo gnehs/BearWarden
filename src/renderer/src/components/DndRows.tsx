@@ -1,6 +1,6 @@
 import { useDraggable } from '@dnd-kit/core'
 import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
+import { CSS, useCombinedRefs } from '@dnd-kit/utilities'
 import { memo, useEffect, useRef } from 'react'
 import {
   ContactRound,
@@ -37,11 +37,16 @@ function RowIconButton({ label, children, ...props }: RowIconButtonProps): React
 interface ItemRowProps {
   item: LoginSummary
   selected: boolean
-  onSelect: (id: string) => void
+  onSelect: (id: string, modifiers: ItemSelectionModifiers) => void
   onPrefetch?: (id: string) => void
   onFavorite: (item: LoginSummary) => void
   onContextMenu: (id: string, position: { x: number; y: number }) => void
   showWebsiteIcons: boolean
+}
+
+export interface ItemSelectionModifiers {
+  toggle: boolean
+  range: boolean
 }
 
 const itemTypeMeta = {
@@ -61,9 +66,15 @@ export const ItemRow = memo(function ItemRow({
   onContextMenu,
   showWebsiteIcons
 }: ItemRowProps): React.JSX.Element {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: item.id
-  })
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, isDragging } =
+    useDraggable({
+      id: item.id,
+      attributes: {
+        role: 'listitem',
+        roleDescription: '可拖曳項目'
+      }
+    })
+  const setRowRef = useCombinedRefs(setNodeRef, setActivatorNodeRef)
   const prefetchTimerRef = useRef<number | null>(null)
 
   useEffect(
@@ -92,39 +103,44 @@ export const ItemRow = memo(function ItemRow({
 
   return (
     <li
-      ref={setNodeRef}
+      ref={setRowRef}
       data-item-id={item.id}
       className={cn('item-row', selected && 'selected', isDragging && 'dragging')}
       style={{ transform: CSS.Translate.toString(transform) }}
+      {...attributes}
+      {...listeners}
       onContextMenu={(event) => {
         event.preventDefault()
-        onSelect(item.id)
+        onSelect(item.id, { toggle: false, range: false })
         onContextMenu(item.id, { x: Math.round(event.clientX), y: Math.round(event.clientY) })
       }}
     >
-      <RowIconButton
-        variant="ghost"
-        size="icon-sm"
-        className="drag-handle"
-        type="button"
-        label={`拖曳 ${item.name}`}
-        {...listeners}
-        {...attributes}
-      >
-        <GripVertical aria-hidden="true" />
-      </RowIconButton>
       <Button
         variant="ghost"
         className="item-row-main"
         type="button"
-        onClick={() => onSelect(item.id)}
+        onClick={(event) =>
+          onSelect(item.id, {
+            toggle: event.metaKey || event.ctrlKey,
+            range: event.shiftKey
+          })
+        }
+        onKeyDown={(event) => {
+          if (event.key !== ' ' || (!event.metaKey && !event.ctrlKey && !event.shiftKey)) return
+          event.preventDefault()
+          event.stopPropagation()
+          onSelect(item.id, {
+            toggle: event.metaKey || event.ctrlKey,
+            range: event.shiftKey
+          })
+        }}
         onPointerEnter={schedulePrefetch}
         onPointerLeave={cancelPrefetch}
         onFocus={() => {
           cancelPrefetch()
           onPrefetch?.(item.id)
         }}
-        aria-current={selected}
+        aria-pressed={selected}
       >
         <span className={cn('item-icon', item.type)} aria-hidden="true">
           {item.type === 'card' ? (
@@ -147,6 +163,7 @@ export const ItemRow = memo(function ItemRow({
         type="button"
         label={item.favorite ? `將 ${item.name} 從常用項目移除` : `將 ${item.name} 加入常用項目`}
         aria-pressed={item.favorite}
+        onPointerDown={(event) => event.stopPropagation()}
         onClick={() => onFavorite(item)}
       >
         <Star fill={item.favorite ? 'currentColor' : 'none'} aria-hidden="true" />

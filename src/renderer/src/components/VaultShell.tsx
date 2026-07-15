@@ -59,10 +59,12 @@ import type {
   VaultItemType,
   VaultSecretField
 } from '../../../shared/vault-contract'
+import { MAX_LOGIN_MOVE_MANY_IDS } from '../../../shared/vault-contract'
 import bearCutUrl from '../assets/bear-cut.svg'
 import BrandMark from './BrandMark'
 import { DeleteLoginDialog, FolderDialog, MoveDialog } from './Dialogs'
-import { FolderRow } from './DndRows'
+import { FolderDragPreview, ItemDragPreview } from './DragPreview'
+import { FolderRow, type ItemSelectionModifiers } from './DndRows'
 import LoginEditor, { type LoginDraft } from './LoginEditor'
 import SyncDialog from './SyncDialog'
 import VirtualizedItemList from './VirtualizedItemList'
@@ -70,6 +72,7 @@ import { groupItemsByDate } from '../lib/item-date-groups'
 import { matchesVaultCategory, type VaultCategoryFilter } from '../lib/vault-category'
 import { formatPaymentCardNumber } from '../lib/payment-card'
 import { normalizeBitwardenCardBrand } from '../lib/payment-card'
+import { normalizeItemSelection, updateItemSelection } from '../lib/item-selection'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
 import { Button } from '@renderer/components/ui/button'
@@ -567,6 +570,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [query, setQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedLogin, setSelectedLogin] = useState<LoginView | null>(null)
   const [totpCode, setTotpCode] = useState<TotpCodeView | null>(null)
@@ -589,9 +593,24 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const compactReturnIdRef = useRef<string | null>(null)
   const compactDetailFocusIdRef = useRef<string | null>(null)
   const selectedIdRef = useRef<string | null>(null)
+  const selectedIdsRef = useRef<ReadonlySet<string>>(new Set())
+  const selectionAnchorIdRef = useRef<string | null>(null)
   const detailRequestsRef = useRef(new Map<string, Promise<LoginView>>())
   const detailCacheRef = useRef(new Map<string, LoginView>())
   const detailCacheGenerationRef = useRef(0)
+
+  const updateSelectedIds = useCallback((nextIds: ReadonlySet<string>): void => {
+    selectedIdsRef.current = nextIds
+    setSelectedIds(nextIds)
+  }, [])
+
+  const clearItemSelection = useCallback((): void => {
+    updateSelectedIds(new Set())
+    selectionAnchorIdRef.current = null
+    selectedIdRef.current = null
+    setSelectedId(null)
+    setSelectedLogin(null)
+  }, [updateSelectedIds])
 
   const clearDetailCache = useCallback((): void => {
     detailCacheGenerationRef.current += 1
@@ -672,15 +691,25 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     [loadLoginDetail]
   )
 
-  const selectLogin = useCallback((id: string): void => {
-    compactReturnIdRef.current = id
+  const activateLogin = useCallback((id: string | null): void => {
+    if (id) compactReturnIdRef.current = id
     selectedIdRef.current = id
-    const cached = detailCacheRef.current.get(id)
+    const cached = id ? detailCacheRef.current.get(id) : undefined
     if (cached) setSelectedLogin(cached)
+    else if (!id) setSelectedLogin(null)
     setSelectedId(id)
     setRevealedSecrets(emptyRevealedSecrets)
     setEditorMode(null)
   }, [])
+
+  const selectLogin = useCallback(
+    (id: string): void => {
+      updateSelectedIds(new Set([id]))
+      selectionAnchorIdRef.current = id
+      activateLogin(id)
+    },
+    [activateLogin, updateSelectedIds]
+  )
 
   const showLoginContextMenu = useCallback(
     (id: string, position: { x: number; y: number }): void => {
@@ -709,10 +738,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const refreshAfterSync = useCallback(async (): Promise<void> => {
     await loadVault()
     setEditorMode(null)
-    setSelectedId(null)
-    setSelectedLogin(null)
+    clearItemSelection()
     setRevealedSecrets(emptyRevealedSecrets)
-  }, [loadVault])
+  }, [clearItemSelection, loadVault])
 
   useEffect(() => {
     queueMicrotask(() => void loadVault())
@@ -802,12 +830,12 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       .catch((detailError) => {
         if (!active) return
         announceError(describeError(detailError))
-        setSelectedId(null)
+        clearItemSelection()
       })
     return () => {
       active = false
     }
-  }, [loadLoginDetail, selectedId])
+  }, [clearItemSelection, loadLoginDetail, selectedId])
 
   useEffect(() => {
     let active = true
@@ -864,12 +892,40 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     })
     return sortItems(scoped, scope.kind === 'recent' ? 'recent' : sortMode)
   }, [items, query, scope, sortMode, typeFilter])
+  const scopedItemIds = useMemo(() => scopedItems.map((item) => item.id), [scopedItems])
+
+  const selectItems = useCallback(
+    (id: string, modifiers: ItemSelectionModifiers): void => {
+      const nextSelection = updateItemSelection({
+        selectedIds: selectedIdsRef.current,
+        anchorId: selectionAnchorIdRef.current,
+        activeId: selectedIdRef.current,
+        orderedIds: scopedItemIds,
+        targetId: id,
+        toggle: modifiers.toggle,
+        range: modifiers.range
+      })
+      updateSelectedIds(nextSelection.selectedIds)
+      selectionAnchorIdRef.current = nextSelection.anchorId
+      activateLogin(nextSelection.activeId)
+    },
+    [activateLogin, scopedItemIds, updateSelectedIds]
+  )
 
   useEffect(() => {
-    if (editorMode || settingsOpen) return
-    if (selectedId && scopedItems.some((item) => item.id === selectedId)) return
-    queueMicrotask(() => setSelectedId(null))
-  }, [editorMode, scopedItems, selectedId, settingsOpen])
+    const nextSelection = normalizeItemSelection({
+      selectedIds: selectedIdsRef.current,
+      anchorId: selectionAnchorIdRef.current,
+      activeId: selectedIdRef.current,
+      orderedIds: scopedItemIds
+    })
+    const selectionChanged =
+      nextSelection.selectedIds.size !== selectedIdsRef.current.size ||
+      [...nextSelection.selectedIds].some((id) => !selectedIdsRef.current.has(id))
+    if (selectionChanged) updateSelectedIds(nextSelection.selectedIds)
+    selectionAnchorIdRef.current = nextSelection.anchorId
+    if (nextSelection.activeId !== selectedIdRef.current) activateLogin(nextSelection.activeId)
+  }, [activateLogin, scopedItemIds, updateSelectedIds])
 
   useEffect(() => {
     if (!window.matchMedia('(max-width: 680px)').matches) {
@@ -898,6 +954,25 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   }, [selectedId, selectedLogin])
 
   const selectedSummary = items.find((item) => item.id === selectedId) ?? null
+  const selectedSummaries = useMemo(
+    () => items.filter((item) => selectedIds.has(item.id)),
+    [items, selectedIds]
+  )
+  const selectedFolderId = useMemo(() => {
+    const firstFolderId = selectedSummaries[0]?.folderId
+    if (firstFolderId === undefined) return undefined
+    return selectedSummaries.every((item) => item.folderId === firstFolderId)
+      ? firstFolderId
+      : undefined
+  }, [selectedSummaries])
+  const activeDragItem = activeDragId
+    ? (items.find((item) => item.id === activeDragId) ?? null)
+    : null
+  const activeDragFolder = activeDragId
+    ? (folders.find((folder) => folder.id === activeDragId) ?? null)
+    : null
+  const activeDragItemCount =
+    activeDragItem && selectedIds.has(activeDragItem.id) ? selectedIds.size : 1
   const selectedDetailFields = useMemo(
     () => (selectedLogin ? detailFields(selectedLogin) : []),
     [selectedLogin]
@@ -968,6 +1043,24 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       const command = event.metaKey || event.ctrlKey
       if (!command) return
       const key = event.key.toLocaleLowerCase()
+      if (
+        key === 'a' &&
+        !settingsOpen &&
+        !editorMode &&
+        !searchOpen &&
+        event.target instanceof HTMLElement &&
+        !event.target.matches('input, textarea, select, [contenteditable="true"]')
+      ) {
+        event.preventDefault()
+        const nextIds = new Set(scopedItemIds)
+        updateSelectedIds(nextIds)
+        selectionAnchorIdRef.current = scopedItemIds[0] ?? null
+        const nextActiveId =
+          selectedIdRef.current && nextIds.has(selectedIdRef.current)
+            ? selectedIdRef.current
+            : (scopedItemIds[0] ?? null)
+        activateLogin(nextActiveId)
+      }
       if (key === 'f' && !settingsOpen) {
         event.preventDefault()
         setSearchOpen(true)
@@ -995,7 +1088,18 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     }
     window.addEventListener('keydown', handleShortcut)
     return () => window.removeEventListener('keydown', handleShortcut)
-  }, [busy, editorMode, lockVault, selectedLogin, selectedSummary, settingsOpen])
+  }, [
+    activateLogin,
+    busy,
+    editorMode,
+    lockVault,
+    scopedItemIds,
+    searchOpen,
+    selectedLogin,
+    selectedSummary,
+    settingsOpen,
+    updateSelectedIds
+  ])
 
   useEffect(() => {
     if (!searchOpen) return
@@ -1030,8 +1134,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     setSidebarOpen(false)
     setEditorMode(null)
     setMoveDialogOpen(false)
-    setSelectedId(null)
-    setSelectedLogin(null)
+    clearItemSelection()
     setRevealedSecrets(emptyRevealedSecrets)
   }
 
@@ -1107,26 +1210,48 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     [announce]
   )
 
-  async function moveLogin(id: string, folderId: string | null): Promise<void> {
-    const previous = items.find((item) => item.id === id)
-    if (!previous || previous.folderId === folderId) {
+  async function moveLogins(ids: readonly string[], folderId: string | null): Promise<void> {
+    const idSet = new Set(ids)
+    const previous = items.filter((item) => idSet.has(item.id))
+    const movable = previous.filter((item) => item.folderId !== folderId)
+    if (movable.length === 0) {
       setMoveDialogOpen(false)
       return
     }
+    if (movable.length > MAX_LOGIN_MOVE_MANY_IDS) {
+      announceError(`一次最多可移動 ${MAX_LOGIN_MOVE_MANY_IDS} 個項目。`)
+      return
+    }
+    const movableIds = new Set(movable.map((item) => item.id))
     setBusy(true)
-    mergeCachedSummary(detailCacheRef.current, { ...previous, folderId })
-    setItems((current) => current.map((item) => (item.id === id ? { ...item, folderId } : item)))
+    for (const item of movable) mergeCachedSummary(detailCacheRef.current, { ...item, folderId })
+    setItems((current) =>
+      current.map((item) => (movableIds.has(item.id) ? { ...item, folderId } : item))
+    )
     try {
-      const updated = await window.bearwarden.logins.move({ id, folderId })
-      mergeCachedSummary(detailCacheRef.current, updated)
-      setItems((current) => current.map((item) => (item.id === id ? updated : item)))
-      setSelectedLogin((current) => (current?.id === id ? { ...current, ...updated } : current))
+      const updated = await window.bearwarden.logins.moveMany({
+        ids: movable.map((item) => item.id),
+        folderId
+      })
+      const updatedById = new Map(updated.map((item) => [item.id, item]))
+      for (const item of updated) mergeCachedSummary(detailCacheRef.current, item)
+      setItems((current) => current.map((item) => updatedById.get(item.id) ?? item))
+      setSelectedLogin((current) => {
+        if (!current) return current
+        const summary = updatedById.get(current.id)
+        return summary ? { ...current, ...summary } : current
+      })
       const destination = folders.find((folder) => folder.id === folderId)?.name ?? '未分類'
-      announce(`已移至「${destination}」。`)
+      announce(
+        updated.length > 1
+          ? `已將 ${updated.length} 個項目移至「${destination}」。`
+          : `已移至「${destination}」。`
+      )
       setMoveDialogOpen(false)
     } catch (moveError) {
-      mergeCachedSummary(detailCacheRef.current, previous)
-      setItems((current) => current.map((item) => (item.id === id ? previous : item)))
+      const previousById = new Map(previous.map((item) => [item.id, item]))
+      for (const item of previous) mergeCachedSummary(detailCacheRef.current, item)
+      setItems((current) => current.map((item) => previousById.get(item.id) ?? item))
       announceError(describeError(moveError))
     } finally {
       setBusy(false)
@@ -1231,6 +1356,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         cacheLoginDetail(detailCacheRef.current, created)
         setItems((current) => [...current, toLoginSummary(created)])
         setScope({ kind: 'all' })
+        updateSelectedIds(new Set([created.id]))
+        selectionAnchorIdRef.current = created.id
+        selectedIdRef.current = created.id
         setSelectedId(created.id)
         setSelectedLogin(created)
         announce(`已建立「${created.name}」。`)
@@ -1265,8 +1393,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       await window.bearwarden.logins.delete({ id: selectedSummary.id })
       detailCacheRef.current.delete(selectedSummary.id)
       setItems((current) => current.filter((item) => item.id !== selectedSummary.id))
-      setSelectedId(null)
-      setSelectedLogin(null)
+      clearItemSelection()
       setDeleteDialogOpen(false)
       announce('項目已永久刪除。')
     } catch (deleteError) {
@@ -1340,7 +1467,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   }
 
   function startDrag(event: DragStartEvent): void {
-    setActiveDragId(String(event.active.id))
+    const activeId = String(event.active.id)
+    if (itemIds.has(activeId) && !selectedIdsRef.current.has(activeId)) selectLogin(activeId)
+    setActiveDragId(activeId)
   }
 
   async function endDrag(event: DragEndEvent): Promise<void> {
@@ -1349,8 +1478,11 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     const activeId = String(event.active.id)
     const overId = String(event.over.id)
     if (itemIds.has(activeId)) {
-      if (overId === 'folder:none') await moveLogin(activeId, null)
-      else if (folderIds.has(overId)) await moveLogin(activeId, overId)
+      const draggedIds = selectedIdsRef.current.has(activeId)
+        ? [...selectedIdsRef.current]
+        : [activeId]
+      if (overId === 'folder:none') await moveLogins(draggedIds, null)
+      else if (folderIds.has(overId)) await moveLogins(draggedIds, overId)
       return
     }
     if (!folderIds.has(activeId) || !folderIds.has(overId) || activeId === overId) return
@@ -2069,7 +2201,11 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 <header className="list-header">
                   <div className="list-heading">
                     <h1 id="list-title">{scopeTitle}</h1>
-                    <small>{scopedItems.length} 個項目</small>
+                    <small>
+                      {selectedIds.size > 1
+                        ? `已選取 ${selectedIds.size} 個 · 共 ${scopedItems.length} 個項目`
+                        : `${scopedItems.length} 個項目`}
+                    </small>
                   </div>
                   <div className="list-header-actions">
                     <div className="sort-control">
@@ -2121,9 +2257,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                   <VirtualizedItemList
                     groups={itemGroups}
                     scopeTitle={scopeTitle}
-                    selectedId={selectedId}
+                    selectedIds={selectedIds}
                     onPrefetch={prefetchLoginDetail}
-                    onSelect={selectLogin}
+                    onSelect={selectItems}
                     onFavorite={toggleFavorite}
                     onContextMenu={showLoginContextMenu}
                     showWebsiteIcons={settings?.showWebsiteIcons ?? false}
@@ -2180,7 +2316,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
               <DetailPlaceholder
                 item={selectedSummary}
                 showWebsiteIcons={settings?.showWebsiteIcons ?? false}
-                onBack={() => setSelectedId(null)}
+                onBack={clearItemSelection}
               />
             ) : selectedLogin && selectedLogin.id === selectedId ? (
               <article className="detail-content">
@@ -2191,7 +2327,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     className="icon-button detail-back"
                     type="button"
                     label="返回項目列表"
-                    onClick={() => setSelectedId(null)}
+                    onClick={clearItemSelection}
                   >
                     <ArrowLeft />
                   </TooltipIconButton>
@@ -2453,11 +2589,17 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         {moveDialogOpen && selectedSummary && (
           <MoveDialog
             itemName={selectedSummary.name}
-            currentFolderId={selectedSummary.folderId}
+            itemCount={selectedSummaries.length}
+            currentFolderId={selectedFolderId}
             folders={folders}
             busy={busy}
             onClose={() => setMoveDialogOpen(false)}
-            onMove={(folderId) => moveLogin(selectedSummary.id, folderId)}
+            onMove={(folderId) =>
+              moveLogins(
+                selectedSummaries.map((item) => item.id),
+                folderId
+              )
+            }
           />
         )}
         {deleteDialogOpen && selectedSummary && (
@@ -2478,13 +2620,19 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         )}
       </main>
 
-      <DragOverlay dropAnimation={null}>
-        {activeDragId && (
-          <div className="drag-overlay">
-            {itemIds.has(activeDragId) ? <KeyRound size={16} /> : <Folder size={16} />}
-            <span>{itemIds.has(activeDragId) ? '移動登入項目' : '重新排列資料夾'}</span>
-          </div>
-        )}
+      <DragOverlay dropAnimation={null} style={{ pointerEvents: 'none' }}>
+        {activeDragItem ? (
+          <ItemDragPreview
+            item={activeDragItem}
+            count={activeDragItemCount}
+            showWebsiteIcons={settings?.showWebsiteIcons ?? false}
+          />
+        ) : activeDragFolder ? (
+          <FolderDragPreview
+            folder={activeDragFolder}
+            count={folderCounts.get(activeDragFolder.id) ?? 0}
+          />
+        ) : null}
       </DragOverlay>
     </DndContext>
   )

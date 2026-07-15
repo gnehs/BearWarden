@@ -950,6 +950,11 @@ kbd {
 .titlebar-search-trigger[aria-expanded='true'] {
   background: transparent;
 }
+.titlebar-search-trigger:focus-visible {
+  border-color: transparent;
+  outline: none;
+  box-shadow: none;
+}
 .titlebar-search-trigger > span {
   min-width: 0;
   width: 100%;
@@ -1185,13 +1190,19 @@ kbd {
   position: relative;
   display: grid;
   min-height: 58px;
-  grid-template-columns: 21px minmax(0, 1fr) 32px;
+  grid-template-columns: minmax(0, 1fr) 32px;
   align-items: center;
   border: 1px solid transparent;
   border-radius: 10px;
+  cursor: grab;
+  touch-action: none;
 }
 .item-row:hover {
   background: var(--panel-muted);
+}
+.item-row:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
 }
 .item-row.selected {
   border-color: var(--primary);
@@ -1200,26 +1211,8 @@ kbd {
 }
 .item-row.dragging {
   z-index: 2;
-  opacity: 0.22;
-}
-.drag-handle {
-  display: grid;
-  width: 21px;
-  height: 38px;
-  padding: 0;
-  place-items: center;
-  border: 0;
-  color: transparent;
-  background: transparent;
-  touch-action: none;
-  cursor: grab;
-}
-.item-row:hover .drag-handle,
-.drag-handle:focus-visible {
-  color: var(--subtle);
-}
-.drag-handle:active {
   cursor: grabbing;
+  opacity: 0.22;
 }
 .item-row-main {
   display: grid;
@@ -2280,17 +2273,68 @@ kbd {
 }
 
 .drag-overlay {
-  display: flex;
+  position: relative;
+  display: grid;
+  width: min(320px, 72vw);
+  min-height: 62px;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  padding: 10px 13px;
+  gap: 11px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  background: color-mix(in oklch, var(--popover) 94%, transparent);
+  box-shadow:
+    0 16px 36px color-mix(in oklch, var(--foreground) 18%, transparent),
+    0 2px 8px color-mix(in oklch, var(--foreground) 8%, transparent);
+  pointer-events: none;
+  backdrop-filter: saturate(150%) blur(18px);
+}
+.drag-overlay.multiple {
+  box-shadow:
+    4px 4px 0 -1px var(--card),
+    4px 4px 0 var(--border),
+    8px 8px 0 -1px var(--card),
+    8px 8px 0 var(--border),
+    0 18px 38px color-mix(in oklch, var(--foreground) 18%, transparent);
+}
+.folder-drag-preview {
+  width: min(260px, 72vw);
+}
+.drag-preview-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
   border: 1px solid var(--border);
   border-radius: 10px;
-  color: var(--text);
-  background: var(--popover);
-  box-shadow: var(--shadow);
-  font-size: 12px;
-  font-weight: 680;
+  color: var(--muted-foreground);
+  background: var(--muted);
+}
+.drag-preview-icon.folder {
+  color: var(--primary);
+  background: var(--accent);
+}
+.drag-preview-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.drag-preview-copy strong,
+.drag-preview-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.drag-preview-copy strong {
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 700;
+}
+.drag-preview-copy small {
+  color: var(--muted-foreground);
+  font-size: 10px;
 }
 
 /* Apple-inspired macOS split-view presentation. */
@@ -2610,15 +2654,8 @@ kbd {
   background: transparent;
 }
 .item-row.selected .item-copy small,
-.item-row.selected .favorite-button,
-.item-row.selected .drag-handle {
+.item-row.selected .favorite-button {
   color: color-mix(in oklch, var(--primary-foreground) 82%, transparent);
-}
-.drag-handle {
-  position: absolute;
-  z-index: 2;
-  left: -16px;
-  width: 20px;
 }
 .item-row-main {
   height: 65px;
@@ -2645,6 +2682,7 @@ kbd {
   font-size: 11px;
 }
 .favorite-button {
+  cursor: pointer;
   opacity: 0;
   transition: opacity 120ms ease;
 }
@@ -2945,6 +2983,9 @@ kbd {
   .folder-row.drop-target {
     outline: 2px solid Highlight;
     outline-offset: -2px;
+  }
+  .drag-overlay {
+    outline: 2px solid CanvasText;
   }
   .brand-mark,
   .auth-state-icon,

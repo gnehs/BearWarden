@@ -3,6 +3,7 @@ import {
   IPC_CHANNELS,
   IPC_ERROR_PREFIX,
   IPC_EVENTS,
+  MAX_LOGIN_MOVE_MANY_IDS,
   type AppSettingsUpdate,
   type FolderCreateRequest,
   type FolderDeleteRequest,
@@ -14,6 +15,7 @@ import {
   type LoginIdRequest,
   type LoginListRequest,
   type LoginMoveRequest,
+  type LoginMoveManyRequest,
   type LoginUpdateRequest,
   type ItemFieldRequest,
   type VaultItemFields,
@@ -33,6 +35,8 @@ import type { VaultService } from './vault-service'
 import { showItemContextMenu } from './item-context-menu'
 
 type RecordValue = Record<string, unknown>
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export interface VaultIpcOptions {
   vault: VaultService
@@ -344,6 +348,25 @@ function parseLoginMove(value: unknown): LoginMoveRequest {
   return { id: requiredString(record, 'id'), folderId }
 }
 
+function parseLoginMoveMany(value: unknown): LoginMoveManyRequest {
+  const record = exactRecord(value, ['ids', 'folderId'])
+  const folderId = optionalStringOrNull(record, 'folderId')
+  if (folderId === undefined || !Array.isArray(record.ids)) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const ids = record.ids
+  if (
+    ids.length === 0 ||
+    ids.length > MAX_LOGIN_MOVE_MANY_IDS ||
+    ids.some((id) => typeof id !== 'string' || !UUID_PATTERN.test(id)) ||
+    new Set(ids).size !== ids.length
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  if (folderId !== null && !UUID_PATTERN.test(folderId)) throw new VaultError('INVALID_INPUT')
+  return { ids: [...ids] as string[], folderId }
+}
+
 function parseLoginList(value: unknown): LoginListRequest {
   const record = exactRecord(value ?? {}, ['sort', 'folderId'])
   if (record.sort !== undefined && record.sort !== 'recent' && record.sort !== 'name') {
@@ -498,6 +521,9 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   )
   registerHandler(IPC_CHANNELS.loginMove, getMainWindow, (_event, input) =>
     vault.moveLogin(parseLoginMove(input))
+  )
+  registerHandler(IPC_CHANNELS.loginMoveMany, getMainWindow, (_event, input) =>
+    vault.moveLogins(parseLoginMoveMany(input))
   )
   registerHandler(IPC_CHANNELS.loginRevealPassword, getMainWindow, (_event, input) =>
     vault.revealPassword(parseId(input))

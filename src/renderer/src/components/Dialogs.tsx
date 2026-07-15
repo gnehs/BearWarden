@@ -200,7 +200,8 @@ export function FolderDialog({
 
 interface MoveDialogProps {
   itemName: string
-  currentFolderId: string | null
+  itemCount?: number
+  currentFolderId: string | null | undefined
   folders: FolderView[]
   busy: boolean
   onClose: () => void
@@ -209,6 +210,7 @@ interface MoveDialogProps {
 
 export function MoveDialog({
   itemName,
+  itemCount = 1,
   currentFolderId,
   folders,
   busy,
@@ -216,7 +218,9 @@ export function MoveDialog({
   onMove
 }: MoveDialogProps): React.JSX.Element {
   const submittingRef = useRef(false)
-  const [folderId, setFolderId] = useState(currentFolderId ?? '')
+  const [folderId, setFolderId] = useState<string | null>(
+    currentFolderId === undefined ? null : (currentFolderId ?? '')
+  )
   const folderItems = [
     { label: '未分類', value: '' },
     ...folders.map((folder) => ({ label: folder.name, value: folder.id }))
@@ -225,7 +229,11 @@ export function MoveDialog({
   return (
     <Modal
       title="移動至資料夾"
-      description={`選擇「${itemName}」的新位置。這是拖放操作的鍵盤替代方式。`}
+      description={
+        itemCount > 1
+          ? `選擇這 ${itemCount} 個項目的新位置。這是拖放操作的鍵盤替代方式。`
+          : `選擇「${itemName}」的新位置。這是拖放操作的鍵盤替代方式。`
+      }
       busy={busy}
       onClose={onClose}
     >
