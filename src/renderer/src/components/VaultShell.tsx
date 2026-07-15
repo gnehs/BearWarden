@@ -1754,7 +1754,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         >
           {field.secret
             ? revealedValue === undefined
-              ? '••••••••••••'
+              ? field.field === 'code'
+                ? '•••'
+                : '••••••••••••'
               : field.field === 'number'
                 ? formatPaymentCardNumber(revealedValue) || '未設定'
                 : revealedValue || '未設定'
