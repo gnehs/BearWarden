@@ -33,6 +33,7 @@ import type {
   LoginCreateRequest,
   LoginAuthorizeRequest,
   LoginAuthorizeManyRequest,
+  LoginBatchRequest,
   LoginFavoriteRequest,
   LoginIdRequest,
   LoginListRequest,
@@ -65,6 +66,7 @@ import type {
   VaultStatus
 } from '../shared/vault-contract'
 import {
+  MAX_LOGIN_BATCH_IDS,
   MAX_LOGIN_AUTHORIZE_MANY_IDS,
   MAX_LOGIN_MOVE_MANY_IDS,
   VAULT_LINKED_FIELD_IDS_BY_TYPE
@@ -2754,6 +2756,20 @@ export class VaultService {
     })
   }
 
+  archiveLogins(request: LoginBatchRequest): Promise<LoginSummary[]> {
+    return this.mutate((data, now) => {
+      const logins = this.resolveLoginBatch(data, request, (login) => {
+        this.assertActiveLogin(login)
+        if (login.archivedAt !== null) throw new VaultError('INVALID_INPUT')
+      })
+      return logins.map((login) => {
+        login.archivedAt = now
+        login.updatedAt = now
+        return toSummary(login)
+      })
+    })
+  }
+
   unarchiveLogin(request: LoginIdRequest): Promise<LoginView> {
     return this.mutate((data, now) => {
       assertUuid(request.id)
@@ -2763,6 +2779,20 @@ export class VaultService {
       login.archivedAt = null
       login.updatedAt = now
       return toView(login)
+    })
+  }
+
+  unarchiveLogins(request: LoginBatchRequest): Promise<LoginSummary[]> {
+    return this.mutate((data, now) => {
+      const logins = this.resolveLoginBatch(data, request, (login) => {
+        this.assertActiveLogin(login)
+        if (login.archivedAt === null) throw new VaultError('INVALID_INPUT')
+      })
+      return logins.map((login) => {
+        login.archivedAt = null
+        login.updatedAt = now
+        return toSummary(login)
+      })
     })
   }
 
@@ -2846,6 +2876,17 @@ export class VaultService {
     })
   }
 
+  deleteLogins(request: LoginBatchRequest): Promise<number> {
+    return this.mutate((data, now) => {
+      const logins = this.resolveLoginBatch(data, request, (login) => this.assertActiveLogin(login))
+      for (const login of logins) {
+        login.deletedAt = now
+        login.updatedAt = now
+      }
+      return logins.length
+    })
+  }
+
   restoreLogin(request: LoginIdRequest): Promise<LoginView> {
     return this.mutate((data, now) => {
       assertUuid(request.id)
@@ -2857,6 +2898,19 @@ export class VaultService {
     })
   }
 
+  restoreLogins(request: LoginBatchRequest): Promise<LoginSummary[]> {
+    return this.mutate((data, now) => {
+      const logins = this.resolveLoginBatch(data, request, (login) => {
+        if (login.deletedAt === null) throw new VaultError('INVALID_INPUT')
+      })
+      return logins.map((login) => {
+        login.deletedAt = null
+        login.updatedAt = now
+        return toSummary(login)
+      })
+    })
+  }
+
   deleteLoginPermanently(request: LoginIdRequest): Promise<void> {
     return this.mutate((data) => {
       assertUuid(request.id)
@@ -2864,6 +2918,18 @@ export class VaultService {
       if (login.deletedAt === null) throw new VaultError('INVALID_INPUT')
       recordSyncDeletion(data.sync, 'login', request.id)
       data.logins = data.logins.filter((candidate) => candidate.id !== request.id)
+    })
+  }
+
+  deleteLoginsPermanently(request: LoginBatchRequest): Promise<number> {
+    return this.mutate((data) => {
+      const logins = this.resolveLoginBatch(data, request, (login) => {
+        if (login.deletedAt === null) throw new VaultError('INVALID_INPUT')
+      })
+      for (const login of logins) recordSyncDeletion(data.sync, 'login', login.id)
+      const deletedIds = new Set(logins.map((login) => login.id))
+      data.logins = data.logins.filter((login) => !deletedIds.has(login.id))
+      return logins.length
     })
   }
 
@@ -4012,6 +4078,27 @@ export class VaultService {
     const login = data.logins.find((candidate) => candidate.id === id)
     if (!login) throw new VaultError('NOT_FOUND')
     return login
+  }
+
+  private resolveLoginBatch(
+    data: VaultData,
+    request: LoginBatchRequest,
+    assertState: (login: StoredLogin) => void
+  ): StoredLogin[] {
+    if (
+      !Array.isArray(request.ids) ||
+      request.ids.length === 0 ||
+      request.ids.length > MAX_LOGIN_BATCH_IDS
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    request.ids.forEach(assertUuid)
+    if (new Set(request.ids).size !== request.ids.length) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    const logins = request.ids.map((id) => this.findLogin(data, id))
+    logins.forEach(assertState)
+    return logins
   }
 
   private assertActiveLogin(login: StoredLogin): void {

@@ -1854,6 +1854,146 @@ describe('VaultService encrypted local data', () => {
     })
   })
 
+  it('mutates login lifecycle batches atomically with one timestamp and one write', async () => {
+    const { service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const first = await service.createLogin({ name: 'First batch item' })
+    const second = await service.createLogin({ name: 'Second batch item' })
+    const write = vi.spyOn(store, 'write')
+
+    const archived = await service.archiveLogins({ ids: [first.id, second.id] })
+    expect(new Set(archived.map((login) => login.archivedAt))).toHaveLength(1)
+    expect(new Set(archived.map((login) => login.updatedAt))).toHaveLength(1)
+    expect(write).toHaveBeenCalledOnce()
+
+    write.mockClear()
+    const unarchived = await service.unarchiveLogins({ ids: [first.id, second.id] })
+    expect(unarchived.every((login) => login.archivedAt === null)).toBe(true)
+    expect(new Set(unarchived.map((login) => login.updatedAt))).toHaveLength(1)
+    expect(write).toHaveBeenCalledOnce()
+
+    await service.archiveLogin({ id: first.id })
+    const firstArchivedAt = (await service.getLogin({ id: first.id })).archivedAt
+    write.mockClear()
+    await expect(service.deleteLogins({ ids: [first.id, second.id] })).resolves.toBe(2)
+    const trashed = await service.listLogins({ deleted: true })
+    expect(new Set(trashed.map((login) => login.deletedAt))).toHaveLength(1)
+    expect(trashed.find((login) => login.id === first.id)?.archivedAt).toBe(firstArchivedAt)
+    expect(write).toHaveBeenCalledOnce()
+
+    write.mockClear()
+    const restored = await service.restoreLogins({ ids: [first.id, second.id] })
+    expect(new Set(restored.map((login) => login.updatedAt))).toHaveLength(1)
+    expect(restored.find((login) => login.id === first.id)?.archivedAt).toBe(firstArchivedAt)
+    expect(restored.find((login) => login.id === second.id)?.archivedAt).toBeNull()
+    expect(write).toHaveBeenCalledOnce()
+
+    await service.deleteLogins({ ids: [first.id, second.id] })
+    write.mockClear()
+    await expect(service.deleteLoginsPermanently({ ids: [first.id, second.id] })).resolves.toBe(2)
+    expect(write).toHaveBeenCalledOnce()
+    expect(await service.listLogins({ deleted: true })).toEqual([])
+  })
+
+  it('rejects invalid login batches without writes or partial lifecycle changes', async () => {
+    const { service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const first = await service.createLogin({ name: 'First validation item' })
+    const second = await service.createLogin({ name: 'Second validation item' })
+    const write = vi.spyOn(store, 'write')
+    const oversizedIds = Array.from(
+      { length: 501 },
+      (_, index) => `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`
+    )
+
+    await expect(service.archiveLogins({ ids: [] })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(service.archiveLogins({ ids: oversizedIds.slice(0, 500) })).rejects.toMatchObject({
+      code: 'NOT_FOUND'
+    })
+    await expect(service.archiveLogins({ ids: oversizedIds })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(service.archiveLogins({ ids: [first.id, 'not-a-uuid'] })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(service.archiveLogins({ ids: [first.id, first.id] })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(service.archiveLogins({ ids: [first.id, IDS[10]!] })).rejects.toMatchObject({
+      code: 'NOT_FOUND'
+    })
+    expect(write).not.toHaveBeenCalled()
+    expect((await service.listLogins()).map((login) => login.id)).toEqual([first.id, second.id])
+  })
+
+  it('validates every batch item state before changing any login', async () => {
+    const { service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const first = await service.createLogin({ name: 'Active batch item' })
+    const second = await service.createLogin({ name: 'Archived batch item' })
+    await service.archiveLogin({ id: second.id })
+    const write = vi.spyOn(store, 'write')
+
+    await expect(service.archiveLogins({ ids: [first.id, second.id] })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(service.unarchiveLogins({ ids: [second.id, first.id] })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    expect(write).not.toHaveBeenCalled()
+    expect((await service.getLogin({ id: first.id })).archivedAt).toBeNull()
+    expect((await service.getLogin({ id: second.id })).archivedAt).not.toBeNull()
+
+    await service.deleteLogin({ id: first.id })
+    write.mockClear()
+    await expect(service.deleteLogins({ ids: [second.id, first.id] })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(service.restoreLogins({ ids: [first.id, second.id] })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(
+      service.deleteLoginsPermanently({ ids: [first.id, second.id] })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    expect(write).not.toHaveBeenCalled()
+    expect((await service.listLogins({ deleted: true })).map((login) => login.id)).toEqual([
+      first.id
+    ])
+    expect((await service.listLogins({ archived: true })).map((login) => login.id)).toEqual([
+      second.id
+    ])
+  })
+
+  it('records a tombstone for every permanently deleted login in a batch', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake ??= createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const first = (await service.listLogins())[0]!
+    const second = await service.createLogin({ name: 'Second mapped batch item' })
+    await service.syncNow()
+    const remoteIds = fake!.remoteLogins.map((login) => login.id)
+
+    await service.deleteLogins({ ids: [first.id, second.id] })
+    await expect(service.deleteLoginsPermanently({ ids: [first.id, second.id] })).resolves.toBe(2)
+    await service.syncNow()
+
+    expect(fake!.hardDeletedIds).toEqual(expect.arrayContaining(remoteIds))
+    expect(fake!.hardDeletedIds).toHaveLength(2)
+    expect(fake!.remoteLogins).toEqual([])
+  })
+
   it('syncs archive atomically and resumes an interrupted content-plus-unarchive', async () => {
     let fake: ReturnType<typeof createSyncFake> | null = null
     const { filePath, service } = await createHarness({

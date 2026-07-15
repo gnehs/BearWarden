@@ -66,12 +66,18 @@ const api: BearWardenAPI = {
     create: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginCreate, request),
     clone: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginClone, request),
     archive: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginArchive, request),
+    archiveMany: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginArchiveMany, request),
     unarchive: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginUnarchive, request),
+    unarchiveMany: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginUnarchiveMany, request),
     update: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginUpdate, request),
     delete: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginDelete, request),
+    deleteMany: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginDeleteMany, request),
     restore: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginRestore, request),
+    restoreMany: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginRestoreMany, request),
     deletePermanently: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.loginDeletePermanently, request),
+    deletePermanentlyMany: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.loginDeletePermanentlyMany, request),
     emptyTrash: (request = {}) => ipcRenderer.invoke(IPC_CHANNELS.loginEmptyTrash, request),
     setFavorite: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginSetFavorite, request),
     move: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginMove, request),

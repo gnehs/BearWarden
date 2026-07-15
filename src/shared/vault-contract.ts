@@ -24,11 +24,16 @@ export const IPC_CHANNELS = {
   loginCreate: 'login:create',
   loginClone: 'login:clone',
   loginArchive: 'login:archive',
+  loginArchiveMany: 'login:archive-many',
   loginUnarchive: 'login:unarchive',
+  loginUnarchiveMany: 'login:unarchive-many',
   loginUpdate: 'login:update',
   loginDelete: 'login:delete',
+  loginDeleteMany: 'login:delete-many',
   loginRestore: 'login:restore',
+  loginRestoreMany: 'login:restore-many',
   loginDeletePermanently: 'login:delete-permanently',
+  loginDeletePermanentlyMany: 'login:delete-permanently-many',
   loginEmptyTrash: 'login:empty-trash',
   loginSetFavorite: 'login:set-favorite',
   loginMove: 'login:move',
@@ -394,7 +399,13 @@ export interface LoginMoveRequest extends LoginIdRequest {
   folderId: string | null
 }
 
-export const MAX_LOGIN_MOVE_MANY_IDS = 1_000
+export const MAX_LOGIN_BATCH_IDS = 500
+export const MAX_LOGIN_MOVE_MANY_IDS = MAX_LOGIN_BATCH_IDS
+
+export interface LoginBatchRequest {
+  ids: string[]
+  authorizationToken?: string
+}
 
 export interface LoginMoveManyRequest {
   ids: string[]
@@ -704,12 +715,18 @@ export interface BearWardenAPI {
     /** Creates an active copy without any passkeys or attachments. */
     clone: (request: LoginIdRequest) => Promise<LoginView>
     archive: (request: LoginIdRequest) => Promise<LoginView>
+    archiveMany: (request: LoginBatchRequest) => Promise<LoginSummary[]>
     unarchive: (request: LoginIdRequest) => Promise<LoginView>
+    unarchiveMany: (request: LoginBatchRequest) => Promise<LoginSummary[]>
     update: (request: LoginUpdateRequest) => Promise<LoginView>
     /** Move an active item to the trash. */
     delete: (request: LoginIdRequest) => Promise<void>
+    /** Move active items to the trash. */
+    deleteMany: (request: LoginBatchRequest) => Promise<number>
     restore: (request: LoginIdRequest) => Promise<LoginView>
+    restoreMany: (request: LoginBatchRequest) => Promise<LoginSummary[]>
     deletePermanently: (request: LoginIdRequest) => Promise<void>
+    deletePermanentlyMany: (request: LoginBatchRequest) => Promise<number>
     emptyTrash: (request?: LoginEmptyTrashRequest) => Promise<number>
     setFavorite: (request: LoginFavoriteRequest) => Promise<LoginSummary>
     move: (request: LoginMoveRequest) => Promise<LoginSummary>

@@ -82,6 +82,7 @@ describe('registerVaultIpc reprompt gate', () => {
       exportVault: ReturnType<typeof vi.fn>
       importVault: ReturnType<typeof vi.fn>
     }
+    afterMutation: ReturnType<typeof vi.fn>
     setAuthorizationState: (state: { reprompt: 0 | 1; generation: number }) => void
   } {
     const mainFrame = { url: 'app://bearwarden/index.html' }
@@ -157,6 +158,11 @@ describe('registerVaultIpc reprompt gate', () => {
       cancelAttachmentOperation: vi.fn(async () => ({ canceled: true })),
       createLogin: vi.fn(async (request) => ({ id: 'created', ...request })),
       cloneLogin: vi.fn(async () => ({ id: 'clone' })),
+      archiveLogins: vi.fn(async ({ ids }: { ids: string[] }) => ids.map((id) => ({ id }))),
+      unarchiveLogins: vi.fn(async ({ ids }: { ids: string[] }) => ids.map((id) => ({ id }))),
+      deleteLogins: vi.fn(async ({ ids }: { ids: string[] }) => ids.length),
+      restoreLogins: vi.fn(async ({ ids }: { ids: string[] }) => ids.map((id) => ({ id }))),
+      deleteLoginsPermanently: vi.fn(async ({ ids }: { ids: string[] }) => ids.length),
       updateLogin: vi.fn(async () => ({ id: 'item-a' })),
       deleteLogin: vi.fn(async () => undefined),
       setLoginFavorite: vi.fn(async () => ({ id: 'item-a' })),
@@ -207,6 +213,7 @@ describe('registerVaultIpc reprompt gate', () => {
         skippedTrashItems: 0
       }))
     }
+    const afterMutation = vi.fn()
     registerVaultIpc({
       vault: vault as unknown as VaultService,
       portability: portability as unknown as Parameters<typeof registerVaultIpc>[0]['portability'],
@@ -216,12 +223,14 @@ describe('registerVaultIpc reprompt gate', () => {
           Parameters<typeof registerVaultIpc>[0]['getMainWindow']
         >,
       repromptNow: () => 1_000,
-      repromptRandomBytes: (size) => Buffer.alloc(size, 5)
+      repromptRandomBytes: (size) => Buffer.alloc(size, 5),
+      afterMutation
     })
     return {
       event,
       vault,
       portability,
+      afterMutation,
       setAuthorizationState: (state) => {
         authorizationState = state
       }
@@ -351,6 +360,79 @@ describe('registerVaultIpc reprompt gate', () => {
       getHistory(event, { id: 'item-a', authorizationToken: authorization.token })
     ).rejects.toThrow('BEARWARDEN:REPROMPT_REQUIRED')
   })
+
+  const batchOperations = [
+    [IPC_CHANNELS.loginArchiveMany, 'archiveLogins'],
+    [IPC_CHANNELS.loginUnarchiveMany, 'unarchiveLogins'],
+    [IPC_CHANNELS.loginDeleteMany, 'deleteLogins'],
+    [IPC_CHANNELS.loginRestoreMany, 'restoreLogins'],
+    [IPC_CHANNELS.loginDeletePermanentlyMany, 'deleteLoginsPermanently']
+  ] as const
+  const batchIds = ['10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000002']
+
+  it.each(batchOperations)(
+    'binds %s to the exact batch set and invokes %s only once',
+    async (channel, method) => {
+      const { event, vault, afterMutation } = harness()
+      const authorization = (await electronMock.handlers.get(IPC_CHANNELS.loginAuthorizeMany)!(
+        event,
+        { ids: batchIds, masterPassword: 'correct horse battery staple' }
+      )) as { token: string }
+      const handler = electronMock.handlers.get(channel)!
+      const request = {
+        ids: [...batchIds].reverse(),
+        authorizationToken: authorization.token
+      }
+
+      await expect(handler(event, request)).resolves.toBeDefined()
+      expect(vault[method]).toHaveBeenCalledTimes(1)
+      expect(vault[method]).toHaveBeenCalledWith(request)
+      expect(afterMutation).toHaveBeenCalledTimes(1)
+
+      await expect(
+        handler(event, {
+          ids: [batchIds[0], '10000000-0000-4000-8000-000000000003'],
+          authorizationToken: authorization.token
+        })
+      ).rejects.toThrow('BEARWARDEN:REPROMPT_REQUIRED')
+      expect(vault[method]).toHaveBeenCalledTimes(1)
+      expect(afterMutation).toHaveBeenCalledTimes(1)
+    }
+  )
+
+  it.each(batchOperations)(
+    'blocks protected %s before invoking %s without a batch token',
+    async (channel, method) => {
+      const { event, vault } = harness()
+      await expect(electronMock.handlers.get(channel)!(event, { ids: batchIds })).rejects.toThrow(
+        'BEARWARDEN:REPROMPT_REQUIRED'
+      )
+      expect(vault[method]).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each(batchOperations)(
+    'rejects malformed exact batch requests on %s',
+    async (channel, method) => {
+      const { event, vault, setAuthorizationState } = harness()
+      setAuthorizationState({ reprompt: 0, generation: 3 })
+      const ids501 = Array.from(
+        { length: 501 },
+        (_, index) => `20000000-0000-4000-8000-${String(index).padStart(12, '0')}`
+      )
+      const handler = electronMock.handlers.get(channel)!
+      for (const invalid of [
+        { ids: [] },
+        { ids: ids501 },
+        { ids: [batchIds[0], batchIds[0]] },
+        { ids: ['not-a-uuid'] },
+        { ids: batchIds, extra: true }
+      ]) {
+        await expect(handler(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+      }
+      expect(vault[method]).not.toHaveBeenCalled()
+    }
+  )
 
   it('uses a narrow exact history request and propagates the trash rejection', async () => {
     const { event, vault, setAuthorizationState } = harness()

@@ -4,6 +4,7 @@ import {
   IPC_CHANNELS,
   IPC_ERROR_PREFIX,
   IPC_EVENTS,
+  MAX_LOGIN_BATCH_IDS,
   MAX_LOGIN_MOVE_MANY_IDS,
   MAX_LOGIN_AUTHORIZE_MANY_IDS,
   type AppSettingsUpdate,
@@ -25,6 +26,7 @@ import {
   type LoginAuthorizeRequest,
   type LoginAuthorizeManyRequest,
   type LoginAuthorization,
+  type LoginBatchRequest,
   type LoginEmptyTrashRequest,
   type LoginContextMenuRequest,
   type LoginFavoriteRequest,
@@ -936,6 +938,25 @@ function parseLoginMove(value: unknown): LoginMoveRequest {
   }
 }
 
+function parseLoginBatch(value: unknown): LoginBatchRequest {
+  const record = exactRecord(value, ['ids', 'authorizationToken'])
+  if (!Array.isArray(record.ids)) throw new VaultError('INVALID_INPUT')
+  const ids = record.ids
+  if (
+    ids.length === 0 ||
+    ids.length > MAX_LOGIN_BATCH_IDS ||
+    ids.some((id) => typeof id !== 'string' || !UUID_PATTERN.test(id)) ||
+    new Set(ids).size !== ids.length
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const authorizationToken = optionalAuthorizationToken(record)
+  return {
+    ids: [...ids] as string[],
+    ...(authorizationToken ? { authorizationToken } : {})
+  }
+}
+
 function parseLoginMoveMany(value: unknown): LoginMoveManyRequest {
   const record = exactRecord(value, [
     'ids',
@@ -1271,6 +1292,28 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       const request = parseId(input)
       const invoke = operation as (request: LoginIdRequest) => Promise<unknown>
       return runAuthorized<unknown>(event, request, () => afterMutation<unknown>(invoke(request)))
+    })
+  }
+  for (const [channel, operation] of [
+    [IPC_CHANNELS.loginArchiveMany, (request: LoginBatchRequest) => vault.archiveLogins(request)],
+    [
+      IPC_CHANNELS.loginUnarchiveMany,
+      (request: LoginBatchRequest) => vault.unarchiveLogins(request)
+    ],
+    [IPC_CHANNELS.loginDeleteMany, (request: LoginBatchRequest) => vault.deleteLogins(request)],
+    [IPC_CHANNELS.loginRestoreMany, (request: LoginBatchRequest) => vault.restoreLogins(request)],
+    [
+      IPC_CHANNELS.loginDeletePermanentlyMany,
+      (request: LoginBatchRequest) => vault.deleteLoginsPermanently(request)
+    ]
+  ] as const) {
+    registerHandler<unknown>(channel, getMainWindow, (event, input) => {
+      const request = parseLoginBatch(input)
+      const invoke = operation as (request: LoginBatchRequest) => Promise<unknown>
+      return runAuthorizationBoundary(event, request.authorizationToken, {}, async (authorize) => {
+        authorize(request.ids)
+        return afterMutation(invoke(request))
+      })
     })
   }
   registerHandler(IPC_CHANNELS.loginUpdate, getMainWindow, (event, input) => {
