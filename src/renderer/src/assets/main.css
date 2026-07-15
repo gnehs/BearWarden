@@ -1719,12 +1719,6 @@ button svg {
   margin: 0;
   font-size: 11px;
 }
-.organization-card > .button {
-  margin: 10px 14px 14px;
-}
-.organization-card .button kbd {
-  margin-left: 6px;
-}
 .danger-zone {
   display: flex;
   max-width: 720px;

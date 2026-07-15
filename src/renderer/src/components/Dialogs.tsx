@@ -17,6 +17,7 @@ import { Alert, AlertDescription } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -38,7 +39,7 @@ import { Spinner } from '@renderer/components/ui/spinner'
 interface ModalProps {
   title: string
   description?: string
-  children: React.ReactNode
+  children: React.ReactNode | ((close: () => void) => React.ReactNode)
   busy?: boolean
   onClose: () => void
 }
@@ -50,11 +51,16 @@ export function Modal({
   busy = false,
   onClose
 }: ModalProps): React.JSX.Element {
+  const [open, setOpen] = useState(true)
+
   return (
     <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !busy) onClose()
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!busy) setOpen(nextOpen)
+      }}
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) onClose()
       }}
     >
       <DialogContent className="modal modal-card" showCloseButton={false}>
@@ -63,18 +69,21 @@ export function Modal({
             <DialogTitle>{title}</DialogTitle>
             {description && <DialogDescription>{description}</DialogDescription>}
           </div>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            type="button"
-            aria-label="關閉"
-            onClick={onClose}
-            disabled={busy}
+          <DialogClose
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                type="button"
+                aria-label="關閉"
+                disabled={busy}
+              />
+            }
           >
             <X aria-hidden="true" />
-          </Button>
+          </DialogClose>
         </DialogHeader>
-        {children}
+        {typeof children === 'function' ? children(() => setOpen(false)) : children}
       </DialogContent>
     </Dialog>
   )
@@ -184,9 +193,9 @@ export function FolderDialog({
             )}
           </div>
           <div className="action-group">
-            <Button variant="secondary" type="button" onClick={onClose} disabled={busy}>
+            <DialogClose render={<Button variant="secondary" type="button" disabled={busy} />}>
               取消
-            </Button>
+            </DialogClose>
             <Button type="submit" disabled={busy}>
               {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
               儲存
@@ -205,7 +214,7 @@ interface MoveDialogProps {
   folders: FolderView[]
   busy: boolean
   onClose: () => void
-  onMove: (folderId: string | null) => Promise<void>
+  onMove: (folderId: string | null) => Promise<boolean>
 }
 
 export function MoveDialog({
@@ -237,55 +246,57 @@ export function MoveDialog({
       busy={busy}
       onClose={onClose}
     >
-      <form
-        onSubmit={async (event) => {
-          event.preventDefault()
-          if (busy || submittingRef.current) return
-          submittingRef.current = true
-          try {
-            await onMove(folderId || null)
-          } finally {
-            submittingRef.current = false
-          }
-        }}
-      >
-        <div className="modal-body move-dialog-body">
-          <span className="move-dialog-icon" aria-hidden="true">
-            <FolderInput />
-          </span>
-          <Field className="grow">
-            <FieldLabel htmlFor="move-folder">資料夾</FieldLabel>
-            <Select
-              items={folderItems}
-              value={folderId}
-              onValueChange={(value) => setFolderId(value ?? '')}
-              disabled={busy}
-            >
-              <SelectTrigger id="move-folder" autoFocus className="w-full">
-                <SelectValue placeholder="選擇資料夾" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {folderItems.map((folder) => (
-                    <SelectItem key={folder.value} value={folder.value}>
-                      {folder.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Field>
-        </div>
-        <DialogFooter className="modal-actions mx-0 mb-0">
-          <Button variant="secondary" type="button" onClick={onClose} disabled={busy}>
-            取消
-          </Button>
-          <Button type="submit" disabled={busy}>
-            {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
-            移動
-          </Button>
-        </DialogFooter>
-      </form>
+      {(close) => (
+        <form
+          onSubmit={async (event) => {
+            event.preventDefault()
+            if (busy || submittingRef.current) return
+            submittingRef.current = true
+            try {
+              if (await onMove(folderId || null)) close()
+            } finally {
+              submittingRef.current = false
+            }
+          }}
+        >
+          <div className="modal-body move-dialog-body">
+            <span className="move-dialog-icon" aria-hidden="true">
+              <FolderInput />
+            </span>
+            <Field className="grow">
+              <FieldLabel htmlFor="move-folder">資料夾</FieldLabel>
+              <Select
+                items={folderItems}
+                value={folderId}
+                onValueChange={(value) => setFolderId(value ?? '')}
+                disabled={busy}
+              >
+                <SelectTrigger id="move-folder" autoFocus className="w-full">
+                  <SelectValue placeholder="選擇資料夾" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {folderItems.map((folder) => (
+                      <SelectItem key={folder.value} value={folder.value}>
+                        {folder.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+          <DialogFooter className="modal-actions mx-0 mb-0">
+            <DialogClose render={<Button variant="secondary" type="button" disabled={busy} />}>
+              取消
+            </DialogClose>
+            <Button type="submit" disabled={busy}>
+              {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
+              移動
+            </Button>
+          </DialogFooter>
+        </form>
+      )}
     </Modal>
   )
 }

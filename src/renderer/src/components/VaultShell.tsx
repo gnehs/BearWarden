@@ -34,7 +34,6 @@ import {
   EyeOff,
   FileKey2,
   Fingerprint,
-  Folder,
   FolderOpen,
   KeyRound,
   ListFilter,
@@ -1358,17 +1357,16 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     [announce]
   )
 
-  async function moveLogins(ids: readonly string[], folderId: string | null): Promise<void> {
+  async function moveLogins(ids: readonly string[], folderId: string | null): Promise<boolean> {
     const idSet = new Set(ids)
     const previous = items.filter((item) => idSet.has(item.id))
     const movable = previous.filter((item) => item.folderId !== folderId)
     if (movable.length === 0) {
-      setMoveDialogOpen(false)
-      return
+      return true
     }
     if (movable.length > MAX_LOGIN_MOVE_MANY_IDS) {
       announceError(`一次最多可移動 ${MAX_LOGIN_MOVE_MANY_IDS} 個項目。`)
-      return
+      return false
     }
     const movableIds = new Set(movable.map((item) => item.id))
     setBusy(true)
@@ -1395,12 +1393,13 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           ? `已將 ${updated.length} 個項目移至「${destination}」。`
           : `已移至「${destination}」。`
       )
-      setMoveDialogOpen(false)
+      return true
     } catch (moveError) {
       const previousById = new Map(previous.map((item) => [item.id, item]))
       for (const item of previous) mergeCachedSummary(detailCacheRef.current, item)
       setItems((current) => current.map((item) => previousById.get(item.id) ?? item))
       announceError(describeError(moveError))
+      return false
     } finally {
       setBusy(false)
     }
@@ -2494,9 +2493,22 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                       <dl>
                         <div>
                           <dt>資料夾</dt>
-                          <dd>
-                            {folders.find((folder) => folder.id === selectedLogin.folderId)?.name ??
-                              '未分類'}
+                          <dd className="flex items-center gap-2">
+                            <span className="min-w-0 flex-1 truncate">
+                              {folders.find((folder) => folder.id === selectedLogin.folderId)
+                                ?.name ?? '未分類'}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="ml-auto"
+                              type="button"
+                              aria-label="移動至資料夾"
+                              onClick={() => setMoveDialogOpen(true)}
+                            >
+                              變更
+                              <Kbd data-icon="inline-end">{moveShortcutLabel}</Kbd>
+                            </Button>
                           </dd>
                         </div>
                         <div>
@@ -2504,15 +2516,6 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                           <dd>{formatDate(selectedLogin.lastUsedAt)}</dd>
                         </div>
                       </dl>
-                      <Button
-                        variant="outline"
-                        className="button secondary"
-                        type="button"
-                        onClick={() => setMoveDialogOpen(true)}
-                      >
-                        <Folder data-icon="inline-start" />
-                        移動至資料夾… <Kbd>{moveShortcutLabel}</Kbd>
-                      </Button>
                     </CardContent>
                   </Card>
 
