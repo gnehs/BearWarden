@@ -77,6 +77,10 @@ describe('registerVaultIpc reprompt gate', () => {
   function harness(): {
     event: unknown
     vault: Record<string, ReturnType<typeof vi.fn>>
+    portability: {
+      exportVault: ReturnType<typeof vi.fn>
+      importVault: ReturnType<typeof vi.fn>
+    }
     setAuthorizationState: (state: { reprompt: 0 | 1; generation: number }) => void
   } {
     const mainFrame = { url: 'app://bearwarden/index.html' }
@@ -142,8 +146,23 @@ describe('registerVaultIpc reprompt gate', () => {
           }
         })
     )
+    const portability = {
+      exportVault: vi.fn(async () => ({
+        canceled: false,
+        exportedFolders: 1,
+        exportedItems: 2,
+        skippedTrashItems: 1
+      })),
+      importVault: vi.fn(async () => ({
+        canceled: false,
+        importedFolders: 1,
+        importedItems: 2,
+        skippedTrashItems: 0
+      }))
+    }
     registerVaultIpc({
       vault: vault as unknown as VaultService,
+      portability: portability as unknown as Parameters<typeof registerVaultIpc>[0]['portability'],
       settings: {} as AppSettingsService,
       getMainWindow: () =>
         ({ isDestroyed: () => false, webContents }) as unknown as ReturnType<
@@ -155,11 +174,52 @@ describe('registerVaultIpc reprompt gate', () => {
     return {
       event,
       vault,
+      portability,
       setAuthorizationState: (state) => {
         authorizationState = state
       }
     }
   }
+
+  it('keeps portability IPC path-free, exact, and password-proof scoped', async () => {
+    const { event, portability } = harness()
+    const exportVault = electronMock.handlers.get(IPC_CHANNELS.vaultExport)!
+    const importVault = electronMock.handlers.get(IPC_CHANNELS.vaultImport)!
+    await expect(
+      exportVault(event, {
+        masterPassword: 'correct horse battery staple',
+        password: 'portable backup password'
+      })
+    ).resolves.toMatchObject({ exportedItems: 2 })
+    expect(portability.exportVault).toHaveBeenCalledWith({
+      masterPassword: 'correct horse battery staple',
+      password: 'portable backup password'
+    })
+    await expect(
+      importVault(event, {
+        masterPassword: 'correct horse battery staple',
+        password: 'portable backup password'
+      })
+    ).resolves.toMatchObject({ importedItems: 2 })
+
+    for (const invalid of [
+      { password: 'portable backup password' },
+      { masterPassword: 'correct horse battery staple' },
+      {
+        masterPassword: 'correct horse battery staple',
+        password: 'portable backup password',
+        path: '/tmp/renderer-controlled.json'
+      }
+    ]) {
+      await expect(exportVault(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    await expect(
+      importVault(event, {
+        masterPassword: 'correct horse battery staple',
+        password: 123
+      })
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+  })
 
   it.each([
     [IPC_CHANNELS.loginGet, 'getLogin', { id: 'item-a' }],

@@ -19,7 +19,13 @@ const IDS = [
   '00000000-0000-4000-8000-000000000003',
   '00000000-0000-4000-8000-000000000004',
   '00000000-0000-4000-8000-000000000005',
-  '00000000-0000-4000-8000-000000000006'
+  '00000000-0000-4000-8000-000000000006',
+  '00000000-0000-4000-8000-000000000007',
+  '00000000-0000-4000-8000-000000000008',
+  '00000000-0000-4000-8000-000000000009',
+  '00000000-0000-4000-8000-000000000010',
+  '00000000-0000-4000-8000-000000000011',
+  '00000000-0000-4000-8000-000000000012'
 ]
 
 const temporaryDirectories: string[] = []
@@ -818,6 +824,117 @@ describe('VaultService encrypted local data', () => {
     if (process.platform !== 'win32') {
       expect((await stat(filePath)).mode & 0o777).toBe(0o600)
     }
+  })
+
+  it('exports full non-trash data and imports it as durable remapped copies', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const folder = await service.createFolder({ name: 'Shared' })
+    const original = await service.createLogin({
+      name: 'Portable account',
+      username: 'sample-user',
+      password: 'old-secret',
+      totp: 'JBSWY3DPEHPK3PXP',
+      folderId: folder.id,
+      favorite: true,
+      reprompt: 1,
+      uris: [
+        { uri: 'https://example.invalid', match: 0 },
+        { uri: 'https://mobile.example.invalid', match: 3 }
+      ],
+      customFields: [
+        { source: null, name: 'recovery', type: 'hidden', value: 'sample-code', linkedId: null }
+      ]
+    })
+    await service.updateLogin({ id: original.id, password: 'new-secret' })
+    await service.archiveLogin({ id: original.id })
+    const deleted = await service.createLogin({ name: 'Deleted account', password: 'trash-secret' })
+    await service.deleteLogin({ id: deleted.id })
+
+    await expect(service.exportPortableSnapshot('incorrect master password')).rejects.toMatchObject(
+      {
+        code: 'INVALID_MASTER_PASSWORD'
+      }
+    )
+    const exported = await service.exportPortableSnapshot(MASTER_PASSWORD)
+    expect(exported.skippedTrashItems).toBe(1)
+    expect(exported.snapshot.folders).toHaveLength(1)
+    expect(exported.snapshot.items).toHaveLength(1)
+    expect(exported.snapshot.items[0]).toMatchObject({
+      id: original.id,
+      name: 'Portable account',
+      username: 'sample-user',
+      password: 'new-secret',
+      totp: 'JBSWY3DPEHPK3PXP',
+      archivedAt: expect.any(String),
+      reprompt: 1,
+      uris: [
+        { uri: 'https://example.invalid', match: 0 },
+        { uri: 'https://mobile.example.invalid', match: 3 }
+      ],
+      customFields: [{ name: 'recovery', value: 'sample-code', type: 'hidden' }],
+      passwordHistory: [{ password: 'old-secret' }]
+    })
+
+    await expect(
+      service.importPortableSnapshot(exported.snapshot, exported.skippedTrashItems, MASTER_PASSWORD)
+    ).resolves.toEqual({ importedFolders: 1, importedItems: 1, skippedTrashItems: 1 })
+
+    const folders = await service.listFolders()
+    expect(folders.map((entry) => entry.name)).toEqual(['Shared', 'Shared (Imported)'])
+    const archived = await service.listLogins({ archived: true })
+    expect(archived).toHaveLength(2)
+    const imported = archived.find((entry) => entry.id !== original.id)!
+    expect(imported.folderId).toBe(folders[1]!.id)
+    expect(imported.id).not.toBe(original.id)
+
+    const roundTrip = await service.exportPortableSnapshot(MASTER_PASSWORD)
+    expect(roundTrip.snapshot.items.find((entry) => entry.id === imported.id)).toMatchObject({
+      password: 'new-secret',
+      customFields: [{ name: 'recovery', value: 'sample-code' }],
+      passwordHistory: [{ password: 'old-secret' }]
+    })
+
+    await service.lock()
+    await service.unlock(MASTER_PASSWORD)
+    expect((await service.listFolders()).map((entry) => entry.name)).toEqual([
+      'Shared',
+      'Shared (Imported)'
+    ])
+    expect(await service.listLogins({ archived: true })).toHaveLength(2)
+  })
+
+  it('keeps imports atomic when validation or persistence fails', async () => {
+    const { service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const folder = await service.createFolder({ name: 'Existing' })
+    await service.createLogin({ name: 'Existing account', folderId: folder.id })
+    const exported = await service.exportPortableSnapshot(MASTER_PASSWORD)
+    const foldersBefore = await service.listFolders()
+    const itemsBefore = await service.listLogins()
+    const write = vi.spyOn(store, 'write')
+
+    await expect(
+      service.importPortableSnapshot({ folders: [], items: [] }, 3, MASTER_PASSWORD)
+    ).resolves.toEqual({ importedFolders: 0, importedItems: 0, skippedTrashItems: 3 })
+    expect(write).not.toHaveBeenCalled()
+
+    const invalid = structuredClone(exported.snapshot)
+    invalid.items[0]!.folderId = IDS[11]!
+    await expect(service.importPortableSnapshot(invalid, 0, MASTER_PASSWORD)).rejects.toMatchObject(
+      { code: 'INVALID_INPUT' }
+    )
+    expect(write).not.toHaveBeenCalled()
+    expect(await service.listFolders()).toEqual(foldersBefore)
+    expect(await service.listLogins()).toEqual(itemsBefore)
+
+    write.mockRejectedValueOnce(new Error('simulated write failure'))
+    await expect(
+      service.importPortableSnapshot(exported.snapshot, 0, MASTER_PASSWORD)
+    ).rejects.toThrow('simulated write failure')
+    expect(write).toHaveBeenCalledOnce()
+    expect(await service.listFolders()).toEqual(foldersBefore)
+    expect(await service.listLogins()).toEqual(itemsBefore)
   })
 
   it('supports folder and login CRUD without returning passwords from list or get', async () => {
