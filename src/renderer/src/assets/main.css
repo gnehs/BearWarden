@@ -579,9 +579,7 @@ button svg {
   font-size: 11px;
   font-weight: 650;
 }
-.lock-button {
-  min-height: 34px;
-  padding: 5px 8px 5px 10px;
+.titlebar-add-button {
   border-color: var(--border);
   background: var(--card);
   color: var(--text);
@@ -2203,7 +2201,7 @@ button svg {
 .security-state {
   color: var(--primary);
 }
-.lock-button {
+.titlebar-add-button {
   border-color: var(--border);
   border-radius: 10px;
   background: color-mix(in oklch, var(--card) 72%, transparent);
@@ -2411,13 +2409,6 @@ button svg {
   height: 32px;
   padding-left: 6px;
   border: 0;
-  background: transparent;
-}
-.list-add-button {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  color: var(--text);
   background: transparent;
 }
 .search-field {
@@ -2695,7 +2686,6 @@ button svg {
 
 @media (max-width: 680px) {
   .security-state,
-  .lock-button kbd,
   .brand-name {
     display: none;
   }
@@ -2761,11 +2751,6 @@ button svg {
   }
   .platform-macos .titlebar {
     padding: 0 9px 0 70px;
-  }
-  .lock-button {
-    min-width: 34px;
-    padding-inline: 8px;
-    font-size: 0;
   }
   .list-header {
     padding-inline: 11px;

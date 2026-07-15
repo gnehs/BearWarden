@@ -38,7 +38,6 @@ import {
   FolderOpen,
   KeyRound,
   ListFilter,
-  LockKeyhole,
   Menu,
   NotebookPen,
   Plus,
@@ -1210,6 +1209,15 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   }, [performLockVault, requestEditorTransition])
 
   useEffect(() => {
+    const unsubscribe = window.bearwarden.vault.onLockRequested(() => void lockVault())
+    window.bearwarden.vault.setLockRequestReady(true)
+    return () => {
+      window.bearwarden.vault.setLockRequestReady(false)
+      unsubscribe()
+    }
+  }, [lockVault])
+
+  useEffect(() => {
     function handleShortcut(event: KeyboardEvent): void {
       const command = event.metaKey || event.ctrlKey
       if (!command) return
@@ -1248,10 +1256,6 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         event.preventDefault()
         document.querySelector<HTMLFormElement>('form.editor')?.requestSubmit()
       }
-      if (key === 'l') {
-        event.preventDefault()
-        void lockVault()
-      }
       if (key === 'm' && event.shiftKey && selectedSummary) {
         event.preventDefault()
         setMoveDialogOpen(true)
@@ -1263,7 +1267,6 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     activateLogin,
     busy,
     editorMode,
-    lockVault,
     openEditor,
     scopedItemIds,
     searchOpen,
@@ -1982,16 +1985,18 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             </InputGroup>
           )}
           <div className="titlebar-drag" aria-hidden="true" />
-          <Button
-            variant="outline"
-            className="button lock-button"
-            type="button"
-            onClick={() => void lockVault()}
-          >
-            <LockKeyhole data-icon="inline-start" aria-hidden="true" />
-            鎖定
-            <Kbd>{commandLabel} L</Kbd>
-          </Button>
+          {!settingsOpen && (
+            <TooltipIconButton
+              variant="outline"
+              size="icon"
+              className="icon-button titlebar-add-button"
+              type="button"
+              label="新增項目"
+              onClick={() => openEditor('create')}
+            >
+              <Plus aria-hidden="true" />
+            </TooltipIconButton>
+          )}
         </header>
 
         <CommandDialog
@@ -2527,16 +2532,6 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                         </SelectContent>
                       </Select>
                     </div>
-                    <TooltipIconButton
-                      variant="outline"
-                      size="icon"
-                      className="icon-button list-add-button"
-                      type="button"
-                      label="新增項目"
-                      onClick={() => openEditor('create')}
-                    >
-                      <Plus aria-hidden="true" />
-                    </TooltipIconButton>
                   </div>
                 </header>
                 {query && (

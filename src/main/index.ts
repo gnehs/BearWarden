@@ -1,13 +1,14 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { join } from 'node:path'
-import { app, BrowserWindow, clipboard, powerMonitor, session, shell } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, powerMonitor, session, shell } from 'electron'
 import { electronApp, is } from '@electron-toolkit/utils'
-import { IPC_EVENTS, type SyncStatus } from '../shared/vault-contract'
+import { IPC_CHANNELS, IPC_EVENTS, type SyncStatus } from '../shared/vault-contract'
 import { BitwardenDirectClient } from './bitwarden-direct'
 import { AutoSyncCoordinator } from './auto-sync-coordinator'
 import { AppSettingsService } from './app-settings'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import { FocusTouchIdUnlockController } from './focus-touch-id-unlock'
+import { installApplicationMenu } from './application-menu'
 import { registerVaultIpc } from './vault-ipc'
 import { VaultService } from './vault-service'
 import icon from '../../resources/icon.png?asset'
@@ -22,6 +23,7 @@ let settings: AppSettingsService | null = null
 let autoSync: AutoSyncCoordinator | null = null
 let contentProtectionEnabled = true
 let vaultLockGeneration = 0
+let rendererHandlesLockRequests = false
 
 class SensitiveClipboard {
   private fingerprint: Buffer | null = null
@@ -155,6 +157,20 @@ function requestSystemLock(): void {
   void lockVaultFailClosed()
 }
 
+function requestMenuLock(): void {
+  const window = mainWindow
+  if (
+    rendererHandlesLockRequests &&
+    window &&
+    !window.isDestroyed() &&
+    !window.webContents.isDestroyed()
+  ) {
+    window.webContents.send(IPC_EVENTS.vaultLockRequested)
+    return
+  }
+  requestSystemLock()
+}
+
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1100,
@@ -162,7 +178,7 @@ function createWindow(): BrowserWindow {
     minHeight: 600,
     minWidth: 800,
     show: false,
-    autoHideMenuBar: true,
+    autoHideMenuBar: process.platform === 'darwin',
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -184,6 +200,9 @@ function createWindow(): BrowserWindow {
   })
 
   window.setContentProtection(contentProtectionEnabled)
+  window.webContents.on('did-start-loading', () => {
+    rendererHandlesLockRequests = false
+  })
   window.on('ready-to-show', () => window.show())
   window.on('close', requestSystemLock)
   window.on('closed', () => {
@@ -294,6 +313,11 @@ if (hasSingleInstanceLock)
         notifySyncChanged(status)
       }
     })
+    ipcMain.on(IPC_CHANNELS.vaultLockRequestReady, (event, ready: unknown) => {
+      const window = mainWindow
+      if (!window || event.sender !== window.webContents || typeof ready !== 'boolean') return
+      rendererHandlesLockRequests = ready
+    })
 
     powerMonitor.on('lock-screen', () => {
       if (settings?.shouldLockOnScreenLock()) requestSystemLock()
@@ -303,6 +327,10 @@ if (hasSingleInstanceLock)
     })
 
     mainWindow = createWindow()
+    installApplicationMenu({
+      isMac: process.platform === 'darwin',
+      onLockVault: requestMenuLock
+    })
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow()

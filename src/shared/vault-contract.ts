@@ -3,6 +3,7 @@ export const IPC_CHANNELS = {
   vaultSetup: 'vault:setup',
   vaultUnlock: 'vault:unlock',
   vaultLock: 'vault:lock',
+  vaultLockRequestReady: 'vault:lock-request-ready',
   folderList: 'folder:list',
   folderCreate: 'folder:create',
   folderUpdate: 'folder:update',
@@ -44,6 +45,7 @@ export const IPC_CHANNELS = {
 
 export const IPC_EVENTS = {
   vaultLocked: 'vault:locked',
+  vaultLockRequested: 'vault:lock-requested',
   vaultUnlocked: 'vault:unlocked',
   vaultChanged: 'vault:changed',
   syncChanged: 'sync:changed'
@@ -407,7 +409,9 @@ export interface BearWardenAPI {
     setup: (request: VaultSetupRequest) => Promise<VaultStatus>
     unlock: (request: VaultUnlockRequest) => Promise<VaultStatus>
     lock: () => Promise<VaultStatus>
+    setLockRequestReady: (ready: boolean) => void
     onLocked: (listener: () => void) => () => void
+    onLockRequested: (listener: () => void) => () => void
     onUnlocked: (listener: () => void) => () => void
     onChanged: (listener: () => void) => () => void
   }

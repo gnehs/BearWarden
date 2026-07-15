@@ -7,11 +7,18 @@ const api: BearWardenAPI = {
     setup: (request) => ipcRenderer.invoke(IPC_CHANNELS.vaultSetup, request),
     unlock: (request) => ipcRenderer.invoke(IPC_CHANNELS.vaultUnlock, request),
     lock: () => ipcRenderer.invoke(IPC_CHANNELS.vaultLock),
+    setLockRequestReady: (ready) => ipcRenderer.send(IPC_CHANNELS.vaultLockRequestReady, ready),
     onLocked: (listener) => {
       const wrappedListener = (): void => listener()
       ipcRenderer.on(IPC_EVENTS.vaultLocked, wrappedListener)
 
       return () => ipcRenderer.removeListener(IPC_EVENTS.vaultLocked, wrappedListener)
+    },
+    onLockRequested: (listener) => {
+      const wrappedListener = (): void => listener()
+      ipcRenderer.on(IPC_EVENTS.vaultLockRequested, wrappedListener)
+
+      return () => ipcRenderer.removeListener(IPC_EVENTS.vaultLockRequested, wrappedListener)
     },
     onUnlocked: (listener) => {
       const wrappedListener = (): void => listener()
