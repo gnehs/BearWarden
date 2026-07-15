@@ -17,6 +17,7 @@ import {
   verticalListSortingStrategy
 } from '@dnd-kit/sortable'
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowUpRight,
   Archive,
@@ -78,7 +79,7 @@ import type {
   VaultSecretField,
   VaultAttachmentView
 } from '../../../shared/vault-contract'
-import { MAX_LOGIN_MOVE_MANY_IDS } from '../../../shared/vault-contract'
+import { MAX_LOGIN_BATCH_IDS, MAX_LOGIN_MOVE_MANY_IDS } from '../../../shared/vault-contract'
 import bearCutUrl from '../assets/bear-cut.svg'
 import BrandMark from './BrandMark'
 import {
@@ -116,8 +117,16 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogMedia,
   AlertDialogTitle
 } from '@renderer/components/ui/alert-dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@renderer/components/ui/dropdown-menu'
 import {
   Card,
   CardAction,
@@ -277,6 +286,20 @@ interface AttachmentDeleteTarget {
   itemId: string
   attachmentId: string
   fileName: string
+}
+
+type BulkSelectionState = 'active' | 'archive' | 'trash'
+type BulkActionKind = 'archive' | 'unarchive' | 'delete' | 'restore' | 'deletePermanently'
+
+interface BulkActionSnapshot {
+  action: BulkActionKind
+  ids: string[]
+  state: BulkSelectionState
+}
+
+interface MoveSnapshot {
+  ids: string[]
+  state: Exclude<BulkSelectionState, 'trash'>
 }
 
 const initialAttachmentStages: Record<AttachmentOperationKind, AttachmentOperationStage> = {
@@ -768,7 +791,8 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [folderDialog, setFolderDialog] = useState<FolderView | 'new' | null>(null)
-  const [moveDialogOpen, setMoveDialogOpen] = useState(false)
+  const [moveSnapshot, setMoveSnapshot] = useState<MoveSnapshot | null>(null)
+  const [pendingBulkAction, setPendingBulkAction] = useState<BulkActionSnapshot | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [emptyTrashDialogOpen, setEmptyTrashDialogOpen] = useState(false)
   const [passwordHistoryDialogOpen, setPasswordHistoryDialogOpen] = useState(false)
@@ -1590,13 +1614,27 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     () => items.filter((item) => selectedIds.has(item.id)),
     [items, selectedIds]
   )
-  const selectedFolderId = useMemo(() => {
-    const firstFolderId = selectedSummaries[0]?.folderId
+  const moveSummaries = useMemo(() => {
+    if (!moveSnapshot) return []
+    const byId = new Map(items.map((item) => [item.id, item]))
+    return moveSnapshot.ids.flatMap((id) => {
+      const item = byId.get(id)
+      return item ? [item] : []
+    })
+  }, [items, moveSnapshot])
+  const moveFolderId = useMemo(() => {
+    const firstFolderId = moveSummaries[0]?.folderId
     if (firstFolderId === undefined) return undefined
-    return selectedSummaries.every((item) => item.folderId === firstFolderId)
+    return moveSummaries.every((item) => item.folderId === firstFolderId)
       ? firstFolderId
       : undefined
-  }, [selectedSummaries])
+  }, [moveSummaries])
+  const openMoveDialogForSelection = useCallback((): void => {
+    if (busy || scope.kind === 'trash') return
+    const ids = [...selectedIdsRef.current]
+    if (ids.length === 0) return
+    setMoveSnapshot({ ids, state: scope.kind === 'archive' ? 'archive' : 'active' })
+  }, [busy, scope.kind])
   const activeDragItem = activeDragId
     ? (items.find((item) => item.id === activeDragId) ?? null)
     : null
@@ -1632,7 +1670,10 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     [items]
   )
   const trashItems = useMemo(() => items.filter((item) => item.deletedAt), [items])
-  const itemIds = useMemo(() => new Set(activeItems.map((item) => item.id)), [activeItems])
+  const itemIds = useMemo(
+    () => new Set([...activeItems, ...archivedItems].map((item) => item.id)),
+    [activeItems, archivedItems]
+  )
   const folderCounts = useMemo(() => {
     const counts = new Map<string | null, number>()
     for (const item of activeItems) counts.set(item.folderId, (counts.get(item.folderId) ?? 0) + 1)
@@ -1741,7 +1782,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       }
       if (key === 'm' && event.shiftKey && selectedSummary && !selectedSummary.deletedAt) {
         event.preventDefault()
-        setMoveDialogOpen(true)
+        openMoveDialogForSelection()
       }
     }
     window.addEventListener('keydown', handleShortcut)
@@ -1750,6 +1791,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     activateLogin,
     busy,
     editorMode,
+    openMoveDialogForSelection,
     openEditor,
     scopedItemIds,
     searchOpen,
@@ -1781,7 +1823,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       setSettingsOpen(false)
       setTouchIdPassword('')
       setEditorMode(null)
-      setMoveDialogOpen(false)
+      setMoveSnapshot(null)
     })
   }
 
@@ -1793,7 +1835,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       setSettingsOpen(false)
       setTouchIdPassword('')
       setEditorMode(null)
-      setMoveDialogOpen(false)
+      setMoveSnapshot(null)
     })
   }
 
@@ -1804,7 +1846,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       setSettingsOpen(true)
       setSidebarOpen(false)
       setEditorMode(null)
-      setMoveDialogOpen(false)
+      setMoveSnapshot(null)
       clearItemSelection()
       setRevealedSecrets(emptyRevealedSecrets)
       setRevealedCustomFields(emptyRevealedCustomFields)
@@ -1931,9 +1973,136 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     [announce, withReprompt]
   )
 
-  async function moveLogins(ids: readonly string[], folderId: string | null): Promise<boolean> {
-    const idSet = new Set(ids)
-    const previous = items.filter((item) => idSet.has(item.id))
+  function revalidateBulkSelection(
+    ids: readonly string[],
+    expectedState: BulkSelectionState
+  ): LoginSummary[] | null {
+    const uniqueIds = new Set(ids)
+    if (ids.length === 0 || uniqueIds.size !== ids.length) return null
+    const currentById = new Map(itemsRef.current.map((item) => [item.id, item]))
+    const currentItems: LoginSummary[] = []
+    for (const id of ids) {
+      const item = currentById.get(id)
+      if (!item) return null
+      const stateMatches =
+        expectedState === 'trash'
+          ? Boolean(item.deletedAt)
+          : expectedState === 'archive'
+            ? !item.deletedAt && Boolean(item.archivedAt)
+            : !item.deletedAt && !item.archivedAt
+      if (!stateMatches) return null
+      currentItems.push(item)
+    }
+    return currentItems
+  }
+
+  function snapshotBulkAction(action: BulkActionKind): BulkActionSnapshot {
+    const state: BulkSelectionState =
+      action === 'restore' || action === 'deletePermanently'
+        ? 'trash'
+        : action === 'unarchive' || (action === 'delete' && scope.kind === 'archive')
+          ? 'archive'
+          : 'active'
+    return { action, ids: [...selectedIdsRef.current], state }
+  }
+
+  async function performBulkAction(snapshot: BulkActionSnapshot): Promise<boolean> {
+    if (busy) return false
+    if (snapshot.ids.length < 2) {
+      announceError('請至少選取 2 個項目再執行批次操作。')
+      return false
+    }
+    if (snapshot.ids.length > MAX_LOGIN_BATCH_IDS) {
+      announceError(`一次最多可處理 ${MAX_LOGIN_BATCH_IDS} 個項目。`)
+      return false
+    }
+    if (!revalidateBulkSelection(snapshot.ids, snapshot.state)) {
+      announceError('選取的項目已變更，未執行任何操作。請重新選取後再試。')
+      return false
+    }
+
+    setBusy(true)
+    try {
+      let affectedCount = 0
+      let updated: LoginSummary[] = []
+      try {
+        await withReprompt(snapshot.ids, async (tokenFor) => {
+          const authorizationToken = firstAuthorizationToken(snapshot.ids, tokenFor)
+          const request = {
+            ids: snapshot.ids,
+            ...(authorizationToken ? { authorizationToken } : {})
+          }
+          if (snapshot.action === 'archive') {
+            updated = await window.bearwarden.logins.archiveMany(request)
+            affectedCount = updated.length
+            return
+          }
+          if (snapshot.action === 'unarchive') {
+            updated = await window.bearwarden.logins.unarchiveMany(request)
+            affectedCount = updated.length
+            return
+          }
+          if (snapshot.action === 'restore') {
+            updated = await window.bearwarden.logins.restoreMany(request)
+            affectedCount = updated.length
+            return
+          }
+          affectedCount =
+            snapshot.action === 'delete'
+              ? await window.bearwarden.logins.deleteMany(request)
+              : await window.bearwarden.logins.deletePermanentlyMany(request)
+        })
+      } catch (bulkError) {
+        announceError(describeError(bulkError))
+        return false
+      }
+
+      if (snapshot.action === 'delete' || snapshot.action === 'deletePermanently') {
+        detailCacheGenerationRef.current += 1
+        detailRequestsRef.current.clear()
+        for (const id of snapshot.ids) detailCacheRef.current.delete(id)
+        const deletedIds = new Set(snapshot.ids)
+        setItems((current) => current.filter((item) => !deletedIds.has(item.id)))
+        clearItemSelection()
+      } else {
+        const updatedById = new Map(updated.map((item) => [item.id, item]))
+        for (const item of updated) mergeCachedSummary(detailCacheRef.current, item)
+        setItems((current) => current.map((item) => updatedById.get(item.id) ?? item))
+        setSelectedLogin((current) => {
+          if (!current) return current
+          const summary = updatedById.get(current.id)
+          return summary ? mergeLoginSummary(current, summary) : current
+        })
+      }
+      const message =
+        snapshot.action === 'archive'
+          ? `已封存 ${affectedCount} 個項目。`
+          : snapshot.action === 'unarchive'
+            ? `已取消封存 ${affectedCount} 個項目。`
+            : snapshot.action === 'delete'
+              ? `已將 ${affectedCount} 個項目移至垃圾桶。`
+              : snapshot.action === 'restore'
+                ? `已還原 ${affectedCount} 個項目。`
+                : `已永久刪除 ${affectedCount} 個項目。`
+      try {
+        await refreshItems()
+      } catch {
+        toast.warning(`${message.slice(0, -1)}，但清單重新整理失敗，請稍後重試。`)
+        return true
+      }
+      announce(message)
+      return true
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function moveLogins(snapshot: MoveSnapshot, folderId: string | null): Promise<boolean> {
+    const previous = revalidateBulkSelection(snapshot.ids, snapshot.state)
+    if (!previous) {
+      announceError('選取的項目已變更，未執行任何操作。請重新選取後再試。')
+      return false
+    }
     const movable = previous.filter((item) => item.folderId !== folderId)
     if (movable.length === 0) {
       return true
@@ -2644,8 +2813,12 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       const draggedIds = selectedIdsRef.current.has(activeId)
         ? [...selectedIdsRef.current]
         : [activeId]
-      if (overId === 'folder:none') await moveLogins(draggedIds, null)
-      else if (folderIds.has(overId)) await moveLogins(draggedIds, overId)
+      const snapshot: MoveSnapshot = {
+        ids: draggedIds,
+        state: scope.kind === 'archive' ? 'archive' : 'active'
+      }
+      if (overId === 'folder:none') await moveLogins(snapshot, null)
+      else if (folderIds.has(overId)) await moveLogins(snapshot, overId)
       return
     }
     if (!folderIds.has(activeId) || !folderIds.has(overId) || activeId === overId) return
@@ -3146,6 +3319,97 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     </small>
                   </div>
                   <div className="list-header-actions">
+                    {selectedSummaries.length >= 2 && (
+                      <div
+                        className="flex items-center gap-2"
+                        role="toolbar"
+                        aria-label="已選取項目的批次操作"
+                        aria-busy={busy}
+                      >
+                        <span className="sr-only" aria-live="polite">
+                          已選取 {selectedSummaries.length} 個項目
+                        </span>
+                        {scope.kind !== 'trash' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            type="button"
+                            disabled={busy}
+                            onClick={openMoveDialogForSelection}
+                          >
+                            <FolderOpen data-icon="inline-start" />
+                            移動
+                          </Button>
+                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <Button variant="outline" size="sm" type="button" disabled={busy} />
+                            }
+                          >
+                            {busy ? (
+                              <Spinner data-icon="inline-start" aria-hidden="true" />
+                            ) : (
+                              <Menu data-icon="inline-start" />
+                            )}
+                            批次操作
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuGroup>
+                              {scope.kind === 'trash' ? (
+                                <>
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      void performBulkAction(snapshotBulkAction('restore'))
+                                    }
+                                  >
+                                    <RotateCcw data-icon="inline-start" />
+                                    還原
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    onClick={() =>
+                                      setPendingBulkAction(snapshotBulkAction('deletePermanently'))
+                                    }
+                                  >
+                                    <Trash2 data-icon="inline-start" />
+                                    永久刪除
+                                  </DropdownMenuItem>
+                                </>
+                              ) : (
+                                <>
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      void performBulkAction(
+                                        snapshotBulkAction(
+                                          scope.kind === 'archive' ? 'unarchive' : 'archive'
+                                        )
+                                      )
+                                    }
+                                  >
+                                    {scope.kind === 'archive' ? (
+                                      <ArchiveRestore data-icon="inline-start" />
+                                    ) : (
+                                      <Archive data-icon="inline-start" />
+                                    )}
+                                    {scope.kind === 'archive' ? '取消封存' : '封存'}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    onClick={() =>
+                                      setPendingBulkAction(snapshotBulkAction('delete'))
+                                    }
+                                  >
+                                    <Trash2 data-icon="inline-start" />
+                                    移至垃圾桶
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                            </DropdownMenuGroup>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
@@ -3772,7 +4036,8 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                               className="ml-auto"
                               type="button"
                               aria-label="移動至資料夾"
-                              onClick={() => setMoveDialogOpen(true)}
+                              disabled={busy}
+                              onClick={openMoveDialogForSelection}
                             >
                               變更
                               <Kbd data-icon="inline-end">{moveShortcutLabel}</Kbd>
@@ -3845,20 +4110,15 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             onDelete={folderDialog === 'new' ? undefined : deleteFolder}
           />
         )}
-        {moveDialogOpen && selectedSummary && (
+        {moveSnapshot && (
           <MoveDialog
-            itemName={selectedSummary.name}
-            itemCount={selectedSummaries.length}
-            currentFolderId={selectedFolderId}
+            itemName={moveSummaries[0]?.name ?? '選取的項目'}
+            itemCount={moveSnapshot.ids.length}
+            currentFolderId={moveFolderId}
             folders={folders}
             busy={busy}
-            onClose={() => setMoveDialogOpen(false)}
-            onMove={(folderId) =>
-              moveLogins(
-                selectedSummaries.map((item) => item.id),
-                folderId
-              )
-            }
+            onClose={() => setMoveSnapshot(null)}
+            onMove={(folderId) => moveLogins(moveSnapshot, folderId)}
           />
         )}
         {deleteDialogOpen && selectedSummary && (
@@ -3879,6 +4139,51 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             onDelete={emptyTrash}
           />
         )}
+        {pendingBulkAction &&
+          (pendingBulkAction.action === 'delete' ||
+            pendingBulkAction.action === 'deletePermanently') && (
+            <AlertDialog
+              open
+              onOpenChange={(open) => {
+                if (!open && !busy) setPendingBulkAction(null)
+              }}
+            >
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogMedia>
+                    <AlertTriangle aria-hidden="true" />
+                  </AlertDialogMedia>
+                  <AlertDialogTitle>
+                    {pendingBulkAction.action === 'deletePermanently'
+                      ? `永久刪除 ${pendingBulkAction.ids.length} 個項目？`
+                      : `將 ${pendingBulkAction.ids.length} 個項目移至垃圾桶？`}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {pendingBulkAction.action === 'deletePermanently'
+                      ? '這個動作無法復原。BearWarden 不會保留可復原的明文副本。'
+                      : '項目會保留在加密的垃圾桶中，之後仍可還原。'}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
+                  <AlertDialogAction
+                    variant="destructive"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      const snapshot = pendingBulkAction
+                      void performBulkAction(snapshot).then((completed) => {
+                        if (completed) setPendingBulkAction(null)
+                      })
+                    }}
+                  >
+                    {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
+                    {pendingBulkAction.action === 'deletePermanently' ? '永久刪除' : '移至垃圾桶'}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         {passwordHistoryDialogOpen && selectedLogin && (
           <PasswordHistoryDialog
             itemName={selectedLogin.name}
