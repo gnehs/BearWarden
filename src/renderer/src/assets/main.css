@@ -785,7 +785,9 @@ button svg {
 
 .sidebar-footer {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 4px;
+  align-items: center;
   padding: 10px 15px 12px;
   border-top: 1px solid var(--sidebar-border);
   color: var(--muted-foreground);
@@ -798,52 +800,33 @@ button svg {
   color: var(--sidebar-foreground);
 }
 .sync-sidebar-control {
-  display: grid;
-  width: 100%;
-  height: auto;
-  min-height: 44px;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  padding: 6px 11px;
-  border: 1px solid var(--sidebar-border);
-  border-radius: 9px;
-  color: var(--sidebar-foreground);
-  background: var(--sidebar-accent);
-  text-align: left;
-}
-.sync-sidebar-control:hover {
-  color: var(--sidebar-accent-foreground);
-  background: color-mix(in oklch, var(--sidebar-accent) 88%, var(--sidebar-foreground));
-}
-.sync-sidebar-control > span:not(.sync-status-indicator) {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-.sync-sidebar-control strong,
-.sync-sidebar-control small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sync-sidebar-control strong {
-  font-size: 11px;
-  line-height: 1.35;
-}
-.sync-sidebar-control small {
   color: var(--muted-foreground);
-  font-size: 10px;
-  line-height: 1.4;
 }
-.sync-sidebar-control > svg {
-  color: var(--sidebar-primary);
+.sync-sidebar-control.ready {
+  color: var(--success);
+}
+.sync-sidebar-control.locked,
+.sync-sidebar-control.unconfigured {
+  color: var(--gold);
+}
+.sync-sidebar-control.error {
+  color: var(--danger);
+}
+.sync-sidebar-control.syncing > svg {
+  color: var(--focus);
+  animation: sync-pulse 1.1s ease-in-out infinite;
+}
+.sync-sidebar-control:hover,
+.sidebar-settings-control:hover {
+  background: var(--sidebar-accent);
 }
 .sidebar-settings-control {
   display: flex;
+  width: 100%;
   height: auto;
   min-height: 32px;
   align-items: center;
+  justify-content: flex-start;
   gap: 7px;
   padding: 7px 3px;
   border: 0;
@@ -2447,21 +2430,6 @@ button svg {
 .sidebar-settings-control.active {
   color: var(--text);
 }
-.sync-sidebar-control {
-  border-color: var(--sidebar-border);
-  color: var(--text);
-  background: color-mix(in oklch, var(--card) 56%, transparent);
-}
-.sync-sidebar-control:hover {
-  color: var(--text);
-  background: color-mix(in oklch, var(--card) 90%, transparent);
-}
-.sync-sidebar-control small {
-  color: var(--muted-foreground);
-}
-.sync-sidebar-control > svg {
-  color: var(--primary);
-}
 .list-header {
   min-height: 82px;
   padding: 15px 18px 11px;
@@ -2687,7 +2655,6 @@ button svg {
   border-top-color: var(--sidebar-border);
   background: color-mix(in oklch, var(--sidebar) 82%, transparent);
 }
-:root[data-theme='dark'] .sync-sidebar-control,
 :root[data-theme='dark'] .list-header-actions {
   border-color: var(--border);
   background: color-mix(in oklch, var(--card) 70%, transparent);

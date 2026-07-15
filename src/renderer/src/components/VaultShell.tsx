@@ -22,7 +22,10 @@ import {
   BadgeCheck,
   Clipboard,
   Clock3,
-  Cloud,
+  CloudAlert,
+  CloudCheck,
+  CloudCog,
+  CloudSync,
   ContactRound,
   Copy,
   CreditCard,
@@ -188,6 +191,14 @@ const categoryMeta: Array<{
 ]
 
 const initialSyncStatus: SyncStatus = { configured: false, state: 'unconfigured' }
+
+const syncStateMeta = {
+  unconfigured: { label: '尚未設定', icon: CloudCog },
+  locked: { label: '需要解鎖', icon: CloudAlert },
+  ready: { label: '已連線', icon: CloudCheck },
+  syncing: { label: '同步中…', icon: CloudSync },
+  error: { label: '需要處理問題', icon: CloudAlert }
+} satisfies Record<SyncStatus['state'], { label: string; icon: typeof CloudCheck }>
 
 const settingsLabels = {
   contentProtection: '禁止螢幕截圖',
@@ -666,6 +677,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(initialSyncStatus)
+  const SyncSidebarIcon = syncStateMeta[syncStatus.state].icon
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsBusy, setSettingsBusy] = useState(false)
@@ -2151,41 +2163,24 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             <footer className="sidebar-footer">
               <Button
                 variant="ghost"
-                className="sync-sidebar-control"
-                type="button"
-                onClick={() => setSyncDialogOpen(true)}
-                aria-label="開啟 Bitwarden 同步"
-              >
-                <span
-                  className={cn('sync-status-indicator', syncStatus.state)}
-                  aria-hidden="true"
-                />
-                <span>
-                  <strong>Bitwarden 同步</strong>
-                  <small>
-                    {syncStatus.state === 'ready'
-                      ? '已連線'
-                      : syncStatus.state === 'syncing'
-                        ? '同步中…'
-                        : syncStatus.state === 'locked'
-                          ? '需要解鎖'
-                          : syncStatus.state === 'error'
-                            ? '需要處理問題'
-                            : '尚未設定'}
-                  </small>
-                </span>
-                <Cloud size={16} aria-hidden="true" />
-              </Button>
-              <Button
-                variant="ghost"
                 className={cn('sidebar-settings-control', settingsOpen && 'active')}
                 type="button"
                 onClick={openSettings}
                 aria-current={settingsOpen ? 'page' : undefined}
               >
-                <Settings2 size={15} aria-hidden="true" />
+                <Settings2 data-icon="inline-start" aria-hidden="true" />
                 設定
               </Button>
+              <TooltipIconButton
+                variant="ghost"
+                size="icon"
+                className={cn('sync-sidebar-control', syncStatus.state)}
+                type="button"
+                label={`開啟 Bitwarden 同步：${syncStateMeta[syncStatus.state].label}`}
+                onClick={() => setSyncDialogOpen(true)}
+              >
+                <SyncSidebarIcon aria-hidden="true" />
+              </TooltipIconButton>
             </footer>
           </aside>
 
