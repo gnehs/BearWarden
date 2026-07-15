@@ -2027,7 +2027,6 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                           aria-label="驗證碼剩餘時間"
                           max={totpCode?.period ?? 30}
                           value={totpCode?.remainingSeconds ?? 0}
-                          className="mx-[15px] mb-[15px] w-[calc(100%-30px)]"
                         />
                       </CardContent>
                     </Card>
