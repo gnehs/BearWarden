@@ -2304,7 +2304,7 @@ kbd {
   backdrop-filter: saturate(180%) blur(24px);
 }
 .titlebar .brand-mark {
-  filter: saturate(0.75);
+  display: none;
 }
 .security-state {
   color: var(--primary);
