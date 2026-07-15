@@ -113,7 +113,23 @@ describe('registerVaultIpc reprompt gate', () => {
       revealSecret: vi.fn(async () => 'secret'),
       copyField: vi.fn(async () => undefined),
       revealEditorSecrets: vi.fn(async () => ({ fields: {}, customFields: [] })),
-      openLoginUri: vi.fn(async () => undefined)
+      openLoginUri: vi.fn(async () => undefined),
+      generateCredential: vi.fn(async (request) => ({
+        credential: 'generated-value',
+        category: 'password',
+        generationDate: 1,
+        algorithm: 'password',
+        historyLocator: {
+          index: 0,
+          generationDate: 1,
+          category: 'password',
+          algorithm: 'password'
+        },
+        request
+      })),
+      generatorHistory: vi.fn(async () => []),
+      clearGeneratorHistory: vi.fn(async () => undefined),
+      copyGeneratorHistory: vi.fn(async () => undefined)
     }
     vault.runAuthorizedOperation = vi.fn(
       async (
@@ -209,6 +225,87 @@ describe('registerVaultIpc reprompt gate', () => {
     )
     vault.getPasswordHistory.mockRejectedValueOnce(new VaultError('INVALID_INPUT'))
     await expect(getHistory(event, { id: 'item-a' })).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+  })
+
+  it.each([
+    [
+      { algorithm: 'password', options: { length: 20, minNumber: 2 } },
+      { algorithm: 'password', options: { length: 20, minNumber: 2 } }
+    ],
+    [
+      { algorithm: 'passphrase', options: { wordCount: 8, separator: ' ', capitalize: true } },
+      { algorithm: 'passphrase', options: { wordCount: 8, separator: ' ', capitalize: true } }
+    ],
+    [
+      { algorithm: 'username', options: { includeNumber: true } },
+      { algorithm: 'username', options: { includeNumber: true } }
+    ],
+    [
+      { algorithm: 'subaddress', email: 'bear@example.invalid' },
+      { algorithm: 'subaddress', email: 'bear@example.invalid' }
+    ],
+    [
+      { algorithm: 'catchall', domain: 'example.invalid' },
+      { algorithm: 'catchall', domain: 'example.invalid' }
+    ]
+  ])('parses an exact generator request %#', async (input, expected) => {
+    const { event, vault } = harness()
+    const generate = electronMock.handlers.get(IPC_CHANNELS.generatorGenerate)!
+    await generate(event, input)
+    expect(vault.generateCredential).toHaveBeenLastCalledWith(expected)
+  })
+
+  it.each([
+    { algorithm: 'password', options: { length: 4 } },
+    { algorithm: 'password', options: { minNumber: 10 } },
+    { algorithm: 'password', options: { future: true } },
+    { algorithm: 'password', options: {}, email: 'bear@example.invalid' },
+    { algorithm: 'passphrase', options: { separator: '🙂' } },
+    { algorithm: 'username', options: { includeNumber: 'yes' } },
+    { algorithm: 'subaddress', email: 'x'.repeat(255) },
+    { algorithm: 'catchall', domain: 'x'.repeat(255) },
+    { algorithm: 'forwarder', options: {} }
+  ])('rejects an oversized or non-exact generator request %#', async (input) => {
+    const { event, vault } = harness()
+    const generate = electronMock.handlers.get(IPC_CHANNELS.generatorGenerate)!
+    await expect(generate(event, input)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    expect(vault.generateCredential).not.toHaveBeenCalled()
+  })
+
+  it('keeps generator history IPC narrow and rejects stale-shaped copy locators', async () => {
+    const { event, vault } = harness()
+    const history = electronMock.handlers.get(IPC_CHANNELS.generatorHistoryList)!
+    const clear = electronMock.handlers.get(IPC_CHANNELS.generatorHistoryClear)!
+    const copy = electronMock.handlers.get(IPC_CHANNELS.generatorHistoryCopy)!
+    await expect(history(event, undefined)).resolves.toEqual([])
+    await expect(clear(event, undefined)).resolves.toBeUndefined()
+    await copy(event, {
+      index: 0,
+      generationDate: 1,
+      category: 'password',
+      algorithm: 'password'
+    })
+    expect(vault.copyGeneratorHistory).toHaveBeenCalledWith({
+      index: 0,
+      generationDate: 1,
+      category: 'password',
+      algorithm: 'password'
+    })
+    for (const invalid of [
+      { index: 200, generationDate: 1, category: 'password', algorithm: 'password' },
+      {
+        index: 0,
+        generationDate: 1,
+        category: 'password',
+        algorithm: 'password',
+        credential: 'renderer-secret'
+      },
+      { index: 0, generationDate: 1, category: 'password', algorithm: 'future' }
+    ]) {
+      await expect(copy(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    await expect(history(event, {})).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    await expect(clear(event, {})).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
   })
 
   it('parses ordered URI match rows and indexed copy/open requests', async () => {

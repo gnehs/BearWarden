@@ -1899,7 +1899,7 @@ describe('VaultService encrypted local data', () => {
     expect((await service.getLogin({ id: second.id })).folderId).toBe(source.id)
   })
 
-  it('migrates V1 through V11 login records to V12 items', async () => {
+  it('migrates V1 through V11 login records to V13 items', async () => {
     for (const version of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const) {
       const directory = await mkdtemp(join(tmpdir(), 'bearwarden-migration-test-'))
       temporaryDirectories.push(directory)
@@ -1989,14 +1989,215 @@ describe('VaultService encrypted local data', () => {
         passwordHistoryCount: 0
       })
       await expect(service.getPasswordHistory({ id: migrated.id })).resolves.toEqual([])
+      await expect(service.generatorHistory()).resolves.toEqual([])
       expect(await service.revealPassword({ id: migrated.id })).toBe('legacy-secret')
       await service.lock()
       const unlocked = await store.unlock(MASTER_PASSWORD)
-      expect((unlocked.data as { version: number }).version).toBe(12)
+      expect((unlocked.data as { version: number }).version).toBe(13)
       unlocked.key.fill(0)
       unlocked.salt.fill(0)
     }
   }, 15_000)
+
+  it('tracks encrypted local generator history, deduplicates, copies safely, and retains it across lock', async () => {
+    const { copyText, filePath, service, store } = await createHarness({ randomInt: () => 0 })
+    await service.setup(MASTER_PASSWORD)
+
+    const password = await service.generateCredential({ algorithm: 'password', options: {} })
+    await service.copyGeneratorHistory(password.historyLocator)
+    expect(copyText).toHaveBeenLastCalledWith(password.credential)
+
+    const write = vi.spyOn(store, 'write')
+    const duplicate = await service.generateCredential({ algorithm: 'password', options: {} })
+    expect(duplicate.credential).toBe(password.credential)
+    expect(duplicate.historyLocator).toEqual(password.historyLocator)
+    expect(write).not.toHaveBeenCalled()
+
+    const passphrase = await service.generateCredential({ algorithm: 'passphrase', options: {} })
+    const username = await service.generateCredential({
+      algorithm: 'username',
+      options: { capitalize: true, includeNumber: true }
+    })
+    const subaddress = await service.generateCredential({
+      algorithm: 'subaddress',
+      email: 'bear@example.invalid'
+    })
+    const catchall = await service.generateCredential({
+      algorithm: 'catchall',
+      domain: 'example.invalid'
+    })
+    expect(passphrase.credential).toBe('abacus-abacus-abacus-abacus-abacus-abacus')
+    expect(username.credential).toBe('Abacus0000')
+    expect(subaddress.credential).toBe('bear+aaaaaaaa@example.invalid')
+    expect(catchall.credential).toBe('aaaaaaaa@example.invalid')
+
+    const history = await service.generatorHistory()
+    expect(history.map((entry) => entry.algorithm)).toEqual([
+      'catchall',
+      'subaddress',
+      'username',
+      'passphrase',
+      'password'
+    ])
+    await expect(service.copyGeneratorHistory(password.historyLocator)).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(
+      service.copyGeneratorHistory({
+        index: 4,
+        generationDate: password.generationDate,
+        category: password.category,
+        algorithm: password.algorithm
+      })
+    ).resolves.toBeUndefined()
+
+    const encrypted = await readFile(filePath, 'utf8')
+    for (const secret of history.map((entry) => entry.credential)) {
+      expect(encrypted).not.toContain(secret)
+    }
+    await service.lock()
+    await expect(service.generatorHistory()).rejects.toMatchObject({ code: 'LOCKED' })
+    await service.unlock(MASTER_PASSWORD)
+    expect(await service.generatorHistory()).toEqual(history)
+    await service.clearGeneratorHistory()
+    await expect(service.generatorHistory()).resolves.toEqual([])
+  })
+
+  it('caps generator history at 200 newest exact entries', async () => {
+    const { filePath, service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    await service.lock()
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as {
+      generatorHistory: Array<{
+        credential: string
+        category: 'password'
+        generationDate: number
+        algorithm: 'password'
+      }>
+    }
+    data.generatorHistory = Array.from({ length: 200 }, (_, index) => ({
+      credential: `historical-${index}`,
+      category: 'password',
+      generationDate: index,
+      algorithm: 'password'
+    }))
+    await store.write(data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopened = new VaultService(
+      new EncryptedVaultStore<unknown>(filePath),
+      { copyText: vi.fn(), openExternal: vi.fn() },
+      { randomInt: () => 0 }
+    )
+    await reopened.unlock(MASTER_PASSWORD)
+    await reopened.generateCredential({ algorithm: 'catchall', domain: 'example.invalid' })
+    const history = await reopened.generatorHistory()
+    expect(history).toHaveLength(200)
+    expect(history[0]).toMatchObject({
+      credential: 'aaaaaaaa@example.invalid',
+      category: 'email',
+      algorithm: 'catchall'
+    })
+    expect(history.at(-1)?.credential).toBe('historical-198')
+  })
+
+  it('migrates V12 to an empty encrypted V13 generator history', async () => {
+    const { filePath, service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    await service.lock()
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as Record<string, unknown>
+    data.version = 12
+    delete data.generatorHistory
+    await store.write(data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopenedStore = new EncryptedVaultStore<unknown>(filePath)
+    const reopened = new VaultService(reopenedStore, {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await expect(reopened.unlock(MASTER_PASSWORD)).resolves.toEqual({ state: 'unlocked' })
+    await expect(reopened.generatorHistory()).resolves.toEqual([])
+    await reopened.lock()
+    const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
+    expect(migrated.data).toMatchObject({ version: 13, generatorHistory: [] })
+    migrated.key.fill(0)
+    migrated.salt.fill(0)
+  })
+
+  it.each([
+    {
+      label: 'more than 200 entries',
+      value: Array.from({ length: 201 }, (_, index) => ({
+        credential: `generated-${index}`,
+        category: 'password',
+        generationDate: index,
+        algorithm: 'password'
+      }))
+    },
+    {
+      label: 'a duplicate credential',
+      value: [
+        { credential: 'same', category: 'password', generationDate: 1, algorithm: 'password' },
+        { credential: 'same', category: 'password', generationDate: 2, algorithm: 'password' }
+      ]
+    },
+    {
+      label: 'an oversized credential',
+      value: [
+        {
+          credential: 'x'.repeat(513),
+          category: 'password',
+          generationDate: 1,
+          algorithm: 'password'
+        }
+      ]
+    },
+    {
+      label: 'an unknown key',
+      value: [
+        {
+          credential: 'generated',
+          category: 'password',
+          generationDate: 1,
+          algorithm: 'password',
+          future: true
+        }
+      ]
+    },
+    {
+      label: 'a category and algorithm mismatch',
+      value: [
+        {
+          credential: 'generated',
+          category: 'email',
+          generationDate: 1,
+          algorithm: 'password'
+        }
+      ]
+    }
+  ])('rejects generator history with $label in the V13 schema', async ({ value }) => {
+    const { filePath, service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    await service.lock()
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    ;(unlocked.data as { generatorHistory: unknown }).generatorHistory = value
+    await store.write(unlocked.data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopened = new VaultService(new EncryptedVaultStore<unknown>(filePath), {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await expect(reopened.unlock(MASTER_PASSWORD)).rejects.toMatchObject({
+      code: 'CORRUPT_VAULT'
+    })
+  })
 
   it('rejects an invalid deletedAt value in the current vault schema', async () => {
     const { filePath, service, store } = await createHarness()
