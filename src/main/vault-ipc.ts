@@ -6,6 +6,7 @@ import {
   MAX_LOGIN_MOVE_MANY_IDS,
   type AppSettingsUpdate,
   type CustomFieldRequest,
+  type EditorSecretsRequest,
   type FolderCreateRequest,
   type FolderDeleteRequest,
   type FolderReorderRequest,
@@ -431,6 +432,14 @@ function parseItemField(value: unknown): ItemFieldRequest {
   return { id: requiredString(record, 'id'), field }
 }
 
+function parseEditorSecretsRequest(value: unknown): EditorSecretsRequest {
+  const record = exactRecord(value, ['id', 'expectedUpdatedAt'])
+  return {
+    id: requiredString(record, 'id'),
+    expectedUpdatedAt: requiredString(record, 'expectedUpdatedAt')
+  }
+}
+
 function parseCustomFieldRequest(value: unknown): CustomFieldRequest {
   const record = exactRecord(value, ['id', 'expectedUpdatedAt', 'source'])
   return {
@@ -723,6 +732,9 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   })
   registerHandler(IPC_CHANNELS.itemRevealSecret, getMainWindow, (_event, input) =>
     vault.revealSecret(parseItemField(input))
+  )
+  registerHandler(IPC_CHANNELS.itemRevealEditorSecrets, getMainWindow, (_event, input) =>
+    vault.revealEditorSecrets(parseEditorSecretsRequest(input))
   )
   registerHandler(IPC_CHANNELS.itemCopyField, getMainWindow, (_event, input) =>
     vault.copyField(parseItemField(input))

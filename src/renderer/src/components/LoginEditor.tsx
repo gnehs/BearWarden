@@ -20,17 +20,18 @@ import type {
   LoginView,
   VaultCustomFieldType,
   VaultCustomFieldUpdate,
+  VaultEditorSecretField,
   VaultItemFields,
-  VaultItemType,
-  VaultSecretField
+  VaultItemType
 } from '../../../shared/vault-contract'
 import { VAULT_LINKED_FIELD_IDS_BY_TYPE } from '../../../shared/vault-contract'
 import {
   detectPaymentCardBrand,
   formatPaymentCardNumber,
-  normalizeBitwardenCardBrand,
+  paymentCardBrandOption,
   sanitizePaymentCardNumber,
-  type PaymentCardBrand
+  type PaymentCardBrand,
+  type PaymentCardBrandOption
 } from '../lib/payment-card'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
@@ -81,13 +82,12 @@ import {
 import { Spinner } from './ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 import { Textarea } from './ui/textarea'
-import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
-import PaymentCardBrandMark from './PaymentCardBrandMark'
 
-type EditorSecretField = VaultSecretField | 'totp'
+type EditorSecretField = VaultEditorSecretField
 type EditorTab = 'details' | 'custom' | 'organize'
 type EditorErrorKind = 'name' | 'password' | 'ssh' | 'reveal' | null
+type SecretLoadState = 'loading' | 'ready' | 'error'
 
 export type EditorCustomField = VaultCustomFieldUpdate & {
   /** Renderer-only identity for stable React list keys. Removed before IPC submission. */
@@ -142,6 +142,12 @@ const paymentCardBrands = Object.keys(paymentCardBrandLabels) as Exclude<
   PaymentCardBrand,
   'unknown'
 >[]
+
+const paymentCardBrandSelectItems: Array<{ value: PaymentCardBrandOption; label: string }> = [
+  { value: '', label: '未設定' },
+  ...paymentCardBrands.map((value) => ({ value, label: paymentCardBrandLabels[value] })),
+  { value: 'unknown', label: '其他' }
+]
 
 const itemTypes: Array<{ value: VaultItemType; label: string; description: string }> = [
   { value: 'login', label: '登入', description: '帳號、密碼與網站' },
@@ -277,11 +283,13 @@ function LoginEditor({
   onSave
 }: LoginEditorProps): React.JSX.Element {
   const submittingRef = useRef(false)
+  const [editorSnapshot] = useState(() =>
+    login ? { id: login.id, expectedUpdatedAt: login.updatedAt } : null
+  )
   const [draft, setDraft] = useState<LoginDraft>(() => ({
     ...emptyFields,
     ...login,
-    // Secrets are intentionally never returned in LoginView. Keeping these empty means an edit
-    // does not replace them unless the user deliberately changes the corresponding input.
+    // Editor secrets are loaded separately so they never enter LoginView or the detail cache.
     password: '',
     totp: '',
     number: '',
@@ -299,6 +307,10 @@ function LoginEditor({
     changedSecrets: [],
     customFields: customFieldsFromLogin(login)
   }))
+  const [selectedCardBrand, setSelectedCardBrand] = useState<PaymentCardBrandOption>(() =>
+    paymentCardBrandOption(login?.brand)
+  )
+  const [cardBrandAutoDetected, setCardBrandAutoDetected] = useState(!login?.brand)
   const draftRef = useRef(draft)
   const [dirty, setDirty] = useState(false)
   const [visibleSecrets, setVisibleSecrets] = useState<Partial<Record<EditorSecretField, boolean>>>(
@@ -309,12 +321,64 @@ function LoginEditor({
   const [activeTab, setActiveTab] = useState<EditorTab>('details')
   const [error, setError] = useState('')
   const [errorKind, setErrorKind] = useState<EditorErrorKind>(null)
+  const [secretLoadState, setSecretLoadState] = useState<SecretLoadState>(
+    login ? 'loading' : 'ready'
+  )
   const nameRef = useRef<HTMLInputElement>(null)
+  const secretsUnavailable = secretLoadState !== 'ready'
 
   useEffect(() => nameRef.current?.focus(), [])
   useEffect(() => {
     draftRef.current = draft
   }, [draft])
+  useEffect(() => {
+    if (!editorSnapshot) return
+    let active = true
+
+    void window.bearwarden.logins
+      .revealEditorSecrets(editorSnapshot)
+      .then((secrets) => {
+        if (!active) return
+        const customSecrets = new Map(
+          secrets.customFields.map((entry) => [entry.source.index, entry])
+        )
+        setDraft((current) => {
+          const next = { ...current }
+          for (const [field, value] of Object.entries(secrets.fields) as Array<
+            [EditorSecretField, string]
+          >) {
+            if (!current.changedSecrets.includes(field)) next[field] = value
+          }
+          next.customFields = current.customFields.map((field) => {
+            const source = field.source
+            if (!source) return field
+            const secret = customSecrets.get(source.index)
+            if (
+              !secret ||
+              secret.source.name !== source.name ||
+              secret.source.type !== source.type ||
+              secret.source.linkedId !== source.linkedId
+            ) {
+              return field
+            }
+            return { ...field, value: secret.value }
+          })
+          return next
+        })
+        setSecretLoadState('ready')
+      })
+      .catch(() => {
+        if (!active) return
+        setSecretLoadState('error')
+        setError('無法載入現有敏感欄位，請取消編輯後再試一次。')
+        setErrorKind('reveal')
+        setActiveTab('details')
+      })
+
+    return () => {
+      active = false
+    }
+  }, [editorSnapshot])
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange])
   useEffect(() => () => onDirtyChange(false), [onDirtyChange])
 
@@ -457,7 +521,14 @@ function LoginEditor({
     return (
       <DropdownMenu>
         <DropdownMenuTrigger
-          render={<Button type="button" variant={buttonVariant} size="sm" disabled={busy} />}
+          render={
+            <Button
+              type="button"
+              variant={buttonVariant}
+              size="sm"
+              disabled={busy || secretsUnavailable}
+            />
+          }
         >
           <Plus data-icon="inline-start" />
           新增欄位
@@ -551,7 +622,6 @@ function LoginEditor({
   ): React.JSX.Element {
     const visible = Boolean(visibleSecrets[field])
     const value = options?.displayValue ?? draft[field]
-    const hint = login ? '留白則不變更' : undefined
     const invalid =
       (field === 'password' && errorKind === 'password') ||
       (field === 'privateKey' && errorKind === 'ssh' && !draft.privateKey.trim())
@@ -575,7 +645,7 @@ function LoginEditor({
               value={value}
               onChange={(event) => changeValue(event.target.value)}
               autoComplete="off"
-              disabled={busy}
+              disabled={busy || secretsUnavailable}
               aria-invalid={invalid || undefined}
               aria-describedby={invalid ? 'editor-error' : undefined}
             />
@@ -588,7 +658,7 @@ function LoginEditor({
               inputMode={options?.inputMode}
               placeholder={options?.placeholder}
               autoComplete="off"
-              disabled={busy}
+              disabled={busy || secretsUnavailable}
               aria-invalid={invalid || undefined}
               aria-describedby={invalid ? 'editor-error' : undefined}
             />
@@ -601,20 +671,19 @@ function LoginEditor({
               aria-label={visible ? `隱藏輸入的${label}` : `顯示輸入的${label}`}
               aria-pressed={visible}
               onClick={() => setVisibleSecrets((current) => ({ ...current, [field]: !visible }))}
-              disabled={busy}
+              disabled={busy || secretsUnavailable}
             >
               {visible ? <EyeOff /> : <Eye />}
             </InputGroupButton>
           </InputGroupAddon>
         </InputGroup>
-        {hint && <FieldDescription>{hint}</FieldDescription>}
       </Field>
     )
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
-    if (busy || submittingRef.current) return
+    if (busy || secretsUnavailable || submittingRef.current) return
     if (!draft.name.trim()) {
       setError('請輸入項目名稱。')
       setErrorKind('name')
@@ -657,8 +726,6 @@ function LoginEditor({
 
   const editorTitle = login ? `編輯${typeLabel(draft.type)}` : `新增 ${typeLabel(draft.type)}`
   const detectedCardBrand = detectPaymentCardBrand(draft.number)
-  const selectedCardBrand =
-    detectedCardBrand === 'unknown' ? normalizeBitwardenCardBrand(draft.brand) : detectedCardBrand
   const folderSelectItems = [
     { value: '', label: '未分類' },
     ...folders.map((folder) => ({ value: folder.id, label: folder.name }))
@@ -807,36 +874,38 @@ function LoginEditor({
                         disabled={busy}
                       />
                     </Field>
-                    <FieldSet className="payment-brand-picker">
-                      <FieldLegend variant="label">發卡組織</FieldLegend>
-                      <ToggleGroup
-                        value={[selectedCardBrand]}
+                    <Field>
+                      <FieldLabel htmlFor="editor-card-brand">發卡組織</FieldLabel>
+                      <Select
+                        items={paymentCardBrandSelectItems}
+                        value={selectedCardBrand}
                         disabled={busy}
-                        aria-label="常用發卡組織"
-                        onValueChange={(values) => {
-                          const brand = values.at(-1) as PaymentCardBrand | undefined
+                        onValueChange={(value) => {
+                          const brand = (value ?? '') as PaymentCardBrandOption
+                          setSelectedCardBrand(brand)
+                          setCardBrandAutoDetected(false)
                           update(
                             'brand',
                             brand && brand !== 'unknown' ? paymentCardBrandLabels[brand] : ''
                           )
                         }}
                       >
-                        {paymentCardBrands.map((brand) => (
-                          <ToggleGroupItem
-                            key={brand}
-                            value={brand}
-                            aria-label={paymentCardBrandLabels[brand]}
-                          >
-                            <PaymentCardBrandMark brand={brand} />
-                          </ToggleGroupItem>
-                        ))}
-                        <ToggleGroupItem value="unknown" aria-label="其他發卡組織">
-                          <PaymentCardBrandMark brand="unknown" />
-                          <span>其他</span>
-                        </ToggleGroupItem>
-                      </ToggleGroup>
+                        <SelectTrigger id="editor-card-brand" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {paymentCardBrandSelectItems.map((item) => (
+                              <SelectItem key={item.value || 'unset'} value={item.value}>
+                                {item.label}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
                       {selectedCardBrand === 'unknown' && (
                         <Input
+                          id="editor-custom-card-brand"
                           aria-label="其他發卡組織名稱"
                           value={draft.brand}
                           onChange={(event) => update('brand', event.target.value)}
@@ -844,7 +913,7 @@ function LoginEditor({
                           disabled={busy}
                         />
                       )}
-                    </FieldSet>
+                    </Field>
                     {secretInput('number', '卡號', {
                       inputMode: 'numeric',
                       displayValue: formatPaymentCardNumber(draft.number),
@@ -852,17 +921,16 @@ function LoginEditor({
                         const digits = sanitizePaymentCardNumber(value)
                         updateSecret('number', digits)
                         const detected = detectPaymentCardBrand(digits)
-                        if (
-                          detected !== 'unknown' &&
-                          (!draft.brand || normalizeBitwardenCardBrand(draft.brand) !== 'unknown')
-                        ) {
-                          update('brand', paymentCardBrandLabels[detected])
+                        if (cardBrandAutoDetected) {
+                          const brand = detected === 'unknown' ? '' : detected
+                          setSelectedCardBrand(brand)
+                          update('brand', brand ? paymentCardBrandLabels[brand] : '')
                         }
                       }
                     })}
-                    {selectedCardBrand !== 'unknown' && (
-                      <FieldDescription className={`card-brand-hint ${selectedCardBrand}`}>
-                        卡號已辨識為 {paymentCardBrandLabels[selectedCardBrand]}
+                    {cardBrandAutoDetected && detectedCardBrand !== 'unknown' && (
+                      <FieldDescription className={`card-brand-hint ${detectedCardBrand}`}>
+                        卡號已辨識為 {paymentCardBrandLabels[detectedCardBrand]}
                       </FieldDescription>
                     )}
                     <FieldGroup className="field-grid">
@@ -1179,13 +1247,11 @@ function LoginEditor({
                   const customFieldTypeId = `${customFieldId}-type`
                   const customFieldValueId = `${customFieldId}-value`
                   const customFieldLabel = customField.name.trim() || `欄位 ${index + 1}`
-                  const hiddenValuePreserved =
-                    customField.type === 'hidden' &&
-                    customField.source?.type === 'hidden' &&
-                    customField.value === null
                   const customFieldVisible = Boolean(visibleCustomFields[customField.clientId])
                   const customFieldBusy =
-                    busy || Boolean(revealingCustomFields[customField.clientId])
+                    busy ||
+                    secretsUnavailable ||
+                    Boolean(revealingCustomFields[customField.clientId])
 
                   return (
                     <Card
@@ -1368,30 +1434,6 @@ function LoginEditor({
                                   </InputGroupButton>
                                 </InputGroupAddon>
                               </InputGroup>
-                              {hiddenValuePreserved && (
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <FieldDescription>目前保留原有內容。</FieldDescription>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() =>
-                                      updateCustomField(customField.clientId, (field) => ({
-                                        ...field,
-                                        value: ''
-                                      }))
-                                    }
-                                    disabled={customFieldBusy}
-                                  >
-                                    清除原內容
-                                  </Button>
-                                </div>
-                              )}
-                              {!hiddenValuePreserved &&
-                                customField.source?.type === 'hidden' &&
-                                customField.value === '' && (
-                                  <FieldDescription>儲存後會清除原有內容。</FieldDescription>
-                                )}
                             </Field>
                           )}
 
@@ -1471,9 +1513,13 @@ function LoginEditor({
         <Button variant="secondary" type="button" onClick={requestCancel} disabled={busy}>
           取消
         </Button>
-        <Button type="submit" disabled={busy}>
-          {busy ? <Spinner data-icon="inline-start" /> : <Save data-icon="inline-start" />}
-          儲存
+        <Button type="submit" disabled={busy || secretsUnavailable}>
+          {busy || secretLoadState === 'loading' ? (
+            <Spinner data-icon="inline-start" />
+          ) : (
+            <Save data-icon="inline-start" />
+          )}
+          {secretLoadState === 'loading' ? '載入中…' : '儲存'}
         </Button>
       </footer>
     </form>

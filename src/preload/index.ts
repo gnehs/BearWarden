@@ -49,6 +49,8 @@ const api: BearWardenAPI = {
     copyTotp: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginCopyTotp, request),
     showContextMenu: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginContextMenu, request),
     getWebsiteIcon: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginWebsiteIcon, request),
+    revealEditorSecrets: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.itemRevealEditorSecrets, request),
     revealSecret: (request) => ipcRenderer.invoke(IPC_CHANNELS.itemRevealSecret, request),
     copyField: (request) => ipcRenderer.invoke(IPC_CHANNELS.itemCopyField, request),
     revealCustomField: (request) => ipcRenderer.invoke(IPC_CHANNELS.itemRevealCustomField, request),

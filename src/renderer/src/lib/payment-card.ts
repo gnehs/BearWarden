@@ -3,6 +3,7 @@
  * checksum (Luhn), issuer allocation, or whether a card can be used for payment.
  */
 export type PaymentCardBrand = 'visa' | 'mastercard' | 'jcb' | 'american-express' | 'unknown'
+export type PaymentCardBrandOption = PaymentCardBrand | ''
 
 const BITWARDEN_BRAND_ALIASES: Record<string, PaymentCardBrand> = {
   visa: 'visa',
@@ -53,4 +54,9 @@ export function normalizeBitwardenCardBrand(value: string | null | undefined): P
   if (!value) return 'unknown'
   const normalized = value.toLocaleLowerCase('en-US').replace(/[^a-z]/g, '')
   return BITWARDEN_BRAND_ALIASES[normalized] ?? 'unknown'
+}
+
+/** Maps a stored brand to the editor select without treating an empty value as "other". */
+export function paymentCardBrandOption(value: string | null | undefined): PaymentCardBrandOption {
+  return value ? normalizeBitwardenCardBrand(value) : ''
 }

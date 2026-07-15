@@ -24,6 +24,7 @@ export const IPC_CHANNELS = {
   loginCopyTotp: 'login:copy-totp',
   loginContextMenu: 'login:context-menu',
   loginWebsiteIcon: 'login:website-icon',
+  itemRevealEditorSecrets: 'item:reveal-editor-secrets',
   itemRevealSecret: 'item:reveal-secret',
   itemCopyField: 'item:copy-field',
   itemRevealCustomField: 'item:reveal-custom-field',
@@ -349,6 +350,7 @@ export interface LoginContextMenuRequest extends LoginIdRequest {
 
 export type VaultSecretField =
   'password' | 'number' | 'code' | 'ssn' | 'passportNumber' | 'licenseNumber' | 'privateKey'
+export type VaultEditorSecretField = VaultSecretField | 'totp'
 export type VaultCopyField =
   | VaultSecretField
   | 'username'
@@ -361,6 +363,15 @@ export type VaultCopyField =
 
 export interface ItemFieldRequest extends LoginIdRequest {
   field: VaultCopyField
+}
+
+export interface EditorSecretsRequest extends LoginIdRequest {
+  expectedUpdatedAt: string
+}
+
+export interface EditorSecretsView {
+  fields: Partial<Record<VaultEditorSecretField, string>>
+  customFields: Array<{ source: VaultCustomFieldSource; value: string }>
 }
 
 export interface CustomFieldRequest extends LoginIdRequest {
@@ -424,6 +435,7 @@ export interface BearWardenAPI {
     copyTotp: (request: LoginIdRequest) => Promise<void>
     showContextMenu: (request: LoginContextMenuRequest) => Promise<void>
     getWebsiteIcon: (request: LoginIdRequest) => Promise<string | null>
+    revealEditorSecrets: (request: EditorSecretsRequest) => Promise<EditorSecretsView>
     revealSecret: (request: ItemFieldRequest) => Promise<string>
     copyField: (request: ItemFieldRequest) => Promise<void>
     revealCustomField: (request: CustomFieldRequest) => Promise<string>

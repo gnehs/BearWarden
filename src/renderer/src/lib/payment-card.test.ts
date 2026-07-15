@@ -3,6 +3,7 @@ import {
   detectPaymentCardBrand,
   formatPaymentCardNumber,
   normalizeBitwardenCardBrand,
+  paymentCardBrandOption,
   sanitizePaymentCardNumber
 } from './payment-card'
 
@@ -39,5 +40,12 @@ describe('payment-card display helpers', () => {
     expect(normalizeBitwardenCardBrand('Amex')).toBe('american-express')
     expect(normalizeBitwardenCardBrand('Discover')).toBe('unknown')
     expect(normalizeBitwardenCardBrand(null)).toBe('unknown')
+  })
+
+  it('keeps empty and custom editor brand options distinct', () => {
+    expect(paymentCardBrandOption('')).toBe('')
+    expect(paymentCardBrandOption(null)).toBe('')
+    expect(paymentCardBrandOption('Visa')).toBe('visa')
+    expect(paymentCardBrandOption('Discover')).toBe('unknown')
   })
 })

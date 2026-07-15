@@ -634,6 +634,77 @@ describe('VaultService encrypted local data', () => {
     expect((await service.listLogins()).map((item) => item.id)).not.toContain(note.id)
   })
 
+  it('reveals a complete editor secret snapshot for every item type', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const login = await service.createLogin({
+      name: 'Login secrets',
+      password: 'login-secret',
+      totp: 'JBSWY3DPEHPK3PXP',
+      customFields: [
+        { source: null, name: 'recovery', type: 'hidden', value: 'custom-secret', linkedId: null }
+      ]
+    })
+    const card = await service.createLogin({
+      type: 'card',
+      name: 'Card secrets',
+      number: '4111111111111111',
+      code: '123'
+    })
+    const identity = await service.createLogin({
+      type: 'identity',
+      name: 'Identity secrets',
+      ssn: 'identity-secret',
+      passportNumber: 'passport-secret',
+      licenseNumber: 'license-secret'
+    })
+    const note = await service.createLogin({ type: 'secureNote', name: 'No secrets' })
+    const sshKey = await service.createLogin({
+      type: 'sshKey',
+      name: 'SSH secret',
+      privateKey: 'private-key-secret'
+    })
+
+    await expect(
+      service.revealEditorSecrets({ id: login.id, expectedUpdatedAt: login.updatedAt })
+    ).resolves.toEqual({
+      fields: { password: 'login-secret', totp: 'JBSWY3DPEHPK3PXP' },
+      customFields: [
+        {
+          source: { index: 0, name: 'recovery', type: 'hidden', linkedId: null },
+          value: 'custom-secret'
+        }
+      ]
+    })
+    await expect(
+      service.revealEditorSecrets({ id: card.id, expectedUpdatedAt: card.updatedAt })
+    ).resolves.toEqual({
+      fields: { number: '4111111111111111', code: '123' },
+      customFields: []
+    })
+    await expect(
+      service.revealEditorSecrets({ id: identity.id, expectedUpdatedAt: identity.updatedAt })
+    ).resolves.toEqual({
+      fields: {
+        ssn: 'identity-secret',
+        passportNumber: 'passport-secret',
+        licenseNumber: 'license-secret'
+      },
+      customFields: []
+    })
+    await expect(
+      service.revealEditorSecrets({ id: note.id, expectedUpdatedAt: note.updatedAt })
+    ).resolves.toEqual({ fields: {}, customFields: [] })
+    await expect(
+      service.revealEditorSecrets({ id: sshKey.id, expectedUpdatedAt: sshKey.updatedAt })
+    ).resolves.toEqual({ fields: { privateKey: 'private-key-secret' }, customFields: [] })
+
+    await service.updateLogin({ id: login.id, name: 'Updated login secrets' })
+    await expect(
+      service.revealEditorSecrets({ id: login.id, expectedUpdatedAt: login.updatedAt })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+  })
+
   it('ignores empty fields from other item types while preserving active field clears', async () => {
     const { service } = await createHarness()
     await service.setup(MASTER_PASSWORD)

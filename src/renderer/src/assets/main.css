@@ -1136,8 +1136,6 @@ button svg {
 :root[data-theme='dark'] .field > select,
 :root[data-theme='dark'] .field > textarea,
 :root[data-theme='dark'] .field > [data-slot='input-group'],
-:root[data-theme='dark'] .payment-brand-picker button,
-:root[data-theme='dark'] .payment-brand-picker > input,
 :root[data-theme='dark'] .sort-control,
 :root[data-theme='dark'] .button.secondary,
 :root[data-theme='dark'] .icon-button {
@@ -1656,54 +1654,6 @@ button svg {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 13px;
-}
-.payment-brand-picker {
-  display: grid;
-  gap: 8px;
-  padding: 0;
-  border: 0;
-}
-.payment-brand-picker legend {
-  padding: 0;
-  margin-bottom: 7px;
-  color: var(--foreground);
-  font-size: 12px;
-  font-weight: 700;
-}
-.payment-brand-picker > div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-.payment-brand-picker button {
-  display: inline-flex;
-  min-width: 70px;
-  min-height: 44px;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 6px 10px;
-  border: 1px solid var(--border-strong);
-  border-radius: 9px;
-  color: var(--text);
-  background: var(--card);
-}
-.payment-brand-picker button:hover,
-.payment-brand-picker button.active {
-  border-color: var(--primary);
-  background: var(--accent-soft);
-}
-.payment-brand-picker button.active {
-  box-shadow: 0 0 0 1px var(--primary);
-}
-.payment-brand-picker > input {
-  width: 100%;
-  min-height: 40px;
-  padding: 9px 11px;
-  border: 1px solid var(--border-strong);
-  border-radius: 9px;
-  color: var(--text);
-  background: var(--background);
 }
 .form-hint {
   margin: 0;

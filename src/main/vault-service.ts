@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type {
+  EditorSecretsRequest,
+  EditorSecretsView,
   FolderCreateRequest,
   FolderDeleteRequest,
   FolderReorderRequest,
@@ -21,6 +23,7 @@ import type {
   VaultCustomFieldSource,
   VaultCustomFieldUpdate,
   VaultCustomFieldView,
+  VaultEditorSecretField,
   VaultItemFields,
   VaultItemType,
   VaultSecretField,
@@ -254,6 +257,11 @@ const SECRET_FIELDS_BY_TYPE: Record<VaultItemType, readonly VaultSecretField[]> 
   identity: ['ssn', 'passportNumber', 'licenseNumber'],
   secureNote: [],
   sshKey: ['privateKey']
+}
+
+const EDITOR_SECRET_FIELDS_BY_TYPE: Record<VaultItemType, readonly VaultEditorSecretField[]> = {
+  ...SECRET_FIELDS_BY_TYPE,
+  login: ['password', 'totp']
 }
 
 const COPY_FIELDS_BY_TYPE: Record<VaultItemType, readonly VaultCopyField[]> = {
@@ -1566,6 +1574,35 @@ export class VaultService {
       const login = this.findLogin(this.requireData(), request.id)
       assertSecretField(login.type, 'password')
       return login.password
+    })
+  }
+
+  revealEditorSecrets(request: EditorSecretsRequest): Promise<EditorSecretsView> {
+    return this.exclusive(async () => {
+      assertUuid(request.id)
+      const login = this.findLogin(this.requireData(), request.id)
+      if (request.expectedUpdatedAt !== login.updatedAt) throw new VaultError('INVALID_INPUT')
+
+      const fields: EditorSecretsView['fields'] = {}
+      for (const field of EDITOR_SECRET_FIELDS_BY_TYPE[login.type]) {
+        Object.assign(fields, { [field]: login[field] })
+      }
+      const customFields = login.customFields.flatMap((field, index) =>
+        field.type === 'hidden'
+          ? [
+              {
+                source: {
+                  index,
+                  name: field.name,
+                  type: field.type,
+                  linkedId: field.linkedId
+                },
+                value: field.value
+              }
+            ]
+          : []
+      )
+      return { fields, customFields }
     })
   }
 
