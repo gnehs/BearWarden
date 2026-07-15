@@ -31,6 +31,7 @@ import {
   ContactRound,
   Copy,
   CreditCard,
+  Download,
   Edit3,
   Eye,
   EyeOff,
@@ -42,6 +43,7 @@ import {
   ListFilter,
   Menu,
   NotebookPen,
+  Paperclip,
   Plus,
   RotateCcw,
   Settings2,
@@ -285,7 +287,8 @@ function describeError(error: unknown): string {
     NOT_FOUND: '找不到指定的項目。',
     INVALID_INPUT: '輸入內容無效，請檢查後再試。',
     DUPLICATE_NAME: '名稱已被使用，請換一個名稱。',
-    INVALID_URL: '網站網址格式不正確。'
+    INVALID_URL: '網站網址格式不正確。',
+    ATTACHMENT_FAILED: '附件下載失敗；伺服器內容可能已變更，請同步後再試。'
   }
   const code = Object.keys(messages).find((key) => error.message.includes(key))
   return code ? messages[code] : '操作未完成，你的資料沒有被更動。'
@@ -2248,6 +2251,26 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     }
   }
 
+  async function downloadAttachment(attachmentId: string): Promise<void> {
+    if (!selectedLogin) return
+    const itemId = selectedLogin.id
+    setBusy(true)
+    try {
+      const result = await withReprompt([itemId], (tokenFor) =>
+        window.bearwarden.logins.downloadAttachment({
+          id: itemId,
+          attachmentId,
+          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+        })
+      )
+      if (!result.canceled) announce(`已下載「${result.fileName}」。`)
+    } catch (downloadError) {
+      announceError(describeError(downloadError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function copyTotp(): Promise<void> {
     if (!selectedLogin?.hasTotp) return
     try {
@@ -3128,6 +3151,50 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                       </CardHeader>
                       <CardContent className="contents">
                         {selectedLogin.customFields.map(renderCustomField)}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {selectedLogin.attachments.length > 0 && (
+                    <Card
+                      className="detail-card gap-0 py-0"
+                      role="region"
+                      aria-labelledby="attachments-title"
+                    >
+                      <CardHeader className="bg-muted rounded-none border-b">
+                        <CardTitle id="attachments-title">附件</CardTitle>
+                        <CardDescription>
+                          {selectedLogin.attachments.length} 個檔案；解密只在主程序進行
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="contents">
+                        <div className="passkey-list">
+                          {selectedLogin.attachments.map((attachment) => (
+                            <article key={attachment.id} className="passkey-item attachment-item">
+                              <span className="passkey-icon" aria-hidden="true">
+                                <Paperclip size={17} />
+                              </span>
+                              <div>
+                                <strong>{attachment.fileName}</strong>
+                                <span>
+                                  {attachment.sizeName}
+                                  {attachment.legacy ? ' · 舊式未驗證加密' : ''}
+                                </span>
+                              </div>
+                              <TooltipIconButton
+                                variant="outline"
+                                size="icon"
+                                className="icon-button"
+                                type="button"
+                                label={`下載 ${attachment.fileName}`}
+                                disabled={busy}
+                                onClick={() => void downloadAttachment(attachment.id)}
+                              >
+                                <Download />
+                              </TooltipIconButton>
+                            </article>
+                          ))}
+                        </div>
                       </CardContent>
                     </Card>
                   )}

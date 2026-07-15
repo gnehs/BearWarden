@@ -1661,6 +1661,10 @@ button svg {
   padding: 12px 15px;
   border-bottom: 1px solid var(--border);
 }
+.attachment-item {
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+}
 .passkey-icon {
   display: grid;
   width: 32px;
