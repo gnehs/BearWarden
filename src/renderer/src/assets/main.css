@@ -920,32 +920,6 @@ kbd {
   border-color: var(--focus);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus), transparent 78%);
 }
-.search-field input {
-  min-width: 0;
-  flex: 1;
-  border: 0;
-  outline: 0;
-  color: var(--text);
-  background: transparent;
-  font-size: 12px;
-}
-.search-field input::-webkit-search-cancel-button {
-  display: none;
-}
-.search-field > button {
-  display: grid;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  place-items: center;
-  border: 0;
-  border-radius: 6px;
-  color: var(--muted-foreground);
-  background: transparent;
-}
-.search-field > button:hover {
-  background: var(--border);
-}
 .search-field kbd {
   padding: 1px 4px;
   font-size: 9px;
@@ -960,8 +934,58 @@ kbd {
 .titlebar-search * {
   -webkit-app-region: no-drag;
 }
-.titlebar-search input {
-  user-select: text;
+.titlebar-search-trigger {
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+  justify-content: flex-start;
+  padding: 0;
+  color: var(--text);
+  background: transparent;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 400;
+}
+.titlebar-search-trigger:hover,
+.titlebar-search-trigger[aria-expanded='true'] {
+  background: transparent;
+}
+.titlebar-search-trigger > span {
+  min-width: 0;
+  width: 100%;
+  text-align: left;
+}
+.vault-command {
+  max-height: min(480px, 70vh);
+}
+.vault-command [data-slot='command-input-wrapper'] {
+  padding: 8px 8px 0;
+}
+.vault-command-list {
+  max-height: min(420px, calc(70vh - 54px));
+  padding: 6px;
+}
+.command-result-icon {
+  display: grid;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  background: var(--muted);
+}
+.command-result-copy {
+  min-width: 0;
+  flex: 1;
+}
+.command-result-copy small,
+.command-result-type {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.command-result-type {
+  flex: none;
 }
 
 .sort-control {
@@ -1670,6 +1694,9 @@ kbd {
   grid-template-columns: minmax(90px, 0.28fr) 1fr;
   padding: 10px 0;
   border-bottom: 1px solid var(--border);
+}
+.organization-card dl > div:last-child {
+  border-bottom: 0;
 }
 .organization-card dt {
   color: var(--muted-foreground);
@@ -2531,6 +2558,23 @@ kbd {
 .item-list {
   padding: 0 16px 24px;
 }
+.virtualized-item-list {
+  position: relative;
+  flex: 1;
+}
+.virtualized-item-list-content {
+  position: relative;
+  width: 100%;
+}
+.item-group.virtualized-item-group-header {
+  margin: 0;
+  overflow: hidden;
+}
+.virtualized-item-row-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
 .item-group {
   padding: 0;
   margin: 0 0 14px;
@@ -2563,6 +2607,10 @@ kbd {
   color: var(--primary-foreground);
   background: var(--primary);
   box-shadow: 0 4px 13px color-mix(in oklch, var(--primary) 18%, transparent);
+}
+.item-row.selected .item-row-main {
+  color: var(--primary-foreground);
+  background: transparent;
 }
 .item-row.selected .item-copy small,
 .item-row.selected .favorite-button,
@@ -2743,7 +2791,7 @@ kbd {
     flex: 1;
     transform: none;
   }
-  .titlebar-drag {
+  .titlebar:has(.titlebar-search) .titlebar-drag {
     display: none;
   }
   .workspace {

@@ -62,9 +62,10 @@ import type {
 import bearCutUrl from '../assets/bear-cut.svg'
 import BrandMark from './BrandMark'
 import { DeleteLoginDialog, FolderDialog, MoveDialog } from './Dialogs'
-import { FolderRow, ItemRow } from './DndRows'
+import { FolderRow } from './DndRows'
 import LoginEditor, { type LoginDraft } from './LoginEditor'
 import SyncDialog from './SyncDialog'
+import VirtualizedItemList from './VirtualizedItemList'
 import { groupItemsByDate } from '../lib/item-date-groups'
 import { matchesVaultCategory, type VaultCategoryFilter } from '../lib/vault-category'
 import { formatPaymentCardNumber } from '../lib/payment-card'
@@ -94,12 +95,16 @@ import {
   FieldLabel,
   FieldTitle
 } from '@renderer/components/ui/field'
+import { InputGroup, InputGroupAddon, InputGroupButton } from '@renderer/components/ui/input-group'
 import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput
-} from '@renderer/components/ui/input-group'
+  Command,
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList
+} from '@renderer/components/ui/command'
 import { Input } from '@renderer/components/ui/input'
 import { Kbd } from '@renderer/components/ui/kbd'
 import { Progress } from '@renderer/components/ui/progress'
@@ -212,6 +217,10 @@ const sortItemsOptions = [
 const isMac = navigator.userAgent.includes('Mac')
 const commandLabel = isMac ? '⌘' : 'Ctrl'
 const moveShortcutLabel = isMac ? '⇧⌘M' : 'Ctrl+Shift+M'
+const dateTimeFormatter = new Intl.DateTimeFormat('zh-TW', {
+  dateStyle: 'medium',
+  timeStyle: 'short'
+})
 
 interface VaultShellProps {
   onLocked: () => void
@@ -286,10 +295,7 @@ function formatDate(value: string | null): string {
   if (!value) return '尚未使用'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '未知'
-  return new Intl.DateTimeFormat('zh-TW', {
-    dateStyle: 'medium',
-    timeStyle: 'short'
-  }).format(date)
+  return dateTimeFormatter.format(date)
 }
 
 function hostLabel(uri: string | null): string {
@@ -368,6 +374,30 @@ function detailFields(login: LoginView): DetailField[] {
     ]
   }
   return []
+}
+
+function mergeCachedSummary(cache: Map<string, LoginView>, summary: LoginSummary): void {
+  const cached = cache.get(summary.id)
+  if (cached) cache.set(summary.id, { ...cached, ...summary })
+}
+
+function toLoginSummary(login: LoginView): LoginSummary {
+  return {
+    id: login.id,
+    type: login.type,
+    name: login.name,
+    subtitle: login.subtitle,
+    username: login.username,
+    uri: login.uri,
+    ...(login.cardBrand === undefined ? {} : { cardBrand: login.cardBrand }),
+    hasTotp: login.hasTotp,
+    ...(login.passkeyCount === undefined ? {} : { passkeyCount: login.passkeyCount }),
+    folderId: login.folderId,
+    favorite: login.favorite,
+    lastUsedAt: login.lastUsedAt,
+    createdAt: login.createdAt,
+    updatedAt: login.updatedAt
+  }
 }
 
 interface SidebarLinkProps {
@@ -525,6 +555,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [sortMode, setSortMode] = useState<SortMode>('title')
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [query, setQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedLogin, setSelectedLogin] = useState<LoginView | null>(null)
   const [totpCode, setTotpCode] = useState<TotpCodeView | null>(null)
@@ -547,6 +578,15 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const compactReturnIdRef = useRef<string | null>(null)
   const compactDetailFocusIdRef = useRef<string | null>(null)
   const selectedIdRef = useRef<string | null>(null)
+  const detailRequestsRef = useRef(new Map<string, Promise<LoginView>>())
+  const detailCacheRef = useRef(new Map<string, LoginView>())
+  const detailCacheGenerationRef = useRef(0)
+
+  const clearDetailCache = useCallback((): void => {
+    detailCacheGenerationRef.current += 1
+    detailRequestsRef.current.clear()
+    detailCacheRef.current.clear()
+  }, [])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -554,12 +594,15 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   )
 
   const loadVault = useCallback(async (): Promise<void> => {
+    clearDetailCache()
+    const generation = detailCacheGenerationRef.current
     try {
       toast.dismiss(vaultErrorToastId)
       const [folderList, loginList] = await Promise.all([
         window.bearwarden.folders.list(),
         window.bearwarden.logins.list({ sort: 'name' })
       ])
+      if (detailCacheGenerationRef.current !== generation) return
       setFolders([...folderList].sort((left, right) => left.position - right.position))
       setItems(loginList)
       setScope((current) =>
@@ -574,14 +617,80 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         current && !loginList.some((item) => item.id === current.id) ? null : current
       )
     } catch (loadError) {
-      announceError(describeError(loadError))
+      if (detailCacheGenerationRef.current === generation) {
+        announceError(describeError(loadError))
+      }
     } finally {
-      setLoading(false)
+      if (detailCacheGenerationRef.current === generation) setLoading(false)
     }
+  }, [clearDetailCache])
+
+  const loadLoginDetail = useCallback((id: string): Promise<LoginView> => {
+    const cached = detailCacheRef.current.get(id)
+    if (cached) {
+      detailCacheRef.current.delete(id)
+      detailCacheRef.current.set(id, cached)
+      return Promise.resolve(cached)
+    }
+
+    const pending = detailRequestsRef.current.get(id)
+    if (pending) return pending
+
+    const generation = detailCacheGenerationRef.current
+    const promise = window.bearwarden.logins.get({ id })
+    detailRequestsRef.current.set(id, promise)
+    void promise
+      .then((login) => {
+        if (detailCacheGenerationRef.current !== generation) return
+        if (!detailCacheRef.current.has(id) && detailCacheRef.current.size >= 48) {
+          const oldestId = detailCacheRef.current.keys().next().value
+          if (oldestId) detailCacheRef.current.delete(oldestId)
+        }
+        detailCacheRef.current.set(id, login)
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (detailRequestsRef.current.get(id) === promise) detailRequestsRef.current.delete(id)
+      })
+    return promise
   }, [])
+
+  const prefetchLoginDetail = useCallback(
+    (id: string): void => {
+      if (selectedIdRef.current === id) return
+      void loadLoginDetail(id).catch(() => {
+        // Selection handles user-visible errors; speculative prefetch stays silent.
+      })
+    },
+    [loadLoginDetail]
+  )
+
+  const selectLogin = useCallback((id: string): void => {
+    compactReturnIdRef.current = id
+    selectedIdRef.current = id
+    const cached = detailCacheRef.current.get(id)
+    if (cached) setSelectedLogin(cached)
+    setSelectedId(id)
+    setRevealedSecrets(emptyRevealedSecrets)
+    setEditorMode(null)
+  }, [])
+
+  const showLoginContextMenu = useCallback(
+    (id: string, position: { x: number; y: number }): void => {
+      void window.bearwarden.logins
+        .showContextMenu({ id, ...position })
+        .catch((menuError) => announceError(describeError(menuError)))
+    },
+    []
+  )
 
   const refreshItems = useCallback(async (): Promise<void> => {
     const loginList = await window.bearwarden.logins.list({ sort: 'name' })
+    const currentIds = new Set(loginList.map((login) => login.id))
+    for (const cachedId of detailCacheRef.current.keys()) {
+      if (!currentIds.has(cachedId)) detailCacheRef.current.delete(cachedId)
+    }
+    for (const summary of loginList) mergeCachedSummary(detailCacheRef.current, summary)
     setItems(loginList)
     setSelectedLogin((current) => {
       if (!current) return current
@@ -601,6 +710,8 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   useEffect(() => {
     queueMicrotask(() => void loadVault())
   }, [loadVault])
+
+  useEffect(() => clearDetailCache, [clearDetailCache])
 
   useEffect(() => {
     selectedIdRef.current = selectedId
@@ -666,7 +777,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     let active = true
     queueMicrotask(() => {
       if (!active) return
-      setSelectedLogin(null)
+      if (!selectedId) setSelectedLogin(null)
       setRevealedSecrets(emptyRevealedSecrets)
     })
     if (!selectedId) {
@@ -675,10 +786,11 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       }
     }
 
-    window.bearwarden.logins
-      .get({ id: selectedId })
+    const detailRequest = loadLoginDetail(selectedId)
+    detailRequest
       .then((login) => {
-        if (active) setSelectedLogin(login)
+        if (!active) return
+        setSelectedLogin(login)
       })
       .catch((detailError) => {
         if (!active) return
@@ -688,7 +800,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     return () => {
       active = false
     }
-  }, [selectedId])
+  }, [loadLoginDetail, selectedId])
 
   useEffect(() => {
     let active = true
@@ -779,6 +891,10 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   }, [selectedId, selectedLogin])
 
   const selectedSummary = items.find((item) => item.id === selectedId) ?? null
+  const selectedDetailFields = useMemo(
+    () => (selectedLogin ? detailFields(selectedLogin) : []),
+    [selectedLogin]
+  )
   const itemGroups = useMemo(() => {
     const effectiveSort = scope.kind === 'recent' ? 'recent' : sortMode
     if (effectiveSort === 'title') {
@@ -827,6 +943,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   }, [])
 
   const lockVault = useCallback(async (): Promise<void> => {
+    clearDetailCache()
     setRevealedSecrets(emptyRevealedSecrets)
     setTouchIdPassword('')
     setSelectedLogin(null)
@@ -837,17 +954,16 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     } catch (lockError) {
       announceError(describeError(lockError))
     }
-  }, [onLocked])
+  }, [clearDetailCache, onLocked])
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent): void {
       const command = event.metaKey || event.ctrlKey
       if (!command) return
       const key = event.key.toLocaleLowerCase()
-      if (key === 'f') {
+      if (key === 'f' && !settingsOpen) {
         event.preventDefault()
-        searchRef.current?.focus()
-        searchRef.current?.select()
+        setSearchOpen(true)
       }
       if (key === 'n') {
         event.preventDefault()
@@ -872,7 +988,15 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     }
     window.addEventListener('keydown', handleShortcut)
     return () => window.removeEventListener('keydown', handleShortcut)
-  }, [busy, editorMode, lockVault, selectedLogin, selectedSummary])
+  }, [busy, editorMode, lockVault, selectedLogin, selectedSummary, settingsOpen])
+
+  useEffect(() => {
+    if (!searchOpen) return
+    queueMicrotask(() => {
+      searchRef.current?.focus()
+      searchRef.current?.select()
+    })
+  }, [searchOpen])
 
   function selectScope(nextScope: Scope): void {
     setScope(nextScope)
@@ -956,21 +1080,25 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     }
   }
 
-  async function toggleFavorite(item: LoginSummary): Promise<void> {
-    try {
-      const updated = await window.bearwarden.logins.setFavorite({
-        id: item.id,
-        favorite: !item.favorite
-      })
-      setItems((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)))
-      setSelectedLogin((current) =>
-        current?.id === updated.id ? { ...current, ...updated } : current
-      )
-      announce(updated.favorite ? '已加入常用項目。' : '已從常用項目移除。')
-    } catch (favoriteError) {
-      announceError(describeError(favoriteError))
-    }
-  }
+  const toggleFavorite = useCallback(
+    async (item: LoginSummary): Promise<void> => {
+      try {
+        const updated = await window.bearwarden.logins.setFavorite({
+          id: item.id,
+          favorite: !item.favorite
+        })
+        mergeCachedSummary(detailCacheRef.current, updated)
+        setItems((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)))
+        setSelectedLogin((current) =>
+          current?.id === updated.id ? { ...current, ...updated } : current
+        )
+        announce(updated.favorite ? '已加入常用項目。' : '已從常用項目移除。')
+      } catch (favoriteError) {
+        announceError(describeError(favoriteError))
+      }
+    },
+    [announce]
+  )
 
   async function moveLogin(id: string, folderId: string | null): Promise<void> {
     const previous = items.find((item) => item.id === id)
@@ -979,15 +1107,18 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       return
     }
     setBusy(true)
+    mergeCachedSummary(detailCacheRef.current, { ...previous, folderId })
     setItems((current) => current.map((item) => (item.id === id ? { ...item, folderId } : item)))
     try {
       const updated = await window.bearwarden.logins.move({ id, folderId })
+      mergeCachedSummary(detailCacheRef.current, updated)
       setItems((current) => current.map((item) => (item.id === id ? updated : item)))
       setSelectedLogin((current) => (current?.id === id ? { ...current, ...updated } : current))
       const destination = folders.find((folder) => folder.id === folderId)?.name ?? '未分類'
       announce(`已移至「${destination}」。`)
       setMoveDialogOpen(false)
     } catch (moveError) {
+      mergeCachedSummary(detailCacheRef.current, previous)
       setItems((current) => current.map((item) => (item.id === id ? previous : item)))
       announceError(describeError(moveError))
     } finally {
@@ -1022,6 +1153,11 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     setBusy(true)
     try {
       await window.bearwarden.folders.delete({ id: folderDialog.id })
+      for (const [id, cached] of detailCacheRef.current) {
+        if (cached.folderId === folderDialog.id) {
+          detailCacheRef.current.set(id, { ...cached, folderId: null })
+        }
+      }
       setFolders((current) => current.filter((folder) => folder.id !== folderDialog.id))
       setItems((current) =>
         current.map((item) =>
@@ -1085,7 +1221,8 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           folderId: draft.folderId,
           favorite: draft.favorite
         })
-        setItems((current) => [...current, created])
+        detailCacheRef.current.set(created.id, created)
+        setItems((current) => [...current, toLoginSummary(created)])
         setScope({ kind: 'all' })
         setSelectedId(created.id)
         setSelectedLogin(created)
@@ -1099,7 +1236,10 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           folderId: draft.folderId,
           favorite: draft.favorite
         })
-        setItems((current) => current.map((item) => (item.id === updated.id ? updated : item)))
+        detailCacheRef.current.set(updated.id, updated)
+        setItems((current) =>
+          current.map((item) => (item.id === updated.id ? toLoginSummary(updated) : item))
+        )
         setSelectedLogin(updated)
         announce(`已儲存「${updated.name}」。`)
       }
@@ -1116,6 +1256,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     setBusy(true)
     try {
       await window.bearwarden.logins.delete({ id: selectedSummary.id })
+      detailCacheRef.current.delete(selectedSummary.id)
       setItems((current) => current.filter((item) => item.id !== selectedSummary.id))
       setSelectedId(null)
       setSelectedLogin(null)
@@ -1358,14 +1499,19 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           <BrandMark />
           {!settingsOpen && (
             <InputGroup className="search-field titlebar-search">
-              <InputGroupInput
-                ref={searchRef}
-                type="search"
-                aria-label="搜尋保管庫項目"
-                placeholder="搜尋名稱、摘要或網站"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
+              <Button
+                variant="ghost"
+                className="titlebar-search-trigger"
+                type="button"
+                aria-label={query ? `搜尋保管庫項目，目前為 ${query}` : '搜尋保管庫項目'}
+                aria-haspopup="dialog"
+                aria-expanded={searchOpen}
+                onClick={() => setSearchOpen(true)}
+              >
+                <span className={cn('truncate', !query && 'text-muted-foreground')}>
+                  {query || '搜尋名稱、摘要或網站'}
+                </span>
+              </Button>
               <InputGroupAddon align="inline-start">
                 <Search aria-hidden="true" />
               </InputGroupAddon>
@@ -1398,6 +1544,73 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             <Kbd>{commandLabel} L</Kbd>
           </Button>
         </header>
+
+        <CommandDialog
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+          title="搜尋保管庫"
+          description="依名稱、摘要、使用者名稱或網站搜尋保管庫項目。"
+        >
+          <Command className="vault-command" label="搜尋保管庫項目" loop shouldFilter={false}>
+            <CommandInput
+              ref={searchRef}
+              placeholder="搜尋名稱、摘要或網站"
+              value={query}
+              onValueChange={setQuery}
+              endAdornment={
+                query ? (
+                  <InputGroupAddon align="inline-end">
+                    <InputGroupButton
+                      size="icon-xs"
+                      type="button"
+                      aria-label="清除搜尋"
+                      onClick={() => {
+                        setQuery('')
+                        window.requestAnimationFrame(() => searchRef.current?.focus())
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') event.stopPropagation()
+                      }}
+                    >
+                      <X />
+                    </InputGroupButton>
+                  </InputGroupAddon>
+                ) : undefined
+              }
+            />
+            <CommandList className="vault-command-list">
+              <CommandEmpty>找不到符合的保管庫項目</CommandEmpty>
+              {scopedItems.length > 0 && (
+                <CommandGroup heading={`${scopeTitle} · ${scopedItems.length} 個項目`}>
+                  {scopedItems.map((item) => {
+                    const ItemIcon = itemTypeMeta[item.type].icon
+                    return (
+                      <CommandItem
+                        key={item.id}
+                        value={item.id}
+                        onSelect={() => {
+                          selectLogin(item.id)
+                          setSearchOpen(false)
+                        }}
+                      >
+                        <span className="command-result-icon" aria-hidden="true">
+                          <ItemIcon />
+                        </span>
+                        <span className="command-result-copy">
+                          <strong className="block truncate">{item.name}</strong>
+                          <small className="block truncate">
+                            {item.subtitle || item.username || item.uri || '尚未設定摘要'}
+                          </small>
+                        </span>
+                        <span className="command-result-type">{itemTypeMeta[item.type].label}</span>
+                      </CommandItem>
+                    )
+                  })}
+                </CommandGroup>
+              )}
+            </CommandList>
+          </Command>
+        </CommandDialog>
 
         <div className={cn('workspace', settingsOpen && 'settings-mode')}>
           {sidebarOpen && (
@@ -1898,39 +2111,16 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 )}
 
                 {scopedItems.length ? (
-                  <div className="item-list" aria-label={`${scopeTitle}保管庫項目`}>
-                    {itemGroups.map((group) => (
-                      <section
-                        className={cn('item-group', !group.label && 'ungrouped')}
-                        key={group.key}
-                        aria-labelledby={group.label ? `group-${group.key}` : undefined}
-                        aria-label={group.label ? undefined : `${scopeTitle}項目`}
-                      >
-                        {group.label && <h2 id={`group-${group.key}`}>{group.label}</h2>}
-                        <ul aria-label={group.label ? `${group.label}項目` : `${scopeTitle}項目`}>
-                          {group.items.map((item) => (
-                            <ItemRow
-                              key={item.id}
-                              item={item}
-                              selected={selectedId === item.id}
-                              onSelect={() => {
-                                compactReturnIdRef.current = item.id
-                                setSelectedId(item.id)
-                                setEditorMode(null)
-                              }}
-                              onFavorite={() => void toggleFavorite(item)}
-                              onContextMenu={(position) =>
-                                void window.bearwarden.logins
-                                  .showContextMenu({ id: item.id, ...position })
-                                  .catch((menuError) => announceError(describeError(menuError)))
-                              }
-                              showWebsiteIcons={settings?.showWebsiteIcons ?? false}
-                            />
-                          ))}
-                        </ul>
-                      </section>
-                    ))}
-                  </div>
+                  <VirtualizedItemList
+                    groups={itemGroups}
+                    scopeTitle={scopeTitle}
+                    selectedId={selectedId}
+                    onPrefetch={prefetchLoginDetail}
+                    onSelect={selectLogin}
+                    onFavorite={toggleFavorite}
+                    onContextMenu={showLoginContextMenu}
+                    showWebsiteIcons={settings?.showWebsiteIcons ?? false}
+                  />
                 ) : (
                   <Empty className="empty-state">
                     <EmptyHeader>
@@ -2050,7 +2240,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 </header>
 
                 <div className="detail-scroll">
-                  {detailFields(selectedLogin).length > 0 && (
+                  {selectedDetailFields.length > 0 && (
                     <Card
                       className="detail-card gap-0 py-0"
                       role="region"
@@ -2062,7 +2252,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="contents">
-                        {detailFields(selectedLogin)
+                        {selectedDetailFields
                           .filter((field) => field.secret || Boolean(field.value))
                           .map(renderDetailField)}
                       </CardContent>

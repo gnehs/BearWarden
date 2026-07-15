@@ -1,6 +1,7 @@
 import { useDraggable } from '@dnd-kit/core'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { memo, useEffect, useRef } from 'react'
 import {
   ContactRound,
   CreditCard,
@@ -36,9 +37,10 @@ function RowIconButton({ label, children, ...props }: RowIconButtonProps): React
 interface ItemRowProps {
   item: LoginSummary
   selected: boolean
-  onSelect: () => void
-  onFavorite: () => void
-  onContextMenu: (position: { x: number; y: number }) => void
+  onSelect: (id: string) => void
+  onPrefetch?: (id: string) => void
+  onFavorite: (item: LoginSummary) => void
+  onContextMenu: (id: string, position: { x: number; y: number }) => void
   showWebsiteIcons: boolean
 }
 
@@ -50,10 +52,11 @@ const itemTypeMeta = {
   sshKey: { label: 'SSH 金鑰', icon: FileKey2 }
 } as const
 
-export function ItemRow({
+export const ItemRow = memo(function ItemRow({
   item,
   selected,
   onSelect,
+  onPrefetch,
   onFavorite,
   onContextMenu,
   showWebsiteIcons
@@ -61,6 +64,28 @@ export function ItemRow({
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: item.id
   })
+  const prefetchTimerRef = useRef<number | null>(null)
+
+  useEffect(
+    () => () => {
+      if (prefetchTimerRef.current !== null) window.clearTimeout(prefetchTimerRef.current)
+    },
+    []
+  )
+
+  const cancelPrefetch = (): void => {
+    if (prefetchTimerRef.current === null) return
+    window.clearTimeout(prefetchTimerRef.current)
+    prefetchTimerRef.current = null
+  }
+
+  const schedulePrefetch = (): void => {
+    cancelPrefetch()
+    prefetchTimerRef.current = window.setTimeout(() => {
+      prefetchTimerRef.current = null
+      onPrefetch?.(item.id)
+    }, 80)
+  }
 
   const meta = itemTypeMeta[item.type]
   const ItemIcon = meta.icon
@@ -73,8 +98,8 @@ export function ItemRow({
       style={{ transform: CSS.Translate.toString(transform) }}
       onContextMenu={(event) => {
         event.preventDefault()
-        onSelect()
-        onContextMenu({ x: Math.round(event.clientX), y: Math.round(event.clientY) })
+        onSelect(item.id)
+        onContextMenu(item.id, { x: Math.round(event.clientX), y: Math.round(event.clientY) })
       }}
     >
       <RowIconButton
@@ -92,7 +117,13 @@ export function ItemRow({
         variant="ghost"
         className="item-row-main"
         type="button"
-        onClick={onSelect}
+        onClick={() => onSelect(item.id)}
+        onPointerEnter={schedulePrefetch}
+        onPointerLeave={cancelPrefetch}
+        onFocus={() => {
+          cancelPrefetch()
+          onPrefetch?.(item.id)
+        }}
         aria-current={selected}
       >
         <span className={cn('item-icon', item.type)} aria-hidden="true">
@@ -116,13 +147,13 @@ export function ItemRow({
         type="button"
         label={item.favorite ? `將 ${item.name} 從常用項目移除` : `將 ${item.name} 加入常用項目`}
         aria-pressed={item.favorite}
-        onClick={onFavorite}
+        onClick={() => onFavorite(item)}
       >
         <Star fill={item.favorite ? 'currentColor' : 'none'} aria-hidden="true" />
       </RowIconButton>
     </li>
   )
-}
+})
 
 interface FolderRowProps {
   folder: FolderView
