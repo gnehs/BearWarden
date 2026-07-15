@@ -122,6 +122,7 @@ async function syncDirectory(path: string): Promise<void> {
 export class AppSettingsService {
   private settings: StoredSettings = { ...DEFAULTS }
   private autoLockTimer: NodeJS.Timeout | null = null
+  private touchIdUnlock: Promise<VaultStatus> | null = null
 
   constructor(
     private readonly settingsPath: string,
@@ -200,7 +201,17 @@ export class AppSettingsService {
     return this.get()
   }
 
-  async unlockTouchId(): Promise<VaultStatus> {
+  unlockTouchId(): Promise<VaultStatus> {
+    if (this.touchIdUnlock) return this.touchIdUnlock
+
+    const operation = this.performTouchIdUnlock().finally(() => {
+      if (this.touchIdUnlock === operation) this.touchIdUnlock = null
+    })
+    this.touchIdUnlock = operation
+    return operation
+  }
+
+  private async performTouchIdUnlock(): Promise<VaultStatus> {
     if (!(await this.touchIdAvailable()) || !(await exists(this.touchIdPath))) {
       throw new VaultError('TOUCH_ID_UNAVAILABLE')
     }

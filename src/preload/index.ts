@@ -13,6 +13,12 @@ const api: BearWardenAPI = {
 
       return () => ipcRenderer.removeListener(IPC_EVENTS.vaultLocked, wrappedListener)
     },
+    onUnlocked: (listener) => {
+      const wrappedListener = (): void => listener()
+      ipcRenderer.on(IPC_EVENTS.vaultUnlocked, wrappedListener)
+
+      return () => ipcRenderer.removeListener(IPC_EVENTS.vaultUnlocked, wrappedListener)
+    },
     onChanged: (listener) => {
       const wrappedListener = (): void => listener()
       ipcRenderer.on(IPC_EVENTS.vaultChanged, wrappedListener)

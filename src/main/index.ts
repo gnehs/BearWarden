@@ -6,6 +6,7 @@ import { IPC_EVENTS, type SyncStatus } from '../shared/vault-contract'
 import { BitwardenDirectClient } from './bitwarden-direct'
 import { AppSettingsService } from './app-settings'
 import { EncryptedVaultStore } from './encrypted-vault-store'
+import { FocusTouchIdUnlockController } from './focus-touch-id-unlock'
 import { registerVaultIpc } from './vault-ipc'
 import { VaultService } from './vault-service'
 import icon from '../../resources/icon.png?asset'
@@ -18,6 +19,7 @@ let mainWindow: BrowserWindow | null = null
 let vault: VaultService | null = null
 let settings: AppSettingsService | null = null
 let contentProtectionEnabled = true
+let vaultLockGeneration = 0
 
 class SensitiveClipboard {
   private fingerprint: Buffer | null = null
@@ -90,6 +92,7 @@ async function openAllowedExternalUrl(value: string): Promise<void> {
 }
 
 function notifyVaultLocked(): void {
+  vaultLockGeneration += 1
   sensitiveClipboard.clearIfOwned()
   const window = mainWindow
   if (!window || window.isDestroyed()) return
@@ -97,6 +100,12 @@ function notifyVaultLocked(): void {
   setTimeout(() => {
     if (!window.isDestroyed()) window.webContents.reload()
   }, 0)
+}
+
+function notifyVaultUnlocked(): void {
+  const window = mainWindow
+  if (!window || window.isDestroyed()) return
+  window.webContents.send(IPC_EVENTS.vaultUnlocked)
 }
 
 function notifySyncChanged(status: SyncStatus): void {
@@ -117,11 +126,15 @@ async function lockVault(): Promise<void> {
   notifyVaultLocked()
 }
 
-function requestSystemLock(): void {
-  void lockVault().catch(() => {
+async function lockVaultFailClosed(): Promise<void> {
+  await lockVault().catch(() => {
     vault?.dispose()
     notifyVaultLocked()
   })
+}
+
+function requestSystemLock(): void {
+  void lockVaultFailClosed()
 }
 
 function createWindow(): BrowserWindow {
@@ -161,6 +174,26 @@ function createWindow(): BrowserWindow {
   window.webContents.on('will-navigate', (event) => event.preventDefault())
   window.webContents.on('will-attach-webview', (event) => event.preventDefault())
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+
+  const focusTouchIdUnlock = new FocusTouchIdUnlockController({
+    isActive: () => app.isActive(),
+    isFocused: () => window.isFocused(),
+    isDestroyed: () => window.isDestroyed(),
+    lockGeneration: () => vaultLockGeneration,
+    vaultStatus: async () => vault?.status() ?? { state: 'uninitialized' },
+    settings: async () => {
+      if (!settings) throw new Error('Settings service unavailable')
+      return settings.get()
+    },
+    unlock: async () => {
+      if (!settings) throw new Error('Settings service unavailable')
+      return settings.unlockTouchId()
+    },
+    lock: lockVaultFailClosed,
+    notifyUnlocked: notifyVaultUnlocked
+  })
+  window.on('focus', () => void focusTouchIdUnlock.focus())
+  window.on('blur', () => focusTouchIdUnlock.blur())
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     void window.loadURL(process.env['ELECTRON_RENDERER_URL'])

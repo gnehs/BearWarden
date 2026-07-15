@@ -35,20 +35,29 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     let active = true
-    const unsubscribe = window.bearwarden.vault.onLocked(() => setState('locked'))
+    let receivedStateEvent = false
+    const unsubscribeLocked = window.bearwarden.vault.onLocked(() => {
+      receivedStateEvent = true
+      setState('locked')
+    })
+    const unsubscribeUnlocked = window.bearwarden.vault.onUnlocked(() => {
+      receivedStateEvent = true
+      setState('unlocked')
+    })
 
     window.bearwarden.vault
       .status()
       .then((status) => {
-        if (active) setState(status.state)
+        if (active && !receivedStateEvent) setState(status.state)
       })
       .catch(() => {
-        if (active) setState('unavailable')
+        if (active && !receivedStateEvent) setState('unavailable')
       })
 
     return () => {
       active = false
-      unsubscribe()
+      unsubscribeLocked()
+      unsubscribeUnlocked()
     }
   }, [retryKey])
 

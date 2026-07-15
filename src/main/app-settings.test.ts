@@ -190,6 +190,35 @@ describe('AppSettingsService', () => {
     service.dispose()
   })
 
+  it('shares one Touch ID prompt between concurrent unlock requests', async () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    const { service, runtime } = createService()
+    await service.initialize()
+    await service.enableTouchId('fake-master-password')
+    vi.mocked(systemPreferences.promptTouchID).mockClear()
+
+    let finishPrompt!: () => void
+    vi.mocked(systemPreferences.promptTouchID).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishPrompt = resolve
+        })
+    )
+
+    const first = service.unlockTouchId()
+    const second = service.unlockTouchId()
+    expect(first).toBe(second)
+    await vi.waitFor(() => expect(systemPreferences.promptTouchID).toHaveBeenCalledTimes(1))
+    finishPrompt()
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { state: 'unlocked' },
+      { state: 'unlocked' }
+    ])
+    expect(runtime.unlockVault).toHaveBeenCalledTimes(1)
+    service.dispose()
+  })
+
   it('disables Touch ID when asynchronous safe storage is unavailable', async () => {
     Object.defineProperty(process, 'platform', { value: 'darwin' })
     vi.mocked(safeStorage.isAsyncEncryptionAvailable).mockResolvedValue(false)
