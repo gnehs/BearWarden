@@ -29,6 +29,7 @@ import type {
   LoginUpdateRequest,
   LoginView,
   VaultCopyField,
+  VaultAttachmentView,
   VaultCustomField,
   VaultCustomFieldSource,
   VaultCustomFieldUpdate,
@@ -83,6 +84,7 @@ import {
   type SyncAction,
   type SyncActionResult,
   type SyncFolderReference,
+  type SyncLink,
   type SyncLogin,
   type SyncMetadata,
   type SyncSnapshot
@@ -108,7 +110,8 @@ const REPROMPT_DATA_VERSION = 10
 const MULTIPLE_URIS_DATA_VERSION = 11
 const PASSWORD_HISTORY_DATA_VERSION = 12
 const GENERATOR_HISTORY_DATA_VERSION = 13
-const DATA_VERSION = 13
+const ATTACHMENTS_DATA_VERSION = 14
+const DATA_VERSION = 14
 const MIN_MASTER_PASSWORD_LENGTH = 12
 const MAX_MASTER_PASSWORD_LENGTH = 1024
 const MAX_NAME_LENGTH = 256
@@ -122,6 +125,10 @@ const MAX_CUSTOM_FIELDS = 1_000
 const MAX_CUSTOM_FIELD_NAME_LENGTH = 5_000
 const MAX_CUSTOM_FIELD_VALUE_LENGTH = 5_000
 const MAX_PASSWORD_HISTORY = 5
+const MAX_ATTACHMENTS = 1_000
+const MAX_ATTACHMENT_ID_LENGTH = 256
+const MAX_ATTACHMENT_FILE_NAME_LENGTH = 255
+const MAX_ATTACHMENT_SIZE_NAME_LENGTH = 64
 const MAX_GENERATOR_HISTORY = 200
 const MAX_GENERATED_CREDENTIAL_LENGTH = 512
 const MAX_SSH_PRIVATE_KEY_LENGTH = 1024 * 1024
@@ -131,7 +138,15 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 
 interface StoredLogin
   extends
-    Omit<LoginView, 'subtitle' | 'hasTotp' | 'passkeys' | 'customFields' | 'passwordHistoryCount'>,
+    Omit<
+      LoginView,
+      | 'subtitle'
+      | 'hasTotp'
+      | 'passkeys'
+      | 'customFields'
+      | 'passwordHistoryCount'
+      | 'attachmentCount'
+    >,
     VaultItemFields {
   passkeys: StoredPasskeyCredential[]
   customFields: VaultCustomField[]
@@ -633,6 +648,56 @@ function cloneCustomFields(fields: readonly VaultCustomField[]): VaultCustomFiel
   return fields.map((field) => ({ ...field }))
 }
 
+function parseStoredAttachment(value: unknown): VaultAttachmentView {
+  if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
+  if (
+    typeof value.id !== 'string' ||
+    value.id.length === 0 ||
+    value.id.length > MAX_ATTACHMENT_ID_LENGTH ||
+    typeof value.fileName !== 'string' ||
+    value.fileName.length === 0 ||
+    value.fileName.length > MAX_ATTACHMENT_FILE_NAME_LENGTH ||
+    typeof value.size !== 'number' ||
+    !Number.isSafeInteger(value.size) ||
+    value.size < 0 ||
+    typeof value.sizeName !== 'string' ||
+    value.sizeName.length > MAX_ATTACHMENT_SIZE_NAME_LENGTH ||
+    typeof value.legacy !== 'boolean'
+  ) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  return {
+    id: value.id,
+    fileName: value.fileName,
+    size: value.size,
+    sizeName: value.sizeName,
+    legacy: value.legacy
+  }
+}
+
+function parseStoredAttachments(value: unknown): VaultAttachmentView[] {
+  if (!Array.isArray(value) || value.length > MAX_ATTACHMENTS) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  const attachments = value.map(parseStoredAttachment)
+  if (new Set(attachments.map((attachment) => attachment.id)).size !== attachments.length) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  return attachments
+}
+
+function cloneAttachments(attachments: readonly VaultAttachmentView[]): VaultAttachmentView[] {
+  return attachments.map((attachment) => ({ ...attachment }))
+}
+
+function validateRemoteAttachments(value: unknown): VaultAttachmentView[] {
+  try {
+    return parseStoredAttachments(value)
+  } catch {
+    throw new VaultError('SYNC_FAILED')
+  }
+}
+
 function cloneItemName(name: string): string {
   const suffix = ' - Clone'
   const codePoints = Array.from(name)
@@ -649,7 +714,8 @@ function parseStoredLogin(
   allowMissingArchivedAt = false,
   allowMissingReprompt = false,
   allowMissingUris = false,
-  allowMissingPasswordHistory = false
+  allowMissingPasswordHistory = false,
+  allowMissingAttachments = false
 ): StoredLogin {
   if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
   if (
@@ -769,6 +835,7 @@ function parseStoredLogin(
             return value.customFields.map(parseCustomField)
           })(),
     passwordHistory: allowMissingPasswordHistory ? [] : parsePasswordHistory(value.passwordHistory),
+    attachments: allowMissingAttachments ? [] : parseStoredAttachments(value.attachments),
     uris,
     ...fields
   }
@@ -1013,7 +1080,8 @@ function parseVaultData(value: unknown): VaultData {
       dataVersion < ARCHIVE_DATA_VERSION,
       dataVersion < REPROMPT_DATA_VERSION,
       dataVersion < MULTIPLE_URIS_DATA_VERSION,
-      dataVersion < PASSWORD_HISTORY_DATA_VERSION
+      dataVersion < PASSWORD_HISTORY_DATA_VERSION,
+      dataVersion < ATTACHMENTS_DATA_VERSION
     )
   )
   const folderIds = new Set(folders.map((folder) => folder.id))
@@ -1374,7 +1442,8 @@ function cloneData(data: VaultData): VaultData {
       uris: cloneLoginUris(login.uris),
       passkeys: login.passkeys.map((passkey) => ({ ...passkey })),
       customFields: cloneCustomFields(login.customFields),
-      passwordHistory: clonePasswordHistory(login.passwordHistory)
+      passwordHistory: clonePasswordHistory(login.passwordHistory),
+      attachments: cloneAttachments(login.attachments)
     })),
     generatorHistory: cloneGeneratorHistory(data.generatorHistory),
     sync: data.sync
@@ -1438,6 +1507,7 @@ function toSummary(login: StoredLogin): LoginSummary {
       uris: [],
       ...(login.type === 'login' ? { hasTotp: false, passkeyCount: 0 } : {}),
       passwordHistoryCount: login.passwordHistory.length,
+      attachmentCount: login.attachments.length,
       folderId: login.folderId,
       favorite: login.deletedAt === null ? login.favorite : false,
       lastUsedAt: login.deletedAt === null ? login.lastUsedAt : null,
@@ -1476,6 +1546,7 @@ function toSummary(login: StoredLogin): LoginSummary {
       ? { hasTotp: Boolean(login.totp), passkeyCount: login.passkeys.length }
       : {}),
     passwordHistoryCount: login.passwordHistory.length,
+    attachmentCount: login.attachments.length,
     folderId: login.folderId,
     favorite: login.favorite,
     lastUsedAt: login.lastUsedAt,
@@ -1516,6 +1587,7 @@ function toView(login: StoredLogin): LoginView {
       ...field,
       value: field.type === 'hidden' || field.type === 'linked' ? null : field.value
     })),
+    attachments: cloneAttachments(login.attachments),
     cardholderName: login.cardholderName,
     brand: login.brand,
     expMonth: login.expMonth,
@@ -2295,6 +2367,7 @@ export class VaultService {
         passkeys: [],
         customFields,
         passwordHistory: [],
+        attachments: [],
         uris,
         ...fields
       }
@@ -2326,6 +2399,7 @@ export class VaultService {
         passkeys: [],
         customFields: cloneCustomFields(source.customFields),
         passwordHistory: [],
+        attachments: [],
         uris: cloneLoginUris(source.uris),
         // Deliberately build the stored shape instead of spreading the source so future
         // attachment fields cannot accidentally become part of the clone.
@@ -2875,6 +2949,17 @@ export class VaultService {
     }
 
     const metadata = completeSyncMetadata(plan, results)
+    await client.sync(signal)
+    const [finalRemoteFolders, finalRemoteLogins] = await Promise.all([
+      client.listFolders(signal),
+      client.listPersonalLogins(signal)
+    ])
+    this.reconcileServerAuthoritativeAttachments(
+      next,
+      metadata.loginLinks,
+      finalRemoteFolders,
+      finalRemoteLogins
+    )
     const syncedAt = this.nowIso()
     next.sync = {
       ...sync,
@@ -2979,7 +3064,8 @@ export class VaultService {
         uris: cloneLoginUris(login.uris),
         passkeys: login.passkeys.map((passkey) => ({ ...passkey })),
         customFields: cloneCustomFields(login.customFields),
-        passwordHistory: clonePasswordHistory(login.passwordHistory)
+        passwordHistory: clonePasswordHistory(login.passwordHistory),
+        attachments: cloneAttachments(login.attachments)
       })),
       tombstones: {
         folders: (data.sync?.folderTombstones ?? []).map((entry) => ({
@@ -3012,6 +3098,44 @@ export class VaultService {
         archivedAt: validRemoteArchivedDate(login.archivedAt)
       })),
       tombstones: { folders: [], logins: [] }
+    }
+  }
+
+  private reconcileServerAuthoritativeAttachments(
+    data: VaultData,
+    links: readonly SyncLink[],
+    remoteFolders: readonly BitwardenFolder[],
+    remoteLogins: readonly BitwardenLoginItem[]
+  ): void {
+    const remoteById = new Map(remoteLogins.map((login) => [login.id, login]))
+    if (remoteById.size !== remoteLogins.length) throw new VaultError('SYNC_FAILED')
+    const remoteSnapshotById = new Map(
+      this.remoteSyncSnapshot([], [...remoteLogins]).logins.map((login) => [login.id, login])
+    )
+    const remoteFolderNames = new Map(remoteFolders.map((folder) => [folder.id, folder.name]))
+    if (remoteFolderNames.size !== remoteFolders.length) throw new VaultError('SYNC_FAILED')
+
+    for (const link of links) {
+      const local = data.logins.find((login) => login.id === link.localId)
+      const remote = remoteById.get(link.remoteId)
+      const remoteSnapshot = remoteSnapshotById.get(link.remoteId)
+      if (
+        !local ||
+        !remote ||
+        !remoteSnapshot ||
+        fingerprintLogin(
+          remoteSnapshot,
+          remoteSnapshot.folderId === null
+            ? null
+            : (remoteFolderNames.get(remoteSnapshot.folderId) ??
+                `missing:${remoteSnapshot.folderId}`)
+        ) !== link.baseFingerprint
+      ) {
+        throw new VaultError('SYNC_FAILED')
+      }
+      local.attachments = validateRemoteAttachments(remote.attachments)
+      const revisionDate = validRemoteDate(remote.revisionDate)
+      if (revisionDate) local.updatedAt = revisionDate
     }
   }
 
@@ -3230,6 +3354,7 @@ export class VaultService {
       passkeys: validateRemotePasskeys(source.passkeys),
       customFields: cloneCustomFields(source.customFields),
       passwordHistory: clonePasswordHistory(source.passwordHistory),
+      attachments: [],
       uris: remoteLoginUris(source),
       ...normalizeItemFieldsForStorage(source)
     }

@@ -142,7 +142,14 @@ async function encryptedSync(
             {
               id: 'attachment-id',
               fileName: encryptBitwardenString('document.txt', itemKey),
+              size: '12',
+              sizeName: '12 B',
               key: encryptBitwardenBytes(Buffer.alloc(64, 11), itemKey)
+            },
+            {
+              id: 'legacy-attachment-id',
+              fileName: encryptBitwardenString('legacy-document.txt', itemKey),
+              size: '7'
             }
           ],
           creationDate: '2026-07-13T00:00:00.000Z',
@@ -340,7 +347,20 @@ async function encryptedV2Sync(
       creationDate: null,
       revisionDate: null,
       deletedDate: null,
-      reprompt: type === 1 ? 1 : 0
+      reprompt: type === 1 ? 1 : 0,
+      ...(type === 1
+        ? {
+            attachments: [
+              {
+                id: 'v2-attachment-id',
+                fileName: encryptBitwardenString('v2-document.txt', itemKey),
+                size: '1',
+                sizeName: '1 B',
+                key: encryptBitwardenBytes(Buffer.alloc(64, 12), itemKey, 'legacy-key')
+              }
+            ]
+          }
+        : {})
     })
 
     return {
@@ -529,6 +549,29 @@ describe('BitwardenDirectClient', () => {
     await expectInvalidSync(await encryptedV2Sync({ passkeyCount: 1_001 }))
   })
 
+  it('rejects more than 1,000 attachments on one cipher', async () => {
+    const sync = await encryptedSync()
+    const cipher = (sync.ciphers as JsonObject[])[0]!
+    const attachment = (cipher.attachments as JsonObject[])[0]!
+    cipher.attachments = Array.from({ length: 1_001 }, (_, index) => ({
+      ...attachment,
+      id: `attachment-${index}`
+    }))
+
+    await expectInvalidSync(sync)
+  })
+
+  it('rejects non-canonical attachment sizes', async () => {
+    for (const malformedSize of [12, '01', '-1']) {
+      const sync = await encryptedSync()
+      const cipher = (sync.ciphers as JsonObject[])[0]!
+      const attachment = (cipher.attachments as JsonObject[])[0]!
+      attachment.size = malformedSize
+
+      await expectInvalidSync(sync)
+    }
+  })
+
   it('rejects a decrypted passkey field longer than the local schema allows', async () => {
     await expectInvalidSync(await encryptedSync({ passkeyCredentialId: 'x'.repeat(4_097) }))
   })
@@ -604,12 +647,31 @@ describe('BitwardenDirectClient', () => {
         passwordHistory: [
           { password: 'old-login-secret', lastUsedDate: '2026-01-02T00:00:00.000Z' }
         ],
+        attachments: [
+          {
+            id: 'attachment-id',
+            fileName: 'document.txt',
+            size: 12,
+            sizeName: '12 B',
+            legacy: false
+          },
+          {
+            id: 'legacy-attachment-id',
+            fileName: 'legacy-document.txt',
+            size: 7,
+            sizeName: '7 B',
+            legacy: true
+          }
+        ],
         notes: 'A note',
         folderId: FOLDER_ID,
         favorite: true,
         reprompt: 1
       })
     ])
+    const detached = await client.listPersonalLogins()
+    detached[0]!.attachments[0]!.fileName = 'mutated-in-renderer'
+    expect((await client.listPersonalLogins())[0]!.attachments[0]!.fileName).toBe('document.txt')
 
     await expect(client.createFolder('Private folder')).resolves.toEqual({
       id: CREATED_ID,
@@ -1097,6 +1159,15 @@ describe('BitwardenDirectClient', () => {
           { name: 'recovery-code', value: 'v2-hidden-code', type: 'hidden', linkedId: null },
           { name: 'remember-device', value: 'true', type: 'boolean', linkedId: null },
           { name: 'alternate-username', value: '', type: 'linked', linkedId: 100 }
+        ],
+        attachments: [
+          {
+            id: 'v2-attachment-id',
+            fileName: 'v2-document.txt',
+            size: 1,
+            sizeName: '1 B',
+            legacy: false
+          }
         ],
         reprompt: 1
       }),

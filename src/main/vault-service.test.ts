@@ -139,6 +139,7 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
         { name: 'linked-username', value: '', type: 'linked', linkedId: 100 }
       ],
       passwordHistory: [],
+      attachments: [],
       passkeys: [
         {
           credentialId: 'credential-id',
@@ -182,6 +183,7 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
     customFields: draft.customFields ?? [],
     passkeys: draft.passkeys ?? [],
     passwordHistory: draft.passwordHistory ?? [],
+    attachments: [],
     creationDate: '2026-07-14T00:00:00.000Z',
     revisionDate: '2026-07-14T00:00:01.000Z',
     deletedAt: null,
@@ -2016,7 +2018,7 @@ describe('VaultService encrypted local data', () => {
     expect((await service.getLogin({ id: second.id })).folderId).toBe(source.id)
   })
 
-  it('migrates V1 through V11 login records to V13 items', async () => {
+  it('migrates V1 through V11 login records to V14 items', async () => {
     for (const version of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const) {
       const directory = await mkdtemp(join(tmpdir(), 'bearwarden-migration-test-'))
       temporaryDirectories.push(directory)
@@ -2110,7 +2112,7 @@ describe('VaultService encrypted local data', () => {
       expect(await service.revealPassword({ id: migrated.id })).toBe('legacy-secret')
       await service.lock()
       const unlocked = await store.unlock(MASTER_PASSWORD)
-      expect((unlocked.data as { version: number }).version).toBe(13)
+      expect((unlocked.data as { version: number }).version).toBe(14)
       unlocked.key.fill(0)
       unlocked.salt.fill(0)
     }
@@ -2220,7 +2222,7 @@ describe('VaultService encrypted local data', () => {
     expect(history.at(-1)?.credential).toBe('historical-198')
   })
 
-  it('migrates V12 to an empty encrypted V13 generator history', async () => {
+  it('migrates V12 to an empty encrypted V14 generator history', async () => {
     const { filePath, service, store } = await createHarness()
     await service.setup(MASTER_PASSWORD)
     await service.lock()
@@ -2241,7 +2243,7 @@ describe('VaultService encrypted local data', () => {
     await expect(reopened.generatorHistory()).resolves.toEqual([])
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
-    expect(migrated.data).toMatchObject({ version: 13, generatorHistory: [] })
+    expect(migrated.data).toMatchObject({ version: 14, generatorHistory: [] })
     migrated.key.fill(0)
     migrated.salt.fill(0)
   })

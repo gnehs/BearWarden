@@ -365,6 +365,8 @@ export interface LoginSummary {
   passkeyCount?: number
   /** Safe summary count; history values are only available through an authorized narrow IPC. */
   passwordHistoryCount: number
+  /** Safe summary count; attachment names are only available through an authorized item view. */
+  attachmentCount: number
   folderId: string | null
   favorite: boolean
   lastUsedAt: string | null
@@ -417,6 +419,7 @@ export interface LoginView extends LoginSummary {
   hasTotp: boolean
   passkeys: PasskeyView[]
   customFields: VaultCustomFieldView[]
+  attachments: VaultAttachmentView[]
   cardholderName: string
   brand: string
   expMonth: string
@@ -438,6 +441,15 @@ export interface LoginView extends LoginSummary {
   identityUsername: string
   publicKey: string
   fingerprint: string
+}
+
+/** Renderer-safe attachment metadata. Wrapped keys, URLs, paths, and bytes remain in main. */
+export interface VaultAttachmentView {
+  id: string
+  fileName: string
+  size: number
+  sizeName: string
+  legacy: boolean
 }
 
 /** Safe metadata for a synced passkey. Private key material is intentionally omitted. */

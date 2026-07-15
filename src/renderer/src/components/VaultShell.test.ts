@@ -17,6 +17,7 @@ function summary(id: string, reprompt: 0 | 1): LoginSummary {
     hasTotp: false,
     passkeyCount: 0,
     passwordHistoryCount: 0,
+    attachmentCount: 0,
     folderId: null,
     favorite: false,
     lastUsedAt: null,

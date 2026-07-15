@@ -487,7 +487,8 @@ function mergeLoginSummary(login: LoginView, summary: LoginSummary): LoginView {
     deletedAt: summary.deletedAt,
     archivedAt: summary.archivedAt,
     reprompt: summary.reprompt,
-    passwordHistoryCount: summary.passwordHistoryCount
+    passwordHistoryCount: summary.passwordHistoryCount,
+    attachmentCount: summary.attachmentCount
   }
 }
 
@@ -525,6 +526,7 @@ function toLoginSummary(login: LoginView): LoginSummary {
     hasTotp: login.hasTotp,
     ...(login.passkeyCount === undefined ? {} : { passkeyCount: login.passkeyCount }),
     passwordHistoryCount: login.passwordHistoryCount,
+    attachmentCount: login.attachmentCount,
     folderId: login.folderId,
     favorite: login.favorite,
     lastUsedAt: login.lastUsedAt,

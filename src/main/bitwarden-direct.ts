@@ -44,6 +44,10 @@ const MAX_CUSTOM_FIELDS = 1_000
 const MAX_CUSTOM_FIELD_STRING_LENGTH = 5_000
 const MAX_LOGIN_URIS = 1_000
 const MAX_PASSKEYS_PER_ITEM = 1_000
+const MAX_ATTACHMENTS_PER_ITEM = 1_000
+const MAX_ATTACHMENT_ID_LENGTH = 256
+const MAX_ATTACHMENT_FILE_NAME_LENGTH = 255
+const MAX_ATTACHMENT_SIZE_NAME_LENGTH = 64
 const MAX_PASSKEY_FIELD_LENGTH = 4_096
 const MAX_URI_LENGTH = 4_096
 const MAX_PASSWORD_LENGTH = 16_384
@@ -120,6 +124,19 @@ export interface BitwardenFolder {
 
 export interface BitwardenLoginUri extends VaultLoginUri {}
 
+/**
+ * Attachment metadata that is safe to show outside the direct-sync client.
+ * File keys, download URLs, and file contents deliberately stay private to the main process.
+ */
+export interface BitwardenAttachment {
+  id: string
+  fileName: string
+  size: number
+  sizeName: string
+  /** True when the server did not provide a per-attachment encrypted key. */
+  legacy: boolean
+}
+
 export interface BitwardenLoginItem extends VaultItemFields {
   id: string
   type: VaultItemType
@@ -137,6 +154,7 @@ export interface BitwardenLoginItem extends VaultItemFields {
   customFields: VaultCustomField[]
   passkeys: StoredPasskeyCredential[]
   passwordHistory: VaultPasswordHistoryEntry[]
+  attachments: BitwardenAttachment[]
 }
 
 export interface BitwardenLoginDraft extends Partial<VaultItemFields> {
@@ -693,8 +711,117 @@ function cloneLoginItem(item: BitwardenLoginItem): BitwardenLoginItem {
     uris: item.uris.map((uri) => ({ ...uri })),
     customFields: cloneCustomFields(item.customFields),
     passkeys: item.passkeys.map((passkey) => ({ ...passkey })),
-    passwordHistory: clonePasswordHistory(item.passwordHistory)
+    passwordHistory: clonePasswordHistory(item.passwordHistory),
+    attachments: item.attachments.map((attachment) => ({ ...attachment }))
   }
+}
+
+function attachmentSize(record: JsonObject): number {
+  const value = property(record, 'size')
+  if (value === undefined || value === null) return 0
+  if (typeof value !== 'string' || !/^(0|[1-9]\d*)$/u.test(value)) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  const size = Number(value)
+  if (!Number.isSafeInteger(size) || size < 0) throw new BitwardenDirectError('INVALID_RESPONSE')
+  return size
+}
+
+function attachmentSizeName(record: JsonObject, size: number): string {
+  const value = property(record, 'sizeName')
+  if (value === undefined || value === null) return `${size} B`
+  if (typeof value !== 'string' || value.length > MAX_ATTACHMENT_SIZE_NAME_LENGTH) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function decryptAttachments(raw: JsonObject, key: BitwardenSymmetricKey): BitwardenAttachment[] {
+  const value = property(raw, 'attachments')
+  if (value === undefined || value === null) return []
+  const decryptAttachment = (
+    id: string,
+    encryptedFileName: string,
+    details: JsonObject
+  ): BitwardenAttachment => {
+    if (!id || id.length > MAX_ATTACHMENT_ID_LENGTH) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    const fileName = decryptBitwardenString(encryptedFileName, key)
+    if (!fileName || fileName.length > MAX_ATTACHMENT_FILE_NAME_LENGTH) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    const attachmentKey = property(details, 'key')
+    if (
+      attachmentKey !== undefined &&
+      attachmentKey !== null &&
+      typeof attachmentKey !== 'string'
+    ) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    if (typeof attachmentKey === 'string' && attachmentKey.length === 0) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    let unwrappedKey: Buffer | undefined
+    try {
+      if (typeof attachmentKey === 'string') {
+        unwrappedKey = decryptBitwardenWrappedKey(attachmentKey, key)
+        if (unwrappedKey.length !== USER_KEY_BYTES) {
+          throw new BitwardenDirectError('INVALID_RESPONSE')
+        }
+      }
+    } finally {
+      unwrappedKey?.fill(0)
+    }
+    const size = attachmentSize(details)
+    return {
+      id,
+      fileName,
+      size,
+      sizeName: attachmentSizeName(details, size),
+      legacy: attachmentKey === undefined || attachmentKey === null
+    }
+  }
+  if (Array.isArray(value)) {
+    if (value.length > MAX_ATTACHMENTS_PER_ITEM) throw new BitwardenDirectError('INVALID_RESPONSE')
+    const attachments = value.map((entry) => {
+      if (!isRecord(entry)) throw new BitwardenDirectError('INVALID_RESPONSE')
+      return decryptAttachment(
+        requiredStringProperty(entry, 'id'),
+        requiredStringProperty(entry, 'fileName'),
+        entry
+      )
+    })
+    if (new Set(attachments.map((attachment) => attachment.id)).size !== attachments.length) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    return attachments
+  }
+  if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+
+  const detailsValue = property(raw, 'attachments2')
+  if (detailsValue !== undefined && detailsValue !== null && !isRecord(detailsValue)) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  const entries = Object.entries(value)
+  if (entries.length > MAX_ATTACHMENTS_PER_ITEM) throw new BitwardenDirectError('INVALID_RESPONSE')
+  const attachments = entries.map(([id, encryptedFileName]) => {
+    if (!id || typeof encryptedFileName !== 'string' || !encryptedFileName) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    const details = detailsValue ? detailsValue[id] : undefined
+    if (details !== undefined && !isRecord(details))
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    if (details) {
+      const detailFileName = requiredStringProperty(details, 'fileName')
+      if (detailFileName !== encryptedFileName) throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    return decryptAttachment(id, encryptedFileName, details ?? {})
+  })
+  if (new Set(attachments.map((attachment) => attachment.id)).size !== attachments.length) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  return attachments
 }
 
 function arrayProperty(record: JsonObject, name: string): JsonValue[] {
@@ -1173,7 +1300,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
             item.uris.length +
               item.passkeys.length +
               item.customFields.length +
-              item.passwordHistory.length
+              item.passwordHistory.length +
+              item.attachments.length
           )
           nextLogins.set(item.id, { raw: structuredClone(value), item })
         }
@@ -1515,12 +1643,13 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     const itemType = ITEM_TYPE_BY_WIRE_TYPE[wireType]
     const key = this.cipherKey(raw, userKey)
     try {
+      const attachments = decryptAttachments(raw, key)
       const sealedBlob = opaqueCipherBlob(raw)
       if (sealedBlob !== null) {
         if (!Buffer.isBuffer(key)) throw new BitwardenDirectError('INVALID_RESPONSE')
         const content = decryptBitwardenCipherBlob(sealedBlob, key)
         if (!isRecord(content)) throw new BitwardenDirectError('INVALID_RESPONSE')
-        return this.decryptBlobLogin(raw, content, wireType)
+        return this.decryptBlobLogin(raw, content, wireType, attachments)
       }
       const notes = nullableStringProperty(raw, 'notes')
       const item: BitwardenLoginItem = {
@@ -1536,6 +1665,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         customFields: decryptLegacyCustomFields(property(raw, 'fields'), key),
         passkeys: [],
         passwordHistory: decryptLegacyPasswordHistory(property(raw, 'passwordHistory'), key),
+        attachments,
         creationDate: nullableStringProperty(raw, 'creationDate'),
         revisionDate: nullableStringProperty(raw, 'revisionDate'),
         deletedAt: nullableStringProperty(raw, 'deletedDate'),
@@ -1624,7 +1754,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   private decryptBlobLogin(
     raw: JsonObject,
     content: JsonObject,
-    wireType: BitwardenCipherType
+    wireType: BitwardenCipherType,
+    attachments: BitwardenAttachment[]
   ): BitwardenLoginItem {
     const itemType = ITEM_TYPE_BY_WIRE_TYPE[wireType]
     const typeData = recordProperty(content, 'typeData')
@@ -1644,6 +1775,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       customFields: decryptBlobCustomFields(property(content, 'fields')),
       passkeys: [],
       passwordHistory: decryptBlobPasswordHistory(property(content, 'passwordHistory')),
+      attachments,
       creationDate: nullableStringProperty(raw, 'creationDate'),
       revisionDate: nullableStringProperty(raw, 'revisionDate'),
       deletedAt: nullableStringProperty(raw, 'deletedDate'),
