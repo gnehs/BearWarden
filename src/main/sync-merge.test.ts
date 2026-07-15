@@ -3,6 +3,7 @@ import {
   completeSyncMetadata,
   fingerprintLogin,
   legacyCustomFieldBaselineUpgrades,
+  legacyLoginFingerprint,
   planSync,
   type SyncFolder,
   type SyncLogin,
@@ -24,10 +25,14 @@ function login(
     password,
     totp: '',
     uri: 'https://example.invalid',
+    uris: [{ uri: 'https://example.invalid', match: null }],
     notes: null,
     folderId,
     favorite: false,
     lastUsedAt: null,
+    deletedAt: null,
+    archivedAt: null,
+    reprompt: 0,
     cardholderName: '',
     brand: '',
     number: '',
@@ -56,7 +61,8 @@ function login(
     publicKey: '',
     fingerprint: '',
     passkeys: [],
-    customFields: []
+    customFields: [],
+    passwordHistory: []
   }
 }
 
@@ -81,6 +87,12 @@ describe('planSync', () => {
     const plan = planSync(snapshot([local]), snapshot([remote]), metadata)
     expect(plan.actions).toEqual([])
     expect(plan.nextMetadata.loginLinks).toEqual(metadata.loginLinks)
+    expect(
+      fingerprintLogin({
+        ...local,
+        passwordHistory: [{ password: 'old-secret', lastUsedDate: '2026-07-14T00:00:00.000Z' }]
+      })
+    ).not.toBe(baseFingerprint)
   })
 
   it('plans local-only pushes, remote-only pulls, and completes create links', () => {
@@ -248,6 +260,177 @@ describe('planSync', () => {
     ])
   })
 
+  it('plans soft-delete and restore transitions as linked updates', () => {
+    const base = login('local-1')
+    const remote = login('remote-1')
+    const metadata: SyncMetadata = {
+      version: 1,
+      folderLinks: [],
+      loginLinks: [
+        { localId: base.id, remoteId: remote.id, baseFingerprint: fingerprintLogin(base) }
+      ]
+    }
+    const localDeleted = {
+      ...base,
+      deletedAt: '2026-07-14T01:00:00.000Z',
+      password: 'changed-before-delete'
+    }
+    expect(fingerprintLogin(localDeleted)).not.toBe(fingerprintLogin(base))
+    expect(planSync(snapshot([localDeleted]), snapshot([remote]), metadata).actions).toMatchObject([
+      {
+        kind: 'push-update',
+        entity: 'login',
+        local: { deletedAt: localDeleted.deletedAt },
+        remote: { deletedAt: null },
+        contentChanged: true
+      }
+    ])
+
+    const remoteDeleted = {
+      ...remote,
+      deletedAt: '2026-07-14T02:00:00.000Z'
+    }
+    expect(planSync(snapshot([base]), snapshot([remoteDeleted]), metadata).actions).toMatchObject([
+      {
+        kind: 'pull-update',
+        entity: 'login',
+        remote: { deletedAt: remoteDeleted.deletedAt }
+      }
+    ])
+  })
+
+  it('treats archive timestamps as a boolean state and plans archive transitions as updates', () => {
+    const base = login('local-1')
+    const remote = login('remote-1')
+    const metadata: SyncMetadata = {
+      version: 1,
+      folderLinks: [],
+      loginLinks: [
+        { localId: base.id, remoteId: remote.id, baseFingerprint: fingerprintLogin(base) }
+      ]
+    }
+    const archived = { ...base, archivedAt: '2026-07-14T01:00:00.000Z' }
+    const remotelyArchivedLater = {
+      ...remote,
+      archivedAt: '2026-07-14T02:00:00.000Z'
+    }
+
+    expect(fingerprintLogin(archived)).not.toBe(fingerprintLogin(base))
+    expect(fingerprintLogin(archived)).toBe(fingerprintLogin(remotelyArchivedLater))
+    expect(planSync(snapshot([archived]), snapshot([remote]), metadata).actions).toMatchObject([
+      {
+        kind: 'push-update',
+        entity: 'login',
+        local: { archivedAt: archived.archivedAt },
+        remote: { archivedAt: null },
+        contentChanged: false
+      }
+    ])
+    expect(
+      planSync(snapshot([base]), snapshot([remotelyArchivedLater]), metadata).actions
+    ).toMatchObject([
+      {
+        kind: 'pull-update',
+        entity: 'login',
+        remote: { archivedAt: remotelyArchivedLater.archivedAt }
+      }
+    ])
+  })
+
+  it('fingerprints and synchronizes master-password reprompt metadata', () => {
+    const local = login('local-1')
+    const remote = login('remote-1')
+    const metadata: SyncMetadata = {
+      version: 1,
+      folderLinks: [],
+      loginLinks: [
+        { localId: local.id, remoteId: remote.id, baseFingerprint: fingerprintLogin(local) }
+      ]
+    }
+    const protectedLocal = { ...local, reprompt: 1 as const }
+
+    expect(fingerprintLogin(protectedLocal)).not.toBe(fingerprintLogin(local))
+    expect(
+      planSync(snapshot([protectedLocal]), snapshot([remote]), metadata).actions
+    ).toMatchObject([
+      {
+        kind: 'push-update',
+        entity: 'login',
+        local: { reprompt: 1 },
+        remote: { reprompt: 0 },
+        contentChanged: true
+      }
+    ])
+  })
+
+  it('creates a conflict copy when a local soft-delete races a remote content edit', () => {
+    const base = login('local-1')
+    const metadata: SyncMetadata = {
+      version: 1,
+      folderLinks: [],
+      loginLinks: [
+        { localId: base.id, remoteId: 'remote-1', baseFingerprint: fingerprintLogin(base) }
+      ]
+    }
+    const plan = planSync(
+      snapshot([{ ...base, deletedAt: '2026-07-14T01:00:00.000Z' }]),
+      snapshot([login('remote-1', 'Remote edit')]),
+      metadata
+    )
+
+    expect(plan.actions).toMatchObject([
+      {
+        kind: 'conflict-copy',
+        entity: 'login',
+        reason: 'both-modified',
+        local: { deletedAt: '2026-07-14T01:00:00.000Z' },
+        remote: { name: 'Remote edit', deletedAt: null }
+      }
+    ])
+  })
+
+  it('does not resurrect a soft-deleted item after either side permanently deletes it', () => {
+    const base = login('local-1')
+    const metadata: SyncMetadata = {
+      version: 1,
+      folderLinks: [],
+      loginLinks: [
+        { localId: base.id, remoteId: 'remote-1', baseFingerprint: fingerprintLogin(base) }
+      ]
+    }
+    const localSoftDeleted = {
+      ...base,
+      deletedAt: '2026-07-14T01:00:00.000Z'
+    }
+    expect(planSync(snapshot([localSoftDeleted]), snapshot(), metadata).actions).toMatchObject([
+      { kind: 'delete-local', entity: 'login', localId: base.id }
+    ])
+
+    const remoteSoftDeleted = {
+      ...login('remote-1'),
+      deletedAt: '2026-07-14T02:00:00.000Z'
+    }
+    expect(
+      planSync(
+        snapshot([], [], {
+          folders: [],
+          logins: [{ id: base.id, deletedAt: '2026-07-14T03:00:00.000Z' }]
+        }),
+        snapshot([remoteSoftDeleted]),
+        metadata
+      ).actions
+    ).toMatchObject([{ kind: 'delete-remote', entity: 'login', remoteId: 'remote-1' }])
+  })
+
+  it('does not upload an item deleted before its first successful sync', () => {
+    const localDeleted = {
+      ...login('local-1'),
+      deletedAt: '2026-07-14T01:00:00.000Z'
+    }
+
+    expect(planSync(snapshot([localDeleted]), snapshot()).actions).toEqual([])
+  })
+
   it('uses an executor-reported fingerprint when completing an update', () => {
     const base = login('local-1')
     const localEdit = login('local-1', 'Edited')
@@ -303,7 +486,6 @@ describe('planSync', () => {
     const fields = [
       'username',
       'password',
-      'uri',
       'cardholderName',
       'brand',
       'number',
@@ -335,6 +517,17 @@ describe('planSync', () => {
     for (const field of fields) {
       expect(fingerprintLogin({ ...base, [field]: `changed-${field}` })).not.toBe(baseFingerprint)
     }
+    expect(fingerprintLogin({ ...base, uri: 'compatibility-alias-only' })).toBe(baseFingerprint)
+    expect(
+      fingerprintLogin({
+        ...base,
+        uri: 'https://secondary.example.invalid',
+        uris: [
+          { uri: 'https://secondary.example.invalid', match: null },
+          { uri: 'https://example.invalid', match: 3 }
+        ]
+      })
+    ).not.toBe(baseFingerprint)
   })
 
   it('detects a change made only to custom fields in fingerprints and plans', () => {
@@ -374,7 +567,8 @@ describe('planSync', () => {
       id: 'remote-1',
       customFields: [
         { name: 'member-id', value: 'remote-42', type: 'text' as const, linkedId: null }
-      ]
+      ],
+      passwordHistory: [{ password: 'remote-old', lastUsedDate: '2026-07-13T00:00:00.000Z' }]
     }
     const metadata: SyncMetadata = {
       version: 1,
@@ -397,9 +591,14 @@ describe('planSync', () => {
       localId: local.id,
       remoteId: remote.id,
       customFields: remote.customFields,
+      passwordHistory: remote.passwordHistory,
       baseFingerprint: fingerprintLogin(remote)
     })
-    const upgradedLocal = { ...local, customFields: upgrade!.customFields }
+    const upgradedLocal = {
+      ...local,
+      customFields: upgrade!.customFields,
+      passwordHistory: upgrade!.passwordHistory!
+    }
     const upgradedMetadata: SyncMetadata = {
       ...metadata,
       loginLinks: [{ ...metadata.loginLinks[0]!, baseFingerprint: upgrade!.baseFingerprint }]
@@ -408,6 +607,218 @@ describe('planSync', () => {
       planSync(snapshot([upgradedLocal]), snapshot([remote]), upgradedMetadata).actions
     ).toMatchObject([
       { kind: 'push-update', entity: 'login', local: { customFields: remote.customFields } }
+    ])
+  })
+
+  it('pulls, pushes, and conflicts on password-history changes', () => {
+    const original = login('local-1')
+    const remoteBase = { ...original, id: 'remote-1' }
+    const metadata: SyncMetadata = {
+      version: 1,
+      folderLinks: [],
+      loginLinks: [
+        {
+          localId: original.id,
+          remoteId: remoteBase.id,
+          baseFingerprint: fingerprintLogin(original)
+        }
+      ]
+    }
+    const history = [{ password: 'old-secret', lastUsedDate: '2026-07-13T00:00:00.000Z' }]
+    expect(
+      planSync(
+        snapshot([{ ...original, passwordHistory: history }]),
+        snapshot([remoteBase]),
+        metadata
+      ).actions
+    ).toMatchObject([{ kind: 'push-update', entity: 'login' }])
+    expect(
+      planSync(
+        snapshot([original]),
+        snapshot([{ ...remoteBase, passwordHistory: history }]),
+        metadata
+      ).actions
+    ).toMatchObject([{ kind: 'pull-update', entity: 'login' }])
+
+    const local = {
+      ...original,
+      passwordHistory: [{ password: 'local-old', lastUsedDate: '2026-07-13T00:00:00.000Z' }]
+    }
+    const remote = {
+      ...remoteBase,
+      passwordHistory: [{ password: 'remote-old', lastUsedDate: '2026-07-13T00:00:00.000Z' }]
+    }
+    expect(
+      legacyCustomFieldBaselineUpgrades(snapshot([local]), snapshot([remote]), metadata)
+    ).toEqual([])
+    expect(planSync(snapshot([local]), snapshot([remote]), metadata).actions).toMatchObject([
+      { kind: 'conflict-copy', entity: 'login', reason: 'both-modified' }
+    ])
+  })
+
+  it('adopts V12 history when both sides already share tracked custom fields', () => {
+    const customFields = [{ name: 'tracked', value: 'same', type: 'text' as const, linkedId: null }]
+    const original = { ...login('local-1'), customFields }
+    const local = { ...original, name: 'Offline rename' }
+    const remote = {
+      ...original,
+      id: 'remote-1',
+      passwordHistory: [{ password: 'remote-old', lastUsedDate: '2026-07-13T00:00:00.000Z' }]
+    }
+    const metadata: SyncMetadata = {
+      version: 1,
+      folderLinks: [],
+      loginLinks: [
+        {
+          localId: local.id,
+          remoteId: remote.id,
+          baseFingerprint: fingerprintLogin(original)
+        }
+      ]
+    }
+    expect(
+      legacyCustomFieldBaselineUpgrades(snapshot([local]), snapshot([remote]), metadata)
+    ).toMatchObject([
+      {
+        customFields,
+        passwordHistory: remote.passwordHistory,
+        baseFingerprint: fingerprintLogin(remote)
+      }
+    ])
+  })
+
+  it('upgrades a V10 URI baseline before pushing local URI and reprompt edits', () => {
+    const original = login('local-1')
+    const local = {
+      ...original,
+      uri: 'https://local.invalid',
+      uris: [{ uri: 'https://local.invalid', match: 2 as const }],
+      reprompt: 1 as const
+    }
+    const remote = { ...original, id: 'remote-1' }
+    const metadata: SyncMetadata = {
+      version: 1,
+      folderLinks: [],
+      loginLinks: [
+        {
+          localId: local.id,
+          remoteId: remote.id,
+          baseFingerprint: legacyLoginFingerprint(original)
+        }
+      ]
+    }
+
+    const [upgrade] = legacyCustomFieldBaselineUpgrades(
+      snapshot([local]),
+      snapshot([remote]),
+      metadata
+    )
+    expect(upgrade).toMatchObject({
+      localId: local.id,
+      remoteId: remote.id,
+      baseFingerprint: fingerprintLogin(remote)
+    })
+    expect(upgrade).not.toHaveProperty('uris')
+    expect(upgrade).not.toHaveProperty('reprompt')
+    expect(
+      planSync(snapshot([local]), snapshot([remote]), {
+        ...metadata,
+        loginLinks: [{ ...metadata.loginLinks[0]!, baseFingerprint: upgrade!.baseFingerprint }]
+      }).actions
+    ).toMatchObject([{ kind: 'push-update', entity: 'login', remoteId: remote.id }])
+  })
+
+  it('upgrades a V10 baseline for remote-only primary URI and default-field adoption', () => {
+    const original = login('local-1')
+    const metadata = (remoteId: string): SyncMetadata => ({
+      version: 1,
+      folderLinks: [],
+      loginLinks: [
+        {
+          localId: original.id,
+          remoteId,
+          baseFingerprint: legacyLoginFingerprint(original)
+        }
+      ]
+    })
+    const remotePrimary = {
+      ...original,
+      id: 'remote-primary',
+      uri: 'https://remote.invalid',
+      uris: [{ uri: 'https://remote.invalid', match: null }]
+    }
+    const [primaryUpgrade] = legacyCustomFieldBaselineUpgrades(
+      snapshot([original]),
+      snapshot([remotePrimary]),
+      metadata(remotePrimary.id)
+    )
+    expect(primaryUpgrade?.baseFingerprint).toBe(fingerprintLogin(original))
+    expect(
+      planSync(snapshot([original]), snapshot([remotePrimary]), {
+        ...metadata(remotePrimary.id),
+        loginLinks: [
+          {
+            ...metadata(remotePrimary.id).loginLinks[0]!,
+            baseFingerprint: primaryUpgrade!.baseFingerprint
+          }
+        ]
+      }).actions
+    ).toMatchObject([{ kind: 'pull-update', entity: 'login', remote: remotePrimary }])
+
+    const remoteDefaults = {
+      ...original,
+      id: 'remote-defaults',
+      uris: [...original.uris, { uri: 'https://second.invalid', match: 3 as const }],
+      reprompt: 1 as const
+    }
+    const [defaultUpgrade] = legacyCustomFieldBaselineUpgrades(
+      snapshot([original]),
+      snapshot([remoteDefaults]),
+      metadata(remoteDefaults.id)
+    )
+    expect(defaultUpgrade).toMatchObject({
+      uris: remoteDefaults.uris,
+      reprompt: 1,
+      baseFingerprint: fingerprintLogin(remoteDefaults)
+    })
+  })
+
+  it('keeps a V10 baseline when both sides added different URI state', () => {
+    const original = login('local-1')
+    const local = {
+      ...original,
+      uris: [...original.uris, { uri: 'https://local-extra.invalid', match: 1 as const }],
+      reprompt: 1 as const
+    }
+    const remote = {
+      ...original,
+      id: 'remote-1',
+      uris: [...original.uris, { uri: 'https://remote-extra.invalid', match: 4 as const }],
+      reprompt: 1 as const
+    }
+    const metadata: SyncMetadata = {
+      version: 1,
+      folderLinks: [],
+      loginLinks: [
+        {
+          localId: local.id,
+          remoteId: remote.id,
+          baseFingerprint: legacyLoginFingerprint(original)
+        }
+      ]
+    }
+
+    expect(
+      legacyCustomFieldBaselineUpgrades(snapshot([local]), snapshot([remote]), metadata)
+    ).toEqual([])
+    expect(planSync(snapshot([local]), snapshot([remote]), metadata).actions).toMatchObject([
+      {
+        kind: 'conflict-copy',
+        entity: 'login',
+        reason: 'both-modified',
+        local: { uris: local.uris },
+        remote: { uris: remote.uris }
+      }
     ])
   })
 

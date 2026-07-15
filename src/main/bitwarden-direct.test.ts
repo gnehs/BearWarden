@@ -11,7 +11,7 @@ import {
   stretchMasterKey,
   type BitwardenXChaCha20Poly1305Key
 } from './bitwarden-crypto'
-import { BitwardenDirectClient } from './bitwarden-direct'
+import { addAggregateRemoteRows, BitwardenDirectClient } from './bitwarden-direct'
 import { BitwardenHttpClient, type JsonObject } from './bitwarden-http'
 
 const EMAIL = 'bear@example.invalid'
@@ -24,9 +24,11 @@ const CARD_ID = '30000000-0000-4000-8000-000000000002'
 const IDENTITY_ID = '30000000-0000-4000-8000-000000000003'
 const NOTE_ID = '30000000-0000-4000-8000-000000000004'
 const SSH_ID = '30000000-0000-4000-8000-000000000005'
+const DELETED_AT = '2026-07-15T00:00:00.000Z'
+const ARCHIVED_AT = '2026-07-15T01:00:00.000Z'
 
 async function encryptedSync(
-  options: { v2?: boolean; allTypes?: boolean } = {}
+  options: { v2?: boolean; allTypes?: boolean; passkeyCredentialId?: string } = {}
 ): Promise<JsonObject> {
   const masterKey = await deriveMasterKey(PASSWORD, EMAIL, { type: 'pbkdf2', iterations: 5_000 })
   const stretched = stretchMasterKey(masterKey)
@@ -62,6 +64,7 @@ async function encryptedSync(
           name: encryptBitwardenString('Example', itemKey),
           notes: encryptBitwardenString('A note', itemKey),
           favorite: true,
+          reprompt: 1,
           key: encryptBitwardenBytes(itemKey, userKey),
           login: {
             username: encryptBitwardenString('bear@example.invalid', itemKey),
@@ -72,7 +75,10 @@ async function encryptedSync(
             ),
             fido2Credentials: [
               {
-                credentialId: encryptBitwardenString('credential-id', itemKey),
+                credentialId: encryptBitwardenString(
+                  options.passkeyCredentialId ?? 'credential-id',
+                  itemKey
+                ),
                 keyType: encryptBitwardenString('public-key', itemKey),
                 keyAlgorithm: encryptBitwardenString('ECDSA', itemKey),
                 keyCurve: encryptBitwardenString('P-256', itemKey),
@@ -93,7 +99,11 @@ async function encryptedSync(
                 match: 2,
                 uriChecksum: 'opaque-future-checksum'
               },
-              { uri: encryptBitwardenString('https://backup.example.invalid', itemKey), match: 1 }
+              {
+                uri: encryptBitwardenString('https://backup.example.invalid', itemKey),
+                match: 1,
+                uriChecksum: 'backup-checksum'
+              }
             ]
           },
           fields: [
@@ -120,6 +130,12 @@ async function encryptedSync(
               value: null,
               type: 3,
               linkedId: 100
+            }
+          ],
+          passwordHistory: [
+            {
+              password: encryptBitwardenString('old-login-secret', itemKey),
+              lastUsedDate: '2026-01-02T00:00:00.000Z'
             }
           ],
           attachments: [
@@ -224,7 +240,13 @@ async function encryptedSync(
   }
 }
 
-async function encryptedV2Sync(): Promise<JsonObject> {
+async function encryptedV2Sync(
+  options: {
+    passkeyCount?: number
+    passkeyCredentialId?: string
+    passkeyCreationDate?: string
+  } = {}
+): Promise<JsonObject> {
   const encoder = new Encoder({ mapsAsObjects: false, tagUint8Array: false, useRecords: false })
   const masterKey = await deriveMasterKey(PASSWORD, EMAIL, { type: 'pbkdf2', iterations: 5_000 })
   const stretched = stretchMasterKey(masterKey)
@@ -317,7 +339,8 @@ async function encryptedV2Sync(): Promise<JsonObject> {
       data: encryptBitwardenCipherBlob(content, itemKey),
       creationDate: null,
       revisionDate: null,
-      deletedDate: null
+      deletedDate: null,
+      reprompt: type === 1 ? 1 : 0
     })
 
     return {
@@ -355,27 +378,29 @@ async function encryptedV2Sync(): Promise<JsonObject> {
             passwordRevisionDate: null,
             uris: [
               { uri: 'https://primary.v2.example.invalid', match: 2 },
-              { uri: 'https://backup.v2.example.invalid', match: 1 }
+              {
+                uri: 'https://backup.v2.example.invalid',
+                match: 1,
+                uriChecksum: 'blob-backup-checksum'
+              }
             ],
             totp: 'otpauth://totp/example.invalid?secret=JBSWY3DPEHPK3PXP',
             autofillOnPageLoad: null,
-            fido2Credentials: [
-              {
-                credentialId: 'v2-credential-id',
-                keyType: 'public-key',
-                keyAlgorithm: 'ECDSA',
-                keyCurve: 'P-256',
-                keyValue: 'fake-v2-passkey-private-material',
-                rpId: 'example.invalid',
-                userHandle: null,
-                userName: 'v2-user@example.invalid',
-                counter: 7,
-                rpName: 'V2 Example',
-                userDisplayName: 'V2 Test User',
-                discoverable: true,
-                creationDate: '2026-07-13T00:00:00.000Z'
-              }
-            ],
+            fido2Credentials: Array.from({ length: options.passkeyCount ?? 1 }, () => ({
+              credentialId: options.passkeyCredentialId ?? 'v2-credential-id',
+              keyType: 'public-key',
+              keyAlgorithm: 'ECDSA',
+              keyCurve: 'P-256',
+              keyValue: 'fake-v2-passkey-private-material',
+              rpId: 'example.invalid',
+              userHandle: null,
+              userName: 'v2-user@example.invalid',
+              counter: 7,
+              rpName: 'V2 Example',
+              userDisplayName: 'V2 Test User',
+              discoverable: true,
+              creationDate: options.passkeyCreationDate ?? '2026-07-13T00:00:00.000Z'
+            })),
             futureLoginField: { preserve: true }
           },
           fields: [
@@ -454,7 +479,63 @@ function jsonResponse(value: unknown, status = 200): Response {
   })
 }
 
+async function expectInvalidSync(sync: JsonObject): Promise<void> {
+  const http = new BitwardenHttpClient({
+    server: 'https://vault.example.invalid',
+    fetch: async (url) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/identity/connect/token')) {
+        return jsonResponse({
+          access_token: 'access-token',
+          refresh_token: 'refresh-token',
+          expires_in: 3_600
+        })
+      }
+      if (url.includes('/api/sync?')) return jsonResponse(sync)
+      return jsonResponse({ message: 'not found' }, 404)
+    }
+  })
+  const client = new BitwardenDirectClient({
+    serverUrl: 'https://vault.example.invalid',
+    email: EMAIL,
+    httpClient: http
+  })
+  await client.login({ email: EMAIL, password: PASSWORD })
+  await expect(client.sync()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  await expect(client.listPersonalLogins()).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
+}
+
 describe('BitwardenDirectClient', () => {
+  it('rejects a response whose aggregate nested rows exceed the sync budget', () => {
+    expect(addAggregateRemoteRows(2, 1, 3)).toBe(3)
+    expect(() => addAggregateRemoteRows(3, 1, 3)).toThrow(
+      expect.objectContaining({ code: 'INVALID_RESPONSE' })
+    )
+  })
+
+  it('rejects more than 1,000 legacy passkeys on one item', async () => {
+    const sync = await encryptedSync()
+    const cipher = (sync.ciphers as JsonObject[])[0]!
+    const login = cipher.login as JsonObject
+    const passkey = (login.fido2Credentials as JsonObject[])[0]!
+    login.fido2Credentials = Array.from({ length: 1_001 }, () => passkey)
+
+    await expectInvalidSync(sync)
+  })
+
+  it('rejects more than 1,000 V2 blob passkeys on one item', async () => {
+    await expectInvalidSync(await encryptedV2Sync({ passkeyCount: 1_001 }))
+  })
+
+  it('rejects a decrypted passkey field longer than the local schema allows', async () => {
+    await expectInvalidSync(await encryptedSync({ passkeyCredentialId: 'x'.repeat(4_097) }))
+  })
+
+  it('rejects a non-canonical passkey creation date', async () => {
+    await expectInvalidSync(await encryptedV2Sync({ passkeyCreationDate: '2026-07-13T00:00:00Z' }))
+  })
   it('authenticates, decrypts a V1 personal vault, and never uploads plaintext', async () => {
     const sync = await encryptedSync()
     const writes: string[] = []
@@ -520,9 +601,13 @@ describe('BitwardenDirectClient', () => {
           { name: 'remember-device', value: 'true', type: 'boolean', linkedId: null },
           { name: 'alternate-username', value: '', type: 'linked', linkedId: 100 }
         ],
+        passwordHistory: [
+          { password: 'old-login-secret', lastUsedDate: '2026-01-02T00:00:00.000Z' }
+        ],
         notes: 'A note',
         folderId: FOLDER_ID,
-        favorite: true
+        favorite: true,
+        reprompt: 1
       })
     ])
 
@@ -538,10 +623,14 @@ describe('BitwardenDirectClient', () => {
       name: 'Renamed',
       username: EMAIL,
       password: 'changed-secret',
-      uri: 'https://changed.example.invalid',
+      uris: [
+        { uri: 'https://backup.example.invalid', match: 1 },
+        { uri: 'https://example.invalid', match: 2 }
+      ],
       notes: 'Changed note',
       folderId: FOLDER_ID,
       favorite: false,
+      reprompt: 0,
       customFields: [
         { name: 'member-id', value: 'legacy-member-99', type: 'text', linkedId: null },
         { name: 'recovery-code', value: 'legacy-updated-code', type: 'hidden', linkedId: null },
@@ -550,7 +639,9 @@ describe('BitwardenDirectClient', () => {
       ]
     })
     const update = JSON.parse(writes[1]!) as JsonObject
+    expect(update.reprompt).toBe(0)
     const originalLogin = (sync.ciphers as JsonObject[])[0]!.login as JsonObject
+    expect(update.passwordHistory).toEqual((sync.ciphers as JsonObject[])[0]!.passwordHistory)
     expect((update.login as JsonObject).totp).toBe(originalLogin.totp)
     expect((update.login as JsonObject).fido2Credentials).toEqual(originalLogin.fido2Credentials)
     expect(
@@ -571,9 +662,19 @@ describe('BitwardenDirectClient', () => {
     ])
     expect((update.login as JsonObject).uris).toHaveLength(2)
     expect(((update.login as JsonObject).uris as JsonObject[])[0]).toMatchObject({
+      match: 1,
+      uriChecksum: 'backup-checksum'
+    })
+    expect(((update.login as JsonObject).uris as JsonObject[])[1]).toMatchObject({
       match: 2,
       uriChecksum: 'opaque-future-checksum'
     })
+    expect(
+      decryptBitwardenString(
+        ((update.login as JsonObject).uris as JsonObject[])[0]!.uri as string,
+        Buffer.alloc(64, 9)
+      )
+    ).toBe('https://backup.example.invalid')
     expect(update.attachments).toMatchObject({ 'attachment-id': expect.stringContaining('2.') })
     expect(update.attachments2).toMatchObject({
       'attachment-id': {
@@ -583,6 +684,167 @@ describe('BitwardenDirectClient', () => {
     })
     expect(writes[1]).not.toContain('changed-secret')
     expect(writes[1]).not.toContain('Renamed')
+
+    await client.editLogin(LOGIN_ID, {
+      name: 'Renamed',
+      passwordHistory: [
+        { password: 'new-history-secret', lastUsedDate: '2026-01-03T00:00:00.000Z' }
+      ],
+      uris: [
+        { uri: 'https://new.example.invalid', match: null },
+        { uri: 'https://backup.example.invalid', match: 1 },
+        { uri: 'https://example.invalid', match: 2 }
+      ]
+    })
+    const prependedUris = ((JSON.parse(writes[2]!) as JsonObject).login as JsonObject)
+      .uris as JsonObject[]
+    expect(prependedUris[0]).not.toHaveProperty('uriChecksum')
+    expect(prependedUris[1]).toMatchObject({ uriChecksum: 'backup-checksum' })
+    expect(prependedUris[2]).toMatchObject({ uriChecksum: 'opaque-future-checksum' })
+    const writtenHistory = (JSON.parse(writes[2]!) as JsonObject).passwordHistory as JsonObject[]
+    expect(writtenHistory).toHaveLength(1)
+    expect(decryptBitwardenString(writtenHistory[0]!.password as string, Buffer.alloc(64, 9))).toBe(
+      'new-history-secret'
+    )
+    expect(writtenHistory[0]!.lastUsedDate).toBe('2026-01-03T00:00:00.000Z')
+
+    await client.editLogin(LOGIN_ID, {
+      name: 'Renamed',
+      uris: [
+        { uri: 'https://new.example.invalid', match: null },
+        { uri: 'https://changed-backup.example.invalid', match: 1 },
+        { uri: 'https://example.invalid', match: 2 }
+      ]
+    })
+    const changedUris = ((JSON.parse(writes[3]!) as JsonObject).login as JsonObject)
+      .uris as JsonObject[]
+    expect(changedUris[1]).not.toHaveProperty('uriChecksum')
+    expect(changedUris[2]).toMatchObject({ uriChecksum: 'opaque-future-checksum' })
+  })
+
+  it('rejects invalid reprompt metadata instead of weakening it to disabled', async () => {
+    const sync = await encryptedSync()
+    ;(sync.ciphers as JsonObject[])[0]!.reprompt = 2
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          return jsonResponse({
+            access_token: 'access-token',
+            refresh_token: 'refresh-token',
+            expires_in: 3600
+          })
+        }
+        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await expect(client.sync()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  })
+
+  it('syncs trashed ciphers and keeps deletedAt coherent across restore, soft delete, and purge', async () => {
+    const sync = await encryptedSync()
+    const syncedCipher = (sync.ciphers as JsonObject[])[0]!
+    syncedCipher.deletedDate = DELETED_AT
+    const requests: string[] = []
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url, init) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          return jsonResponse({
+            access_token: 'access-token',
+            refresh_token: 'refresh-token',
+            expires_in: 3600
+          })
+        }
+        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        requests.push(`${init?.method} ${url}`)
+        if (url.endsWith(`/api/ciphers/${LOGIN_ID}/restore`) && init?.method === 'PUT') {
+          return jsonResponse({
+            ...syncedCipher,
+            deletedDate: null,
+            revisionDate: '2026-07-15T00:00:01.000Z'
+          })
+        }
+        if (url.endsWith(`/api/ciphers/${LOGIN_ID}/archive`) && init?.method === 'PUT') {
+          return jsonResponse({
+            ...syncedCipher,
+            deletedDate: null,
+            archivedDate: ARCHIVED_AT,
+            revisionDate: '2026-07-15T00:00:02.000Z'
+          })
+        }
+        if (url.endsWith(`/api/ciphers/${LOGIN_ID}/unarchive`) && init?.method === 'PUT') {
+          return jsonResponse({
+            ...syncedCipher,
+            deletedDate: null,
+            archivedDate: null,
+            revisionDate: '2026-07-15T00:00:03.000Z'
+          })
+        }
+        if (url.endsWith(`/api/ciphers/${LOGIN_ID}/delete`) && init?.method === 'PUT') {
+          return new Response(null, { status: 204 })
+        }
+        if (url.endsWith(`/api/ciphers/${LOGIN_ID}`) && init?.method === 'DELETE') {
+          return new Response(null, { status: 204 })
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+    await expect(client.listPersonalLogins()).resolves.toEqual([
+      expect.objectContaining({ id: LOGIN_ID, deletedAt: DELETED_AT })
+    ])
+
+    await client.restoreLogin(LOGIN_ID)
+    await expect(client.listPersonalLogins()).resolves.toEqual([
+      expect.objectContaining({ id: LOGIN_ID, deletedAt: null })
+    ])
+
+    await client.archiveLogin(LOGIN_ID)
+    await expect(client.listPersonalLogins()).resolves.toEqual([
+      expect.objectContaining({ id: LOGIN_ID, archivedAt: ARCHIVED_AT })
+    ])
+    await client.unarchiveLogin(LOGIN_ID)
+    await expect(client.listPersonalLogins()).resolves.toEqual([
+      expect.objectContaining({ id: LOGIN_ID, archivedAt: null })
+    ])
+
+    await client.softDeleteLogin(LOGIN_ID)
+    const softDeleted = (await client.listPersonalLogins())[0]!
+    expect(softDeleted.id).toBe(LOGIN_ID)
+    expect(softDeleted.deletedAt).not.toBeNull()
+    expect(Number.isFinite(Date.parse(softDeleted.deletedAt!))).toBe(true)
+
+    await client.hardDeleteLogin(LOGIN_ID)
+    await expect(client.listPersonalLogins()).resolves.toEqual([])
+    expect(requests).toEqual([
+      `PUT https://vault.example.invalid/api/ciphers/${LOGIN_ID}/restore`,
+      `PUT https://vault.example.invalid/api/ciphers/${LOGIN_ID}/archive`,
+      `PUT https://vault.example.invalid/api/ciphers/${LOGIN_ID}/unarchive`,
+      `PUT https://vault.example.invalid/api/ciphers/${LOGIN_ID}/delete`,
+      `DELETE https://vault.example.invalid/api/ciphers/${LOGIN_ID}`
+    ])
   })
 
   it('lists and performs lossless V1 CRUD across card, identity, note, and SSH types', async () => {
@@ -693,6 +955,7 @@ describe('BitwardenDirectClient', () => {
       client.createLogin({
         type: 'sshKey',
         name: 'Created SSH key',
+        archivedAt: ARCHIVED_AT,
         privateKey: 'fake-created-private-key',
         publicKey: 'ssh-ed25519 AAAA created',
         fingerprint: 'SHA256:created-fingerprint'
@@ -701,10 +964,15 @@ describe('BitwardenDirectClient', () => {
       expect.objectContaining({
         id: CREATED_ID,
         type: 'sshKey',
-        fingerprint: 'SHA256:created-fingerprint'
+        fingerprint: 'SHA256:created-fingerprint',
+        archivedAt: ARCHIVED_AT
       })
     )
-    expect(writes[1]).toMatchObject({ type: 5, sshKey: { keyFingerprint: expect.any(String) } })
+    expect(writes[1]).toMatchObject({
+      type: 5,
+      archivedDate: ARCHIVED_AT,
+      sshKey: { keyFingerprint: expect.any(String) }
+    })
     expect(JSON.stringify(writes)).not.toMatch(
       /Updated payment card|5555555555554444|fake-created-private-key|created-fingerprint/
     )
@@ -829,7 +1097,8 @@ describe('BitwardenDirectClient', () => {
           { name: 'recovery-code', value: 'v2-hidden-code', type: 'hidden', linkedId: null },
           { name: 'remember-device', value: 'true', type: 'boolean', linkedId: null },
           { name: 'alternate-username', value: '', type: 'linked', linkedId: 100 }
-        ]
+        ],
+        reprompt: 1
       }),
       expect.objectContaining({ id: CARD_ID, type: 'card', cardholderName: 'V2 Holder' }),
       expect.objectContaining({
@@ -858,6 +1127,7 @@ describe('BitwardenDirectClient', () => {
         name: 'V2 existing edited',
         username: 'existing-edited@example.invalid',
         password: 'existing-edited-fake-secret',
+        reprompt: 0,
         uri: 'https://edited-primary.v2.example.invalid',
         customFields: [
           { name: 'member-id', value: 'v2-member-42', type: 'text', linkedId: null },
@@ -879,6 +1149,7 @@ describe('BitwardenDirectClient', () => {
       (JSON.parse(cipherWrites[0]!) as JsonObject).data as string,
       Buffer.alloc(64, 9)
     ) as Record<string, unknown>
+    expect((JSON.parse(cipherWrites[0]!) as JsonObject).reprompt).toBe(0)
     expect(editedBlob).toMatchObject({
       fields: [
         { name: 'member-id', value: 'v2-member-42', type: 0, linkedId: null },
@@ -888,8 +1159,21 @@ describe('BitwardenDirectClient', () => {
       ],
       passwordHistory: [{ password: 'old-v2-secret', lastUsedDate: '2026-01-01T00:00:00.000Z' }],
       futureRootField: 'preserve-root',
-      typeData: { futureLoginField: { preserve: true } }
+      typeData: {
+        futureLoginField: { preserve: true },
+        uris: [
+          { uri: 'https://edited-primary.v2.example.invalid', match: 2 },
+          {
+            uri: 'https://backup.v2.example.invalid',
+            match: 1,
+            uriChecksum: 'blob-backup-checksum'
+          }
+        ]
+      }
     })
+    expect(((editedBlob.typeData as JsonObject).uris as JsonObject[])[0]).not.toHaveProperty(
+      'uriChecksum'
+    )
     expect((editedBlob.fields as JsonObject[])[0]).toMatchObject({
       futureFieldKey: 'preserve-field'
     })
@@ -903,11 +1187,48 @@ describe('BitwardenDirectClient', () => {
       })
     ])
 
+    await client.editLogin(LOGIN_ID, {
+      name: 'V2 existing edited',
+      passwordHistory: [{ password: 'new-v2-history', lastUsedDate: '2026-01-04T00:00:00.000Z' }],
+      uris: [
+        { uri: 'https://backup.v2.example.invalid', match: 1 },
+        { uri: 'https://edited-primary.v2.example.invalid', match: 2 }
+      ]
+    })
+    const reorderedBlob = decryptBitwardenCipherBlob(
+      (JSON.parse(cipherWrites[1]!) as JsonObject).data as string,
+      Buffer.alloc(64, 9)
+    ) as JsonObject
+    const reorderedUris = ((reorderedBlob.typeData as JsonObject).uris ?? []) as JsonObject[]
+    expect(reorderedBlob.passwordHistory).toEqual([
+      { password: 'new-v2-history', lastUsedDate: '2026-01-04T00:00:00.000Z' }
+    ])
+    expect(reorderedUris[0]).toMatchObject({ uriChecksum: 'blob-backup-checksum' })
+    expect(reorderedUris[1]).not.toHaveProperty('uriChecksum')
+
+    await client.editLogin(LOGIN_ID, {
+      name: 'V2 existing edited',
+      uris: [
+        { uri: 'https://new.v2.example.invalid', match: null },
+        { uri: 'https://backup.v2.example.invalid', match: 1 },
+        { uri: 'https://edited-primary.v2.example.invalid', match: 2 }
+      ]
+    })
+    const prependedBlob = decryptBitwardenCipherBlob(
+      (JSON.parse(cipherWrites[2]!) as JsonObject).data as string,
+      Buffer.alloc(64, 9)
+    ) as JsonObject
+    const prependedUris = ((prependedBlob.typeData as JsonObject).uris ?? []) as JsonObject[]
+    expect(prependedUris[0]).not.toHaveProperty('uriChecksum')
+    expect(prependedUris[1]).toMatchObject({ uriChecksum: 'blob-backup-checksum' })
+    expect(prependedUris[2]).not.toHaveProperty('uriChecksum')
+
     await expect(
       client.createLogin({
         name: 'V2 created login',
         username: 'created@example.invalid',
         password: 'created-fake-secret',
+        reprompt: 1,
         uri: 'https://created.example.invalid',
         customFields: [
           { name: 'created-text', value: 'created-value', type: 'text', linkedId: null },
@@ -922,6 +1243,7 @@ describe('BitwardenDirectClient', () => {
         name: 'V2 created login',
         username: 'created@example.invalid',
         password: 'created-fake-secret',
+        reprompt: 1,
         customFields: [
           { name: 'created-text', value: 'created-value', type: 'text', linkedId: null },
           { name: 'created-hidden', value: 'created-secret', type: 'hidden', linkedId: null },
@@ -993,7 +1315,7 @@ describe('BitwardenDirectClient', () => {
       expect.objectContaining({ type: 'sshKey', fingerprint: 'SHA256:v2-created-fingerprint' })
     )
     await expect(client.deleteLogin(CREATED_ID)).resolves.toBeUndefined()
-    expect(cipherWrites).toHaveLength(7)
+    expect(cipherWrites).toHaveLength(9)
     for (const body of cipherWrites) {
       expect(JSON.parse((JSON.parse(body) as JsonObject).data as string)).toEqual({
         format_version: 1,

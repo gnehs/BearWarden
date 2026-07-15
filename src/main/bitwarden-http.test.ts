@@ -133,7 +133,15 @@ describe('BitwardenHttpClient', () => {
   })
 
   it('uses the personal folder and cipher CRUD routes', async () => {
-    const fetch = vi.fn<FetchLike>().mockImplementation(async () => json({ id: 'entity-id' }))
+    const fetch = vi.fn<FetchLike>().mockImplementation(async (url, init) => {
+      if (
+        init?.method === 'DELETE' ||
+        (init?.method === 'PUT' && url.endsWith('/ciphers/cipher%20id/delete'))
+      ) {
+        return new Response(null, { status: 204 })
+      }
+      return json({ id: 'entity-id' })
+    })
     const client = new BitwardenHttpClient({ server: 'https://vault.example.test', fetch })
     client.setSession({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 })
     await client.createFolder({ name: '2.folder' })
@@ -141,14 +149,50 @@ describe('BitwardenHttpClient', () => {
     await client.deleteFolder('folder id')
     await client.createCipher({ name: '2.cipher' })
     await client.updateCipher('cipher id', { name: '2.changed' })
-    await client.deleteCipher('cipher id')
-    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
-      'https://vault.example.test/api/folders',
-      'https://vault.example.test/api/folders/folder%20id',
-      'https://vault.example.test/api/folders/folder%20id',
-      'https://vault.example.test/api/ciphers',
-      'https://vault.example.test/api/ciphers/cipher%20id',
-      'https://vault.example.test/api/ciphers/cipher%20id'
+    await client.softDeleteCipher('cipher id')
+    await expect(client.restoreCipher('cipher id')).resolves.toEqual({ id: 'entity-id' })
+    await expect(client.archiveCipher('cipher id')).resolves.toEqual({ id: 'entity-id' })
+    await expect(client.unarchiveCipher('cipher id')).resolves.toEqual({ id: 'entity-id' })
+    await client.hardDeleteCipher('cipher id')
+    expect(fetch.mock.calls.map(([url, init]) => `${init?.method} ${url}`)).toEqual([
+      'POST https://vault.example.test/api/folders',
+      'PUT https://vault.example.test/api/folders/folder%20id',
+      'DELETE https://vault.example.test/api/folders/folder%20id',
+      'POST https://vault.example.test/api/ciphers',
+      'PUT https://vault.example.test/api/ciphers/cipher%20id',
+      'PUT https://vault.example.test/api/ciphers/cipher%20id/delete',
+      'PUT https://vault.example.test/api/ciphers/cipher%20id/restore',
+      'PUT https://vault.example.test/api/ciphers/cipher%20id/archive',
+      'PUT https://vault.example.test/api/ciphers/cipher%20id/unarchive',
+      'DELETE https://vault.example.test/api/ciphers/cipher%20id'
     ])
+  })
+
+  it('requires restore to return a cipher object while accepting empty delete responses', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 })
+
+    await expect(client.softDeleteCipher('cipher-id')).resolves.toBeUndefined()
+    await expect(client.hardDeleteCipher('cipher-id')).resolves.toBeUndefined()
+    await expect(client.restoreCipher('cipher-id')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+  })
+
+  it('rejects an oversized JSON response before buffering its body', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      new Response('{}', {
+        headers: { 'content-length': String(128 * 1024 * 1024 + 1) }
+      })
+    )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    await expect(client.prelogin('person@example.test')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
   })
 })

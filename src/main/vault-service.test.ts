@@ -101,6 +101,10 @@ async function createHarness(options: VaultServiceOptions = {}): Promise<{
 
 function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient & {
   remoteLogins: BitwardenLoginItem[]
+  softDeletedIds: string[]
+  restoredIds: string[]
+  hardDeletedIds: string[]
+  editedLoginIds: string[]
   readonly loginPassword: string | null
 } {
   let unlocked = false
@@ -120,6 +124,7 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
       username: 'remote@example.invalid',
       password: 'remote-test-secret',
       totp: 'JBSWY3DPEHPK3PXP',
+      uri: 'https://remote.example.invalid',
       uris: [{ uri: 'https://remote.example.invalid', match: null }],
       customFields: [
         { name: 'member-id', value: 'remote-member-42', type: 'text', linkedId: null },
@@ -127,6 +132,7 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
         { name: 'remember-device', value: 'true', type: 'boolean', linkedId: null },
         { name: 'linked-username', value: '', type: 'linked', linkedId: 100 }
       ],
+      passwordHistory: [],
       passkeys: [
         {
           credentialId: 'credential-id',
@@ -145,7 +151,10 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
         }
       ],
       creationDate: '2026-07-13T00:00:00.000Z',
-      revisionDate: '2026-07-14T00:00:00.000Z'
+      revisionDate: '2026-07-14T00:00:00.000Z',
+      deletedAt: null,
+      archivedAt: null,
+      reprompt: 0
     }
   ]
   const fromDraft = (id: string, draft: BitwardenLoginDraft): BitwardenLoginItem => ({
@@ -160,16 +169,36 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
     username: draft.username ?? '',
     password: draft.password ?? '',
     totp: draft.totp ?? '',
-    uri: draft.uri ?? null,
-    uris: draft.uri ? [{ uri: draft.uri, match: null }] : [],
+    uri: draft.uris?.[0]?.uri ?? draft.uri ?? null,
+    uris:
+      draft.uris?.map((entry) => ({ ...entry })) ??
+      (draft.uri ? [{ uri: draft.uri, match: null }] : []),
     customFields: draft.customFields ?? [],
     passkeys: draft.passkeys ?? [],
+    passwordHistory: draft.passwordHistory ?? [],
     creationDate: '2026-07-14T00:00:00.000Z',
-    revisionDate: '2026-07-14T00:00:01.000Z'
+    revisionDate: '2026-07-14T00:00:01.000Z',
+    deletedAt: null,
+    archivedAt: draft.archivedAt ?? null,
+    reprompt: draft.reprompt ?? 0
   })
+
+  const softDeletedIds: string[] = []
+  const restoredIds: string[] = []
+  const hardDeletedIds: string[] = []
+  const editedLoginIds: string[] = []
+  const hardDeleteLogin = async (id: string): Promise<void> => {
+    hardDeletedIds.push(id)
+    const index = remoteLogins.findIndex((login) => login.id === id)
+    if (index >= 0) remoteLogins.splice(index, 1)
+  }
 
   return {
     remoteLogins,
+    softDeletedIds,
+    restoredIds,
+    hardDeletedIds,
+    editedLoginIds,
     get loginPassword() {
       return loginPassword
     },
@@ -220,15 +249,32 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
       return structuredClone(login)
     },
     editLogin: async (id, draft) => {
+      editedLoginIds.push(id)
       const index = remoteLogins.findIndex((login) => login.id === id)
       const login = fromDraft(id, draft)
       remoteLogins[index] = login
       return structuredClone(login)
     },
-    deleteLogin: async (id) => {
-      const index = remoteLogins.findIndex((login) => login.id === id)
-      if (index >= 0) remoteLogins.splice(index, 1)
+    softDeleteLogin: async (id) => {
+      softDeletedIds.push(id)
+      const login = remoteLogins.find((candidate) => candidate.id === id)
+      if (login) login.deletedAt = '2026-07-14T00:00:02.000Z'
     },
+    restoreLogin: async (id) => {
+      restoredIds.push(id)
+      const login = remoteLogins.find((candidate) => candidate.id === id)
+      if (login) login.deletedAt = null
+    },
+    archiveLogin: async (id) => {
+      const login = remoteLogins.find((candidate) => candidate.id === id)
+      if (login) login.archivedAt = '2026-07-14T00:00:03.000Z'
+    },
+    unarchiveLogin: async (id) => {
+      const login = remoteLogins.find((candidate) => candidate.id === id)
+      if (login) login.archivedAt = null
+    },
+    hardDeleteLogin,
+    deleteLogin: hardDeleteLogin,
     lock: async () => {
       unlocked = false
     },
@@ -367,6 +413,383 @@ describe('VaultService encrypted local data', () => {
     })
   })
 
+  it('syncs soft-delete, restore, content edits, and permanent deletion with distinct APIs', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = (await service.listLogins())[0]!
+    const remoteId = fake!.remoteLogins[0]!.id
+
+    await service.updateLogin({ id: local.id, password: 'changed-before-delete' })
+    await service.deleteLogin({ id: local.id })
+    await service.syncNow()
+    expect(fake!.editedLoginIds).toContain(remoteId)
+    expect(fake!.softDeletedIds).toEqual([remoteId])
+    expect(fake!.remoteLogins[0]).toMatchObject({
+      password: 'changed-before-delete',
+      deletedAt: expect.any(String)
+    })
+
+    await service.restoreLogin({ id: local.id })
+    await service.syncNow()
+    expect(fake!.restoredIds).toEqual([remoteId])
+    expect(fake!.remoteLogins[0]!.deletedAt).toBeNull()
+
+    await service.deleteLogin({ id: local.id })
+    await service.deleteLoginPermanently({ id: local.id })
+    await service.syncNow()
+    expect(fake!.hardDeletedIds).toEqual([remoteId])
+    expect(fake!.remoteLogins).toEqual([])
+  })
+
+  it('resumes a partially completed trash update after restart without reviving or duplicating it', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { filePath, service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake ??= createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = (await service.listLogins())[0]!
+    const createSpy = vi.spyOn(fake!, 'createLogin')
+    const softDelete = fake!.softDeleteLogin.bind(fake)
+    let failOnce = true
+    fake!.softDeleteLogin = async (id, signal) => {
+      if (failOnce) {
+        failOnce = false
+        throw new Error('injected soft-delete failure')
+      }
+      await softDelete(id, signal)
+    }
+
+    await service.updateLogin({ id: local.id, password: 'changed-before-restart' })
+    await service.archiveLogin({ id: local.id })
+    await service.deleteLogin({ id: local.id })
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(fake!.remoteLogins).toMatchObject([
+      {
+        id: fake!.remoteLogins[0]!.id,
+        password: 'changed-before-restart',
+        archivedAt: expect.any(String),
+        deletedAt: null
+      }
+    ])
+
+    service.dispose()
+    const reopened = new VaultService(
+      new EncryptedVaultStore(filePath),
+      { copyText: vi.fn(), openExternal: vi.fn() },
+      { createSyncClient: () => fake! }
+    )
+    await reopened.unlock(MASTER_PASSWORD)
+    await expect(reopened.syncNow()).resolves.toMatchObject({ conflicts: 0 })
+
+    expect(createSpy).not.toHaveBeenCalled()
+    expect(fake!.remoteLogins).toHaveLength(1)
+    expect(fake!.remoteLogins[0]).toMatchObject({
+      password: 'changed-before-restart',
+      archivedAt: expect.any(String),
+      deletedAt: expect.any(String)
+    })
+    expect(await reopened.listLogins()).toEqual([])
+    expect(await reopened.listLogins({ deleted: true })).toMatchObject([{ id: local.id }])
+  })
+
+  it('resumes the maximum restore-unarchive-edit-delete chain after restart', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { filePath, service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake ??= createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = (await service.listLogins())[0]!
+    await service.archiveLogin({ id: local.id })
+    await service.deleteLogin({ id: local.id })
+    await service.syncNow()
+
+    const createSpy = vi.spyOn(fake!, 'createLogin')
+    const edit = fake!.editLogin.bind(fake)
+    let failOnce = true
+    fake!.editLogin = async (id, draft, signal) => {
+      if (failOnce) {
+        failOnce = false
+        throw new Error('injected edit failure')
+      }
+      return edit(id, draft, signal)
+    }
+    await service.restoreLogin({ id: local.id })
+    await service.unarchiveLogin({ id: local.id })
+    await service.updateLogin({ id: local.id, password: 'changed-after-restore' })
+    await service.deleteLogin({ id: local.id })
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(fake!.remoteLogins[0]).toMatchObject({
+      password: 'remote-test-secret',
+      archivedAt: null,
+      deletedAt: null
+    })
+
+    service.dispose()
+    const reopened = new VaultService(
+      new EncryptedVaultStore(filePath),
+      { copyText: vi.fn(), openExternal: vi.fn() },
+      { createSyncClient: () => fake! }
+    )
+    await reopened.unlock(MASTER_PASSWORD)
+    await expect(reopened.syncNow()).resolves.toMatchObject({ conflicts: 0 })
+
+    expect(createSpy).not.toHaveBeenCalled()
+    expect(fake!.remoteLogins).toHaveLength(1)
+    expect(fake!.remoteLogins[0]).toMatchObject({
+      password: 'changed-after-restore',
+      archivedAt: null,
+      deletedAt: expect.any(String)
+    })
+    expect(await reopened.listLogins()).toEqual([])
+    expect(await reopened.listLogins({ deleted: true })).toMatchObject([{ id: local.id }])
+  })
+
+  it('preserves a third-party remote edit made while a trash mutation is pending', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { filePath, service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake ??= createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = (await service.listLogins())[0]!
+    const softDelete = fake!.softDeleteLogin.bind(fake)
+    let failOnce = true
+    fake!.softDeleteLogin = async (id, signal) => {
+      if (failOnce) {
+        failOnce = false
+        throw new Error('injected soft-delete failure')
+      }
+      await softDelete(id, signal)
+    }
+    await service.updateLogin({ id: local.id, password: 'local-pending-change' })
+    await service.deleteLogin({ id: local.id })
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+
+    fake!.remoteLogins[0]!.password = 'third-party-remote-change'
+    service.dispose()
+    const reopened = new VaultService(
+      new EncryptedVaultStore(filePath),
+      { copyText: vi.fn(), openExternal: vi.fn() },
+      { createSyncClient: () => fake! }
+    )
+    await reopened.unlock(MASTER_PASSWORD)
+    await expect(reopened.syncNow()).resolves.toMatchObject({ conflicts: 1 })
+
+    expect(fake!.remoteLogins).toHaveLength(1)
+    expect(fake!.remoteLogins[0]!.password).toBe('third-party-remote-change')
+    const [remotePrimary] = await reopened.listLogins()
+    expect(await reopened.revealPassword({ id: remotePrimary!.id })).toBe(
+      'third-party-remote-change'
+    )
+    const [localConflict] = await reopened.listLogins({ deleted: true })
+    expect(localConflict?.name).toContain('BearWarden conflict')
+    await reopened.restoreLogin({ id: localConflict!.id })
+    expect(await reopened.revealPassword({ id: localConflict!.id })).toBe('local-pending-change')
+  })
+
+  it('keeps permanent deletion final when a trash mutation was interrupted', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { filePath, service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake ??= createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = (await service.listLogins())[0]!
+    const softDelete = fake!.softDeleteLogin.bind(fake)
+    let failOnce = true
+    fake!.softDeleteLogin = async (id, signal) => {
+      if (failOnce) {
+        failOnce = false
+        throw new Error('injected soft-delete failure')
+      }
+      await softDelete(id, signal)
+    }
+    await service.updateLogin({ id: local.id, password: 'must-not-revive' })
+    await service.deleteLogin({ id: local.id })
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    await service.deleteLoginPermanently({ id: local.id })
+
+    service.dispose()
+    const reopened = new VaultService(
+      new EncryptedVaultStore(filePath),
+      { copyText: vi.fn(), openExternal: vi.fn() },
+      { createSyncClient: () => fake! }
+    )
+    await reopened.unlock(MASTER_PASSWORD)
+    await expect(reopened.syncNow()).resolves.toMatchObject({ conflicts: 0 })
+
+    expect(fake!.hardDeletedIds).toContain('90000000-0000-4000-8000-000000000002')
+    expect(fake!.remoteLogins).toEqual([])
+    expect(await reopened.listLogins()).toEqual([])
+    expect(await reopened.listLogins({ deleted: true })).toEqual([])
+  })
+
+  it('pulls a remote soft-delete into the local trash without hard-deleting content', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = (await service.listLogins())[0]!
+    fake!.remoteLogins[0]!.deletedAt = '2026-07-14T03:00:00.000Z'
+
+    await expect(service.syncNow()).resolves.toMatchObject({ pulled: 1 })
+    expect(await service.listLogins()).toEqual([])
+    expect(await service.listLogins({ deleted: true })).toMatchObject([
+      { id: local.id, deletedAt: '2026-07-14T03:00:00.000Z' }
+    ])
+    await expect(service.getLogin({ id: local.id })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(service.getWebsiteIcon({ id: local.id })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+  })
+
+  it('rejects a malformed remote deletion date instead of treating a trashed item as active', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    fake!.remoteLogins[0]!.deletedAt = 'not-a-date'
+
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(await service.listLogins({ deleted: true })).toEqual([])
+  })
+
+  it('rejects a malformed remote archive date instead of changing its visibility', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = (await service.listLogins())[0]!
+    fake!.remoteLogins[0]!.archivedAt = 'not-a-date'
+
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(await service.listLogins()).toMatchObject([{ id: local.id, archivedAt: null }])
+    expect(await service.listLogins({ archived: true })).toEqual([])
+  })
+
+  it.each([
+    {
+      label: 'more than 1,000 passkeys',
+      mutate: (login: BitwardenLoginItem) => {
+        const passkey = login.passkeys[0]!
+        login.passkeys = Array.from({ length: 1_001 }, () => ({ ...passkey }))
+      }
+    },
+    {
+      label: 'a passkey field longer than 4,096 characters',
+      mutate: (login: BitwardenLoginItem) => {
+        login.passkeys[0]!.credentialId = 'x'.repeat(4_097)
+      }
+    },
+    {
+      label: 'a non-canonical passkey creation date',
+      mutate: (login: BitwardenLoginItem) => {
+        login.passkeys[0]!.creationDate = '2026-07-13T00:00:00Z'
+      }
+    }
+  ])('rejects remote $label atomically and leaves a reopenable vault', async ({ mutate }) => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { filePath, service, store } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    mutate(fake!.remoteLogins[0]!)
+    const write = vi.spyOn(store, 'write')
+
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(write).not.toHaveBeenCalled()
+
+    await service.lock()
+    const reopened = new VaultService(new EncryptedVaultStore(filePath), {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await expect(reopened.unlock(MASTER_PASSWORD)).resolves.toEqual({ state: 'unlocked' })
+    const [intact] = await reopened.listLogins()
+    expect(intact?.passkeyCount).toBe(1)
+    await expect(reopened.getLogin({ id: intact!.id })).resolves.toMatchObject({
+      passkeys: [expect.objectContaining({ credentialId: 'credential-id' })]
+    })
+  })
+
   it('persists only authenticated ciphertext with owner-only permissions', async () => {
     const { filePath, service } = await createHarness()
     await service.setup(MASTER_PASSWORD)
@@ -426,6 +849,232 @@ describe('VaultService encrypted local data', () => {
     expect((await service.getLogin({ id: login.id })).folderId).toBeNull()
     await service.deleteLogin({ id: login.id })
     expect(await service.listLogins()).toEqual([])
+  })
+
+  it('keeps deleted items in trash, blocks ordinary mutations, and restores or purges them', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const folder = await service.createFolder({ name: 'Trash test' })
+    const first = await service.createLogin({
+      type: 'secureNote',
+      name: 'First',
+      folderId: folder.id,
+      notes: 'trash-summary-secret-canary'
+    })
+    const second = await service.createLogin({ name: 'Second' })
+
+    await service.deleteLogin({ id: first.id })
+    expect(await service.listLogins()).toMatchObject([{ id: second.id, deletedAt: null }])
+    const [trashed] = await service.listLogins({ deleted: true })
+    expect(trashed).toMatchObject({
+      id: first.id,
+      subtitle: '',
+      username: '',
+      uri: null,
+      deletedAt: expect.any(String)
+    })
+    expect(JSON.stringify(trashed)).not.toContain('trash-summary-secret-canary')
+    await expect(service.getLogin({ id: first.id })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(service.updateLogin({ id: first.id, name: 'Blocked' })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(service.setLoginFavorite({ id: first.id, favorite: true })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(service.moveLogin({ id: first.id, folderId: null })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(service.revealPassword({ id: first.id })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(service.copyPassword({ id: first.id })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+
+    const restored = await service.restoreLogin({ id: first.id })
+    expect(restored.deletedAt).toBeNull()
+    expect((await service.listLogins()).map((login) => login.id)).toContain(first.id)
+
+    await service.deleteLogin({ id: first.id })
+    await service.deleteLoginPermanently({ id: first.id })
+    await expect(service.getLogin({ id: first.id })).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    await service.deleteLogin({ id: second.id })
+    await expect(service.emptyTrash()).resolves.toBe(1)
+    expect(await service.listLogins({ deleted: true })).toEqual([])
+  })
+
+  it('clones an active item locally, preserves supported fields, and excludes passkeys', async () => {
+    let fake: ReturnType<typeof createSyncFake> | undefined
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake ??= createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const source = (await service.listLogins())[0]!
+    const sourceBefore = await service.getLogin({ id: source.id })
+
+    const cloned = await service.cloneLogin({ id: source.id })
+    expect(cloned).toMatchObject({
+      id: expect.not.stringMatching(new RegExp(`^${source.id}$`)),
+      name: 'Remote login - Clone',
+      type: sourceBefore.type,
+      folderId: sourceBefore.folderId,
+      favorite: sourceBefore.favorite,
+      notes: sourceBefore.notes,
+      passkeys: [],
+      customFields: sourceBefore.customFields
+    })
+    expect(cloned.lastUsedAt).toBeNull()
+    expect(await service.getLogin({ id: source.id })).toEqual(sourceBefore)
+    await expect(service.revealPassword({ id: cloned.id })).resolves.toBe('remote-test-secret')
+    await expect(
+      service.revealEditorSecrets({ id: cloned.id, expectedUpdatedAt: cloned.updatedAt })
+    ).resolves.toMatchObject({
+      fields: { password: 'remote-test-secret', totp: 'JBSWY3DPEHPK3PXP' },
+      customFields: [expect.objectContaining({ value: 'remote-hidden-code' })]
+    })
+
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 1 })
+    const remoteClone = fake!.remoteLogins.find((login) => login.name === 'Remote login - Clone')
+    expect(remoteClone).toMatchObject({
+      folderId: fake!.remoteLogins[0]!.folderId,
+      favorite: false,
+      notes: null,
+      passkeys: []
+    })
+    expect(fake!.remoteLogins[0]!.passkeys).toHaveLength(1)
+  })
+
+  it('rejects cloning from trash and keeps the clone suffix within the item name limit', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const source = await service.createLogin({ name: 'x'.repeat(256) })
+    const cloned = await service.cloneLogin({ id: source.id })
+    expect(cloned.name).toHaveLength(256)
+    expect(cloned.name).toBe(`${'x'.repeat(248)} - Clone`)
+
+    await service.deleteLogin({ id: source.id })
+    await expect(service.cloneLogin({ id: source.id })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+
+    const emojiSource = await service.createLogin({ name: '😀'.repeat(128) })
+    const emojiClone = await service.cloneLogin({ id: emojiSource.id })
+    expect(emojiClone.name).toHaveLength(256)
+    expect(emojiClone.name).toBe(`${'😀'.repeat(124)} - Clone`)
+  })
+
+  it('archives active items, keeps them readable, and restores their prior vault behavior', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const folder = await service.createFolder({ name: 'Archive' })
+    const source = await service.createLogin({
+      name: 'Archived login',
+      folderId: folder.id,
+      favorite: true,
+      password: 'archive-secret'
+    })
+
+    const archived = await service.archiveLogin({ id: source.id })
+    expect(archived.archivedAt).toEqual(expect.any(String))
+    expect(await service.listLogins()).toEqual([])
+    expect(await service.listLogins({ archived: true })).toMatchObject([
+      { id: source.id, archivedAt: archived.archivedAt, favorite: true }
+    ])
+    await expect(service.getLogin({ id: source.id })).resolves.toMatchObject({
+      id: source.id,
+      folderId: folder.id,
+      archivedAt: archived.archivedAt
+    })
+    await expect(service.revealPassword({ id: source.id })).resolves.toBe('archive-secret')
+
+    const cloned = await service.cloneLogin({ id: source.id })
+    expect(cloned).toMatchObject({ archivedAt: archived.archivedAt, passkeys: [] })
+    await expect(service.archiveLogin({ id: source.id })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    const unarchived = await service.unarchiveLogin({ id: source.id })
+    expect(unarchived.archivedAt).toBeNull()
+    expect(await service.listLogins()).toMatchObject([{ id: source.id }])
+    await expect(service.unarchiveLogin({ id: source.id })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+
+    await service.deleteLogin({ id: source.id })
+    await expect(service.archiveLogin({ id: source.id })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(service.unarchiveLogin({ id: source.id })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+  })
+
+  it('syncs archive atomically and resumes an interrupted content-plus-unarchive', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { filePath, service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake ??= createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = (await service.listLogins())[0]!
+
+    await service.updateLogin({ id: local.id, password: 'archive-after-edit' })
+    await service.archiveLogin({ id: local.id })
+    await expect(service.syncNow()).resolves.toMatchObject({ conflicts: 0, pushed: 1 })
+    expect(fake!.remoteLogins[0]).toMatchObject({
+      password: 'archive-after-edit',
+      archivedAt: expect.any(String)
+    })
+    await expect(service.listLogins({ archived: true })).resolves.toMatchObject([
+      { id: local.id, archivedAt: expect.any(String) }
+    ])
+
+    const edit = fake!.editLogin.bind(fake)
+    let failOnce = true
+    fake!.editLogin = async (id, draft, signal) => {
+      if (failOnce) {
+        failOnce = false
+        throw new Error('injected edit after unarchive failure')
+      }
+      return edit(id, draft, signal)
+    }
+    await service.unarchiveLogin({ id: local.id })
+    await service.updateLogin({ id: local.id, password: 'unarchive-after-edit' })
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(fake!.remoteLogins[0]).toMatchObject({
+      password: 'archive-after-edit',
+      archivedAt: null
+    })
+
+    service.dispose()
+    const reopened = new VaultService(
+      new EncryptedVaultStore(filePath),
+      { copyText: vi.fn(), openExternal: vi.fn() },
+      { createSyncClient: () => fake! }
+    )
+    await reopened.unlock(MASTER_PASSWORD)
+    await expect(reopened.syncNow()).resolves.toMatchObject({ conflicts: 0 })
+    expect(fake!.remoteLogins[0]).toMatchObject({
+      password: 'unarchive-after-edit',
+      archivedAt: null
+    })
+    expect(await reopened.listLogins()).toMatchObject([{ id: local.id, archivedAt: null }])
   })
 
   it('tracks actual copy/open use but not reveal, without changing content updatedAt', async () => {
@@ -806,6 +1455,142 @@ describe('VaultService encrypted local data', () => {
     ])
   })
 
+  it('records password and changed hidden fields in official order and caps history at five', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const created = await service.createLogin({
+      name: 'History',
+      password: 'password-zero',
+      customFields: [
+        { source: null, name: 'alpha', type: 'hidden', value: 'alpha-secret', linkedId: null },
+        { source: null, name: 'beta', type: 'hidden', value: 'beta-secret', linkedId: null }
+      ]
+    })
+    expect(created.passwordHistoryCount).toBe(0)
+    expect(created).not.toHaveProperty('passwordHistory')
+
+    const updated = await service.updateLogin({
+      id: created.id,
+      password: 'password-one',
+      customFields: [
+        {
+          source: { index: 1, name: 'beta', type: 'hidden', linkedId: null },
+          name: 'renamed-beta',
+          type: 'hidden',
+          value: null,
+          linkedId: null
+        }
+      ]
+    })
+    expect(updated.passwordHistoryCount).toBe(3)
+    expect(
+      (await service.getPasswordHistory({ id: created.id })).map((entry) => entry.password)
+    ).toEqual(['beta: beta-secret', 'alpha: alpha-secret', 'password-zero'])
+
+    for (const password of ['password-two', 'password-three', 'password-four']) {
+      await service.updateLogin({ id: created.id, password })
+    }
+    expect(
+      (await service.getPasswordHistory({ id: created.id })).map((entry) => entry.password)
+    ).toEqual([
+      'password-three',
+      'password-two',
+      'password-one',
+      'beta: beta-secret',
+      'alpha: alpha-secret'
+    ])
+    await service.updateLogin({ id: created.id, password: 'password-three' })
+    await service.updateLogin({ id: created.id, password: 'password-four' })
+    expect(
+      (await service.getPasswordHistory({ id: created.id })).map((entry) => entry.password)
+    ).toEqual(['password-three', 'password-four', 'password-three', 'password-two', 'password-one'])
+  })
+
+  it('consumes duplicate hidden fields as a multiset when recording removed secrets', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const created = await service.createLogin({
+      name: 'Duplicate hidden history',
+      password: 'old-password',
+      customFields: [
+        { source: null, name: 'duplicate', type: 'hidden', value: 'same-secret', linkedId: null },
+        { source: null, name: 'duplicate', type: 'hidden', value: 'same-secret', linkedId: null }
+      ]
+    })
+
+    await service.updateLogin({
+      id: created.id,
+      password: 'new-password',
+      customFields: [
+        {
+          source: { index: 0, name: 'duplicate', type: 'hidden', linkedId: null },
+          name: 'duplicate',
+          type: 'hidden',
+          value: null,
+          linkedId: null
+        }
+      ]
+    })
+    expect(await service.getPasswordHistory({ id: created.id })).toMatchObject([
+      { password: 'duplicate: same-secret' },
+      { password: 'old-password' }
+    ])
+
+    const renamed = await service.createLogin({
+      name: 'Changed duplicates',
+      customFields: [
+        { source: null, name: 'duplicate', type: 'hidden', value: 'same-secret', linkedId: null },
+        { source: null, name: 'duplicate', type: 'hidden', value: 'same-secret', linkedId: null }
+      ]
+    })
+    await service.updateLogin({
+      id: renamed.id,
+      customFields: [
+        {
+          source: { index: 0, name: 'duplicate', type: 'hidden', linkedId: null },
+          name: 'renamed',
+          type: 'hidden',
+          value: null,
+          linkedId: null
+        },
+        {
+          source: { index: 1, name: 'duplicate', type: 'hidden', linkedId: null },
+          name: 'duplicate',
+          type: 'text',
+          value: 'visible-value',
+          linkedId: null
+        }
+      ]
+    })
+    expect(await service.getPasswordHistory({ id: renamed.id })).toMatchObject([
+      { password: 'duplicate: same-secret' },
+      { password: 'duplicate: same-secret' }
+    ])
+  })
+
+  it('starts clones with empty history, retains archive/trash history, and rejects trash reads', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const created = await service.createLogin({ name: 'Lifecycle history', password: 'old-secret' })
+    await service.updateLogin({ id: created.id, password: 'new-secret' })
+    const clone = await service.cloneLogin({ id: created.id })
+    expect(clone.passwordHistoryCount).toBe(0)
+    await expect(service.getPasswordHistory({ id: clone.id })).resolves.toEqual([])
+
+    await service.archiveLogin({ id: created.id })
+    await expect(service.getPasswordHistory({ id: created.id })).resolves.toMatchObject([
+      { password: 'old-secret' }
+    ])
+    await service.deleteLogin({ id: created.id })
+    await expect(service.getPasswordHistory({ id: created.id })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await service.restoreLogin({ id: created.id })
+    await expect(service.getPasswordHistory({ id: created.id })).resolves.toMatchObject([
+      { password: 'old-secret' }
+    ])
+  })
+
   it('rejects reveal and copy requests from a stale custom field snapshot', async () => {
     const { service, copyText } = await createHarness()
     await service.setup(MASTER_PASSWORD)
@@ -1114,8 +1899,8 @@ describe('VaultService encrypted local data', () => {
     expect((await service.getLogin({ id: second.id })).folderId).toBe(source.id)
   })
 
-  it('migrates V1 through V5 login records to V6 items', async () => {
-    for (const version of [1, 2, 3, 4, 5] as const) {
+  it('migrates V1 through V11 login records to V12 items', async () => {
+    for (const version of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const) {
       const directory = await mkdtemp(join(tmpdir(), 'bearwarden-migration-test-'))
       temporaryDirectories.push(directory)
       const filePath = join(directory, 'vault', 'vault.json')
@@ -1140,7 +1925,22 @@ describe('VaultService encrypted local data', () => {
             lastUsedAt: null,
             createdAt,
             updatedAt: createdAt,
-            passkeys: []
+            ...(version >= 7 ? { deletedAt: null } : {}),
+            ...(version >= 9 ? { archivedAt: null } : {}),
+            ...(version >= 10 ? { reprompt: 0 } : {}),
+            ...(version >= 11
+              ? {
+                  uris: [{ uri: 'https://legacy.example.invalid', match: null }],
+                  passwordHistory: [
+                    {
+                      password: 'untrusted-pre-v12-history',
+                      lastUsedDate: '2026-07-13T00:00:00.000Z'
+                    }
+                  ]
+                }
+              : {}),
+            passkeys: [],
+            ...(version >= 6 ? { customFields: [] } : {})
           }
         ],
         ...(version === 1
@@ -1175,16 +1975,298 @@ describe('VaultService encrypted local data', () => {
 
       await expect(service.unlock(MASTER_PASSWORD)).resolves.toEqual({ state: 'unlocked' })
       const migrated = (await service.listLogins())[0]!
-      expect(migrated).toMatchObject({ type: 'login', username: 'legacy-user' })
-      await expect(service.getLogin({ id: migrated.id })).resolves.toMatchObject({
-        customFields: []
+      expect(migrated).toMatchObject({
+        type: 'login',
+        username: 'legacy-user',
+        deletedAt: null,
+        archivedAt: null,
+        reprompt: 0,
+        uri: 'https://legacy.example.invalid',
+        uris: [{ uri: 'https://legacy.example.invalid', match: null }]
       })
+      await expect(service.getLogin({ id: migrated.id })).resolves.toMatchObject({
+        customFields: [],
+        passwordHistoryCount: 0
+      })
+      await expect(service.getPasswordHistory({ id: migrated.id })).resolves.toEqual([])
       expect(await service.revealPassword({ id: migrated.id })).toBe('legacy-secret')
       await service.lock()
       const unlocked = await store.unlock(MASTER_PASSWORD)
-      expect((unlocked.data as { version: number }).version).toBe(6)
+      expect((unlocked.data as { version: number }).version).toBe(12)
       unlocked.key.fill(0)
       unlocked.salt.fill(0)
     }
+  }, 15_000)
+
+  it('rejects an invalid deletedAt value in the current vault schema', async () => {
+    const { filePath, service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    await service.createLogin({ name: 'Corrupt date test' })
+    await service.lock()
+
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as { logins: Array<{ deletedAt: unknown }> }
+    data.logins[0]!.deletedAt = 'not-an-iso-date'
+    await store.write(data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopened = new VaultService(new EncryptedVaultStore<unknown>(filePath), {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await expect(reopened.unlock(MASTER_PASSWORD)).rejects.toMatchObject({
+      code: 'CORRUPT_VAULT'
+    })
+  })
+
+  it.each([
+    {
+      label: 'more than five entries',
+      value: Array.from({ length: 6 }, (_, index) => ({
+        password: `old-${index}`,
+        lastUsedDate: '2026-07-14T00:00:00.000Z'
+      }))
+    },
+    {
+      label: 'an unknown key',
+      value: [
+        {
+          password: 'old',
+          lastUsedDate: '2026-07-14T00:00:00.000Z',
+          future: true
+        }
+      ]
+    },
+    {
+      label: 'an empty password',
+      value: [{ password: '', lastUsedDate: '2026-07-14T00:00:00.000Z' }]
+    },
+    {
+      label: 'a non-canonical date',
+      value: [{ password: 'old', lastUsedDate: '2026-07-14' }]
+    }
+  ])('rejects password history with $label in the V12 schema', async ({ value }) => {
+    const { filePath, service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    await service.createLogin({ name: 'Corrupt history' })
+    await service.lock()
+
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as { logins: Array<{ passwordHistory: unknown }> }
+    data.logins[0]!.passwordHistory = value
+    await store.write(data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopened = new VaultService(new EncryptedVaultStore<unknown>(filePath), {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await expect(reopened.unlock(MASTER_PASSWORD)).rejects.toMatchObject({
+      code: 'CORRUPT_VAULT'
+    })
+  })
+
+  it('round-trips reprompt metadata and verifies the local master-password proof', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const protectedLogin = await service.createLogin({
+      name: 'Protected item',
+      username: 'private-user',
+      uri: 'https://private.example.invalid',
+      reprompt: 1
+    })
+
+    expect(await service.listLogins()).toEqual([
+      expect.objectContaining({
+        id: protectedLogin.id,
+        reprompt: 1,
+        username: '',
+        uri: null,
+        subtitle: ''
+      })
+    ])
+    await expect(
+      service.authorizeLogin({ id: protectedLogin.id, masterPassword: MASTER_PASSWORD })
+    ).resolves.toBeTypeOf('number')
+    await expect(
+      service.authorizeLogin({ id: protectedLogin.id, masterPassword: 'wrong password' })
+    ).rejects.toMatchObject({ code: 'INVALID_MASTER_PASSWORD' })
+
+    const clone = await service.cloneLogin({ id: protectedLogin.id })
+    expect(clone.reprompt).toBe(1)
+    const updated = await service.updateLogin({ id: protectedLogin.id, reprompt: 0 })
+    expect(updated.reprompt).toBe(0)
+  })
+
+  it('stores ordered URI match rows, keeps the primary alias, and addresses secondary rows', async () => {
+    const { copyText, openExternal, service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const created = await service.createLogin({
+      name: 'Multiple websites',
+      username: 'multi-user',
+      uri: 'https://primary.example.invalid',
+      uris: [
+        { uri: 'https://primary.example.invalid', match: 0 },
+        { uri: '^https://accounts\\.example\\.invalid/', match: 4 },
+        { uri: 'https://never.example.invalid', match: 5 }
+      ]
+    })
+
+    expect(created.uri).toBe('https://primary.example.invalid')
+    expect(created.uris).toEqual([
+      { uri: 'https://primary.example.invalid', match: 0 },
+      { uri: '^https://accounts\\.example\\.invalid/', match: 4 },
+      { uri: 'https://never.example.invalid', match: 5 }
+    ])
+    await service.copyField({ id: created.id, field: 'uri', uriIndex: 1 })
+    expect(copyText).toHaveBeenLastCalledWith('^https://accounts\\.example\\.invalid/')
+    await service.openLoginUri({ id: created.id, uriIndex: 2 })
+    expect(openExternal).toHaveBeenLastCalledWith('https://never.example.invalid/')
+    await expect(service.openLoginUri({ id: created.id, uriIndex: 1 })).rejects.toMatchObject({
+      code: 'INVALID_URL'
+    })
+
+    const clone = await service.cloneLogin({ id: created.id })
+    await service.updateLogin({
+      id: created.id,
+      uris: [{ uri: 'https://changed.example.invalid', match: 3 }],
+      uri: 'https://changed.example.invalid'
+    })
+    expect(clone.uris).toHaveLength(3)
+    expect((await service.getLogin({ id: clone.id })).uris[0]?.uri).toBe(
+      'https://primary.example.invalid'
+    )
+  })
+
+  it('rejects blank, oversized, over-cap, and alias-inconsistent local URI rows', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    await expect(
+      service.createLogin({ name: 'Blank URI', uris: [{ uri: '  ', match: null }] })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.createLogin({
+        name: 'Alias mismatch',
+        uri: 'https://one.example.invalid',
+        uris: [{ uri: 'https://two.example.invalid', match: null }]
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.createLogin({
+        name: 'Too long',
+        uris: [{ uri: 'x'.repeat(4_097), match: null }]
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.createLogin({
+        name: 'Too many',
+        uris: Array.from({ length: 1_001 }, (_, index) => ({
+          uri: `https://${index}.example.invalid`,
+          match: null
+        }))
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+  })
+
+  it('keeps authorization and the protected operation atomic against a queued reprompt change', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const login = await service.createLogin({ name: 'Race target', password: 'race-secret' })
+    let releaseOperation!: () => void
+    const operationGate = new Promise<void>((resolve) => {
+      releaseOperation = resolve
+    })
+    let authorized = false
+    const protectedOperation = service.runAuthorizedOperation(
+      () => false,
+      async (authorize) => {
+        authorize([login.id])
+        authorized = true
+        await operationGate
+        return service.revealPassword({ id: login.id })
+      }
+    )
+    await vi.waitFor(() => expect(authorized).toBe(true))
+    const enableReprompt = service.updateLogin({ id: login.id, reprompt: 1 })
+    releaseOperation()
+    await expect(protectedOperation).resolves.toBe('race-secret')
+    await expect(enableReprompt).resolves.toMatchObject({ reprompt: 1 })
+
+    await expect(
+      service.runAuthorizedOperation(
+        () => false,
+        async (authorize) => {
+          authorize([login.id])
+          return service.revealPassword({ id: login.id })
+        }
+      )
+    ).rejects.toMatchObject({ code: 'REPROMPT_REQUIRED' })
+  })
+
+  it('expires inherited reentrant context after the outer exclusive operation completes', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const login = await service.createLogin({ name: 'Context target' })
+    let releaseLate!: () => void
+    const lateGate = new Promise<void>((resolve) => {
+      releaseLate = resolve
+    })
+    let lateRead!: Promise<LoginView>
+    await service.runAuthorizedOperation(
+      () => true,
+      async (authorize) => {
+        authorize([])
+        lateRead = lateGate.then(() => service.getLogin({ id: login.id }))
+      }
+    )
+
+    let releaseBlocker!: () => void
+    let blockerEntered = false
+    const blocker = service.runAuthorizedOperation(
+      () => true,
+      async (authorize) => {
+        authorize([])
+        blockerEntered = true
+        await new Promise<void>((resolve) => {
+          releaseBlocker = resolve
+        })
+      }
+    )
+    await vi.waitFor(() => expect(blockerEntered).toBe(true))
+    let lateResolved = false
+    void lateRead.then(() => {
+      lateResolved = true
+    })
+    releaseLate()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(lateResolved).toBe(false)
+    releaseBlocker()
+    await blocker
+    await expect(lateRead).resolves.toMatchObject({ id: login.id })
+  })
+
+  it('rejects an invalid reprompt value in the current V11 schema', async () => {
+    const { filePath, service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    await service.createLogin({ name: 'Corrupt reprompt test' })
+    await service.lock()
+
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as { logins: Array<{ reprompt: unknown }> }
+    data.logins[0]!.reprompt = 2
+    await store.write(data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopened = new VaultService(new EncryptedVaultStore<unknown>(filePath), {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await expect(reopened.unlock(MASTER_PASSWORD)).rejects.toMatchObject({
+      code: 'CORRUPT_VAULT'
+    })
   })
 })

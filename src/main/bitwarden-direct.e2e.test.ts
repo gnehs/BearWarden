@@ -153,6 +153,7 @@ async function startLoopbackVault(initialSyncMode: SyncMode = 'valid'): Promise<
   let accessToken = 'access-token-1'
   let refreshToken = 'refresh-token-1'
   let rejectFirstSync = true
+  let latestCreatedCipher: JsonObject | null = null
 
   const server = createServer((request, response) => {
     void (async () => {
@@ -256,28 +257,43 @@ async function startLoopbackVault(initialSyncMode: SyncMode = 'valid'): Promise<
 
       if (method === 'POST' && url.pathname === '/api/ciphers') {
         const cipher = jsonObject(body)
-        writeJson(response, {
-          cipher: {
-            ...cipher,
-            id: CREATED_CIPHER_ID,
-            creationDate: '2026-07-14T00:00:03.000Z',
-            revisionDate: '2026-07-14T00:00:03.000Z',
-            deletedDate: null
-          }
-        })
+        latestCreatedCipher = {
+          ...cipher,
+          id: CREATED_CIPHER_ID,
+          creationDate: '2026-07-14T00:00:03.000Z',
+          revisionDate: '2026-07-14T00:00:03.000Z',
+          deletedDate: null
+        }
+        writeJson(response, { cipher: latestCreatedCipher })
         return
       }
       if (method === 'PUT' && url.pathname === `/api/ciphers/${CREATED_CIPHER_ID}`) {
         const cipher = jsonObject(body)
-        writeJson(response, {
-          cipher: {
-            ...cipher,
-            id: CREATED_CIPHER_ID,
-            creationDate: '2026-07-14T00:00:03.000Z',
-            revisionDate: '2026-07-14T00:00:04.000Z',
-            deletedDate: null
-          }
-        })
+        latestCreatedCipher = {
+          ...cipher,
+          id: CREATED_CIPHER_ID,
+          creationDate: '2026-07-14T00:00:03.000Z',
+          revisionDate: '2026-07-14T00:00:04.000Z',
+          deletedDate: null
+        }
+        writeJson(response, { cipher: latestCreatedCipher })
+        return
+      }
+      if (method === 'PUT' && url.pathname === `/api/ciphers/${CREATED_CIPHER_ID}/delete`) {
+        writeEmpty(response)
+        return
+      }
+      if (
+        method === 'PUT' &&
+        url.pathname === `/api/ciphers/${CREATED_CIPHER_ID}/restore` &&
+        latestCreatedCipher
+      ) {
+        latestCreatedCipher = {
+          ...latestCreatedCipher,
+          revisionDate: '2026-07-14T00:00:05.000Z',
+          deletedDate: null
+        }
+        writeJson(response, { cipher: latestCreatedCipher })
         return
       }
       if (method === 'DELETE' && url.pathname === `/api/ciphers/${CREATED_CIPHER_ID}`) {
@@ -379,7 +395,15 @@ describe('BitwardenDirectClient loopback V1 protocol', () => {
         name: 'Renamed card',
         cardholderName: 'Updated Holder'
       })
-      await expect(client.deleteLogin(CREATED_CIPHER_ID)).resolves.toBeUndefined()
+      await expect(client.softDeleteLogin(CREATED_CIPHER_ID)).resolves.toBeUndefined()
+      expect(
+        (await client.listPersonalLogins()).find(({ id }) => id === CREATED_CIPHER_ID)?.deletedAt
+      ).toEqual(expect.any(String))
+      await expect(client.restoreLogin(CREATED_CIPHER_ID)).resolves.toBeUndefined()
+      expect(
+        (await client.listPersonalLogins()).find(({ id }) => id === CREATED_CIPHER_ID)?.deletedAt
+      ).toBeNull()
+      await expect(client.hardDeleteLogin(CREATED_CIPHER_ID)).resolves.toBeUndefined()
 
       const prelogin = vault.requests.find(
         (request) => request.path === '/identity/accounts/prelogin/password'
@@ -420,6 +444,8 @@ describe('BitwardenDirectClient loopback V1 protocol', () => {
         `DELETE /api/folders/${CREATED_FOLDER_ID}`,
         'POST /api/ciphers',
         `PUT /api/ciphers/${CREATED_CIPHER_ID}`,
+        `PUT /api/ciphers/${CREATED_CIPHER_ID}/delete`,
+        `PUT /api/ciphers/${CREATED_CIPHER_ID}/restore`,
         `DELETE /api/ciphers/${CREATED_CIPHER_ID}`
       ])
 
@@ -440,7 +466,7 @@ describe('BitwardenDirectClient loopback V1 protocol', () => {
       }
       expect(
         apiWrites
-          .filter((request) => request.method !== 'DELETE')
+          .filter((request) => request.body.length > 0)
           .every((request) => request.body.includes('2.'))
       ).toBe(true)
     } finally {

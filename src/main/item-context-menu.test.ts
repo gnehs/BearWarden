@@ -33,9 +33,10 @@ function createOptions(): ItemContextMenuOptions {
     window: {} as ItemContextMenuOptions['window'],
     item: {
       id: 'item-1',
-      username: 'demo-user',
-      uri: 'https://example.test',
-      folderId: 'folder-1'
+      hasUsername: true,
+      uriLabels: ['https://example.test'],
+      folderId: 'folder-1',
+      archivedAt: null
     },
     folders: [
       { id: 'folder-1', name: 'Personal' },
@@ -46,6 +47,8 @@ function createOptions(): ItemContextMenuOptions {
       copyUsername: vi.fn(),
       copyWebsite: vi.fn(),
       moveToFolder: vi.fn(),
+      cloneItem: vi.fn(),
+      toggleArchive: vi.fn(),
       deleteItem: vi.fn()
     },
     position: { x: 24, y: 48 }
@@ -67,12 +70,16 @@ describe('showItemContextMenu', () => {
     expect(menuEntry(template, 'item-context-open-in-new-window').enabled).toBe(true)
     expect(menuEntry(template, 'item-context-copy-username').enabled).toBe(true)
     expect(menuEntry(template, 'item-context-copy-website').enabled).toBe(true)
+    expect(menuEntry(template, 'item-context-clone').enabled).toBe(true)
+    expect(menuEntry(template, 'item-context-toggle-archive').label).toBe('封存項目')
     expect(menuEntry(template, 'item-context-delete').enabled).toBe(true)
     expect(popup).toHaveBeenCalledWith({ window: options.window, x: 24, y: 48 })
 
     menuEntry(template, 'item-context-open-in-new-window').click?.()
     menuEntry(template, 'item-context-copy-username').click?.()
     menuEntry(template, 'item-context-copy-website').click?.()
+    menuEntry(template, 'item-context-clone').click?.()
+    menuEntry(template, 'item-context-toggle-archive').click?.()
     menuEntry(template, 'item-context-delete').click?.()
 
     const move = menuEntry(template, 'item-context-move')
@@ -85,9 +92,11 @@ describe('showItemContextMenu', () => {
     menuEntry(submenu, 'item-context-move-unfiled').click?.()
     menuEntry(submenu, 'item-context-move-folder-folder-2').click?.()
 
-    expect(options.callbacks.openInNewWindow).toHaveBeenCalledWith('item-1')
+    expect(options.callbacks.openInNewWindow).toHaveBeenCalledWith('item-1', 0)
     expect(options.callbacks.copyUsername).toHaveBeenCalledWith('item-1')
-    expect(options.callbacks.copyWebsite).toHaveBeenCalledWith('item-1')
+    expect(options.callbacks.copyWebsite).toHaveBeenCalledWith('item-1', 0)
+    expect(options.callbacks.cloneItem).toHaveBeenCalledWith('item-1')
+    expect(options.callbacks.toggleArchive).toHaveBeenCalledWith('item-1', false)
     expect(options.callbacks.moveToFolder).toHaveBeenNthCalledWith(1, 'item-1', null)
     expect(options.callbacks.moveToFolder).toHaveBeenNthCalledWith(2, 'item-1', 'folder-2')
     expect(options.callbacks.deleteItem).toHaveBeenCalledWith('item-1')
@@ -96,7 +105,7 @@ describe('showItemContextMenu', () => {
   it('disables unavailable actions without reading or copying secrets directly', () => {
     buildFromTemplate.mockReturnValue({ popup })
     const options = createOptions()
-    options.item = { id: '', username: '', uri: null, folderId: null }
+    options.item = { id: '', hasUsername: false, uriLabels: [], folderId: null, archivedAt: null }
     options.folders = []
     delete options.position
 
@@ -106,9 +115,29 @@ describe('showItemContextMenu', () => {
     expect(menuEntry(template, 'item-context-open-in-new-window').enabled).toBe(false)
     expect(menuEntry(template, 'item-context-copy-username').enabled).toBe(false)
     expect(menuEntry(template, 'item-context-copy-website').enabled).toBe(false)
+    expect(menuEntry(template, 'item-context-clone').enabled).toBe(false)
+    expect(menuEntry(template, 'item-context-toggle-archive').enabled).toBe(false)
     expect(menuEntry(template, 'item-context-move').enabled).toBe(false)
     expect(menuEntry(template, 'item-context-delete').enabled).toBe(false)
     expect(popup).toHaveBeenLastCalledWith({ window: options.window })
+  })
+
+  it('uses indexed submenus for multiple URIs and generic labels for redacted metadata', () => {
+    buildFromTemplate.mockReturnValue({ popup })
+    const options = createOptions()
+    options.item.uriLabels = ['', '']
+
+    showItemContextMenu(options)
+
+    const template = buildFromTemplate.mock.calls[0]?.[0] as TemplateEntry[]
+    const open = menuEntry(template, 'item-context-open-in-new-window')
+    const copy = menuEntry(template, 'item-context-copy-website')
+    expect(open.submenu?.map((entry) => entry.label)).toEqual(['網站 1', '網站 2'])
+    expect(copy.submenu?.map((entry) => entry.label)).toEqual(['網站 1', '網站 2'])
+    menuEntry(open.submenu!, 'item-context-open-uri-1').click?.()
+    menuEntry(copy.submenu!, 'item-context-copy-uri-1').click?.()
+    expect(options.callbacks.openInNewWindow).toHaveBeenCalledWith('item-1', 1)
+    expect(options.callbacks.copyWebsite).toHaveBeenCalledWith('item-1', 1)
   })
 
   it('reports synchronous and asynchronous action failures', async () => {
