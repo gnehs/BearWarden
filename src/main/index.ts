@@ -266,6 +266,20 @@ if (hasSingleInstanceLock)
       join(app.getPath('userData'), 'vault', 'vault.json')
     )
     const attachmentFiles = new VaultAttachmentFileService({
+      chooseOpenFile: async () => {
+        const options = {
+          title: '上傳附件',
+          buttonLabel: '選擇',
+          filters: [{ name: '所有檔案', extensions: ['*'] }],
+          // Preserve macOS aliases so the main-only lstat boundary can reject
+          // them instead of silently accepting the resolved target.
+          properties: ['openFile' as const, 'noResolveAliases' as const]
+        }
+        const result = mainWindow
+          ? await dialog.showOpenDialog(mainWindow, options)
+          : await dialog.showOpenDialog(options)
+        return result.canceled || result.filePaths.length !== 1 ? null : result.filePaths[0]!
+      },
       chooseSavePath: async (defaultName) => {
         const options = {
           title: '下載附件',

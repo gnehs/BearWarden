@@ -1,10 +1,12 @@
 import { createCipheriv, createHmac, generateKeyPairSync, webcrypto } from 'node:crypto'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Encoder } from 'cbor-x'
 import {
   deriveMasterKey,
+  decryptBitwardenAttachmentBuffer,
   decryptBitwardenCipherBlob,
   decryptBitwardenString,
+  decryptBitwardenWrappedKey,
   encryptBitwardenBytes,
   encryptBitwardenCipherBlob,
   encryptBitwardenString,
@@ -12,7 +14,12 @@ import {
   type BitwardenXChaCha20Poly1305Key
 } from './bitwarden-crypto'
 import { addAggregateRemoteRows, BitwardenDirectClient } from './bitwarden-direct'
-import { BitwardenHttpClient, type JsonObject } from './bitwarden-http'
+import {
+  BitwardenHttpClient,
+  BitwardenHttpError,
+  type BitwardenAttachmentUploadRequest,
+  type JsonObject
+} from './bitwarden-http'
 
 const EMAIL = 'bear@example.invalid'
 const PASSWORD = 'test master password'
@@ -567,6 +574,188 @@ async function syncedAttachmentClient(
   return client
 }
 
+interface AttachmentMutationHarness {
+  client: BitwardenDirectClient
+  http: BitwardenHttpClient
+  sync: JsonObject
+  events: string[]
+  createdRequests: BitwardenAttachmentUploadRequest[]
+  uploadedBytes: Buffer[]
+  uploadedReferences: Buffer[]
+  syncSignals: Array<AbortSignal | undefined>
+  setPublishUpload(value: boolean): void
+  failNextUpload(error: Error): void
+  failDelete(attachmentId: string): void
+}
+
+async function attachmentMutationHarness(
+  sync: JsonObject,
+  uploadType: 'direct' | 'azure' = 'direct',
+  downloads: Readonly<Record<string, Buffer>> = {}
+): Promise<AttachmentMutationHarness> {
+  const events: string[] = []
+  const createdRequests: BitwardenAttachmentUploadRequest[] = []
+  const uploadedBytes: Buffer[] = []
+  const uploadedReferences: Buffer[] = []
+  let publishUpload = true
+  let nextUploadError: Error | null = null
+  const failedDeletes = new Set<string>()
+  let nextAttachmentIndex = 1
+  let pending: {
+    attachmentId: string
+    request: BitwardenAttachmentUploadRequest
+    encryptedFileName: string
+  } | null = null
+
+  const cipher = (sync.ciphers as JsonObject[])[0]!
+  if (cipher.revisionDate === null || cipher.revisionDate === undefined) {
+    cipher.revisionDate = '2026-07-14T00:00:00.000Z'
+  }
+  const fetch = async (url: string): Promise<Response> => {
+    if (url.endsWith('/identity/accounts/prelogin/password')) {
+      return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+    }
+    if (url.endsWith('/identity/connect/token')) {
+      return jsonResponse({
+        access_token: 'access-token',
+        refresh_token: 'refresh-token',
+        expires_in: 3_600
+      })
+    }
+    if (url.includes('/api/sync?')) {
+      events.push('sync')
+      return jsonResponse(sync)
+    }
+    for (const [attachmentId, encrypted] of Object.entries(downloads)) {
+      if (url.endsWith(`/api/ciphers/${LOGIN_ID}/attachment/${attachmentId}`)) {
+        events.push(`download-metadata:${attachmentId}`)
+        const attachment = (cipher.attachments as JsonObject[]).find(
+          (candidate) => candidate.id === attachmentId
+        )
+        if (!attachment) return jsonResponse({ message: 'not found' }, 404)
+        return jsonResponse({
+          ...attachment,
+          key: attachment.key ?? null,
+          url: `https://attachments.example.invalid/${attachmentId}`
+        })
+      }
+      if (url === `https://attachments.example.invalid/${attachmentId}`) {
+        events.push(`download-bytes:${attachmentId}`)
+        return new Response(Buffer.from(encrypted), {
+          status: 200,
+          headers: { 'content-length': String(encrypted.length) }
+        })
+      }
+    }
+    return jsonResponse({ message: 'not found' }, 404)
+  }
+  const http = new BitwardenHttpClient({
+    server: 'https://vault.example.invalid',
+    fetch
+  })
+  const syncSignals: Array<AbortSignal | undefined> = []
+  const syncHttp = http.sync.bind(http)
+  vi.spyOn(http, 'sync').mockImplementation(async (signal) => {
+    syncSignals.push(signal)
+    return await syncHttp(signal)
+  })
+
+  vi.spyOn(http, 'createAttachment').mockImplementation(async (_id, request, signal) => {
+    if (signal?.aborted) throw new BitwardenHttpError('ABORTED')
+    events.push('create')
+    createdRequests.push({ ...request })
+    const attachmentId = `uploaded-attachment-${nextAttachmentIndex++}`
+    pending = { attachmentId, request: { ...request }, encryptedFileName: request.fileName }
+    return {
+      attachmentId,
+      url: 'https://bearwarden.blob.core.windows.net/attachments/upload?sv=2026-01-01&sig=fake',
+      fileUploadType: uploadType
+    }
+  })
+
+  const publishPending = (data: Buffer): void => {
+    if (!pending || !publishUpload) return
+    const attachments = cipher.attachments as JsonObject[]
+    attachments.push({
+      id: pending.attachmentId,
+      fileName: pending.request.fileName,
+      size: String(data.length),
+      sizeName: `${data.length} B`,
+      key: pending.request.key
+    })
+    cipher.revisionDate = '2026-07-16T00:00:00.000Z'
+  }
+
+  vi.spyOn(http, 'uploadAttachmentDirect').mockImplementation(
+    async (_id, _attachmentId, encryptedFileName, data, signal) => {
+      events.push('upload-direct')
+      if (signal?.aborted) throw new BitwardenHttpError('ABORTED')
+      if (!pending || encryptedFileName !== pending.encryptedFileName) {
+        throw new BitwardenHttpError('INVALID_RESPONSE')
+      }
+      if (nextUploadError) {
+        const error = nextUploadError
+        nextUploadError = null
+        throw error
+      }
+      uploadedBytes.push(Buffer.from(data))
+      uploadedReferences.push(data)
+      publishPending(data)
+    }
+  )
+  vi.spyOn(http, 'uploadAttachmentAzure').mockImplementation(async (_url, data, signal) => {
+    events.push('upload-azure')
+    if (signal?.aborted) throw new BitwardenHttpError('ABORTED')
+    if (nextUploadError) {
+      const error = nextUploadError
+      nextUploadError = null
+      throw error
+    }
+    uploadedBytes.push(Buffer.from(data))
+    uploadedReferences.push(data)
+    publishPending(data)
+  })
+  vi.spyOn(http, 'deleteAttachment').mockImplementation(async (_id, attachmentId) => {
+    events.push(`delete:${attachmentId}`)
+    if (failedDeletes.has(attachmentId)) throw new BitwardenHttpError('NETWORK')
+    cipher.attachments = (cipher.attachments as JsonObject[]).filter(
+      (attachment) => attachment.id !== attachmentId
+    )
+    cipher.revisionDate = '2026-07-16T00:00:01.000Z'
+    return { cipher }
+  })
+
+  const client = new BitwardenDirectClient({
+    serverUrl: 'https://vault.example.invalid',
+    email: EMAIL,
+    httpClient: http
+  })
+  await client.login({ email: EMAIL, password: PASSWORD })
+  await client.sync()
+  events.length = 0
+  syncSignals.length = 0
+
+  return {
+    client,
+    http,
+    sync,
+    events,
+    createdRequests,
+    uploadedBytes,
+    uploadedReferences,
+    syncSignals,
+    setPublishUpload(value) {
+      publishUpload = value
+    },
+    failNextUpload(error) {
+      nextUploadError = error
+    },
+    failDelete(attachmentId) {
+      failedDeletes.add(attachmentId)
+    }
+  }
+}
+
 async function expectInvalidSync(sync: JsonObject): Promise<void> {
   const http = new BitwardenHttpClient({
     server: 'https://vault.example.invalid',
@@ -737,6 +926,384 @@ describe('BitwardenDirectClient', () => {
     })
     plaintext.fill(0)
     encrypted.fill(0)
+  })
+
+  it('uploads a V1 attachment with a new CEK, encrypted size, and authoritative sync', async () => {
+    const harness = await attachmentMutationHarness(await encryptedSync())
+    const clearText = Buffer.from('new attachment payload', 'utf8')
+    const original = Buffer.from(clearText)
+
+    const uploaded = await harness.client.uploadAttachment(
+      LOGIN_ID,
+      'new-document.txt',
+      clearText,
+      undefined,
+      () => harness.events.push('commit')
+    )
+
+    expect(uploaded).toMatchObject({
+      id: 'uploaded-attachment-1',
+      fileName: 'new-document.txt',
+      legacy: false
+    })
+    expect(harness.events).toEqual(['create', 'upload-direct', 'sync', 'commit'])
+    expect(harness.createdRequests).toHaveLength(1)
+    expect(harness.uploadedBytes).toHaveLength(1)
+    expect(harness.uploadedReferences[0]).toEqual(Buffer.alloc(harness.uploadedBytes[0]!.length))
+    const request = harness.createdRequests[0]!
+    const encrypted = harness.uploadedBytes[0]!
+    const itemKey = Buffer.alloc(64, 9)
+    const attachmentKey = decryptBitwardenWrappedKey(request.key, itemKey)
+    try {
+      expect(decryptBitwardenString(request.fileName, itemKey)).toBe('new-document.txt')
+      expect(request.fileSize).toBe(encrypted.length)
+      expect(request.lastKnownRevisionDate).toBe('2026-07-14T00:00:00.000Z')
+      expect(encrypted[0]).toBe(2)
+      expect(decryptBitwardenAttachmentBuffer(encrypted, attachmentKey)).toEqual(original)
+      expect(clearText).toEqual(original)
+    } finally {
+      itemKey.fill(0)
+      attachmentKey.fill(0)
+      encrypted.fill(0)
+      clearText.fill(0)
+      original.fill(0)
+    }
+  })
+
+  it('uploads an Account Encryption V2 attachment through Azure with the legacy item key', async () => {
+    const harness = await attachmentMutationHarness(await encryptedV2Sync(), 'azure')
+    const clearText = Buffer.from('v2 upload payload', 'utf8')
+
+    const uploaded = await harness.client.uploadAttachment(LOGIN_ID, 'v2-upload.txt', clearText)
+
+    expect(uploaded).toMatchObject({ fileName: 'v2-upload.txt', legacy: false })
+    expect(harness.events).toEqual(['create', 'upload-azure', 'sync'])
+    expect(harness.uploadedReferences[0]).toEqual(Buffer.alloc(harness.uploadedBytes[0]!.length))
+    const request = harness.createdRequests[0]!
+    const encrypted = harness.uploadedBytes[0]!
+    const itemKey = Buffer.alloc(64, 9)
+    const attachmentKey = decryptBitwardenWrappedKey(request.key, itemKey)
+    try {
+      expect(decryptBitwardenString(request.fileName, itemKey)).toBe('v2-upload.txt')
+      expect(decryptBitwardenAttachmentBuffer(encrypted, attachmentKey)).toEqual(clearText)
+    } finally {
+      itemKey.fill(0)
+      attachmentKey.fill(0)
+      encrypted.fill(0)
+      clearText.fill(0)
+    }
+  })
+
+  it('rejects duplicate attachment names before creating remote metadata', async () => {
+    const harness = await attachmentMutationHarness(await encryptedSync())
+    const clearText = Buffer.from('duplicate', 'utf8')
+    await expect(
+      harness.client.uploadAttachment(LOGIN_ID, 'document.txt', clearText)
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    expect(harness.events).toEqual([])
+    expect(harness.createdRequests).toHaveLength(0)
+    expect(clearText.toString('utf8')).toBe('duplicate')
+    clearText.fill(0)
+  })
+
+  it('rolls metadata back after phase-two failure without masking the upload error', async () => {
+    const harness = await attachmentMutationHarness(await encryptedSync())
+    harness.failNextUpload(new BitwardenHttpError('ABORTED'))
+    harness.failDelete('uploaded-attachment-1')
+    const clearText = Buffer.from('will abort', 'utf8')
+
+    const onCommitted = vi.fn()
+    await expect(
+      harness.client.uploadAttachment(LOGIN_ID, 'aborted.txt', clearText, undefined, onCommitted)
+    ).rejects.toMatchObject({ code: 'ABORTED' })
+    expect(harness.events).toEqual(['create', 'upload-direct', 'delete:uploaded-attachment-1'])
+    expect(onCommitted).not.toHaveBeenCalled()
+    expect(clearText.toString('utf8')).toBe('will abort')
+    clearText.fill(0)
+  })
+
+  it('preserves actionable attachment HTTP error codes', async () => {
+    for (const code of [
+      'NOT_FOUND',
+      'FORBIDDEN',
+      'TOO_LARGE',
+      'STORAGE_LIMIT',
+      'ATTACHMENT_REJECTED'
+    ] as const) {
+      const harness = await attachmentMutationHarness(await encryptedSync())
+      vi.mocked(harness.http.createAttachment).mockRejectedValueOnce(new BitwardenHttpError(code))
+      const clearText = Buffer.from(`error-${code}`, 'utf8')
+      await expect(
+        harness.client.uploadAttachment(LOGIN_ID, `${code}.txt`, clearText)
+      ).rejects.toMatchObject({ code })
+      expect(harness.events).toEqual([])
+      clearText.fill(0)
+    }
+  })
+
+  it('does not trust the create response when authoritative sync omits the upload', async () => {
+    const harness = await attachmentMutationHarness(await encryptedSync())
+    harness.setPublishUpload(false)
+    const clearText = Buffer.from('not published', 'utf8')
+
+    const onCommitted = vi.fn()
+    await expect(
+      harness.client.uploadAttachment(
+        LOGIN_ID,
+        'missing-after-sync.txt',
+        clearText,
+        undefined,
+        onCommitted
+      )
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    expect(harness.events).toEqual([
+      'create',
+      'upload-direct',
+      'sync',
+      'delete:uploaded-attachment-1'
+    ])
+    expect(onCommitted).not.toHaveBeenCalled()
+    expect(clearText.toString('utf8')).toBe('not published')
+    clearText.fill(0)
+    harness.uploadedBytes.forEach((bytes) => bytes.fill(0))
+  })
+
+  it('rolls an upload back when caller cancellation interrupts authoritative validation', async () => {
+    const harness = await attachmentMutationHarness(await encryptedSync())
+    const abort = new AbortController()
+    const onCommitted = vi.fn()
+    const clearText = Buffer.from('cancel during sync', 'utf8')
+    vi.mocked(harness.http.sync).mockImplementationOnce(async (signal) => {
+      harness.events.push('sync')
+      abort.abort()
+      if (signal?.aborted) throw new BitwardenHttpError('ABORTED')
+      return harness.sync
+    })
+
+    await expect(
+      harness.client.uploadAttachment(
+        LOGIN_ID,
+        'cancel-during-sync.txt',
+        clearText,
+        abort.signal,
+        onCommitted
+      )
+    ).rejects.toMatchObject({ code: 'ABORTED' })
+    expect(harness.events).toEqual([
+      'create',
+      'upload-direct',
+      'sync',
+      'delete:uploaded-attachment-1'
+    ])
+    expect(onCommitted).not.toHaveBeenCalled()
+    clearText.fill(0)
+    harness.uploadedBytes.forEach((bytes) => bytes.fill(0))
+  })
+
+  it('deletes only a cached member attachment and confirms removal with full sync', async () => {
+    const harness = await attachmentMutationHarness(await encryptedSync())
+
+    await harness.client.deleteAttachment(LOGIN_ID, 'attachment-id', undefined, () =>
+      harness.events.push('commit')
+    )
+
+    expect(harness.events).toEqual(['delete:attachment-id', 'commit', 'sync'])
+    expect(harness.syncSignals).toEqual([undefined])
+    await expect(harness.client.listPersonalLogins()).resolves.toEqual([
+      expect.objectContaining({
+        attachments: [expect.objectContaining({ id: 'legacy-attachment-id' })]
+      })
+    ])
+    harness.events.length = 0
+    await expect(
+      harness.client.deleteAttachment(LOGIN_ID, 'unknown-attachment')
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    expect(harness.events).toEqual([])
+  })
+
+  it('commits a confirmed delete and finishes authoritative sync after caller cancellation', async () => {
+    const harness = await attachmentMutationHarness(await encryptedSync())
+    const abort = new AbortController()
+    const deleteImplementation = vi.mocked(harness.http.deleteAttachment).getMockImplementation()!
+    vi.mocked(harness.http.deleteAttachment).mockImplementationOnce(
+      async (id, attachmentId, signal) => {
+        const response = await deleteImplementation(id, attachmentId, signal)
+        abort.abort()
+        return response
+      }
+    )
+
+    await harness.client.deleteAttachment(LOGIN_ID, 'attachment-id', abort.signal, () =>
+      harness.events.push('commit')
+    )
+
+    expect(harness.events).toEqual(['delete:attachment-id', 'commit', 'sync'])
+    expect(harness.syncSignals).toEqual([undefined])
+  })
+
+  it('fixes legacy attachments in download-upload-delete order and clears downloaded plaintext', async () => {
+    const sync = await encryptedSync()
+    const clearText = Buffer.from('legacy fix payload', 'utf8')
+    const legacyEncrypted = encryptAttachmentFixture(clearText, Buffer.alloc(64, 9))
+    const cipher = (sync.ciphers as JsonObject[])[0]!
+    const legacy = (cipher.attachments as JsonObject[]).find(
+      (attachment) => attachment.id === 'legacy-attachment-id'
+    )!
+    legacy.size = String(legacyEncrypted.length)
+    const harness = await attachmentMutationHarness(sync, 'direct', {
+      'legacy-attachment-id': legacyEncrypted
+    })
+    const originalDownload = harness.client.downloadAttachment.bind(harness.client)
+    let downloadedPlaintext: Buffer | null = null
+    vi.spyOn(harness.client, 'downloadAttachment').mockImplementation(async (...args) => {
+      const result = await originalDownload(...args)
+      downloadedPlaintext = result.data
+      return result
+    })
+    const abort = new AbortController()
+    const deleteImplementation = vi.mocked(harness.http.deleteAttachment).getMockImplementation()!
+    vi.mocked(harness.http.deleteAttachment).mockImplementationOnce(
+      async (id, attachmentId, signal) => {
+        const response = await deleteImplementation(id, attachmentId, signal)
+        abort.abort()
+        return response
+      }
+    )
+
+    const upgraded = await harness.client.upgradeLegacyAttachment(
+      LOGIN_ID,
+      'legacy-attachment-id',
+      abort.signal,
+      () => harness.events.push('commit')
+    )
+
+    expect(upgraded).toMatchObject({
+      id: 'uploaded-attachment-1',
+      fileName: 'legacy-document.txt',
+      legacy: false
+    })
+    expect(harness.events).toEqual([
+      'download-metadata:legacy-attachment-id',
+      'download-bytes:legacy-attachment-id',
+      'create',
+      'upload-direct',
+      'sync',
+      'delete:legacy-attachment-id',
+      'commit',
+      'sync'
+    ])
+    expect(harness.syncSignals).toEqual([abort.signal, undefined])
+    await expect(harness.client.listPersonalLogins()).resolves.toEqual([
+      expect.objectContaining({
+        attachments: [
+          expect.objectContaining({ id: 'attachment-id' }),
+          expect.objectContaining({ id: 'uploaded-attachment-1', legacy: false })
+        ]
+      })
+    ])
+    expect(downloadedPlaintext).toEqual(Buffer.alloc(clearText.length))
+    clearText.fill(0)
+    legacyEncrypted.fill(0)
+    harness.uploadedBytes.forEach((bytes) => bytes.fill(0))
+  })
+
+  it('keeps both copies when legacy-fix deletion fails and rejects non-legacy fixes', async () => {
+    const sync = await encryptedSync()
+    const legacyPlaintext = Buffer.from('legacy retained payload', 'utf8')
+    const legacyKey = Buffer.alloc(64, 9)
+    const legacyEncrypted = encryptAttachmentFixture(legacyPlaintext, legacyKey)
+    const cipher = (sync.ciphers as JsonObject[])[0]!
+    const legacy = (cipher.attachments as JsonObject[]).find(
+      (attachment) => attachment.id === 'legacy-attachment-id'
+    )!
+    legacy.size = String(legacyEncrypted.length)
+    const harness = await attachmentMutationHarness(sync, 'direct', {
+      'legacy-attachment-id': legacyEncrypted
+    })
+    harness.failDelete('legacy-attachment-id')
+    const onCommitted = vi.fn()
+
+    await expect(
+      harness.client.upgradeLegacyAttachment(
+        LOGIN_ID,
+        'legacy-attachment-id',
+        undefined,
+        onCommitted
+      )
+    ).rejects.toMatchObject({ code: 'NETWORK' })
+    expect(onCommitted).not.toHaveBeenCalled()
+    const afterFailure = await harness.client.listPersonalLogins()
+    expect(afterFailure[0]!.attachments.map((attachment) => attachment.id)).toEqual([
+      'attachment-id',
+      'legacy-attachment-id',
+      'uploaded-attachment-1'
+    ])
+    await expect(
+      harness.client.upgradeLegacyAttachment(LOGIN_ID, 'attachment-id')
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    legacyPlaintext.fill(0)
+    legacyKey.fill(0)
+    legacyEncrypted.fill(0)
+    harness.uploadedBytes.forEach((bytes) => bytes.fill(0))
+  })
+
+  it('rolls back a validated replacement when legacy-fix is cancelled before delete starts', async () => {
+    const sync = await encryptedSync()
+    const clearText = Buffer.from('legacy cancel payload', 'utf8')
+    const legacyEncrypted = encryptAttachmentFixture(clearText, Buffer.alloc(64, 9))
+    const cipher = (sync.ciphers as JsonObject[])[0]!
+    const legacy = (cipher.attachments as JsonObject[]).find(
+      (attachment) => attachment.id === 'legacy-attachment-id'
+    )!
+    legacy.size = String(legacyEncrypted.length)
+    const harness = await attachmentMutationHarness(sync, 'direct', {
+      'legacy-attachment-id': legacyEncrypted
+    })
+    const abort = new AbortController()
+    const onCommitted = vi.fn()
+    vi.mocked(harness.http.sync).mockImplementationOnce(async () => {
+      harness.events.push('sync')
+      abort.abort()
+      return harness.sync
+    })
+
+    await expect(
+      harness.client.upgradeLegacyAttachment(
+        LOGIN_ID,
+        'legacy-attachment-id',
+        abort.signal,
+        onCommitted
+      )
+    ).rejects.toMatchObject({ code: 'ABORTED' })
+    expect(harness.events).toEqual([
+      'download-metadata:legacy-attachment-id',
+      'download-bytes:legacy-attachment-id',
+      'create',
+      'upload-direct',
+      'sync',
+      'delete:uploaded-attachment-1'
+    ])
+    expect(onCommitted).not.toHaveBeenCalled()
+    expect((cipher.attachments as JsonObject[]).map((attachment) => attachment.id)).toEqual([
+      'attachment-id',
+      'legacy-attachment-id'
+    ])
+    clearText.fill(0)
+    legacyEncrypted.fill(0)
+    harness.uploadedBytes.forEach((bytes) => bytes.fill(0))
+  })
+
+  it('aborts before upload without creating metadata', async () => {
+    const harness = await attachmentMutationHarness(await encryptedSync())
+    const abort = new AbortController()
+    abort.abort()
+    const clearText = Buffer.from('never uploaded', 'utf8')
+    await expect(
+      harness.client.uploadAttachment(LOGIN_ID, 'aborted-before-start.txt', clearText, abort.signal)
+    ).rejects.toMatchObject({ code: 'ABORTED' })
+    expect(harness.events).toEqual([])
+    expect(clearText.toString('utf8')).toBe('never uploaded')
+    clearText.fill(0)
   })
 
   it('rejects a decrypted passkey field longer than the local schema allows', async () => {

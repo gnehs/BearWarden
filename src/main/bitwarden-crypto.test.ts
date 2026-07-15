@@ -21,6 +21,7 @@ import {
   decryptRsaPrivateKey,
   deriveMasterKey,
   derivePasswordKey,
+  encryptBitwardenAttachmentBuffer,
   encryptBitwardenBytes,
   encryptBitwardenCipherBlob,
   encryptBitwardenString,
@@ -233,6 +234,44 @@ describe('Bitwarden EncString compatibility', () => {
 })
 
 describe('Bitwarden attachment EncArrayBuffer compatibility', () => {
+  it('encrypts authenticated type 2 envelopes without mutating caller-owned buffers', () => {
+    const plaintext = Buffer.from([0, 1, 2, 127, 128, 255])
+    const plaintextBefore = Buffer.from(plaintext)
+    const key = Buffer.from(COMBINED_KEY)
+    const keyBefore = Buffer.from(key)
+
+    const envelope = encryptBitwardenAttachmentBuffer(plaintext, key)
+
+    expect(envelope[0]).toBe(2)
+    expect(envelope.subarray(1, 17)).toHaveLength(16)
+    expect(envelope.subarray(17, 49)).toHaveLength(32)
+    expect((envelope.length - 49) % 16).toBe(0)
+    expect(decryptBitwardenAttachmentBuffer(envelope, key)).toEqual(plaintext)
+    expect(plaintext).toEqual(plaintextBefore)
+    expect(key).toEqual(keyBefore)
+  })
+
+  it('rejects invalid attachment encryption keys, oversized output, and detects tampering', () => {
+    const plaintext = Buffer.from('authenticated attachment')
+    expect(() => encryptBitwardenAttachmentBuffer(plaintext, Buffer.alloc(32))).toThrowError(
+      BitwardenCryptoError
+    )
+    expect(() =>
+      encryptBitwardenAttachmentBuffer(Buffer.allocUnsafe(128 * 1024 * 1024), COMBINED_KEY)
+    ).toThrowError(BitwardenCryptoError)
+
+    const envelope = encryptBitwardenAttachmentBuffer(plaintext, COMBINED_KEY)
+    const tamperedMac = Buffer.from(envelope)
+    tamperedMac[17] ^= 1
+    const tamperedCiphertext = Buffer.from(envelope)
+    tamperedCiphertext[tamperedCiphertext.length - 1] ^= 1
+    for (const tampered of [tamperedMac, tamperedCiphertext]) {
+      expect(() => decryptBitwardenAttachmentBuffer(tampered, COMBINED_KEY)).toThrowError(
+        BitwardenCryptoError
+      )
+    }
+  })
+
   it('decrypts authenticated type 2 and historical type 0 attachment envelopes', () => {
     const plaintext = Buffer.from([0, 1, 2, 127, 128, 255])
     const type2 = attachmentEnvelope(2, plaintext, COMBINED_KEY)

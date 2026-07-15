@@ -46,6 +46,22 @@ export interface BitwardenAttachmentDownload {
   download: (signal?: AbortSignal) => Promise<Buffer>
 }
 
+export interface BitwardenAttachmentUploadRequest {
+  /** Wrapped per-attachment key. */
+  key: string
+  /** Encrypted attachment filename. */
+  fileName: string
+  /** Encrypted type-2 envelope size in bytes. */
+  fileSize: number
+  lastKnownRevisionDate: string
+}
+
+export interface BitwardenAttachmentUpload {
+  attachmentId: string
+  url: string
+  fileUploadType: 'direct' | 'azure'
+}
+
 export interface PasswordTokenForm {
   email: string
   /** Already transformed by the caller's crypto layer; never a raw master password. */
@@ -92,6 +108,8 @@ export type BitwardenHttpErrorCode =
   | 'NOT_FOUND'
   | 'FORBIDDEN'
   | 'TOO_LARGE'
+  | 'STORAGE_LIMIT'
+  | 'ATTACHMENT_REJECTED'
 
 export class BitwardenHttpError extends Error {
   constructor(
@@ -190,8 +208,24 @@ function isPrivateAttachmentHostname(hostname: string): boolean {
   if (!normalized.includes(':')) return false
   if (normalized === '::' || normalized === '::1') return true
   if (/^f[cd]/u.test(normalized) || /^fe[89ab]/u.test(normalized)) return true
-  const mappedIpv4 = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/u.exec(normalized)?.[1]
-  return mappedIpv4 !== undefined && isPrivateIpv4Literal(mappedIpv4)
+  // Reject multicast and the deprecated site-local range in addition to
+  // link-local/ULA addresses. They must never be treated as public attachment
+  // capabilities.
+  if (/^ff/u.test(normalized) || /^fe[c-f]/u.test(normalized)) return true
+  const mappedDottedIpv4 = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/u.exec(normalized)?.[1]
+  if (mappedDottedIpv4 !== undefined) return isPrivateIpv4Literal(mappedDottedIpv4)
+
+  // WHATWG URL canonicalization rewrites dotted IPv4-mapped IPv6 literals to
+  // hexadecimal (for example ::ffff:127.0.0.1 becomes ::ffff:7f00:1). Decode
+  // those final 32 bits before applying the IPv4 private-range policy.
+  const mappedHexIpv4 = /^::ffff:([\da-f]{1,4}):([\da-f]{1,4})$/u.exec(normalized)
+  if (mappedHexIpv4) {
+    const high = Number.parseInt(mappedHexIpv4[1]!, 16)
+    const low = Number.parseInt(mappedHexIpv4[2]!, 16)
+    const ipv4 = `${high >>> 8}.${high & 0xff}.${low >>> 8}.${low & 0xff}`
+    return isPrivateIpv4Literal(ipv4)
+  }
+  return false
 }
 
 function normalizeAttachmentOrigin(value: string, allowHttpLoopback: boolean): string {
@@ -240,6 +274,54 @@ function resolveAttachmentDownloadUrl(
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
   return url.toString()
+}
+
+function resolveAttachmentUploadUrl(
+  value: string,
+  webVaultUrl: string,
+  allowedOrigins: ReadonlySet<string>,
+  allowHttpLoopback: boolean
+): URL {
+  // Azure uploads must never reinterpret an attacker-controlled relative URL
+  // as an authenticated Bitwarden origin.
+  if (!/^[A-Za-z][A-Za-z\d+.-]*:/u.test(value)) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  const resolved = new URL(
+    resolveAttachmentDownloadUrl(value, webVaultUrl, allowedOrigins, allowHttpLoopback)
+  )
+  if (resolved.protocol !== 'https:' || isPrivateAttachmentHostname(resolved.hostname)) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return resolved
+}
+
+function assertAttachmentBuffer(value: Buffer): Buffer {
+  if (!Buffer.isBuffer(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  if (value.length < 1 || value.length > MAX_ATTACHMENT_BYTES) {
+    throw new BitwardenHttpError(
+      value.length > MAX_ATTACHMENT_BYTES ? 'TOO_LARGE' : 'INVALID_RESPONSE'
+    )
+  }
+  return value
+}
+
+function attachmentBody(value: Buffer): Uint8Array<ArrayBuffer> {
+  if (!(value.buffer instanceof ArrayBuffer)) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+}
+
+function assertEncryptedAttachmentValue(value: string): string {
+  if (
+    !string(value) ||
+    Buffer.byteLength(value, 'utf8') > MAX_ATTACHMENT_URL_BYTES ||
+    /[\0\r\n]/u.test(value)
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return value
 }
 
 function appendPath(base: URL, path: string): string {
@@ -535,6 +617,129 @@ export class BitwardenHttpClient {
     }
   }
 
+  async createAttachment(
+    cipherId: string,
+    request: BitwardenAttachmentUploadRequest,
+    signal?: AbortSignal
+  ): Promise<BitwardenAttachmentUpload> {
+    if (!request || typeof request !== 'object') {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    const key = assertEncryptedAttachmentValue(request.key)
+    const fileName = assertEncryptedAttachmentValue(request.fileName)
+    if (
+      !Number.isSafeInteger(request.fileSize) ||
+      request.fileSize < 1 ||
+      request.fileSize > MAX_ATTACHMENT_BYTES
+    ) {
+      throw new BitwardenHttpError(
+        request.fileSize > MAX_ATTACHMENT_BYTES ? 'TOO_LARGE' : 'INVALID_RESPONSE'
+      )
+    }
+    if (
+      !string(request.lastKnownRevisionDate) ||
+      !Number.isFinite(Date.parse(request.lastKnownRevisionDate))
+    ) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    const response = await this.requestJson(
+      'POST',
+      `${this.urls.apiUrl}/ciphers/${encodeURIComponent(assertId(cipherId))}/attachment/v2`,
+      {
+        body: {
+          key,
+          fileName,
+          fileSize: request.fileSize,
+          adminRequest: false,
+          lastKnownRevisionDate: request.lastKnownRevisionDate
+        },
+        signal
+      }
+    )
+    return parseAttachmentUpload(response)
+  }
+
+  async uploadAttachmentDirect(
+    cipherId: string,
+    attachmentId: string,
+    encryptedFileName: string,
+    data: Buffer,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const bytes = assertAttachmentBuffer(data)
+    const form = new FormData()
+    form.append(
+      'data',
+      new Blob([attachmentBody(bytes)], { type: 'application/octet-stream' }),
+      assertEncryptedAttachmentValue(encryptedFileName)
+    )
+    await this.requestMultipart(
+      'POST',
+      `${this.urls.apiUrl}/ciphers/${encodeURIComponent(assertId(cipherId))}/attachment/${encodeURIComponent(assertId(attachmentId))}`,
+      form,
+      signal
+    )
+  }
+
+  async uploadAttachmentAzure(url: string, data: Buffer, signal?: AbortSignal): Promise<void> {
+    const bytes = assertAttachmentBuffer(data)
+    const uploadUrl = resolveAttachmentUploadUrl(
+      url,
+      this.urls.webVaultUrl,
+      this.attachmentDownloadOrigins,
+      this.allowHttpLoopback
+    )
+    const uploadHeaders = new Headers({
+      'cache-control': 'no-store',
+      'content-type': 'application/octet-stream',
+      'x-ms-blob-type': 'BlockBlob'
+    })
+    const serviceVersion = uploadUrl.searchParams.get('sv')
+    if (serviceVersion !== null) {
+      if (!/^\d{4}-\d{2}-\d{2}$/u.test(serviceVersion)) {
+        throw new BitwardenHttpError('INVALID_RESPONSE')
+      }
+      uploadHeaders.set('x-ms-version', serviceVersion)
+    }
+
+    if (signal?.aborted) throw new BitwardenHttpError('ABORTED')
+    const timeoutSignal = AbortSignal.timeout(this.timeoutMs)
+    const fetchSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal
+    let response: Response
+    try {
+      response = await this.fetchFn(uploadUrl.toString(), {
+        method: 'PUT',
+        headers: uploadHeaders,
+        body: attachmentBody(bytes),
+        cache: 'no-store',
+        credentials: 'omit',
+        redirect: 'error',
+        referrerPolicy: 'no-referrer',
+        signal: fetchSignal
+      })
+    } catch (error) {
+      throw this.mapFetchFailure(error, signal, timeoutSignal)
+    }
+    if (response.status !== 201) {
+      await response.body?.cancel().catch(() => undefined)
+      throw toHttpError(response.status, null)
+    }
+    await response.body?.cancel().catch(() => undefined)
+  }
+
+  async deleteAttachment(
+    cipherId: string,
+    attachmentId: string,
+    signal?: AbortSignal
+  ): Promise<JsonObject> {
+    const response = await this.requestJson(
+      'DELETE',
+      `${this.urls.apiUrl}/ciphers/${encodeURIComponent(assertId(cipherId))}/attachment/${encodeURIComponent(assertId(attachmentId))}`,
+      { signal }
+    )
+    return parseDeletedAttachment(response)
+  }
+
   async createFolder(ciphertext: JsonObject, signal?: AbortSignal): Promise<JsonObject> {
     return this.entity('POST', '/folders', ciphertext, signal)
   }
@@ -634,6 +839,65 @@ export class BitwardenHttpClient {
     this.session = updated
     await this.options.onSessionChanged?.({ ...updated })
     return updated
+  }
+
+  private mapFetchFailure(
+    error: unknown,
+    signal: AbortSignal | undefined,
+    timeoutSignal: AbortSignal
+  ): BitwardenHttpError {
+    if (signal?.aborted) return new BitwardenHttpError('ABORTED')
+    if (timeoutSignal.aborted) return new BitwardenHttpError('NETWORK')
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return new BitwardenHttpError('ABORTED')
+    }
+    return new BitwardenHttpError('NETWORK')
+  }
+
+  private async requestMultipart(
+    method: 'POST',
+    url: string,
+    form: FormData,
+    signal?: AbortSignal
+  ): Promise<void> {
+    let refreshed = false
+    for (;;) {
+      if (signal?.aborted) throw new BitwardenHttpError('ABORTED')
+      if (!this.session) throw new BitwardenHttpError('AUTH')
+      const attemptedAccessToken = this.session.accessToken
+      const requestHeaders = new Headers({
+        authorization: `Bearer ${attemptedAccessToken}`,
+        'bitwarden-client-name': this.options.clientName ?? 'desktop',
+        'bitwarden-client-version': this.options.clientVersion ?? '1.0.0',
+        'cache-control': 'no-store'
+      })
+      const timeoutSignal = AbortSignal.timeout(this.timeoutMs)
+      const fetchSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal
+      let response: Response
+      try {
+        response = await this.fetchFn(url, {
+          method,
+          headers: requestHeaders,
+          body: form,
+          cache: 'no-store',
+          credentials: 'omit',
+          redirect: 'error',
+          signal: fetchSignal
+        })
+      } catch (error) {
+        throw this.mapFetchFailure(error, signal, timeoutSignal)
+      }
+
+      if (response.status === 401 && !refreshed) {
+        refreshed = true
+        await response.body?.cancel().catch(() => undefined)
+        if (this.session?.accessToken === attemptedAccessToken) await this.refresh(signal)
+        continue
+      }
+      const text = await boundedResponseText(response)
+      if (!response.ok) throw toHttpError(response.status, parseErrorJson(text))
+      return
+    }
   }
 
   private async requestAttachmentBytes(
@@ -811,6 +1075,42 @@ interface ParsedAttachmentDownload {
   sizeName: string | null
 }
 
+function parseAttachmentUpload(value: JsonValue): BitwardenAttachmentUpload {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const attachmentId = string(value.attachmentId ?? value.AttachmentId)
+  const url = string(value.url ?? value.Url)
+  const rawFileUploadType = value.fileUploadType ?? value.FileUploadType
+  const normalizedFileUploadType =
+    typeof rawFileUploadType === 'string' ? rawFileUploadType.toLowerCase() : rawFileUploadType
+  const fileUploadType =
+    normalizedFileUploadType === 0 || normalizedFileUploadType === 'direct'
+      ? 'direct'
+      : normalizedFileUploadType === 1 || normalizedFileUploadType === 'azure'
+        ? 'azure'
+        : null
+  if (
+    !attachmentId ||
+    !url ||
+    attachmentId.trim() !== attachmentId ||
+    url.trim() !== url ||
+    /[\0\r\n]/u.test(attachmentId) ||
+    /[\0\r\n\\]/u.test(url) ||
+    Buffer.byteLength(attachmentId, 'utf8') > MAX_ATTACHMENT_URL_BYTES ||
+    Buffer.byteLength(url, 'utf8') > MAX_ATTACHMENT_URL_BYTES ||
+    fileUploadType === null
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return { attachmentId, url, fileUploadType }
+}
+
+function parseDeletedAttachment(value: JsonValue): JsonObject {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const cipher = value.cipher ?? value.Cipher
+  if (!isRecord(cipher)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  return cipher
+}
+
 function parseAttachmentDownload(
   value: JsonValue,
   expectedAttachmentId: string
@@ -895,7 +1195,13 @@ function parseSession(value: JsonValue, now: number): BitwardenSession {
 
 function toHttpError(status: number, payload: JsonValue): BitwardenHttpError {
   const details = isRecord(payload) ? payload : undefined
-  const message = [details?.error, details?.errorMessage, details?.message, details?.ErrorMessage]
+  const message = [
+    details?.error,
+    details?.errorMessage,
+    details?.message,
+    details?.ErrorMessage,
+    details?.reason
+  ]
     .filter((value): value is string => typeof value === 'string')
     .join(' ')
     .toLowerCase()
@@ -907,6 +1213,27 @@ function toHttpError(status: number, payload: JsonValue): BitwardenHttpError {
   if (message.includes('two factor')) return new BitwardenHttpError('TWO_FACTOR', status, details)
   if (message.includes('new device') || message.includes('verification')) {
     return new BitwardenHttpError('NEW_DEVICE', status, details)
+  }
+  if (
+    status === 400 &&
+    (message.includes('storage limit') ||
+      message.includes('storage quota') ||
+      message.includes('maximum storage') ||
+      message.includes('storage space') ||
+      message.includes('quota'))
+  ) {
+    // Server wording is intentionally not retained in error metadata: quota
+    // responses can contain deployment-specific account details.
+    return new BitwardenHttpError('STORAGE_LIMIT', status)
+  }
+  if (
+    status === 400 &&
+    message.includes('attachment') &&
+    (message.includes('disabled') ||
+      message.includes('not enabled') ||
+      message.includes('not allowed'))
+  ) {
+    return new BitwardenHttpError('ATTACHMENT_REJECTED', status)
   }
   if (
     status === 400 &&

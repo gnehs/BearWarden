@@ -51,6 +51,8 @@ import {
   Sparkles,
   Star,
   Trash2,
+  Upload,
+  Wrench,
   X
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -58,6 +60,9 @@ import { toast } from 'sonner'
 import type {
   AppSettings,
   AppSettingsUpdate,
+  AttachmentOperationKind,
+  AttachmentOperationStage,
+  AttachmentProgressEvent,
   FolderView,
   LoginSummary,
   LoginView,
@@ -70,7 +75,8 @@ import type {
   VaultExportResult,
   VaultImportResult,
   VaultItemType,
-  VaultSecretField
+  VaultSecretField,
+  VaultAttachmentView
 } from '../../../shared/vault-contract'
 import { MAX_LOGIN_MOVE_MANY_IDS } from '../../../shared/vault-contract'
 import bearCutUrl from '../assets/bear-cut.svg'
@@ -114,6 +120,7 @@ import {
 } from '@renderer/components/ui/alert-dialog'
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -138,7 +145,7 @@ import {
   CommandList
 } from '@renderer/components/ui/command'
 import { Kbd } from '@renderer/components/ui/kbd'
-import { Progress } from '@renderer/components/ui/progress'
+import { Progress, ProgressLabel, ProgressValue } from '@renderer/components/ui/progress'
 import {
   Select,
   SelectContent,
@@ -261,6 +268,52 @@ interface PendingReprompt {
   reject: (error: Error) => void
 }
 
+interface AttachmentOperationState extends AttachmentProgressEvent {
+  fileName: string | null
+  canceling: boolean
+}
+
+interface AttachmentDeleteTarget {
+  itemId: string
+  attachmentId: string
+  fileName: string
+}
+
+const initialAttachmentStages: Record<AttachmentOperationKind, AttachmentOperationStage> = {
+  download: 'choosing-file',
+  upload: 'choosing-file',
+  delete: 'deleting',
+  'fix-legacy': 'downloading'
+}
+
+const attachmentStageLabels: Record<AttachmentOperationStage, string> = {
+  'choosing-file': '等待選擇檔案',
+  'reading-file': '正在安全讀取檔案',
+  encrypting: '正在本機加密',
+  downloading: '正在下載附件',
+  uploading: '正在上傳加密附件',
+  deleting: '正在刪除附件',
+  syncing: '正在同步附件清單'
+}
+
+function attachmentProgressPercent(progress: AttachmentProgressEvent): number | null {
+  if (progress.totalBytes === null || progress.totalBytes <= 0) return null
+  return Math.round(
+    Math.min(100, Math.max(0, (progress.completedBytes / progress.totalBytes) * 100))
+  )
+}
+
+function attachmentStageLabel(progress: AttachmentProgressEvent): string {
+  if (progress.stage === 'choosing-file' && progress.kind === 'download') {
+    return '等待選擇儲存位置'
+  }
+  return attachmentStageLabels[progress.stage]
+}
+
+function isAttachmentCanceled(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('ATTACHMENT_CANCELED')
+}
+
 const emptyRevealedCustomFields: RevealedCustomFieldsState = { itemId: null, values: {} }
 
 interface TooltipIconButtonProps extends React.ComponentProps<typeof Button> {
@@ -288,10 +341,14 @@ function describeError(error: unknown): string {
     INVALID_INPUT: '輸入內容無效，請檢查後再試。',
     DUPLICATE_NAME: '名稱已被使用，請換一個名稱。',
     INVALID_URL: '網站網址格式不正確。',
-    ATTACHMENT_FAILED: '附件下載失敗；伺服器內容可能已變更，請同步後再試。'
+    ATTACHMENT_FAILED: '附件操作失敗；伺服器內容可能已變更，請同步後再試。',
+    ATTACHMENT_TOO_LARGE: '附件太大，無法在安全的記憶體上限內完成加密。',
+    ATTACHMENT_STORAGE_LIMIT: 'Bitwarden 附件儲存空間不足，請釋出空間後再試。',
+    ATTACHMENT_REJECTED: '此伺服器或帳號目前不允許新增這個附件。',
+    ATTACHMENT_CANCELED: '附件操作已取消。'
   }
   const code = Object.keys(messages).find((key) => error.message.includes(key))
-  return code ? messages[code] : '操作未完成，你的資料沒有被更動。'
+  return code ? messages[code] : '操作未完成，請重新整理後確認目前狀態。'
 }
 
 function isRepromptRequired(error: unknown): boolean {
@@ -716,6 +773,11 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [emptyTrashDialogOpen, setEmptyTrashDialogOpen] = useState(false)
   const [passwordHistoryDialogOpen, setPasswordHistoryDialogOpen] = useState(false)
   const [generatorDialogOpen, setGeneratorDialogOpen] = useState(false)
+  const [attachmentOperation, setAttachmentOperation] = useState<AttachmentOperationState | null>(
+    null
+  )
+  const [attachmentDeleteTarget, setAttachmentDeleteTarget] =
+    useState<AttachmentDeleteTarget | null>(null)
   const [repromptPrompt, setRepromptPrompt] = useState<RepromptPromptState | null>(null)
   const [repromptBusy, setRepromptBusy] = useState(false)
   const [authorizationTokenState, setAuthorizationTokenState] = useState<Record<string, string>>({})
@@ -748,11 +810,64 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const editorDirtyRef = useRef(false)
   const editorTransitionApprovedRef = useRef(false)
   const pendingEditorActionRef = useRef<(() => void) | null>(null)
+  const attachmentOperationRef = useRef<AttachmentOperationState | null>(null)
 
   const handleEditorDirtyChange = useCallback((dirty: boolean): void => {
     editorDirtyRef.current = dirty
     setEditorDirty(dirty)
   }, [])
+
+  const beginAttachmentOperation = useCallback(
+    (kind: AttachmentOperationKind, itemId: string, fileName: string | null): string => {
+      const operationId = crypto.randomUUID()
+      const operation: AttachmentOperationState = {
+        operationId,
+        itemId,
+        kind,
+        stage: initialAttachmentStages[kind],
+        completedBytes: 0,
+        totalBytes: null,
+        fileName,
+        canceling: false
+      }
+      attachmentOperationRef.current = operation
+      setAttachmentOperation(operation)
+      setAttachmentDeleteTarget(null)
+      return operationId
+    },
+    []
+  )
+
+  const finishAttachmentOperation = useCallback((operationId: string): void => {
+    if (attachmentOperationRef.current?.operationId !== operationId) return
+    attachmentOperationRef.current = null
+    setAttachmentOperation((current) => (current?.operationId === operationId ? null : current))
+  }, [])
+
+  const cancelAndClearAttachmentOperation = useCallback((): void => {
+    const operation = attachmentOperationRef.current
+    attachmentOperationRef.current = null
+    setAttachmentOperation(null)
+    setAttachmentDeleteTarget(null)
+    if (operation) {
+      void window.bearwarden.logins
+        .cancelAttachment({ operationId: operation.operationId })
+        .catch(() => undefined)
+    }
+  }, [])
+
+  const isCurrentAttachmentOperation = useCallback(
+    (operationId: string, itemId: string): boolean => {
+      const current = attachmentOperationRef.current
+      return (
+        current !== null &&
+        current.operationId === operationId &&
+        current.itemId === itemId &&
+        selectedIdRef.current === itemId
+      )
+    },
+    []
+  )
 
   const requestEditorTransition = useCallback((action: () => void): void => {
     if (editorTransitionApprovedRef.current || !editorDirtyRef.current) {
@@ -1128,6 +1243,23 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     })
   }, [invalidateProtectedDetails])
 
+  const updateSelectedAttachments = useCallback(
+    (
+      itemId: string,
+      update: (attachments: VaultAttachmentView[]) => VaultAttachmentView[]
+    ): void => {
+      if (selectedIdRef.current !== itemId) return
+      setSelectedLogin((current) => {
+        if (!current || current.id !== itemId) return current
+        const attachments = update(current.attachments)
+        const next = { ...current, attachments, attachmentCount: attachments.length }
+        cacheLoginDetail(detailCacheRef.current, next)
+        return next
+      })
+    },
+    []
+  )
+
   const refreshAfterSync = useCallback(async (): Promise<void> => {
     const applyRefresh = async (): Promise<void> => {
       await loadVault()
@@ -1168,7 +1300,51 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   useEffect(() => {
     selectedIdRef.current = selectedId
-  }, [selectedId])
+    let active = true
+    queueMicrotask(() => {
+      if (!active) return
+      const operation = attachmentOperationRef.current
+      if (operation && operation.itemId !== selectedId) cancelAndClearAttachmentOperation()
+      setAttachmentDeleteTarget((current) => (current?.itemId === selectedId ? current : null))
+    })
+    return () => {
+      active = false
+    }
+  }, [cancelAndClearAttachmentOperation, selectedId])
+
+  useEffect(() => {
+    const unsubscribe = window.bearwarden.logins.onAttachmentProgress((progress) => {
+      const current = attachmentOperationRef.current
+      if (
+        !current ||
+        progress.operationId !== current.operationId ||
+        progress.itemId !== current.itemId ||
+        progress.itemId !== selectedIdRef.current ||
+        progress.kind !== current.kind
+      ) {
+        return
+      }
+      const next: AttachmentOperationState = {
+        ...current,
+        ...progress,
+        canceling: current.canceling
+      }
+      attachmentOperationRef.current = next
+      setAttachmentOperation((previous) =>
+        previous?.operationId === next.operationId ? next : previous
+      )
+    })
+    return () => {
+      unsubscribe()
+      const operation = attachmentOperationRef.current
+      attachmentOperationRef.current = null
+      if (operation) {
+        void window.bearwarden.logins
+          .cancelAttachment({ operationId: operation.operationId })
+          .catch(() => undefined)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const unsubscribe = window.bearwarden.vault.onChanged(() => {
@@ -1492,6 +1668,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   }, [])
 
   const performLockVault = useCallback(async (): Promise<void> => {
+    cancelAndClearAttachmentOperation()
     clearDetailCache()
     setRevealedSecrets(emptyRevealedSecrets)
     setRevealedCustomFields(emptyRevealedCustomFields)
@@ -1504,7 +1681,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     } catch (lockError) {
       announceError(describeError(lockError))
     }
-  }, [clearDetailCache, onLocked])
+  }, [cancelAndClearAttachmentOperation, clearDetailCache, onLocked])
 
   const lockVault = useCallback(async (): Promise<void> => {
     if (editorDirtyRef.current) {
@@ -2252,22 +2429,168 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   }
 
   async function downloadAttachment(attachmentId: string): Promise<void> {
-    if (!selectedLogin) return
+    if (!selectedLogin || attachmentOperationRef.current) return
     const itemId = selectedLogin.id
-    setBusy(true)
+    const attachment = selectedLogin.attachments.find((entry) => entry.id === attachmentId)
+    const operationId = beginAttachmentOperation('download', itemId, attachment?.fileName ?? null)
     try {
       const result = await withReprompt([itemId], (tokenFor) =>
         window.bearwarden.logins.downloadAttachment({
           id: itemId,
           attachmentId,
+          operationId,
           ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
         })
       )
-      if (!result.canceled) announce(`已下載「${result.fileName}」。`)
+      if (!result.canceled && selectedIdRef.current === itemId) {
+        announce(`已下載「${result.fileName}」。`)
+      }
+      if (!result.canceled) {
+        await refreshItems().catch(() =>
+          announceError('附件已下載，但無法重新整理清單；請稍後再同步。')
+        )
+      }
     } catch (downloadError) {
-      announceError(describeError(downloadError))
+      if (
+        isCurrentAttachmentOperation(operationId, itemId) &&
+        !isAttachmentCanceled(downloadError)
+      ) {
+        announceError(describeError(downloadError))
+      }
     } finally {
-      setBusy(false)
+      finishAttachmentOperation(operationId)
+    }
+  }
+
+  async function uploadAttachment(): Promise<void> {
+    if (!selectedLogin || attachmentOperationRef.current) return
+    const itemId = selectedLogin.id
+    const operationId = beginAttachmentOperation('upload', itemId, null)
+    try {
+      const result = await withReprompt([itemId], (tokenFor) =>
+        window.bearwarden.logins.uploadAttachment({
+          id: itemId,
+          operationId,
+          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+        })
+      )
+      if (result.attachment) {
+        updateSelectedAttachments(itemId, (attachments) =>
+          attachments.some((entry) => entry.id === result.attachment!.id)
+            ? attachments.map((entry) =>
+                entry.id === result.attachment!.id ? result.attachment! : entry
+              )
+            : [...attachments, result.attachment!]
+        )
+        if (selectedIdRef.current === itemId) {
+          announce(`已上傳「${result.attachment.fileName}」。`)
+        }
+        await refreshItems().catch(() =>
+          announceError('附件已上傳，但無法重新整理清單；請稍後再同步。')
+        )
+      }
+    } catch (uploadError) {
+      if (isCurrentAttachmentOperation(operationId, itemId) && !isAttachmentCanceled(uploadError)) {
+        announceError(describeError(uploadError))
+      }
+    } finally {
+      finishAttachmentOperation(operationId)
+    }
+  }
+
+  async function deleteSelectedAttachment(): Promise<void> {
+    const target = attachmentDeleteTarget
+    if (!target || target.itemId !== selectedIdRef.current || attachmentOperationRef.current) return
+    setAttachmentDeleteTarget(null)
+    const operationId = beginAttachmentOperation('delete', target.itemId, target.fileName)
+    try {
+      const result = await withReprompt([target.itemId], (tokenFor) =>
+        window.bearwarden.logins.deleteAttachment({
+          id: target.itemId,
+          attachmentId: target.attachmentId,
+          operationId,
+          ...(tokenFor(target.itemId) ? { authorizationToken: tokenFor(target.itemId) } : {})
+        })
+      )
+      updateSelectedAttachments(target.itemId, (attachments) =>
+        attachments.filter((entry) => entry.id !== result.attachmentId)
+      )
+      if (selectedIdRef.current === target.itemId) announce(`已刪除「${target.fileName}」。`)
+      await refreshItems().catch(() =>
+        announceError('附件已刪除，但無法重新整理清單；請稍後再同步。')
+      )
+    } catch (deleteError) {
+      if (
+        isCurrentAttachmentOperation(operationId, target.itemId) &&
+        !isAttachmentCanceled(deleteError)
+      ) {
+        announceError(describeError(deleteError))
+      }
+    } finally {
+      finishAttachmentOperation(operationId)
+    }
+  }
+
+  async function fixLegacyAttachment(attachmentId: string): Promise<void> {
+    if (!selectedLogin || attachmentOperationRef.current) return
+    const itemId = selectedLogin.id
+    const attachment = selectedLogin.attachments.find((entry) => entry.id === attachmentId)
+    if (!attachment?.legacy) return
+    const operationId = beginAttachmentOperation('fix-legacy', itemId, attachment.fileName)
+    try {
+      const result = await withReprompt([itemId], (tokenFor) =>
+        window.bearwarden.logins.fixLegacyAttachment({
+          id: itemId,
+          attachmentId,
+          operationId,
+          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+        })
+      )
+      updateSelectedAttachments(itemId, (attachments) => {
+        const replacementIndex = attachments.findIndex((entry) => entry.id === attachmentId)
+        if (replacementIndex < 0) return [...attachments, result.attachment]
+        return attachments.map((entry, index) =>
+          index === replacementIndex ? result.attachment : entry
+        )
+      })
+      if (selectedIdRef.current === itemId) announce(`已修復「${attachment.fileName}」。`)
+      await refreshItems().catch(() =>
+        announceError('附件已修復，但無法重新整理清單；請稍後再同步。')
+      )
+    } catch (fixError) {
+      if (isCurrentAttachmentOperation(operationId, itemId) && !isAttachmentCanceled(fixError)) {
+        announceError(describeError(fixError))
+      }
+    } finally {
+      finishAttachmentOperation(operationId)
+    }
+  }
+
+  async function cancelAttachmentOperation(): Promise<void> {
+    const operation = attachmentOperationRef.current
+    if (!operation || operation.canceling) return
+    const canceling = { ...operation, canceling: true }
+    attachmentOperationRef.current = canceling
+    setAttachmentOperation(canceling)
+    try {
+      const result = await window.bearwarden.logins.cancelAttachment({
+        operationId: operation.operationId
+      })
+      if (
+        !result.canceled &&
+        attachmentOperationRef.current?.operationId === operation.operationId
+      ) {
+        const current = { ...attachmentOperationRef.current, canceling: false }
+        attachmentOperationRef.current = current
+        setAttachmentOperation(current)
+      }
+    } catch (cancelError) {
+      if (attachmentOperationRef.current?.operationId === operation.operationId) {
+        const current = { ...attachmentOperationRef.current, canceling: false }
+        attachmentOperationRef.current = current
+        setAttachmentOperation(current)
+        announceError(describeError(cancelError))
+      }
     }
   }
 
@@ -3155,20 +3478,72 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     </Card>
                   )}
 
-                  {selectedLogin.attachments.length > 0 && (
-                    <Card
-                      className="detail-card gap-0 py-0"
-                      role="region"
-                      aria-labelledby="attachments-title"
-                    >
-                      <CardHeader className="bg-muted rounded-none border-b">
-                        <CardTitle id="attachments-title">附件</CardTitle>
-                        <CardDescription>
-                          {selectedLogin.attachments.length} 個檔案；解密只在主程序進行
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="contents">
-                        <div className="passkey-list">
+                  <Card
+                    className="detail-card gap-0 py-0"
+                    role="region"
+                    aria-labelledby="attachments-title"
+                  >
+                    <CardHeader className="bg-muted rounded-none border-b">
+                      <CardTitle id="attachments-title">附件</CardTitle>
+                      <CardDescription>
+                        {selectedLogin.attachments.length} 個檔案；只在主程序讀取與加密
+                      </CardDescription>
+                      <CardAction>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          disabled={
+                            busy || attachmentOperation !== null || syncStatus.state !== 'ready'
+                          }
+                          onClick={() => void uploadAttachment()}
+                        >
+                          {attachmentOperation?.kind === 'upload' ? (
+                            <Spinner data-icon="inline-start" />
+                          ) : (
+                            <Upload data-icon="inline-start" />
+                          )}
+                          上傳附件
+                        </Button>
+                      </CardAction>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-4">
+                      {attachmentOperation?.itemId === selectedLogin.id && (
+                        <section className="flex flex-col gap-3" aria-live="polite">
+                          <Progress value={attachmentProgressPercent(attachmentOperation)}>
+                            <ProgressLabel>
+                              {attachmentStageLabel(attachmentOperation)}
+                              {attachmentOperation.fileName
+                                ? `：${attachmentOperation.fileName}`
+                                : ''}
+                            </ProgressLabel>
+                            <ProgressValue>
+                              {() =>
+                                attachmentProgressPercent(attachmentOperation) === null
+                                  ? '處理中'
+                                  : `${attachmentProgressPercent(attachmentOperation)}%`
+                              }
+                            </ProgressValue>
+                          </Progress>
+                          <Button
+                            className="self-end"
+                            variant="outline"
+                            size="sm"
+                            type="button"
+                            disabled={attachmentOperation.canceling}
+                            onClick={() => void cancelAttachmentOperation()}
+                          >
+                            {attachmentOperation.canceling ? (
+                              <Spinner data-icon="inline-start" />
+                            ) : (
+                              <X data-icon="inline-start" />
+                            )}
+                            {attachmentOperation.canceling ? '正在取消' : '取消'}
+                          </Button>
+                        </section>
+                      )}
+                      {selectedLogin.attachments.length > 0 ? (
+                        <div className="passkey-list -mx-(--card-spacing) -mb-(--card-spacing)">
                           {selectedLogin.attachments.map((attachment) => (
                             <article key={attachment.id} className="passkey-item attachment-item">
                               <span className="passkey-icon" aria-hidden="true">
@@ -3181,23 +3556,81 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                                   {attachment.legacy ? ' · 舊式未驗證加密' : ''}
                                 </span>
                               </div>
-                              <TooltipIconButton
-                                variant="outline"
-                                size="icon"
-                                className="icon-button"
-                                type="button"
-                                label={`下載 ${attachment.fileName}`}
-                                disabled={busy}
-                                onClick={() => void downloadAttachment(attachment.id)}
+                              <section
+                                className="flex flex-wrap items-center justify-end gap-1"
+                                aria-label={`${attachment.fileName} 的附件操作`}
                               >
-                                <Download />
-                              </TooltipIconButton>
+                                {attachment.legacy && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    type="button"
+                                    disabled={
+                                      busy ||
+                                      attachmentOperation !== null ||
+                                      syncStatus.state !== 'ready'
+                                    }
+                                    onClick={() => void fixLegacyAttachment(attachment.id)}
+                                  >
+                                    <Wrench data-icon="inline-start" />
+                                    修復
+                                  </Button>
+                                )}
+                                <TooltipIconButton
+                                  variant="outline"
+                                  size="icon"
+                                  className="icon-button"
+                                  type="button"
+                                  label={`下載 ${attachment.fileName}`}
+                                  disabled={
+                                    busy ||
+                                    attachmentOperation !== null ||
+                                    syncStatus.state !== 'ready'
+                                  }
+                                  onClick={() => void downloadAttachment(attachment.id)}
+                                >
+                                  <Download data-icon="inline-start" />
+                                </TooltipIconButton>
+                                <TooltipIconButton
+                                  variant="destructive"
+                                  size="icon"
+                                  className="icon-button"
+                                  type="button"
+                                  label={`刪除 ${attachment.fileName}`}
+                                  disabled={
+                                    busy ||
+                                    attachmentOperation !== null ||
+                                    syncStatus.state !== 'ready'
+                                  }
+                                  onClick={() =>
+                                    setAttachmentDeleteTarget({
+                                      itemId: selectedLogin.id,
+                                      attachmentId: attachment.id,
+                                      fileName: attachment.fileName
+                                    })
+                                  }
+                                >
+                                  <Trash2 data-icon="inline-start" />
+                                </TooltipIconButton>
+                              </section>
                             </article>
                           ))}
                         </div>
-                      </CardContent>
-                    </Card>
-                  )}
+                      ) : (
+                        <Empty className="py-4">
+                          <EmptyHeader>
+                            <EmptyMedia variant="icon">
+                              <Paperclip />
+                            </EmptyMedia>
+                            <EmptyTitle>尚無附件</EmptyTitle>
+                            <EmptyDescription>
+                              上傳的檔案會先在本機加密，再傳送至 Bitwarden。
+                            </EmptyDescription>
+                          </EmptyHeader>
+                        </Empty>
+                      )}
+                    </CardContent>
+                  </Card>
 
                   {selectedLogin.passwordHistoryCount > 0 && (
                     <Card
@@ -3489,6 +3922,33 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             onImported={refreshAfterImport}
           />
         )}
+        <AlertDialog
+          open={attachmentDeleteTarget !== null}
+          onOpenChange={(open) => {
+            if (!open) setAttachmentDeleteTarget(null)
+          }}
+        >
+          <AlertDialogContent size="sm">
+            <AlertDialogHeader>
+              <AlertDialogTitle>刪除附件？</AlertDialogTitle>
+              <AlertDialogDescription>
+                「{attachmentDeleteTarget?.fileName ?? '這個附件'}」會從 Bitwarden
+                永久刪除，且無法復原。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel type="button">保留附件</AlertDialogCancel>
+              <AlertDialogAction
+                type="button"
+                variant="destructive"
+                onClick={() => void deleteSelectedAttachment()}
+              >
+                <Trash2 data-icon="inline-start" />
+                刪除附件
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         <AlertDialog
           open={discardEditorDialogOpen && editorDirty}
           onOpenChange={(open) => {

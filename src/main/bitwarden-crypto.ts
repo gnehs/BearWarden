@@ -1157,6 +1157,44 @@ export function decryptBitwardenAttachmentBuffer(envelope: Buffer, key: Buffer):
   }
 }
 
+/**
+ * Encrypts caller-owned bytes as Bitwarden's authenticated type-2 binary
+ * EncArrayBuffer attachment envelope:
+ * `[2][16-byte IV][32-byte HMAC-SHA256][AES-256-CBC ciphertext]`.
+ *
+ * The returned Buffer is caller-owned. Neither the plaintext nor key is
+ * modified; all temporary key-dependent material is cleared before return.
+ */
+export function encryptBitwardenAttachmentBuffer(plaintext: Buffer, key: Buffer): Buffer {
+  requireBuffer(plaintext, 'attachment plaintext')
+  requireBuffer(key, 'attachment key', COMBINED_KEY_BYTES)
+
+  // PKCS#7 always appends at least one byte. Reject before encryption when the
+  // resulting envelope could exceed the in-memory attachment safety ceiling.
+  const ciphertextLength = Math.ceil((plaintext.length + 1) / IV_BYTES) * IV_BYTES
+  const envelopeLength = 1 + IV_BYTES + MAC_BYTES + ciphertextLength
+  if (envelopeLength > MAX_ATTACHMENT_CIPHERTEXT_BYTES) {
+    throw new BitwardenCryptoError(
+      'INVALID_INPUT',
+      'attachment envelope exceeds the maximum supported size'
+    )
+  }
+
+  const iv = randomBytes(IV_BYTES)
+  let ciphertext: Buffer | undefined
+  let mac: Buffer | undefined
+  try {
+    const cipher = createCipheriv('aes-256-cbc', key.subarray(0, KEY_BYTES), iv)
+    ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()])
+    mac = hmacSha256(key.subarray(KEY_BYTES), iv, ciphertext)
+    return Buffer.concat([Buffer.of(2), iv, mac, ciphertext])
+  } finally {
+    iv.fill(0)
+    ciphertext?.fill(0)
+    mac?.fill(0)
+  }
+}
+
 /** Decrypts a type 1/2/3/4/7 Bitwarden EncString to strict UTF-8 text. */
 export function decryptBitwardenString(
   cipherString: string,

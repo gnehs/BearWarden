@@ -51,6 +51,18 @@ const api: BearWardenAPI = {
     getPasswordHistory: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.loginGetPasswordHistory, request),
     downloadAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentDownload, request),
+    uploadAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentUpload, request),
+    deleteAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentDelete, request),
+    fixLegacyAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentFixLegacy, request),
+    cancelAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentCancel, request),
+    onAttachmentProgress: (listener) => {
+      const wrappedListener = (
+        _event: IpcRendererEvent,
+        progress: Parameters<typeof listener>[0]
+      ): void => listener(progress)
+      ipcRenderer.on(IPC_EVENTS.attachmentProgress, wrappedListener)
+      return () => ipcRenderer.removeListener(IPC_EVENTS.attachmentProgress, wrappedListener)
+    },
     create: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginCreate, request),
     clone: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginClone, request),
     archive: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginArchive, request),

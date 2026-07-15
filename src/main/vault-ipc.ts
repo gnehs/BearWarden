@@ -7,7 +7,12 @@ import {
   MAX_LOGIN_MOVE_MANY_IDS,
   MAX_LOGIN_AUTHORIZE_MANY_IDS,
   type AppSettingsUpdate,
+  type AttachmentCancelRequest,
+  type AttachmentDeleteRequest,
   type AttachmentDownloadRequest,
+  type AttachmentFixLegacyRequest,
+  type AttachmentProgressEvent,
+  type AttachmentUploadRequest,
   type CustomFieldRequest,
   type EditorSecretsRequest,
   type CredentialGeneratorRequest,
@@ -555,14 +560,36 @@ function parseId(value: unknown): LoginIdRequest {
   }
 }
 
-function parseAttachmentDownload(value: unknown): AttachmentDownloadRequest {
-  const record = exactRecord(value, ['id', 'attachmentId', 'authorizationToken'])
+function requiredOperationId(record: RecordValue): string {
+  const operationId = requiredString(record, 'operationId')
+  if (!UUID_PATTERN.test(operationId)) throw new VaultError('INVALID_INPUT')
+  return operationId
+}
+
+function parseAttachmentTarget(value: unknown): AttachmentDownloadRequest {
+  const record = exactRecord(value, ['id', 'attachmentId', 'operationId', 'authorizationToken'])
   const authorizationToken = optionalAuthorizationToken(record)
   return {
     id: requiredString(record, 'id'),
     attachmentId: requiredString(record, 'attachmentId'),
+    operationId: requiredOperationId(record),
     ...(authorizationToken ? { authorizationToken } : {})
   }
+}
+
+function parseAttachmentUpload(value: unknown): AttachmentUploadRequest {
+  const record = exactRecord(value, ['id', 'operationId', 'authorizationToken'])
+  const authorizationToken = optionalAuthorizationToken(record)
+  return {
+    id: requiredString(record, 'id'),
+    operationId: requiredOperationId(record),
+    ...(authorizationToken ? { authorizationToken } : {})
+  }
+}
+
+function parseAttachmentCancel(value: unknown): AttachmentCancelRequest {
+  const record = exactRecord(value, ['operationId'])
+  return { operationId: requiredOperationId(record) }
 }
 
 function parseLoginAuthorize(value: unknown): LoginAuthorizeRequest {
@@ -1082,6 +1109,15 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       authorize([request.id])
       return operation()
     })
+  const attachmentAuthorization =
+    (event: IpcMainInvokeEvent, request: LoginIdRequest) =>
+    (ids: readonly string[], state: { generation: number }): boolean =>
+      authorizations.validateMany(
+        request.authorizationToken,
+        event.sender.id,
+        ids,
+        state.generation
+      )
   const notifyMutation = (): void => {
     try {
       options.afterMutation?.()
@@ -1171,10 +1207,52 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     const request = parseId(input)
     return runAuthorized(event, request, () => vault.getPasswordHistory(request))
   })
+  const attachmentProgress =
+    (event: IpcMainInvokeEvent) =>
+    (progress: AttachmentProgressEvent): void => {
+      if (!event.sender.isDestroyed()) event.sender.send(IPC_EVENTS.attachmentProgress, progress)
+    }
   registerHandler(IPC_CHANNELS.attachmentDownload, getMainWindow, (event, input) => {
-    const request = parseAttachmentDownload(input)
-    return runAuthorized(event, request, () => vault.downloadAttachment(request))
+    const request = parseAttachmentTarget(input)
+    return vault.downloadAttachment(
+      request,
+      attachmentProgress(event),
+      attachmentAuthorization(event, request)
+    )
   })
+  registerHandler(IPC_CHANNELS.attachmentUpload, getMainWindow, (event, input) => {
+    const request = parseAttachmentUpload(input)
+    return afterMutation(
+      vault.uploadAttachment(
+        request,
+        attachmentProgress(event),
+        attachmentAuthorization(event, request)
+      )
+    )
+  })
+  registerHandler(IPC_CHANNELS.attachmentDelete, getMainWindow, (event, input) => {
+    const request = parseAttachmentTarget(input) as AttachmentDeleteRequest
+    return afterMutation(
+      vault.deleteAttachment(
+        request,
+        attachmentProgress(event),
+        attachmentAuthorization(event, request)
+      )
+    )
+  })
+  registerHandler(IPC_CHANNELS.attachmentFixLegacy, getMainWindow, (event, input) => {
+    const request = parseAttachmentTarget(input) as AttachmentFixLegacyRequest
+    return afterMutation(
+      vault.fixLegacyAttachment(
+        request,
+        attachmentProgress(event),
+        attachmentAuthorization(event, request)
+      )
+    )
+  })
+  registerHandler(IPC_CHANNELS.attachmentCancel, getMainWindow, async (_event, input) =>
+    vault.cancelAttachmentOperation(parseAttachmentCancel(input))
+  )
   registerHandler(IPC_CHANNELS.loginCreate, getMainWindow, (_event, input) =>
     afterMutation(vault.createLogin(parseLoginCreate(input)))
   )

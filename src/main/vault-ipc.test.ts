@@ -17,7 +17,7 @@ vi.mock('electron', () => ({
   Menu: { buildFromTemplate: vi.fn() }
 }))
 
-import { IPC_CHANNELS } from '../shared/vault-contract'
+import { IPC_CHANNELS, IPC_EVENTS } from '../shared/vault-contract'
 import type { AppSettingsService } from './app-settings'
 import { VaultError } from './vault-errors'
 import { registerVaultIpc, RepromptAuthorizationStore } from './vault-ipc'
@@ -74,6 +74,7 @@ describe('RepromptAuthorizationStore', () => {
 })
 
 describe('registerVaultIpc reprompt gate', () => {
+  const operationId = '70000000-0000-4000-8000-000000000001'
   function harness(): {
     event: unknown
     vault: Record<string, ReturnType<typeof vi.fn>>
@@ -88,12 +89,24 @@ describe('registerVaultIpc reprompt gate', () => {
       id: 7,
       mainFrame,
       getURL: () => mainFrame.url,
-      send: vi.fn()
+      send: vi.fn(),
+      isDestroyed: () => false
     }
     const event = { sender: webContents, senderFrame: mainFrame }
     let authorizationState: { reprompt: 0 | 1; generation: number } = {
       reprompt: 1,
       generation: 3
+    }
+    const requireAttachmentAuthorization = (
+      request: { id: string },
+      validate?: (ids: readonly string[], state: { generation: number }) => boolean
+    ): void => {
+      if (
+        authorizationState.reprompt === 1 &&
+        !validate?.([request.id], { generation: authorizationState.generation })
+      ) {
+        throw new VaultError('REPROMPT_REQUIRED')
+      }
     }
     const vault: Record<string, ReturnType<typeof vi.fn>> = {
       loginAuthorizationState: vi.fn(async () => authorizationState),
@@ -108,7 +121,40 @@ describe('registerVaultIpc reprompt gate', () => {
       getPasswordHistory: vi.fn(async () => [
         { password: 'old-secret', lastUsedDate: '2026-07-14T00:00:00.000Z' }
       ]),
-      downloadAttachment: vi.fn(async () => ({ canceled: false, fileName: 'document.txt' })),
+      downloadAttachment: vi.fn(async (request, _report, validate) => {
+        requireAttachmentAuthorization(request, validate)
+        return { canceled: false, fileName: 'document.txt' }
+      }),
+      uploadAttachment: vi.fn(async (request, _report, validate) => {
+        requireAttachmentAuthorization(request, validate)
+        return {
+          canceled: false,
+          attachment: {
+            id: 'new-attachment',
+            fileName: 'upload.txt',
+            size: 12,
+            sizeName: '12 B',
+            legacy: false
+          }
+        }
+      }),
+      deleteAttachment: vi.fn(async (request, _report, validate) => {
+        requireAttachmentAuthorization(request, validate)
+        return { attachmentId: 'attachment-a' }
+      }),
+      fixLegacyAttachment: vi.fn(async (request, _report, validate) => {
+        requireAttachmentAuthorization(request, validate)
+        return {
+          attachment: {
+            id: 'fixed-attachment',
+            fileName: 'legacy.txt',
+            size: 12,
+            sizeName: '12 B',
+            legacy: false
+          }
+        }
+      }),
+      cancelAttachmentOperation: vi.fn(async () => ({ canceled: true })),
       createLogin: vi.fn(async (request) => ({ id: 'created', ...request })),
       cloneLogin: vi.fn(async () => ({ id: 'clone' })),
       updateLogin: vi.fn(async () => ({ id: 'item-a' })),
@@ -225,11 +271,6 @@ describe('registerVaultIpc reprompt gate', () => {
   it.each([
     [IPC_CHANNELS.loginGet, 'getLogin', { id: 'item-a' }],
     [IPC_CHANNELS.loginGetPasswordHistory, 'getPasswordHistory', { id: 'item-a' }],
-    [
-      IPC_CHANNELS.attachmentDownload,
-      'downloadAttachment',
-      { id: 'item-a', attachmentId: 'attachment-a' }
-    ],
     [IPC_CHANNELS.loginClone, 'cloneLogin', { id: 'item-a' }],
     [IPC_CHANNELS.loginUpdate, 'updateLogin', { id: 'item-a', name: 'Updated' }],
     [IPC_CHANNELS.loginDelete, 'deleteLogin', { id: 'item-a' }],
@@ -249,6 +290,35 @@ describe('registerVaultIpc reprompt gate', () => {
     )
     expect(vault[method]).not.toHaveBeenCalled()
   })
+
+  it.each([
+    [
+      IPC_CHANNELS.attachmentDownload,
+      'downloadAttachment',
+      { id: 'item-a', attachmentId: 'attachment-a', operationId }
+    ],
+    [IPC_CHANNELS.attachmentUpload, 'uploadAttachment', { id: 'item-a', operationId }],
+    [
+      IPC_CHANNELS.attachmentDelete,
+      'deleteAttachment',
+      { id: 'item-a', attachmentId: 'attachment-a', operationId }
+    ],
+    [
+      IPC_CHANNELS.attachmentFixLegacy,
+      'fixLegacyAttachment',
+      { id: 'item-a', attachmentId: 'attachment-a', operationId }
+    ]
+  ])(
+    'lets the attachment service reject %s without holding the IPC authorization mutex',
+    async (channel, method, input) => {
+      const { event, vault } = harness()
+      await expect(electronMock.handlers.get(channel)!(event, input)).rejects.toThrow(
+        'BEARWARDEN:REPROMPT_REQUIRED'
+      )
+      expect(vault[method]).toHaveBeenCalledWith(input, expect.any(Function), expect.any(Function))
+      expect(vault.runAuthorizedOperation).not.toHaveBeenCalled()
+    }
+  )
 
   it('issues proof only after password verification and rejects wrong item or epoch', async () => {
     const { event, setAuthorizationState } = harness()
@@ -301,17 +371,84 @@ describe('registerVaultIpc reprompt gate', () => {
       download(event, {
         id: 'item-a',
         attachmentId: 'attachment-a',
+        operationId,
         path: '/tmp/renderer-controlled.txt'
       })
     ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
-    await expect(download(event, { id: 'item-a', attachmentId: 'attachment-a' })).resolves.toEqual({
+    await expect(
+      download(event, { id: 'item-a', attachmentId: 'attachment-a', operationId })
+    ).resolves.toEqual({ canceled: false, fileName: 'document.txt' })
+    expect(vault.downloadAttachment).toHaveBeenCalledWith(
+      { id: 'item-a', attachmentId: 'attachment-a', operationId },
+      expect.any(Function),
+      expect.any(Function)
+    )
+  })
+
+  it('forwards only structured attachment progress to the invoking renderer', async () => {
+    const { event, vault, setAuthorizationState } = harness()
+    setAuthorizationState({ reprompt: 0, generation: 3 })
+    const progress = {
+      operationId,
+      itemId: 'item-a',
+      kind: 'download' as const,
+      stage: 'downloading' as const,
+      completedBytes: 6,
+      totalBytes: 12
+    }
+    vault.downloadAttachment.mockImplementation(async (_request, report) => {
+      report(progress)
+      return { canceled: false, fileName: 'document.txt' }
+    })
+
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.attachmentDownload)!(event, {
+        id: 'item-a',
+        attachmentId: 'attachment-a',
+        operationId
+      })
+    ).resolves.toEqual({ canceled: false, fileName: 'document.txt' })
+    expect(
+      (event as { sender: { send: ReturnType<typeof vi.fn> } }).sender.send
+    ).toHaveBeenCalledWith(IPC_EVENTS.attachmentProgress, progress)
+  })
+
+  it('keeps upload paths, bytes, names, and sizes out of renderer IPC', async () => {
+    const { event, vault, setAuthorizationState } = harness()
+    setAuthorizationState({ reprompt: 0, generation: 3 })
+    const upload = electronMock.handlers.get(IPC_CHANNELS.attachmentUpload)!
+    for (const forbidden of [
+      { path: '/tmp/private.txt' },
+      { bytes: [1, 2, 3] },
+      { fileName: 'private.txt' },
+      { size: 3 }
+    ]) {
+      await expect(upload(event, { id: 'item-a', operationId, ...forbidden })).rejects.toThrow(
+        'BEARWARDEN:INVALID_INPUT'
+      )
+    }
+    await expect(upload(event, { id: 'item-a', operationId })).resolves.toMatchObject({
       canceled: false,
-      fileName: 'document.txt'
+      attachment: { fileName: 'upload.txt' }
     })
-    expect(vault.downloadAttachment).toHaveBeenCalledWith({
-      id: 'item-a',
-      attachmentId: 'attachment-a'
-    })
+    expect(vault.uploadAttachment).toHaveBeenCalledWith(
+      { id: 'item-a', operationId },
+      expect.any(Function),
+      expect.any(Function)
+    )
+  })
+
+  it('validates operation ids and exposes cancel only to the trusted exact channel', async () => {
+    const { event, vault } = harness()
+    const cancel = electronMock.handlers.get(IPC_CHANNELS.attachmentCancel)!
+    await expect(cancel(event, { operationId: 'not-a-uuid' })).rejects.toThrow(
+      'BEARWARDEN:INVALID_INPUT'
+    )
+    await expect(cancel(event, { operationId, extra: true })).rejects.toThrow(
+      'BEARWARDEN:INVALID_INPUT'
+    )
+    await expect(cancel(event, { operationId })).resolves.toEqual({ canceled: true })
+    expect(vault.cancelAttachmentOperation).toHaveBeenCalledWith({ operationId })
   })
 
   it.each([

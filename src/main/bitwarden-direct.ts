@@ -11,6 +11,7 @@ import {
   deriveMasterKey,
   derivePasswordKey,
   encryptBitwardenBytes,
+  encryptBitwardenAttachmentBuffer,
   encryptBitwardenCipherBlob,
   encryptBitwardenString,
   stretchMasterKey,
@@ -23,6 +24,7 @@ import {
   BitwardenHttpClient,
   BitwardenHttpError,
   type BitwardenAttachmentDownload,
+  type BitwardenAttachmentUpload,
   type BitwardenPrelogin,
   type BitwardenSession,
   type JsonObject,
@@ -104,6 +106,11 @@ export type BitwardenDirectErrorCode =
   | 'INVALID_RESPONSE'
   | 'CONFLICT'
   | 'ABORTED'
+  | 'NOT_FOUND'
+  | 'FORBIDDEN'
+  | 'TOO_LARGE'
+  | 'STORAGE_LIMIT'
+  | 'ATTACHMENT_REJECTED'
   | 'UNSUPPORTED_ACCOUNT_ENCRYPTION'
   | 'ACCOUNT_CHANGED'
 
@@ -216,6 +223,25 @@ export interface BitwardenSyncClient {
     attachmentId: string,
     signal?: AbortSignal
   ): Promise<BitwardenDownloadedAttachment>
+  uploadAttachment(
+    id: string,
+    fileName: string,
+    data: Buffer,
+    signal?: AbortSignal,
+    onCommitted?: () => void
+  ): Promise<BitwardenAttachment>
+  deleteAttachment(
+    id: string,
+    attachmentId: string,
+    signal?: AbortSignal,
+    onCommitted?: () => void
+  ): Promise<void>
+  upgradeLegacyAttachment(
+    id: string,
+    attachmentId: string,
+    signal?: AbortSignal,
+    onCommitted?: () => void
+  ): Promise<BitwardenAttachment>
   createFolder(name: string, signal?: AbortSignal): Promise<BitwardenFolder>
   editFolder(id: string, name: string, signal?: AbortSignal): Promise<BitwardenFolder>
   deleteFolder(id: string, signal?: AbortSignal): Promise<void>
@@ -1457,6 +1483,228 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     }
   }
 
+  async uploadAttachment(
+    id: string,
+    fileName: string,
+    data: Buffer,
+    signal?: AbortSignal,
+    onCommitted?: () => void
+  ): Promise<BitwardenAttachment> {
+    try {
+      return await this.uploadAttachmentInternal(id, fileName, data, null, signal, onCommitted)
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  async deleteAttachment(
+    id: string,
+    attachmentId: string,
+    signal?: AbortSignal,
+    onCommitted?: () => void
+  ): Promise<void> {
+    try {
+      this.requireUserKey()
+      if (signal?.aborted) throw new BitwardenDirectError('ABORTED')
+      const cached = this.logins.get(id)
+      if (!cached?.item.attachments.some((attachment) => attachment.id === attachmentId)) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+
+      await this.http.deleteAttachment(id, attachmentId, signal)
+      onCommitted?.()
+      // A successful DELETE is the irreversible remote commit point. Caller
+      // cancellation must not prevent reconciling the local cache afterwards.
+      await this.sync()
+      const authoritative = this.logins.get(id)
+      if (
+        !authoritative ||
+        authoritative.item.attachments.some((attachment) => attachment.id === attachmentId)
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  async upgradeLegacyAttachment(
+    id: string,
+    attachmentId: string,
+    signal?: AbortSignal,
+    onCommitted?: () => void
+  ): Promise<BitwardenAttachment> {
+    this.requireUserKey()
+    if (signal?.aborted) throw new BitwardenDirectError('ABORTED')
+    const cached = this.logins.get(id)
+    const legacy = cached?.item.attachments.find((attachment) => attachment.id === attachmentId)
+    if (!cached || !legacy?.legacy) throw new BitwardenDirectError('INVALID_RESPONSE')
+
+    let downloaded: BitwardenDownloadedAttachment | null = null
+    let replacement: BitwardenAttachment | null = null
+    let legacyDeleteStarted = false
+    try {
+      // Safety ordering is deliberate: a failed download or replacement upload
+      // must never destroy the only copy. If deleting the old attachment fails,
+      // both valid copies remain on the server and the failure is reported.
+      downloaded = await this.downloadAttachment(id, attachmentId, signal)
+      replacement = await this.uploadAttachmentInternal(
+        id,
+        downloaded.fileName,
+        downloaded.data,
+        attachmentId,
+        signal,
+        undefined,
+        true
+      )
+      const replacementId = replacement.id
+      if (signal?.aborted) throw new BitwardenDirectError('ABORTED')
+
+      // Once the legacy DELETE has been attempted, a lost response makes the
+      // remote outcome ambiguous. Preserve the replacement on any failure from
+      // that point so a later authoritative sync/recovery can resolve it without
+      // risking deletion of the only surviving copy.
+      legacyDeleteStarted = true
+      await this.http.deleteAttachment(id, attachmentId, signal)
+      onCommitted?.()
+      await this.sync()
+      const authoritativeItem = this.logins.get(id)?.item
+      const authoritative = authoritativeItem?.attachments.find(
+        (attachment) => attachment.id === replacementId
+      )
+      if (
+        !authoritativeItem ||
+        authoritativeItem.attachments.some((attachment) => attachment.id === attachmentId) ||
+        !authoritative ||
+        authoritative.legacy
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      return { ...authoritative }
+    } catch (error) {
+      if (replacement && !legacyDeleteStarted) {
+        await this.http.deleteAttachment(id, replacement.id).catch(() => undefined)
+      }
+      throw this.mapError(error)
+    } finally {
+      downloaded?.data.fill(0)
+    }
+  }
+
+  private async uploadAttachmentInternal(
+    id: string,
+    fileName: string,
+    data: Buffer,
+    allowedDuplicateId: string | null,
+    signal?: AbortSignal,
+    onCommitted?: () => void,
+    transferRollback = false
+  ): Promise<BitwardenAttachment> {
+    const userKey = this.requireUserKey()
+    if (signal?.aborted) throw new BitwardenDirectError('ABORTED')
+    if (
+      typeof fileName !== 'string' ||
+      fileName.length === 0 ||
+      fileName.length > MAX_ATTACHMENT_FILE_NAME_LENGTH ||
+      !Buffer.isBuffer(data)
+    ) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+
+    const cached = this.logins.get(id)
+    if (!cached || cached.item.attachments.length >= MAX_ATTACHMENTS_PER_ITEM) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    const duplicates = cached.item.attachments.filter(
+      (attachment) => attachment.fileName === fileName
+    )
+    if (
+      duplicates.some((attachment) => attachment.id !== allowedDuplicateId) ||
+      (allowedDuplicateId === null && duplicates.length > 0)
+    ) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    const revisionDate = cached.item.revisionDate
+    if (revisionDate === null || !Number.isFinite(Date.parse(revisionDate))) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+
+    let itemKey: BitwardenSymmetricKey | null = null
+    let attachmentKey: Buffer | null = null
+    let encryptedData: Buffer | null = null
+    let created: BitwardenAttachmentUpload | null = null
+    let committed = false
+    try {
+      itemKey = this.cipherKey(cached.raw, userKey)
+      // Account Encryption V2 still stores attachment files in the AES file
+      // format. A legacy 64-byte per-item key is therefore mandatory.
+      if (!Buffer.isBuffer(itemKey) || itemKey.length !== USER_KEY_BYTES) {
+        throw new BitwardenDirectError('UNSUPPORTED_ACCOUNT_ENCRYPTION')
+      }
+
+      attachmentKey = randomBytes(USER_KEY_BYTES)
+      const encryptedFileName = encryptBitwardenString(fileName, itemKey)
+      const wrappedKey = encryptBitwardenBytes(attachmentKey, itemKey, 'legacy-key')
+      encryptedData = encryptBitwardenAttachmentBuffer(data, attachmentKey)
+      created = await this.http.createAttachment(
+        id,
+        {
+          key: wrappedKey,
+          fileName: encryptedFileName,
+          fileSize: encryptedData.length,
+          lastKnownRevisionDate: revisionDate
+        },
+        signal
+      )
+      if (created.attachmentId === allowedDuplicateId) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+
+      if (created.fileUploadType === 'direct') {
+        await this.http.uploadAttachmentDirect(
+          id,
+          created.attachmentId,
+          encryptedFileName,
+          encryptedData,
+          signal
+        )
+      } else {
+        await this.http.uploadAttachmentAzure(created.url, encryptedData, signal)
+      }
+
+      await this.sync(signal)
+      const attachment = this.logins
+        .get(id)
+        ?.item.attachments.find((candidate) => candidate.id === created?.attachmentId)
+      if (
+        !attachment ||
+        attachment.fileName !== fileName ||
+        attachment.legacy ||
+        attachment.size !== encryptedData.length
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      if (!transferRollback) onCommitted?.()
+      // A legacy upgrade transfers rollback ownership to its outer state
+      // machine after this validated replacement is returned.
+      committed = true
+      return { ...attachment }
+    } catch (error) {
+      if (created && !committed) {
+        // The metadata POST is non-idempotent. If its response itself is lost,
+        // the attachment id is unknowable here and a later recovery sync is the
+        // only safe reconciliation path. Once the id is known, roll back every
+        // unconfirmed failure without letting cleanup mask the original error.
+        await this.http.deleteAttachment(id, created.attachmentId).catch(() => undefined)
+      }
+      throw error
+    } finally {
+      attachmentKey?.fill(0)
+      encryptedData?.fill(0)
+      if (itemKey && itemKey !== userKey) clearBitwardenSymmetricKey(itemKey)
+    }
+  }
+
   async createFolder(name: string, signal?: AbortSignal): Promise<BitwardenFolder> {
     const userKey = this.requireUserKey()
     try {
@@ -2253,6 +2501,13 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       if (error.code === 'NEW_DEVICE') return new BitwardenDirectError('NEW_DEVICE_REQUIRED')
       if (error.code === 'CONFLICT') return new BitwardenDirectError('CONFLICT')
       if (error.code === 'ABORTED') return new BitwardenDirectError('ABORTED')
+      if (error.code === 'NOT_FOUND') return new BitwardenDirectError('NOT_FOUND')
+      if (error.code === 'FORBIDDEN') return new BitwardenDirectError('FORBIDDEN')
+      if (error.code === 'TOO_LARGE') return new BitwardenDirectError('TOO_LARGE')
+      if (error.code === 'STORAGE_LIMIT') return new BitwardenDirectError('STORAGE_LIMIT')
+      if (error.code === 'ATTACHMENT_REJECTED') {
+        return new BitwardenDirectError('ATTACHMENT_REJECTED')
+      }
       if (error.code === 'INVALID_RESPONSE') return new BitwardenDirectError('INVALID_RESPONSE')
       return new BitwardenDirectError('NETWORK')
     }

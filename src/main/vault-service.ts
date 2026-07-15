@@ -2,8 +2,20 @@ import { randomInt as nodeRandomInt, randomUUID } from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type {
   EditorSecretsRequest,
+  AttachmentCancelRequest,
+  AttachmentCancelResult,
+  AttachmentDeleteRequest,
+  AttachmentDeleteResult,
   AttachmentDownloadRequest,
   AttachmentDownloadResult,
+  AttachmentFixLegacyRequest,
+  AttachmentFixLegacyResult,
+  AttachmentOperationKind,
+  AttachmentOperationStage,
+  AttachmentProgressEvent,
+  AttachmentTargetRequest,
+  AttachmentUploadRequest,
+  AttachmentUploadResult,
   EditorSecretsView,
   CredentialGeneratorRequest,
   CredentialGeneratorResult,
@@ -1659,6 +1671,11 @@ function isCompositeRemoteLoginUpdate(
   return steps > 1
 }
 
+type AttachmentAuthorizationValidator = (
+  ids: readonly string[],
+  state: { generation: number }
+) => boolean
+
 export class VaultService {
   private key: Buffer | null = null
   private salt: Buffer | null = null
@@ -1670,6 +1687,12 @@ export class VaultService {
   private syncAbort: AbortController | null = null
   private syncInProgress = false
   private syncLastError: string | null = null
+  private activeAttachmentOperation: {
+    operationId: string
+    abort: AbortController
+    canceledByUser: boolean
+    committed: boolean
+  } | null = null
   private readonly now: () => Date
   private readonly createId: () => string
   private readonly createSyncClient: (sync: PersistedSyncData) => BitwardenSyncClient
@@ -1771,6 +1794,7 @@ export class VaultService {
   dispose(): void {
     this.syncAbort?.abort()
     this.syncAbort = null
+    this.activeAttachmentOperation = null
     this.syncClient = null
     this.syncInProgress = false
     this.generation += 1
@@ -2051,9 +2075,14 @@ export class VaultService {
     })
   }
 
-  async downloadAttachment(request: AttachmentDownloadRequest): Promise<AttachmentDownloadResult> {
+  async downloadAttachment(
+    request: AttachmentDownloadRequest,
+    reportProgress?: (progress: AttachmentProgressEvent) => void,
+    validateAuthorization?: AttachmentAuthorizationValidator
+  ): Promise<AttachmentDownloadResult> {
     const preflight = await this.exclusive(async () => {
       assertUuid(request.id)
+      assertUuid(request.operationId)
       if (
         typeof request.attachmentId !== 'string' ||
         request.attachmentId.length === 0 ||
@@ -2064,6 +2093,7 @@ export class VaultService {
       const data = this.requireData()
       const login = this.findLogin(data, request.id)
       this.assertActiveLogin(login)
+      this.assertAttachmentAuthorized(login, validateAuthorization)
       const attachment = login.attachments.find((entry) => entry.id === request.attachmentId)
       if (!attachment) throw new VaultError('NOT_FOUND')
       const files = this.attachmentFiles
@@ -2074,6 +2104,7 @@ export class VaultService {
       return { files, fileName: attachment.fileName, generation: this.generation }
     })
 
+    this.reportAttachmentProgress(reportProgress, request, 'download', 'choosing-file', 0, null)
     // Electron's native save dialog is not abortable. Keep it outside the vault
     // mutex so auto-lock can clear keys even while the user leaves the dialog open.
     const destination = await preflight.files.chooseSavePath(preflight.fileName)
@@ -2087,6 +2118,7 @@ export class VaultService {
       const data = this.requireData()
       const login = this.findLogin(data, request.id)
       this.assertActiveLogin(login)
+      this.assertAttachmentAuthorized(login, validateAuthorization)
       const attachment = login.attachments.find((entry) => entry.id === request.attachmentId)
       if (!attachment) throw new VaultError('NOT_FOUND')
       if (attachment.fileName !== preflight.fileName) {
@@ -2096,9 +2128,18 @@ export class VaultService {
       const mapping = sync.loginMappings.find((entry) => entry.localId === login.id)
       if (!mapping) throw new VaultError('INVALID_INPUT')
       const client = this.getOrCreateSyncClient(sync)
-      const abort = this.startSyncOperation()
+      const operation = this.startAttachmentOperation(request.operationId)
+      const { abort } = operation
       let clearText: Buffer | undefined
       try {
+        this.reportAttachmentProgress(
+          reportProgress,
+          request,
+          'download',
+          'downloading',
+          0,
+          attachment.size
+        )
         if (abort.signal.aborted) throw new VaultError('LOCKED')
         const generation = this.generation
         const downloaded = await client.downloadAttachment(
@@ -2113,17 +2154,227 @@ export class VaultService {
         if (downloaded.fileName !== attachment.fileName) {
           throw new VaultError('ATTACHMENT_FAILED')
         }
+        this.reportAttachmentProgress(
+          reportProgress,
+          request,
+          'download',
+          'downloading',
+          attachment.size,
+          attachment.size
+        )
         await preflight.files.write(destination, clearText, abort.signal)
         // The atomic rename is the commit point. Once the requested plaintext file exists,
         // report success even if a lock races with the final chmod/directory sync.
         return { canceled: false, fileName: attachment.fileName }
       } catch (error) {
-        throw this.mapAttachmentError(error)
+        throw this.mapAttachmentError(error, operation)
       } finally {
         clearText?.fill(0)
-        this.finishSyncOperation(abort)
+        this.finishAttachmentOperation(operation)
       }
     })
+  }
+
+  async uploadAttachment(
+    request: AttachmentUploadRequest,
+    reportProgress?: (progress: AttachmentProgressEvent) => void,
+    validateAuthorization?: AttachmentAuthorizationValidator
+  ): Promise<AttachmentUploadResult> {
+    const preflight = await this.exclusive(async () => {
+      assertUuid(request.id)
+      assertUuid(request.operationId)
+      const data = this.requireData()
+      const login = this.findLogin(data, request.id)
+      this.assertActiveLogin(login)
+      this.assertAttachmentAuthorized(login, validateAuthorization)
+      const files = this.attachmentFiles
+      if (!files) throw new VaultError('INTERNAL_ERROR')
+      const sync = this.requireSyncData()
+      if (!sync.loginMappings.some((entry) => entry.localId === login.id)) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      return { files, generation: this.generation }
+    })
+
+    this.reportAttachmentProgress(reportProgress, request, 'upload', 'choosing-file', 0, null)
+    const selection = await preflight.files.chooseOpenFile()
+    if (selection === null) return { canceled: true, attachment: null }
+
+    return this.exclusive(async () => {
+      if (preflight.generation !== this.generation) throw new VaultError('LOCKED')
+      const data = this.requireData()
+      const login = this.findLogin(data, request.id)
+      this.assertActiveLogin(login)
+      this.assertAttachmentAuthorized(login, validateAuthorization)
+      if (login.attachments.some((attachment) => attachment.fileName === selection.fileName)) {
+        throw new VaultError('DUPLICATE_NAME')
+      }
+      const sync = this.requireSyncData()
+      const mapping = sync.loginMappings.find((entry) => entry.localId === login.id)
+      if (!mapping) throw new VaultError('INVALID_INPUT')
+      const client = this.getOrCreateSyncClient(sync)
+      const operation = this.startAttachmentOperation(request.operationId)
+      let clearText: Buffer | undefined
+      try {
+        this.reportAttachmentProgress(
+          reportProgress,
+          request,
+          'upload',
+          'reading-file',
+          0,
+          selection.size
+        )
+        clearText = await preflight.files.readSelectedFile(selection, operation.abort.signal)
+        this.reportAttachmentProgress(
+          reportProgress,
+          request,
+          'upload',
+          'reading-file',
+          selection.size,
+          selection.size
+        )
+        this.reportAttachmentProgress(
+          reportProgress,
+          request,
+          'upload',
+          'encrypting',
+          0,
+          selection.size
+        )
+        this.reportAttachmentProgress(
+          reportProgress,
+          request,
+          'upload',
+          'uploading',
+          0,
+          selection.size
+        )
+        const uploaded = await client.uploadAttachment(
+          mapping.remoteId,
+          selection.fileName,
+          clearText,
+          operation.abort.signal,
+          () => this.commitAttachmentOperation(operation)
+        )
+        this.commitAttachmentOperation(operation)
+        this.reportAttachmentProgress(
+          reportProgress,
+          request,
+          'upload',
+          'uploading',
+          selection.size,
+          selection.size
+        )
+        this.reportAttachmentProgress(reportProgress, request, 'upload', 'syncing', 0, null)
+        await this.persistAttachmentMutation(data, client)
+        const updated = this.findLogin(this.requireData(), request.id)
+        const attachment = updated.attachments.find((entry) => entry.id === uploaded.id)
+        if (!attachment || attachment.fileName !== selection.fileName || attachment.legacy) {
+          throw new VaultError('ATTACHMENT_FAILED')
+        }
+        return { canceled: false, attachment: { ...attachment } }
+      } catch (error) {
+        throw this.mapAttachmentError(error, operation)
+      } finally {
+        clearText?.fill(0)
+        this.finishAttachmentOperation(operation)
+      }
+    })
+  }
+
+  deleteAttachment(
+    request: AttachmentDeleteRequest,
+    reportProgress?: (progress: AttachmentProgressEvent) => void,
+    validateAuthorization?: AttachmentAuthorizationValidator
+  ): Promise<AttachmentDeleteResult> {
+    return this.exclusive(async () => {
+      const { data, attachment, mapping, client } = this.attachmentMutationContext(
+        request,
+        validateAuthorization
+      )
+      const operation = this.startAttachmentOperation(request.operationId)
+      try {
+        this.reportAttachmentProgress(reportProgress, request, 'delete', 'deleting', 0, null)
+        await client.deleteAttachment(mapping.remoteId, attachment.id, operation.abort.signal, () =>
+          this.commitAttachmentOperation(operation)
+        )
+        this.commitAttachmentOperation(operation)
+        this.reportAttachmentProgress(reportProgress, request, 'delete', 'syncing', 0, null)
+        await this.persistAttachmentMutation(data, client)
+        const updated = this.findLogin(this.requireData(), request.id)
+        if (updated.attachments.some((entry) => entry.id === attachment.id)) {
+          throw new VaultError('ATTACHMENT_FAILED')
+        }
+        return { attachmentId: attachment.id }
+      } catch (error) {
+        throw this.mapAttachmentError(error, operation)
+      } finally {
+        this.finishAttachmentOperation(operation)
+      }
+    })
+  }
+
+  fixLegacyAttachment(
+    request: AttachmentFixLegacyRequest,
+    reportProgress?: (progress: AttachmentProgressEvent) => void,
+    validateAuthorization?: AttachmentAuthorizationValidator
+  ): Promise<AttachmentFixLegacyResult> {
+    return this.exclusive(async () => {
+      const { data, attachment, mapping, client } = this.attachmentMutationContext(
+        request,
+        validateAuthorization
+      )
+      if (!attachment.legacy) throw new VaultError('INVALID_INPUT')
+      const operation = this.startAttachmentOperation(request.operationId)
+      try {
+        this.reportAttachmentProgress(
+          reportProgress,
+          request,
+          'fix-legacy',
+          'downloading',
+          0,
+          attachment.size
+        )
+        const upgraded = await client.upgradeLegacyAttachment(
+          mapping.remoteId,
+          attachment.id,
+          operation.abort.signal,
+          () => this.commitAttachmentOperation(operation)
+        )
+        this.commitAttachmentOperation(operation)
+        this.reportAttachmentProgress(reportProgress, request, 'fix-legacy', 'syncing', 0, null)
+        await this.persistAttachmentMutation(data, client)
+        const updated = this.findLogin(this.requireData(), request.id)
+        if (updated.attachments.some((entry) => entry.id === attachment.id)) {
+          throw new VaultError('ATTACHMENT_FAILED')
+        }
+        const replacement = updated.attachments.find((entry) => entry.id === upgraded.id)
+        if (!replacement || replacement.fileName !== attachment.fileName || replacement.legacy) {
+          throw new VaultError('ATTACHMENT_FAILED')
+        }
+        return { attachment: { ...replacement } }
+      } catch (error) {
+        throw this.mapAttachmentError(error, operation)
+      } finally {
+        this.finishAttachmentOperation(operation)
+      }
+    })
+  }
+
+  cancelAttachmentOperation(request: AttachmentCancelRequest): AttachmentCancelResult {
+    assertUuid(request.operationId)
+    const active = this.activeAttachmentOperation
+    if (
+      !active ||
+      active.operationId !== request.operationId ||
+      active.committed ||
+      active.abort.signal.aborted
+    ) {
+      return { canceled: false }
+    }
+    active.canceledByUser = true
+    active.abort.abort()
+    return { canceled: true }
   }
 
   verifyPortabilityOwner(masterPassword: string): Promise<void> {
@@ -2925,6 +3176,40 @@ export class VaultService {
     return abort
   }
 
+  private startAttachmentOperation(operationId: string): {
+    operationId: string
+    abort: AbortController
+    canceledByUser: boolean
+    committed: boolean
+  } {
+    assertUuid(operationId)
+    if (this.activeAttachmentOperation) throw new VaultError('SYNC_FAILED')
+    const operation = {
+      operationId,
+      abort: this.startSyncOperation(),
+      canceledByUser: false,
+      committed: false
+    }
+    this.activeAttachmentOperation = operation
+    return operation
+  }
+
+  private finishAttachmentOperation(operation: {
+    operationId: string
+    abort: AbortController
+  }): void {
+    if (this.activeAttachmentOperation?.operationId === operation.operationId) {
+      this.activeAttachmentOperation = null
+    }
+    this.finishSyncOperation(operation.abort)
+  }
+
+  private commitAttachmentOperation(operation: { operationId: string; committed: boolean }): void {
+    if (this.activeAttachmentOperation?.operationId === operation.operationId) {
+      operation.committed = true
+    }
+  }
+
   private finishSyncOperation(abort: AbortController): void {
     if (this.syncAbort === abort) this.syncAbort = null
     this.syncInProgress = false
@@ -2949,10 +3234,21 @@ export class VaultService {
     return new VaultError('SYNC_FAILED')
   }
 
-  private mapAttachmentError(error: unknown): VaultError {
+  private mapAttachmentError(error: unknown, operation?: { canceledByUser: boolean }): VaultError {
+    if (
+      operation?.canceledByUser &&
+      ((error instanceof VaultError && error.code === 'LOCKED') ||
+        (error instanceof BitwardenDirectError && error.code === 'ABORTED'))
+    ) {
+      return new VaultError('ATTACHMENT_CANCELED')
+    }
     if (error instanceof VaultError) return error
     if (error instanceof BitwardenDirectError) {
       if (error.code === 'ABORTED') return new VaultError('LOCKED')
+      if (error.code === 'NOT_FOUND') return new VaultError('NOT_FOUND')
+      if (error.code === 'STORAGE_LIMIT') return new VaultError('ATTACHMENT_STORAGE_LIMIT')
+      if (error.code === 'TOO_LARGE') return new VaultError('ATTACHMENT_TOO_LARGE')
+      if (error.code === 'ATTACHMENT_REJECTED') return new VaultError('ATTACHMENT_REJECTED')
       if (
         error.code === 'AUTH_REQUIRED' ||
         error.code === 'TWO_FACTOR_REQUIRED' ||
@@ -2962,6 +3258,71 @@ export class VaultService {
       }
     }
     return new VaultError('ATTACHMENT_FAILED')
+  }
+
+  private attachmentMutationContext(
+    request: AttachmentTargetRequest,
+    validateAuthorization?: AttachmentAuthorizationValidator
+  ): {
+    data: VaultData
+    attachment: VaultAttachmentView
+    mapping: SyncEntityMapping
+    client: BitwardenSyncClient
+  } {
+    assertUuid(request.id)
+    assertUuid(request.operationId)
+    if (
+      typeof request.attachmentId !== 'string' ||
+      request.attachmentId.length === 0 ||
+      request.attachmentId.length > MAX_ATTACHMENT_ID_LENGTH
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    const data = this.requireData()
+    const login = this.findLogin(data, request.id)
+    this.assertActiveLogin(login)
+    this.assertAttachmentAuthorized(login, validateAuthorization)
+    const attachment = login.attachments.find((entry) => entry.id === request.attachmentId)
+    if (!attachment) throw new VaultError('NOT_FOUND')
+    const sync = this.requireSyncData()
+    const mapping = sync.loginMappings.find((entry) => entry.localId === login.id)
+    if (!mapping) throw new VaultError('INVALID_INPUT')
+    return { data, attachment, mapping, client: this.getOrCreateSyncClient(sync) }
+  }
+
+  private assertAttachmentAuthorized(
+    login: StoredLogin,
+    validateAuthorization?: AttachmentAuthorizationValidator
+  ): void {
+    if (
+      login.reprompt === 1 &&
+      !validateAuthorization?.([login.id], { generation: this.generation })
+    ) {
+      throw new VaultError('REPROMPT_REQUIRED')
+    }
+  }
+
+  private reportAttachmentProgress(
+    report: ((progress: AttachmentProgressEvent) => void) | undefined,
+    request: { id: string; operationId: string },
+    kind: AttachmentOperationKind,
+    stage: AttachmentOperationStage,
+    completedBytes: number,
+    totalBytes: number | null
+  ): void {
+    if (!report) return
+    try {
+      report({
+        operationId: request.operationId,
+        itemId: request.id,
+        kind,
+        stage,
+        completedBytes,
+        totalBytes
+      })
+    } catch {
+      // Renderer progress is advisory and must never decide mutation success.
+    }
   }
 
   private async persistCurrentClientState(): Promise<void> {
@@ -2974,6 +3335,32 @@ export class VaultService {
     if (!next.sync) return
     next.sync.state = state
     next.updatedAt = this.nowIso()
+    await this.persist(next)
+    this.data = next
+  }
+
+  private async persistAttachmentMutation(
+    current: VaultData,
+    client: BitwardenSyncClient
+  ): Promise<void> {
+    const sync = current.sync
+    if (!sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+    const [remoteFolders, remoteLogins] = await Promise.all([
+      client.listFolders(),
+      client.listPersonalLogins()
+    ])
+    const next = cloneData(current)
+    this.reconcileServerAuthoritativeAttachments(
+      next,
+      sync.loginMappings,
+      remoteFolders,
+      remoteLogins
+    )
+    const syncedAt = this.nowIso()
+    if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+    next.sync.state = client.exportState()
+    next.sync.lastSyncAt = syncedAt
+    next.updatedAt = syncedAt
     await this.persist(next)
     this.data = next
   }

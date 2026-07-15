@@ -17,6 +17,10 @@ export const IPC_CHANNELS = {
   loginGet: 'login:get',
   loginGetPasswordHistory: 'login:get-password-history',
   attachmentDownload: 'attachment:download',
+  attachmentUpload: 'attachment:upload',
+  attachmentDelete: 'attachment:delete',
+  attachmentFixLegacy: 'attachment:fix-legacy',
+  attachmentCancel: 'attachment:cancel',
   loginCreate: 'login:create',
   loginClone: 'login:clone',
   loginArchive: 'login:archive',
@@ -64,7 +68,8 @@ export const IPC_EVENTS = {
   vaultLockRequested: 'vault:lock-requested',
   vaultUnlocked: 'vault:unlocked',
   vaultChanged: 'vault:changed',
-  syncChanged: 'sync:changed'
+  syncChanged: 'sync:changed',
+  attachmentProgress: 'attachment:progress'
 } as const
 
 export const IPC_ERROR_PREFIX = 'BEARWARDEN:'
@@ -85,6 +90,10 @@ export type VaultErrorCode =
   | 'SYNC_UNSUPPORTED_ACCOUNT'
   | 'SYNC_FAILED'
   | 'ATTACHMENT_FAILED'
+  | 'ATTACHMENT_TOO_LARGE'
+  | 'ATTACHMENT_STORAGE_LIMIT'
+  | 'ATTACHMENT_REJECTED'
+  | 'ATTACHMENT_CANCELED'
   | 'TOUCH_ID_UNAVAILABLE'
   | 'TOUCH_ID_FAILED'
   | 'INTERNAL_ERROR'
@@ -298,13 +307,66 @@ export interface LoginIdRequest extends LoginAuthorizationRequest {
   id: string
 }
 
-export interface AttachmentDownloadRequest extends LoginIdRequest {
+export type AttachmentOperationKind = 'download' | 'upload' | 'delete' | 'fix-legacy'
+
+export type AttachmentOperationStage =
+  | 'choosing-file'
+  | 'reading-file'
+  | 'encrypting'
+  | 'downloading'
+  | 'uploading'
+  | 'deleting'
+  | 'syncing'
+
+export interface AttachmentProgressEvent {
+  operationId: string
+  itemId: string
+  kind: AttachmentOperationKind
+  stage: AttachmentOperationStage
+  completedBytes: number
+  totalBytes: number | null
+}
+
+export interface AttachmentOperationRequest extends LoginIdRequest {
+  operationId: string
+}
+
+export interface AttachmentTargetRequest extends AttachmentOperationRequest {
   attachmentId: string
 }
+
+export type AttachmentDownloadRequest = AttachmentTargetRequest
 
 export interface AttachmentDownloadResult {
   canceled: boolean
   fileName: string
+}
+
+export type AttachmentUploadRequest = AttachmentOperationRequest
+
+export interface AttachmentUploadResult {
+  canceled: boolean
+  attachment: VaultAttachmentView | null
+}
+
+export type AttachmentDeleteRequest = AttachmentTargetRequest
+
+export interface AttachmentDeleteResult {
+  attachmentId: string
+}
+
+export type AttachmentFixLegacyRequest = AttachmentTargetRequest
+
+export interface AttachmentFixLegacyResult {
+  attachment: VaultAttachmentView
+}
+
+export interface AttachmentCancelRequest {
+  operationId: string
+}
+
+export interface AttachmentCancelResult {
+  canceled: boolean
 }
 
 export interface LoginAuthorizeRequest {
@@ -633,6 +695,11 @@ export interface BearWardenAPI {
     get: (request: LoginIdRequest) => Promise<LoginView>
     getPasswordHistory: (request: LoginIdRequest) => Promise<VaultPasswordHistoryEntry[]>
     downloadAttachment: (request: AttachmentDownloadRequest) => Promise<AttachmentDownloadResult>
+    uploadAttachment: (request: AttachmentUploadRequest) => Promise<AttachmentUploadResult>
+    deleteAttachment: (request: AttachmentDeleteRequest) => Promise<AttachmentDeleteResult>
+    fixLegacyAttachment: (request: AttachmentFixLegacyRequest) => Promise<AttachmentFixLegacyResult>
+    cancelAttachment: (request: AttachmentCancelRequest) => Promise<AttachmentCancelResult>
+    onAttachmentProgress: (listener: (progress: AttachmentProgressEvent) => void) => () => void
     create: (request: LoginCreateRequest) => Promise<LoginView>
     /** Creates an active copy without any passkeys or attachments. */
     clone: (request: LoginIdRequest) => Promise<LoginView>
