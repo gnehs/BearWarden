@@ -14,12 +14,15 @@ export interface FocusTouchIdUnlockRuntime {
 
 export class FocusTouchIdUnlockController {
   private armed = true
+  private blockedUntilBlur = false
   private inFlight: Promise<void> | null = null
 
   constructor(private readonly runtime: FocusTouchIdUnlockRuntime) {}
 
   focus(): Promise<void> {
-    if (!this.armed || this.inFlight) return this.inFlight ?? Promise.resolve()
+    if (!this.armed || this.blockedUntilBlur || this.inFlight) {
+      return this.inFlight ?? Promise.resolve()
+    }
     this.armed = false
 
     const operation = this.tryUnlock()
@@ -28,14 +31,23 @@ export class FocusTouchIdUnlockController {
       })
       .finally(() => {
         if (this.inFlight === operation) this.inFlight = null
-        if (!this.runtime.isActive()) this.armed = true
       })
     this.inFlight = operation
     return operation
   }
 
   blur(): void {
-    if (!this.inFlight) this.armed = true
+    if (this.inFlight) return
+    this.armed = true
+    this.blockedUntilBlur = false
+  }
+
+  lockedWhileFocused(): Promise<void> {
+    if (this.blockedUntilBlur || this.inFlight || !this.canInteract()) {
+      return this.inFlight ?? Promise.resolve()
+    }
+    this.armed = true
+    return this.focus()
   }
 
   private async tryUnlock(): Promise<void> {
@@ -46,6 +58,7 @@ export class FocusTouchIdUnlockController {
     const settings = await this.runtime.settings()
     if (!settings.touchIdAvailable || !settings.touchIdEnabled || !this.canInteract()) return
 
+    this.blockedUntilBlur = true
     const status = await this.runtime.unlock()
     if (status.state !== 'unlocked') return
 
@@ -54,6 +67,7 @@ export class FocusTouchIdUnlockController {
       await this.runtime.lock()
       return
     }
+    this.blockedUntilBlur = false
     this.runtime.notifyUnlocked()
   }
 

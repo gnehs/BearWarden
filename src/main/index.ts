@@ -75,6 +75,7 @@ class SensitiveClipboard {
 }
 
 const sensitiveClipboard = new SensitiveClipboard()
+const focusTouchIdUnlockControllers = new WeakMap<BrowserWindow, FocusTouchIdUnlockController>()
 
 function parseAllowedExternalUrl(value: string): URL | null {
   try {
@@ -92,7 +93,6 @@ async function openAllowedExternalUrl(value: string): Promise<void> {
 }
 
 function notifyVaultLocked(): void {
-  vaultLockGeneration += 1
   sensitiveClipboard.clearIfOwned()
   const window = mainWindow
   if (!window || window.isDestroyed()) return
@@ -122,8 +122,16 @@ async function unlockSyncWithLocalPassword(masterPassword: string): Promise<void
 
 async function lockVault(): Promise<void> {
   if (!vault) return
+  vaultLockGeneration += 1
   await vault.lock()
   notifyVaultLocked()
+}
+
+async function lockVaultForInactivity(): Promise<void> {
+  await lockVault()
+  const window = mainWindow
+  if (!window || window.isDestroyed()) return
+  await focusTouchIdUnlockControllers.get(window)?.lockedWhileFocused()
 }
 
 async function lockVaultFailClosed(): Promise<void> {
@@ -169,6 +177,7 @@ function createWindow(): BrowserWindow {
   window.on('ready-to-show', () => window.show())
   window.on('close', requestSystemLock)
   window.on('closed', () => {
+    focusTouchIdUnlockControllers.delete(window)
     if (mainWindow === window) mainWindow = null
   })
   window.webContents.on('will-navigate', (event) => event.preventDefault())
@@ -192,6 +201,7 @@ function createWindow(): BrowserWindow {
     lock: lockVaultFailClosed,
     notifyUnlocked: notifyVaultUnlocked
   })
+  focusTouchIdUnlockControllers.set(window, focusTouchIdUnlock)
   window.on('focus', () => void focusTouchIdUnlock.focus())
   window.on('blur', () => focusTouchIdUnlock.blur())
 
@@ -242,7 +252,7 @@ if (hasSingleInstanceLock)
           if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setContentProtection(enabled)
         },
         applyClipboardTimeout: (seconds) => sensitiveClipboard.setClearDelay(seconds),
-        lockVault,
+        lockVault: lockVaultForInactivity,
         unlockVault: async (masterPassword) => {
           if (!vault) throw new Error('Vault service unavailable')
           const status = await vault.unlock(masterPassword)
@@ -257,7 +267,10 @@ if (hasSingleInstanceLock)
       vault,
       settings,
       getMainWindow: () => mainWindow,
-      afterLock: notifyVaultLocked,
+      afterLock: () => {
+        vaultLockGeneration += 1
+        notifyVaultLocked()
+      },
       afterUnlock: unlockSyncWithLocalPassword,
       afterSyncChanged: notifySyncChanged
     })

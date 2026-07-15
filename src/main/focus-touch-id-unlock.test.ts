@@ -94,6 +94,70 @@ describe('FocusTouchIdUnlockController', () => {
     expect(runtime.notifyUnlocked).toHaveBeenCalledTimes(1)
   })
 
+  it('prompts once when an unlocked focused vault is auto-locked', async () => {
+    let state: VaultStatus['state'] = 'unlocked'
+    const runtime = createRuntime({
+      vaultStatus: vi.fn(async () => ({ state }))
+    })
+    const controller = new FocusTouchIdUnlockController(runtime)
+
+    await controller.focus()
+    expect(runtime.unlock).not.toHaveBeenCalled()
+
+    state = 'locked'
+    await controller.lockedWhileFocused()
+
+    expect(runtime.unlock).toHaveBeenCalledTimes(1)
+    expect(runtime.notifyUnlocked).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not automatically retry a failed auto-lock prompt until a later blur-focus cycle', async () => {
+    const runtime = createRuntime({
+      unlock: vi
+        .fn<() => Promise<VaultStatus>>()
+        .mockRejectedValueOnce(new Error('cancelled'))
+        .mockResolvedValueOnce({ state: 'unlocked' })
+    })
+    const controller = new FocusTouchIdUnlockController(runtime)
+
+    await controller.lockedWhileFocused()
+    await controller.lockedWhileFocused()
+    await controller.focus()
+    expect(runtime.unlock).toHaveBeenCalledTimes(1)
+
+    controller.blur()
+    await controller.focus()
+
+    expect(runtime.unlock).toHaveBeenCalledTimes(2)
+    expect(runtime.notifyUnlocked).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores prompt-owned blur-focus events and does not reopen after cancellation', async () => {
+    const pending = deferred<VaultStatus>()
+    const runtime = createRuntime({ unlock: vi.fn(() => pending.promise) })
+    const controller = new FocusTouchIdUnlockController(runtime)
+
+    const attempt = controller.focus()
+    await vi.waitFor(() => expect(runtime.unlock).toHaveBeenCalledTimes(1))
+    controller.blur()
+    const restoredFocus = controller.focus()
+    pending.reject(new Error('cancelled'))
+    await Promise.all([attempt, restoredFocus])
+    await controller.focus()
+
+    expect(runtime.unlock).toHaveBeenCalledTimes(1)
+    expect(runtime.notifyUnlocked).not.toHaveBeenCalled()
+  })
+
+  it('does not prompt on auto-lock when the window is not focused', async () => {
+    const runtime = createRuntime({ isFocused: vi.fn(() => false) })
+    const controller = new FocusTouchIdUnlockController(runtime)
+
+    await controller.lockedWhileFocused()
+
+    expect(runtime.unlock).not.toHaveBeenCalled()
+  })
+
   it('does not reopen a vault that was locked while authentication was pending', async () => {
     let lockGeneration = 0
     const pending = deferred<VaultStatus>()
