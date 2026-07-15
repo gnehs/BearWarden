@@ -23,7 +23,7 @@ BearWarden 是一個以「快速找到、安心使用」為核心的桌面密碼
 - 系統鎖定或休眠時自動鎖定密碼庫
 - 直接與 Bitwarden Cloud 或 Vaultwarden 雙向同步，不依賴 `bw` CLI
 - 同步個人保管庫項目、資料夾、多 URI／match、密碼歷史、重新提示、封存與垃圾桶狀態，並以衝突副本避免覆蓋資料
-- 同步附件的解密檔名、大小與 legacy 狀態，並安全下載 V1 legacy／V2 附件；金鑰、短效網址、儲存路徑與檔案內容只存在主程序
+- 同步附件的解密檔名、大小與 legacy 狀態，並可安全上傳、下載、刪除及修復 legacy 附件；操作提供進度與主動取消，金鑰、短效網址、檔案路徑與內容只存在主程序
 
 ## 資料安全模型
 
@@ -32,7 +32,8 @@ BearWarden 是一個以「快速找到、安心使用」為核心的桌面密碼
 - 每次寫入先建立權限為 `0600` 的暫存檔，再以原子替換更新密碼庫。
 - renderer 不具 Node.js、任意 IPC 或檔案系統能力；登入清單不包含密碼。
 - 匯入／匯出的路徑與檔案內容只由主程序處理；備份以 `0600` 暫存檔、fsync 與原子替換寫入。
-- 附件下載會重新取得短效網址、先驗證 metadata，再於主程序驗證 HMAC／解密，並以 `0600` 暫存檔與原子替換寫入；鎖定時會中止尚未落盤的下載。目前記憶體內下載上限為 128 MiB。
+- 附件上傳會在主程序建立獨立金鑰與 authenticated type-2 加密 envelope，再依伺服器指定的 Direct 或 Azure 流程傳送；下載會重新取得短效網址、先驗證 metadata，再於主程序驗證 HMAC／解密，並以 `0600` 暫存檔與原子替換寫入。上傳、下載、刪除與 legacy Fix 支援進度、主動取消及鎖定中止，明文 Buffer 用畢後會清除。
+- 附件目前採記憶體內加解密，加密後的 envelope 上限為 128 MiB；超過此上限的大檔串流、可讀的剩餘儲存額度，以及附件 ZIP 匯入／匯出仍未實作。
 - 受重新提示保護的項目清單不包含使用者名稱、URI 或 TOTP 中繼資料；主密碼驗證後取得的 capability 會在 60 秒後失效。
 - 鎖定時會清除主程序內的金鑰與已解密資料。
 
@@ -59,8 +60,8 @@ Cloud 與支援中的 Vaultwarden 版本執行相容測試。
 主密碼不會寫入 BearWarden 密碼庫或設定；只在登入或解鎖時於主程序記憶體使用，
 衍生金鑰在鎖定時清除。登入 token、同步設定與 ID 對應只存放在已加密的本機密碼庫內。
 
-目前同步範圍限個人保管庫的 items、folders、封存、垃圾桶與附件中繼資料。組織項目、附件上傳／刪除、Sends、Passkeys 與
-SSO 尚不由 BearWarden 編輯；附件 metadata 以 server 為準，V1 legacy／V2 附件可從項目詳情安全下載。同步的自訂欄位可在項目詳情安全地顯示與編輯。完整差距與
+目前同步範圍限個人保管庫的 items、folders、封存、垃圾桶與附件。附件 metadata 以 server 為準，支援安全上傳、下載、刪除及 legacy Fix；組織項目、Sends、Passkey 寫入與
+SSO 尚不由 BearWarden 編輯。同步的自訂欄位可在項目詳情安全地顯示與編輯。附件主要流程已有自動化 fixture 覆蓋，但 Direct／Azure live server 相容驗證仍是後續工作。完整差距與
 實作順序記錄於 [`docs/vaultwarden-feature-gap.md`](docs/vaultwarden-feature-gap.md)。
 更新既有 login 時，direct connector 會保留 BearWarden 未支援的遠端欄位。若兩端同時修改，
 遠端版本會保留為主要項目，本機修改會另建 `(BearWarden conflict)` 副本。
