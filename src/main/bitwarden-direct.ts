@@ -1,0 +1,1449 @@
+import { randomBytes, randomUUID } from 'node:crypto'
+import {
+  BitwardenCryptoError,
+  clearBitwardenSymmetricKey,
+  decodeBitwardenUserKey,
+  decryptBitwardenBytes,
+  decryptBitwardenCipherBlob,
+  decryptBitwardenString,
+  decryptBitwardenWrappedKey,
+  deriveMasterKey,
+  derivePasswordKey,
+  encryptBitwardenBytes,
+  encryptBitwardenCipherBlob,
+  encryptBitwardenString,
+  stretchMasterKey,
+  verifyBitwardenV2AccountState,
+  type BitwardenKdf,
+  type BitwardenCipherBlobValue,
+  type BitwardenSymmetricKey
+} from './bitwarden-crypto'
+import {
+  BitwardenHttpClient,
+  BitwardenHttpError,
+  type BitwardenPrelogin,
+  type BitwardenSession,
+  type JsonObject,
+  type JsonValue
+} from './bitwarden-http'
+import type { VaultItemFields, VaultItemType } from '../shared/vault-contract'
+import type { StoredPasskeyCredential } from './passkey'
+
+const USER_KEY_BYTES = 64
+const MAX_REMOTE_ENTITIES = 100_000
+const MINIMUM_CLIENT_VERSION = '2024.12.0'
+
+type BitwardenCipherType = 1 | 2 | 3 | 4 | 5
+
+const WIRE_TYPE_BY_ITEM_TYPE = {
+  login: 1,
+  secureNote: 2,
+  card: 3,
+  identity: 4,
+  sshKey: 5
+} as const satisfies Record<VaultItemType, BitwardenCipherType>
+
+const ITEM_TYPE_BY_WIRE_TYPE: Record<BitwardenCipherType, VaultItemType> = {
+  1: 'login',
+  2: 'secureNote',
+  3: 'card',
+  4: 'identity',
+  5: 'sshKey'
+}
+
+const BLOB_TAG_BY_ITEM_TYPE = {
+  login: 'login',
+  secureNote: 'secureNote',
+  card: 'card',
+  identity: 'identity',
+  sshKey: 'sshKey'
+} as const satisfies Record<VaultItemType, string>
+
+function protocolClientVersion(value: string | undefined): string {
+  if (!value) return MINIMUM_CLIENT_VERSION
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:-([^+]+))?(?:\+.+)?$/.exec(value)
+  if (!match) return MINIMUM_CLIENT_VERSION
+  const requested = match.slice(1, 4).map(Number)
+  const minimum = MINIMUM_CLIENT_VERSION.split('.').map(Number)
+  for (let index = 0; index < minimum.length; index += 1) {
+    if (requested[index]! > minimum[index]!) return value
+    if (requested[index]! < minimum[index]!) return MINIMUM_CLIENT_VERSION
+  }
+  return match[4] ? MINIMUM_CLIENT_VERSION : value
+}
+
+export type BitwardenDirectErrorCode =
+  | 'AUTH_REQUIRED'
+  | 'TWO_FACTOR_REQUIRED'
+  | 'NEW_DEVICE_REQUIRED'
+  | 'NETWORK'
+  | 'INVALID_RESPONSE'
+  | 'CONFLICT'
+  | 'ABORTED'
+  | 'UNSUPPORTED_ACCOUNT_ENCRYPTION'
+  | 'ACCOUNT_CHANGED'
+
+export class BitwardenDirectError extends Error {
+  constructor(readonly code: BitwardenDirectErrorCode) {
+    super(`Bitwarden direct sync failed (${code})`)
+    this.name = 'BitwardenDirectError'
+  }
+}
+
+export interface BitwardenTwoFactor {
+  method: 0 | 1 | 3
+  code: string
+}
+
+export interface BitwardenFolder {
+  id: string
+  name: string
+}
+
+export interface BitwardenLoginUri {
+  uri: string
+  match: number | null
+}
+
+export interface BitwardenLoginItem extends VaultItemFields {
+  id: string
+  type: VaultItemType
+  organizationId: null
+  folderId: string | null
+  name: string
+  notes: string | null
+  favorite: boolean
+  uris: BitwardenLoginUri[]
+  creationDate: string | null
+  revisionDate: string | null
+  passkeys: StoredPasskeyCredential[]
+}
+
+export interface BitwardenLoginDraft extends Partial<VaultItemFields> {
+  type?: VaultItemType
+  name: string
+  notes?: string | null
+  folderId?: string | null
+  favorite?: boolean
+  passkeys?: StoredPasskeyCredential[]
+}
+
+export interface BitwardenLoginRequest {
+  email: string
+  password: string
+  twoFactor?: BitwardenTwoFactor
+  newDeviceOtp?: string
+  signal?: AbortSignal
+}
+
+export interface BitwardenUnlockRequest {
+  password: string
+  twoFactor?: BitwardenTwoFactor
+  newDeviceOtp?: string
+  signal?: AbortSignal
+}
+
+export interface BitwardenDirectState {
+  session: BitwardenSession | null
+  deviceIdentifier: string
+  profileId: string | null
+  securityStamp: string | null
+}
+
+export interface BitwardenSyncClient {
+  status(signal?: AbortSignal): Promise<{ status: 'unauthenticated' | 'locked' | 'unlocked' }>
+  login(request: BitwardenLoginRequest): Promise<void>
+  unlock(request: BitwardenUnlockRequest): Promise<void>
+  sync(signal?: AbortSignal): Promise<void>
+  listFolders(signal?: AbortSignal): Promise<BitwardenFolder[]>
+  listPersonalLogins(signal?: AbortSignal): Promise<BitwardenLoginItem[]>
+  createFolder(name: string, signal?: AbortSignal): Promise<BitwardenFolder>
+  editFolder(id: string, name: string, signal?: AbortSignal): Promise<BitwardenFolder>
+  deleteFolder(id: string, signal?: AbortSignal): Promise<void>
+  createLogin(draft: BitwardenLoginDraft, signal?: AbortSignal): Promise<BitwardenLoginItem>
+  editLogin(
+    id: string,
+    draft: BitwardenLoginDraft,
+    signal?: AbortSignal
+  ): Promise<BitwardenLoginItem>
+  deleteLogin(id: string, signal?: AbortSignal): Promise<void>
+  lock(): Promise<void>
+  logout(): Promise<void>
+  exportState(): BitwardenDirectState
+}
+
+export interface BitwardenDirectOptions {
+  serverUrl: string
+  email: string
+  state?: BitwardenDirectState | null
+  httpClient?: BitwardenHttpClient
+  onStateChanged?: (state: BitwardenDirectState) => void | Promise<void>
+  deviceName?: string
+  deviceType?: number
+  clientVersion?: string
+}
+
+interface CachedFolder {
+  raw: JsonObject
+  item: BitwardenFolder
+}
+
+interface CachedLogin {
+  raw: JsonObject
+  item: BitwardenLoginItem
+}
+
+interface ResolvedBitwardenDraft extends VaultItemFields {
+  type: VaultItemType
+  name: string
+  notes: string | null
+  folderId: string | null
+  favorite: boolean
+  passkeys: StoredPasskeyCredential[]
+  totpChanged: boolean
+  passkeysChanged: boolean
+}
+
+function isRecord(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function property(record: JsonObject, name: string): JsonValue | undefined {
+  if (name in record) return record[name]
+  const normalized = name.toLocaleLowerCase('en-US')
+  const key = Object.keys(record).find(
+    (candidate) => candidate.toLocaleLowerCase('en-US') === normalized
+  )
+  return key === undefined ? undefined : record[key]
+}
+
+function recordProperty(record: JsonObject, name: string): JsonObject | null {
+  const value = property(record, name)
+  return isRecord(value) ? value : null
+}
+
+function stringProperty(record: JsonObject, name: string): string | null {
+  const value = property(record, name)
+  return typeof value === 'string' ? value : null
+}
+
+function nullableStringProperty(record: JsonObject, name: string): string | null {
+  const value = property(record, name)
+  if (value === null || value === undefined) return null
+  if (typeof value !== 'string') throw new BitwardenDirectError('INVALID_RESPONSE')
+  return value
+}
+
+function requiredStringProperty(record: JsonObject, name: string): string {
+  const value = stringProperty(record, name)
+  if (!value) throw new BitwardenDirectError('INVALID_RESPONSE')
+  return value
+}
+
+function booleanProperty(record: JsonObject, name: string, fallback = false): boolean {
+  const value = property(record, name)
+  if (value === undefined || value === null) return fallback
+  if (typeof value !== 'boolean') throw new BitwardenDirectError('INVALID_RESPONSE')
+  return value
+}
+
+function bitwardenCipherType(record: JsonObject): BitwardenCipherType {
+  const value = property(record, 'type')
+  if (value !== 1 && value !== 2 && value !== 3 && value !== 4 && value !== 5) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function emptyVaultItemFields(): VaultItemFields {
+  return {
+    username: '',
+    password: '',
+    totp: '',
+    uri: null,
+    cardholderName: '',
+    brand: '',
+    number: '',
+    expMonth: '',
+    expYear: '',
+    code: '',
+    title: '',
+    firstName: '',
+    middleName: '',
+    lastName: '',
+    address1: '',
+    address2: '',
+    address3: '',
+    city: '',
+    state: '',
+    postalCode: '',
+    country: '',
+    company: '',
+    email: '',
+    phone: '',
+    ssn: '',
+    identityUsername: '',
+    passportNumber: '',
+    licenseNumber: '',
+    privateKey: '',
+    publicKey: '',
+    fingerprint: ''
+  }
+}
+
+function resolveDraft(
+  draft: BitwardenLoginDraft,
+  previous: BitwardenLoginItem | null
+): ResolvedBitwardenDraft {
+  const fields = { ...emptyVaultItemFields(), ...(previous ?? {}) }
+  const fieldNames = Object.keys(emptyVaultItemFields()) as (keyof VaultItemFields)[]
+  for (const name of fieldNames) {
+    const value = draft[name]
+    if (value !== undefined) {
+      Object.assign(fields, { [name]: value })
+    }
+  }
+  return {
+    ...fields,
+    type: draft.type ?? previous?.type ?? 'login',
+    name: draft.name,
+    notes: draft.notes === undefined ? (previous?.notes ?? null) : draft.notes,
+    folderId: draft.folderId === undefined ? (previous?.folderId ?? null) : draft.folderId,
+    favorite: draft.favorite ?? previous?.favorite ?? false,
+    passkeys: draft.passkeys ?? previous?.passkeys.map((passkey) => ({ ...passkey })) ?? [],
+    totpChanged: previous === null || draft.totp !== undefined,
+    passkeysChanged: previous === null || draft.passkeys !== undefined
+  }
+}
+
+function cloneLoginItem(item: BitwardenLoginItem): BitwardenLoginItem {
+  return {
+    ...item,
+    uris: item.uris.map((uri) => ({ ...uri })),
+    passkeys: item.passkeys.map((passkey) => ({ ...passkey }))
+  }
+}
+
+function arrayProperty(record: JsonObject, name: string): JsonValue[] {
+  const value = property(record, name)
+  if (!Array.isArray(value) || value.length > MAX_REMOTE_ENTITIES) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function normalizeEmail(value: string): string {
+  const normalized = value.trim().toLocaleLowerCase('en-US')
+  if (!normalized) throw new BitwardenDirectError('AUTH_REQUIRED')
+  return normalized
+}
+
+function kdfFromPrelogin(prelogin: BitwardenPrelogin): BitwardenKdf {
+  if (prelogin.kdfType === 0) return { type: 'pbkdf2', iterations: prelogin.iterations }
+  if (prelogin.kdfType === 1 && prelogin.memory !== null && prelogin.parallelism !== null) {
+    return {
+      type: 'argon2id',
+      iterations: prelogin.iterations,
+      memoryMiB: prelogin.memory,
+      parallelism: prelogin.parallelism
+    }
+  }
+  throw new BitwardenDirectError('UNSUPPORTED_ACCOUNT_ENCRYPTION')
+}
+
+function desktopDeviceType(): number {
+  if (process.platform === 'win32') return 6
+  if (process.platform === 'darwin') return 7
+  return 8
+}
+
+function responseEntity(value: JsonObject, wrapper: string): JsonObject {
+  return recordProperty(value, wrapper) ?? value
+}
+
+function optionalJson(record: JsonObject, name: string): JsonValue | undefined {
+  const value = property(record, name)
+  return value === undefined ? undefined : structuredClone(value)
+}
+
+function setOptional(target: JsonObject, name: string, value: JsonValue | undefined): void {
+  if (value !== undefined) target[name] = value
+}
+
+function preservedUris(
+  previousLogin: JsonObject | null,
+  encryptedPrimary: string | null
+): JsonValue[] {
+  const previous = previousLogin ? property(previousLogin, 'uris') : null
+  const previousUris = Array.isArray(previous) ? previous : []
+  const remaining = previousUris.slice(1).map((uri) => structuredClone(uri))
+  if (encryptedPrimary === null) return remaining
+  const primary = isRecord(previousUris[0]) ? structuredClone(previousUris[0]) : {}
+  primary.uri = encryptedPrimary
+  if (!Object.hasOwn(primary, 'match')) primary.match = null
+  return [primary, ...remaining]
+}
+
+function preservedAttachments(existing: JsonObject, request: JsonObject): void {
+  const value = property(existing, 'attachments')
+  if (value === undefined) return
+  if (!Array.isArray(value)) {
+    request.attachments = structuredClone(value)
+    return
+  }
+  const revisionDate = optionalJson(existing, 'revisionDate') ?? null
+  const attachments: JsonObject = {}
+  const attachments2: JsonObject = {}
+  for (const entry of value) {
+    if (!isRecord(entry)) throw new BitwardenDirectError('INVALID_RESPONSE')
+    const id = requiredStringProperty(entry, 'id')
+    const fileName = requiredStringProperty(entry, 'fileName')
+    attachments[id] = fileName
+    const detail: JsonObject = { fileName, lastKnownRevisionDate: revisionDate }
+    const key = optionalJson(entry, 'key')
+    if (key !== undefined && key !== null) detail.key = key
+    attachments2[id] = detail
+  }
+  request.attachments = attachments
+  request.attachments2 = attachments2
+}
+
+function opaqueCipherBlob(record: JsonObject): string | null {
+  const value = property(record, 'data')
+  if (value === null || value === undefined || typeof value !== 'string') return null
+  const data = value
+  if (!data) return null
+  if (data.trimStart().startsWith('{')) {
+    let container: unknown
+    try {
+      container = JSON.parse(data)
+    } catch {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    if (!isRecord(container) || property(container, 'format_version') !== 1) return null
+    if (
+      typeof property(container, 'wrapped_cek') !== 'string' ||
+      typeof property(container, 'envelope') !== 'string'
+    ) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+  }
+  return data
+}
+
+function decryptOptionalString(
+  record: JsonObject,
+  name: string,
+  key: BitwardenSymmetricKey
+): string {
+  const encrypted = nullableStringProperty(record, name)
+  return encrypted === null ? '' : decryptBitwardenString(encrypted, key)
+}
+
+function decryptOptionalNullableString(
+  record: JsonObject,
+  name: string,
+  key: BitwardenSymmetricKey
+): string | null {
+  const encrypted = nullableStringProperty(record, name)
+  return encrypted === null ? null : decryptBitwardenString(encrypted, key)
+}
+
+function assertCreationDate(value: string | null): string {
+  if (!value || !Number.isFinite(Date.parse(value))) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function decryptFido2Credentials(
+  login: JsonObject,
+  key: BitwardenSymmetricKey
+): StoredPasskeyCredential[] {
+  const raw = property(login, 'fido2Credentials')
+  if (raw === null || raw === undefined) return []
+  if (!Array.isArray(raw) || raw.length > MAX_REMOTE_ENTITIES) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  return raw.map((value) => {
+    if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+    return {
+      credentialId: decryptBitwardenString(requiredStringProperty(value, 'credentialId'), key),
+      keyType: decryptBitwardenString(requiredStringProperty(value, 'keyType'), key),
+      keyAlgorithm: decryptBitwardenString(requiredStringProperty(value, 'keyAlgorithm'), key),
+      keyCurve: decryptBitwardenString(requiredStringProperty(value, 'keyCurve'), key),
+      keyValue: decryptBitwardenString(requiredStringProperty(value, 'keyValue'), key),
+      rpId: decryptBitwardenString(requiredStringProperty(value, 'rpId'), key),
+      userHandle: decryptOptionalNullableString(value, 'userHandle', key),
+      userName: decryptOptionalNullableString(value, 'userName', key),
+      counter: decryptBitwardenString(requiredStringProperty(value, 'counter'), key),
+      rpName: decryptOptionalNullableString(value, 'rpName', key),
+      userDisplayName: decryptOptionalNullableString(value, 'userDisplayName', key),
+      discoverable:
+        decryptBitwardenString(requiredStringProperty(value, 'discoverable'), key) === 'true',
+      creationDate: assertCreationDate(requiredStringProperty(value, 'creationDate'))
+    }
+  })
+}
+
+function parseBlobFido2Credentials(typeData: JsonObject): StoredPasskeyCredential[] {
+  const raw = property(typeData, 'fido2Credentials')
+  if (raw === null || raw === undefined) return []
+  if (!Array.isArray(raw) || raw.length > MAX_REMOTE_ENTITIES) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  return raw.map((value) => {
+    if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+    const counter = property(value, 'counter')
+    const discoverable = property(value, 'discoverable')
+    if (
+      (typeof counter !== 'number' || !Number.isSafeInteger(counter) || counter < 0) &&
+      (typeof counter !== 'string' || !/^\d+$/.test(counter))
+    ) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    if (typeof discoverable !== 'boolean') throw new BitwardenDirectError('INVALID_RESPONSE')
+    return {
+      credentialId: requiredStringProperty(value, 'credentialId'),
+      keyType: requiredStringProperty(value, 'keyType'),
+      keyAlgorithm: requiredStringProperty(value, 'keyAlgorithm'),
+      keyCurve: requiredStringProperty(value, 'keyCurve'),
+      keyValue: requiredStringProperty(value, 'keyValue'),
+      rpId: requiredStringProperty(value, 'rpId'),
+      userHandle: nullableStringProperty(value, 'userHandle'),
+      userName: nullableStringProperty(value, 'userName'),
+      counter: String(counter),
+      rpName: nullableStringProperty(value, 'rpName'),
+      userDisplayName: nullableStringProperty(value, 'userDisplayName'),
+      discoverable,
+      creationDate: assertCreationDate(requiredStringProperty(value, 'creationDate'))
+    }
+  })
+}
+
+function encryptFido2Credential(
+  passkey: StoredPasskeyCredential,
+  key: BitwardenSymmetricKey
+): JsonObject {
+  const encryptNullable = (value: string | null): string | null =>
+    value === null ? null : encryptBitwardenString(value, key)
+  return {
+    credentialId: encryptBitwardenString(passkey.credentialId, key),
+    keyType: encryptBitwardenString(passkey.keyType, key),
+    keyAlgorithm: encryptBitwardenString(passkey.keyAlgorithm, key),
+    keyCurve: encryptBitwardenString(passkey.keyCurve, key),
+    keyValue: encryptBitwardenString(passkey.keyValue, key),
+    rpId: encryptBitwardenString(passkey.rpId, key),
+    userHandle: encryptNullable(passkey.userHandle),
+    userName: encryptNullable(passkey.userName),
+    counter: encryptBitwardenString(passkey.counter, key),
+    rpName: encryptNullable(passkey.rpName),
+    userDisplayName: encryptNullable(passkey.userDisplayName),
+    discoverable: encryptBitwardenString(String(passkey.discoverable), key),
+    creationDate: passkey.creationDate
+  }
+}
+
+function passkeyToBlob(passkey: StoredPasskeyCredential): JsonObject {
+  const counter = Number(passkey.counter)
+  if (!Number.isSafeInteger(counter) || counter < 0) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  return {
+    credentialId: passkey.credentialId,
+    keyType: passkey.keyType,
+    keyAlgorithm: passkey.keyAlgorithm,
+    keyCurve: passkey.keyCurve,
+    keyValue: passkey.keyValue,
+    rpId: passkey.rpId,
+    userHandle: passkey.userHandle,
+    userName: passkey.userName,
+    counter,
+    rpName: passkey.rpName,
+    userDisplayName: passkey.userDisplayName,
+    discoverable: passkey.discoverable,
+    creationDate: passkey.creationDate
+  }
+}
+
+function validateUriMatch(value: JsonValue | undefined): number | null {
+  if (value === null || value === undefined) return null
+  if (!Number.isSafeInteger(value) || typeof value !== 'number' || value < 0 || value > 5) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+export class BitwardenDirectClient implements BitwardenSyncClient {
+  private readonly email: string
+  private readonly http: BitwardenHttpClient
+  private readonly deviceName: string
+  private readonly deviceType: number
+  private state: BitwardenDirectState
+  private stretchedKey: Buffer | null = null
+  private userKey: BitwardenSymmetricKey | null = null
+  private folders = new Map<string, CachedFolder>()
+  private logins = new Map<string, CachedLogin>()
+
+  constructor(private readonly options: BitwardenDirectOptions) {
+    this.email = normalizeEmail(options.email)
+    this.deviceName = options.deviceName ?? 'BearWarden desktop'
+    this.deviceType = options.deviceType ?? desktopDeviceType()
+    this.state = options.state
+      ? {
+          session: options.state.session ? { ...options.state.session } : null,
+          deviceIdentifier: options.state.deviceIdentifier,
+          profileId: options.state.profileId,
+          securityStamp: options.state.securityStamp
+        }
+      : {
+          session: null,
+          deviceIdentifier: randomUUID(),
+          profileId: null,
+          securityStamp: null
+        }
+    this.http =
+      options.httpClient ??
+      new BitwardenHttpClient({
+        server: options.serverUrl,
+        clientName: 'desktop',
+        clientVersion: protocolClientVersion(options.clientVersion),
+        onSessionChanged: async (session) => {
+          this.state.session = { ...session }
+          await this.notifyStateChanged()
+        }
+      })
+    if (this.state.session) this.http.setSession(this.state.session)
+  }
+
+  exportState(): BitwardenDirectState {
+    return {
+      session: this.http.exportSession(),
+      deviceIdentifier: this.state.deviceIdentifier,
+      profileId: this.state.profileId,
+      securityStamp: this.state.securityStamp
+    }
+  }
+
+  async status(): Promise<{ status: 'unauthenticated' | 'locked' | 'unlocked' }> {
+    if (!this.http.exportSession()) return { status: 'unauthenticated' }
+    return { status: this.stretchedKey ? 'unlocked' : 'locked' }
+  }
+
+  async login(request: BitwardenLoginRequest): Promise<void> {
+    if (normalizeEmail(request.email) !== this.email) {
+      throw new BitwardenDirectError('AUTH_REQUIRED')
+    }
+    await this.deriveAndAuthenticate(
+      request.password,
+      request.twoFactor,
+      request.newDeviceOtp,
+      true,
+      request.signal
+    )
+  }
+
+  async unlock(request: BitwardenUnlockRequest): Promise<void> {
+    await this.deriveAndAuthenticate(
+      request.password,
+      request.twoFactor,
+      request.newDeviceOtp,
+      !this.http.exportSession(),
+      request.signal
+    )
+  }
+
+  async sync(signal?: AbortSignal): Promise<void> {
+    const stretchedKey = this.requireStretchedKey()
+    try {
+      const payload = await this.http.sync(signal)
+      const profile = recordProperty(payload, 'profile')
+      if (!profile) throw new BitwardenDirectError('INVALID_RESPONSE')
+      const profileId = requiredStringProperty(profile, 'id')
+      const securityStamp = nullableStringProperty(profile, 'securityStamp')
+      this.assertAccountIdentity(profileId, securityStamp)
+
+      const wrappedUserKey = this.findWrappedUserKey(payload, profile)
+      const encodedUserKey = decryptBitwardenBytes(wrappedUserKey, stretchedKey)
+      let userKey: BitwardenSymmetricKey
+      try {
+        userKey = decodeBitwardenUserKey(encodedUserKey)
+      } finally {
+        encodedUserKey.fill(0)
+      }
+      await this.validateAccountKeys(profile, userKey)
+
+      const nextFolders = new Map<string, CachedFolder>()
+      const nextLogins = new Map<string, CachedLogin>()
+      try {
+        for (const value of arrayProperty(payload, 'folders')) {
+          if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+          const item = this.decryptFolder(value, userKey)
+          nextFolders.set(item.id, { raw: structuredClone(value), item })
+        }
+        for (const value of arrayProperty(payload, 'ciphers')) {
+          if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+          const deletedDate = property(value, 'deletedDate')
+          if (deletedDate !== null && deletedDate !== undefined) continue
+          const type = property(value, 'type')
+          const organizationId = property(value, 'organizationId')
+          if (organizationId !== null && organizationId !== undefined) continue
+          if (type !== 1 && type !== 2 && type !== 3 && type !== 4 && type !== 5) continue
+          const item = this.decryptLogin(value, userKey)
+          nextLogins.set(item.id, { raw: structuredClone(value), item })
+        }
+      } catch (error) {
+        clearBitwardenSymmetricKey(userKey)
+        throw error
+      }
+
+      clearBitwardenSymmetricKey(this.userKey)
+      this.userKey = userKey
+      this.folders = nextFolders
+      this.logins = nextLogins
+      this.state.profileId = profileId
+      this.state.securityStamp = securityStamp
+      this.state.session = this.http.exportSession()
+      await this.notifyStateChanged()
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  async listFolders(): Promise<BitwardenFolder[]> {
+    this.requireUserKey()
+    return [...this.folders.values()].map(({ item }) => ({ ...item }))
+  }
+
+  async listPersonalLogins(): Promise<BitwardenLoginItem[]> {
+    this.requireUserKey()
+    return [...this.logins.values()].map(({ item }) => cloneLoginItem(item))
+  }
+
+  async createFolder(name: string, signal?: AbortSignal): Promise<BitwardenFolder> {
+    const userKey = this.requireUserKey()
+    try {
+      const response = await this.http.createFolder(
+        { name: encryptBitwardenString(name, userKey) },
+        signal
+      )
+      const raw = responseEntity(response, 'folder')
+      const id = requiredStringProperty(raw, 'id')
+      const item = { id, name }
+      this.folders.set(id, { raw: structuredClone(raw), item })
+      await this.captureSession()
+      return { ...item }
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  async editFolder(id: string, name: string, signal?: AbortSignal): Promise<BitwardenFolder> {
+    const userKey = this.requireUserKey()
+    try {
+      const response = await this.http.updateFolder(
+        id,
+        { name: encryptBitwardenString(name, userKey) },
+        signal
+      )
+      const raw = responseEntity(response, 'folder')
+      const item = { id: requiredStringProperty(raw, 'id'), name }
+      this.folders.set(id, { raw: structuredClone(raw), item })
+      await this.captureSession()
+      return { ...item }
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  async deleteFolder(id: string, signal?: AbortSignal): Promise<void> {
+    try {
+      this.requireUserKey()
+      await this.http.deleteFolder(id, signal)
+      this.folders.delete(id)
+      await this.captureSession()
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  async createLogin(draft: BitwardenLoginDraft, signal?: AbortSignal): Promise<BitwardenLoginItem> {
+    const userKey = this.requireUserKey()
+    const itemKey = randomBytes(USER_KEY_BYTES)
+    try {
+      const request = this.encryptLoginRequest(resolveDraft(draft, null), itemKey, null)
+      request.key = encryptBitwardenBytes(itemKey, userKey, 'legacy-key')
+      const response = await this.http.createCipher(request, signal)
+      const raw = responseEntity(response, 'cipher')
+      const item = this.decryptLogin(raw, userKey)
+      this.logins.set(item.id, { raw: structuredClone(raw), item })
+      await this.captureSession()
+      return cloneLoginItem(item)
+    } catch (error) {
+      throw this.mapError(error)
+    } finally {
+      itemKey.fill(0)
+    }
+  }
+
+  async editLogin(
+    id: string,
+    draft: BitwardenLoginDraft,
+    signal?: AbortSignal
+  ): Promise<BitwardenLoginItem> {
+    const userKey = this.requireUserKey()
+    const cached = this.logins.get(id)
+    if (!cached) throw new BitwardenDirectError('INVALID_RESPONSE')
+    const itemKey = this.cipherKey(cached.raw, userKey)
+    try {
+      const request = this.encryptLoginRequest(
+        resolveDraft(draft, cached.item),
+        itemKey,
+        cached.raw
+      )
+      const response = await this.http.updateCipher(id, request, signal)
+      const raw = responseEntity(response, 'cipher')
+      const item = this.decryptLogin(raw, userKey)
+      this.logins.set(item.id, { raw: structuredClone(raw), item })
+      await this.captureSession()
+      return cloneLoginItem(item)
+    } catch (error) {
+      throw this.mapError(error)
+    } finally {
+      if (itemKey !== userKey) clearBitwardenSymmetricKey(itemKey)
+    }
+  }
+
+  async deleteLogin(id: string, signal?: AbortSignal): Promise<void> {
+    try {
+      this.requireUserKey()
+      await this.http.deleteCipher(id, signal)
+      this.logins.delete(id)
+      await this.captureSession()
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  async lock(): Promise<void> {
+    this.clearDecryptedState()
+  }
+
+  async logout(): Promise<void> {
+    this.clearDecryptedState()
+    this.state.session = null
+    this.http.clearSession()
+    await this.notifyStateChanged()
+  }
+
+  private async deriveAndAuthenticate(
+    password: string,
+    twoFactor: BitwardenTwoFactor | undefined,
+    newDeviceOtp: string | undefined,
+    requestToken: boolean,
+    signal?: AbortSignal
+  ): Promise<void> {
+    let masterKey: Buffer | null = null
+    let passwordKey: Buffer | null = null
+    let stretched: ReturnType<typeof stretchMasterKey> | null = null
+    try {
+      const prelogin = await this.http.prelogin(this.email, signal)
+      masterKey = await deriveMasterKey(
+        password,
+        prelogin.salt ?? this.email,
+        kdfFromPrelogin(prelogin)
+      )
+      passwordKey = await derivePasswordKey(masterKey, password)
+      stretched = stretchMasterKey(masterKey)
+      if (requestToken) {
+        const session = await this.http.passwordToken(
+          {
+            email: this.email,
+            password: passwordKey.toString('base64'),
+            deviceIdentifier: this.state.deviceIdentifier,
+            deviceType: this.deviceType,
+            deviceName: this.deviceName,
+            ...(newDeviceOtp ? { newDeviceOtp } : {}),
+            ...(twoFactor
+              ? {
+                  twoFactorProvider: twoFactor.method,
+                  twoFactorToken: twoFactor.code,
+                  twoFactorRemember: true
+                }
+              : {})
+          },
+          signal
+        )
+        this.http.setSession(session)
+        this.state.session = { ...session }
+      }
+      this.stretchedKey?.fill(0)
+      this.stretchedKey = stretched.combinedKey
+      stretched.combinedKey = Buffer.alloc(0)
+      await this.notifyStateChanged()
+    } catch (error) {
+      throw this.mapError(error)
+    } finally {
+      masterKey?.fill(0)
+      passwordKey?.fill(0)
+      stretched?.encKey.fill(0)
+      stretched?.macKey.fill(0)
+      stretched?.combinedKey.fill(0)
+    }
+  }
+
+  private findWrappedUserKey(payload: JsonObject, profile: JsonObject): string {
+    const userDecryption = recordProperty(payload, 'userDecryption')
+    const masterPasswordUnlock = userDecryption
+      ? recordProperty(userDecryption, 'masterPasswordUnlock')
+      : null
+    const modern = masterPasswordUnlock
+      ? stringProperty(masterPasswordUnlock, 'masterKeyEncryptedUserKey')
+      : null
+    const legacy = stringProperty(profile, 'key')
+    const wrapped = modern ?? legacy
+    if (!wrapped) throw new BitwardenDirectError('UNSUPPORTED_ACCOUNT_ENCRYPTION')
+    return wrapped
+  }
+
+  private async validateAccountKeys(
+    profile: JsonObject,
+    userKey: BitwardenSymmetricKey
+  ): Promise<void> {
+    const accountKeys = recordProperty(profile, 'accountKeys')
+    const encryptionPair = accountKeys
+      ? recordProperty(accountKeys, 'publicKeyEncryptionKeyPair')
+      : null
+    const wrappedPrivateKey = encryptionPair
+      ? stringProperty(encryptionPair, 'wrappedPrivateKey')
+      : null
+    const signaturePair = accountKeys ? recordProperty(accountKeys, 'signatureKeyPair') : null
+    const security = accountKeys ? recordProperty(accountKeys, 'securityState') : null
+
+    if (Buffer.isBuffer(userKey)) {
+      if (wrappedPrivateKey?.startsWith('7.') || signaturePair !== null || security !== null) {
+        throw new BitwardenDirectError('UNSUPPORTED_ACCOUNT_ENCRYPTION')
+      }
+      return
+    }
+
+    const wrappedSigningKey = signaturePair
+      ? stringProperty(signaturePair, 'wrappedSigningKey')
+      : null
+    const securityState = security ? stringProperty(security, 'securityState') : null
+    if (!wrappedPrivateKey?.startsWith('7.') || !wrappedSigningKey || !securityState) {
+      throw new BitwardenDirectError('UNSUPPORTED_ACCOUNT_ENCRYPTION')
+    }
+    try {
+      await verifyBitwardenV2AccountState(
+        {
+          wrappedPrivateKey,
+          wrappedSigningKey,
+          securityState,
+          signedPublicKey: encryptionPair
+            ? stringProperty(encryptionPair, 'signedPublicKey')
+            : null,
+          publicKey: encryptionPair ? stringProperty(encryptionPair, 'publicKey') : null
+        },
+        userKey
+      )
+    } catch {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+  }
+
+  private decryptFolder(raw: JsonObject, userKey: BitwardenSymmetricKey): BitwardenFolder {
+    return {
+      id: requiredStringProperty(raw, 'id'),
+      name: decryptBitwardenString(requiredStringProperty(raw, 'name'), userKey)
+    }
+  }
+
+  private decryptLogin(raw: JsonObject, userKey: BitwardenSymmetricKey): BitwardenLoginItem {
+    const wireType = bitwardenCipherType(raw)
+    const itemType = ITEM_TYPE_BY_WIRE_TYPE[wireType]
+    const key = this.cipherKey(raw, userKey)
+    try {
+      const sealedBlob = opaqueCipherBlob(raw)
+      if (sealedBlob !== null) {
+        if (!Buffer.isBuffer(key)) throw new BitwardenDirectError('INVALID_RESPONSE')
+        const content = decryptBitwardenCipherBlob(sealedBlob, key)
+        if (!isRecord(content)) throw new BitwardenDirectError('INVALID_RESPONSE')
+        return this.decryptBlobLogin(raw, content, wireType)
+      }
+      const notes = nullableStringProperty(raw, 'notes')
+      const item: BitwardenLoginItem = {
+        ...emptyVaultItemFields(),
+        id: requiredStringProperty(raw, 'id'),
+        type: itemType,
+        organizationId: null,
+        folderId: nullableStringProperty(raw, 'folderId'),
+        name: decryptBitwardenString(requiredStringProperty(raw, 'name'), key),
+        notes: notes === null ? null : decryptBitwardenString(notes, key),
+        favorite: booleanProperty(raw, 'favorite'),
+        uris: [],
+        passkeys: [],
+        creationDate: nullableStringProperty(raw, 'creationDate'),
+        revisionDate: nullableStringProperty(raw, 'revisionDate')
+      }
+
+      if (itemType === 'login') {
+        const login = recordProperty(raw, 'login')
+        if (!login) throw new BitwardenDirectError('INVALID_RESPONSE')
+        item.username = decryptOptionalString(login, 'username', key)
+        item.password = decryptOptionalString(login, 'password', key)
+        item.totp = decryptOptionalString(login, 'totp', key)
+        item.passkeys = decryptFido2Credentials(login, key)
+        const urisValue = property(login, 'uris')
+        if (
+          urisValue !== undefined &&
+          urisValue !== null &&
+          (!Array.isArray(urisValue) || urisValue.length > MAX_REMOTE_ENTITIES)
+        ) {
+          throw new BitwardenDirectError('INVALID_RESPONSE')
+        }
+        item.uris = (Array.isArray(urisValue) ? urisValue : []).map((value) => {
+          if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+          const encryptedUri = nullableStringProperty(value, 'uri')
+          return {
+            uri: encryptedUri === null ? '' : decryptBitwardenString(encryptedUri, key),
+            match: validateUriMatch(property(value, 'match'))
+          }
+        })
+        item.uri = item.uris[0]?.uri ?? null
+      } else if (itemType === 'card') {
+        const card = recordProperty(raw, 'card')
+        if (!card) throw new BitwardenDirectError('INVALID_RESPONSE')
+        item.cardholderName = decryptOptionalString(card, 'cardholderName', key)
+        item.brand = decryptOptionalString(card, 'brand', key)
+        item.number = decryptOptionalString(card, 'number', key)
+        item.expMonth = decryptOptionalString(card, 'expMonth', key)
+        item.expYear = decryptOptionalString(card, 'expYear', key)
+        item.code = decryptOptionalString(card, 'code', key)
+      } else if (itemType === 'identity') {
+        const identity = recordProperty(raw, 'identity')
+        if (!identity) throw new BitwardenDirectError('INVALID_RESPONSE')
+        item.title = decryptOptionalString(identity, 'title', key)
+        item.firstName = decryptOptionalString(identity, 'firstName', key)
+        item.middleName = decryptOptionalString(identity, 'middleName', key)
+        item.lastName = decryptOptionalString(identity, 'lastName', key)
+        item.address1 = decryptOptionalString(identity, 'address1', key)
+        item.address2 = decryptOptionalString(identity, 'address2', key)
+        item.address3 = decryptOptionalString(identity, 'address3', key)
+        item.city = decryptOptionalString(identity, 'city', key)
+        item.state = decryptOptionalString(identity, 'state', key)
+        item.postalCode = decryptOptionalString(identity, 'postalCode', key)
+        item.country = decryptOptionalString(identity, 'country', key)
+        item.company = decryptOptionalString(identity, 'company', key)
+        item.email = decryptOptionalString(identity, 'email', key)
+        item.phone = decryptOptionalString(identity, 'phone', key)
+        item.ssn = decryptOptionalString(identity, 'ssn', key)
+        item.identityUsername = decryptOptionalString(identity, 'username', key)
+        item.passportNumber = decryptOptionalString(identity, 'passportNumber', key)
+        item.licenseNumber = decryptOptionalString(identity, 'licenseNumber', key)
+      } else if (itemType === 'secureNote') {
+        const secureNote = recordProperty(raw, 'secureNote')
+        const secureNoteType = secureNote ? property(secureNote, 'type') : undefined
+        if (!Number.isSafeInteger(secureNoteType)) {
+          throw new BitwardenDirectError('INVALID_RESPONSE')
+        }
+      } else {
+        const sshKey = recordProperty(raw, 'sshKey')
+        if (!sshKey) throw new BitwardenDirectError('INVALID_RESPONSE')
+        item.privateKey = decryptBitwardenString(requiredStringProperty(sshKey, 'privateKey'), key)
+        item.publicKey = decryptBitwardenString(requiredStringProperty(sshKey, 'publicKey'), key)
+        item.fingerprint = decryptBitwardenString(
+          requiredStringProperty(sshKey, 'keyFingerprint'),
+          key
+        )
+      }
+      return item
+    } finally {
+      if (key !== userKey) clearBitwardenSymmetricKey(key)
+    }
+  }
+
+  private decryptBlobLogin(
+    raw: JsonObject,
+    content: JsonObject,
+    wireType: BitwardenCipherType
+  ): BitwardenLoginItem {
+    const itemType = ITEM_TYPE_BY_WIRE_TYPE[wireType]
+    const typeData = recordProperty(content, 'typeData')
+    if (!typeData || stringProperty(typeData, 'type') !== BLOB_TAG_BY_ITEM_TYPE[itemType]) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    const item: BitwardenLoginItem = {
+      ...emptyVaultItemFields(),
+      id: requiredStringProperty(raw, 'id'),
+      type: itemType,
+      organizationId: null,
+      folderId: nullableStringProperty(raw, 'folderId'),
+      name: requiredStringProperty(content, 'name'),
+      notes: nullableStringProperty(content, 'notes'),
+      favorite: booleanProperty(raw, 'favorite'),
+      uris: [],
+      passkeys: [],
+      creationDate: nullableStringProperty(raw, 'creationDate'),
+      revisionDate: nullableStringProperty(raw, 'revisionDate')
+    }
+
+    if (itemType === 'login') {
+      item.username = nullableStringProperty(typeData, 'username') ?? ''
+      item.password = nullableStringProperty(typeData, 'password') ?? ''
+      item.totp = nullableStringProperty(typeData, 'totp') ?? ''
+      item.passkeys = parseBlobFido2Credentials(typeData)
+      const urisValue = property(typeData, 'uris')
+      if (
+        urisValue !== undefined &&
+        urisValue !== null &&
+        (!Array.isArray(urisValue) || urisValue.length > MAX_REMOTE_ENTITIES)
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      item.uris = (Array.isArray(urisValue) ? urisValue : []).map((value) => {
+        if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+        return {
+          uri: nullableStringProperty(value, 'uri') ?? '',
+          match: validateUriMatch(property(value, 'match'))
+        }
+      })
+      item.uri = item.uris[0]?.uri ?? null
+    } else if (itemType === 'card') {
+      item.cardholderName = nullableStringProperty(typeData, 'cardholderName') ?? ''
+      item.brand = nullableStringProperty(typeData, 'brand') ?? ''
+      item.number = nullableStringProperty(typeData, 'number') ?? ''
+      item.expMonth = nullableStringProperty(typeData, 'expMonth') ?? ''
+      item.expYear = nullableStringProperty(typeData, 'expYear') ?? ''
+      item.code = nullableStringProperty(typeData, 'code') ?? ''
+    } else if (itemType === 'identity') {
+      item.title = nullableStringProperty(typeData, 'title') ?? ''
+      item.firstName = nullableStringProperty(typeData, 'firstName') ?? ''
+      item.middleName = nullableStringProperty(typeData, 'middleName') ?? ''
+      item.lastName = nullableStringProperty(typeData, 'lastName') ?? ''
+      item.address1 = nullableStringProperty(typeData, 'address1') ?? ''
+      item.address2 = nullableStringProperty(typeData, 'address2') ?? ''
+      item.address3 = nullableStringProperty(typeData, 'address3') ?? ''
+      item.city = nullableStringProperty(typeData, 'city') ?? ''
+      item.state = nullableStringProperty(typeData, 'state') ?? ''
+      item.postalCode = nullableStringProperty(typeData, 'postalCode') ?? ''
+      item.country = nullableStringProperty(typeData, 'country') ?? ''
+      item.company = nullableStringProperty(typeData, 'company') ?? ''
+      item.email = nullableStringProperty(typeData, 'email') ?? ''
+      item.phone = nullableStringProperty(typeData, 'phone') ?? ''
+      item.ssn = nullableStringProperty(typeData, 'ssn') ?? ''
+      item.identityUsername = nullableStringProperty(typeData, 'username') ?? ''
+      item.passportNumber = nullableStringProperty(typeData, 'passportNumber') ?? ''
+      item.licenseNumber = nullableStringProperty(typeData, 'licenseNumber') ?? ''
+    } else if (itemType === 'secureNote') {
+      if (!Number.isSafeInteger(property(typeData, 'secureNoteType'))) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+    } else {
+      item.privateKey = requiredStringProperty(typeData, 'privateKey')
+      item.publicKey = requiredStringProperty(typeData, 'publicKey')
+      item.fingerprint = requiredStringProperty(typeData, 'fingerprint')
+    }
+    return item
+  }
+
+  private cipherKey(raw: JsonObject, userKey: BitwardenSymmetricKey): BitwardenSymmetricKey {
+    const wrappedKey = nullableStringProperty(raw, 'key')
+    if (wrappedKey === null) return userKey
+    const key = decryptBitwardenWrappedKey(wrappedKey, userKey)
+    if (key.length !== USER_KEY_BYTES) {
+      key.fill(0)
+      throw new BitwardenDirectError('UNSUPPORTED_ACCOUNT_ENCRYPTION')
+    }
+    return key
+  }
+
+  private encryptLoginRequest(
+    draft: ResolvedBitwardenDraft,
+    key: BitwardenSymmetricKey,
+    existing: JsonObject | null
+  ): JsonObject {
+    const useBlob =
+      Buffer.isBuffer(key) &&
+      (existing === null ? !Buffer.isBuffer(this.userKey) : opaqueCipherBlob(existing) !== null)
+    if (useBlob) return this.encryptBlobLoginRequest(draft, key, existing)
+
+    const wireType = WIRE_TYPE_BY_ITEM_TYPE[draft.type]
+    const nestedName = BLOB_TAG_BY_ITEM_TYPE[draft.type]
+    const previousType = existing ? property(existing, 'type') : null
+    const previousTypeData =
+      existing && previousType === wireType ? recordProperty(existing, nestedName) : null
+    const typeData: JsonObject = previousTypeData ? structuredClone(previousTypeData) : {}
+    const previousFields = existing ? optionalJson(existing, 'fields') : undefined
+    const request: JsonObject = {
+      type: wireType,
+      encryptedFor: this.requireProfileId(),
+      organizationId: null,
+      folderId: draft.folderId,
+      name: encryptBitwardenString(draft.name, key),
+      notes: draft.notes === null ? null : encryptBitwardenString(draft.notes, key),
+      favorite: draft.favorite,
+      reprompt: existing ? (property(existing, 'reprompt') ?? 0) : 0,
+      key: existing ? (property(existing, 'key') ?? null) : null,
+      fields: existing ? (previousFields === undefined ? [] : previousFields) : [],
+      login: null,
+      secureNote: null,
+      card: null,
+      identity: null,
+      sshKey: null
+    }
+
+    if (draft.type === 'login') {
+      typeData.username = encryptBitwardenString(draft.username, key)
+      typeData.password = encryptBitwardenString(draft.password, key)
+      if (draft.totpChanged) {
+        typeData.totp = draft.totp ? encryptBitwardenString(draft.totp, key) : null
+      } else if (!Object.hasOwn(typeData, 'totp')) {
+        typeData.totp = null
+      }
+      if (draft.passkeysChanged) {
+        typeData.fido2Credentials = draft.passkeys.map((passkey) =>
+          encryptFido2Credential(passkey, key)
+        )
+      } else if (!Object.hasOwn(typeData, 'fido2Credentials')) {
+        typeData.fido2Credentials = []
+      }
+      typeData.uris = preservedUris(
+        previousTypeData,
+        draft.uri === null ? null : encryptBitwardenString(draft.uri, key)
+      )
+    } else if (draft.type === 'card') {
+      typeData.cardholderName = encryptBitwardenString(draft.cardholderName, key)
+      typeData.brand = encryptBitwardenString(draft.brand, key)
+      typeData.number = encryptBitwardenString(draft.number, key)
+      typeData.expMonth = encryptBitwardenString(draft.expMonth, key)
+      typeData.expYear = encryptBitwardenString(draft.expYear, key)
+      typeData.code = encryptBitwardenString(draft.code, key)
+    } else if (draft.type === 'identity') {
+      typeData.title = encryptBitwardenString(draft.title, key)
+      typeData.firstName = encryptBitwardenString(draft.firstName, key)
+      typeData.middleName = encryptBitwardenString(draft.middleName, key)
+      typeData.lastName = encryptBitwardenString(draft.lastName, key)
+      typeData.address1 = encryptBitwardenString(draft.address1, key)
+      typeData.address2 = encryptBitwardenString(draft.address2, key)
+      typeData.address3 = encryptBitwardenString(draft.address3, key)
+      typeData.city = encryptBitwardenString(draft.city, key)
+      typeData.state = encryptBitwardenString(draft.state, key)
+      typeData.postalCode = encryptBitwardenString(draft.postalCode, key)
+      typeData.country = encryptBitwardenString(draft.country, key)
+      typeData.company = encryptBitwardenString(draft.company, key)
+      typeData.email = encryptBitwardenString(draft.email, key)
+      typeData.phone = encryptBitwardenString(draft.phone, key)
+      typeData.ssn = encryptBitwardenString(draft.ssn, key)
+      typeData.username = encryptBitwardenString(draft.identityUsername, key)
+      typeData.passportNumber = encryptBitwardenString(draft.passportNumber, key)
+      typeData.licenseNumber = encryptBitwardenString(draft.licenseNumber, key)
+    } else if (draft.type === 'secureNote') {
+      typeData.type = 0
+    } else {
+      typeData.privateKey = encryptBitwardenString(draft.privateKey, key)
+      typeData.publicKey = encryptBitwardenString(draft.publicKey, key)
+      typeData.keyFingerprint = encryptBitwardenString(draft.fingerprint, key)
+    }
+    request[nestedName] = typeData
+    if (existing) {
+      setOptional(request, 'lastKnownRevisionDate', optionalJson(existing, 'revisionDate'))
+      setOptional(request, 'archivedDate', optionalJson(existing, 'archivedDate'))
+      setOptional(request, 'passwordHistory', optionalJson(existing, 'passwordHistory'))
+      preservedAttachments(existing, request)
+      setOptional(request, 'data', optionalJson(existing, 'data'))
+    }
+    return request
+  }
+
+  private encryptBlobLoginRequest(
+    draft: ResolvedBitwardenDraft,
+    key: Buffer,
+    existing: JsonObject | null
+  ): JsonObject {
+    let content: JsonObject
+    if (existing) {
+      const sealedBlob = opaqueCipherBlob(existing)
+      if (!sealedBlob) throw new BitwardenDirectError('INVALID_RESPONSE')
+      const decrypted = decryptBitwardenCipherBlob(sealedBlob, key)
+      if (!isRecord(decrypted)) throw new BitwardenDirectError('INVALID_RESPONSE')
+      content = structuredClone(decrypted)
+    } else {
+      content = {
+        name: draft.name,
+        notes: draft.notes,
+        typeData: {},
+        fields: [],
+        passwordHistory: []
+      }
+    }
+    const expectedTag = BLOB_TAG_BY_ITEM_TYPE[draft.type]
+    const existingTypeData = recordProperty(content, 'typeData')
+    const typeData: JsonObject =
+      existingTypeData && stringProperty(existingTypeData, 'type') === expectedTag
+        ? structuredClone(existingTypeData)
+        : {}
+    typeData.type = expectedTag
+
+    if (draft.type === 'login') {
+      const previousUris = property(typeData, 'uris')
+      if (
+        previousUris !== undefined &&
+        previousUris !== null &&
+        (!Array.isArray(previousUris) || previousUris.length > MAX_REMOTE_ENTITIES)
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      const remainingUris = Array.isArray(previousUris)
+        ? previousUris.slice(1).map((uri) => structuredClone(uri))
+        : []
+      const primaryUri =
+        Array.isArray(previousUris) && isRecord(previousUris[0])
+          ? structuredClone(previousUris[0])
+          : {}
+      typeData.username = draft.username
+      typeData.password = draft.password
+      if (draft.totpChanged) typeData.totp = draft.totp || null
+      if (draft.passkeysChanged) {
+        typeData.fido2Credentials = draft.passkeys.map(passkeyToBlob)
+      }
+      if (draft.uri === null) {
+        typeData.uris = remainingUris
+      } else {
+        primaryUri.uri = draft.uri
+        if (!Object.hasOwn(primaryUri, 'match')) primaryUri.match = null
+        typeData.uris = [primaryUri, ...remainingUris]
+      }
+      if (!Object.hasOwn(typeData, 'passwordRevisionDate')) typeData.passwordRevisionDate = null
+      if (!Object.hasOwn(typeData, 'totp')) typeData.totp = null
+      if (!Object.hasOwn(typeData, 'autofillOnPageLoad')) typeData.autofillOnPageLoad = null
+      if (!Object.hasOwn(typeData, 'fido2Credentials')) typeData.fido2Credentials = []
+    } else if (draft.type === 'card') {
+      typeData.cardholderName = draft.cardholderName
+      typeData.brand = draft.brand
+      typeData.number = draft.number
+      typeData.expMonth = draft.expMonth
+      typeData.expYear = draft.expYear
+      typeData.code = draft.code
+    } else if (draft.type === 'identity') {
+      typeData.title = draft.title
+      typeData.firstName = draft.firstName
+      typeData.middleName = draft.middleName
+      typeData.lastName = draft.lastName
+      typeData.address1 = draft.address1
+      typeData.address2 = draft.address2
+      typeData.address3 = draft.address3
+      typeData.city = draft.city
+      typeData.state = draft.state
+      typeData.postalCode = draft.postalCode
+      typeData.country = draft.country
+      typeData.company = draft.company
+      typeData.email = draft.email
+      typeData.phone = draft.phone
+      typeData.ssn = draft.ssn
+      typeData.username = draft.identityUsername
+      typeData.passportNumber = draft.passportNumber
+      typeData.licenseNumber = draft.licenseNumber
+    } else if (draft.type === 'secureNote') {
+      typeData.secureNoteType = 0
+    } else {
+      typeData.privateKey = draft.privateKey
+      typeData.publicKey = draft.publicKey
+      typeData.fingerprint = draft.fingerprint
+    }
+    content.typeData = typeData
+    content.name = draft.name
+    content.notes = draft.notes
+
+    const request: JsonObject = {
+      type: WIRE_TYPE_BY_ITEM_TYPE[draft.type],
+      encryptedFor: this.requireProfileId(),
+      organizationId: null,
+      folderId: draft.folderId,
+      name: encryptBitwardenString('', key),
+      notes: null,
+      favorite: draft.favorite,
+      reprompt: existing ? (property(existing, 'reprompt') ?? 0) : 0,
+      key: existing ? (property(existing, 'key') ?? null) : null,
+      fields: null,
+      login: null,
+      secureNote: null,
+      card: null,
+      identity: null,
+      sshKey: null,
+      passwordHistory: null,
+      data: encryptBitwardenCipherBlob(content as BitwardenCipherBlobValue, key)
+    }
+    if (existing) {
+      setOptional(request, 'lastKnownRevisionDate', optionalJson(existing, 'revisionDate'))
+      setOptional(request, 'archivedDate', optionalJson(existing, 'archivedDate'))
+      preservedAttachments(existing, request)
+    }
+    return request
+  }
+
+  private assertAccountIdentity(profileId: string, securityStamp: string | null): void {
+    if (this.state.profileId && this.state.profileId !== profileId) {
+      throw new BitwardenDirectError('ACCOUNT_CHANGED')
+    }
+    if (this.state.securityStamp && securityStamp && this.state.securityStamp !== securityStamp) {
+      throw new BitwardenDirectError('ACCOUNT_CHANGED')
+    }
+  }
+
+  private requireStretchedKey(): Buffer {
+    if (!this.stretchedKey) throw new BitwardenDirectError('AUTH_REQUIRED')
+    return this.stretchedKey
+  }
+
+  private requireUserKey(): BitwardenSymmetricKey {
+    if (!this.userKey) throw new BitwardenDirectError('AUTH_REQUIRED')
+    return this.userKey
+  }
+
+  private requireProfileId(): string {
+    if (!this.state.profileId) throw new BitwardenDirectError('AUTH_REQUIRED')
+    return this.state.profileId
+  }
+
+  private async captureSession(): Promise<void> {
+    this.state.session = this.http.exportSession()
+    await this.notifyStateChanged()
+  }
+
+  private async notifyStateChanged(): Promise<void> {
+    await this.options.onStateChanged?.(this.exportState())
+  }
+
+  private clearDecryptedState(): void {
+    this.stretchedKey?.fill(0)
+    clearBitwardenSymmetricKey(this.userKey)
+    this.stretchedKey = null
+    this.userKey = null
+    this.folders.clear()
+    this.logins.clear()
+  }
+
+  private mapError(error: unknown): BitwardenDirectError {
+    if (error instanceof BitwardenDirectError) return error
+    if (error instanceof BitwardenCryptoError) {
+      if (error.code === 'AUTHENTICATION_FAILED') {
+        return new BitwardenDirectError('AUTH_REQUIRED')
+      }
+      if (error.code === 'ARGON2_UNAVAILABLE') {
+        return new BitwardenDirectError('UNSUPPORTED_ACCOUNT_ENCRYPTION')
+      }
+      return new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    if (error instanceof BitwardenHttpError) {
+      if (error.code === 'AUTH') return new BitwardenDirectError('AUTH_REQUIRED')
+      if (error.code === 'TWO_FACTOR') return new BitwardenDirectError('TWO_FACTOR_REQUIRED')
+      if (error.code === 'NEW_DEVICE') return new BitwardenDirectError('NEW_DEVICE_REQUIRED')
+      if (error.code === 'CONFLICT') return new BitwardenDirectError('CONFLICT')
+      if (error.code === 'ABORTED') return new BitwardenDirectError('ABORTED')
+      if (error.code === 'INVALID_RESPONSE') return new BitwardenDirectError('INVALID_RESPONSE')
+      return new BitwardenDirectError('NETWORK')
+    }
+    return new BitwardenDirectError('INVALID_RESPONSE')
+  }
+}

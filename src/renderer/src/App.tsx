@@ -1,35 +1,87 @@
-import Versions from './components/Versions'
-import BearCut from './assets/bear-cut.svg'
+import { useEffect, useRef, useState } from 'react'
+import type { VaultState } from '../../shared/vault-contract'
+import AuthScreen from './components/AuthScreen'
+import VaultShell from './components/VaultShell'
+import { applyThemePreference } from './lib/theme'
+
+type AppState = VaultState | 'loading' | 'unavailable'
+
 function App(): React.JSX.Element {
-  const ipcHandle = (): void => window.electron.ipcRenderer.send('ping')
+  const [state, setState] = useState<AppState>('loading')
+  const [retryKey, setRetryKey] = useState(0)
+  const lastActivityAt = useRef(0)
+
+  useEffect(() => {
+    let active = true
+    const darkMode = window.matchMedia('(prefers-color-scheme: dark)')
+    const handleSystemTheme = (): void => {
+      if (document.documentElement.dataset.themePreference === 'system') {
+        applyThemePreference('system', darkMode)
+      }
+    }
+
+    void window.bearwarden.settings.get().then(
+      (settings) => {
+        if (active) applyThemePreference(settings.theme, darkMode)
+      },
+      () => applyThemePreference('system', darkMode)
+    )
+    darkMode.addEventListener('change', handleSystemTheme)
+    return () => {
+      active = false
+      darkMode.removeEventListener('change', handleSystemTheme)
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    const unsubscribe = window.bearwarden.vault.onLocked(() => setState('locked'))
+
+    window.bearwarden.vault
+      .status()
+      .then((status) => {
+        if (active) setState(status.state)
+      })
+      .catch(() => {
+        if (active) setState('unavailable')
+      })
+
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [retryKey])
+
+  useEffect(() => {
+    if (state !== 'unlocked') return
+    const reportActivity = (): void => {
+      const now = Date.now()
+      if (now - lastActivityAt.current < 10_000) return
+      lastActivityAt.current = now
+      void window.bearwarden.settings.activity().catch(() => undefined)
+    }
+    window.addEventListener('pointerdown', reportActivity, { passive: true })
+    window.addEventListener('keydown', reportActivity)
+    reportActivity()
+    return () => {
+      window.removeEventListener('pointerdown', reportActivity)
+      window.removeEventListener('keydown', reportActivity)
+    }
+  }, [state])
+
+  if (state === 'unlocked') {
+    return <VaultShell onLocked={() => setState('locked')} />
+  }
 
   return (
-    <div className="flex h-[100svh] w-full flex-col bg-white/50">
-      <div
-        className="flex h-15 items-center px-20"
-        style={{
-          // @ts-expect-error Electron API
-          appRegion: 'drag'
-        }}
-      >
-        <h1 className="font-bold">BearWarden</h1>
-      </div>
-      <div className="grid h-full w-full grid-cols-[200px_1fr]">
-        <div className="flex h-full flex-col gap-2 p-2 pt-0"></div>
-        <div className="relative p-2 pt-0">
-          <div className="relative flex h-full flex-col gap-2 rounded-lg bg-white/90 shadow-lg">
-            <img
-              src={BearCut}
-              alt="BearWarden"
-              className="absolute inset-0 m-auto size-[70vmin] opacity-50 select-none"
-            />
-            <h1 className="text-3xl font-bold underline">Hello world!</h1>
-            <button onClick={ipcHandle}>Click me</button>
-            <Versions></Versions>
-          </div>
-        </div>
-      </div>
-    </div>
+    <AuthScreen
+      state={state}
+      onAuthenticated={() => setState('unlocked')}
+      onRetry={() => {
+        setState('loading')
+        setRetryKey((key) => key + 1)
+      }}
+    />
   )
 }
 

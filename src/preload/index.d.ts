@@ -1,8 +1,9 @@
-import { ElectronAPI } from '@electron-toolkit/preload'
+import type { BearWardenAPI } from '../shared/vault-contract'
 
 declare global {
   interface Window {
-    electron: ElectronAPI
-    api: unknown
+    bearwarden: BearWardenAPI
   }
 }
+
+export {}
