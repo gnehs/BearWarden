@@ -257,6 +257,11 @@ interface RevealedSecretsState {
 
 const emptyRevealedSecrets: RevealedSecretsState = { itemId: null, values: {} }
 
+interface TotpGenerationErrorState {
+  itemId: string
+  kind: 'unsupported'
+}
+
 interface RevealedCustomFieldsState {
   itemId: string | null
   values: Record<
@@ -780,7 +785,18 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedLogin, setSelectedLogin] = useState<LoginView | null>(null)
-  const [totpCode, setTotpCode] = useState<TotpCodeView | null>(null)
+  const [totpCodeState, setTotpCodeState] = useState<{
+    itemId: string
+    code: TotpCodeView
+  } | null>(null)
+  const [totpGenerationErrorState, setTotpGenerationErrorState] =
+    useState<TotpGenerationErrorState | null>(null)
+  const totpCode =
+    selectedLogin && totpCodeState?.itemId === selectedLogin.id ? totpCodeState.code : null
+  const totpGenerationError =
+    selectedLogin && totpGenerationErrorState?.itemId === selectedLogin.id
+      ? totpGenerationErrorState.kind
+      : null
   const [editorMode, setEditorMode] = useState<'create' | 'edit' | null>(null)
   const [editorSessionId, setEditorSessionId] = useState(0)
   const [editorDirty, setEditorDirty] = useState(false)
@@ -965,7 +981,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         setPasswordHistoryDialogOpen(false)
         setSelectedLogin(null)
         setEditorMode(null)
-        setTotpCode(null)
+        setTotpCodeState(null)
         setRevealedSecrets(emptyRevealedSecrets)
         setRevealedCustomFields(emptyRevealedCustomFields)
       }
@@ -989,7 +1005,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         setEditorMode(null)
         editorDirtyRef.current = false
         setEditorDirty(false)
-        setTotpCode(null)
+        setTotpCodeState(null)
         setRevealedSecrets(emptyRevealedSecrets)
         setRevealedCustomFields(emptyRevealedCustomFields)
       }
@@ -1469,16 +1485,22 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   useEffect(() => {
     let active = true
     const login = selectedLogin
+    queueMicrotask(() => {
+      if (!active) return
+      setTotpCodeState(null)
+      setTotpGenerationErrorState(null)
+    })
     if (!login?.hasTotp || login.deletedAt || login.id !== selectedId || editorMode) {
-      queueMicrotask(() => {
-        if (active) setTotpCode(null)
-      })
       return () => {
         active = false
       }
     }
 
+    let stopped = false
+    let refreshing = false
     const refresh = (): void => {
+      if (stopped || refreshing) return
+      refreshing = true
       const token = authorizationToken(login.id)
       window.bearwarden.logins
         .getTotp({
@@ -1487,20 +1509,45 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         })
         .then(
           (nextCode) => {
-            if (active) setTotpCode(nextCode)
+            if (!active) return
+            setTotpCodeState({ itemId: login.id, code: nextCode })
+            setTotpGenerationErrorState(null)
           },
           (totpError) => {
-            if (active && isRepromptRequired(totpError)) invalidateAuthorization(login.id)
+            if (!active) return
+            if (isRepromptRequired(totpError)) {
+              stopped = true
+              window.clearInterval(timer)
+              setTotpCodeState(null)
+              invalidateAuthorization(login.id)
+              clearItemSelection()
+              announceError('授權已過期，請重新選取項目並驗證主密碼')
+              return
+            }
+            stopped = true
+            window.clearInterval(timer)
+            setTotpCodeState(null)
+            setTotpGenerationErrorState({ itemId: login.id, kind: 'unsupported' })
           }
         )
+        .finally(() => {
+          refreshing = false
+        })
     }
-    refresh()
     const timer = window.setInterval(refresh, 1_000)
+    refresh()
     return () => {
       active = false
       window.clearInterval(timer)
     }
-  }, [authorizationToken, editorMode, invalidateAuthorization, selectedId, selectedLogin])
+  }, [
+    authorizationToken,
+    clearItemSelection,
+    editorMode,
+    invalidateAuthorization,
+    selectedId,
+    selectedLogin
+  ])
 
   useEffect(() => {
     if (Object.keys(revealedSecrets.values).length === 0) return
@@ -3930,29 +3977,35 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                       <CardHeader className="bg-muted rounded-none border-b">
                         <CardTitle id="totp-title">一次性驗證碼</CardTitle>
                         <CardDescription>
-                          {totpCode ? `${totpCode.remainingSeconds} 秒後更新` : '產生中…'}
+                          {totpGenerationError === 'unsupported'
+                            ? '密鑰格式不受支援'
+                            : totpCode
+                              ? `${totpCode.remainingSeconds} 秒後更新`
+                              : '產生中…'}
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="contents">
                         <div className="totp-value">
-                          <strong>{totpCode?.code ?? '••••••'}</strong>
+                          <strong>{totpCode?.code ?? '—'}</strong>
                           <TooltipIconButton
                             variant="outline"
                             size="icon"
                             className="icon-button"
                             type="button"
                             label="複製一次性驗證碼"
-                            disabled={!totpCode}
+                            disabled={!totpCode || totpGenerationError !== null}
                             onClick={() => void copyTotp()}
                           >
                             <Copy />
                           </TooltipIconButton>
                         </div>
-                        <Progress
-                          aria-label="驗證碼剩餘時間"
-                          max={totpCode?.period ?? 30}
-                          value={totpCode?.remainingSeconds ?? 0}
-                        />
+                        {!totpGenerationError && (
+                          <Progress
+                            aria-label="驗證碼剩餘時間"
+                            max={totpCode?.period ?? 30}
+                            value={totpCode?.remainingSeconds ?? 0}
+                          />
+                        )}
                       </CardContent>
                     </Card>
                   )}

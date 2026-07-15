@@ -686,6 +686,7 @@ function LoginEditor({
       displayValue?: string
       onValueChange?: (value: string) => void
       placeholder?: string
+      description?: React.ReactNode
     }
   ): React.JSX.Element {
     const visible = Boolean(visibleSecrets[field])
@@ -757,6 +758,7 @@ function LoginEditor({
             </InputGroupButton>
           </InputGroupAddon>
         </InputGroup>
+        {options?.description && <FieldDescription>{options.description}</FieldDescription>}
       </Field>
     )
   }
@@ -948,8 +950,10 @@ function LoginEditor({
                       </InputGroup>
                     </Field>
                     {secretInput('password', '密碼')}
-                    {secretInput('totp', '驗證碼密鑰', {
-                      placeholder: 'otpauth://… 或 Base32 密鑰'
+                    {secretInput('totp', '驗證器密鑰（TOTP）', {
+                      placeholder: 'Base32、otpauth://… 或 steam://…',
+                      description:
+                        'Base32 密鑰可直接輸入；SHA-1／SHA-256／SHA-512、自訂 1–10 位驗證碼或週期請使用 otpauth URI；Steam 驗證碼請使用 steam://。'
                     })}
                     <Field data-invalid={errorKind === 'uri' || undefined}>
                       <div className="flex items-center justify-between gap-3">
