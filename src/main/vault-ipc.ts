@@ -50,6 +50,7 @@ export interface VaultIpcOptions {
   getMainWindow: () => BrowserWindow | null
   afterLock?: () => void
   afterUnlock?: (masterPassword: string) => void | Promise<void>
+  afterMutation?: () => void
   afterSyncChanged?: (status: SyncStatus) => void
 }
 
@@ -575,6 +576,18 @@ function registerHandler<T>(
 
 export function registerVaultIpc(options: VaultIpcOptions): () => void {
   const { vault, settings, getMainWindow } = options
+  const notifyMutation = (): void => {
+    try {
+      options.afterMutation?.()
+    } catch {
+      // A background sync scheduling failure must not invalidate a persisted local change.
+    }
+  }
+  const afterMutation = async <T>(operation: Promise<T>): Promise<T> => {
+    const result = await operation
+    notifyMutation()
+    return result
+  }
   registerHandler(IPC_CHANNELS.vaultStatus, getMainWindow, () => vault.status())
   registerHandler(IPC_CHANNELS.vaultSetup, getMainWindow, (_event, input) => {
     const request = parseSetup(input)
@@ -594,16 +607,16 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   })
   registerHandler(IPC_CHANNELS.folderList, getMainWindow, () => vault.listFolders())
   registerHandler(IPC_CHANNELS.folderCreate, getMainWindow, (_event, input) =>
-    vault.createFolder(parseFolderCreate(input))
+    afterMutation(vault.createFolder(parseFolderCreate(input)))
   )
   registerHandler(IPC_CHANNELS.folderUpdate, getMainWindow, (_event, input) =>
-    vault.updateFolder(parseFolderUpdate(input))
+    afterMutation(vault.updateFolder(parseFolderUpdate(input)))
   )
   registerHandler(IPC_CHANNELS.folderDelete, getMainWindow, (_event, input) =>
-    vault.deleteFolder(parseFolderDelete(input))
+    afterMutation(vault.deleteFolder(parseFolderDelete(input)))
   )
   registerHandler(IPC_CHANNELS.folderReorder, getMainWindow, (_event, input) =>
-    vault.reorderFolders(parseFolderReorder(input))
+    afterMutation(vault.reorderFolders(parseFolderReorder(input)))
   )
   registerHandler(IPC_CHANNELS.loginList, getMainWindow, (_event, input) =>
     vault.listLogins(parseLoginList(input))
@@ -612,22 +625,22 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     vault.getLogin(parseId(input))
   )
   registerHandler(IPC_CHANNELS.loginCreate, getMainWindow, (_event, input) =>
-    vault.createLogin(parseLoginCreate(input))
+    afterMutation(vault.createLogin(parseLoginCreate(input)))
   )
   registerHandler(IPC_CHANNELS.loginUpdate, getMainWindow, (_event, input) =>
-    vault.updateLogin(parseLoginUpdate(input))
+    afterMutation(vault.updateLogin(parseLoginUpdate(input)))
   )
   registerHandler(IPC_CHANNELS.loginDelete, getMainWindow, (_event, input) =>
-    vault.deleteLogin(parseId(input))
+    afterMutation(vault.deleteLogin(parseId(input)))
   )
   registerHandler(IPC_CHANNELS.loginSetFavorite, getMainWindow, (_event, input) =>
-    vault.setLoginFavorite(parseLoginFavorite(input))
+    afterMutation(vault.setLoginFavorite(parseLoginFavorite(input)))
   )
   registerHandler(IPC_CHANNELS.loginMove, getMainWindow, (_event, input) =>
-    vault.moveLogin(parseLoginMove(input))
+    afterMutation(vault.moveLogin(parseLoginMove(input)))
   )
   registerHandler(IPC_CHANNELS.loginMoveMany, getMainWindow, (_event, input) =>
-    vault.moveLogins(parseLoginMoveMany(input))
+    afterMutation(vault.moveLogins(parseLoginMoveMany(input)))
   )
   registerHandler(IPC_CHANNELS.loginRevealPassword, getMainWindow, (_event, input) =>
     vault.revealPassword(parseId(input))
@@ -682,6 +695,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
         },
         moveToFolder: async (_id, folderId) => {
           await vault.moveLogin({ id: request.id, folderId })
+          notifyMutation()
           notifyChanged()
         },
         deleteItem: async () => {
@@ -696,6 +710,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
           })
           if (confirmation.response !== 0) return
           await vault.deleteLogin(request)
+          notifyMutation()
           notifyChanged()
         }
       }

@@ -4,6 +4,7 @@ import { app, BrowserWindow, clipboard, powerMonitor, session, shell } from 'ele
 import { electronApp, is } from '@electron-toolkit/utils'
 import { IPC_EVENTS, type SyncStatus } from '../shared/vault-contract'
 import { BitwardenDirectClient } from './bitwarden-direct'
+import { AutoSyncCoordinator } from './auto-sync-coordinator'
 import { AppSettingsService } from './app-settings'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import { FocusTouchIdUnlockController } from './focus-touch-id-unlock'
@@ -18,6 +19,7 @@ app.enableSandbox()
 let mainWindow: BrowserWindow | null = null
 let vault: VaultService | null = null
 let settings: AppSettingsService | null = null
+let autoSync: AutoSyncCoordinator | null = null
 let contentProtectionEnabled = true
 let vaultLockGeneration = 0
 
@@ -114,14 +116,22 @@ function notifySyncChanged(status: SyncStatus): void {
   window.webContents.send(IPC_EVENTS.syncChanged, status)
 }
 
+function notifyVaultChanged(): void {
+  const window = mainWindow
+  if (!window || window.isDestroyed()) return
+  window.webContents.send(IPC_EVENTS.vaultChanged)
+}
+
 async function unlockSyncWithLocalPassword(masterPassword: string): Promise<void> {
   if (!vault) return
   const status = await vault.unlockSyncWithLocalPassword(masterPassword)
   notifySyncChanged(status)
+  if (status.state === 'ready') autoSync?.request()
 }
 
 async function lockVault(): Promise<void> {
   if (!vault) return
+  autoSync?.cancel()
   vaultLockGeneration += 1
   await vault.lock()
   notifyVaultLocked()
@@ -241,6 +251,11 @@ if (hasSingleInstanceLock)
           })
       }
     )
+    autoSync = new AutoSyncCoordinator({
+      vault,
+      onSyncChanged: notifySyncChanged,
+      onVaultChanged: notifyVaultChanged
+    })
 
     settings = new AppSettingsService(
       join(app.getPath('userData'), 'settings.json'),
@@ -268,11 +283,16 @@ if (hasSingleInstanceLock)
       settings,
       getMainWindow: () => mainWindow,
       afterLock: () => {
+        autoSync?.cancel()
         vaultLockGeneration += 1
         notifyVaultLocked()
       },
       afterUnlock: unlockSyncWithLocalPassword,
-      afterSyncChanged: notifySyncChanged
+      afterMutation: () => autoSync?.request(),
+      afterSyncChanged: (status) => {
+        autoSync?.cancel()
+        notifySyncChanged(status)
+      }
     })
 
     powerMonitor.on('lock-screen', () => {
@@ -291,6 +311,7 @@ if (hasSingleInstanceLock)
 
 app.on('before-quit', () => {
   sensitiveClipboard.clearIfOwned()
+  autoSync?.dispose()
   vault?.dispose()
   settings?.dispose()
 })
