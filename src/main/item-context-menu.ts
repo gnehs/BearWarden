@@ -2,9 +2,11 @@ import { Menu, type BrowserWindow, type MenuItemConstructorOptions } from 'elect
 
 export interface ItemContextMenuItem {
   id: string
-  username: string
-  uri: string | null
+  hasUsername: boolean
+  /** Empty labels intentionally represent protected rows without retaining URI metadata. */
+  uriLabels: string[]
   folderId: string | null
+  archivedAt: string | null
 }
 
 export interface ItemContextMenuFolder {
@@ -13,10 +15,12 @@ export interface ItemContextMenuFolder {
 }
 
 export interface ItemContextMenuCallbacks {
-  openInNewWindow: (itemId: string) => void | Promise<void>
+  openInNewWindow: (itemId: string, uriIndex: number) => void | Promise<void>
   copyUsername: (itemId: string) => void | Promise<void>
-  copyWebsite: (itemId: string) => void | Promise<void>
+  copyWebsite: (itemId: string, uriIndex: number) => void | Promise<void>
   moveToFolder: (itemId: string, folderId: string | null) => void | Promise<void>
+  cloneItem: (itemId: string) => void | Promise<void>
+  toggleArchive: (itemId: string, archived: boolean) => void | Promise<void>
   deleteItem: (itemId: string) => void | Promise<void>
 }
 
@@ -43,8 +47,8 @@ function canUseItem(item: ItemContextMenuItem): boolean {
   return item.id.trim().length > 0
 }
 
-function hasText(value: string | null): boolean {
-  return value !== null && value.trim().length > 0
+function uriMenuLabel(label: string, index: number): string {
+  return label.trim() || `網站 ${index + 1}`
 }
 
 function folderMenu(
@@ -83,25 +87,65 @@ function folderMenu(
 export function showItemContextMenu(options: ItemContextMenuOptions): Menu {
   const { callbacks, folders, item, onError, position, window } = options
   const itemEnabled = canUseItem(item)
+  const hasUris = item.uriLabels.length > 0
+  const openWebsite: MenuItemConstructorOptions =
+    item.uriLabels.length <= 1
+      ? {
+          id: 'item-context-open-in-new-window',
+          label: '在瀏覽器打開',
+          enabled: itemEnabled && hasUris,
+          click: () => invoke(() => callbacks.openInNewWindow(item.id, 0), onError)
+        }
+      : {
+          id: 'item-context-open-in-new-window',
+          label: '在瀏覽器打開',
+          enabled: itemEnabled,
+          submenu: item.uriLabels.map((label, index) => ({
+            id: `item-context-open-uri-${index}`,
+            label: uriMenuLabel(label, index),
+            click: () => invoke(() => callbacks.openInNewWindow(item.id, index), onError)
+          }))
+        }
+  const copyWebsite: MenuItemConstructorOptions =
+    item.uriLabels.length <= 1
+      ? {
+          id: 'item-context-copy-website',
+          label: '複製網站',
+          enabled: itemEnabled && hasUris,
+          click: () => invoke(() => callbacks.copyWebsite(item.id, 0), onError)
+        }
+      : {
+          id: 'item-context-copy-website',
+          label: '複製網站',
+          enabled: itemEnabled,
+          submenu: item.uriLabels.map((label, index) => ({
+            id: `item-context-copy-uri-${index}`,
+            label: uriMenuLabel(label, index),
+            click: () => invoke(() => callbacks.copyWebsite(item.id, index), onError)
+          }))
+        }
   const template: MenuItemConstructorOptions[] = [
-    {
-      id: 'item-context-open-in-new-window',
-      label: '在瀏覽器打開',
-      enabled: itemEnabled && hasText(item.uri),
-      click: () => invoke(() => callbacks.openInNewWindow(item.id), onError)
-    },
+    openWebsite,
     { type: 'separator' },
     {
       id: 'item-context-copy-username',
       label: '複製使用者名稱',
-      enabled: itemEnabled && hasText(item.username),
+      enabled: itemEnabled && item.hasUsername,
       click: () => invoke(() => callbacks.copyUsername(item.id), onError)
     },
+    copyWebsite,
+    { type: 'separator' },
     {
-      id: 'item-context-copy-website',
-      label: '複製網站',
-      enabled: itemEnabled && hasText(item.uri),
-      click: () => invoke(() => callbacks.copyWebsite(item.id), onError)
+      id: 'item-context-clone',
+      label: '複製項目',
+      enabled: itemEnabled,
+      click: () => invoke(() => callbacks.cloneItem(item.id), onError)
+    },
+    {
+      id: 'item-context-toggle-archive',
+      label: item.archivedAt ? '取消封存' : '封存項目',
+      enabled: itemEnabled,
+      click: () => invoke(() => callbacks.toggleArchive(item.id, item.archivedAt !== null), onError)
     },
     { type: 'separator' },
     folderMenu(item, folders, callbacks, itemEnabled, onError),

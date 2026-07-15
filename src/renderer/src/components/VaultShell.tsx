@@ -19,6 +19,8 @@ import {
 import {
   ArrowLeft,
   ArrowUpRight,
+  Archive,
+  ArchiveRestore,
   BadgeCheck,
   Clipboard,
   Clock3,
@@ -35,11 +37,13 @@ import {
   FileKey2,
   Fingerprint,
   FolderOpen,
+  History,
   KeyRound,
   ListFilter,
   Menu,
   NotebookPen,
   Plus,
+  RotateCcw,
   Settings2,
   Search,
   Star,
@@ -54,6 +58,7 @@ import type {
   FolderView,
   LoginSummary,
   LoginView,
+  LoginAuthorization,
   SyncStatus,
   TotpCodeView,
   VaultCopyField,
@@ -65,10 +70,20 @@ import type {
 import { MAX_LOGIN_MOVE_MANY_IDS } from '../../../shared/vault-contract'
 import bearCutUrl from '../assets/bear-cut.svg'
 import BrandMark from './BrandMark'
-import { DeleteLoginDialog, FolderDialog, MoveDialog } from './Dialogs'
+import {
+  DeleteLoginDialog,
+  FolderDialog,
+  MoveDialog,
+  PasswordHistoryDialog,
+  RepromptDialog
+} from './Dialogs'
 import { FolderDragPreview, ItemDragPreview } from './DragPreview'
 import { FolderRow, type ItemSelectionModifiers } from './DndRows'
 import LoginEditor, { type LoginDraft } from './LoginEditor'
+import {
+  isCurrentSelectedDetailResponse,
+  protectedDetailInvalidationIds
+} from './VaultShell-security'
 import SyncDialog from './SyncDialog'
 import SettingsPage from './SettingsPage'
 import VirtualizedItemList from './VirtualizedItemList'
@@ -137,6 +152,8 @@ type Scope =
   | { kind: 'recent' }
   | { kind: 'folder'; folderId: string }
   | { kind: 'unfiled' }
+  | { kind: 'archive' }
+  | { kind: 'trash' }
 
 type SortMode = 'title' | 'recent' | 'modified'
 
@@ -154,6 +171,7 @@ interface DetailField {
   secret?: boolean
   copyable?: boolean
   openUri?: boolean
+  uriIndex?: number
 }
 
 const itemTypeMeta: Record<VaultItemType, ItemTypeMeta> = {
@@ -224,6 +242,18 @@ interface RevealedCustomFieldsState {
   >
 }
 
+interface RepromptPromptState {
+  itemName: string
+}
+
+interface PendingReprompt {
+  key: string
+  ids: string[]
+  promise: Promise<LoginAuthorization>
+  resolve: (authorization: LoginAuthorization) => void
+  reject: (error: Error) => void
+}
+
 const emptyRevealedCustomFields: RevealedCustomFieldsState = { itemId: null, values: {} }
 
 interface TooltipIconButtonProps extends React.ComponentProps<typeof Button> {
@@ -254,6 +284,10 @@ function describeError(error: unknown): string {
   }
   const code = Object.keys(messages).find((key) => error.message.includes(key))
   return code ? messages[code] : '操作未完成，你的資料沒有被更動。'
+}
+
+function isRepromptRequired(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('REPROMPT_REQUIRED')
 }
 
 const vaultErrorToastId = 'vault-error'
@@ -357,7 +391,14 @@ function detailFields(login: LoginView): DetailField[] {
     return [
       { field: 'username', label: '使用者名稱', value: login.username, copyable: true },
       { field: 'password', label: '密碼', secret: true },
-      { field: 'uri', label: '網站', value: login.uri, copyable: true, openUri: true }
+      ...login.uris.map((entry, uriIndex) => ({
+        field: 'uri' as const,
+        label: uriIndex === 0 ? '網站' : `網站 ${uriIndex + 1}`,
+        value: entry.uri,
+        copyable: true,
+        openUri: true,
+        uriIndex
+      }))
     ]
   }
   if (login.type === 'card') {
@@ -423,7 +464,26 @@ function detailFields(login: LoginView): DetailField[] {
 
 function mergeCachedSummary(cache: Map<string, LoginView>, summary: LoginSummary): void {
   const cached = cache.get(summary.id)
-  if (cached) cache.set(summary.id, { ...cached, ...summary })
+  if (cached) cache.set(summary.id, mergeLoginSummary(cached, summary))
+}
+
+function mergeLoginSummary(login: LoginView, summary: LoginSummary): LoginView {
+  if (summary.reprompt === 0 || summary.deletedAt) return { ...login, ...summary }
+  return {
+    ...login,
+    id: summary.id,
+    type: summary.type,
+    name: summary.name,
+    folderId: summary.folderId,
+    favorite: summary.favorite,
+    lastUsedAt: summary.lastUsedAt,
+    createdAt: summary.createdAt,
+    updatedAt: summary.updatedAt,
+    deletedAt: summary.deletedAt,
+    archivedAt: summary.archivedAt,
+    reprompt: summary.reprompt,
+    passwordHistoryCount: summary.passwordHistoryCount
+  }
 }
 
 function cacheLoginDetail(cache: Map<string, LoginView>, login: LoginView): void {
@@ -436,6 +496,17 @@ function cacheLoginDetail(cache: Map<string, LoginView>, login: LoginView): void
   cache.set(login.id, login)
 }
 
+function firstAuthorizationToken(
+  ids: readonly string[],
+  tokenFor: (id: string) => string | undefined
+): string | undefined {
+  for (const id of ids) {
+    const token = tokenFor(id)
+    if (token) return token
+  }
+  return undefined
+}
+
 function toLoginSummary(login: LoginView): LoginSummary {
   return {
     id: login.id,
@@ -444,14 +515,19 @@ function toLoginSummary(login: LoginView): LoginSummary {
     subtitle: login.subtitle,
     username: login.username,
     uri: login.uri,
+    uris: login.uris.map((entry) => ({ ...entry })),
     ...(login.cardBrand === undefined ? {} : { cardBrand: login.cardBrand }),
     hasTotp: login.hasTotp,
     ...(login.passkeyCount === undefined ? {} : { passkeyCount: login.passkeyCount }),
+    passwordHistoryCount: login.passwordHistoryCount,
     folderId: login.folderId,
     favorite: login.favorite,
     lastUsedAt: login.lastUsedAt,
     createdAt: login.createdAt,
-    updatedAt: login.updatedAt
+    updatedAt: login.updatedAt,
+    deletedAt: login.deletedAt,
+    archivedAt: login.archivedAt,
+    reprompt: login.reprompt
   }
 }
 
@@ -550,10 +626,7 @@ function DetailPlaceholder({
           {item.type === 'login' ? (
             <WebsiteIcon id={item.id} uri={item.uri} enabled={showWebsiteIcons} />
           ) : item.type === 'card' ? (
-            <PaymentCardBrandMark
-              brand={normalizeBitwardenCardBrand(item.cardBrand)}
-              compact
-            />
+            <PaymentCardBrandMark brand={normalizeBitwardenCardBrand(item.cardBrand)} compact />
           ) : (
             <TypeIcon size={23} />
           )}
@@ -630,6 +703,11 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [folderDialog, setFolderDialog] = useState<FolderView | 'new' | null>(null)
   const [moveDialogOpen, setMoveDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [emptyTrashDialogOpen, setEmptyTrashDialogOpen] = useState(false)
+  const [passwordHistoryDialogOpen, setPasswordHistoryDialogOpen] = useState(false)
+  const [repromptPrompt, setRepromptPrompt] = useState<RepromptPromptState | null>(null)
+  const [repromptBusy, setRepromptBusy] = useState(false)
+  const [authorizationTokenState, setAuthorizationTokenState] = useState<Record<string, string>>({})
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(initialSyncStatus)
@@ -649,6 +727,10 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const detailRequestsRef = useRef(new Map<string, Promise<LoginView>>())
   const detailCacheRef = useRef(new Map<string, LoginView>())
   const detailCacheGenerationRef = useRef(0)
+  const itemsRef = useRef<LoginSummary[]>([])
+  const authorizationCacheRef = useRef(new Map<string, LoginAuthorization>())
+  const authorizationExpiryTimersRef = useRef(new Map<string, number>())
+  const pendingRepromptRef = useRef<PendingReprompt | null>(null)
   const editorDirtyRef = useRef(false)
   const editorTransitionApprovedRef = useRef(false)
   const pendingEditorActionRef = useRef<(() => void) | null>(null)
@@ -701,6 +783,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     selectedIdRef.current = null
     setSelectedId(null)
     setSelectedLogin(null)
+    setPasswordHistoryDialogOpen(false)
   }, [updateSelectedIds])
 
   const clearDetailCache = useCallback((): void => {
@@ -708,6 +791,157 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     detailRequestsRef.current.clear()
     detailCacheRef.current.clear()
   }, [])
+
+  const authorizationToken = useCallback((id: string): string | undefined => {
+    const authorization = authorizationCacheRef.current.get(id)
+    if (!authorization) return undefined
+    if (authorization.expiresAt <= Date.now()) {
+      detailCacheGenerationRef.current += 1
+      detailRequestsRef.current.clear()
+      authorizationCacheRef.current.delete(id)
+      detailCacheRef.current.delete(id)
+      const timer = authorizationExpiryTimersRef.current.get(id)
+      if (timer !== undefined) window.clearTimeout(timer)
+      authorizationExpiryTimersRef.current.delete(id)
+      setAuthorizationTokenState((current) => {
+        const next = { ...current }
+        delete next[id]
+        return next
+      })
+      if (selectedIdRef.current === id) {
+        setPasswordHistoryDialogOpen(false)
+        setSelectedLogin(null)
+        setEditorMode(null)
+        setTotpCode(null)
+        setRevealedSecrets(emptyRevealedSecrets)
+        setRevealedCustomFields(emptyRevealedCustomFields)
+      }
+      return undefined
+    }
+    return authorization.token
+  }, [])
+
+  const invalidateProtectedDetails = useCallback(
+    (summaries: readonly LoginSummary[]): void => {
+      const invalidIds = protectedDetailInvalidationIds(summaries, (id) =>
+        Boolean(authorizationToken(id))
+      )
+      if (invalidIds.size === 0) return
+      detailCacheGenerationRef.current += 1
+      detailRequestsRef.current.clear()
+      for (const id of invalidIds) detailCacheRef.current.delete(id)
+      if (selectedIdRef.current && invalidIds.has(selectedIdRef.current)) {
+        setPasswordHistoryDialogOpen(false)
+        setSelectedLogin(null)
+        setEditorMode(null)
+        editorDirtyRef.current = false
+        setEditorDirty(false)
+        setTotpCode(null)
+        setRevealedSecrets(emptyRevealedSecrets)
+        setRevealedCustomFields(emptyRevealedCustomFields)
+      }
+    },
+    [authorizationToken]
+  )
+
+  const invalidateAuthorization = useCallback((id: string): void => {
+    detailCacheGenerationRef.current += 1
+    detailRequestsRef.current.clear()
+    authorizationCacheRef.current.delete(id)
+    setAuthorizationTokenState((current) => {
+      if (!(id in current)) return current
+      const next = { ...current }
+      delete next[id]
+      return next
+    })
+    const timer = authorizationExpiryTimersRef.current.get(id)
+    if (timer !== undefined) window.clearTimeout(timer)
+    authorizationExpiryTimersRef.current.delete(id)
+    detailCacheRef.current.delete(id)
+    if (selectedIdRef.current === id) {
+      setPasswordHistoryDialogOpen(false)
+      setSelectedLogin(null)
+      setEditorMode(null)
+      setRevealedSecrets(emptyRevealedSecrets)
+      setRevealedCustomFields(emptyRevealedCustomFields)
+    }
+  }, [])
+
+  const cacheAuthorization = useCallback(
+    (id: string, authorization: LoginAuthorization): void => {
+      invalidateAuthorization(id)
+      authorizationCacheRef.current.set(id, authorization)
+      setAuthorizationTokenState((current) => ({
+        ...current,
+        [id]: authorization.token
+      }))
+      const delay = Math.max(0, authorization.expiresAt - Date.now())
+      const timer = window.setTimeout(() => {
+        const current = authorizationCacheRef.current.get(id)
+        if (current?.token === authorization.token) invalidateAuthorization(id)
+      }, delay)
+      authorizationExpiryTimersRef.current.set(id, timer)
+    },
+    [invalidateAuthorization]
+  )
+
+  const requestReprompt = useCallback(
+    (ids: readonly string[]): Promise<LoginAuthorization> => {
+      const normalizedIds = [...ids].sort()
+      if (normalizedIds.length === 1) {
+        const cached = authorizationCacheRef.current.get(normalizedIds[0]!)
+        if (cached && authorizationToken(normalizedIds[0]!)) return Promise.resolve(cached)
+      }
+      const key = normalizedIds.join('\n')
+      const pending = pendingRepromptRef.current
+      if (pending) {
+        if (pending.key === key) return pending.promise
+        return Promise.reject(new Error('REPROMPT_REQUIRED'))
+      }
+      let resolve!: (authorization: LoginAuthorization) => void
+      let reject!: (error: Error) => void
+      const promise = new Promise<LoginAuthorization>((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise
+        reject = rejectPromise
+      })
+      pendingRepromptRef.current = { key, ids: normalizedIds, promise, resolve, reject }
+      const item = itemsRef.current.find((candidate) => candidate.id === normalizedIds[0])
+      setRepromptPrompt({
+        itemName:
+          normalizedIds.length === 1
+            ? (item?.name ?? '這個項目')
+            : `${normalizedIds.length} 個受保護項目`
+      })
+      return promise
+    },
+    [authorizationToken]
+  )
+
+  const withReprompt = useCallback(
+    async <T,>(
+      ids: readonly string[],
+      operation: (tokenFor: (id: string) => string | undefined) => Promise<T>
+    ): Promise<T> => {
+      const protectedIds = ids.filter(
+        (id) => itemsRef.current.find((item) => item.id === id)?.reprompt === 1
+      )
+      const authorization = protectedIds.length > 0 ? await requestReprompt(ids) : undefined
+      const tokenFor = (id: string): string | undefined =>
+        authorization ? authorization.token : authorizationToken(id)
+      try {
+        return await operation(tokenFor)
+      } catch (error) {
+        if (!isRepromptRequired(error) || ids.length === 0) throw error
+        for (const id of ids) invalidateAuthorization(id)
+        const retryIds = ids
+        const retryAuthorization = await requestReprompt(retryIds)
+        return operation((id) =>
+          retryIds.includes(id) ? retryAuthorization.token : authorizationToken(id)
+        )
+      }
+    },
+    [authorizationToken, invalidateAuthorization, requestReprompt]
+  )
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -719,11 +953,15 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     const generation = detailCacheGenerationRef.current
     try {
       toast.dismiss(vaultErrorToastId)
-      const [folderList, loginList] = await Promise.all([
+      const [folderList, activeItems, archivedItems, deletedItems] = await Promise.all([
         window.bearwarden.folders.list(),
-        window.bearwarden.logins.list({ sort: 'name' })
+        window.bearwarden.logins.list({ sort: 'name' }),
+        window.bearwarden.logins.list({ sort: 'name', archived: true }),
+        window.bearwarden.logins.list({ sort: 'name', deleted: true })
       ])
+      const loginList = [...activeItems, ...archivedItems, ...deletedItems]
       if (detailCacheGenerationRef.current !== generation) return
+      invalidateProtectedDetails(loginList)
       setFolders([...folderList].sort((left, right) => left.position - right.position))
       setItems(loginList)
       setScope((current) =>
@@ -744,43 +982,60 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     } finally {
       if (detailCacheGenerationRef.current === generation) setLoading(false)
     }
-  }, [clearDetailCache])
+  }, [clearDetailCache, invalidateProtectedDetails])
 
-  const loadLoginDetail = useCallback((id: string): Promise<LoginView> => {
-    const cached = detailCacheRef.current.get(id)
-    if (cached) {
-      detailCacheRef.current.delete(id)
-      detailCacheRef.current.set(id, cached)
-      return Promise.resolve(cached)
-    }
+  const loadLoginDetail = useCallback(
+    (id: string): Promise<LoginView> => {
+      const protectedItem = itemsRef.current.find((item) => item.id === id)?.reprompt === 1
+      const cached = detailCacheRef.current.get(id)
+      if (cached && (!protectedItem || authorizationToken(id))) {
+        detailCacheRef.current.delete(id)
+        detailCacheRef.current.set(id, cached)
+        return Promise.resolve(cached)
+      }
 
-    const pending = detailRequestsRef.current.get(id)
-    if (pending) return pending
+      const pending = detailRequestsRef.current.get(id)
+      if (pending) return pending
 
-    const generation = detailCacheGenerationRef.current
-    const promise = window.bearwarden.logins.get({ id })
-    detailRequestsRef.current.set(id, promise)
-    void promise
-      .then((login) => {
-        if (detailCacheGenerationRef.current !== generation) return
+      let requestGeneration = detailCacheGenerationRef.current
+      const promise = withReprompt([id], (tokenFor) => {
+        requestGeneration = detailCacheGenerationRef.current
+        return window.bearwarden.logins.get({
+          id,
+          ...(tokenFor(id) ? { authorizationToken: tokenFor(id) } : {})
+        })
+      }).then((login) => {
+        if (
+          !isCurrentSelectedDetailResponse({
+            id,
+            selectedId: selectedIdRef.current,
+            requestGeneration,
+            currentGeneration: detailCacheGenerationRef.current,
+            reprompt: login.reprompt,
+            authorizationToken: authorizationToken(id)
+          })
+        ) {
+          throw new Error('DETAIL_REQUEST_INVALIDATED')
+        }
         cacheLoginDetail(detailCacheRef.current, login)
+        return login
       })
-      .catch(() => undefined)
-      .finally(() => {
-        if (detailRequestsRef.current.get(id) === promise) detailRequestsRef.current.delete(id)
-      })
-    return promise
-  }, [])
-
-  const prefetchLoginDetail = useCallback(
-    (id: string): void => {
-      if (selectedIdRef.current === id) return
-      void loadLoginDetail(id).catch(() => {
-        // Selection handles user-visible errors; speculative prefetch stays silent.
-      })
+      detailRequestsRef.current.set(id, promise)
+      void promise
+        .catch(() => undefined)
+        .finally(() => {
+          if (detailRequestsRef.current.get(id) === promise) detailRequestsRef.current.delete(id)
+        })
+      return promise
     },
-    [loadLoginDetail]
+    [authorizationToken, withReprompt]
   )
+
+  const prefetchLoginDetail = useCallback((id: string): void => {
+    // Details are selection-bound secrets. Avoid speculative IPC so a stale hover request can
+    // never outlive capability expiry or a remote reprompt change.
+    void id
+  }, [])
 
   const activateLogin = useCallback(
     (id: string | null): void => {
@@ -788,15 +1043,18 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         if (id) compactReturnIdRef.current = id
         selectedIdRef.current = id
         const cached = id ? detailCacheRef.current.get(id) : undefined
-        if (cached) setSelectedLogin(cached)
+        const canUseCached =
+          cached && (cached.reprompt === 0 || Boolean(authorizationToken(cached.id)))
+        if (canUseCached) setSelectedLogin(cached)
         else if (!id) setSelectedLogin(null)
         setSelectedId(id)
         setRevealedSecrets(emptyRevealedSecrets)
         setRevealedCustomFields(emptyRevealedCustomFields)
+        setPasswordHistoryDialogOpen(false)
         setEditorMode(null)
       })
     },
-    [requestEditorTransition]
+    [authorizationToken, requestEditorTransition]
   )
 
   const selectLogin = useCallback(
@@ -812,15 +1070,37 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   const showLoginContextMenu = useCallback(
     (id: string, position: { x: number; y: number }): void => {
-      void window.bearwarden.logins
-        .showContextMenu({ id, ...position })
-        .catch((menuError) => announceError(describeError(menuError)))
+      void withReprompt([id], (tokenFor) =>
+        window.bearwarden.logins.showContextMenu({
+          id,
+          ...position,
+          ...(tokenFor(id) ? { authorizationToken: tokenFor(id) } : {})
+        })
+      ).catch((menuError) => announceError(describeError(menuError)))
     },
-    []
+    [withReprompt]
   )
 
+  const revealPasswordHistory = useCallback(async () => {
+    const login = selectedLogin
+    if (!login || login.deletedAt) throw new Error('INVALID_INPUT')
+    const itemId = login.id
+    return withReprompt([itemId], (tokenFor) =>
+      window.bearwarden.logins.getPasswordHistory({
+        id: itemId,
+        ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+      })
+    )
+  }, [selectedLogin, withReprompt])
+
   const refreshItems = useCallback(async (): Promise<void> => {
-    const loginList = await window.bearwarden.logins.list({ sort: 'name' })
+    const [activeItems, archivedItems, deletedItems] = await Promise.all([
+      window.bearwarden.logins.list({ sort: 'name' }),
+      window.bearwarden.logins.list({ sort: 'name', archived: true }),
+      window.bearwarden.logins.list({ sort: 'name', deleted: true })
+    ])
+    const loginList = [...activeItems, ...archivedItems, ...deletedItems]
+    invalidateProtectedDetails(loginList)
     const currentIds = new Set(loginList.map((login) => login.id))
     for (const cachedId of detailCacheRef.current.keys()) {
       if (!currentIds.has(cachedId)) detailCacheRef.current.delete(cachedId)
@@ -830,9 +1110,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     setSelectedLogin((current) => {
       if (!current) return current
       const summary = loginList.find((item) => item.id === current.id)
-      return summary ? { ...current, ...summary } : current
+      return summary ? mergeLoginSummary(current, summary) : current
     })
-  }, [])
+  }, [invalidateProtectedDetails])
 
   const refreshAfterSync = useCallback(async (): Promise<void> => {
     const applyRefresh = async (): Promise<void> => {
@@ -854,6 +1134,23 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   }, [loadVault])
 
   useEffect(() => clearDetailCache, [clearDetailCache])
+
+  useEffect(() => {
+    itemsRef.current = items
+  }, [items])
+
+  useEffect(
+    () => () => {
+      for (const timer of authorizationExpiryTimersRef.current.values()) {
+        window.clearTimeout(timer)
+      }
+      authorizationExpiryTimersRef.current.clear()
+      authorizationCacheRef.current.clear()
+      pendingRepromptRef.current?.reject(new Error('REPROMPT_REQUIRED'))
+      pendingRepromptRef.current = null
+    },
+    []
+  )
 
   useEffect(() => {
     selectedIdRef.current = selectedId
@@ -929,6 +1226,16 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       }
     }
 
+    const summary = items.find((item) => item.id === selectedId)
+    if (summary?.deletedAt) {
+      queueMicrotask(() => {
+        if (active) setSelectedLogin(null)
+      })
+      return () => {
+        active = false
+      }
+    }
+
     const detailRequest = loadLoginDetail(selectedId)
     detailRequest
       .then((login) => {
@@ -943,12 +1250,12 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     return () => {
       active = false
     }
-  }, [clearItemSelection, loadLoginDetail, selectedId])
+  }, [clearItemSelection, items, loadLoginDetail, selectedId])
 
   useEffect(() => {
     let active = true
     const login = selectedLogin
-    if (!login?.hasTotp || login.id !== selectedId || editorMode) {
+    if (!login?.hasTotp || login.deletedAt || login.id !== selectedId || editorMode) {
       queueMicrotask(() => {
         if (active) setTotpCode(null)
       })
@@ -958,14 +1265,20 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     }
 
     const refresh = (): void => {
-      window.bearwarden.logins.getTotp({ id: login.id }).then(
-        (nextCode) => {
-          if (active) setTotpCode(nextCode)
-        },
-        (totpError) => {
-          if (active) announceError(describeError(totpError))
-        }
-      )
+      const token = authorizationToken(login.id)
+      window.bearwarden.logins
+        .getTotp({
+          id: login.id,
+          ...(token ? { authorizationToken: token } : {})
+        })
+        .then(
+          (nextCode) => {
+            if (active) setTotpCode(nextCode)
+          },
+          (totpError) => {
+            if (active && isRepromptRequired(totpError)) invalidateAuthorization(login.id)
+          }
+        )
     }
     refresh()
     const timer = window.setInterval(refresh, 1_000)
@@ -973,7 +1286,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       active = false
       window.clearInterval(timer)
     }
-  }, [editorMode, selectedId, selectedLogin])
+  }, [authorizationToken, editorMode, invalidateAuthorization, selectedId, selectedLogin])
 
   useEffect(() => {
     if (Object.keys(revealedSecrets.values).length === 0) return
@@ -993,6 +1306,15 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const scopedItems = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('zh-Hant')
     const scoped = items.filter((item) => {
+      if (scope.kind === 'trash') {
+        if (!item.deletedAt) return false
+      } else if (scope.kind === 'archive') {
+        if (item.deletedAt || !item.archivedAt) return false
+      } else if (item.deletedAt) {
+        return false
+      } else if (item.archivedAt) {
+        return false
+      }
       if (scope.kind === 'favorites' && !item.favorite) return false
       if (scope.kind === 'recent' && !item.lastUsedAt) return false
       if (scope.kind === 'folder' && item.folderId !== scope.folderId) return false
@@ -1004,6 +1326,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         item.subtitle,
         item.username,
         item.uri ?? '',
+        ...item.uris.map((entry) => entry.uri),
         itemTypeMeta[item.type].label
       ].some((value) => value.toLocaleLowerCase('zh-Hant').includes(normalizedQuery))
     })
@@ -1110,27 +1433,38 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       .map((group) => ({ ...group, label: group.label as string | null }))
   }, [scope.kind, scopedItems, sortMode])
   const folderIds = useMemo(() => new Set(folders.map((folder) => folder.id)), [folders])
-  const itemIds = useMemo(() => new Set(items.map((item) => item.id)), [items])
+  const activeItems = useMemo(
+    () => items.filter((item) => !item.deletedAt && !item.archivedAt),
+    [items]
+  )
+  const archivedItems = useMemo(
+    () => items.filter((item) => !item.deletedAt && item.archivedAt),
+    [items]
+  )
+  const trashItems = useMemo(() => items.filter((item) => item.deletedAt), [items])
+  const itemIds = useMemo(() => new Set(activeItems.map((item) => item.id)), [activeItems])
   const folderCounts = useMemo(() => {
     const counts = new Map<string | null, number>()
-    for (const item of items) counts.set(item.folderId, (counts.get(item.folderId) ?? 0) + 1)
+    for (const item of activeItems) counts.set(item.folderId, (counts.get(item.folderId) ?? 0) + 1)
     return counts
-  }, [items])
+  }, [activeItems])
   const categoryCounts = useMemo(() => {
     const counts = new Map<TypeFilter, number>()
     for (const category of categoryMeta) {
       counts.set(
         category.id,
-        items.filter((item) => matchesVaultCategory(item, category.id)).length
+        activeItems.filter((item) => matchesVaultCategory(item, category.id)).length
       )
     }
     return counts
-  }, [items])
+  }, [activeItems])
 
   const scopeTitle = useMemo(() => {
     if (scope.kind === 'favorites') return '常用項目'
     if (scope.kind === 'recent') return '最近使用'
     if (scope.kind === 'unfiled') return '未分類'
+    if (scope.kind === 'archive') return '封存'
+    if (scope.kind === 'trash') return '垃圾桶'
     if (scope.kind === 'folder')
       return folders.find((folder) => folder.id === scope.folderId)?.name ?? '資料夾'
     if (typeFilter === 'totp') return '驗證碼'
@@ -1202,11 +1536,11 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         event.preventDefault()
         setSearchOpen(true)
       }
-      if (key === 'n' && !editorMode) {
+      if (key === 'n' && !editorMode && scope.kind !== 'trash' && scope.kind !== 'archive') {
         event.preventDefault()
         openEditor('create')
       }
-      if (key === 'e' && selectedLogin && !editorMode) {
+      if (key === 'e' && selectedLogin && !selectedLogin.deletedAt && !editorMode) {
         event.preventDefault()
         openEditor('edit')
       }
@@ -1214,7 +1548,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         event.preventDefault()
         document.querySelector<HTMLFormElement>('form.editor')?.requestSubmit()
       }
-      if (key === 'm' && event.shiftKey && selectedSummary) {
+      if (key === 'm' && event.shiftKey && selectedSummary && !selectedSummary.deletedAt) {
         event.preventDefault()
         setMoveDialogOpen(true)
       }
@@ -1230,6 +1564,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     searchOpen,
     selectedLogin,
     selectedSummary,
+    scope.kind,
     settingsOpen,
     updateSelectedIds
   ])
@@ -1290,6 +1625,32 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     setTouchIdPassword('')
   }
 
+  async function submitReprompt(masterPassword: string): Promise<void> {
+    const pending = pendingRepromptRef.current
+    if (!pending) throw new Error('REPROMPT_REQUIRED')
+    setRepromptBusy(true)
+    try {
+      const authorization = await window.bearwarden.logins.authorizeMany({
+        ids: pending.ids,
+        masterPassword
+      })
+      if (pending.ids.length === 1) cacheAuthorization(pending.ids[0]!, authorization)
+      pending.resolve(authorization)
+      pendingRepromptRef.current = null
+      setRepromptPrompt(null)
+    } finally {
+      setRepromptBusy(false)
+    }
+  }
+
+  function cancelReprompt(): void {
+    if (repromptBusy) return
+    const pending = pendingRepromptRef.current
+    pendingRepromptRef.current = null
+    setRepromptPrompt(null)
+    pending?.reject(new Error('REPROMPT_REQUIRED'))
+  }
+
   async function updateSettings(update: AppSettingsUpdate): Promise<void> {
     setSettingsBusy(true)
     try {
@@ -1340,21 +1701,24 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const toggleFavorite = useCallback(
     async (item: LoginSummary): Promise<void> => {
       try {
-        const updated = await window.bearwarden.logins.setFavorite({
-          id: item.id,
-          favorite: !item.favorite
-        })
+        const updated = await withReprompt([item.id], (tokenFor) =>
+          window.bearwarden.logins.setFavorite({
+            id: item.id,
+            favorite: !item.favorite,
+            ...(tokenFor(item.id) ? { authorizationToken: tokenFor(item.id) } : {})
+          })
+        )
         mergeCachedSummary(detailCacheRef.current, updated)
         setItems((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)))
         setSelectedLogin((current) =>
-          current?.id === updated.id ? { ...current, ...updated } : current
+          current?.id === updated.id ? mergeLoginSummary(current, updated) : current
         )
         announce(updated.favorite ? '已加入常用項目。' : '已從常用項目移除。')
       } catch (favoriteError) {
         announceError(describeError(favoriteError))
       }
     },
-    [announce]
+    [announce, withReprompt]
   )
 
   async function moveLogins(ids: readonly string[], folderId: string | null): Promise<boolean> {
@@ -1375,17 +1739,23 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       current.map((item) => (movableIds.has(item.id) ? { ...item, folderId } : item))
     )
     try {
-      const updated = await window.bearwarden.logins.moveMany({
-        ids: movable.map((item) => item.id),
-        folderId
-      })
+      const movableItemIds = movable.map((item) => item.id)
+      const updated = await withReprompt(movableItemIds, (tokenFor) =>
+        window.bearwarden.logins.moveMany({
+          ids: movableItemIds,
+          folderId,
+          ...(firstAuthorizationToken(movableItemIds, tokenFor)
+            ? { authorizationToken: firstAuthorizationToken(movableItemIds, tokenFor) }
+            : {})
+        })
+      )
       const updatedById = new Map(updated.map((item) => [item.id, item]))
       for (const item of updated) mergeCachedSummary(detailCacheRef.current, item)
       setItems((current) => current.map((item) => updatedById.get(item.id) ?? item))
       setSelectedLogin((current) => {
         if (!current) return current
         const summary = updatedById.get(current.id)
-        return summary ? { ...current, ...summary } : current
+        return summary ? mergeLoginSummary(current, summary) : current
       })
       const destination = folders.find((folder) => folder.id === folderId)?.name ?? '未分類'
       announce(
@@ -1431,7 +1801,17 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     if (!folderDialog || folderDialog === 'new') return
     setBusy(true)
     try {
-      await window.bearwarden.folders.delete({ id: folderDialog.id })
+      const containedIds = items
+        .filter((item) => item.folderId === folderDialog.id)
+        .map((item) => item.id)
+      await withReprompt(containedIds, (tokenFor) =>
+        window.bearwarden.folders.delete({
+          id: folderDialog.id,
+          ...(firstAuthorizationToken(containedIds, tokenFor)
+            ? { authorizationToken: firstAuthorizationToken(containedIds, tokenFor) }
+            : {})
+        })
+      )
       for (const [id, cached] of detailCacheRef.current) {
         if (cached.folderId === folderDialog.id) {
           detailCacheRef.current.set(id, { ...cached, folderId: null })
@@ -1468,6 +1848,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       const fields = {
         username: draft.username,
         uri: draft.uri || null,
+        uris: draft.uris.map((entry) => ({ ...entry })),
         cardholderName: draft.cardholderName,
         brand: draft.brand,
         expMonth: draft.expMonth,
@@ -1506,33 +1887,43 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           notes: draft.notes || null,
           folderId: draft.folderId,
           favorite: draft.favorite,
+          reprompt: draft.reprompt,
           customFields
         })
-        cacheLoginDetail(detailCacheRef.current, created)
+        if (created.reprompt === 0) cacheLoginDetail(detailCacheRef.current, created)
         setItems((current) => [...current, toLoginSummary(created)])
         setScope({ kind: 'all' })
         updateSelectedIds(new Set([created.id]))
         selectionAnchorIdRef.current = created.id
         selectedIdRef.current = created.id
         setSelectedId(created.id)
-        setSelectedLogin(created)
+        setSelectedLogin(created.reprompt === 0 ? created : null)
         announce(`已建立「${created.name}」。`)
       } else if (selectedLogin) {
-        const updated = await window.bearwarden.logins.update({
-          id: selectedLogin.id,
-          expectedUpdatedAt: draft.expectedUpdatedAt ?? undefined,
-          name: draft.name,
-          ...fields,
-          notes: draft.notes || null,
-          folderId: draft.folderId,
-          favorite: draft.favorite,
-          customFields
-        })
-        cacheLoginDetail(detailCacheRef.current, updated)
+        const itemId = selectedLogin.id
+        const updated = await withReprompt([itemId], (tokenFor) =>
+          window.bearwarden.logins.update({
+            id: itemId,
+            expectedUpdatedAt: draft.expectedUpdatedAt ?? undefined,
+            name: draft.name,
+            ...fields,
+            notes: draft.notes || null,
+            folderId: draft.folderId,
+            favorite: draft.favorite,
+            reprompt: draft.reprompt,
+            ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {}),
+            customFields
+          })
+        )
+        if (updated.reprompt === 0 || authorizationToken(itemId)) {
+          cacheLoginDetail(detailCacheRef.current, updated)
+        } else {
+          detailCacheRef.current.delete(itemId)
+        }
         setItems((current) =>
           current.map((item) => (item.id === updated.id ? toLoginSummary(updated) : item))
         )
-        setSelectedLogin(updated)
+        setSelectedLogin(updated.reprompt === 0 || authorizationToken(itemId) ? updated : null)
         announce(`已儲存「${updated.name}」。`)
       }
       setRevealedCustomFields(emptyRevealedCustomFields)
@@ -1546,18 +1937,160 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     }
   }
 
+  async function cloneLogin(): Promise<void> {
+    if (!selectedLogin || selectedLogin.deletedAt) return
+    setBusy(true)
+    try {
+      const itemId = selectedLogin.id
+      const cloned = await withReprompt([itemId], (tokenFor) =>
+        window.bearwarden.logins.clone({
+          id: itemId,
+          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+        })
+      )
+      if (cloned.reprompt === 0) cacheLoginDetail(detailCacheRef.current, cloned)
+      setItems((current) => [...current, toLoginSummary(cloned)])
+      setScope(cloned.archivedAt ? { kind: 'archive' } : { kind: 'all' })
+      updateSelectedIds(new Set([cloned.id]))
+      selectionAnchorIdRef.current = cloned.id
+      selectedIdRef.current = cloned.id
+      setSelectedId(cloned.id)
+      setSelectedLogin(cloned.reprompt === 0 ? cloned : null)
+      setRevealedSecrets(emptyRevealedSecrets)
+      setRevealedCustomFields(emptyRevealedCustomFields)
+      announce(`已建立「${cloned.name}」。`)
+    } catch (cloneError) {
+      announceError(describeError(cloneError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function archiveLogin(): Promise<void> {
+    if (!selectedLogin || selectedLogin.deletedAt || selectedLogin.archivedAt) return
+    setBusy(true)
+    try {
+      const itemId = selectedLogin.id
+      const archived = await withReprompt([itemId], (tokenFor) =>
+        window.bearwarden.logins.archive({
+          id: itemId,
+          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+        })
+      )
+      cacheLoginDetail(detailCacheRef.current, archived)
+      await refreshItems()
+      setScope({ kind: 'archive' })
+      updateSelectedIds(new Set([archived.id]))
+      selectionAnchorIdRef.current = archived.id
+      selectedIdRef.current = archived.id
+      setSelectedId(archived.id)
+      setSelectedLogin(archived)
+      announce(`已封存「${archived.name}」。`)
+    } catch (archiveError) {
+      announceError(describeError(archiveError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function unarchiveLogin(): Promise<void> {
+    if (!selectedLogin || selectedLogin.deletedAt || !selectedLogin.archivedAt) return
+    setBusy(true)
+    try {
+      const itemId = selectedLogin.id
+      const restored = await withReprompt([itemId], (tokenFor) =>
+        window.bearwarden.logins.unarchive({
+          id: itemId,
+          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+        })
+      )
+      cacheLoginDetail(detailCacheRef.current, restored)
+      await refreshItems()
+      setScope({ kind: 'all' })
+      updateSelectedIds(new Set([restored.id]))
+      selectionAnchorIdRef.current = restored.id
+      selectedIdRef.current = restored.id
+      setSelectedId(restored.id)
+      setSelectedLogin(restored)
+      announce(`已取消封存「${restored.name}」。`)
+    } catch (unarchiveError) {
+      announceError(describeError(unarchiveError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function deleteLogin(): Promise<void> {
     if (!selectedSummary) return
     setBusy(true)
     try {
-      await window.bearwarden.logins.delete({ id: selectedSummary.id })
+      const itemId = selectedSummary.id
+      await withReprompt([itemId], (tokenFor) => {
+        const request = {
+          id: itemId,
+          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+        }
+        return selectedSummary.deletedAt
+          ? window.bearwarden.logins.deletePermanently(request)
+          : window.bearwarden.logins.delete(request)
+      })
       detailCacheRef.current.delete(selectedSummary.id)
-      setItems((current) => current.filter((item) => item.id !== selectedSummary.id))
+      await refreshItems()
       clearItemSelection()
       setDeleteDialogOpen(false)
-      announce('項目已永久刪除。')
+      announce(selectedSummary.deletedAt ? '項目已永久刪除。' : '項目已移至垃圾桶。')
     } catch (deleteError) {
       announceError(describeError(deleteError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function restoreLogin(): Promise<void> {
+    if (!selectedSummary?.deletedAt) return
+    setBusy(true)
+    try {
+      const itemId = selectedSummary.id
+      const restored = await withReprompt([itemId], (tokenFor) =>
+        window.bearwarden.logins.restore({
+          id: itemId,
+          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+        })
+      )
+      cacheLoginDetail(detailCacheRef.current, restored)
+      await refreshItems()
+      setScope(restored.archivedAt ? { kind: 'archive' } : { kind: 'all' })
+      updateSelectedIds(new Set([restored.id]))
+      selectionAnchorIdRef.current = restored.id
+      selectedIdRef.current = restored.id
+      setSelectedId(restored.id)
+      setSelectedLogin(restored)
+      announce(`已還原「${restored.name}」。`)
+    } catch (restoreError) {
+      announceError(describeError(restoreError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function emptyTrash(): Promise<void> {
+    setBusy(true)
+    try {
+      const trashIds = trashItems.map((item) => item.id)
+      const count = await withReprompt(trashIds, (tokenFor) =>
+        window.bearwarden.logins.emptyTrash({
+          ...(firstAuthorizationToken(trashIds, tokenFor)
+            ? { authorizationToken: firstAuthorizationToken(trashIds, tokenFor) }
+            : {})
+        })
+      )
+      clearDetailCache()
+      await refreshItems()
+      clearItemSelection()
+      setEmptyTrashDialogOpen(false)
+      announce(count === 1 ? '已永久刪除 1 個項目。' : `已永久刪除 ${count} 個項目。`)
+    } catch (emptyError) {
+      announceError(describeError(emptyError))
     } finally {
       setBusy(false)
     }
@@ -1578,7 +2111,13 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       return
     }
     try {
-      const value = await window.bearwarden.logins.revealSecret({ id: itemId, field })
+      const value = await withReprompt([itemId], (tokenFor) =>
+        window.bearwarden.logins.revealSecret({
+          id: itemId,
+          field,
+          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+        })
+      )
       if (selectedIdRef.current !== itemId) return
       setRevealedSecrets((current) => ({
         itemId,
@@ -1593,10 +2132,18 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     }
   }
 
-  async function copyField(field: VaultCopyField): Promise<void> {
+  async function copyField(field: VaultCopyField, uriIndex?: number): Promise<void> {
     if (!selectedSummary) return
     try {
-      await window.bearwarden.logins.copyField({ id: selectedSummary.id, field })
+      const itemId = selectedSummary.id
+      await withReprompt([itemId], (tokenFor) =>
+        window.bearwarden.logins.copyField({
+          id: itemId,
+          field,
+          ...(uriIndex === undefined ? {} : { uriIndex }),
+          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+        })
+      )
       announce('欄位已複製。')
       await refreshItems()
     } catch (copyError) {
@@ -1630,11 +2177,14 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         type: field.type,
         linkedId: field.linkedId
       }
-      const value = await window.bearwarden.logins.revealCustomField({
-        id: itemId,
-        expectedUpdatedAt,
-        source
-      })
+      const value = await withReprompt([itemId], (tokenFor) =>
+        window.bearwarden.logins.revealCustomField({
+          id: itemId,
+          expectedUpdatedAt,
+          source,
+          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+        })
+      )
       if (selectedIdRef.current !== itemId) return
       setRevealedCustomFields((current) => ({
         itemId,
@@ -1652,11 +2202,15 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   async function copyCustomField(index: number, field: VaultCustomFieldView): Promise<void> {
     if (!selectedLogin) return
     try {
-      await window.bearwarden.logins.copyCustomField({
-        id: selectedLogin.id,
-        expectedUpdatedAt: selectedLogin.updatedAt,
-        source: { index, name: field.name, type: field.type, linkedId: field.linkedId }
-      })
+      const itemId = selectedLogin.id
+      await withReprompt([itemId], (tokenFor) =>
+        window.bearwarden.logins.copyCustomField({
+          id: itemId,
+          expectedUpdatedAt: selectedLogin.updatedAt,
+          source: { index, name: field.name, type: field.type, linkedId: field.linkedId },
+          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+        })
+      )
       announce('自訂欄位已複製。')
       await refreshItems()
     } catch (copyError) {
@@ -1667,7 +2221,13 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   async function copyTotp(): Promise<void> {
     if (!selectedLogin?.hasTotp) return
     try {
-      await window.bearwarden.logins.copyTotp({ id: selectedLogin.id })
+      const itemId = selectedLogin.id
+      await withReprompt([itemId], (tokenFor) =>
+        window.bearwarden.logins.copyTotp({
+          id: itemId,
+          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+        })
+      )
       announce('驗證碼已複製，剪貼簿會依安全設定自動清除。')
       await refreshItems()
     } catch (copyError) {
@@ -1675,10 +2235,17 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     }
   }
 
-  async function openWebsite(): Promise<void> {
-    if (!selectedSummary?.uri) return
+  async function openWebsite(uriIndex = 0): Promise<void> {
+    if (!selectedSummary?.uris[uriIndex]?.uri) return
     try {
-      await window.bearwarden.logins.openUri({ id: selectedSummary.id })
+      const itemId = selectedSummary.id
+      await withReprompt([itemId], (tokenFor) =>
+        window.bearwarden.logins.openUri({
+          id: itemId,
+          uriIndex,
+          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+        })
+      )
       announce('已在預設瀏覽器開啟網站。')
       await refreshItems()
     } catch (openError) {
@@ -1740,7 +2307,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           field.secret && 'password-field',
           hasExtraAction && 'multi-action'
         )}
-        key={`${field.label}:${field.field}`}
+        key={`${field.label}:${field.field}:${field.uriIndex ?? ''}`}
       >
         <span>{field.label}</span>
         <strong
@@ -1796,7 +2363,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 type="button"
                 label={`複製${field.label}`}
                 disabled={!field.value}
-                onClick={() => void copyField(field.field)}
+                onClick={() => void copyField(field.field, field.uriIndex)}
               >
                 <Copy />
               </TooltipIconButton>
@@ -1809,7 +2376,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 type="button"
                 label="在預設瀏覽器開啟網站"
                 disabled={!field.value}
-                onClick={() => void openWebsite()}
+                onClick={() => void openWebsite(field.uriIndex)}
               >
                 <ArrowUpRight />
               </TooltipIconButton>
@@ -1954,7 +2521,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             </InputGroup>
           )}
           <div className="titlebar-drag" aria-hidden="true" />
-          {!settingsOpen && (
+          {!settingsOpen && scope.kind !== 'archive' && scope.kind !== 'trash' && (
             <TooltipIconButton
               variant="outline"
               size="icon"
@@ -2081,16 +2648,30 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                   <SidebarLink
                     icon={<Star size={16} />}
                     label="常用項目"
-                    count={items.filter((item) => item.favorite).length}
+                    count={activeItems.filter((item) => item.favorite).length}
                     active={scope.kind === 'favorites'}
                     onClick={() => selectScope({ kind: 'favorites' })}
                   />
                   <SidebarLink
                     icon={<Clock3 size={16} />}
                     label="最近使用"
-                    count={items.filter((item) => item.lastUsedAt).length}
+                    count={activeItems.filter((item) => item.lastUsedAt).length}
                     active={scope.kind === 'recent'}
                     onClick={() => selectScope({ kind: 'recent' })}
+                  />
+                  <SidebarLink
+                    icon={<Archive size={16} />}
+                    label="封存"
+                    count={archivedItems.length}
+                    active={scope.kind === 'archive'}
+                    onClick={() => selectScope({ kind: 'archive' })}
+                  />
+                  <SidebarLink
+                    icon={<Trash2 size={16} />}
+                    label="垃圾桶"
+                    count={trashItems.length}
+                    active={scope.kind === 'trash'}
+                    onClick={() => selectScope({ kind: 'trash' })}
                   />
                 </nav>
               </section>
@@ -2187,6 +2768,17 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     </small>
                   </div>
                   <div className="list-header-actions">
+                    {scope.kind === 'trash' && trashItems.length > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        type="button"
+                        onClick={() => setEmptyTrashDialogOpen(true)}
+                      >
+                        <Trash2 data-icon="inline-start" />
+                        清空垃圾桶
+                      </Button>
+                    )}
                     <div className="sort-control">
                       <ListFilter size={16} aria-hidden="true" />
                       <Select
@@ -2227,21 +2819,34 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     groups={itemGroups}
                     scopeTitle={scopeTitle}
                     selectedIds={selectedIds}
-                    onPrefetch={prefetchLoginDetail}
+                    onPrefetch={scope.kind === 'trash' ? undefined : prefetchLoginDetail}
                     onSelect={selectItems}
                     onFavorite={toggleFavorite}
                     onContextMenu={showLoginContextMenu}
-                    showWebsiteIcons={settings?.showWebsiteIcons ?? false}
+                    showWebsiteIcons={
+                      scope.kind !== 'trash' && (settings?.showWebsiteIcons ?? false)
+                    }
+                    readOnly={scope.kind === 'trash'}
                   />
                 ) : (
                   <Empty className="empty-state">
                     <EmptyHeader>
-                      <EmptyMedia variant="icon">{query ? <Search /> : <KeyRound />}</EmptyMedia>
-                      <EmptyTitle>{query ? '找不到符合的項目' : '這裡還沒有保管庫項目'}</EmptyTitle>
+                      <EmptyMedia variant="icon">
+                        {query ? <Search /> : scope.kind === 'trash' ? <Trash2 /> : <KeyRound />}
+                      </EmptyMedia>
+                      <EmptyTitle>
+                        {query
+                          ? '找不到符合的項目'
+                          : scope.kind === 'trash'
+                            ? '垃圾桶是空的'
+                            : '這裡還沒有保管庫項目'}
+                      </EmptyTitle>
                       <EmptyDescription>
                         {query
                           ? '試試較短的關鍵字，或切換到所有項目。'
-                          : '新增第一筆資料，BearWarden 會安全地替你保管。'}
+                          : scope.kind === 'trash'
+                            ? '刪除的項目會留在這裡，直到你還原、永久刪除，或伺服器依保留政策清除。'
+                            : '新增第一筆資料，BearWarden 會安全地替你保管。'}
                       </EmptyDescription>
                     </EmptyHeader>
                     <EmptyContent>
@@ -2254,7 +2859,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                         >
                           清除搜尋
                         </Button>
-                      ) : (
+                      ) : scope.kind !== 'trash' && scope.kind !== 'archive' ? (
                         <Button
                           className="button primary"
                           type="button"
@@ -2263,7 +2868,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                           <Plus data-icon="inline-start" />
                           新增項目
                         </Button>
-                      )}
+                      ) : null}
                     </EmptyContent>
                   </Empty>
                 )}
@@ -2278,10 +2883,76 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 login={editorMode === 'edit' ? (selectedLogin ?? undefined) : undefined}
                 folders={folders}
                 busy={busy}
+                authorizationToken={
+                  selectedLogin ? authorizationTokenState[selectedLogin.id] : undefined
+                }
                 onCancel={() => requestEditorTransition(() => setEditorMode(null))}
                 onDirtyChange={handleEditorDirtyChange}
                 onSave={saveLogin}
               />
+            ) : selectedSummary?.deletedAt ? (
+              <article className="detail-content">
+                <header className="detail-header">
+                  <TooltipIconButton
+                    variant="outline"
+                    size="icon"
+                    className="icon-button detail-back"
+                    type="button"
+                    label="返回垃圾桶"
+                    onClick={clearItemSelection}
+                  >
+                    <ArrowLeft />
+                  </TooltipIconButton>
+                  <span className="detail-icon" aria-hidden="true">
+                    <Trash2 />
+                  </span>
+                  <div className="detail-heading">
+                    <p className="eyebrow">垃圾桶</p>
+                    <h2>{selectedSummary.name}</h2>
+                    <span>{itemTypeMeta[selectedSummary.type].label}</span>
+                  </div>
+                </header>
+                <div className="detail-scroll">
+                  <Card className="detail-card organization-card gap-0 py-0">
+                    <CardHeader>
+                      <CardTitle>這個項目已移至垃圾桶</CardTitle>
+                      <CardDescription>
+                        為了保護已刪除的敏感資料，請先還原項目再查看或編輯內容。
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <dl>
+                        <div>
+                          <dt>刪除時間</dt>
+                          <dd>{formatDate(selectedSummary.deletedAt)}</dd>
+                        </div>
+                        <div>
+                          <dt>原資料夾</dt>
+                          <dd>
+                            {folders.find((folder) => folder.id === selectedSummary.folderId)
+                              ?.name ?? '未分類'}
+                          </dd>
+                        </div>
+                      </dl>
+                    </CardContent>
+                  </Card>
+                  <div className="danger-zone flex flex-wrap gap-2">
+                    <Button type="button" disabled={busy} onClick={() => void restoreLogin()}>
+                      <RotateCcw data-icon="inline-start" />
+                      還原項目
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setDeleteDialogOpen(true)}
+                    >
+                      <Trash2 data-icon="inline-start" />
+                      永久刪除
+                    </Button>
+                  </div>
+                </div>
+              </article>
             ) : selectedId && selectedSummary && selectedLogin?.id !== selectedId ? (
               <DetailPlaceholder
                 item={selectedSummary}
@@ -2346,6 +3017,35 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     size="sm"
                     className="button secondary compact"
                     type="button"
+                    disabled={busy}
+                    onClick={() => void cloneLogin()}
+                  >
+                    <Copy data-icon="inline-start" />
+                    複製項目
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="button secondary compact"
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      void (selectedLogin.archivedAt ? unarchiveLogin() : archiveLogin())
+                    }
+                  >
+                    {selectedLogin.archivedAt ? (
+                      <ArchiveRestore data-icon="inline-start" />
+                    ) : (
+                      <Archive data-icon="inline-start" />
+                    )}
+                    {selectedLogin.archivedAt ? '取消封存' : '封存項目'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="button secondary compact"
+                    type="button"
+                    disabled={busy}
                     onClick={() => openEditor('edit')}
                   >
                     <Edit3 data-icon="inline-start" />
@@ -2387,6 +3087,31 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                       </CardHeader>
                       <CardContent className="contents">
                         {selectedLogin.customFields.map(renderCustomField)}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {selectedLogin.passwordHistoryCount > 0 && (
+                    <Card
+                      className="detail-card gap-0 py-0"
+                      role="region"
+                      aria-labelledby="password-history-title"
+                    >
+                      <CardHeader className="bg-muted rounded-none border-b">
+                        <CardTitle id="password-history-title">密碼歷史</CardTitle>
+                        <CardDescription>
+                          {selectedLogin.passwordHistoryCount} 筆紀錄
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <Button
+                          variant="outline"
+                          type="button"
+                          onClick={() => setPasswordHistoryDialogOpen(true)}
+                        >
+                          <History data-icon="inline-start" aria-hidden="true" />
+                          查看密碼歷史
+                        </Button>
                       </CardContent>
                     </Card>
                   )}
@@ -2551,7 +3276,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                       onClick={() => setDeleteDialogOpen(true)}
                     >
                       <Trash2 data-icon="inline-start" />
-                      永久刪除這筆項目
+                      移至垃圾桶
                     </Button>
                   </div>
                 </div>
@@ -2599,8 +3324,34 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           <DeleteLoginDialog
             itemName={selectedSummary.name}
             busy={busy}
+            permanent={Boolean(selectedSummary.deletedAt)}
             onClose={() => setDeleteDialogOpen(false)}
             onDelete={deleteLogin}
+          />
+        )}
+        {emptyTrashDialogOpen && trashItems.length > 0 && (
+          <DeleteLoginDialog
+            itemName={`垃圾桶中的 ${trashItems.length} 個項目`}
+            busy={busy}
+            permanent
+            onClose={() => setEmptyTrashDialogOpen(false)}
+            onDelete={emptyTrash}
+          />
+        )}
+        {passwordHistoryDialogOpen && selectedLogin && (
+          <PasswordHistoryDialog
+            itemName={selectedLogin.name}
+            count={selectedLogin.passwordHistoryCount}
+            onClose={() => setPasswordHistoryDialogOpen(false)}
+            onReveal={revealPasswordHistory}
+          />
+        )}
+        {repromptPrompt && (
+          <RepromptDialog
+            itemName={repromptPrompt.itemName}
+            busy={repromptBusy}
+            onCancel={cancelReprompt}
+            onAuthorize={submitReprompt}
           />
         )}
         {syncDialogOpen && (

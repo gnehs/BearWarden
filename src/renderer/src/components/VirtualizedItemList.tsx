@@ -22,6 +22,7 @@ interface VirtualizedItemListProps {
   onFavorite: (item: LoginSummary) => void
   onContextMenu: (id: string, position: { x: number; y: number }) => void
   showWebsiteIcons: boolean
+  readOnly?: boolean
   className?: string
 }
 
@@ -48,6 +49,7 @@ export function VirtualizedItemList({
   onFavorite,
   onContextMenu,
   showWebsiteIcons,
+  readOnly = false,
   className
 }: VirtualizedItemListProps): React.JSX.Element {
   const scrollElementRef = useRef<HTMLDivElement>(null)
@@ -160,6 +162,7 @@ export function VirtualizedItemList({
                 onFavorite={onFavorite}
                 onContextMenu={onContextMenu}
                 showWebsiteIcons={showWebsiteIcons}
+                readOnly={readOnly}
               />
             </ul>
           )

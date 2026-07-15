@@ -1,9 +1,11 @@
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { dialog, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import {
   IPC_CHANNELS,
   IPC_ERROR_PREFIX,
   IPC_EVENTS,
   MAX_LOGIN_MOVE_MANY_IDS,
+  MAX_LOGIN_AUTHORIZE_MANY_IDS,
   type AppSettingsUpdate,
   type CustomFieldRequest,
   type EditorSecretsRequest,
@@ -12,10 +14,15 @@ import {
   type FolderReorderRequest,
   type FolderUpdateRequest,
   type LoginCreateRequest,
+  type LoginAuthorizeRequest,
+  type LoginAuthorizeManyRequest,
+  type LoginAuthorization,
+  type LoginEmptyTrashRequest,
   type LoginContextMenuRequest,
   type LoginFavoriteRequest,
   type LoginIdRequest,
   type LoginListRequest,
+  type LoginOpenUriRequest,
   type LoginMoveRequest,
   type LoginMoveManyRequest,
   type LoginUpdateRequest,
@@ -24,6 +31,7 @@ import {
   type VaultCustomFieldType,
   type VaultCustomFieldUpdate,
   type VaultItemFields,
+  type VaultLoginUri,
   type VaultItemType,
   type SyncConnectRequest,
   type SyncStatus,
@@ -44,6 +52,96 @@ type RecordValue = Record<string, unknown>
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MAX_CUSTOM_FIELDS = 1_000
 const MAX_CUSTOM_FIELD_STRING_LENGTH = 5_000
+const REPROMPT_TOKEN_TTL_MS = 60_000
+const MAX_REPROMPT_TOKENS = 128
+const MAX_LOGIN_URIS = 1_000
+const MAX_URI_LENGTH = 4_096
+
+interface RepromptAuthorizationEntry {
+  senderId: number
+  itemCount: number
+  itemSetDigest: Buffer
+  generation: number
+  expiresAt: number
+}
+
+function itemSetDigest(itemIds: readonly string[]): Buffer {
+  return createHash('sha256')
+    .update([...itemIds].sort().join('\0'), 'utf8')
+    .digest()
+}
+
+export class RepromptAuthorizationStore {
+  private readonly entries = new Map<string, RepromptAuthorizationEntry>()
+
+  constructor(
+    private readonly now: () => number = Date.now,
+    private readonly createRandomBytes: (size: number) => Buffer = randomBytes
+  ) {}
+
+  issue(senderId: number, itemId: string, generation: number): LoginAuthorization {
+    return this.issueMany(senderId, [itemId], generation)
+  }
+
+  issueMany(senderId: number, itemIds: readonly string[], generation: number): LoginAuthorization {
+    this.removeExpired()
+    while (this.entries.size >= MAX_REPROMPT_TOKENS) {
+      const oldest = this.entries.keys().next().value
+      if (oldest === undefined) break
+      this.entries.delete(oldest)
+    }
+    const token = this.createRandomBytes(32).toString('base64url')
+    const expiresAt = this.now() + REPROMPT_TOKEN_TTL_MS
+    this.entries.set(token, {
+      senderId,
+      itemCount: itemIds.length,
+      itemSetDigest: itemSetDigest(itemIds),
+      generation,
+      expiresAt
+    })
+    return { token, expiresAt }
+  }
+
+  validate(
+    token: string | undefined,
+    senderId: number,
+    itemId: string,
+    generation: number
+  ): boolean {
+    return this.validateMany(token, senderId, [itemId], generation)
+  }
+
+  validateMany(
+    token: string | undefined,
+    senderId: number,
+    itemIds: readonly string[],
+    generation: number
+  ): boolean {
+    this.removeExpired()
+    if (!token) return false
+    const entry = this.entries.get(token)
+    if (
+      !entry ||
+      entry.senderId !== senderId ||
+      entry.generation !== generation ||
+      entry.expiresAt <= this.now()
+    )
+      return false
+    if (entry.itemCount !== itemIds.length) return false
+    return timingSafeEqual(entry.itemSetDigest, itemSetDigest(itemIds))
+  }
+
+  clear(): void {
+    this.entries.clear()
+  }
+
+  private removeExpired(): void {
+    const now = this.now()
+    for (const [token, entry] of this.entries) {
+      if (entry.expiresAt <= now) this.entries.delete(token)
+    }
+  }
+}
 
 export interface VaultIpcOptions {
   vault: VaultService
@@ -53,6 +151,8 @@ export interface VaultIpcOptions {
   afterUnlock?: (masterPassword: string) => void | Promise<void>
   afterMutation?: () => void
   afterSyncChanged?: (status: SyncStatus) => void
+  repromptNow?: () => number
+  repromptRandomBytes?: (size: number) => Buffer
 }
 
 function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
@@ -151,6 +251,35 @@ function optionalBoolean(record: RecordValue, key: string): boolean | undefined 
   throw new VaultError('INVALID_INPUT')
 }
 
+function optionalAuthorizationToken(record: RecordValue): string | undefined {
+  const value = record.authorizationToken
+  if (value === undefined) return undefined
+  if (typeof value !== 'string' || value.length === 0 || value.length > 256) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return value
+}
+
+function authorizationTokens(value: unknown): Record<string, string> | undefined {
+  if (value === undefined) return undefined
+  if (!isRecord(value) || Object.keys(value).length > MAX_LOGIN_MOVE_MANY_IDS) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const result: Record<string, string> = {}
+  for (const [id, token] of Object.entries(value)) {
+    if (
+      !UUID_PATTERN.test(id) ||
+      typeof token !== 'string' ||
+      token.length === 0 ||
+      token.length > 256
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    result[id] = token
+  }
+  return result
+}
+
 function customFieldType(value: unknown): VaultCustomFieldType {
   if (value !== 'text' && value !== 'hidden' && value !== 'boolean' && value !== 'linked') {
     throw new VaultError('INVALID_INPUT')
@@ -234,13 +363,44 @@ function parseFolderUpdate(value: unknown): FolderUpdateRequest {
 }
 
 function parseId(value: unknown): LoginIdRequest {
-  const record = exactRecord(value, ['id'])
-  return { id: requiredString(record, 'id') }
+  const record = exactRecord(value, ['id', 'authorizationToken'])
+  const authorizationToken = optionalAuthorizationToken(record)
+  return {
+    id: requiredString(record, 'id'),
+    ...(authorizationToken ? { authorizationToken } : {})
+  }
+}
+
+function parseLoginAuthorize(value: unknown): LoginAuthorizeRequest {
+  const record = exactRecord(value, ['id', 'masterPassword'])
+  return {
+    id: requiredString(record, 'id'),
+    masterPassword: requiredString(record, 'masterPassword')
+  }
+}
+
+function parseLoginAuthorizeMany(value: unknown): LoginAuthorizeManyRequest {
+  const record = exactRecord(value, ['ids', 'masterPassword'])
+  if (
+    !Array.isArray(record.ids) ||
+    record.ids.length === 0 ||
+    record.ids.length > MAX_LOGIN_AUTHORIZE_MANY_IDS ||
+    record.ids.some((id) => typeof id !== 'string' || !UUID_PATTERN.test(id)) ||
+    new Set(record.ids).size !== record.ids.length
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return {
+    ids: [...record.ids] as string[],
+    masterPassword: requiredString(record, 'masterPassword')
+  }
 }
 
 function parseContextMenu(value: unknown): LoginContextMenuRequest {
-  const record = exactRecord(value, ['id', 'x', 'y'])
+  const record = exactRecord(value, ['id', 'x', 'y', 'authorizationToken'])
+  const authorizationToken = optionalAuthorizationToken(record)
   const result: LoginContextMenuRequest = { id: requiredString(record, 'id') }
+  if (authorizationToken) result.authorizationToken = authorizationToken
   for (const coordinate of ['x', 'y'] as const) {
     const candidate = record[coordinate]
     if (candidate === undefined) continue
@@ -254,7 +414,14 @@ function parseContextMenu(value: unknown): LoginContextMenuRequest {
 }
 
 function parseFolderDelete(value: unknown): FolderDeleteRequest {
-  return parseId(value)
+  const record = exactRecord(value, ['id', 'authorizationToken', 'authorizationTokens'])
+  const parsedTokens = authorizationTokens(record.authorizationTokens)
+  const authorizationToken = optionalAuthorizationToken(record)
+  return {
+    id: requiredString(record, 'id'),
+    ...(authorizationToken ? { authorizationToken } : {}),
+    ...(parsedTokens ? { authorizationTokens: parsedTokens } : {})
+  }
 }
 
 function parseFolderReorder(value: unknown): FolderReorderRequest {
@@ -309,7 +476,9 @@ function parseLoginCreate(value: unknown): LoginCreateRequest {
     'notes',
     'folderId',
     'favorite',
+    'reprompt',
     'customFields',
+    'uris',
     ...fieldKeys
   ])
   const result: LoginCreateRequest = {
@@ -338,7 +507,12 @@ function parseLoginCreate(value: unknown): LoginCreateRequest {
   if (notes !== undefined) result.notes = notes
   if (folderId !== undefined) result.folderId = folderId
   if (favorite !== undefined) result.favorite = favorite
+  if (record.reprompt !== undefined) {
+    if (record.reprompt !== 0 && record.reprompt !== 1) throw new VaultError('INVALID_INPUT')
+    result.reprompt = record.reprompt
+  }
   if (customFields !== undefined) result.customFields = customFields
+  if (record.uris !== undefined) result.uris = parseLoginUris(record.uris)
   return result
 }
 
@@ -383,10 +557,15 @@ function parseLoginUpdate(value: unknown): LoginUpdateRequest {
     'notes',
     'folderId',
     'favorite',
+    'reprompt',
+    'authorizationToken',
     'customFields',
+    'uris',
     ...fieldKeys
   ])
   const result: LoginUpdateRequest = { id: requiredString(record, 'id') }
+  const authorizationToken = optionalAuthorizationToken(record)
+  if (authorizationToken) result.authorizationToken = authorizationToken
   if (record.expectedUpdatedAt !== undefined) {
     result.expectedUpdatedAt = requiredString(record, 'expectedUpdatedAt')
   }
@@ -405,12 +584,40 @@ function parseLoginUpdate(value: unknown): LoginUpdateRequest {
   if (notes !== undefined) result.notes = notes
   if (folderId !== undefined) result.folderId = folderId
   if (favorite !== undefined) result.favorite = favorite
+  if (record.reprompt !== undefined) {
+    if (record.reprompt !== 0 && record.reprompt !== 1) throw new VaultError('INVALID_INPUT')
+    result.reprompt = record.reprompt
+  }
   if (customFields !== undefined) result.customFields = customFields
+  if (record.uris !== undefined) result.uris = parseLoginUris(record.uris)
   return result
 }
 
+function parseLoginUris(value: unknown): VaultLoginUri[] {
+  if (!Array.isArray(value) || value.length > MAX_LOGIN_URIS) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return value.map((entry) => {
+    const record = exactRecord(entry, ['uri', 'match'])
+    if (
+      typeof record.uri !== 'string' ||
+      record.uri.length > MAX_URI_LENGTH ||
+      (record.match !== null &&
+        record.match !== 0 &&
+        record.match !== 1 &&
+        record.match !== 2 &&
+        record.match !== 3 &&
+        record.match !== 4 &&
+        record.match !== 5)
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    return { uri: record.uri, match: record.match }
+  })
+}
+
 function parseItemField(value: unknown): ItemFieldRequest {
-  const record = exactRecord(value, ['id', 'field'])
+  const record = exactRecord(value, ['id', 'field', 'uriIndex', 'authorizationToken'])
   const field = record.field
   if (
     field !== 'password' &&
@@ -429,41 +636,92 @@ function parseItemField(value: unknown): ItemFieldRequest {
     field !== 'fingerprint'
   )
     throw new VaultError('INVALID_INPUT')
-  return { id: requiredString(record, 'id'), field }
+  const authorizationToken = optionalAuthorizationToken(record)
+  const uriIndex = optionalUriIndex(record.uriIndex)
+  if (uriIndex !== undefined && field !== 'uri') throw new VaultError('INVALID_INPUT')
+  return {
+    id: requiredString(record, 'id'),
+    field,
+    ...(authorizationToken ? { authorizationToken } : {}),
+    ...(uriIndex === undefined ? {} : { uriIndex })
+  }
+}
+
+function optionalUriIndex(value: unknown): number | undefined {
+  if (value === undefined) return undefined
+  if (
+    !Number.isSafeInteger(value) ||
+    typeof value !== 'number' ||
+    value < 0 ||
+    value >= MAX_LOGIN_URIS
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return value
+}
+
+function parseOpenUri(value: unknown): LoginOpenUriRequest {
+  const record = exactRecord(value, ['id', 'uriIndex', 'authorizationToken'])
+  const authorizationToken = optionalAuthorizationToken(record)
+  const uriIndex = optionalUriIndex(record.uriIndex)
+  return {
+    id: requiredString(record, 'id'),
+    ...(authorizationToken ? { authorizationToken } : {}),
+    ...(uriIndex === undefined ? {} : { uriIndex })
+  }
 }
 
 function parseEditorSecretsRequest(value: unknown): EditorSecretsRequest {
-  const record = exactRecord(value, ['id', 'expectedUpdatedAt'])
+  const record = exactRecord(value, ['id', 'expectedUpdatedAt', 'authorizationToken'])
+  const authorizationToken = optionalAuthorizationToken(record)
   return {
     id: requiredString(record, 'id'),
-    expectedUpdatedAt: requiredString(record, 'expectedUpdatedAt')
+    expectedUpdatedAt: requiredString(record, 'expectedUpdatedAt'),
+    ...(authorizationToken ? { authorizationToken } : {})
   }
 }
 
 function parseCustomFieldRequest(value: unknown): CustomFieldRequest {
-  const record = exactRecord(value, ['id', 'expectedUpdatedAt', 'source'])
+  const record = exactRecord(value, ['id', 'expectedUpdatedAt', 'source', 'authorizationToken'])
+  const authorizationToken = optionalAuthorizationToken(record)
   return {
     id: requiredString(record, 'id'),
     expectedUpdatedAt: requiredString(record, 'expectedUpdatedAt'),
-    source: parseCustomFieldSource(record.source)
+    source: parseCustomFieldSource(record.source),
+    ...(authorizationToken ? { authorizationToken } : {})
   }
 }
 
 function parseLoginFavorite(value: unknown): LoginFavoriteRequest {
-  const record = exactRecord(value, ['id', 'favorite'])
+  const record = exactRecord(value, ['id', 'favorite', 'authorizationToken'])
   if (typeof record.favorite !== 'boolean') throw new VaultError('INVALID_INPUT')
-  return { id: requiredString(record, 'id'), favorite: record.favorite }
+  const authorizationToken = optionalAuthorizationToken(record)
+  return {
+    id: requiredString(record, 'id'),
+    favorite: record.favorite,
+    ...(authorizationToken ? { authorizationToken } : {})
+  }
 }
 
 function parseLoginMove(value: unknown): LoginMoveRequest {
-  const record = exactRecord(value, ['id', 'folderId'])
+  const record = exactRecord(value, ['id', 'folderId', 'authorizationToken'])
   const folderId = optionalStringOrNull(record, 'folderId')
   if (folderId === undefined) throw new VaultError('INVALID_INPUT')
-  return { id: requiredString(record, 'id'), folderId }
+  const authorizationToken = optionalAuthorizationToken(record)
+  return {
+    id: requiredString(record, 'id'),
+    folderId,
+    ...(authorizationToken ? { authorizationToken } : {})
+  }
 }
 
 function parseLoginMoveMany(value: unknown): LoginMoveManyRequest {
-  const record = exactRecord(value, ['ids', 'folderId'])
+  const record = exactRecord(value, [
+    'ids',
+    'folderId',
+    'authorizationToken',
+    'authorizationTokens'
+  ])
   const folderId = optionalStringOrNull(record, 'folderId')
   if (folderId === undefined || !Array.isArray(record.ids)) {
     throw new VaultError('INVALID_INPUT')
@@ -478,18 +736,39 @@ function parseLoginMoveMany(value: unknown): LoginMoveManyRequest {
     throw new VaultError('INVALID_INPUT')
   }
   if (folderId !== null && !UUID_PATTERN.test(folderId)) throw new VaultError('INVALID_INPUT')
-  return { ids: [...ids] as string[], folderId }
+  const parsedTokens = authorizationTokens(record.authorizationTokens)
+  const authorizationToken = optionalAuthorizationToken(record)
+  return {
+    ids: [...ids] as string[],
+    folderId,
+    ...(authorizationToken ? { authorizationToken } : {}),
+    ...(parsedTokens ? { authorizationTokens: parsedTokens } : {})
+  }
+}
+
+function parseEmptyTrash(value: unknown): LoginEmptyTrashRequest {
+  const record = exactRecord(value ?? {}, ['authorizationToken', 'authorizationTokens'])
+  const parsedTokens = authorizationTokens(record.authorizationTokens)
+  const authorizationToken = optionalAuthorizationToken(record)
+  return {
+    ...(authorizationToken ? { authorizationToken } : {}),
+    ...(parsedTokens ? { authorizationTokens: parsedTokens } : {})
+  }
 }
 
 function parseLoginList(value: unknown): LoginListRequest {
-  const record = exactRecord(value ?? {}, ['sort', 'folderId'])
+  const record = exactRecord(value ?? {}, ['sort', 'folderId', 'deleted', 'archived'])
   if (record.sort !== undefined && record.sort !== 'recent' && record.sort !== 'name') {
     throw new VaultError('INVALID_INPUT')
   }
   const result: LoginListRequest = {}
   const folderId = optionalStringOrNull(record, 'folderId')
+  const deleted = optionalBoolean(record, 'deleted')
+  const archived = optionalBoolean(record, 'archived')
   if (record.sort !== undefined) result.sort = record.sort
   if (folderId !== undefined) result.folderId = folderId
+  if (deleted !== undefined) result.deleted = deleted
+  if (archived !== undefined) result.archived = archived
   return result
 }
 
@@ -585,6 +864,30 @@ function registerHandler<T>(
 
 export function registerVaultIpc(options: VaultIpcOptions): () => void {
   const { vault, settings, getMainWindow } = options
+  const authorizations = new RepromptAuthorizationStore(
+    options.repromptNow,
+    options.repromptRandomBytes
+  )
+  const runAuthorizationBoundary = <T>(
+    event: IpcMainInvokeEvent,
+    token: string | undefined,
+    legacyTokens: Readonly<Record<string, string | undefined>>,
+    operation: (authorize: (ids: readonly string[]) => void) => Promise<T>
+  ): Promise<T> =>
+    vault.runAuthorizedOperation((ids, state) => {
+      const resolvedToken = token ?? legacyTokens[ids[0]!]
+      if (!token && ids.some((id) => legacyTokens[id] !== resolvedToken)) return false
+      return authorizations.validateMany(resolvedToken, event.sender.id, ids, state.generation)
+    }, operation)
+  const runAuthorized = <T>(
+    event: IpcMainInvokeEvent,
+    request: LoginIdRequest,
+    operation: () => Promise<T>
+  ): Promise<T> =>
+    runAuthorizationBoundary(event, request.authorizationToken, {}, async (authorize) => {
+      authorize([request.id])
+      return operation()
+    })
   const notifyMutation = (): void => {
     try {
       options.afterMutation?.()
@@ -604,12 +907,14 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   })
   registerHandler(IPC_CHANNELS.vaultUnlock, getMainWindow, (_event, input) => {
     const request = parseUnlock(input)
+    authorizations.clear()
     return vault.unlock(request.masterPassword).then(async (status) => {
       await Promise.resolve(options.afterUnlock?.(request.masterPassword)).catch(() => undefined)
       return status
     })
   })
   registerHandler(IPC_CHANNELS.vaultLock, getMainWindow, async () => {
+    authorizations.clear()
     const status = await vault.lock()
     options.afterLock?.()
     return status
@@ -621,63 +926,150 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   registerHandler(IPC_CHANNELS.folderUpdate, getMainWindow, (_event, input) =>
     afterMutation(vault.updateFolder(parseFolderUpdate(input)))
   )
-  registerHandler(IPC_CHANNELS.folderDelete, getMainWindow, (_event, input) =>
-    afterMutation(vault.deleteFolder(parseFolderDelete(input)))
-  )
+  registerHandler(IPC_CHANNELS.folderDelete, getMainWindow, (event, input) => {
+    const request = parseFolderDelete(input)
+    return runAuthorizationBoundary(
+      event,
+      request.authorizationToken,
+      request.authorizationTokens ?? {},
+      async (authorize) => {
+        const contained = (
+          await Promise.all([
+            vault.listLogins({ folderId: request.id }),
+            vault.listLogins({ folderId: request.id, archived: true }),
+            vault.listLogins({ folderId: request.id, deleted: true })
+          ])
+        ).flat()
+        authorize(contained.map((item) => item.id))
+        return afterMutation(vault.deleteFolder(request))
+      }
+    )
+  })
   registerHandler(IPC_CHANNELS.folderReorder, getMainWindow, (_event, input) =>
     afterMutation(vault.reorderFolders(parseFolderReorder(input)))
   )
   registerHandler(IPC_CHANNELS.loginList, getMainWindow, (_event, input) =>
     vault.listLogins(parseLoginList(input))
   )
-  registerHandler(IPC_CHANNELS.loginGet, getMainWindow, (_event, input) =>
-    vault.getLogin(parseId(input))
-  )
+  registerHandler(IPC_CHANNELS.loginAuthorize, getMainWindow, async (event, input) => {
+    const request = parseLoginAuthorize(input)
+    const generation = await vault.authorizeLogin(request)
+    return authorizations.issue(event.sender.id, request.id, generation)
+  })
+  registerHandler(IPC_CHANNELS.loginAuthorizeMany, getMainWindow, async (event, input) => {
+    const request = parseLoginAuthorizeMany(input)
+    const generation = await vault.authorizeLogins(request)
+    return authorizations.issueMany(event.sender.id, request.ids, generation)
+  })
+  registerHandler(IPC_CHANNELS.loginGet, getMainWindow, (event, input) => {
+    const request = parseId(input)
+    return runAuthorized(event, request, () => vault.getLogin(request))
+  })
+  registerHandler(IPC_CHANNELS.loginGetPasswordHistory, getMainWindow, (event, input) => {
+    const request = parseId(input)
+    return runAuthorized(event, request, () => vault.getPasswordHistory(request))
+  })
   registerHandler(IPC_CHANNELS.loginCreate, getMainWindow, (_event, input) =>
     afterMutation(vault.createLogin(parseLoginCreate(input)))
   )
-  registerHandler(IPC_CHANNELS.loginUpdate, getMainWindow, (_event, input) =>
-    afterMutation(vault.updateLogin(parseLoginUpdate(input)))
-  )
-  registerHandler(IPC_CHANNELS.loginDelete, getMainWindow, (_event, input) =>
-    afterMutation(vault.deleteLogin(parseId(input)))
-  )
-  registerHandler(IPC_CHANNELS.loginSetFavorite, getMainWindow, (_event, input) =>
-    afterMutation(vault.setLoginFavorite(parseLoginFavorite(input)))
-  )
-  registerHandler(IPC_CHANNELS.loginMove, getMainWindow, (_event, input) =>
-    afterMutation(vault.moveLogin(parseLoginMove(input)))
-  )
-  registerHandler(IPC_CHANNELS.loginMoveMany, getMainWindow, (_event, input) =>
-    afterMutation(vault.moveLogins(parseLoginMoveMany(input)))
-  )
-  registerHandler(IPC_CHANNELS.loginRevealPassword, getMainWindow, (_event, input) =>
-    vault.revealPassword(parseId(input))
-  )
-  registerHandler(IPC_CHANNELS.loginCopyUsername, getMainWindow, (_event, input) =>
-    vault.copyUsername(parseId(input))
-  )
-  registerHandler(IPC_CHANNELS.loginCopyPassword, getMainWindow, (_event, input) =>
-    vault.copyPassword(parseId(input))
-  )
-  registerHandler(IPC_CHANNELS.loginOpenUri, getMainWindow, (_event, input) =>
-    vault.openLoginUri(parseId(input))
-  )
-  registerHandler(IPC_CHANNELS.loginGetTotp, getMainWindow, (_event, input) =>
-    vault.getTotp(parseId(input))
-  )
-  registerHandler(IPC_CHANNELS.loginCopyTotp, getMainWindow, (_event, input) =>
-    vault.copyTotp(parseId(input))
-  )
-  registerHandler(IPC_CHANNELS.loginContextMenu, getMainWindow, async (_event, input) => {
+  for (const [channel, operation] of [
+    [IPC_CHANNELS.loginClone, (request: LoginIdRequest) => vault.cloneLogin(request)],
+    [IPC_CHANNELS.loginArchive, (request: LoginIdRequest) => vault.archiveLogin(request)],
+    [IPC_CHANNELS.loginUnarchive, (request: LoginIdRequest) => vault.unarchiveLogin(request)],
+    [IPC_CHANNELS.loginDelete, (request: LoginIdRequest) => vault.deleteLogin(request)],
+    [IPC_CHANNELS.loginRestore, (request: LoginIdRequest) => vault.restoreLogin(request)],
+    [
+      IPC_CHANNELS.loginDeletePermanently,
+      (request: LoginIdRequest) => vault.deleteLoginPermanently(request)
+    ]
+  ] as const) {
+    registerHandler<unknown>(channel, getMainWindow, (event, input) => {
+      const request = parseId(input)
+      const invoke = operation as (request: LoginIdRequest) => Promise<unknown>
+      return runAuthorized<unknown>(event, request, () => afterMutation<unknown>(invoke(request)))
+    })
+  }
+  registerHandler(IPC_CHANNELS.loginUpdate, getMainWindow, (event, input) => {
+    const request = parseLoginUpdate(input)
+    return runAuthorized(event, request, () => afterMutation(vault.updateLogin(request)))
+  })
+  registerHandler(IPC_CHANNELS.loginEmptyTrash, getMainWindow, (event, input) => {
+    const request = parseEmptyTrash(input)
+    return runAuthorizationBoundary(
+      event,
+      request.authorizationToken,
+      request.authorizationTokens ?? {},
+      async (authorize) => {
+        const deleted = await vault.listLogins({ deleted: true })
+        authorize(deleted.map((item) => item.id))
+        return afterMutation(vault.emptyTrash())
+      }
+    )
+  })
+  registerHandler(IPC_CHANNELS.loginSetFavorite, getMainWindow, (event, input) => {
+    const request = parseLoginFavorite(input)
+    return runAuthorized(event, request, () => afterMutation(vault.setLoginFavorite(request)))
+  })
+  registerHandler(IPC_CHANNELS.loginMove, getMainWindow, (event, input) => {
+    const request = parseLoginMove(input)
+    return runAuthorized(event, request, () => afterMutation(vault.moveLogin(request)))
+  })
+  registerHandler(IPC_CHANNELS.loginMoveMany, getMainWindow, (event, input) => {
+    const request = parseLoginMoveMany(input)
+    return runAuthorizationBoundary(
+      event,
+      request.authorizationToken,
+      request.authorizationTokens ?? {},
+      async (authorize) => {
+        authorize(request.ids)
+        return afterMutation(vault.moveLogins(request))
+      }
+    )
+  })
+  for (const [channel, operation] of [
+    [IPC_CHANNELS.loginRevealPassword, (request: LoginIdRequest) => vault.revealPassword(request)],
+    [IPC_CHANNELS.loginCopyUsername, (request: LoginIdRequest) => vault.copyUsername(request)],
+    [IPC_CHANNELS.loginCopyPassword, (request: LoginIdRequest) => vault.copyPassword(request)],
+    [IPC_CHANNELS.loginGetTotp, (request: LoginIdRequest) => vault.getTotp(request)],
+    [IPC_CHANNELS.loginCopyTotp, (request: LoginIdRequest) => vault.copyTotp(request)]
+  ] as const) {
+    registerHandler<unknown>(channel, getMainWindow, (event, input) => {
+      const request = parseId(input)
+      const invoke = operation as (request: LoginIdRequest) => Promise<unknown>
+      return runAuthorized<unknown>(event, request, () => invoke(request))
+    })
+  }
+  registerHandler(IPC_CHANNELS.loginOpenUri, getMainWindow, (event, input) => {
+    const request = parseOpenUri(input)
+    return runAuthorized(event, request, () => vault.openLoginUri(request))
+  })
+  registerHandler(IPC_CHANNELS.loginContextMenu, getMainWindow, async (event, input) => {
     const request = parseContextMenu(input)
     const window = getMainWindow()
     if (!window || window.isDestroyed()) throw new VaultError('INVALID_INPUT')
-    const [item, folders] = await Promise.all([vault.getLogin(request), vault.listFolders()])
+    const item = await runAuthorized(event, request, () => vault.getLogin(request))
+    const itemId = item.id
+    const itemName = item.reprompt === 1 ? '這個受保護項目' : item.name
+    const hasUsername = item.reprompt === 1 ? item.type === 'login' : Boolean(item.username)
+    const uriLabels =
+      item.reprompt === 0
+        ? item.uris.map((entry, index) => entry.uri || `網站 ${index + 1}`)
+        : item.uris.map(() => '')
+    const folderId = item.folderId
+    const archivedAt = item.archivedAt
+    const folders = await vault.listFolders()
     const notifyChanged = (): void => window.webContents.send(IPC_EVENTS.vaultChanged)
     showItemContextMenu({
       window,
-      item,
+      item: {
+        id: itemId,
+        // Protected native menus retain only generic action structure. They never retain the
+        // username or URI strings; every callback re-enters the atomic authorization boundary.
+        hasUsername,
+        uriLabels,
+        folderId,
+        archivedAt
+      },
       folders,
       onError: () => {
         if (window.isDestroyed()) return
@@ -690,61 +1082,80 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       },
       ...(request.x === undefined ? {} : { position: { x: request.x, y: request.y! } }),
       callbacks: {
-        openInNewWindow: async () => {
-          await vault.openLoginUri(request)
+        openInNewWindow: async (_id, uriIndex) => {
+          await runAuthorized(event, request, () => vault.openLoginUri({ ...request, uriIndex }))
           notifyChanged()
         },
         copyUsername: async () => {
-          await vault.copyUsername(request)
+          await runAuthorized(event, request, () => vault.copyUsername(request))
           notifyChanged()
         },
-        copyWebsite: async () => {
-          await vault.copyField({ id: request.id, field: 'uri' })
+        copyWebsite: async (_id, uriIndex) => {
+          await runAuthorized(event, request, () =>
+            vault.copyField({ ...request, field: 'uri', uriIndex })
+          )
           notifyChanged()
         },
         moveToFolder: async (_id, folderId) => {
-          await vault.moveLogin({ id: request.id, folderId })
+          await runAuthorized(event, request, () => vault.moveLogin({ ...request, folderId }))
+          notifyMutation()
+          notifyChanged()
+        },
+        cloneItem: async () => {
+          await runAuthorized(event, request, () => vault.cloneLogin(request))
+          notifyMutation()
+          notifyChanged()
+        },
+        toggleArchive: async (_id, archived) => {
+          await runAuthorized(event, request, () =>
+            archived ? vault.unarchiveLogin(request) : vault.archiveLogin(request)
+          )
           notifyMutation()
           notifyChanged()
         },
         deleteItem: async () => {
           const confirmation = await dialog.showMessageBox(window, {
             type: 'warning',
-            buttons: ['刪除', '取消'],
+            buttons: ['移至垃圾桶', '取消'],
             defaultId: 1,
             cancelId: 1,
             title: '刪除項目',
-            message: `確定要刪除「${item.name}」嗎？`,
-            detail: '此動作無法復原。'
+            message: `確定要刪除「${itemName}」嗎？`,
+            detail: '你可以之後從垃圾桶還原這個項目。'
           })
           if (confirmation.response !== 0) return
-          await vault.deleteLogin(request)
+          await runAuthorized(event, request, () => vault.deleteLogin(request))
           notifyMutation()
           notifyChanged()
         }
       }
     })
   })
-  registerHandler(IPC_CHANNELS.loginWebsiteIcon, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.loginWebsiteIcon, getMainWindow, async (event, input) => {
     const request = parseId(input)
     if (!settings.websiteIconsEnabled()) return null
-    return vault.getWebsiteIcon(request)
+    return runAuthorized(event, request, () => vault.getWebsiteIcon(request))
   })
-  registerHandler(IPC_CHANNELS.itemRevealSecret, getMainWindow, (_event, input) =>
-    vault.revealSecret(parseItemField(input))
-  )
-  registerHandler(IPC_CHANNELS.itemRevealEditorSecrets, getMainWindow, (_event, input) =>
-    vault.revealEditorSecrets(parseEditorSecretsRequest(input))
-  )
-  registerHandler(IPC_CHANNELS.itemCopyField, getMainWindow, (_event, input) =>
-    vault.copyField(parseItemField(input))
-  )
-  registerHandler(IPC_CHANNELS.itemRevealCustomField, getMainWindow, (_event, input) =>
-    vault.revealCustomField(parseCustomFieldRequest(input))
-  )
-  registerHandler(IPC_CHANNELS.itemCopyCustomField, getMainWindow, (_event, input) =>
-    vault.copyCustomField(parseCustomFieldRequest(input))
-  )
+  registerHandler(IPC_CHANNELS.itemRevealSecret, getMainWindow, (event, input) => {
+    const request = parseItemField(input)
+    return runAuthorized(event, request, () => vault.revealSecret(request))
+  })
+  registerHandler(IPC_CHANNELS.itemRevealEditorSecrets, getMainWindow, (event, input) => {
+    const request = parseEditorSecretsRequest(input)
+    return runAuthorized(event, request, () => vault.revealEditorSecrets(request))
+  })
+  registerHandler(IPC_CHANNELS.itemCopyField, getMainWindow, (event, input) => {
+    const request = parseItemField(input)
+    return runAuthorized(event, request, () => vault.copyField(request))
+  })
+  registerHandler(IPC_CHANNELS.itemRevealCustomField, getMainWindow, (event, input) => {
+    const request = parseCustomFieldRequest(input)
+    return runAuthorized(event, request, () => vault.revealCustomField(request))
+  })
+  registerHandler(IPC_CHANNELS.itemCopyCustomField, getMainWindow, (event, input) => {
+    const request = parseCustomFieldRequest(input)
+    return runAuthorized(event, request, () => vault.copyCustomField(request))
+  })
   registerHandler(IPC_CHANNELS.syncStatus, getMainWindow, () => vault.syncStatus())
   registerHandler(IPC_CHANNELS.syncConnect, getMainWindow, async (_event, input) => {
     const result = await vault.connectSync(parseSyncConnect(input))
@@ -790,6 +1201,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   })
 
   return () => {
+    authorizations.clear()
     Object.values(IPC_CHANNELS).forEach((channel) => ipcMain.removeHandler(channel))
   }
 }

@@ -22,7 +22,9 @@ import type {
   VaultCustomFieldUpdate,
   VaultEditorSecretField,
   VaultItemFields,
-  VaultItemType
+  VaultItemType,
+  VaultLoginUri,
+  VaultUriMatch
 } from '../../../shared/vault-contract'
 import { VAULT_LINKED_FIELD_IDS_BY_TYPE } from '../../../shared/vault-contract'
 import {
@@ -86,7 +88,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 type EditorSecretField = VaultEditorSecretField
 type EditorTab = 'details' | 'custom' | 'organize'
-type EditorErrorKind = 'name' | 'password' | 'ssh' | 'reveal' | null
+type EditorErrorKind = 'name' | 'password' | 'ssh' | 'uri' | 'reveal' | null
 type SecretLoadState = 'loading' | 'ready' | 'error'
 
 export type EditorCustomField = VaultCustomFieldUpdate & {
@@ -161,6 +163,16 @@ const itemTypeSelectItems = itemTypes.map((item) => ({
   value: item.value,
   label: `${item.label}：${item.description}`
 }))
+
+const uriMatchItems = [
+  { value: 'default', label: '帳號預設' },
+  { value: '0', label: '基礎網域' },
+  { value: '1', label: '主機' },
+  { value: '2', label: '開頭符合' },
+  { value: '3', label: '完全符合' },
+  { value: '4', label: '正規表示式' },
+  { value: '5', label: '永不符合' }
+]
 
 const emptyFields: VaultItemFields = {
   username: '',
@@ -257,6 +269,8 @@ export interface LoginDraft extends VaultItemFields {
   notes: string
   folderId: string | null
   favorite: boolean
+  reprompt: 0 | 1
+  uris: VaultLoginUri[]
   changedSecrets: EditorSecretField[]
   customFields: EditorCustomField[]
 }
@@ -265,6 +279,7 @@ interface LoginEditorProps {
   login?: LoginView
   folders: FolderView[]
   busy: boolean
+  authorizationToken?: string
   onCancel: () => void
   onDirtyChange: (dirty: boolean) => void
   onSave: (draft: LoginDraft) => Promise<void>
@@ -278,13 +293,20 @@ function LoginEditor({
   login,
   folders,
   busy,
+  authorizationToken,
   onCancel,
   onDirtyChange,
   onSave
 }: LoginEditorProps): React.JSX.Element {
   const submittingRef = useRef(false)
   const [editorSnapshot] = useState(() =>
-    login ? { id: login.id, expectedUpdatedAt: login.updatedAt } : null
+    login
+      ? {
+          id: login.id,
+          expectedUpdatedAt: login.updatedAt,
+          ...(authorizationToken ? { authorizationToken } : {})
+        }
+      : null
   )
   const [draft, setDraft] = useState<LoginDraft>(() => ({
     ...emptyFields,
@@ -304,6 +326,8 @@ function LoginEditor({
     notes: login?.notes ?? '',
     folderId: login?.folderId ?? null,
     favorite: login?.favorite ?? false,
+    reprompt: login?.reprompt ?? 0,
+    uris: login?.uris.map((entry) => ({ ...entry })) ?? [],
     changedSecrets: [],
     customFields: customFieldsFromLogin(login)
   }))
@@ -415,8 +439,48 @@ function LoginEditor({
     setDraft((current) => ({
       ...current,
       type,
+      ...(type === 'login' ? { uri: current.uris[0]?.uri ?? null } : { uri: null, uris: [] }),
       customFields: normalizeCustomFieldsForItemType(current.customFields, type)
     }))
+  }
+
+  function updateUri(index: number, patch: Partial<VaultLoginUri>): void {
+    setDirty(true)
+    setDraft((current) => {
+      const uris = current.uris.map((entry, entryIndex) =>
+        entryIndex === index ? { ...entry, ...patch } : entry
+      )
+      return { ...current, uris, uri: uris[0]?.uri ?? null }
+    })
+    if (patch.uri?.trim()) clearValidationError('uri')
+  }
+
+  function addUri(): void {
+    if (draftRef.current.uris.length >= 1_000) return
+    setDirty(true)
+    setDraft((current) => ({
+      ...current,
+      uris: [...current.uris, { uri: '', match: null }]
+    }))
+  }
+
+  function removeUri(index: number): void {
+    setDirty(true)
+    setDraft((current) => {
+      const uris = current.uris.filter((_, entryIndex) => entryIndex !== index)
+      return { ...current, uris, uri: uris[0]?.uri ?? null }
+    })
+  }
+
+  function moveUri(index: number, direction: -1 | 1): void {
+    const target = index + direction
+    if (target < 0 || target >= draftRef.current.uris.length) return
+    setDirty(true)
+    setDraft((current) => {
+      const uris = current.uris.map((entry) => ({ ...entry }))
+      ;[uris[index], uris[target]] = [uris[target]!, uris[index]!]
+      return { ...current, uris, uri: uris[0]?.uri ?? null }
+    })
   }
 
   function addCustomField(type: VaultCustomFieldType): void {
@@ -578,7 +642,8 @@ function LoginEditor({
       const value = await window.bearwarden.logins.revealCustomField({
         id: login.id,
         expectedUpdatedAt,
-        source: customField.source!
+        source: customField.source!,
+        ...(authorizationToken ? { authorizationToken } : {})
       })
       const currentField = draftRef.current.customFields.find(
         (field) => field.clientId === customField.clientId
@@ -696,6 +761,15 @@ function LoginEditor({
       setErrorKind('password')
       setActiveTab('details')
       requestAnimationFrame(() => document.getElementById('editor-password')?.focus())
+      return
+    }
+    const blankUriIndex =
+      draft.type === 'login' ? draft.uris.findIndex((entry) => !entry.uri.trim()) : -1
+    if (blankUriIndex >= 0) {
+      setError('網站欄位不可留白；不需要的列請移除。')
+      setErrorKind('uri')
+      setActiveTab('details')
+      requestAnimationFrame(() => document.getElementById(`editor-uri-${blankUriIndex}`)?.focus())
       return
     }
     if (
@@ -848,17 +922,112 @@ function LoginEditor({
                     {secretInput('totp', '驗證碼密鑰', {
                       placeholder: 'otpauth://… 或 Base32 密鑰'
                     })}
-                    <Field>
-                      <FieldLabel htmlFor="editor-uri">網站</FieldLabel>
-                      <Input
-                        id="editor-uri"
-                        type="url"
-                        inputMode="url"
-                        placeholder="https://example.com"
-                        value={draft.uri ?? ''}
-                        onChange={(event) => update('uri', event.target.value || null)}
-                        disabled={busy}
-                      />
+                    <Field data-invalid={errorKind === 'uri' || undefined}>
+                      <div className="flex items-center justify-between gap-3">
+                        <FieldLabel>網站</FieldLabel>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={addUri}
+                          disabled={busy || draft.uris.length >= 1_000}
+                        >
+                          <Plus data-icon="inline-start" />
+                          新增網站
+                        </Button>
+                      </div>
+                      {draft.uris.length === 0 ? (
+                        <FieldDescription>
+                          尚未設定網站；你也可以只保存帳號與密碼。
+                        </FieldDescription>
+                      ) : (
+                        <div className="space-y-3">
+                          {draft.uris.map((entry, index) => (
+                            <div
+                              key={index}
+                              className="grid gap-2 rounded-md border p-3 sm:grid-cols-[minmax(0,1fr)_11rem_auto]"
+                            >
+                              <Input
+                                id={`editor-uri-${index}`}
+                                type="text"
+                                inputMode={entry.match === 4 ? 'text' : 'url'}
+                                placeholder={
+                                  entry.match === 4
+                                    ? '^https://example\\.com/'
+                                    : 'https://example.com'
+                                }
+                                value={entry.uri}
+                                onChange={(event) => updateUri(index, { uri: event.target.value })}
+                                disabled={busy}
+                                aria-invalid={
+                                  errorKind === 'uri' && !entry.uri.trim() ? true : undefined
+                                }
+                              />
+                              <Select
+                                items={uriMatchItems}
+                                value={entry.match === null ? 'default' : String(entry.match)}
+                                disabled={busy}
+                                onValueChange={(value) =>
+                                  updateUri(index, {
+                                    match:
+                                      value === 'default' || value === null
+                                        ? null
+                                        : (Number(value) as VaultUriMatch)
+                                  })
+                                }
+                              >
+                                <SelectTrigger
+                                  aria-label={`網站 ${index + 1} 符合方式`}
+                                  className="w-full"
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectGroup>
+                                    {uriMatchItems.map((item) => (
+                                      <SelectItem key={item.value} value={item.value}>
+                                        {item.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectGroup>
+                                </SelectContent>
+                              </Select>
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  aria-label="上移網站"
+                                  onClick={() => moveUri(index, -1)}
+                                  disabled={busy || index === 0}
+                                >
+                                  <ArrowUp />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  aria-label="下移網站"
+                                  onClick={() => moveUri(index, 1)}
+                                  disabled={busy || index === draft.uris.length - 1}
+                                >
+                                  <ArrowDown />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  aria-label="移除網站"
+                                  onClick={() => removeUri(index)}
+                                  disabled={busy}
+                                >
+                                  <Trash2 />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </Field>
                   </>
                 )}
@@ -1184,6 +1353,24 @@ function LoginEditor({
                       <FieldTitle>加入常用項目</FieldTitle>
                     </FieldLabel>
                     <FieldDescription>從側邊欄快速找到這筆資料</FieldDescription>
+                  </FieldContent>
+                </Field>
+                <Field
+                  className="check-field"
+                  orientation="horizontal"
+                  data-disabled={busy || undefined}
+                >
+                  <Checkbox
+                    id="editor-reprompt"
+                    checked={draft.reprompt === 1}
+                    onCheckedChange={(checked) => update('reprompt', checked ? 1 : 0)}
+                    disabled={busy}
+                  />
+                  <FieldContent>
+                    <FieldLabel htmlFor="editor-reprompt">
+                      <FieldTitle>需要主密碼重新提示</FieldTitle>
+                    </FieldLabel>
+                    <FieldDescription>檢視或變更這個項目前，需再次驗證主密碼</FieldDescription>
                   </FieldContent>
                 </Field>
               </FieldGroup>

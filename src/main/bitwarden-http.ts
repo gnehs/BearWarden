@@ -94,6 +94,7 @@ const EU_URLS: BitwardenUrls = {
 }
 const RETRYABLE_METHODS = new Set(['GET', 'PUT', 'DELETE'])
 const DEFAULT_MAX_RETRIES = 5
+const MAX_RESPONSE_BYTES = 128 * 1024 * 1024
 
 function isRecord(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -168,6 +169,34 @@ function parseErrorJson(text: string): JsonValue | null {
     return JSON.parse(text) as JsonValue
   } catch {
     return null
+  }
+}
+
+async function boundedResponseText(response: Response): Promise<string> {
+  const contentLength = response.headers.get('content-length')
+  if (contentLength !== null) {
+    const parsed = Number(contentLength)
+    if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > MAX_RESPONSE_BYTES) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+  }
+  if (!response.body) return ''
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  const chunks: string[] = []
+  let bytes = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      bytes += value.byteLength
+      if (bytes > MAX_RESPONSE_BYTES) throw new BitwardenHttpError('INVALID_RESPONSE')
+      chunks.push(decoder.decode(value, { stream: true }))
+    }
+    chunks.push(decoder.decode())
+    return chunks.join('')
+  } finally {
+    reader.releaseLock()
   }
 }
 
@@ -375,8 +404,38 @@ export class BitwardenHttpClient {
   ): Promise<JsonObject> {
     return this.entity('PUT', `/ciphers/${encodeURIComponent(assertId(id))}`, ciphertext, signal)
   }
-  async deleteCipher(id: string, signal?: AbortSignal): Promise<void> {
+  async softDeleteCipher(id: string, signal?: AbortSignal): Promise<void> {
+    await this.emptyEntity('PUT', `/ciphers/${encodeURIComponent(assertId(id))}/delete`, signal)
+  }
+  async restoreCipher(id: string, signal?: AbortSignal): Promise<JsonObject> {
+    return this.entity(
+      'PUT',
+      `/ciphers/${encodeURIComponent(assertId(id))}/restore`,
+      undefined,
+      signal
+    )
+  }
+  async archiveCipher(id: string, signal?: AbortSignal): Promise<JsonObject> {
+    return this.entity(
+      'PUT',
+      `/ciphers/${encodeURIComponent(assertId(id))}/archive`,
+      undefined,
+      signal
+    )
+  }
+  async unarchiveCipher(id: string, signal?: AbortSignal): Promise<JsonObject> {
+    return this.entity(
+      'PUT',
+      `/ciphers/${encodeURIComponent(assertId(id))}/unarchive`,
+      undefined,
+      signal
+    )
+  }
+  async hardDeleteCipher(id: string, signal?: AbortSignal): Promise<void> {
     await this.deleteEntity(`/ciphers/${encodeURIComponent(assertId(id))}`, signal)
+  }
+  async deleteCipher(id: string, signal?: AbortSignal): Promise<void> {
+    await this.hardDeleteCipher(id, signal)
   }
 
   private async entity(
@@ -391,7 +450,15 @@ export class BitwardenHttpClient {
   }
 
   private async deleteEntity(path: string, signal?: AbortSignal): Promise<void> {
-    await this.requestJson('DELETE', `${this.urls.apiUrl}${path}`, { signal })
+    await this.emptyEntity('DELETE', path, signal)
+  }
+
+  private async emptyEntity(
+    method: 'PUT' | 'DELETE',
+    path: string,
+    signal?: AbortSignal
+  ): Promise<void> {
+    await this.requestJson(method, `${this.urls.apiUrl}${path}`, { signal })
   }
 
   private async refreshToken(
@@ -485,7 +552,7 @@ export class BitwardenHttpClient {
         if (delay > 0) await this.sleep(delay, request.signal)
         continue
       }
-      const text = await response.text()
+      const text = await boundedResponseText(response)
       const payload =
         text.length === 0 ? null : response.ok ? parseJson(text) : parseErrorJson(text)
       if (!response.ok) throw toHttpError(response.status, payload)

@@ -1,5 +1,12 @@
 import { createHash } from 'node:crypto'
-import type { VaultCustomField, VaultItemFields, VaultItemType } from '../shared/vault-contract'
+import type {
+  VaultCustomField,
+  VaultItemFields,
+  VaultItemType,
+  VaultLoginUri,
+  VaultPasswordHistoryEntry,
+  VaultReprompt
+} from '../shared/vault-contract'
 import type { StoredPasskeyCredential } from './passkey'
 
 export interface SyncFolder {
@@ -18,8 +25,13 @@ export interface SyncLogin extends VaultItemFields {
   lastUsedAt?: string | null
   createdAt?: string
   updatedAt?: string
+  deletedAt: string | null
+  archivedAt: string | null
+  reprompt: VaultReprompt
+  uris: VaultLoginUri[]
   passkeys: StoredPasskeyCredential[]
   customFields: VaultCustomField[]
+  passwordHistory: VaultPasswordHistoryEntry[]
 }
 
 export interface SyncTombstone {
@@ -97,8 +109,11 @@ export type SyncAction =
       kind: 'push-update'
       entity: 'login'
       local: SyncLogin
+      remote: SyncLogin
       remoteId: string
       remoteFolder: SyncFolderReference
+      contentChanged: boolean
+      resumeFingerprints: readonly string[]
     })
   | (ActionBase & {
       kind: 'pull-create'
@@ -169,6 +184,7 @@ function loginFingerprintContent(
   return {
     type: login.type,
     favorite: login.favorite,
+    reprompt: login.reprompt,
     folder: canonicalFolder,
     name: login.name,
     notes: login.notes,
@@ -176,7 +192,7 @@ function loginFingerprintContent(
       username: login.username,
       password: login.password,
       totp: login.totp,
-      uri: login.uri,
+      uris: login.uris,
       cardholderName: login.cardholderName,
       brand: login.brand,
       number: login.number,
@@ -216,17 +232,63 @@ export function fingerprintLogin(
 ): string {
   return sha256({
     ...loginFingerprintContent(login, canonicalFolder),
+    // Preserve pre-trash fingerprints for active items while tracking the trash state. The
+    // server owns the exact deletion timestamp, so two non-null timestamps are equivalent.
+    ...(login.deletedAt ? { deletedAt: true } : {}),
+    // As with deletion, archive timestamps are server-owned state. Only the boolean affects
+    // convergence so a server revision does not create a false conflict.
+    ...(login.archivedAt ? { archivedAt: true } : {}),
     // Keep the pre-custom-field fingerprint stable for items without custom fields. This lets
     // existing sync links upgrade without falsely treating every item as modified on both sides.
-    ...(login.customFields?.length > 0 ? { customFields: login.customFields } : {})
+    ...(login.customFields?.length > 0 ? { customFields: login.customFields } : {}),
+    ...(login.passwordHistory?.length > 0 ? { passwordHistory: login.passwordHistory } : {})
   })
 }
 
-function legacyLoginFingerprint(
+function preV11LoginFingerprintContent(
+  login: SyncLogin,
+  canonicalFolder: string | null = login.folderId
+): Record<string, unknown> {
+  const current = loginFingerprintContent(login, canonicalFolder)
+  const fields = current.fields as Record<string, unknown>
+  const withoutReprompt = { ...current }
+  const withoutUris = { ...fields }
+  delete withoutReprompt.reprompt
+  delete withoutUris.uris
+  return {
+    ...withoutReprompt,
+    fields: { ...withoutUris, uri: login.uri }
+  }
+}
+
+/** Fingerprint written before ordered URI rows and reprompt were part of sync convergence. */
+export function legacyLoginFingerprint(
   login: SyncLogin,
   canonicalFolder: string | null = login.folderId
 ): string {
-  return sha256(loginFingerprintContent(login, canonicalFolder))
+  return sha256(preV11LoginFingerprintContent(login, canonicalFolder))
+}
+
+function legacyLoginFingerprintCandidates(
+  login: SyncLogin,
+  canonicalFolder: string | null
+): Set<string> {
+  const oldest = preV11LoginFingerprintContent(login, canonicalFolder)
+  const withReprompt = { ...oldest, reprompt: login.reprompt }
+  const lifecycle = {
+    ...(login.deletedAt ? { deletedAt: true } : {}),
+    ...(login.archivedAt ? { archivedAt: true } : {})
+  }
+  const custom = login.customFields.length > 0 ? { customFields: login.customFields } : {}
+  const currentWithoutCustom = loginFingerprintContent(login, canonicalFolder)
+  return new Set(
+    [oldest, withReprompt, currentWithoutCustom].flatMap((content) => [
+      sha256(content),
+      sha256({ ...content, ...lifecycle }),
+      sha256({ ...content, ...custom }),
+      sha256({ ...content, ...lifecycle, ...custom })
+    ])
+  )
 }
 
 function indexUnique<T extends { id: string }>(
@@ -473,7 +535,29 @@ export interface LegacyCustomFieldBaselineUpgrade {
   localId: string
   remoteId: string
   customFields: VaultCustomField[]
+  uris?: VaultLoginUri[]
+  reprompt?: VaultReprompt
+  passwordHistory?: VaultPasswordHistoryEntry[]
   baseFingerprint: string
+}
+
+function hasDistinctPostLegacyState(login: SyncLogin, other: SyncLogin): boolean {
+  const hasNonDefaultUris =
+    login.uri === null
+      ? login.uris.length > 0
+      : !(
+          login.uris.length === 1 &&
+          login.uris[0]?.uri === login.uri &&
+          login.uris[0]?.match === null
+        )
+  return (
+    (hasNonDefaultUris && canonicalJson(login.uris) !== canonicalJson(other.uris)) ||
+    (login.reprompt !== 0 && login.reprompt !== other.reprompt) ||
+    (login.customFields.length > 0 &&
+      canonicalJson(login.customFields) !== canonicalJson(other.customFields)) ||
+    (login.passwordHistory.length > 0 &&
+      canonicalJson(login.passwordHistory) !== canonicalJson(other.passwordHistory))
+  )
 }
 
 /**
@@ -488,30 +572,85 @@ export function legacyCustomFieldBaselineUpgrades(
 ): LegacyCustomFieldBaselineUpgrade[] {
   const local = indexUnique(localSnapshot.logins, 'local login')
   const remote = indexUnique(remoteSnapshot.logins, 'remote login')
+  const localFolders = indexUnique(localSnapshot.folders, 'local folder')
   const remoteFolders = indexUnique(remoteSnapshot.folders, 'remote folder')
   const upgrades: LegacyCustomFieldBaselineUpgrade[] = []
 
   for (const link of metadata.loginLinks) {
     const localLogin = local.get(link.localId)
     const remoteLogin = remote.get(link.remoteId)
+    if (!localLogin || !remoteLogin) continue
+    const canonicalFolder = folderName(remoteLogin.folderId, remoteFolders)
+    const localCanonicalFolder = folderName(localLogin.folderId, localFolders)
+    const localHash = fingerprintLogin(localLogin, localCanonicalFolder)
+    const remoteHash = fingerprintLogin(remoteLogin, canonicalFolder)
+    // Modern links already handled by the ordinary planner must never be reinterpreted as legacy;
+    // in particular lifecycle-only changes (trash/archive) need to remain pull/push operations.
+    if (localHash === link.baseFingerprint || remoteHash === link.baseFingerprint) continue
+    const localMatches = legacyLoginFingerprintCandidates(localLogin, localCanonicalFolder).has(
+      link.baseFingerprint
+    )
+    const remoteMatches = legacyLoginFingerprintCandidates(remoteLogin, canonicalFolder).has(
+      link.baseFingerprint
+    )
+    if (!localMatches && !remoteMatches) continue
+
+    // If only the local legacy representation still equals the baseline, advance it to the
+    // current local format so the ordinary planner recognizes a remote-only change and pulls it.
+    if (!remoteMatches) {
+      upgrades.push({
+        localId: link.localId,
+        remoteId: link.remoteId,
+        customFields: cloneCustomFieldsForUpgrade(localLogin.customFields),
+        baseFingerprint: fingerprintLogin(localLogin, localCanonicalFolder)
+      })
+      continue
+    }
+
+    if (localMatches && localHash === remoteHash) continue
+    // The legacy hash cannot tell which side authored ignored new fields. If both sides now have
+    // different non-default state, advancing either baseline would silently overwrite the other;
+    // leave the old base in place so the ordinary planner creates a conflict copy.
     if (
-      !localLogin ||
-      !remoteLogin ||
-      localLogin.customFields.length > 0 ||
-      remoteLogin.customFields.length === 0
+      hasDistinctPostLegacyState(localLogin, remoteLogin) &&
+      hasDistinctPostLegacyState(remoteLogin, localLogin)
     ) {
       continue
     }
-    const canonicalFolder = folderName(remoteLogin.folderId, remoteFolders)
-    if (legacyLoginFingerprint(remoteLogin, canonicalFolder) !== link.baseFingerprint) continue
-    upgrades.push({
+
+    const upgrade: LegacyCustomFieldBaselineUpgrade = {
       localId: link.localId,
       remoteId: link.remoteId,
-      customFields: remoteLogin.customFields.map((field) => ({ ...field })),
-      baseFingerprint: fingerprintLogin(remoteLogin, canonicalFolder)
-    })
+      customFields:
+        localLogin.customFields.length === 0 && remoteLogin.customFields.length > 0
+          ? cloneCustomFieldsForUpgrade(remoteLogin.customFields)
+          : cloneCustomFieldsForUpgrade(localLogin.customFields),
+      baseFingerprint: remoteHash
+    }
+    // A migrated pre-V11 local row has exactly the primary alias. Remote-only additional rows
+    // were previously invisible and can be safely adopted; locally added/reordered rows remain.
+    if (
+      localLogin.uris.length <= 1 &&
+      remoteLogin.uris.length > localLogin.uris.length &&
+      localLogin.uri === remoteLogin.uri
+    ) {
+      upgrade.uris = remoteLogin.uris.map((entry) => ({ ...entry }))
+    }
+    // Pre-reprompt baselines could not represent a remote enable. Zero is the migration default,
+    // so only that one-way default transition is adopted when both legacy hashes still match.
+    if (localLogin.reprompt === 0 && remoteLogin.reprompt === 1) {
+      upgrade.reprompt = remoteLogin.reprompt
+    }
+    if (localLogin.passwordHistory.length === 0 && remoteLogin.passwordHistory.length > 0) {
+      upgrade.passwordHistory = remoteLogin.passwordHistory.map((entry) => ({ ...entry }))
+    }
+    upgrades.push(upgrade)
   }
   return upgrades
+}
+
+function cloneCustomFieldsForUpgrade(fields: readonly VaultCustomField[]): VaultCustomField[] {
+  return fields.map((field) => ({ ...field }))
 }
 
 export function planSync(
@@ -535,6 +674,16 @@ export function planSync(
     fingerprintLogin(login, folderName(login.folderId, localFolders))
   const remoteFingerprint = (login: SyncLogin): string =>
     fingerprintLogin(login, folderName(login.folderId, remoteFolders))
+  const localContentFingerprint = (login: SyncLogin): string =>
+    fingerprintLogin(
+      { ...login, deletedAt: null, archivedAt: null },
+      folderName(login.folderId, localFolders)
+    )
+  const remoteContentFingerprint = (login: SyncLogin): string =>
+    fingerprintLogin(
+      { ...login, deletedAt: null, archivedAt: null },
+      folderName(login.folderId, remoteFolders)
+    )
 
   for (const link of links.values()) {
     const localLogin = local.get(link.localId)
@@ -559,16 +708,48 @@ export function planSync(
         })
         loginLinks.push({ ...link, baseFingerprint: remoteHash })
       } else if (remoteHash === link.baseFingerprint) {
+        const contentChanged =
+          localContentFingerprint(localLogin) !== remoteContentFingerprint(remoteLogin)
+        const resumeFingerprints = new Set<string>([remoteHash])
+        const desiredDeleted = localLogin.deletedAt !== null
+        const currentDeleted = remoteLogin.deletedAt !== null
+        const desiredArchived = localLogin.archivedAt !== null
+        const currentArchived = remoteLogin.archivedAt !== null
+        let remoteStage = remoteLogin
+        if (currentDeleted && (!desiredDeleted || contentChanged)) {
+          remoteStage = { ...remoteStage, deletedAt: null }
+          resumeFingerprints.add(
+            fingerprintLogin(remoteStage, folderName(remoteLogin.folderId, remoteFolders))
+          )
+        }
+        if (currentArchived && !desiredArchived) {
+          remoteStage = { ...remoteStage, archivedAt: null }
+          resumeFingerprints.add(
+            fingerprintLogin(remoteStage, folderName(remoteLogin.folderId, remoteFolders))
+          )
+        }
+        if (contentChanged) {
+          resumeFingerprints.add(
+            fingerprintLogin(
+              { ...localLogin, deletedAt: null },
+              folderName(localLogin.folderId, localFolders)
+            )
+          )
+        }
+        resumeFingerprints.add(localHash)
         actions.push({
           kind: 'push-update',
           entity: 'login',
           actionId: `login:push-update:${link.remoteId}`,
           local: localLogin,
+          remote: remoteLogin,
           remoteId: link.remoteId,
           remoteFolder:
             localLogin.folderId === null
               ? { id: null }
               : (folderMapping.localToRemote.get(localLogin.folderId) ?? { id: null }),
+          contentChanged,
+          resumeFingerprints: [...resumeFingerprints],
           baseFingerprint: localHash
         })
         loginLinks.push({ ...link, baseFingerprint: localHash })
@@ -600,7 +781,10 @@ export function planSync(
       remote.delete(link.remoteId)
     } else if (localLogin) {
       const hash = localFingerprint(localLogin)
-      if (hash === link.baseFingerprint) {
+      // A soft-deleted item has no content worth resurrecting when the linked remote item was
+      // permanently deleted. Let the irreversible deletion win even though the trash-state bit
+      // necessarily differs from the last active baseline.
+      if (localLogin.deletedAt !== null || hash === link.baseFingerprint) {
         actions.push({
           kind: 'delete-local',
           entity: 'login',
@@ -631,7 +815,10 @@ export function planSync(
       local.delete(link.localId)
     } else if (remoteLogin) {
       const hash = remoteFingerprint(remoteLogin)
-      if (localTombstones.has(link.localId) && hash === link.baseFingerprint) {
+      if (
+        localTombstones.has(link.localId) &&
+        (remoteLogin.deletedAt !== null || hash === link.baseFingerprint)
+      ) {
         actions.push({
           kind: 'delete-remote',
           entity: 'login',
@@ -693,6 +880,10 @@ export function planSync(
     })
   }
   for (const login of local.values()) {
+    // A locally-created item deleted before its first successful sync has no remote lifecycle to
+    // preserve. Uploading it would require create -> soft-delete and could expose or duplicate the
+    // secret if the second request fails.
+    if (login.deletedAt !== null) continue
     const actionId = `login:push-create:${login.id}`
     actions.push({
       kind: 'push-create',

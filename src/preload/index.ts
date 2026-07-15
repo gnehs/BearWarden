@@ -41,10 +41,21 @@ const api: BearWardenAPI = {
   },
   logins: {
     list: (request = {}) => ipcRenderer.invoke(IPC_CHANNELS.loginList, request),
+    authorize: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginAuthorize, request),
+    authorizeMany: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginAuthorizeMany, request),
     get: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginGet, request),
+    getPasswordHistory: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.loginGetPasswordHistory, request),
     create: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginCreate, request),
+    clone: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginClone, request),
+    archive: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginArchive, request),
+    unarchive: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginUnarchive, request),
     update: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginUpdate, request),
     delete: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginDelete, request),
+    restore: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginRestore, request),
+    deletePermanently: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.loginDeletePermanently, request),
+    emptyTrash: (request = {}) => ipcRenderer.invoke(IPC_CHANNELS.loginEmptyTrash, request),
     setFavorite: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginSetFavorite, request),
     move: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginMove, request),
     moveMany: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginMoveMany, request),

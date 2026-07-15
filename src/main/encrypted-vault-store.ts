@@ -2,7 +2,8 @@ import {
   createCipheriv,
   createDecipheriv,
   randomBytes,
-  scrypt as deriveWithScrypt
+  scrypt as deriveWithScrypt,
+  timingSafeEqual
 } from 'node:crypto'
 import { chmod, mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
@@ -240,6 +241,24 @@ export class EncryptedVaultStore<T> {
       iv?.fill(0)
       authTag?.fill(0)
       ciphertext?.fill(0)
+    }
+  }
+
+  async verifyMasterPassword(
+    candidate: string,
+    currentKey: Buffer,
+    salt: Buffer
+  ): Promise<boolean> {
+    if (currentKey.length !== KEY_LENGTH || salt.length !== SALT_LENGTH) {
+      throw new VaultError('INTERNAL_ERROR')
+    }
+
+    let derivedKey: Buffer | undefined
+    try {
+      derivedKey = await deriveKey(candidate, salt)
+      return timingSafeEqual(derivedKey, currentKey)
+    } finally {
+      derivedKey?.fill(0)
     }
   }
 

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import type {
   EditorSecretsRequest,
   EditorSecretsView,
@@ -10,9 +11,12 @@ import type {
   ItemFieldRequest,
   FolderView,
   LoginCreateRequest,
+  LoginAuthorizeRequest,
+  LoginAuthorizeManyRequest,
   LoginFavoriteRequest,
   LoginIdRequest,
   LoginListRequest,
+  LoginOpenUriRequest,
   LoginMoveRequest,
   LoginMoveManyRequest,
   LoginSummary,
@@ -25,7 +29,11 @@ import type {
   VaultCustomFieldView,
   VaultEditorSecretField,
   VaultItemFields,
+  VaultLoginUri,
+  VaultPasswordHistoryEntry,
   VaultItemType,
+  VaultReprompt,
+  VaultUriMatch,
   VaultSecretField,
   SyncConnectRequest,
   SyncResult,
@@ -34,7 +42,11 @@ import type {
   TotpCodeView,
   VaultStatus
 } from '../shared/vault-contract'
-import { MAX_LOGIN_MOVE_MANY_IDS, VAULT_LINKED_FIELD_IDS_BY_TYPE } from '../shared/vault-contract'
+import {
+  MAX_LOGIN_AUTHORIZE_MANY_IDS,
+  MAX_LOGIN_MOVE_MANY_IDS,
+  VAULT_LINKED_FIELD_IDS_BY_TYPE
+} from '../shared/vault-contract'
 import {
   BitwardenDirectError,
   type BitwardenFolder,
@@ -48,6 +60,7 @@ import { resolveBitwardenUrls } from './bitwarden-http'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import {
   completeSyncMetadata,
+  fingerprintLogin,
   legacyCustomFieldBaselineUpgrades,
   planSync,
   type SyncAction,
@@ -70,27 +83,39 @@ const LEGACY_DATA_VERSION = 1
 const CLI_DATA_VERSION = 2
 const ITEM_TYPES_DATA_VERSION = 4
 const PASSKEYS_DATA_VERSION = 5
-const DATA_VERSION = 6
+const CUSTOM_FIELDS_DATA_VERSION = 6
+const TRASH_DATA_VERSION = 7
+const PENDING_LOGIN_MUTATION_DATA_VERSION = 8
+const ARCHIVE_DATA_VERSION = 9
+const REPROMPT_DATA_VERSION = 10
+const MULTIPLE_URIS_DATA_VERSION = 11
+const PASSWORD_HISTORY_DATA_VERSION = 12
+const DATA_VERSION = 12
 const MIN_MASTER_PASSWORD_LENGTH = 12
 const MAX_MASTER_PASSWORD_LENGTH = 1024
 const MAX_NAME_LENGTH = 256
 const MAX_USERNAME_LENGTH = 512
 const MAX_PASSWORD_LENGTH = 16_384
 const MAX_URI_LENGTH = 4096
+const MAX_LOGIN_URIS = 1_000
 const MAX_NOTES_LENGTH = 65_536
 const MAX_ITEM_FIELD_LENGTH = 4_096
 const MAX_CUSTOM_FIELDS = 1_000
 const MAX_CUSTOM_FIELD_NAME_LENGTH = 5_000
 const MAX_CUSTOM_FIELD_VALUE_LENGTH = 5_000
+const MAX_PASSWORD_HISTORY = 5
 const MAX_SSH_PRIVATE_KEY_LENGTH = 1024 * 1024
 const MAX_SYNC_SECRET_LENGTH = 16_384
 const MAX_TWO_FACTOR_CODE_LENGTH = 256
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 interface StoredLogin
-  extends Omit<LoginView, 'subtitle' | 'hasTotp' | 'passkeys' | 'customFields'>, VaultItemFields {
+  extends
+    Omit<LoginView, 'subtitle' | 'hasTotp' | 'passkeys' | 'customFields' | 'passwordHistoryCount'>,
+    VaultItemFields {
   passkeys: StoredPasskeyCredential[]
   customFields: VaultCustomField[]
+  passwordHistory: VaultPasswordHistoryEntry[]
 }
 
 interface SyncEntityMapping {
@@ -105,6 +130,14 @@ interface SyncTombstone {
   baseFingerprint: string
 }
 
+interface PendingLoginMutation {
+  intent: 'converge' | 'hard-delete'
+  localId: string
+  remoteId: string
+  remoteFolderId: string | null
+  expectedRemoteFingerprints: string[]
+}
+
 export interface PersistedSyncData {
   provider: 'bitwarden'
   serverUrl: string
@@ -115,6 +148,7 @@ export interface PersistedSyncData {
   loginMappings: SyncEntityMapping[]
   folderTombstones: SyncTombstone[]
   loginTombstones: SyncTombstone[]
+  pendingLoginMutation: PendingLoginMutation | null
 }
 
 interface VaultData {
@@ -143,7 +177,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function assertIsoDate(value: unknown): asserts value is string {
-  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) {
+  if (
+    typeof value !== 'string' ||
+    !Number.isFinite(Date.parse(value)) ||
+    new Date(value).toISOString() !== value
+  ) {
     throw new VaultError('CORRUPT_VAULT')
   }
 }
@@ -186,6 +224,82 @@ function parseNullableString(value: unknown, maxLength: number): string | null {
     throw new VaultError('CORRUPT_VAULT')
   }
   return value
+}
+
+function isVaultUriMatch(value: unknown): value is VaultUriMatch {
+  return value === 0 || value === 1 || value === 2 || value === 3 || value === 4 || value === 5
+}
+
+function parseStoredLoginUris(value: unknown): VaultLoginUri[] {
+  if (!Array.isArray(value) || value.length > MAX_LOGIN_URIS) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  return value.map((entry) => {
+    if (
+      !isRecord(entry) ||
+      typeof entry.uri !== 'string' ||
+      entry.uri.length > MAX_URI_LENGTH ||
+      (entry.match !== null && !isVaultUriMatch(entry.match))
+    ) {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+    return { uri: entry.uri, match: entry.match }
+  })
+}
+
+function normalizeLoginUris(value: unknown): VaultLoginUri[] {
+  if (!Array.isArray(value) || value.length > MAX_LOGIN_URIS) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return value.map((entry) => {
+    if (
+      !isRecord(entry) ||
+      typeof entry.uri !== 'string' ||
+      entry.uri.length > MAX_URI_LENGTH ||
+      entry.uri.trim().length === 0 ||
+      (entry.match !== null && !isVaultUriMatch(entry.match))
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    return { uri: entry.uri, match: entry.match }
+  })
+}
+
+function cloneLoginUris(uris: readonly VaultLoginUri[]): VaultLoginUri[] {
+  return uris.map((entry) => ({ ...entry }))
+}
+
+function parsePasswordHistory(value: unknown): VaultPasswordHistoryEntry[] {
+  if (!Array.isArray(value) || value.length > MAX_PASSWORD_HISTORY) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  return value.map((entry) => {
+    if (
+      !isRecord(entry) ||
+      Object.keys(entry).length !== 2 ||
+      !Object.hasOwn(entry, 'password') ||
+      !Object.hasOwn(entry, 'lastUsedDate') ||
+      typeof entry.password !== 'string' ||
+      entry.password.length === 0 ||
+      entry.password.length > MAX_PASSWORD_LENGTH ||
+      typeof entry.lastUsedDate !== 'string' ||
+      !Number.isFinite(Date.parse(entry.lastUsedDate)) ||
+      new Date(entry.lastUsedDate).toISOString() !== entry.lastUsedDate
+    ) {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+    return { password: entry.password, lastUsedDate: entry.lastUsedDate }
+  })
+}
+
+function clonePasswordHistory(
+  entries: readonly VaultPasswordHistoryEntry[]
+): VaultPasswordHistoryEntry[] {
+  return entries.map((entry) => ({ ...entry }))
+}
+
+function uriAlias(uris: readonly VaultLoginUri[]): string | null {
+  return uris[0]?.uri ?? null
 }
 
 const ITEM_FIELD_NAMES = [
@@ -383,6 +497,17 @@ function parseStoredPasskey(value: unknown): StoredPasskeyCredential {
   }
 }
 
+function validateRemotePasskeys(value: unknown): StoredPasskeyCredential[] {
+  if (!Array.isArray(value) || value.length > 1_000) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  try {
+    return value.map(parseStoredPasskey)
+  } catch {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+}
+
 function parseCustomField(value: unknown): VaultCustomField {
   if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
   if (
@@ -411,11 +536,23 @@ function cloneCustomFields(fields: readonly VaultCustomField[]): VaultCustomFiel
   return fields.map((field) => ({ ...field }))
 }
 
+function cloneItemName(name: string): string {
+  const suffix = ' - Clone'
+  const codePoints = Array.from(name)
+  while (codePoints.join('').length > MAX_NAME_LENGTH - suffix.length) codePoints.pop()
+  return `${codePoints.join('')}${suffix}`
+}
+
 function parseStoredLogin(
   value: unknown,
   legacyItemType = false,
   allowMissingExtendedFields = false,
-  allowMissingCustomFields = false
+  allowMissingCustomFields = false,
+  allowMissingDeletedAt = false,
+  allowMissingArchivedAt = false,
+  allowMissingReprompt = false,
+  allowMissingUris = false,
+  allowMissingPasswordHistory = false
 ): StoredLogin {
   if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
   if (
@@ -452,6 +589,31 @@ function parseStoredLogin(
   }
   assertIsoDate(value.createdAt)
   assertIsoDate(value.updatedAt)
+  let deletedAt: string | null
+  if (allowMissingDeletedAt && value.deletedAt === undefined) {
+    deletedAt = null
+  } else if (value.deletedAt === null) {
+    deletedAt = null
+  } else {
+    assertIsoDate(value.deletedAt)
+    deletedAt = value.deletedAt
+  }
+  let archivedAt: string | null
+  if (allowMissingArchivedAt && value.archivedAt === undefined) {
+    archivedAt = null
+  } else if (value.archivedAt === null) {
+    archivedAt = null
+  } else {
+    assertIsoDate(value.archivedAt)
+    archivedAt = value.archivedAt
+  }
+  const reprompt =
+    allowMissingReprompt && value.reprompt === undefined
+      ? 0
+      : value.reprompt === 0 || value.reprompt === 1
+        ? value.reprompt
+        : null
+  if (reprompt === null) throw new VaultError('CORRUPT_VAULT')
 
   const type = legacyItemType ? 'login' : value.type
   if (!isVaultItemType(type)) throw new VaultError('CORRUPT_VAULT')
@@ -468,6 +630,12 @@ function parseStoredLogin(
     }
     fields[field] = raw
   }
+  const uris = allowMissingUris
+    ? fields.uri === null
+      ? []
+      : [{ uri: fields.uri, match: null }]
+    : parseStoredLoginUris(value.uris)
+  if (fields.uri !== uriAlias(uris)) throw new VaultError('CORRUPT_VAULT')
 
   return {
     id: value.id,
@@ -479,6 +647,9 @@ function parseStoredLogin(
     lastUsedAt: parsedLastUsedAt,
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
+    deletedAt,
+    archivedAt,
+    reprompt,
     passkeys:
       allowMissingExtendedFields || value.passkeys === undefined
         ? []
@@ -500,6 +671,8 @@ function parseStoredLogin(
             }
             return value.customFields.map(parseCustomField)
           })(),
+    passwordHistory: allowMissingPasswordHistory ? [] : parsePasswordHistory(value.passwordHistory),
+    uris,
     ...fields
   }
 }
@@ -586,7 +759,8 @@ function parseSyncData(
   value: unknown,
   folderIds: Set<string>,
   loginIds: Set<string>,
-  isCliData: boolean
+  isCliData: boolean,
+  allowMissingPendingMutation: boolean
 ): PersistedSyncData | null {
   if (value === null) return null
   if (!isRecord(value) || value.provider !== 'bitwarden') {
@@ -637,6 +811,50 @@ function parseSyncData(
     throw new VaultError('CORRUPT_VAULT')
   }
 
+  let pendingLoginMutation: PendingLoginMutation | null = null
+  if (value.pendingLoginMutation !== null && value.pendingLoginMutation !== undefined) {
+    const pending = value.pendingLoginMutation
+    if (
+      !isRecord(pending) ||
+      (pending.intent !== 'converge' && pending.intent !== 'hard-delete') ||
+      typeof pending.localId !== 'string' ||
+      !UUID_PATTERN.test(pending.localId) ||
+      typeof pending.remoteId !== 'string' ||
+      !UUID_PATTERN.test(pending.remoteId) ||
+      (pending.remoteFolderId !== null &&
+        (typeof pending.remoteFolderId !== 'string' ||
+          !UUID_PATTERN.test(pending.remoteFolderId))) ||
+      !Array.isArray(pending.expectedRemoteFingerprints) ||
+      pending.expectedRemoteFingerprints.length === 0 ||
+      pending.expectedRemoteFingerprints.length > 5 ||
+      pending.expectedRemoteFingerprints.some(
+        (fingerprint) => typeof fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(fingerprint)
+      ) ||
+      new Set(pending.expectedRemoteFingerprints).size !==
+        pending.expectedRemoteFingerprints.length ||
+      !(pending.intent === 'converge'
+        ? loginMappings.some(
+            (mapping) =>
+              mapping.localId === pending.localId && mapping.remoteId === pending.remoteId
+          )
+        : loginTombstones.some(
+            (tombstone) =>
+              tombstone.localId === pending.localId && tombstone.remoteId === pending.remoteId
+          ))
+    ) {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+    pendingLoginMutation = {
+      intent: pending.intent,
+      localId: pending.localId,
+      remoteId: pending.remoteId,
+      remoteFolderId: pending.remoteFolderId,
+      expectedRemoteFingerprints: [...pending.expectedRemoteFingerprints]
+    }
+  } else if (!allowMissingPendingMutation && value.pendingLoginMutation === undefined) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+
   return {
     provider: 'bitwarden',
     serverUrl: value.serverUrl,
@@ -653,7 +871,8 @@ function parseSyncData(
     folderMappings,
     loginMappings,
     folderTombstones,
-    loginTombstones
+    loginTombstones,
+    pendingLoginMutation
   }
 }
 
@@ -667,6 +886,13 @@ function parseVaultData(value: unknown): VaultData {
       3,
       ITEM_TYPES_DATA_VERSION,
       PASSKEYS_DATA_VERSION,
+      CUSTOM_FIELDS_DATA_VERSION,
+      TRASH_DATA_VERSION,
+      PENDING_LOGIN_MUTATION_DATA_VERSION,
+      ARCHIVE_DATA_VERSION,
+      REPROMPT_DATA_VERSION,
+      MULTIPLE_URIS_DATA_VERSION,
+      PASSWORD_HISTORY_DATA_VERSION,
       DATA_VERSION
     ].includes(value.version) ||
     !Array.isArray(value.folders) ||
@@ -684,7 +910,12 @@ function parseVaultData(value: unknown): VaultData {
       login,
       dataVersion < ITEM_TYPES_DATA_VERSION,
       dataVersion < PASSKEYS_DATA_VERSION,
-      dataVersion < DATA_VERSION
+      dataVersion < CUSTOM_FIELDS_DATA_VERSION,
+      dataVersion < TRASH_DATA_VERSION,
+      dataVersion < ARCHIVE_DATA_VERSION,
+      dataVersion < REPROMPT_DATA_VERSION,
+      dataVersion < MULTIPLE_URIS_DATA_VERSION,
+      dataVersion < PASSWORD_HISTORY_DATA_VERSION
     )
   )
   const folderIds = new Set(folders.map((folder) => folder.id))
@@ -706,7 +937,13 @@ function parseVaultData(value: unknown): VaultData {
   const sync =
     dataVersion === LEGACY_DATA_VERSION
       ? null
-      : parseSyncData(value.sync, folderIds, loginIds, dataVersion === CLI_DATA_VERSION)
+      : parseSyncData(
+          value.sync,
+          folderIds,
+          loginIds,
+          dataVersion === CLI_DATA_VERSION,
+          dataVersion < DATA_VERSION
+        )
 
   return {
     version: DATA_VERSION,
@@ -754,6 +991,11 @@ function normalizeItemType(value: unknown): VaultItemType {
   return value
 }
 
+function normalizeReprompt(value: unknown): VaultReprompt {
+  if (value !== 0 && value !== 1) throw new VaultError('INVALID_INPUT')
+  return value
+}
+
 function applyItemFields(
   target: VaultItemFields,
   input: Partial<VaultItemFields>,
@@ -773,6 +1015,67 @@ function applyItemFields(
       target[field] = normalizeString(value, maxLengthForItemField(field))
     }
   }
+}
+
+function createRequestUris(request: LoginCreateRequest, type: VaultItemType): VaultLoginUri[] {
+  if (type !== 'login') {
+    if (request.uris !== undefined && request.uris.length > 0) throw new VaultError('INVALID_INPUT')
+    return []
+  }
+  if (request.uris === undefined) {
+    const primary = normalizeNullableString(request.uri, MAX_URI_LENGTH)
+    return primary === null ? [] : [{ uri: primary, match: null }]
+  }
+  const uris = normalizeLoginUris(request.uris)
+  if (
+    request.uri !== undefined &&
+    normalizeNullableString(request.uri, MAX_URI_LENGTH) !== uriAlias(uris)
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return uris
+}
+
+function updateRequestUris(request: LoginUpdateRequest, existing: StoredLogin): VaultLoginUri[] {
+  if (existing.type !== 'login') {
+    if (request.uris !== undefined && request.uris.length > 0) throw new VaultError('INVALID_INPUT')
+    return []
+  }
+  if (request.uris !== undefined) {
+    const uris = normalizeLoginUris(request.uris)
+    if (
+      request.uri !== undefined &&
+      normalizeNullableString(request.uri, MAX_URI_LENGTH) !== uriAlias(uris)
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    return uris
+  }
+  if (request.uri === undefined) return cloneLoginUris(existing.uris)
+  const primary = normalizeNullableString(request.uri, MAX_URI_LENGTH)
+  const remaining = cloneLoginUris(existing.uris.slice(1))
+  return primary === null
+    ? remaining
+    : [{ uri: primary, match: existing.uris[0]?.match ?? null }, ...remaining]
+}
+
+function remoteLoginUris(source: SyncLogin): VaultLoginUri[] {
+  if (!Array.isArray(source.uris) || source.uris.length > MAX_LOGIN_URIS) {
+    throw new VaultError('SYNC_FAILED')
+  }
+  const uris = source.uris.map((entry) => {
+    if (
+      !entry ||
+      typeof entry.uri !== 'string' ||
+      entry.uri.length > MAX_URI_LENGTH ||
+      (entry.match !== null && !isVaultUriMatch(entry.match))
+    ) {
+      throw new VaultError('SYNC_FAILED')
+    }
+    return { uri: entry.uri, match: entry.match }
+  })
+  if (source.uri !== uriAlias(uris)) throw new VaultError('SYNC_FAILED')
+  return uris
 }
 
 function normalizeCustomFields(
@@ -935,6 +1238,17 @@ function customFieldValue(login: StoredLogin, field: VaultCustomField): string {
   return field.type === 'linked' ? linkedCustomFieldValue(login, field.linkedId) : field.value
 }
 
+function loginUriAt(login: StoredLogin, uriIndex: number | undefined): string {
+  if (login.type !== 'login') throw new VaultError('INVALID_INPUT')
+  const index = uriIndex ?? 0
+  if (!Number.isSafeInteger(index) || index < 0 || index >= login.uris.length) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const uri = login.uris[index]?.uri
+  if (!uri) throw new VaultError('INVALID_INPUT')
+  return uri
+}
+
 function normalizeMasterPassword(value: unknown): string {
   if (typeof value !== 'string') {
     throw new VaultError('INVALID_INPUT')
@@ -955,8 +1269,10 @@ function cloneData(data: VaultData): VaultData {
     folders: data.folders.map((folder) => ({ ...folder })),
     logins: data.logins.map((login) => ({
       ...login,
+      uris: cloneLoginUris(login.uris),
       passkeys: login.passkeys.map((passkey) => ({ ...passkey })),
-      customFields: cloneCustomFields(login.customFields)
+      customFields: cloneCustomFields(login.customFields),
+      passwordHistory: clonePasswordHistory(login.passwordHistory)
     })),
     sync: data.sync
       ? {
@@ -968,7 +1284,15 @@ function cloneData(data: VaultData): VaultData {
           folderMappings: data.sync.folderMappings.map((entry) => ({ ...entry })),
           loginMappings: data.sync.loginMappings.map((entry) => ({ ...entry })),
           folderTombstones: data.sync.folderTombstones.map((entry) => ({ ...entry })),
-          loginTombstones: data.sync.loginTombstones.map((entry) => ({ ...entry }))
+          loginTombstones: data.sync.loginTombstones.map((entry) => ({ ...entry })),
+          pendingLoginMutation: data.sync.pendingLoginMutation
+            ? {
+                ...data.sync.pendingLoginMutation,
+                expectedRemoteFingerprints: [
+                  ...data.sync.pendingLoginMutation.expectedRemoteFingerprints
+                ]
+              }
+            : null
         }
       : null
   }
@@ -993,10 +1317,34 @@ function recordSyncDeletion(
     sync.folderMappings = sync.folderMappings.filter((entry) => entry.localId !== localId)
   } else {
     sync.loginMappings = sync.loginMappings.filter((entry) => entry.localId !== localId)
+    if (sync.pendingLoginMutation?.localId === localId) {
+      sync.pendingLoginMutation.intent = 'hard-delete'
+    }
   }
 }
 
 function toSummary(login: StoredLogin): LoginSummary {
+  if (login.deletedAt !== null || login.reprompt === 1) {
+    return {
+      id: login.id,
+      type: login.type,
+      name: login.name,
+      subtitle: '',
+      username: '',
+      uri: null,
+      uris: [],
+      ...(login.type === 'login' ? { hasTotp: false, passkeyCount: 0 } : {}),
+      passwordHistoryCount: login.passwordHistory.length,
+      folderId: login.folderId,
+      favorite: login.deletedAt === null ? login.favorite : false,
+      lastUsedAt: login.deletedAt === null ? login.lastUsedAt : null,
+      createdAt: login.createdAt,
+      updatedAt: login.updatedAt,
+      deletedAt: login.deletedAt,
+      archivedAt: login.archivedAt,
+      reprompt: login.reprompt
+    }
+  }
   const notePreview = login.type === 'secureNote' ? summarizeSecureNote(login.notes) : ''
   const subtitle =
     login.type === 'login'
@@ -1019,15 +1367,20 @@ function toSummary(login: StoredLogin): LoginSummary {
     subtitle,
     username: login.type === 'login' ? login.username : '',
     uri: login.type === 'login' ? login.uri : null,
+    uris: login.type === 'login' ? cloneLoginUris(login.uris) : [],
     ...(login.type === 'card' ? { cardBrand: login.brand } : {}),
     ...(login.type === 'login'
       ? { hasTotp: Boolean(login.totp), passkeyCount: login.passkeys.length }
       : {}),
+    passwordHistoryCount: login.passwordHistory.length,
     folderId: login.folderId,
     favorite: login.favorite,
     lastUsedAt: login.lastUsedAt,
     createdAt: login.createdAt,
-    updatedAt: login.updatedAt
+    updatedAt: login.updatedAt,
+    deletedAt: login.deletedAt,
+    archivedAt: login.archivedAt,
+    reprompt: login.reprompt
   }
 }
 
@@ -1048,6 +1401,11 @@ function summarizeSecureNote(notes: string | null): string {
 function toView(login: StoredLogin): LoginView {
   return {
     ...toSummary(login),
+    // This method is only exposed through the main-process authorization gate. Restore fields
+    // intentionally redacted from protected list summaries.
+    username: login.type === 'login' ? login.username : '',
+    uri: login.type === 'login' ? login.uri : null,
+    uris: login.type === 'login' ? cloneLoginUris(login.uris) : [],
     notes: login.notes,
     hasTotp: Boolean(login.totp),
     passkeys: login.passkeys.map(toPasskeyView),
@@ -1091,12 +1449,44 @@ function validRemoteDate(value: string | null): string | undefined {
   return value && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : undefined
 }
 
+function validRemoteDeletedDate(value: string | null): string | null {
+  if (value === null) return null
+  const parsed = validRemoteDate(value)
+  if (!parsed) throw new VaultError('SYNC_FAILED')
+  return parsed
+}
+
+function validRemoteArchivedDate(value: string | null): string | null {
+  if (value === null) return null
+  const parsed = validRemoteDate(value)
+  if (!parsed) throw new VaultError('SYNC_FAILED')
+  return parsed
+}
+
+function isCompositeRemoteLoginUpdate(
+  desired: SyncLogin,
+  current: SyncLogin,
+  contentChanged: boolean
+): boolean {
+  const desiredDeleted = desired.deletedAt !== null
+  const currentDeleted = current.deletedAt !== null
+  const desiredArchived = desired.archivedAt !== null
+  const currentArchived = current.archivedAt !== null
+  let steps = contentChanged ? 1 : 0
+  if (currentDeleted && (!desiredDeleted || contentChanged)) steps += 1
+  if (currentArchived && !desiredArchived) steps += 1
+  if (!contentChanged && desiredArchived && !currentArchived) steps += 1
+  if (desiredDeleted && (!currentDeleted || contentChanged)) steps += 1
+  return steps > 1
+}
+
 export class VaultService {
   private key: Buffer | null = null
   private salt: Buffer | null = null
   private data: VaultData | null = null
   private generation = 0
   private operationQueue: Promise<void> = Promise.resolve()
+  private readonly exclusiveContext = new AsyncLocalStorage<{ active: boolean }>()
   private syncClient: BitwardenSyncClient | null = null
   private syncAbort: AbortController | null = null
   private syncInProgress = false
@@ -1238,7 +1628,8 @@ export class VaultService {
           folderMappings: [],
           loginMappings: [],
           folderTombstones: [],
-          loginTombstones: []
+          loginTombstones: [],
+          pendingLoginMutation: null
         }
         const client = this.createSyncClient(sync)
         await client.login({ email, password, twoFactor, newDeviceOtp, signal: abort.signal })
@@ -1423,13 +1814,27 @@ export class VaultService {
       const data = this.requireData()
       const sort = request.sort ?? 'recent'
       if (sort !== 'recent' && sort !== 'name') throw new VaultError('INVALID_INPUT')
+      if (request.deleted !== undefined && typeof request.deleted !== 'boolean') {
+        throw new VaultError('INVALID_INPUT')
+      }
+      if (request.archived !== undefined && typeof request.archived !== 'boolean') {
+        throw new VaultError('INVALID_INPUT')
+      }
+      if (request.deleted === true && request.archived === true)
+        throw new VaultError('INVALID_INPUT')
       if (request.folderId !== undefined && request.folderId !== null) {
         assertUuid(request.folderId)
         this.findFolder(data, request.folderId)
       }
 
       const filtered = data.logins.filter(
-        (login) => request.folderId === undefined || login.folderId === request.folderId
+        (login) =>
+          (request.deleted === true
+            ? login.deletedAt !== null
+            : request.archived === true
+              ? login.deletedAt === null && login.archivedAt !== null
+              : login.deletedAt === null && login.archivedAt === null) &&
+          (request.folderId === undefined || login.folderId === request.folderId)
       )
       return filtered.map(toSummary).sort((left, right) => {
         if (sort === 'recent') {
@@ -1447,7 +1852,104 @@ export class VaultService {
   getLogin(request: LoginIdRequest): Promise<LoginView> {
     return this.exclusive(async () => {
       assertUuid(request.id)
-      return toView(this.findLogin(this.requireData(), request.id))
+      const login = this.findLogin(this.requireData(), request.id)
+      this.assertActiveLogin(login)
+      return toView(login)
+    })
+  }
+
+  getPasswordHistory(request: LoginIdRequest): Promise<VaultPasswordHistoryEntry[]> {
+    return this.exclusive(async () => {
+      assertUuid(request.id)
+      const login = this.findLogin(this.requireData(), request.id)
+      this.assertActiveLogin(login)
+      return clonePasswordHistory(login.passwordHistory)
+    })
+  }
+
+  loginAuthorizationState(request: LoginIdRequest): Promise<{
+    reprompt: VaultReprompt
+    generation: number
+  }> {
+    return this.exclusive(async () => {
+      assertUuid(request.id)
+      const login = this.findLogin(this.requireData(), request.id)
+      return { reprompt: login.reprompt, generation: this.generation }
+    })
+  }
+
+  /**
+   * Main-process authorization boundary. The validator must be synchronous: keeping it and the
+   * nested service operation in this same exclusive section prevents sync from enabling reprompt
+   * between the check and secret access.
+   */
+  runAuthorizedOperation<T>(
+    validate: (ids: readonly string[], state: { generation: number }) => boolean,
+    operation: (authorize: (ids: readonly string[]) => void) => Promise<T>
+  ): Promise<T> {
+    return this.exclusive(async () => {
+      let didAuthorize = false
+      const authorize = (ids: readonly string[]): void => {
+        didAuthorize = true
+        let requiresReprompt = false
+        for (const id of ids) {
+          assertUuid(id)
+          const login = this.findLogin(this.requireData(), id)
+          if (login.reprompt === 1) requiresReprompt = true
+        }
+        if (requiresReprompt && !validate(ids, { generation: this.generation })) {
+          throw new VaultError('REPROMPT_REQUIRED')
+        }
+      }
+      const result = await operation(authorize)
+      if (!didAuthorize) throw new VaultError('INTERNAL_ERROR')
+      return result
+    })
+  }
+
+  authorizeLogin(request: LoginAuthorizeRequest): Promise<number> {
+    return this.exclusive(async () => {
+      assertUuid(request.id)
+      this.findLogin(this.requireData(), request.id)
+      if (typeof request.masterPassword !== 'string') throw new VaultError('INVALID_INPUT')
+      const candidate = request.masterPassword.normalize('NFC')
+      if (candidate.length > MAX_MASTER_PASSWORD_LENGTH) {
+        throw new VaultError('INVALID_MASTER_PASSWORD')
+      }
+      const generation = this.generation
+      if (!this.key || !this.salt) throw new VaultError('LOCKED')
+      const valid = await this.store.verifyMasterPassword(candidate, this.key, this.salt)
+      if (generation !== this.generation) throw new VaultError('LOCKED')
+      if (!valid) throw new VaultError('INVALID_MASTER_PASSWORD')
+      return generation
+    })
+  }
+
+  authorizeLogins(request: LoginAuthorizeManyRequest): Promise<number> {
+    return this.exclusive(async () => {
+      if (
+        !Array.isArray(request.ids) ||
+        request.ids.length === 0 ||
+        request.ids.length > MAX_LOGIN_AUTHORIZE_MANY_IDS ||
+        new Set(request.ids).size !== request.ids.length
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      for (const id of request.ids) {
+        assertUuid(id)
+        this.findLogin(this.requireData(), id)
+      }
+      if (typeof request.masterPassword !== 'string') throw new VaultError('INVALID_INPUT')
+      const candidate = request.masterPassword.normalize('NFC')
+      if (candidate.length > MAX_MASTER_PASSWORD_LENGTH) {
+        throw new VaultError('INVALID_MASTER_PASSWORD')
+      }
+      const generation = this.generation
+      if (!this.key || !this.salt) throw new VaultError('LOCKED')
+      const valid = await this.store.verifyMasterPassword(candidate, this.key, this.salt)
+      if (generation !== this.generation) throw new VaultError('LOCKED')
+      if (!valid) throw new VaultError('INVALID_MASTER_PASSWORD')
+      return generation
     })
   }
 
@@ -1457,6 +1959,8 @@ export class VaultService {
       const type = normalizeItemType(request.type ?? 'login')
       const fields = emptyItemFields()
       applyItemFields(fields, request, type)
+      const uris = createRequestUris(request, type)
+      fields.uri = uriAlias(uris)
       const customFields = normalizeCustomFields([], request.customFields ?? [], type)
       const login: StoredLogin = {
         id: this.validatedNewId(),
@@ -1468,8 +1972,13 @@ export class VaultService {
         lastUsedAt: null,
         createdAt: now,
         updatedAt: now,
+        deletedAt: null,
+        archivedAt: null,
+        reprompt: normalizeReprompt(request.reprompt ?? 0),
         passkeys: [],
         customFields,
+        passwordHistory: [],
+        uris,
         ...fields
       }
       if (typeof login.favorite !== 'boolean') throw new VaultError('INVALID_INPUT')
@@ -1478,10 +1987,67 @@ export class VaultService {
     })
   }
 
+  cloneLogin(request: LoginIdRequest): Promise<LoginView> {
+    return this.mutate((data, now) => {
+      assertUuid(request.id)
+      const source = this.findLogin(data, request.id)
+      this.assertActiveLogin(source)
+      const clone: StoredLogin = {
+        id: this.validatedNewId(),
+        type: source.type,
+        name: cloneItemName(source.name),
+        notes: source.notes,
+        folderId: source.folderId,
+        favorite: source.favorite,
+        lastUsedAt: null,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+        archivedAt: source.archivedAt,
+        reprompt: source.reprompt,
+        // Bitwarden does not clone passkeys, whose private material must remain bound to the source.
+        passkeys: [],
+        customFields: cloneCustomFields(source.customFields),
+        passwordHistory: [],
+        uris: cloneLoginUris(source.uris),
+        // Deliberately build the stored shape instead of spreading the source so future
+        // attachment fields cannot accidentally become part of the clone.
+        ...normalizeItemFieldsForStorage(source)
+      }
+      data.logins.push(clone)
+      return toView(clone)
+    })
+  }
+
+  archiveLogin(request: LoginIdRequest): Promise<LoginView> {
+    return this.mutate((data, now) => {
+      assertUuid(request.id)
+      const login = this.findLogin(data, request.id)
+      this.assertActiveLogin(login)
+      if (login.archivedAt !== null) throw new VaultError('INVALID_INPUT')
+      login.archivedAt = now
+      login.updatedAt = now
+      return toView(login)
+    })
+  }
+
+  unarchiveLogin(request: LoginIdRequest): Promise<LoginView> {
+    return this.mutate((data, now) => {
+      assertUuid(request.id)
+      const login = this.findLogin(data, request.id)
+      this.assertActiveLogin(login)
+      if (login.archivedAt === null) throw new VaultError('INVALID_INPUT')
+      login.archivedAt = null
+      login.updatedAt = now
+      return toView(login)
+    })
+  }
+
   updateLogin(request: LoginUpdateRequest): Promise<LoginView> {
     return this.mutate((data, now) => {
       assertUuid(request.id)
       const login = this.findLogin(data, request.id)
+      this.assertActiveLogin(login)
       if (
         request.expectedUpdatedAt !== undefined &&
         (typeof request.expectedUpdatedAt !== 'string' ||
@@ -1489,9 +2055,22 @@ export class VaultService {
       ) {
         throw new VaultError('INVALID_INPUT')
       }
+      const previousPassword = login.password
+      const previousHistory = clonePasswordHistory(login.passwordHistory)
+      const previousHiddenFields = login.customFields.filter(
+        (field) => field.type === 'hidden' && field.name.length > 0 && field.value.length > 0
+      )
+      // Normalize the complete post-save set first. Partial editor updates can preserve hidden
+      // values that never entered renderer state and therefore must not create false history.
+      const nextCustomFields =
+        request.customFields === undefined
+          ? cloneCustomFields(login.customFields)
+          : normalizeCustomFields(login.customFields, request.customFields, login.type)
       if (request.name !== undefined)
         login.name = normalizeRequiredString(request.name, MAX_NAME_LENGTH)
       applyItemFields(login, request, login.type)
+      login.uris = updateRequestUris(request, login)
+      login.uri = uriAlias(login.uris)
       if (request.notes !== undefined) {
         login.notes = normalizeNullableString(request.notes, MAX_NOTES_LENGTH)
       }
@@ -1502,24 +2081,76 @@ export class VaultService {
         if (typeof request.favorite !== 'boolean') throw new VaultError('INVALID_INPUT')
         login.favorite = request.favorite
       }
-      if (request.customFields !== undefined) {
-        login.customFields = normalizeCustomFields(
-          login.customFields,
-          request.customFields,
-          login.type
-        )
+      if (request.reprompt !== undefined) login.reprompt = normalizeReprompt(request.reprompt)
+      if (request.customFields !== undefined) login.customFields = nextCustomFields
+      const newHistory: VaultPasswordHistoryEntry[] = []
+      if (
+        login.type === 'login' &&
+        request.password !== undefined &&
+        previousPassword.length > 0 &&
+        login.password !== previousPassword
+      ) {
+        newHistory.unshift({ password: previousPassword, lastUsedDate: now })
       }
+      const consumedNextHiddenFields = new Set<number>()
+      for (const field of previousHiddenFields) {
+        const unchangedIndex = nextCustomFields.findIndex(
+          (candidate, index) =>
+            !consumedNextHiddenFields.has(index) &&
+            candidate.type === 'hidden' &&
+            candidate.name === field.name &&
+            candidate.value === field.value
+        )
+        if (unchangedIndex >= 0) {
+          consumedNextHiddenFields.add(unchangedIndex)
+        } else {
+          newHistory.unshift({ password: `${field.name}: ${field.value}`, lastUsedDate: now })
+        }
+      }
+      login.passwordHistory = [...newHistory, ...previousHistory].slice(0, MAX_PASSWORD_HISTORY)
       login.updatedAt = now
       return toView(login)
     })
   }
 
   deleteLogin(request: LoginIdRequest): Promise<void> {
+    return this.mutate((data, now) => {
+      assertUuid(request.id)
+      const login = this.findLogin(data, request.id)
+      this.assertActiveLogin(login)
+      login.deletedAt = now
+      login.updatedAt = now
+    })
+  }
+
+  restoreLogin(request: LoginIdRequest): Promise<LoginView> {
+    return this.mutate((data, now) => {
+      assertUuid(request.id)
+      const login = this.findLogin(data, request.id)
+      if (login.deletedAt === null) throw new VaultError('INVALID_INPUT')
+      login.deletedAt = null
+      login.updatedAt = now
+      return toView(login)
+    })
+  }
+
+  deleteLoginPermanently(request: LoginIdRequest): Promise<void> {
     return this.mutate((data) => {
       assertUuid(request.id)
-      this.findLogin(data, request.id)
+      const login = this.findLogin(data, request.id)
+      if (login.deletedAt === null) throw new VaultError('INVALID_INPUT')
       recordSyncDeletion(data.sync, 'login', request.id)
-      data.logins = data.logins.filter((login) => login.id !== request.id)
+      data.logins = data.logins.filter((candidate) => candidate.id !== request.id)
+    })
+  }
+
+  emptyTrash(): Promise<number> {
+    return this.mutate((data) => {
+      const deleted = data.logins.filter((login) => login.deletedAt !== null)
+      for (const login of deleted) recordSyncDeletion(data.sync, 'login', login.id)
+      const deletedIds = new Set(deleted.map((login) => login.id))
+      data.logins = data.logins.filter((login) => !deletedIds.has(login.id))
+      return deleted.length
     })
   }
 
@@ -1528,6 +2159,7 @@ export class VaultService {
       assertUuid(request.id)
       if (typeof request.favorite !== 'boolean') throw new VaultError('INVALID_INPUT')
       const login = this.findLogin(data, request.id)
+      this.assertActiveLogin(login)
       login.favorite = request.favorite
       login.updatedAt = now
       return toSummary(login)
@@ -1538,6 +2170,7 @@ export class VaultService {
     return this.mutate((data, now) => {
       assertUuid(request.id)
       const login = this.findLogin(data, request.id)
+      this.assertActiveLogin(login)
       login.folderId = this.normalizeFolderId(data, request.folderId)
       login.updatedAt = now
       return toSummary(login)
@@ -1560,6 +2193,7 @@ export class VaultService {
 
       const folderId = this.normalizeFolderId(data, request.folderId)
       const logins = request.ids.map((id) => this.findLogin(data, id))
+      logins.forEach((login) => this.assertActiveLogin(login))
       return logins.map((login) => {
         login.folderId = folderId
         login.updatedAt = now
@@ -1572,6 +2206,7 @@ export class VaultService {
     return this.exclusive(async () => {
       assertUuid(request.id)
       const login = this.findLogin(this.requireData(), request.id)
+      this.assertActiveLogin(login)
       assertSecretField(login.type, 'password')
       return login.password
     })
@@ -1581,6 +2216,7 @@ export class VaultService {
     return this.exclusive(async () => {
       assertUuid(request.id)
       const login = this.findLogin(this.requireData(), request.id)
+      this.assertActiveLogin(login)
       if (request.expectedUpdatedAt !== login.updatedAt) throw new VaultError('INVALID_INPUT')
 
       const fields: EditorSecretsView['fields'] = {}
@@ -1610,6 +2246,7 @@ export class VaultService {
     return this.exclusive(async () => {
       assertUuid(request.id)
       const login = this.findLogin(this.requireData(), request.id)
+      this.assertActiveLogin(login)
       assertSecretField(login.type, request.field as VaultSecretField)
       return login[request.field] as string
     })
@@ -1619,6 +2256,7 @@ export class VaultService {
     return this.exclusive(async () => {
       assertUuid(request.id)
       const login = this.findLogin(this.requireData(), request.id)
+      this.assertActiveLogin(login)
       if (request.expectedUpdatedAt !== login.updatedAt) throw new VaultError('INVALID_INPUT')
       const field = customFieldFromSource(login, request.source)
       if (field.type !== 'hidden') throw new VaultError('INVALID_INPUT')
@@ -1637,6 +2275,7 @@ export class VaultService {
     return this.exclusive(async () => {
       assertUuid(request.id)
       const login = this.findLogin(this.requireData(), request.id)
+      this.assertActiveLogin(login)
       if (login.type !== 'login' || !login.totp) throw new VaultError('INVALID_INPUT')
       return generateTotp(login.totp, this.now())
     })
@@ -1652,7 +2291,8 @@ export class VaultService {
   copyField(request: ItemFieldRequest): Promise<void> {
     return this.useLogin(request, async (login) => {
       assertCopyField(login.type, request.field)
-      const value = login[request.field]
+      const value =
+        request.field === 'uri' ? loginUriAt(login, request.uriIndex) : login[request.field]
       if (typeof value !== 'string' || value.length === 0) throw new VaultError('INVALID_INPUT')
       await this.platform.copyText(value)
     })
@@ -1674,13 +2314,13 @@ export class VaultService {
     })
   }
 
-  openLoginUri(request: LoginIdRequest): Promise<void> {
+  openLoginUri(request: LoginOpenUriRequest): Promise<void> {
     return this.useLogin(request, async (login) => {
       assertCopyField(login.type, 'uri')
-      if (!login.uri) throw new VaultError('INVALID_URL')
+      const selectedUri = loginUriAt(login, request.uriIndex)
       let url: URL
       try {
-        url = new URL(login.uri)
+        url = new URL(selectedUri)
       } catch {
         throw new VaultError('INVALID_URL')
       }
@@ -1696,6 +2336,7 @@ export class VaultService {
       assertUuid(request.id)
       const data = this.requireData()
       const login = this.findLogin(data, request.id)
+      this.assertActiveLogin(login)
       if (login.type !== 'login' || !login.uri || !data.sync) return null
       const hostname = parseWebsiteHostname(login.uri)
       return hostname ? resolveWebsiteIconUrl(data.sync.serverUrl, hostname) : null
@@ -1858,11 +2499,21 @@ export class VaultService {
     const sync = current.sync
     if (!sync) throw new VaultError('SYNC_AUTH_REQUIRED')
     await client.sync(signal)
-    const [remoteFolders, remoteLogins] = await Promise.all([
+    let [remoteFolders, remoteLogins] = await Promise.all([
       client.listFolders(signal),
       client.listPersonalLogins(signal)
     ])
     const next = cloneData(current)
+    if (next.sync?.pendingLoginMutation) {
+      await this.resumePendingLoginMutation(next, client, remoteFolders, remoteLogins, signal)
+      await client.sync(signal)
+      const refreshed = await Promise.all([
+        client.listFolders(signal),
+        client.listPersonalLogins(signal)
+      ])
+      remoteFolders = refreshed[0]
+      remoteLogins = refreshed[1]
+    }
     const remoteSnapshot = this.remoteSyncSnapshot(remoteFolders, remoteLogins)
     const syncMetadata = this.syncMetadata(sync)
     for (const upgrade of legacyCustomFieldBaselineUpgrades(
@@ -1870,7 +2521,16 @@ export class VaultService {
       remoteSnapshot,
       syncMetadata
     )) {
-      this.findLogin(next, upgrade.localId).customFields = cloneCustomFields(upgrade.customFields)
+      const upgradedLogin = this.findLogin(next, upgrade.localId)
+      upgradedLogin.customFields = cloneCustomFields(upgrade.customFields)
+      if (upgrade.uris) {
+        upgradedLogin.uris = cloneLoginUris(upgrade.uris)
+        upgradedLogin.uri = uriAlias(upgradedLogin.uris)
+      }
+      if (upgrade.reprompt !== undefined) upgradedLogin.reprompt = upgrade.reprompt
+      if (upgrade.passwordHistory) {
+        upgradedLogin.passwordHistory = clonePasswordHistory(upgrade.passwordHistory)
+      }
       const mapping = next.sync?.loginMappings.find(
         (entry) => entry.localId === upgrade.localId && entry.remoteId === upgrade.remoteId
       )
@@ -1906,13 +2566,88 @@ export class VaultService {
       folderMappings: metadata.folderLinks.map((link) => ({ ...link })),
       loginMappings: metadata.loginLinks.map((link) => ({ ...link })),
       folderTombstones: [],
-      loginTombstones: []
+      loginTombstones: [],
+      pendingLoginMutation: null
     }
     next.updatedAt = syncedAt
     await this.persist(next)
     this.data = next
     this.syncLastError = null
     return { ...this.baseSyncStatus(next.sync, 'ready'), ...counts }
+  }
+
+  private async resumePendingLoginMutation(
+    data: VaultData,
+    client: BitwardenSyncClient,
+    remoteFolders: BitwardenFolder[],
+    remoteLogins: BitwardenLoginItem[],
+    signal: AbortSignal
+  ): Promise<void> {
+    const pending = data.sync?.pendingLoginMutation
+    if (!pending || !data.sync) return
+    const desired = this.localSyncSnapshot(data).logins.find(
+      (login) => login.id === pending.localId
+    )
+    const current = this.remoteSyncSnapshot(remoteFolders, remoteLogins).logins.find(
+      (login) => login.id === pending.remoteId
+    )
+
+    if (pending.intent === 'hard-delete') {
+      if (current) await client.hardDeleteLogin(pending.remoteId, signal)
+      data.sync.pendingLoginMutation = null
+      await this.persist(data)
+      this.data = cloneData(data)
+      return
+    }
+
+    if (desired && current) {
+      const desiredFolderName =
+        desired.folderId === null
+          ? null
+          : (data.folders.find((folder) => folder.id === desired.folderId)?.name ?? null)
+      const currentFolderName =
+        current.folderId === null
+          ? null
+          : (remoteFolders.find((folder) => folder.id === current.folderId)?.name ?? null)
+      const currentFingerprint = fingerprintLogin(current, currentFolderName)
+      const liveRemoteFolderIds = new Set(remoteFolders.map((folder) => folder.id))
+      const mappedRemoteFolderId =
+        desired.folderId === null
+          ? null
+          : data.sync.folderMappings.find(
+              (mapping) =>
+                mapping.localId === desired.folderId && liveRemoteFolderIds.has(mapping.remoteId)
+            )?.remoteId
+      const remoteFolderId =
+        desired.folderId === null
+          ? null
+          : mappedRemoteFolderId !== undefined
+            ? mappedRemoteFolderId
+            : pending.remoteFolderId && liveRemoteFolderIds.has(pending.remoteFolderId)
+              ? pending.remoteFolderId
+              : undefined
+      if (
+        remoteFolderId !== undefined &&
+        pending.expectedRemoteFingerprints.includes(currentFingerprint)
+      ) {
+        const contentChanged =
+          fingerprintLogin({ ...desired, deletedAt: null, archivedAt: null }, desiredFolderName) !==
+          fingerprintLogin({ ...current, deletedAt: null, archivedAt: null }, currentFolderName)
+        await this.updateRemoteLogin(
+          client,
+          pending.remoteId,
+          desired,
+          current,
+          remoteFolderId,
+          contentChanged,
+          signal
+        )
+      }
+    }
+
+    data.sync.pendingLoginMutation = null
+    await this.persist(data)
+    this.data = cloneData(data)
   }
 
   private localSyncSnapshot(data: VaultData): SyncSnapshot {
@@ -1924,8 +2659,10 @@ export class VaultService {
       })),
       logins: data.logins.map((login) => ({
         ...login,
+        uris: cloneLoginUris(login.uris),
         passkeys: login.passkeys.map((passkey) => ({ ...passkey })),
-        customFields: cloneCustomFields(login.customFields)
+        customFields: cloneCustomFields(login.customFields),
+        passwordHistory: clonePasswordHistory(login.passwordHistory)
       })),
       tombstones: {
         folders: (data.sync?.folderTombstones ?? []).map((entry) => ({
@@ -1948,9 +2685,14 @@ export class VaultService {
       folders: folders.map((folder) => ({ id: folder.id, name: folder.name })),
       logins: logins.map((login) => ({
         ...login,
-        uri: login.uri ?? login.uris[0]?.uri ?? null,
+        uris: cloneLoginUris(login.uris),
+        passkeys: validateRemotePasskeys(login.passkeys),
+        passwordHistory: clonePasswordHistory(login.passwordHistory),
+        uri: uriAlias(login.uris),
         createdAt: validRemoteDate(login.creationDate),
-        updatedAt: validRemoteDate(login.revisionDate)
+        updatedAt: validRemoteDate(login.revisionDate),
+        deletedAt: validRemoteDeletedDate(login.deletedAt),
+        archivedAt: validRemoteArchivedDate(login.archivedAt)
       })),
       tombstones: { folders: [], logins: [] }
     }
@@ -2017,12 +2759,43 @@ export class VaultService {
 
     if (action.kind === 'push-create') {
       const folderId = this.resolveFolderReference(action.remoteFolder, completed, 'remoteId')
-      result.remoteId = (
-        await client.createLogin(this.remoteDraft(action.local, folderId), signal)
-      ).id
+      const created = await client.createLogin(this.remoteDraft(action.local, folderId), signal)
+      result.remoteId = created.id
+      if (action.local.deletedAt !== null) await client.softDeleteLogin(created.id, signal)
     } else if (action.kind === 'push-update') {
       const folderId = this.resolveFolderReference(action.remoteFolder, completed, 'remoteId')
-      await client.editLogin(action.remoteId, this.remoteDraft(action.local, folderId), signal)
+      const composite = isCompositeRemoteLoginUpdate(
+        action.local,
+        action.remote,
+        action.contentChanged
+      )
+      if (composite) {
+        if (!data.sync) throw new VaultError('SYNC_FAILED')
+        data.sync.pendingLoginMutation = {
+          intent: 'converge',
+          localId: action.local.id,
+          remoteId: action.remoteId,
+          remoteFolderId: folderId,
+          expectedRemoteFingerprints: [...action.resumeFingerprints]
+        }
+        await this.persist(data)
+        this.data = cloneData(data)
+      }
+      await this.updateRemoteLogin(
+        client,
+        action.remoteId,
+        action.local,
+        action.remote,
+        folderId,
+        action.contentChanged,
+        signal
+      )
+      if (composite) {
+        if (!data.sync) throw new VaultError('SYNC_FAILED')
+        data.sync.pendingLoginMutation = null
+        await this.persist(data)
+        this.data = cloneData(data)
+      }
     } else if (action.kind === 'pull-create') {
       const folderId = this.resolveFolderReference(action.localFolder, completed, 'localId')
       result.localId = this.createLocalLogin(data, action.remote, folderId).id
@@ -2032,7 +2805,7 @@ export class VaultService {
     } else if (action.kind === 'delete-local') {
       data.logins = data.logins.filter((login) => login.id !== action.localId)
     } else if (action.kind === 'delete-remote') {
-      await client.deleteLogin(action.remoteId, signal)
+      await client.hardDeleteLogin(action.remoteId, signal)
     } else if (action.reason === 'both-modified') {
       if (!action.local || !action.remote) throw new VaultError('SYNC_FAILED')
       const copyFolderId =
@@ -2054,12 +2827,17 @@ export class VaultService {
           signal
         )
       ).id
+      if (action.local.deletedAt !== null) await client.softDeleteLogin(result.remoteId, signal)
     } else {
       if (!action.remote) throw new VaultError('SYNC_FAILED')
       const remoteFolderId = action.remote.folderId
-      await client.editLogin(
+      await this.updateRemoteLogin(
+        client,
         action.remote.id,
-        this.remoteDraft({ ...action.remote, name: action.conflictName }, remoteFolderId),
+        { ...action.remote, name: action.conflictName },
+        action.remote,
+        remoteFolderId,
+        true,
         signal
       )
       const localFolderId = this.resolveFolderReference(action.localFolder, completed, 'localId')
@@ -2129,8 +2907,13 @@ export class VaultService {
       lastUsedAt: source.lastUsedAt ?? null,
       createdAt,
       updatedAt,
-      passkeys: source.passkeys.map((passkey) => ({ ...passkey })),
+      deletedAt: source.deletedAt,
+      archivedAt: source.archivedAt,
+      reprompt: source.reprompt,
+      passkeys: validateRemotePasskeys(source.passkeys),
       customFields: cloneCustomFields(source.customFields),
+      passwordHistory: clonePasswordHistory(source.passwordHistory),
+      uris: remoteLoginUris(source),
       ...normalizeItemFieldsForStorage(source)
     }
     data.logins.push(login)
@@ -2148,10 +2931,16 @@ export class VaultService {
     login.name = normalizeRequiredString(source.name, MAX_NAME_LENGTH)
     login.notes = normalizeNullableString(source.notes, MAX_NOTES_LENGTH)
     Object.assign(login, normalizeItemFieldsForStorage(source))
-    login.passkeys = source.passkeys.map((passkey) => ({ ...passkey }))
+    login.uris = remoteLoginUris(source)
+    login.uri = uriAlias(login.uris)
+    login.passkeys = validateRemotePasskeys(source.passkeys)
     login.customFields = cloneCustomFields(source.customFields)
+    login.passwordHistory = clonePasswordHistory(source.passwordHistory)
     login.folderId = folderId
     login.favorite = source.favorite
+    login.deletedAt = source.deletedAt
+    login.archivedAt = source.archivedAt
+    login.reprompt = source.reprompt
     if (source.createdAt) login.createdAt = source.createdAt
     login.updatedAt = source.updatedAt ?? this.nowIso()
   }
@@ -2164,6 +2953,7 @@ export class VaultService {
       password: login.password,
       totp: login.totp,
       uri: login.uri,
+      uris: cloneLoginUris(login.uris),
       cardholderName: login.cardholderName,
       brand: login.brand,
       number: login.number,
@@ -2194,8 +2984,44 @@ export class VaultService {
       notes: login.notes,
       folderId,
       favorite: login.favorite,
+      archivedAt: login.archivedAt,
+      reprompt: login.reprompt,
       passkeys: login.passkeys.map((passkey) => ({ ...passkey })),
-      customFields: cloneCustomFields(login.customFields)
+      customFields: cloneCustomFields(login.customFields),
+      passwordHistory: clonePasswordHistory(login.passwordHistory)
+    }
+  }
+
+  private async updateRemoteLogin(
+    client: BitwardenSyncClient,
+    remoteId: string,
+    desired: SyncLogin,
+    current: SyncLogin,
+    folderId: string | null,
+    contentChanged: boolean,
+    signal: AbortSignal
+  ): Promise<void> {
+    const desiredDeleted = desired.deletedAt !== null
+    const currentDeleted = current.deletedAt !== null
+    const desiredArchived = desired.archivedAt !== null
+    const currentArchived = current.archivedAt !== null
+
+    if (currentDeleted && (!desiredDeleted || contentChanged)) {
+      await client.restoreLogin(remoteId, signal)
+    }
+    // Vaultwarden treats archivedDate: null in an ordinary cipher update as "leave unchanged",
+    // so an explicit unarchive route is required even when a content edit follows.
+    if (currentArchived && !desiredArchived) {
+      await client.unarchiveLogin(remoteId, signal)
+    }
+    if (contentChanged) {
+      await client.editLogin(remoteId, this.remoteDraft(desired, folderId), signal)
+    }
+    if (!contentChanged && desiredArchived && !currentArchived) {
+      await client.archiveLogin(remoteId, signal)
+    }
+    if (desiredDeleted && (!currentDeleted || contentChanged)) {
+      await client.softDeleteLogin(remoteId, signal)
     }
   }
 
@@ -2208,6 +3034,7 @@ export class VaultService {
       const current = this.requireData()
       const generation = this.generation
       const currentLogin = this.findLogin(current, request.id)
+      this.assertActiveLogin(currentLogin)
       const result = await operation(currentLogin)
       const next = cloneData(current)
       const usedLogin = this.findLogin(next, request.id)
@@ -2262,6 +3089,10 @@ export class VaultService {
     return login
   }
 
+  private assertActiveLogin(login: StoredLogin): void {
+    if (login.deletedAt !== null) throw new VaultError('INVALID_INPUT')
+  }
+
   private normalizeFolderId(data: VaultData, folderId: unknown): string | null {
     if (folderId === undefined || folderId === null) return null
     assertUuid(folderId)
@@ -2296,15 +3127,19 @@ export class VaultService {
   }
 
   private async exclusive<T>(operation: () => Promise<T>): Promise<T> {
+    const inherited = this.exclusiveContext.getStore()
+    if (inherited?.active) return operation()
     const previous = this.operationQueue
     let release!: () => void
     this.operationQueue = new Promise<void>((resolve) => {
       release = resolve
     })
     await previous
+    const context = { active: true }
     try {
-      return await operation()
+      return await this.exclusiveContext.run(context, operation)
     } finally {
+      context.active = false
       release()
     }
   }

@@ -42,6 +42,7 @@ interface ItemRowProps {
   onFavorite: (item: LoginSummary) => void
   onContextMenu: (id: string, position: { x: number; y: number }) => void
   showWebsiteIcons: boolean
+  readOnly?: boolean
 }
 
 export interface ItemSelectionModifiers {
@@ -64,11 +65,13 @@ export const ItemRow = memo(function ItemRow({
   onPrefetch,
   onFavorite,
   onContextMenu,
-  showWebsiteIcons
+  showWebsiteIcons,
+  readOnly = false
 }: ItemRowProps): React.JSX.Element {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, isDragging } =
     useDraggable({
       id: item.id,
+      disabled: readOnly,
       attributes: {
         role: 'listitem',
         roleDescription: '可拖曳項目'
@@ -111,6 +114,7 @@ export const ItemRow = memo(function ItemRow({
       {...listeners}
       onContextMenu={(event) => {
         event.preventDefault()
+        if (readOnly) return
         onSelect(item.id, { toggle: false, range: false })
         onContextMenu(item.id, { x: Math.round(event.clientX), y: Math.round(event.clientY) })
       }}
@@ -134,18 +138,18 @@ export const ItemRow = memo(function ItemRow({
             range: event.shiftKey
           })
         }}
-        onPointerEnter={schedulePrefetch}
+        onPointerEnter={readOnly ? undefined : schedulePrefetch}
         onPointerLeave={cancelPrefetch}
         onFocus={() => {
           cancelPrefetch()
-          onPrefetch?.(item.id)
+          if (!readOnly) onPrefetch?.(item.id)
         }}
         aria-pressed={selected}
       >
         <span className={cn('item-icon', item.type)} aria-hidden="true">
           {item.type === 'card' ? (
             <PaymentCardBrandMark brand={normalizeBitwardenCardBrand(item.cardBrand)} compact />
-          ) : item.type === 'login' ? (
+          ) : item.type === 'login' && !readOnly ? (
             <WebsiteIcon id={item.id} uri={item.uri} enabled={showWebsiteIcons} />
           ) : (
             <ItemIcon />
@@ -153,21 +157,27 @@ export const ItemRow = memo(function ItemRow({
         </span>
         <span className="item-copy">
           <strong>{item.name}</strong>
-          <small>{item.subtitle || item.username || item.uri || '尚未設定摘要'}</small>
+          <small>
+            {readOnly
+              ? '已刪除的項目'
+              : item.subtitle || item.username || item.uri || '尚未設定摘要'}
+          </small>
         </span>
       </Button>
-      <RowIconButton
-        variant="ghost"
-        size="icon-sm"
-        className={cn('icon-button subtle favorite-button', item.favorite && 'active')}
-        type="button"
-        label={item.favorite ? `將 ${item.name} 從常用項目移除` : `將 ${item.name} 加入常用項目`}
-        aria-pressed={item.favorite}
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={() => onFavorite(item)}
-      >
-        <Star fill={item.favorite ? 'currentColor' : 'none'} aria-hidden="true" />
-      </RowIconButton>
+      {!readOnly && (
+        <RowIconButton
+          variant="ghost"
+          size="icon-sm"
+          className={cn('icon-button subtle favorite-button', item.favorite && 'active')}
+          type="button"
+          label={item.favorite ? `將 ${item.name} 從常用項目移除` : `將 ${item.name} 加入常用項目`}
+          aria-pressed={item.favorite}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={() => onFavorite(item)}
+        >
+          <Star fill={item.favorite ? 'currentColor' : 'none'} aria-hidden="true" />
+        </RowIconButton>
+      )}
     </li>
   )
 })

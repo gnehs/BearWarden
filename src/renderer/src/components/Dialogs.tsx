@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react'
-import { AlertTriangle, FolderInput, X } from 'lucide-react'
-import type { FolderView } from '../../../shared/vault-contract'
+import { useEffect, useRef, useState } from 'react'
+import { AlertTriangle, FolderInput, History, KeyRound, X } from 'lucide-react'
+import type { FolderView, VaultPasswordHistoryEntry } from '../../../shared/vault-contract'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -304,6 +304,7 @@ export function MoveDialog({
 interface DeleteLoginDialogProps {
   itemName: string
   busy: boolean
+  permanent?: boolean
   onClose: () => void
   onDelete: () => Promise<void>
 }
@@ -311,6 +312,7 @@ interface DeleteLoginDialogProps {
 export function DeleteLoginDialog({
   itemName,
   busy,
+  permanent = false,
   onClose,
   onDelete
 }: DeleteLoginDialogProps): React.JSX.Element {
@@ -326,19 +328,223 @@ export function DeleteLoginDialog({
           <AlertDialogMedia>
             <AlertTriangle aria-hidden="true" />
           </AlertDialogMedia>
-          <AlertDialogTitle>永久刪除「{itemName}」？</AlertDialogTitle>
+          <AlertDialogTitle>
+            {permanent ? `永久刪除「${itemName}」？` : `將「${itemName}」移至垃圾桶？`}
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            這個動作無法復原。BearWarden 不會保留可復原的明文副本。
+            {permanent
+              ? '這個動作無法復原。BearWarden 不會保留可復原的明文副本。'
+              : '項目會保留在加密的垃圾桶中，之後仍可還原。'}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
           <AlertDialogAction variant="destructive" type="button" disabled={busy} onClick={onDelete}>
             {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
-            永久刪除
+            {permanent ? '永久刪除' : '移至垃圾桶'}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  )
+}
+
+interface RepromptDialogProps {
+  itemName: string
+  busy: boolean
+  onCancel: () => void
+  onAuthorize: (masterPassword: string) => Promise<void>
+}
+
+export function RepromptDialog({
+  itemName,
+  busy,
+  onCancel,
+  onAuthorize
+}: RepromptDialogProps): React.JSX.Element {
+  const passwordRef = useRef<HTMLInputElement>(null)
+  const submittingRef = useRef(false)
+  const [error, setError] = useState('')
+
+  return (
+    <Modal
+      title="需要主密碼"
+      description={`「${itemName}」已啟用主密碼重新提示。`}
+      busy={busy}
+      onClose={onCancel}
+    >
+      <form
+        onSubmit={async (event) => {
+          event.preventDefault()
+          if (busy || submittingRef.current) return
+          const input = passwordRef.current
+          const masterPassword = input?.value ?? ''
+          if (input) input.value = ''
+          if (!masterPassword) {
+            setError('請輸入主密碼。')
+            return
+          }
+          submittingRef.current = true
+          setError('')
+          try {
+            await onAuthorize(masterPassword)
+          } catch (authorizeError) {
+            setError(
+              authorizeError instanceof Error &&
+                authorizeError.message.includes('INVALID_MASTER_PASSWORD')
+                ? '主密碼不正確。'
+                : '無法驗證主密碼，請再試一次。'
+            )
+            queueMicrotask(() => passwordRef.current?.focus())
+          } finally {
+            submittingRef.current = false
+          }
+        }}
+      >
+        <div className="modal-body">
+          <span className="move-dialog-icon" aria-hidden="true">
+            <KeyRound />
+          </span>
+          <Field className="grow" data-invalid={Boolean(error)}>
+            <FieldLabel htmlFor="reprompt-master-password">主密碼</FieldLabel>
+            <Input
+              ref={passwordRef}
+              id="reprompt-master-password"
+              type="password"
+              autoComplete="current-password"
+              autoFocus
+              disabled={busy}
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? 'reprompt-error' : undefined}
+            />
+          </Field>
+          {error && (
+            <Alert id="reprompt-error" variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+        </div>
+        <DialogFooter className="modal-actions mx-0 mb-0">
+          <Button type="button" variant="secondary" disabled={busy} onClick={onCancel}>
+            取消
+          </Button>
+          <Button type="submit" disabled={busy}>
+            {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
+            驗證
+          </Button>
+        </DialogFooter>
+      </form>
+    </Modal>
+  )
+}
+
+interface PasswordHistoryDialogProps {
+  itemName: string
+  count: number
+  onClose: () => void
+  onReveal: () => Promise<VaultPasswordHistoryEntry[]>
+}
+
+export function PasswordHistoryDialog({
+  itemName,
+  count,
+  onClose,
+  onReveal
+}: PasswordHistoryDialogProps): React.JSX.Element {
+  const [entries, setEntries] = useState<VaultPasswordHistoryEntry[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const entriesRef = useRef<VaultPasswordHistoryEntry[]>([])
+  const mountedRef = useRef(true)
+
+  const clearEntries = (): void => {
+    entriesRef.current = []
+    setEntries(null)
+  }
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false
+      entriesRef.current = []
+    },
+    []
+  )
+
+  return (
+    <Modal
+      title="密碼歷史"
+      description={`「${itemName}」有 ${count} 筆歷史紀錄。`}
+      busy={busy}
+      onClose={() => {
+        clearEntries()
+        onClose()
+      }}
+    >
+      <div className="modal-body">
+        {entries === null ? (
+          <Alert>
+            <AlertTriangle aria-hidden="true" />
+            <AlertDescription>
+              繼續後，舊密碼與已變更的隱藏欄位會以明文顯示在螢幕上。請先確認周遭無人能看見。
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <div aria-live="polite">
+            <div className="move-dialog-icon" aria-hidden="true">
+              <History />
+            </div>
+            <ol>
+              {entries.map((entry, index) => (
+                <li key={`${entry.lastUsedDate}:${index}`}>
+                  <code>{entry.password}</code>
+                  <small>{new Date(entry.lastUsedDate).toLocaleString('zh-TW')}</small>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+      </div>
+      <DialogFooter className="modal-actions mx-0 mb-0">
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={busy}
+          onClick={() => {
+            clearEntries()
+            onClose()
+          }}
+        >
+          關閉
+        </Button>
+        {entries === null && (
+          <Button
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true)
+              setError('')
+              try {
+                const revealed = await onReveal()
+                if (!mountedRef.current) return
+                entriesRef.current = revealed
+                setEntries(revealed)
+              } catch {
+                if (mountedRef.current) setError('無法讀取密碼歷史，請再試一次。')
+              } finally {
+                if (mountedRef.current) setBusy(false)
+              }
+            }}
+          >
+            {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
+            顯示明文
+          </Button>
+        )}
+      </DialogFooter>
+    </Modal>
   )
 }

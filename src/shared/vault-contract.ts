@@ -10,10 +10,19 @@ export const IPC_CHANNELS = {
   folderDelete: 'folder:delete',
   folderReorder: 'folder:reorder',
   loginList: 'login:list',
+  loginAuthorize: 'login:authorize',
+  loginAuthorizeMany: 'login:authorize-many',
   loginGet: 'login:get',
+  loginGetPasswordHistory: 'login:get-password-history',
   loginCreate: 'login:create',
+  loginClone: 'login:clone',
+  loginArchive: 'login:archive',
+  loginUnarchive: 'login:unarchive',
   loginUpdate: 'login:update',
   loginDelete: 'login:delete',
+  loginRestore: 'login:restore',
+  loginDeletePermanently: 'login:delete-permanently',
+  loginEmptyTrash: 'login:empty-trash',
   loginSetFavorite: 'login:set-favorite',
   loginMove: 'login:move',
   loginMoveMany: 'login:move-many',
@@ -30,6 +39,10 @@ export const IPC_CHANNELS = {
   itemCopyField: 'item:copy-field',
   itemRevealCustomField: 'item:reveal-custom-field',
   itemCopyCustomField: 'item:copy-custom-field',
+  generatorGenerate: 'generator:generate',
+  generatorHistoryList: 'generator:history-list',
+  generatorHistoryClear: 'generator:history-clear',
+  generatorHistoryCopy: 'generator:history-copy',
   settingsGet: 'settings:get',
   settingsUpdate: 'settings:update',
   settingsEnableTouchId: 'settings:enable-touch-id',
@@ -58,6 +71,7 @@ export type VaultErrorCode =
   | 'NOT_INITIALIZED'
   | 'LOCKED'
   | 'INVALID_MASTER_PASSWORD'
+  | 'REPROMPT_REQUIRED'
   | 'CORRUPT_VAULT'
   | 'NOT_FOUND'
   | 'DUPLICATE_NAME'
@@ -104,6 +118,10 @@ export interface FolderUpdateRequest {
 
 export interface FolderDeleteRequest {
   id: string
+  /** Item-scoped capabilities for protected items moved out of this folder. */
+  authorizationTokens?: Record<string, string>
+  /** One capability bound to the exact protected-item set. */
+  authorizationToken?: string
 }
 
 export interface FolderReorderRequest {
@@ -111,6 +129,9 @@ export interface FolderReorderRequest {
 }
 
 export type VaultItemType = 'login' | 'card' | 'identity' | 'secureNote' | 'sshKey'
+
+/** Matches Bitwarden's CipherRepromptType wire values. */
+export type VaultReprompt = 0 | 1
 
 export type VaultCustomFieldType = 'text' | 'hidden' | 'boolean' | 'linked'
 
@@ -193,6 +214,20 @@ export interface VaultItemFields {
   fingerprint: string
 }
 
+/** Bitwarden URI match detection values. Null inherits the account default. */
+export type VaultUriMatch = 0 | 1 | 2 | 3 | 4 | 5
+
+export interface VaultLoginUri {
+  uri: string
+  match: VaultUriMatch | null
+}
+
+/** Decrypted password-history entry. Only returned by the narrow, authorized history IPC. */
+export interface VaultPasswordHistoryEntry {
+  password: string
+  lastUsedDate: string
+}
+
 export type VaultItemFieldInput = Partial<VaultItemFields>
 
 export interface LoginCreateRequest extends VaultItemFieldInput {
@@ -202,10 +237,13 @@ export interface LoginCreateRequest extends VaultItemFieldInput {
   notes?: string | null
   folderId?: string | null
   favorite?: boolean
+  reprompt?: VaultReprompt
+  /** Ordered login URI rows. `uri` remains the primary-row compatibility alias. */
+  uris?: VaultLoginUri[]
   customFields?: VaultCustomFieldUpdate[]
 }
 
-export interface LoginUpdateRequest extends VaultItemFieldInput {
+export interface LoginUpdateRequest extends VaultItemFieldInput, LoginAuthorizationRequest {
   id: string
   /** Optional optimistic-concurrency token from the editor snapshot. */
   expectedUpdatedAt?: string
@@ -213,11 +251,36 @@ export interface LoginUpdateRequest extends VaultItemFieldInput {
   notes?: string | null
   folderId?: string | null
   favorite?: boolean
+  reprompt?: VaultReprompt
+  /** Ordered login URI rows. `uri` remains the primary-row compatibility alias. */
+  uris?: VaultLoginUri[]
   customFields?: VaultCustomFieldUpdate[]
 }
 
-export interface LoginIdRequest {
+export interface LoginAuthorizationRequest {
+  /** Short-lived, item-scoped capability issued by the main process. */
+  authorizationToken?: string
+}
+
+export interface LoginIdRequest extends LoginAuthorizationRequest {
   id: string
+}
+
+export interface LoginAuthorizeRequest {
+  id: string
+  masterPassword: string
+}
+
+export const MAX_LOGIN_AUTHORIZE_MANY_IDS = 100_000
+
+export interface LoginAuthorizeManyRequest {
+  ids: string[]
+  masterPassword: string
+}
+
+export interface LoginAuthorization {
+  token: string
+  expiresAt: number
 }
 
 export interface LoginFavoriteRequest extends LoginIdRequest {
@@ -233,6 +296,15 @@ export const MAX_LOGIN_MOVE_MANY_IDS = 1_000
 export interface LoginMoveManyRequest {
   ids: string[]
   folderId: string | null
+  /** Item-scoped capabilities keyed by item ID. */
+  authorizationTokens?: Record<string, string>
+  authorizationToken?: string
+}
+
+export interface LoginEmptyTrashRequest {
+  /** Item-scoped capabilities keyed by protected trash item ID. */
+  authorizationTokens?: Record<string, string>
+  authorizationToken?: string
 }
 
 export type LoginSort = 'recent' | 'name'
@@ -241,6 +313,10 @@ export interface LoginListRequest {
   sort?: LoginSort
   /** Omit to list every folder; use null for unfiled logins. */
   folderId?: string | null
+  /** False/omitted lists active items; true lists only items in the trash. */
+  deleted?: boolean
+  /** True lists non-trash archived items; otherwise they are excluded. */
+  archived?: boolean
 }
 
 export interface LoginSummary {
@@ -250,16 +326,23 @@ export interface LoginSummary {
   subtitle: string
   username: string
   uri: string | null
+  /** Ordered URI metadata; empty for protected or trashed summaries. */
+  uris: VaultLoginUri[]
   cardBrand?: string
   /** Safe summary metadata; the TOTP secret remains in the encrypted main process. */
   hasTotp?: boolean
   /** Safe summary count; passkey private material is never included. */
   passkeyCount?: number
+  /** Safe summary count; history values are only available through an authorized narrow IPC. */
+  passwordHistoryCount: number
   folderId: string | null
   favorite: boolean
   lastUsedAt: string | null
   createdAt: string
   updatedAt: string
+  deletedAt: string | null
+  archivedAt: string | null
+  reprompt: VaultReprompt
 }
 
 export type SyncState = 'unconfigured' | 'locked' | 'ready' | 'syncing' | 'error'
@@ -350,6 +433,11 @@ export interface LoginContextMenuRequest extends LoginIdRequest {
   y?: number
 }
 
+export interface LoginOpenUriRequest extends LoginIdRequest {
+  /** Defaults to the primary URI for older callers. */
+  uriIndex?: number
+}
+
 export type VaultSecretField =
   'password' | 'number' | 'code' | 'ssn' | 'passportNumber' | 'licenseNumber' | 'privateKey'
 export type VaultEditorSecretField = VaultSecretField | 'totp'
@@ -365,6 +453,8 @@ export type VaultCopyField =
 
 export interface ItemFieldRequest extends LoginIdRequest {
   field: VaultCopyField
+  /** Required only to address a non-primary URI; defaults to zero. */
+  uriIndex?: number
 }
 
 export interface EditorSecretsRequest extends LoginIdRequest {
@@ -380,6 +470,67 @@ export interface CustomFieldRequest extends LoginIdRequest {
   expectedUpdatedAt: string
   /** Expected renderer snapshot metadata; main rejects stale index/name/type/link mappings. */
   source: VaultCustomFieldSource
+}
+
+export type GeneratorCredentialCategory = 'password' | 'username' | 'email'
+export type GeneratorCredentialAlgorithm =
+  | 'password'
+  | 'passphrase'
+  | 'username'
+  | 'subaddress'
+  | 'catchall'
+
+export interface GeneratorPasswordOptions {
+  length?: number
+  uppercase?: boolean
+  lowercase?: boolean
+  numbers?: boolean
+  special?: boolean
+  minUppercase?: number
+  minLowercase?: number
+  minNumber?: number
+  minSpecial?: number
+  avoidAmbiguous?: boolean
+}
+
+export interface GeneratorPassphraseOptions {
+  wordCount?: number
+  separator?: string
+  capitalize?: boolean
+  includeNumber?: boolean
+}
+
+export interface GeneratorRandomWordOptions {
+  capitalize?: boolean
+  includeNumber?: boolean
+}
+
+export type CredentialGeneratorRequest =
+  | { algorithm: 'password'; options: GeneratorPasswordOptions }
+  | { algorithm: 'passphrase'; options: GeneratorPassphraseOptions }
+  | { algorithm: 'username'; options: GeneratorRandomWordOptions }
+  | { algorithm: 'subaddress'; email: string }
+  | { algorithm: 'catchall'; domain: string }
+
+/** Official encrypted local generator-history JSON shape. */
+export interface GeneratorHistoryEntry {
+  credential: string
+  category: GeneratorCredentialCategory
+  generationDate: number
+  algorithm?: GeneratorCredentialAlgorithm
+}
+
+/** Stale-safe reference to one history row; it never accepts credential plaintext. */
+export interface GeneratorHistoryLocator {
+  index: number
+  generationDate: number
+  category: GeneratorCredentialCategory
+  algorithm: GeneratorCredentialAlgorithm
+}
+
+export interface CredentialGeneratorResult extends GeneratorHistoryEntry {
+  algorithm: GeneratorCredentialAlgorithm
+  historyLocator: GeneratorHistoryLocator
 }
 
 export type AppTheme = 'system' | 'light' | 'dark'
@@ -424,17 +575,28 @@ export interface BearWardenAPI {
   }
   logins: {
     list: (request?: LoginListRequest) => Promise<LoginSummary[]>
+    authorize: (request: LoginAuthorizeRequest) => Promise<LoginAuthorization>
+    authorizeMany: (request: LoginAuthorizeManyRequest) => Promise<LoginAuthorization>
     get: (request: LoginIdRequest) => Promise<LoginView>
+    getPasswordHistory: (request: LoginIdRequest) => Promise<VaultPasswordHistoryEntry[]>
     create: (request: LoginCreateRequest) => Promise<LoginView>
+    /** Creates an active copy without any passkeys or attachments. */
+    clone: (request: LoginIdRequest) => Promise<LoginView>
+    archive: (request: LoginIdRequest) => Promise<LoginView>
+    unarchive: (request: LoginIdRequest) => Promise<LoginView>
     update: (request: LoginUpdateRequest) => Promise<LoginView>
+    /** Move an active item to the trash. */
     delete: (request: LoginIdRequest) => Promise<void>
+    restore: (request: LoginIdRequest) => Promise<LoginView>
+    deletePermanently: (request: LoginIdRequest) => Promise<void>
+    emptyTrash: (request?: LoginEmptyTrashRequest) => Promise<number>
     setFavorite: (request: LoginFavoriteRequest) => Promise<LoginSummary>
     move: (request: LoginMoveRequest) => Promise<LoginSummary>
     moveMany: (request: LoginMoveManyRequest) => Promise<LoginSummary[]>
     revealPassword: (request: LoginIdRequest) => Promise<string>
     copyUsername: (request: LoginIdRequest) => Promise<void>
     copyPassword: (request: LoginIdRequest) => Promise<void>
-    openUri: (request: LoginIdRequest) => Promise<void>
+    openUri: (request: LoginOpenUriRequest) => Promise<void>
     getTotp: (request: LoginIdRequest) => Promise<TotpCodeView>
     copyTotp: (request: LoginIdRequest) => Promise<void>
     showContextMenu: (request: LoginContextMenuRequest) => Promise<void>
@@ -444,6 +606,12 @@ export interface BearWardenAPI {
     copyField: (request: ItemFieldRequest) => Promise<void>
     revealCustomField: (request: CustomFieldRequest) => Promise<string>
     copyCustomField: (request: CustomFieldRequest) => Promise<void>
+  }
+  generator: {
+    generate: (request: CredentialGeneratorRequest) => Promise<CredentialGeneratorResult>
+    history: () => Promise<GeneratorHistoryEntry[]>
+    clearHistory: () => Promise<void>
+    copyHistory: (request: GeneratorHistoryLocator) => Promise<void>
   }
   sync: {
     status: () => Promise<SyncStatus>
