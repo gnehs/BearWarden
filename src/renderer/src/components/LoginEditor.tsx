@@ -203,7 +203,7 @@ function LoginEditor({
     }
 
     return (
-      <Field key={field} className="field">
+      <Field key={field}>
         <FieldLabel htmlFor={`editor-${field}`}>{label}</FieldLabel>
         <InputGroup className={options?.multiline ? 'min-h-32 items-stretch' : undefined}>
           {options?.multiline ? (
@@ -309,7 +309,7 @@ function LoginEditor({
           <FieldLegend id="item-section-title">{typeLabel(draft.type)}資料</FieldLegend>
           <FieldGroup>
             {!login && (
-              <Field className="field">
+              <Field>
                 <FieldLabel htmlFor="editor-type">類型</FieldLabel>
                 <Select
                   items={itemTypeSelectItems}
@@ -332,7 +332,7 @@ function LoginEditor({
                 </Select>
               </Field>
             )}
-            <Field className="field" data-invalid={Boolean(error)}>
+            <Field data-invalid={Boolean(error)}>
               <FieldLabel htmlFor="editor-name">名稱</FieldLabel>
               <Input
                 id="editor-name"
@@ -348,7 +348,7 @@ function LoginEditor({
 
             {draft.type === 'login' && (
               <>
-                <Field className="field">
+                <Field>
                   <FieldLabel htmlFor="editor-username">使用者名稱</FieldLabel>
                   <Input
                     id="editor-username"
@@ -363,7 +363,7 @@ function LoginEditor({
                 {secretInput('totp', '驗證碼密鑰', {
                   placeholder: 'otpauth://… 或 Base32 密鑰'
                 })}
-                <Field className="field">
+                <Field>
                   <FieldLabel htmlFor="editor-uri">網站</FieldLabel>
                   <Input
                     id="editor-uri"
@@ -380,7 +380,7 @@ function LoginEditor({
 
             {draft.type === 'card' && (
               <>
-                <Field className="field">
+                <Field>
                   <FieldLabel htmlFor="editor-cardholder-name">持卡人</FieldLabel>
                   <Input
                     id="editor-cardholder-name"
@@ -448,7 +448,7 @@ function LoginEditor({
                   </FieldDescription>
                 )}
                 <FieldGroup className="field-grid">
-                  <Field className="field">
+                  <Field>
                     <FieldLabel htmlFor="editor-exp-month">到期月</FieldLabel>
                     <Input
                       id="editor-exp-month"
@@ -458,7 +458,7 @@ function LoginEditor({
                       disabled={busy}
                     />
                   </Field>
-                  <Field className="field">
+                  <Field>
                     <FieldLabel htmlFor="editor-exp-year">到期年</FieldLabel>
                     <Input
                       id="editor-exp-year"
@@ -597,7 +597,7 @@ function LoginEditor({
             )}
 
             {draft.type === 'secureNote' && (
-              <Field className="field note-content-field">
+              <Field>
                 <FieldLabel htmlFor="editor-notes">內容</FieldLabel>
                 <Textarea
                   id="editor-notes"
@@ -613,7 +613,7 @@ function LoginEditor({
             {draft.type === 'sshKey' && (
               <>
                 {secretInput('privateKey', '私鑰', { multiline: true })}
-                <Field className="field">
+                <Field>
                   <FieldLabel htmlFor="editor-public-key">公鑰</FieldLabel>
                   <Textarea
                     id="editor-public-key"
@@ -624,7 +624,7 @@ function LoginEditor({
                     disabled={busy}
                   />
                 </Field>
-                <Field className="field">
+                <Field>
                   <FieldLabel htmlFor="editor-fingerprint">金鑰指紋</FieldLabel>
                   <Input
                     id="editor-fingerprint"
@@ -642,7 +642,7 @@ function LoginEditor({
         <FieldSet className="form-section" aria-labelledby="organization-section-title">
           <FieldLegend id="organization-section-title">整理</FieldLegend>
           <FieldGroup>
-            <Field className="field">
+            <Field>
               <FieldLabel htmlFor="editor-folder">資料夾</FieldLabel>
               <Select
                 items={folderSelectItems}
@@ -689,7 +689,7 @@ function LoginEditor({
           <FieldSet className="form-section" aria-labelledby="notes-section-title">
             <FieldLegend id="notes-section-title">備註</FieldLegend>
             <FieldGroup>
-              <Field className="field visually-labeled">
+              <Field>
                 <FieldLabel className="sr-only" htmlFor="editor-notes">
                   備註
                 </FieldLabel>
@@ -740,7 +740,7 @@ function TextField({
   type = 'text'
 }: TextFieldProps): React.JSX.Element {
   return (
-    <Field className="field">
+    <Field>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Input
         id={id}
