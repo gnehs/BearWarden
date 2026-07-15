@@ -20,7 +20,6 @@ import {
   ArrowLeft,
   ArrowUpRight,
   BadgeCheck,
-  Check,
   ChevronDown,
   Clipboard,
   Clock3,
@@ -48,6 +47,7 @@ import {
   X
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import type {
   AppSettings,
   AppSettingsUpdate,
@@ -254,6 +254,15 @@ function describeError(error: unknown): string {
   return code ? messages[code] : '操作未完成，你的資料沒有被更動。'
 }
 
+const vaultErrorToastId = 'vault-error'
+
+function announceError(message: string): void {
+  toast.error(message, {
+    id: vaultErrorToastId,
+    duration: 7_000
+  })
+}
+
 function compareNullableDate(left: string | null, right: string | null): number {
   if (left === right) return 0
   if (left === null) return 1
@@ -441,8 +450,6 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [revealedSecrets, setRevealedSecrets] = useState<RevealedSecretsState>(emptyRevealedSecrets)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const [statusMessage, setStatusMessage] = useState('')
   const [folderDialog, setFolderDialog] = useState<FolderView | 'new' | null>(null)
   const [moveDialogOpen, setMoveDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -466,7 +473,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   const loadVault = useCallback(async (): Promise<void> => {
     try {
-      setError('')
+      toast.dismiss(vaultErrorToastId)
       const [folderList, loginList] = await Promise.all([
         window.bearwarden.folders.list(),
         window.bearwarden.logins.list({ sort: 'name' })
@@ -485,7 +492,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         current && !loginList.some((item) => item.id === current.id) ? null : current
       )
     } catch (loadError) {
-      setError(describeError(loadError))
+      announceError(describeError(loadError))
     } finally {
       setLoading(false)
     }
@@ -589,7 +596,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           if (active) setSelectedLogin(login)
         })
         .catch((detailError) => {
-          if (active) setError(describeError(detailError))
+          if (active) announceError(describeError(detailError))
         })
         .finally(() => {
           if (active) setDetailLoading(false)
@@ -618,7 +625,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           if (active) setTotpCode(nextCode)
         },
         (totpError) => {
-          if (active) setError(describeError(totpError))
+          if (active) announceError(describeError(totpError))
         }
       )
     }
@@ -635,12 +642,6 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     const timeout = window.setTimeout(() => setRevealedSecrets(emptyRevealedSecrets), 30_000)
     return () => window.clearTimeout(timeout)
   }, [revealedSecrets])
-
-  useEffect(() => {
-    if (!statusMessage) return
-    const timeout = window.setTimeout(() => setStatusMessage(''), 3_000)
-    return () => window.clearTimeout(timeout)
-  }, [statusMessage])
 
   const scopedItems = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('zh-Hant')
@@ -739,8 +740,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   }, [folders, scope, typeFilter])
 
   const announce = useCallback((message: string): void => {
-    setStatusMessage('')
-    window.setTimeout(() => setStatusMessage(message), 10)
+    toast.success(message)
   }, [])
 
   const lockVault = useCallback(async (): Promise<void> => {
@@ -750,9 +750,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     try {
       const status = await window.bearwarden.vault.lock()
       if (status.state === 'locked') onLocked()
-      else setError('保管庫尚未鎖定，請再試一次。')
+      else announceError('保管庫尚未鎖定，請再試一次。')
     } catch (lockError) {
-      setError(describeError(lockError))
+      announceError(describeError(lockError))
     }
   }, [onLocked])
 
@@ -834,7 +834,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       if (update.defaultSort) setSortMode(update.defaultSort === 'recent' ? 'recent' : 'title')
       announce('設定已儲存。')
     } catch (settingsError) {
-      setError(describeError(settingsError))
+      announceError(describeError(settingsError))
     } finally {
       setSettingsBusy(false)
     }
@@ -842,7 +842,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   async function enableTouchId(): Promise<void> {
     if (!touchIdPassword) {
-      setError('請先輸入主密碼以啟用 Touch ID。')
+      announceError('請先輸入主密碼以啟用 Touch ID。')
       return
     }
     setSettingsBusy(true)
@@ -854,7 +854,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       setTouchIdPassword('')
       announce('Touch ID 已啟用。')
     } catch (touchIdError) {
-      setError(describeError(touchIdError))
+      announceError(describeError(touchIdError))
     } finally {
       setSettingsBusy(false)
     }
@@ -867,7 +867,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       setSettings(next)
       announce('Touch ID 已停用。')
     } catch (touchIdError) {
-      setError(describeError(touchIdError))
+      announceError(describeError(touchIdError))
     } finally {
       setSettingsBusy(false)
     }
@@ -885,7 +885,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       )
       announce(updated.favorite ? '已加入常用項目。' : '已從常用項目移除。')
     } catch (favoriteError) {
-      setError(describeError(favoriteError))
+      announceError(describeError(favoriteError))
     }
   }
 
@@ -906,7 +906,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       setMoveDialogOpen(false)
     } catch (moveError) {
       setItems((current) => current.map((item) => (item.id === id ? previous : item)))
-      setError(describeError(moveError))
+      announceError(describeError(moveError))
     } finally {
       setBusy(false)
     }
@@ -928,7 +928,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       }
       setFolderDialog(null)
     } catch (folderError) {
-      setError(describeError(folderError))
+      announceError(describeError(folderError))
     } finally {
       setBusy(false)
     }
@@ -950,7 +950,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       announce(`已刪除資料夾「${folderDialog.name}」，其中項目已移至未分類。`)
       setFolderDialog(null)
     } catch (folderError) {
-      setError(describeError(folderError))
+      announceError(describeError(folderError))
     } finally {
       setBusy(false)
     }
@@ -1022,7 +1022,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       }
       setEditorMode(null)
     } catch (saveError) {
-      setError(describeError(saveError))
+      announceError(describeError(saveError))
     } finally {
       setBusy(false)
     }
@@ -1039,7 +1039,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       setDeleteDialogOpen(false)
       announce('項目已永久刪除。')
     } catch (deleteError) {
-      setError(describeError(deleteError))
+      announceError(describeError(deleteError))
     } finally {
       setBusy(false)
     }
@@ -1071,7 +1071,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       }))
       announce(`${field === 'privateKey' ? '私鑰' : '敏感資料'}已顯示，將在 30 秒後自動隱藏。`)
     } catch (revealError) {
-      setError(describeError(revealError))
+      announceError(describeError(revealError))
     }
   }
 
@@ -1082,7 +1082,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       announce('欄位已複製。')
       await refreshItems()
     } catch (copyError) {
-      setError(describeError(copyError))
+      announceError(describeError(copyError))
     }
   }
 
@@ -1093,7 +1093,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       announce('驗證碼已複製，剪貼簿會依安全設定自動清除。')
       await refreshItems()
     } catch (copyError) {
-      setError(describeError(copyError))
+      announceError(describeError(copyError))
     }
   }
 
@@ -1104,7 +1104,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       announce('已在預設瀏覽器開啟網站。')
       await refreshItems()
     } catch (openError) {
-      setError(describeError(openError))
+      announceError(describeError(openError))
     }
   }
 
@@ -1139,7 +1139,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       announce('資料夾順序已更新。')
     } catch (reorderError) {
       setFolders(previous)
-      setError(describeError(reorderError))
+      announceError(describeError(reorderError))
     }
   }
 
@@ -1850,7 +1850,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                               onContextMenu={(position) =>
                                 void window.bearwarden.logins
                                   .showContextMenu({ id: item.id, ...position })
-                                  .catch((menuError) => setError(describeError(menuError)))
+                                  .catch((menuError) => announceError(describeError(menuError)))
                               }
                               showWebsiteIcons={settings?.showWebsiteIcons ?? false}
                             />
@@ -2170,30 +2170,6 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             )}
           </section>
         </div>
-
-        {error && (
-          <div className="error-banner" role="alert">
-            <span>{error}</span>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              type="button"
-              aria-label="關閉錯誤訊息"
-              onClick={() => setError('')}
-            >
-              <X />
-            </Button>
-          </div>
-        )}
-        <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-          {statusMessage}
-        </div>
-        {statusMessage && (
-          <div className="toast" aria-hidden="true">
-            <Check size={16} />
-            {statusMessage}
-          </div>
-        )}
 
         {folderDialog && (
           <FolderDialog
