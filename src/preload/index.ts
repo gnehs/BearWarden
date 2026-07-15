@@ -32,6 +32,10 @@ const api: BearWardenAPI = {
       return () => ipcRenderer.removeListener(IPC_EVENTS.vaultChanged, wrappedListener)
     }
   },
+  portability: {
+    export: (request) => ipcRenderer.invoke(IPC_CHANNELS.vaultExport, request),
+    import: (request) => ipcRenderer.invoke(IPC_CHANNELS.vaultImport, request)
+  },
   folders: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.folderList),
     create: (request) => ipcRenderer.invoke(IPC_CHANNELS.folderCreate, request),

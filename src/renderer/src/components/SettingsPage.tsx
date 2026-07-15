@@ -3,11 +3,14 @@ import {
   ArrowLeft,
   ClipboardCheck,
   Cloud,
+  DatabaseBackup,
+  Download,
   Fingerprint,
   LockKeyhole,
   Palette,
   Settings2,
-  ShieldCheck
+  ShieldCheck,
+  Upload
 } from 'lucide-react'
 import type { AppSettings, AppSettingsUpdate, SyncStatus } from '../../../shared/vault-contract'
 import { Badge } from '@renderer/components/ui/badge'
@@ -95,6 +98,8 @@ interface SettingsPageProps {
   onEnableTouchId: () => Promise<void>
   onDisableTouchId: () => Promise<void>
   onOpenSync: () => void
+  onExportVault: () => void
+  onImportVault: () => void
 }
 
 interface SettingsCardHeadingProps {
@@ -135,7 +140,9 @@ function SettingsPage({
   onTouchIdPasswordChange,
   onEnableTouchId,
   onDisableTouchId,
-  onOpenSync
+  onOpenSync,
+  onExportVault,
+  onImportVault
 }: SettingsPageProps): React.JSX.Element {
   return (
     <div className="settings-page" aria-labelledby="settings-title">
@@ -180,6 +187,7 @@ function SettingsPage({
               <a href="#general-settings-title">一般</a>
               <a href="#touch-id-settings-title">Touch ID</a>
               <a href="#sync-settings-title">同步與帳號</a>
+              <a href="#portability-settings-title">資料可攜性</a>
             </nav>
             <div className="settings-main">
               <Card className="settings-card" aria-labelledby="security-settings-title">
@@ -529,6 +537,32 @@ function SettingsPage({
                 <CardFooter>
                   <Button variant="outline" size="sm" type="button" onClick={onOpenSync}>
                     {syncStatus.configured ? '管理同步與帳號' : '設定 Bitwarden 同步'}
+                  </Button>
+                </CardFooter>
+              </Card>
+
+              <Card className="settings-card" aria-labelledby="portability-settings-title">
+                <CardHeader>
+                  <SettingsCardHeading
+                    id="portability-settings-title"
+                    icon={DatabaseBackup}
+                    title="資料可攜性"
+                    description="匯入 Bitwarden JSON，或建立密碼保護的可攜備份。"
+                  />
+                </CardHeader>
+                <CardContent>
+                  <p className="settings-card-note">
+                    檔案內容與路徑只會由本機主程序處理，不會傳回畫面程序。
+                  </p>
+                </CardContent>
+                <CardFooter className="gap-2">
+                  <Button variant="outline" size="sm" type="button" onClick={onImportVault}>
+                    <Upload data-icon="inline-start" aria-hidden="true" />
+                    匯入 JSON
+                  </Button>
+                  <Button size="sm" type="button" onClick={onExportVault}>
+                    <Download data-icon="inline-start" aria-hidden="true" />
+                    匯出加密備份
                   </Button>
                 </CardFooter>
               </Card>

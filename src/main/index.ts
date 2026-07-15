@@ -1,6 +1,15 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { join } from 'node:path'
-import { app, BrowserWindow, clipboard, ipcMain, powerMonitor, session, shell } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  powerMonitor,
+  session,
+  shell
+} from 'electron'
 import { electronApp, is } from '@electron-toolkit/utils'
 import { IPC_CHANNELS, IPC_EVENTS, type SyncStatus } from '../shared/vault-contract'
 import { BitwardenDirectClient } from './bitwarden-direct'
@@ -11,6 +20,7 @@ import { FocusTouchIdUnlockController } from './focus-touch-id-unlock'
 import { installApplicationMenu } from './application-menu'
 import { registerVaultIpc } from './vault-ipc'
 import { VaultService } from './vault-service'
+import { VaultPortabilityService } from './vault-portability'
 import icon from '../../resources/icon.png?asset'
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
@@ -270,6 +280,36 @@ if (hasSingleInstanceLock)
           })
       }
     )
+    const portability = new VaultPortabilityService(vault, {
+      chooseExportPath: async (defaultName) => {
+        const options = {
+          title: '匯出加密保管庫',
+          defaultPath: defaultName,
+          buttonLabel: '匯出',
+          filters: [{ name: 'Bitwarden JSON', extensions: ['json'] }],
+          properties: ['showOverwriteConfirmation' as const]
+        }
+        const result = mainWindow
+          ? await dialog.showSaveDialog(mainWindow, options)
+          : await dialog.showSaveDialog(options)
+        return result.canceled || !result.filePath ? null : result.filePath
+      },
+      chooseImportPath: async () => {
+        const options = {
+          title: '匯入 Bitwarden 保管庫',
+          buttonLabel: '匯入',
+          filters: [
+            { name: 'Bitwarden JSON', extensions: ['json'] },
+            { name: '所有檔案', extensions: ['*'] }
+          ],
+          properties: ['openFile' as const]
+        }
+        const result = mainWindow
+          ? await dialog.showOpenDialog(mainWindow, options)
+          : await dialog.showOpenDialog(options)
+        return result.canceled || result.filePaths.length !== 1 ? null : result.filePaths[0]!
+      }
+    })
     autoSync = new AutoSyncCoordinator({
       vault,
       onSyncChanged: notifySyncChanged,
@@ -299,6 +339,7 @@ if (hasSingleInstanceLock)
 
     registerVaultIpc({
       vault,
+      portability,
       settings,
       getMainWindow: () => mainWindow,
       afterLock: () => {

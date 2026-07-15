@@ -46,6 +46,7 @@ import type {
   SyncStatus,
   SyncUnlockRequest,
   TotpCodeView,
+  VaultImportResult,
   VaultStatus
 } from '../shared/vault-contract'
 import {
@@ -73,6 +74,7 @@ import {
   type RandomInt
 } from './credential-generator'
 import { loadEffLongWordlist } from './eff-wordlist'
+import type { PortableVaultSnapshot } from './vault-portability-codec'
 import {
   completeSyncMetadata,
   fingerprintLogin,
@@ -190,6 +192,11 @@ export interface VaultServiceOptions {
   createSyncClient?: (sync: PersistedSyncData) => BitwardenSyncClient
   fetch?: typeof fetch
   randomInt?: RandomInt
+}
+
+export interface VaultExportSnapshot {
+  snapshot: PortableVaultSnapshot
+  skippedTrashItems: number
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1966,6 +1973,110 @@ export class VaultService {
     })
   }
 
+  verifyPortabilityOwner(masterPassword: string): Promise<void> {
+    return this.exclusive(() => this.assertMasterPassword(masterPassword))
+  }
+
+  exportPortableSnapshot(masterPassword: string): Promise<VaultExportSnapshot> {
+    return this.exclusive(async () => {
+      await this.assertMasterPassword(masterPassword)
+      const snapshot = this.localSyncSnapshot(this.requireData())
+      const items = snapshot.logins.filter((item) => item.deletedAt === null)
+      return {
+        snapshot: {
+          folders: snapshot.folders.map((folder) => ({ ...folder })),
+          items: items.map((item) => ({
+            ...item,
+            uris: cloneLoginUris(item.uris),
+            passkeys: item.passkeys.map((passkey) => ({ ...passkey })),
+            customFields: cloneCustomFields(item.customFields),
+            passwordHistory: clonePasswordHistory(item.passwordHistory)
+          }))
+        },
+        skippedTrashItems: snapshot.logins.length - items.length
+      }
+    })
+  }
+
+  importPortableSnapshot(
+    snapshot: PortableVaultSnapshot,
+    skippedTrashItems: number,
+    masterPassword: string
+  ): Promise<Omit<VaultImportResult, 'canceled'>> {
+    return this.exclusive(async () => {
+      await this.assertMasterPassword(masterPassword)
+      if (
+        !snapshot ||
+        !Array.isArray(snapshot.folders) ||
+        !Array.isArray(snapshot.items) ||
+        !Number.isSafeInteger(skippedTrashItems) ||
+        skippedTrashItems < 0
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+
+      if (snapshot.folders.length === 0 && snapshot.items.length === 0) {
+        return { importedFolders: 0, importedItems: 0, skippedTrashItems }
+      }
+
+      const next = cloneData(this.requireData())
+      const generation = this.generation
+      const now = this.nowIso()
+      const sourceFolderIds = new Set<string>()
+      const importedFolderIds = new Map<string, string>()
+
+      try {
+        for (const source of snapshot.folders) {
+          if (
+            !source ||
+            typeof source.id !== 'string' ||
+            sourceFolderIds.has(source.id) ||
+            typeof source.name !== 'string'
+          ) {
+            throw new VaultError('INVALID_INPUT')
+          }
+          sourceFolderIds.add(source.id)
+          const name = this.uniqueImportedFolderName(
+            next,
+            normalizeRequiredString(source.name, MAX_NAME_LENGTH)
+          )
+          const folder: FolderView = {
+            id: this.validatedNewId(),
+            name,
+            position: next.folders.length,
+            createdAt: now,
+            updatedAt: now
+          }
+          parseFolder(folder)
+          next.folders.push(folder)
+          importedFolderIds.set(source.id, folder.id)
+        }
+
+        for (const source of snapshot.items) {
+          if (!source || source.deletedAt !== null) throw new VaultError('INVALID_INPUT')
+          const folderId =
+            source.folderId === null ? null : (importedFolderIds.get(source.folderId) ?? null)
+          if (source.folderId !== null && folderId === null) throw new VaultError('INVALID_INPUT')
+          const created = this.createLocalLogin(next, source, folderId)
+          parseStoredLogin(created)
+        }
+      } catch (error) {
+        if (error instanceof VaultError && error.code === 'INVALID_INPUT') throw error
+        throw new VaultError('INVALID_INPUT')
+      }
+
+      next.updatedAt = now
+      await this.persist(next)
+      if (generation !== this.generation) throw new VaultError('LOCKED')
+      this.data = next
+      return {
+        importedFolders: snapshot.folders.length,
+        importedItems: snapshot.items.length,
+        skippedTrashItems
+      }
+    })
+  }
+
   generateCredential(request: CredentialGeneratorRequest): Promise<CredentialGeneratorResult> {
     return this.exclusive(async () => {
       const current = this.requireData()
@@ -3316,6 +3427,33 @@ export class VaultService {
     ) {
       throw new VaultError('DUPLICATE_NAME')
     }
+  }
+
+  private uniqueImportedFolderName(data: VaultData, requestedName: string): string {
+    const existing = new Set(data.folders.map((folder) => folder.name.toLocaleLowerCase('en-US')))
+    if (!existing.has(requestedName.toLocaleLowerCase('en-US'))) return requestedName
+
+    for (let copy = 1; copy <= data.folders.length + 1; copy += 1) {
+      const suffix = copy === 1 ? ' (Imported)' : ` (Imported ${copy})`
+      const codePoints = Array.from(requestedName)
+      while (codePoints.join('').length > MAX_NAME_LENGTH - suffix.length) codePoints.pop()
+      const candidate = `${codePoints.join('')}${suffix}`
+      if (!existing.has(candidate.toLocaleLowerCase('en-US'))) return candidate
+    }
+    throw new VaultError('INVALID_INPUT')
+  }
+
+  private async assertMasterPassword(candidateValue: unknown): Promise<void> {
+    if (typeof candidateValue !== 'string') throw new VaultError('INVALID_MASTER_PASSWORD')
+    const candidate = candidateValue.normalize('NFC')
+    if (candidate.length === 0 || candidate.length > MAX_MASTER_PASSWORD_LENGTH) {
+      throw new VaultError('INVALID_MASTER_PASSWORD')
+    }
+    const generation = this.generation
+    if (!this.key || !this.salt) throw new VaultError('LOCKED')
+    const valid = await this.store.verifyMasterPassword(candidate, this.key, this.salt)
+    if (generation !== this.generation) throw new VaultError('LOCKED')
+    if (!valid) throw new VaultError('INVALID_MASTER_PASSWORD')
   }
 
   private validatedNewId(): string {

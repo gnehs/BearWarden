@@ -4,6 +4,8 @@ export const IPC_CHANNELS = {
   vaultUnlock: 'vault:unlock',
   vaultLock: 'vault:lock',
   vaultLockRequestReady: 'vault:lock-request-ready',
+  vaultExport: 'vault:export',
+  vaultImport: 'vault:import',
   folderList: 'folder:list',
   folderCreate: 'folder:create',
   folderUpdate: 'folder:update',
@@ -97,6 +99,34 @@ export interface VaultSetupRequest {
 
 export interface VaultUnlockRequest {
   masterPassword: string
+}
+
+export interface VaultExportRequest {
+  /** Proves the currently unlocked vault owner in the main process. */
+  masterPassword: string
+  /** A portable backup password; it is used only in the main process. */
+  password: string
+}
+
+export interface VaultImportRequest {
+  /** Proves the currently unlocked vault owner in the main process. */
+  masterPassword: string
+  /** Required for password-protected Bitwarden JSON; omitted for plaintext JSON. */
+  password?: string
+}
+
+export interface VaultExportResult {
+  canceled: boolean
+  exportedFolders: number
+  exportedItems: number
+  skippedTrashItems: number
+}
+
+export interface VaultImportResult {
+  canceled: boolean
+  importedFolders: number
+  importedItems: number
+  skippedTrashItems: number
 }
 
 export interface FolderView {
@@ -561,6 +591,10 @@ export interface BearWardenAPI {
     onLockRequested: (listener: () => void) => () => void
     onUnlocked: (listener: () => void) => () => void
     onChanged: (listener: () => void) => () => void
+  }
+  portability: {
+    export: (request: VaultExportRequest) => Promise<VaultExportResult>
+    import: (request: VaultImportRequest) => Promise<VaultImportResult>
   }
   folders: {
     list: () => Promise<FolderView[]>

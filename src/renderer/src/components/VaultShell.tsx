@@ -65,6 +65,8 @@ import type {
   VaultCopyField,
   VaultCustomFieldSource,
   VaultCustomFieldView,
+  VaultExportResult,
+  VaultImportResult,
   VaultItemType,
   VaultSecretField
 } from '../../../shared/vault-contract'
@@ -88,6 +90,7 @@ import {
 } from './VaultShell-security'
 import SyncDialog from './SyncDialog'
 import SettingsPage from './SettingsPage'
+import VaultPortabilityDialog, { type VaultPortabilityMode } from './VaultPortabilityDialog'
 import VirtualizedItemList from './VirtualizedItemList'
 import { groupItemsByDate } from '../lib/item-date-groups'
 import { matchesVaultCategory, type VaultCategoryFilter } from '../lib/vault-category'
@@ -719,6 +722,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsBusy, setSettingsBusy] = useState(false)
   const [touchIdPassword, setTouchIdPassword] = useState('')
+  const [portabilityDialogMode, setPortabilityDialogMode] = useState<VaultPortabilityMode | null>(
+    null
+  )
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const settingsReturnFocusRef = useRef<HTMLElement | null>(null)
@@ -1699,6 +1705,25 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     } finally {
       setSettingsBusy(false)
     }
+  }
+
+  function announceExported(result: VaultExportResult): void {
+    const skipped = result.skippedTrashItems
+      ? `，已略過垃圾桶中的 ${result.skippedTrashItems} 個項目`
+      : ''
+    announce(
+      `加密備份已儲存，共 ${result.exportedItems} 個項目、${result.exportedFolders} 個資料夾${skipped}。`
+    )
+  }
+
+  async function refreshAfterImport(result: VaultImportResult): Promise<void> {
+    await loadVault()
+    const skipped = result.skippedTrashItems
+      ? `，已略過 ${result.skippedTrashItems} 個垃圾桶項目`
+      : ''
+    announce(
+      `匯入完成，共新增 ${result.importedItems} 個項目、${result.importedFolders} 個資料夾${skipped}。`
+    )
   }
 
   const toggleFavorite = useCallback(
@@ -2758,6 +2783,8 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 onEnableTouchId={enableTouchId}
                 onDisableTouchId={disableTouchId}
                 onOpenSync={() => setSyncDialogOpen(true)}
+                onExportVault={() => setPortabilityDialogMode('export')}
+                onImportVault={() => setPortabilityDialogMode('import')}
               />
             ) : (
               <>
@@ -3381,6 +3408,16 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             onClose={() => setSyncDialogOpen(false)}
             onStatusChange={setSyncStatus}
             onSynced={refreshAfterSync}
+          />
+        )}
+        {portabilityDialogMode && (
+          <VaultPortabilityDialog
+            mode={portabilityDialogMode}
+            onClose={() => setPortabilityDialogMode(null)}
+            onExport={(request) => window.bearwarden.portability.export(request)}
+            onImport={(request) => window.bearwarden.portability.import(request)}
+            onExported={announceExported}
+            onImported={refreshAfterImport}
           />
         )}
         <AlertDialog

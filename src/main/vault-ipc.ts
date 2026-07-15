@@ -40,6 +40,8 @@ import {
   type SyncTwoFactorMethod,
   type SyncUnlockRequest,
   type VaultErrorCode,
+  type VaultExportRequest,
+  type VaultImportRequest,
   type TouchIdEnableRequest,
   type VaultSetupRequest,
   type VaultUnlockRequest
@@ -47,6 +49,7 @@ import {
 import type { AppSettingsService } from './app-settings'
 import { isVaultError, VaultError } from './vault-errors'
 import type { VaultService } from './vault-service'
+import type { VaultPortabilityService } from './vault-portability'
 import { showItemContextMenu } from './item-context-menu'
 
 type RecordValue = Record<string, unknown>
@@ -147,6 +150,7 @@ export class RepromptAuthorizationStore {
 
 export interface VaultIpcOptions {
   vault: VaultService
+  portability: VaultPortabilityService
   settings: AppSettingsService
   getMainWindow: () => BrowserWindow | null
   afterLock?: () => void
@@ -155,6 +159,26 @@ export interface VaultIpcOptions {
   afterSyncChanged?: (status: SyncStatus) => void
   repromptNow?: () => number
   repromptRandomBytes?: (size: number) => Buffer
+}
+
+function parseVaultExport(value: unknown): VaultExportRequest {
+  const record = exactRecord(value, ['masterPassword', 'password'])
+  return {
+    masterPassword: requiredString(record, 'masterPassword'),
+    password: requiredString(record, 'password')
+  }
+}
+
+function parseVaultImport(value: unknown): VaultImportRequest {
+  const record = exactRecord(value, ['masterPassword', 'password'])
+  const masterPassword = requiredString(record, 'masterPassword')
+  if (record.password !== undefined && typeof record.password !== 'string') {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return {
+    masterPassword,
+    ...(record.password === undefined ? {} : { password: record.password })
+  }
 }
 
 function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
@@ -1022,7 +1046,7 @@ function registerHandler<T>(
 }
 
 export function registerVaultIpc(options: VaultIpcOptions): () => void {
-  const { vault, settings, getMainWindow } = options
+  const { vault, portability, settings, getMainWindow } = options
   const authorizations = new RepromptAuthorizationStore(
     options.repromptNow,
     options.repromptRandomBytes
@@ -1077,6 +1101,14 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     const status = await vault.lock()
     options.afterLock?.()
     return status
+  })
+  registerHandler(IPC_CHANNELS.vaultExport, getMainWindow, (_event, input) =>
+    portability.exportVault(parseVaultExport(input))
+  )
+  registerHandler(IPC_CHANNELS.vaultImport, getMainWindow, async (_event, input) => {
+    const result = await portability.importVault(parseVaultImport(input))
+    if (!result.canceled && result.importedFolders + result.importedItems > 0) notifyMutation()
+    return result
   })
   registerHandler(IPC_CHANNELS.folderList, getMainWindow, () => vault.listFolders())
   registerHandler(IPC_CHANNELS.folderCreate, getMainWindow, (_event, input) =>
