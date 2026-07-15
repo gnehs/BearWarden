@@ -23,6 +23,7 @@ BearWarden 是一個以「快速找到、安心使用」為核心的桌面密碼
 - 系統鎖定或休眠時自動鎖定密碼庫
 - 直接與 Bitwarden Cloud 或 Vaultwarden 雙向同步，不依賴 `bw` CLI
 - 同步個人保管庫項目、資料夾、多 URI／match、密碼歷史、重新提示、封存與垃圾桶狀態，並以衝突副本避免覆蓋資料
+- 同步附件的解密檔名、大小與 legacy 狀態；附件金鑰、下載網址、路徑與檔案內容不會送進 renderer
 
 ## 資料安全模型
 
@@ -57,8 +58,8 @@ Cloud 與支援中的 Vaultwarden 版本執行相容測試。
 主密碼不會寫入 BearWarden 密碼庫或設定；只在登入或解鎖時於主程序記憶體使用，
 衍生金鑰在鎖定時清除。登入 token、同步設定與 ID 對應只存放在已加密的本機密碼庫內。
 
-目前同步範圍限個人保管庫的 items、folders、封存與垃圾桶。組織項目、附件、Sends、Passkeys 與
-SSO 尚不由 BearWarden 編輯；同步的自訂欄位可在項目詳情安全地顯示與編輯。完整差距與
+目前同步範圍限個人保管庫的 items、folders、封存、垃圾桶與附件中繼資料。組織項目、附件檔案傳輸、Sends、Passkeys 與
+SSO 尚不由 BearWarden 編輯；附件 metadata 以 server 為準，附件本體尚無上傳、下載或刪除 UI。同步的自訂欄位可在項目詳情安全地顯示與編輯。完整差距與
 實作順序記錄於 [`docs/vaultwarden-feature-gap.md`](docs/vaultwarden-feature-gap.md)。
 更新既有 login 時，direct connector 會保留 BearWarden 未支援的遠端欄位。若兩端同時修改，
 遠端版本會保留為主要項目，本機修改會另建 `(BearWarden conflict)` 副本。
