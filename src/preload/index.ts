@@ -50,7 +50,9 @@ const api: BearWardenAPI = {
     showContextMenu: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginContextMenu, request),
     getWebsiteIcon: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginWebsiteIcon, request),
     revealSecret: (request) => ipcRenderer.invoke(IPC_CHANNELS.itemRevealSecret, request),
-    copyField: (request) => ipcRenderer.invoke(IPC_CHANNELS.itemCopyField, request)
+    copyField: (request) => ipcRenderer.invoke(IPC_CHANNELS.itemCopyField, request),
+    revealCustomField: (request) => ipcRenderer.invoke(IPC_CHANNELS.itemRevealCustomField, request),
+    copyCustomField: (request) => ipcRenderer.invoke(IPC_CHANNELS.itemCopyCustomField, request)
   },
   sync: {
     status: () => ipcRenderer.invoke(IPC_CHANNELS.syncStatus),

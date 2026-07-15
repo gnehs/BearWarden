@@ -26,11 +26,18 @@ import {
   type JsonObject,
   type JsonValue
 } from './bitwarden-http'
-import type { VaultItemFields, VaultItemType } from '../shared/vault-contract'
+import type {
+  VaultCustomField,
+  VaultCustomFieldType,
+  VaultItemFields,
+  VaultItemType
+} from '../shared/vault-contract'
 import type { StoredPasskeyCredential } from './passkey'
 
 const USER_KEY_BYTES = 64
 const MAX_REMOTE_ENTITIES = 100_000
+const MAX_CUSTOM_FIELDS = 1_000
+const MAX_CUSTOM_FIELD_STRING_LENGTH = 5_000
 const MINIMUM_CLIENT_VERSION = '2024.12.0'
 
 type BitwardenCipherType = 1 | 2 | 3 | 4 | 5
@@ -116,6 +123,7 @@ export interface BitwardenLoginItem extends VaultItemFields {
   uris: BitwardenLoginUri[]
   creationDate: string | null
   revisionDate: string | null
+  customFields: VaultCustomField[]
   passkeys: StoredPasskeyCredential[]
 }
 
@@ -125,6 +133,7 @@ export interface BitwardenLoginDraft extends Partial<VaultItemFields> {
   notes?: string | null
   folderId?: string | null
   favorite?: boolean
+  customFields?: VaultCustomField[]
   passkeys?: StoredPasskeyCredential[]
 }
 
@@ -199,8 +208,10 @@ interface ResolvedBitwardenDraft extends VaultItemFields {
   notes: string | null
   folderId: string | null
   favorite: boolean
+  customFields: VaultCustomField[]
   passkeys: StoredPasskeyCredential[]
   totpChanged: boolean
+  customFieldsChanged: boolean
   passkeysChanged: boolean
 }
 
@@ -291,6 +302,161 @@ function emptyVaultItemFields(): VaultItemFields {
   }
 }
 
+const CUSTOM_FIELD_TYPE_BY_WIRE_TYPE: Record<number, VaultCustomFieldType> = {
+  0: 'text',
+  1: 'hidden',
+  2: 'boolean',
+  3: 'linked'
+}
+
+const WIRE_TYPE_BY_CUSTOM_FIELD_TYPE = {
+  text: 0,
+  hidden: 1,
+  boolean: 2,
+  linked: 3
+} as const satisfies Record<VaultCustomFieldType, number>
+
+function customFieldType(value: JsonValue | undefined): VaultCustomFieldType {
+  if (value === undefined || value === null) return 'text'
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  return CUSTOM_FIELD_TYPE_BY_WIRE_TYPE[value] ?? 'text'
+}
+
+function draftCustomFieldType(value: JsonValue | undefined): VaultCustomFieldType {
+  if (value === 'text' || value === 'hidden' || value === 'boolean' || value === 'linked') {
+    return value
+  }
+  throw new BitwardenDirectError('INVALID_RESPONSE')
+}
+
+function customFieldLinkedId(record: JsonObject): number | null {
+  const value = property(record, 'linkedId')
+  if (value === undefined || value === null) return null
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function nullableCustomFieldString(record: JsonObject, name: string): string | null {
+  const value = property(record, name)
+  if (value === undefined || value === null) return null
+  if (typeof value !== 'string' || value.length > MAX_CUSTOM_FIELD_STRING_LENGTH) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function customFieldArray(value: JsonValue | undefined): JsonValue[] {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value) || value.length > MAX_CUSTOM_FIELDS) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function decryptLegacyCustomFields(
+  rawFields: JsonValue | undefined,
+  key: BitwardenSymmetricKey
+): VaultCustomField[] {
+  return customFieldArray(rawFields).map((rawField) => {
+    if (!isRecord(rawField)) throw new BitwardenDirectError('INVALID_RESPONSE')
+    const name = nullableCustomFieldString(rawField, 'name')
+    const value = nullableCustomFieldString(rawField, 'value')
+    return {
+      name: name === null ? '' : decryptBitwardenString(name, key),
+      value: value === null ? '' : decryptBitwardenString(value, key),
+      type: customFieldType(property(rawField, 'type')),
+      linkedId: customFieldLinkedId(rawField)
+    }
+  })
+}
+
+function decryptBlobCustomFields(rawFields: JsonValue | undefined): VaultCustomField[] {
+  return customFieldArray(rawFields).map((rawField) => {
+    if (!isRecord(rawField)) throw new BitwardenDirectError('INVALID_RESPONSE')
+    const name = nullableCustomFieldString(rawField, 'name')
+    const value = nullableCustomFieldString(rawField, 'value')
+    return {
+      name: name ?? '',
+      value: value ?? '',
+      type: customFieldType(property(rawField, 'type')),
+      linkedId: customFieldLinkedId(rawField)
+    }
+  })
+}
+
+function validateDraftCustomFields(value: unknown): VaultCustomField[] {
+  if (!Array.isArray(value) || value.length > MAX_CUSTOM_FIELDS) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  return value.map((field) => {
+    if (!isRecord(field)) throw new BitwardenDirectError('INVALID_RESPONSE')
+    const name = property(field, 'name')
+    const fieldValue = property(field, 'value')
+    if (
+      typeof name !== 'string' ||
+      name.length > MAX_CUSTOM_FIELD_STRING_LENGTH ||
+      typeof fieldValue !== 'string' ||
+      fieldValue.length > MAX_CUSTOM_FIELD_STRING_LENGTH
+    ) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    return {
+      name,
+      value: fieldValue,
+      type: draftCustomFieldType(property(field, 'type')),
+      linkedId: customFieldLinkedId(field)
+    }
+  })
+}
+
+function cloneCustomFields(fields: VaultCustomField[]): VaultCustomField[] {
+  return fields.map((field) => ({ ...field }))
+}
+
+function customFieldsEqual(
+  left: readonly VaultCustomField[],
+  right: readonly VaultCustomField[]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((field, index) => {
+      const other = right[index]
+      return (
+        other !== undefined &&
+        field.name === other.name &&
+        field.value === other.value &&
+        field.type === other.type &&
+        field.linkedId === other.linkedId
+      )
+    })
+  )
+}
+
+function encryptLegacyCustomFields(
+  fields: VaultCustomField[],
+  key: BitwardenSymmetricKey
+): JsonValue[] {
+  return fields.map((field) => ({
+    name: encryptBitwardenString(field.name, key),
+    value: field.type === 'linked' ? null : encryptBitwardenString(field.value, key),
+    type: WIRE_TYPE_BY_CUSTOM_FIELD_TYPE[field.type],
+    linkedId: field.linkedId
+  }))
+}
+
+function customFieldsToBlob(fields: VaultCustomField[]): JsonValue[] {
+  return fields.map((field) => ({
+    name: field.name,
+    value: field.type === 'linked' ? null : field.value,
+    type: WIRE_TYPE_BY_CUSTOM_FIELD_TYPE[field.type],
+    linkedId: field.linkedId
+  }))
+}
+
 function resolveDraft(
   draft: BitwardenLoginDraft,
   previous: BitwardenLoginItem | null
@@ -303,6 +469,10 @@ function resolveDraft(
       Object.assign(fields, { [name]: value })
     }
   }
+  const customFields =
+    draft.customFields === undefined
+      ? cloneCustomFields(previous?.customFields ?? [])
+      : validateDraftCustomFields(draft.customFields)
   return {
     ...fields,
     type: draft.type ?? previous?.type ?? 'login',
@@ -310,8 +480,12 @@ function resolveDraft(
     notes: draft.notes === undefined ? (previous?.notes ?? null) : draft.notes,
     folderId: draft.folderId === undefined ? (previous?.folderId ?? null) : draft.folderId,
     favorite: draft.favorite ?? previous?.favorite ?? false,
+    customFields,
     passkeys: draft.passkeys ?? previous?.passkeys.map((passkey) => ({ ...passkey })) ?? [],
     totpChanged: previous === null || draft.totp !== undefined,
+    customFieldsChanged:
+      previous === null ||
+      (draft.customFields !== undefined && !customFieldsEqual(customFields, previous.customFields)),
     passkeysChanged: previous === null || draft.passkeys !== undefined
   }
 }
@@ -320,6 +494,7 @@ function cloneLoginItem(item: BitwardenLoginItem): BitwardenLoginItem {
   return {
     ...item,
     uris: item.uris.map((uri) => ({ ...uri })),
+    customFields: cloneCustomFields(item.customFields),
     passkeys: item.passkeys.map((passkey) => ({ ...passkey }))
   }
 }
@@ -982,6 +1157,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         notes: notes === null ? null : decryptBitwardenString(notes, key),
         favorite: booleanProperty(raw, 'favorite'),
         uris: [],
+        customFields: decryptLegacyCustomFields(property(raw, 'fields'), key),
         passkeys: [],
         creationDate: nullableStringProperty(raw, 'creationDate'),
         revisionDate: nullableStringProperty(raw, 'revisionDate')
@@ -1083,6 +1259,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       notes: nullableStringProperty(content, 'notes'),
       favorite: booleanProperty(raw, 'favorite'),
       uris: [],
+      customFields: decryptBlobCustomFields(property(content, 'fields')),
       passkeys: [],
       creationDate: nullableStringProperty(raw, 'creationDate'),
       revisionDate: nullableStringProperty(raw, 'revisionDate')
@@ -1185,7 +1362,12 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       favorite: draft.favorite,
       reprompt: existing ? (property(existing, 'reprompt') ?? 0) : 0,
       key: existing ? (property(existing, 'key') ?? null) : null,
-      fields: existing ? (previousFields === undefined ? [] : previousFields) : [],
+      fields:
+        existing && !draft.customFieldsChanged
+          ? previousFields === undefined
+            ? []
+            : previousFields
+          : encryptLegacyCustomFields(draft.customFields, key),
       login: null,
       secureNote: null,
       card: null,
@@ -1354,6 +1536,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     content.typeData = typeData
     content.name = draft.name
     content.notes = draft.notes
+    if (draft.customFieldsChanged) content.fields = customFieldsToBlob(draft.customFields)
 
     const request: JsonObject = {
       type: WIRE_TYPE_BY_ITEM_TYPE[draft.type],

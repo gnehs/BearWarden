@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   completeSyncMetadata,
   fingerprintLogin,
+  legacyCustomFieldBaselineUpgrades,
   planSync,
   type SyncFolder,
   type SyncLogin,
@@ -54,7 +55,8 @@ function login(
     privateKey: '',
     publicKey: '',
     fingerprint: '',
-    passkeys: []
+    passkeys: [],
+    customFields: []
   }
 }
 
@@ -333,6 +335,80 @@ describe('planSync', () => {
     for (const field of fields) {
       expect(fingerprintLogin({ ...base, [field]: `changed-${field}` })).not.toBe(baseFingerprint)
     }
+  })
+
+  it('detects a change made only to custom fields in fingerprints and plans', () => {
+    const base = login('local-1')
+    const legacyBase: Partial<SyncLogin> = { ...base }
+    delete legacyBase.customFields
+    const remote = { ...base, id: 'remote-1' }
+    const changedCustomFields = [
+      { name: 'environment', value: 'production', type: 'text' as const, linkedId: null }
+    ]
+    const changed = { ...base, customFields: changedCustomFields }
+    const metadata: SyncMetadata = {
+      version: 1,
+      folderLinks: [],
+      loginLinks: [
+        { localId: base.id, remoteId: remote.id, baseFingerprint: fingerprintLogin(base) }
+      ]
+    }
+
+    expect(fingerprintLogin(legacyBase as SyncLogin)).toBe(fingerprintLogin(base))
+    expect(fingerprintLogin(changed)).not.toBe(fingerprintLogin(base))
+    expect(planSync(snapshot([changed]), snapshot([remote]), metadata).actions).toMatchObject([
+      {
+        kind: 'push-update',
+        entity: 'login',
+        remoteId: remote.id,
+        local: { customFields: changedCustomFields }
+      }
+    ])
+  })
+
+  it('adopts remotely untracked custom fields before planning an offline local edit', () => {
+    const original = login('local-1')
+    const local = { ...original, name: 'Locally renamed' }
+    const remote = {
+      ...original,
+      id: 'remote-1',
+      customFields: [
+        { name: 'member-id', value: 'remote-42', type: 'text' as const, linkedId: null }
+      ]
+    }
+    const metadata: SyncMetadata = {
+      version: 1,
+      folderLinks: [],
+      loginLinks: [
+        {
+          localId: local.id,
+          remoteId: remote.id,
+          baseFingerprint: fingerprintLogin(original)
+        }
+      ]
+    }
+
+    const [upgrade] = legacyCustomFieldBaselineUpgrades(
+      snapshot([local]),
+      snapshot([remote]),
+      metadata
+    )
+    expect(upgrade).toMatchObject({
+      localId: local.id,
+      remoteId: remote.id,
+      customFields: remote.customFields,
+      baseFingerprint: fingerprintLogin(remote)
+    })
+    const upgradedLocal = { ...local, customFields: upgrade!.customFields }
+    const upgradedMetadata: SyncMetadata = {
+      ...metadata,
+      loginLinks: [{ ...metadata.loginLinks[0]!, baseFingerprint: upgrade!.baseFingerprint }]
+    }
+    expect(
+      planSync(snapshot([upgradedLocal]), snapshot([remote]), upgradedMetadata).actions
+    ).toMatchObject([
+      { kind: 'push-update', entity: 'login', local: { customFields: remote.customFields } }
+    ])
   })
 
   it('never links otherwise-identical items whose types differ', () => {

@@ -4,6 +4,7 @@ import { Encoder } from 'cbor-x'
 import {
   deriveMasterKey,
   decryptBitwardenCipherBlob,
+  decryptBitwardenString,
   encryptBitwardenBytes,
   encryptBitwardenCipherBlob,
   encryptBitwardenString,
@@ -95,6 +96,32 @@ async function encryptedSync(
               { uri: encryptBitwardenString('https://backup.example.invalid', itemKey), match: 1 }
             ]
           },
+          fields: [
+            {
+              name: encryptBitwardenString('member-id', itemKey),
+              value: encryptBitwardenString('legacy-member-42', itemKey),
+              type: 0,
+              linkedId: null
+            },
+            {
+              name: encryptBitwardenString('recovery-code', itemKey),
+              value: encryptBitwardenString('legacy-hidden-code', itemKey),
+              type: 1,
+              linkedId: null
+            },
+            {
+              name: encryptBitwardenString('remember-device', itemKey),
+              value: encryptBitwardenString('true', itemKey),
+              type: 2,
+              linkedId: null
+            },
+            {
+              name: encryptBitwardenString('alternate-username', itemKey),
+              value: null,
+              type: 3,
+              linkedId: 100
+            }
+          ],
           attachments: [
             {
               id: 'attachment-id',
@@ -351,7 +378,18 @@ async function encryptedV2Sync(): Promise<JsonObject> {
             ],
             futureLoginField: { preserve: true }
           },
-          fields: [{ name: 'Custom', value: 'Opaque', type: 0, linkedId: null }],
+          fields: [
+            {
+              name: 'member-id',
+              value: 'v2-member-42',
+              type: 0,
+              linkedId: null,
+              futureFieldKey: 'preserve-field'
+            },
+            { name: 'recovery-code', value: 'v2-hidden-code', type: 1, linkedId: null },
+            { name: 'remember-device', value: 'true', type: 2, linkedId: null },
+            { name: 'alternate-username', value: null, type: 3, linkedId: 100 }
+          ],
           passwordHistory: [
             { password: 'old-v2-secret', lastUsedDate: '2026-01-01T00:00:00.000Z' }
           ],
@@ -476,6 +514,12 @@ describe('BitwardenDirectClient', () => {
         password: 'remote-secret',
         totp: 'otpauth://totp/example.invalid?secret=JBSWY3DPEHPK3PXP',
         passkeys: [expect.objectContaining({ rpId: 'example.invalid', discoverable: true })],
+        customFields: [
+          { name: 'member-id', value: 'legacy-member-42', type: 'text', linkedId: null },
+          { name: 'recovery-code', value: 'legacy-hidden-code', type: 'hidden', linkedId: null },
+          { name: 'remember-device', value: 'true', type: 'boolean', linkedId: null },
+          { name: 'alternate-username', value: '', type: 'linked', linkedId: 100 }
+        ],
         notes: 'A note',
         folderId: FOLDER_ID,
         favorite: true
@@ -497,12 +541,34 @@ describe('BitwardenDirectClient', () => {
       uri: 'https://changed.example.invalid',
       notes: 'Changed note',
       folderId: FOLDER_ID,
-      favorite: false
+      favorite: false,
+      customFields: [
+        { name: 'member-id', value: 'legacy-member-99', type: 'text', linkedId: null },
+        { name: 'recovery-code', value: 'legacy-updated-code', type: 'hidden', linkedId: null },
+        { name: 'remember-device', value: 'false', type: 'boolean', linkedId: null },
+        { name: 'alternate-username', value: '', type: 'linked', linkedId: 100 }
+      ]
     })
     const update = JSON.parse(writes[1]!) as JsonObject
     const originalLogin = (sync.ciphers as JsonObject[])[0]!.login as JsonObject
     expect((update.login as JsonObject).totp).toBe(originalLogin.totp)
     expect((update.login as JsonObject).fido2Credentials).toEqual(originalLogin.fido2Credentials)
+    expect(
+      (update.fields as JsonObject[]).map((field) => ({
+        name: decryptBitwardenString(field.name as string, Buffer.alloc(64, 9)),
+        value:
+          field.value === null
+            ? null
+            : decryptBitwardenString(field.value as string, Buffer.alloc(64, 9)),
+        type: field.type,
+        linkedId: field.linkedId
+      }))
+    ).toEqual([
+      { name: 'member-id', value: 'legacy-member-99', type: 0, linkedId: null },
+      { name: 'recovery-code', value: 'legacy-updated-code', type: 1, linkedId: null },
+      { name: 'remember-device', value: 'false', type: 2, linkedId: null },
+      { name: 'alternate-username', value: null, type: 3, linkedId: 100 }
+    ])
     expect((update.login as JsonObject).uris).toHaveLength(2)
     expect(((update.login as JsonObject).uris as JsonObject[])[0]).toMatchObject({
       match: 2,
@@ -757,7 +823,13 @@ describe('BitwardenDirectClient', () => {
         username: 'v2-user@example.invalid',
         password: 'v2-remote-secret',
         totp: 'otpauth://totp/example.invalid?secret=JBSWY3DPEHPK3PXP',
-        passkeys: [expect.objectContaining({ rpId: 'example.invalid', discoverable: true })]
+        passkeys: [expect.objectContaining({ rpId: 'example.invalid', discoverable: true })],
+        customFields: [
+          { name: 'member-id', value: 'v2-member-42', type: 'text', linkedId: null },
+          { name: 'recovery-code', value: 'v2-hidden-code', type: 'hidden', linkedId: null },
+          { name: 'remember-device', value: 'true', type: 'boolean', linkedId: null },
+          { name: 'alternate-username', value: '', type: 'linked', linkedId: 100 }
+        ]
       }),
       expect.objectContaining({ id: CARD_ID, type: 'card', cardholderName: 'V2 Holder' }),
       expect.objectContaining({
@@ -786,7 +858,13 @@ describe('BitwardenDirectClient', () => {
         name: 'V2 existing edited',
         username: 'existing-edited@example.invalid',
         password: 'existing-edited-fake-secret',
-        uri: 'https://edited-primary.v2.example.invalid'
+        uri: 'https://edited-primary.v2.example.invalid',
+        customFields: [
+          { name: 'member-id', value: 'v2-member-42', type: 'text', linkedId: null },
+          { name: 'recovery-code', value: 'v2-hidden-code', type: 'hidden', linkedId: null },
+          { name: 'remember-device', value: 'true', type: 'boolean', linkedId: null },
+          { name: 'alternate-username', value: '', type: 'linked', linkedId: 100 }
+        ]
       })
     ).resolves.toEqual(
       expect.objectContaining({
@@ -802,10 +880,18 @@ describe('BitwardenDirectClient', () => {
       Buffer.alloc(64, 9)
     ) as Record<string, unknown>
     expect(editedBlob).toMatchObject({
-      fields: [{ name: 'Custom', value: 'Opaque', type: 0, linkedId: null }],
+      fields: [
+        { name: 'member-id', value: 'v2-member-42', type: 0, linkedId: null },
+        { name: 'recovery-code', value: 'v2-hidden-code', type: 1, linkedId: null },
+        { name: 'remember-device', value: 'true', type: 2, linkedId: null },
+        { name: 'alternate-username', value: null, type: 3, linkedId: 100 }
+      ],
       passwordHistory: [{ password: 'old-v2-secret', lastUsedDate: '2026-01-01T00:00:00.000Z' }],
       futureRootField: 'preserve-root',
       typeData: { futureLoginField: { preserve: true } }
+    })
+    expect((editedBlob.fields as JsonObject[])[0]).toMatchObject({
+      futureFieldKey: 'preserve-field'
     })
     expect((editedBlob.typeData as JsonObject).totp).toBe(
       'otpauth://totp/example.invalid?secret=JBSWY3DPEHPK3PXP'
@@ -822,14 +908,26 @@ describe('BitwardenDirectClient', () => {
         name: 'V2 created login',
         username: 'created@example.invalid',
         password: 'created-fake-secret',
-        uri: 'https://created.example.invalid'
+        uri: 'https://created.example.invalid',
+        customFields: [
+          { name: 'created-text', value: 'created-value', type: 'text', linkedId: null },
+          { name: 'created-hidden', value: 'created-secret', type: 'hidden', linkedId: null },
+          { name: 'created-boolean', value: 'true', type: 'boolean', linkedId: null },
+          { name: 'created-linked', value: '', type: 'linked', linkedId: 101 }
+        ]
       })
     ).resolves.toEqual(
       expect.objectContaining({
         id: CREATED_ID,
         name: 'V2 created login',
         username: 'created@example.invalid',
-        password: 'created-fake-secret'
+        password: 'created-fake-secret',
+        customFields: [
+          { name: 'created-text', value: 'created-value', type: 'text', linkedId: null },
+          { name: 'created-hidden', value: 'created-secret', type: 'hidden', linkedId: null },
+          { name: 'created-boolean', value: 'true', type: 'boolean', linkedId: null },
+          { name: 'created-linked', value: '', type: 'linked', linkedId: 101 }
+        ]
       })
     )
     await expect(

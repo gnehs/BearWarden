@@ -56,6 +56,8 @@ import type {
   SyncStatus,
   TotpCodeView,
   VaultCopyField,
+  VaultCustomFieldSource,
+  VaultCustomFieldView,
   VaultItemType,
   VaultSecretField
 } from '../../../shared/vault-contract'
@@ -76,6 +78,16 @@ import { normalizeItemSelection, updateItemSelection } from '../lib/item-selecti
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
 import { Button } from '@renderer/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@renderer/components/ui/alert-dialog'
 import {
   Card,
   CardContent,
@@ -237,6 +249,16 @@ interface RevealedSecretsState {
 
 const emptyRevealedSecrets: RevealedSecretsState = { itemId: null, values: {} }
 
+interface RevealedCustomFieldsState {
+  itemId: string | null
+  values: Record<
+    number,
+    { value: string; source: VaultCustomFieldSource; expectedUpdatedAt: string }
+  >
+}
+
+const emptyRevealedCustomFields: RevealedCustomFieldsState = { itemId: null, values: {} }
+
 interface TooltipIconButtonProps extends React.ComponentProps<typeof Button> {
   label: string
 }
@@ -309,6 +331,58 @@ function hostLabel(uri: string | null): string {
   } catch {
     return uri
   }
+}
+
+const linkedFieldLabels: Record<number, string> = {
+  100: '使用者名稱',
+  101: '密碼',
+  300: '持卡人',
+  301: '到期月份',
+  302: '到期年份',
+  303: '安全碼',
+  304: '品牌',
+  305: '卡號',
+  400: '稱謂',
+  401: '中間名',
+  402: '地址 1',
+  403: '地址 2',
+  404: '地址 3',
+  405: '城市',
+  406: '州／省',
+  407: '郵遞區號',
+  408: '國家',
+  409: '公司',
+  410: '電子郵件',
+  411: '電話',
+  412: '身分證／社會安全號',
+  413: '使用者名稱',
+  414: '護照號碼',
+  415: '駕照號碼',
+  416: '名字',
+  417: '姓氏',
+  418: '完整姓名'
+}
+
+function customFieldDisplayValue(field: VaultCustomFieldView): string {
+  if (field.type === 'boolean')
+    return field.value?.toLocaleLowerCase('en-US') === 'true' ? '是' : '否'
+  if (field.type === 'linked') {
+    return `連結至${field.linkedId === null ? '項目欄位' : (linkedFieldLabels[field.linkedId] ?? '項目欄位')}`
+  }
+  return field.value || '未設定'
+}
+
+function matchesCustomFieldSource(
+  field: VaultCustomFieldView,
+  index: number,
+  source: VaultCustomFieldSource
+): boolean {
+  return (
+    source.index === index &&
+    source.name === field.name &&
+    source.type === field.type &&
+    source.linkedId === field.linkedId
+  )
 }
 
 function detailFields(login: LoginView): DetailField[] {
@@ -578,7 +652,12 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [selectedLogin, setSelectedLogin] = useState<LoginView | null>(null)
   const [totpCode, setTotpCode] = useState<TotpCodeView | null>(null)
   const [editorMode, setEditorMode] = useState<'create' | 'edit' | null>(null)
+  const [editorSessionId, setEditorSessionId] = useState(0)
+  const [editorDirty, setEditorDirty] = useState(false)
+  const [discardEditorDialogOpen, setDiscardEditorDialogOpen] = useState(false)
   const [revealedSecrets, setRevealedSecrets] = useState<RevealedSecretsState>(emptyRevealedSecrets)
+  const [revealedCustomFields, setRevealedCustomFields] =
+    useState<RevealedCustomFieldsState>(emptyRevealedCustomFields)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [folderDialog, setFolderDialog] = useState<FolderView | 'new' | null>(null)
@@ -601,6 +680,46 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const detailRequestsRef = useRef(new Map<string, Promise<LoginView>>())
   const detailCacheRef = useRef(new Map<string, LoginView>())
   const detailCacheGenerationRef = useRef(0)
+  const editorDirtyRef = useRef(false)
+  const editorTransitionApprovedRef = useRef(false)
+  const pendingEditorActionRef = useRef<(() => void) | null>(null)
+
+  const handleEditorDirtyChange = useCallback((dirty: boolean): void => {
+    editorDirtyRef.current = dirty
+    setEditorDirty(dirty)
+  }, [])
+
+  const requestEditorTransition = useCallback((action: () => void): void => {
+    if (editorTransitionApprovedRef.current || !editorDirtyRef.current) {
+      action()
+      return
+    }
+    pendingEditorActionRef.current = action
+    setDiscardEditorDialogOpen(true)
+  }, [])
+
+  const confirmEditorDiscard = useCallback((): void => {
+    const action = pendingEditorActionRef.current
+    pendingEditorActionRef.current = null
+    setDiscardEditorDialogOpen(false)
+    if (!action) return
+    editorTransitionApprovedRef.current = true
+    try {
+      action()
+    } finally {
+      editorTransitionApprovedRef.current = false
+    }
+  }, [])
+
+  const openEditor = useCallback(
+    (mode: 'create' | 'edit'): void => {
+      requestEditorTransition(() => {
+        setEditorSessionId((current) => current + 1)
+        setEditorMode(mode)
+      })
+    },
+    [requestEditorTransition]
+  )
 
   const updateSelectedIds = useCallback((nextIds: ReadonlySet<string>): void => {
     selectedIdsRef.current = nextIds
@@ -694,24 +813,32 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     [loadLoginDetail]
   )
 
-  const activateLogin = useCallback((id: string | null): void => {
-    if (id) compactReturnIdRef.current = id
-    selectedIdRef.current = id
-    const cached = id ? detailCacheRef.current.get(id) : undefined
-    if (cached) setSelectedLogin(cached)
-    else if (!id) setSelectedLogin(null)
-    setSelectedId(id)
-    setRevealedSecrets(emptyRevealedSecrets)
-    setEditorMode(null)
-  }, [])
+  const activateLogin = useCallback(
+    (id: string | null): void => {
+      requestEditorTransition(() => {
+        if (id) compactReturnIdRef.current = id
+        selectedIdRef.current = id
+        const cached = id ? detailCacheRef.current.get(id) : undefined
+        if (cached) setSelectedLogin(cached)
+        else if (!id) setSelectedLogin(null)
+        setSelectedId(id)
+        setRevealedSecrets(emptyRevealedSecrets)
+        setRevealedCustomFields(emptyRevealedCustomFields)
+        setEditorMode(null)
+      })
+    },
+    [requestEditorTransition]
+  )
 
   const selectLogin = useCallback(
     (id: string): void => {
-      updateSelectedIds(new Set([id]))
-      selectionAnchorIdRef.current = id
-      activateLogin(id)
+      requestEditorTransition(() => {
+        updateSelectedIds(new Set([id]))
+        selectionAnchorIdRef.current = id
+        activateLogin(id)
+      })
     },
-    [activateLogin, updateSelectedIds]
+    [activateLogin, requestEditorTransition, updateSelectedIds]
   )
 
   const showLoginContextMenu = useCallback(
@@ -739,11 +866,19 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   }, [])
 
   const refreshAfterSync = useCallback(async (): Promise<void> => {
-    await loadVault()
-    setEditorMode(null)
-    clearItemSelection()
-    setRevealedSecrets(emptyRevealedSecrets)
-  }, [clearItemSelection, loadVault])
+    const applyRefresh = async (): Promise<void> => {
+      await loadVault()
+      setEditorMode(null)
+      clearItemSelection()
+      setRevealedSecrets(emptyRevealedSecrets)
+      setRevealedCustomFields(emptyRevealedCustomFields)
+    }
+    if (editorDirtyRef.current) {
+      requestEditorTransition(() => void applyRefresh())
+      return
+    }
+    await applyRefresh()
+  }, [clearItemSelection, loadVault, requestEditorTransition])
 
   useEffect(() => {
     queueMicrotask(() => void loadVault())
@@ -817,6 +952,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       if (!active) return
       if (!selectedId) setSelectedLogin(null)
       setRevealedSecrets(emptyRevealedSecrets)
+      setRevealedCustomFields(emptyRevealedCustomFields)
     })
     if (!selectedId) {
       return () => {
@@ -876,6 +1012,15 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     return () => window.clearTimeout(timeout)
   }, [revealedSecrets])
 
+  useEffect(() => {
+    if (Object.keys(revealedCustomFields.values).length === 0) return
+    const timeout = window.setTimeout(
+      () => setRevealedCustomFields(emptyRevealedCustomFields),
+      30_000
+    )
+    return () => window.clearTimeout(timeout)
+  }, [revealedCustomFields])
+
   const scopedItems = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('zh-Hant')
     const scoped = items.filter((item) => {
@@ -899,20 +1044,22 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   const selectItems = useCallback(
     (id: string, modifiers: ItemSelectionModifiers): void => {
-      const nextSelection = updateItemSelection({
-        selectedIds: selectedIdsRef.current,
-        anchorId: selectionAnchorIdRef.current,
-        activeId: selectedIdRef.current,
-        orderedIds: scopedItemIds,
-        targetId: id,
-        toggle: modifiers.toggle,
-        range: modifiers.range
+      requestEditorTransition(() => {
+        const nextSelection = updateItemSelection({
+          selectedIds: selectedIdsRef.current,
+          anchorId: selectionAnchorIdRef.current,
+          activeId: selectedIdRef.current,
+          orderedIds: scopedItemIds,
+          targetId: id,
+          toggle: modifiers.toggle,
+          range: modifiers.range
+        })
+        updateSelectedIds(nextSelection.selectedIds)
+        selectionAnchorIdRef.current = nextSelection.anchorId
+        activateLogin(nextSelection.activeId)
       })
-      updateSelectedIds(nextSelection.selectedIds)
-      selectionAnchorIdRef.current = nextSelection.anchorId
-      activateLogin(nextSelection.activeId)
     },
-    [activateLogin, scopedItemIds, updateSelectedIds]
+    [activateLogin, requestEditorTransition, scopedItemIds, updateSelectedIds]
   )
 
   useEffect(() => {
@@ -1027,9 +1174,10 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     toast.success(message)
   }, [])
 
-  const lockVault = useCallback(async (): Promise<void> => {
+  const performLockVault = useCallback(async (): Promise<void> => {
     clearDetailCache()
     setRevealedSecrets(emptyRevealedSecrets)
+    setRevealedCustomFields(emptyRevealedCustomFields)
     setTouchIdPassword('')
     setSelectedLogin(null)
     try {
@@ -1040,6 +1188,14 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       announceError(describeError(lockError))
     }
   }, [clearDetailCache, onLocked])
+
+  const lockVault = useCallback(async (): Promise<void> => {
+    if (editorDirtyRef.current) {
+      requestEditorTransition(() => void performLockVault())
+      return
+    }
+    await performLockVault()
+  }, [performLockVault, requestEditorTransition])
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent): void {
@@ -1068,13 +1224,13 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         event.preventDefault()
         setSearchOpen(true)
       }
-      if (key === 'n') {
+      if (key === 'n' && !editorMode) {
         event.preventDefault()
-        setEditorMode('create')
+        openEditor('create')
       }
-      if (key === 'e' && selectedLogin) {
+      if (key === 'e' && selectedLogin && !editorMode) {
         event.preventDefault()
-        setEditorMode('edit')
+        openEditor('edit')
       }
       if (key === 's' && editorMode && !busy) {
         event.preventDefault()
@@ -1096,6 +1252,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     busy,
     editorMode,
     lockVault,
+    openEditor,
     scopedItemIds,
     searchOpen,
     selectedLogin,
@@ -1113,32 +1270,39 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   }, [searchOpen])
 
   function selectScope(nextScope: Scope): void {
-    setScope(nextScope)
-    setTypeFilter('all')
-    setSidebarOpen(false)
-    setSettingsOpen(false)
-    setTouchIdPassword('')
-    setEditorMode(null)
-    setMoveDialogOpen(false)
+    requestEditorTransition(() => {
+      setScope(nextScope)
+      setTypeFilter('all')
+      setSidebarOpen(false)
+      setSettingsOpen(false)
+      setTouchIdPassword('')
+      setEditorMode(null)
+      setMoveDialogOpen(false)
+    })
   }
 
   function selectType(type: TypeFilter): void {
-    setScope({ kind: 'all' })
-    setTypeFilter(type)
-    setSidebarOpen(false)
-    setSettingsOpen(false)
-    setTouchIdPassword('')
-    setEditorMode(null)
-    setMoveDialogOpen(false)
+    requestEditorTransition(() => {
+      setScope({ kind: 'all' })
+      setTypeFilter(type)
+      setSidebarOpen(false)
+      setSettingsOpen(false)
+      setTouchIdPassword('')
+      setEditorMode(null)
+      setMoveDialogOpen(false)
+    })
   }
 
   function openSettings(): void {
-    setSettingsOpen(true)
-    setSidebarOpen(false)
-    setEditorMode(null)
-    setMoveDialogOpen(false)
-    clearItemSelection()
-    setRevealedSecrets(emptyRevealedSecrets)
+    requestEditorTransition(() => {
+      setSettingsOpen(true)
+      setSidebarOpen(false)
+      setEditorMode(null)
+      setMoveDialogOpen(false)
+      clearItemSelection()
+      setRevealedSecrets(emptyRevealedSecrets)
+      setRevealedCustomFields(emptyRevealedCustomFields)
+    })
   }
 
   function closeSettings(): void {
@@ -1314,6 +1478,13 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     setBusy(true)
     try {
       const changedSecrets = new Set(draft.changedSecrets)
+      const customFields = draft.customFields.map((field) => ({
+        source: field.source,
+        name: field.name,
+        type: field.type,
+        value: field.value,
+        linkedId: field.linkedId
+      }))
       const fields = {
         username: draft.username,
         uri: draft.uri || null,
@@ -1354,7 +1525,8 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           ...fields,
           notes: draft.notes || null,
           folderId: draft.folderId,
-          favorite: draft.favorite
+          favorite: draft.favorite,
+          customFields
         })
         cacheLoginDetail(detailCacheRef.current, created)
         setItems((current) => [...current, toLoginSummary(created)])
@@ -1368,11 +1540,13 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       } else if (selectedLogin) {
         const updated = await window.bearwarden.logins.update({
           id: selectedLogin.id,
+          expectedUpdatedAt: draft.expectedUpdatedAt ?? undefined,
           name: draft.name,
           ...fields,
           notes: draft.notes || null,
           folderId: draft.folderId,
-          favorite: draft.favorite
+          favorite: draft.favorite,
+          customFields
         })
         cacheLoginDetail(detailCacheRef.current, updated)
         setItems((current) =>
@@ -1381,6 +1555,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         setSelectedLogin(updated)
         announce(`已儲存「${updated.name}」。`)
       }
+      setRevealedCustomFields(emptyRevealedCustomFields)
+      editorDirtyRef.current = false
+      setEditorDirty(false)
       setEditorMode(null)
     } catch (saveError) {
       announceError(describeError(saveError))
@@ -1441,6 +1618,66 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     try {
       await window.bearwarden.logins.copyField({ id: selectedSummary.id, field })
       announce('欄位已複製。')
+      await refreshItems()
+    } catch (copyError) {
+      announceError(describeError(copyError))
+    }
+  }
+
+  async function revealCustomField(index: number, field: VaultCustomFieldView): Promise<void> {
+    if (!selectedLogin) return
+    const itemId = selectedLogin.id
+    const revealedEntry =
+      revealedCustomFields.itemId === itemId ? revealedCustomFields.values[index] : undefined
+    if (
+      revealedEntry &&
+      revealedEntry.expectedUpdatedAt === selectedLogin.updatedAt &&
+      matchesCustomFieldSource(field, index, revealedEntry.source)
+    ) {
+      setRevealedCustomFields((current) => {
+        if (current.itemId !== itemId) return current
+        const next = { ...current.values }
+        delete next[index]
+        return Object.keys(next).length ? { itemId, values: next } : emptyRevealedCustomFields
+      })
+      return
+    }
+    try {
+      const expectedUpdatedAt = selectedLogin.updatedAt
+      const source: VaultCustomFieldSource = {
+        index,
+        name: field.name,
+        type: field.type,
+        linkedId: field.linkedId
+      }
+      const value = await window.bearwarden.logins.revealCustomField({
+        id: itemId,
+        expectedUpdatedAt,
+        source
+      })
+      if (selectedIdRef.current !== itemId) return
+      setRevealedCustomFields((current) => ({
+        itemId,
+        values: {
+          ...(current.itemId === itemId ? current.values : {}),
+          [index]: { value, source, expectedUpdatedAt }
+        }
+      }))
+      announce('隱藏欄位已顯示，將在 30 秒後自動隱藏。')
+    } catch (revealError) {
+      announceError(describeError(revealError))
+    }
+  }
+
+  async function copyCustomField(index: number, field: VaultCustomFieldView): Promise<void> {
+    if (!selectedLogin) return
+    try {
+      await window.bearwarden.logins.copyCustomField({
+        id: selectedLogin.id,
+        expectedUpdatedAt: selectedLogin.updatedAt,
+        source: { index, name: field.name, type: field.type, linkedId: field.linkedId }
+      })
+      announce('自訂欄位已複製。')
       await refreshItems()
     } catch (copyError) {
       announceError(describeError(copyError))
@@ -1597,6 +1834,64 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             )}
           </>
         )}
+      </div>
+    )
+  }
+
+  function renderCustomField(field: VaultCustomFieldView, index: number): React.JSX.Element {
+    const revealedEntry =
+      revealedCustomFields.itemId === selectedLogin?.id
+        ? revealedCustomFields.values[index]
+        : undefined
+    const revealedValue =
+      revealedEntry &&
+      revealedEntry.expectedUpdatedAt === selectedLogin?.updatedAt &&
+      matchesCustomFieldSource(field, index, revealedEntry.source)
+        ? revealedEntry.value
+        : undefined
+    const hidden = field.type === 'hidden'
+    const label = field.name || '未命名欄位'
+    return (
+      <div
+        className={cn('detail-field', hidden && 'password-field', hidden && 'multi-action')}
+        key={`${index}:${field.name}:${field.type}`}
+      >
+        <span>{label}</span>
+        <strong
+          className={
+            hidden ? (revealedValue === undefined ? 'masked-value' : 'revealed-value') : undefined
+          }
+        >
+          {hidden
+            ? revealedValue === undefined
+              ? '••••••••••••'
+              : revealedValue || '未設定'
+            : customFieldDisplayValue(field)}
+        </strong>
+        {hidden && (
+          <TooltipIconButton
+            variant="outline"
+            size="icon"
+            className="icon-button"
+            type="button"
+            label={revealedValue === undefined ? `顯示${label}` : `隱藏${label}`}
+            aria-pressed={revealedValue !== undefined}
+            onClick={() => void revealCustomField(index, field)}
+          >
+            {revealedValue === undefined ? <Eye /> : <EyeOff />}
+          </TooltipIconButton>
+        )}
+        <TooltipIconButton
+          variant="outline"
+          size="icon"
+          className="icon-button"
+          type="button"
+          label={`複製${label}`}
+          disabled={field.type !== 'linked' && !field.value && !hidden}
+          onClick={() => void copyCustomField(index, field)}
+        >
+          <Copy />
+        </TooltipIconButton>
       </div>
     )
   }
@@ -2243,7 +2538,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                       className="icon-button list-add-button"
                       type="button"
                       label="新增項目"
-                      onClick={() => setEditorMode('create')}
+                      onClick={() => openEditor('create')}
                     >
                       <Plus aria-hidden="true" />
                     </TooltipIconButton>
@@ -2292,7 +2587,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                         <Button
                           className="button primary"
                           type="button"
-                          onClick={() => setEditorMode('create')}
+                          onClick={() => openEditor('create')}
                         >
                           <Plus data-icon="inline-start" />
                           新增項目
@@ -2308,11 +2603,12 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           <section className="detail-pane" aria-label="項目詳細資料">
             {editorMode ? (
               <LoginEditor
-                key={`${editorMode}:${selectedLogin?.id ?? 'new'}`}
+                key={`${editorSessionId}:${editorMode}:${selectedLogin?.id ?? 'new'}`}
                 login={editorMode === 'edit' ? (selectedLogin ?? undefined) : undefined}
                 folders={folders}
                 busy={busy}
-                onCancel={() => setEditorMode(null)}
+                onCancel={() => requestEditorTransition(() => setEditorMode(null))}
+                onDirtyChange={handleEditorDirtyChange}
                 onSave={saveLogin}
               />
             ) : selectedId && selectedSummary && selectedLogin?.id !== selectedId ? (
@@ -2379,7 +2675,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     size="sm"
                     className="button secondary compact"
                     type="button"
-                    onClick={() => setEditorMode('edit')}
+                    onClick={() => openEditor('edit')}
                   >
                     <Edit3 data-icon="inline-start" />
                     編輯
@@ -2402,6 +2698,24 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                         {selectedDetailFields
                           .filter((field) => field.secret || Boolean(field.value))
                           .map(renderDetailField)}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {selectedLogin.customFields.length > 0 && (
+                    <Card
+                      className="detail-card gap-0 py-0"
+                      role="region"
+                      aria-labelledby="custom-fields-title"
+                    >
+                      <CardHeader className="bg-muted rounded-none border-b">
+                        <CardTitle id="custom-fields-title">自訂欄位</CardTitle>
+                        <CardDescription>
+                          {selectedLogin.customFields.length} 個欄位
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="contents">
+                        {selectedLogin.customFields.map(renderCustomField)}
                       </CardContent>
                     </Card>
                   )}
@@ -2622,6 +2936,31 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             onSynced={refreshAfterSync}
           />
         )}
+        <AlertDialog
+          open={discardEditorDialogOpen && editorDirty}
+          onOpenChange={(open) => {
+            setDiscardEditorDialogOpen(open)
+            if (!open) pendingEditorActionRef.current = null
+          }}
+        >
+          <AlertDialogContent size="sm">
+            <AlertDialogHeader>
+              <AlertDialogTitle>捨棄尚未儲存的變更？</AlertDialogTitle>
+              <AlertDialogDescription>這些變更尚未儲存。捨棄後將無法復原。</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel type="button">繼續編輯</AlertDialogCancel>
+              <AlertDialogAction
+                type="button"
+                variant="destructive"
+                onClick={confirmEditorDiscard}
+                disabled={busy}
+              >
+                捨棄變更
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </main>
 
       <DragOverlay dropAnimation={null} style={{ pointerEvents: 'none' }}>

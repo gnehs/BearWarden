@@ -473,9 +473,9 @@ button svg {
   color: var(--subtle);
   font-weight: 500;
 }
-.field input,
-.field select,
-.field textarea {
+.field > input,
+.field > select,
+.field > textarea {
   width: 100%;
   min-height: 40px;
   padding: 9px 11px;
@@ -485,18 +485,23 @@ button svg {
   background: var(--background);
   box-shadow: inset 0 1px 2px color-mix(in oklch, var(--foreground) 4%, transparent);
 }
-.field textarea {
+.field > [data-slot='input-group'] {
+  min-height: 40px;
+  background: var(--background);
+  box-shadow: inset 0 1px 2px color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+.field > textarea {
   resize: vertical;
   line-height: 1.55;
 }
-.field input:hover,
-.field select:hover,
-.field textarea:hover {
+.field > input:hover,
+.field > select:hover,
+.field > textarea:hover {
   border-color: var(--ring);
 }
-.field input:focus,
-.field select:focus,
-.field textarea:focus {
+.field > input:focus,
+.field > select:focus,
+.field > textarea:focus {
   border-color: var(--focus);
 }
 
@@ -1144,9 +1149,10 @@ button svg {
 :root[data-theme='dark'] .detail-card,
 :root[data-theme='dark'] .form-section,
 :root[data-theme='dark'] .settings-card,
-:root[data-theme='dark'] .field input,
-:root[data-theme='dark'] .field select,
-:root[data-theme='dark'] .field textarea,
+:root[data-theme='dark'] .field > input,
+:root[data-theme='dark'] .field > select,
+:root[data-theme='dark'] .field > textarea,
+:root[data-theme='dark'] .field > [data-slot='input-group'],
 :root[data-theme='dark'] .payment-brand-picker button,
 :root[data-theme='dark'] .payment-brand-picker > input,
 :root[data-theme='dark'] .sort-control,

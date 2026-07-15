@@ -5,6 +5,7 @@ import {
   IPC_EVENTS,
   MAX_LOGIN_MOVE_MANY_IDS,
   type AppSettingsUpdate,
+  type CustomFieldRequest,
   type FolderCreateRequest,
   type FolderDeleteRequest,
   type FolderReorderRequest,
@@ -18,6 +19,9 @@ import {
   type LoginMoveManyRequest,
   type LoginUpdateRequest,
   type ItemFieldRequest,
+  type VaultCustomFieldSource,
+  type VaultCustomFieldType,
+  type VaultCustomFieldUpdate,
   type VaultItemFields,
   type VaultItemType,
   type SyncConnectRequest,
@@ -37,6 +41,8 @@ import { showItemContextMenu } from './item-context-menu'
 type RecordValue = Record<string, unknown>
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const MAX_CUSTOM_FIELDS = 1_000
+const MAX_CUSTOM_FIELD_STRING_LENGTH = 5_000
 
 export interface VaultIpcOptions {
   vault: VaultService
@@ -143,6 +149,69 @@ function optionalBoolean(record: RecordValue, key: string): boolean | undefined 
   throw new VaultError('INVALID_INPUT')
 }
 
+function customFieldType(value: unknown): VaultCustomFieldType {
+  if (value !== 'text' && value !== 'hidden' && value !== 'boolean' && value !== 'linked') {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return value
+}
+
+function customFieldLinkedId(value: unknown): number | null {
+  if (value === null) return null
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return value
+}
+
+function boundedCustomFieldString(value: unknown): string {
+  if (typeof value !== 'string' || value.length > MAX_CUSTOM_FIELD_STRING_LENGTH) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return value
+}
+
+function parseCustomFieldSource(value: unknown): VaultCustomFieldSource {
+  const record = exactRecord(value, ['index', 'name', 'type', 'linkedId'])
+  if (typeof record.index !== 'number' || !Number.isSafeInteger(record.index) || record.index < 0) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return {
+    index: record.index,
+    name: boundedCustomFieldString(record.name),
+    type: customFieldType(record.type),
+    linkedId: customFieldLinkedId(record.linkedId)
+  }
+}
+
+function parseCustomFields(value: unknown): VaultCustomFieldUpdate[] {
+  if (!Array.isArray(value) || value.length > MAX_CUSTOM_FIELDS) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return value.map((candidate): VaultCustomFieldUpdate => {
+    const record = exactRecord(candidate, ['source', 'name', 'type', 'value', 'linkedId'])
+    const type = customFieldType(record.type)
+    const fieldValue = record.value
+    if (
+      fieldValue !== null &&
+      (typeof fieldValue !== 'string' || fieldValue.length > MAX_CUSTOM_FIELD_STRING_LENGTH)
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    if (type === 'boolean' && fieldValue !== 'true' && fieldValue !== 'false') {
+      throw new VaultError('INVALID_INPUT')
+    }
+    if (type === 'linked' && fieldValue !== null) throw new VaultError('INVALID_INPUT')
+    return {
+      source: record.source === null ? null : parseCustomFieldSource(record.source),
+      name: boundedCustomFieldString(record.name),
+      type,
+      value: fieldValue,
+      linkedId: customFieldLinkedId(record.linkedId)
+    }
+  })
+}
+
 function parseSetup(value: unknown): VaultSetupRequest {
   const record = exactRecord(value, ['masterPassword'])
   return { masterPassword: requiredString(record, 'masterPassword') }
@@ -232,7 +301,15 @@ function parseLoginCreate(value: unknown): LoginCreateRequest {
     'publicKey',
     'fingerprint'
   ] as const satisfies readonly (keyof VaultItemFields)[]
-  const record = exactRecord(value, ['type', 'name', 'notes', 'folderId', 'favorite', ...fieldKeys])
+  const record = exactRecord(value, [
+    'type',
+    'name',
+    'notes',
+    'folderId',
+    'favorite',
+    'customFields',
+    ...fieldKeys
+  ])
   const result: LoginCreateRequest = {
     name: requiredString(record, 'name')
   }
@@ -254,9 +331,12 @@ function parseLoginCreate(value: unknown): LoginCreateRequest {
   const notes = optionalStringOrNull(record, 'notes')
   const folderId = optionalStringOrNull(record, 'folderId')
   const favorite = optionalBoolean(record, 'favorite')
+  const customFields =
+    record.customFields === undefined ? undefined : parseCustomFields(record.customFields)
   if (notes !== undefined) result.notes = notes
   if (folderId !== undefined) result.folderId = folderId
   if (favorite !== undefined) result.favorite = favorite
+  if (customFields !== undefined) result.customFields = customFields
   return result
 }
 
@@ -294,8 +374,20 @@ function parseLoginUpdate(value: unknown): LoginUpdateRequest {
     'publicKey',
     'fingerprint'
   ] as const satisfies readonly (keyof VaultItemFields)[]
-  const record = exactRecord(value, ['id', 'name', 'notes', 'folderId', 'favorite', ...fieldKeys])
+  const record = exactRecord(value, [
+    'id',
+    'expectedUpdatedAt',
+    'name',
+    'notes',
+    'folderId',
+    'favorite',
+    'customFields',
+    ...fieldKeys
+  ])
   const result: LoginUpdateRequest = { id: requiredString(record, 'id') }
+  if (record.expectedUpdatedAt !== undefined) {
+    result.expectedUpdatedAt = requiredString(record, 'expectedUpdatedAt')
+  }
   for (const key of ['name'] as const) {
     if (record[key] !== undefined) result[key] = requiredString(record, key)
   }
@@ -306,9 +398,12 @@ function parseLoginUpdate(value: unknown): LoginUpdateRequest {
   const notes = optionalStringOrNull(record, 'notes')
   const folderId = optionalStringOrNull(record, 'folderId')
   const favorite = optionalBoolean(record, 'favorite')
+  const customFields =
+    record.customFields === undefined ? undefined : parseCustomFields(record.customFields)
   if (notes !== undefined) result.notes = notes
   if (folderId !== undefined) result.folderId = folderId
   if (favorite !== undefined) result.favorite = favorite
+  if (customFields !== undefined) result.customFields = customFields
   return result
 }
 
@@ -333,6 +428,15 @@ function parseItemField(value: unknown): ItemFieldRequest {
   )
     throw new VaultError('INVALID_INPUT')
   return { id: requiredString(record, 'id'), field }
+}
+
+function parseCustomFieldRequest(value: unknown): CustomFieldRequest {
+  const record = exactRecord(value, ['id', 'expectedUpdatedAt', 'source'])
+  return {
+    id: requiredString(record, 'id'),
+    expectedUpdatedAt: requiredString(record, 'expectedUpdatedAt'),
+    source: parseCustomFieldSource(record.source)
+  }
 }
 
 function parseLoginFavorite(value: unknown): LoginFavoriteRequest {
@@ -607,6 +711,12 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   )
   registerHandler(IPC_CHANNELS.itemCopyField, getMainWindow, (_event, input) =>
     vault.copyField(parseItemField(input))
+  )
+  registerHandler(IPC_CHANNELS.itemRevealCustomField, getMainWindow, (_event, input) =>
+    vault.revealCustomField(parseCustomFieldRequest(input))
+  )
+  registerHandler(IPC_CHANNELS.itemCopyCustomField, getMainWindow, (_event, input) =>
+    vault.copyCustomField(parseCustomFieldRequest(input))
   )
   registerHandler(IPC_CHANNELS.syncStatus, getMainWindow, () => vault.syncStatus())
   registerHandler(IPC_CHANNELS.syncConnect, getMainWindow, async (_event, input) => {

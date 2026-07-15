@@ -8,7 +8,7 @@ import type {
   BitwardenLoginItem,
   BitwardenSyncClient
 } from './bitwarden-direct'
-import type { VaultItemFields } from '../shared/vault-contract'
+import type { CustomFieldRequest, LoginView, VaultItemFields } from '../shared/vault-contract'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import { VaultService, type VaultServiceOptions } from './vault-service'
 
@@ -56,6 +56,16 @@ const emptyItemFields: VaultItemFields = {
   privateKey: '',
   publicKey: '',
   fingerprint: ''
+}
+
+function customFieldRequest(login: LoginView, index: number): CustomFieldRequest {
+  const field = login.customFields[index]
+  if (!field) throw new Error(`Missing custom field ${index}`)
+  return {
+    id: login.id,
+    expectedUpdatedAt: login.updatedAt,
+    source: { index, name: field.name, type: field.type, linkedId: field.linkedId }
+  }
 }
 
 async function createHarness(options: VaultServiceOptions = {}): Promise<{
@@ -111,6 +121,12 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
       password: 'remote-test-secret',
       totp: 'JBSWY3DPEHPK3PXP',
       uris: [{ uri: 'https://remote.example.invalid', match: null }],
+      customFields: [
+        { name: 'member-id', value: 'remote-member-42', type: 'text', linkedId: null },
+        { name: 'recovery-code', value: 'remote-hidden-code', type: 'hidden', linkedId: null },
+        { name: 'remember-device', value: 'true', type: 'boolean', linkedId: null },
+        { name: 'linked-username', value: '', type: 'linked', linkedId: 100 }
+      ],
       passkeys: [
         {
           credentialId: 'credential-id',
@@ -146,6 +162,7 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
     totp: draft.totp ?? '',
     uri: draft.uri ?? null,
     uris: draft.uri ? [{ uri: draft.uri, match: null }] : [],
+    customFields: draft.customFields ?? [],
     passkeys: draft.passkeys ?? [],
     creationDate: '2026-07-14T00:00:00.000Z',
     revisionDate: '2026-07-14T00:00:01.000Z'
@@ -177,7 +194,12 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
     sync: async () => undefined,
     listFolders: async () => remoteFolders.map((folder) => ({ ...folder })),
     listPersonalLogins: async () =>
-      remoteLogins.map((login) => ({ ...login, uris: login.uris.map((uri) => ({ ...uri })) })),
+      remoteLogins.map((login) => ({
+        ...login,
+        uris: login.uris.map((uri) => ({ ...uri })),
+        customFields: login.customFields.map((field) => ({ ...field })),
+        passkeys: login.passkeys.map((passkey) => ({ ...passkey }))
+      })),
     createFolder: async (name) => {
       const folder = { id: '90000000-0000-4000-8000-000000000003', name }
       remoteFolders.push(folder)
@@ -263,7 +285,7 @@ describe('VaultService encrypted local data', () => {
 
   it('pulls and pushes through the direct connector while encrypting its session at rest', async () => {
     let fake: ReturnType<typeof createSyncFake> | null = null
-    const { filePath, service } = await createHarness({
+    const { copyText, filePath, service } = await createHarness({
       createSyncClient: (sync) => {
         fake = createSyncFake(sync.state)
         return fake
@@ -286,15 +308,49 @@ describe('VaultService encrypted local data', () => {
       hasTotp: true,
       createdAt: '2026-07-13T00:00:00.000Z',
       updatedAt: '2026-07-14T00:00:00.000Z',
-      passkeys: [expect.objectContaining({ rpId: 'remote.example.invalid' })]
+      passkeys: [expect.objectContaining({ rpId: 'remote.example.invalid' })],
+      customFields: [
+        { name: 'member-id', type: 'text', value: 'remote-member-42', linkedId: null },
+        { name: 'recovery-code', type: 'hidden', value: null, linkedId: null },
+        { name: 'remember-device', type: 'boolean', value: 'true', linkedId: null },
+        { name: 'linked-username', type: 'linked', value: null, linkedId: 100 }
+      ]
     })
     expect(localView).not.toHaveProperty('totp')
     expect(JSON.stringify(localView)).not.toContain('fake-passkey-private-material')
+
+    await expect(service.revealCustomField(customFieldRequest(localView, 1))).resolves.toBe(
+      'remote-hidden-code'
+    )
+    await service.copyCustomField(customFieldRequest(localView, 0))
+    expect(copyText).toHaveBeenCalledWith('remote-member-42')
+    await service.copyCustomField(customFieldRequest(localView, 3))
+    expect(copyText).toHaveBeenCalledWith('remote@example.invalid')
+    await expect(
+      service.revealCustomField({
+        id: local.id,
+        expectedUpdatedAt: localView.updatedAt,
+        source: { index: 4, name: 'missing', type: 'hidden', linkedId: null }
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.copyCustomField({
+        id: local.id,
+        expectedUpdatedAt: localView.updatedAt,
+        source: { index: -1, name: 'missing', type: 'text', linkedId: null }
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
 
     await service.updateLogin({ id: local.id, password: 'locally-changed-secret' })
     const synced = await service.syncNow()
     expect(synced.pushed).toBe(1)
     expect(fake!.remoteLogins[0]?.password).toBe('locally-changed-secret')
+    expect(fake!.remoteLogins[0]?.customFields).toEqual([
+      { name: 'member-id', value: 'remote-member-42', type: 'text', linkedId: null },
+      { name: 'recovery-code', value: 'remote-hidden-code', type: 'hidden', linkedId: null },
+      { name: 'remember-device', value: 'true', type: 'boolean', linkedId: null },
+      { name: 'linked-username', value: '', type: 'linked', linkedId: 100 }
+    ])
 
     const encryptedFile = await readFile(filePath, 'utf8')
     expect(encryptedFile).not.toContain('test-access-token')
@@ -578,6 +634,371 @@ describe('VaultService encrypted local data', () => {
     expect((await service.listLogins()).map((item) => item.id)).not.toContain(note.id)
   })
 
+  it('ignores empty fields from other item types while preserving active field clears', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const editorFields = { ...emptyItemFields }
+    const itemTypes = ['login', 'card', 'identity', 'secureNote', 'sshKey'] as const
+    const created: LoginView[] = []
+
+    for (const type of itemTypes) {
+      created.push(
+        await service.createLogin({
+          type,
+          name: `${type} editor payload`,
+          ...editorFields,
+          ...(type === 'login' ? { username: 'before-clear', password: 'secret' } : {})
+        })
+      )
+    }
+
+    expect(created.map((item) => item.type)).toEqual(itemTypes)
+    const login = created[0]!
+
+    await expect(
+      service.updateLogin({
+        id: login.id,
+        ...editorFields,
+        username: ''
+      })
+    ).resolves.toMatchObject({ username: '' })
+    await expect(service.revealPassword({ id: login.id })).resolves.toBe('')
+
+    await expect(
+      service.updateLogin({ id: login.id, cardholderName: 'cross-type value' })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+  })
+
+  it('creates all four custom field types without exposing hidden or linked values', async () => {
+    const { service, copyText } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+
+    const login = await service.createLogin({
+      name: 'Custom fields',
+      username: 'linked-user',
+      customFields: [
+        { source: null, name: 'member-id', type: 'text', value: 'member-42', linkedId: null },
+        { source: null, name: 'recovery', type: 'hidden', value: 'secret-42', linkedId: null },
+        { source: null, name: 'enabled', type: 'boolean', value: 'true', linkedId: null },
+        { source: null, name: 'account', type: 'linked', value: null, linkedId: 100 }
+      ]
+    })
+
+    expect(login.customFields).toEqual([
+      { name: 'member-id', type: 'text', value: 'member-42', linkedId: null },
+      { name: 'recovery', type: 'hidden', value: null, linkedId: null },
+      { name: 'enabled', type: 'boolean', value: 'true', linkedId: null },
+      { name: 'account', type: 'linked', value: null, linkedId: 100 }
+    ])
+    await expect(service.revealCustomField(customFieldRequest(login, 1))).resolves.toBe('secret-42')
+    await service.copyCustomField(customFieldRequest(login, 3))
+    expect(copyText).toHaveBeenCalledWith('linked-user')
+  })
+
+  it('updates, deletes, and reorders custom fields as one complete array', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const login = await service.createLogin({
+      name: 'Custom fields',
+      customFields: [
+        { source: null, name: 'first', type: 'text', value: '1', linkedId: null },
+        { source: null, name: 'delete-me', type: 'text', value: '2', linkedId: null },
+        { source: null, name: 'last', type: 'boolean', value: 'false', linkedId: null }
+      ]
+    })
+
+    const updated = await service.updateLogin({
+      id: login.id,
+      customFields: [
+        {
+          source: { index: 2, name: 'last', type: 'boolean', linkedId: null },
+          name: 'last-first',
+          type: 'boolean',
+          value: 'true',
+          linkedId: null
+        },
+        {
+          source: { index: 0, name: 'first', type: 'text', linkedId: null },
+          name: 'first-second',
+          type: 'text',
+          value: 'updated',
+          linkedId: null
+        },
+        { source: null, name: 'new-third', type: 'text', value: '3', linkedId: null }
+      ]
+    })
+
+    expect(updated.customFields).toEqual([
+      { name: 'last-first', type: 'boolean', value: 'true', linkedId: null },
+      { name: 'first-second', type: 'text', value: 'updated', linkedId: null },
+      { name: 'new-third', type: 'text', value: '3', linkedId: null }
+    ])
+  })
+
+  it('rejects reveal and copy requests from a stale custom field snapshot', async () => {
+    const { service, copyText } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const original = await service.createLogin({
+      name: 'Stale reads',
+      customFields: [
+        { source: null, name: 'duplicate', type: 'hidden', value: 'first-secret', linkedId: null },
+        { source: null, name: 'duplicate', type: 'hidden', value: 'second-secret', linkedId: null }
+      ]
+    })
+    const staleFirst = customFieldRequest(original, 0)
+
+    await service.updateLogin({
+      id: original.id,
+      customFields: [
+        {
+          source: { index: 1, name: 'duplicate', type: 'hidden', linkedId: null },
+          name: 'duplicate',
+          type: 'hidden',
+          value: null,
+          linkedId: null
+        },
+        {
+          source: { index: 0, name: 'duplicate', type: 'hidden', linkedId: null },
+          name: 'duplicate',
+          type: 'hidden',
+          value: null,
+          linkedId: null
+        }
+      ]
+    })
+
+    await expect(service.revealCustomField(staleFirst)).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(service.copyCustomField(staleFirst)).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    expect(copyText).not.toHaveBeenCalled()
+  })
+
+  it('rejects an editor save when the item revision changed after its snapshot', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const snapshot = await service.createLogin({
+      name: 'Concurrent edit',
+      customFields: [
+        { source: null, name: 'environment', type: 'text', value: 'old', linkedId: null }
+      ]
+    })
+    await service.updateLogin({
+      id: snapshot.id,
+      customFields: [
+        {
+          source: { index: 0, name: 'environment', type: 'text', linkedId: null },
+          name: 'environment',
+          type: 'text',
+          value: 'newer',
+          linkedId: null
+        }
+      ]
+    })
+
+    await expect(
+      service.updateLogin({
+        id: snapshot.id,
+        expectedUpdatedAt: snapshot.updatedAt,
+        name: 'Stale overwrite',
+        customFields: [
+          {
+            source: { index: 0, name: 'environment', type: 'text', linkedId: null },
+            name: 'environment',
+            type: 'text',
+            value: 'old',
+            linkedId: null
+          }
+        ]
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(service.getLogin({ id: snapshot.id })).resolves.toMatchObject({
+      name: 'Concurrent edit',
+      customFields: [{ name: 'environment', value: 'newer' }]
+    })
+  })
+
+  it('preserves an existing hidden value only for a hidden-to-hidden null update and can clear it', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const login = await service.createLogin({
+      name: 'Hidden field',
+      customFields: [
+        { source: null, name: 'secret', type: 'hidden', value: 'keep-me', linkedId: null }
+      ]
+    })
+
+    await service.updateLogin({
+      id: login.id,
+      customFields: [
+        {
+          source: { index: 0, name: 'secret', type: 'hidden', linkedId: null },
+          name: 'renamed-secret',
+          type: 'hidden',
+          value: null,
+          linkedId: null
+        }
+      ]
+    })
+    await expect(
+      service.revealCustomField(customFieldRequest(await service.getLogin({ id: login.id }), 0))
+    ).resolves.toBe('keep-me')
+
+    await expect(
+      service.updateLogin({
+        id: login.id,
+        customFields: [
+          {
+            source: { index: 0, name: 'renamed-secret', type: 'hidden', linkedId: null },
+            name: 'not-hidden',
+            type: 'text',
+            value: null,
+            linkedId: null
+          }
+        ]
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.revealCustomField(customFieldRequest(await service.getLogin({ id: login.id }), 0))
+    ).resolves.toBe('keep-me')
+
+    await service.updateLogin({
+      id: login.id,
+      customFields: [
+        {
+          source: { index: 0, name: 'renamed-secret', type: 'hidden', linkedId: null },
+          name: 'renamed-secret',
+          type: 'hidden',
+          value: '',
+          linkedId: null
+        }
+      ]
+    })
+    await expect(
+      service.revealCustomField(customFieldRequest(await service.getLogin({ id: login.id }), 0))
+    ).resolves.toBe('')
+  })
+
+  it('rejects stale or duplicated custom field sources without applying any part of the update', async () => {
+    const { service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const login = await service.createLogin({
+      name: 'Atomic fields',
+      customFields: [
+        { source: null, name: 'first', type: 'text', value: '1', linkedId: null },
+        { source: null, name: 'second', type: 'text', value: '2', linkedId: null }
+      ]
+    })
+    const before = await service.getLogin({ id: login.id })
+    const write = vi.spyOn(store, 'write')
+
+    await expect(
+      service.updateLogin({
+        id: login.id,
+        customFields: [
+          {
+            source: { index: 0, name: 'first', type: 'text', linkedId: null },
+            name: 'changed',
+            type: 'text',
+            value: 'changed',
+            linkedId: null
+          },
+          {
+            source: { index: 1, name: 'stale-name', type: 'text', linkedId: null },
+            name: 'second',
+            type: 'text',
+            value: 'changed',
+            linkedId: null
+          }
+        ]
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+
+    expect(write).not.toHaveBeenCalled()
+    expect(await service.getLogin({ id: login.id })).toEqual(before)
+
+    await expect(
+      service.updateLogin({
+        id: login.id,
+        customFields: [
+          {
+            source: { index: 0, name: 'first', type: 'text', linkedId: null },
+            name: 'first',
+            type: 'text',
+            value: '1',
+            linkedId: null
+          },
+          {
+            source: { index: 0, name: 'first', type: 'text', linkedId: null },
+            name: 'duplicate',
+            type: 'text',
+            value: '2',
+            linkedId: null
+          }
+        ]
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+  })
+
+  it('rejects invalid linked targets, boolean values, null values, and custom field limits', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+
+    await expect(
+      service.createLogin({
+        type: 'card',
+        name: 'Invalid linked field',
+        customFields: [
+          { source: null, name: 'login-only', type: 'linked', value: null, linkedId: 100 }
+        ]
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.createLogin({
+        name: 'Invalid linked value',
+        customFields: [
+          { source: null, name: 'username', type: 'linked', value: 'discard-me', linkedId: 100 }
+        ]
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.createLogin({
+        name: 'Invalid boolean field',
+        customFields: [
+          { source: null, name: 'enabled', type: 'boolean', value: 'yes', linkedId: null }
+        ]
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.createLogin({
+        name: 'Invalid null field',
+        customFields: [{ source: null, name: 'text', type: 'text', value: null, linkedId: null }]
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.createLogin({
+        name: 'Too long',
+        customFields: [
+          { source: null, name: 'value', type: 'text', value: 'x'.repeat(5_001), linkedId: null }
+        ]
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.createLogin({
+        name: 'Too many',
+        customFields: Array.from({ length: 1_001 }, (_, index) => ({
+          source: null,
+          name: `field-${index}`,
+          type: 'text' as const,
+          value: '',
+          linkedId: null
+        }))
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+  })
+
   it('moves multiple logins atomically', async () => {
     const { service, store } = await createHarness()
     await service.setup(MASTER_PASSWORD)
@@ -622,8 +1043,8 @@ describe('VaultService encrypted local data', () => {
     expect((await service.getLogin({ id: second.id })).folderId).toBe(source.id)
   })
 
-  it('migrates V1 through V3 login records to V5 items', async () => {
-    for (const version of [1, 2, 3] as const) {
+  it('migrates V1 through V5 login records to V6 items', async () => {
+    for (const version of [1, 2, 3, 4, 5] as const) {
       const directory = await mkdtemp(join(tmpdir(), 'bearwarden-migration-test-'))
       temporaryDirectories.push(directory)
       const filePath = join(directory, 'vault', 'vault.json')
@@ -635,7 +1056,9 @@ describe('VaultService encrypted local data', () => {
         folders: [],
         logins: [
           {
+            ...emptyItemFields,
             id: IDS[0],
+            type: 'login',
             name: `Legacy V${version}`,
             username: 'legacy-user',
             password: 'legacy-secret',
@@ -645,7 +1068,8 @@ describe('VaultService encrypted local data', () => {
             favorite: false,
             lastUsedAt: null,
             createdAt,
-            updatedAt: createdAt
+            updatedAt: createdAt,
+            passkeys: []
           }
         ],
         ...(version === 1
@@ -681,10 +1105,13 @@ describe('VaultService encrypted local data', () => {
       await expect(service.unlock(MASTER_PASSWORD)).resolves.toEqual({ state: 'unlocked' })
       const migrated = (await service.listLogins())[0]!
       expect(migrated).toMatchObject({ type: 'login', username: 'legacy-user' })
+      await expect(service.getLogin({ id: migrated.id })).resolves.toMatchObject({
+        customFields: []
+      })
       expect(await service.revealPassword({ id: migrated.id })).toBe('legacy-secret')
       await service.lock()
       const unlocked = await store.unlock(MASTER_PASSWORD)
-      expect((unlocked.data as { version: number }).version).toBe(5)
+      expect((unlocked.data as { version: number }).version).toBe(6)
       unlocked.key.fill(0)
       unlocked.salt.fill(0)
     }

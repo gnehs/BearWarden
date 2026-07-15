@@ -42,10 +42,10 @@ Cloud 與支援中的 Vaultwarden 版本執行相容測試。
 主密碼不會寫入 BearWarden 密碼庫或設定；只在登入或解鎖時於主程序記憶體使用，
 衍生金鑰在鎖定時清除。登入 token、同步設定與 ID 對應只存放在已加密的本機密碼庫內。
 
-目前同步範圍限個人保管庫的 login items 與 folders。組織項目、附件、Sends、Passkeys、
-SSO 與自訂欄位尚不由 BearWarden 編輯；更新既有 login 時，direct connector 會保留 BearWarden
-未支援的遠端欄位。若兩端同時修改，遠端版本會保留為主要項目，本機修改會另建
-`(BearWarden conflict)` 副本。
+目前同步範圍限個人保管庫的 login items 與 folders。組織項目、附件、Sends、Passkeys 與
+SSO 尚不由 BearWarden 編輯；同步的自訂欄位可在項目詳情安全地顯示與編輯。
+更新既有 login 時，direct connector 會保留 BearWarden 未支援的遠端欄位。若兩端同時修改，
+遠端版本會保留為主要項目，本機修改會另建 `(BearWarden conflict)` 副本。
 
 目前支援 V1 AES-CBC-HMAC 與 Account Encryption V2 個人保管庫。V2 會嚴格驗證
 COSE/XChaCha20-Poly1305、Ed25519 或 ML-DSA-44 security state、簽署的公開金鑰，以及包裝的

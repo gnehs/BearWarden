@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { VaultItemFields, VaultItemType } from '../shared/vault-contract'
+import type { VaultCustomField, VaultItemFields, VaultItemType } from '../shared/vault-contract'
 import type { StoredPasskeyCredential } from './passkey'
 
 export interface SyncFolder {
@@ -19,6 +19,7 @@ export interface SyncLogin extends VaultItemFields {
   createdAt?: string
   updatedAt?: string
   passkeys: StoredPasskeyCredential[]
+  customFields: VaultCustomField[]
 }
 
 export interface SyncTombstone {
@@ -161,12 +162,11 @@ export function fingerprintFolder(folder: SyncFolder): string {
   return sha256({ name: folder.name })
 }
 
-/** Content fingerprint intentionally excludes IDs, timestamps, and lastUsedAt. */
-export function fingerprintLogin(
+function loginFingerprintContent(
   login: SyncLogin,
   canonicalFolder: string | null = login.folderId
-): string {
-  return sha256({
+): Record<string, unknown> {
+  return {
     type: login.type,
     favorite: login.favorite,
     folder: canonicalFolder,
@@ -206,7 +206,27 @@ export function fingerprintLogin(
       fingerprint: login.fingerprint
     },
     passkeys: login.passkeys
+  }
+}
+
+/** Content fingerprint intentionally excludes IDs, timestamps, and lastUsedAt. */
+export function fingerprintLogin(
+  login: SyncLogin,
+  canonicalFolder: string | null = login.folderId
+): string {
+  return sha256({
+    ...loginFingerprintContent(login, canonicalFolder),
+    // Keep the pre-custom-field fingerprint stable for items without custom fields. This lets
+    // existing sync links upgrade without falsely treating every item as modified on both sides.
+    ...(login.customFields?.length > 0 ? { customFields: login.customFields } : {})
   })
+}
+
+function legacyLoginFingerprint(
+  login: SyncLogin,
+  canonicalFolder: string | null = login.folderId
+): string {
+  return sha256(loginFingerprintContent(login, canonicalFolder))
 }
 
 function indexUnique<T extends { id: string }>(
@@ -447,6 +467,51 @@ function planFolders(
 function folderName(folderId: string | null, folders: Map<string, SyncFolder>): string | null {
   if (folderId === null) return null
   return folders.get(folderId)?.name ?? `missing:${folderId}`
+}
+
+export interface LegacyCustomFieldBaselineUpgrade {
+  localId: string
+  remoteId: string
+  customFields: VaultCustomField[]
+  baseFingerprint: string
+}
+
+/**
+ * Detects pre-custom-field sync links whose remote fields were previously invisible locally.
+ * Adopting those fields and advancing the base avoids a false conflict while preserving any
+ * unrelated local edit made before the first upgraded sync.
+ */
+export function legacyCustomFieldBaselineUpgrades(
+  localSnapshot: SyncSnapshot,
+  remoteSnapshot: SyncSnapshot,
+  metadata: SyncMetadata
+): LegacyCustomFieldBaselineUpgrade[] {
+  const local = indexUnique(localSnapshot.logins, 'local login')
+  const remote = indexUnique(remoteSnapshot.logins, 'remote login')
+  const remoteFolders = indexUnique(remoteSnapshot.folders, 'remote folder')
+  const upgrades: LegacyCustomFieldBaselineUpgrade[] = []
+
+  for (const link of metadata.loginLinks) {
+    const localLogin = local.get(link.localId)
+    const remoteLogin = remote.get(link.remoteId)
+    if (
+      !localLogin ||
+      !remoteLogin ||
+      localLogin.customFields.length > 0 ||
+      remoteLogin.customFields.length === 0
+    ) {
+      continue
+    }
+    const canonicalFolder = folderName(remoteLogin.folderId, remoteFolders)
+    if (legacyLoginFingerprint(remoteLogin, canonicalFolder) !== link.baseFingerprint) continue
+    upgrades.push({
+      localId: link.localId,
+      remoteId: link.remoteId,
+      customFields: remoteLogin.customFields.map((field) => ({ ...field })),
+      baseFingerprint: fingerprintLogin(remoteLogin, canonicalFolder)
+    })
+  }
+  return upgrades
 }
 
 export function planSync(

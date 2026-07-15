@@ -26,6 +26,8 @@ export const IPC_CHANNELS = {
   loginWebsiteIcon: 'login:website-icon',
   itemRevealSecret: 'item:reveal-secret',
   itemCopyField: 'item:copy-field',
+  itemRevealCustomField: 'item:reveal-custom-field',
+  itemCopyCustomField: 'item:copy-custom-field',
   settingsGet: 'settings:get',
   settingsUpdate: 'settings:update',
   settingsEnableTouchId: 'settings:enable-touch-id',
@@ -107,6 +109,52 @@ export interface FolderReorderRequest {
 
 export type VaultItemType = 'login' | 'card' | 'identity' | 'secureNote' | 'sshKey'
 
+export type VaultCustomFieldType = 'text' | 'hidden' | 'boolean' | 'linked'
+
+export const VAULT_LINKED_FIELD_IDS_BY_TYPE = {
+  login: [100, 101],
+  card: [300, 301, 302, 303, 304, 305],
+  identity: [
+    400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418
+  ],
+  secureNote: [],
+  sshKey: []
+} as const satisfies Record<VaultItemType, readonly number[]>
+
+/** Decrypted custom field stored only inside the encrypted vault and main process. */
+export interface VaultCustomField {
+  name: string
+  value: string
+  type: VaultCustomFieldType
+  linkedId: number | null
+}
+
+/** Renderer-safe custom field. Hidden values are omitted until explicitly revealed. */
+export interface VaultCustomFieldView {
+  name: string
+  value: string | null
+  type: VaultCustomFieldType
+  linkedId: number | null
+}
+
+/** Original metadata used to reject stale index-based custom-field edits. */
+export interface VaultCustomFieldSource {
+  index: number
+  name: string
+  type: VaultCustomFieldType
+  linkedId: number | null
+}
+
+export interface VaultCustomFieldUpdate {
+  /** Null creates a field; otherwise identifies an existing field in the editor snapshot. */
+  source: VaultCustomFieldSource | null
+  name: string
+  type: VaultCustomFieldType
+  /** Null preserves an existing hidden value or represents a linked field without a stored value. */
+  value: string | null
+  linkedId: number | null
+}
+
 export interface VaultItemFields {
   username: string
   password: string
@@ -151,14 +199,18 @@ export interface LoginCreateRequest extends VaultItemFieldInput {
   notes?: string | null
   folderId?: string | null
   favorite?: boolean
+  customFields?: VaultCustomFieldUpdate[]
 }
 
 export interface LoginUpdateRequest extends VaultItemFieldInput {
   id: string
+  /** Optional optimistic-concurrency token from the editor snapshot. */
+  expectedUpdatedAt?: string
   name?: string
   notes?: string | null
   folderId?: string | null
   favorite?: boolean
+  customFields?: VaultCustomFieldUpdate[]
 }
 
 export interface LoginIdRequest {
@@ -248,6 +300,7 @@ export interface LoginView extends LoginSummary {
   notes: string | null
   hasTotp: boolean
   passkeys: PasskeyView[]
+  customFields: VaultCustomFieldView[]
   cardholderName: string
   brand: string
   expMonth: string
@@ -310,6 +363,12 @@ export interface ItemFieldRequest extends LoginIdRequest {
   field: VaultCopyField
 }
 
+export interface CustomFieldRequest extends LoginIdRequest {
+  expectedUpdatedAt: string
+  /** Expected renderer snapshot metadata; main rejects stale index/name/type/link mappings. */
+  source: VaultCustomFieldSource
+}
+
 export type AppTheme = 'system' | 'light' | 'dark'
 
 export interface AppSettings {
@@ -367,6 +426,8 @@ export interface BearWardenAPI {
     getWebsiteIcon: (request: LoginIdRequest) => Promise<string | null>
     revealSecret: (request: ItemFieldRequest) => Promise<string>
     copyField: (request: ItemFieldRequest) => Promise<void>
+    revealCustomField: (request: CustomFieldRequest) => Promise<string>
+    copyCustomField: (request: CustomFieldRequest) => Promise<void>
   }
   sync: {
     status: () => Promise<SyncStatus>

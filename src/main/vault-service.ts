@@ -4,6 +4,7 @@ import type {
   FolderDeleteRequest,
   FolderReorderRequest,
   FolderUpdateRequest,
+  CustomFieldRequest,
   ItemFieldRequest,
   FolderView,
   LoginCreateRequest,
@@ -16,6 +17,10 @@ import type {
   LoginUpdateRequest,
   LoginView,
   VaultCopyField,
+  VaultCustomField,
+  VaultCustomFieldSource,
+  VaultCustomFieldUpdate,
+  VaultCustomFieldView,
   VaultItemFields,
   VaultItemType,
   VaultSecretField,
@@ -26,7 +31,7 @@ import type {
   TotpCodeView,
   VaultStatus
 } from '../shared/vault-contract'
-import { MAX_LOGIN_MOVE_MANY_IDS } from '../shared/vault-contract'
+import { MAX_LOGIN_MOVE_MANY_IDS, VAULT_LINKED_FIELD_IDS_BY_TYPE } from '../shared/vault-contract'
 import {
   BitwardenDirectError,
   type BitwardenFolder,
@@ -40,6 +45,7 @@ import { resolveBitwardenUrls } from './bitwarden-http'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import {
   completeSyncMetadata,
+  legacyCustomFieldBaselineUpgrades,
   planSync,
   type SyncAction,
   type SyncActionResult,
@@ -59,8 +65,9 @@ import {
 
 const LEGACY_DATA_VERSION = 1
 const CLI_DATA_VERSION = 2
-const PREVIOUS_DATA_VERSION = 4
-const DATA_VERSION = 5
+const ITEM_TYPES_DATA_VERSION = 4
+const PASSKEYS_DATA_VERSION = 5
+const DATA_VERSION = 6
 const MIN_MASTER_PASSWORD_LENGTH = 12
 const MAX_MASTER_PASSWORD_LENGTH = 1024
 const MAX_NAME_LENGTH = 256
@@ -69,14 +76,18 @@ const MAX_PASSWORD_LENGTH = 16_384
 const MAX_URI_LENGTH = 4096
 const MAX_NOTES_LENGTH = 65_536
 const MAX_ITEM_FIELD_LENGTH = 4_096
+const MAX_CUSTOM_FIELDS = 1_000
+const MAX_CUSTOM_FIELD_NAME_LENGTH = 5_000
+const MAX_CUSTOM_FIELD_VALUE_LENGTH = 5_000
 const MAX_SSH_PRIVATE_KEY_LENGTH = 1024 * 1024
 const MAX_SYNC_SECRET_LENGTH = 16_384
 const MAX_TWO_FACTOR_CODE_LENGTH = 256
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 interface StoredLogin
-  extends Omit<LoginView, 'subtitle' | 'hasTotp' | 'passkeys'>, VaultItemFields {
+  extends Omit<LoginView, 'subtitle' | 'hasTotp' | 'passkeys' | 'customFields'>, VaultItemFields {
   passkeys: StoredPasskeyCredential[]
+  customFields: VaultCustomField[]
 }
 
 interface SyncEntityMapping {
@@ -364,10 +375,39 @@ function parseStoredPasskey(value: unknown): StoredPasskeyCredential {
   }
 }
 
+function parseCustomField(value: unknown): VaultCustomField {
+  if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
+  if (
+    typeof value.name !== 'string' ||
+    value.name.length > MAX_CUSTOM_FIELD_NAME_LENGTH ||
+    typeof value.value !== 'string' ||
+    value.value.length > MAX_CUSTOM_FIELD_VALUE_LENGTH ||
+    (value.type !== 'text' &&
+      value.type !== 'hidden' &&
+      value.type !== 'boolean' &&
+      value.type !== 'linked') ||
+    (value.linkedId !== null &&
+      (!Number.isSafeInteger(value.linkedId) || (value.linkedId as number) < 0))
+  ) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  return {
+    name: value.name,
+    value: value.value,
+    type: value.type,
+    linkedId: value.linkedId as number | null
+  }
+}
+
+function cloneCustomFields(fields: readonly VaultCustomField[]): VaultCustomField[] {
+  return fields.map((field) => ({ ...field }))
+}
+
 function parseStoredLogin(
   value: unknown,
   legacyItemType = false,
-  allowMissingExtendedFields = false
+  allowMissingExtendedFields = false,
+  allowMissingCustomFields = false
 ): StoredLogin {
   if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
   if (
@@ -439,6 +479,18 @@ function parseStoredLogin(
               throw new VaultError('CORRUPT_VAULT')
             }
             return value.passkeys.map(parseStoredPasskey)
+          })(),
+    customFields:
+      allowMissingCustomFields && value.customFields === undefined
+        ? []
+        : (() => {
+            if (
+              !Array.isArray(value.customFields) ||
+              value.customFields.length > MAX_CUSTOM_FIELDS
+            ) {
+              throw new VaultError('CORRUPT_VAULT')
+            }
+            return value.customFields.map(parseCustomField)
           })(),
     ...fields
   }
@@ -600,16 +652,21 @@ function parseSyncData(
 function parseVaultData(value: unknown): VaultData {
   if (
     !isRecord(value) ||
-    (value.version !== LEGACY_DATA_VERSION &&
-      value.version !== CLI_DATA_VERSION &&
-      value.version !== 3 &&
-      value.version !== PREVIOUS_DATA_VERSION &&
-      value.version !== DATA_VERSION) ||
+    typeof value.version !== 'number' ||
+    ![
+      LEGACY_DATA_VERSION,
+      CLI_DATA_VERSION,
+      3,
+      ITEM_TYPES_DATA_VERSION,
+      PASSKEYS_DATA_VERSION,
+      DATA_VERSION
+    ].includes(value.version) ||
     !Array.isArray(value.folders) ||
     !Array.isArray(value.logins)
   ) {
     throw new VaultError('CORRUPT_VAULT')
   }
+  const dataVersion = value.version
   assertIsoDate(value.createdAt)
   assertIsoDate(value.updatedAt)
 
@@ -617,8 +674,9 @@ function parseVaultData(value: unknown): VaultData {
   const logins = value.logins.map((login) =>
     parseStoredLogin(
       login,
-      value.version !== PREVIOUS_DATA_VERSION && value.version !== DATA_VERSION,
-      value.version !== DATA_VERSION
+      dataVersion < ITEM_TYPES_DATA_VERSION,
+      dataVersion < PASSKEYS_DATA_VERSION,
+      dataVersion < DATA_VERSION
     )
   )
   const folderIds = new Set(folders.map((folder) => folder.id))
@@ -638,9 +696,9 @@ function parseVaultData(value: unknown): VaultData {
   }
 
   const sync =
-    value.version === LEGACY_DATA_VERSION
+    dataVersion === LEGACY_DATA_VERSION
       ? null
-      : parseSyncData(value.sync, folderIds, loginIds, value.version === CLI_DATA_VERSION)
+      : parseSyncData(value.sync, folderIds, loginIds, dataVersion === CLI_DATA_VERSION)
 
   return {
     version: DATA_VERSION,
@@ -697,7 +755,10 @@ function applyItemFields(
   for (const field of ITEM_FIELD_NAMES) {
     const value = input[field]
     if (value === undefined) continue
-    if (!allowed.has(field)) throw new VaultError('INVALID_INPUT')
+    if (!allowed.has(field)) {
+      if (value === '' || value === null) continue
+      throw new VaultError('INVALID_INPUT')
+    }
     if (field === 'uri') {
       target.uri = normalizeNullableString(value, MAX_URI_LENGTH)
     } else {
@@ -706,12 +767,164 @@ function applyItemFields(
   }
 }
 
+function normalizeCustomFields(
+  existing: readonly VaultCustomField[],
+  updates: unknown,
+  itemType: VaultItemType
+): VaultCustomField[] {
+  if (!Array.isArray(updates) || updates.length > MAX_CUSTOM_FIELDS) {
+    throw new VaultError('INVALID_INPUT')
+  }
+
+  const linkedIds = VAULT_LINKED_FIELD_IDS_BY_TYPE[itemType] as readonly number[]
+  const sourceIndexes = new Set<number>()
+
+  return updates.map((candidate): VaultCustomField => {
+    if (!isRecord(candidate)) throw new VaultError('INVALID_INPUT')
+    const update = candidate as unknown as VaultCustomFieldUpdate
+    if (
+      typeof update.name !== 'string' ||
+      update.name.length > MAX_CUSTOM_FIELD_NAME_LENGTH ||
+      (update.type !== 'text' &&
+        update.type !== 'hidden' &&
+        update.type !== 'boolean' &&
+        update.type !== 'linked') ||
+      (update.value !== null &&
+        (typeof update.value !== 'string' ||
+          update.value.length > MAX_CUSTOM_FIELD_VALUE_LENGTH)) ||
+      (update.linkedId !== null && (!Number.isSafeInteger(update.linkedId) || update.linkedId < 0))
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+
+    let sourceField: VaultCustomField | null = null
+    if (update.source !== null) {
+      if (!isRecord(update.source)) throw new VaultError('INVALID_INPUT')
+      const { index, name, type, linkedId } = update.source
+      if (
+        !Number.isSafeInteger(index) ||
+        index < 0 ||
+        sourceIndexes.has(index) ||
+        typeof name !== 'string' ||
+        name.length > MAX_CUSTOM_FIELD_NAME_LENGTH ||
+        (type !== 'text' && type !== 'hidden' && type !== 'boolean' && type !== 'linked') ||
+        (linkedId !== null && (!Number.isSafeInteger(linkedId) || linkedId < 0))
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      sourceIndexes.add(index)
+      sourceField = existing[index] ?? null
+      if (
+        !sourceField ||
+        sourceField.name !== name ||
+        sourceField.type !== type ||
+        sourceField.linkedId !== linkedId
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+    }
+
+    if (update.type === 'linked') {
+      if (
+        update.value !== null ||
+        update.linkedId === null ||
+        !linkedIds.includes(update.linkedId)
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      return { name: update.name, type: update.type, value: '', linkedId: update.linkedId }
+    }
+    if (update.linkedId !== null) throw new VaultError('INVALID_INPUT')
+
+    if (update.value === null) {
+      if (update.type !== 'hidden' || sourceField?.type !== 'hidden') {
+        throw new VaultError('INVALID_INPUT')
+      }
+      return { name: update.name, type: update.type, value: sourceField.value, linkedId: null }
+    }
+    if (update.type === 'boolean' && update.value !== 'true' && update.value !== 'false') {
+      throw new VaultError('INVALID_INPUT')
+    }
+    return { name: update.name, type: update.type, value: update.value, linkedId: null }
+  })
+}
+
 function assertSecretField(type: VaultItemType, field: VaultSecretField): void {
   if (!SECRET_FIELDS_BY_TYPE[type].includes(field)) throw new VaultError('INVALID_INPUT')
 }
 
 function assertCopyField(type: VaultItemType, field: VaultCopyField): void {
   if (!COPY_FIELDS_BY_TYPE[type].includes(field)) throw new VaultError('INVALID_INPUT')
+}
+
+function customFieldFromSource(
+  login: StoredLogin,
+  source: VaultCustomFieldSource
+): VaultCustomField {
+  const { index } = source
+  if (!Number.isSafeInteger(index) || index < 0 || index >= login.customFields.length) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const field = login.customFields[index]!
+  if (
+    field.name !== source.name ||
+    field.type !== source.type ||
+    field.linkedId !== source.linkedId
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return field
+}
+
+function linkedCustomFieldValue(login: StoredLogin, linkedId: number | null): string {
+  if (login.type === 'login') {
+    if (linkedId === 100) return login.username
+    if (linkedId === 101) return login.password
+  } else if (login.type === 'card') {
+    const fields: Partial<Record<number, keyof VaultItemFields>> = {
+      300: 'cardholderName',
+      301: 'expMonth',
+      302: 'expYear',
+      303: 'code',
+      304: 'brand',
+      305: 'number'
+    }
+    const field = linkedId === null ? undefined : fields[linkedId]
+    if (field) return String(login[field] ?? '')
+  } else if (login.type === 'identity') {
+    if (linkedId === 418) {
+      return [login.title, login.firstName, login.middleName, login.lastName]
+        .filter(Boolean)
+        .join(' ')
+    }
+    const fields: Partial<Record<number, keyof VaultItemFields>> = {
+      400: 'title',
+      401: 'middleName',
+      402: 'address1',
+      403: 'address2',
+      404: 'address3',
+      405: 'city',
+      406: 'state',
+      407: 'postalCode',
+      408: 'country',
+      409: 'company',
+      410: 'email',
+      411: 'phone',
+      412: 'ssn',
+      413: 'identityUsername',
+      414: 'passportNumber',
+      415: 'licenseNumber',
+      416: 'firstName',
+      417: 'lastName'
+    }
+    const field = linkedId === null ? undefined : fields[linkedId]
+    if (field) return String(login[field] ?? '')
+  }
+  throw new VaultError('INVALID_INPUT')
+}
+
+function customFieldValue(login: StoredLogin, field: VaultCustomField): string {
+  return field.type === 'linked' ? linkedCustomFieldValue(login, field.linkedId) : field.value
 }
 
 function normalizeMasterPassword(value: unknown): string {
@@ -734,7 +947,8 @@ function cloneData(data: VaultData): VaultData {
     folders: data.folders.map((folder) => ({ ...folder })),
     logins: data.logins.map((login) => ({
       ...login,
-      passkeys: login.passkeys.map((passkey) => ({ ...passkey }))
+      passkeys: login.passkeys.map((passkey) => ({ ...passkey })),
+      customFields: cloneCustomFields(login.customFields)
     })),
     sync: data.sync
       ? {
@@ -829,6 +1043,10 @@ function toView(login: StoredLogin): LoginView {
     notes: login.notes,
     hasTotp: Boolean(login.totp),
     passkeys: login.passkeys.map(toPasskeyView),
+    customFields: login.customFields.map((field): VaultCustomFieldView => ({
+      ...field,
+      value: field.type === 'hidden' || field.type === 'linked' ? null : field.value
+    })),
     cardholderName: login.cardholderName,
     brand: login.brand,
     expMonth: login.expMonth,
@@ -1231,6 +1449,7 @@ export class VaultService {
       const type = normalizeItemType(request.type ?? 'login')
       const fields = emptyItemFields()
       applyItemFields(fields, request, type)
+      const customFields = normalizeCustomFields([], request.customFields ?? [], type)
       const login: StoredLogin = {
         id: this.validatedNewId(),
         type,
@@ -1242,6 +1461,7 @@ export class VaultService {
         createdAt: now,
         updatedAt: now,
         passkeys: [],
+        customFields,
         ...fields
       }
       if (typeof login.favorite !== 'boolean') throw new VaultError('INVALID_INPUT')
@@ -1254,6 +1474,13 @@ export class VaultService {
     return this.mutate((data, now) => {
       assertUuid(request.id)
       const login = this.findLogin(data, request.id)
+      if (
+        request.expectedUpdatedAt !== undefined &&
+        (typeof request.expectedUpdatedAt !== 'string' ||
+          request.expectedUpdatedAt !== login.updatedAt)
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
       if (request.name !== undefined)
         login.name = normalizeRequiredString(request.name, MAX_NAME_LENGTH)
       applyItemFields(login, request, login.type)
@@ -1266,6 +1493,13 @@ export class VaultService {
       if (request.favorite !== undefined) {
         if (typeof request.favorite !== 'boolean') throw new VaultError('INVALID_INPUT')
         login.favorite = request.favorite
+      }
+      if (request.customFields !== undefined) {
+        login.customFields = normalizeCustomFields(
+          login.customFields,
+          request.customFields,
+          login.type
+        )
       }
       login.updatedAt = now
       return toView(login)
@@ -1344,6 +1578,17 @@ export class VaultService {
     })
   }
 
+  revealCustomField(request: CustomFieldRequest): Promise<string> {
+    return this.exclusive(async () => {
+      assertUuid(request.id)
+      const login = this.findLogin(this.requireData(), request.id)
+      if (request.expectedUpdatedAt !== login.updatedAt) throw new VaultError('INVALID_INPUT')
+      const field = customFieldFromSource(login, request.source)
+      if (field.type !== 'hidden') throw new VaultError('INVALID_INPUT')
+      return field.value
+    })
+  }
+
   copyPassword(request: LoginIdRequest): Promise<void> {
     return this.useLogin(request, async (login) => {
       assertSecretField(login.type, 'password')
@@ -1372,6 +1617,15 @@ export class VaultService {
       assertCopyField(login.type, request.field)
       const value = login[request.field]
       if (typeof value !== 'string' || value.length === 0) throw new VaultError('INVALID_INPUT')
+      await this.platform.copyText(value)
+    })
+  }
+
+  copyCustomField(request: CustomFieldRequest): Promise<void> {
+    return this.useLogin(request, async (login) => {
+      if (request.expectedUpdatedAt !== login.updatedAt) throw new VaultError('INVALID_INPUT')
+      const value = customFieldValue(login, customFieldFromSource(login, request.source))
+      if (!value) throw new VaultError('INVALID_INPUT')
       await this.platform.copyText(value)
     })
   }
@@ -1572,11 +1826,24 @@ export class VaultService {
       client.listPersonalLogins(signal)
     ])
     const next = cloneData(current)
-    const plan = planSync(
+    const remoteSnapshot = this.remoteSyncSnapshot(remoteFolders, remoteLogins)
+    const syncMetadata = this.syncMetadata(sync)
+    for (const upgrade of legacyCustomFieldBaselineUpgrades(
       this.localSyncSnapshot(next),
-      this.remoteSyncSnapshot(remoteFolders, remoteLogins),
-      this.syncMetadata(sync)
-    )
+      remoteSnapshot,
+      syncMetadata
+    )) {
+      this.findLogin(next, upgrade.localId).customFields = cloneCustomFields(upgrade.customFields)
+      const mapping = next.sync?.loginMappings.find(
+        (entry) => entry.localId === upgrade.localId && entry.remoteId === upgrade.remoteId
+      )
+      if (mapping) mapping.baseFingerprint = upgrade.baseFingerprint
+      const metadataLink = syncMetadata.loginLinks.find(
+        (entry) => entry.localId === upgrade.localId && entry.remoteId === upgrade.remoteId
+      )
+      if (metadataLink) metadataLink.baseFingerprint = upgrade.baseFingerprint
+    }
+    const plan = planSync(this.localSyncSnapshot(next), remoteSnapshot, syncMetadata)
     const results: SyncActionResult[] = []
     const completed = new Map<string, SyncActionResult>()
     const counts = { pulled: 0, pushed: 0, deleted: 0, conflicts: 0 }
@@ -1619,7 +1886,9 @@ export class VaultService {
         updatedAt: folder.updatedAt
       })),
       logins: data.logins.map((login) => ({
-        ...login
+        ...login,
+        passkeys: login.passkeys.map((passkey) => ({ ...passkey })),
+        customFields: cloneCustomFields(login.customFields)
       })),
       tombstones: {
         folders: (data.sync?.folderTombstones ?? []).map((entry) => ({
@@ -1824,6 +2093,7 @@ export class VaultService {
       createdAt,
       updatedAt,
       passkeys: source.passkeys.map((passkey) => ({ ...passkey })),
+      customFields: cloneCustomFields(source.customFields),
       ...normalizeItemFieldsForStorage(source)
     }
     data.logins.push(login)
@@ -1842,6 +2112,7 @@ export class VaultService {
     login.notes = normalizeNullableString(source.notes, MAX_NOTES_LENGTH)
     Object.assign(login, normalizeItemFieldsForStorage(source))
     login.passkeys = source.passkeys.map((passkey) => ({ ...passkey }))
+    login.customFields = cloneCustomFields(source.customFields)
     login.folderId = folderId
     login.favorite = source.favorite
     if (source.createdAt) login.createdAt = source.createdAt
@@ -1886,7 +2157,8 @@ export class VaultService {
       notes: login.notes,
       folderId,
       favorite: login.favorite,
-      passkeys: login.passkeys.map((passkey) => ({ ...passkey }))
+      passkeys: login.passkeys.map((passkey) => ({ ...passkey })),
+      customFields: cloneCustomFields(login.customFields)
     }
   }
 
