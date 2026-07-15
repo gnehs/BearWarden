@@ -220,21 +220,6 @@ button svg {
   pointer-events: none;
 }
 
-kbd {
-  min-width: 24px;
-  padding: 2px 5px;
-  border: 1px solid var(--border-strong);
-  border-radius: 5px;
-  color: var(--muted-foreground);
-  background: color-mix(in oklch, var(--card) 64%, transparent);
-  font:
-    11px/1.25 ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    monospace;
-  text-align: center;
-}
-
 .sr-only {
   position: absolute !important;
   width: 1px !important;
@@ -919,10 +904,6 @@ kbd {
 .search-field:focus-within {
   border-color: var(--focus);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus), transparent 78%);
-}
-.search-field kbd {
-  padding: 1px 4px;
-  font-size: 9px;
 }
 .titlebar-search {
   -webkit-app-region: no-drag;
