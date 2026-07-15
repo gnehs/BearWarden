@@ -17,6 +17,7 @@ BearWarden 是一個以「快速找到、安心使用」為核心的桌面密碼
 - 全域搜尋、收藏、最近使用與最近修改排序
 - 密碼預設遮蔽、明確揭露、複製及開啟網站
 - 本機安全產生密碼、EFF 長單字密語、隨機使用者名稱、Plus Address 與 Catch-all Email；最近 200 筆結果保存在加密歷史中
+- 匯入 Bitwarden JSON，並匯出可攜、受獨立密碼保護的 Bitwarden JSON 備份
 - 支援主密碼重新提示；短效授權只存在主程序，並綁定視窗、項目集合與保管庫世代
 - Electron renderer sandbox、context isolation、具名 IPC 與外部網址驗證
 - 系統鎖定或休眠時自動鎖定密碼庫
@@ -29,10 +30,17 @@ BearWarden 是一個以「快速找到、安心使用」為核心的桌面密碼
 - 密碼庫使用密碼型 KDF 衍生的金鑰與 authenticated encryption 加密後才寫入 app data。
 - 每次寫入先建立權限為 `0600` 的暫存檔，再以原子替換更新密碼庫。
 - renderer 不具 Node.js、任意 IPC 或檔案系統能力；登入清單不包含密碼。
+- 匯入／匯出的路徑與檔案內容只由主程序處理；備份以 `0600` 暫存檔、fsync 與原子替換寫入。
 - 受重新提示保護的項目清單不包含使用者名稱、URI 或 TOTP 中繼資料；主密碼驗證後取得的 capability 會在 60 秒後失效。
 - 鎖定時會清除主程序內的金鑰與已解密資料。
 
 Bitwarden 的 Password Manager SDK 目前不是公開穩定 API，因此本專案沒有把 `@bitwarden/sdk-napi`（Secrets Manager SDK）誤用為個人密碼庫資料層。
+
+## 匯入與加密備份
+
+在「設定 → 資料可攜性」可匯入未加密或受密碼保護的 Bitwarden JSON，也可建立受獨立密碼保護的可攜 JSON 備份。兩個流程都會先在主程序重新驗證目前的主密碼；備份密碼不會成為 BearWarden 主密碼。
+
+匯入遵循 Bitwarden 的不去重語意：每個資料夾與項目都會取得新的本機 ID，撞名資料夾會加上 `Imported` 後綴。匯出不包含垃圾桶、附件或 Sends；匯入會略過 JSON 中的垃圾桶項目。帳號限制型加密 JSON 綁定原帳號金鑰，無法跨帳號攜帶，因此目前只支援[官方所述的 password-protected encrypted export](https://bitwarden.com/help/encrypted-export/)；格式與匯入限制以 [Bitwarden Import Data](https://bitwarden.com/help/import-data/) 為準。
 
 ## Bitwarden／Vaultwarden 同步
 
