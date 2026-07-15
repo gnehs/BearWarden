@@ -110,7 +110,10 @@ export function VirtualizedItemList({
   return (
     <div
       ref={scrollElementRef}
-      className={cn('item-list virtualized-item-list', className)}
+      className={cn(
+        'item-list virtualized-item-list scroll-fade-y forced-colors:scroll-fade-none',
+        className
+      )}
       aria-label={`${scopeTitle}保管庫項目`}
     >
       <div
