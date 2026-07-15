@@ -87,6 +87,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 import { Textarea } from './ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import CredentialGeneratorDialog from './CredentialGeneratorDialog'
+import {
+  applyGeneratedSshKey,
+  canFinalizeGeneratedSshKey,
+  clearSshKeyMaterial,
+  isSshKeyGenerationBlockingSave,
+  sshKeyGenerationAction,
+  sshKeyMaterialState,
+  type SshKeyGenerationState
+} from './ssh-key-editor-state'
 
 type EditorSecretField = VaultEditorSecretField
 type EditorTab = 'details' | 'custom' | 'organize'
@@ -301,6 +310,8 @@ function LoginEditor({
   onSave
 }: LoginEditorProps): React.JSX.Element {
   const submittingRef = useRef(false)
+  const editorMountedRef = useRef(true)
+  const sshKeyGenerationRequestRef = useRef(0)
   const [editorSnapshot] = useState(() =>
     login
       ? {
@@ -351,13 +362,22 @@ function LoginEditor({
   const [secretLoadState, setSecretLoadState] = useState<SecretLoadState>(
     login ? 'loading' : 'ready'
   )
+  const [sshKeyGenerationState, setSshKeyGenerationState] = useState<SshKeyGenerationState>('idle')
   const nameRef = useRef<HTMLInputElement>(null)
   const secretsUnavailable = secretLoadState !== 'ready'
+  const sshKeyUnavailable = isSshKeyGenerationBlockingSave(draft.type, sshKeyGenerationState)
+  const sshKeyFieldsDisabled = busy || secretsUnavailable || sshKeyGenerationState === 'generating'
 
   useEffect(() => nameRef.current?.focus(), [])
   useEffect(() => {
     draftRef.current = draft
   }, [draft])
+  useEffect(() => {
+    editorMountedRef.current = true
+    return () => {
+      editorMountedRef.current = false
+    }
+  }, [])
   useEffect(() => {
     if (!editorSnapshot) return
     let active = true
@@ -408,6 +428,93 @@ function LoginEditor({
   }, [editorSnapshot])
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange])
   useEffect(() => () => onDirtyChange(false), [onDirtyChange])
+  useEffect(() => {
+    if (secretLoadState !== 'ready' || draft.type !== 'sshKey' || sshKeyGenerationState !== 'idle')
+      return
+
+    const requestId = ++sshKeyGenerationRequestRef.current
+    queueMicrotask(() => {
+      if (!editorMountedRef.current || requestId !== sshKeyGenerationRequestRef.current) return
+      const action = sshKeyGenerationAction(true, draftRef.current.type, 'idle', draftRef.current)
+      if (action === 'ready') {
+        setSshKeyGenerationState('ready')
+        return
+      }
+      if (action === 'error') {
+        setSshKeyGenerationState('error')
+        setError('SSH 金鑰資料不完整，請切換類型後再重新產生。')
+        setErrorKind('ssh')
+        return
+      }
+      if (action !== 'generate') {
+        return
+      }
+
+      setSshKeyGenerationState('generating')
+      void window.bearwarden.sshKeys
+        .generate()
+        .then((generated) => {
+          if (!editorMountedRef.current) return
+          if (
+            !generated.privateKey.trim() ||
+            !generated.publicKey.trim() ||
+            !generated.fingerprint.trim()
+          ) {
+            throw new Error('Generated SSH key material is incomplete')
+          }
+
+          setDraft((current) => {
+            return applyGeneratedSshKey(
+              requestId,
+              sshKeyGenerationRequestRef.current,
+              current,
+              generated
+            )
+          })
+        })
+        .catch(() => {
+          if (!editorMountedRef.current || requestId !== sshKeyGenerationRequestRef.current) return
+          setSshKeyGenerationState('error')
+          setError('無法產生 Ed25519 SSH 金鑰，請重試。')
+          setErrorKind('ssh')
+          setActiveTab('details')
+        })
+    })
+  }, [
+    draft.fingerprint,
+    draft.privateKey,
+    draft.publicKey,
+    draft.type,
+    secretLoadState,
+    sshKeyGenerationState
+  ])
+  useEffect(() => {
+    if (
+      draft.type !== 'sshKey' ||
+      sshKeyGenerationState !== 'generating' ||
+      sshKeyMaterialState({
+        privateKey: draft.privateKey,
+        publicKey: draft.publicKey,
+        fingerprint: draft.fingerprint
+      }) !== 'complete'
+    )
+      return
+
+    const requestId = sshKeyGenerationRequestRef.current
+    queueMicrotask(() => {
+      if (
+        !editorMountedRef.current ||
+        !canFinalizeGeneratedSshKey(requestId, sshKeyGenerationRequestRef.current, draftRef.current)
+      )
+        return
+
+      sshKeyGenerationRequestRef.current += 1
+      setDirty(true)
+      setError('')
+      setErrorKind(null)
+      setSshKeyGenerationState('ready')
+    })
+  }, [draft.fingerprint, draft.privateKey, draft.publicKey, draft.type, sshKeyGenerationState])
 
   function requestCancel(): void {
     if (busy) return
@@ -438,13 +545,39 @@ function LoginEditor({
   }
 
   function updateItemType(type: VaultItemType): void {
+    const leavingSshKey = draftRef.current.type === 'sshKey' && type !== 'sshKey'
+    if (leavingSshKey) {
+      sshKeyGenerationRequestRef.current += 1
+      setSshKeyGenerationState('idle')
+      setVisibleSecrets((current) => ({ ...current, privateKey: false }))
+      if (errorKind === 'ssh') {
+        setError('')
+        setErrorKind(null)
+      }
+    } else if (type === 'sshKey' && draftRef.current.type !== 'sshKey') {
+      setSshKeyGenerationState('idle')
+    }
+
     setDirty(true)
-    setDraft((current) => ({
-      ...current,
-      type,
-      ...(type === 'login' ? { uri: current.uris[0]?.uri ?? null } : { uri: null, uris: [] }),
-      customFields: normalizeCustomFieldsForItemType(current.customFields, type)
-    }))
+    setDraft((current) => {
+      const cleared = leavingSshKey ? clearSshKeyMaterial(current) : current
+      return {
+        ...cleared,
+        type,
+        ...(type === 'login' ? { uri: current.uris[0]?.uri ?? null } : { uri: null, uris: [] }),
+        customFields: normalizeCustomFieldsForItemType(current.customFields, type)
+      }
+    })
+  }
+
+  function retrySshKeyGeneration(): void {
+    if (busy || secretsUnavailable || sshKeyGenerationState !== 'error') return
+    sshKeyGenerationRequestRef.current += 1
+    setDraft(clearSshKeyMaterial)
+    setVisibleSecrets((current) => ({ ...current, privateKey: false }))
+    setError('')
+    setErrorKind(null)
+    setSshKeyGenerationState('idle')
   }
 
   function updateUri(index: number, patch: Partial<VaultLoginUri>): void {
@@ -687,6 +820,9 @@ function LoginEditor({
       onValueChange?: (value: string) => void
       placeholder?: string
       description?: React.ReactNode
+      readOnly?: boolean
+      disabled?: boolean
+      addon?: React.ReactNode
     }
   ): React.JSX.Element {
     const visible = Boolean(visibleSecrets[field])
@@ -694,6 +830,7 @@ function LoginEditor({
     const invalid =
       (field === 'password' && errorKind === 'password') ||
       (field === 'privateKey' && errorKind === 'ssh' && !draft.privateKey.trim())
+    const disabled = busy || secretsUnavailable || options?.disabled
     const changeValue = (nextValue: string): void => {
       if (options?.onValueChange) {
         options.onValueChange(nextValue)
@@ -703,7 +840,7 @@ function LoginEditor({
     }
 
     return (
-      <Field key={field} data-invalid={invalid || undefined}>
+      <Field key={field} data-invalid={invalid || undefined} data-disabled={disabled || undefined}>
         <FieldLabel htmlFor={`editor-${field}`}>{label}</FieldLabel>
         <InputGroup className={options?.multiline ? 'min-h-32 items-stretch' : undefined}>
           {options?.multiline ? (
@@ -713,8 +850,9 @@ function LoginEditor({
               rows={6}
               value={value}
               onChange={(event) => changeValue(event.target.value)}
+              readOnly={options?.readOnly}
               autoComplete="off"
-              disabled={busy || secretsUnavailable}
+              disabled={disabled}
               aria-invalid={invalid || undefined}
               aria-describedby={invalid ? 'editor-error' : undefined}
             />
@@ -724,15 +862,17 @@ function LoginEditor({
               type={visible ? 'text' : 'password'}
               value={value}
               onChange={(event) => changeValue(event.target.value)}
+              readOnly={options?.readOnly}
               inputMode={options?.inputMode}
               placeholder={options?.placeholder}
               autoComplete="off"
-              disabled={busy || secretsUnavailable}
+              disabled={disabled}
               aria-invalid={invalid || undefined}
               aria-describedby={invalid ? 'editor-error' : undefined}
             />
           )}
           <InputGroupAddon align={options?.multiline ? 'block-end' : 'inline-end'}>
+            {options?.addon}
             {field === 'password' && !options?.multiline && (
               <InputGroupButton
                 type="button"
@@ -740,7 +880,7 @@ function LoginEditor({
                 size="icon-xs"
                 aria-label="產生密碼"
                 onClick={() => setGeneratorTarget('password')}
-                disabled={busy || secretsUnavailable}
+                disabled={disabled}
               >
                 <Sparkles />
               </InputGroupButton>
@@ -752,7 +892,7 @@ function LoginEditor({
               aria-label={visible ? `隱藏輸入的${label}` : `顯示輸入的${label}`}
               aria-pressed={visible}
               onClick={() => setVisibleSecrets((current) => ({ ...current, [field]: !visible }))}
-              disabled={busy || secretsUnavailable}
+              disabled={disabled}
             >
               {visible ? <EyeOff /> : <Eye />}
             </InputGroupButton>
@@ -765,7 +905,7 @@ function LoginEditor({
 
   async function submit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
-    if (busy || secretsUnavailable || submittingRef.current) return
+    if (busy || secretsUnavailable || sshKeyUnavailable || submittingRef.current) return
     if (!draft.name.trim()) {
       setError('請輸入項目名稱。')
       setErrorKind('name')
@@ -790,11 +930,10 @@ function LoginEditor({
       return
     }
     if (
-      !login &&
       draft.type === 'sshKey' &&
       (!draft.privateKey.trim() || !draft.publicKey.trim() || !draft.fingerprint.trim())
     ) {
-      setError('新增 SSH 金鑰時必須輸入私鑰、公鑰與金鑰指紋。')
+      setError('SSH 金鑰必須包含私鑰、公鑰與金鑰指紋。')
       setErrorKind('ssh')
       setActiveTab('details')
       const missingFieldId = !draft.privateKey.trim()
@@ -1300,18 +1439,44 @@ function LoginEditor({
 
                 {draft.type === 'sshKey' && (
                   <>
-                    {secretInput('privateKey', '私鑰', { multiline: true })}
+                    {secretInput('privateKey', '私鑰', {
+                      multiline: true,
+                      readOnly: true,
+                      disabled: sshKeyGenerationState === 'generating',
+                      addon:
+                        sshKeyGenerationState === 'generating' ? (
+                          <Spinner aria-label="正在產生 SSH 金鑰" />
+                        ) : sshKeyGenerationState === 'error' ? (
+                          <InputGroupButton
+                            type="button"
+                            variant="ghost"
+                            size="xs"
+                            onClick={retrySshKeyGeneration}
+                            disabled={busy || secretsUnavailable}
+                          >
+                            <Sparkles data-icon="inline-start" />
+                            重試產生
+                          </InputGroupButton>
+                        ) : null,
+                      description:
+                        sshKeyGenerationState === 'generating'
+                          ? '正在安全地建立新的 Ed25519 金鑰。'
+                          : sshKeyGenerationState === 'error'
+                            ? '自動產生失敗；請重試，或切換項目類型以取消。'
+                            : '金鑰材料為唯讀；私鑰可透過顯示按鈕暫時查看。'
+                    })}
                     <Field
                       data-invalid={(errorKind === 'ssh' && !draft.publicKey.trim()) || undefined}
+                      data-disabled={sshKeyFieldsDisabled || undefined}
                     >
                       <FieldLabel htmlFor="editor-public-key">公鑰</FieldLabel>
                       <Textarea
                         id="editor-public-key"
                         rows={4}
                         value={draft.publicKey}
-                        onChange={(event) => update('publicKey', event.target.value)}
+                        readOnly
                         autoComplete="off"
-                        disabled={busy}
+                        disabled={sshKeyFieldsDisabled}
                         aria-invalid={errorKind === 'ssh' && !draft.publicKey.trim()}
                         aria-describedby={
                           errorKind === 'ssh' && !draft.publicKey.trim()
@@ -1322,14 +1487,15 @@ function LoginEditor({
                     </Field>
                     <Field
                       data-invalid={(errorKind === 'ssh' && !draft.fingerprint.trim()) || undefined}
+                      data-disabled={sshKeyFieldsDisabled || undefined}
                     >
                       <FieldLabel htmlFor="editor-fingerprint">金鑰指紋</FieldLabel>
                       <Input
                         id="editor-fingerprint"
                         value={draft.fingerprint}
-                        onChange={(event) => update('fingerprint', event.target.value)}
+                        readOnly
                         autoComplete="off"
-                        disabled={busy}
+                        disabled={sshKeyFieldsDisabled}
                         aria-invalid={errorKind === 'ssh' && !draft.fingerprint.trim()}
                         aria-describedby={
                           errorKind === 'ssh' && !draft.fingerprint.trim()
@@ -1733,13 +1899,17 @@ function LoginEditor({
         <Button variant="secondary" type="button" onClick={requestCancel} disabled={busy}>
           取消
         </Button>
-        <Button type="submit" disabled={busy || secretsUnavailable}>
-          {busy || secretLoadState === 'loading' ? (
+        <Button type="submit" disabled={busy || secretsUnavailable || sshKeyUnavailable}>
+          {busy || secretLoadState === 'loading' || sshKeyGenerationState === 'generating' ? (
             <Spinner data-icon="inline-start" />
           ) : (
             <Save data-icon="inline-start" />
           )}
-          {secretLoadState === 'loading' ? '載入中…' : '儲存'}
+          {secretLoadState === 'loading'
+            ? '載入中…'
+            : sshKeyGenerationState === 'generating'
+              ? '產生 SSH 金鑰中…'
+              : '儲存'}
         </Button>
       </footer>
       {generatorTarget && (
