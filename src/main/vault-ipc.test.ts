@@ -186,6 +186,11 @@ describe('registerVaultIpc reprompt gate', () => {
         },
         request
       })),
+      generateSshKey: vi.fn(async () => ({
+        privateKey: 'private-key',
+        publicKey: 'ssh-ed25519 public-key',
+        fingerprint: 'SHA256:fingerprint'
+      })),
       generatorHistory: vi.fn(async () => []),
       clearGeneratorHistory: vi.fn(async () => undefined),
       copyGeneratorHistory: vi.fn(async () => undefined)
@@ -645,6 +650,33 @@ describe('registerVaultIpc reprompt gate', () => {
     }
     await expect(history(event, {})).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     await expect(clear(event, {})).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+  })
+
+  it('generates an SSH key only through an exact no-input IPC request', async () => {
+    const { event, vault } = harness()
+    const generate = electronMock.handlers.get(IPC_CHANNELS.sshKeyGenerate)!
+
+    await expect(generate(event, undefined)).resolves.toEqual({
+      privateKey: 'private-key',
+      publicKey: 'ssh-ed25519 public-key',
+      fingerprint: 'SHA256:fingerprint'
+    })
+    expect(vault.generateSshKey).toHaveBeenCalledOnce()
+
+    await expect(
+      generate(
+        {
+          ...(event as Record<string, unknown>),
+          senderFrame: { url: 'https://untrusted.example.invalid' }
+        },
+        undefined
+      )
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+
+    for (const invalid of [null, {}, { algorithm: 'ED25519' }]) {
+      await expect(generate(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(vault.generateSshKey).toHaveBeenCalledOnce()
   })
 
   it('parses ordered URI match rows and indexed copy/open requests', async () => {

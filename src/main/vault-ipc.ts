@@ -1497,6 +1497,10 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   registerHandler(IPC_CHANNELS.generatorHistoryCopy, getMainWindow, (_event, input) =>
     vault.copyGeneratorHistory(parseGeneratorHistoryLocator(input))
   )
+  registerHandler(IPC_CHANNELS.sshKeyGenerate, getMainWindow, (_event, input) => {
+    parseNoInput(input)
+    return vault.generateSshKey()
+  })
   registerHandler(IPC_CHANNELS.syncStatus, getMainWindow, () => vault.syncStatus())
   registerHandler(IPC_CHANNELS.syncConnect, getMainWindow, async (_event, input) => {
     const result = await vault.connectSync(parseSyncConnect(input))

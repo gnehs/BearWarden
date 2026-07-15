@@ -109,6 +109,7 @@ import { VaultError } from './vault-errors'
 import type { VaultAttachmentFileService } from './vault-attachment-files'
 import { type StoredPasskeyCredential, toPasskeyView } from './passkey'
 import { generateTotp } from './totp'
+import { generateSshKeyMaterial, type SshKeyMaterial } from './ssh-key'
 import {
   fetchWebsiteIconDataUrl,
   parseWebsiteHostname,
@@ -2545,6 +2546,13 @@ export class VaultService {
         ...generated,
         historyLocator: { index: 0, generationDate, category, algorithm }
       }
+    })
+  }
+
+  generateSshKey(): Promise<SshKeyMaterial> {
+    return this.exclusive(async () => {
+      this.requireData()
+      return generateSshKeyMaterial()
     })
   }
 

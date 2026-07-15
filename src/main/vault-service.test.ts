@@ -3125,6 +3125,31 @@ describe('VaultService encrypted local data', () => {
     await expect(service.generatorHistory()).resolves.toEqual([])
   })
 
+  it('generates transient SSH key material only while unlocked without recording history', async () => {
+    const { service, store } = await createHarness()
+
+    await expect(service.generateSshKey()).rejects.toMatchObject({ code: 'LOCKED' })
+    await service.setup(MASTER_PASSWORD)
+    const write = vi.spyOn(store, 'write')
+    const historyBefore = await service.generatorHistory()
+
+    const generated = await service.generateSshKey()
+
+    expect(generated).toEqual({
+      privateKey: expect.any(String),
+      publicKey: expect.any(String),
+      fingerprint: expect.any(String)
+    })
+    expect(generated.privateKey).not.toBe('')
+    expect(generated.publicKey).not.toBe('')
+    expect(generated.fingerprint).not.toBe('')
+    await expect(service.generatorHistory()).resolves.toEqual(historyBefore)
+    expect(write).not.toHaveBeenCalled()
+
+    await service.lock()
+    await expect(service.generateSshKey()).rejects.toMatchObject({ code: 'LOCKED' })
+  })
+
   it('caps generator history at 200 newest exact entries', async () => {
     const { filePath, service, store } = await createHarness()
     await service.setup(MASTER_PASSWORD)

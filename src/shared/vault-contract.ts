@@ -55,6 +55,7 @@ export const IPC_CHANNELS = {
   generatorHistoryList: 'generator:history-list',
   generatorHistoryClear: 'generator:history-clear',
   generatorHistoryCopy: 'generator:history-copy',
+  sshKeyGenerate: 'ssh-key:generate',
   settingsGet: 'settings:get',
   settingsUpdate: 'settings:update',
   settingsEnableTouchId: 'settings:enable-touch-id',
@@ -655,6 +656,13 @@ export interface CredentialGeneratorResult extends GeneratorHistoryEntry {
   historyLocator: GeneratorHistoryLocator
 }
 
+/** One generated Ed25519 key triplet. It is not persisted until the caller saves an SSH item. */
+export interface SshKeyMaterial {
+  privateKey: string
+  publicKey: string
+  fingerprint: string
+}
+
 export type AppTheme = 'system' | 'light' | 'dark'
 
 export interface AppSettings {
@@ -750,6 +758,9 @@ export interface BearWardenAPI {
     history: () => Promise<GeneratorHistoryEntry[]>
     clearHistory: () => Promise<void>
     copyHistory: (request: GeneratorHistoryLocator) => Promise<void>
+  }
+  sshKeys: {
+    generate: () => Promise<SshKeyMaterial>
   }
   sync: {
     status: () => Promise<SyncStatus>
