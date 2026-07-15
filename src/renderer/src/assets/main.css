@@ -1576,7 +1576,7 @@ kbd {
 .detail-field {
   display: grid;
   min-height: 59px;
-  grid-template-columns: minmax(90px, 0.28fr) minmax(0, 1fr) 34px;
+  grid-template-columns: minmax(90px, 0.28fr) minmax(0, 1fr) repeat(2, 34px);
   gap: 8px;
   align-items: center;
   padding: 9px 12px 9px 15px;
@@ -1597,11 +1597,8 @@ kbd {
   font-size: 12px;
   font-weight: 590;
 }
-.detail-field.password-field {
-  grid-template-columns: minmax(90px, 0.28fr) minmax(0, 1fr) 34px 34px;
-}
-.detail-field.multi-action {
-  grid-template-columns: minmax(90px, 0.28fr) minmax(0, 1fr) 34px 34px;
+.detail-field > :nth-child(3):last-child {
+  grid-column: -2;
 }
 .masked-value {
   letter-spacing: 0.13em;
