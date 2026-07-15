@@ -1,4 +1,4 @@
-import { generateKeyPairSync, webcrypto } from 'node:crypto'
+import { createCipheriv, createHmac, generateKeyPairSync, webcrypto } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { Encoder } from 'cbor-x'
 import {
@@ -499,6 +499,74 @@ function jsonResponse(value: unknown, status = 200): Response {
   })
 }
 
+/** Produces Bitwarden's type-2 attachment envelope (type | IV | MAC | ciphertext). */
+function encryptAttachmentFixture(plaintext: Buffer, key: Buffer): Buffer {
+  const iv = Buffer.alloc(16, 21)
+  const cipher = createCipheriv('aes-256-cbc', key.subarray(0, 32), iv)
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()])
+  const mac = createHmac('sha256', key.subarray(32)).update(iv).update(ciphertext).digest()
+  return Buffer.concat([Buffer.from([2]), iv, mac, ciphertext])
+}
+
+async function syncedAttachmentClient(
+  sync: JsonObject,
+  attachmentId: string,
+  encrypted: Buffer,
+  mutateFresh?: (metadata: JsonObject) => void,
+  onBinaryRequest?: () => void
+): Promise<BitwardenDirectClient> {
+  const cipher = (sync.ciphers as JsonObject[])[0]!
+  const attachment = (cipher.attachments as JsonObject[]).find(
+    (entry) => entry.id === attachmentId
+  )!
+  attachment.size = String(encrypted.length)
+  const fresh: JsonObject = {
+    ...attachment,
+    key: attachment.key ?? null,
+    url: 'https://attachments.example.invalid/fresh-capability'
+  }
+  mutateFresh?.(fresh)
+  const http = new BitwardenHttpClient({
+    server: 'https://vault.example.invalid',
+    fetch: async (url) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/identity/connect/token')) {
+        return jsonResponse({
+          access_token: 'access-token',
+          refresh_token: 'refresh-token',
+          expires_in: 3_600
+        })
+      }
+      if (url.includes('/api/sync?')) return jsonResponse(sync)
+      if (url.endsWith(`/api/ciphers/${LOGIN_ID}/attachment/${attachmentId}`)) {
+        return jsonResponse(fresh)
+      }
+      if (url === fresh.url) {
+        onBinaryRequest?.()
+        const body = encrypted.buffer.slice(
+          encrypted.byteOffset,
+          encrypted.byteOffset + encrypted.byteLength
+        ) as ArrayBuffer
+        return new Response(body, {
+          status: 200,
+          headers: { 'content-length': String(encrypted.length) }
+        })
+      }
+      return jsonResponse({ message: 'not found' }, 404)
+    }
+  })
+  const client = new BitwardenDirectClient({
+    serverUrl: 'https://vault.example.invalid',
+    email: EMAIL,
+    httpClient: http
+  })
+  await client.login({ email: EMAIL, password: PASSWORD })
+  await client.sync()
+  return client
+}
+
 async function expectInvalidSync(sync: JsonObject): Promise<void> {
   const http = new BitwardenHttpClient({
     server: 'https://vault.example.invalid',
@@ -570,6 +638,105 @@ describe('BitwardenDirectClient', () => {
 
       await expectInvalidSync(sync)
     }
+  })
+
+  it('downloads a V1 attachment only from fresh metadata and returns decrypted bytes', async () => {
+    const plaintext = Buffer.from('v1 attachment payload', 'utf8')
+    const encrypted = encryptAttachmentFixture(plaintext, Buffer.alloc(64, 11))
+    const client = await syncedAttachmentClient(await encryptedSync(), 'attachment-id', encrypted)
+
+    const downloaded = await client.downloadAttachment(LOGIN_ID, 'attachment-id')
+    try {
+      expect(downloaded.fileName).toBe('document.txt')
+      expect(downloaded.data).toEqual(plaintext)
+    } finally {
+      downloaded.data.fill(0)
+      plaintext.fill(0)
+      encrypted.fill(0)
+    }
+  })
+
+  it('uses the cipher key for a legacy attachment that has no attachment CEK', async () => {
+    const plaintext = Buffer.from('legacy attachment payload', 'utf8')
+    const encrypted = encryptAttachmentFixture(plaintext, Buffer.alloc(64, 9))
+    const client = await syncedAttachmentClient(
+      await encryptedSync(),
+      'legacy-attachment-id',
+      encrypted
+    )
+
+    const downloaded = await client.downloadAttachment(LOGIN_ID, 'legacy-attachment-id')
+    try {
+      expect(downloaded.fileName).toBe('legacy-document.txt')
+      expect(downloaded.data).toEqual(plaintext)
+    } finally {
+      downloaded.data.fill(0)
+      plaintext.fill(0)
+      encrypted.fill(0)
+    }
+  })
+
+  it('downloads a V2-account attachment with its freshly wrapped CEK', async () => {
+    const plaintext = Buffer.from('v2 attachment payload', 'utf8')
+    const encrypted = encryptAttachmentFixture(plaintext, Buffer.alloc(64, 12))
+    const client = await syncedAttachmentClient(
+      await encryptedV2Sync(),
+      'v2-attachment-id',
+      encrypted
+    )
+
+    const downloaded = await client.downloadAttachment(LOGIN_ID, 'v2-attachment-id')
+    try {
+      expect(downloaded.fileName).toBe('v2-document.txt')
+      expect(downloaded.data).toEqual(plaintext)
+    } finally {
+      downloaded.data.fill(0)
+      plaintext.fill(0)
+      encrypted.fill(0)
+    }
+  })
+
+  it('rejects an attachment whose ciphertext MAC or fresh metadata does not authenticate', async () => {
+    const plaintext = Buffer.from('authenticated attachment', 'utf8')
+    const encrypted = encryptAttachmentFixture(plaintext, Buffer.alloc(64, 11))
+    encrypted[encrypted.length - 1]! ^= 1
+    const client = await syncedAttachmentClient(await encryptedSync(), 'attachment-id', encrypted)
+    await expect(client.downloadAttachment(LOGIN_ID, 'attachment-id')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+
+    const valid = encryptAttachmentFixture(plaintext, Buffer.alloc(64, 11))
+    let binaryRequests = 0
+    const mismatched = await syncedAttachmentClient(
+      await encryptedSync(),
+      'attachment-id',
+      valid,
+      (metadata) => {
+        metadata.fileName = encryptBitwardenString('changed.txt', Buffer.alloc(64, 9))
+      },
+      () => {
+        binaryRequests += 1
+      }
+    )
+    await expect(mismatched.downloadAttachment(LOGIN_ID, 'attachment-id')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    expect(binaryRequests).toBe(0)
+    plaintext.fill(0)
+    encrypted.fill(0)
+    valid.fill(0)
+  })
+
+  it('rejects an unknown cached attachment before requesting a download capability', async () => {
+    const plaintext = Buffer.from('unused', 'utf8')
+    const encrypted = encryptAttachmentFixture(plaintext, Buffer.alloc(64, 11))
+    const client = await syncedAttachmentClient(await encryptedSync(), 'attachment-id', encrypted)
+
+    await expect(client.downloadAttachment(LOGIN_ID, 'unknown-attachment')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    plaintext.fill(0)
+    encrypted.fill(0)
   })
 
   it('rejects a decrypted passkey field longer than the local schema allows', async () => {

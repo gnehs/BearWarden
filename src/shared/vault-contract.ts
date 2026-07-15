@@ -16,6 +16,7 @@ export const IPC_CHANNELS = {
   loginAuthorizeMany: 'login:authorize-many',
   loginGet: 'login:get',
   loginGetPasswordHistory: 'login:get-password-history',
+  attachmentDownload: 'attachment:download',
   loginCreate: 'login:create',
   loginClone: 'login:clone',
   loginArchive: 'login:archive',
@@ -83,6 +84,7 @@ export type VaultErrorCode =
   | 'SYNC_NEW_DEVICE_REQUIRED'
   | 'SYNC_UNSUPPORTED_ACCOUNT'
   | 'SYNC_FAILED'
+  | 'ATTACHMENT_FAILED'
   | 'TOUCH_ID_UNAVAILABLE'
   | 'TOUCH_ID_FAILED'
   | 'INTERNAL_ERROR'
@@ -294,6 +296,15 @@ export interface LoginAuthorizationRequest {
 
 export interface LoginIdRequest extends LoginAuthorizationRequest {
   id: string
+}
+
+export interface AttachmentDownloadRequest extends LoginIdRequest {
+  attachmentId: string
+}
+
+export interface AttachmentDownloadResult {
+  canceled: boolean
+  fileName: string
 }
 
 export interface LoginAuthorizeRequest {
@@ -621,6 +632,7 @@ export interface BearWardenAPI {
     authorizeMany: (request: LoginAuthorizeManyRequest) => Promise<LoginAuthorization>
     get: (request: LoginIdRequest) => Promise<LoginView>
     getPasswordHistory: (request: LoginIdRequest) => Promise<VaultPasswordHistoryEntry[]>
+    downloadAttachment: (request: AttachmentDownloadRequest) => Promise<AttachmentDownloadResult>
     create: (request: LoginCreateRequest) => Promise<LoginView>
     /** Creates an active copy without any passkeys or attachments. */
     clone: (request: LoginIdRequest) => Promise<LoginView>

@@ -195,4 +195,156 @@ describe('BitwardenHttpClient', () => {
       code: 'INVALID_RESPONSE'
     })
   })
+
+  it('fetches fresh attachment metadata, then downloads relative encrypted bytes without auth', async () => {
+    const encryptedBytes = Uint8Array.from([2, 10, 20, 30])
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        json({
+          id: 'attachment id',
+          url: 'attachments/cipher-id/attachment-id?token=signed',
+          fileName: '2.encrypted-name',
+          key: '2.wrapped-key',
+          size: String(encryptedBytes.byteLength),
+          sizeName: '4 B'
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(encryptedBytes, {
+          status: 200,
+          headers: { 'content-length': String(encryptedBytes.byteLength) }
+        })
+      )
+    const client = new BitwardenHttpClient({
+      server: 'https://vault.example.test/bw',
+      fetch
+    })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 1 })
+
+    const result = await client.prepareAttachmentDownload('cipher id', 'attachment id')
+    const data = await result.download()
+
+    expect(result).toMatchObject({
+      id: 'attachment id',
+      fileName: '2.encrypted-name',
+      key: '2.wrapped-key',
+      size: 4,
+      sizeName: '4 B'
+    })
+    expect(data).toEqual(Buffer.from(encryptedBytes))
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      'https://vault.example.test/bw/api/ciphers/cipher%20id/attachment/attachment%20id'
+    )
+    expect(fetch.mock.calls[1]?.[0]).toBe(
+      'https://vault.example.test/bw/attachments/cipher-id/attachment-id?token=signed'
+    )
+    const metadataHeaders = new Headers(fetch.mock.calls[0]?.[1]?.headers)
+    const downloadHeaders = new Headers(fetch.mock.calls[1]?.[1]?.headers)
+    expect(metadataHeaders.get('authorization')).toBe('Bearer access')
+    expect(downloadHeaders.get('authorization')).toBeNull()
+    expect(fetch.mock.calls[1]?.[1]).toMatchObject({
+      cache: 'no-store',
+      credentials: 'omit',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer'
+    })
+  })
+
+  it('allows Azure-like HTTPS signed origins without forwarding authentication', async () => {
+    const metadata = {
+      id: 'attachment-id',
+      url: 'https://bearwarden.blob.core.windows.net/attachments/file?signature=secret',
+      fileName: '2.encrypted-name',
+      key: null,
+      size: '1'
+    }
+    const allowedFetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(json(metadata))
+      .mockResolvedValueOnce(
+        new Response(Uint8Array.from([2]), { headers: { 'content-length': '1' } })
+      )
+    const allowed = new BitwardenHttpClient({
+      server: 'us',
+      fetch: allowedFetch
+    })
+    allowed.setSession({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 })
+    const prepared = await allowed.prepareAttachmentDownload('cipher-id', 'attachment-id')
+    await expect(prepared.download()).resolves.toEqual(Buffer.from([2]))
+    expect(new Headers(allowedFetch.mock.calls[1]?.[1]?.headers).get('authorization')).toBeNull()
+  })
+
+  it.each([
+    'https://localhost/attachment',
+    'https://127.0.0.1/attachment',
+    'https://10.0.0.7/attachment',
+    'https://169.254.169.254/latest/meta-data',
+    'https://192.168.1.5/attachment',
+    'https://[::1]/attachment',
+    'https://[fd00::1]/attachment'
+  ])('rejects unconfigured local or private attachment URL %s', async (url) => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValueOnce(
+      json({
+        id: 'attachment-id',
+        url,
+        fileName: '2.encrypted-name',
+        key: null,
+        size: '1'
+      })
+    )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 })
+    await expect(
+      client.prepareAttachmentDownload('cipher-id', 'attachment-id')
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects oversized, truncated, redirected, or aborted attachment downloads', async () => {
+    const metadata = (size: string): Record<string, string | null> => ({
+      id: 'attachment-id',
+      url: '/attachments/cipher-id/attachment-id',
+      fileName: '2.encrypted-name',
+      key: null,
+      size
+    })
+    const oversized = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(json(metadata(String(128 * 1024 * 1024 + 1))))
+    const oversizedClient = new BitwardenHttpClient({ server: 'us', fetch: oversized })
+    oversizedClient.setSession({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 })
+    await expect(
+      oversizedClient.prepareAttachmentDownload('cipher-id', 'attachment-id')
+    ).rejects.toMatchObject({ code: 'TOO_LARGE' })
+
+    const truncated = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(json(metadata('4')))
+      .mockResolvedValueOnce(new Response(Uint8Array.from([1, 2, 3])))
+    const truncatedClient = new BitwardenHttpClient({ server: 'us', fetch: truncated })
+    truncatedClient.setSession({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 })
+    const truncatedDownload = await truncatedClient.prepareAttachmentDownload(
+      'cipher-id',
+      'attachment-id'
+    )
+    await expect(truncatedDownload.download()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+
+    const controller = new AbortController()
+    const aborted = vi.fn<FetchLike>().mockImplementation(async (_url, init) => {
+      if (aborted.mock.calls.length === 1) return json(metadata('4'))
+      controller.abort()
+      throw init?.signal?.reason ?? new DOMException('aborted', 'AbortError')
+    })
+    const abortedClient = new BitwardenHttpClient({ server: 'us', fetch: aborted })
+    abortedClient.setSession({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 })
+    const abortedDownload = await abortedClient.prepareAttachmentDownload(
+      'cipher-id',
+      'attachment-id',
+      controller.signal
+    )
+    await expect(abortedDownload.download()).rejects.toMatchObject({ code: 'ABORTED' })
+  })
 })

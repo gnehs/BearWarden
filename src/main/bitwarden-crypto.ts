@@ -28,6 +28,7 @@ const IV_BYTES = 16
 const MAC_BYTES = 32
 const MAX_INPUT_BYTES = 1024 * 1024
 const MAX_CIPHERTEXT_BYTES = 64 * 1024 * 1024
+const MAX_ATTACHMENT_CIPHERTEXT_BYTES = 128 * 1024 * 1024
 const MIN_PBKDF2_ITERATIONS = 5_000
 const MIN_ARGON2_MEMORY_MIB = 16
 const MIN_ARGON2_ITERATIONS = 2
@@ -1079,6 +1080,81 @@ export function decryptBitwardenWrappedKey(
     throw new BitwardenCryptoError('INVALID_CIPHERSTRING', 'wrapped key has the wrong content type')
   }
   return result.plaintext
+}
+
+/**
+ * Decrypts Bitwarden's binary EncArrayBuffer attachment envelope.
+ *
+ * Type 0 is the historical unauthenticated AES-256-CBC format and accepts a
+ * 32-byte AES key or a 64-byte combined key. Type 2 is AES-256-CBC-HMAC-SHA256 and requires Bitwarden's
+ * combined 64-byte encryption/MAC key. The returned Buffer is caller-owned.
+ */
+export function decryptBitwardenAttachmentBuffer(envelope: Buffer, key: Buffer): Buffer {
+  if (!Buffer.isBuffer(envelope)) {
+    throw new BitwardenCryptoError('INVALID_INPUT', 'attachment envelope must be a Buffer')
+  }
+  if (envelope.length > MAX_ATTACHMENT_CIPHERTEXT_BYTES) {
+    throw new BitwardenCryptoError(
+      'INVALID_INPUT',
+      'attachment envelope exceeds the maximum supported size'
+    )
+  }
+  if (envelope.length < 1 + IV_BYTES + IV_BYTES) {
+    throw new BitwardenCryptoError('INVALID_CIPHERSTRING', 'attachment envelope is truncated')
+  }
+
+  const type = envelope[0]
+  if (type !== 0 && type !== 2) {
+    throw new BitwardenCryptoError(
+      'UNSUPPORTED_CIPHER_TYPE',
+      'attachment envelope type is unsupported'
+    )
+  }
+
+  const macOffset = 1 + IV_BYTES
+  const ciphertextOffset = type === 2 ? macOffset + MAC_BYTES : macOffset
+  if (envelope.length < ciphertextOffset + IV_BYTES) {
+    throw new BitwardenCryptoError('INVALID_CIPHERSTRING', 'attachment envelope is truncated')
+  }
+  const ciphertextLength = envelope.length - ciphertextOffset
+  if (ciphertextLength % IV_BYTES !== 0) {
+    throw new BitwardenCryptoError(
+      'INVALID_CIPHERSTRING',
+      'attachment ciphertext has an invalid AES-CBC length'
+    )
+  }
+
+  requireBuffer(key, 'attachment key')
+  if (
+    (type === 2 && key.length !== COMBINED_KEY_BYTES) ||
+    (type === 0 && key.length !== KEY_BYTES && key.length !== COMBINED_KEY_BYTES)
+  ) {
+    throw new BitwardenCryptoError('INVALID_KEY', 'attachment key has an invalid length')
+  }
+  const iv = envelope.subarray(1, macOffset)
+  const ciphertext = envelope.subarray(ciphertextOffset)
+
+  if (type === 2) {
+    const mac = envelope.subarray(macOffset, ciphertextOffset)
+    const expectedMac = hmacSha256(key.subarray(KEY_BYTES), iv, ciphertext)
+    try {
+      if (!timingSafeEqual(expectedMac, mac)) {
+        throw new BitwardenCryptoError(
+          'AUTHENTICATION_FAILED',
+          'attachment MAC verification failed'
+        )
+      }
+    } finally {
+      expectedMac.fill(0)
+    }
+  }
+
+  try {
+    const decipher = createDecipheriv('aes-256-cbc', key.subarray(0, KEY_BYTES), iv)
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()])
+  } catch {
+    throw new BitwardenCryptoError('DECRYPTION_FAILED', 'attachment AES-CBC decryption failed')
+  }
 }
 
 /** Decrypts a type 1/2/3/4/7 Bitwarden EncString to strict UTF-8 text. */

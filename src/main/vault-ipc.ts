@@ -7,6 +7,7 @@ import {
   MAX_LOGIN_MOVE_MANY_IDS,
   MAX_LOGIN_AUTHORIZE_MANY_IDS,
   type AppSettingsUpdate,
+  type AttachmentDownloadRequest,
   type CustomFieldRequest,
   type EditorSecretsRequest,
   type CredentialGeneratorRequest,
@@ -550,6 +551,16 @@ function parseId(value: unknown): LoginIdRequest {
   const authorizationToken = optionalAuthorizationToken(record)
   return {
     id: requiredString(record, 'id'),
+    ...(authorizationToken ? { authorizationToken } : {})
+  }
+}
+
+function parseAttachmentDownload(value: unknown): AttachmentDownloadRequest {
+  const record = exactRecord(value, ['id', 'attachmentId', 'authorizationToken'])
+  const authorizationToken = optionalAuthorizationToken(record)
+  return {
+    id: requiredString(record, 'id'),
+    attachmentId: requiredString(record, 'attachmentId'),
     ...(authorizationToken ? { authorizationToken } : {})
   }
 }
@@ -1159,6 +1170,10 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   registerHandler(IPC_CHANNELS.loginGetPasswordHistory, getMainWindow, (event, input) => {
     const request = parseId(input)
     return runAuthorized(event, request, () => vault.getPasswordHistory(request))
+  })
+  registerHandler(IPC_CHANNELS.attachmentDownload, getMainWindow, (event, input) => {
+    const request = parseAttachmentDownload(input)
+    return runAuthorized(event, request, () => vault.downloadAttachment(request))
   })
   registerHandler(IPC_CHANNELS.loginCreate, getMainWindow, (_event, input) =>
     afterMutation(vault.createLogin(parseLoginCreate(input)))

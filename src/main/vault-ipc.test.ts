@@ -108,6 +108,7 @@ describe('registerVaultIpc reprompt gate', () => {
       getPasswordHistory: vi.fn(async () => [
         { password: 'old-secret', lastUsedDate: '2026-07-14T00:00:00.000Z' }
       ]),
+      downloadAttachment: vi.fn(async () => ({ canceled: false, fileName: 'document.txt' })),
       createLogin: vi.fn(async (request) => ({ id: 'created', ...request })),
       cloneLogin: vi.fn(async () => ({ id: 'clone' })),
       updateLogin: vi.fn(async () => ({ id: 'item-a' })),
@@ -224,6 +225,11 @@ describe('registerVaultIpc reprompt gate', () => {
   it.each([
     [IPC_CHANNELS.loginGet, 'getLogin', { id: 'item-a' }],
     [IPC_CHANNELS.loginGetPasswordHistory, 'getPasswordHistory', { id: 'item-a' }],
+    [
+      IPC_CHANNELS.attachmentDownload,
+      'downloadAttachment',
+      { id: 'item-a', attachmentId: 'attachment-a' }
+    ],
     [IPC_CHANNELS.loginClone, 'cloneLogin', { id: 'item-a' }],
     [IPC_CHANNELS.loginUpdate, 'updateLogin', { id: 'item-a', name: 'Updated' }],
     [IPC_CHANNELS.loginDelete, 'deleteLogin', { id: 'item-a' }],
@@ -285,6 +291,27 @@ describe('registerVaultIpc reprompt gate', () => {
     )
     vault.getPasswordHistory.mockRejectedValueOnce(new VaultError('INVALID_INPUT'))
     await expect(getHistory(event, { id: 'item-a' })).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+  })
+
+  it('keeps attachment download paths out of renderer IPC', async () => {
+    const { event, vault, setAuthorizationState } = harness()
+    setAuthorizationState({ reprompt: 0, generation: 3 })
+    const download = electronMock.handlers.get(IPC_CHANNELS.attachmentDownload)!
+    await expect(
+      download(event, {
+        id: 'item-a',
+        attachmentId: 'attachment-a',
+        path: '/tmp/renderer-controlled.txt'
+      })
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    await expect(download(event, { id: 'item-a', attachmentId: 'attachment-a' })).resolves.toEqual({
+      canceled: false,
+      fileName: 'document.txt'
+    })
+    expect(vault.downloadAttachment).toHaveBeenCalledWith({
+      id: 'item-a',
+      attachmentId: 'attachment-a'
+    })
   })
 
   it.each([

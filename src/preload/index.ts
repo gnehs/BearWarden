@@ -50,6 +50,7 @@ const api: BearWardenAPI = {
     get: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginGet, request),
     getPasswordHistory: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.loginGetPasswordHistory, request),
+    downloadAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentDownload, request),
     create: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginCreate, request),
     clone: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginClone, request),
     archive: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginArchive, request),

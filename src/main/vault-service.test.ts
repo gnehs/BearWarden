@@ -1,16 +1,18 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type {
-  BitwardenDirectState,
-  BitwardenLoginDraft,
-  BitwardenLoginItem,
-  BitwardenSyncClient
+import {
+  BitwardenDirectError,
+  type BitwardenDirectState,
+  type BitwardenLoginDraft,
+  type BitwardenLoginItem,
+  type BitwardenSyncClient
 } from './bitwarden-direct'
 import type { CustomFieldRequest, LoginView, VaultItemFields } from '../shared/vault-contract'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import { VaultService, type VaultServiceOptions } from './vault-service'
+import { VaultAttachmentFileService } from './vault-attachment-files'
 
 const MASTER_PASSWORD = 'correct horse battery staple'
 const IDS = [
@@ -111,6 +113,7 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
   restoredIds: string[]
   hardDeletedIds: string[]
   editedLoginIds: string[]
+  downloadedAttachmentIds: string[]
   readonly loginPassword: string | null
 } {
   let unlocked = false
@@ -195,6 +198,7 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
   const restoredIds: string[] = []
   const hardDeletedIds: string[] = []
   const editedLoginIds: string[] = []
+  const downloadedAttachmentIds: string[] = []
   const hardDeleteLogin = async (id: string): Promise<void> => {
     hardDeletedIds.push(id)
     const index = remoteLogins.findIndex((login) => login.id === id)
@@ -207,6 +211,7 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
     restoredIds,
     hardDeletedIds,
     editedLoginIds,
+    downloadedAttachmentIds,
     get loginPassword() {
       return loginPassword
     },
@@ -238,6 +243,17 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
         passkeys: login.passkeys.map((passkey) => ({ ...passkey })),
         attachments: login.attachments.map((attachment) => ({ ...attachment }))
       })),
+    downloadAttachment: async (id, attachmentId) => {
+      const attachment = remoteLogins
+        .find((login) => login.id === id)
+        ?.attachments.find((entry) => entry.id === attachmentId)
+      if (!attachment) throw new Error('missing fake attachment')
+      downloadedAttachmentIds.push(attachmentId)
+      return {
+        fileName: attachment.fileName,
+        data: Buffer.from('fake attachment contents')
+      }
+    },
     createFolder: async (name) => {
       const folder = { id: '90000000-0000-4000-8000-000000000003', name }
       remoteFolders.push(folder)
@@ -476,6 +492,194 @@ describe('VaultService encrypted local data', () => {
       attachmentCount: 1,
       attachments: [expect.objectContaining({ fileName: 'remote-document.txt' })]
     })
+  })
+
+  it('downloads an attachment through a main-only picker and clears plaintext memory', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'bearwarden-download-test-'))
+    temporaryDirectories.push(directory)
+    const destination = join(directory, 'saved-document.txt')
+    const attachmentFiles = new VaultAttachmentFileService({
+      chooseSavePath: vi.fn(async () => destination)
+    })
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      attachmentFiles,
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.remoteLogins[0]!.attachments = [
+          {
+            id: 'attachment-id',
+            fileName: 'document.txt',
+            size: 12,
+            sizeName: '12 B',
+            legacy: false
+          }
+        ]
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = (await service.listLogins())[0]!
+    let clearText: Buffer | undefined
+    fake!.downloadAttachment = async () => {
+      clearText = Buffer.from('fake attachment contents')
+      return { fileName: 'document.txt', data: clearText }
+    }
+
+    await expect(
+      service.downloadAttachment({ id: local.id, attachmentId: 'attachment-id' })
+    ).resolves.toEqual({ canceled: false, fileName: 'document.txt' })
+    expect(await readFile(destination, 'utf8')).toBe('fake attachment contents')
+    expect(clearText).toEqual(Buffer.alloc('fake attachment contents'.length))
+    if (process.platform !== 'win32') expect((await stat(destination)).mode & 0o777).toBe(0o600)
+  })
+
+  it('cancels before downloading when the main-process save picker is dismissed', async () => {
+    const chooseSavePath = vi.fn(async () => null)
+    const attachmentFiles = new VaultAttachmentFileService({ chooseSavePath })
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      attachmentFiles,
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.remoteLogins[0]!.attachments = [
+          {
+            id: 'attachment-id',
+            fileName: 'document.txt',
+            size: 12,
+            sizeName: '12 B',
+            legacy: false
+          }
+        ]
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = (await service.listLogins())[0]!
+    const downloadAttachment = vi.fn(fake!.downloadAttachment)
+    fake!.downloadAttachment = downloadAttachment
+
+    await expect(
+      service.downloadAttachment({ id: local.id, attachmentId: 'attachment-id' })
+    ).resolves.toEqual({ canceled: true, fileName: 'document.txt' })
+    expect(chooseSavePath).toHaveBeenCalledWith('document.txt')
+    expect(downloadAttachment).not.toHaveBeenCalled()
+  })
+
+  it('allows lock to clear the vault while the native save picker remains open', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'bearwarden-download-picker-lock-'))
+    temporaryDirectories.push(directory)
+    const destination = join(directory, 'must-not-be-written.txt')
+    let resolvePicker!: (path: string | null) => void
+    const picker = new Promise<string | null>((resolve) => {
+      resolvePicker = resolve
+    })
+    const chooseSavePath = vi.fn(() => picker)
+    const attachmentFiles = new VaultAttachmentFileService({ chooseSavePath })
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      attachmentFiles,
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.remoteLogins[0]!.attachments = [
+          {
+            id: 'attachment-id',
+            fileName: 'document.txt',
+            size: 12,
+            sizeName: '12 B',
+            legacy: false
+          }
+        ]
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = (await service.listLogins())[0]!
+    const download = service.downloadAttachment({
+      id: local.id,
+      attachmentId: 'attachment-id'
+    })
+    await vi.waitFor(() => expect(chooseSavePath).toHaveBeenCalledOnce())
+
+    const lockOutcome = await Promise.race([
+      service.lock(),
+      new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 250))
+    ])
+    expect(lockOutcome).toEqual({ state: 'locked' })
+    resolvePicker(destination)
+    await expect(download).rejects.toMatchObject({ code: 'LOCKED' })
+    expect(fake!.downloadedAttachmentIds).toEqual([])
+    expect(await readdir(directory)).toEqual([])
+  })
+
+  it('aborts an attachment download before lock and leaves no partial plaintext file', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'bearwarden-download-abort-'))
+    temporaryDirectories.push(directory)
+    const destination = join(directory, 'should-not-exist.txt')
+    const attachmentFiles = new VaultAttachmentFileService({
+      chooseSavePath: vi.fn(async () => destination)
+    })
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      attachmentFiles,
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.remoteLogins[0]!.attachments = [
+          {
+            id: 'attachment-id',
+            fileName: 'document.txt',
+            size: 12,
+            sizeName: '12 B',
+            legacy: false
+          }
+        ]
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = (await service.listLogins())[0]!
+    let started!: () => void
+    const didStart = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    fake!.downloadAttachment = async (_id, _attachmentId, signal) => {
+      started()
+      return new Promise<never>((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(new BitwardenDirectError('ABORTED')), {
+          once: true
+        })
+      })
+    }
+
+    const download = service.downloadAttachment({
+      id: local.id,
+      attachmentId: 'attachment-id'
+    })
+    await didStart
+    const lock = service.lock()
+    await expect(download).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(lock).resolves.toEqual({ state: 'locked' })
+    expect(await readdir(directory)).toEqual([])
   })
 
   it.each(['content changes', 'mapped item disappears'] as const)(

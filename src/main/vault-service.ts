@@ -2,6 +2,8 @@ import { randomInt as nodeRandomInt, randomUUID } from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type {
   EditorSecretsRequest,
+  AttachmentDownloadRequest,
+  AttachmentDownloadResult,
   EditorSecretsView,
   CredentialGeneratorRequest,
   CredentialGeneratorResult,
@@ -90,6 +92,7 @@ import {
   type SyncSnapshot
 } from './sync-merge'
 import { VaultError } from './vault-errors'
+import type { VaultAttachmentFileService } from './vault-attachment-files'
 import { type StoredPasskeyCredential, toPasskeyView } from './passkey'
 import { generateTotp } from './totp'
 import {
@@ -207,6 +210,7 @@ export interface VaultServiceOptions {
   createSyncClient?: (sync: PersistedSyncData) => BitwardenSyncClient
   fetch?: typeof fetch
   randomInt?: RandomInt
+  attachmentFiles?: VaultAttachmentFileService
 }
 
 export interface VaultExportSnapshot {
@@ -1671,6 +1675,7 @@ export class VaultService {
   private readonly createSyncClient: (sync: PersistedSyncData) => BitwardenSyncClient
   private readonly fetch: typeof fetch
   private readonly randomInt: RandomInt
+  private readonly attachmentFiles: VaultAttachmentFileService | null
   private readonly websiteIconCache = new Map<string, string | null>()
   private readonly websiteIconRequests = new Map<string, Promise<string | null>>()
 
@@ -1683,6 +1688,7 @@ export class VaultService {
     this.createId = options.createId ?? randomUUID
     this.fetch = options.fetch ?? fetch
     this.randomInt = options.randomInt ?? nodeRandomInt
+    this.attachmentFiles = options.attachmentFiles ?? null
     this.createSyncClient =
       options.createSyncClient ??
       (() => {
@@ -2042,6 +2048,81 @@ export class VaultService {
       const login = this.findLogin(this.requireData(), request.id)
       this.assertActiveLogin(login)
       return clonePasswordHistory(login.passwordHistory)
+    })
+  }
+
+  async downloadAttachment(request: AttachmentDownloadRequest): Promise<AttachmentDownloadResult> {
+    const preflight = await this.exclusive(async () => {
+      assertUuid(request.id)
+      if (
+        typeof request.attachmentId !== 'string' ||
+        request.attachmentId.length === 0 ||
+        request.attachmentId.length > MAX_ATTACHMENT_ID_LENGTH
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      const data = this.requireData()
+      const login = this.findLogin(data, request.id)
+      this.assertActiveLogin(login)
+      const attachment = login.attachments.find((entry) => entry.id === request.attachmentId)
+      if (!attachment) throw new VaultError('NOT_FOUND')
+      const files = this.attachmentFiles
+      if (!files) throw new VaultError('INTERNAL_ERROR')
+      const sync = this.requireSyncData()
+      const mapping = sync.loginMappings.find((entry) => entry.localId === login.id)
+      if (!mapping) throw new VaultError('INVALID_INPUT')
+      return { files, fileName: attachment.fileName, generation: this.generation }
+    })
+
+    // Electron's native save dialog is not abortable. Keep it outside the vault
+    // mutex so auto-lock can clear keys even while the user leaves the dialog open.
+    const destination = await preflight.files.chooseSavePath(preflight.fileName)
+    if (destination === null) {
+      return { canceled: true, fileName: preflight.fileName }
+    }
+
+    return this.exclusive(async () => {
+      if (preflight.generation !== this.generation) throw new VaultError('LOCKED')
+      assertUuid(request.id)
+      const data = this.requireData()
+      const login = this.findLogin(data, request.id)
+      this.assertActiveLogin(login)
+      const attachment = login.attachments.find((entry) => entry.id === request.attachmentId)
+      if (!attachment) throw new VaultError('NOT_FOUND')
+      if (attachment.fileName !== preflight.fileName) {
+        throw new VaultError('ATTACHMENT_FAILED')
+      }
+      const sync = this.requireSyncData()
+      const mapping = sync.loginMappings.find((entry) => entry.localId === login.id)
+      if (!mapping) throw new VaultError('INVALID_INPUT')
+      const client = this.getOrCreateSyncClient(sync)
+      const abort = this.startSyncOperation()
+      let clearText: Buffer | undefined
+      try {
+        if (abort.signal.aborted) throw new VaultError('LOCKED')
+        const generation = this.generation
+        const downloaded = await client.downloadAttachment(
+          mapping.remoteId,
+          attachment.id,
+          abort.signal
+        )
+        clearText = downloaded.data
+        if (generation !== this.generation || abort.signal.aborted) {
+          throw new VaultError('LOCKED')
+        }
+        if (downloaded.fileName !== attachment.fileName) {
+          throw new VaultError('ATTACHMENT_FAILED')
+        }
+        await preflight.files.write(destination, clearText, abort.signal)
+        // The atomic rename is the commit point. Once the requested plaintext file exists,
+        // report success even if a lock races with the final chmod/directory sync.
+        return { canceled: false, fileName: attachment.fileName }
+      } catch (error) {
+        throw this.mapAttachmentError(error)
+      } finally {
+        clearText?.fill(0)
+        this.finishSyncOperation(abort)
+      }
     })
   }
 
@@ -2866,6 +2947,21 @@ export class VaultService {
       }
     }
     return new VaultError('SYNC_FAILED')
+  }
+
+  private mapAttachmentError(error: unknown): VaultError {
+    if (error instanceof VaultError) return error
+    if (error instanceof BitwardenDirectError) {
+      if (error.code === 'ABORTED') return new VaultError('LOCKED')
+      if (
+        error.code === 'AUTH_REQUIRED' ||
+        error.code === 'TWO_FACTOR_REQUIRED' ||
+        error.code === 'NEW_DEVICE_REQUIRED'
+      ) {
+        return this.mapSyncError(error)
+      }
+    }
+    return new VaultError('ATTACHMENT_FAILED')
   }
 
   private async persistCurrentClientState(): Promise<void> {

@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import {
   BitwardenCryptoError,
   clearBitwardenSymmetricKey,
+  decryptBitwardenAttachmentBuffer,
   decodeBitwardenUserKey,
   decryptBitwardenBytes,
   decryptBitwardenCipherBlob,
@@ -21,6 +22,7 @@ import {
 import {
   BitwardenHttpClient,
   BitwardenHttpError,
+  type BitwardenAttachmentDownload,
   type BitwardenPrelogin,
   type BitwardenSession,
   type JsonObject,
@@ -137,6 +139,15 @@ export interface BitwardenAttachment {
   legacy: boolean
 }
 
+/**
+ * A decrypted attachment returned only to main-process callers.  The caller owns
+ * `data` and must clear it after writing it to the user-selected destination.
+ */
+export interface BitwardenDownloadedAttachment {
+  fileName: string
+  data: Buffer
+}
+
 export interface BitwardenLoginItem extends VaultItemFields {
   id: string
   type: VaultItemType
@@ -200,6 +211,11 @@ export interface BitwardenSyncClient {
   sync(signal?: AbortSignal): Promise<void>
   listFolders(signal?: AbortSignal): Promise<BitwardenFolder[]>
   listPersonalLogins(signal?: AbortSignal): Promise<BitwardenLoginItem[]>
+  downloadAttachment(
+    id: string,
+    attachmentId: string,
+    signal?: AbortSignal
+  ): Promise<BitwardenDownloadedAttachment>
   createFolder(name: string, signal?: AbortSignal): Promise<BitwardenFolder>
   editFolder(id: string, name: string, signal?: AbortSignal): Promise<BitwardenFolder>
   deleteFolder(id: string, signal?: AbortSignal): Promise<void>
@@ -824,6 +840,47 @@ function decryptAttachments(raw: JsonObject, key: BitwardenSymmetricKey): Bitwar
   return attachments
 }
 
+interface FreshAttachmentMetadata {
+  encryptedKey: string | null
+  size: number
+}
+
+/**
+ * The HTTP layer resolves the short-lived attachment URL and deliberately does
+ * not return it.  This layer still authenticates every fresh metadata field
+ * against the cached personal item before it accepts the downloaded bytes.
+ */
+function freshAttachmentMetadata(
+  response: BitwardenAttachmentDownload,
+  attachmentId: string,
+  expected: BitwardenAttachment,
+  cipherKey: BitwardenSymmetricKey
+): FreshAttachmentMetadata {
+  if (response.id !== attachmentId) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  if (!Number.isSafeInteger(response.size) || response.size < 0) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+
+  const fileName = decryptBitwardenString(response.fileName, cipherKey)
+  if (fileName !== expected.fileName) throw new BitwardenDirectError('INVALID_RESPONSE')
+
+  if (response.key !== null && typeof response.key !== 'string') {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  if (response.key === '') throw new BitwardenDirectError('INVALID_RESPONSE')
+  const encryptedKey = response.key
+  if ((encryptedKey === null) !== expected.legacy) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+
+  const size = response.size
+  if (size !== expected.size) throw new BitwardenDirectError('INVALID_RESPONSE')
+
+  return { encryptedKey, size }
+}
+
 function arrayProperty(record: JsonObject, name: string): JsonValue[] {
   const value = property(record, name)
   if (!Array.isArray(value) || value.length > MAX_REMOTE_ENTITIES) {
@@ -1331,6 +1388,73 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   async listPersonalLogins(): Promise<BitwardenLoginItem[]> {
     this.requireUserKey()
     return [...this.logins.values()].map(({ item }) => cloneLoginItem(item))
+  }
+
+  async downloadAttachment(
+    id: string,
+    attachmentId: string,
+    signal?: AbortSignal
+  ): Promise<BitwardenDownloadedAttachment> {
+    const userKey = this.requireUserKey()
+    if (signal?.aborted) throw new BitwardenDirectError('ABORTED')
+
+    const cached = this.logins.get(id)
+    const expected = cached?.item.attachments.find((attachment) => attachment.id === attachmentId)
+    if (!cached || !expected) throw new BitwardenDirectError('INVALID_RESPONSE')
+
+    let itemKey: BitwardenSymmetricKey | null = null
+    let attachmentKey: Buffer | null = null
+    let encrypted: Buffer | null = null
+    let plaintext: Buffer | null = null
+    try {
+      itemKey = this.cipherKey(cached.raw, userKey)
+      // Attachment file encryption remains an AES file format, including for a
+      // V2 account whose user key is COSE/XChaCha.  The per-item key must be a
+      // legacy 64-byte key before it can unwrap the attachment CEK.
+      if (!Buffer.isBuffer(itemKey) || itemKey.length !== USER_KEY_BYTES) {
+        throw new BitwardenDirectError('UNSUPPORTED_ACCOUNT_ENCRYPTION')
+      }
+
+      // Do not fall back to a URL retained in the sync response: the HTTP
+      // layer resolves a fresh short-lived capability immediately before the
+      // binary request and keeps that URL private to itself.
+      const response = await this.http.prepareAttachmentDownload(id, attachmentId, signal)
+      const metadata = freshAttachmentMetadata(response, attachmentId, expected, itemKey)
+
+      if (metadata.encryptedKey === null) {
+        attachmentKey = itemKey
+      } else {
+        attachmentKey = decryptBitwardenWrappedKey(metadata.encryptedKey, itemKey)
+        if (attachmentKey.length !== USER_KEY_BYTES) {
+          attachmentKey.fill(0)
+          attachmentKey = null
+          throw new BitwardenDirectError('INVALID_RESPONSE')
+        }
+      }
+
+      // Fetch only after the fresh encrypted filename, key mode, and size match
+      // the authenticated cached item. This prevents stale metadata from forcing
+      // a large allocation or consuming the one-time signed URL.
+      encrypted = await response.download(signal)
+      if (encrypted.length !== metadata.size) throw new BitwardenDirectError('INVALID_RESPONSE')
+      plaintext = decryptBitwardenAttachmentBuffer(encrypted, attachmentKey)
+      const result: BitwardenDownloadedAttachment = { fileName: expected.fileName, data: plaintext }
+      plaintext = null // Transfer ownership to the main-process file writer.
+      return result
+    } catch (error) {
+      // A file MAC is authenticated by an already-unlocked local key; it is
+      // corrupt remote data, not evidence that the user's master password is
+      // wrong. Do not turn it into an unlock prompt.
+      if (error instanceof BitwardenCryptoError && error.code === 'AUTHENTICATION_FAILED') {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      throw this.mapError(error)
+    } finally {
+      encrypted?.fill(0)
+      plaintext?.fill(0)
+      if (attachmentKey && attachmentKey !== itemKey) attachmentKey.fill(0)
+      if (itemKey && itemKey !== userKey) clearBitwardenSymmetricKey(itemKey)
+    }
   }
 
   async createFolder(name: string, signal?: AbortSignal): Promise<BitwardenFolder> {

@@ -20,6 +20,7 @@ import { FocusTouchIdUnlockController } from './focus-touch-id-unlock'
 import { installApplicationMenu } from './application-menu'
 import { registerVaultIpc } from './vault-ipc'
 import { VaultService } from './vault-service'
+import { VaultAttachmentFileService } from './vault-attachment-files'
 import { VaultPortabilityService } from './vault-portability'
 import icon from '../../resources/icon.png?asset'
 
@@ -264,6 +265,21 @@ if (hasSingleInstanceLock)
     const store = new EncryptedVaultStore<unknown>(
       join(app.getPath('userData'), 'vault', 'vault.json')
     )
+    const attachmentFiles = new VaultAttachmentFileService({
+      chooseSavePath: async (defaultName) => {
+        const options = {
+          title: '下載附件',
+          defaultPath: defaultName,
+          buttonLabel: '儲存',
+          filters: [{ name: '所有檔案', extensions: ['*'] }],
+          properties: ['showOverwriteConfirmation' as const]
+        }
+        const result = mainWindow
+          ? await dialog.showSaveDialog(mainWindow, options)
+          : await dialog.showSaveDialog(options)
+        return result.canceled || !result.filePath ? null : result.filePath
+      }
+    })
     vault = new VaultService(
       store,
       {
@@ -277,7 +293,8 @@ if (hasSingleInstanceLock)
             email: sync.email,
             clientVersion: app.getVersion(),
             state: sync.state
-          })
+          }),
+        attachmentFiles
       }
     )
     const portability = new VaultPortabilityService(vault, {

@@ -1,5 +1,7 @@
 import {
   constants,
+  createCipheriv,
+  createHmac,
   createPrivateKey,
   generateKeyPairSync,
   publicEncrypt,
@@ -11,6 +13,7 @@ import { Encoder } from 'cbor-x'
 import {
   BitwardenCryptoError,
   decodeBitwardenUserKey,
+  decryptBitwardenAttachmentBuffer,
   decryptBitwardenBytes,
   decryptBitwardenCipherBlob,
   decryptBitwardenString,
@@ -31,6 +34,15 @@ const TYPE_2_VECTOR =
 const TYPE_1_VECTOR =
   '1.ABEiM0RVZneImaq7zN3u/w==|SlyzY8ruQp1TEkLizfIzli8PM+0v7xKMbdwfl57UfUE=|XRD3eKrm9IDGMjIxN0db6mI4vqM6FZfQbViEkYP/cIE='
 const VECTOR_PLAINTEXT = 'Bitwarden fixed AES vector'
+
+function attachmentEnvelope(type: 0 | 2, plaintext: Buffer, key: Buffer): Buffer {
+  const iv = Buffer.from([...Array(16).keys()])
+  const cipher = createCipheriv('aes-256-cbc', key.subarray(0, 32), iv)
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()])
+  if (type === 0) return Buffer.concat([Buffer.from([type]), iv, ciphertext])
+  const mac = createHmac('sha256', key.subarray(32)).update(iv).update(ciphertext).digest()
+  return Buffer.concat([Buffer.from([type]), iv, mac, ciphertext])
+}
 const V2_USER_KEY_B64 =
   'pQEEAlACHUUoybNAuJoZzqNMxz2bAzoAARFvBIQDBAUGIFggAvGl4ifaUAomQdCdUPpXLHtypiQxHjZwRHeI83caZM4B'
 const TYPE_7_VECTOR =
@@ -217,6 +229,47 @@ describe('Bitwarden EncString compatibility', () => {
 
     const trailing = Buffer.concat([padded.subarray(0, -1), Buffer.of(0, 1)])
     expect(() => decodeBitwardenUserKey(trailing)).toThrowError(BitwardenCryptoError)
+  })
+})
+
+describe('Bitwarden attachment EncArrayBuffer compatibility', () => {
+  it('decrypts authenticated type 2 and historical type 0 attachment envelopes', () => {
+    const plaintext = Buffer.from([0, 1, 2, 127, 128, 255])
+    const type2 = attachmentEnvelope(2, plaintext, COMBINED_KEY)
+    const legacyKey = Buffer.from(COMBINED_KEY.subarray(0, 32))
+    const type0 = attachmentEnvelope(0, plaintext, legacyKey)
+
+    expect(decryptBitwardenAttachmentBuffer(type2, COMBINED_KEY)).toEqual(plaintext)
+    expect(decryptBitwardenAttachmentBuffer(type0, legacyKey)).toEqual(plaintext)
+    expect(decryptBitwardenAttachmentBuffer(type0, COMBINED_KEY)).toEqual(plaintext)
+  })
+
+  it('authenticates type 2 before decryption and rejects malformed envelopes', () => {
+    const envelope = attachmentEnvelope(2, Buffer.from('authenticated attachment'), COMBINED_KEY)
+    const tampered = Buffer.from(envelope)
+    tampered[17] ^= 1
+
+    expect(() => decryptBitwardenAttachmentBuffer(tampered, COMBINED_KEY)).toThrowError(
+      BitwardenCryptoError
+    )
+    try {
+      decryptBitwardenAttachmentBuffer(tampered, COMBINED_KEY)
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'AUTHENTICATION_FAILED' })
+    }
+
+    expect(() =>
+      decryptBitwardenAttachmentBuffer(Buffer.from([1, ...Buffer.alloc(64)]), COMBINED_KEY)
+    ).toThrowError(BitwardenCryptoError)
+    expect(() => decryptBitwardenAttachmentBuffer(Buffer.alloc(32), COMBINED_KEY)).toThrowError(
+      BitwardenCryptoError
+    )
+    expect(() =>
+      decryptBitwardenAttachmentBuffer(Buffer.concat([envelope, Buffer.from([0])]), COMBINED_KEY)
+    ).toThrowError(BitwardenCryptoError)
+    expect(() => decryptBitwardenAttachmentBuffer(envelope, Buffer.alloc(32))).toThrowError(
+      BitwardenCryptoError
+    )
   })
 })
 
