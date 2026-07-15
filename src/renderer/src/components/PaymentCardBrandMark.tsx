@@ -1,10 +1,22 @@
 import { CreditCard } from 'lucide-react'
+import AmexLogo from '~icons/logos/amex'
+import JcbLogo from '~icons/logos/jcb'
+import MastercardLogo from '~icons/logos/mastercard'
+import VisaLogo from '~icons/logos/visa'
 import type { PaymentCardBrand } from '../lib/payment-card'
+import { cn } from '../lib/utils'
 
 interface PaymentCardBrandMarkProps {
   brand: PaymentCardBrand
   compact?: boolean
 }
+
+const paymentCardBrandLogos = {
+  visa: { label: 'Visa', Logo: VisaLogo },
+  mastercard: { label: 'Mastercard', Logo: MastercardLogo },
+  jcb: { label: 'JCB', Logo: JcbLogo },
+  'american-express': { label: 'American Express', Logo: AmexLogo }
+} satisfies Record<Exclude<PaymentCardBrand, 'unknown'>, { label: string; Logo: typeof VisaLogo }>
 
 function PaymentCardBrandMark({
   brand,
@@ -12,45 +24,24 @@ function PaymentCardBrandMark({
 }: PaymentCardBrandMarkProps): React.JSX.Element {
   if (brand === 'unknown') {
     return (
-      <span className="payment-brand-mark unknown" aria-label="其他發卡組織">
+      <span
+        className={cn('payment-brand-mark unknown', compact && 'compact')}
+        role="img"
+        aria-label="其他發卡組織"
+      >
         <CreditCard size={compact ? 17 : 20} aria-hidden="true" />
       </span>
     )
   }
-  if (brand === 'mastercard') {
-    return (
-      <span
-        className={`payment-brand-mark mastercard ${compact ? 'compact' : ''}`}
-        aria-label="Mastercard"
-      >
-        <i aria-hidden="true" />
-        <i aria-hidden="true" />
-        {!compact && <b>mastercard</b>}
-      </span>
-    )
-  }
-  if (brand === 'jcb') {
-    return (
-      <span className={`payment-brand-mark jcb ${compact ? 'compact' : ''}`} aria-label="JCB">
-        <i>J</i>
-        <i>C</i>
-        <i>B</i>
-      </span>
-    )
-  }
-  if (brand === 'american-express') {
-    return (
-      <span
-        className={`payment-brand-mark amex ${compact ? 'compact' : ''}`}
-        aria-label="American Express"
-      >
-        {compact ? 'AX' : 'AMEX'}
-      </span>
-    )
-  }
+  const { label, Logo } = paymentCardBrandLogos[brand]
+
   return (
-    <span className={`payment-brand-mark visa ${compact ? 'compact' : ''}`} aria-label="Visa">
-      VISA
+    <span
+      className={cn('payment-brand-mark', brand, compact && 'compact')}
+      role="img"
+      aria-label={label}
+    >
+      <Logo aria-hidden="true" focusable="false" />
     </span>
   )
 }

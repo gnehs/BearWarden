@@ -509,7 +509,10 @@ function DetailPlaceholder({
           {item.type === 'login' ? (
             <WebsiteIcon id={item.id} uri={item.uri} enabled={showWebsiteIcons} />
           ) : item.type === 'card' ? (
-            <PaymentCardBrandMark brand={normalizeBitwardenCardBrand(item.cardBrand)} />
+            <PaymentCardBrandMark
+              brand={normalizeBitwardenCardBrand(item.cardBrand)}
+              compact
+            />
           ) : (
             <TypeIcon size={23} />
           )}
@@ -2341,6 +2344,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     ) : selectedLogin.type === 'card' ? (
                       <PaymentCardBrandMark
                         brand={normalizeBitwardenCardBrand(selectedLogin.brand)}
+                        compact
                       />
                     ) : (
                       (() => {

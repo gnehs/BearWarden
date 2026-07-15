@@ -2,6 +2,7 @@ import { resolve } from 'path'
 import { defineConfig } from 'electron-vite'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import Icons from 'unplugin-icons/vite'
 
 export default defineConfig({
   main: {},
@@ -12,6 +13,6 @@ export default defineConfig({
         '@renderer': resolve('src/renderer/src')
       }
     },
-    plugins: [tailwindcss(), react()]
+    plugins: [tailwindcss(), react(), Icons({ compiler: 'jsx', jsx: 'react' })]
   }
 })

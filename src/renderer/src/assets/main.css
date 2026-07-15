@@ -1237,94 +1237,24 @@ button svg {
   justify-content: center;
   line-height: 1;
 }
-.payment-brand-mark.visa {
-  color: #17357e;
-  font-size: 14px;
-  font-style: italic;
-  font-weight: 900;
-  letter-spacing: -0.08em;
-}
-.payment-brand-mark.mastercard {
+.payment-brand-mark:not(.unknown) {
   width: 58px;
-  min-height: 28px;
-  padding-bottom: 9px;
+  min-width: 58px;
+  height: 28px;
 }
-.payment-brand-mark.mastercard i {
-  position: absolute;
-  top: 0;
-  left: 14px;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: #e3202a;
+.payment-brand-mark:not(.unknown) svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
-.payment-brand-mark.mastercard i + i {
-  left: 29px;
-  background: #f79e1b;
-  mix-blend-mode: multiply;
-}
-.payment-brand-mark.mastercard b {
-  position: absolute;
-  bottom: 0;
-  color: #24211e;
-  font-size: 7px;
-  font-weight: 750;
-  letter-spacing: -0.03em;
-}
-.payment-brand-mark.mastercard.compact {
+.payment-brand-mark:not(.unknown).compact {
   width: 29px;
   min-width: 29px;
-  min-height: 19px;
-  padding: 0;
-}
-.payment-brand-mark.mastercard.compact i {
-  left: 2px;
-  width: 18px;
   height: 18px;
 }
-.payment-brand-mark.mastercard.compact i + i {
-  left: 11px;
-}
-.payment-brand-mark.jcb {
-  gap: 1px;
-}
-.payment-brand-mark.jcb i {
-  display: grid;
-  width: 17px;
-  height: 25px;
-  place-items: center;
-  border-radius: 3px;
-  color: #fff;
-  background: #1877b9;
-  font-size: 10px;
-  font-style: normal;
-  font-weight: 900;
-}
-.payment-brand-mark.jcb i:nth-child(2) {
-  background: #d63842;
-}
-.payment-brand-mark.jcb i:nth-child(3) {
-  background: #249451;
-}
-.payment-brand-mark.jcb.compact i {
-  width: 9px;
-  height: 18px;
-  font-size: 7px;
-}
-.payment-brand-mark.amex {
-  min-width: 54px;
-  min-height: 28px;
-  border-radius: 3px;
-  color: #fff;
-  background: #1478bc;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: -0.04em;
-}
-.payment-brand-mark.amex.compact {
-  min-width: 29px;
-  min-height: 19px;
-  font-size: 8px;
+.detail-icon > .payment-brand-mark:not(.unknown) {
+  min-width: 0;
+  max-width: calc(100% - 8px);
 }
 .item-icon.card,
 .detail-icon.card {
