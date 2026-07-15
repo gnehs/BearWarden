@@ -71,6 +71,7 @@ import { FolderDragPreview, ItemDragPreview } from './DragPreview'
 import { FolderRow, type ItemSelectionModifiers } from './DndRows'
 import LoginEditor, { type LoginDraft } from './LoginEditor'
 import SyncDialog from './SyncDialog'
+import SettingsPage from './SettingsPage'
 import VirtualizedItemList from './VirtualizedItemList'
 import { groupItemsByDate } from '../lib/item-date-groups'
 import { matchesVaultCategory, type VaultCategoryFilter } from '../lib/vault-category'
@@ -105,13 +106,6 @@ import {
   EmptyMedia,
   EmptyTitle
 } from '@renderer/components/ui/empty'
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldLabel,
-  FieldTitle
-} from '@renderer/components/ui/field'
 import { InputGroup, InputGroupAddon, InputGroupButton } from '@renderer/components/ui/input-group'
 import {
   Command,
@@ -122,7 +116,6 @@ import {
   CommandItem,
   CommandList
 } from '@renderer/components/ui/command'
-import { Input } from '@renderer/components/ui/input'
 import { Kbd } from '@renderer/components/ui/kbd'
 import { Progress } from '@renderer/components/ui/progress'
 import {
@@ -135,7 +128,6 @@ import {
 } from '@renderer/components/ui/select'
 import { Skeleton } from '@renderer/components/ui/skeleton'
 import { Spinner } from '@renderer/components/ui/spinner'
-import { Switch } from '@renderer/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { cn } from '@renderer/lib/utils'
 import { applyThemePreference } from '@renderer/lib/theme'
@@ -198,40 +190,6 @@ const syncStateMeta = {
   syncing: { label: '同步中…', icon: CloudSync },
   error: { label: '需要處理問題', icon: CloudAlert }
 } satisfies Record<SyncStatus['state'], { label: string; icon: typeof CloudCheck }>
-
-const settingsLabels = {
-  contentProtection: '禁止螢幕截圖',
-  lockOnScreenLock: '螢幕鎖定時自動鎖定',
-  lockOnSuspend: '電腦休眠時自動鎖定'
-} as const
-
-const autoLockItems = [
-  { label: '永不自動鎖定', value: 0 },
-  { label: '1 分鐘', value: 1 },
-  { label: '5 分鐘', value: 5 },
-  { label: '15 分鐘', value: 15 },
-  { label: '30 分鐘', value: 30 },
-  { label: '60 分鐘', value: 60 }
-] as const
-
-const clipboardClearItems = [
-  { label: '不自動清除', value: 0 },
-  { label: '15 秒後', value: 15 },
-  { label: '30 秒後', value: 30 },
-  { label: '1 分鐘後', value: 60 },
-  { label: '2 分鐘後', value: 120 }
-] as const
-
-const defaultSortItems = [
-  { label: '最近使用', value: 'recent' },
-  { label: '依名稱', value: 'name' }
-] as const
-
-const themeItems = [
-  { label: '跟隨系統', value: 'system' },
-  { label: '淺色', value: 'light' },
-  { label: '深色', value: 'dark' }
-] as const
 
 const sortItemsOptions = [
   { label: '依名稱', value: 'title' },
@@ -683,6 +641,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [touchIdPassword, setTouchIdPassword] = useState('')
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const settingsReturnFocusRef = useRef<HTMLElement | null>(null)
   const compactReturnIdRef = useRef<string | null>(null)
   const compactDetailFocusIdRef = useRef<string | null>(null)
   const selectedIdRef = useRef<string | null>(null)
@@ -1284,6 +1243,11 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     })
   }, [searchOpen])
 
+  useEffect(() => {
+    if (settingsOpen || !settingsReturnFocusRef.current?.isConnected) return
+    queueMicrotask(() => settingsReturnFocusRef.current?.focus())
+  }, [settingsOpen])
+
   function selectScope(nextScope: Scope): void {
     requestEditorTransition(() => {
       setScope(nextScope)
@@ -1310,6 +1274,8 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   function openSettings(): void {
     requestEditorTransition(() => {
+      settingsReturnFocusRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null
       setSettingsOpen(true)
       setSidebarOpen(false)
       setEditorMode(null)
@@ -1937,17 +1903,19 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         )}
       >
         <header className="titlebar">
-          <TooltipIconButton
-            variant="outline"
-            size="icon"
-            className="icon-button titlebar-menu"
-            type="button"
-            label={sidebarOpen ? '關閉側邊欄' : '開啟側邊欄'}
-            aria-expanded={sidebarOpen}
-            onClick={() => setSidebarOpen((open) => !open)}
-          >
-            {sidebarOpen ? <X /> : <Menu />}
-          </TooltipIconButton>
+          {!settingsOpen && (
+            <TooltipIconButton
+              variant="outline"
+              size="icon"
+              className="icon-button titlebar-menu"
+              type="button"
+              label={sidebarOpen ? '關閉側邊欄' : '開啟側邊欄'}
+              aria-expanded={sidebarOpen}
+              onClick={() => setSidebarOpen((open) => !open)}
+            >
+              {sidebarOpen ? <X /> : <Menu />}
+            </TooltipIconButton>
+          )}
           <BrandMark />
           {!settingsOpen && (
             <InputGroup className="search-field titlebar-search">
@@ -2189,311 +2157,23 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             </footer>
           </aside>
 
-          <section className="list-pane" aria-labelledby="list-title">
+          <section
+            className="list-pane"
+            aria-labelledby={settingsOpen ? 'settings-title' : 'list-title'}
+          >
             {settingsOpen ? (
-              <div className="settings-page" aria-labelledby="settings-title">
-                <header className="list-header settings-header">
-                  <div>
-                    <p className="eyebrow">應用程式</p>
-                    <h1 id="settings-title">設定</h1>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="button secondary compact"
-                    type="button"
-                    onClick={closeSettings}
-                  >
-                    <ArrowLeft data-icon="inline-start" aria-hidden="true" />
-                    返回保管庫
-                  </Button>
-                </header>
-                <div className="settings-scroll">
-                  {!settings ? (
-                    <div className="detail-loading" role="status">
-                      <Spinner /> 正在讀取設定…
-                    </div>
-                  ) : (
-                    <>
-                      <Card
-                        className="settings-card gap-0 py-0"
-                        aria-labelledby="privacy-settings-title"
-                      >
-                        <CardHeader className="bg-muted rounded-none border-b">
-                          <CardTitle id="privacy-settings-title">保護與鎖定</CardTitle>
-                          <CardDescription>這些選項會立即套用到這台裝置。</CardDescription>
-                        </CardHeader>
-                        <CardContent className="contents">
-                          {(
-                            ['contentProtection', 'lockOnScreenLock', 'lockOnSuspend'] as const
-                          ).map((key) => (
-                            <Field className="settings-toggle" orientation="horizontal" key={key}>
-                              <FieldContent>
-                                <FieldTitle>{settingsLabels[key]}</FieldTitle>
-                                <FieldDescription>
-                                  {key === 'contentProtection'
-                                    ? '啟用後會要求系統避免擷取此視窗內容。'
-                                    : '保管庫會在此事件發生時立即鎖定。'}
-                                </FieldDescription>
-                              </FieldContent>
-                              <Switch
-                                checked={settings[key]}
-                                disabled={settingsBusy}
-                                aria-label={settingsLabels[key]}
-                                onCheckedChange={(checked) =>
-                                  void updateSettings({ [key]: checked })
-                                }
-                              />
-                            </Field>
-                          ))}
-                          <Field className="field settings-select">
-                            <FieldLabel htmlFor="auto-lock-select">閒置自動鎖定</FieldLabel>
-                            <Select
-                              items={autoLockItems}
-                              value={settings.autoLockMinutes}
-                              disabled={settingsBusy}
-                              onValueChange={(value) =>
-                                void updateSettings({
-                                  autoLockMinutes: value as AppSettings['autoLockMinutes']
-                                })
-                              }
-                            >
-                              <SelectTrigger id="auto-lock-select" className="w-full">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectGroup>
-                                  {autoLockItems.map((item) => (
-                                    <SelectItem key={item.value} value={item.value}>
-                                      {item.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectGroup>
-                              </SelectContent>
-                            </Select>
-                          </Field>
-                        </CardContent>
-                      </Card>
-
-                      <Card
-                        className="settings-card gap-0 py-0"
-                        aria-labelledby="clipboard-settings-title"
-                      >
-                        <CardHeader className="bg-muted rounded-none border-b">
-                          <CardTitle id="clipboard-settings-title">剪貼簿與顯示</CardTitle>
-                          <CardDescription>
-                            剪貼簿清除僅會清除由 BearWarden 寫入且尚未被你覆蓋的內容。
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent className="contents">
-                          <Field className="settings-toggle" orientation="horizontal">
-                            <FieldContent>
-                              <FieldTitle>顯示網站圖示</FieldTitle>
-                              <FieldDescription>
-                                僅透過已設定的 Bitwarden／Vaultwarden
-                                圖示服務載入；停用後改用本機縮寫圖示。
-                              </FieldDescription>
-                            </FieldContent>
-                            <Switch
-                              checked={settings.showWebsiteIcons}
-                              disabled={settingsBusy}
-                              aria-label="顯示網站圖示"
-                              onCheckedChange={(checked) =>
-                                void updateSettings({ showWebsiteIcons: checked })
-                              }
-                            />
-                          </Field>
-                          <Field className="field settings-select">
-                            <FieldLabel htmlFor="clipboard-clear-select">清除剪貼簿</FieldLabel>
-                            <Select
-                              items={clipboardClearItems}
-                              value={settings.clearClipboardSeconds}
-                              disabled={settingsBusy}
-                              onValueChange={(value) =>
-                                void updateSettings({
-                                  clearClipboardSeconds:
-                                    value as AppSettings['clearClipboardSeconds']
-                                })
-                              }
-                            >
-                              <SelectTrigger id="clipboard-clear-select" className="w-full">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectGroup>
-                                  {clipboardClearItems.map((item) => (
-                                    <SelectItem key={item.value} value={item.value}>
-                                      {item.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectGroup>
-                              </SelectContent>
-                            </Select>
-                          </Field>
-                          <Field className="field settings-select">
-                            <FieldLabel htmlFor="default-sort-select">預設排序</FieldLabel>
-                            <Select
-                              items={defaultSortItems}
-                              value={settings.defaultSort}
-                              disabled={settingsBusy}
-                              onValueChange={(value) =>
-                                void updateSettings({
-                                  defaultSort: value as AppSettings['defaultSort']
-                                })
-                              }
-                            >
-                              <SelectTrigger id="default-sort-select" className="w-full">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectGroup>
-                                  {defaultSortItems.map((item) => (
-                                    <SelectItem key={item.value} value={item.value}>
-                                      {item.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectGroup>
-                              </SelectContent>
-                            </Select>
-                          </Field>
-                          <Field className="field settings-select">
-                            <FieldLabel htmlFor="theme-select">主題</FieldLabel>
-                            <Select
-                              items={themeItems}
-                              value={settings.theme}
-                              disabled={settingsBusy}
-                              onValueChange={(value) =>
-                                void updateSettings({ theme: value as AppSettings['theme'] })
-                              }
-                            >
-                              <SelectTrigger id="theme-select" className="w-full">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectGroup>
-                                  {themeItems.map((item) => (
-                                    <SelectItem key={item.value} value={item.value}>
-                                      {item.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectGroup>
-                              </SelectContent>
-                            </Select>
-                          </Field>
-                        </CardContent>
-                      </Card>
-
-                      <Card
-                        className="settings-card gap-0 py-0"
-                        aria-labelledby="touch-id-settings-title"
-                      >
-                        <CardHeader className="bg-muted rounded-none border-b">
-                          <CardTitle id="touch-id-settings-title">Touch ID</CardTitle>
-                          <CardDescription>
-                            Touch ID 僅用來授權以此裝置安全儲存的主密碼解鎖。
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent className="contents">
-                          {!settings.touchIdAvailable ? (
-                            <Empty className="settings-empty min-h-24 p-3">
-                              <EmptyHeader>
-                                <EmptyDescription>這台裝置目前無法使用 Touch ID。</EmptyDescription>
-                              </EmptyHeader>
-                            </Empty>
-                          ) : settings.touchIdEnabled ? (
-                            <div className="settings-inline-action">
-                              <span>
-                                <strong>Touch ID 已啟用</strong>
-                                <small>下次鎖定後可直接使用 Touch ID 解鎖。</small>
-                              </span>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="button secondary compact"
-                                type="button"
-                                disabled={settingsBusy}
-                                onClick={() => void disableTouchId()}
-                              >
-                                停用
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="touch-id-enable">
-                              <Field className="field">
-                                <FieldLabel htmlFor="touch-id-password">
-                                  確認主密碼以啟用
-                                </FieldLabel>
-                                <Input
-                                  id="touch-id-password"
-                                  type="password"
-                                  autoComplete="current-password"
-                                  value={touchIdPassword}
-                                  disabled={settingsBusy}
-                                  onChange={(event) => setTouchIdPassword(event.target.value)}
-                                />
-                              </Field>
-                              <Button
-                                size="sm"
-                                className="button primary compact"
-                                type="button"
-                                disabled={settingsBusy}
-                                onClick={() => void enableTouchId()}
-                              >
-                                啟用 Touch ID
-                              </Button>
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-
-                      <Card
-                        className="settings-card gap-0 py-0"
-                        aria-labelledby="sync-settings-title"
-                      >
-                        <CardHeader className="bg-muted rounded-none border-b">
-                          <CardTitle id="sync-settings-title">Bitwarden 同步與帳號</CardTitle>
-                          <CardDescription>同步設定保留在這台裝置的加密保管庫中。</CardDescription>
-                        </CardHeader>
-                        <CardContent className="contents">
-                          <div className="settings-sync-status">
-                            <span
-                              className={cn('sync-status-indicator', syncStatus.state)}
-                              aria-hidden="true"
-                            />
-                            <div>
-                              <strong>
-                                {syncStatus.state === 'ready'
-                                  ? '已連線'
-                                  : syncStatus.state === 'syncing'
-                                    ? '同步中…'
-                                    : syncStatus.state === 'locked'
-                                      ? '需要解鎖'
-                                      : syncStatus.state === 'error'
-                                        ? '需要處理問題'
-                                        : '尚未設定'}
-                              </strong>
-                              <small>
-                                {syncStatus.email ??
-                                  syncStatus.serverUrl ??
-                                  '尚未連接 Bitwarden 帳號'}
-                              </small>
-                            </div>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="button secondary compact m-3 self-start"
-                            type="button"
-                            onClick={() => setSyncDialogOpen(true)}
-                          >
-                            {syncStatus.configured ? '管理同步與帳號' : '設定 Bitwarden 同步'}
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    </>
-                  )}
-                </div>
-              </div>
+              <SettingsPage
+                settings={settings}
+                settingsBusy={settingsBusy}
+                syncStatus={syncStatus}
+                touchIdPassword={touchIdPassword}
+                onBack={closeSettings}
+                onUpdate={updateSettings}
+                onTouchIdPasswordChange={setTouchIdPassword}
+                onEnableTouchId={enableTouchId}
+                onDisableTouchId={disableTouchId}
+                onOpenSync={() => setSyncDialogOpen(true)}
+              />
             ) : (
               <>
                 <header className="list-header">
