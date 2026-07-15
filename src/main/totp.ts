@@ -5,35 +5,50 @@ import type { TotpCodeView } from '../shared/vault-contract'
 const DEFAULT_PERIOD = 30
 const DEFAULT_DIGITS = 6
 const MAX_SECRET_BYTES = 1024
+const MAX_PERIOD = 0xffff_ffff
+const STEAM_DIGITS = 5
+const STEAM_ALPHABET = '23456789BCDFGHJKMNPQRTVWXY'
 
 interface TotpParameters {
   secret: Buffer
-  algorithm: 'sha1' | 'sha256' | 'sha512'
+  algorithm: 'sha1' | 'sha256' | 'sha512' | 'steam'
   digits: number
   period: number
 }
 
 function decodeBase32(value: string): Buffer {
-  const normalized = value.replace(/[\s=-]/g, '').toUpperCase()
-  if (!normalized || !/^[A-Z2-7]+$/.test(normalized)) throw new VaultError('INVALID_INPUT')
-
   let bits = 0
   let accumulator = 0
   const bytes: number[] = []
-  for (const character of normalized) {
-    const code = character.charCodeAt(0)
-    const digit = code >= 65 && code <= 90 ? code - 65 : code - 24
-    accumulator = (accumulator << 5) | digit
-    bits += 5
-    while (bits >= 8) {
-      bits -= 8
-      bytes.push((accumulator >>> bits) & 0xff)
-      accumulator &= (1 << bits) - 1
-      if (bytes.length > MAX_SECRET_BYTES) throw new VaultError('INVALID_INPUT')
+  let hasBase32Character = false
+
+  try {
+    for (const character of value) {
+      if (character === '=' || character === '-' || /\s/u.test(character)) continue
+
+      const code = character.charCodeAt(0)
+      let digit: number
+      if (code >= 65 && code <= 90) digit = code - 65
+      else if (code >= 97 && code <= 122) digit = code - 97
+      else if (code >= 50 && code <= 55) digit = code - 24
+      else throw new VaultError('INVALID_INPUT')
+
+      hasBase32Character = true
+      accumulator = (accumulator << 5) | digit
+      bits += 5
+      while (bits >= 8) {
+        bits -= 8
+        bytes.push((accumulator >>> bits) & 0xff)
+        accumulator &= (1 << bits) - 1
+        if (bytes.length > MAX_SECRET_BYTES) throw new VaultError('INVALID_INPUT')
+      }
     }
+
+    if (!hasBase32Character || bytes.length === 0) throw new VaultError('INVALID_INPUT')
+    return Buffer.from(bytes)
+  } finally {
+    bytes.fill(0)
   }
-  if (bytes.length === 0) throw new VaultError('INVALID_INPUT')
-  return Buffer.from(bytes)
 }
 
 function positiveInteger(
@@ -58,7 +73,12 @@ function parseTotp(value: string): TotpParameters {
   let digits = DEFAULT_DIGITS
   let period = DEFAULT_PERIOD
 
-  if (/^otpauth:\/\//i.test(trimmed)) {
+  const steamMatch = /^steam:\/\/(.*)$/iu.exec(trimmed)
+  if (steamMatch) {
+    secretValue = steamMatch[1] ?? ''
+    algorithm = 'steam'
+    digits = STEAM_DIGITS
+  } else if (/^otpauth:\/\//i.test(trimmed)) {
     let uri: URL
     try {
       uri = new URL(trimmed)
@@ -78,8 +98,8 @@ function parseTotp(value: string): TotpParameters {
       throw new VaultError('INVALID_INPUT')
     }
     algorithm = requestedAlgorithm.toLowerCase() as TotpParameters['algorithm']
-    digits = positiveInteger(uri.searchParams.get('digits'), DEFAULT_DIGITS, 6, 10)
-    period = positiveInteger(uri.searchParams.get('period'), DEFAULT_PERIOD, 1, 300)
+    digits = positiveInteger(uri.searchParams.get('digits'), DEFAULT_DIGITS, 1, 10)
+    period = positiveInteger(uri.searchParams.get('period'), DEFAULT_PERIOD, 1, MAX_PERIOD)
   }
 
   return { secret: decodeBase32(secretValue), algorithm, digits, period }
@@ -87,24 +107,43 @@ function parseTotp(value: string): TotpParameters {
 
 export function generateTotp(value: string, now = new Date()): TotpCodeView {
   const parameters = parseTotp(value)
-  const unixSeconds = Math.floor(now.getTime() / 1000)
-  if (!Number.isFinite(unixSeconds) || unixSeconds < 0) throw new VaultError('INVALID_INPUT')
-  const counter = BigInt(Math.floor(unixSeconds / parameters.period))
-  const counterBytes = Buffer.alloc(8)
-  counterBytes.writeBigUInt64BE(counter)
-  const digest = createHmac(parameters.algorithm, parameters.secret).update(counterBytes).digest()
-  parameters.secret.fill(0)
-  const offset = digest[digest.length - 1]! & 0x0f
-  const binary =
-    ((digest[offset]! & 0x7f) << 24) |
-    ((digest[offset + 1]! & 0xff) << 16) |
-    ((digest[offset + 2]! & 0xff) << 8) |
-    (digest[offset + 3]! & 0xff)
-  const code = String(binary % 10 ** parameters.digits).padStart(parameters.digits, '0')
-  const elapsed = unixSeconds % parameters.period
-  return {
-    code,
-    period: parameters.period,
-    remainingSeconds: parameters.period - elapsed
+  let counterBytes: Buffer | undefined
+  let digest: Buffer | undefined
+
+  try {
+    const unixSeconds = Math.floor(now.getTime() / 1000)
+    if (!Number.isFinite(unixSeconds) || unixSeconds < 0) throw new VaultError('INVALID_INPUT')
+    const counter = BigInt(Math.floor(unixSeconds / parameters.period))
+    counterBytes = Buffer.alloc(8)
+    counterBytes.writeBigUInt64BE(counter)
+    const hmacAlgorithm = parameters.algorithm === 'steam' ? 'sha1' : parameters.algorithm
+    digest = createHmac(hmacAlgorithm, parameters.secret).update(counterBytes).digest()
+    const offset = digest[digest.length - 1]! & 0x0f
+    const binary =
+      ((digest[offset]! & 0x7f) << 24) |
+      ((digest[offset + 1]! & 0xff) << 16) |
+      ((digest[offset + 2]! & 0xff) << 8) |
+      (digest[offset + 3]! & 0xff)
+    let code: string
+    if (parameters.algorithm === 'steam') {
+      let remaining = binary
+      code = ''
+      for (let index = 0; index < STEAM_DIGITS; index += 1) {
+        code += STEAM_ALPHABET[remaining % STEAM_ALPHABET.length]
+        remaining = Math.floor(remaining / STEAM_ALPHABET.length)
+      }
+    } else {
+      code = String(binary % 10 ** parameters.digits).padStart(parameters.digits, '0')
+    }
+    const elapsed = unixSeconds % parameters.period
+    return {
+      code,
+      period: parameters.period,
+      remainingSeconds: parameters.period - elapsed
+    }
+  } finally {
+    parameters.secret.fill(0)
+    counterBytes?.fill(0)
+    digest?.fill(0)
   }
 }

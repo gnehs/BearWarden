@@ -2116,6 +2116,92 @@ describe('VaultService encrypted local data', () => {
     })
   })
 
+  it('generates official Steam and custom-period TOTP vectors at a fixed instant', async () => {
+    const { service, copyText } = await createHarness({
+      now: () => new Date('2023-01-01T00:00:00.000Z')
+    })
+    await service.setup(MASTER_PASSWORD)
+    const steam = await service.createLogin({
+      name: 'Steam test vector',
+      totp: 'steam://HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ'
+    })
+    const custom = await service.createLogin({
+      name: 'Custom TOTP test vector',
+      totp: 'otpauth://totp/example.invalid?secret=WQIQ25BRKZYCJVYP&digits=8&period=60'
+    })
+
+    await expect(service.getTotp({ id: steam.id })).resolves.toEqual({
+      code: '7W6CJ',
+      period: 30,
+      remainingSeconds: 30
+    })
+    await expect(service.getTotp({ id: custom.id })).resolves.toEqual({
+      code: '97730364',
+      period: 60,
+      remainingSeconds: 60
+    })
+
+    await service.copyTotp({ id: steam.id })
+    await service.copyTotp({ id: custom.id })
+    expect(copyText).toHaveBeenNthCalledWith(1, '7W6CJ')
+    expect(copyText).toHaveBeenNthCalledWith(2, '97730364')
+  })
+
+  it('preserves opaque TOTP values through create, update, and sync but refuses to use them', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const remoteOpaqueTotp = 'vaultwarden-opaque://totp?format=future'
+    const createdOpaqueTotp = 'future-totp://created?format=opaque'
+    const updatedOpaqueTotp = 'future-totp://updated?format=opaque'
+    const { service, copyText } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.remoteLogins[0]!.totp = remoteOpaqueTotp
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+
+    const remote = (await service.listLogins())[0]!
+    await expect(
+      service.revealEditorSecrets({ id: remote.id, expectedUpdatedAt: remote.updatedAt })
+    ).resolves.toMatchObject({ fields: { totp: remoteOpaqueTotp } })
+    await expect(service.getTotp({ id: remote.id })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(service.copyTotp({ id: remote.id })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+
+    const created = await service.createLogin({
+      name: 'Opaque TOTP item',
+      totp: createdOpaqueTotp
+    })
+    await expect(
+      service.revealEditorSecrets({ id: created.id, expectedUpdatedAt: created.updatedAt })
+    ).resolves.toMatchObject({ fields: { totp: createdOpaqueTotp } })
+    const updated = await service.updateLogin({ id: created.id, totp: updatedOpaqueTotp })
+    await expect(
+      service.revealEditorSecrets({ id: updated.id, expectedUpdatedAt: updated.updatedAt })
+    ).resolves.toMatchObject({ fields: { totp: updatedOpaqueTotp } })
+    await expect(service.getTotp({ id: updated.id })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(service.copyTotp({ id: updated.id })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    expect(copyText).not.toHaveBeenCalled()
+
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 1 })
+    expect(fake!.remoteLogins.find((login) => login.name === 'Opaque TOTP item')?.totp).toBe(
+      updatedOpaqueTotp
+    )
+  })
+
   it('zeroes the active key on lock and accepts canonically equivalent passwords', async () => {
     const { filePath, service } = await createHarness()
     const decomposedPassword = `secure-password-${'e\u0301'}`

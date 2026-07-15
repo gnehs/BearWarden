@@ -35,7 +35,12 @@ const DELETED_AT = '2026-07-15T00:00:00.000Z'
 const ARCHIVED_AT = '2026-07-15T01:00:00.000Z'
 
 async function encryptedSync(
-  options: { v2?: boolean; allTypes?: boolean; passkeyCredentialId?: string } = {}
+  options: {
+    v2?: boolean
+    allTypes?: boolean
+    passkeyCredentialId?: string
+    totp?: string
+  } = {}
 ): Promise<JsonObject> {
   const masterKey = await deriveMasterKey(PASSWORD, EMAIL, { type: 'pbkdf2', iterations: 5_000 })
   const stretched = stretchMasterKey(masterKey)
@@ -77,7 +82,7 @@ async function encryptedSync(
             username: encryptBitwardenString('bear@example.invalid', itemKey),
             password: encryptBitwardenString('remote-secret', itemKey),
             totp: encryptBitwardenString(
-              'otpauth://totp/example.invalid?secret=JBSWY3DPEHPK3PXP',
+              options.totp ?? 'otpauth://totp/example.invalid?secret=JBSWY3DPEHPK3PXP',
               itemKey
             ),
             fido2Credentials: [
@@ -1313,6 +1318,62 @@ describe('BitwardenDirectClient', () => {
   it('rejects a non-canonical passkey creation date', async () => {
     await expectInvalidSync(await encryptedV2Sync({ passkeyCreationDate: '2026-07-13T00:00:00Z' }))
   })
+
+  it.each([
+    ['Steam', 'steam://HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ'],
+    ['custom otpauth', 'otpauth://totp/example.invalid?secret=WQIQ25BRKZYCJVYP&digits=8&period=60']
+  ])('round-trips an untouched %s TOTP string exactly', async (_kind, totp) => {
+    const sync = await encryptedSync({ totp })
+    const writes: string[] = []
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url, init) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          return jsonResponse({
+            access_token: 'access-token',
+            refresh_token: 'refresh-token',
+            expires_in: 3600
+          })
+        }
+        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith(`/api/ciphers/${LOGIN_ID}`) && init?.method === 'PUT') {
+          const body = String(init.body)
+          writes.push(body)
+          const request = JSON.parse(body) as JsonObject
+          return jsonResponse({
+            ...(sync.ciphers as JsonObject[])[0],
+            ...request,
+            id: LOGIN_ID,
+            revisionDate: '2026-07-14T00:00:02.000Z'
+          })
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+    await expect(client.listPersonalLogins()).resolves.toEqual([
+      expect.objectContaining({ id: LOGIN_ID, totp })
+    ])
+
+    await client.editLogin(LOGIN_ID, { name: 'Renamed without touching TOTP' })
+    const update = JSON.parse(writes[0]!) as JsonObject
+    const originalLogin = (sync.ciphers as JsonObject[])[0]!.login as JsonObject
+    expect((update.login as JsonObject).totp).toBe(originalLogin.totp)
+    expect(
+      decryptBitwardenString((update.login as JsonObject).totp as string, Buffer.alloc(64, 9))
+    ).toBe(totp)
+  })
+
   it('authenticates, decrypts a V1 personal vault, and never uploads plaintext', async () => {
     const sync = await encryptedSync()
     const writes: string[] = []

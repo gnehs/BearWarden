@@ -167,6 +167,8 @@ describe('registerVaultIpc reprompt gate', () => {
       deleteLogin: vi.fn(async () => undefined),
       setLoginFavorite: vi.fn(async () => ({ id: 'item-a' })),
       moveLogin: vi.fn(async () => ({ id: 'item-a' })),
+      getTotp: vi.fn(async () => ({ code: '123456', period: 30, remainingSeconds: 12 })),
+      copyTotp: vi.fn(async () => undefined),
       revealSecret: vi.fn(async () => 'secret'),
       copyField: vi.fn(async () => undefined),
       revealEditorSecrets: vi.fn(async () => ({ fields: {}, customFields: [] })),
@@ -285,6 +287,8 @@ describe('registerVaultIpc reprompt gate', () => {
     [IPC_CHANNELS.loginDelete, 'deleteLogin', { id: 'item-a' }],
     [IPC_CHANNELS.loginSetFavorite, 'setLoginFavorite', { id: 'item-a', favorite: true }],
     [IPC_CHANNELS.loginMove, 'moveLogin', { id: 'item-a', folderId: null }],
+    [IPC_CHANNELS.loginGetTotp, 'getTotp', { id: 'item-a' }],
+    [IPC_CHANNELS.loginCopyTotp, 'copyTotp', { id: 'item-a' }],
     [IPC_CHANNELS.itemRevealSecret, 'revealSecret', { id: 'item-a', field: 'password' }],
     [
       IPC_CHANNELS.itemRevealEditorSecrets,
@@ -342,15 +346,26 @@ describe('registerVaultIpc reprompt gate', () => {
     })) as { token: string }
     const get = electronMock.handlers.get(IPC_CHANNELS.loginGet)!
     const getHistory = electronMock.handlers.get(IPC_CHANNELS.loginGetPasswordHistory)!
+    const getTotp = electronMock.handlers.get(IPC_CHANNELS.loginGetTotp)!
+    const copyTotp = electronMock.handlers.get(IPC_CHANNELS.loginCopyTotp)!
     await expect(
       get(event, { id: 'item-a', authorizationToken: authorization.token })
     ).resolves.toEqual({ id: 'item-a' })
+    await expect(
+      getTotp(event, { id: 'item-a', authorizationToken: authorization.token })
+    ).resolves.toEqual({ code: '123456', period: 30, remainingSeconds: 12 })
+    await expect(
+      copyTotp(event, { id: 'item-a', authorizationToken: authorization.token })
+    ).resolves.toBeUndefined()
 
     await expect(
       get(event, { id: 'item-b', authorizationToken: authorization.token })
     ).rejects.toThrow('BEARWARDEN:REPROMPT_REQUIRED')
     await expect(
       getHistory(event, { id: 'item-b', authorizationToken: authorization.token })
+    ).rejects.toThrow('BEARWARDEN:REPROMPT_REQUIRED')
+    await expect(
+      getTotp(event, { id: 'item-b', authorizationToken: authorization.token })
     ).rejects.toThrow('BEARWARDEN:REPROMPT_REQUIRED')
     setAuthorizationState({ reprompt: 1, generation: 4 })
     await expect(
@@ -359,6 +374,24 @@ describe('registerVaultIpc reprompt gate', () => {
     await expect(
       getHistory(event, { id: 'item-a', authorizationToken: authorization.token })
     ).rejects.toThrow('BEARWARDEN:REPROMPT_REQUIRED')
+  })
+
+  it('accepts only narrow exact TOTP requests', async () => {
+    const { event, vault, setAuthorizationState } = harness()
+    setAuthorizationState({ reprompt: 0, generation: 3 })
+    for (const [channel, method] of [
+      [IPC_CHANNELS.loginGetTotp, 'getTotp'],
+      [IPC_CHANNELS.loginCopyTotp, 'copyTotp']
+    ] as const) {
+      const handler = electronMock.handlers.get(channel)!
+      await expect(handler(event, { id: 'item-a', extra: true })).rejects.toThrow(
+        'BEARWARDEN:INVALID_INPUT'
+      )
+      expect(vault[method]).not.toHaveBeenCalled()
+      await handler(event, { id: 'item-a' })
+      expect(vault[method]).toHaveBeenCalledOnce()
+      expect(vault[method]).toHaveBeenCalledWith({ id: 'item-a' })
+    }
   })
 
   const batchOperations = [
