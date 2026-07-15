@@ -8,14 +8,19 @@ BearWarden 是一個以「快速找到、安心使用」為核心的桌面密碼
 
 - 以主密碼建立、解鎖與鎖定本機密碼庫
 - 登入項目的新增、檢視、編輯與刪除
+- 每個登入項目可保存有順序的多個 URI，並設定 Bitwarden 相容的 URI match 規則
+- 保存最近 5 筆密碼／隱藏欄位歷史；詳情只顯示安全計數，確認明文警告與必要的主密碼重新提示後才讀取
+- 垃圾桶、項目還原、永久刪除與清空垃圾桶
+- 項目複製、封存、取消封存與封存篩選
 - 資料夾的新增、重新命名、排序與刪除
 - 拖放登入項目到資料夾，以及鍵盤可操作的移動選單
 - 全域搜尋、收藏、最近使用與最近修改排序
 - 密碼預設遮蔽、明確揭露、複製及開啟網站
+- 支援主密碼重新提示；短效授權只存在主程序，並綁定視窗、項目集合與保管庫世代
 - Electron renderer sandbox、context isolation、具名 IPC 與外部網址驗證
 - 系統鎖定或休眠時自動鎖定密碼庫
 - 直接與 Bitwarden Cloud 或 Vaultwarden 雙向同步，不依賴 `bw` CLI
-- 同步個人登入項目、資料夾、修改與刪除，並以衝突副本避免覆蓋資料
+- 同步個人保管庫項目、資料夾、多 URI／match、密碼歷史、重新提示、封存與垃圾桶狀態，並以衝突副本避免覆蓋資料
 
 ## 資料安全模型
 
@@ -23,6 +28,7 @@ BearWarden 是一個以「快速找到、安心使用」為核心的桌面密碼
 - 密碼庫使用密碼型 KDF 衍生的金鑰與 authenticated encryption 加密後才寫入 app data。
 - 每次寫入先建立權限為 `0600` 的暫存檔，再以原子替換更新密碼庫。
 - renderer 不具 Node.js、任意 IPC 或檔案系統能力；登入清單不包含密碼。
+- 受重新提示保護的項目清單不包含使用者名稱、URI 或 TOTP 中繼資料；主密碼驗證後取得的 capability 會在 60 秒後失效。
 - 鎖定時會清除主程序內的金鑰與已解密資料。
 
 Bitwarden 的 Password Manager SDK 目前不是公開穩定 API，因此本專案沒有把 `@bitwarden/sdk-napi`（Secrets Manager SDK）誤用為個人密碼庫資料層。
@@ -42,8 +48,9 @@ Cloud 與支援中的 Vaultwarden 版本執行相容測試。
 主密碼不會寫入 BearWarden 密碼庫或設定；只在登入或解鎖時於主程序記憶體使用，
 衍生金鑰在鎖定時清除。登入 token、同步設定與 ID 對應只存放在已加密的本機密碼庫內。
 
-目前同步範圍限個人保管庫的 login items 與 folders。組織項目、附件、Sends、Passkeys 與
-SSO 尚不由 BearWarden 編輯；同步的自訂欄位可在項目詳情安全地顯示與編輯。
+目前同步範圍限個人保管庫的 items、folders、封存與垃圾桶。組織項目、附件、Sends、Passkeys 與
+SSO 尚不由 BearWarden 編輯；同步的自訂欄位可在項目詳情安全地顯示與編輯。完整差距與
+實作順序記錄於 [`docs/vaultwarden-feature-gap.md`](docs/vaultwarden-feature-gap.md)。
 更新既有 login 時，direct connector 會保留 BearWarden 未支援的遠端欄位。若兩端同時修改，
 遠端版本會保留為主要項目，本機修改會另建 `(BearWarden conflict)` 副本。
 
