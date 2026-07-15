@@ -221,6 +221,7 @@ const dateTimeFormatter = new Intl.DateTimeFormat('zh-TW', {
   dateStyle: 'medium',
   timeStyle: 'short'
 })
+const detailCacheLimit = 48
 
 interface VaultShellProps {
   onLocked: () => void
@@ -379,6 +380,16 @@ function detailFields(login: LoginView): DetailField[] {
 function mergeCachedSummary(cache: Map<string, LoginView>, summary: LoginSummary): void {
   const cached = cache.get(summary.id)
   if (cached) cache.set(summary.id, { ...cached, ...summary })
+}
+
+function cacheLoginDetail(cache: Map<string, LoginView>, login: LoginView): void {
+  cache.delete(login.id)
+  while (cache.size >= detailCacheLimit) {
+    const oldestId = cache.keys().next().value
+    if (!oldestId) break
+    cache.delete(oldestId)
+  }
+  cache.set(login.id, login)
 }
 
 function toLoginSummary(login: LoginView): LoginSummary {
@@ -642,11 +653,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     void promise
       .then((login) => {
         if (detailCacheGenerationRef.current !== generation) return
-        if (!detailCacheRef.current.has(id) && detailCacheRef.current.size >= 48) {
-          const oldestId = detailCacheRef.current.keys().next().value
-          if (oldestId) detailCacheRef.current.delete(oldestId)
-        }
-        detailCacheRef.current.set(id, login)
+        cacheLoginDetail(detailCacheRef.current, login)
       })
       .catch(() => undefined)
       .finally(() => {
@@ -1221,7 +1228,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           folderId: draft.folderId,
           favorite: draft.favorite
         })
-        detailCacheRef.current.set(created.id, created)
+        cacheLoginDetail(detailCacheRef.current, created)
         setItems((current) => [...current, toLoginSummary(created)])
         setScope({ kind: 'all' })
         setSelectedId(created.id)
@@ -1236,7 +1243,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           folderId: draft.folderId,
           favorite: draft.favorite
         })
-        detailCacheRef.current.set(updated.id, updated)
+        cacheLoginDetail(detailCacheRef.current, updated)
         setItems((current) =>
           current.map((item) => (item.id === updated.id ? toLoginSummary(updated) : item))
         )
