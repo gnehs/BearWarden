@@ -235,7 +235,8 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
         ...login,
         uris: login.uris.map((uri) => ({ ...uri })),
         customFields: login.customFields.map((field) => ({ ...field })),
-        passkeys: login.passkeys.map((passkey) => ({ ...passkey }))
+        passkeys: login.passkeys.map((passkey) => ({ ...passkey })),
+        attachments: login.attachments.map((attachment) => ({ ...attachment }))
       })),
     createFolder: async (name) => {
       const folder = { id: '90000000-0000-4000-8000-000000000003', name }
@@ -420,6 +421,98 @@ describe('VaultService encrypted local data', () => {
       state: 'ready'
     })
   })
+
+  it('reconciles attachment-only remote changes without creating item conflicts', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { filePath, service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = (await service.listLogins())[0]!
+    fake!.remoteLogins[0]!.attachments = [
+      {
+        id: 'attachment-id',
+        fileName: 'remote-document.txt',
+        size: 12,
+        sizeName: '12 B',
+        legacy: false
+      }
+    ]
+    fake!.remoteLogins[0]!.revisionDate = '2026-07-14T04:00:00.000Z'
+
+    await expect(service.syncNow()).resolves.toMatchObject({
+      pulled: 0,
+      pushed: 0,
+      deleted: 0,
+      conflicts: 0
+    })
+    await expect(service.getLogin({ id: local.id })).resolves.toMatchObject({
+      updatedAt: '2026-07-14T04:00:00.000Z',
+      attachmentCount: 1,
+      attachments: [
+        {
+          id: 'attachment-id',
+          fileName: 'remote-document.txt',
+          size: 12,
+          sizeName: '12 B',
+          legacy: false
+        }
+      ]
+    })
+    expect((await service.listLogins())[0]?.attachmentCount).toBe(1)
+    expect(await readFile(filePath, 'utf8')).not.toContain('remote-document.txt')
+
+    await service.lock()
+    await service.unlock(MASTER_PASSWORD)
+    await expect(service.getLogin({ id: local.id })).resolves.toMatchObject({
+      attachmentCount: 1,
+      attachments: [expect.objectContaining({ fileName: 'remote-document.txt' })]
+    })
+  })
+
+  it.each(['content changes', 'mapped item disappears'] as const)(
+    'rejects a final remote refetch when the %s and leaves the vault unchanged',
+    async (race) => {
+      let fake: ReturnType<typeof createSyncFake> | null = null
+      const { service, store } = await createHarness({
+        createSyncClient: (sync) => {
+          fake = createSyncFake(sync.state)
+          return fake
+        }
+      })
+      await service.setup(MASTER_PASSWORD)
+      await service.connectSync({
+        serverUrl: 'https://vault.example.invalid',
+        email: 'sync@example.invalid',
+        masterPassword: 'remote master password'
+      })
+      const local = (await service.listLogins())[0]!
+      const listPersonalLogins = fake!.listPersonalLogins.bind(fake!)
+      let calls = 0
+      fake!.listPersonalLogins = async () => {
+        const logins = await listPersonalLogins()
+        calls += 1
+        if (calls !== 2) return logins
+        if (race === 'mapped item disappears') return []
+        logins[0]!.password = 'third-party-race-secret'
+        return logins
+      }
+      const write = vi.spyOn(store, 'write')
+
+      await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+      expect(write).not.toHaveBeenCalled()
+      await expect(service.revealPassword({ id: local.id })).resolves.toBe('remote-test-secret')
+      expect((await service.getLogin({ id: local.id })).attachmentCount).toBe(0)
+    }
+  )
 
   it('syncs soft-delete, restore, content edits, and permanent deletion with distinct APIs', async () => {
     let fake: ReturnType<typeof createSyncFake> | null = null
@@ -1029,6 +1122,15 @@ describe('VaultService encrypted local data', () => {
     const { service } = await createHarness({
       createSyncClient: (sync) => {
         fake ??= createSyncFake(sync.state)
+        fake.remoteLogins[0]!.attachments = [
+          {
+            id: 'source-attachment',
+            fileName: 'source-only.txt',
+            size: 1,
+            sizeName: '1 B',
+            legacy: false
+          }
+        ]
         return fake
       }
     })
@@ -1050,6 +1152,7 @@ describe('VaultService encrypted local data', () => {
       favorite: sourceBefore.favorite,
       notes: sourceBefore.notes,
       passkeys: [],
+      attachments: [],
       customFields: sourceBefore.customFields
     })
     expect(cloned.lastUsedAt).toBeNull()
@@ -1068,8 +1171,10 @@ describe('VaultService encrypted local data', () => {
       folderId: fake!.remoteLogins[0]!.folderId,
       favorite: false,
       notes: null,
-      passkeys: []
+      passkeys: [],
+      attachments: []
     })
+    expect(sourceBefore.attachments).toHaveLength(1)
     expect(fake!.remoteLogins[0]!.passkeys).toHaveLength(1)
   })
 
@@ -2244,6 +2349,42 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({ version: 14, generatorHistory: [] })
+    migrated.key.fill(0)
+    migrated.salt.fill(0)
+  })
+
+  it('migrates V13 login records to V14 with empty attachment metadata', async () => {
+    const { filePath, service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const login = await service.createLogin({ name: 'Pre-attachment item' })
+    await service.lock()
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as {
+      version: number
+      logins: Array<Record<string, unknown>>
+    }
+    data.version = 13
+    for (const storedLogin of data.logins) delete storedLogin.attachments
+    await store.write(data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopenedStore = new EncryptedVaultStore<unknown>(filePath)
+    const reopened = new VaultService(reopenedStore, {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await expect(reopened.unlock(MASTER_PASSWORD)).resolves.toEqual({ state: 'unlocked' })
+    await expect(reopened.getLogin({ id: login.id })).resolves.toMatchObject({
+      attachmentCount: 0,
+      attachments: []
+    })
+    await reopened.lock()
+    const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
+    expect(migrated.data).toMatchObject({
+      version: 14,
+      logins: [expect.objectContaining({ attachments: [] })]
+    })
     migrated.key.fill(0)
     migrated.salt.fill(0)
   })
