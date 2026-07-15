@@ -20,7 +20,6 @@ import {
   ArrowLeft,
   ArrowUpRight,
   BadgeCheck,
-  ChevronDown,
   Clipboard,
   Clock3,
   Cloud,
@@ -112,6 +111,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@renderer/components/ui/select'
+import { Skeleton } from '@renderer/components/ui/skeleton'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Switch } from '@renderer/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
@@ -435,6 +435,89 @@ function UnfiledRow({ selected, count, onSelect }: UnfiledRowProps): React.JSX.E
   )
 }
 
+interface DetailPlaceholderProps {
+  item: LoginSummary
+  showWebsiteIcons: boolean
+  onBack: () => void
+}
+
+function DetailPlaceholder({
+  item,
+  showWebsiteIcons,
+  onBack
+}: DetailPlaceholderProps): React.JSX.Element {
+  const TypeIcon = itemTypeMeta[item.type].icon
+
+  return (
+    <article className="detail-content detail-placeholder" aria-busy="true">
+      <header className="detail-header">
+        <TooltipIconButton
+          variant="outline"
+          size="icon"
+          className="icon-button detail-back"
+          type="button"
+          label="返回項目列表"
+          onClick={onBack}
+        >
+          <ArrowLeft />
+        </TooltipIconButton>
+        <span className={cn('detail-icon', item.type)} aria-hidden="true">
+          {item.type === 'login' ? (
+            <WebsiteIcon id={item.id} uri={item.uri} enabled={showWebsiteIcons} />
+          ) : item.type === 'card' ? (
+            <PaymentCardBrandMark brand={normalizeBitwardenCardBrand(item.cardBrand)} />
+          ) : (
+            <TypeIcon size={23} />
+          )}
+        </span>
+        <div className="detail-heading">
+          <p className="eyebrow">{itemTypeMeta[item.type].label}</p>
+          <h2>{item.name}</h2>
+          <span>
+            {item.subtitle || (item.type === 'login' ? hostLabel(item.uri) : '安全保管的項目')}
+          </span>
+        </div>
+        <Skeleton className="detail-placeholder-icon" aria-hidden="true" />
+        <Skeleton className="detail-placeholder-button" aria-hidden="true" />
+        <span className="sr-only" role="status">
+          正在載入項目詳細資料…
+        </span>
+      </header>
+
+      <div className="detail-scroll" aria-hidden="true">
+        <Card className="detail-card detail-placeholder-card gap-0 py-0">
+          <CardHeader className="bg-muted rounded-none border-b">
+            <Skeleton className="h-3 w-20" />
+          </CardHeader>
+          <CardContent className="contents">
+            {[0, 1, 2].map((row) => (
+              <div className="detail-field" key={row}>
+                <Skeleton className="h-3 w-16" />
+                <Skeleton className={cn('h-4', row === 1 ? 'w-2/3' : 'w-1/2')} />
+                <Skeleton className="size-8" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+        <Card className="detail-card detail-placeholder-card gap-0 py-0">
+          <CardHeader className="bg-muted rounded-none border-b">
+            <Skeleton className="h-3 w-24" />
+          </CardHeader>
+          <CardContent className="contents">
+            {[0, 1].map((row) => (
+              <div className="detail-field" key={row}>
+                <Skeleton className="h-3 w-14" />
+                <Skeleton className="h-4 w-1/3" />
+                <span />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    </article>
+  )
+}
+
 function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [folders, setFolders] = useState<FolderView[]>([])
   const [items, setItems] = useState<LoginSummary[]>([])
@@ -445,7 +528,6 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedLogin, setSelectedLogin] = useState<LoginView | null>(null)
   const [totpCode, setTotpCode] = useState<TotpCodeView | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
   const [editorMode, setEditorMode] = useState<'create' | 'edit' | null>(null)
   const [revealedSecrets, setRevealedSecrets] = useState<RevealedSecretsState>(emptyRevealedSecrets)
   const [loading, setLoading] = useState(true)
@@ -584,28 +666,29 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     let active = true
     queueMicrotask(() => {
       if (!active) return
-      if (!selectedId || editorMode === 'create') {
-        setSelectedLogin(null)
-        setRevealedSecrets(emptyRevealedSecrets)
-        return
-      }
-      setDetailLoading(true)
-      window.bearwarden.logins
-        .get({ id: selectedId })
-        .then((login) => {
-          if (active) setSelectedLogin(login)
-        })
-        .catch((detailError) => {
-          if (active) announceError(describeError(detailError))
-        })
-        .finally(() => {
-          if (active) setDetailLoading(false)
-        })
+      setSelectedLogin(null)
+      setRevealedSecrets(emptyRevealedSecrets)
     })
+    if (!selectedId) {
+      return () => {
+        active = false
+      }
+    }
+
+    window.bearwarden.logins
+      .get({ id: selectedId })
+      .then((login) => {
+        if (active) setSelectedLogin(login)
+      })
+      .catch((detailError) => {
+        if (!active) return
+        announceError(describeError(detailError))
+        setSelectedId(null)
+      })
     return () => {
       active = false
     }
-  }, [selectedId, editorMode])
+  }, [selectedId])
 
   useEffect(() => {
     let active = true
@@ -1273,6 +1356,36 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             {sidebarOpen ? <X /> : <Menu />}
           </TooltipIconButton>
           <BrandMark />
+          {!settingsOpen && (
+            <InputGroup className="search-field titlebar-search">
+              <InputGroupInput
+                ref={searchRef}
+                type="search"
+                aria-label="搜尋保管庫項目"
+                placeholder="搜尋名稱、摘要或網站"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              <InputGroupAddon align="inline-start">
+                <Search aria-hidden="true" />
+              </InputGroupAddon>
+              {query && (
+                <InputGroupAddon align="inline-end">
+                  <InputGroupButton
+                    size="icon-xs"
+                    type="button"
+                    aria-label="清除搜尋"
+                    onClick={() => setQuery('')}
+                  >
+                    <X />
+                  </InputGroupButton>
+                </InputGroupAddon>
+              )}
+              <InputGroupAddon align="inline-end">
+                <Kbd>{commandLabel} F</Kbd>
+              </InputGroupAddon>
+            </InputGroup>
+          )}
           <div className="titlebar-drag" aria-hidden="true" />
           <Button
             variant="outline"
@@ -1297,17 +1410,6 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             />
           )}
           <aside className={cn('sidebar', sidebarOpen && 'open')} aria-label="保管庫導覽">
-            <div className="vault-switcher">
-              <span className="vault-avatar" aria-hidden="true">
-                <KeyRound size={18} />
-              </span>
-              <span>
-                <strong>我的保管庫</strong>
-                <small>{items.length} 個保管庫項目</small>
-              </span>
-              <ChevronDown size={15} aria-hidden="true" />
-            </div>
-
             <div className="sidebar-scroll">
               <section
                 className="folder-section category-section"
@@ -1788,36 +1890,6 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     </TooltipIconButton>
                   </div>
                 </header>
-                <div className="list-tools">
-                  <InputGroup className="search-field">
-                    <InputGroupAddon>
-                      <Search aria-hidden="true" />
-                    </InputGroupAddon>
-                    <InputGroupInput
-                      ref={searchRef}
-                      type="search"
-                      aria-label="搜尋保管庫項目"
-                      placeholder="搜尋名稱、摘要或網站"
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                    />
-                    {query && (
-                      <InputGroupAddon align="inline-end">
-                        <InputGroupButton
-                          size="icon-xs"
-                          type="button"
-                          aria-label="清除搜尋"
-                          onClick={() => setQuery('')}
-                        >
-                          <X />
-                        </InputGroupButton>
-                      </InputGroupAddon>
-                    )}
-                    <InputGroupAddon align="inline-end">
-                      <Kbd>{commandLabel} F</Kbd>
-                    </InputGroupAddon>
-                  </InputGroup>
-                </div>
                 {query && (
                   <div className="result-summary" role="status">
                     <span>搜尋「{query}」</span>
@@ -1907,11 +1979,12 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 onCancel={() => setEditorMode(null)}
                 onSave={saveLogin}
               />
-            ) : detailLoading ? (
-              <div className="detail-loading" role="status">
-                <Spinner />
-                <span>正在解密詳細資料…</span>
-              </div>
+            ) : selectedId && selectedSummary && selectedLogin?.id !== selectedId ? (
+              <DetailPlaceholder
+                item={selectedSummary}
+                showWebsiteIcons={settings?.showWebsiteIcons ?? false}
+                onBack={() => setSelectedId(null)}
+              />
             ) : selectedLogin && selectedLogin.id === selectedId ? (
               <article className="detail-content">
                 <header className="detail-header">

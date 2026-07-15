@@ -490,7 +490,7 @@ function SyncDialog({
                   <AlertDescription>{success}</AlertDescription>
                 </Alert>
               )}
-              <DialogFooter className="modal-actions split mx-0 mb-0">
+              <DialogFooter className="modal-actions split -mx-[18px] mb-0">
                 <AlertDialog
                   open={confirmingDisconnect}
                   onOpenChange={(open) => {

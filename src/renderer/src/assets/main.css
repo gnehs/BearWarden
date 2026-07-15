@@ -84,7 +84,6 @@
   --bg: var(--background);
   --panel: var(--card);
   --panel-muted: var(--muted);
-  --sidebar-soft: var(--sidebar-accent);
   --text: var(--foreground);
   --subtle: var(--muted-foreground);
   --border-strong: var(--ring);
@@ -562,6 +561,7 @@ kbd {
 
 .titlebar {
   -webkit-app-region: drag;
+  position: relative;
   z-index: 20;
   display: flex;
   height: 58px;
@@ -572,6 +572,7 @@ kbd {
   border-bottom: 1px solid var(--border);
   background: color-mix(in oklch, var(--card) 94%, transparent);
   backdrop-filter: blur(18px);
+  user-select: none;
 }
 .titlebar-drag {
   flex: 1;
@@ -637,40 +638,6 @@ kbd {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-color: var(--sidebar-ring) transparent;
-}
-
-.vault-switcher {
-  display: grid;
-  min-height: 72px;
-  grid-template-columns: auto 1fr auto;
-  gap: 10px;
-  align-items: center;
-  padding: 14px 15px;
-  border-bottom: 1px solid var(--sidebar-border);
-}
-.vault-avatar {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  border-radius: 10px;
-  color: var(--sidebar-primary-foreground);
-  background: var(--sidebar-soft);
-}
-.vault-switcher strong,
-.vault-switcher small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.vault-switcher strong {
-  font-size: 13px;
-}
-.vault-switcher small {
-  margin-top: 3px;
-  color: var(--muted-foreground);
-  font-size: 10px;
 }
 
 .sidebar-nav {
@@ -937,13 +904,6 @@ kbd {
   line-height: 1.2;
   letter-spacing: -0.025em;
 }
-.list-tools {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 7px;
-  padding: 0 12px 9px;
-}
-
 .search-field {
   display: flex;
   min-width: 0;
@@ -989,6 +949,19 @@ kbd {
 .search-field kbd {
   padding: 1px 4px;
   font-size: 9px;
+}
+.titlebar-search {
+  -webkit-app-region: no-drag;
+  position: absolute;
+  left: 50%;
+  width: clamp(300px, 44vw, 560px);
+  transform: translateX(-50%);
+}
+.titlebar-search * {
+  -webkit-app-region: no-drag;
+}
+.titlebar-search input {
+  user-select: text;
 }
 
 .sort-control {
@@ -1507,6 +1480,28 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 10px;
+}
+.detail-placeholder-icon,
+.detail-placeholder-button {
+  flex: none;
+}
+.detail-placeholder-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+}
+.detail-placeholder-button {
+  width: 68px;
+  height: 32px;
+  border-radius: 8px;
+}
+.detail-placeholder-card [data-slot='skeleton'] {
+  opacity: 0.72;
+}
+@media (prefers-reduced-motion: reduce) {
+  .detail-placeholder [data-slot='skeleton'] {
+    animation: none;
+  }
 }
 .detail-back {
   display: none;
@@ -2315,27 +2310,6 @@ kbd {
 .sidebar-scroll {
   scrollbar-color: color-mix(in oklch, var(--muted-foreground) 25%, transparent) transparent;
 }
-.vault-switcher {
-  min-height: 66px;
-  padding: 12px 15px;
-  border-bottom-color: var(--sidebar-border);
-}
-.vault-avatar {
-  color: var(--sidebar-primary-foreground);
-  background: linear-gradient(
-    145deg,
-    var(--sidebar-primary),
-    color-mix(in oklch, var(--sidebar-primary) 82%, black)
-  );
-  box-shadow: 0 2px 6px color-mix(in oklch, var(--sidebar-primary) 24%, transparent);
-}
-.vault-switcher strong {
-  color: var(--text);
-  font-size: 13px;
-}
-.vault-switcher small {
-  color: var(--muted-foreground);
-}
 .category-section {
   padding: 13px 11px 8px;
 }
@@ -2542,10 +2516,6 @@ kbd {
   border-radius: 9px;
   color: var(--text);
   background: transparent;
-}
-.list-tools {
-  display: block;
-  padding: 0 17px 10px;
 }
 .search-field {
   height: 38px;
@@ -2766,6 +2736,16 @@ kbd {
   .titlebar-menu {
     display: grid;
   }
+  .titlebar-search {
+    position: static;
+    width: auto;
+    max-width: none;
+    flex: 1;
+    transform: none;
+  }
+  .titlebar-drag {
+    display: none;
+  }
   .workspace {
     grid-template-columns: minmax(300px, 350px) minmax(360px, 1fr);
   }
@@ -2806,6 +2786,9 @@ kbd {
     height: 52px;
     min-height: 52px;
   }
+  .titlebar > .brand {
+    display: none;
+  }
   .workspace {
     display: block;
   }
@@ -2829,6 +2812,9 @@ kbd {
   .detail-header {
     padding: 11px 12px;
   }
+  .detail-placeholder-button {
+    width: 34px;
+  }
   .detail-scroll,
   .editor-scroll {
     padding: 13px 12px 28px;
@@ -2838,9 +2824,6 @@ kbd {
   }
   .detail-header > .button svg {
     margin: 0;
-  }
-  .list-tools {
-    grid-template-columns: 1fr;
   }
   .sort-control {
     justify-content: flex-end;
@@ -2861,6 +2844,11 @@ kbd {
   }
   .platform-macos .titlebar {
     padding: 0 9px 0 70px;
+  }
+  .lock-button {
+    min-width: 34px;
+    padding-inline: 8px;
+    font-size: 0;
   }
   .list-header {
     padding-inline: 11px;
