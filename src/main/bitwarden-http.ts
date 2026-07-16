@@ -103,6 +103,22 @@ export interface BitwardenEquivalentDomainUpdate {
   excludedGlobalEquivalentDomains: number[]
 }
 
+export interface BitwardenSendRequest {
+  type: 0
+  authType: 1 | 2
+  name: string
+  notes: string | null
+  key: string
+  maxAccessCount: number | null
+  expirationDate: string | null
+  deletionDate: string
+  text: { text: string; hidden: boolean }
+  password: string | null
+  emails: null
+  disabled: boolean
+  hideEmail: boolean
+}
+
 export interface PasswordTokenForm {
   email: string
   /** Already transformed by the caller's crypto layer; never a raw master password. */
@@ -189,6 +205,8 @@ const MAX_EQUIVALENT_DOMAIN_GROUPS = 10_000
 const MAX_EQUIVALENT_DOMAINS_PER_GROUP = 1_000
 const MAX_EQUIVALENT_DOMAIN_TOTAL = 100_000
 const MAX_EQUIVALENT_DOMAIN_BYTES = 1_024
+const MAX_SENDS = 10_000
+const MAX_SEND_STRING_BYTES = 1_024 * 1_024
 // Binary decryption currently holds ciphertext and plaintext in memory at once. Keep
 // this below Bitwarden's server limit until the file pipeline supports streaming.
 const MAX_ATTACHMENT_BYTES = 128 * 1024 * 1024
@@ -720,6 +738,57 @@ export class BitwardenHttpClient {
     )
     if (!isRecord(response)) throw new BitwardenHttpError('INVALID_RESPONSE')
     return response
+  }
+
+  async listSends(signal?: AbortSignal): Promise<JsonObject[]> {
+    const response = await this.requestJson('GET', `${this.urls.apiUrl}/sends`, { signal })
+    return parseSendList(response)
+  }
+
+  async createSend(request: BitwardenSendRequest, signal?: AbortSignal): Promise<JsonObject> {
+    return parseSendEntity(
+      await this.requestJson('POST', `${this.urls.apiUrl}/sends`, {
+        body: request as unknown as JsonObject,
+        signal
+      })
+    )
+  }
+
+  async updateSend(
+    id: string,
+    request: BitwardenSendRequest,
+    signal?: AbortSignal
+  ): Promise<JsonObject> {
+    return parseSendEntity(
+      await this.requestJson(
+        'PUT',
+        `${this.urls.apiUrl}/sends/${encodeURIComponent(assertId(id))}`,
+        { body: request as unknown as JsonObject, signal }
+      )
+    )
+  }
+
+  async removeSendPassword(id: string, signal?: AbortSignal): Promise<JsonObject> {
+    return parseSendEntity(
+      await this.requestJson(
+        'PUT',
+        `${this.urls.apiUrl}/sends/${encodeURIComponent(assertId(id))}/remove-password`,
+        { signal }
+      )
+    )
+  }
+
+  async deleteSend(id: string, signal?: AbortSignal): Promise<void> {
+    await this.requestJson(
+      'DELETE',
+      `${this.urls.apiUrl}/sends/${encodeURIComponent(assertId(id))}`,
+      { signal }
+    )
+  }
+
+  /** Main-process-only base for owner-generated Send links. */
+  sendUrl(): string {
+    return `${this.urls.webVaultUrl.replace(/\/+$/u, '')}/#/send/`
   }
 
   async prepareAttachmentDownload(
@@ -1423,6 +1492,33 @@ function parseEquivalentDomainSettings(value: JsonValue): BitwardenEquivalentDom
     return { type, domains: domains.map(parseEquivalentDomain), excluded }
   })
   return { equivalentDomains, globalEquivalentDomains }
+}
+
+function parseSendEntity(value: JsonValue): JsonObject {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const nested = value.send ?? value.Send
+  if (nested !== undefined) {
+    if (!isRecord(nested)) throw new BitwardenHttpError('INVALID_RESPONSE')
+    return nested
+  }
+  return value
+}
+
+function parseSendList(value: JsonValue): JsonObject[] {
+  const rows = Array.isArray(value)
+    ? value
+    : isRecord(value) && Array.isArray(value.data)
+      ? value.data
+      : null
+  if (!rows || rows.length > MAX_SENDS) throw new BitwardenHttpError('INVALID_RESPONSE')
+  return rows.map((row) => {
+    const parsed = parseSendEntity(row)
+    const serialized = JSON.stringify(parsed)
+    if (serialized === undefined || Buffer.byteLength(serialized, 'utf8') > MAX_SEND_STRING_BYTES) {
+      throw new BitwardenHttpError('TOO_LARGE')
+    }
+    return parsed
+  })
 }
 
 interface ParsedAttachmentDownload {

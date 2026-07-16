@@ -14,6 +14,8 @@ import {
   encryptBitwardenAttachmentBuffer,
   encryptBitwardenCipherBlob,
   encryptBitwardenString,
+  deriveBitwardenSendKey,
+  deriveBitwardenSendPasswordHash,
   stretchMasterKey,
   verifyBitwardenV2AccountState,
   type BitwardenKdf,
@@ -28,6 +30,7 @@ import {
   type BitwardenAttachmentUpload,
   type BitwardenEquivalentDomainSettings,
   type BitwardenEquivalentDomainUpdate,
+  type BitwardenSendRequest,
   type BitwardenPrelogin,
   type BitwardenSession,
   type JsonObject,
@@ -61,6 +64,7 @@ const MAX_PASSWORD_LENGTH = 16_384
 const MAX_PASSWORD_HISTORY = 5
 const MAX_AGGREGATE_REMOTE_ROWS = 1_000_000
 const MINIMUM_CLIENT_VERSION = '2024.12.0'
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 
 type BitwardenCipherType = 1 | 2 | 3 | 4 | 5
 
@@ -178,6 +182,40 @@ export interface BitwardenLoginItem extends VaultItemFields {
   attachments: BitwardenAttachment[]
 }
 
+/** Decrypted personal text Send metadata; encrypted fields remain main-process-only cache data. */
+export interface BitwardenSendItem {
+  id: string
+  accessId: string
+  type: 'text'
+  name: string
+  notes: string | null
+  text: string
+  hidden: boolean
+  maxAccessCount: number | null
+  accessCount: number
+  revisionDate: string
+  expirationDate: string | null
+  deletionDate: string
+  disabled: boolean
+  hideEmail: boolean
+  authType: 1 | 2
+  passwordProtected: boolean
+}
+
+export interface BitwardenSendDraft {
+  name: string
+  notes: string | null
+  text: string
+  hidden: boolean
+  maxAccessCount: number | null
+  expirationDate: string | null
+  deletionDate: string
+  /** Undefined on update means preserve the existing server-side password proof. */
+  password?: string | null
+  disabled: boolean
+  hideEmail: boolean
+}
+
 export interface BitwardenLoginDraft extends Partial<VaultItemFields> {
   type?: VaultItemType
   name: string
@@ -223,6 +261,16 @@ export interface BitwardenSyncClient {
     update: BitwardenEquivalentDomainUpdate,
     signal?: AbortSignal
   ): Promise<void>
+  listSends?(signal?: AbortSignal): Promise<BitwardenSendItem[]>
+  createSend?(draft: BitwardenSendDraft, signal?: AbortSignal): Promise<BitwardenSendItem>
+  updateSend?(
+    id: string,
+    draft: BitwardenSendDraft,
+    signal?: AbortSignal
+  ): Promise<BitwardenSendItem>
+  removeSendPassword?(id: string, signal?: AbortSignal): Promise<BitwardenSendItem>
+  deleteSend?(id: string, signal?: AbortSignal): Promise<void>
+  copySendLink?(id: string, copy: (value: string) => void | Promise<void>): Promise<void>
   notificationAccessToken?(signal?: AbortSignal): Promise<string>
   login(request: BitwardenLoginRequest): Promise<void>
   unlock(request: BitwardenUnlockRequest): Promise<void>
@@ -295,6 +343,11 @@ interface CachedLogin {
   item: BitwardenLoginItem
 }
 
+interface CachedSend {
+  raw: JsonObject
+  item: BitwardenSendItem
+}
+
 interface ResolvedBitwardenDraft extends VaultItemFields {
   type: VaultItemType
   name: string
@@ -346,6 +399,11 @@ function nullableStringProperty(record: JsonObject, name: string): string | null
 function requiredStringProperty(record: JsonObject, name: string): string {
   const value = stringProperty(record, name)
   if (!value) throw new BitwardenDirectError('INVALID_RESPONSE')
+  return value
+}
+
+function assertUuidValue(value: string): string {
+  if (!UUID_PATTERN.test(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
   return value
 }
 
@@ -1281,6 +1339,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   private userKey: BitwardenSymmetricKey | null = null
   private folders = new Map<string, CachedFolder>()
   private logins = new Map<string, CachedLogin>()
+  private sends = new Map<string, CachedSend>()
 
   constructor(private readonly options: BitwardenDirectOptions) {
     this.email = normalizeEmail(options.email)
@@ -1359,6 +1418,97 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     }
   }
 
+  async listSends(signal?: AbortSignal): Promise<BitwardenSendItem[]> {
+    void signal
+    this.requireUserKey()
+    return [...this.sends.values()].map(({ item }) => ({ ...item }))
+  }
+
+  async createSend(draft: BitwardenSendDraft, signal?: AbortSignal): Promise<BitwardenSendItem> {
+    const userKey = this.requireUserKey()
+    const request = await this.encryptSendRequest(draft, userKey)
+    try {
+      const raw = await this.http.createSend(request, signal)
+      const cached = this.decryptSend(raw, userKey)
+      this.sends.set(cached.item.id, cached)
+      return { ...cached.item }
+    } catch (error) {
+      throw this.mapError(error)
+    } finally {
+      request.key = ''
+      request.name = ''
+      request.notes = null
+      request.text.text = ''
+      request.password = null
+    }
+  }
+
+  async updateSend(
+    id: string,
+    draft: BitwardenSendDraft,
+    signal?: AbortSignal
+  ): Promise<BitwardenSendItem> {
+    const userKey = this.requireUserKey()
+    const cached = this.sends.get(assertUuidValue(id))
+    if (!cached) throw new BitwardenDirectError('NOT_FOUND')
+    const request = await this.encryptSendRequest(draft, userKey, cached.raw)
+    try {
+      const raw = await this.http.updateSend(cached.item.id, request, signal)
+      const next = this.decryptSend(raw, userKey)
+      this.sends.set(next.item.id, next)
+      return { ...next.item }
+    } catch (error) {
+      throw this.mapError(error)
+    } finally {
+      request.key = ''
+      request.name = ''
+      request.notes = null
+      request.text.text = ''
+      request.password = null
+    }
+  }
+
+  async removeSendPassword(id: string, signal?: AbortSignal): Promise<BitwardenSendItem> {
+    this.requireUserKey()
+    const cached = this.sends.get(assertUuidValue(id))
+    if (!cached) throw new BitwardenDirectError('NOT_FOUND')
+    try {
+      const raw = await this.http.removeSendPassword(cached.item.id, signal)
+      const next = this.decryptSend(raw, this.requireUserKey())
+      this.sends.set(next.item.id, next)
+      return { ...next.item }
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  async deleteSend(id: string, signal?: AbortSignal): Promise<void> {
+    this.requireUserKey()
+    const cached = this.sends.get(assertUuidValue(id))
+    if (!cached) throw new BitwardenDirectError('NOT_FOUND')
+    try {
+      await this.http.deleteSend(cached.item.id, signal)
+      this.sends.delete(cached.item.id)
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  async copySendLink(id: string, copy: (value: string) => void | Promise<void>): Promise<void> {
+    const userKey = this.requireUserKey()
+    const cached = this.sends.get(assertUuidValue(id))
+    if (!cached) throw new BitwardenDirectError('NOT_FOUND')
+    const encryptedKey = requiredStringProperty(cached.raw, 'key')
+    const seed = decryptBitwardenBytes(encryptedKey, userKey)
+    try {
+      if (seed.length !== 16) throw new BitwardenDirectError('INVALID_RESPONSE')
+      const accessId = requiredStringProperty(cached.raw, 'accessId')
+      await copy(`${this.http.sendUrl()}${accessId}/${seed.toString('base64url')}`)
+    } finally {
+      seed.fill(0)
+    }
+  }
+
   async notificationAccessToken(signal?: AbortSignal): Promise<string> {
     try {
       const token = await this.http.activeAccessToken(signal)
@@ -1414,11 +1564,16 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
 
       const nextFolders = new Map<string, CachedFolder>()
       const nextLogins = new Map<string, CachedLogin>()
+      const nextSends = new Map<string, CachedSend>()
       try {
         const folderRows = arrayProperty(payload, 'folders')
         const cipherRows = arrayProperty(payload, 'ciphers')
+        const sendsValue = property(payload, 'sends')
+        const sendRows =
+          sendsValue === undefined || sendsValue === null ? [] : arrayProperty(payload, 'sends')
         let aggregateRows = addAggregateRemoteRows(0, folderRows.length)
         aggregateRows = addAggregateRemoteRows(aggregateRows, cipherRows.length)
+        aggregateRows = addAggregateRemoteRows(aggregateRows, sendRows.length)
         for (const value of folderRows) {
           if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
           const item = this.decryptFolder(value, userKey)
@@ -1441,6 +1596,11 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
           )
           nextLogins.set(item.id, { raw: structuredClone(value), item })
         }
+        for (const value of sendRows) {
+          if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+          const send = this.decryptSend(value, userKey)
+          nextSends.set(send.item.id, send)
+        }
       } catch (error) {
         clearBitwardenSymmetricKey(userKey)
         throw error
@@ -1450,6 +1610,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       this.userKey = userKey
       this.folders = nextFolders
       this.logins = nextLogins
+      this.sends = nextSends
       this.state.profileId = profileId
       this.state.securityStamp = securityStamp
       this.state.session = this.http.exportSession()
@@ -2063,6 +2224,149 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     }
   }
 
+  private decryptSend(raw: JsonObject, userKey: BitwardenSymmetricKey): CachedSend {
+    const type = property(raw, 'type')
+    if (type !== 0) throw new BitwardenDirectError('INVALID_RESPONSE')
+    const id = assertUuidValue(requiredStringProperty(raw, 'id'))
+    const accessId = requiredStringProperty(raw, 'accessId')
+    if (!/^[A-Za-z0-9_-]{16,128}$/u.test(accessId)) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    const encryptedKey = requiredStringProperty(raw, 'key')
+    const seed = decryptBitwardenBytes(encryptedKey, userKey)
+    let sendKey: Buffer | null = null
+    try {
+      if (seed.length !== 16) throw new BitwardenDirectError('INVALID_RESPONSE')
+      sendKey = deriveBitwardenSendKey(seed)
+      const encryptedName = requiredStringProperty(raw, 'name')
+      const notesValue = property(raw, 'notes')
+      const text = recordProperty(raw, 'text')
+      if (!text) throw new BitwardenDirectError('INVALID_RESPONSE')
+      const encryptedText = requiredStringProperty(text, 'text')
+      const notes =
+        notesValue === null || notesValue === undefined
+          ? null
+          : decryptBitwardenString(requiredStringProperty(raw, 'notes'), sendKey)
+      const expirationDate = nullableStringProperty(raw, 'expirationDate')
+      const deletionDate = requiredStringProperty(raw, 'deletionDate')
+      const revisionDate = requiredStringProperty(raw, 'revisionDate')
+      if (
+        !Number.isFinite(Date.parse(deletionDate)) ||
+        !Number.isFinite(Date.parse(revisionDate)) ||
+        (expirationDate !== null && !Number.isFinite(Date.parse(expirationDate)))
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      const authTypeValue = property(raw, 'authType')
+      const password = nullableStringProperty(raw, 'password')
+      const authType = authTypeValue === 1 || authTypeValue === 2 ? authTypeValue : password ? 1 : 2
+      const maxAccessCountValue = property(raw, 'maxAccessCount')
+      const maxAccessCount =
+        maxAccessCountValue === null || maxAccessCountValue === undefined
+          ? null
+          : typeof maxAccessCountValue === 'number' &&
+              Number.isSafeInteger(maxAccessCountValue) &&
+              maxAccessCountValue > 0
+            ? maxAccessCountValue
+            : (() => {
+                throw new BitwardenDirectError('INVALID_RESPONSE')
+              })()
+      const accessCount = property(raw, 'accessCount')
+      if (
+        typeof accessCount !== 'number' ||
+        !Number.isSafeInteger(accessCount) ||
+        accessCount < 0
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      return {
+        raw: structuredClone(raw),
+        item: {
+          id,
+          accessId,
+          type: 'text',
+          name: decryptBitwardenString(encryptedName, sendKey),
+          notes,
+          text: decryptBitwardenString(encryptedText, sendKey),
+          hidden: booleanProperty(text, 'hidden'),
+          maxAccessCount,
+          accessCount,
+          revisionDate,
+          expirationDate,
+          deletionDate,
+          disabled: booleanProperty(raw, 'disabled'),
+          hideEmail: booleanProperty(raw, 'hideEmail'),
+          authType,
+          passwordProtected: authType === 1 || Boolean(password)
+        }
+      }
+    } finally {
+      seed.fill(0)
+      sendKey?.fill(0)
+    }
+  }
+
+  private async encryptSendRequest(
+    draft: BitwardenSendDraft,
+    userKey: BitwardenSymmetricKey,
+    existing?: JsonObject
+  ): Promise<BitwardenSendRequest> {
+    const seed = existing
+      ? decryptBitwardenBytes(requiredStringProperty(existing, 'key'), userKey)
+      : randomBytes(16)
+    let sendKey: Buffer | null = null
+    try {
+      if (seed.length !== 16) throw new BitwardenDirectError('INVALID_RESPONSE')
+      sendKey = deriveBitwardenSendKey(seed)
+      const preservePassword = existing !== undefined && draft.password === undefined
+      const existingAuthType = existing ? property(existing, 'authType') : undefined
+      const existingPassword = existing ? nullableStringProperty(existing, 'password') : null
+      const password = preservePassword
+        ? existingPassword
+        : draft.password?.length
+          ? draft.password
+          : null
+      const authType =
+        preservePassword && (existingAuthType === 1 || existingAuthType === 2)
+          ? existingAuthType
+          : password
+            ? 1
+            : 2
+      const request: BitwardenSendRequest = {
+        type: 0,
+        authType,
+        name: encryptBitwardenString(draft.name, sendKey),
+        notes: draft.notes === null ? null : encryptBitwardenString(draft.notes, sendKey),
+        key: existing
+          ? requiredStringProperty(existing, 'key')
+          : encryptBitwardenBytes(seed, userKey),
+        maxAccessCount: draft.maxAccessCount,
+        expirationDate: draft.expirationDate,
+        deletionDate: draft.deletionDate,
+        text: {
+          text: encryptBitwardenString(draft.text, sendKey),
+          hidden: draft.hidden
+        },
+        password: preservePassword ? existingPassword : null,
+        emails: null,
+        disabled: draft.disabled,
+        hideEmail: draft.hideEmail
+      }
+      if (password && !preservePassword) {
+        const passwordHash = await deriveBitwardenSendPasswordHash(password, seed)
+        try {
+          request.password = passwordHash.toString('base64')
+        } finally {
+          passwordHash.fill(0)
+        }
+      }
+      return request
+    } finally {
+      seed.fill(0)
+      sendKey?.fill(0)
+    }
+  }
+
   private decryptLogin(raw: JsonObject, userKey: BitwardenSymmetricKey): BitwardenLoginItem {
     const wireType = bitwardenCipherType(raw)
     const itemType = ITEM_TYPE_BY_WIRE_TYPE[wireType]
@@ -2535,6 +2839,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     this.userKey = null
     this.folders.clear()
     this.logins.clear()
+    this.sends.clear()
   }
 
   private mapError(error: unknown): BitwardenDirectError {

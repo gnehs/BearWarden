@@ -7,6 +7,7 @@ import {
   decryptBitwardenCipherBlob,
   decryptBitwardenString,
   decryptBitwardenWrappedKey,
+  deriveBitwardenSendKey,
   encryptBitwardenBytes,
   encryptBitwardenCipherBlob,
   encryptBitwardenString,
@@ -18,6 +19,7 @@ import {
   BitwardenHttpClient,
   BitwardenHttpError,
   type BitwardenAttachmentUploadRequest,
+  type FetchLike,
   type JsonObject
 } from './bitwarden-http'
 
@@ -33,6 +35,7 @@ const NOTE_ID = '30000000-0000-4000-8000-000000000004'
 const SSH_ID = '30000000-0000-4000-8000-000000000005'
 const DELETED_AT = '2026-07-15T00:00:00.000Z'
 const ARCHIVED_AT = '2026-07-15T01:00:00.000Z'
+const SEND_ID = '50000000-0000-4000-8000-000000000001'
 
 async function encryptedSync(
   options: {
@@ -790,6 +793,92 @@ async function expectInvalidSync(sync: JsonObject): Promise<void> {
 }
 
 describe('BitwardenDirectClient', () => {
+  it('syncs and decrypts personal text Sends while keeping the URL seed main-process-only', async () => {
+    const sync = await encryptedSync()
+    const userKey = Buffer.alloc(64, 7)
+    const seed = Buffer.alloc(16, 3)
+    const sendKey = deriveBitwardenSendKey(seed)
+    const send: JsonObject = {
+      id: SEND_ID,
+      accessId: 'UAAAAAAAQABAAAAAAAAAAQ',
+      type: 0,
+      key: encryptBitwardenBytes(seed, userKey),
+      name: encryptBitwardenString('One-time note', sendKey),
+      notes: encryptBitwardenString('Owner note', sendKey),
+      text: { text: encryptBitwardenString('shared text', sendKey), hidden: false },
+      maxAccessCount: null,
+      accessCount: 0,
+      revisionDate: '2026-07-16T00:00:00.000Z',
+      expirationDate: null,
+      deletionDate: '2026-07-30T00:00:00.000Z',
+      authType: 1,
+      password: 'existing-password-proof',
+      disabled: false,
+      hideEmail: true
+    }
+    sync.sends = [send]
+    let updateBody: JsonObject | null = null
+    const fetch = vi.fn<FetchLike>().mockImplementation(async (url, init) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/identity/connect/token')) {
+        return jsonResponse({
+          access_token: 'access-token',
+          refresh_token: 'refresh-token',
+          expires_in: 3_600
+        })
+      }
+      if (url.includes('/api/sync?')) return jsonResponse(sync)
+      if (url.endsWith('/api/sends')) return jsonResponse(send)
+      if (url.endsWith('/api/sends/' + SEND_ID) && init?.method === 'PUT') {
+        updateBody = JSON.parse(String(init.body)) as JsonObject
+        return jsonResponse(send)
+      }
+      if (url.endsWith('/api/sends/' + SEND_ID) && init?.method === 'DELETE') {
+        return new Response(null, { status: 204 })
+      }
+      return jsonResponse({ message: 'not found' }, 404)
+    })
+    const http = new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+    await expect(client.listSends()).resolves.toEqual([
+      expect.objectContaining({
+        id: SEND_ID,
+        name: 'One-time note',
+        text: 'shared text',
+        notes: 'Owner note',
+        passwordProtected: true
+      })
+    ])
+    const copy = vi.fn()
+    await client.copySendLink(SEND_ID, copy)
+    expect(copy).toHaveBeenCalledWith(
+      `https://vault.example.invalid/#/send/UAAAAAAAQABAAAAAAAAAAQ/${Buffer.alloc(16, 3).toString('base64url')}`
+    )
+    expect(JSON.stringify(await client.listSends())).not.toContain(seed.toString('base64url'))
+    await client.updateSend(SEND_ID, {
+      name: 'Updated note',
+      notes: 'Owner note',
+      text: 'shared text',
+      hidden: false,
+      maxAccessCount: null,
+      expirationDate: null,
+      deletionDate: '2026-07-30T00:00:00.000Z',
+      disabled: false,
+      hideEmail: true
+    })
+    expect(updateBody).toMatchObject({ authType: 1, password: 'existing-password-proof' })
+    seed.fill(0)
+    sendKey.fill(0)
+    userKey.fill(0)
+  })
   it('passes authenticated account-breach reports through without requiring decrypted vault keys', async () => {
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',

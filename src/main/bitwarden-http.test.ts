@@ -395,6 +395,58 @@ describe('BitwardenHttpClient', () => {
     ])
   })
 
+  it('uses authenticated owner Send CRUD routes and preserves the web-vault share base', async () => {
+    const send = { id: 'send-id', accessId: 'access-id' }
+    const fetch = vi.fn<FetchLike>().mockImplementation(async (_url, init) => {
+      if (init?.method === 'GET') return json({ data: [send] })
+      if (init?.method === 'DELETE') return new Response(null, { status: 204 })
+      return json(send)
+    })
+    const client = new BitwardenHttpClient({ server: 'https://vault.example.test/bw', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 1 })
+    await expect(client.listSends()).resolves.toEqual([send])
+    await client.createSend({
+      type: 0,
+      authType: 2,
+      name: '2.name',
+      notes: null,
+      key: '2.key',
+      maxAccessCount: null,
+      expirationDate: null,
+      deletionDate: '2026-07-30T00:00:00.000Z',
+      text: { text: '2.text', hidden: false },
+      password: null,
+      emails: null,
+      disabled: false,
+      hideEmail: true
+    })
+    await client.updateSend('send-id', {
+      type: 0,
+      authType: 2,
+      name: '2.name',
+      notes: null,
+      key: '2.key',
+      maxAccessCount: null,
+      expirationDate: null,
+      deletionDate: '2026-07-30T00:00:00.000Z',
+      text: { text: '2.text', hidden: false },
+      password: null,
+      emails: null,
+      disabled: false,
+      hideEmail: true
+    })
+    await client.removeSendPassword('send-id')
+    await client.deleteSend('send-id')
+    expect(fetch.mock.calls.map(([url, init]) => `${init?.method} ${url}`)).toEqual([
+      'GET https://vault.example.test/bw/api/sends',
+      'POST https://vault.example.test/bw/api/sends',
+      'PUT https://vault.example.test/bw/api/sends/send-id',
+      'PUT https://vault.example.test/bw/api/sends/send-id/remove-password',
+      'DELETE https://vault.example.test/bw/api/sends/send-id'
+    ])
+    expect(client.sendUrl()).toBe('https://vault.example.test/bw/#/send/')
+  })
+
   it('requires restore to return a cipher object while accepting empty delete responses', async () => {
     const fetch = vi
       .fn<FetchLike>()

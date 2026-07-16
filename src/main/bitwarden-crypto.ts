@@ -71,6 +71,8 @@ const COSE_SAFE_OBJECT_NAMESPACE = -80_002
 const COSE_SAFE_CONTENT_NAMESPACE = -80_001
 const DATA_ENVELOPE_OBJECT_NAMESPACE = 2
 const VAULT_ITEM_CONTENT_NAMESPACE = 1
+const SEND_SEED_BYTES = 16
+const SEND_KDF_ITERATIONS = 100_000
 
 const cborEncoder = new Encoder({
   mapsAsObjects: false,
@@ -260,6 +262,39 @@ function hkdfExpandSha256(prk: Buffer, info: string, outputLength: number): Buff
     infoBytes.fill(0)
     for (const block of blocks) block.fill(0)
   }
+}
+
+/** Bitwarden's purpose-bound HKDF: HKDF-Extract(salt, material), then Expand(purpose). */
+export function deriveBitwardenPurposeKey(
+  material: Buffer,
+  salt: string,
+  purpose: string,
+  outputBytes = COMBINED_KEY_BYTES
+): Buffer {
+  requireBuffer(material, 'HKDF material')
+  requireString(salt, 'HKDF salt', true)
+  requireString(purpose, 'HKDF purpose', true)
+  const saltBytes = Buffer.from(salt, 'utf8')
+  const prk = createHmac('sha256', saltBytes).update(material).digest()
+  try {
+    return hkdfExpandSha256(prk, purpose, outputBytes)
+  } finally {
+    saltBytes.fill(0)
+    prk.fill(0)
+  }
+}
+
+/** Derives the 64-byte Send content key from the 128-bit URL-fragment seed. */
+export function deriveBitwardenSendKey(seed: Buffer): Buffer {
+  requireBuffer(seed, 'Send seed', SEND_SEED_BYTES)
+  return deriveBitwardenPurposeKey(seed, 'bitwarden-send', 'send')
+}
+
+/** Derives the public password proof used by Bitwarden Send owner requests. */
+export function deriveBitwardenSendPasswordHash(password: string, seed: Buffer): Promise<Buffer> {
+  requireString(password, 'Send password')
+  requireBuffer(seed, 'Send seed', SEND_SEED_BYTES)
+  return derivePbkdf2Sha256(password, seed, SEND_KDF_ITERATIONS)
 }
 
 /**
