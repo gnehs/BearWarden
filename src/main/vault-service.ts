@@ -131,11 +131,31 @@ import {
   type RandomInt
 } from './credential-generator'
 import { loadEffLongWordlist } from './eff-wordlist'
-import { buildBitwardenJson, type PortableVaultSnapshot } from './vault-portability-codec'
+import {
+  buildBitwardenJson,
+  parseBitwardenJson,
+  type PortableVaultSnapshot
+} from './vault-portability-codec'
 import type {
   NativeAttachmentBackupEntry,
+  NativeAttachmentBackupPreview,
   NativeAttachmentBackupSource
 } from './native-attachment-backup'
+import type { BitwardenAttachmentByteSource } from './bitwarden-attachment-stream'
+import {
+  assertNativeAttachmentRestoreBinding,
+  beginNativeAttachmentRestoreAttempt,
+  bindNativeAttachmentRestoreRemoteItem,
+  completeNativeAttachmentRestoreAttempt,
+  createNativeAttachmentRestoreJournal,
+  failNativeAttachmentRestoreAttempt,
+  parseNativeAttachmentRestoreJournal,
+  reconcileNativeAttachmentRestoreMissing,
+  reconcileNativeAttachmentRestoreUploaded,
+  recoverInterruptedNativeAttachmentRestore,
+  type NativeAttachmentRestoreAttachmentKey,
+  type NativeAttachmentRestoreJournal
+} from './native-attachment-restore'
 import {
   completeSyncMetadata,
   fingerprintLogin,
@@ -187,7 +207,8 @@ const ATTACHMENTS_DATA_VERSION = 14
 const EQUIVALENT_DOMAINS_DATA_VERSION = 15
 const SENDS_DATA_VERSION = 16
 const ORGANIZATIONS_DATA_VERSION = 17
-const DATA_VERSION = 17
+const NATIVE_ATTACHMENT_RESTORE_DATA_VERSION = 18
+const DATA_VERSION = 18
 const MIN_MASTER_PASSWORD_LENGTH = 12
 const MAX_MASTER_PASSWORD_LENGTH = 1024
 const MAX_NAME_LENGTH = 256
@@ -307,6 +328,7 @@ interface VaultData {
   sends: StoredSend[]
   generatorHistory: GeneratorHistoryEntry[]
   sync: PersistedSyncData | null
+  nativeAttachmentRestore: NativeAttachmentRestoreJournal | null
 }
 
 export interface VaultPlatform {
@@ -335,6 +357,17 @@ export interface VaultNativeAttachmentBackupSource extends NativeAttachmentBacku
   exportedItems: number
   skippedTrashItems: number
   dispose(): void
+}
+
+export interface VaultNativeAttachmentRestoreSummary {
+  phase: NativeAttachmentRestoreJournal['phase']
+  totalItems: number
+  mappedItems: number
+  totalAttachments: number
+  uploadedAttachments: number
+  needsReconciliationAttachments: number
+  totalBytes: number
+  completedBytes: number
 }
 
 /** Main-process-only SSH Agent identity metadata. Private key material is never exposed here. */
@@ -1842,6 +1875,7 @@ function parseVaultData(value: unknown): VaultData {
       ATTACHMENTS_DATA_VERSION,
       SENDS_DATA_VERSION,
       ORGANIZATIONS_DATA_VERSION,
+      NATIVE_ATTACHMENT_RESTORE_DATA_VERSION,
       DATA_VERSION
     ].includes(value.version) ||
     !Array.isArray(value.folders) ||
@@ -1960,6 +1994,18 @@ function parseVaultData(value: unknown): VaultData {
           dataVersion < EQUIVALENT_DOMAINS_DATA_VERSION
         )
 
+  let nativeAttachmentRestore: NativeAttachmentRestoreJournal | null = null
+  if (dataVersion >= NATIVE_ATTACHMENT_RESTORE_DATA_VERSION) {
+    try {
+      nativeAttachmentRestore =
+        value.nativeAttachmentRestore === null
+          ? null
+          : parseNativeAttachmentRestoreJournal(value.nativeAttachmentRestore)
+    } catch {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+  }
+
   return {
     version: DATA_VERSION,
     createdAt: value.createdAt,
@@ -1986,7 +2032,8 @@ function parseVaultData(value: unknown): VaultData {
       dataVersion < GENERATOR_HISTORY_DATA_VERSION
         ? []
         : parseGeneratorHistory(value.generatorHistory),
-    sync
+    sync,
+    nativeAttachmentRestore
   }
 }
 
@@ -2407,6 +2454,10 @@ function cloneData(data: VaultData): VaultData {
       ...(send.file ? { file: { ...send.file } } : {})
     })),
     generatorHistory: cloneGeneratorHistory(data.generatorHistory),
+    nativeAttachmentRestore:
+      data.nativeAttachmentRestore === null
+        ? null
+        : parseNativeAttachmentRestoreJournal(data.nativeAttachmentRestore),
     sync: data.sync
       ? {
           ...data.sync,
@@ -2821,6 +2872,7 @@ export class VaultService {
   private readonly notificationTokenAborts = new Set<AbortController>()
   private readonly accountSecurityAborts = new Set<AbortController>()
   private readonly nativeAttachmentBackupAborts = new Set<AbortController>()
+  private readonly nativeAttachmentRestoreAborts = new Set<AbortController>()
   private readonly authenticatorSetupSessions = new Map<string, AuthenticatorSetupSession>()
   private readonly emailTwoFactorSetupSessions = new Map<string, EmailTwoFactorSetupSession>()
   private syncInProgress = false
@@ -2898,7 +2950,8 @@ export class VaultService {
         sharedLogins: [],
         sends: [],
         generatorHistory: [],
-        sync: null
+        sync: null,
+        nativeAttachmentRestore: null
       }
       const generation = this.generation
       const material = await this.store.initialize(password, initialData)
@@ -2928,7 +2981,7 @@ export class VaultService {
         this.data = parseVaultData(unlocked.data)
         this.key = unlocked.key
         this.salt = unlocked.salt
-        if (requiresMigration) await this.persist(this.data)
+        await this.recoverNativeAttachmentRestoreAfterUnlock(requiresMigration)
         return { state: 'unlocked' }
       } catch (error) {
         unlocked.key.fill(0)
@@ -3045,7 +3098,7 @@ export class VaultService {
         this.key = unlocked.key
         this.salt = unlocked.salt
         unlocked = null
-        if (requiresMigration) await this.persist(this.data)
+        await this.recoverNativeAttachmentRestoreAfterUnlock(requiresMigration)
         return { state: 'unlocked' }
       } catch (error) {
         if (error instanceof PinUnlockError) {
@@ -3058,6 +3111,11 @@ export class VaultService {
           }
           throw this.mapPinUnlockError(error)
         }
+        this.key?.fill(0)
+        this.salt?.fill(0)
+        this.key = null
+        this.salt = null
+        this.data = null
         throw error
       } finally {
         request.pin = ''
@@ -3075,6 +3133,7 @@ export class VaultService {
     this.abortNotificationTokenLeases()
     this.abortAccountSecurityRequests()
     this.abortNativeAttachmentBackups()
+    this.abortNativeAttachmentRestores()
     this.activeExposedPasswordOperation?.abort.abort()
     this.activeAccountBreachOperation?.abort.abort()
     return this.exclusive(async () => {
@@ -3099,6 +3158,7 @@ export class VaultService {
     this.abortNotificationTokenLeases()
     this.abortAccountSecurityRequests()
     this.abortNativeAttachmentBackups()
+    this.abortNativeAttachmentRestores()
     this.activeExposedPasswordOperation?.abort.abort()
     this.activeExposedPasswordOperation = null
     this.activeAccountBreachOperation?.abort.abort()
@@ -4133,6 +4193,7 @@ export class VaultService {
     this.abortNotificationTokenLeases()
     this.abortAccountSecurityRequests()
     this.abortNativeAttachmentBackups()
+    this.abortNativeAttachmentRestores()
     this.activeAccountBreachOperation?.abort.abort()
     return this.exclusive(async () => {
       const current = this.requireData()
@@ -4274,6 +4335,7 @@ export class VaultService {
     this.abortNotificationTokenLeases()
     this.abortAccountSecurityRequests()
     this.abortNativeAttachmentBackups()
+    this.abortNativeAttachmentRestores()
     this.activeAccountBreachOperation?.abort.abort()
     return this.exclusive(async () => {
       const next = cloneData(this.requireData())
@@ -5824,6 +5886,347 @@ export class VaultService {
     }
   }
 
+  nativeAttachmentRestoreStatus(): Promise<VaultNativeAttachmentRestoreSummary | null> {
+    return this.exclusive(async () => {
+      const journal = this.requireData().nativeAttachmentRestore
+      return journal ? this.nativeAttachmentRestoreSummary(journal) : null
+    })
+  }
+
+  clearCompletedNativeAttachmentRestore(archiveFingerprint: string): Promise<void> {
+    return this.exclusive(async () => {
+      const current = this.requireData()
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      const journal = this.requireBoundNativeAttachmentRestore(
+        current,
+        archiveFingerprint,
+        sync,
+        client
+      )
+      if (journal.phase !== 'complete') throw new VaultError('INVALID_INPUT')
+      const next = cloneData(current)
+      next.nativeAttachmentRestore = null
+      next.updatedAt = this.nowIso()
+      await this.persist(next)
+      this.data = next
+    })
+  }
+
+  beginNativeAttachmentRestore(
+    preview: NativeAttachmentBackupPreview,
+    masterPassword: string
+  ): Promise<VaultNativeAttachmentRestoreSummary> {
+    return this.exclusive(async () => {
+      await this.assertMasterPassword(masterPassword)
+      const current = this.requireData()
+      if (current.nativeAttachmentRestore !== null) throw new VaultError('INVALID_INPUT')
+      if (
+        !preview ||
+        typeof preview.vaultJson !== 'string' ||
+        !Array.isArray(preview.attachments) ||
+        !Array.isArray(preview.attachmentDigests) ||
+        preview.attachments.length !== preview.attachmentDigests.length
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      const operation = this.startNativeAttachmentRestoreOperation(client)
+      try {
+        await client.sync(operation.abort.signal)
+        this.assertNativeAttachmentRestoreLease(operation)
+        const accountFingerprint = this.nativeAttachmentRestoreAccountFingerprint(sync, client)
+        const parsed = parseBitwardenJson(preview.vaultJson)
+        if (parsed.skippedTrashItems !== 0) throw new VaultError('INVALID_INPUT')
+        const next = cloneData(this.requireData())
+        const imported = this.appendPortableSnapshot(next, parsed.snapshot)
+        const sourceItemIds = new Set(parsed.snapshot.items.map((item) => item.id))
+        const attachments = preview.attachments.map((attachment, index) => {
+          if (!sourceItemIds.has(attachment.itemId)) throw new VaultError('INVALID_INPUT')
+          return {
+            sourceItemId: attachment.itemId,
+            sourceAttachmentId: attachment.id,
+            fileName: attachment.fileName,
+            size: attachment.size,
+            digest: preview.attachmentDigests[index]!
+          }
+        })
+        const now = this.nowIso()
+        next.nativeAttachmentRestore = createNativeAttachmentRestoreJournal({
+          archiveFingerprint: preview.archiveFingerprint,
+          accountFingerprint,
+          createdAt: now,
+          items: imported.itemMappings,
+          attachments
+        })
+        next.updatedAt = now
+        await this.persist(next)
+        this.assertNativeAttachmentRestoreLease(operation)
+        this.data = next
+        return this.nativeAttachmentRestoreSummary(next.nativeAttachmentRestore)
+      } catch (error) {
+        if (operation.abort.signal.aborted || operation.generation !== this.generation) {
+          throw new VaultError('LOCKED')
+        }
+        if (error instanceof VaultError) throw error
+        throw new VaultError('SYNC_FAILED')
+      } finally {
+        this.finishNativeAttachmentRestoreOperation(operation)
+      }
+    })
+  }
+
+  syncNativeAttachmentRestoreItems(
+    archiveFingerprint: string
+  ): Promise<VaultNativeAttachmentRestoreSummary> {
+    return this.exclusive(async () => {
+      const current = this.requireData()
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      const journal = this.requireBoundNativeAttachmentRestore(
+        current,
+        archiveFingerprint,
+        sync,
+        client
+      )
+      if (journal.phase !== 'syncing-items') return this.nativeAttachmentRestoreSummary(journal)
+      const operation = this.startNativeAttachmentRestoreOperation(client)
+      try {
+        await this.performSync(current, client, operation.abort.signal)
+        this.assertNativeAttachmentRestoreLease(operation)
+        const next = cloneData(this.requireData())
+        let updated = next.nativeAttachmentRestore
+        if (!updated || !next.sync) throw new VaultError('SYNC_FAILED')
+        for (const item of updated.items.filter((candidate) => candidate.remoteItemId === null)) {
+          const mapping = next.sync.loginMappings.find(
+            (entry) => entry.localId === item.localItemId
+          )
+          if (!mapping) throw new VaultError('SYNC_FAILED')
+          updated = bindNativeAttachmentRestoreRemoteItem(
+            updated,
+            item.sourceItemId,
+            mapping.remoteId,
+            this.nowIso()
+          )
+        }
+        next.nativeAttachmentRestore = updated
+        next.updatedAt = updated.updatedAt
+        await this.persist(next)
+        this.assertNativeAttachmentRestoreLease(operation)
+        this.data = next
+        return this.nativeAttachmentRestoreSummary(updated)
+      } finally {
+        this.finishNativeAttachmentRestoreOperation(operation)
+      }
+    })
+  }
+
+  uploadNativeAttachmentRestoreEntry(
+    archiveFingerprint: string,
+    key: NativeAttachmentRestoreAttachmentKey,
+    source: BitwardenAttachmentByteSource
+  ): Promise<VaultNativeAttachmentRestoreSummary> {
+    return this.exclusive(async () => {
+      const current = this.requireData()
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      const journal = this.requireBoundNativeAttachmentRestore(
+        current,
+        archiveFingerprint,
+        sync,
+        client
+      )
+      const target = journal.attachments.find(
+        (attachment) =>
+          attachment.sourceItemId === key.sourceItemId &&
+          attachment.sourceAttachmentId === key.sourceAttachmentId
+      )
+      const item = journal.items.find((candidate) => candidate.sourceItemId === key.sourceItemId)
+      if (!target || !item?.remoteItemId || source?.size !== target.size) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      if (!client.uploadAttachmentStream) throw new VaultError('ATTACHMENT_FAILED')
+      const operation = this.startNativeAttachmentRestoreOperation(client)
+      try {
+        const attempting = cloneData(current)
+        if (!attempting.nativeAttachmentRestore) throw new VaultError('INVALID_INPUT')
+        attempting.nativeAttachmentRestore = beginNativeAttachmentRestoreAttempt(
+          attempting.nativeAttachmentRestore,
+          key,
+          this.nowIso()
+        )
+        attempting.updatedAt = attempting.nativeAttachmentRestore.updatedAt
+        await this.persist(attempting)
+        this.data = attempting
+        this.assertNativeAttachmentRestoreLease(operation)
+        const uploaded = await client.uploadAttachmentStream(
+          item.remoteItemId,
+          target.fileName,
+          source,
+          operation.abort.signal
+        )
+        this.assertNativeAttachmentRestoreLease(operation)
+        await client.sync(operation.abort.signal)
+        const [remoteFolders, remoteLogins] = await Promise.all([
+          client.listFolders(operation.abort.signal),
+          client.listPersonalLogins(operation.abort.signal)
+        ])
+        this.assertNativeAttachmentRestoreLease(operation)
+        const authoritativeItem = remoteLogins.find(
+          (candidate) => candidate.id === item.remoteItemId
+        )
+        if (
+          authoritativeItem?.attachments.filter(
+            (attachment) => attachment.id === uploaded.id && attachment.fileName === target.fileName
+          ).length !== 1
+        ) {
+          throw new VaultError('ATTACHMENT_FAILED')
+        }
+        const next = this.applyNativeAttachmentRestoreRemoteSnapshot(
+          this.requireData(),
+          client,
+          remoteFolders,
+          remoteLogins
+        )
+        if (!next.nativeAttachmentRestore) throw new VaultError('ATTACHMENT_FAILED')
+        next.nativeAttachmentRestore = completeNativeAttachmentRestoreAttempt(
+          next.nativeAttachmentRestore,
+          key,
+          uploaded.id,
+          this.nowIso()
+        )
+        next.updatedAt = next.nativeAttachmentRestore.updatedAt
+        await this.persist(next)
+        this.data = next
+        return this.nativeAttachmentRestoreSummary(next.nativeAttachmentRestore)
+      } catch (error) {
+        let reconciliationPersistenceError: unknown = null
+        try {
+          await this.persistFailedNativeAttachmentRestoreAttempt(key)
+        } catch (persistError) {
+          reconciliationPersistenceError = persistError
+        }
+        if (operation.abort.signal.aborted || operation.generation !== this.generation) {
+          throw new VaultError('LOCKED')
+        }
+        if (reconciliationPersistenceError) throw reconciliationPersistenceError
+        if (error instanceof VaultError) throw error
+        throw new VaultError('ATTACHMENT_FAILED')
+      } finally {
+        this.finishNativeAttachmentRestoreOperation(operation)
+      }
+    })
+  }
+
+  reconcileNativeAttachmentRestoreEntry(
+    archiveFingerprint: string,
+    key: NativeAttachmentRestoreAttachmentKey
+  ): Promise<{
+    outcome: 'uploaded' | 'missing' | 'conflict'
+    summary: VaultNativeAttachmentRestoreSummary
+  }> {
+    return this.exclusive(async () => {
+      const current = this.requireData()
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      const journal = this.requireBoundNativeAttachmentRestore(
+        current,
+        archiveFingerprint,
+        sync,
+        client
+      )
+      const target = journal.attachments.find(
+        (attachment) =>
+          attachment.sourceItemId === key.sourceItemId &&
+          attachment.sourceAttachmentId === key.sourceAttachmentId
+      )
+      const item = journal.items.find((candidate) => candidate.sourceItemId === key.sourceItemId)
+      if (!target || target.status !== 'needs-reconciliation' || !item?.remoteItemId) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      const operation = this.startNativeAttachmentRestoreOperation(client)
+      try {
+        await client.sync(operation.abort.signal)
+        const [remoteFolders, remoteLogins] = await Promise.all([
+          client.listFolders(operation.abort.signal),
+          client.listPersonalLogins(operation.abort.signal)
+        ])
+        this.assertNativeAttachmentRestoreLease(operation)
+        const remoteItem = remoteLogins.find((candidate) => candidate.id === item.remoteItemId)
+        const candidates =
+          remoteItem?.attachments.filter((attachment) => attachment.fileName === target.fileName) ??
+          []
+        let outcome: 'uploaded' | 'missing' | 'conflict' = 'conflict'
+        let remoteAttachmentId: string | null = null
+        if (remoteItem && candidates.length === 0) {
+          outcome = 'missing'
+        } else if (remoteItem && candidates.length === 1) {
+          const candidate = candidates[0]!
+          if (
+            await this.nativeAttachmentRestoreCandidateMatches(
+              client,
+              item.remoteItemId,
+              candidate.id,
+              target.fileName,
+              target.size,
+              target.digest,
+              operation.abort.signal
+            )
+          ) {
+            outcome = 'uploaded'
+            remoteAttachmentId = candidate.id
+          }
+        }
+        this.assertNativeAttachmentRestoreLease(operation)
+        const next = remoteItem
+          ? this.applyNativeAttachmentRestoreRemoteSnapshot(
+              this.requireData(),
+              client,
+              remoteFolders,
+              remoteLogins
+            )
+          : (() => {
+              const preserved = cloneData(this.requireData())
+              if (!preserved.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+              preserved.sync.state = client.exportState()
+              preserved.sync.lastSyncAt = this.nowIso()
+              return preserved
+            })()
+        if (!next.nativeAttachmentRestore) throw new VaultError('ATTACHMENT_FAILED')
+        if (outcome === 'missing') {
+          next.nativeAttachmentRestore = reconcileNativeAttachmentRestoreMissing(
+            next.nativeAttachmentRestore,
+            key,
+            this.nowIso()
+          )
+        } else if (outcome === 'uploaded' && remoteAttachmentId) {
+          next.nativeAttachmentRestore = reconcileNativeAttachmentRestoreUploaded(
+            next.nativeAttachmentRestore,
+            key,
+            remoteAttachmentId,
+            this.nowIso()
+          )
+        }
+        next.updatedAt = next.nativeAttachmentRestore.updatedAt
+        await this.persist(next)
+        this.data = next
+        return {
+          outcome,
+          summary: this.nativeAttachmentRestoreSummary(next.nativeAttachmentRestore)
+        }
+      } catch (error) {
+        if (operation.abort.signal.aborted || operation.generation !== this.generation) {
+          throw new VaultError('LOCKED')
+        }
+        if (error instanceof VaultError) throw error
+        throw new VaultError('ATTACHMENT_FAILED')
+      } finally {
+        this.finishNativeAttachmentRestoreOperation(operation)
+      }
+    })
+  }
+
   importPortableSnapshot(
     snapshot: PortableVaultSnapshot,
     skippedTrashItems: number,
@@ -5847,51 +6250,14 @@ export class VaultService {
 
       const next = cloneData(this.requireData())
       const generation = this.generation
-      const now = this.nowIso()
-      const sourceFolderIds = new Set<string>()
-      const importedFolderIds = new Map<string, string>()
-
       try {
-        for (const source of snapshot.folders) {
-          if (
-            !source ||
-            typeof source.id !== 'string' ||
-            sourceFolderIds.has(source.id) ||
-            typeof source.name !== 'string'
-          ) {
-            throw new VaultError('INVALID_INPUT')
-          }
-          sourceFolderIds.add(source.id)
-          const name = this.uniqueImportedFolderName(
-            next,
-            normalizeRequiredString(source.name, MAX_NAME_LENGTH)
-          )
-          const folder: FolderView = {
-            id: this.validatedNewId(),
-            name,
-            position: next.folders.length,
-            createdAt: now,
-            updatedAt: now
-          }
-          parseFolder(folder)
-          next.folders.push(folder)
-          importedFolderIds.set(source.id, folder.id)
-        }
-
-        for (const source of snapshot.items) {
-          if (!source || source.deletedAt !== null) throw new VaultError('INVALID_INPUT')
-          const folderId =
-            source.folderId === null ? null : (importedFolderIds.get(source.folderId) ?? null)
-          if (source.folderId !== null && folderId === null) throw new VaultError('INVALID_INPUT')
-          const created = this.createLocalLogin(next, source, folderId)
-          parseStoredLogin(created)
-        }
+        this.appendPortableSnapshot(next, snapshot)
       } catch (error) {
         if (error instanceof VaultError && error.code === 'INVALID_INPUT') throw error
         throw new VaultError('INVALID_INPUT')
       }
 
-      next.updatedAt = now
+      next.updatedAt = this.nowIso()
       await this.persist(next)
       if (generation !== this.generation) throw new VaultError('LOCKED')
       this.data = next
@@ -7056,6 +7422,31 @@ export class VaultService {
     this.nativeAttachmentBackupAborts.clear()
   }
 
+  private abortNativeAttachmentRestores(): void {
+    for (const abort of this.nativeAttachmentRestoreAborts) abort.abort()
+    this.nativeAttachmentRestoreAborts.clear()
+  }
+
+  private async recoverNativeAttachmentRestoreAfterUnlock(
+    requiresMigration: boolean
+  ): Promise<void> {
+    const current = this.requireData()
+    const interrupted = current.nativeAttachmentRestore?.attachments.some(
+      (attachment) => attachment.status === 'attempting'
+    )
+    if (!requiresMigration && !interrupted) return
+    const next = cloneData(current)
+    if (interrupted && next.nativeAttachmentRestore) {
+      next.nativeAttachmentRestore = recoverInterruptedNativeAttachmentRestore(
+        next.nativeAttachmentRestore,
+        this.nowIso()
+      )
+      next.updatedAt = next.nativeAttachmentRestore.updatedAt
+    }
+    await this.persist(next)
+    this.data = next
+  }
+
   private evictExpiredAuthenticatorSetupSessions(): void {
     const now = this.now().getTime()
     for (const [sessionId, session] of this.authenticatorSetupSessions) {
@@ -7827,6 +8218,231 @@ export class VaultService {
         login.folderId = null
         login.updatedAt = now
       }
+    }
+  }
+
+  private appendPortableSnapshot(
+    data: VaultData,
+    snapshot: PortableVaultSnapshot
+  ): {
+    itemMappings: { sourceItemId: string; localItemId: string }[]
+  } {
+    const now = this.nowIso()
+    const sourceFolderIds = new Set<string>()
+    const sourceItemIds = new Set<string>()
+    const importedFolderIds = new Map<string, string>()
+    const itemMappings: { sourceItemId: string; localItemId: string }[] = []
+    for (const source of snapshot.folders) {
+      if (
+        !source ||
+        typeof source.id !== 'string' ||
+        sourceFolderIds.has(source.id) ||
+        typeof source.name !== 'string'
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      sourceFolderIds.add(source.id)
+      const folder: FolderView = {
+        id: this.validatedNewId(),
+        name: this.uniqueImportedFolderName(
+          data,
+          normalizeRequiredString(source.name, MAX_NAME_LENGTH)
+        ),
+        position: data.folders.length,
+        createdAt: now,
+        updatedAt: now
+      }
+      parseFolder(folder)
+      data.folders.push(folder)
+      importedFolderIds.set(source.id, folder.id)
+    }
+    for (const source of snapshot.items) {
+      if (
+        !source ||
+        typeof source.id !== 'string' ||
+        sourceItemIds.has(source.id) ||
+        source.deletedAt !== null
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      sourceItemIds.add(source.id)
+      const folderId =
+        source.folderId === null ? null : (importedFolderIds.get(source.folderId) ?? null)
+      if (source.folderId !== null && folderId === null) throw new VaultError('INVALID_INPUT')
+      const created = this.createLocalLogin(data, source, folderId)
+      parseStoredLogin(created)
+      itemMappings.push({ sourceItemId: source.id, localItemId: created.id })
+    }
+    return { itemMappings }
+  }
+
+  private startNativeAttachmentRestoreOperation(client: BitwardenSyncClient): {
+    abort: AbortController
+    client: BitwardenSyncClient
+    generation: number
+  } {
+    const operation = {
+      abort: this.startSyncOperation(),
+      client,
+      generation: this.generation
+    }
+    this.nativeAttachmentRestoreAborts.add(operation.abort)
+    return operation
+  }
+
+  private finishNativeAttachmentRestoreOperation(operation: { abort: AbortController }): void {
+    this.nativeAttachmentRestoreAborts.delete(operation.abort)
+    this.finishSyncOperation(operation.abort)
+  }
+
+  private assertNativeAttachmentRestoreLease(operation: {
+    abort: AbortController
+    client: BitwardenSyncClient
+    generation: number
+  }): void {
+    if (
+      operation.abort.signal.aborted ||
+      operation.generation !== this.generation ||
+      operation.client !== this.syncClient ||
+      !operation.client.exportState().session
+    ) {
+      throw new VaultError('LOCKED')
+    }
+  }
+
+  private nativeAttachmentRestoreAccountFingerprint(
+    sync: PersistedSyncData,
+    client: BitwardenSyncClient
+  ): string {
+    const state = client.exportState()
+    if (!state.session || !state.profileId) throw new VaultError('SYNC_AUTH_REQUIRED')
+    return createHash('sha256')
+      .update(
+        JSON.stringify({
+          provider: 'bitwarden',
+          serverUrl: sync.serverUrl,
+          profileId: state.profileId
+        })
+      )
+      .digest('hex')
+  }
+
+  private requireBoundNativeAttachmentRestore(
+    data: VaultData,
+    archiveFingerprint: string,
+    sync: PersistedSyncData,
+    client: BitwardenSyncClient
+  ): NativeAttachmentRestoreJournal {
+    if (!data.nativeAttachmentRestore) throw new VaultError('INVALID_INPUT')
+    return assertNativeAttachmentRestoreBinding(
+      data.nativeAttachmentRestore,
+      archiveFingerprint,
+      this.nativeAttachmentRestoreAccountFingerprint(sync, client)
+    )
+  }
+
+  private nativeAttachmentRestoreSummary(
+    journal: NativeAttachmentRestoreJournal
+  ): VaultNativeAttachmentRestoreSummary {
+    return {
+      phase: journal.phase,
+      totalItems: journal.items.length,
+      mappedItems: journal.items.filter((item) => item.remoteItemId !== null).length,
+      totalAttachments: journal.attachments.length,
+      uploadedAttachments: journal.attachments.filter(
+        (attachment) => attachment.status === 'uploaded'
+      ).length,
+      needsReconciliationAttachments: journal.attachments.filter(
+        (attachment) => attachment.status === 'needs-reconciliation'
+      ).length,
+      totalBytes: journal.attachments.reduce((total, attachment) => total + attachment.size, 0),
+      completedBytes: journal.attachments.reduce(
+        (total, attachment) => total + (attachment.status === 'uploaded' ? attachment.size : 0),
+        0
+      )
+    }
+  }
+
+  private applyNativeAttachmentRestoreRemoteSnapshot(
+    current: VaultData,
+    client: BitwardenSyncClient,
+    remoteFolders: BitwardenFolder[],
+    remoteLogins: BitwardenLoginItem[]
+  ): VaultData {
+    if (!current.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+    const next = cloneData(current)
+    this.reconcileServerAuthoritativeAttachments(
+      next,
+      current.sync.loginMappings,
+      remoteFolders,
+      remoteLogins
+    )
+    if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+    next.sync.state = client.exportState()
+    next.sync.lastSyncAt = this.nowIso()
+    return next
+  }
+
+  private async persistFailedNativeAttachmentRestoreAttempt(
+    key: NativeAttachmentRestoreAttachmentKey
+  ): Promise<void> {
+    const current = this.data
+    if (!current?.nativeAttachmentRestore) return
+    const target = current.nativeAttachmentRestore.attachments.find(
+      (attachment) =>
+        attachment.sourceItemId === key.sourceItemId &&
+        attachment.sourceAttachmentId === key.sourceAttachmentId
+    )
+    if (target?.status !== 'attempting') return
+    const next = cloneData(current)
+    next.nativeAttachmentRestore = failNativeAttachmentRestoreAttempt(
+      next.nativeAttachmentRestore!,
+      key,
+      null,
+      this.nowIso()
+    )
+    next.updatedAt = next.nativeAttachmentRestore.updatedAt
+    await this.persist(next)
+    this.data = next
+  }
+
+  private async nativeAttachmentRestoreCandidateMatches(
+    client: BitwardenSyncClient,
+    remoteItemId: string,
+    remoteAttachmentId: string,
+    expectedFileName: string,
+    expectedSize: number,
+    expectedDigest: string,
+    signal: AbortSignal
+  ): Promise<boolean> {
+    let streamed:
+      Awaited<ReturnType<NonNullable<BitwardenSyncClient['downloadAttachmentStream']>>> | undefined
+    let clearText: Buffer | undefined
+    try {
+      const downloaded = client.downloadAttachmentStream
+        ? await client.downloadAttachmentStream(remoteItemId, remoteAttachmentId, signal)
+        : await client.downloadAttachment(remoteItemId, remoteAttachmentId, signal)
+      if (downloaded.fileName !== expectedFileName) return false
+      if ('dispose' in downloaded) streamed = downloaded
+      else clearText = downloaded.data
+      const chunks: AsyncIterable<Buffer> = streamed
+        ? streamed.data.chunks(signal)
+        : (async function* (): AsyncIterable<Buffer> {
+            yield clearText!
+          })()
+      const hash = createHash('sha256')
+      let size = 0
+      for await (const chunk of chunks) {
+        size += chunk.length
+        if (size > expectedSize) return false
+        hash.update(chunk)
+      }
+      return size === expectedSize && hash.digest('hex') === expectedDigest
+    } catch {
+      return false
+    } finally {
+      clearText?.fill(0)
+      await streamed?.dispose().catch(() => undefined)
     }
   }
 

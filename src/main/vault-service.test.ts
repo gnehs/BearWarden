@@ -1,5 +1,5 @@
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
-import { createPublicKey, verify } from 'node:crypto'
+import { createHash, createPublicKey, verify } from 'node:crypto'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -23,6 +23,7 @@ import {
 import { VaultAttachmentFileService } from './vault-attachment-files'
 import { createPasskeyCredential } from './passkey-authenticator'
 import { hashPasswordForPwnedLookup } from './pwned-passwords'
+import { buildBitwardenJson } from './vault-portability-codec'
 
 const MASTER_PASSWORD = 'correct horse battery staple'
 const ATTACHMENT_OPERATION_ID = '70000000-0000-4000-8000-000000000001'
@@ -3204,10 +3205,14 @@ describe('VaultService encrypted local data', () => {
     const authenticatedSalt = envelope.kdf.salt
     envelope.kdf.salt = Buffer.alloc(16, 1).toString('base64')
     await writeFile(filePath, JSON.stringify(envelope), { mode: 0o600 })
-    await service.updateLogin({ id: login.id, notes: 'still available' })
+    await expect(
+      service.updateLogin({ id: login.id, notes: 'still available' })
+    ).rejects.toMatchObject({
+      code: 'CORRUPT_VAULT'
+    })
     expect(
       (JSON.parse(await readFile(filePath, 'utf8')) as { kdf: { salt: string } }).kdf.salt
-    ).toBe(authenticatedSalt)
+    ).not.toBe(authenticatedSalt)
 
     if (process.platform !== 'win32') {
       expect((await stat(filePath)).mode & 0o777).toBe(0o600)
@@ -3323,6 +3328,323 @@ describe('VaultService encrypted local data', () => {
     expect(write).toHaveBeenCalledOnce()
     expect(await service.listFolders()).toEqual(foldersBefore)
     expect(await service.listLogins()).toEqual(itemsBefore)
+  })
+
+  it('restores native attachment items before streaming uploads and records only safe progress', async () => {
+    const sourceHarness = await createHarness()
+    await sourceHarness.service.setup(MASTER_PASSWORD)
+    const sourceItem = await sourceHarness.service.createLogin({
+      name: 'Native restore item',
+      username: 'restore-user'
+    })
+    const exported = await sourceHarness.service.exportPortableSnapshot(MASTER_PASSWORD)
+    const contents = Buffer.from('fake attachment contents')
+    const digest = createHash('sha256').update(contents).digest('hex')
+    const preview = {
+      createdAt: '2026-07-17T00:00:00.000Z',
+      vaultJson: buildBitwardenJson(exported.snapshot),
+      attachments: [
+        {
+          id: 'source-attachment-1',
+          itemId: sourceItem.id,
+          fileName: 'restored.txt',
+          size: contents.length
+        }
+      ],
+      attachmentDigests: [digest],
+      archiveFingerprint: 'a'.repeat(64),
+      attachmentBytes: contents.length
+    }
+
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    fake!.uploadAttachmentStream = vi.fn(async (id, fileName, source, signal, onCommitted) => {
+      const chunks: Buffer[] = []
+      for await (const chunk of source.chunks(signal)) chunks.push(Buffer.from(chunk))
+      return fake!.uploadAttachment(id, fileName, Buffer.concat(chunks), signal, onCommitted)
+    })
+
+    const trashArchive = JSON.parse(preview.vaultJson) as {
+      items: Array<Record<string, unknown>>
+    }
+    trashArchive.items.push({
+      ...trashArchive.items[0]!,
+      id: 'trash-source-item',
+      deletedDate: '2026-07-17T00:00:00.000Z'
+    })
+    await expect(
+      service.beginNativeAttachmentRestore(
+        { ...preview, vaultJson: JSON.stringify(trashArchive) },
+        MASTER_PASSWORD
+      )
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+
+    await expect(service.beginNativeAttachmentRestore(preview, MASTER_PASSWORD)).resolves.toEqual({
+      phase: 'syncing-items',
+      totalItems: 1,
+      mappedItems: 0,
+      totalAttachments: 1,
+      uploadedAttachments: 0,
+      needsReconciliationAttachments: 0,
+      totalBytes: contents.length,
+      completedBytes: 0
+    })
+    await expect(
+      service.clearCompletedNativeAttachmentRestore(preview.archiveFingerprint)
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.syncNativeAttachmentRestoreItems(preview.archiveFingerprint)
+    ).resolves.toMatchObject({ phase: 'restoring-attachments', mappedItems: 1 })
+    await expect(
+      service.clearCompletedNativeAttachmentRestore(preview.archiveFingerprint)
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.uploadNativeAttachmentRestoreEntry(
+        preview.archiveFingerprint,
+        { sourceItemId: sourceItem.id, sourceAttachmentId: 'source-attachment-1' },
+        {
+          size: contents.length,
+          chunks: async function* () {
+            yield Buffer.from(contents)
+          }
+        }
+      )
+    ).resolves.toMatchObject({
+      phase: 'complete',
+      uploadedAttachments: 1,
+      completedBytes: contents.length
+    })
+    const summary = await service.nativeAttachmentRestoreStatus()
+    expect(JSON.stringify(summary)).not.toContain(sourceItem.id)
+    expect(JSON.stringify(summary)).not.toContain(digest)
+    expect(JSON.stringify(summary)).not.toContain(preview.archiveFingerprint)
+    await expect(
+      service.clearCompletedNativeAttachmentRestore('f'.repeat(64))
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.clearCompletedNativeAttachmentRestore(preview.archiveFingerprint)
+    ).resolves.toBeUndefined()
+    await expect(service.nativeAttachmentRestoreStatus()).resolves.toBeNull()
+    await expect(
+      service.beginNativeAttachmentRestore(preview, MASTER_PASSWORD)
+    ).resolves.toMatchObject({ phase: 'syncing-items', totalItems: 1 })
+  })
+
+  it('reconciles a response-lost native attachment by authoritative plaintext size and digest', async () => {
+    const sourceHarness = await createHarness()
+    await sourceHarness.service.setup(MASTER_PASSWORD)
+    const sourceItem = await sourceHarness.service.createLogin({ name: 'Response lost restore' })
+    const exported = await sourceHarness.service.exportPortableSnapshot(MASTER_PASSWORD)
+    const contents = Buffer.from('fake attachment contents')
+    const preview = {
+      createdAt: '2026-07-17T00:00:00.000Z',
+      vaultJson: buildBitwardenJson(exported.snapshot),
+      attachments: [
+        {
+          id: 'source-attachment-2',
+          itemId: sourceItem.id,
+          fileName: 'response-lost.txt',
+          size: contents.length
+        }
+      ],
+      attachmentDigests: [createHash('sha256').update(contents).digest('hex')],
+      archiveFingerprint: 'b'.repeat(64),
+      attachmentBytes: contents.length
+    }
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.beginNativeAttachmentRestore(preview, MASTER_PASSWORD)
+    await service.syncNativeAttachmentRestoreItems(preview.archiveFingerprint)
+    fake!.uploadAttachmentStream = vi.fn(async (id, fileName, source, signal) => {
+      const chunks: Buffer[] = []
+      for await (const chunk of source.chunks(signal)) chunks.push(Buffer.from(chunk))
+      await fake!.uploadAttachment(id, fileName, Buffer.concat(chunks), signal)
+      throw new Error('response lost')
+    })
+    const key = { sourceItemId: sourceItem.id, sourceAttachmentId: 'source-attachment-2' }
+    await expect(
+      service.uploadNativeAttachmentRestoreEntry(preview.archiveFingerprint, key, {
+        size: contents.length,
+        chunks: async function* () {
+          yield Buffer.from(contents)
+        }
+      })
+    ).rejects.toMatchObject({ code: 'ATTACHMENT_FAILED' })
+    await expect(service.nativeAttachmentRestoreStatus()).resolves.toMatchObject({
+      phase: 'needs-reconciliation',
+      needsReconciliationAttachments: 1
+    })
+    await expect(
+      service.clearCompletedNativeAttachmentRestore(preview.archiveFingerprint)
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.reconcileNativeAttachmentRestoreEntry(preview.archiveFingerprint, key)
+    ).resolves.toMatchObject({
+      outcome: 'uploaded',
+      summary: { phase: 'complete', uploadedAttachments: 1 }
+    })
+  })
+
+  it('keeps native restore reconciliation conflicted when upload proof or its remote item is absent', async () => {
+    const sourceHarness = await createHarness()
+    await sourceHarness.service.setup(MASTER_PASSWORD)
+    const sourceItem = await sourceHarness.service.createLogin({ name: 'Missing remote proof' })
+    const exported = await sourceHarness.service.exportPortableSnapshot(MASTER_PASSWORD)
+    const contents = Buffer.from('remote proof contents')
+    const preview = {
+      createdAt: '2026-07-17T00:00:00.000Z',
+      vaultJson: buildBitwardenJson(exported.snapshot),
+      attachments: [
+        {
+          id: 'source-attachment-remote-proof',
+          itemId: sourceItem.id,
+          fileName: 'remote-proof.txt',
+          size: contents.length
+        }
+      ],
+      attachmentDigests: [createHash('sha256').update(contents).digest('hex')],
+      archiveFingerprint: 'd'.repeat(64),
+      attachmentBytes: contents.length
+    }
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.beginNativeAttachmentRestore(preview, MASTER_PASSWORD)
+    await service.syncNativeAttachmentRestoreItems(preview.archiveFingerprint)
+    fake!.uploadAttachmentStream = vi.fn(async () => ({
+      id: 'unconfirmed-upload',
+      fileName: 'remote-proof.txt',
+      size: contents.length,
+      sizeName: `${contents.length} B`,
+      legacy: false
+    }))
+    const key = {
+      sourceItemId: sourceItem.id,
+      sourceAttachmentId: 'source-attachment-remote-proof'
+    }
+    await expect(
+      service.uploadNativeAttachmentRestoreEntry(preview.archiveFingerprint, key, {
+        size: contents.length,
+        chunks: async function* () {
+          yield Buffer.from(contents)
+        }
+      })
+    ).rejects.toMatchObject({ code: 'ATTACHMENT_FAILED' })
+    const restoredRemoteIndex = fake!.remoteLogins.findIndex(
+      (login) => login.name === 'Missing remote proof'
+    )
+    expect(restoredRemoteIndex).toBeGreaterThanOrEqual(0)
+    fake!.remoteLogins.splice(restoredRemoteIndex, 1)
+    await expect(
+      service.reconcileNativeAttachmentRestoreEntry(preview.archiveFingerprint, key)
+    ).resolves.toMatchObject({
+      outcome: 'conflict',
+      summary: { phase: 'needs-reconciliation', needsReconciliationAttachments: 1 }
+    })
+  })
+
+  it('keeps PIN unlock locked when interrupted native-restore recovery cannot persist', async () => {
+    const sourceHarness = await createHarness()
+    await sourceHarness.service.setup(MASTER_PASSWORD)
+    const sourceItem = await sourceHarness.service.createLogin({ name: 'Interrupted restore' })
+    const exported = await sourceHarness.service.exportPortableSnapshot(MASTER_PASSWORD)
+    const contents = Buffer.from('fake attachment contents')
+    const preview = {
+      createdAt: '2026-07-17T00:00:00.000Z',
+      vaultJson: buildBitwardenJson(exported.snapshot),
+      attachments: [
+        {
+          id: 'source-attachment-3',
+          itemId: sourceItem.id,
+          fileName: 'interrupted.txt',
+          size: contents.length
+        }
+      ],
+      attachmentDigests: [createHash('sha256').update(contents).digest('hex')],
+      archiveFingerprint: 'c'.repeat(64),
+      attachmentBytes: contents.length
+    }
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service, store } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.beginNativeAttachmentRestore(preview, MASTER_PASSWORD)
+    await service.syncNativeAttachmentRestoreItems(preview.archiveFingerprint)
+    await service.enablePinUnlock({ pin: 'restore-pin', masterPassword: MASTER_PASSWORD })
+    fake!.uploadAttachmentStream = vi.fn(async () => {
+      throw new Error('upload failed')
+    })
+    const originalWrite = store.write.bind(store)
+    const uploadWrites = vi.spyOn(store, 'write')
+    uploadWrites.mockImplementationOnce(originalWrite).mockRejectedValueOnce(new Error('disk full'))
+    await expect(
+      service.uploadNativeAttachmentRestoreEntry(
+        preview.archiveFingerprint,
+        { sourceItemId: sourceItem.id, sourceAttachmentId: 'source-attachment-3' },
+        {
+          size: contents.length,
+          chunks: async function* () {
+            yield Buffer.from(contents)
+          }
+        }
+      )
+    ).rejects.toThrow('disk full')
+    uploadWrites.mockRestore()
+    await service.lock()
+
+    const recoveryWrite = vi.spyOn(store, 'write').mockRejectedValueOnce(new Error('still full'))
+    await expect(service.unlockWithPin({ pin: 'restore-pin' })).rejects.toThrow('still full')
+    await expect(service.status()).resolves.toEqual({ state: 'locked' })
+    expect(service.pinUnlockStatus()).toEqual({ available: true, remainingAttempts: 5 })
+    recoveryWrite.mockRestore()
+    await expect(service.unlockWithPin({ pin: 'restore-pin' })).resolves.toEqual({
+      state: 'unlocked'
+    })
+    await expect(service.nativeAttachmentRestoreStatus()).resolves.toMatchObject({
+      phase: 'needs-reconciliation',
+      needsReconciliationAttachments: 1
+    })
   })
 
   it('supports folder and login CRUD without returning passwords from list or get', async () => {
@@ -5901,7 +6223,7 @@ describe('VaultService encrypted local data', () => {
       expect(await service.revealPassword({ id: migrated.id })).toBe('legacy-secret')
       await service.lock()
       const unlocked = await store.unlock(MASTER_PASSWORD)
-      expect((unlocked.data as { version: number }).version).toBe(17)
+      expect((unlocked.data as { version: number }).version).toBe(18)
       unlocked.key.fill(0)
       unlocked.salt.fill(0)
     }
@@ -6057,7 +6379,12 @@ describe('VaultService encrypted local data', () => {
     await expect(reopened.generatorHistory()).resolves.toEqual([])
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
-    expect(migrated.data).toMatchObject({ version: 17, generatorHistory: [], sends: [] })
+    expect(migrated.data).toMatchObject({
+      version: 18,
+      generatorHistory: [],
+      sends: [],
+      nativeAttachmentRestore: null
+    })
     migrated.key.fill(0)
     migrated.salt.fill(0)
   })
@@ -6091,7 +6418,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 17,
+      version: 18,
       logins: [expect.objectContaining({ attachments: [] })],
       sends: []
     })
@@ -6130,7 +6457,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 17,
+      version: 18,
       sync: { domainSettings: null }
     })
     migrated.key.fill(0)
