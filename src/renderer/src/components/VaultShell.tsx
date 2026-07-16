@@ -2377,6 +2377,46 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     }
   }
 
+  async function deletePasskey(
+    credentialId: string,
+    expectedUpdatedAt: string
+  ): Promise<LoginView | null> {
+    if (!selectedLogin || selectedLogin.deletedAt || selectedLogin.type !== 'login') return null
+    setBusy(true)
+    try {
+      const itemId = selectedLogin.id
+      let operationAuthorizationToken: string | undefined
+      const updated = await withReprompt([itemId], (tokenFor) => {
+        operationAuthorizationToken = tokenFor(itemId)
+        return window.bearwarden.passkeys.delete({
+          id: itemId,
+          credentialId,
+          expectedUpdatedAt,
+          ...(operationAuthorizationToken
+            ? { authorizationToken: operationAuthorizationToken }
+            : {})
+        })
+      })
+      const canRetainDetail = updated.reprompt === 0 || operationAuthorizationToken !== undefined
+      if (canRetainDetail) {
+        cacheLoginDetail(detailCacheRef.current, updated)
+      } else {
+        detailCacheRef.current.delete(itemId)
+      }
+      setItems((current) =>
+        current.map((item) => (item.id === updated.id ? toLoginSummary(updated) : item))
+      )
+      setSelectedLogin(canRetainDetail ? updated : null)
+      announce('已刪除通行密鑰。')
+      return updated
+    } catch (deleteError) {
+      announceError(describeError(deleteError))
+      return null
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function cloneLogin(): Promise<void> {
     if (!selectedLogin || selectedLogin.deletedAt) return
     setBusy(true)
@@ -3600,6 +3640,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 }
                 onCancel={() => requestEditorTransition(() => setEditorMode(null))}
                 onDirtyChange={handleEditorDirtyChange}
+                onDeletePasskey={deletePasskey}
                 onSave={saveLogin}
               />
             ) : selectedSummary?.deletedAt ? (
@@ -4031,7 +4072,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                       aria-labelledby="passkeys-title"
                     >
                       <CardHeader className="bg-muted rounded-none border-b">
-                        <CardTitle id="passkeys-title">Passkeys</CardTitle>
+                        <CardTitle id="passkeys-title">通行密鑰</CardTitle>
                         <CardDescription>{selectedLogin.passkeys.length} 組</CardDescription>
                       </CardHeader>
                       <CardContent className="contents">
@@ -4055,7 +4096,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                           ))}
                         </div>
                         <p className="passkey-note">
-                          BearWarden 會完整同步既有 Passkey；私鑰材料不會傳到顯示程序。
+                          可從編輯項目安全刪除通行密鑰；私鑰材料不會傳到顯示程序。
                         </p>
                       </CardContent>
                     </Card>

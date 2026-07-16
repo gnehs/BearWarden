@@ -8,6 +8,7 @@ import {
   EyeOff,
   FileKey2,
   FolderHeart,
+  KeyRound,
   Link2,
   ListPlus,
   Plus,
@@ -21,6 +22,7 @@ import {
 import type {
   FolderView,
   LoginView,
+  PasskeyView,
   VaultCustomFieldType,
   VaultCustomFieldUpdate,
   VaultEditorSecretField,
@@ -39,6 +41,17 @@ import {
   type PaymentCardBrandOption
 } from '../lib/payment-card'
 import { Button } from './ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle
+} from './ui/alert-dialog'
 import { Badge } from './ui/badge'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
 import { Checkbox } from './ui/checkbox'
@@ -311,6 +324,7 @@ interface LoginEditorProps {
   authorizationToken?: string
   onCancel: () => void
   onDirtyChange: (dirty: boolean) => void
+  onDeletePasskey: (credentialId: string, expectedUpdatedAt: string) => Promise<LoginView | null>
   onSave: (draft: LoginDraft) => Promise<boolean>
 }
 
@@ -325,6 +339,7 @@ function LoginEditor({
   authorizationToken,
   onCancel,
   onDirtyChange,
+  onDeletePasskey,
   onSave
 }: LoginEditorProps): React.JSX.Element {
   const submittingRef = useRef(false)
@@ -343,6 +358,7 @@ function LoginEditor({
       : null
   )
   const [generatorTarget, setGeneratorTarget] = useState<'password' | 'username' | null>(null)
+  const [passkeyDeleteTarget, setPasskeyDeleteTarget] = useState<PasskeyView | null>(null)
   const [draft, setDraft] = useState<LoginDraft>(() => ({
     ...emptyFields,
     ...login,
@@ -1190,6 +1206,16 @@ function LoginEditor({
     }
   }
 
+  async function deletePasskey(): Promise<void> {
+    const target = passkeyDeleteTarget
+    const expectedUpdatedAt = draftRef.current.expectedUpdatedAt
+    if (!target || expectedUpdatedAt === null) return
+    const updated = await onDeletePasskey(target.credentialId, expectedUpdatedAt)
+    if (!updated || !editorMountedRef.current) return
+    setDraft((current) => ({ ...current, expectedUpdatedAt: updated.updatedAt }))
+    setPasskeyDeleteTarget(null)
+  }
+
   const editorTitle = login ? `編輯${typeLabel(draft.type)}` : `新增 ${typeLabel(draft.type)}`
   const detectedCardBrand = detectPaymentCardBrand(draft.number)
   const folderSelectItems = [
@@ -1437,6 +1463,43 @@ function LoginEditor({
                         </div>
                       )}
                     </Field>
+                    {login && login.passkeys.length > 0 && (
+                      <Field>
+                        <FieldLabel>通行密鑰</FieldLabel>
+                        <FieldDescription>
+                          刪除會立即同步，不會把私鑰載入編輯畫面；其他尚未儲存的欄位會保留。
+                        </FieldDescription>
+                        <div className="passkey-list overflow-hidden rounded-md border">
+                          {login.passkeys.map((passkey, index) => (
+                            <article
+                              key={`${passkey.credentialId}:${index}`}
+                              className="passkey-item attachment-item last:border-b-0"
+                            >
+                              <span className="passkey-icon" aria-hidden="true">
+                                <KeyRound size={17} />
+                              </span>
+                              <div>
+                                <strong>{passkey.rpName || passkey.rpId}</strong>
+                                <span>
+                                  {passkey.userDisplayName || passkey.userName || '未命名使用者'}
+                                </span>
+                                <small>{passkey.rpId}</small>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={`刪除 ${passkey.rpName || passkey.rpId} 的通行密鑰`}
+                                disabled={busy}
+                                onClick={() => setPasskeyDeleteTarget(passkey)}
+                              >
+                                <Trash2 />
+                              </Button>
+                            </article>
+                          ))}
+                        </div>
+                      </Field>
+                    )}
                   </>
                 )}
 
@@ -2251,6 +2314,40 @@ function LoginEditor({
           </form>
         </DialogContent>
       </Dialog>
+      <AlertDialog
+        open={passkeyDeleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setPasskeyDeleteTarget(null)
+        }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogMedia>
+              <Trash2 />
+            </AlertDialogMedia>
+            <AlertDialogTitle>刪除這組通行密鑰？</AlertDialogTitle>
+            <AlertDialogDescription>
+              {passkeyDeleteTarget
+                ? `「${passkeyDeleteTarget.rpName || passkeyDeleteTarget.rpId}」的通行密鑰會立即從此登入項目移除並同步，這個動作無法復原。`
+                : '這組通行密鑰會立即從登入項目移除。'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel type="button" disabled={busy}>
+              保留通行密鑰
+            </AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              variant="destructive"
+              disabled={busy}
+              onClick={() => void deletePasskey()}
+            >
+              {busy ? <Spinner data-icon="inline-start" /> : <Trash2 data-icon="inline-start" />}
+              {busy ? '刪除中…' : '刪除通行密鑰'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {generatorTarget && (
         <CredentialGeneratorDialog
           initialTab={generatorTarget}
