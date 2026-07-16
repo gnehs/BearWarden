@@ -28,6 +28,7 @@ import {
 } from '@renderer/components/ui/alert-dialog'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
+import { Checkbox } from '@renderer/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -36,7 +37,13 @@ import {
   DialogHeader,
   DialogTitle
 } from '@renderer/components/ui/dialog'
-import { Field, FieldDescription, FieldGroup, FieldLabel } from '@renderer/components/ui/field'
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel
+} from '@renderer/components/ui/field'
 import {
   InputGroup,
   InputGroupAddon,
@@ -56,15 +63,19 @@ import { Spinner } from '@renderer/components/ui/spinner'
 import AccountApiKeyDialog from './AccountApiKeyDialog'
 import AccountDevicesDialog from './AccountDevicesDialog'
 import AccountTwoFactorDialog from './AccountTwoFactorDialog'
+import {
+  buildSyncTwoFactorRequest,
+  WEB_AUTHN_TWO_FACTOR_METHOD,
+  type SyncTwoFactorFormMethod
+} from './sync-two-factor-request'
 
 const BITWARDEN_CLOUD_URL = 'https://bitwarden.com'
 
-type TwoFactorMethod = '0' | '1' | '3'
-
-const twoFactorMethods: { label: string; value: TwoFactorMethod }[] = [
+const twoFactorMethods: { label: string; value: SyncTwoFactorFormMethod }[] = [
   { label: '驗證器應用程式', value: '0' },
   { label: '電子郵件', value: '1' },
-  { label: 'YubiKey OTP', value: '3' }
+  { label: 'YubiKey OTP', value: '3' },
+  { label: '安全金鑰', value: WEB_AUTHN_TWO_FACTOR_METHOD }
 ]
 
 interface SyncDialogProps {
@@ -76,13 +87,14 @@ interface SyncDialogProps {
 
 function describeSyncError(error: unknown): string {
   if (!(error instanceof Error)) return '同步未完成，請稍後再試。'
+  if (/(?:CANCEL|ABORT)/i.test(error.message)) return '操作已取消。'
   if (error.message.includes('NEW_DEVICE_REQUIRED'))
     return '伺服器要求新裝置驗證碼。請從 Bitwarden 寄送的郵件取得驗證碼後，在進階選項輸入。'
   if (error.message.includes('AUTH_REQUIRED')) return 'Bitwarden 保管庫需要重新登入或解鎖。'
   if (error.message.includes('UNSUPPORTED_ACCOUNT'))
     return '此帳號使用尚未支援的新版帳號加密或登入方式；為避免資料損毀，BearWarden 不會進行任何遠端寫入。'
   if (error.message.includes('LOCKED')) return '保管庫已鎖定，請輸入主密碼後再試。'
-  if (error.message.includes('TWO_FACTOR')) return '雙重驗證碼無效或已過期，請重新輸入。'
+  if (error.message.includes('TWO_FACTOR')) return '雙重驗證無效、已過期或已取消，請重新嘗試。'
   if (error.message.includes('INVALID_URL')) return '請輸入有效的 HTTPS 伺服器網址。'
   return '同步未完成，請檢查連線與登入資訊後再試。'
 }
@@ -110,8 +122,9 @@ function SyncDialog({
   const [serverUrl, setServerUrl] = useState(status.serverUrl ?? BITWARDEN_CLOUD_URL)
   const [email, setEmail] = useState(status.email ?? '')
   const [masterPassword, setMasterPassword] = useState('')
-  const [twoFactorMethod, setTwoFactorMethod] = useState<TwoFactorMethod>('0')
+  const [twoFactorMethod, setTwoFactorMethod] = useState<SyncTwoFactorFormMethod>('0')
   const [twoFactorCode, setTwoFactorCode] = useState('')
+  const [webAuthnRemember, setWebAuthnRemember] = useState(false)
   const [newDeviceOtp, setNewDeviceOtp] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -161,7 +174,9 @@ function SyncDialog({
 
   function clearSecrets(): void {
     setMasterPassword('')
+    setTwoFactorMethod('0')
     setTwoFactorCode('')
+    setWebAuthnRemember(false)
     setNewDeviceOtp('')
     setShowPassword(false)
   }
@@ -209,7 +224,7 @@ function SyncDialog({
         email: email.trim(),
         masterPassword,
         ...(newDeviceOtp.trim() ? { newDeviceOtp: newDeviceOtp.trim() } : {}),
-        ...(twoFactorCode.trim() ? { twoFactorMethod, twoFactorCode: twoFactorCode.trim() } : {})
+        ...buildSyncTwoFactorRequest({ twoFactorMethod, twoFactorCode, webAuthnRemember })
       })
       await refreshAfterSuccess(result, '已連線並完成同步。')
     } catch (connectError) {
@@ -231,7 +246,7 @@ function SyncDialog({
       const nextStatus = await window.bearwarden.sync.unlock({
         masterPassword,
         ...(newDeviceOtp.trim() ? { newDeviceOtp: newDeviceOtp.trim() } : {}),
-        ...(twoFactorCode.trim() ? { twoFactorMethod, twoFactorCode: twoFactorCode.trim() } : {})
+        ...buildSyncTwoFactorRequest({ twoFactorMethod, twoFactorCode, webAuthnRemember })
       })
       onStatusChange(nextStatus)
       clearSecrets()
@@ -435,7 +450,9 @@ function SyncDialog({
                     <Select
                       items={twoFactorMethods}
                       value={twoFactorMethod}
-                      onValueChange={(value) => setTwoFactorMethod(value as TwoFactorMethod)}
+                      onValueChange={(value) =>
+                        setTwoFactorMethod(value as SyncTwoFactorFormMethod)
+                      }
                       disabled={busy}
                     >
                       <SelectTrigger id="two-factor-method" className="w-full">
@@ -452,17 +469,32 @@ function SyncDialog({
                       </SelectContent>
                     </Select>
                   </Field>
-                  <Field>
-                    <FieldLabel htmlFor="two-factor-code">雙重驗證碼（選填）</FieldLabel>
-                    <Input
-                      id="two-factor-code"
-                      autoComplete="one-time-code"
-                      autoCapitalize="none"
-                      value={twoFactorCode}
-                      onChange={(event) => setTwoFactorCode(event.target.value)}
-                      disabled={busy}
-                    />
-                  </Field>
+                  {twoFactorMethod === WEB_AUTHN_TWO_FACTOR_METHOD ? (
+                    <Field orientation="horizontal" data-disabled={busy || undefined}>
+                      <Checkbox
+                        id="webauthn-remember"
+                        checked={webAuthnRemember}
+                        onCheckedChange={setWebAuthnRemember}
+                        disabled={busy}
+                      />
+                      <FieldContent>
+                        <FieldLabel htmlFor="webauthn-remember">記住這台裝置</FieldLabel>
+                        <FieldDescription>讓伺服器在這台裝置上暫時略過雙重驗證。</FieldDescription>
+                      </FieldContent>
+                    </Field>
+                  ) : (
+                    <Field>
+                      <FieldLabel htmlFor="two-factor-code">雙重驗證碼（選填）</FieldLabel>
+                      <Input
+                        id="two-factor-code"
+                        autoComplete="one-time-code"
+                        autoCapitalize="none"
+                        value={twoFactorCode}
+                        onChange={(event) => setTwoFactorCode(event.target.value)}
+                        disabled={busy}
+                      />
+                    </Field>
+                  )}
                   <Field>
                     <FieldLabel htmlFor="new-device-otp">新裝置驗證碼（選填）</FieldLabel>
                     <Input

@@ -1639,6 +1639,7 @@ function parseSyncConnect(value: unknown): SyncConnectRequest {
     'masterPassword',
     'twoFactorMethod',
     'twoFactorCode',
+    'webAuthnRemember',
     'newDeviceOtp'
   ])
   const result: SyncConnectRequest = {
@@ -1649,8 +1650,10 @@ function parseSyncConnect(value: unknown): SyncConnectRequest {
   const twoFactorCode = optionalStringOrNull(record, 'twoFactorCode')
   const newDeviceOtp = optionalStringOrNull(record, 'newDeviceOtp')
   const twoFactorMethod = optionalTwoFactorMethod(record, 'twoFactorMethod')
+  const webAuthnRemember = optionalBoolean(record, 'webAuthnRemember')
   if (twoFactorCode) result.twoFactorCode = twoFactorCode
   if (twoFactorMethod) result.twoFactorMethod = twoFactorMethod
+  if (webAuthnRemember !== undefined) result.webAuthnRemember = webAuthnRemember
   if (newDeviceOtp) result.newDeviceOtp = newDeviceOtp
   return result
 }
@@ -1660,6 +1663,7 @@ function parseSyncUnlock(value: unknown): SyncUnlockRequest {
     'masterPassword',
     'twoFactorMethod',
     'twoFactorCode',
+    'webAuthnRemember',
     'newDeviceOtp'
   ])
   const result: SyncUnlockRequest = {
@@ -1668,8 +1672,10 @@ function parseSyncUnlock(value: unknown): SyncUnlockRequest {
   const twoFactorCode = optionalStringOrNull(record, 'twoFactorCode')
   const twoFactorMethod = optionalTwoFactorMethod(record, 'twoFactorMethod')
   const newDeviceOtp = optionalStringOrNull(record, 'newDeviceOtp')
+  const webAuthnRemember = optionalBoolean(record, 'webAuthnRemember')
   if (twoFactorCode) result.twoFactorCode = twoFactorCode
   if (twoFactorMethod) result.twoFactorMethod = twoFactorMethod
+  if (webAuthnRemember !== undefined) result.webAuthnRemember = webAuthnRemember
   if (newDeviceOtp) result.newDeviceOtp = newDeviceOtp
   return result
 }

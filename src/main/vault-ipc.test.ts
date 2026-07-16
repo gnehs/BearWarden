@@ -898,6 +898,7 @@ describe('registerVaultIpc reprompt gate', () => {
         revision: 'b'.repeat(64)
       })),
       connectSync: vi.fn(async () => ({ configured: true, state: 'ready' })),
+      unlockSync: vi.fn(async () => ({ configured: true, state: 'ready' })),
       disconnectSync: vi.fn(async () => ({ configured: false, state: 'unconfigured' })),
       createLogin: vi.fn(async (request) => ({ id: 'created', ...request })),
       cloneLogin: vi.fn(async () => ({ id: 'clone' })),
@@ -1048,6 +1049,44 @@ describe('registerVaultIpc reprompt gate', () => {
 
     expect(order).toEqual(['before', 'connect', 'before', 'disconnect'])
     expect(beforeSyncReconfigure).toHaveBeenCalledTimes(2)
+  })
+
+  it('accepts only the explicit WebAuthn remember flag for sync connect and unlock', async () => {
+    const { event, vault } = harness()
+    const connect = electronMock.handlers.get(IPC_CHANNELS.syncConnect)!
+    const unlock = electronMock.handlers.get(IPC_CHANNELS.syncUnlock)!
+    const connectRequest = {
+      serverUrl: 'https://vault.example.invalid',
+      email: 'person@example.invalid',
+      masterPassword: 'remote password',
+      webAuthnRemember: false
+    }
+    const unlockRequest = { masterPassword: 'remote password', webAuthnRemember: true }
+
+    await connect(event, connectRequest)
+    await unlock(event, unlockRequest)
+
+    expect(vault.connectSync).toHaveBeenCalledWith(connectRequest)
+    expect(vault.unlockSync).toHaveBeenCalledWith(unlockRequest)
+
+    for (const invalid of [
+      { ...connectRequest, webAuthnRemember: 'false' },
+      { ...connectRequest, webAuthnRemember: null },
+      { ...connectRequest, twoFactorMethod: '7' },
+      { ...connectRequest, challenge: 'must-not-cross-ipc' },
+      { ...connectRequest, assertion: 'must-not-cross-ipc' }
+    ]) {
+      await expect(connect(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+
+    for (const invalid of [
+      { ...unlockRequest, webAuthnRemember: 1 },
+      { ...unlockRequest, twoFactorMethod: '7' },
+      { ...unlockRequest, challenge: 'must-not-cross-ipc' },
+      { ...unlockRequest, assertion: 'must-not-cross-ipc' }
+    ]) {
+      await expect(unlock(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
   })
 
   it('keeps portability IPC path-free, exact, and password-proof scoped', async () => {
