@@ -189,6 +189,7 @@ export class EncryptedVaultStore<T> {
     let iv: Buffer | undefined
     let authTag: Buffer | undefined
     let ciphertext: Buffer | undefined
+    let aad: Buffer | undefined
     let key: Buffer | undefined
 
     try {
@@ -213,7 +214,8 @@ export class EncryptedVaultStore<T> {
       const decipher = createDecipheriv('aes-256-gcm', key, iv, {
         authTagLength: AUTH_TAG_LENGTH
       })
-      decipher.setAAD(authenticatedMetadata(envelope))
+      aad = authenticatedMetadata(envelope)
+      decipher.setAAD(aad)
       decipher.setAuthTag(authTag)
       const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()])
 
@@ -241,6 +243,90 @@ export class EncryptedVaultStore<T> {
       iv?.fill(0)
       authTag?.fill(0)
       ciphertext?.fill(0)
+      aad?.fill(0)
+    }
+  }
+
+  /**
+   * Opens the vault with operation-scoped key material recovered by another main-process unlock
+   * mechanism. The envelope salt is bound to the supplied salt before any plaintext is returned.
+   * Caller-owned buffers are never retained or modified.
+   */
+  async unlockWithKey(vaultKey: Buffer, expectedSalt: Buffer): Promise<DecryptedVault<T>> {
+    if (vaultKey.length !== KEY_LENGTH || expectedSalt.length !== SALT_LENGTH) {
+      throw new VaultError('INTERNAL_ERROR')
+    }
+
+    let operationKey: Buffer | undefined
+    let operationExpectedSalt: Buffer | undefined
+    let fileContents: Buffer | undefined
+    let envelopeSalt: Buffer | undefined
+    let iv: Buffer | undefined
+    let authTag: Buffer | undefined
+    let ciphertext: Buffer | undefined
+    let aad: Buffer | undefined
+
+    try {
+      operationKey = Buffer.from(vaultKey)
+      operationExpectedSalt = Buffer.from(expectedSalt)
+      const fileStats = await stat(this.filePath)
+      if (!fileStats.isFile() || fileStats.size <= 0 || fileStats.size > MAX_VAULT_BYTES) {
+        throw new VaultError('CORRUPT_VAULT')
+      }
+
+      fileContents = await readFile(this.filePath)
+      let envelope: VaultEnvelopeV1
+      try {
+        envelope = parseEnvelope(JSON.parse(fileContents.toString('utf8')))
+      } catch {
+        throw new VaultError('CORRUPT_VAULT')
+      }
+      envelopeSalt = decodeBase64(envelope.kdf.salt, SALT_LENGTH)
+      if (!timingSafeEqual(envelopeSalt, operationExpectedSalt)) {
+        throw new VaultError('CORRUPT_VAULT')
+      }
+      iv = decodeBase64(envelope.cipher.iv, IV_LENGTH)
+      authTag = decodeBase64(envelope.cipher.authTag, AUTH_TAG_LENGTH)
+      ciphertext = decodeBase64(envelope.ciphertext)
+
+      const decipher = createDecipheriv('aes-256-gcm', operationKey, iv, {
+        authTagLength: AUTH_TAG_LENGTH
+      })
+      aad = authenticatedMetadata(envelope)
+      decipher.setAAD(aad)
+      decipher.setAuthTag(authTag)
+      let plaintext: Buffer | undefined
+      try {
+        plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()])
+        let data: T
+        try {
+          data = JSON.parse(plaintext.toString('utf8')) as T
+        } catch {
+          throw new VaultError('CORRUPT_VAULT')
+        }
+        return {
+          data,
+          key: Buffer.from(operationKey),
+          salt: Buffer.from(envelopeSalt)
+        }
+      } finally {
+        plaintext?.fill(0)
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new VaultError('NOT_INITIALIZED')
+      }
+      if (error instanceof VaultError) throw error
+      throw new VaultError('CORRUPT_VAULT')
+    } finally {
+      operationKey?.fill(0)
+      operationExpectedSalt?.fill(0)
+      fileContents?.fill(0)
+      envelopeSalt?.fill(0)
+      iv?.fill(0)
+      authTag?.fill(0)
+      ciphertext?.fill(0)
+      aad?.fill(0)
     }
   }
 
