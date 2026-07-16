@@ -274,6 +274,11 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
     },
     sync: async () => undefined,
     getAccountBreachReport: async () => ({ status: 'complete', breaches: [] }),
+    getEquivalentDomainSettings: async () => ({
+      equivalentDomains: [],
+      globalEquivalentDomains: []
+    }),
+    updateEquivalentDomainSettings: async () => undefined,
     listFolders: async () => remoteFolders.map((folder) => ({ ...folder })),
     listPersonalLogins: async () =>
       remoteLogins.map((login) => ({

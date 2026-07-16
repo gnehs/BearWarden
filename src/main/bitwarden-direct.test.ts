@@ -819,6 +819,49 @@ describe('BitwardenDirectClient', () => {
     await expect(client.status()).resolves.toEqual({ status: 'locked' })
   })
 
+  it('passes authenticated equivalent-domain settings through without requiring decrypted vault keys', async () => {
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url, init) => {
+        if (url.endsWith('/api/settings/domains') && init?.method === 'GET') {
+          return jsonResponse({
+            equivalentDomains: [['first.example', 'second.example']],
+            globalEquivalentDomains: [
+              { type: 4, domains: ['a.example', 'b.example'], excluded: false }
+            ]
+          })
+        }
+        if (url.endsWith('/api/settings/domains') && init?.method === 'PUT') {
+          return jsonResponse({})
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: 1 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: null,
+        securityStamp: null
+      }
+    })
+
+    await expect(client.getEquivalentDomainSettings()).resolves.toEqual({
+      equivalentDomains: [['first.example', 'second.example']],
+      globalEquivalentDomains: [{ type: 4, domains: ['a.example', 'b.example'], excluded: false }]
+    })
+    await expect(
+      client.updateEquivalentDomainSettings({
+        equivalentDomains: [['one.example']],
+        excludedGlobalEquivalentDomains: [4]
+      })
+    ).resolves.toBeUndefined()
+    await expect(client.status()).resolves.toEqual({ status: 'locked' })
+  })
+
   it('rejects a response whose aggregate nested rows exceed the sync budget', () => {
     expect(addAggregateRemoteRows(2, 1, 3)).toBe(3)
     expect(() => addAggregateRemoteRows(3, 1, 3)).toThrow(

@@ -243,6 +243,86 @@ describe('BitwardenHttpClient', () => {
     })
   })
 
+  it('reads and updates authenticated equivalent-domain settings under a reverse-proxy prefix', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        json({
+          Object: 'domains',
+          EquivalentDomains: [[], ['one.example'], ['bücher.example', 'xn--bcher-kva.example']],
+          GlobalEquivalentDomains: [
+            { Type: 7, Domains: ['alpha.example', 'beta.example'], Excluded: true }
+          ]
+        })
+      )
+      .mockResolvedValueOnce(json({}))
+    const client = new BitwardenHttpClient({
+      server: 'https://vault.example.test/bw',
+      fetch
+    })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 1 })
+
+    await expect(client.getEquivalentDomainSettings()).resolves.toEqual({
+      equivalentDomains: [[], ['one.example'], ['bücher.example', 'xn--bcher-kva.example']],
+      globalEquivalentDomains: [
+        { type: 7, domains: ['alpha.example', 'beta.example'], excluded: true }
+      ]
+    })
+    await expect(
+      client.updateEquivalentDomainSettings({
+        equivalentDomains: [['one.example'], ['first.example', 'second.example']],
+        excludedGlobalEquivalentDomains: [7]
+      })
+    ).resolves.toBeUndefined()
+
+    expect(fetch.mock.calls.map(([url, init]) => `${init?.method} ${url}`)).toEqual([
+      'GET https://vault.example.test/bw/api/settings/domains',
+      'PUT https://vault.example.test/bw/api/settings/domains'
+    ])
+    expect(new Headers(fetch.mock.calls[1]?.[1]?.headers).get('authorization')).toBe(
+      'Bearer access'
+    )
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
+      equivalentDomains: [['one.example'], ['first.example', 'second.example']],
+      excludedGlobalEquivalentDomains: [7]
+    })
+  })
+
+  it('rejects malformed, ambiguous, or oversized equivalent-domain settings', async () => {
+    const malformedFetch = vi.fn<FetchLike>().mockResolvedValue(
+      json({
+        equivalentDomains: [['valid.example']],
+        globalEquivalentDomains: [
+          { type: 1, domains: ['a.example'], excluded: false },
+          { type: 1, domains: ['b.example'], excluded: true }
+        ]
+      })
+    )
+    const malformedClient = new BitwardenHttpClient({ server: 'us', fetch: malformedFetch })
+    malformedClient.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 1 })
+    await expect(malformedClient.getEquivalentDomainSettings()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+
+    const oversizedFetch = vi.fn<FetchLike>().mockResolvedValue(
+      new Response('{}', {
+        headers: { 'content-length': String(2 * 1024 * 1024 + 1) }
+      })
+    )
+    const oversizedClient = new BitwardenHttpClient({ server: 'us', fetch: oversizedFetch })
+    oversizedClient.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 1 })
+    await expect(oversizedClient.getEquivalentDomainSettings()).rejects.toMatchObject({
+      code: 'TOO_LARGE'
+    })
+
+    await expect(
+      malformedClient.updateEquivalentDomainSettings({
+        equivalentDomains: [['contains,comma.example']],
+        excludedGlobalEquivalentDomains: []
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  })
+
   it('uses the personal folder and cipher CRUD routes', async () => {
     const fetch = vi.fn<FetchLike>().mockImplementation(async (url, init) => {
       if (

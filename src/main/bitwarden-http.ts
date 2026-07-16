@@ -86,6 +86,22 @@ export type BitwardenAccountBreachReport =
   | { status: 'complete'; breaches: BitwardenAccountBreach[] }
   | { status: 'unavailable'; reason: 'server-hibp-unconfigured' }
 
+export interface BitwardenGlobalEquivalentDomain {
+  type: number
+  domains: string[]
+  excluded: boolean
+}
+
+export interface BitwardenEquivalentDomainSettings {
+  equivalentDomains: string[][]
+  globalEquivalentDomains: BitwardenGlobalEquivalentDomain[]
+}
+
+export interface BitwardenEquivalentDomainUpdate {
+  equivalentDomains: string[][]
+  excludedGlobalEquivalentDomains: number[]
+}
+
 export interface PasswordTokenForm {
   email: string
   /** Already transformed by the caller's crypto layer; never a raw master password. */
@@ -164,6 +180,11 @@ const MAX_HIBP_BREACH_RESPONSE_BYTES = 4 * 1024 * 1024
 const MAX_HIBP_BREACHES = 10_000
 const MAX_HIBP_DATA_CLASSES = 100
 const MAX_HIBP_STRING_BYTES = 4_096
+const MAX_DOMAIN_SETTINGS_RESPONSE_BYTES = 2 * 1024 * 1024
+const MAX_EQUIVALENT_DOMAIN_GROUPS = 10_000
+const MAX_EQUIVALENT_DOMAINS_PER_GROUP = 1_000
+const MAX_EQUIVALENT_DOMAIN_TOTAL = 100_000
+const MAX_EQUIVALENT_DOMAIN_BYTES = 1_024
 // Binary decryption currently holds ciphertext and plaintext in memory at once. Keep
 // this below Bitwarden's server limit until the file pipeline supports streaming.
 const MAX_ATTACHMENT_BYTES = 128 * 1024 * 1024
@@ -644,6 +665,34 @@ export class BitwardenHttpClient {
       throw error
     }
     return parseAccountBreachReport(response)
+  }
+
+  async getEquivalentDomainSettings(
+    signal?: AbortSignal
+  ): Promise<BitwardenEquivalentDomainSettings> {
+    const response = await this.requestJson('GET', `${this.urls.apiUrl}/settings/domains`, {
+      signal,
+      maxResponseBytes: MAX_DOMAIN_SETTINGS_RESPONSE_BYTES,
+      tooLargeCode: 'TOO_LARGE'
+    })
+    return parseEquivalentDomainSettings(response)
+  }
+
+  async updateEquivalentDomainSettings(
+    update: BitwardenEquivalentDomainUpdate,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const canonical = parseEquivalentDomainUpdate(update)
+    const response = await this.requestJson('PUT', `${this.urls.apiUrl}/settings/domains`, {
+      body: {
+        equivalentDomains: canonical.equivalentDomains,
+        excludedGlobalEquivalentDomains: canonical.excludedGlobalEquivalentDomains
+      },
+      signal,
+      maxResponseBytes: MAX_DOMAIN_SETTINGS_RESPONSE_BYTES,
+      tooLargeCode: 'TOO_LARGE'
+    })
+    if (!isRecord(response)) throw new BitwardenHttpError('INVALID_RESPONSE')
   }
 
   async sync(signal?: AbortSignal): Promise<JsonObject> {
@@ -1246,6 +1295,117 @@ function parseAccountBreachReport(value: JsonValue): BitwardenAccountBreachRepor
       return parseHibpBreach(row)
     })
   }
+}
+
+function domainSettingsProperty(
+  record: JsonObject,
+  lower: string,
+  upper: string
+): JsonValue | undefined {
+  return record[lower] ?? record[upper]
+}
+
+function parseEquivalentDomain(value: JsonValue): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.trim() !== value ||
+    /[\0\r\n,]/u.test(value) ||
+    Buffer.byteLength(value, 'utf8') > MAX_EQUIVALENT_DOMAIN_BYTES
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function parseEquivalentDomainGroups(value: JsonValue | undefined): string[][] {
+  if (!Array.isArray(value) || value.length > MAX_EQUIVALENT_DOMAIN_GROUPS) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  let total = 0
+  return value.map((group) => {
+    if (!Array.isArray(group) || group.length > MAX_EQUIVALENT_DOMAINS_PER_GROUP) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    total += group.length
+    if (total > MAX_EQUIVALENT_DOMAIN_TOTAL) throw new BitwardenHttpError('TOO_LARGE')
+    return group.map(parseEquivalentDomain)
+  })
+}
+
+function parseEquivalentDomainTypes(value: JsonValue | undefined): number[] {
+  if (!Array.isArray(value) || value.length > MAX_EQUIVALENT_DOMAIN_GROUPS) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  const seen = new Set<number>()
+  return value.map((candidate) => {
+    const type = finiteInteger(candidate)
+    if (type === undefined || type > 2_147_483_647 || seen.has(type)) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    seen.add(type)
+    return type
+  })
+}
+
+function parseEquivalentDomainUpdate(value: unknown): BitwardenEquivalentDomainUpdate {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const keys = Object.keys(value)
+  if (
+    keys.length !== 2 ||
+    !keys.includes('equivalentDomains') ||
+    !keys.includes('excludedGlobalEquivalentDomains')
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return {
+    equivalentDomains: parseEquivalentDomainGroups(value.equivalentDomains),
+    excludedGlobalEquivalentDomains: parseEquivalentDomainTypes(
+      value.excludedGlobalEquivalentDomains
+    )
+  }
+}
+
+function parseEquivalentDomainSettings(value: JsonValue): BitwardenEquivalentDomainSettings {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const object = domainSettingsProperty(value, 'object', 'Object')
+  if (object !== undefined && object !== 'domains') {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  const equivalentDomains = parseEquivalentDomainGroups(
+    domainSettingsProperty(value, 'equivalentDomains', 'EquivalentDomains')
+  )
+  const rawGlobals = domainSettingsProperty(
+    value,
+    'globalEquivalentDomains',
+    'GlobalEquivalentDomains'
+  )
+  if (!Array.isArray(rawGlobals) || rawGlobals.length > MAX_EQUIVALENT_DOMAIN_GROUPS) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  let total = equivalentDomains.reduce((count, group) => count + group.length, 0)
+  const seenTypes = new Set<number>()
+  const globalEquivalentDomains = rawGlobals.map((candidate) => {
+    if (!isRecord(candidate)) throw new BitwardenHttpError('INVALID_RESPONSE')
+    const type = finiteInteger(domainSettingsProperty(candidate, 'type', 'Type'))
+    const domains = domainSettingsProperty(candidate, 'domains', 'Domains')
+    const excluded = domainSettingsProperty(candidate, 'excluded', 'Excluded')
+    if (
+      type === undefined ||
+      type > 2_147_483_647 ||
+      seenTypes.has(type) ||
+      !Array.isArray(domains) ||
+      domains.length > MAX_EQUIVALENT_DOMAINS_PER_GROUP ||
+      typeof excluded !== 'boolean'
+    ) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    seenTypes.add(type)
+    total += domains.length
+    if (total > MAX_EQUIVALENT_DOMAIN_TOTAL) throw new BitwardenHttpError('TOO_LARGE')
+    return { type, domains: domains.map(parseEquivalentDomain), excluded }
+  })
+  return { equivalentDomains, globalEquivalentDomains }
 }
 
 interface ParsedAttachmentDownload {

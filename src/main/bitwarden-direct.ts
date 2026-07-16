@@ -26,6 +26,8 @@ import {
   type BitwardenAccountBreachReport,
   type BitwardenAttachmentDownload,
   type BitwardenAttachmentUpload,
+  type BitwardenEquivalentDomainSettings,
+  type BitwardenEquivalentDomainUpdate,
   type BitwardenPrelogin,
   type BitwardenSession,
   type JsonObject,
@@ -216,6 +218,11 @@ export interface BitwardenSyncClient {
   status(signal?: AbortSignal): Promise<{ status: 'unauthenticated' | 'locked' | 'unlocked' }>
   /** Authenticated Vaultwarden HIBP account-breach report; it does not require vault decryption. */
   getAccountBreachReport(email: string, signal?: AbortSignal): Promise<BitwardenAccountBreachReport>
+  getEquivalentDomainSettings(signal?: AbortSignal): Promise<BitwardenEquivalentDomainSettings>
+  updateEquivalentDomainSettings(
+    update: BitwardenEquivalentDomainUpdate,
+    signal?: AbortSignal
+  ): Promise<void>
   login(request: BitwardenLoginRequest): Promise<void>
   unlock(request: BitwardenUnlockRequest): Promise<void>
   sync(signal?: AbortSignal): Promise<void>
@@ -1325,6 +1332,27 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   ): Promise<BitwardenAccountBreachReport> {
     try {
       return await this.http.getAccountBreachReport(email, signal)
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  async getEquivalentDomainSettings(
+    signal?: AbortSignal
+  ): Promise<BitwardenEquivalentDomainSettings> {
+    try {
+      return await this.http.getEquivalentDomainSettings(signal)
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  async updateEquivalentDomainSettings(
+    update: BitwardenEquivalentDomainUpdate,
+    signal?: AbortSignal
+  ): Promise<void> {
+    try {
+      await this.http.updateEquivalentDomainSettings(update, signal)
     } catch (error) {
       throw this.mapError(error)
     }
