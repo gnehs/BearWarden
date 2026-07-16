@@ -67,6 +67,34 @@ function makeStore(options?: {
 }
 
 describe('SshKeyImportSessionStore', () => {
+  it('stages generated private material without exposing it and consumes it once', () => {
+    const { store, reads } = makeStore()
+
+    const ready = store.stageGenerated(context, material)
+
+    expect(reads()).toBe(0)
+    expect(ready).toEqual({
+      status: 'ready',
+      token: expect.any(String),
+      expiresAt: expect.any(Number),
+      publicKey: material.publicKey,
+      fingerprint: material.fingerprint
+    })
+    expect(JSON.stringify(ready)).not.toContain(material.privateKey)
+    if (ready.status !== 'ready') return
+    expect(
+      store.consumeReady(ready.token, {
+        senderId: context.senderId,
+        vaultGeneration: context.vaultGeneration + 1
+      })
+    ).toEqual({ status: 'error', code: 'SessionUnavailable' })
+    expect(store.consumeReady(ready.token, context)).toEqual({ status: 'ready', material })
+    expect(store.consumeReady(ready.token, context)).toEqual({
+      status: 'error',
+      code: 'SessionUnavailable'
+    })
+  })
+
   it('reads the clipboard once and never exposes private material in ready metadata', () => {
     const { store, reads } = makeStore()
 
@@ -286,6 +314,10 @@ describe('SshKeyImportSessionStore', () => {
       expect(store.begin({ senderId, vaultGeneration: 1 }).status).toBe('awaitingPassphrase')
     }
     expect(store.begin({ senderId: 32, vaultGeneration: 1 })).toEqual({
+      status: 'error',
+      code: 'SessionLimitReached'
+    })
+    expect(store.stageGenerated({ senderId: 32, vaultGeneration: 1 }, material)).toEqual({
       status: 'error',
       code: 'SessionLimitReached'
     })

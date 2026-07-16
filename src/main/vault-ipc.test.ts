@@ -208,6 +208,10 @@ describe('registerVaultIpc reprompt gate', () => {
           }
         })
     )
+    vault.unlockedGeneration = vi.fn(async () => authorizationState.generation)
+    vault.runUnlockedOperation = vi.fn(async (operation: (generation: number) => unknown) =>
+      operation(authorizationState.generation)
+    )
     const portability = {
       exportVault: vi.fn(async () => ({
         canceled: false,
@@ -655,16 +659,35 @@ describe('registerVaultIpc reprompt gate', () => {
     await expect(clear(event, {})).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
   })
 
-  it('generates an SSH key only through an exact no-input IPC request', async () => {
+  it('stages generated SSH private material in main and returns only a one-time handle', async () => {
     const { event, vault } = harness()
     const generate = electronMock.handlers.get(IPC_CHANNELS.sshKeyGenerate)!
+    const create = electronMock.handlers.get(IPC_CHANNELS.sshKeyCreateImported)!
 
-    await expect(generate(event, undefined)).resolves.toEqual({
-      privateKey: 'private-key',
+    const ready = await generate(event, undefined)
+    expect(ready).toEqual({
+      status: 'ready',
+      token: expect.any(String),
+      expiresAt: expect.any(Number),
       publicKey: 'ssh-ed25519 public-key',
       fingerprint: 'SHA256:fingerprint'
     })
+    expect(JSON.stringify(ready)).not.toContain('private-key')
     expect(vault.generateSshKey).toHaveBeenCalledOnce()
+
+    await expect(
+      create(event, { name: 'Generated key', importToken: (ready as { token: string }).token })
+    ).resolves.toMatchObject({ id: 'created', type: 'sshKey' })
+    expect(vault.createLogin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        privateKey: 'private-key',
+        publicKey: 'ssh-ed25519 public-key',
+        fingerprint: 'SHA256:fingerprint'
+      })
+    )
+    await expect(
+      create(event, { name: 'Replay', importToken: (ready as { token: string }).token })
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
 
     await expect(
       generate(

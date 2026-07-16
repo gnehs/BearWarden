@@ -100,7 +100,7 @@ import CredentialGeneratorDialog from './CredentialGeneratorDialog'
 import {
   applyImportedSshKey,
   applyGeneratedSshKey,
-  canFinalizeGeneratedSshKey,
+  canApplyGeneratedSshKey,
   clearSshKeyMaterial,
   invalidateFailedSshImport,
   isValidSshImportPassphrase,
@@ -300,7 +300,7 @@ export interface LoginDraft extends VaultItemFields {
   uris: VaultLoginUri[]
   changedSecrets: EditorSecretField[]
   customFields: EditorCustomField[]
-  /** Renderer-only handle for main-process-only imported private-key material. */
+  /** Renderer-only handle for main-process-only generated or imported private-key material. */
   sshImportToken?: string
 }
 
@@ -498,23 +498,31 @@ function LoginEditor({
       void window.bearwarden.sshKeys
         .generate()
         .then((generated) => {
-          if (!editorMountedRef.current) return
+          if (generated.status !== 'ready') {
+            throw new Error('Generated SSH key material could not be staged')
+          }
+          const current = draftRef.current
           if (
-            !generated.privateKey.trim() ||
-            !generated.publicKey.trim() ||
-            !generated.fingerprint.trim()
+            !editorMountedRef.current ||
+            !canApplyGeneratedSshKey(requestId, sshKeyGenerationRequestRef.current, current)
           ) {
-            throw new Error('Generated SSH key material is incomplete')
+            void window.bearwarden.sshKeys.cancelImport({ token: generated.token }).catch(() => {})
+            return
+          }
+          if (!generated.publicKey.trim() || !generated.fingerprint.trim()) {
+            void window.bearwarden.sshKeys.cancelImport({ token: generated.token }).catch(() => {})
+            throw new Error('Generated SSH key metadata is incomplete')
           }
 
-          setDraft((current) => {
-            return applyGeneratedSshKey(
-              requestId,
-              sshKeyGenerationRequestRef.current,
-              current,
-              generated
-            )
-          })
+          activeSshImportTokenRef.current = generated.token
+          setDraft((latest) =>
+            applyGeneratedSshKey(requestId, sshKeyGenerationRequestRef.current, latest, generated)
+          )
+          setDirty(true)
+          setVisibleSecrets((visible) => ({ ...visible, privateKey: false }))
+          setError('')
+          setErrorKind(null)
+          setSshKeyGenerationState('ready')
         })
         .catch(() => {
           if (!editorMountedRef.current || requestId !== sshKeyGenerationRequestRef.current) return
@@ -533,34 +541,6 @@ function LoginEditor({
     sshKeyGenerationState,
     sshKeyImportState
   ])
-  useEffect(() => {
-    if (
-      draft.type !== 'sshKey' ||
-      sshKeyGenerationState !== 'generating' ||
-      sshKeyMaterialState({
-        privateKey: draft.privateKey,
-        publicKey: draft.publicKey,
-        fingerprint: draft.fingerprint
-      }) !== 'complete'
-    )
-      return
-
-    const requestId = sshKeyGenerationRequestRef.current
-    queueMicrotask(() => {
-      if (
-        !editorMountedRef.current ||
-        !canFinalizeGeneratedSshKey(requestId, sshKeyGenerationRequestRef.current, draftRef.current)
-      )
-        return
-
-      sshKeyGenerationRequestRef.current += 1
-      setDirty(true)
-      setError('')
-      setErrorKind(null)
-      setSshKeyGenerationState('ready')
-    })
-  }, [draft.fingerprint, draft.privateKey, draft.publicKey, draft.type, sshKeyGenerationState])
-
   function cancelActiveSshImport(clearImportedDraft = true): void {
     sshKeyImportRequestRef.current += 1
     const token = activeSshImportTokenRef.current
@@ -1165,7 +1145,7 @@ function LoginEditor({
     if (importedSshKeyIncomplete || generatedSshKeyIncomplete) {
       setError(
         draft.sshImportToken
-          ? '匯入的 SSH 金鑰工作階段或公開中繼資料不完整，請重新匯入。'
+          ? 'SSH 金鑰暫存工作階段或公開中繼資料不完整，請重新產生或匯入。'
           : 'SSH 金鑰必須包含私鑰、公鑰與金鑰指紋。'
       )
       setErrorKind('ssh')
@@ -1201,7 +1181,7 @@ function LoginEditor({
         setDraft((current) => invalidateFailedSshImport(current, submittedImportToken))
         setSshKeyImportState('idle')
         setSshKeyGenerationState('error')
-        setError('這次 SSH 私鑰匯入已失效，請重新從剪貼簿匯入後再儲存。')
+        setError('這次 SSH 私鑰暫存已失效，請重新產生或匯入後再儲存。')
         setErrorKind('ssh')
         setActiveTab('details')
       }

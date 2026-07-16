@@ -661,17 +661,29 @@ export interface CredentialGeneratorResult extends GeneratorHistoryEntry {
   historyLocator: GeneratorHistoryLocator
 }
 
-/** One generated Ed25519 key triplet. It is not persisted until the caller saves an SSH item. */
+/** Main-process-only SSH key material. This type must never cross the preload bridge. */
 export interface SshKeyMaterial {
   privateKey: string
   publicKey: string
   fingerprint: string
 }
 
+/** Renderer-safe handle for main-process-only SSH key material. */
+export interface SshKeyMaterialSession {
+  status: 'ready'
+  token: string
+  expiresAt: number
+  publicKey: string
+  fingerprint: string
+}
+
+export type SshKeyGenerationResult =
+  SshKeyMaterialSession | { status: 'error'; code: 'SessionUnavailable' | 'SessionLimitReached' }
+
 /** Renderer-safe result of an SSH clipboard import. Private key material remains in main only. */
 export type SshKeyImportResult =
   | { status: 'awaitingPassphrase'; token: string; expiresAt: number }
-  | { status: 'ready'; token: string; expiresAt: number; publicKey: string; fingerprint: string }
+  | SshKeyMaterialSession
   | {
       status: 'error'
       code:
@@ -694,12 +706,12 @@ export interface SshKeyImportCancelRequest {
   token: string
 }
 
-/** The token identifies main-process-only imported key material. Supplied SSH fields are ignored. */
+/** The token identifies main-process-only generated or imported material. SSH fields are ignored. */
 export interface SshKeyCreateImportedRequest extends LoginCreateRequest {
   importToken: string
 }
 
-/** The token identifies main-process-only imported key material. Supplied SSH fields are ignored. */
+/** The token identifies main-process-only generated or imported material. SSH fields are ignored. */
 export interface SshKeyUpdateImportedRequest extends LoginUpdateRequest {
   importToken: string
 }
@@ -801,7 +813,7 @@ export interface BearWardenAPI {
     copyHistory: (request: GeneratorHistoryLocator) => Promise<void>
   }
   sshKeys: {
-    generate: () => Promise<SshKeyMaterial>
+    generate: () => Promise<SshKeyGenerationResult>
     beginImport: () => Promise<SshKeyImportResult>
     submitImportPassphrase: (request: SshKeyImportPassphraseRequest) => Promise<SshKeyImportResult>
     cancelImport: (request: SshKeyImportCancelRequest) => Promise<void>

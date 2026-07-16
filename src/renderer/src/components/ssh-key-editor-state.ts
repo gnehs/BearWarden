@@ -3,6 +3,7 @@ import type {
   LoginUpdateRequest,
   LoginView,
   SshKeyCreateImportedRequest,
+  SshKeyGenerationResult,
   SshKeyImportResult,
   SshKeyUpdateImportedRequest,
   VaultEditorSecretField,
@@ -166,32 +167,27 @@ export function canApplyGeneratedSshKey(
   )
 }
 
-export function canFinalizeGeneratedSshKey(
-  requestId: number,
-  currentRequestId: number,
-  draft: SshKeyMaterial & { type: VaultItemType }
-): boolean {
-  return (
-    requestId === currentRequestId &&
-    draft.type === 'sshKey' &&
-    sshKeyMaterialState(draft) === 'complete'
-  )
-}
-
 export function applyGeneratedSshKey<
   T extends SshKeyMaterial & {
     type: VaultItemType
     changedSecrets: VaultEditorSecretField[]
+    sshImportToken?: string
   }
->(requestId: number, currentRequestId: number, draft: T, generated: SshKeyMaterial): T {
+>(
+  requestId: number,
+  currentRequestId: number,
+  draft: T,
+  generated: Extract<SshKeyGenerationResult, { status: 'ready' }>
+): T {
   if (!canApplyGeneratedSshKey(requestId, currentRequestId, draft)) return draft
 
   return {
     ...draft,
-    ...generated,
-    changedSecrets: draft.changedSecrets.includes('privateKey')
-      ? draft.changedSecrets
-      : [...draft.changedSecrets, 'privateKey']
+    privateKey: '',
+    publicKey: generated.publicKey,
+    fingerprint: generated.fingerprint,
+    sshImportToken: generated.token,
+    changedSecrets: draft.changedSecrets.filter((field) => field !== 'privateKey')
   }
 }
 

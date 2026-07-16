@@ -9,7 +9,6 @@ import {
   applyImportedSshKey,
   applyGeneratedSshKey,
   canApplyGeneratedSshKey,
-  canFinalizeGeneratedSshKey,
   clearSshKeyMaterial,
   createLoginWithOptionalSshImport,
   invalidateFailedSshImport,
@@ -90,21 +89,7 @@ describe('SSH key editor state', () => {
     expect(canApplyGeneratedSshKey(5, 5, blankSsh)).toBe(true)
   })
 
-  it('finalizes only committed complete material from the current request', () => {
-    const completeSsh = {
-      type: 'sshKey' as const,
-      privateKey: 'private',
-      publicKey: 'public',
-      fingerprint: 'fingerprint'
-    }
-
-    expect(canFinalizeGeneratedSshKey(5, 5, completeSsh)).toBe(true)
-    expect(canFinalizeGeneratedSshKey(4, 5, completeSsh)).toBe(false)
-    expect(canFinalizeGeneratedSshKey(5, 5, { ...completeSsh, type: 'login' })).toBe(false)
-    expect(canFinalizeGeneratedSshKey(5, 5, { ...completeSsh, fingerprint: '' })).toBe(false)
-  })
-
-  it('applies generated material without losing queued draft edits', () => {
+  it('applies only generated public metadata without losing queued draft edits', () => {
     const current = {
       type: 'sshKey' as const,
       name: 'queued name change',
@@ -115,18 +100,25 @@ describe('SSH key editor state', () => {
       changedSecrets: ['password'] as VaultEditorSecretField[]
     }
     const generated = {
-      privateKey: 'generated-private',
+      status: 'ready' as const,
+      token: 'generated-token',
+      expiresAt: Date.now() + 60_000,
       publicKey: 'generated-public',
       fingerprint: 'generated-fingerprint'
     }
 
     const applied = applyGeneratedSshKey(5, 5, current, generated)
-    expect(applied).toMatchObject({
+    expect(applied).toEqual({
+      type: 'sshKey',
       name: 'queued name change',
       notes: 'preserved notes',
-      ...generated,
-      changedSecrets: ['password', 'privateKey']
+      privateKey: '',
+      publicKey: 'generated-public',
+      fingerprint: 'generated-fingerprint',
+      sshImportToken: 'generated-token',
+      changedSecrets: ['password']
     })
+    expect(JSON.stringify(generated)).not.toContain('generated-private')
     expect(applyGeneratedSshKey(4, 5, current, generated)).toBe(current)
   })
 

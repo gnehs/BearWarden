@@ -153,6 +153,24 @@ export class SshKeyImportSessionStore {
     }
   }
 
+  /**
+   * Stages freshly generated material behind the same one-time capability used by imports.
+   * Callers must first bind `context` to an unlocked vault generation and trusted IPC sender.
+   */
+  stageGenerated(
+    context: SshKeyImportContext,
+    material: SshKeyMaterial
+  ): SshKeyImportReady | SshKeyImportSessionError {
+    this.cancelExistingForSender(context.senderId)
+    if (this.sessions.size >= MAX_SESSIONS) return error('SessionLimitReached')
+
+    try {
+      return this.createReady(context, material)
+    } catch {
+      return error('SessionUnavailable')
+    }
+  }
+
   begin(context: SshKeyImportContext): SshKeyImportBeginResult {
     this.cancelExistingForSender(context.senderId)
 
