@@ -98,6 +98,13 @@ export interface BitwardenTwoFactorProvider {
   enabled: boolean
 }
 
+export interface BitwardenAuthenticatorSetup {
+  enabled: boolean
+  key: string
+  verificationMode: 'server-token' | 'master-password'
+  userVerificationToken: string | null
+}
+
 /**
  * Vaultwarden returns a synthetic, otherwise-successful row when its HIBP API
  * key is absent. Keep that distinct from both a clean account and a breach.
@@ -844,6 +851,74 @@ export class BitwardenHttpClient {
     }
   }
 
+  async getAuthenticatorSetup(
+    masterPasswordHash: string,
+    signal?: AbortSignal
+  ): Promise<BitwardenAuthenticatorSetup> {
+    const proof = assertMasterPasswordHash(masterPasswordHash)
+    const body = { masterPasswordHash: proof }
+    try {
+      const response = await this.requestJson(
+        'POST',
+        `${this.urls.apiUrl}/two-factor/get-authenticator`,
+        {
+          body,
+          signal,
+          maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+          tooLargeCode: 'TOO_LARGE'
+        }
+      )
+      return parseAuthenticatorSetup(response)
+    } catch (error) {
+      throw normalizeUserVerificationError(error)
+    } finally {
+      body.masterPasswordHash = ''
+    }
+  }
+
+  async enableAuthenticator(
+    request: {
+      key: string
+      token: string
+      verificationMode: BitwardenAuthenticatorSetup['verificationMode']
+      userVerificationToken?: string
+      masterPasswordHash?: string
+    },
+    signal?: AbortSignal
+  ): Promise<void> {
+    const key = assertTotpSetupKey(request.key)
+    const token = assertTotpToken(request.token)
+    const body: JsonObject = { key, token }
+    if (request.verificationMode === 'server-token') {
+      body.userVerificationToken = assertVerificationToken(request.userVerificationToken)
+    } else if (request.verificationMode === 'master-password') {
+      body.masterPasswordHash = assertMasterPasswordHash(request.masterPasswordHash)
+    } else {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    try {
+      const response = await this.requestJson(
+        'PUT',
+        `${this.urls.apiUrl}/two-factor/authenticator`,
+        {
+          body,
+          signal,
+          retry: false,
+          maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+          tooLargeCode: 'TOO_LARGE'
+        }
+      )
+      parseEnabledAuthenticator(response, key)
+    } catch (error) {
+      throw normalizeUserVerificationError(error)
+    } finally {
+      if (typeof body.userVerificationToken === 'string') body.userVerificationToken = ''
+      if (typeof body.masterPasswordHash === 'string') body.masterPasswordHash = ''
+      body.key = ''
+      body.token = ''
+    }
+  }
+
   /**
    * Queries the authenticated Vaultwarden HIBP proxy. The server, rather than
    * this client, forwards the complete email address to HIBP when configured.
@@ -1496,6 +1571,8 @@ export class BitwardenHttpClient {
       headers?: HeadersInit
       maxResponseBytes?: number
       tooLargeCode?: BitwardenHttpErrorCode
+      /** Overrides method-based retry safety. Mutating one-time 2FA capabilities set this false. */
+      retry?: boolean
     } = {}
   ): Promise<JsonValue> {
     const authenticate = request.authenticate ?? true
@@ -1549,7 +1626,7 @@ export class BitwardenHttpClient {
       }
       if (
         (response.status === 429 || response.status >= 500) &&
-        RETRYABLE_METHODS.has(method) &&
+        (request.retry ?? RETRYABLE_METHODS.has(method)) &&
         retries < this.maxRetries
       ) {
         retries += 1
@@ -1661,6 +1738,93 @@ function parseTwoFactorRecoveryCode(value: JsonValue): string {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
   return code
+}
+
+function assertMasterPasswordHash(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 1_024 ||
+    /[\0\r\n]/u.test(value)
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function assertVerificationToken(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 16_384 ||
+    /[\0\r\n]/u.test(value)
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function assertTotpSetupKey(value: unknown): string {
+  if (typeof value !== 'string' || !/^[A-Z2-7]{32}$/u.test(value)) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function assertTotpToken(value: unknown): string {
+  if (typeof value !== 'string' || !/^\d{6}$/u.test(value)) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function normalizeUserVerificationError(error: unknown): unknown {
+  if (
+    error instanceof BitwardenHttpError &&
+    error.status === 400 &&
+    (error.code === 'AUTH' || error.code === 'USER_VERIFICATION_FAILED')
+  ) {
+    return new BitwardenHttpError('USER_VERIFICATION_FAILED', 400)
+  }
+  return error
+}
+
+function parseAuthenticatorDetails(value: JsonValue): { enabled: boolean; key: string } {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const enabled = value.enabled ?? value.Enabled
+  const key = value.key ?? value.Key
+  if (typeof enabled !== 'boolean') throw new BitwardenHttpError('INVALID_RESPONSE')
+  return { enabled, key: assertTotpSetupKey(key) }
+}
+
+function parseAuthenticatorSetup(value: JsonValue): BitwardenAuthenticatorSetup {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const nested = value.authenticator ?? value.Authenticator
+  if (nested !== undefined) {
+    const details = parseAuthenticatorDetails(nested)
+    return {
+      ...details,
+      verificationMode: 'server-token',
+      userVerificationToken: assertVerificationToken(
+        value.userVerificationToken ?? value.UserVerificationToken
+      )
+    }
+  }
+  const details = parseAuthenticatorDetails(value)
+  return {
+    ...details,
+    verificationMode: 'master-password',
+    userVerificationToken: null
+  }
+}
+
+function parseEnabledAuthenticator(value: JsonValue, expectedKey: string): void {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const nested = value.authenticator ?? value.Authenticator
+  const details = parseAuthenticatorDetails(nested === undefined ? value : nested)
+  if (!details.enabled || details.key !== expectedKey) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
 }
 
 function isValidBreachEmail(value: string): boolean {

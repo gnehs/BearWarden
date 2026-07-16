@@ -1425,6 +1425,72 @@ describe('BitwardenDirectClient', () => {
     await expect(client.status()).resolves.toEqual({ status: 'locked' })
   })
 
+  it('uses the official authenticator capability and reports unknown mutation outcomes', async () => {
+    const key = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
+    let mutationRequests = 0
+    let failMutation = false
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/api/two-factor/get-authenticator')) {
+          return jsonResponse({
+            authenticator: { enabled: false, key },
+            userVerificationToken: 'bound-capability',
+            object: 'twoFactorAuthenticator'
+          })
+        }
+        if (url.endsWith('/api/two-factor/authenticator')) {
+          mutationRequests += 1
+          if (failMutation) throw new TypeError('connection closed after request write')
+          return jsonResponse({
+            authenticator: { enabled: true, key },
+            object: 'twoFactorAuthenticatorUpdate'
+          })
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: '90000000-0000-4000-8000-000000000099',
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.beginAuthenticatorSetup(PASSWORD)).resolves.toMatchObject({
+      key,
+      verificationMode: 'server-token',
+      userVerificationToken: 'bound-capability'
+    })
+    await expect(
+      client.completeAuthenticatorSetup({
+        key,
+        token: '123456',
+        verificationMode: 'server-token',
+        userVerificationToken: 'bound-capability'
+      })
+    ).resolves.toBeUndefined()
+
+    failMutation = true
+    await expect(
+      client.completeAuthenticatorSetup({
+        key,
+        token: '654321',
+        verificationMode: 'server-token',
+        userVerificationToken: 'bound-capability'
+      })
+    ).rejects.toMatchObject({ code: 'TWO_FACTOR_MUTATION_UNKNOWN' })
+    expect(mutationRequests).toBe(2)
+  })
+
   it('passes authenticated equivalent-domain settings through without requiring decrypted vault keys', async () => {
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',

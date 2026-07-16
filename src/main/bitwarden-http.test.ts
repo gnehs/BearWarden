@@ -222,6 +222,82 @@ describe('BitwardenHttpClient', () => {
     })
   })
 
+  it('branches official and Vaultwarden authenticator setup capabilities', async () => {
+    const key = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        json({
+          authenticator: { enabled: false, key },
+          userVerificationToken: 'official-bound-capability',
+          object: 'twoFactorAuthenticator'
+        })
+      )
+      .mockResolvedValueOnce(
+        json({
+          authenticator: { enabled: true, key },
+          object: 'twoFactorAuthenticatorUpdate'
+        })
+      )
+      .mockResolvedValueOnce(json({ enabled: false, key, object: 'twoFactorAuthenticator' }))
+      .mockResolvedValueOnce(json({ enabled: true, key, object: 'twoFactorAuthenticator' }))
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(client.getAuthenticatorSetup('derived-proof')).resolves.toEqual({
+      enabled: false,
+      key,
+      verificationMode: 'server-token',
+      userVerificationToken: 'official-bound-capability'
+    })
+    await client.enableAuthenticator({
+      key,
+      token: '123456',
+      verificationMode: 'server-token',
+      userVerificationToken: 'official-bound-capability'
+    })
+    await expect(client.getAuthenticatorSetup('derived-proof')).resolves.toEqual({
+      enabled: false,
+      key,
+      verificationMode: 'master-password',
+      userVerificationToken: null
+    })
+    await client.enableAuthenticator({
+      key,
+      token: '654321',
+      verificationMode: 'master-password',
+      masterPasswordHash: 'derived-proof'
+    })
+
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
+      key,
+      token: '123456',
+      userVerificationToken: 'official-bound-capability'
+    })
+    expect(JSON.parse(String(fetch.mock.calls[3]?.[1]?.body))).toEqual({
+      key,
+      token: '654321',
+      masterPasswordHash: 'derived-proof'
+    })
+  })
+
+  it('never retries a one-time authenticator mutation', async () => {
+    const key = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(json({ message: 'temporary failure' }, 503))
+    const client = new BitwardenHttpClient({ server: 'us', fetch, maxRetries: 5 })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(
+      client.enableAuthenticator({
+        key,
+        token: '123456',
+        verificationMode: 'server-token',
+        userVerificationToken: 'one-time-capability'
+      })
+    ).rejects.toMatchObject({ code: 'NETWORK', status: 503 })
+    expect(fetch).toHaveBeenCalledOnce()
+  })
+
   it('parses both current nested and legacy prelogin KDF payloads', async () => {
     const fetch = vi
       .fn<FetchLike>()
