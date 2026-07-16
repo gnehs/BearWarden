@@ -44,4 +44,25 @@ describe('preload account API', () => {
       [IPC_CHANNELS.accountSwitch, { accountId }]
     ])
   })
+
+  it('exposes only the narrow account WebAuthn enrollment operations', async () => {
+    electronMock.invoke.mockClear()
+    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
+    const listRequest = { masterPassword: 'test-master-password' }
+    const enrollRequest = { masterPassword: 'test-master-password', name: 'USB key' }
+    const removeRequest = { id: 1, masterPassword: 'test-master-password', confirm: true as const }
+
+    await api.accountSecurity.listWebAuthnKeys(listRequest)
+    await api.accountSecurity.enrollWebAuthnKey(enrollRequest)
+    await api.accountSecurity.removeWebAuthnKey(removeRequest)
+
+    expect(electronMock.invoke.mock.calls).toEqual([
+      [IPC_CHANNELS.accountSecurityWebAuthnKeys, listRequest],
+      [IPC_CHANNELS.accountSecurityEnrollWebAuthnKey, enrollRequest],
+      [IPC_CHANNELS.accountSecurityRemoveWebAuthnKey, removeRequest]
+    ])
+    expect(Object.keys(api.accountSecurity)).toContain('listWebAuthnKeys')
+    expect(Object.keys(api.accountSecurity)).toContain('enrollWebAuthnKey')
+    expect(Object.keys(api.accountSecurity)).toContain('removeWebAuthnKey')
+  })
 })

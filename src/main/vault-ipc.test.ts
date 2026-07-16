@@ -232,6 +232,143 @@ describe('registerVaultIpc account boundary', () => {
   })
 })
 
+describe('registerVaultIpc account WebAuthn enrollment boundary', () => {
+  function accountWebAuthnHarness(vault: Partial<VaultService>): {
+    event: unknown
+    untrustedEvent: unknown
+  } {
+    const mainFrame = { url: 'app://bearwarden/index.html' }
+    const webContents = {
+      id: 89,
+      mainFrame,
+      getURL: () => mainFrame.url,
+      send: vi.fn(),
+      isDestroyed: () => false
+    }
+    registerVaultIpc({
+      vault: vault as VaultService,
+      portability: {} as Parameters<typeof registerVaultIpc>[0]['portability'],
+      settings: {} as AppSettingsService,
+      sshKeyImportSessions: new SshKeyImportSessionStore({ readClipboard: () => '' }),
+      getMainWindow: () => ({ isDestroyed: () => false, webContents }) as never
+    })
+    return {
+      event: { sender: webContents, senderFrame: mainFrame },
+      untrustedEvent: {
+        sender: webContents,
+        senderFrame: { url: 'https://untrusted.example.invalid' }
+      }
+    }
+  }
+
+  it('projects only server key metadata and clears all renderer request secrets', async () => {
+    let listInput: unknown
+    let enrollInput: unknown
+    let removeInput: unknown
+    const vault = {
+      listAccountWebAuthnKeys: vi.fn(async (request) => {
+        listInput = { ...request }
+        return [
+          {
+            id: 1,
+            name: 'USB key',
+            migrated: false,
+            credentialId: 'never-in-renderer',
+            userVerificationToken: 'main-only'
+          }
+        ]
+      }),
+      enrollAccountWebAuthnKey: vi.fn(async (request) => {
+        enrollInput = { ...request }
+      }),
+      removeAccountWebAuthnKey: vi.fn(async (request) => {
+        removeInput = { ...request }
+      })
+    }
+    const { event } = accountWebAuthnHarness(vault)
+
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.accountSecurityWebAuthnKeys)!(event, {
+        masterPassword: 'test-master-password'
+      })
+    ).resolves.toEqual([{ id: 1, name: 'USB key', migrated: false }])
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.accountSecurityEnrollWebAuthnKey)!(event, {
+        masterPassword: 'test-master-password',
+        name: '  USB key  '
+      })
+    ).resolves.toBeUndefined()
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.accountSecurityRemoveWebAuthnKey)!(event, {
+        id: 2,
+        masterPassword: 'test-master-password',
+        confirm: true
+      })
+    ).resolves.toBeUndefined()
+
+    expect(listInput).toEqual({ masterPassword: 'test-master-password' })
+    expect(enrollInput).toEqual({ masterPassword: 'test-master-password', name: 'USB key' })
+    expect(removeInput).toEqual({ id: 2, masterPassword: 'test-master-password', confirm: true })
+    expect(vault.listAccountWebAuthnKeys.mock.calls[0]?.[0]).toEqual({ masterPassword: '' })
+    expect(vault.enrollAccountWebAuthnKey.mock.calls[0]?.[0]).toEqual({
+      masterPassword: '',
+      name: ''
+    })
+    expect(vault.removeAccountWebAuthnKey.mock.calls[0]?.[0]).toEqual({
+      id: 2,
+      masterPassword: '',
+      confirm: true
+    })
+  })
+
+  it('accepts only exact, bounded WebAuthn key requests from a trusted renderer', async () => {
+    const vault = {
+      listAccountWebAuthnKeys: vi.fn(),
+      enrollAccountWebAuthnKey: vi.fn(),
+      removeAccountWebAuthnKey: vi.fn()
+    }
+    const { event, untrustedEvent } = accountWebAuthnHarness(vault)
+    const list = electronMock.handlers.get(IPC_CHANNELS.accountSecurityWebAuthnKeys)!
+    const enroll = electronMock.handlers.get(IPC_CHANNELS.accountSecurityEnrollWebAuthnKey)!
+    const remove = electronMock.handlers.get(IPC_CHANNELS.accountSecurityRemoveWebAuthnKey)!
+
+    await expect(list(untrustedEvent, { masterPassword: 'test-master-password' })).rejects.toThrow(
+      'BEARWARDEN:INVALID_INPUT'
+    )
+    for (const input of [
+      undefined,
+      {},
+      { masterPassword: '' },
+      { masterPassword: 'x'.repeat(16_385) },
+      { masterPassword: 'test-master-password', extra: true }
+    ]) {
+      await expect(list(event, input)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    for (const input of [
+      { masterPassword: 'test-master-password' },
+      { masterPassword: 'test-master-password', name: ' \t ' },
+      { masterPassword: 'test-master-password', name: 'line\nbreak' },
+      { masterPassword: 'test-master-password', name: '\0' },
+      { masterPassword: 'test-master-password', name: '你'.repeat(86) },
+      { masterPassword: 'test-master-password', name: 'USB key', extra: true }
+    ]) {
+      await expect(enroll(event, input)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    for (const input of [
+      { id: 0, masterPassword: 'test-master-password', confirm: true },
+      { id: 2_147_483_648, masterPassword: 'test-master-password', confirm: true },
+      { id: 1.5, masterPassword: 'test-master-password', confirm: true },
+      { id: 1, masterPassword: 'test-master-password', confirm: false },
+      { id: 1, masterPassword: 'test-master-password', confirm: true, extra: true }
+    ]) {
+      await expect(remove(event, input)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(vault.listAccountWebAuthnKeys).not.toHaveBeenCalled()
+    expect(vault.enrollAccountWebAuthnKey).not.toHaveBeenCalled()
+    expect(vault.removeAccountWebAuthnKey).not.toHaveBeenCalled()
+  })
+})
+
 describe('registerVaultIpc settings validation', () => {
   function settingsHarness(): {
     event: unknown

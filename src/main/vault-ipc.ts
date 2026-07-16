@@ -13,6 +13,10 @@ import {
   type AccountStatus,
   type AppSettingsUpdate,
   type AccountApiKeyCopyRequest,
+  type AccountWebAuthnKeyEnrollmentRequest,
+  type AccountWebAuthnKeyRemovalRequest,
+  type AccountWebAuthnKeysRequest,
+  type AccountWebAuthnKeyView,
   type AccountAuthenticatorCompleteRequest,
   type AccountEmailTwoFactorCompleteRequest,
   type AccountEmailTwoFactorSendRequest,
@@ -500,6 +504,71 @@ function parseAccountApiKeyCopy(value: unknown): AccountApiKeyCopyRequest {
     rotate: record.rotate,
     confirmRotation: record.confirmRotation
   }
+}
+
+const MAX_ACCOUNT_WEBAUTHN_KEY_ID = 2_147_483_647
+const MAX_ACCOUNT_WEBAUTHN_KEY_NAME_BYTES = 256
+const MAX_ACCOUNT_WEBAUTHN_MASTER_PASSWORD_LENGTH = 16_384
+
+function parseAccountWebAuthnKeys(value: unknown): AccountWebAuthnKeysRequest {
+  const record = exactRecord(value, ['masterPassword'])
+  const request = { masterPassword: requiredString(record, 'masterPassword') }
+  if (
+    request.masterPassword.length === 0 ||
+    request.masterPassword.length > MAX_ACCOUNT_WEBAUTHN_MASTER_PASSWORD_LENGTH
+  ) {
+    request.masterPassword = ''
+    throw new VaultError('INVALID_INPUT')
+  }
+  return request
+}
+
+function parseAccountWebAuthnKeyEnrollment(value: unknown): AccountWebAuthnKeyEnrollmentRequest {
+  const record = exactRecord(value, ['masterPassword', 'name'])
+  const request = {
+    masterPassword: requiredString(record, 'masterPassword'),
+    name: requiredString(record, 'name').trim()
+  }
+  if (
+    request.masterPassword.length === 0 ||
+    request.masterPassword.length > MAX_ACCOUNT_WEBAUTHN_MASTER_PASSWORD_LENGTH ||
+    request.name.length === 0 ||
+    Buffer.byteLength(request.name, 'utf8') > MAX_ACCOUNT_WEBAUTHN_KEY_NAME_BYTES ||
+    /[\0\r\n]/u.test(request.name)
+  ) {
+    request.masterPassword = ''
+    request.name = ''
+    throw new VaultError('INVALID_INPUT')
+  }
+  return request
+}
+
+function parseAccountWebAuthnKeyRemoval(value: unknown): AccountWebAuthnKeyRemovalRequest {
+  const record = exactRecord(value, ['id', 'masterPassword', 'confirm'])
+  const request = {
+    id: record.id,
+    masterPassword: requiredString(record, 'masterPassword'),
+    confirm: record.confirm
+  }
+  if (
+    typeof request.id !== 'number' ||
+    !Number.isSafeInteger(request.id) ||
+    request.id < 1 ||
+    request.id > MAX_ACCOUNT_WEBAUTHN_KEY_ID ||
+    request.masterPassword.length === 0 ||
+    request.masterPassword.length > MAX_ACCOUNT_WEBAUTHN_MASTER_PASSWORD_LENGTH ||
+    request.confirm !== true
+  ) {
+    request.masterPassword = ''
+    throw new VaultError('INVALID_INPUT')
+  }
+  return request as AccountWebAuthnKeyRemovalRequest
+}
+
+function publicAccountWebAuthnKeys(
+  keys: readonly AccountWebAuthnKeyView[]
+): AccountWebAuthnKeyView[] {
+  return keys.map(({ id, name, migrated }) => ({ id, name, migrated }))
 }
 
 function parseGeneratorBooleanOptions(
@@ -2606,6 +2675,43 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     parseNoInput(input)
     return vault.getTwoFactorStatus()
   })
+  registerHandler(
+    IPC_CHANNELS.accountSecurityWebAuthnKeys,
+    getMainWindow,
+    async (_event, input) => {
+      const request = parseAccountWebAuthnKeys(input)
+      try {
+        return publicAccountWebAuthnKeys(await vault.listAccountWebAuthnKeys(request))
+      } finally {
+        request.masterPassword = ''
+      }
+    }
+  )
+  registerHandler(
+    IPC_CHANNELS.accountSecurityEnrollWebAuthnKey,
+    getMainWindow,
+    async (_event, input) => {
+      const request = parseAccountWebAuthnKeyEnrollment(input)
+      try {
+        await vault.enrollAccountWebAuthnKey(request)
+      } finally {
+        request.masterPassword = ''
+        request.name = ''
+      }
+    }
+  )
+  registerHandler(
+    IPC_CHANNELS.accountSecurityRemoveWebAuthnKey,
+    getMainWindow,
+    async (_event, input) => {
+      const request = parseAccountWebAuthnKeyRemoval(input)
+      try {
+        await vault.removeAccountWebAuthnKey(request)
+      } finally {
+        request.masterPassword = ''
+      }
+    }
+  )
   registerHandler(
     IPC_CHANNELS.accountDisableTwoFactorProvider,
     getMainWindow,

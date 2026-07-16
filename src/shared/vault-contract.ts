@@ -119,6 +119,9 @@ export const IPC_CHANNELS = {
   accountBeginEmailTwoFactorSetup: 'account-security:begin-email-two-factor-setup',
   accountSendEmailTwoFactorSetup: 'account-security:send-email-two-factor-setup',
   accountCompleteEmailTwoFactorSetup: 'account-security:complete-email-two-factor-setup',
+  accountSecurityWebAuthnKeys: 'account-security:webauthn-keys',
+  accountSecurityEnrollWebAuthnKey: 'account-security:enroll-webauthn-key',
+  accountSecurityRemoveWebAuthnKey: 'account-security:remove-webauthn-key',
   domainRulesGet: 'domain-rules:get',
   domainRulesUpdate: 'domain-rules:update',
   sendList: 'send:list',
@@ -984,6 +987,32 @@ export interface AccountEmailTwoFactorCompleteRequest {
   masterPassword?: string
 }
 
+/** Renderer-safe metadata for a server-registered account WebAuthn key. */
+export interface AccountWebAuthnKeyView {
+  /** Server-assigned numeric slot; never a WebAuthn credential identifier. */
+  id: number
+  name: string
+  migrated: boolean
+}
+
+/** Re-authentication input for listing registered account WebAuthn keys. */
+export interface AccountWebAuthnKeysRequest {
+  masterPassword: string
+}
+
+/** The browser ceremony stays main-only; the renderer can only name the new key. */
+export interface AccountWebAuthnKeyEnrollmentRequest {
+  masterPassword: string
+  name: string
+}
+
+/** Removing a registered account WebAuthn key requires explicit confirmation. */
+export interface AccountWebAuthnKeyRemovalRequest {
+  id: number
+  masterPassword: string
+  confirm: true
+}
+
 export interface GlobalEquivalentDomainView {
   type: number
   domains: string[]
@@ -1599,6 +1628,9 @@ export interface BearWardenAPI {
     ) => Promise<AccountEmailTwoFactorSetup>
     sendEmailTwoFactorSetup: (request: AccountEmailTwoFactorSendRequest) => Promise<void>
     completeEmailTwoFactorSetup: (request: AccountEmailTwoFactorCompleteRequest) => Promise<void>
+    listWebAuthnKeys: (request: AccountWebAuthnKeysRequest) => Promise<AccountWebAuthnKeyView[]>
+    enrollWebAuthnKey: (request: AccountWebAuthnKeyEnrollmentRequest) => Promise<void>
+    removeWebAuthnKey: (request: AccountWebAuthnKeyRemovalRequest) => Promise<void>
   }
   domainRules: {
     get: () => Promise<EquivalentDomainSettingsView>
