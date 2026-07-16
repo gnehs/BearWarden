@@ -36,6 +36,7 @@ import { SshAgentServer } from './ssh-agent-server'
 import { PasskeyCeremonyService } from './passkey-ceremony-service'
 import { PasskeyRendererBridge } from './passkey-renderer-bridge'
 import { SensitiveClipboard } from './sensitive-clipboard'
+import { TwoFactorDirectoryCache } from './two-factor-directory-cache'
 import icon from '../../resources/icon.png?asset'
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
@@ -55,6 +56,7 @@ let sshAgentServer: SshAgentServer | null = null
 let passkeyCeremonyService: PasskeyCeremonyService | null = null
 let passkeyRendererBridge: PasskeyRendererBridge | null = null
 let repromptAuthorizations: RepromptAuthorizationStore | null = null
+let twoFactorDirectory: TwoFactorDirectoryCache | null = null
 let contentProtectionEnabled = true
 let vaultLockGeneration = 0
 let rendererHandlesLockRequests = false
@@ -582,6 +584,10 @@ if (hasSingleInstanceLock)
       onSyncRequested: () => autoSync?.request(),
       onRemoteLogout: handleRemoteSyncLogout
     })
+    twoFactorDirectory = new TwoFactorDirectoryCache(
+      join(app.getPath('userData'), 'cache', '2fa-directory-totp-v4.json'),
+      { openExternal: (url) => shell.openExternal(url) }
+    )
 
     settings = new AppSettingsService(
       join(app.getPath('userData'), 'settings.json'),
@@ -671,6 +677,7 @@ if (hasSingleInstanceLock)
       getMainWindow: () => mainWindow,
       sshKeyImportSessions,
       repromptAuthorizations,
+      twoFactorDirectory,
       afterSetup: async () => {
         passkeyCeremonyService?.onVaultMutation()
         await refreshSshAgentAfterUnlock().catch(() => undefined)
@@ -748,6 +755,8 @@ function disposeServices(): void {
   portability = null
   passkeyCeremonyService?.dispose()
   passkeyRendererBridge?.dispose()
+  twoFactorDirectory?.dispose()
+  twoFactorDirectory = null
   vault?.dispose()
   settings?.dispose()
 }

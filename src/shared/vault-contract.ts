@@ -23,6 +23,8 @@ export const IPC_CHANNELS = {
   vaultHealthAccountBreaches: 'vault:health-account-breaches',
   vaultHealthCancelAccountBreaches: 'vault:health-cancel-account-breaches',
   vaultHealthOpenHibp: 'vault:health-open-hibp',
+  vaultHealthInactiveTwoFactor: 'vault:health-inactive-two-factor',
+  vaultHealthOpenTwoFactorDocumentation: 'vault:health-open-two-factor-documentation',
   folderList: 'folder:list',
   organizationList: 'organization:list',
   collectionList: 'collection:list',
@@ -176,6 +178,26 @@ export type VaultState = 'uninitialized' | 'locked' | 'unlocked'
 
 export interface VaultStatus {
   state: VaultState
+}
+
+export interface InactiveTwoFactorFinding {
+  id: string
+  name: string
+  /** Public 2fa.directory service key; never an original vault hostname. */
+  matchedDomain: string
+  documentationUrl: string | null
+}
+
+export interface InactiveTwoFactorReport {
+  analyzedCount: number
+  excludedTotpCount: number
+  excludedDeletedCount: number
+  excludedArchivedCount: number
+  findings: readonly InactiveTwoFactorFinding[]
+}
+
+export interface InactiveTwoFactorDocumentationRequest {
+  matchedDomain: string
 }
 
 export interface VaultSetupRequest {
@@ -1420,6 +1442,8 @@ export interface BearWardenAPI {
     cancelAccountBreaches: () => Promise<boolean>
     /** Opens the fixed HIBP attribution URL in the system browser. */
     openHibpWebsite: () => Promise<void>
+    inactiveTwoFactor: () => Promise<InactiveTwoFactorReport>
+    openTwoFactorDocumentation: (request: InactiveTwoFactorDocumentationRequest) => Promise<void>
   }
   folders: {
     list: () => Promise<FolderView[]>

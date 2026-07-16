@@ -54,6 +54,8 @@ import {
   type MasterPasswordChangeResolutionRequest,
   type MasterPasswordChangeStatus,
   type ItemFieldRequest,
+  type InactiveTwoFactorDocumentationRequest,
+  type InactiveTwoFactorReport,
   type SshKeyImportCancelRequest,
   type SshKeyImportPassphraseRequest,
   type SshKeyCreateImportedRequest,
@@ -90,6 +92,10 @@ import type { VaultService } from './vault-service'
 import type { VaultPortabilityService } from './vault-portability'
 import { showItemContextMenu } from './item-context-menu'
 import { SshKeyImportSessionStore } from './ssh-key-import-session'
+import {
+  TwoFactorDirectoryCacheError,
+  type TwoFactorDirectoryCache
+} from './two-factor-directory-cache'
 
 type RecordValue = Record<string, unknown>
 
@@ -204,6 +210,7 @@ export interface VaultIpcOptions {
   sshKeyImportSessions: SshKeyImportSessionStore
   /** Shared with other main-only authorization boundaries such as the SSH agent. */
   repromptAuthorizations?: RepromptAuthorizationStore
+  twoFactorDirectory?: TwoFactorDirectoryCache
   afterSetup?: () => void | Promise<void>
   beforeLock?: () => void | Promise<void>
   afterLock?: () => void
@@ -1390,6 +1397,49 @@ function parseVaultHealthEmptyRequest(value: unknown): RecordValue {
   return exactRecord(value, [])
 }
 
+function parseInactiveTwoFactorEmptyRequest(value: unknown): void {
+  if (!isRecord(value) || Reflect.ownKeys(value).length !== 0) {
+    throw new VaultError('INVALID_INPUT')
+  }
+}
+
+function parseInactiveTwoFactorDocumentation(
+  value: unknown
+): InactiveTwoFactorDocumentationRequest {
+  if (!isRecord(value)) throw new VaultError('INVALID_INPUT')
+  const keys = Reflect.ownKeys(value)
+  if (keys.length !== 1 || keys[0] !== 'matchedDomain' || !Object.hasOwn(value, 'matchedDomain')) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const descriptor = Object.getOwnPropertyDescriptor(value, 'matchedDomain')
+  if (!descriptor || !('value' in descriptor) || typeof descriptor.value !== 'string') {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const matchedDomain = descriptor.value
+  const labels = matchedDomain.split('.')
+  if (
+    matchedDomain.length === 0 ||
+    matchedDomain.length > 253 ||
+    matchedDomain !== matchedDomain.toLowerCase() ||
+    labels.length < 2 ||
+    labels.some(
+      (label) =>
+        label.length === 0 || label.length > 63 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u.test(label)
+    )
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return { matchedDomain }
+}
+
+function mapTwoFactorDirectoryError(error: unknown): never {
+  if (error instanceof TwoFactorDirectoryCacheError) {
+    if (error.code === 'DOCUMENTATION_NOT_FOUND') throw new VaultError('NOT_FOUND')
+    throw new VaultError('HEALTH_CHECK_FAILED')
+  }
+  throw error
+}
+
 function parseVaultHealthAccountBreachRequest(value: unknown): VaultHealthAccountBreachRequest {
   const record = exactRecord(value, ['email'])
   const email = requiredString(record, 'email').trim()
@@ -2015,6 +2065,35 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     parseVaultHealthEmptyRequest(input)
     await vault.openHibpWebsite()
   })
+  registerHandler<InactiveTwoFactorReport>(
+    IPC_CHANNELS.vaultHealthInactiveTwoFactor,
+    getMainWindow,
+    async (_event, input) => {
+      parseInactiveTwoFactorEmptyRequest(input)
+      const directory = options.twoFactorDirectory
+      if (!directory) throw new VaultError('HEALTH_CHECK_FAILED')
+      try {
+        const dataset = await directory.getDataset()
+        return await vault.getInactiveTwoFactorReport(dataset)
+      } catch (error) {
+        mapTwoFactorDirectoryError(error)
+      }
+    }
+  )
+  registerHandler<void>(
+    IPC_CHANNELS.vaultHealthOpenTwoFactorDocumentation,
+    getMainWindow,
+    async (_event, input) => {
+      const request = parseInactiveTwoFactorDocumentation(input)
+      const directory = options.twoFactorDirectory
+      if (!directory) throw new VaultError('HEALTH_CHECK_FAILED')
+      try {
+        await directory.openDocumentation(request.matchedDomain)
+      } catch (error) {
+        mapTwoFactorDirectoryError(error)
+      }
+    }
+  )
   registerHandler(IPC_CHANNELS.loginAuthorize, getMainWindow, async (event, input) => {
     const request = parseLoginAuthorize(input)
     const generation = await vault.authorizeLogin(request)

@@ -24,6 +24,7 @@ import { registerVaultIpc, RepromptAuthorizationStore } from './vault-ipc'
 import type { VaultService } from './vault-service'
 import { SshKeyImportSessionStore } from './ssh-key-import-session'
 import { SshKeyImportError } from './ssh-key-import'
+import { TwoFactorDirectoryCacheError } from './two-factor-directory-cache'
 
 beforeEach(() => electronMock.handlers.clear())
 
@@ -484,6 +485,181 @@ describe('registerVaultIpc master-password transaction', () => {
     await expect(operation).resolves.toEqual({ state: 'completed', requiresReconnect: true })
     expect(h.settings.disableTouchId).toHaveBeenCalledOnce()
     expect(h.afterMasterPasswordChanged).not.toHaveBeenCalled()
+  })
+})
+
+describe('registerVaultIpc inactive two-factor privacy boundary', () => {
+  function harness(): {
+    event: unknown
+    vault: { getInactiveTwoFactorReport: ReturnType<typeof vi.fn> }
+    directory: {
+      getDataset: ReturnType<typeof vi.fn>
+      openDocumentation: ReturnType<typeof vi.fn>
+    }
+  } {
+    const mainFrame = { url: 'app://bearwarden/index.html' }
+    const webContents = {
+      id: 75,
+      mainFrame,
+      getURL: () => mainFrame.url,
+      send: vi.fn(),
+      isDestroyed: () => false
+    }
+    const dataset = Object.freeze({ apiVersion: 4 as const, entries: Object.freeze([]) })
+    const vault = {
+      getInactiveTwoFactorReport: vi.fn(async () => ({
+        analyzedCount: 1,
+        excludedTotpCount: 0,
+        excludedDeletedCount: 0,
+        excludedArchivedCount: 0,
+        findings: [
+          {
+            id: 'public-item-id',
+            name: 'Example',
+            matchedDomain: 'example.com',
+            documentationUrl: 'https://help.example.com/2fa'
+          }
+        ]
+      }))
+    }
+    const directory = {
+      getDataset: vi.fn(async () => dataset),
+      openDocumentation: vi.fn(async () => undefined)
+    }
+    registerVaultIpc({
+      vault: vault as unknown as VaultService,
+      portability: {} as Parameters<typeof registerVaultIpc>[0]['portability'],
+      settings: {} as AppSettingsService,
+      twoFactorDirectory: directory as unknown as NonNullable<
+        Parameters<typeof registerVaultIpc>[0]['twoFactorDirectory']
+      >,
+      sshKeyImportSessions: new SshKeyImportSessionStore({ readClipboard: () => '' }),
+      getMainWindow: () => ({ isDestroyed: () => false, webContents }) as never
+    })
+    return { event: { sender: webContents, senderFrame: mainFrame }, vault, directory }
+  }
+
+  it('returns only the service safe report and never accepts vault domains from the renderer', async () => {
+    const h = harness()
+    const response = await electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(
+      h.event,
+      {}
+    )
+
+    expect(h.directory.getDataset).toHaveBeenCalledOnce()
+    expect(h.vault.getInactiveTwoFactorReport).toHaveBeenCalledOnce()
+    expect(response).toMatchObject({
+      findings: [{ id: 'public-item-id', matchedDomain: 'example.com' }]
+    })
+    expect(Object.keys(response as object).sort()).toEqual([
+      'analyzedCount',
+      'excludedArchivedCount',
+      'excludedDeletedCount',
+      'excludedTotpCount',
+      'findings'
+    ])
+    expect(Object.keys((response as { findings: object[] }).findings[0]!).sort()).toEqual([
+      'documentationUrl',
+      'id',
+      'matchedDomain',
+      'name'
+    ])
+    expect(JSON.stringify(response)).not.toContain('login.private-vault.example')
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(h.event, undefined)
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(h.event, {
+        [Symbol('hidden')]: true
+      })
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(h.event, {
+        hostname: 'login.private-vault.example'
+      })
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+  })
+
+  it('opens documentation using only a dataset domain and rejects URL-shaped or accessor input', async () => {
+    const h = harness()
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.vaultHealthOpenTwoFactorDocumentation)!(h.event, {
+        matchedDomain: 'example.com'
+      })
+    ).resolves.toBeUndefined()
+    expect(h.directory.openDocumentation).toHaveBeenCalledWith('example.com')
+
+    for (const invalid of [
+      { matchedDomain: 'https://help.example.com/2fa' },
+      { matchedDomain: 'example.com', url: 'https://attacker.invalid' },
+      { matchedDomain: 'EXAMPLE.COM' },
+      { matchedDomain: 'example..com' },
+      { matchedDomain: '-example.com' },
+      { matchedDomain: 'example-.com' },
+      { matchedDomain: `${'a'.repeat(64)}.com` },
+      { matchedDomain: `${'a'.repeat(250)}.com` }
+    ]) {
+      await expect(
+        electronMock.handlers.get(IPC_CHANNELS.vaultHealthOpenTwoFactorDocumentation)!(
+          h.event,
+          invalid
+        )
+      ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+
+    let getterCalls = 0
+    const accessor = Object.defineProperty({}, 'matchedDomain', {
+      enumerable: true,
+      get: () => {
+        getterCalls += 1
+        return 'example.com'
+      }
+    })
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.vaultHealthOpenTwoFactorDocumentation)!(
+        h.event,
+        accessor
+      )
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    expect(getterCalls).toBe(0)
+    expect(h.directory.openDocumentation).toHaveBeenCalledOnce()
+  })
+
+  it('maps missing, unavailable, and missing-documentation backends to public errors', async () => {
+    const unavailable = harness()
+    unavailable.directory.getDataset.mockRejectedValueOnce(
+      new TwoFactorDirectoryCacheError('UNAVAILABLE')
+    )
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(unavailable.event, {})
+    ).rejects.toThrow('BEARWARDEN:HEALTH_CHECK_FAILED')
+
+    const missingDocumentation = harness()
+    missingDocumentation.directory.openDocumentation.mockRejectedValueOnce(
+      new TwoFactorDirectoryCacheError('DOCUMENTATION_NOT_FOUND')
+    )
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.vaultHealthOpenTwoFactorDocumentation)!(
+        missingDocumentation.event,
+        { matchedDomain: 'example.com' }
+      )
+    ).rejects.toThrow('BEARWARDEN:NOT_FOUND')
+
+    const absent = harness()
+    const event = absent.event as {
+      sender: { isDestroyed: () => boolean }
+      senderFrame: { url: string }
+    }
+    registerVaultIpc({
+      vault: absent.vault as unknown as VaultService,
+      portability: {} as Parameters<typeof registerVaultIpc>[0]['portability'],
+      settings: {} as AppSettingsService,
+      sshKeyImportSessions: new SshKeyImportSessionStore({ readClipboard: () => '' }),
+      getMainWindow: () => ({ isDestroyed: () => false, webContents: event.sender }) as never
+    })
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(absent.event, {})
+    ).rejects.toThrow('BEARWARDEN:HEALTH_CHECK_FAILED')
   })
 })
 

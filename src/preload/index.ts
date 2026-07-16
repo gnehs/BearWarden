@@ -69,7 +69,10 @@ const api: BearWardenAPI = {
       ipcRenderer.invoke(IPC_CHANNELS.vaultHealthAccountBreaches, request),
     cancelAccountBreaches: () =>
       ipcRenderer.invoke(IPC_CHANNELS.vaultHealthCancelAccountBreaches, {}),
-    openHibpWebsite: () => ipcRenderer.invoke(IPC_CHANNELS.vaultHealthOpenHibp, {})
+    openHibpWebsite: () => ipcRenderer.invoke(IPC_CHANNELS.vaultHealthOpenHibp, {}),
+    inactiveTwoFactor: () => ipcRenderer.invoke(IPC_CHANNELS.vaultHealthInactiveTwoFactor, {}),
+    openTwoFactorDocumentation: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.vaultHealthOpenTwoFactorDocumentation, request)
   },
   folders: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.folderList),
