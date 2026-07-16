@@ -25,6 +25,11 @@ const harness = vi.hoisted(() => {
     dispose: vi.fn(),
     run: vi.fn(async () => ({ assertion: true }))
   }
+  const registrationController = {
+    cancel: vi.fn(),
+    dispose: vi.fn(),
+    run: vi.fn(async () => ({ attestation: true }))
+  }
 
   class FakeWebContents {
     readonly id = 1
@@ -95,6 +100,7 @@ const harness = vi.hoisted(() => {
     windows,
     FakeWindow,
     controller,
+    registrationController,
     get vaultOptions(): Record<string, unknown> | null {
       return vaultOptions
     },
@@ -358,6 +364,13 @@ vi.mock('./account-webauthn-window', () => ({
     run = harness.controller.run
   }
 }))
+vi.mock('./account-webauthn-registration-window', () => ({
+  AccountWebAuthnRegistrationWindowController: class {
+    cancel = harness.registrationController.cancel
+    dispose = harness.registrationController.dispose
+    run = harness.registrationController.run
+  }
+}))
 vi.mock('./sensitive-clipboard', () => ({
   SensitiveClipboard: class {
     clearIfOwned(): void {}
@@ -430,6 +443,7 @@ describe('main WebAuthn lifecycle wiring', () => {
 
   it('keeps the account connector main-only and cancels it at every teardown boundary', async () => {
     harness.controller.cancel.mockClear()
+    harness.registrationController.cancel.mockClear()
     const request = harness.vaultOptions!.requestAccountWebAuthnAssertion as (
       input: unknown
     ) => Promise<unknown>
@@ -442,15 +456,23 @@ describe('main WebAuthn lifecycle wiring', () => {
     await expect(request(input)).resolves.toEqual({ assertion: true })
     expect(harness.controller.run).toHaveBeenCalledWith(input)
 
+    const requestRegistration = harness.vaultOptions!.requestAccountWebAuthnRegistration as (
+      input: unknown
+    ) => Promise<unknown>
+    await expect(requestRegistration(input)).resolves.toEqual({ attestation: true })
+    expect(harness.registrationController.run).toHaveBeenCalledWith(input)
+
     await (harness.vaultIpcOptions!.beforeLock as () => Promise<void>)()
     await (harness.vaultIpcOptions!.beforeSyncReconfigure as () => Promise<void>)()
     harness.powerMonitorListeners.get('lock-screen')!()
     harness.powerMonitorListeners.get('suspend')!()
     harness.windows[0]!.emit('closed')
     expect(harness.controller.cancel).toHaveBeenCalledTimes(5)
+    expect(harness.registrationController.cancel).toHaveBeenCalledTimes(5)
 
     const quitEvent = { preventDefault: vi.fn() }
     harness.appListeners.get('before-quit')!(quitEvent as never)
     await vi.waitFor(() => expect(harness.controller.dispose).toHaveBeenCalledOnce())
+    expect(harness.registrationController.dispose).toHaveBeenCalledOnce()
   })
 })

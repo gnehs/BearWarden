@@ -36,6 +36,7 @@ import { SshAgentServer } from './ssh-agent-server'
 import { PasskeyCeremonyService } from './passkey-ceremony-service'
 import { PasskeyRendererBridge } from './passkey-renderer-bridge'
 import { AccountWebAuthnWindowController } from './account-webauthn-window'
+import { AccountWebAuthnRegistrationWindowController } from './account-webauthn-registration-window'
 import { SensitiveClipboard } from './sensitive-clipboard'
 import { TwoFactorDirectoryCache } from './two-factor-directory-cache'
 import { bootstrapAccountStorage } from './account-storage-bootstrap'
@@ -61,6 +62,7 @@ let sshAgentServer: SshAgentServer | null = null
 let passkeyCeremonyService: PasskeyCeremonyService | null = null
 let passkeyRendererBridge: PasskeyRendererBridge | null = null
 let accountWebAuthnController: AccountWebAuthnWindowController | null = null
+let accountWebAuthnRegistrationController: AccountWebAuthnRegistrationWindowController | null = null
 let repromptAuthorizations: RepromptAuthorizationStore | null = null
 let twoFactorDirectory: TwoFactorDirectoryCache | null = null
 let contentProtectionEnabled = true
@@ -212,6 +214,7 @@ function refreshSshAgentAfterVaultChange(): void {
 
 function cancelAccountWebAuthnCeremony(): void {
   accountWebAuthnController?.cancel()
+  accountWebAuthnRegistrationController?.cancel()
 }
 
 const sensitiveClipboard = new SensitiveClipboard(clipboard)
@@ -497,6 +500,15 @@ if (hasSingleInstanceLock)
     } catch {
       // Keep the local vault usable without exposing native WebAuthn initialization details.
     }
+    let capturedAccountWebAuthnRegistrationController: AccountWebAuthnRegistrationWindowController | null =
+      null
+    try {
+      capturedAccountWebAuthnRegistrationController =
+        new AccountWebAuthnRegistrationWindowController()
+      accountWebAuthnRegistrationController = capturedAccountWebAuthnRegistrationController
+    } catch {
+      // Registration is optional; a connector failure must not block the local vault.
+    }
     const activeVault = new VaultService(
       store,
       {
@@ -517,6 +529,13 @@ if (hasSingleInstanceLock)
         requestAccountWebAuthnAssertion: ({ webVaultUrl, challenge, signal }) => {
           const controller = capturedAccountWebAuthnController
           if (!controller) return Promise.reject(new Error('ACCOUNT_WEBAUTHN_UNAVAILABLE'))
+          return controller.run({ webVaultUrl, challenge, signal })
+        },
+        requestAccountWebAuthnRegistration: ({ webVaultUrl, challenge, signal }) => {
+          const controller = capturedAccountWebAuthnRegistrationController
+          if (!controller) {
+            return Promise.reject(new Error('ACCOUNT_WEBAUTHN_REGISTRATION_UNAVAILABLE'))
+          }
           return controller.run({ webVaultUrl, challenge, signal })
         }
       }
@@ -819,6 +838,9 @@ function disposeServices(): void {
   const controller = accountWebAuthnController
   accountWebAuthnController = null
   controller?.dispose()
+  const registrationController = accountWebAuthnRegistrationController
+  accountWebAuthnRegistrationController = null
+  registrationController?.dispose()
   twoFactorDirectory?.dispose()
   twoFactorDirectory = null
   vault?.dispose()

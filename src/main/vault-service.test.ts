@@ -19,6 +19,7 @@ import {
   type PasskeyVaultCreateRequest,
   type PasskeyVaultCreateResult,
   type VaultAccountWebAuthnAssertionRequester,
+  type VaultAccountWebAuthnRegistrationRequester,
   type VaultServiceOptions
 } from './vault-service'
 import { VaultAttachmentFileService } from './vault-attachment-files'
@@ -27,6 +28,10 @@ import { hashPasswordForPwnedLookup } from './pwned-passwords'
 import { buildBitwardenJson } from './vault-portability-codec'
 import { parseTwoFactorDirectoryTotpData } from './inactive-two-factor'
 import type { AccountWebAuthnAssertion, AccountWebAuthnChallenge } from './account-webauthn-codec'
+import type {
+  AccountWebAuthnAttestation,
+  AccountWebAuthnRegistrationChallenge
+} from './account-webauthn-registration-codec'
 
 const MASTER_PASSWORD = 'correct horse battery staple'
 const ATTACHMENT_OPERATION_ID = '70000000-0000-4000-8000-000000000001'
@@ -155,6 +160,37 @@ const ACCOUNT_WEBAUTHN_ASSERTION: AccountWebAuthnAssertion = {
     userHandle: null
   },
   clientExtensionResults: {}
+}
+
+function createAccountWebAuthnRegistrationChallenge(
+  seed = 11
+): AccountWebAuthnRegistrationChallenge {
+  return {
+    rp: { id: 'vault.example.invalid', name: 'Example Vault' },
+    user: {
+      id: Buffer.alloc(32, seed).toString('base64url'),
+      name: 'sync@example.invalid',
+      displayName: 'Sync User'
+    },
+    challenge: Buffer.alloc(32, seed + 1).toString('base64url'),
+    pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+    excludeCredentials: [],
+    authenticatorSelection: { userVerification: 'preferred' },
+    attestation: 'none',
+    extensions: {}
+  }
+}
+
+const ACCOUNT_WEBAUTHN_ATTESTATION: AccountWebAuthnAttestation = {
+  id: Buffer.alloc(32, 21).toString('base64url'),
+  rawId: Buffer.alloc(32, 21).toString('base64url'),
+  type: 'public-key',
+  response: {
+    clientDataJSON: Buffer.from('registration-client-data').toString('base64url'),
+    attestationObject: Buffer.from('registration-attestation').toString('base64url')
+  },
+  clientExtensionResults: {},
+  authenticatorAttachment: 'platform'
 }
 
 async function createVaultPasskey(
@@ -388,6 +424,16 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
     }),
     sendEmailTwoFactorSetup: async () => undefined,
     completeEmailTwoFactorSetup: async () => undefined,
+    beginWebAuthnSetup: async () => ({
+      enabled: true,
+      keys: [{ id: 1, name: 'Existing security key', migrated: false }],
+      registrationId: 2,
+      registrationChallenge: createAccountWebAuthnRegistrationChallenge(),
+      verificationMode: 'master-password' as const,
+      userVerificationToken: null
+    }),
+    completeWebAuthnSetup: async () => undefined,
+    deleteWebAuthnKey: async () => undefined,
     changeMasterPassword: async () => {
       unlocked = false
       state = { ...state, session: null }
@@ -5417,6 +5463,198 @@ describe('VaultService encrypted local data', () => {
     await vi.waitFor(() => expect(request.masterPassword).toBe(''))
     await service.lock()
     await expect(pending).rejects.toMatchObject({ code: 'LOCKED' })
+  })
+
+  it('keeps WebAuthn enrollment as one fresh main-only transaction and returns only safe keys', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const registrationRequester = vi.fn<VaultAccountWebAuthnRegistrationRequester>(async () =>
+      structuredClone(ACCOUNT_WEBAUTHN_ATTESTATION)
+    )
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      },
+      requestAccountWebAuthnRegistration: registrationRequester
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const begin = vi.spyOn(fake!, 'beginWebAuthnSetup')
+    let observedCompletion: unknown
+    const complete = vi
+      .spyOn(fake!, 'completeWebAuthnSetup')
+      .mockImplementation(async (completion) => {
+        observedCompletion = structuredClone(completion)
+      })
+
+    const listRequest = { masterPassword: 'fresh list password' }
+    const keys = await service.listAccountWebAuthnKeys(listRequest)
+    expect(listRequest.masterPassword).toBe('')
+    expect(keys).toEqual([{ id: 1, name: 'Existing security key', migrated: false }])
+    expect(Object.keys(keys[0]!).sort()).toEqual(['id', 'migrated', 'name'])
+    expect(JSON.stringify(keys)).not.toMatch(/challenge|token|attestation|credential/iu)
+
+    const enrollRequest = {
+      masterPassword: 'fresh enrollment password',
+      name: 'Laptop platform key'
+    }
+    await expect(service.enrollAccountWebAuthnKey(enrollRequest)).resolves.toBeUndefined()
+    expect(enrollRequest).toEqual({ masterPassword: '', name: '' })
+    expect(begin).toHaveBeenCalledTimes(2)
+    expect(begin).toHaveBeenNthCalledWith(1, 'fresh list password', expect.any(AbortSignal))
+    expect(begin).toHaveBeenNthCalledWith(2, 'fresh enrollment password', expect.any(AbortSignal))
+    expect(registrationRequester).toHaveBeenCalledWith({
+      webVaultUrl: 'https://vault.example.invalid',
+      challenge: expect.objectContaining({ challenge: expect.any(String) }),
+      signal: expect.any(AbortSignal)
+    })
+    expect(observedCompletion).toMatchObject({
+      id: 2,
+      name: 'Laptop platform key',
+      verificationMode: 'master-password',
+      masterPassword: 'fresh enrollment password',
+      attestation: ACCOUNT_WEBAUTHN_ATTESTATION
+    })
+    expect(complete).toHaveBeenCalledWith(
+      {
+        id: 2,
+        name: '',
+        verificationMode: 'master-password',
+        masterPassword: '',
+        attestation: {
+          id: '',
+          rawId: '',
+          type: 'public-key',
+          response: { clientDataJSON: '', attestationObject: '' },
+          clientExtensionResults: {},
+          authenticatorAttachment: null
+        }
+      },
+      expect.any(AbortSignal)
+    )
+  })
+
+  it('removes WebAuthn keys with explicit confirmation and maps stable account errors', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      },
+      requestAccountWebAuthnRegistration: async () => structuredClone(ACCOUNT_WEBAUTHN_ATTESTATION)
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const remove = vi.spyOn(fake!, 'deleteWebAuthnKey')
+    const request = { id: 1, masterPassword: 'fresh removal password', confirm: true as const }
+    await expect(service.removeAccountWebAuthnKey(request)).resolves.toBeUndefined()
+    expect(request).toEqual({ id: 1, masterPassword: '', confirm: true })
+    expect(remove).toHaveBeenCalledWith(1, 'fresh removal password', expect.any(AbortSignal))
+
+    const unconfirmed = { id: 1, masterPassword: 'must clear', confirm: false as true }
+    await expect(service.removeAccountWebAuthnKey(unconfirmed)).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    expect(unconfirmed.masterPassword).toBe('')
+
+    vi.spyOn(fake!, 'beginWebAuthnSetup').mockRejectedValueOnce(
+      new BitwardenDirectError('USER_VERIFICATION_FAILED')
+    )
+    await expect(
+      service.listAccountWebAuthnKeys({ masterPassword: 'wrong password' })
+    ).rejects.toMatchObject({ code: 'INVALID_MASTER_PASSWORD' })
+
+    remove.mockRejectedValueOnce(new BitwardenDirectError('TWO_FACTOR_MUTATION_UNKNOWN'))
+    await expect(
+      service.removeAccountWebAuthnKey({
+        id: 1,
+        masterPassword: 'fresh removal password',
+        confirm: true
+      })
+    ).rejects.toMatchObject({ code: 'TWO_FACTOR_MUTATION_UNKNOWN' })
+  })
+
+  it('aborts and generation-binds WebAuthn enrollment before any stale completion', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    let releaseRegistration!: (value: AccountWebAuthnAttestation) => void
+    let registrationSignal: AbortSignal | undefined
+    const requester = vi.fn<VaultAccountWebAuthnRegistrationRequester>(
+      ({ signal }) =>
+        new Promise((resolve) => {
+          registrationSignal = signal
+          releaseRegistration = resolve
+        })
+    )
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      },
+      requestAccountWebAuthnRegistration: requester
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const complete = vi.spyOn(fake!, 'completeWebAuthnSetup')
+    const pending = service.enrollAccountWebAuthnKey({
+      masterPassword: 'fresh enrollment password',
+      name: 'Stale key'
+    })
+    await vi.waitFor(() => expect(requester).toHaveBeenCalledOnce())
+    await service.lock()
+    expect(registrationSignal?.aborted).toBe(true)
+    releaseRegistration(structuredClone(ACCOUNT_WEBAUTHN_ATTESTATION))
+    await expect(pending).rejects.toMatchObject({ code: 'LOCKED' })
+    expect(complete).not.toHaveBeenCalled()
+  })
+
+  it('interrupts WebAuthn enrollment when a sync operation takes ownership', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    let registrationSignal: AbortSignal | undefined
+    const requester = vi.fn<VaultAccountWebAuthnRegistrationRequester>(
+      ({ signal }) =>
+        new Promise((_resolve, reject) => {
+          registrationSignal = signal
+          signal.addEventListener('abort', () => reject(new Error('sync interrupted')), {
+            once: true
+          })
+        })
+    )
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      },
+      requestAccountWebAuthnRegistration: requester
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const complete = vi.spyOn(fake!, 'completeWebAuthnSetup')
+    const pending = service.enrollAccountWebAuthnKey({
+      masterPassword: 'fresh enrollment password',
+      name: 'Interrupted key'
+    })
+    await vi.waitFor(() => expect(requester).toHaveBeenCalledOnce())
+
+    await expect(service.syncNow()).resolves.toMatchObject({ conflicts: 0 })
+    expect(registrationSignal?.aborted).toBe(true)
+    await expect(pending).rejects.toMatchObject({ code: 'LOCKED' })
+    expect(complete).not.toHaveBeenCalled()
   })
 
   it('uses expiring single-use authenticator sessions without exposing server capabilities', async () => {

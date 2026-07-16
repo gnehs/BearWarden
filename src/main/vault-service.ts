@@ -109,7 +109,9 @@ import {
   type BitwardenFileSendDraft,
   type BitwardenLoginTwoFactor,
   type BitwardenSyncClient,
-  type BitwardenTwoFactor
+  type BitwardenTwoFactor,
+  type BitwardenWebAuthnRegistrationRequest,
+  type BitwardenWebAuthnRegistrationSetup
 } from './bitwarden-direct'
 import {
   resolveBitwardenUrls,
@@ -198,6 +200,10 @@ import {
 import { createUriMatchBudget, loginUrisMatch } from './uri-matcher'
 import { validatePasskeyOrigin } from './passkey-origin-validation'
 import type { AccountWebAuthnAssertion, AccountWebAuthnChallenge } from './account-webauthn-codec'
+import type {
+  AccountWebAuthnAttestation,
+  AccountWebAuthnRegistrationChallenge
+} from './account-webauthn-registration-codec'
 
 const LEGACY_DATA_VERSION = 1
 const CLI_DATA_VERSION = 2
@@ -390,6 +396,17 @@ export type VaultAccountWebAuthnAssertionRequester = (
   request: VaultAccountWebAuthnRequest
 ) => Promise<AccountWebAuthnAssertion>
 
+/** Main-process-only input for the isolated native WebAuthn registration ceremony. */
+export interface VaultAccountWebAuthnRegistrationRequest {
+  readonly webVaultUrl: string
+  readonly challenge: AccountWebAuthnRegistrationChallenge
+  readonly signal: AbortSignal
+}
+
+export type VaultAccountWebAuthnRegistrationRequester = (
+  request: VaultAccountWebAuthnRegistrationRequest
+) => Promise<AccountWebAuthnAttestation>
+
 export interface VaultServiceOptions {
   now?: () => Date
   createId?: () => string
@@ -399,6 +416,8 @@ export interface VaultServiceOptions {
   attachmentFiles?: VaultAttachmentFileService
   /** Main-process-only bridge to the one-shot Web Vault provider-7 connector. */
   requestAccountWebAuthnAssertion?: VaultAccountWebAuthnAssertionRequester
+  /** Main-process-only bridge to the isolated WebAuthn credential-creation window. */
+  requestAccountWebAuthnRegistration?: VaultAccountWebAuthnRegistrationRequester
 }
 
 export interface VaultExportSnapshot {
@@ -2949,6 +2968,30 @@ interface EmailTwoFactorSetupSession {
   readonly expiresAt: number
 }
 
+interface AccountWebAuthnOperationLease {
+  readonly generation: number
+  readonly client: BitwardenSyncClient
+  readonly abort: AbortController
+}
+
+function clearAccountWebAuthnRegistrationSetup(
+  setup: BitwardenWebAuthnRegistrationSetup | null
+): void {
+  if (!setup) return
+  setup.userVerificationToken = null
+  setup.keys.splice(0)
+}
+
+function clearAccountWebAuthnAttestation(attestation: AccountWebAuthnAttestation | null): void {
+  if (!attestation) return
+  attestation.id = ''
+  attestation.rawId = ''
+  attestation.response.clientDataJSON = ''
+  attestation.response.attestationObject = ''
+  attestation.clientExtensionResults = {}
+  attestation.authenticatorAttachment = null
+}
+
 export class VaultService {
   private key: Buffer | null = null
   private salt: Buffer | null = null
@@ -2981,6 +3024,7 @@ export class VaultService {
   private readonly randomInt: RandomInt
   private readonly attachmentFiles: VaultAttachmentFileService | null
   private readonly requestAccountWebAuthnAssertion: VaultAccountWebAuthnAssertionRequester | null
+  private readonly requestAccountWebAuthnRegistration: VaultAccountWebAuthnRegistrationRequester | null
   private readonly websiteIconCache = new Map<string, string | null>()
   private readonly websiteIconRequests = new Map<string, Promise<string | null>>()
   private activeExposedPasswordOperation: ActiveExposedPasswordOperation | null = null
@@ -2997,6 +3041,7 @@ export class VaultService {
     this.randomInt = options.randomInt ?? nodeRandomInt
     this.attachmentFiles = options.attachmentFiles ?? null
     this.requestAccountWebAuthnAssertion = options.requestAccountWebAuthnAssertion ?? null
+    this.requestAccountWebAuthnRegistration = options.requestAccountWebAuthnRegistration ?? null
     this.createSyncClient =
       options.createSyncClient ??
       (() => {
@@ -4389,6 +4434,194 @@ export class VaultService {
       if ('userVerificationToken' in mutation) mutation.userVerificationToken = ''
       lease.emailForSetup = ''
       lease.userVerificationToken = null
+    }
+  }
+
+  async listAccountWebAuthnKeys(request: {
+    masterPassword: string
+  }): Promise<{ id: number; name: string; migrated: boolean }[]> {
+    let masterPassword = ''
+    let setup: BitwardenWebAuthnRegistrationSetup | null = null
+    let lease:
+      | (AccountWebAuthnOperationLease & {
+          begin: NonNullable<BitwardenSyncClient['beginWebAuthnSetup']>
+        })
+      | null = null
+    try {
+      masterPassword = normalizeSyncPassword(request.masterPassword)
+      request.masterPassword = ''
+      lease = await this.exclusive(async () => {
+        const sync = this.requireSyncData()
+        const client = this.getOrCreateSyncClient(sync)
+        if (!client.beginWebAuthnSetup || !client.exportState().session) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        const abort = new AbortController()
+        this.accountSecurityAborts.add(abort)
+        return {
+          generation: this.generation,
+          client,
+          abort,
+          begin: client.beginWebAuthnSetup.bind(client)
+        }
+      })
+      setup = await lease.begin(masterPassword, lease.abort.signal)
+      masterPassword = ''
+      const keys = setup.keys.map(({ id, name, migrated }) => ({ id, name, migrated }))
+      await this.finishAccountWebAuthnOperation(lease, true)
+      lease = null
+      return keys
+    } catch (error) {
+      if (lease) {
+        await this.releaseAccountWebAuthnOperation(lease)
+        this.throwAccountWebAuthnOperationError(error, lease)
+      }
+      if (error instanceof VaultError) throw error
+      throw this.mapSyncError(error)
+    } finally {
+      request.masterPassword = ''
+      masterPassword = ''
+      clearAccountWebAuthnRegistrationSetup(setup)
+    }
+  }
+
+  async enrollAccountWebAuthnKey(request: { masterPassword: string; name: string }): Promise<void> {
+    let masterPassword = ''
+    let name = ''
+    let setup: BitwardenWebAuthnRegistrationSetup | null = null
+    let attestation: AccountWebAuthnAttestation | null = null
+    let mutation: BitwardenWebAuthnRegistrationRequest | null = null
+    let lease:
+      | (AccountWebAuthnOperationLease & {
+          webVaultUrl: string
+          begin: NonNullable<BitwardenSyncClient['beginWebAuthnSetup']>
+          complete: NonNullable<BitwardenSyncClient['completeWebAuthnSetup']>
+          register: VaultAccountWebAuthnRegistrationRequester
+        })
+      | null = null
+    try {
+      masterPassword = normalizeSyncPassword(request.masterPassword)
+      name = normalizeRequiredString(request.name, MAX_NAME_LENGTH)
+      request.masterPassword = ''
+      request.name = ''
+      lease = await this.exclusive(async () => {
+        const sync = this.requireSyncData()
+        const client = this.getOrCreateSyncClient(sync)
+        const register = this.requestAccountWebAuthnRegistration
+        if (
+          !client.beginWebAuthnSetup ||
+          !client.completeWebAuthnSetup ||
+          !client.exportState().session
+        ) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        if (!register) throw new VaultError('SYNC_FAILED')
+        const abort = new AbortController()
+        this.accountSecurityAborts.add(abort)
+        return {
+          generation: this.generation,
+          client,
+          abort,
+          webVaultUrl: resolveBitwardenUrls(sync.serverUrl).webVaultUrl,
+          begin: client.beginWebAuthnSetup.bind(client),
+          complete: client.completeWebAuthnSetup.bind(client),
+          register
+        }
+      })
+
+      setup = await lease.begin(masterPassword, lease.abort.signal)
+      await this.assertAccountWebAuthnOperationCurrent(lease)
+      attestation = structuredClone(
+        await lease.register({
+          webVaultUrl: lease.webVaultUrl,
+          challenge: setup.registrationChallenge,
+          signal: lease.abort.signal
+        })
+      )
+      await this.assertAccountWebAuthnOperationCurrent(lease)
+      mutation = {
+        id: setup.registrationId,
+        name,
+        attestation,
+        verificationMode: setup.verificationMode,
+        ...(setup.userVerificationToken
+          ? { userVerificationToken: setup.userVerificationToken }
+          : {}),
+        ...(setup.verificationMode === 'master-password' ? { masterPassword } : {})
+      }
+      await lease.complete(mutation, lease.abort.signal)
+      await this.finishAccountWebAuthnOperation(lease, true)
+      lease = null
+    } catch (error) {
+      if (lease) {
+        await this.releaseAccountWebAuthnOperation(lease)
+        this.throwAccountWebAuthnOperationError(error, lease)
+      }
+      if (error instanceof VaultError) throw error
+      throw this.mapSyncError(error)
+    } finally {
+      request.masterPassword = ''
+      request.name = ''
+      masterPassword = ''
+      name = ''
+      clearAccountWebAuthnRegistrationSetup(setup)
+      clearAccountWebAuthnAttestation(attestation)
+      if (mutation) {
+        mutation.name = ''
+        if (mutation.masterPassword !== undefined) mutation.masterPassword = ''
+        if (mutation.userVerificationToken !== undefined) mutation.userVerificationToken = ''
+      }
+    }
+  }
+
+  async removeAccountWebAuthnKey(request: {
+    id: number
+    masterPassword: string
+    confirm: true
+  }): Promise<void> {
+    let masterPassword = ''
+    let id = 0
+    let lease:
+      | (AccountWebAuthnOperationLease & {
+          remove: NonNullable<BitwardenSyncClient['deleteWebAuthnKey']>
+        })
+      | null = null
+    try {
+      if (!Number.isSafeInteger(request.id) || request.id < 1 || request.confirm !== true) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      id = request.id
+      masterPassword = normalizeSyncPassword(request.masterPassword)
+      request.masterPassword = ''
+      lease = await this.exclusive(async () => {
+        const sync = this.requireSyncData()
+        const client = this.getOrCreateSyncClient(sync)
+        if (!client.deleteWebAuthnKey || !client.exportState().session) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        const abort = new AbortController()
+        this.accountSecurityAborts.add(abort)
+        return {
+          generation: this.generation,
+          client,
+          abort,
+          remove: client.deleteWebAuthnKey.bind(client)
+        }
+      })
+      await lease.remove(id, masterPassword, lease.abort.signal)
+      await this.finishAccountWebAuthnOperation(lease, true)
+      lease = null
+    } catch (error) {
+      if (lease) {
+        await this.releaseAccountWebAuthnOperation(lease)
+        this.throwAccountWebAuthnOperationError(error, lease)
+      }
+      if (error instanceof VaultError) throw error
+      throw this.mapSyncError(error)
+    } finally {
+      request.masterPassword = ''
+      id = 0
+      masterPassword = ''
     }
   }
 
@@ -7784,8 +8017,75 @@ export class VaultService {
     }
   }
 
+  private assertAccountWebAuthnOperationCurrent(
+    lease: AccountWebAuthnOperationLease
+  ): Promise<void> {
+    return this.exclusive(async () => {
+      this.requireData()
+      if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+        throw new VaultError('LOCKED')
+      }
+      if (this.syncClient !== lease.client || !lease.client.exportState().session) {
+        throw new VaultError('SYNC_AUTH_REQUIRED')
+      }
+    })
+  }
+
+  private finishAccountWebAuthnOperation(
+    lease: AccountWebAuthnOperationLease,
+    persistClientState: boolean
+  ): Promise<void> {
+    return this.exclusive(async () => {
+      this.requireData()
+      if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+        throw new VaultError('LOCKED')
+      }
+      if (this.syncClient !== lease.client || !lease.client.exportState().session) {
+        throw new VaultError('SYNC_AUTH_REQUIRED')
+      }
+      if (persistClientState) await this.persistCurrentClientState()
+      if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+        throw new VaultError('LOCKED')
+      }
+      if (this.syncClient !== lease.client || !lease.client.exportState().session) {
+        throw new VaultError('SYNC_AUTH_REQUIRED')
+      }
+      this.accountSecurityAborts.delete(lease.abort)
+    })
+  }
+
+  private releaseAccountWebAuthnOperation(lease: AccountWebAuthnOperationLease): Promise<void> {
+    return this.exclusive(async () => {
+      this.accountSecurityAborts.delete(lease.abort)
+    })
+  }
+
+  private throwAccountWebAuthnOperationError(
+    error: unknown,
+    lease: AccountWebAuthnOperationLease
+  ): never {
+    if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+      throw new VaultError('LOCKED')
+    }
+    if (this.syncClient !== lease.client || !lease.client.exportState().session) {
+      throw new VaultError('SYNC_AUTH_REQUIRED')
+    }
+    if (error instanceof BitwardenDirectError) {
+      if (error.code === 'USER_VERIFICATION_FAILED') {
+        throw new VaultError('INVALID_MASTER_PASSWORD')
+      }
+      if (error.code === 'TWO_FACTOR_MUTATION_UNKNOWN') {
+        throw new VaultError('TWO_FACTOR_MUTATION_UNKNOWN')
+      }
+      if (error.code === 'NOT_FOUND') throw new VaultError('NOT_FOUND')
+    }
+    if (error instanceof VaultError) throw error
+    throw this.mapSyncError(error)
+  }
+
   private startSyncOperation(): AbortController {
     if (this.syncInProgress) throw new VaultError('SYNC_FAILED')
+    this.abortAccountSecurityRequests()
     const abort = new AbortController()
     this.syncAbort = abort
     this.syncInProgress = true
