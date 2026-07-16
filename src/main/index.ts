@@ -33,6 +33,8 @@ import { SshKeyImportSessionStore } from './ssh-key-import-session'
 import { SshAgentCoordinator } from './ssh-agent-coordinator'
 import { SshAgentRendererBridge } from './ssh-agent-renderer-bridge'
 import { SshAgentServer } from './ssh-agent-server'
+import { PasskeyCeremonyService } from './passkey-ceremony-service'
+import { PasskeyRendererBridge } from './passkey-renderer-bridge'
 import icon from '../../resources/icon.png?asset'
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
@@ -47,6 +49,8 @@ let sshKeyImportSessions: SshKeyImportSessionStore | null = null
 let sshAgentCoordinator: SshAgentCoordinator | null = null
 let sshAgentBridge: SshAgentRendererBridge | null = null
 let sshAgentServer: SshAgentServer | null = null
+let passkeyCeremonyService: PasskeyCeremonyService | null = null
+let passkeyRendererBridge: PasskeyRendererBridge | null = null
 let repromptAuthorizations: RepromptAuthorizationStore | null = null
 let contentProtectionEnabled = true
 let vaultLockGeneration = 0
@@ -157,7 +161,7 @@ function scheduleSshAgentLifecycle(): void {
     })
 }
 
-function focusWindowForSshAgent(): void {
+function focusMainWindow(): void {
   const window = mainWindow
   if (!window || window.isDestroyed()) return
   if (window.isMinimized()) window.restore()
@@ -295,14 +299,22 @@ function notifyVaultChanged(): void {
   window.webContents.send(IPC_EVENTS.vaultChanged)
 }
 
+function notifyExternalVaultChanged(): void {
+  passkeyCeremonyService?.onVaultMutation()
+  notifyVaultChanged()
+}
+
 async function unlockSyncWithLocalPassword(masterPassword: string): Promise<void> {
   if (!vault) return
   const status = await vault.unlockSyncWithLocalPassword(masterPassword)
+  passkeyCeremonyService?.onVaultMutation()
   notifySyncChanged(status)
   if (status.state === 'ready') autoSync?.request()
 }
 
 function beforeVaultLock(): void {
+  passkeyCeremonyService?.onLocked()
+  passkeyRendererBridge?.cancelAll()
   autoSync?.cancel()
   vaultLockGeneration += 1
   sshKeyImportSessions?.clearAll()
@@ -381,6 +393,7 @@ function createWindow(): BrowserWindow {
 
   window.setContentProtection(contentProtectionEnabled)
   sshAgentBridge?.attachWindow(window)
+  passkeyRendererBridge?.attachWindow(window)
   window.webContents.on('did-start-loading', () => {
     rendererHandlesLockRequests = false
   })
@@ -484,12 +497,12 @@ if (hasSingleInstanceLock)
     repromptAuthorizations = new RepromptAuthorizationStore()
     sshAgentBridge = new SshAgentRendererBridge({
       getMainWindow: () => mainWindow,
-      focusWindow: () => focusWindowForSshAgent()
+      focusWindow: () => focusMainWindow()
     })
     sshAgentCoordinator = new SshAgentCoordinator({
       vault,
       waitForUnlock: (signal) => sshAgentBridge?.waitForUnlock(signal) ?? Promise.resolve(false),
-      focusWindow: focusWindowForSshAgent,
+      focusWindow: focusMainWindow,
       getSettings: () => ({ sshAgentPromptBehavior }),
       requestRendererApproval: (request, signal) => {
         const bridge = sshAgentBridge
@@ -573,7 +586,7 @@ if (hasSingleInstanceLock)
     autoSync = new AutoSyncCoordinator({
       vault,
       onSyncChanged: notifySyncChanged,
-      onVaultChanged: notifyVaultChanged
+      onVaultChanged: notifyExternalVaultChanged
     })
 
     settings = new AppSettingsService(
@@ -602,6 +615,31 @@ if (hasSingleInstanceLock)
     )
     await settings.initialize()
 
+    passkeyRendererBridge = new PasskeyRendererBridge({
+      getMainWindow: () => mainWindow,
+      focusWindow: () => focusMainWindow(),
+      getVerificationMethods: async () => {
+        const current = await settings?.get().catch(() => undefined)
+        return current?.touchIdAvailable && current.touchIdEnabled
+          ? ['touch-id', 'master-password']
+          : ['master-password']
+      },
+      verifyMasterPassword: (requestId, selectedChoiceId, masterPassword, signal) => {
+        const service = passkeyCeremonyService
+        if (!service) return Promise.reject(new Error('PASSKEY_SERVICE_UNAVAILABLE'))
+        return service.verifyMasterPassword(requestId, selectedChoiceId, masterPassword, signal)
+      }
+    })
+    passkeyCeremonyService = new PasskeyCeremonyService({
+      vault,
+      rendererBridge: passkeyRendererBridge,
+      settings,
+      onVaultMutation: () => {
+        autoSync?.request()
+        notifyVaultChanged()
+      }
+    })
+
     sshKeyImportSessions = new SshKeyImportSessionStore({
       readClipboard: () => clipboard.readText()
     })
@@ -614,6 +652,7 @@ if (hasSingleInstanceLock)
       sshKeyImportSessions,
       repromptAuthorizations,
       afterSetup: async () => {
+        passkeyCeremonyService?.onVaultMutation()
         await refreshSshAgentAfterUnlock().catch(() => undefined)
         scheduleSshAgentLifecycle()
       },
@@ -628,10 +667,12 @@ if (hasSingleInstanceLock)
         scheduleSshAgentLifecycle()
       },
       afterMutation: () => {
+        passkeyCeremonyService?.onVaultMutation()
         autoSync?.request()
         refreshSshAgentAfterVaultChange()
       },
       afterSyncChanged: (status) => {
+        passkeyCeremonyService?.onVaultMutation()
         autoSync?.cancel()
         notifySyncChanged(status)
         refreshSshAgentAfterVaultChange()
@@ -667,6 +708,8 @@ function disposeServices(): void {
   sensitiveClipboard.clearIfOwned()
   sshKeyImportSessions?.clearAll()
   autoSync?.dispose()
+  passkeyCeremonyService?.dispose()
+  passkeyRendererBridge?.dispose()
   vault?.dispose()
   settings?.dispose()
 }
@@ -681,6 +724,8 @@ app.on('before-quit', (event) => {
 
   sshAgentEnabled = false
   sshAgentLifecycleEpoch += 1
+  passkeyCeremonyService?.onLocked()
+  passkeyRendererBridge?.cancelAll()
   sshAgentBridge?.cancelAll()
   sshAgentCoordinator?.reset()
   repromptAuthorizations?.clear()
