@@ -18,6 +18,7 @@ BearWarden 是一個以「快速找到、安心使用」為核心的桌面密碼
 - 密碼預設遮蔽、明確揭露、複製及開啟網站
 - 產生 Bitwarden 相容的一次性驗證碼，支援 Base32、`otpauth://` 自訂演算法／位數／週期與 Steam Guard；無效或未來格式仍可原樣同步
 - 新增 SSH Key 項目時由主程序安全產生 Ed25519 金鑰，或從剪貼簿匯入 OpenSSH／PKCS#8 的 Ed25519、RSA 與 ECDSA 私鑰（含密碼保護），並正規化為相符的 OpenSSH 私鑰、公鑰與 `SHA256:` 指紋
+- 內建 SSH Agent，可列舉並簽署 Ed25519、RSA SHA-2 與 ECDSA P-256／P-384／P-521 金鑰；支援每次詢問、自動核准或鎖定前記住，以及經驗證的 forwarding host scope
 - 本機安全產生密碼、EFF 長單字密語、隨機使用者名稱、Plus Address 與 Catch-all Email；最近 200 筆結果保存在加密歷史中
 - 匯入 Bitwarden JSON，並匯出可攜、受獨立密碼保護的 Bitwarden JSON 備份
 - 支援主密碼重新提示；短效授權只存在主程序，並綁定視窗、項目集合與保管庫世代
@@ -35,12 +36,29 @@ BearWarden 是一個以「快速找到、安心使用」為核心的桌面密碼
 - renderer 不具 Node.js、任意 IPC 或檔案系統能力；登入清單不包含密碼。
 - 匯入／匯出的路徑與檔案內容只由主程序處理；備份以 `0600` 暫存檔、fsync 與原子替換寫入。
 - SSH 私鑰匯入只在主程序讀取一次剪貼簿；renderer 僅取得綁定視窗與保管庫世代的短效單次 token、公鑰及指紋，鎖定、取消、逾期或程式結束都會清除未完成 session。
+- SSH Agent 的私鑰、public key blob 與待簽內容只留在主程序；renderer 僅收到項目名稱、指紋、用途與 forwarding 狀態。每次核准使用短效單次 grant，鎖定、停用、renderer reload 或逾時都會失效。
 - 附件上傳會在主程序建立獨立金鑰與 authenticated type-2 加密 envelope，再依伺服器指定的 Direct 或 Azure 流程傳送；下載會重新取得短效網址、先驗證 metadata，再於主程序驗證 HMAC／解密，並以 `0600` 暫存檔與原子替換寫入。上傳、下載、刪除與 legacy Fix 支援進度、主動取消及鎖定中止，明文 Buffer 用畢後會清除。
 - 附件目前採記憶體內加解密，加密後的 envelope 上限為 128 MiB；超過此上限的大檔串流、可讀的剩餘儲存額度，以及附件 ZIP 匯入／匯出仍未實作。
 - 受重新提示保護的項目清單不包含使用者名稱、URI 或 TOTP 中繼資料；主密碼驗證後取得的 capability 會在 60 秒後失效。
 - 鎖定時會清除主程序內的金鑰與已解密資料。
 
 Bitwarden 的 Password Manager SDK 目前不是公開穩定 API，因此本專案沒有把 `@bitwarden/sdk-napi`（Secrets Manager SDK）誤用為個人密碼庫資料層。
+
+## SSH Agent
+
+在「設定 → SSH Agent」啟用後，BearWarden 會依 [Bitwarden SSH Agent 的使用模型](https://bitwarden.com/help/ssh-agent/)讓 OpenSSH 與 Git 使用保管庫中的 SSH Key。Agent 在保管庫鎖定時仍可回應；第一次解鎖前會要求開啟 BearWarden，之後可列出已快取的公開身分，但每次實際簽署仍必須解鎖。
+
+macOS／Linux 預設 socket 是 `~/.bearwarden-ssh-agent.sock`。在要使用的 shell 執行設定頁提供的指令：
+
+```bash
+export SSH_AUTH_SOCK="$HOME/.bearwarden-ssh-agent.sock"
+```
+
+若要改變 BearWarden 建立 socket 的位置，請在啟動 BearWarden 前設定 `BEARWARDEN_SSH_AUTH_SOCK`，再把相同路徑指定給 `SSH_AUTH_SOCK`。自訂 socket 必須位於可信任且可寫入的位置；BearWarden 只會移除已確認失效的 socket，拒絕 symlink 或一般檔案，並把新 socket 權限設為 `0600`。
+
+Windows 使用 OpenSSH 固定的 `\\.\pipe\openssh-ssh-agent` named pipe。啟用前需停用系統的 OpenSSH Authentication Agent，避免 pipe 被另一個 agent 佔用。
+
+「鎖定前記住」會分別記住本機請求與經 `session-bind@openssh.com` 驗證的 forwarding 主機；沒有已驗證主機指紋的 forwarding 要求不會被記住。項目啟用主密碼重新提示時，無論選擇哪種 Agent 核准策略，都仍需重新輸入主密碼。
 
 ## 匯入與加密備份
 
