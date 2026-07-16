@@ -123,6 +123,12 @@ import { searchVaultItems, type VaultSearchItem } from './vault-search'
 import { analyzeVaultHealth, type VaultHealthItem } from './vault-health'
 import { hashPasswordsForPwnedLookup, PwnedPasswordsClient } from './pwned-passwords'
 import {
+  analyzeInactiveTwoFactor,
+  type InactiveTwoFactorInput,
+  type InactiveTwoFactorReport,
+  type TwoFactorDirectoryDataset
+} from './inactive-two-factor'
+import {
   generateCatchAllEmail,
   generatePassphrase,
   generatePassword,
@@ -5105,6 +5111,38 @@ export class VaultService {
         reusedPasswords,
         unsecuredWebsites
       }
+    })
+  }
+
+  /**
+   * Adapts personal login metadata to the main-only inactive-2FA core under one unlocked epoch.
+   * Secret fields and organization-owned items never cross this boundary.
+   */
+  getInactiveTwoFactorReport(dataset: TwoFactorDirectoryDataset): Promise<InactiveTwoFactorReport> {
+    return this.exclusive(async () => {
+      const generation = this.generation
+      const data = this.requireData()
+      const inputs: InactiveTwoFactorInput[] = []
+
+      for (const login of data.logins) {
+        if (login.type !== 'login') continue
+        const hasTotp = Boolean(login.totp)
+        const isDeleted = login.deletedAt !== null
+        const isArchived = login.archivedAt !== null
+        inputs.push({
+          id: login.id,
+          name: login.name,
+          hasTotp,
+          isDeleted,
+          isArchived,
+          // Avoid reading even URI metadata for lifecycle/TOTP exclusions.
+          uris: hasTotp || isDeleted || isArchived ? [] : login.uris.map(({ uri }) => uri)
+        })
+      }
+
+      const report = analyzeInactiveTwoFactor(inputs, dataset)
+      if (generation !== this.generation) throw new VaultError('LOCKED')
+      return report
     })
   }
 

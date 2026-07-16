@@ -24,6 +24,7 @@ import { VaultAttachmentFileService } from './vault-attachment-files'
 import { createPasskeyCredential } from './passkey-authenticator'
 import { hashPasswordForPwnedLookup } from './pwned-passwords'
 import { buildBitwardenJson } from './vault-portability-codec'
+import { parseTwoFactorDirectoryTotpData } from './inactive-two-factor'
 
 const MASTER_PASSWORD = 'correct horse battery staple'
 const ATTACHMENT_OPERATION_ID = '70000000-0000-4000-8000-000000000001'
@@ -4281,6 +4282,164 @@ describe('VaultService encrypted local data', () => {
     }
     expect(write).not.toHaveBeenCalled()
     expect(await service.unlockedGeneration()).toBe(beforeGeneration)
+  })
+
+  it('reports inactive 2FA for personal logins without crossing unrelated secrets', async () => {
+    const { service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const zulu = await service.createLogin({
+      name: 'Zulu account',
+      password: 'password-canary',
+      notes: 'notes-canary',
+      customFields: [
+        {
+          source: null,
+          name: 'field-canary',
+          value: 'value-canary',
+          type: 'text',
+          linkedId: null
+        }
+      ],
+      uris: [{ uri: 'https://login.example.com/private?token=uri-canary', match: null }]
+    })
+    const alpha = await service.createLogin({
+      name: 'Alpha account',
+      uris: [{ uri: 'https://example.com/login', match: null }]
+    })
+
+    const internalData = (
+      service as unknown as {
+        data: {
+          logins: Array<Record<string, unknown> & { id: string }>
+          sharedLogins: unknown[]
+        } | null
+      }
+    ).data!
+    for (const id of [zulu.id, alpha.id]) {
+      const raw = internalData.logins.find((login) => login.id === id)!
+      Object.defineProperties(raw, {
+        password: {
+          get: () => {
+            throw new Error('inactive 2FA must not read passwords')
+          }
+        },
+        notes: {
+          get: () => {
+            throw new Error('inactive 2FA must not read notes')
+          }
+        },
+        customFields: {
+          get: () => {
+            throw new Error('inactive 2FA must not read custom fields')
+          }
+        },
+        passkeys: {
+          get: () => {
+            throw new Error('inactive 2FA must not read passkeys')
+          }
+        }
+      })
+    }
+    internalData.sharedLogins.push({
+      id: 'shared-canary',
+      type: 'login',
+      name: 'Organization canary',
+      totp: '',
+      deletedAt: null,
+      archivedAt: null,
+      uris: [{ uri: 'https://example.com' }]
+    })
+
+    const dataset = parseTwoFactorDirectoryTotpData({
+      'example.com': {
+        methods: ['totp'],
+        documentation: 'https://help.example.com/two-factor'
+      }
+    })
+    const generation = await service.unlockedGeneration()
+    const write = vi.spyOn(store, 'write')
+    const report = await service.getInactiveTwoFactorReport(dataset)
+
+    expect(report).toEqual({
+      analyzedCount: 2,
+      excludedTotpCount: 0,
+      excludedDeletedCount: 0,
+      excludedArchivedCount: 0,
+      findings: [
+        {
+          id: alpha.id,
+          name: 'Alpha account',
+          matchedDomain: 'example.com',
+          documentationUrl: 'https://help.example.com/two-factor'
+        },
+        {
+          id: zulu.id,
+          name: 'Zulu account',
+          matchedDomain: 'example.com',
+          documentationUrl: 'https://help.example.com/two-factor'
+        }
+      ]
+    })
+    const serialized = JSON.stringify(report)
+    for (const forbidden of [
+      'password-canary',
+      'notes-canary',
+      'field-canary',
+      'value-canary',
+      'uri-canary',
+      'shared-canary',
+      'Organization canary'
+    ]) {
+      expect(serialized).not.toContain(forbidden)
+    }
+    expect(write).not.toHaveBeenCalled()
+    expect(await service.unlockedGeneration()).toBe(generation)
+  })
+
+  it('counts TOTP, trash, and archive exclusions without reading their URIs', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const totp = await service.createLogin({
+      name: 'TOTP account',
+      totp: 'totp-seed-canary',
+      uris: [{ uri: 'https://example.com/totp-canary', match: null }]
+    })
+    const archived = await service.createLogin({
+      name: 'Archived account',
+      uris: [{ uri: 'https://example.com/archive-canary', match: null }]
+    })
+    const trashed = await service.createLogin({
+      name: 'Trashed account',
+      uris: [{ uri: 'https://example.com/trash-canary', match: null }]
+    })
+    await service.archiveLogin({ id: archived.id })
+    // Bitwarden trash can retain archive state; trash takes precedence in report accounting.
+    await service.archiveLogin({ id: trashed.id })
+    await service.deleteLogin({ id: trashed.id })
+
+    const internalLogins = (
+      service as unknown as { data: { logins: Array<Record<string, unknown> & { id: string }> } }
+    ).data.logins
+    for (const id of [totp.id, archived.id, trashed.id]) {
+      const raw = internalLogins.find((login) => login.id === id)!
+      Object.defineProperty(raw, 'uris', {
+        get: () => {
+          throw new Error('excluded login URIs must not be read')
+        }
+      })
+    }
+
+    const report = await service.getInactiveTwoFactorReport(
+      parseTwoFactorDirectoryTotpData({ 'example.com': { methods: ['totp'] } })
+    )
+    expect(report).toEqual({
+      analyzedCount: 0,
+      excludedTotpCount: 1,
+      excludedDeletedCount: 1,
+      excludedArchivedCount: 1,
+      findings: []
+    })
+    expect(JSON.stringify(report)).not.toMatch(/(?:seed|archive|trash)-canary/u)
   })
 
   it('checks exposed passwords through padded hash ranges without exposing protected or raw data', async () => {
