@@ -1429,6 +1429,145 @@ describe('BitwardenDirectClient', () => {
     await expect(client.status()).resolves.toEqual({ status: 'locked' })
   })
 
+  it('disables official Authenticator and Vaultwarden Email with fresh provider-bound proof', async () => {
+    const requests: Array<{ url: string; method: string; body: JsonObject }> = []
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url, init) => {
+        const method = init?.method ?? 'GET'
+        const body = init?.body ? (JSON.parse(String(init.body)) as JsonObject) : {}
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        requests.push({ url, method, body })
+        if (url.endsWith('/api/two-factor/get-authenticator')) {
+          return jsonResponse({
+            authenticator: {
+              enabled: true,
+              key: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
+            },
+            userVerificationToken: 'authenticator-capability'
+          })
+        }
+        if (url.endsWith('/api/two-factor/authenticator') && method === 'DELETE') {
+          return new Response(null, { status: 204 })
+        }
+        if (url.endsWith('/api/two-factor/get-email')) {
+          return jsonResponse({
+            enabled: true,
+            email: EMAIL,
+            object: 'twoFactorEmail'
+          })
+        }
+        if (url.endsWith('/api/two-factor/disable')) {
+          return jsonResponse({ enabled: false, type: 1, object: 'twoFactorProvider' })
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await client.disableTwoFactorProvider(0, PASSWORD)
+    await client.disableTwoFactorProvider(1, PASSWORD)
+    const masterKey = await deriveMasterKey(PASSWORD, EMAIL, {
+      type: 'pbkdf2',
+      iterations: 5_000
+    })
+    const passwordKey = await derivePasswordKey(masterKey, PASSWORD)
+    try {
+      const proof = passwordKey.toString('base64')
+      expect(requests).toEqual([
+        {
+          url: 'https://vault.example.invalid/api/two-factor/get-authenticator',
+          method: 'POST',
+          body: { masterPasswordHash: proof }
+        },
+        {
+          url: 'https://vault.example.invalid/api/two-factor/authenticator',
+          method: 'DELETE',
+          body: {
+            userVerificationToken: 'authenticator-capability',
+            key: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
+          }
+        },
+        {
+          url: 'https://vault.example.invalid/api/two-factor/get-email',
+          method: 'POST',
+          body: { masterPasswordHash: proof }
+        },
+        {
+          url: 'https://vault.example.invalid/api/two-factor/disable',
+          method: 'POST',
+          body: { type: 1, masterPasswordHash: proof }
+        }
+      ])
+    } finally {
+      masterKey.fill(0)
+      passwordKey.fill(0)
+    }
+  })
+
+  it('rejects unsupported disable providers and distinguishes preflight failure from unknown mutation', async () => {
+    let mutationRequests = 0
+    let failPreflight = false
+    const fetch = vi.fn<FetchLike>().mockImplementation(async (url) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        if (failPreflight) throw new TypeError('offline before proof')
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/api/two-factor/get-authenticator')) {
+        return jsonResponse({
+          enabled: true,
+          key: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP',
+          object: 'twoFactorAuthenticator'
+        })
+      }
+      if (url.endsWith('/api/two-factor/disable')) {
+        mutationRequests += 1
+        throw new TypeError('connection closed after request write')
+      }
+      return jsonResponse({ message: 'not found' }, 404)
+    })
+    const http = new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.disableTwoFactorProvider(0, PASSWORD)).rejects.toMatchObject({
+      code: 'TWO_FACTOR_MUTATION_UNKNOWN'
+    })
+    expect(mutationRequests).toBe(1)
+
+    failPreflight = true
+    await expect(client.disableTwoFactorProvider(1, PASSWORD)).rejects.toMatchObject({
+      code: 'NETWORK'
+    })
+    expect(mutationRequests).toBe(1)
+
+    await expect(client.disableTwoFactorProvider(2 as 0, PASSWORD)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    expect(fetch).toHaveBeenCalledTimes(4)
+  })
+
   it('lists safe account devices while locked, captures refreshed sessions, and maps errors', async () => {
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',

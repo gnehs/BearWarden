@@ -1038,6 +1038,60 @@ export class BitwardenHttpClient {
     }
   }
 
+  async disableTwoFactorProvider(
+    request:
+      | {
+          type: 0
+          verificationMode: 'server-token'
+          key: string
+          userVerificationToken: string
+        }
+      | { type: 1; verificationMode: 'server-token'; userVerificationToken: string }
+      | {
+          type: 0 | 1
+          verificationMode: 'master-password'
+          masterPasswordHash: string
+        },
+    signal?: AbortSignal
+  ): Promise<void> {
+    if (request.type !== 0 && request.type !== 1) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    const body: JsonObject = {}
+    let method: 'DELETE' | 'POST'
+    let path: string
+    if (request.verificationMode === 'server-token') {
+      method = 'DELETE'
+      path = request.type === 0 ? 'authenticator' : 'email'
+      body.userVerificationToken = assertVerificationToken(request.userVerificationToken)
+      if (request.type === 0) body.key = assertTotpSetupKey(request.key)
+    } else if (request.verificationMode === 'master-password') {
+      method = 'POST'
+      path = 'disable'
+      body.type = request.type
+      body.masterPasswordHash = assertMasterPasswordHash(request.masterPasswordHash)
+    } else {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    try {
+      const response = await this.requestJson(method, `${this.urls.apiUrl}/two-factor/${path}`, {
+        body,
+        signal,
+        retry: false,
+        maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+        tooLargeCode: 'TOO_LARGE'
+      })
+      parseDisabledTwoFactor(response, request.type, request.verificationMode)
+    } catch (error) {
+      throw normalizeUserVerificationError(error)
+    } finally {
+      if (typeof body.key === 'string') body.key = ''
+      if (typeof body.userVerificationToken === 'string') body.userVerificationToken = ''
+      if (typeof body.masterPasswordHash === 'string') body.masterPasswordHash = ''
+      if (typeof body.type === 'number') body.type = -1
+    }
+  }
+
   /**
    * Queries the authenticated Vaultwarden HIBP proxy. The server, rather than
    * this client, forwards the complete email address to HIBP when configured.
@@ -2237,6 +2291,24 @@ function parseEnabledEmailTwoFactor(value: JsonValue, expectedEmail: string): vo
   const enabled = rawEnabled === true || rawEnabled === 'true'
   const rawEmail = detailsSource.email ?? detailsSource.Email
   if (!enabled || assertTwoFactorEmail(rawEmail).toLowerCase() !== expectedEmail.toLowerCase()) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+}
+
+function parseDisabledTwoFactor(
+  value: JsonValue,
+  expectedType: 0 | 1,
+  verificationMode: 'server-token' | 'master-password'
+): void {
+  if (verificationMode === 'server-token') {
+    if (value !== null) throw new BitwardenHttpError('INVALID_RESPONSE')
+    return
+  }
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const enabled = value.enabled ?? value.Enabled
+  const type = finiteInteger(value.type ?? value.Type)
+  const object = value.object ?? value.Object
+  if (enabled !== false || type !== expectedType || object !== 'twoFactorProvider') {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
 }

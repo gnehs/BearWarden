@@ -354,6 +354,11 @@ export interface BitwardenSyncClient {
   ): Promise<{ clientId: string; clientSecret: string; revisionDate: string }>
   getTwoFactorProviders?(signal?: AbortSignal): Promise<BitwardenTwoFactorProvider[]>
   getTwoFactorRecoveryCode?(masterPassword: string, signal?: AbortSignal): Promise<string>
+  disableTwoFactorProvider?(
+    type: 0 | 1,
+    masterPassword: string,
+    signal?: AbortSignal
+  ): Promise<void>
   beginAuthenticatorSetup?(
     masterPassword: string,
     signal?: AbortSignal
@@ -1679,6 +1684,87 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     } finally {
       masterKey?.fill(0)
       passwordKey?.fill(0)
+    }
+  }
+
+  async disableTwoFactorProvider(
+    type: 0 | 1,
+    masterPassword: string,
+    signal?: AbortSignal
+  ): Promise<void> {
+    let masterKey: Buffer | null = null
+    let passwordKey: Buffer | null = null
+    let masterPasswordHash = ''
+    let authenticatorSetup: BitwardenAuthenticatorSetup | null = null
+    let emailSetup: BitwardenEmailTwoFactorSetup | null = null
+    let mutationStarted = false
+    try {
+      if (
+        (type !== 0 && type !== 1) ||
+        typeof masterPassword !== 'string' ||
+        masterPassword.length === 0 ||
+        masterPassword.length > MAX_SYNC_SECRET_LENGTH
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      this.requireProfileId()
+      const prelogin = await this.http.prelogin(this.email, signal)
+      masterKey = await deriveMasterKey(
+        masterPassword,
+        prelogin.salt ?? this.email,
+        kdfFromPrelogin(prelogin)
+      )
+      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      masterPasswordHash = passwordKey.toString('base64')
+      if (type === 0) {
+        authenticatorSetup = await this.http.getAuthenticatorSetup(masterPasswordHash, signal)
+        if (!authenticatorSetup.enabled) throw new BitwardenDirectError('INVALID_RESPONSE')
+        mutationStarted = true
+        await this.http.disableTwoFactorProvider(
+          authenticatorSetup.verificationMode === 'server-token'
+            ? {
+                type,
+                verificationMode: 'server-token',
+                key: authenticatorSetup.key,
+                userVerificationToken: authenticatorSetup.userVerificationToken!
+              }
+            : { type, verificationMode: 'master-password', masterPasswordHash },
+          signal
+        )
+      } else {
+        emailSetup = await this.http.getEmailTwoFactorSetup(masterPasswordHash, signal)
+        if (!emailSetup.enabled) throw new BitwardenDirectError('INVALID_RESPONSE')
+        mutationStarted = true
+        await this.http.disableTwoFactorProvider(
+          emailSetup.verificationMode === 'server-token'
+            ? {
+                type,
+                verificationMode: 'server-token',
+                userVerificationToken: emailSetup.userVerificationToken!
+              }
+            : { type, verificationMode: 'master-password', masterPasswordHash },
+          signal
+        )
+      }
+      await this.captureSession()
+    } catch (error) {
+      const mapped = this.mapError(error)
+      if (mutationStarted && mapped.code === 'NETWORK') {
+        throw new BitwardenDirectError('TWO_FACTOR_MUTATION_UNKNOWN')
+      }
+      throw mapped
+    } finally {
+      masterKey?.fill(0)
+      passwordKey?.fill(0)
+      masterPasswordHash = ''
+      if (authenticatorSetup) {
+        authenticatorSetup.key = ''
+        authenticatorSetup.userVerificationToken = null
+      }
+      if (emailSetup) {
+        emailSetup.email = null
+        emailSetup.userVerificationToken = null
+      }
     }
   }
 

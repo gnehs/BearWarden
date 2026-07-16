@@ -343,6 +343,104 @@ describe('BitwardenHttpClient', () => {
     })
   })
 
+  it('disables official Authenticator and Email providers with provider-bound capabilities', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await client.disableTwoFactorProvider({
+      type: 0,
+      verificationMode: 'server-token',
+      key: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP',
+      userVerificationToken: 'authenticator-capability'
+    })
+    await client.disableTwoFactorProvider({
+      type: 1,
+      verificationMode: 'server-token',
+      userVerificationToken: 'email-capability'
+    })
+
+    expect(fetch.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
+      ['https://api.bitwarden.com/two-factor/authenticator', 'DELETE'],
+      ['https://api.bitwarden.com/two-factor/email', 'DELETE']
+    ])
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      key: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP',
+      userVerificationToken: 'authenticator-capability'
+    })
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
+      userVerificationToken: 'email-capability'
+    })
+  })
+
+  it('disables Vaultwarden providers with a fresh master-password proof', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(json({ enabled: false, type: 0, object: 'twoFactorProvider' }))
+      .mockResolvedValueOnce(json({ enabled: false, type: 1, object: 'twoFactorProvider' }))
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await client.disableTwoFactorProvider({
+      type: 0,
+      verificationMode: 'master-password',
+      masterPasswordHash: 'fresh-derived-proof'
+    })
+    await client.disableTwoFactorProvider({
+      type: 1,
+      verificationMode: 'master-password',
+      masterPasswordHash: 'fresh-derived-proof'
+    })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    for (const [index, call] of fetch.mock.calls.entries()) {
+      expect(call[0]).toBe('https://api.bitwarden.com/two-factor/disable')
+      expect(call[1]?.method).toBe('POST')
+      expect(JSON.parse(String(call[1]?.body))).toEqual({
+        type: index,
+        masterPasswordHash: 'fresh-derived-proof'
+      })
+    }
+  })
+
+  it('never replays disable mutations and rejects unsupported types or malformed responses', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(json({ message: 'expired session' }, 401))
+      .mockResolvedValueOnce(json({ enabled: true, type: 1, object: 'twoFactorProvider' }))
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(
+      client.disableTwoFactorProvider({
+        type: 1,
+        verificationMode: 'server-token',
+        userVerificationToken: 'email-capability'
+      })
+    ).rejects.toMatchObject({ code: 'AUTH' })
+    expect(fetch).toHaveBeenCalledTimes(1)
+
+    await expect(
+      client.disableTwoFactorProvider({
+        type: 1,
+        verificationMode: 'master-password',
+        masterPasswordHash: 'fresh-derived-proof'
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+
+    const unsupported = {
+      type: 2,
+      verificationMode: 'master-password',
+      masterPasswordHash: 'fresh-derived-proof'
+    } as unknown as Parameters<BitwardenHttpClient['disableTwoFactorProvider']>[0]
+    await expect(client.disableTwoFactorProvider(unsupported)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
   it('branches official and Vaultwarden authenticator setup capabilities', async () => {
     const key = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
     const fetch = vi
