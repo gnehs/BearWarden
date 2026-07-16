@@ -11,7 +11,8 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve('src/preload/index.ts'),
-          'account-webauthn-wrapper': resolve('src/preload/account-webauthn-wrapper.ts')
+          'account-webauthn-wrapper': resolve('src/preload/account-webauthn-wrapper.ts'),
+          'account-webauthn-registration': resolve('src/preload/account-webauthn-registration.ts')
         }
       },
       isolatedEntries: true,
