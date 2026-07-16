@@ -267,6 +267,17 @@ describe('registerVaultIpc reprompt gate', () => {
       }),
       cancelAttachmentOperation: vi.fn(async () => ({ canceled: true })),
       listLogins: vi.fn(async () => []),
+      getHealthReport: vi.fn(async () => ({
+        generatedAt: '2026-07-16T00:00:00.000Z',
+        totals: {
+          analyzedCount: 1,
+          weakPasswordCount: 1,
+          reusedPasswordCount: 0,
+          protectedSkippedCount: 1
+        },
+        weakPasswords: [{ id: 'item-a', name: 'Example', subtitle: '', score: 0 }],
+        reusedPasswords: []
+      })),
       createLogin: vi.fn(async (request) => ({ id: 'created', ...request })),
       cloneLogin: vi.fn(async () => ({ id: 'clone' })),
       archiveLogins: vi.fn(async ({ ids }: { ids: string[] }) => ids.map((id) => ({ id }))),
@@ -419,6 +430,35 @@ describe('registerVaultIpc reprompt gate', () => {
       await expect(list(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
     expect(vault.listLogins).toHaveBeenCalledTimes(2)
+  })
+
+  it('exposes vault health through an exact empty request without a reprompt capability', async () => {
+    const { event, vault } = harness()
+    const health = electronMock.handlers.get(IPC_CHANNELS.vaultHealthReport)!
+
+    await expect(health(event, {})).resolves.toEqual({
+      generatedAt: '2026-07-16T00:00:00.000Z',
+      totals: {
+        analyzedCount: 1,
+        weakPasswordCount: 1,
+        reusedPasswordCount: 0,
+        protectedSkippedCount: 1
+      },
+      weakPasswords: [{ id: 'item-a', name: 'Example', subtitle: '', score: 0 }],
+      reusedPasswords: []
+    })
+    expect(vault.getHealthReport).toHaveBeenCalledWith()
+
+    for (const invalid of [
+      undefined,
+      null,
+      [],
+      { authorizationToken: 'not-accepted' },
+      { scope: 'all' }
+    ]) {
+      await expect(health(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(vault.getHealthReport).toHaveBeenCalledOnce()
   })
 
   it.each([

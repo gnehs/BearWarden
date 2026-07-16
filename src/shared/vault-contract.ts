@@ -6,6 +6,7 @@ export const IPC_CHANNELS = {
   vaultLockRequestReady: 'vault:lock-request-ready',
   vaultExport: 'vault:export',
   vaultImport: 'vault:import',
+  vaultHealthReport: 'vault:health-report',
   folderList: 'folder:list',
   folderCreate: 'folder:create',
   folderUpdate: 'folder:update',
@@ -485,6 +486,42 @@ export interface LoginSummary {
   reprompt: VaultReprompt
 }
 
+/**
+ * A renderer-safe weak-password finding. Password values and derived password hashes remain in
+ * main-process memory inside the decrypted-vault boundary.
+ */
+export interface VaultHealthWeakFinding {
+  id: string
+  name: string
+  subtitle: string
+  score: 0 | 1 | 2
+}
+
+/**
+ * A renderer-safe reused-password finding. The reused password value never leaves main.
+ */
+export interface VaultHealthReusedFinding {
+  id: string
+  name: string
+  subtitle: string
+  reuseCount: number
+}
+
+/**
+ * Local vault-health results. Protected, archived, and trashed items are deliberately excluded.
+ */
+export interface VaultHealthReport {
+  generatedAt: string
+  totals: {
+    analyzedCount: number
+    weakPasswordCount: number
+    reusedPasswordCount: number
+    protectedSkippedCount: number
+  }
+  weakPasswords: VaultHealthWeakFinding[]
+  reusedPasswords: VaultHealthReusedFinding[]
+}
+
 export type SyncState = 'unconfigured' | 'locked' | 'ready' | 'syncing' | 'error'
 
 export interface SyncStatus {
@@ -863,6 +900,10 @@ export interface BearWardenAPI {
   portability: {
     export: (request: VaultExportRequest) => Promise<VaultExportResult>
     import: (request: VaultImportRequest) => Promise<VaultImportResult>
+  }
+  health: {
+    /** Runs entirely in main; the renderer receives only safe finding metadata. */
+    report: () => Promise<VaultHealthReport>
   }
   folders: {
     list: () => Promise<FolderView[]>

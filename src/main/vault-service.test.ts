@@ -2413,6 +2413,96 @@ describe('VaultService encrypted local data', () => {
     expect(await service.listLogins()).toEqual([])
   })
 
+  it('reports active password health without persisting, changing generation, or exposing secrets', async () => {
+    const { service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const weak = await service.createLogin({
+      name: 'Weak account',
+      username: 'health-user-canary',
+      password: '123'
+    })
+    const reusedFirst = await service.createLogin({
+      name: 'Shared first',
+      password: 'A very long reusable test passphrase 2026!'
+    })
+    const reusedSecond = await service.createLogin({
+      name: 'Shared second',
+      password: 'A very long reusable test passphrase 2026!'
+    })
+    const protectedLogin = await service.createLogin({
+      name: 'Protected account',
+      username: 'protected-user-canary',
+      password: 'protected-password-canary',
+      reprompt: 1
+    })
+    const archived = await service.createLogin({
+      name: 'Archived account',
+      password: 'archived-password-canary'
+    })
+    const trashed = await service.createLogin({
+      name: 'Trashed account',
+      password: 'trashed-password-canary'
+    })
+    await service.archiveLogin({ id: archived.id })
+    await service.deleteLogin({ id: trashed.id })
+
+    const internalData = (service as unknown as { data: { logins: { id: string }[] } | null }).data
+    const rawProtected = internalData?.logins.find((login) => login.id === protectedLogin.id)
+    expect(rawProtected).toBeDefined()
+    Object.defineProperties(rawProtected!, {
+      password: {
+        get: () => {
+          throw new Error('health must not read a protected password')
+        }
+      },
+      username: {
+        get: () => {
+          throw new Error('health must not read a protected username')
+        }
+      }
+    })
+
+    const beforeGeneration = await service.unlockedGeneration()
+    const write = vi.spyOn(store, 'write')
+    const report = await service.getHealthReport()
+
+    expect(report.generatedAt).toMatch(/^2026-07-14T/)
+    expect(report.totals).toEqual({
+      analyzedCount: 3,
+      weakPasswordCount: 1,
+      reusedPasswordCount: 2,
+      protectedSkippedCount: 1
+    })
+    expect(report.weakPasswords).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: weak.id, score: expect.any(Number) })])
+    )
+    expect(report.reusedPasswords).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: reusedFirst.id, reuseCount: 2 }),
+        expect.objectContaining({ id: reusedSecond.id, reuseCount: 2 })
+      ])
+    )
+    const reportedIds = new Set([
+      ...report.weakPasswords.map((finding) => finding.id),
+      ...report.reusedPasswords.map((finding) => finding.id)
+    ])
+    expect(reportedIds).not.toContain(protectedLogin.id)
+    expect(reportedIds).not.toContain(archived.id)
+    expect(reportedIds).not.toContain(trashed.id)
+    const rendererPayload = JSON.stringify(report)
+    for (const secret of [
+      '123',
+      'A very long reusable test passphrase 2026!',
+      'protected-password-canary',
+      'archived-password-canary',
+      'trashed-password-canary'
+    ]) {
+      expect(rendererPayload).not.toContain(secret)
+    }
+    expect(write).not.toHaveBeenCalled()
+    expect(await service.unlockedGeneration()).toBe(beforeGeneration)
+  })
+
   it('keeps deleted items in trash, blocks ordinary mutations, and restores or purges them', async () => {
     const { service } = await createHarness()
     await service.setup(MASTER_PASSWORD)

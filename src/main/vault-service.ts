@@ -57,6 +57,7 @@ import type {
   VaultLoginUri,
   VaultPasswordHistoryEntry,
   VaultItemType,
+  VaultHealthReport,
   VaultReprompt,
   VaultUriMatch,
   VaultSecretField,
@@ -87,6 +88,7 @@ import {
 import { resolveBitwardenUrls } from './bitwarden-http'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import { searchVaultItems, type VaultSearchItem } from './vault-search'
+import { analyzeVaultHealth, type VaultHealthItem } from './vault-health'
 import {
   generateCatchAllEmail,
   generatePassphrase,
@@ -2376,6 +2378,86 @@ export class VaultService {
         updatedAt: now
       }))
       return data.folders.map((folder) => ({ ...folder }))
+    })
+  }
+
+  /**
+   * Runs password-health analysis under the vault mutex. Raw password material is adapted only
+   * for unprotected active logins and never leaves this method.
+   */
+  getHealthReport(): Promise<VaultHealthReport> {
+    return this.exclusive(async () => {
+      const data = this.requireData()
+      const summaryById = new Map<string, LoginSummary>()
+      const candidates: VaultHealthItem[] = []
+
+      for (const login of data.logins) {
+        // Archive and trash are not current credentials. Filter before building any core input.
+        if (login.type !== 'login' || login.deletedAt !== null || login.archivedAt !== null)
+          continue
+
+        if (login.reprompt === 1) {
+          // Do not even read protected password or username fields at this boundary.
+          candidates.push({
+            id: login.id,
+            type: login.type,
+            name: login.name,
+            reprompt: 1
+          })
+          continue
+        }
+
+        const summary = toSummary(login)
+        summaryById.set(login.id, summary)
+        candidates.push({
+          id: login.id,
+          type: login.type,
+          name: login.name,
+          password: login.password,
+          username: login.username,
+          reprompt: 0
+        })
+      }
+
+      const analysis = analyzeVaultHealth(candidates)
+      const weakPasswords = analysis.weakPasswords.flatMap((finding) => {
+        const summary = summaryById.get(finding.id)
+        return summary
+          ? [
+              {
+                id: summary.id,
+                name: summary.name,
+                subtitle: summary.subtitle,
+                score: finding.score
+              }
+            ]
+          : []
+      })
+      const reusedPasswords = analysis.reusedPasswords.flatMap((finding) => {
+        const summary = summaryById.get(finding.id)
+        return summary
+          ? [
+              {
+                id: summary.id,
+                name: summary.name,
+                subtitle: summary.subtitle,
+                reuseCount: finding.reuseCount
+              }
+            ]
+          : []
+      })
+
+      return {
+        generatedAt: this.nowIso(),
+        totals: {
+          analyzedCount: analysis.analyzedCount,
+          weakPasswordCount: weakPasswords.length,
+          reusedPasswordCount: reusedPasswords.length,
+          protectedSkippedCount: analysis.protectedSkippedCount
+        },
+        weakPasswords,
+        reusedPasswords
+      }
     })
   }
 

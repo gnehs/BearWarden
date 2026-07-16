@@ -36,6 +36,9 @@ const api: BearWardenAPI = {
     export: (request) => ipcRenderer.invoke(IPC_CHANNELS.vaultExport, request),
     import: (request) => ipcRenderer.invoke(IPC_CHANNELS.vaultImport, request)
   },
+  health: {
+    report: () => ipcRenderer.invoke(IPC_CHANNELS.vaultHealthReport, {})
+  },
   folders: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.folderList),
     create: (request) => ipcRenderer.invoke(IPC_CHANNELS.folderCreate, request),
