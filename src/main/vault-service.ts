@@ -208,7 +208,8 @@ const EQUIVALENT_DOMAINS_DATA_VERSION = 15
 const SENDS_DATA_VERSION = 16
 const ORGANIZATIONS_DATA_VERSION = 17
 const NATIVE_ATTACHMENT_RESTORE_DATA_VERSION = 18
-const DATA_VERSION = 18
+const MASTER_PASSWORD_CHANGE_DATA_VERSION = 19
+const DATA_VERSION = 19
 const MIN_MASTER_PASSWORD_LENGTH = 12
 const MAX_MASTER_PASSWORD_LENGTH = 1024
 const MAX_NAME_LENGTH = 256
@@ -329,7 +330,38 @@ interface VaultData {
   generatorHistory: GeneratorHistoryEntry[]
   sync: PersistedSyncData | null
   nativeAttachmentRestore: NativeAttachmentRestoreJournal | null
+  masterPasswordChange: MasterPasswordChangeJournal | null
 }
+
+interface MasterPasswordChangeJournal {
+  phase: 'prepared' | 'remote-confirmed' | 'local-rekeyed'
+  startedAt: string
+  updatedAt: string
+  accountFingerprint: string
+}
+
+export interface VaultMasterPasswordChangeStatus {
+  phase: MasterPasswordChangeJournal['phase'] | null
+  needsReconnect: boolean
+  needsRemoteVerification: boolean
+}
+
+export interface VaultMasterPasswordChangeRequest {
+  currentPassword: string
+  newPassword: string
+  hint?: string | null
+}
+
+export interface VaultMasterPasswordChangeResolutionRequest {
+  currentPassword: string
+  newPassword: string
+}
+
+export type VaultMasterPasswordChangeResolution =
+  | { status: 'resolved' }
+  | { status: 'remote-not-changed' }
+  | { status: 'needs-reconnect' }
+  | { status: 'indeterminate' }
 
 export interface VaultPlatform {
   copyText: (text: string) => void | Promise<void>
@@ -1854,6 +1886,33 @@ function parseSyncData(
   }
 }
 
+function parseMasterPasswordChangeJournal(value: unknown): MasterPasswordChangeJournal {
+  if (
+    !isRecord(value) ||
+    (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) ||
+    Reflect.ownKeys(value).length !== 4 ||
+    !['accountFingerprint', 'phase', 'startedAt', 'updatedAt'].every((key) =>
+      Object.hasOwn(value, key)
+    )
+  ) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  const { phase, startedAt, updatedAt, accountFingerprint } = value
+  if (
+    (phase !== 'prepared' && phase !== 'remote-confirmed' && phase !== 'local-rekeyed') ||
+    typeof startedAt !== 'string' ||
+    typeof updatedAt !== 'string' ||
+    typeof accountFingerprint !== 'string' ||
+    !/^[0-9a-f]{64}$/u.test(accountFingerprint)
+  ) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  assertIsoDate(startedAt)
+  assertIsoDate(updatedAt)
+  if (Date.parse(updatedAt) < Date.parse(startedAt)) throw new VaultError('CORRUPT_VAULT')
+  return { phase, startedAt, updatedAt, accountFingerprint }
+}
+
 function parseVaultData(value: unknown): VaultData {
   if (
     !isRecord(value) ||
@@ -1876,6 +1935,7 @@ function parseVaultData(value: unknown): VaultData {
       SENDS_DATA_VERSION,
       ORGANIZATIONS_DATA_VERSION,
       NATIVE_ATTACHMENT_RESTORE_DATA_VERSION,
+      MASTER_PASSWORD_CHANGE_DATA_VERSION,
       DATA_VERSION
     ].includes(value.version) ||
     !Array.isArray(value.folders) ||
@@ -2006,6 +2066,13 @@ function parseVaultData(value: unknown): VaultData {
     }
   }
 
+  const masterPasswordChange =
+    dataVersion < MASTER_PASSWORD_CHANGE_DATA_VERSION
+      ? null
+      : value.masterPasswordChange === null
+        ? null
+        : parseMasterPasswordChangeJournal(value.masterPasswordChange)
+
   return {
     version: DATA_VERSION,
     createdAt: value.createdAt,
@@ -2033,7 +2100,8 @@ function parseVaultData(value: unknown): VaultData {
         ? []
         : parseGeneratorHistory(value.generatorHistory),
     sync,
-    nativeAttachmentRestore
+    nativeAttachmentRestore,
+    masterPasswordChange
   }
 }
 
@@ -2458,6 +2526,7 @@ function cloneData(data: VaultData): VaultData {
       data.nativeAttachmentRestore === null
         ? null
         : parseNativeAttachmentRestoreJournal(data.nativeAttachmentRestore),
+    masterPasswordChange: data.masterPasswordChange ? { ...data.masterPasswordChange } : null,
     sync: data.sync
       ? {
           ...data.sync,
@@ -2951,7 +3020,8 @@ export class VaultService {
         sends: [],
         generatorHistory: [],
         sync: null,
-        nativeAttachmentRestore: null
+        nativeAttachmentRestore: null,
+        masterPasswordChange: null
       }
       const generation = this.generation
       const material = await this.store.initialize(password, initialData)
@@ -3053,6 +3123,190 @@ export class VaultService {
   disablePinUnlock(): import('../shared/vault-contract').PinUnlockStatus {
     this.invalidatePinUnlockCapability()
     return this.pinUnlockStatus()
+  }
+
+  masterPasswordChangeStatus(): Promise<VaultMasterPasswordChangeStatus> {
+    return this.exclusive(async () => {
+      const data = this.requireData()
+      this.assertMasterPasswordChangeAccount(data)
+      const journal = data.masterPasswordChange
+      return {
+        phase: journal?.phase ?? null,
+        needsReconnect: false,
+        needsRemoteVerification: journal?.phase === 'prepared'
+      }
+    })
+  }
+
+  changeMasterPassword(request: VaultMasterPasswordChangeRequest): Promise<void> {
+    return this.exclusive(async () => {
+      let currentPassword = ''
+      let newPassword = ''
+      let remoteRequest:
+        | { currentPassword: string; newPassword: string; hint: string | null; signal: AbortSignal }
+        | undefined
+      let abort: AbortController | undefined
+      try {
+        currentPassword = normalizeMasterPassword(request.currentPassword)
+        newPassword = normalizeMasterPassword(request.newPassword)
+        if (currentPassword === newPassword) throw new VaultError('INVALID_INPUT')
+        const hint = request.hint ?? null
+        if (hint !== null && (typeof hint !== 'string' || hint.length > 50)) {
+          throw new VaultError('INVALID_INPUT')
+        }
+        const current = this.requireData()
+        this.assertMasterPasswordChangeAccount(current)
+        const existing = current.masterPasswordChange
+        if (existing?.phase === 'prepared') {
+          // A prepared mutation has an ambiguous remote outcome. Resolution must use the separate,
+          // non-mutating password-proof API and must never replay the mutation.
+          throw new VaultError('SYNC_FAILED')
+        }
+        if (existing?.phase === 'local-rekeyed') {
+          await this.finishMasterPasswordChange(currentPassword, newPassword)
+          return
+        }
+
+        if (!existing) {
+          const sync = this.requireSyncData()
+          const client = this.getOrCreateSyncClient(sync)
+          if (!client.changeMasterPassword) throw new VaultError('SYNC_FAILED')
+          const now = this.nowIso()
+          const prepared = cloneData(current)
+          prepared.masterPasswordChange = {
+            phase: 'prepared',
+            startedAt: now,
+            updatedAt: now,
+            accountFingerprint: this.masterPasswordChangeAccountFingerprint(sync)
+          }
+          prepared.updatedAt = now
+          await this.persist(prepared)
+          this.data = prepared
+
+          abort = this.startSyncOperation()
+          remoteRequest = { currentPassword, newPassword, hint, signal: abort.signal }
+          try {
+            await client.changeMasterPassword(remoteRequest)
+          } catch (error) {
+            if (
+              error instanceof BitwardenDirectError &&
+              error.code === 'MASTER_PASSWORD_CHANGE_UNKNOWN'
+            ) {
+              this.generation += 1
+              this.invalidatePinUnlockCapability()
+              this.syncClient = null
+              this.clearUnlockedRuntimeState()
+              throw new VaultError('SYNC_FAILED')
+            }
+            const cleared = cloneData(this.requireData())
+            cleared.masterPasswordChange = null
+            cleared.updatedAt = this.nowIso()
+            await this.persist(cleared)
+            this.data = cleared
+            throw this.mapSyncError(error)
+          }
+
+          const confirmed = cloneData(this.requireData())
+          if (!confirmed.masterPasswordChange) throw new VaultError('SYNC_FAILED')
+          confirmed.masterPasswordChange.phase = 'remote-confirmed'
+          confirmed.masterPasswordChange.updatedAt = this.nowIso()
+          if (confirmed.sync) {
+            confirmed.sync.state = { ...client.exportState(), session: null }
+          }
+          confirmed.updatedAt = confirmed.masterPasswordChange.updatedAt
+          try {
+            await this.persist(confirmed)
+            this.data = confirmed
+          } catch (error) {
+            this.generation += 1
+            this.invalidatePinUnlockCapability()
+            this.clearUnlockedRuntimeState()
+            throw error
+          }
+        }
+
+        await this.finishMasterPasswordChange(currentPassword, newPassword)
+      } finally {
+        if (abort) this.finishSyncOperation(abort)
+        request.currentPassword = ''
+        request.newPassword = ''
+        request.hint = null
+        currentPassword = ''
+        newPassword = ''
+        if (remoteRequest) {
+          remoteRequest.currentPassword = ''
+          remoteRequest.newPassword = ''
+          remoteRequest.hint = null
+        }
+      }
+    })
+  }
+
+  resolveMasterPasswordChange(
+    request: VaultMasterPasswordChangeResolutionRequest
+  ): Promise<VaultMasterPasswordChangeResolution> {
+    return this.exclusive(async () => {
+      let currentPassword = ''
+      let newPassword = ''
+      let abort: AbortController | undefined
+      try {
+        currentPassword = normalizeMasterPassword(request.currentPassword)
+        newPassword = normalizeMasterPassword(request.newPassword)
+        if (currentPassword === newPassword) throw new VaultError('INVALID_INPUT')
+        const current = this.requireData()
+        this.assertMasterPasswordChangeAccount(current)
+        if (current.masterPasswordChange?.phase !== 'prepared') {
+          throw new VaultError('INVALID_INPUT')
+        }
+        const sync = this.requireSyncData()
+        abort = this.startSyncOperation()
+        const newPasswordProof = await this.proveRemotePassword(sync, newPassword, abort.signal)
+        if (newPasswordProof === 'needs-reconnect') return { status: 'needs-reconnect' }
+        if (newPasswordProof === 'rejected') {
+          const currentPasswordProof = await this.proveRemotePassword(
+            sync,
+            currentPassword,
+            abort.signal
+          )
+          if (currentPasswordProof === 'needs-reconnect') return { status: 'needs-reconnect' }
+          if (currentPasswordProof === 'rejected') return { status: 'indeterminate' }
+
+          const cleared = cloneData(this.requireData())
+          this.assertMasterPasswordChangeAccount(cleared)
+          if (cleared.masterPasswordChange?.phase !== 'prepared') {
+            throw new VaultError('SYNC_FAILED')
+          }
+          cleared.masterPasswordChange = null
+          if (cleared.sync) cleared.sync.state.session = null
+          cleared.updatedAt = this.nowIso()
+          await this.persist(cleared)
+          this.data = cleared
+          this.syncClient = null
+          return { status: 'remote-not-changed' }
+        }
+
+        const confirmed = cloneData(this.requireData())
+        this.assertMasterPasswordChangeAccount(confirmed)
+        if (confirmed.masterPasswordChange?.phase !== 'prepared') {
+          throw new VaultError('SYNC_FAILED')
+        }
+        confirmed.masterPasswordChange.phase = 'remote-confirmed'
+        confirmed.masterPasswordChange.updatedAt = this.nowIso()
+        if (confirmed.sync) confirmed.sync.state.session = null
+        confirmed.updatedAt = confirmed.masterPasswordChange.updatedAt
+        await this.persist(confirmed)
+        this.data = confirmed
+        this.syncClient = null
+        await this.finishMasterPasswordChange(currentPassword, newPassword)
+        return { status: 'resolved' }
+      } finally {
+        if (abort) this.finishSyncOperation(abort)
+        request.currentPassword = ''
+        request.newPassword = ''
+        currentPassword = ''
+        newPassword = ''
+      }
+    })
   }
 
   unlockWithPin(request: { pin: string }): Promise<VaultStatus> {
@@ -7353,6 +7607,59 @@ export class VaultService {
     return sync
   }
 
+  private masterPasswordChangeAccountFingerprint(sync: PersistedSyncData): string {
+    const profileId = sync.state.profileId
+    if (!profileId || !UUID_PATTERN.test(profileId)) throw new VaultError('CORRUPT_VAULT')
+    const canonicalAccount = JSON.stringify({
+      provider: sync.provider,
+      serverUrl: resolveBitwardenUrls(sync.serverUrl).apiUrl,
+      profileId
+    })
+    return createHash('sha256').update(canonicalAccount, 'utf8').digest('hex')
+  }
+
+  private assertMasterPasswordChangeAccount(data: VaultData): void {
+    const journal = data.masterPasswordChange
+    if (!journal) return
+    if (
+      !data.sync ||
+      journal.accountFingerprint !== this.masterPasswordChangeAccountFingerprint(data.sync)
+    ) {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+  }
+
+  private async proveRemotePassword(
+    sync: PersistedSyncData,
+    password: string,
+    signal: AbortSignal
+  ): Promise<'accepted' | 'rejected' | 'needs-reconnect'> {
+    const verificationSync = structuredClone(sync)
+    verificationSync.state.session = null
+    const verifier = this.createSyncClient(verificationSync)
+    try {
+      await verifier.login({ email: sync.email, password, signal })
+      return 'accepted'
+    } catch (error) {
+      if (error instanceof BitwardenDirectError && error.code === 'AUTH_REQUIRED') {
+        return 'rejected'
+      }
+      if (
+        error instanceof BitwardenDirectError &&
+        (error.code === 'TWO_FACTOR_REQUIRED' || error.code === 'NEW_DEVICE_REQUIRED')
+      ) {
+        return 'needs-reconnect'
+      }
+      throw this.mapSyncError(error)
+    } finally {
+      try {
+        await verifier.logout()
+      } catch {
+        // Best-effort cleanup of the isolated proof session.
+      }
+    }
+  }
+
   private startSyncOperation(): AbortController {
     if (this.syncInProgress) throw new VaultError('SYNC_FAILED')
     const abort = new AbortController()
@@ -7431,10 +7738,12 @@ export class VaultService {
     requiresMigration: boolean
   ): Promise<void> {
     const current = this.requireData()
+    this.assertMasterPasswordChangeAccount(current)
     const interrupted = current.nativeAttachmentRestore?.attachments.some(
       (attachment) => attachment.status === 'attempting'
     )
-    if (!requiresMigration && !interrupted) return
+    const completedPasswordChange = current.masterPasswordChange?.phase === 'local-rekeyed'
+    if (!requiresMigration && !interrupted && !completedPasswordChange) return
     const next = cloneData(current)
     if (interrupted && next.nativeAttachmentRestore) {
       next.nativeAttachmentRestore = recoverInterruptedNativeAttachmentRestore(
@@ -7443,8 +7752,66 @@ export class VaultService {
       )
       next.updatedAt = next.nativeAttachmentRestore.updatedAt
     }
+    if (completedPasswordChange) {
+      next.masterPasswordChange = null
+      if (next.sync) next.sync.state.session = null
+      next.updatedAt = this.nowIso()
+    }
     await this.persist(next)
     this.data = next
+  }
+
+  private async finishMasterPasswordChange(
+    currentPassword: string,
+    newPassword: string
+  ): Promise<void> {
+    const current = this.requireData()
+    this.assertMasterPasswordChangeAccount(current)
+    if (
+      current.masterPasswordChange?.phase !== 'remote-confirmed' &&
+      current.masterPasswordChange?.phase !== 'local-rekeyed'
+    ) {
+      throw new VaultError('SYNC_FAILED')
+    }
+    if (!this.key || !this.salt) throw new VaultError('LOCKED')
+
+    const alreadyRekeyed = await this.store.verifyMasterPassword(newPassword, this.key, this.salt)
+    if (!alreadyRekeyed) {
+      const stillUsesCurrent = await this.store.verifyMasterPassword(
+        currentPassword,
+        this.key,
+        this.salt
+      )
+      if (!stillUsesCurrent) throw new VaultError('INVALID_MASTER_PASSWORD')
+      const replacement = await this.store.rekey(currentPassword, newPassword)
+      const oldKey = this.key
+      const oldSalt = this.salt
+      this.key = replacement.key
+      this.salt = replacement.salt
+      oldKey.fill(0)
+      oldSalt.fill(0)
+    }
+
+    this.generation += 1
+    this.invalidatePinUnlockCapability()
+    this.syncAbort?.abort()
+    this.abortNotificationTokenLeases()
+    this.abortAccountSecurityRequests()
+    this.syncClient = null
+    const localRekeyed = cloneData(this.requireData())
+    if (!localRekeyed.masterPasswordChange) throw new VaultError('SYNC_FAILED')
+    localRekeyed.masterPasswordChange.phase = 'local-rekeyed'
+    localRekeyed.masterPasswordChange.updatedAt = this.nowIso()
+    if (localRekeyed.sync) localRekeyed.sync.state.session = null
+    localRekeyed.updatedAt = localRekeyed.masterPasswordChange.updatedAt
+    await this.persist(localRekeyed)
+    this.data = localRekeyed
+
+    const complete = cloneData(localRekeyed)
+    complete.masterPasswordChange = null
+    complete.updatedAt = this.nowIso()
+    await this.persist(complete)
+    this.data = complete
   }
 
   private evictExpiredAuthenticatorSetupSessions(): void {

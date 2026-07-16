@@ -355,6 +355,10 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
     }),
     sendEmailTwoFactorSetup: async () => undefined,
     completeEmailTwoFactorSetup: async () => undefined,
+    changeMasterPassword: async () => {
+      unlocked = false
+      state = { ...state, session: null }
+    },
     getEquivalentDomainSettings: async () => structuredClone(equivalentDomainSettings),
     updateEquivalentDomainSettings: async (update) => {
       const excluded = new Set(update.excludedGlobalEquivalentDomains)
@@ -494,6 +498,494 @@ afterEach(async () => {
 })
 
 describe('VaultService encrypted local data', () => {
+  it('changes remote then local master password, invalidates PIN, and clears sync session', async () => {
+    let client!: ReturnType<typeof createSyncFake>
+    const { service } = await createHarness({
+      createSyncClient: (sync) => (client = createSyncFake(sync.state))
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: MASTER_PASSWORD
+    })
+    await service.enablePinUnlock({ pin: 'bear-2026', masterPassword: MASTER_PASSWORD })
+    const remoteChange = vi.spyOn(client, 'changeMasterPassword')
+    const request = {
+      currentPassword: MASTER_PASSWORD,
+      newPassword: 'replacement horse battery staple',
+      hint: 'safe hint'
+    }
+
+    await service.changeMasterPassword(request)
+
+    expect(remoteChange).toHaveBeenCalledTimes(1)
+    expect(request).toEqual({ currentPassword: '', newPassword: '', hint: null })
+    expect(service.pinUnlockStatus()).toEqual({ available: false, remainingAttempts: 0 })
+    await expect(service.masterPasswordChangeStatus()).resolves.toEqual({
+      phase: null,
+      needsReconnect: false,
+      needsRemoteVerification: false
+    })
+    await expect(service.syncStatus()).resolves.toMatchObject({ state: 'locked' })
+    await service.lock()
+    await expect(service.unlock(MASTER_PASSWORD)).rejects.toMatchObject({
+      code: 'INVALID_MASTER_PASSWORD'
+    })
+    await expect(service.unlock('replacement horse battery staple')).resolves.toEqual({
+      state: 'unlocked'
+    })
+  })
+
+  it('keeps an unknown remote outcome prepared and never retries the mutation', async () => {
+    let mutationCalls = 0
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        const client = createSyncFake(sync.state)
+        client.changeMasterPassword = async () => {
+          mutationCalls += 1
+          throw new BitwardenDirectError('MASTER_PASSWORD_CHANGE_UNKNOWN')
+        }
+        return client
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: MASTER_PASSWORD
+    })
+    const first = {
+      currentPassword: MASTER_PASSWORD,
+      newPassword: 'replacement horse battery staple'
+    }
+    await expect(service.changeMasterPassword(first)).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(first).toEqual({ currentPassword: '', newPassword: '', hint: null })
+    expect(mutationCalls).toBe(1)
+    await expect(service.status()).resolves.toEqual({ state: 'locked' })
+    await service.unlock(MASTER_PASSWORD)
+    await expect(service.masterPasswordChangeStatus()).resolves.toEqual({
+      phase: 'prepared',
+      needsReconnect: false,
+      needsRemoteVerification: true
+    })
+    await expect(
+      service.changeMasterPassword({
+        currentPassword: MASTER_PASSWORD,
+        newPassword: 'replacement horse battery staple'
+      })
+    ).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(mutationCalls).toBe(1)
+    const resolution = {
+      currentPassword: MASTER_PASSWORD,
+      newPassword: 'replacement horse battery staple'
+    }
+    await expect(service.resolveMasterPasswordChange(resolution)).resolves.toEqual({
+      status: 'resolved'
+    })
+    expect(resolution).toEqual({ currentPassword: '', newPassword: '' })
+    expect(mutationCalls).toBe(1)
+    await service.lock()
+    await expect(service.unlock('replacement horse battery staple')).resolves.toEqual({
+      state: 'unlocked'
+    })
+  })
+
+  it('clears prepared only after isolated proofs reject new and accept current, then permits retry', async () => {
+    let acceptedPassword = MASTER_PASSWORD
+    let mutationCalls = 0
+    const proofClients: BitwardenSyncClient[] = []
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        const client = createSyncFake(sync.state)
+        const login = client.login.bind(client)
+        client.login = async (request) => {
+          if (request.password !== acceptedPassword) {
+            throw new BitwardenDirectError('AUTH_REQUIRED')
+          }
+          await login(request)
+        }
+        client.changeMasterPassword = async (request) => {
+          mutationCalls += 1
+          if (mutationCalls === 1) throw new BitwardenDirectError('MASTER_PASSWORD_CHANGE_UNKNOWN')
+          acceptedPassword = request.newPassword
+        }
+        proofClients.push(client)
+        return client
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: MASTER_PASSWORD
+    })
+    await expect(
+      service.changeMasterPassword({
+        currentPassword: MASTER_PASSWORD,
+        newPassword: 'replacement horse battery staple'
+      })
+    ).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    await service.unlock(MASTER_PASSWORD)
+
+    await expect(
+      service.resolveMasterPasswordChange({
+        currentPassword: MASTER_PASSWORD,
+        newPassword: 'replacement horse battery staple'
+      })
+    ).resolves.toEqual({ status: 'remote-not-changed' })
+    expect(new Set(proofClients.slice(-2)).size).toBe(2)
+    await expect(service.masterPasswordChangeStatus()).resolves.toMatchObject({ phase: null })
+
+    await expect(
+      service.changeMasterPassword({
+        currentPassword: MASTER_PASSWORD,
+        newPassword: 'second replacement horse battery staple'
+      })
+    ).resolves.toBeUndefined()
+    expect(mutationCalls).toBe(2)
+  })
+
+  it('retains prepared when isolated proofs reject both candidate passwords', async () => {
+    let acceptedPassword = MASTER_PASSWORD
+    let mutationCalls = 0
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        const client = createSyncFake(sync.state)
+        const login = client.login.bind(client)
+        client.login = async (request) => {
+          if (request.password !== acceptedPassword) {
+            throw new BitwardenDirectError('AUTH_REQUIRED')
+          }
+          await login(request)
+        }
+        client.changeMasterPassword = async () => {
+          mutationCalls += 1
+          acceptedPassword = 'a different remote password'
+          throw new BitwardenDirectError('MASTER_PASSWORD_CHANGE_UNKNOWN')
+        }
+        return client
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: MASTER_PASSWORD
+    })
+    await expect(
+      service.changeMasterPassword({
+        currentPassword: MASTER_PASSWORD,
+        newPassword: 'replacement horse battery staple'
+      })
+    ).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    await service.unlock(MASTER_PASSWORD)
+
+    await expect(
+      service.resolveMasterPasswordChange({
+        currentPassword: MASTER_PASSWORD,
+        newPassword: 'replacement horse battery staple'
+      })
+    ).resolves.toEqual({ status: 'indeterminate' })
+    await expect(service.masterPasswordChangeStatus()).resolves.toMatchObject({
+      phase: 'prepared'
+    })
+    expect(mutationCalls).toBe(1)
+  })
+
+  it('rejects an unchanged master password before journaling or remote mutation', async () => {
+    let mutationCalls = 0
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        const client = createSyncFake(sync.state)
+        client.changeMasterPassword = async () => {
+          mutationCalls += 1
+        }
+        return client
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: MASTER_PASSWORD
+    })
+
+    await expect(
+      service.changeMasterPassword({
+        currentPassword: MASTER_PASSWORD,
+        newPassword: MASTER_PASSWORD
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    expect(mutationCalls).toBe(0)
+    await expect(service.masterPasswordChangeStatus()).resolves.toMatchObject({ phase: null })
+  })
+
+  it('does not call the remote mutation when the prepared journal cannot persist', async () => {
+    let mutationCalls = 0
+    const { service, store } = await createHarness({
+      createSyncClient: (sync) => {
+        const client = createSyncFake(sync.state)
+        client.changeMasterPassword = async () => {
+          mutationCalls += 1
+        }
+        return client
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: MASTER_PASSWORD
+    })
+    vi.spyOn(store, 'write').mockRejectedValueOnce(new Error('injected prepared persist failure'))
+
+    await expect(
+      service.changeMasterPassword({
+        currentPassword: MASTER_PASSWORD,
+        newPassword: 'replacement horse battery staple'
+      })
+    ).rejects.toThrow('injected prepared persist failure')
+    expect(mutationCalls).toBe(0)
+    await expect(service.masterPasswordChangeStatus()).resolves.toMatchObject({ phase: null })
+  })
+
+  it('clears a prepared journal after a definitive remote rejection', async () => {
+    let client!: ReturnType<typeof createSyncFake>
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        client = createSyncFake(sync.state)
+        client.changeMasterPassword = async () => {
+          throw new BitwardenDirectError('AUTH_REQUIRED')
+        }
+        return client
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: MASTER_PASSWORD
+    })
+    await expect(
+      service.changeMasterPassword({
+        currentPassword: 'wrong horse battery staple',
+        newPassword: 'replacement horse battery staple'
+      })
+    ).rejects.toMatchObject({ code: 'SYNC_AUTH_REQUIRED' })
+    await expect(service.masterPasswordChangeStatus()).resolves.toEqual({
+      phase: null,
+      needsReconnect: false,
+      needsRemoteVerification: false
+    })
+    await expect(service.status()).resolves.toEqual({ state: 'unlocked' })
+  })
+
+  it('resumes remote-confirmed without replaying the remote mutation after local rekey fails', async () => {
+    let client!: ReturnType<typeof createSyncFake>
+    const { service, store } = await createHarness({
+      createSyncClient: (sync) => (client = createSyncFake(sync.state))
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: MASTER_PASSWORD
+    })
+    const remoteChange = vi.spyOn(client, 'changeMasterPassword')
+    const realRekey = store.rekey.bind(store)
+    vi.spyOn(store, 'rekey').mockRejectedValueOnce(new Error('injected local rekey failure'))
+    await expect(
+      service.changeMasterPassword({
+        currentPassword: MASTER_PASSWORD,
+        newPassword: 'replacement horse battery staple'
+      })
+    ).rejects.toThrow('injected local rekey failure')
+    await expect(service.masterPasswordChangeStatus()).resolves.toMatchObject({
+      phase: 'remote-confirmed'
+    })
+    vi.mocked(store.rekey).mockImplementation(realRekey)
+    await service.changeMasterPassword({
+      currentPassword: MASTER_PASSWORD,
+      newPassword: 'replacement horse battery staple'
+    })
+    expect(remoteChange).toHaveBeenCalledTimes(1)
+  })
+
+  it('recovers a prepared journal after the remote-confirmed persist crashes without replaying', async () => {
+    let mutationCalls = 0
+    const { service, store } = await createHarness({
+      createSyncClient: (sync) => {
+        const client = createSyncFake(sync.state)
+        client.changeMasterPassword = async () => {
+          mutationCalls += 1
+        }
+        return client
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: MASTER_PASSWORD
+    })
+    const write = store.write.bind(store)
+    let writes = 0
+    vi.spyOn(store, 'write').mockImplementation(async (...args) => {
+      writes += 1
+      if (writes === 2) throw new Error('injected confirmed persist crash')
+      await write(...args)
+    })
+
+    await expect(
+      service.changeMasterPassword({
+        currentPassword: MASTER_PASSWORD,
+        newPassword: 'replacement horse battery staple'
+      })
+    ).rejects.toThrow('injected confirmed persist crash')
+    await service.unlock(MASTER_PASSWORD)
+    await expect(service.masterPasswordChangeStatus()).resolves.toMatchObject({
+      phase: 'prepared'
+    })
+    await expect(
+      service.resolveMasterPasswordChange({
+        currentPassword: MASTER_PASSWORD,
+        newPassword: 'replacement horse battery staple'
+      })
+    ).resolves.toEqual({ status: 'resolved' })
+    expect(mutationCalls).toBe(1)
+  })
+
+  it('resumes after local rekey succeeds but its journal persist crashes', async () => {
+    let client!: ReturnType<typeof createSyncFake>
+    const { service, store } = await createHarness({
+      createSyncClient: (sync) => (client = createSyncFake(sync.state))
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: MASTER_PASSWORD
+    })
+    const remoteChange = vi.spyOn(client, 'changeMasterPassword')
+    const write = store.write.bind(store)
+    let writes = 0
+    vi.spyOn(store, 'write').mockImplementation(async (...args) => {
+      writes += 1
+      if (writes === 3) throw new Error('injected local-rekeyed persist crash')
+      await write(...args)
+    })
+
+    await expect(
+      service.changeMasterPassword({
+        currentPassword: MASTER_PASSWORD,
+        newPassword: 'replacement horse battery staple'
+      })
+    ).rejects.toThrow('injected local-rekeyed persist crash')
+    await expect(service.masterPasswordChangeStatus()).resolves.toMatchObject({
+      phase: 'remote-confirmed'
+    })
+    await service.changeMasterPassword({
+      currentPassword: MASTER_PASSWORD,
+      newPassword: 'replacement horse battery staple'
+    })
+    expect(remoteChange).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears local-rekeyed automatically after the final journal clear crashes', async () => {
+    const { filePath, service, store } = await createHarness({
+      createSyncClient: (sync) => createSyncFake(sync.state)
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: MASTER_PASSWORD
+    })
+    const write = store.write.bind(store)
+    let writes = 0
+    vi.spyOn(store, 'write').mockImplementation(async (...args) => {
+      writes += 1
+      if (writes === 4) throw new Error('injected final clear crash')
+      await write(...args)
+    })
+    await expect(
+      service.changeMasterPassword({
+        currentPassword: MASTER_PASSWORD,
+        newPassword: 'replacement horse battery staple'
+      })
+    ).rejects.toThrow('injected final clear crash')
+    await service.lock()
+
+    const reopened = new VaultService(
+      new EncryptedVaultStore<unknown>(filePath),
+      { copyText: vi.fn(), openExternal: vi.fn() },
+      { createSyncClient: (sync) => createSyncFake(sync.state) }
+    )
+    await reopened.unlock('replacement horse battery staple')
+    await expect(reopened.masterPasswordChangeStatus()).resolves.toMatchObject({ phase: null })
+  })
+
+  it.each([
+    {
+      label: 'extra journal property',
+      mutate: (journal: Record<string, unknown>) => {
+        journal.unexpected = true
+      }
+    },
+    {
+      label: 'mismatched account fingerprint',
+      mutate: (journal: Record<string, unknown>) => {
+        journal.accountFingerprint = '0'.repeat(64)
+      }
+    }
+  ])('rejects a prepared journal with $label', async ({ mutate }) => {
+    const { filePath, service, store } = await createHarness({
+      createSyncClient: (sync) => {
+        const client = createSyncFake(sync.state)
+        client.changeMasterPassword = async () => {
+          throw new BitwardenDirectError('MASTER_PASSWORD_CHANGE_UNKNOWN')
+        }
+        return client
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: MASTER_PASSWORD
+    })
+    await expect(
+      service.changeMasterPassword({
+        currentPassword: MASTER_PASSWORD,
+        newPassword: 'replacement horse battery staple'
+      })
+    ).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as { masterPasswordChange: Record<string, unknown> }
+    expect(Object.keys(data.masterPasswordChange).sort()).toEqual([
+      'accountFingerprint',
+      'phase',
+      'startedAt',
+      'updatedAt'
+    ])
+    const serializedJournal = JSON.stringify(data.masterPasswordChange)
+    expect(serializedJournal).not.toContain(MASTER_PASSWORD)
+    expect(serializedJournal).not.toContain('replacement horse battery staple')
+    expect(serializedJournal).not.toContain('sync@example.invalid')
+    mutate(data.masterPasswordChange)
+    await store.write(data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopened = new VaultService(new EncryptedVaultStore<unknown>(filePath), {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await expect(reopened.unlock(MASTER_PASSWORD)).rejects.toMatchObject({
+      code: 'CORRUPT_VAULT'
+    })
+  })
   it('enables memory-only PIN unlock with fresh proof and preserves it across ordinary lock', async () => {
     const { service } = await createHarness()
     await service.setup(MASTER_PASSWORD)
@@ -6223,7 +6715,7 @@ describe('VaultService encrypted local data', () => {
       expect(await service.revealPassword({ id: migrated.id })).toBe('legacy-secret')
       await service.lock()
       const unlocked = await store.unlock(MASTER_PASSWORD)
-      expect((unlocked.data as { version: number }).version).toBe(18)
+      expect((unlocked.data as { version: number }).version).toBe(19)
       unlocked.key.fill(0)
       unlocked.salt.fill(0)
     }
@@ -6380,7 +6872,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 18,
+      version: 19,
       generatorHistory: [],
       sends: [],
       nativeAttachmentRestore: null
@@ -6418,7 +6910,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 18,
+      version: 19,
       logins: [expect.objectContaining({ attachments: [] })],
       sends: []
     })
@@ -6457,7 +6949,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 18,
+      version: 19,
       sync: { domainSettings: null }
     })
     migrated.key.fill(0)
