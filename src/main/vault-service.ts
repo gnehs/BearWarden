@@ -72,6 +72,7 @@ import {
   MAX_LOGIN_BATCH_IDS,
   MAX_LOGIN_AUTHORIZE_MANY_IDS,
   MAX_LOGIN_MOVE_MANY_IDS,
+  MAX_LOGIN_SEARCH_QUERY_LENGTH,
   VAULT_LINKED_FIELD_IDS_BY_TYPE
 } from '../shared/vault-contract'
 import {
@@ -85,6 +86,7 @@ import {
 } from './bitwarden-direct'
 import { resolveBitwardenUrls } from './bitwarden-http'
 import { EncryptedVaultStore } from './encrypted-vault-store'
+import { searchVaultItems, type VaultSearchItem } from './vault-search'
 import {
   generateCatchAllEmail,
   generatePassphrase,
@@ -1835,6 +1837,34 @@ function toSummary(login: StoredLogin): LoginSummary {
   }
 }
 
+function toVaultSearchItem(login: StoredLogin): VaultSearchItem {
+  const protectedItem = login.reprompt === 1 || login.deletedAt !== null
+  const searchable: VaultSearchItem = {
+    id: login.id,
+    type: login.type,
+    name: login.name,
+    reprompt: login.reprompt,
+    protected: protectedItem
+  }
+  if (protectedItem) return searchable
+
+  const summary = toSummary(login)
+  return {
+    ...searchable,
+    subtitle: summary.subtitle,
+    notes: login.notes ?? '',
+    customFields: login.customFields.map(({ name, value, type }) => ({ name, value, type })),
+    attachments: login.attachments.map(({ fileName }) => ({ fileName })),
+    ...(login.type === 'login'
+      ? {
+          username: login.username,
+          uri: login.uri,
+          uris: login.uris.map(({ uri }) => ({ uri }))
+        }
+      : {})
+  }
+}
+
 function summarizeSecureNote(notes: string | null): string {
   const firstLine =
     notes
@@ -2354,6 +2384,12 @@ export class VaultService {
       const data = this.requireData()
       const sort = request.sort ?? 'recent'
       if (sort !== 'recent' && sort !== 'name') throw new VaultError('INVALID_INPUT')
+      if (
+        request.query !== undefined &&
+        (typeof request.query !== 'string' || request.query.length > MAX_LOGIN_SEARCH_QUERY_LENGTH)
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
       if (request.deleted !== undefined && typeof request.deleted !== 'boolean') {
         throw new VaultError('INVALID_INPUT')
       }
@@ -2367,7 +2403,7 @@ export class VaultService {
         this.findFolder(data, request.folderId)
       }
 
-      const filtered = data.logins.filter(
+      const scoped = data.logins.filter(
         (login) =>
           (request.deleted === true
             ? login.deletedAt !== null
@@ -2376,6 +2412,17 @@ export class VaultService {
               : login.deletedAt === null && login.archivedAt === null) &&
           (request.folderId === undefined || login.folderId === request.folderId)
       )
+      const filtered =
+        request.query === undefined
+          ? scoped
+          : (() => {
+              const matchingIds = new Set(
+                searchVaultItems(scoped.map(toVaultSearchItem), request.query).map(
+                  (searchable) => searchable.id
+                )
+              )
+              return scoped.filter((login) => matchingIds.has(login.id))
+            })()
       return filtered.map(toSummary).sort((left, right) => {
         if (sort === 'recent') {
           if (left.lastUsedAt && right.lastUsedAt && left.lastUsedAt !== right.lastUsedAt) {

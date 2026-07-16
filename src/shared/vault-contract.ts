@@ -443,8 +443,12 @@ export interface LoginEmptyTrashRequest {
 
 export type LoginSort = 'recent' | 'name'
 
+export const MAX_LOGIN_SEARCH_QUERY_LENGTH = 1_024
+
 export interface LoginListRequest {
   sort?: LoginSort
+  /** Main-process vault search query. Empty text has the same effect as an omitted query. */
+  query?: string
   /** Omit to list every folder; use null for unfiled logins. */
   folderId?: string | null
   /** False/omitted lists active items; true lists only items in the trash. */

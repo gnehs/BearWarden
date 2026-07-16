@@ -266,6 +266,7 @@ describe('registerVaultIpc reprompt gate', () => {
         }
       }),
       cancelAttachmentOperation: vi.fn(async () => ({ canceled: true })),
+      listLogins: vi.fn(async () => []),
       createLogin: vi.fn(async (request) => ({ id: 'created', ...request })),
       cloneLogin: vi.fn(async () => ({ id: 'clone' })),
       archiveLogins: vi.fn(async ({ ids }: { ids: string[] }) => ids.map((id) => ({ id }))),
@@ -398,6 +399,26 @@ describe('registerVaultIpc reprompt gate', () => {
         password: 123
       })
     ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+  })
+
+  it('accepts a bounded empty vault query and rejects malformed list requests', async () => {
+    const { event, vault } = harness()
+    const list = electronMock.handlers.get(IPC_CHANNELS.loginList)!
+
+    await expect(list(event, { query: '' })).resolves.toEqual([])
+    expect(vault.listLogins).toHaveBeenCalledWith({ query: '' })
+    const maximumQuery = 'x'.repeat(1_024)
+    await expect(list(event, { query: maximumQuery })).resolves.toEqual([])
+    expect(vault.listLogins).toHaveBeenLastCalledWith({ query: maximumQuery })
+
+    for (const invalid of [
+      { query: 'x'.repeat(1_025) },
+      { query: 7 },
+      { query: 'example', unknown: true }
+    ]) {
+      await expect(list(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(vault.listLogins).toHaveBeenCalledTimes(2)
   })
 
   it.each([

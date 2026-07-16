@@ -2827,6 +2827,89 @@ describe('VaultService encrypted local data', () => {
     expect((await service.getLogin({ id: alpha.id })).updatedAt).toBe(alphaUpdatedAt)
   })
 
+  it('searches only inside the requested scope without indexing protected item secrets', async () => {
+    const { service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const scopedFolder = await service.createFolder({ name: 'Scoped' })
+    const otherFolder = await service.createFolder({ name: 'Other' })
+    const active = await service.createLogin({
+      type: 'secureNote',
+      name: 'Active note',
+      notes: 'quokka searchable body',
+      folderId: scopedFolder.id
+    })
+    const outside = await service.createLogin({
+      type: 'secureNote',
+      name: 'Outside note',
+      notes: 'quokka searchable body',
+      folderId: otherFolder.id
+    })
+    const archived = await service.createLogin({
+      name: 'Archive Quokka',
+      folderId: scopedFolder.id
+    })
+    await service.archiveLogin({ id: archived.id })
+    const deleted = await service.createLogin({
+      name: 'Trash Quokka',
+      notes: 'trash-protected-secret',
+      folderId: scopedFolder.id
+    })
+    await service.deleteLogin({ id: deleted.id })
+    const protectedItem = await service.createLogin({
+      type: 'secureNote',
+      name: 'Protected safe name',
+      notes: 'quokka-protected-secret',
+      folderId: scopedFolder.id,
+      reprompt: 1
+    })
+    const generation = await service.unlockedGeneration()
+    const write = vi.spyOn(store, 'write')
+
+    await expect(
+      service.listLogins({ folderId: scopedFolder.id, query: 'quokka' })
+    ).resolves.toEqual([expect.objectContaining({ id: active.id })])
+    await expect(
+      service.listLogins({ folderId: otherFolder.id, query: 'quokka' })
+    ).resolves.toEqual([expect.objectContaining({ id: outside.id })])
+    await expect(
+      service.listLogins({ folderId: scopedFolder.id, archived: true, query: 'archive quokka' })
+    ).resolves.toEqual([expect.objectContaining({ id: archived.id })])
+    await expect(
+      service.listLogins({ folderId: scopedFolder.id, deleted: true, query: 'trash quokka' })
+    ).resolves.toEqual([expect.objectContaining({ id: deleted.id })])
+    await expect(
+      service.listLogins({
+        folderId: scopedFolder.id,
+        deleted: true,
+        query: 'trash-protected-secret'
+      })
+    ).resolves.toEqual([])
+    await expect(
+      service.listLogins({ folderId: scopedFolder.id, query: 'quokka-protected-secret' })
+    ).resolves.toEqual([])
+    await expect(
+      service.listLogins({ folderId: scopedFolder.id, query: 'protected safe' })
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: protectedItem.id,
+        subtitle: '',
+        username: '',
+        uri: null
+      })
+    ])
+    await expect(
+      service.listLogins({ folderId: scopedFolder.id, query: '' })
+    ).resolves.toHaveLength(2)
+    await expect(service.listLogins({ query: 7 as never })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(service.listLogins({ query: 'x'.repeat(1_025) })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    expect(await service.unlockedGeneration()).toBe(generation)
+    expect(write).not.toHaveBeenCalled()
+  })
+
   it('generates and copies TOTP in the main process without exposing its seed', async () => {
     const { service, copyText } = await createHarness({ now: () => new Date(59_000) })
     await service.setup(MASTER_PASSWORD)

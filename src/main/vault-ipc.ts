@@ -7,6 +7,7 @@ import {
   MAX_LOGIN_BATCH_IDS,
   MAX_LOGIN_MOVE_MANY_IDS,
   MAX_LOGIN_AUTHORIZE_MANY_IDS,
+  MAX_LOGIN_SEARCH_QUERY_LENGTH,
   type AppSettingsUpdate,
   type AttachmentCancelRequest,
   type AttachmentDeleteRequest,
@@ -1105,8 +1106,14 @@ function parseEmptyTrash(value: unknown): LoginEmptyTrashRequest {
 }
 
 function parseLoginList(value: unknown): LoginListRequest {
-  const record = exactRecord(value ?? {}, ['sort', 'folderId', 'deleted', 'archived'])
+  const record = exactRecord(value ?? {}, ['sort', 'query', 'folderId', 'deleted', 'archived'])
   if (record.sort !== undefined && record.sort !== 'recent' && record.sort !== 'name') {
+    throw new VaultError('INVALID_INPUT')
+  }
+  if (
+    record.query !== undefined &&
+    (typeof record.query !== 'string' || record.query.length > MAX_LOGIN_SEARCH_QUERY_LENGTH)
+  ) {
     throw new VaultError('INVALID_INPUT')
   }
   const result: LoginListRequest = {}
@@ -1114,6 +1121,7 @@ function parseLoginList(value: unknown): LoginListRequest {
   const deleted = optionalBoolean(record, 'deleted')
   const archived = optionalBoolean(record, 'archived')
   if (record.sort !== undefined) result.sort = record.sort
+  if (record.query !== undefined) result.query = record.query
   if (folderId !== undefined) result.folderId = folderId
   if (deleted !== undefined) result.deleted = deleted
   if (archived !== undefined) result.archived = archived
