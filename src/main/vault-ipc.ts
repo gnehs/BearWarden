@@ -2086,6 +2086,14 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     options.afterSyncChanged?.(status)
     return status
   })
+  registerHandler(IPC_CHANNELS.accountSecurityProfile, getMainWindow, (_event, input) => {
+    parseNoInput(input)
+    return vault.getAccountSecurityProfile()
+  })
+  registerHandler(IPC_CHANNELS.accountResendVerification, getMainWindow, (_event, input) => {
+    parseNoInput(input)
+    return vault.resendAccountVerificationEmail()
+  })
   registerHandler<EquivalentDomainSettingsView>(
     IPC_CHANNELS.domainRulesGet,
     getMainWindow,

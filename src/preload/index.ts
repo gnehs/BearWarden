@@ -189,6 +189,10 @@ const api: BearWardenAPI = {
       return () => ipcRenderer.removeListener(IPC_EVENTS.syncChanged, wrappedListener)
     }
   },
+  accountSecurity: {
+    profile: () => ipcRenderer.invoke(IPC_CHANNELS.accountSecurityProfile),
+    resendVerification: () => ipcRenderer.invoke(IPC_CHANNELS.accountResendVerification)
+  },
   domainRules: {
     get: () => ipcRenderer.invoke(IPC_CHANNELS.domainRulesGet),
     update: (request) => ipcRenderer.invoke(IPC_CHANNELS.domainRulesUpdate, request)

@@ -12,8 +12,8 @@ import {
   Unplug,
   X
 } from 'lucide-react'
-import { useState } from 'react'
-import type { SyncResult, SyncStatus } from '../../../shared/vault-contract'
+import { useEffect, useState } from 'react'
+import type { AccountSecurityProfile, SyncResult, SyncStatus } from '../../../shared/vault-contract'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -116,10 +116,45 @@ function SyncDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [accountProfile, setAccountProfile] = useState<AccountSecurityProfile | null>(null)
+  const [accountSecurityError, setAccountSecurityError] = useState('')
+  const [accountSecurityBusy, setAccountSecurityBusy] = useState(false)
 
   const configured = status.configured
   const requiresCredentials = !configured || status.state === 'locked'
   const isSyncing = busy || status.state === 'syncing'
+
+  useEffect(() => {
+    if (status.state !== 'ready') return
+    let active = true
+    void window.bearwarden.accountSecurity
+      .profile()
+      .then((profile) => {
+        if (active) setAccountProfile(profile)
+      })
+      .catch(() => {
+        if (active) setAccountSecurityError('無法讀取帳號安全狀態。')
+      })
+      .finally(() => {
+        if (active) setAccountSecurityBusy(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [status.state])
+
+  async function resendVerification(): Promise<void> {
+    setAccountSecurityBusy(true)
+    setAccountSecurityError('')
+    try {
+      await window.bearwarden.accountSecurity.resendVerification()
+      setSuccess('驗證信寄送要求已送出；若伺服器已設定郵件服務，請至信箱完成驗證。')
+    } catch {
+      setAccountSecurityError('無法寄送驗證信；請確認 Vaultwarden 已設定郵件服務。')
+    } finally {
+      setAccountSecurityBusy(false)
+    }
+  }
 
   function clearSecrets(): void {
     setMasterPassword('')
@@ -479,6 +514,37 @@ function SyncDialog({
                   <strong>{formatSyncTime(status.lastSyncAt)}</strong>
                 </div>
               </section>
+              {accountProfile && (
+                <Alert className="sync-status-card" role="status">
+                  <ShieldCheck aria-hidden="true" />
+                  <AlertDescription>
+                    <strong>{accountProfile.name || accountProfile.email}</strong>
+                    <br />
+                    Email：{accountProfile.emailVerified ? '已驗證' : '尚未驗證'} · 雙重驗證：
+                    {accountProfile.twoFactorEnabled ? '已啟用' : '尚未啟用'}
+                    {!accountProfile.emailVerified && (
+                      <Button
+                        className="mt-2"
+                        variant="outline"
+                        size="sm"
+                        type="button"
+                        disabled={accountSecurityBusy}
+                        onClick={() => void resendVerification()}
+                      >
+                        {accountSecurityBusy && (
+                          <Spinner data-icon="inline-start" aria-hidden="true" />
+                        )}
+                        重新寄送驗證信
+                      </Button>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
+              {accountSecurityError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{accountSecurityError}</AlertDescription>
+                </Alert>
+              )}
               {error && (
                 <Alert className="form-error" variant="destructive">
                   <AlertDescription>{error}</AlertDescription>

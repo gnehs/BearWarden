@@ -2780,6 +2780,7 @@ export class VaultService {
   private syncClient: BitwardenSyncClient | null = null
   private syncAbort: AbortController | null = null
   private readonly notificationTokenAborts = new Set<AbortController>()
+  private readonly accountSecurityAborts = new Set<AbortController>()
   private syncInProgress = false
   private syncLastError: string | null = null
   private activeAttachmentOperation: {
@@ -2901,6 +2902,7 @@ export class VaultService {
   lock(): Promise<VaultStatus> {
     this.syncAbort?.abort()
     this.abortNotificationTokenLeases()
+    this.abortAccountSecurityRequests()
     this.activeExposedPasswordOperation?.abort.abort()
     this.activeAccountBreachOperation?.abort.abort()
     return this.exclusive(async () => {
@@ -2917,6 +2919,7 @@ export class VaultService {
   dispose(): void {
     this.syncAbort?.abort()
     this.abortNotificationTokenLeases()
+    this.abortAccountSecurityRequests()
     this.activeExposedPasswordOperation?.abort.abort()
     this.activeExposedPasswordOperation = null
     this.activeAccountBreachOperation?.abort.abort()
@@ -2937,6 +2940,99 @@ export class VaultService {
 
   syncStatus(): Promise<SyncStatus> {
     return this.exclusive(async () => this.currentSyncStatus(true))
+  }
+
+  async getAccountSecurityProfile(): Promise<
+    import('../shared/vault-contract').AccountSecurityProfile
+  > {
+    const lease = await this.exclusive(async () => {
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      if (!client.getAccountSecurityProfile) throw new VaultError('SYNC_FAILED')
+      const abort = new AbortController()
+      this.accountSecurityAborts.add(abort)
+      return {
+        generation: this.generation,
+        client,
+        email: sync.email,
+        request: client.getAccountSecurityProfile.bind(client),
+        abort
+      }
+    })
+    try {
+      const profile = await lease.request(lease.abort.signal)
+      return await this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        this.requireData()
+        const state = lease.client.exportState()
+        if (
+          lease.abort.signal.aborted ||
+          lease.generation !== this.generation ||
+          this.syncClient !== lease.client ||
+          !state.session ||
+          (state.profileId !== null && state.profileId !== profile.id) ||
+          profile.email.toLowerCase() !== lease.email.toLowerCase()
+        ) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        await this.persistCurrentClientState()
+        return {
+          name: profile.name,
+          email: profile.email,
+          emailVerified: profile.emailVerified,
+          twoFactorEnabled: profile.twoFactorEnabled
+        }
+      })
+    } catch (error) {
+      return this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+          throw new VaultError('LOCKED')
+        }
+        if (error instanceof VaultError) throw error
+        throw this.mapSyncError(error)
+      })
+    }
+  }
+
+  async resendAccountVerificationEmail(): Promise<void> {
+    const lease = await this.exclusive(async () => {
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      if (!client.resendVerificationEmail) throw new VaultError('SYNC_FAILED')
+      const abort = new AbortController()
+      this.accountSecurityAborts.add(abort)
+      return {
+        generation: this.generation,
+        client,
+        request: client.resendVerificationEmail.bind(client),
+        abort
+      }
+    })
+    try {
+      await lease.request(lease.abort.signal)
+      await this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        this.requireData()
+        if (
+          lease.abort.signal.aborted ||
+          lease.generation !== this.generation ||
+          this.syncClient !== lease.client
+        ) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        await this.persistCurrentClientState()
+      })
+    } catch (error) {
+      return this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+          throw new VaultError('LOCKED')
+        }
+        if (error instanceof VaultError) throw error
+        throw this.mapSyncError(error)
+      })
+    }
   }
 
   /** Main-process-only notification credentials. Never expose this through IPC or renderer state. */
@@ -3015,6 +3111,7 @@ export class VaultService {
   remoteLogoutSync(): Promise<SyncStatus> {
     this.syncAbort?.abort()
     this.abortNotificationTokenLeases()
+    this.abortAccountSecurityRequests()
     this.activeAccountBreachOperation?.abort.abort()
     return this.exclusive(async () => {
       const current = this.requireData()
@@ -3152,6 +3249,7 @@ export class VaultService {
   disconnectSync(): Promise<SyncStatus> {
     this.syncAbort?.abort()
     this.abortNotificationTokenLeases()
+    this.abortAccountSecurityRequests()
     this.activeAccountBreachOperation?.abort.abort()
     return this.exclusive(async () => {
       const next = cloneData(this.requireData())
@@ -5671,6 +5769,11 @@ export class VaultService {
   private abortNotificationTokenLeases(): void {
     for (const abort of this.notificationTokenAborts) abort.abort()
     this.notificationTokenAborts.clear()
+  }
+
+  private abortAccountSecurityRequests(): void {
+    for (const abort of this.accountSecurityAborts) abort.abort()
+    this.accountSecurityAborts.clear()
   }
 
   private mapSyncError(error: unknown): VaultError {

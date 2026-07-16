@@ -89,6 +89,8 @@ export const IPC_CHANNELS = {
   syncUnlock: 'sync:unlock',
   syncNow: 'sync:now',
   syncDisconnect: 'sync:disconnect',
+  accountSecurityProfile: 'account-security:profile',
+  accountResendVerification: 'account-security:resend-verification',
   domainRulesGet: 'domain-rules:get',
   domainRulesUpdate: 'domain-rules:update',
   sendList: 'send:list',
@@ -708,6 +710,13 @@ export interface SyncResult extends SyncStatus {
   conflicts: number
 }
 
+export interface AccountSecurityProfile {
+  name: string
+  email: string
+  emailVerified: boolean
+  twoFactorEnabled: boolean
+}
+
 export interface GlobalEquivalentDomainView {
   type: number
   domains: string[]
@@ -1267,6 +1276,10 @@ export interface BearWardenAPI {
     now: () => Promise<SyncResult>
     disconnect: () => Promise<SyncStatus>
     onChanged: (listener: (status: SyncStatus) => void) => () => void
+  }
+  accountSecurity: {
+    profile: () => Promise<AccountSecurityProfile>
+    resendVerification: () => Promise<void>
   }
   domainRules: {
     get: () => Promise<EquivalentDomainSettingsView>

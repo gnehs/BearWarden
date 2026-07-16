@@ -305,6 +305,14 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
       return state.session.accessToken
     },
     getAccountBreachReport: async () => ({ status: 'complete', breaches: [] }),
+    getAccountSecurityProfile: async () => ({
+      id: state.profileId ?? '90000000-0000-4000-8000-000000000099',
+      name: 'Sync User',
+      email: 'sync@example.invalid',
+      emailVerified: false,
+      twoFactorEnabled: true
+    }),
+    resendVerificationEmail: async () => undefined,
     getEquivalentDomainSettings: async () => structuredClone(equivalentDomainSettings),
     updateEquivalentDomainSettings: async (update) => {
       const excluded = new Set(update.excludedGlobalEquivalentDomains)
@@ -3269,6 +3277,49 @@ describe('VaultService encrypted local data', () => {
       reason: 'server-hibp-unconfigured',
       breaches: []
     })
+  })
+
+  it('exposes a bounded account security profile and resends verification through the connector', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await expect(service.getAccountSecurityProfile()).rejects.toMatchObject({
+      code: 'SYNC_AUTH_REQUIRED'
+    })
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const profile = vi.spyOn(fake!, 'getAccountSecurityProfile')
+    const resend = vi.spyOn(fake!, 'resendVerificationEmail')
+
+    await expect(service.getAccountSecurityProfile()).resolves.toEqual({
+      name: 'Sync User',
+      email: 'sync@example.invalid',
+      emailVerified: false,
+      twoFactorEnabled: true
+    })
+    await expect(service.resendAccountVerificationEmail()).resolves.toBeUndefined()
+    expect(profile).toHaveBeenCalledOnce()
+    expect(resend).toHaveBeenCalledOnce()
+
+    profile.mockImplementation(
+      async (signal) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+        })
+    )
+    const pending = service.getAccountSecurityProfile()
+    const locked = expect(pending).rejects.toMatchObject({ code: 'LOCKED' })
+    await vi.waitFor(() => expect(profile).toHaveBeenCalledTimes(2))
+    await expect(service.lock()).resolves.toEqual({ state: 'locked' })
+    await locked
   })
 
   it('opens only the fixed HIBP attribution URL after verifying the vault is unlocked', async () => {

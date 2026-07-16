@@ -297,6 +297,13 @@ describe('registerVaultIpc reprompt gate', () => {
       })),
       cancelAccountBreachReport: vi.fn(() => true),
       openHibpWebsite: vi.fn(async () => undefined),
+      getAccountSecurityProfile: vi.fn(async () => ({
+        name: 'Sync User',
+        email: 'sync@example.invalid',
+        emailVerified: false,
+        twoFactorEnabled: true
+      })),
+      resendAccountVerificationEmail: vi.fn(async () => undefined),
       getEquivalentDomainSettings: vi.fn(async () => ({
         equivalentDomains: [['first.example', 'second.example']],
         globalEquivalentDomains: [
@@ -627,6 +634,24 @@ describe('registerVaultIpc reprompt gate', () => {
     }
     expect(vault.updateEquivalentDomainSettings).toHaveBeenCalledOnce()
     expect(vault.getEquivalentDomainSettings).toHaveBeenCalledOnce()
+  })
+
+  it('keeps account security actions on exact empty IPC requests', async () => {
+    const { event, vault } = harness()
+    const profile = electronMock.handlers.get(IPC_CHANNELS.accountSecurityProfile)!
+    const resend = electronMock.handlers.get(IPC_CHANNELS.accountResendVerification)!
+
+    await expect(profile(event, undefined)).resolves.toMatchObject({
+      email: 'sync@example.invalid',
+      emailVerified: false
+    })
+    await expect(resend(event, undefined)).resolves.toBeUndefined()
+    for (const invalid of [null, {}, [], { email: 'must-not-cross-this-boundary' }]) {
+      await expect(profile(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+      await expect(resend(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(vault.getAccountSecurityProfile).toHaveBeenCalledOnce()
+    expect(vault.resendAccountVerificationEmail).toHaveBeenCalledOnce()
   })
 
   it.each([
