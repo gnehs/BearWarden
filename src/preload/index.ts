@@ -216,6 +216,11 @@ const api: BearWardenAPI = {
       return () => ipcRenderer.removeListener(IPC_EVENTS.syncChanged, wrappedListener)
     }
   },
+  accounts: {
+    status: () => ipcRenderer.invoke(IPC_CHANNELS.accountStatus),
+    add: () => ipcRenderer.invoke(IPC_CHANNELS.accountAdd),
+    switch: (accountId) => ipcRenderer.invoke(IPC_CHANNELS.accountSwitch, { accountId })
+  },
   accountSecurity: {
     profile: () => ipcRenderer.invoke(IPC_CHANNELS.accountSecurityProfile),
     devices: () => ipcRenderer.invoke(IPC_CHANNELS.accountDevices),

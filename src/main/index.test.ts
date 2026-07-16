@@ -11,6 +11,15 @@ const harness = vi.hoisted(() => {
   let storeOptions: Record<string, unknown> | null = null
   let settingsPaths: { settingsPath: string; touchIdPath: string } | null = null
   let twoFactorDirectoryPath: string | null = null
+  let registryStorePath: string | null = null
+  let registryStore: unknown = null
+  let bootstrapRegistryStore: unknown = null
+  let accountSwitchRoot: string | null = null
+  let accountSwitchOptions: Record<string, unknown> | null = null
+  let accountSwitchService: unknown = null
+  const lifecycleEvents: string[] = []
+  const appQuit = vi.fn(() => lifecycleEvents.push('app.quit'))
+  const appRelaunch = vi.fn(() => lifecycleEvents.push('app.relaunch'))
   const controller = {
     cancel: vi.fn(),
     dispose: vi.fn(),
@@ -121,14 +130,48 @@ const harness = vi.hoisted(() => {
     },
     setTwoFactorDirectoryPath: (value: string) => {
       twoFactorDirectoryPath = value
-    }
+    },
+    get registryStorePath(): string | null {
+      return registryStorePath
+    },
+    get registryStore(): unknown {
+      return registryStore
+    },
+    setRegistryStore: (path: string, value: unknown) => {
+      registryStorePath = path
+      registryStore = value
+    },
+    get bootstrapRegistryStore(): unknown {
+      return bootstrapRegistryStore
+    },
+    setBootstrapRegistryStore: (value: unknown) => {
+      bootstrapRegistryStore = value
+    },
+    get accountSwitchRoot(): string | null {
+      return accountSwitchRoot
+    },
+    get accountSwitchOptions(): Record<string, unknown> | null {
+      return accountSwitchOptions
+    },
+    get accountSwitchService(): unknown {
+      return accountSwitchService
+    },
+    setAccountSwitchService: (root: string, options: Record<string, unknown>, value: unknown) => {
+      accountSwitchRoot = root
+      accountSwitchOptions = options
+      accountSwitchService = value
+    },
+    lifecycleEvents,
+    appQuit,
+    appRelaunch
   }
 })
 
 vi.mock('electron', () => ({
   app: {
     requestSingleInstanceLock: () => true,
-    quit: vi.fn(),
+    quit: harness.appQuit,
+    relaunch: harness.appRelaunch,
     enableSandbox: vi.fn(),
     whenReady: () => Promise.resolve(),
     on: (event: string, listener: (...args: never[]) => void) =>
@@ -175,6 +218,7 @@ vi.mock('./bitwarden-notifications', () => ({
       return Promise.resolve()
     }
     stop(): Promise<void> {
+      harness.lifecycleEvents.push('notifications.stop')
       return Promise.resolve()
     }
     dispose(): Promise<void> {
@@ -208,19 +252,36 @@ vi.mock('./encrypted-vault-store', () => ({
     }
   }
 }))
-vi.mock('./account-storage-bootstrap', () => ({
-  bootstrapAccountStorage: vi.fn(async () => ({
-    mode: 'account',
-    activeAccountId: '11111111-1111-4111-8111-111111111111',
-    paths: {
-      vaultPath:
-        '/tmp/bearwarden-index-test/accounts/11111111-1111-4111-8111-111111111111/vault/vault.json',
-      settingsPath:
-        '/tmp/bearwarden-index-test/accounts/11111111-1111-4111-8111-111111111111/account-settings.json',
-      touchIdPath:
-        '/tmp/bearwarden-index-test/accounts/11111111-1111-4111-8111-111111111111/touch-id.bin'
+vi.mock('./account-registry', () => ({
+  AccountRegistryStore: class {
+    constructor(path: string) {
+      harness.setRegistryStore(path, this)
     }
-  }))
+  }
+}))
+vi.mock('./account-switch-service', () => ({
+  AccountSwitchService: class {
+    constructor(root: string, options: Record<string, unknown>) {
+      harness.setAccountSwitchService(root, options, this)
+    }
+  }
+}))
+vi.mock('./account-storage-bootstrap', () => ({
+  bootstrapAccountStorage: vi.fn(async (_root: string, options: { registryStore: unknown }) => {
+    harness.setBootstrapRegistryStore(options.registryStore)
+    return {
+      mode: 'account',
+      activeAccountId: '11111111-1111-4111-8111-111111111111',
+      paths: {
+        vaultPath:
+          '/tmp/bearwarden-index-test/accounts/11111111-1111-4111-8111-111111111111/vault/vault.json',
+        settingsPath:
+          '/tmp/bearwarden-index-test/accounts/11111111-1111-4111-8111-111111111111/account-settings.json',
+        touchIdPath:
+          '/tmp/bearwarden-index-test/accounts/11111111-1111-4111-8111-111111111111/touch-id.bin'
+      }
+    }
+  })
 }))
 vi.mock('./focus-touch-id-unlock', () => ({ FocusTouchIdUnlockController: class {} }))
 vi.mock('./application-menu', () => ({ installApplicationMenu: vi.fn() }))
@@ -235,6 +296,10 @@ vi.mock('./vault-service', () => ({
     constructor(_store: unknown, _platform: unknown, options: Record<string, unknown>) {
       harness.setVaultOptions(options)
     }
+    lock(): Promise<void> {
+      harness.lifecycleEvents.push('vault.lock')
+      return Promise.resolve()
+    }
     dispose(): void {}
   }
 }))
@@ -242,6 +307,7 @@ vi.mock('./vault-attachment-files', () => ({ VaultAttachmentFileService: class {
 vi.mock('./vault-portability', () => ({
   VaultPortabilityService: class {
     disposeNativeRestoreSession(): Promise<void> {
+      harness.lifecycleEvents.push('portability.dispose')
       return Promise.resolve()
     }
   }
@@ -329,9 +395,41 @@ describe('main WebAuthn lifecycle wiring', () => {
     expect(harness.twoFactorDirectoryPath).toBe(
       '/tmp/bearwarden-index-test/cache/2fa-directory-totp-v4.json'
     )
+    expect(harness.registryStorePath).toBe('/tmp/bearwarden-index-test')
+    expect(harness.bootstrapRegistryStore).toBe(harness.registryStore)
+    expect(harness.accountSwitchRoot).toBe('/tmp/bearwarden-index-test')
+    expect(harness.accountSwitchOptions?.registryStore).toBe(harness.registryStore)
+    expect(harness.vaultIpcOptions?.accountSwitchService).toBe(harness.accountSwitchService)
+  })
+
+  it('locks through the teardown barrier without notifying the renderer, then relaunches once', async () => {
+    const beforeActivation = harness.accountSwitchOptions!.beforeActivation as () => Promise<void>
+    const afterCommitRelaunch = harness.accountSwitchOptions!.afterCommitRelaunch as () => void
+    const webContents = harness.windows[0]!.webContents
+    harness.lifecycleEvents.length = 0
+    webContents.send.mockClear()
+    webContents.reload.mockClear()
+
+    await beforeActivation()
+    expect(harness.lifecycleEvents).toEqual([
+      'notifications.stop',
+      'portability.dispose',
+      'vault.lock'
+    ])
+    expect(webContents.send).not.toHaveBeenCalled()
+    expect(webContents.reload).not.toHaveBeenCalled()
+
+    harness.lifecycleEvents.length = 0
+    harness.appRelaunch.mockClear()
+    harness.appQuit.mockClear()
+    afterCommitRelaunch()
+    expect(harness.lifecycleEvents).toEqual(['app.relaunch', 'app.quit'])
+    expect(harness.appRelaunch).toHaveBeenCalledOnce()
+    expect(harness.appQuit).toHaveBeenCalledOnce()
   })
 
   it('keeps the account connector main-only and cancels it at every teardown boundary', async () => {
+    harness.controller.cancel.mockClear()
     const request = harness.vaultOptions!.requestAccountWebAuthnAssertion as (
       input: unknown
     ) => Promise<unknown>

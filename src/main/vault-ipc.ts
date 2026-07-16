@@ -9,6 +9,8 @@ import {
   MAX_LOGIN_AUTHORIZE_MANY_IDS,
   MAX_LOGIN_SEARCH_QUERY_LENGTH,
   MAX_ACCOUNT_BREACH_EMAIL_LENGTH,
+  type AccountMutationResult,
+  type AccountStatus,
   type AppSettingsUpdate,
   type AccountApiKeyCopyRequest,
   type AccountAuthenticatorCompleteRequest,
@@ -87,7 +89,9 @@ import {
   type SendIdRequest
 } from '../shared/vault-contract'
 import type { AppSettingsService } from './app-settings'
-import { isVaultError, VaultError } from './vault-errors'
+import { ACCOUNT_ID_PATTERN } from './account-paths'
+import type { AccountSwitchService } from './account-switch-service'
+import { accountSwitchVaultError, isVaultError, VaultError } from './vault-errors'
 import type { VaultService } from './vault-service'
 import type { VaultPortabilityService } from './vault-portability'
 import { showItemContextMenu } from './item-context-menu'
@@ -205,6 +209,8 @@ export interface VaultIpcOptions {
   vault: VaultService
   portability: VaultPortabilityService
   settings: AppSettingsService
+  /** Absent only while startup is using the fail-safe legacy storage fallback. */
+  accountSwitchService?: AccountSwitchService
   getMainWindow: () => BrowserWindow | null
   /** Injected by the main process so clipboard reads and private material never enter preload. */
   sshKeyImportSessions: SshKeyImportSessionStore
@@ -458,6 +464,24 @@ function parsePinUnlock(value: unknown): PinUnlockRequest {
 
 function parseNoInput(value: unknown): void {
   if (value !== undefined) throw new VaultError('INVALID_INPUT')
+}
+
+function parseAccountSwitch(value: unknown): string {
+  const record = exactRecord(value, ['accountId'])
+  const accountId = requiredString(record, 'accountId')
+  if (!ACCOUNT_ID_PATTERN.test(accountId)) throw new VaultError('INVALID_INPUT')
+  return accountId
+}
+
+function publicAccountStatus(status: AccountStatus): AccountStatus {
+  return {
+    activeAccountId: status.activeAccountId,
+    accounts: status.accounts.map(({ id, active, slot }) => ({ id, active, slot }))
+  }
+}
+
+function publicAccountMutation(result: AccountMutationResult): AccountMutationResult {
+  return { kind: result.kind, status: publicAccountStatus(result.status) }
 }
 
 function parseAccountApiKeyCopy(value: unknown): AccountApiKeyCopyRequest {
@@ -1720,6 +1744,7 @@ function registerTrustedHandler<T>(
 
 export function registerVaultIpc(options: VaultIpcOptions): () => void {
   const { vault, portability, settings, getMainWindow } = options
+  const accountSwitchService = options.accountSwitchService
   let disposed = false
   const registeredChannels = new Set<string>()
   const registerHandler = <T>(
@@ -1734,6 +1759,16 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   const authorizations =
     options.repromptAuthorizations ??
     new RepromptAuthorizationStore(options.repromptNow, options.repromptRandomBytes)
+  const runAccountOperation = async <T>(
+    operation: (service: AccountSwitchService) => Promise<T>
+  ): Promise<T> => {
+    if (!accountSwitchService) throw new VaultError('ACCOUNT_SWITCH_UNAVAILABLE')
+    try {
+      return await operation(accountSwitchService)
+    } catch (error) {
+      throw accountSwitchVaultError(error) ?? error
+    }
+  }
   const runAuthorizationBoundary = <T>(
     event: IpcMainInvokeEvent,
     token: string | undefined,
@@ -1824,6 +1859,20 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     }
     throw error
   }
+  registerHandler(IPC_CHANNELS.accountStatus, getMainWindow, async (_event, input) => {
+    parseNoInput(input)
+    return publicAccountStatus(await runAccountOperation((service) => service.getStatus()))
+  })
+  registerHandler(IPC_CHANNELS.accountAdd, getMainWindow, async (_event, input) => {
+    parseNoInput(input)
+    return publicAccountMutation(await runAccountOperation((service) => service.addAccount()))
+  })
+  registerHandler(IPC_CHANNELS.accountSwitch, getMainWindow, async (_event, input) => {
+    const accountId = parseAccountSwitch(input)
+    return publicAccountMutation(
+      await runAccountOperation((service) => service.switchAccount(accountId))
+    )
+  })
   registerHandler(IPC_CHANNELS.vaultStatus, getMainWindow, () => vault.status())
   registerHandler(IPC_CHANNELS.vaultSetup, getMainWindow, async (_event, input) => {
     const request = parseSetup(input)

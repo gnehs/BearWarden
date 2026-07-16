@@ -102,6 +102,9 @@ export const IPC_CHANNELS = {
   syncUnlock: 'sync:unlock',
   syncNow: 'sync:now',
   syncDisconnect: 'sync:disconnect',
+  accountStatus: 'account:status',
+  accountAdd: 'account:add',
+  accountSwitch: 'account:switch',
   accountSecurityProfile: 'account-security:profile',
   accountDevices: 'account-security:devices',
   accountResendVerification: 'account-security:resend-verification',
@@ -172,6 +175,11 @@ export type VaultErrorCode =
   | 'TWO_FACTOR_MUTATION_UNKNOWN'
   | 'TOUCH_ID_UNAVAILABLE'
   | 'TOUCH_ID_FAILED'
+  | 'ACCOUNT_LIMIT_REACHED'
+  | 'ACCOUNT_NOT_FOUND'
+  | 'ACCOUNT_SWITCH_UNAVAILABLE'
+  | 'ACCOUNT_SWITCH_IN_PROGRESS'
+  | 'ACCOUNT_SWITCH_RESULT_UNKNOWN'
   | 'INTERNAL_ERROR'
 
 export type VaultState = 'uninitialized' | 'locked' | 'unlocked'
@@ -179,6 +187,23 @@ export type VaultState = 'uninitialized' | 'locked' | 'unlocked'
 export interface VaultStatus {
   state: VaultState
 }
+
+/** Opaque, renderer-safe account metadata. Encrypted identity metadata stays account-scoped. */
+export interface AccountStatusEntry {
+  readonly id: string
+  readonly active: boolean
+  /** One-based stable position from the append-only registry order. */
+  readonly slot: number
+}
+
+export interface AccountStatus {
+  readonly activeAccountId: string
+  readonly accounts: readonly AccountStatusEntry[]
+}
+
+export type AccountMutationResult =
+  | { readonly kind: 'unchanged'; readonly status: AccountStatus }
+  | { readonly kind: 'relaunch-required'; readonly status: AccountStatus }
 
 export interface InactiveTwoFactorFinding {
   id: string
@@ -1549,6 +1574,11 @@ export interface BearWardenAPI {
     now: () => Promise<SyncResult>
     disconnect: () => Promise<SyncStatus>
     onChanged: (listener: (status: SyncStatus) => void) => () => void
+  }
+  accounts: {
+    status: () => Promise<AccountStatus>
+    add: () => Promise<AccountMutationResult>
+    switch: (accountId: string) => Promise<AccountMutationResult>
   }
   accountSecurity: {
     profile: () => Promise<AccountSecurityProfile>

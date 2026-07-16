@@ -20,6 +20,11 @@ vi.mock('electron', () => ({
 
 import { IPC_CHANNELS, IPC_EVENTS } from '../shared/vault-contract'
 import type { AppSettingsService } from './app-settings'
+import {
+  AccountRelaunchResultUnknownError,
+  AccountSwitchServiceError,
+  type AccountSwitchService
+} from './account-switch-service'
 import { VaultError } from './vault-errors'
 import { registerVaultIpc, RepromptAuthorizationStore } from './vault-ipc'
 import type { VaultService } from './vault-service'
@@ -53,6 +58,177 @@ describe('registerVaultIpc lifecycle', () => {
       ownedChannels
     )
     expect(electronMock.removeHandler).toHaveBeenCalledTimes(ownedChannels.size)
+  })
+})
+
+describe('registerVaultIpc account boundary', () => {
+  const accountA = '11111111-1111-4111-8111-111111111111'
+  const accountB = '22222222-2222-4222-8222-222222222222'
+
+  function accountHarness(service?: Partial<AccountSwitchService>): {
+    event: unknown
+    untrustedEvent: unknown
+  } {
+    const mainFrame = { url: 'app://bearwarden/index.html' }
+    const webContents = {
+      id: 92,
+      mainFrame,
+      getURL: () => mainFrame.url,
+      send: vi.fn(),
+      isDestroyed: () => false
+    }
+    registerVaultIpc({
+      vault: {} as VaultService,
+      portability: {} as Parameters<typeof registerVaultIpc>[0]['portability'],
+      settings: {} as AppSettingsService,
+      sshKeyImportSessions: new SshKeyImportSessionStore({ readClipboard: () => '' }),
+      getMainWindow: () => ({ isDestroyed: () => false, webContents }) as never,
+      ...(service === undefined ? {} : { accountSwitchService: service as AccountSwitchService })
+    })
+    return {
+      event: { sender: webContents, senderFrame: mainFrame },
+      untrustedEvent: {
+        sender: webContents,
+        senderFrame: { url: 'https://untrusted.example.invalid' }
+      }
+    }
+  }
+
+  it('projects exact renderer-safe status and mutation fields', async () => {
+    const status = {
+      activeAccountId: accountA,
+      accounts: [
+        {
+          id: accountA,
+          active: true,
+          slot: 1,
+          identityHash: 'a'.repeat(64),
+          path: '/private/account-a'
+        },
+        { id: accountB, active: false, slot: 2, email: 'private@example.invalid' }
+      ],
+      registryPath: '/private/registry.json'
+    }
+    const service = {
+      getStatus: vi.fn(async () => status),
+      addAccount: vi.fn(async () => ({ kind: 'relaunch-required' as const, status }))
+    }
+    const { event } = accountHarness(service)
+
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.accountStatus)!(event, undefined)
+    ).resolves.toEqual({
+      activeAccountId: accountA,
+      accounts: [
+        { id: accountA, active: true, slot: 1 },
+        { id: accountB, active: false, slot: 2 }
+      ]
+    })
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.accountAdd)!(event, undefined)
+    ).resolves.toEqual({
+      kind: 'relaunch-required',
+      status: {
+        activeAccountId: accountA,
+        accounts: [
+          { id: accountA, active: true, slot: 1 },
+          { id: accountB, active: false, slot: 2 }
+        ]
+      }
+    })
+    expect(JSON.stringify(await service.getStatus())).toContain('/private/account-a')
+  })
+
+  it('uses the trusted sender gate and exact no-input/switch parsers', async () => {
+    const service = {
+      getStatus: vi.fn(async () => ({ activeAccountId: accountA, accounts: [] })),
+      addAccount: vi.fn(),
+      switchAccount: vi.fn(async () => ({
+        kind: 'unchanged' as const,
+        status: { activeAccountId: accountA, accounts: [] }
+      }))
+    }
+    const { event, untrustedEvent } = accountHarness(service)
+    const status = electronMock.handlers.get(IPC_CHANNELS.accountStatus)!
+    const add = electronMock.handlers.get(IPC_CHANNELS.accountAdd)!
+    const switchAccount = electronMock.handlers.get(IPC_CHANNELS.accountSwitch)!
+
+    await expect(status(untrustedEvent, undefined)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    await expect(status(event, {})).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    await expect(add(event, {})).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    expect(service.getStatus).not.toHaveBeenCalled()
+    expect(service.addAccount).not.toHaveBeenCalled()
+
+    for (const input of [
+      { accountId: '../vault' },
+      { accountId: 'a'.repeat(64) },
+      { accountId: 'private@example.invalid' },
+      { accountId: 'https://vault.example.invalid' },
+      { accountId: 2 },
+      { slot: 2 },
+      { accountId: accountB, extra: true }
+    ]) {
+      await expect(switchAccount(event, input)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(service.switchAccount).not.toHaveBeenCalled()
+
+    await expect(switchAccount(event, { accountId: accountB })).resolves.toMatchObject({
+      kind: 'unchanged'
+    })
+    expect(service.switchAccount).toHaveBeenCalledWith(accountB)
+  })
+
+  it('keeps legacy fallback unavailable and maps membership failures without leaking causes', async () => {
+    const legacy = accountHarness()
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.accountStatus)!(legacy.event, undefined)
+    ).rejects.toThrow('BEARWARDEN:ACCOUNT_SWITCH_UNAVAILABLE')
+
+    const membershipFailure = new AccountSwitchServiceError('ACCOUNT_NOT_REGISTERED')
+    const privateFailure = new AccountSwitchServiceError('ACCOUNT_ACTIVATION_FAILED') as Error & {
+      cause?: unknown
+    }
+    privateFailure.cause = new Error('/private/accounts private@example.invalid')
+    const service = {
+      switchAccount: vi
+        .fn()
+        .mockRejectedValueOnce(membershipFailure)
+        .mockRejectedValueOnce(privateFailure)
+    }
+    const { event } = accountHarness(service)
+    const switchAccount = electronMock.handlers.get(IPC_CHANNELS.accountSwitch)!
+
+    await expect(switchAccount(event, { accountId: accountB })).rejects.toThrow(
+      'BEARWARDEN:ACCOUNT_NOT_FOUND'
+    )
+    let error: unknown
+    try {
+      await switchAccount(event, { accountId: accountB })
+    } catch (caught) {
+      error = caught
+    }
+    expect(String(error)).toBe('Error: BEARWARDEN:ACCOUNT_SWITCH_UNAVAILABLE')
+    expect(String(error)).not.toContain('/private')
+    expect(String(error)).not.toContain('@')
+  })
+
+  it.each([
+    [new AccountSwitchServiceError('INVALID_ACCOUNT_SWITCH_REQUEST'), 'INVALID_INPUT'],
+    [new AccountSwitchServiceError('ACCOUNT_LIMIT_REACHED'), 'ACCOUNT_LIMIT_REACHED'],
+    [new AccountSwitchServiceError('ACCOUNT_SWITCH_IN_PROGRESS'), 'ACCOUNT_SWITCH_IN_PROGRESS'],
+    [
+      new AccountSwitchServiceError('ACCOUNT_REGISTRY_UPDATE_RESULT_UNKNOWN'),
+      'ACCOUNT_SWITCH_RESULT_UNKNOWN'
+    ],
+    [
+      new AccountRelaunchResultUnknownError({ activeAccountId: accountA, accounts: [] }),
+      'ACCOUNT_SWITCH_RESULT_UNKNOWN'
+    ]
+  ])('maps account mutation failures to stable public codes', async (failure, publicCode) => {
+    const { event } = accountHarness({ addAccount: vi.fn().mockRejectedValue(failure) })
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.accountAdd)!(event, undefined)
+    ).rejects.toThrow(`BEARWARDEN:${publicCode}`)
   })
 })
 

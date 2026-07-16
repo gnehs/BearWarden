@@ -39,6 +39,8 @@ import { AccountWebAuthnWindowController } from './account-webauthn-window'
 import { SensitiveClipboard } from './sensitive-clipboard'
 import { TwoFactorDirectoryCache } from './two-factor-directory-cache'
 import { bootstrapAccountStorage } from './account-storage-bootstrap'
+import { AccountRegistryStore } from './account-registry'
+import { AccountSwitchService } from './account-switch-service'
 import { clearPendingInitializationMarker } from './account-storage-initialization-marker'
 import icon from '../../resources/icon.png?asset'
 
@@ -441,7 +443,11 @@ if (hasSingleInstanceLock)
     })
     session.defaultSession.setPermissionCheckHandler(() => false)
 
-    const activeStorage = await bootstrapAccountStorage(app.getPath('userData'))
+    const userDataDirectory = app.getPath('userData')
+    const accountRegistryStore = new AccountRegistryStore(userDataDirectory)
+    const activeStorage = await bootstrapAccountStorage(userDataDirectory, {
+      registryStore: accountRegistryStore
+    })
     const store = new EncryptedVaultStore<unknown>(activeStorage.paths.vaultPath, {
       ...(activeStorage.mode === 'account'
         ? {
@@ -491,7 +497,7 @@ if (hasSingleInstanceLock)
     } catch {
       // Keep the local vault usable without exposing native WebAuthn initialization details.
     }
-    vault = new VaultService(
+    const activeVault = new VaultService(
       store,
       {
         copyText: (text) => sensitiveClipboard.write(text),
@@ -515,6 +521,21 @@ if (hasSingleInstanceLock)
         }
       }
     )
+    vault = activeVault
+    const accountSwitchService =
+      activeStorage.mode === 'account'
+        ? new AccountSwitchService(userDataDirectory, {
+            registryStore: accountRegistryStore,
+            beforeActivation: async () => {
+              await beforeVaultLock()
+              await activeVault.lock()
+            },
+            afterCommitRelaunch: () => {
+              app.relaunch()
+              app.quit()
+            }
+          })
+        : undefined
     repromptAuthorizations = new RepromptAuthorizationStore()
     sshAgentBridge = new SshAgentRendererBridge({
       getMainWindow: () => mainWindow,
@@ -710,6 +731,7 @@ if (hasSingleInstanceLock)
       vault,
       portability,
       settings,
+      ...(accountSwitchService ? { accountSwitchService } : {}),
       getMainWindow: () => mainWindow,
       sshKeyImportSessions,
       repromptAuthorizations,
