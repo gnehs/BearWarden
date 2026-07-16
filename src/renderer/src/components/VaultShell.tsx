@@ -110,6 +110,16 @@ import { matchesVaultCategory, type VaultCategoryFilter } from '../lib/vault-cat
 import { formatPaymentCardNumber } from '../lib/payment-card'
 import { normalizeBitwardenCardBrand } from '../lib/payment-card'
 import { normalizeItemSelection, updateItemSelection } from '../lib/item-selection'
+import {
+  boundedVaultSearchQuery,
+  filterVaultSearchMatches,
+  isCurrentVaultSearchResponse,
+  MAX_VAULT_SEARCH_QUERY_LENGTH,
+  normalizedVaultSearchQuery,
+  VAULT_SEARCH_DEBOUNCE_MS,
+  vaultSearchListRequests,
+  type VaultSearchMatches
+} from '../lib/vault-search-ui'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
 import { Button } from '@renderer/components/ui/button'
@@ -785,6 +795,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [sortMode, setSortMode] = useState<SortMode>('title')
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [query, setQuery] = useState('')
+  const [searchMatches, setSearchMatches] = useState<VaultSearchMatches | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -838,6 +849,13 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   )
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const queryRef = useRef(query)
+  const searchRequestIdRef = useRef(0)
+  const updateQuery = useCallback((value: string): void => {
+    const bounded = boundedVaultSearchQuery(value)
+    queryRef.current = bounded
+    setQuery(bounded)
+  }, [])
   const settingsReturnFocusRef = useRef<HTMLElement | null>(null)
   const compactReturnIdRef = useRef<string | null>(null)
   const compactDetailFocusIdRef = useRef<string | null>(null)
@@ -1568,9 +1586,57 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     return () => window.clearTimeout(timeout)
   }, [revealedCustomFields])
 
+  useEffect(() => {
+    const searchQuery = normalizedVaultSearchQuery(query)
+    const requestId = ++searchRequestIdRef.current
+    if (!searchQuery) return
+
+    const timeout = window.setTimeout(() => {
+      const [activeRequest, archivedRequest, deletedRequest] = vaultSearchListRequests(searchQuery)
+      void Promise.all([
+        window.bearwarden.logins.list(activeRequest),
+        window.bearwarden.logins.list(archivedRequest),
+        window.bearwarden.logins.list(deletedRequest)
+      ]).then(
+        ([activeItems, archivedItems, deletedItems]) => {
+          if (
+            !isCurrentVaultSearchResponse({
+              requestId,
+              currentRequestId: searchRequestIdRef.current,
+              query: searchQuery,
+              currentQuery: queryRef.current
+            })
+          ) {
+            return
+          }
+          setSearchMatches({
+            query: searchQuery,
+            ids: new Set([...activeItems, ...archivedItems, ...deletedItems].map((item) => item.id))
+          })
+        },
+        (searchError) => {
+          if (
+            !isCurrentVaultSearchResponse({
+              requestId,
+              currentRequestId: searchRequestIdRef.current,
+              query: searchQuery,
+              currentQuery: queryRef.current
+            })
+          ) {
+            return
+          }
+          setSearchMatches({ query: searchQuery, ids: new Set() })
+          announceError(describeError(searchError))
+        }
+      )
+    }, VAULT_SEARCH_DEBOUNCE_MS)
+
+    return () => window.clearTimeout(timeout)
+  }, [items, query])
+
   const scopedItems = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase('zh-Hant')
-    const scoped = items.filter((item) => {
+    const matchedItems = filterVaultSearchMatches(items, query, searchMatches)
+    const scoped = matchedItems.filter((item) => {
       if (scope.kind === 'trash') {
         if (!item.deletedAt) return false
       } else if (scope.kind === 'archive') {
@@ -1585,18 +1651,10 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       if (scope.kind === 'folder' && item.folderId !== scope.folderId) return false
       if (scope.kind === 'unfiled' && item.folderId !== null) return false
       if (!matchesVaultCategory(item, typeFilter)) return false
-      if (!normalizedQuery) return true
-      return [
-        item.name,
-        item.subtitle,
-        item.username,
-        item.uri ?? '',
-        ...item.uris.map((entry) => entry.uri),
-        itemTypeMeta[item.type].label
-      ].some((value) => value.toLocaleLowerCase('zh-Hant').includes(normalizedQuery))
+      return true
     })
     return sortItems(scoped, scope.kind === 'recent' ? 'recent' : sortMode)
-  }, [items, query, scope, sortMode, typeFilter])
+  }, [items, query, scope, searchMatches, sortMode, typeFilter])
   const scopedItemIds = useMemo(() => scopedItems.map((item) => item.id), [scopedItems])
 
   const selectItems = useCallback(
@@ -3147,7 +3205,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 onClick={() => setSearchOpen(true)}
               >
                 <span className={cn('truncate', !query && 'text-muted-foreground')}>
-                  {query || '搜尋名稱、摘要或網站'}
+                  {query || '搜尋保管庫；以 > 開始進階搜尋'}
                 </span>
               </Button>
               <InputGroupAddon align="inline-start">
@@ -3159,7 +3217,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     size="icon-xs"
                     type="button"
                     aria-label="清除搜尋"
-                    onClick={() => setQuery('')}
+                    onClick={() => updateQuery('')}
                   >
                     <X />
                   </InputGroupButton>
@@ -3189,14 +3247,15 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           open={searchOpen}
           onOpenChange={setSearchOpen}
           title="搜尋保管庫"
-          description="依名稱、摘要、使用者名稱或網站搜尋保管庫項目。"
+          description="搜尋名稱、摘要、網站與內容；以 > 開始可指定欄位的進階搜尋。"
         >
           <Command className="vault-command" label="搜尋保管庫項目" loop shouldFilter={false}>
             <CommandInput
               ref={searchRef}
-              placeholder="搜尋名稱、摘要或網站"
+              placeholder="搜尋保管庫；例如 >name:github"
+              maxLength={MAX_VAULT_SEARCH_QUERY_LENGTH}
               value={query}
-              onValueChange={setQuery}
+              onValueChange={updateQuery}
               endAdornment={
                 query ? (
                   <InputGroupAddon align="inline-end">
@@ -3205,7 +3264,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                       type="button"
                       aria-label="清除搜尋"
                       onClick={() => {
-                        setQuery('')
+                        updateQuery('')
                         window.requestAnimationFrame(() => searchRef.current?.focus())
                       }}
                       onKeyDown={(event) => {
@@ -3607,7 +3666,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                           variant="outline"
                           className="button secondary"
                           type="button"
-                          onClick={() => setQuery('')}
+                          onClick={() => updateQuery('')}
                         >
                           清除搜尋
                         </Button>
