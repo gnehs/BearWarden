@@ -1176,6 +1176,8 @@ export interface AppSettings {
   startAtLogin: boolean
   /** Electron only supports login items for packaged macOS and Windows apps. */
   startAtLoginAvailable: boolean
+  /** macOS registered the login item, but the user still needs to approve it in System Settings. */
+  startAtLoginNeedsApproval: boolean
   autoLockMinutes: 0 | 1 | 5 | 15 | 30 | 60
   lockOnScreenLock: boolean
   lockOnSuspend: boolean
@@ -1191,7 +1193,10 @@ export interface AppSettings {
 }
 
 export type AppSettingsUpdate = Partial<
-  Omit<AppSettings, 'startAtLoginAvailable' | 'touchIdAvailable' | 'touchIdEnabled'>
+  Omit<
+    AppSettings,
+    'startAtLoginAvailable' | 'startAtLoginNeedsApproval' | 'touchIdAvailable' | 'touchIdEnabled'
+  >
 >
 
 export interface TouchIdEnableRequest {

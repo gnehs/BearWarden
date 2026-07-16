@@ -591,11 +591,16 @@ if (hasSingleInstanceLock)
         getStartAtLoginStatus: () => {
           const available =
             app.isPackaged && (process.platform === 'darwin' || process.platform === 'win32')
-          if (!available) return { available: false, enabled: false }
+          if (!available) return { available: false, enabled: false, needsApproval: false }
           try {
-            return { available: true, enabled: app.getLoginItemSettings().openAtLogin }
+            const loginItem = app.getLoginItemSettings()
+            return {
+              available: true,
+              enabled: loginItem.openAtLogin,
+              needsApproval: loginItem.status === 'requires-approval'
+            }
           } catch {
-            return { available: false, enabled: false }
+            return { available: false, enabled: false, needsApproval: false }
           }
         },
         setStartAtLogin: (enabled) => {

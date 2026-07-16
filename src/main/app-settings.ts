@@ -12,7 +12,7 @@ const MAX_TOUCH_ID_BYTES = 64 * 1024
 
 interface StoredSettings extends Omit<
   AppSettings,
-  'startAtLoginAvailable' | 'touchIdAvailable' | 'touchIdEnabled'
+  'startAtLoginAvailable' | 'startAtLoginNeedsApproval' | 'touchIdAvailable' | 'touchIdEnabled'
 > {
   version: typeof SETTINGS_VERSION
 }
@@ -20,6 +20,7 @@ interface StoredSettings extends Omit<
 export interface StartAtLoginStatus {
   available: boolean
   enabled: boolean
+  needsApproval: boolean
 }
 
 export interface AppSettingsRuntime {
@@ -164,6 +165,7 @@ export class AppSettingsService {
   private autoLockTimer: NodeJS.Timeout | null = null
   private touchIdUnlock: Promise<VaultStatus> | null = null
   private touchIdOperationInProgress = false
+  private settingsUpdateTail: Promise<void> = Promise.resolve()
 
   constructor(
     private readonly settingsPath: string,
@@ -195,6 +197,7 @@ export class AppSettingsService {
       ...this.settings,
       startAtLogin: startAtLoginStatus.available ? startAtLoginStatus.enabled : false,
       startAtLoginAvailable: startAtLoginStatus.available,
+      startAtLoginNeedsApproval: startAtLoginStatus.available && startAtLoginStatus.needsApproval,
       touchIdAvailable,
       touchIdEnabled: touchIdAvailable && (await exists(this.touchIdPath))
     }
@@ -204,7 +207,16 @@ export class AppSettingsService {
     return this.settings.showWebsiteIcons
   }
 
-  async update(update: AppSettingsUpdate): Promise<AppSettings> {
+  update(update: AppSettingsUpdate): Promise<AppSettings> {
+    const operation = this.settingsUpdateTail.then(() => this.performUpdate(update))
+    this.settingsUpdateTail = operation.then(
+      () => undefined,
+      () => undefined
+    )
+    return operation
+  }
+
+  private async performUpdate(update: AppSettingsUpdate): Promise<AppSettings> {
     const candidate = parseSettings({ ...this.settings, ...update, version: SETTINGS_VERSION })
     const previousStartAtLogin = this.runtime.getStartAtLoginStatus()
     if (update.startAtLogin !== undefined) {
@@ -217,6 +229,7 @@ export class AppSettingsService {
         candidate.startAtLogin !== previousStartAtLogin.enabled &&
         !this.runtime.setStartAtLogin(candidate.startAtLogin)
       ) {
+        this.runtime.setStartAtLogin(previousStartAtLogin.enabled)
         throw new Error('failed to update OS login item')
       }
     } else {

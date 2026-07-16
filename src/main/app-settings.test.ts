@@ -70,7 +70,11 @@ describe('AppSettingsService', () => {
       applyContentProtection: vi.fn(),
       applyClipboardTimeout: vi.fn(),
       applySshAgentSettings: vi.fn(),
-      getStartAtLoginStatus: vi.fn(() => ({ available: false, enabled: false })),
+      getStartAtLoginStatus: vi.fn(() => ({
+        available: false,
+        enabled: false,
+        needsApproval: false
+      })),
       setStartAtLogin: vi.fn(() => false),
       lockVault: vi.fn().mockResolvedValue(undefined),
       unlockVault: vi.fn().mockResolvedValue({ state: 'unlocked' as const })
@@ -92,6 +96,7 @@ describe('AppSettingsService', () => {
       showWebsiteIcons: true,
       startAtLogin: false,
       startAtLoginAvailable: false,
+      startAtLoginNeedsApproval: false,
       autoLockMinutes: 15,
       lockOnScreenLock: true,
       lockOnSuspend: true,
@@ -211,12 +216,17 @@ describe('AppSettingsService', () => {
       })
     )
     const { service, runtime } = createService(settingsPath)
-    runtime.getStartAtLoginStatus.mockReturnValue({ available: true, enabled: true })
+    runtime.getStartAtLoginStatus.mockReturnValue({
+      available: true,
+      enabled: true,
+      needsApproval: true
+    })
     await service.initialize()
 
     await expect(service.get()).resolves.toMatchObject({
       startAtLogin: true,
-      startAtLoginAvailable: true
+      startAtLoginAvailable: true,
+      startAtLoginNeedsApproval: true
     })
     expect(runtime.setStartAtLogin).not.toHaveBeenCalled()
     service.dispose()
@@ -225,7 +235,11 @@ describe('AppSettingsService', () => {
   it('updates and confirms the installed OS login item before persisting it', async () => {
     const { service, runtime } = createService()
     let enabled = false
-    runtime.getStartAtLoginStatus.mockImplementation(() => ({ available: true, enabled }))
+    runtime.getStartAtLoginStatus.mockImplementation(() => ({
+      available: true,
+      enabled,
+      needsApproval: false
+    }))
     runtime.setStartAtLogin.mockImplementation((next: boolean) => {
       enabled = next
       return true
@@ -234,7 +248,8 @@ describe('AppSettingsService', () => {
 
     await expect(service.update({ startAtLogin: true })).resolves.toMatchObject({
       startAtLogin: true,
-      startAtLoginAvailable: true
+      startAtLoginAvailable: true,
+      startAtLoginNeedsApproval: false
     })
     expect(runtime.setStartAtLogin).toHaveBeenCalledWith(true)
     expect(JSON.parse(await readFile(join(directory, 'settings.json'), 'utf8'))).toMatchObject({
@@ -258,12 +273,34 @@ describe('AppSettingsService', () => {
     service.dispose()
   })
 
+  it('restores the previous OS state when the requested login item cannot be confirmed', async () => {
+    const { service, runtime } = createService()
+    runtime.getStartAtLoginStatus.mockReturnValue({
+      available: true,
+      enabled: false,
+      needsApproval: false
+    })
+    runtime.setStartAtLogin.mockReturnValue(false)
+    await service.initialize()
+
+    await expect(service.update({ startAtLogin: true })).rejects.toThrow()
+    expect(runtime.setStartAtLogin.mock.calls).toEqual([[true], [false]])
+    await expect(readFile(join(directory, 'settings.json'))).rejects.toMatchObject({
+      code: 'ENOENT'
+    })
+    service.dispose()
+  })
+
   it('rolls back the OS login item when settings persistence fails', async () => {
     const settingsPath = join(directory, 'settings-directory')
     await mkdir(settingsPath)
     const { service, runtime } = createService(settingsPath)
     let enabled = false
-    runtime.getStartAtLoginStatus.mockImplementation(() => ({ available: true, enabled }))
+    runtime.getStartAtLoginStatus.mockImplementation(() => ({
+      available: true,
+      enabled,
+      needsApproval: false
+    }))
     runtime.setStartAtLogin.mockImplementation((next: boolean) => {
       enabled = next
       return true

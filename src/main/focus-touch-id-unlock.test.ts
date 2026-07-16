@@ -27,6 +27,7 @@ function createRuntime(
     showWebsiteIcons: true,
     startAtLogin: false,
     startAtLoginAvailable: true,
+    startAtLoginNeedsApproval: false,
     autoLockMinutes: 15,
     lockOnScreenLock: true,
     lockOnSuspend: true,

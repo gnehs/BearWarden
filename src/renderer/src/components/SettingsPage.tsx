@@ -649,7 +649,9 @@ function SettingsPage({
                         </FieldLabel>
                         <FieldDescription id="start-at-login-description">
                           {settings.startAtLoginAvailable
-                            ? '登入這台電腦後，自動啟動 BearWarden。'
+                            ? settings.startAtLoginNeedsApproval
+                              ? '已登錄，但仍需在 macOS「系統設定」的「登入項目」中允許。'
+                              : '登入這台電腦後，自動啟動 BearWarden。'
                             : '僅 macOS 與 Windows 的安裝版支援自動啟動。'}
                         </FieldDescription>
                       </FieldContent>
