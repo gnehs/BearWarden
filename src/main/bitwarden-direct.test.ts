@@ -12,6 +12,7 @@ import {
   deriveMasterKey,
   decryptBitwardenBytes,
   decryptBitwardenAttachmentBuffer,
+  encryptBitwardenAttachmentBuffer,
   decryptBitwardenCipherBlob,
   decryptBitwardenString,
   decryptBitwardenWrappedKey,
@@ -1177,6 +1178,93 @@ describe('BitwardenDirectClient', () => {
     sendKey.fill(0)
     seed.fill(0)
     plaintext.fill(0)
+    userKey.fill(0)
+  })
+
+  it('downloads a file Send through legacy access and decrypts bytes only in main', async () => {
+    const sync = await encryptedSync()
+    const userKey = Buffer.alloc(64, 7)
+    const seed = Buffer.alloc(16, 5)
+    const sendKey = deriveBitwardenSendKey(seed)
+    const plaintext = Buffer.from('downloaded Send file')
+    const encryptedFile = encryptBitwardenAttachmentBuffer(plaintext, sendKey)
+    const fileId = 'fedcba9876543210fedcba9876543210'
+    const send: JsonObject = {
+      id: SEND_ID,
+      accessId: 'UAAAAAAAQABAAAAAAAAAAQ',
+      type: 1,
+      key: encryptBitwardenBytes(seed, userKey),
+      name: encryptBitwardenString('Download archive', sendKey),
+      notes: null,
+      file: {
+        id: fileId,
+        fileName: encryptBitwardenString('download.txt', sendKey),
+        size: String(encryptedFile.length),
+        sizeName: `${encryptedFile.length} B`
+      },
+      maxAccessCount: null,
+      accessCount: 0,
+      revisionDate: '2026-07-16T00:00:00.000Z',
+      expirationDate: null,
+      deletionDate: '2026-07-30T00:00:00.000Z',
+      authType: 1,
+      password: 'password-proof',
+      disabled: false,
+      hideEmail: true
+    }
+    sync.sends = [send]
+    const fetch = vi.fn<FetchLike>().mockImplementation(async (url, init) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/identity/connect/token')) {
+        return jsonResponse({
+          access_token: 'access-token',
+          refresh_token: 'refresh-token',
+          expires_in: 3_600
+        })
+      }
+      if (url.includes('/api/sync?')) return jsonResponse(sync)
+      if (url.endsWith('/api/sends')) return jsonResponse(send)
+      if (url.endsWith(`/api/sends/access/${send.accessId}`)) {
+        expect(init?.method).toBe('POST')
+        expect(JSON.parse(String(init?.body))).toEqual({ password: 'send-password' })
+        return jsonResponse({
+          id: SEND_ID,
+          type: 1,
+          name: send.name,
+          file: send.file,
+          expirationDate: null,
+          creatorIdentifier: 'creator'
+        })
+      }
+      if (url.endsWith(`/api/sends/${SEND_ID}/access/file/${fileId}`)) {
+        expect(init?.method).toBe('POST')
+        expect(JSON.parse(String(init?.body))).toEqual({ password: 'send-password' })
+        return jsonResponse({ id: fileId, url: `/api/sends/${SEND_ID}/${fileId}?t=capability` })
+      }
+      if (url.includes(`/api/sends/${SEND_ID}/${fileId}`)) {
+        expect(init?.method).toBe('GET')
+        return new Response(new Blob([new Uint8Array(encryptedFile)]), { status: 200 })
+      }
+      return jsonResponse({ message: 'not found' }, 404)
+    })
+    const http = new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+    const downloaded = await client.downloadFileSend(SEND_ID, 'send-password')
+    expect(downloaded.fileName).toBe('download.txt')
+    expect(downloaded.data).toEqual(plaintext)
+    downloaded.data.fill(0)
+    encryptedFile.fill(0)
+    plaintext.fill(0)
+    sendKey.fill(0)
+    seed.fill(0)
     userKey.fill(0)
   })
 

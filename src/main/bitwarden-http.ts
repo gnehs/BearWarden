@@ -156,6 +156,12 @@ export interface BitwardenSendFileUpload {
   sendResponse: JsonObject
 }
 
+export interface BitwardenSendFileDownload {
+  id: string
+  url: string
+  download: (signal?: AbortSignal) => Promise<Buffer>
+}
+
 export interface PasswordTokenForm {
   email: string
   /** Already transformed by the caller's crypto layer; never a raw master password. */
@@ -859,6 +865,63 @@ export class BitwardenHttpClient {
       form,
       signal
     )
+  }
+
+  async getSendAccess(
+    accessId: string,
+    password: string | null,
+    signal?: AbortSignal
+  ): Promise<JsonObject> {
+    const response = await this.requestJson(
+      'POST',
+      `${this.urls.apiUrl}/sends/access/${encodeURIComponent(assertId(accessId))}`,
+      {
+        body: { password },
+        headers: { 'Send-Id': assertId(accessId) },
+        signal,
+        authenticate: false
+      }
+    )
+    return parseSendAccessEntity(response)
+  }
+
+  async getSendFileDownload(
+    sendId: string,
+    fileId: string,
+    password: string | null,
+    expectedSize: number,
+    signal?: AbortSignal
+  ): Promise<BitwardenSendFileDownload> {
+    if (
+      !Number.isSafeInteger(expectedSize) ||
+      expectedSize < 1 ||
+      expectedSize > MAX_SEND_FILE_BYTES
+    ) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    const response = await this.requestJson(
+      'POST',
+      `${this.urls.apiUrl}/sends/${encodeURIComponent(assertId(sendId))}/access/file/${encodeURIComponent(assertId(fileId))}`,
+      {
+        body: { password },
+        headers: { 'Send-Id': assertId(sendId) },
+        signal,
+        authenticate: false
+      }
+    )
+    const parsed = parseSendFileDownload(response, fileId)
+    const url = resolveAttachmentDownloadUrl(
+      parsed.url,
+      this.urls.webVaultUrl,
+      this.attachmentDownloadOrigins,
+      this.allowHttpLoopback
+    )
+    return {
+      id: parsed.id,
+      url,
+      download: (downloadSignal) =>
+        this.requestAttachmentBytes(url, expectedSize, downloadSignal ?? signal)
+    }
   }
 
   async updateSend(
@@ -1640,6 +1703,34 @@ function parseSendFileUpload(value: JsonValue): BitwardenSendFileUpload {
     url,
     sendResponse: parseSendEntity(sendResponse)
   }
+}
+
+function parseSendAccessEntity(value: JsonValue): JsonObject {
+  const entity = parseSendEntity(value)
+  const type = sendProperty(entity, 'type', 'Type')
+  const id = sendProperty(entity, 'id', 'Id')
+  if ((type !== 0 && type !== 1) || typeof id !== 'string' || !UUID_PATTERN.test(id)) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return entity
+}
+
+function parseSendFileDownload(value: JsonValue, expectedId: string): { id: string; url: string } {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const id = sendProperty(value, 'id', 'Id')
+  const url = sendProperty(value, 'url', 'Url')
+  if (
+    typeof id !== 'string' ||
+    id !== expectedId ||
+    id.length === 0 ||
+    id.length > 256 ||
+    typeof url !== 'string' ||
+    url.length === 0 ||
+    Buffer.byteLength(url, 'utf8') > MAX_SEND_FILE_URL_BYTES
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return { id, url }
 }
 
 function parseSendList(value: JsonValue): JsonObject[] {

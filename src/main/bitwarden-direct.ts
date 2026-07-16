@@ -72,6 +72,7 @@ const MAX_SEND_FILE_NAME_LENGTH = 255
 const MAX_SEND_FILE_SIZE = 550_502_400
 const MAX_SEND_FILE_SIZE_NAME_LENGTH = 64
 const MAX_SEND_FILE_PLAINTEXT_BYTES = 128 * 1024 * 1024 - 65
+const MAX_SYNC_SECRET_LENGTH = 16_384
 const MINIMUM_CLIENT_VERSION = '2024.12.0'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 
@@ -334,6 +335,11 @@ export interface BitwardenSyncClient {
   listEmergencyAccess?(signal?: AbortSignal): Promise<BitwardenEmergencyAccess[]>
   listSends?(signal?: AbortSignal): Promise<BitwardenSendItem[]>
   createFileSend?(draft: BitwardenFileSendDraft, signal?: AbortSignal): Promise<BitwardenSendItem>
+  downloadFileSend?(
+    id: string,
+    password: string | null,
+    signal?: AbortSignal
+  ): Promise<BitwardenDownloadedAttachment>
   createSend?(draft: BitwardenSendDraft, signal?: AbortSignal): Promise<BitwardenSendItem>
   updateSend?(
     id: string,
@@ -1637,6 +1643,82 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       seed.fill(0)
       sendKey?.fill(0)
       encryptedData?.fill(0)
+    }
+  }
+
+  async downloadFileSend(
+    id: string,
+    password: string | null,
+    signal?: AbortSignal
+  ): Promise<BitwardenDownloadedAttachment> {
+    this.requireUserKey()
+    const cached = this.sends.get(assertUuidValue(id))
+    if (!cached || cached.item.type !== 'file' || !cached.item.file) {
+      throw new BitwardenDirectError('NOT_FOUND')
+    }
+    if (
+      password !== null &&
+      (typeof password !== 'string' || password.length > MAX_SYNC_SECRET_LENGTH)
+    ) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    const userKey = this.requireUserKey()
+    let seed: Buffer | null = null
+    let sendKey: Buffer | null = null
+    let encrypted: Buffer | null = null
+    let plaintext: Buffer | null = null
+    try {
+      seed = decryptBitwardenBytes(requiredStringProperty(cached.raw, 'key'), userKey)
+      if (seed.length !== 16) throw new BitwardenDirectError('INVALID_RESPONSE')
+      sendKey = deriveBitwardenSendKey(seed)
+      const access = await this.http.getSendAccess(cached.item.accessId, password, signal)
+      const accessId = assertUuidValue(requiredStringProperty(access, 'id'))
+      const accessType = property(access, 'type')
+      const accessFile = recordProperty(access, 'file')
+      if (accessId !== cached.item.id || accessType !== 1 || !accessFile) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      const fileId = requiredStringProperty(accessFile, 'id')
+      const encryptedFileName = requiredStringProperty(accessFile, 'fileName')
+      const fileName = decryptBitwardenString(encryptedFileName, sendKey)
+      const sizeValue = property(accessFile, 'size')
+      const size =
+        typeof sizeValue === 'string' && /^\d+$/u.test(sizeValue)
+          ? Number(sizeValue)
+          : typeof sizeValue === 'number' && Number.isSafeInteger(sizeValue)
+            ? sizeValue
+            : NaN
+      if (
+        fileId !== cached.item.file.id ||
+        fileName !== cached.item.file.fileName ||
+        !Number.isSafeInteger(size) ||
+        size !== cached.item.file.size
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      const download = await this.http.getSendFileDownload(
+        cached.item.id,
+        fileId,
+        password,
+        size,
+        signal
+      )
+      encrypted = await download.download(signal)
+      if (encrypted.length !== size) throw new BitwardenDirectError('INVALID_RESPONSE')
+      plaintext = decryptBitwardenAttachmentBuffer(encrypted, sendKey)
+      const result: BitwardenDownloadedAttachment = { fileName, data: plaintext }
+      plaintext = null
+      return result
+    } catch (error) {
+      if (error instanceof BitwardenCryptoError && error.code === 'AUTHENTICATION_FAILED') {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      throw this.mapError(error)
+    } finally {
+      seed?.fill(0)
+      sendKey?.fill(0)
+      encrypted?.fill(0)
+      plaintext?.fill(0)
     }
   }
 
