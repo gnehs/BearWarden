@@ -93,6 +93,7 @@ export const IPC_CHANNELS = {
   sendList: 'send:list',
   sendCreate: 'send:create',
   sendCreateFile: 'send:create-file',
+  sendDownloadFile: 'send:download-file',
   sendUpdate: 'send:update',
   sendRemovePassword: 'send:remove-password',
   sendDelete: 'send:delete',
@@ -779,6 +780,16 @@ export interface SendFileCreateResult {
   send: SendView | null
 }
 
+export interface SendFileDownloadRequest {
+  id: string
+  password?: string | null
+}
+
+export interface SendFileDownloadResult {
+  canceled: boolean
+  fileName: string
+}
+
 export interface SendUpdateRequest extends SendCreateRequest {
   id: string
 }
@@ -1256,6 +1267,7 @@ export interface BearWardenAPI {
     list: () => Promise<SendView[]>
     create: (request: SendCreateRequest) => Promise<SendView>
     createFile: (request: SendFileCreateRequest) => Promise<SendFileCreateResult>
+    downloadFile: (request: SendFileDownloadRequest) => Promise<SendFileDownloadResult>
     update: (request: SendUpdateRequest) => Promise<SendView>
     removePassword: (request: SendIdRequest) => Promise<SendView>
     delete: (request: SendIdRequest) => Promise<void>

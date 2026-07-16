@@ -81,6 +81,8 @@ import type {
   SendCreateRequest,
   SendFileCreateRequest,
   SendFileCreateResult,
+  SendFileDownloadRequest,
+  SendFileDownloadResult,
   SendUpdateRequest,
   SendIdRequest,
   SendView,
@@ -3236,6 +3238,9 @@ export class VaultService {
         this.syncLastError = null
         return equivalentDomainSettingsView(confirmed)
       } catch (error) {
+        if (error instanceof BitwardenDirectError && error.code === 'NOT_FOUND') {
+          throw new VaultError('NOT_FOUND')
+        }
         throw this.mapSyncError(error)
       } finally {
         this.finishSyncOperation(abort)
@@ -3338,6 +3343,60 @@ export class VaultService {
         throw this.mapSyncError(error)
       } finally {
         plaintext?.fill(0)
+        this.finishSyncOperation(abort)
+      }
+    })
+  }
+
+  async downloadFileSend(request: SendFileDownloadRequest): Promise<SendFileDownloadResult> {
+    const password =
+      request.password === undefined
+        ? null
+        : normalizeNullableString(request.password, MAX_SYNC_SECRET_LENGTH)
+    const preflight = await this.exclusive(async () => {
+      assertUuid(request.id)
+      const send = this.requireData().sends.find((candidate) => candidate.id === request.id)
+      if (!send || send.type !== 'file' || !send.file) throw new VaultError('NOT_FOUND')
+      const files = this.attachmentFiles
+      if (!files) throw new VaultError('INTERNAL_ERROR')
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      if (!client.downloadFileSend) throw new VaultError('SYNC_FAILED')
+      return { files, fileName: send.file.fileName, generation: this.generation }
+    })
+    const destination = await preflight.files.chooseSavePath(preflight.fileName)
+    if (destination === null) return { canceled: true, fileName: preflight.fileName }
+
+    return this.exclusive(async () => {
+      if (preflight.generation !== this.generation) throw new VaultError('LOCKED')
+      const send = this.requireData().sends.find((candidate) => candidate.id === request.id)
+      if (
+        !send ||
+        send.type !== 'file' ||
+        !send.file ||
+        send.file.fileName !== preflight.fileName
+      ) {
+        throw new VaultError('NOT_FOUND')
+      }
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      if (!client.downloadFileSend) throw new VaultError('SYNC_FAILED')
+      const abort = this.startSyncOperation()
+      let clearText: Buffer | null = null
+      try {
+        clearText = (await client.downloadFileSend(send.id, password, abort.signal)).data
+        if (preflight.generation !== this.generation || abort.signal.aborted) {
+          throw new VaultError('LOCKED')
+        }
+        await preflight.files.write(destination, clearText, abort.signal)
+        return { canceled: false, fileName: preflight.fileName }
+      } catch (error) {
+        if (error instanceof BitwardenDirectError && error.code === 'NOT_FOUND') {
+          throw new VaultError('NOT_FOUND')
+        }
+        throw this.mapSyncError(error)
+      } finally {
+        clearText?.fill(0)
         this.finishSyncOperation(abort)
       }
     })

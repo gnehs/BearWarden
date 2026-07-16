@@ -719,9 +719,14 @@ describe('VaultService encrypted local data', () => {
   it('creates a file Send from a main-process file selection and clears plaintext after upload', async () => {
     let fake: ReturnType<typeof createSyncFake> | null = null
     let receivedData: Buffer | null = null
+    let savedData: Buffer | null = null
     const fileService = {
       chooseOpenFile: async () => ({ fileName: 'report.txt', size: 11 }),
-      readSelectedFile: async () => Buffer.from('hello world')
+      readSelectedFile: async () => Buffer.from('hello world'),
+      chooseSavePath: async () => '/tmp/report.txt',
+      write: async (_path: string, contents: Buffer) => {
+        savedData = contents
+      }
     } as unknown as VaultAttachmentFileService
     const { service } = await createHarness({
       attachmentFiles: fileService,
@@ -765,6 +770,10 @@ describe('VaultService encrypted local data', () => {
       return { ...remote, file: { ...remote.file! } }
     }
     fake!.listSends = async () => [{ ...remote, file: { ...remote.file! } }]
+    fake!.downloadFileSend = async () => ({
+      fileName: remote.file!.fileName,
+      data: Buffer.from('downloaded file')
+    })
 
     const result = await service.createFileSend({
       operationId: ATTACHMENT_OPERATION_ID,
@@ -778,6 +787,13 @@ describe('VaultService encrypted local data', () => {
     await expect(service.listSends()).resolves.toEqual([
       expect.objectContaining({ id: remote.id, type: 'file', file: remote.file })
     ])
+    await expect(service.downloadFileSend({ id: remote.id, password: null })).resolves.toEqual({
+      canceled: false,
+      fileName: 'report.txt'
+    })
+    const saved = savedData as Buffer | null
+    if (!saved) throw new Error('download bytes were not passed to the file writer')
+    expect(Array.from(saved).every((byte) => byte === 0)).toBe(true)
   })
 
   it('leases encrypted notification credentials and preserves mappings across remote logout', async () => {

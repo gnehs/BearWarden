@@ -1,4 +1,14 @@
-import { ArrowLeft, Copy, FilePlus, FileText, Pencil, Plus, Save, Trash2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  Copy,
+  Download,
+  FilePlus,
+  FileText,
+  Pencil,
+  Plus,
+  Save,
+  Trash2
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import type { SendCreateRequest, SendView } from '../../../shared/vault-contract'
@@ -194,6 +204,24 @@ function SendsPage({ onBack }: SendsPageProps): React.JSX.Element {
     }
   }
 
+  async function downloadFile(send: SendView): Promise<void> {
+    if (send.type !== 'file') return
+    let password: string | null = null
+    if (send.passwordProtected) {
+      password = window.prompt('請輸入 Send 存取密碼')
+      if (password === null) return
+    }
+    setBusy(true)
+    try {
+      const result = await window.bearwarden.sends.downloadFile({ id: send.id, password })
+      if (!result.canceled) toast.success(`已儲存 ${result.fileName}`)
+    } catch {
+      toast.error('檔案 Send 下載失敗，請確認密碼與同步連線')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function removePassword(): Promise<void> {
     if (!selected) return
     setBusy(true)
@@ -294,6 +322,18 @@ function SendsPage({ onBack }: SendsPageProps): React.JSX.Element {
                         >
                           <Copy />
                         </Button>
+                        {send.type === 'file' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            type="button"
+                            onClick={() => void downloadFile(send)}
+                            aria-label="下載檔案 Send"
+                            disabled={busy}
+                          >
+                            <Download />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"

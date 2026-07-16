@@ -69,6 +69,7 @@ import {
   type VaultUnlockRequest,
   type SendCreateRequest,
   type SendFileCreateRequest,
+  type SendFileDownloadRequest,
   type SendUpdateRequest,
   type SendIdRequest
 } from '../shared/vault-contract'
@@ -1341,6 +1342,15 @@ function parseSendFileCreate(value: unknown): SendFileCreateRequest {
   return result
 }
 
+function parseSendFileDownload(value: unknown): SendFileDownloadRequest {
+  const record = exactRecord(value, ['id', 'password'])
+  if (typeof record.id !== 'string' || !UUID_PATTERN.test(record.id)) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const password = optionalStringOrNull(record, 'password')
+  return { id: record.id, ...(password === undefined ? {} : { password }) }
+}
+
 function parseSendUpdate(value: unknown): SendUpdateRequest {
   const record = exactRecord(value, [
     'id',
@@ -2061,6 +2071,9 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   )
   registerHandler(IPC_CHANNELS.sendCreateFile, getMainWindow, (_event, input) =>
     afterMutation(vault.createFileSend(parseSendFileCreate(input)))
+  )
+  registerHandler(IPC_CHANNELS.sendDownloadFile, getMainWindow, (_event, input) =>
+    vault.downloadFileSend(parseSendFileDownload(input))
   )
   registerHandler(IPC_CHANNELS.sendUpdate, getMainWindow, (_event, input) =>
     afterMutation(vault.updateSend(parseSendUpdate(input)))
