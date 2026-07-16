@@ -79,7 +79,7 @@ Cloud 與支援中的 Vaultwarden 版本執行相容測試。
 
 - Bitwarden Cloud 的伺服器網址填 `https://bitwarden.com`。
 - Vaultwarden 填部署站台的 HTTPS 根網址；開發測試僅後端允許 loopback HTTP。
-- 支援 Authenticator、Email、YubiKey OTP，以及新裝置電子郵件驗證碼。
+- 支援 Authenticator、Email、YubiKey OTP、安全金鑰，以及新裝置電子郵件驗證碼。安全金鑰 challenge 與 assertion 只在受限的主程序 connector 視窗中處理，不會進入主要 renderer。
 - 連線後會顯示 Email 驗證與雙重驗證狀態；未驗證時可要求伺服器重新寄送驗證信。
 - 可在主程序重新驗證主密碼後複製個人 API Client ID／Secret，或經二次確認輪替；Secret 不會回傳 renderer 或寫入保管庫，剪貼簿最晚 30 秒清除。
 
