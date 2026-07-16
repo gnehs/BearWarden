@@ -79,6 +79,15 @@ export interface BitwardenAccountBreach {
   isVerified: boolean
 }
 
+/** Renderer-safe subset of the authenticated account profile. */
+export interface BitwardenAccountSecurityProfile {
+  id: string
+  name: string
+  email: string
+  emailVerified: boolean
+  twoFactorEnabled: boolean
+}
+
 /**
  * Vaultwarden returns a synthetic, otherwise-successful row when its HIBP API
  * key is absent. Keep that distinct from both a clean account and a breach.
@@ -240,6 +249,7 @@ const DEFAULT_MAX_RETRIES = 5
 const ACCESS_TOKEN_REFRESH_LEEWAY_MS = 60_000
 const MAX_RESPONSE_BYTES = 128 * 1024 * 1024
 const MAX_HIBP_BREACH_RESPONSE_BYTES = 4 * 1024 * 1024
+const MAX_ACCOUNT_PROFILE_RESPONSE_BYTES = 256 * 1024
 const MAX_EMERGENCY_ACCESS_RESPONSE_BYTES = 2 * 1024 * 1024
 const MAX_EMERGENCY_ACCESS_ENTRIES = 10_000
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
@@ -712,6 +722,24 @@ export class BitwardenHttpClient {
     if (!date || !Number.isFinite(Date.parse(date)))
       throw new BitwardenHttpError('INVALID_RESPONSE')
     return date
+  }
+
+  async getAccountSecurityProfile(signal?: AbortSignal): Promise<BitwardenAccountSecurityProfile> {
+    const response = await this.requestJson('GET', `${this.urls.apiUrl}/accounts/profile`, {
+      signal,
+      maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+      tooLargeCode: 'TOO_LARGE'
+    })
+    return parseAccountSecurityProfile(response)
+  }
+
+  async resendVerificationEmail(signal?: AbortSignal): Promise<void> {
+    const response = await this.requestJson('POST', `${this.urls.apiUrl}/accounts/verify-email`, {
+      signal,
+      maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+      tooLargeCode: 'TOO_LARGE'
+    })
+    if (response !== null) throw new BitwardenHttpError('INVALID_RESPONSE')
   }
 
   /**
@@ -1443,6 +1471,31 @@ export class BitwardenHttpClient {
 function assertId(value: string): string {
   if (!string(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
   return value
+}
+
+function parseAccountSecurityProfile(value: JsonValue): BitwardenAccountSecurityProfile {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const id = value.id ?? value.Id
+  const name = value.name ?? value.Name
+  const email = value.email ?? value.Email
+  const emailVerified = value.emailVerified ?? value.EmailVerified
+  const twoFactorEnabled = value.twoFactorEnabled ?? value.TwoFactorEnabled
+  if (
+    typeof id !== 'string' ||
+    !UUID_PATTERN.test(id) ||
+    typeof name !== 'string' ||
+    name.length > 50 ||
+    /[\0\r\n]/u.test(name) ||
+    typeof email !== 'string' ||
+    email.length === 0 ||
+    email.length > 254 ||
+    /[\0\r\n]/u.test(email) ||
+    typeof emailVerified !== 'boolean' ||
+    typeof twoFactorEnabled !== 'boolean'
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return { id, name, email, emailVerified, twoFactorEnabled }
 }
 
 function isValidBreachEmail(value: string): boolean {

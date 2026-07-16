@@ -42,6 +42,62 @@ describe('resolveBitwardenUrls', () => {
 })
 
 describe('BitwardenHttpClient', () => {
+  it('fetches the safe account profile and resends verification without a request body', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        json({
+          id: '10000000-0000-4000-8000-000000000001',
+          name: 'Test User',
+          email: 'person@example.test',
+          emailVerified: false,
+          twoFactorEnabled: true,
+          privateKey: 'must-not-cross-the-safe-model'
+        })
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(client.getAccountSecurityProfile()).resolves.toEqual({
+      id: '10000000-0000-4000-8000-000000000001',
+      name: 'Test User',
+      email: 'person@example.test',
+      emailVerified: false,
+      twoFactorEnabled: true
+    })
+    await expect(client.resendVerificationEmail()).resolves.toBeUndefined()
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+      'https://api.bitwarden.com/accounts/profile',
+      'https://api.bitwarden.com/accounts/verify-email'
+    ])
+    expect(fetch.mock.calls[1]?.[1]).toMatchObject({ method: 'POST', body: undefined })
+  })
+
+  it('rejects malformed account security profiles and non-empty verification responses', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        json({
+          id: 'not-an-id',
+          name: 'Test User',
+          email: 'person@example.test',
+          emailVerified: false,
+          twoFactorEnabled: false
+        })
+      )
+      .mockResolvedValueOnce(json({ accepted: true }))
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(client.getAccountSecurityProfile()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    await expect(client.resendVerificationEmail()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+  })
+
   it('parses both current nested and legacy prelogin KDF payloads', async () => {
     const fetch = vi
       .fn<FetchLike>()
