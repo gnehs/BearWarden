@@ -84,7 +84,7 @@ Cloud 與支援中的 Vaultwarden 版本執行相容測試。
 主密碼不會寫入 BearWarden 密碼庫或設定；只在登入或解鎖時於主程序記憶體使用，
 衍生金鑰在鎖定時清除。登入 token、同步設定與 ID 對應只存放在已加密的本機密碼庫內。
 
-目前同步範圍限個人保管庫的 items、folders、封存、垃圾桶、附件、個人文字 Sends 與帳號等效網域。附件 metadata 以 server 為準，支援安全上傳、下載、刪除及 legacy Fix；等效網域可在設定頁編輯自訂群組及排除伺服器內建群組。主程序會連線至官方 SignalR MessagePack notification hub，忽略本裝置事件，並在遠端變更、首次連線與重連後要求完整同步；通知服務停用或暫時無法連線不會妨礙手動同步。組織項目、檔案／公開接收 Send、Passkey 寫入與
+目前同步範圍包含個人保管庫的 items、folders、封存、垃圾桶、附件、個人文字 Sends、帳號等效網域，以及 Organizations／Collections／共享 cipher 的只讀鏡像。附件 metadata 以 server 為準，支援安全上傳、下載、刪除及 legacy Fix；等效網域可在設定頁編輯自訂群組及排除伺服器內建群組。組織頁可依組織與 Collection 篩選共享項目，密碼可見性由 server 權限決定，shared item 不會進入個人 merge 或寫入流程。主程序會連線至官方 SignalR MessagePack notification hub，忽略本裝置事件，並在遠端變更、首次連線與重連後要求完整同步；通知服務停用或暫時無法連線不會妨礙手動同步。檔案／公開接收 Send、Passkey 寫入與
 SSO 尚不由 BearWarden 編輯。同步的自訂欄位可在項目詳情安全地顯示與編輯。附件主要流程已有自動化 fixture 覆蓋，但 Direct／Azure live server 相容驗證仍是後續工作。完整差距與
 實作順序記錄於 [`docs/vaultwarden-feature-gap.md`](docs/vaultwarden-feature-gap.md)。
 更新既有 login 時，direct connector 會保留 BearWarden 未支援的遠端欄位。若兩端同時修改，
