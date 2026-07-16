@@ -328,6 +328,11 @@ describe('registerVaultIpc reprompt gate', () => {
         }
       }),
       getTwoFactorStatus: vi.fn(async () => [{ type: 0, enabled: true }]),
+      disableTwoFactorProvider: vi.fn(
+        async (request: { type: 0 | 1; masterPassword: string; confirm: true }) => {
+          if (request.masterPassword !== 'remote master password') throw new Error('missing proof')
+        }
+      ),
       copyTwoFactorRecoveryCode: vi.fn(async (request: { masterPassword: string }) => {
         if (request.masterPassword !== 'remote master password') throw new Error('missing proof')
       }),
@@ -773,6 +778,44 @@ describe('registerVaultIpc reprompt gate', () => {
     ]) {
       await expect(recovery(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
+  })
+
+  it('validates destructive 2FA disable requests and returns no secrets', async () => {
+    const { event, vault } = harness()
+    const disable = electronMock.handlers.get(IPC_CHANNELS.accountDisableTwoFactorProvider)!
+    const request = {
+      type: 0,
+      masterPassword: 'remote master password',
+      confirm: true
+    }
+
+    await expect(disable(event, request)).resolves.toBeUndefined()
+    expect(String(await disable(event, { ...request, type: 1 }))).not.toContain(
+      'remote master password'
+    )
+    expect(vault.disableTwoFactorProvider).toHaveBeenNthCalledWith(1, {
+      type: 0,
+      masterPassword: '',
+      confirm: true
+    })
+    expect(vault.disableTwoFactorProvider).toHaveBeenNthCalledWith(2, {
+      type: 1,
+      masterPassword: '',
+      confirm: true
+    })
+
+    for (const invalid of [
+      undefined,
+      null,
+      {},
+      { ...request, type: 2 },
+      { ...request, confirm: false },
+      { ...request, masterPassword: '' },
+      { ...request, providerName: 'renderer-supplied-name' }
+    ]) {
+      await expect(disable(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(vault.disableTwoFactorProvider).toHaveBeenCalledTimes(2)
   })
 
   it('keeps authenticator setup capabilities in main and validates the one-time session boundary', async () => {

@@ -325,6 +325,7 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
       { type: 0, enabled: true },
       { type: 1, enabled: true }
     ],
+    disableTwoFactorProvider: async () => undefined,
     getTwoFactorRecoveryCode: async () => 'RECOVERY-CODE',
     beginAuthenticatorSetup: async () => ({
       enabled: false,
@@ -3756,6 +3757,98 @@ describe('VaultService encrypted local data', () => {
       service.copyTwoFactorRecoveryCode({ masterPassword: 'wrong password' })
     ).rejects.toMatchObject({ code: 'INVALID_MASTER_PASSWORD' })
     expect(copySensitiveText).toHaveBeenCalledOnce()
+  })
+
+  it('disables only personal 2FA providers with a consumed fresh proof', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const disable = vi.spyOn(fake!, 'disableTwoFactorProvider')
+    const request = {
+      type: 0 as const,
+      masterPassword: 'remote master password',
+      confirm: true as const
+    }
+
+    await expect(service.disableTwoFactorProvider(request)).resolves.toBeUndefined()
+    expect(request.masterPassword).toBe('')
+    expect(disable).toHaveBeenCalledWith(0, 'remote master password', expect.any(AbortSignal))
+
+    for (const invalid of [
+      { type: 2 as 0, masterPassword: 'password', confirm: true as const },
+      { type: 1 as const, masterPassword: 'password', confirm: false as true },
+      { type: 1 as const, masterPassword: '', confirm: true as const }
+    ]) {
+      await expect(service.disableTwoFactorProvider(invalid)).rejects.toMatchObject({
+        code: 'INVALID_INPUT'
+      })
+      expect(invalid.masterPassword).toBe('')
+    }
+    expect(disable).toHaveBeenCalledOnce()
+
+    disable.mockRejectedValueOnce(new BitwardenDirectError('USER_VERIFICATION_FAILED'))
+    await expect(
+      service.disableTwoFactorProvider({
+        type: 1,
+        masterPassword: 'wrong password',
+        confirm: true
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_MASTER_PASSWORD' })
+
+    disable.mockRejectedValueOnce(new BitwardenDirectError('TWO_FACTOR_MUTATION_UNKNOWN'))
+    await expect(
+      service.disableTwoFactorProvider({
+        type: 1,
+        masterPassword: 'remote master password',
+        confirm: true
+      })
+    ).rejects.toMatchObject({ code: 'TWO_FACTOR_MUTATION_UNKNOWN' })
+  })
+
+  it('aborts an in-flight 2FA disable when the vault locks', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    vi.spyOn(fake!, 'disableTwoFactorProvider').mockImplementation(
+      async (_type, _masterPassword, signal) =>
+        new Promise<void>((_resolve, reject) => {
+          signal?.addEventListener(
+            'abort',
+            () => reject(new BitwardenDirectError('TWO_FACTOR_MUTATION_UNKNOWN')),
+            { once: true }
+          )
+        })
+    )
+
+    const request = {
+      type: 0 as const,
+      masterPassword: 'remote master password',
+      confirm: true as const
+    }
+    const pending = service.disableTwoFactorProvider(request)
+    await vi.waitFor(() => expect(request.masterPassword).toBe(''))
+    await service.lock()
+    await expect(pending).rejects.toMatchObject({ code: 'LOCKED' })
   })
 
   it('uses expiring single-use authenticator sessions without exposing server capabilities', async () => {

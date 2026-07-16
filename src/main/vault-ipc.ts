@@ -14,6 +14,7 @@ import {
   type AccountAuthenticatorCompleteRequest,
   type AccountEmailTwoFactorCompleteRequest,
   type AccountEmailTwoFactorSendRequest,
+  type AccountTwoFactorDisableRequest,
   type AttachmentCancelRequest,
   type AttachmentDeleteRequest,
   type AttachmentDownloadRequest,
@@ -2145,6 +2146,32 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     parseNoInput(input)
     return vault.getTwoFactorStatus()
   })
+  registerHandler(
+    IPC_CHANNELS.accountDisableTwoFactorProvider,
+    getMainWindow,
+    async (_event, input) => {
+      const record = exactRecord(input, ['type', 'masterPassword', 'confirm'])
+      const request: AccountTwoFactorDisableRequest = {
+        type: record.type as 0 | 1,
+        masterPassword: requiredString(record, 'masterPassword'),
+        confirm: record.confirm as true
+      }
+      if (
+        (request.type !== 0 && request.type !== 1) ||
+        request.masterPassword.length === 0 ||
+        request.masterPassword.length > 16_384 ||
+        request.confirm !== true
+      ) {
+        request.masterPassword = ''
+        throw new VaultError('INVALID_INPUT')
+      }
+      try {
+        return await vault.disableTwoFactorProvider(request)
+      } finally {
+        request.masterPassword = ''
+      }
+    }
+  )
   registerHandler(IPC_CHANNELS.accountCopyRecoveryCode, getMainWindow, async (_event, input) => {
     const record = exactRecord(input, ['masterPassword'])
     const request = { masterPassword: requiredString(record, 'masterPassword') }

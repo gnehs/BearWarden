@@ -1,4 +1,4 @@
-import { Copy, ShieldCheck } from 'lucide-react'
+import { Copy, ShieldCheck, ShieldOff, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import type {
   AccountAuthenticatorSetup,
@@ -6,6 +6,17 @@ import type {
   AccountTwoFactorProvider
 } from '../../../shared/vault-contract'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle
+} from '@renderer/components/ui/alert-dialog'
 import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -50,6 +61,9 @@ function AccountTwoFactorDialog(): React.JSX.Element {
   const [emailToken, setEmailToken] = useState('')
   const [emailCompletionPassword, setEmailCompletionPassword] = useState('')
   const [emailCodeSent, setEmailCodeSent] = useState(false)
+  const [disableTarget, setDisableTarget] = useState<0 | 1 | null>(null)
+  const [disablePassword, setDisablePassword] = useState('')
+  const [disableError, setDisableError] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -81,9 +95,65 @@ function AccountTwoFactorDialog(): React.JSX.Element {
     setEmailToken('')
     setEmailCompletionPassword('')
     setEmailCodeSent(false)
+    setDisableTarget(null)
+    setDisablePassword('')
+    setDisableError('')
     setError('')
     setSuccess('')
     if (next) void load()
+  }
+
+  function changeDisableTarget(type: 0 | 1 | null): void {
+    if (busy) return
+    setDisableTarget(type)
+    setDisablePassword('')
+    setDisableError('')
+    if (type !== null) {
+      setError('')
+      setSuccess('')
+    }
+  }
+
+  async function disableProvider(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    if (disableTarget === null || !disablePassword) {
+      setDisableError('請輸入主密碼。')
+      return
+    }
+    const type = disableTarget
+    const request = { type, masterPassword: disablePassword, confirm: true as const }
+    setDisablePassword('')
+    setBusy(true)
+    setDisableError('')
+    setError('')
+    setSuccess('')
+    try {
+      await window.bearwarden.accountSecurity.disableTwoFactorProvider(request)
+      setDisableTarget(null)
+      setSuccess(`${providerNames[type]}已停用。`)
+      await load()
+    } catch (disableFailure) {
+      if (
+        disableFailure instanceof Error &&
+        disableFailure.message.includes('TWO_FACTOR_MUTATION_UNKNOWN')
+      ) {
+        setDisableTarget(null)
+        await load()
+        setError(
+          `${providerNames[type]}的停用結果不明；已重新整理狀態。請先確認目前狀態，勿直接重試。`
+        )
+      } else if (
+        disableFailure instanceof Error &&
+        disableFailure.message.includes('INVALID_MASTER_PASSWORD')
+      ) {
+        setDisableError('主密碼驗證失敗；若要再試，請重新輸入主密碼。')
+      } else {
+        setDisableError(`無法停用${providerNames[type]}，請稍後再試。`)
+      }
+    } finally {
+      request.masterPassword = ''
+      setBusy(false)
+    }
   }
 
   async function beginAuthenticatorSetup(event: React.FormEvent<HTMLFormElement>): Promise<void> {
@@ -341,11 +411,28 @@ function AccountTwoFactorDialog(): React.JSX.Element {
           {providers.filter((provider) => provider.enabled).length > 0 ? (
             providers
               .filter((provider) => provider.enabled)
-              .map((provider) => (
-                <Badge key={provider.type} variant="outline">
-                  {providerNames[provider.type] ?? `Provider ${provider.type}`}
-                </Badge>
-              ))
+              .map((provider) => {
+                const canDisable = provider.type === 0 || provider.type === 1
+                return (
+                  <div key={provider.type} className="flex items-center gap-1">
+                    <Badge variant="outline">
+                      {providerNames[provider.type] ?? `Provider ${provider.type}`}
+                    </Badge>
+                    {canDisable && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="destructive"
+                        disabled={busy}
+                        onClick={() => changeDisableTarget(provider.type as 0 | 1)}
+                      >
+                        <ShieldOff data-icon="inline-start" aria-hidden="true" />
+                        停用
+                      </Button>
+                    )}
+                  </div>
+                )
+              })
           ) : (
             <span className="text-muted-foreground text-sm">尚未啟用雙重驗證方式。</span>
           )}
@@ -581,6 +668,66 @@ function AccountTwoFactorDialog(): React.JSX.Element {
             </Button>
           </DialogFooter>
         </form>
+        <AlertDialog
+          open={disableTarget !== null}
+          onOpenChange={(next) => {
+            if (!next) changeDisableTarget(null)
+          }}
+        >
+          <AlertDialogContent>
+            <form className="grid gap-4" onSubmit={(event) => void disableProvider(event)}>
+              <AlertDialogHeader>
+                <AlertDialogMedia>
+                  <TriangleAlert aria-hidden="true" />
+                </AlertDialogMedia>
+                <AlertDialogTitle>
+                  停用{disableTarget === null ? '雙重驗證' : providerNames[disableTarget]}？
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  這會從伺服器移除這個雙重驗證方式。請輸入主密碼確認；主密碼只用於這一次請求。
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              {disableTarget !== null &&
+                providers.filter((provider) => provider.enabled).length === 1 && (
+                  <Alert variant="destructive">
+                    <AlertDescription>
+                      這是目前最後一個雙重驗證方式。停用後帳號將不再受雙重驗證保護；建議先確認已安全保存
+                      Recovery Code。你仍可繼續停用。
+                    </AlertDescription>
+                  </Alert>
+                )}
+              <Field>
+                <FieldLabel htmlFor="disable-2fa-master-password">主密碼</FieldLabel>
+                <Input
+                  id="disable-2fa-master-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={disablePassword}
+                  disabled={busy}
+                  autoFocus
+                  onChange={(event) => setDisablePassword(event.target.value)}
+                />
+                <FieldDescription>每次停用都必須重新輸入，不會沿用先前的驗證。</FieldDescription>
+              </Field>
+              {disableError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{disableError}</AlertDescription>
+                </Alert>
+              )}
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={busy}>返回</AlertDialogCancel>
+                <AlertDialogAction
+                  type="submit"
+                  variant="destructive"
+                  disabled={busy || disablePassword.length === 0}
+                >
+                  {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
+                  確認停用{disableTarget === null ? '' : providerNames[disableTarget]}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </form>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   )

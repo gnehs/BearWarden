@@ -94,6 +94,7 @@ export const IPC_CHANNELS = {
   accountCopyApiClientId: 'account-security:copy-api-client-id',
   accountCopyApiKey: 'account-security:copy-api-key',
   accountTwoFactorStatus: 'account-security:two-factor-status',
+  accountDisableTwoFactorProvider: 'account-security:disable-two-factor-provider',
   accountCopyRecoveryCode: 'account-security:copy-recovery-code',
   accountBeginAuthenticatorSetup: 'account-security:begin-authenticator-setup',
   accountCopyAuthenticatorKey: 'account-security:copy-authenticator-key',
@@ -763,6 +764,13 @@ export interface AccountTwoFactorProvider {
   enabled: boolean
 }
 
+export interface AccountTwoFactorDisableRequest {
+  type: 0 | 1
+  masterPassword: string
+  /** Destructive mutations require an explicit renderer confirmation. */
+  confirm: true
+}
+
 export interface AccountRecoveryCodeCopyRequest {
   masterPassword: string
 }
@@ -1386,6 +1394,7 @@ export interface BearWardenAPI {
     copyApiClientId: () => Promise<void>
     copyApiKey: (request: AccountApiKeyCopyRequest) => Promise<AccountApiKeyCopyResult>
     twoFactorStatus: () => Promise<AccountTwoFactorProvider[]>
+    disableTwoFactorProvider: (request: AccountTwoFactorDisableRequest) => Promise<void>
     copyRecoveryCode: (request: AccountRecoveryCodeCopyRequest) => Promise<void>
     beginAuthenticatorSetup: (
       request: AccountAuthenticatorSetupRequest

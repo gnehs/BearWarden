@@ -3217,6 +3217,86 @@ export class VaultService {
     }
   }
 
+  async disableTwoFactorProvider(request: {
+    type: 0 | 1
+    masterPassword: string
+    confirm: true
+  }): Promise<void> {
+    if (
+      (request.type !== 0 && request.type !== 1) ||
+      request.confirm !== true ||
+      typeof request.masterPassword !== 'string' ||
+      request.masterPassword.length === 0 ||
+      request.masterPassword.length > MAX_PASSWORD_LENGTH
+    ) {
+      request.masterPassword = ''
+      throw new VaultError('INVALID_INPUT')
+    }
+    let lease: {
+      generation: number
+      client: BitwardenSyncClient
+      request: NonNullable<BitwardenSyncClient['disableTwoFactorProvider']>
+      abort: AbortController
+    }
+    try {
+      lease = await this.exclusive(async () => {
+        const sync = this.requireSyncData()
+        const client = this.getOrCreateSyncClient(sync)
+        if (!client.disableTwoFactorProvider || !client.exportState().session) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        const abort = new AbortController()
+        this.accountSecurityAborts.add(abort)
+        return {
+          generation: this.generation,
+          client,
+          request: client.disableTwoFactorProvider.bind(client),
+          abort
+        }
+      })
+    } catch (error) {
+      request.masterPassword = ''
+      throw error
+    }
+    const mutation = { type: request.type, masterPassword: request.masterPassword }
+    request.masterPassword = ''
+    try {
+      await lease.request(mutation.type, mutation.masterPassword, lease.abort.signal)
+      await this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        this.requireData()
+        if (
+          lease.abort.signal.aborted ||
+          lease.generation !== this.generation ||
+          this.syncClient !== lease.client ||
+          !lease.client.exportState().session
+        ) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        await this.persistCurrentClientState().catch(() => undefined)
+      })
+    } catch (error) {
+      await this.exclusive(async () => this.accountSecurityAborts.delete(lease.abort))
+      if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+        throw new VaultError('LOCKED')
+      }
+      if (error instanceof BitwardenDirectError) {
+        if (error.code === 'USER_VERIFICATION_FAILED') {
+          throw new VaultError('INVALID_MASTER_PASSWORD')
+        }
+        if (error.code === 'TWO_FACTOR_MUTATION_UNKNOWN') {
+          throw new VaultError('TWO_FACTOR_MUTATION_UNKNOWN')
+        }
+      }
+      if (error instanceof VaultError) throw error
+      throw this.mapSyncError(error)
+    } finally {
+      request.masterPassword = ''
+      mutation.type = -1 as 0 | 1
+      mutation.masterPassword = ''
+    }
+  }
+
   async copyTwoFactorRecoveryCode(request: { masterPassword: string }): Promise<void> {
     if (
       typeof request.masterPassword !== 'string' ||
