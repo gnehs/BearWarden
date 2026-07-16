@@ -2126,6 +2126,10 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     parseNoInput(input)
     return vault.getAccountSecurityProfile()
   })
+  registerHandler(IPC_CHANNELS.accountDevices, getMainWindow, (_event, input) => {
+    parseNoInput(input)
+    return vault.getAccountDevices()
+  })
   registerHandler(IPC_CHANNELS.accountResendVerification, getMainWindow, (_event, input) => {
     parseNoInput(input)
     return vault.resendAccountVerificationEmail()

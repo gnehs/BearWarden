@@ -54,6 +54,7 @@ import {
 } from '@renderer/components/ui/select'
 import { Spinner } from '@renderer/components/ui/spinner'
 import AccountApiKeyDialog from './AccountApiKeyDialog'
+import AccountDevicesDialog from './AccountDevicesDialog'
 import AccountTwoFactorDialog from './AccountTwoFactorDialog'
 
 const BITWARDEN_CLOUD_URL = 'https://bitwarden.com'
@@ -542,6 +543,7 @@ function SyncDialog({
                   </AlertDescription>
                 </Alert>
               )}
+              {accountProfile && <AccountDevicesDialog />}
               {accountProfile && <AccountApiKeyDialog />}
               {accountProfile && <AccountTwoFactorDialog />}
               {accountSecurityError && (

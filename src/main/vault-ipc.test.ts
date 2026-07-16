@@ -318,6 +318,20 @@ describe('registerVaultIpc reprompt gate', () => {
         emailVerified: false,
         twoFactorEnabled: true
       })),
+      getAccountDevices: vi.fn(async () => ({
+        status: 'available' as const,
+        devices: [
+          {
+            name: 'Personal Mac',
+            type: 7,
+            createdAt: '2026-07-01T00:00:00.000Z',
+            lastActivityAt: '2026-07-17T01:02:03.000Z',
+            current: true,
+            trusted: true,
+            pendingAuthRequest: false
+          }
+        ]
+      })),
       resendAccountVerificationEmail: vi.fn(async () => undefined),
       copyAccountApiClientId: vi.fn(async () => undefined),
       copyPersonalApiKey: vi.fn(async (request: { masterPassword: string; rotate: boolean }) => {
@@ -709,18 +723,25 @@ describe('registerVaultIpc reprompt gate', () => {
   it('keeps account security actions on exact empty IPC requests', async () => {
     const { event, vault } = harness()
     const profile = electronMock.handlers.get(IPC_CHANNELS.accountSecurityProfile)!
+    const devices = electronMock.handlers.get(IPC_CHANNELS.accountDevices)!
     const resend = electronMock.handlers.get(IPC_CHANNELS.accountResendVerification)!
 
     await expect(profile(event, undefined)).resolves.toMatchObject({
       email: 'sync@example.invalid',
       emailVerified: false
     })
+    await expect(devices(event, undefined)).resolves.toEqual({
+      status: 'available',
+      devices: [expect.objectContaining({ name: 'Personal Mac', current: true, trusted: true })]
+    })
     await expect(resend(event, undefined)).resolves.toBeUndefined()
     for (const invalid of [null, {}, [], { email: 'must-not-cross-this-boundary' }]) {
       await expect(profile(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+      await expect(devices(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
       await expect(resend(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
     expect(vault.getAccountSecurityProfile).toHaveBeenCalledOnce()
+    expect(vault.getAccountDevices).toHaveBeenCalledOnce()
     expect(vault.resendAccountVerificationEmail).toHaveBeenCalledOnce()
   })
 

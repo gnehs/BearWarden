@@ -315,6 +315,18 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
       emailVerified: false,
       twoFactorEnabled: true
     }),
+    getAccountDevices: async () => [
+      {
+        id: '91000000-0000-4000-8000-000000000001',
+        name: 'Personal Mac',
+        type: 7,
+        createdAt: '2026-07-01T00:00:00.000Z',
+        lastActivityAt: '2026-07-17T01:02:03.000Z',
+        current: true,
+        trusted: true,
+        pendingAuthRequest: false
+      }
+    ],
     resendVerificationEmail: async () => undefined,
     getPersonalApiKey: async (_masterPassword, rotate) => ({
       clientId: 'user.90000000-0000-4000-8000-000000000099',
@@ -3643,6 +3655,75 @@ describe('VaultService encrypted local data', () => {
     const pending = service.getAccountSecurityProfile()
     const locked = expect(pending).rejects.toMatchObject({ code: 'LOCKED' })
     await vi.waitFor(() => expect(profile).toHaveBeenCalledTimes(2))
+    await expect(service.lock()).resolves.toEqual({ state: 'locked' })
+    await locked
+  })
+
+  it('returns only renderer-safe account device fields and preserves unavailable', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const devices = vi.spyOn(fake!, 'getAccountDevices')
+
+    const result = await service.getAccountDevices()
+    expect(result).toEqual({
+      status: 'available',
+      devices: [
+        {
+          name: 'Personal Mac',
+          type: 7,
+          createdAt: '2026-07-01T00:00:00.000Z',
+          lastActivityAt: '2026-07-17T01:02:03.000Z',
+          current: true,
+          trusted: true,
+          pendingAuthRequest: false
+        }
+      ]
+    })
+    expect(JSON.stringify(result)).not.toContain('91000000-0000-4000-8000-000000000001')
+    expect(devices).toHaveBeenCalledWith(expect.any(AbortSignal))
+
+    devices.mockRejectedValueOnce(new BitwardenDirectError('NOT_FOUND'))
+    await expect(service.getAccountDevices()).resolves.toEqual({ status: 'unavailable' })
+
+    fake!.getAccountDevices = undefined
+    await expect(service.getAccountDevices()).resolves.toEqual({ status: 'unavailable' })
+  })
+
+  it('aborts an in-flight account devices request when the vault locks', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const devices = vi.spyOn(fake!, 'getAccountDevices').mockImplementation(
+      async (signal) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+        })
+    )
+
+    const pending = service.getAccountDevices()
+    const locked = expect(pending).rejects.toMatchObject({ code: 'LOCKED' })
+    await vi.waitFor(() => expect(devices).toHaveBeenCalledOnce())
     await expect(service.lock()).resolves.toEqual({ state: 'locked' })
     await locked
   })

@@ -3036,6 +3036,66 @@ export class VaultService {
     }
   }
 
+  async getAccountDevices(): Promise<import('../shared/vault-contract').AccountDevicesResult> {
+    const lease = await this.exclusive(async () => {
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      if (!client.exportState().session) throw new VaultError('SYNC_AUTH_REQUIRED')
+      const abort = new AbortController()
+      this.accountSecurityAborts.add(abort)
+      return {
+        generation: this.generation,
+        client,
+        request: client.getAccountDevices?.bind(client) ?? null,
+        abort
+      }
+    })
+    try {
+      const devices = lease.request ? await lease.request(lease.abort.signal) : null
+      return await this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        this.requireData()
+        if (
+          lease.abort.signal.aborted ||
+          lease.generation !== this.generation ||
+          this.syncClient !== lease.client ||
+          !lease.client.exportState().session
+        ) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        if (!devices) return { status: 'unavailable' }
+        await this.persistCurrentClientState().catch(() => undefined)
+        return {
+          status: 'available',
+          devices: devices.map((device) => ({
+            name: device.name,
+            type: device.type,
+            createdAt: device.createdAt,
+            lastActivityAt: device.lastActivityAt,
+            current: device.current,
+            trusted: device.trusted,
+            pendingAuthRequest: device.pendingAuthRequest
+          }))
+        }
+      })
+    } catch (error) {
+      return this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+          throw new VaultError('LOCKED')
+        }
+        if (this.syncClient !== lease.client || !lease.client.exportState().session) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        if (error instanceof BitwardenDirectError && error.code === 'NOT_FOUND') {
+          return { status: 'unavailable' }
+        }
+        if (error instanceof VaultError) throw error
+        throw this.mapSyncError(error)
+      })
+    }
+  }
+
   async resendAccountVerificationEmail(): Promise<void> {
     const lease = await this.exclusive(async () => {
       const sync = this.requireSyncData()

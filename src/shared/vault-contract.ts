@@ -90,6 +90,7 @@ export const IPC_CHANNELS = {
   syncNow: 'sync:now',
   syncDisconnect: 'sync:disconnect',
   accountSecurityProfile: 'account-security:profile',
+  accountDevices: 'account-security:devices',
   accountResendVerification: 'account-security:resend-verification',
   accountCopyApiClientId: 'account-security:copy-api-client-id',
   accountCopyApiKey: 'account-security:copy-api-key',
@@ -747,6 +748,19 @@ export interface AccountSecurityProfile {
   twoFactorEnabled: boolean
 }
 
+export interface AccountDeviceView {
+  name: string
+  type: number
+  createdAt: string
+  lastActivityAt: string | null
+  current: boolean
+  trusted: boolean
+  pendingAuthRequest: boolean
+}
+
+export type AccountDevicesResult =
+  { status: 'available'; devices: AccountDeviceView[] } | { status: 'unavailable' }
+
 export interface AccountApiKeyCopyRequest {
   masterPassword: string
   rotate: boolean
@@ -1390,6 +1404,7 @@ export interface BearWardenAPI {
   }
   accountSecurity: {
     profile: () => Promise<AccountSecurityProfile>
+    devices: () => Promise<AccountDevicesResult>
     resendVerification: () => Promise<void>
     copyApiClientId: () => Promise<void>
     copyApiKey: (request: AccountApiKeyCopyRequest) => Promise<AccountApiKeyCopyResult>
