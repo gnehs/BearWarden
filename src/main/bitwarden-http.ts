@@ -92,6 +92,18 @@ export interface BitwardenAccountSecurityProfile {
   twoFactorEnabled: boolean
 }
 
+/** Safe subset of GET /devices. Identifiers, keys, tokens, and network data are excluded. */
+export interface BitwardenAccountDevice {
+  id: string
+  name: string
+  type: number
+  createdAt: string
+  lastActivityAt: string | null
+  current: boolean
+  trusted: boolean
+  pendingAuthRequest: boolean
+}
+
 export interface BitwardenPersonalApiKey {
   apiKey: string
   revisionDate: string
@@ -279,6 +291,9 @@ const ACCESS_TOKEN_REFRESH_LEEWAY_MS = 60_000
 const MAX_RESPONSE_BYTES = 128 * 1024 * 1024
 const MAX_HIBP_BREACH_RESPONSE_BYTES = 4 * 1024 * 1024
 const MAX_ACCOUNT_PROFILE_RESPONSE_BYTES = 256 * 1024
+const MAX_ACCOUNT_DEVICES_RESPONSE_BYTES = 4 * 1024 * 1024
+const MAX_ACCOUNT_DEVICES = 10_000
+const MAX_DEVICE_STRING_BYTES = 256
 const MAX_EMERGENCY_ACCESS_RESPONSE_BYTES = 2 * 1024 * 1024
 const MAX_EMERGENCY_ACCESS_ENTRIES = 10_000
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
@@ -758,6 +773,26 @@ export class BitwardenHttpClient {
       tooLargeCode: 'TOO_LARGE'
     })
     return parseAccountSecurityProfile(response)
+  }
+
+  async getDevices(
+    currentDeviceIdentifier: string,
+    signal?: AbortSignal
+  ): Promise<BitwardenAccountDevice[]> {
+    if (
+      typeof currentDeviceIdentifier !== 'string' ||
+      currentDeviceIdentifier.length === 0 ||
+      Buffer.byteLength(currentDeviceIdentifier, 'utf8') > MAX_DEVICE_STRING_BYTES ||
+      /[\0\r\n]/u.test(currentDeviceIdentifier)
+    ) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    const response = await this.requestJson('GET', `${this.urls.apiUrl}/devices`, {
+      signal,
+      maxResponseBytes: MAX_ACCOUNT_DEVICES_RESPONSE_BYTES,
+      tooLargeCode: 'TOO_LARGE'
+    })
+    return parseAccountDevices(response, currentDeviceIdentifier)
   }
 
   async resendVerificationEmail(signal?: AbortSignal): Promise<void> {
@@ -1862,6 +1897,98 @@ function parseAccountSecurityProfile(value: JsonValue): BitwardenAccountSecurity
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
   return { id, name, email, emailVerified, twoFactorEnabled }
+}
+
+function deviceDate(value: unknown, nullable: false): string
+function deviceDate(value: unknown, nullable: true): string | null
+function deviceDate(value: unknown, nullable: boolean): string | null {
+  if (nullable && (value === null || value === undefined)) return null
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 64 ||
+    /[\0\r\n]/u.test(value) ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?Z$/u.test(value) ||
+    !Number.isFinite(Date.parse(value))
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return new Date(value).toISOString()
+}
+
+function parseAccountDevices(
+  value: JsonValue,
+  currentDeviceIdentifier: string
+): BitwardenAccountDevice[] {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const data = value.data ?? value.Data
+  const object = value.object ?? value.Object
+  const continuationToken = value.continuationToken ?? value.ContinuationToken
+  if (
+    !Array.isArray(data) ||
+    data.length > MAX_ACCOUNT_DEVICES ||
+    (object !== undefined && object !== 'list') ||
+    (continuationToken !== undefined && continuationToken !== null)
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  const ids = new Set<string>()
+  const identifiers = new Set<string>()
+  return data.map((entry) => {
+    if (!isRecord(entry)) throw new BitwardenHttpError('INVALID_RESPONSE')
+    const id = entry.id ?? entry.Id
+    const name = entry.name ?? entry.Name
+    const type = finiteInteger(entry.type ?? entry.Type)
+    const identifier = entry.identifier ?? entry.Identifier
+    const creationDate = entry.creationDate ?? entry.CreationDate
+    const lastActivityDate = entry.lastActivityDate ?? entry.LastActivityDate
+    const isTrusted = entry.isTrusted ?? entry.IsTrusted
+    const deviceObject = entry.object ?? entry.Object
+    const pending = entry.devicePendingAuthRequest ?? entry.DevicePendingAuthRequest
+    if (
+      typeof id !== 'string' ||
+      !UUID_PATTERN.test(id) ||
+      ids.has(id) ||
+      typeof name !== 'string' ||
+      name.length === 0 ||
+      Buffer.byteLength(name, 'utf8') > MAX_DEVICE_STRING_BYTES ||
+      /[\0\r\n]/u.test(name) ||
+      type === undefined ||
+      type > 26 ||
+      typeof identifier !== 'string' ||
+      identifier.length === 0 ||
+      identifiers.has(identifier) ||
+      Buffer.byteLength(identifier, 'utf8') > MAX_DEVICE_STRING_BYTES ||
+      /[\0\r\n]/u.test(identifier) ||
+      typeof isTrusted !== 'boolean' ||
+      (deviceObject !== undefined && deviceObject !== 'device')
+    ) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    let pendingAuthRequest = false
+    if (pending !== undefined && pending !== null) {
+      if (!isRecord(pending)) throw new BitwardenHttpError('INVALID_RESPONSE')
+      const pendingId = pending.id ?? pending.Id
+      const pendingCreationDate = pending.creationDate ?? pending.CreationDate
+      if (typeof pendingId !== 'string' || !UUID_PATTERN.test(pendingId)) {
+        throw new BitwardenHttpError('INVALID_RESPONSE')
+      }
+      deviceDate(pendingCreationDate, false)
+      pendingAuthRequest = true
+    }
+    ids.add(id)
+    identifiers.add(identifier)
+    return {
+      id,
+      name,
+      type,
+      createdAt: deviceDate(creationDate, false),
+      lastActivityAt: deviceDate(lastActivityDate, true),
+      current: identifier === currentDeviceIdentifier,
+      trusted: isTrusted,
+      pendingAuthRequest
+    }
+  })
 }
 
 function parsePersonalApiKey(value: JsonValue): BitwardenPersonalApiKey {

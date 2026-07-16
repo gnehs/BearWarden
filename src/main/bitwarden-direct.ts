@@ -27,6 +27,7 @@ import {
   BitwardenHttpClient,
   BitwardenHttpError,
   type BitwardenAccountBreachReport,
+  type BitwardenAccountDevice,
   type BitwardenAccountSecurityProfile,
   type BitwardenAuthenticatorSetup,
   type BitwardenEmailTwoFactorSetup,
@@ -344,6 +345,7 @@ export interface BitwardenDirectState {
 export interface BitwardenSyncClient {
   status(signal?: AbortSignal): Promise<{ status: 'unauthenticated' | 'locked' | 'unlocked' }>
   getAccountSecurityProfile?(signal?: AbortSignal): Promise<BitwardenAccountSecurityProfile>
+  getAccountDevices?(signal?: AbortSignal): Promise<BitwardenAccountDevice[]>
   resendVerificationEmail?(signal?: AbortSignal): Promise<void>
   getPersonalApiKey?(
     masterPassword: string,
@@ -1573,6 +1575,16 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   async getAccountSecurityProfile(signal?: AbortSignal): Promise<BitwardenAccountSecurityProfile> {
     try {
       return await this.http.getAccountSecurityProfile(signal)
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  async getAccountDevices(signal?: AbortSignal): Promise<BitwardenAccountDevice[]> {
+    try {
+      const devices = await this.http.getDevices(this.state.deviceIdentifier, signal)
+      await this.captureSession()
+      return devices
     } catch (error) {
       throw this.mapError(error)
     }

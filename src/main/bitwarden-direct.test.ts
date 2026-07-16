@@ -1429,6 +1429,72 @@ describe('BitwardenDirectClient', () => {
     await expect(client.status()).resolves.toEqual({ status: 'locked' })
   })
 
+  it('lists safe account devices while locked, captures refreshed sessions, and maps errors', async () => {
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async () => jsonResponse({ message: 'not found' }, 404)
+    })
+    const refreshedSession = {
+      accessToken: 'refreshed-access',
+      refreshToken: 'refreshed-refresh',
+      expiresAt: Date.now() + 120_000
+    }
+    const getDevices = vi.spyOn(http, 'getDevices').mockImplementation(async (identifier) => {
+      expect(identifier).toBe('00000000-0000-4000-8000-000000000123')
+      http.setSession(refreshedSession)
+      return [
+        {
+          id: '10000000-0000-4000-8000-000000000010',
+          name: 'BearWarden desktop',
+          type: 7,
+          createdAt: '2026-05-01T00:00:00.000Z',
+          lastActivityAt: '2026-07-17T00:00:00.000Z',
+          current: true,
+          trusted: true,
+          pendingAuthRequest: false
+        }
+      ]
+    })
+    const onStateChanged = vi.fn()
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      onStateChanged,
+      state: {
+        session: {
+          accessToken: 'access',
+          refreshToken: 'refresh',
+          expiresAt: Date.now() + 60_000
+        },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000123',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.getAccountDevices()).resolves.toEqual([
+      expect.objectContaining({ name: 'BearWarden desktop', current: true })
+    ])
+    expect(onStateChanged).toHaveBeenLastCalledWith(
+      expect.objectContaining({ session: refreshedSession })
+    )
+    await expect(client.status()).resolves.toEqual({ status: 'locked' })
+
+    getDevices.mockRejectedValueOnce(new BitwardenHttpError('AUTH'))
+    await expect(client.getAccountDevices()).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
+    getDevices.mockRejectedValueOnce(new BitwardenHttpError('NETWORK'))
+    await expect(client.getAccountDevices()).rejects.toMatchObject({ code: 'NETWORK' })
+    const abort = new AbortController()
+    abort.abort()
+    getDevices.mockRejectedValueOnce(new BitwardenHttpError('ABORTED'))
+    await expect(client.getAccountDevices(abort.signal)).rejects.toMatchObject({ code: 'ABORTED' })
+    expect(getDevices).toHaveBeenLastCalledWith(
+      '00000000-0000-4000-8000-000000000123',
+      abort.signal
+    )
+  })
+
   it('uses the official authenticator capability and reports unknown mutation outcomes', async () => {
     const key = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
     let mutationRequests = 0

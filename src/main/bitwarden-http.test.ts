@@ -98,6 +98,127 @@ describe('BitwardenHttpClient', () => {
     })
   })
 
+  it('lists bounded account devices without exposing identifiers, keys, tokens, or IP data', async () => {
+    const currentIdentifier = 'current-installation-id'
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      json({
+        data: [
+          {
+            id: '10000000-0000-4000-8000-000000000010',
+            name: 'BearWarden desktop',
+            type: 7,
+            identifier: currentIdentifier,
+            creationDate: '2026-05-01T01:02:03Z',
+            lastActivityDate: '2026-07-17T04:05:06.123Z',
+            isTrusted: true,
+            encryptedUserKey: 'must-not-cross-safe-model',
+            encryptedPublicKey: 'must-not-cross-safe-model',
+            ipAddress: '192.0.2.1',
+            accessToken: 'must-not-cross-safe-model',
+            object: 'device'
+          },
+          {
+            id: '10000000-0000-4000-8000-000000000011',
+            name: 'Firefox',
+            type: 3,
+            identifier: 'other-installation-id',
+            creationDate: '2026-04-01T00:00:00.000Z',
+            lastActivityDate: null,
+            isTrusted: false,
+            devicePendingAuthRequest: {
+              id: '20000000-0000-4000-8000-000000000010',
+              creationDate: '2026-07-17T04:00:00Z'
+            },
+            object: 'device'
+          }
+        ],
+        object: 'list',
+        continuationToken: null
+      })
+    )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    const devices = await client.getDevices(currentIdentifier)
+    expect(devices).toEqual([
+      {
+        id: '10000000-0000-4000-8000-000000000010',
+        name: 'BearWarden desktop',
+        type: 7,
+        createdAt: '2026-05-01T01:02:03.000Z',
+        lastActivityAt: '2026-07-17T04:05:06.123Z',
+        current: true,
+        trusted: true,
+        pendingAuthRequest: false
+      },
+      {
+        id: '10000000-0000-4000-8000-000000000011',
+        name: 'Firefox',
+        type: 3,
+        createdAt: '2026-04-01T00:00:00.000Z',
+        lastActivityAt: null,
+        current: false,
+        trusted: false,
+        pendingAuthRequest: true
+      }
+    ])
+    expect(JSON.stringify(devices)).not.toContain(currentIdentifier)
+    expect(JSON.stringify(devices)).not.toContain('192.0.2.1')
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.bitwarden.com/devices',
+      expect.objectContaining({ method: 'GET' })
+    )
+  })
+
+  it('rejects malformed, duplicate, paginated, and excessive account-device responses', async () => {
+    const valid = {
+      id: '10000000-0000-4000-8000-000000000010',
+      name: 'Desktop',
+      type: 7,
+      identifier: 'installation-id',
+      creationDate: '2026-05-01T00:00:00Z',
+      lastActivityDate: null,
+      isTrusted: false,
+      object: 'device'
+    }
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(json({ data: [valid, valid], object: 'list' }))
+      .mockResolvedValueOnce(
+        json({
+          data: [valid, { ...valid, id: '10000000-0000-4000-8000-000000000011' }],
+          object: 'list'
+        })
+      )
+      .mockResolvedValueOnce(json({ data: [{ ...valid, type: 27 }], object: 'list' }))
+      .mockResolvedValueOnce(
+        json({ data: [{ ...valid, creationDate: 'not-a-date' }], object: 'list' })
+      )
+      .mockResolvedValueOnce(json({ data: [valid], object: 'list', continuationToken: 'next' }))
+      .mockResolvedValueOnce(json({ data: Array(10_001).fill(valid), object: 'list' }))
+      .mockResolvedValueOnce(json({ data: [{ ...valid, name: 'x'.repeat(257) }], object: 'list' }))
+      .mockResolvedValueOnce(
+        json({ data: [{ ...valid, identifier: 'unsafe\nidentifier' }], object: 'list' })
+      )
+      .mockResolvedValueOnce(json({ data: [{ ...valid, isTrusted: 'true' }], object: 'list' }))
+      .mockResolvedValueOnce(
+        json({ data: [{ ...valid, devicePendingAuthRequest: { id: 'invalid' } }], object: 'list' })
+      )
+      .mockResolvedValueOnce(json({ data: [{ ...valid, object: 'unexpected' }], object: 'list' }))
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    for (let index = 0; index < 11; index += 1) {
+      await expect(client.getDevices('installation-id')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE'
+      })
+    }
+    await expect(client.getDevices('x'.repeat(257))).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    expect(fetch).toHaveBeenCalledTimes(11)
+  })
+
   it('retrieves and rotates a personal API key with only the derived password proof', async () => {
     const fetch = vi
       .fn<FetchLike>()
