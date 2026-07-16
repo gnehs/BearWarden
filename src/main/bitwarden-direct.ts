@@ -1,4 +1,5 @@
 import { createPrivateKey, randomBytes, randomUUID, type KeyObject } from 'node:crypto'
+import { Encoder } from 'cbor-x'
 import {
   BitwardenCryptoError,
   clearBitwardenSymmetricKey,
@@ -88,6 +89,11 @@ const MAX_SEND_FILE_PLAINTEXT_BYTES = 128 * 1024 * 1024 - 65
 const MAX_SYNC_SECRET_LENGTH = 16_384
 const MINIMUM_CLIENT_VERSION = '2024.12.0'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
+const userKeyEncoder = new Encoder({
+  mapsAsObjects: false,
+  tagUint8Array: false,
+  useRecords: false
+})
 
 type BitwardenCipherType = 1 | 2 | 3 | 4 | 5
 
@@ -146,6 +152,7 @@ export type BitwardenDirectErrorCode =
   | 'USER_VERIFICATION_FAILED'
   | 'API_KEY_ROTATION_UNKNOWN'
   | 'TWO_FACTOR_MUTATION_UNKNOWN'
+  | 'MASTER_PASSWORD_CHANGE_UNKNOWN'
 
 export class BitwardenDirectError extends Error {
   constructor(readonly code: BitwardenDirectErrorCode) {
@@ -335,6 +342,13 @@ export interface BitwardenUnlockRequest {
   signal?: AbortSignal
 }
 
+export interface BitwardenMasterPasswordChangeRequest {
+  currentPassword: string
+  newPassword: string
+  hint?: string | null
+  signal?: AbortSignal
+}
+
 export interface BitwardenDirectState {
   session: BitwardenSession | null
   deviceIdentifier: string
@@ -426,6 +440,7 @@ export interface BitwardenSyncClient {
   notificationAccessToken?(signal?: AbortSignal): Promise<string>
   login(request: BitwardenLoginRequest): Promise<void>
   unlock(request: BitwardenUnlockRequest): Promise<void>
+  changeMasterPassword?(request: BitwardenMasterPasswordChangeRequest): Promise<void>
   sync(signal?: AbortSignal): Promise<void>
   listFolders(signal?: AbortSignal): Promise<BitwardenFolder[]>
   listPersonalLogins(signal?: AbortSignal): Promise<BitwardenLoginItem[]>
@@ -1197,6 +1212,38 @@ function kdfFromPrelogin(prelogin: BitwardenPrelogin): BitwardenKdf {
   throw new BitwardenDirectError('UNSUPPORTED_ACCOUNT_ENCRYPTION')
 }
 
+function kdfRequest(kdf: BitwardenKdf): JsonObject {
+  return kdf.type === 'pbkdf2'
+    ? { kdfType: 0, iterations: kdf.iterations }
+    : {
+        kdfType: 1,
+        iterations: kdf.iterations,
+        memory: kdf.memoryMiB,
+        parallelism: kdf.parallelism
+      }
+}
+
+function encodeUserKeyForMasterKeyWrap(key: BitwardenSymmetricKey): Buffer {
+  if (Buffer.isBuffer(key)) return Buffer.from(key)
+  const encoded = Buffer.from(
+    userKeyEncoder.encode(
+      new Map<unknown, unknown>([
+        [1, 4],
+        [2, key.keyId],
+        [3, -70_000],
+        [4, [3, 4, 5, 6]],
+        [-1, key.encryptionKey]
+      ])
+    )
+  )
+  const padding = Math.max(1, 65 - encoded.length)
+  try {
+    return Buffer.concat([encoded, Buffer.alloc(padding, padding)])
+  } finally {
+    encoded.fill(0)
+  }
+}
+
 function desktopDeviceType(): number {
   if (process.platform === 'win32') return 6
   if (process.platform === 'darwin') return 7
@@ -1646,6 +1693,105 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       masterKey?.fill(0)
       passwordKey?.fill(0)
       if (result) result.apiKey = ''
+    }
+  }
+
+  async changeMasterPassword(request: BitwardenMasterPasswordChangeRequest): Promise<void> {
+    let currentMasterKey: Buffer | null = null
+    let currentHash: Buffer | null = null
+    let newMasterKey: Buffer | null = null
+    let newHash: Buffer | null = null
+    let stretched: ReturnType<typeof stretchMasterKey> | null = null
+    let wrappedUserKey = ''
+    let encodedUserKey: Buffer | null = null
+    let mutationStarted = false
+    try {
+      const { currentPassword, newPassword, signal } = request
+      const hint = request.hint ?? ''
+      if (
+        typeof currentPassword !== 'string' ||
+        typeof newPassword !== 'string' ||
+        typeof hint !== 'string' ||
+        currentPassword.length === 0 ||
+        newPassword.length < 12 ||
+        currentPassword.length > MAX_SYNC_SECRET_LENGTH ||
+        newPassword.length > MAX_SYNC_SECRET_LENGTH ||
+        hint.length > 50
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      const userKey = this.requireUserKey()
+      encodedUserKey = encodeUserKeyForMasterKeyWrap(userKey)
+      const prelogin = await this.http.prelogin(this.email, signal)
+      const passwordChangeContract = await this.http.passwordChangeContract(signal)
+      const salt = prelogin.salt ?? this.email
+      const kdf = kdfFromPrelogin(prelogin)
+      currentMasterKey = await deriveMasterKey(currentPassword, salt, kdf)
+      currentHash = await derivePasswordKey(currentMasterKey, currentPassword)
+      newMasterKey = await deriveMasterKey(newPassword, salt, kdf)
+      newHash = await derivePasswordKey(newMasterKey, newPassword)
+      stretched = stretchMasterKey(newMasterKey)
+      wrappedUserKey = encryptBitwardenBytes(encodedUserKey, stretched.combinedKey)
+      const masterPasswordHash = currentHash.toString('base64')
+      const newMasterPasswordHash = newHash.toString('base64')
+      const kdfPayload = kdfRequest(kdf)
+      if (signal?.aborted) throw new BitwardenDirectError('ABORTED')
+      mutationStarted = true
+      await this.http.changeMasterPassword(
+        passwordChangeContract === 'official'
+          ? {
+              contract: 'official',
+              masterPasswordHash,
+              authenticationData: {
+                salt,
+                kdf: structuredClone(kdfPayload),
+                masterPasswordAuthenticationHash: newMasterPasswordHash
+              },
+              unlockData: {
+                salt,
+                kdf: structuredClone(kdfPayload),
+                masterKeyWrappedUserKey: wrappedUserKey
+              },
+              masterPasswordHint: hint
+            }
+          : {
+              contract: 'vaultwarden',
+              masterPasswordHash,
+              newMasterPasswordHash,
+              masterPasswordHint: request.hint ?? null,
+              key: wrappedUserKey
+            },
+        signal
+      )
+      this.clearDecryptedState()
+      this.state.session = null
+      this.http.clearSession()
+      await this.notifyStateChanged()
+    } catch (error) {
+      const mapped = this.mapError(error)
+      if (
+        mutationStarted &&
+        (mapped.code === 'NETWORK' ||
+          mapped.code === 'ABORTED' ||
+          mapped.code === 'INVALID_RESPONSE')
+      ) {
+        this.clearDecryptedState()
+        this.state.session = null
+        this.http.clearSession()
+        await this.notifyStateChanged().catch(() => undefined)
+        throw new BitwardenDirectError('MASTER_PASSWORD_CHANGE_UNKNOWN')
+      }
+      throw mapped
+    } finally {
+      currentMasterKey?.fill(0)
+      currentHash?.fill(0)
+      newMasterKey?.fill(0)
+      newHash?.fill(0)
+      encodedUserKey?.fill(0)
+      stretched?.encKey.fill(0)
+      stretched?.macKey.fill(0)
+      stretched?.combinedKey.fill(0)
+      wrappedUserKey = ''
     }
   }
 

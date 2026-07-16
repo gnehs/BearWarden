@@ -42,6 +42,82 @@ describe('resolveBitwardenUrls', () => {
 })
 
 describe('BitwardenHttpClient', () => {
+  it('selects flat password changes only from strict Vaultwarden config metadata', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(json({ server: { name: 'Vaultwarden', url: 'https://example.test' } }))
+      .mockResolvedValueOnce(
+        json({ server: { name: 'Bitwarden', url: 'https://github.com/dani-garcia/vaultwarden/' } })
+      )
+      .mockResolvedValueOnce(
+        json({
+          server: { name: 'Bitwarden', url: 'https://github.com/dani-garcia/vaultwarden.evil' }
+        })
+      )
+      .mockResolvedValueOnce(json({ server: { name: 42, url: ['malformed'] } }))
+      .mockResolvedValueOnce(json({ message: 'unavailable' }, 503))
+    const client = new BitwardenHttpClient({ server: 'us', fetch, maxRetries: 0 })
+
+    await expect(client.passwordChangeContract()).resolves.toBe('vaultwarden')
+    await expect(client.passwordChangeContract()).resolves.toBe('vaultwarden')
+    await expect(client.passwordChangeContract()).resolves.toBe('official')
+    await expect(client.passwordChangeContract()).resolves.toBe('official')
+    await expect(client.passwordChangeContract()).resolves.toBe('official')
+  })
+
+  it('posts the exact official and Vaultwarden password-change contracts without retrying', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(json({ message: 'ambiguous failure' }, 503))
+    const client = new BitwardenHttpClient({ server: 'us', fetch, maxRetries: 3 })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+    await client.changeMasterPassword({
+      contract: 'official',
+      masterPasswordHash: 'current-proof',
+      authenticationData: {
+        salt: 'person@example.test',
+        kdf: { kdfType: 0, iterations: 600000 },
+        masterPasswordAuthenticationHash: 'new-proof'
+      },
+      unlockData: {
+        salt: 'person@example.test',
+        kdf: { kdfType: 0, iterations: 600000 },
+        masterKeyWrappedUserKey: '2.wrapped'
+      },
+      masterPasswordHint: 'hint'
+    })
+    await expect(
+      client.changeMasterPassword({
+        contract: 'vaultwarden',
+        masterPasswordHash: 'old',
+        newMasterPasswordHash: 'new',
+        key: '2.key',
+        masterPasswordHint: null
+      })
+    ).rejects.toMatchObject({ code: 'NETWORK', status: 503 })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(String(fetch.mock.calls[0]![1]?.body))).toEqual({
+      masterPasswordHash: 'current-proof',
+      authenticationData: {
+        salt: 'person@example.test',
+        kdf: { kdfType: 0, iterations: 600000 },
+        masterPasswordAuthenticationHash: 'new-proof'
+      },
+      unlockData: {
+        salt: 'person@example.test',
+        kdf: { kdfType: 0, iterations: 600000 },
+        masterKeyWrappedUserKey: '2.wrapped'
+      },
+      masterPasswordHint: 'hint'
+    })
+    expect(JSON.parse(String(fetch.mock.calls[1]![1]?.body))).toEqual({
+      masterPasswordHash: 'old',
+      newMasterPasswordHash: 'new',
+      masterPasswordHint: null,
+      key: '2.key'
+    })
+  })
   it('fetches the safe account profile and resends verification without a request body', async () => {
     const fetch = vi
       .fn<FetchLike>()

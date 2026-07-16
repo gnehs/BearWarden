@@ -35,6 +35,24 @@ export interface BitwardenPrelogin {
   raw: JsonObject
 }
 
+export type BitwardenPasswordChangeContract = 'official' | 'vaultwarden'
+
+export type BitwardenPasswordChangeRequest =
+  | {
+      contract: 'official'
+      masterPasswordHash: string
+      authenticationData: JsonObject
+      unlockData: JsonObject
+      masterPasswordHint: string
+    }
+  | {
+      contract: 'vaultwarden'
+      masterPasswordHash: string
+      newMasterPasswordHash: string
+      key: string
+      masterPasswordHint: string | null
+    }
+
 export interface BitwardenAttachmentDownload {
   id: string
   /** Encrypted filename from the attachment metadata response. */
@@ -691,6 +709,78 @@ export class BitwardenHttpClient {
       )
     }
     return parsePrelogin(response)
+  }
+
+  async passwordChangeContract(signal?: AbortSignal): Promise<BitwardenPasswordChangeContract> {
+    try {
+      const response = await this.requestJson('GET', `${this.urls.apiUrl}/config`, {
+        signal,
+        authenticate: false,
+        maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES
+      })
+      if (!isRecord(response) || !isRecord(response.server)) return 'official'
+      const name = string(response.server.name)
+      const url = string(response.server.url)
+      if (name === 'Vaultwarden') return 'vaultwarden'
+      if (url && url.length <= 256) {
+        try {
+          const canonical = new URL(url)
+          if (
+            canonical.protocol === 'https:' &&
+            canonical.hostname === 'github.com' &&
+            canonical.pathname.replace(/\/+$/u, '') === '/dani-garcia/vaultwarden' &&
+            !canonical.username &&
+            !canonical.password &&
+            !canonical.search &&
+            !canonical.hash
+          ) {
+            return 'vaultwarden'
+          }
+        } catch {
+          // Malformed metadata is not a capability and safely defaults to the official contract.
+        }
+      }
+      return 'official'
+    } catch (error) {
+      if (error instanceof BitwardenHttpError && error.code === 'ABORTED') throw error
+      return 'official'
+    }
+  }
+
+  async changeMasterPassword(
+    request: BitwardenPasswordChangeRequest,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const body: JsonObject =
+      request.contract === 'official'
+        ? {
+            masterPasswordHash: request.masterPasswordHash,
+            authenticationData: request.authenticationData,
+            unlockData: request.unlockData,
+            masterPasswordHint: request.masterPasswordHint
+          }
+        : {
+            masterPasswordHash: request.masterPasswordHash,
+            newMasterPasswordHash: request.newMasterPasswordHash,
+            masterPasswordHint: request.masterPasswordHint,
+            key: request.key
+          }
+    try {
+      const response = await this.requestJson('POST', `${this.urls.apiUrl}/accounts/password`, {
+        body,
+        signal,
+        retry: false
+      })
+      if (response !== null) throw new BitwardenHttpError('INVALID_RESPONSE')
+    } catch (error) {
+      // Never retain a server error payload that could reflect password-change request fields.
+      if (error instanceof BitwardenHttpError) {
+        throw new BitwardenHttpError(error.code, error.status)
+      }
+      throw error
+    } finally {
+      for (const key of Object.keys(body)) body[key] = null
+    }
   }
 
   async passwordToken(form: PasswordTokenForm, signal?: AbortSignal): Promise<BitwardenSession> {

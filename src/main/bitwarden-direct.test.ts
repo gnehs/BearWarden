@@ -810,6 +810,198 @@ async function expectInvalidSync(sync: JsonObject): Promise<void> {
 }
 
 describe('BitwardenDirectClient', () => {
+  it('rewraps the same user key for an official PBKDF2 password change and clears state', async () => {
+    const sync = await encryptedSync()
+    const bodies: JsonObject[] = []
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url, init) => {
+        if (url.endsWith('/identity/accounts/prelogin/password'))
+          return jsonResponse({ kdf: { type: 0, iterations: 5_000 }, salt: EMAIL })
+        if (url.endsWith('/identity/connect/token'))
+          return jsonResponse({
+            access_token: 'access',
+            refresh_token: 'refresh',
+            expires_in: 3600
+          })
+        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/accounts/password')) {
+          bodies.push(JSON.parse(String(init?.body)) as JsonObject)
+          return new Response(null, { status: 200 })
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+    await client.changeMasterPassword({
+      currentPassword: PASSWORD,
+      newPassword: 'replacement master password',
+      hint: 'safe hint'
+    })
+    expect(bodies).toHaveLength(1)
+    expect(bodies[0]).toMatchObject({
+      masterPasswordHint: 'safe hint',
+      authenticationData: { salt: EMAIL, kdf: { kdfType: 0, iterations: 5_000 } },
+      unlockData: { salt: EMAIL, kdf: { kdfType: 0, iterations: 5_000 } }
+    })
+    expect(bodies[0]).not.toHaveProperty('newMasterPasswordHash')
+    await expect(client.status()).resolves.toEqual({ status: 'unauthenticated' })
+    expect(client.exportState().session).toBeNull()
+  })
+
+  it('uses the flat contract when identity prelogin succeeds but config identifies Vaultwarden', async () => {
+    const sync = await encryptedSync()
+    let body: JsonObject | null = null
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url, init) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/api/config')) {
+          return jsonResponse({
+            server: { name: 'Vaultwarden', url: 'https://github.com/dani-garcia/vaultwarden' }
+          })
+        }
+        if (url.endsWith('/identity/connect/token'))
+          return jsonResponse({
+            access_token: 'access',
+            refresh_token: 'refresh',
+            expires_in: 3600
+          })
+        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/accounts/password')) {
+          body = JSON.parse(String(init?.body)) as JsonObject
+          return new Response(null, { status: 200 })
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+    await client.changeMasterPassword({
+      currentPassword: PASSWORD,
+      newPassword: 'replacement master password',
+      hint: null
+    })
+    expect(body).toMatchObject({ masterPasswordHint: null })
+    expect(body).toHaveProperty('masterPasswordHash')
+    expect(body).toHaveProperty('newMasterPasswordHash')
+    expect(body).toHaveProperty('key')
+    expect(body).not.toHaveProperty('authenticationData')
+    expect(body).not.toHaveProperty('unlockData')
+  })
+
+  it('uses fresh Argon2 parameters and fails closed on an unknown mutation outcome', async () => {
+    const sync = await encryptedSync()
+    let preloginCalls = 0
+    let mutationCalls = 0
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          preloginCalls += 1
+          return preloginCalls === 1
+            ? jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+            : jsonResponse({
+                kdf: { type: 1, iterations: 2, memory: 16, parallelism: 1 },
+                salt: EMAIL
+              })
+        }
+        if (url.endsWith('/identity/connect/token'))
+          return jsonResponse({
+            access_token: 'access',
+            refresh_token: 'refresh',
+            expires_in: 3600
+          })
+        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/accounts/password')) {
+          mutationCalls += 1
+          throw new TypeError('connection dropped after upload')
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      },
+      maxRetries: 3
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+    await expect(
+      client.changeMasterPassword({
+        currentPassword: PASSWORD,
+        newPassword: 'replacement master password'
+      })
+    ).rejects.toMatchObject({ code: 'MASTER_PASSWORD_CHANGE_UNKNOWN' })
+    expect(mutationCalls).toBe(1)
+    await expect(client.status()).resolves.toEqual({ status: 'unauthenticated' })
+    await expect(client.listPersonalLogins()).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
+  })
+
+  it('preserves unlocked state after a definitive password-change rejection', async () => {
+    const sync = await encryptedSync()
+    let mutationCalls = 0
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url) => {
+        if (url.endsWith('/identity/accounts/prelogin/password'))
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        if (url.endsWith('/identity/connect/token'))
+          return jsonResponse({
+            access_token: 'access',
+            refresh_token: 'refresh',
+            expires_in: 3600
+          })
+        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/accounts/password')) {
+          mutationCalls += 1
+          return jsonResponse({ message: 'Invalid password' }, 400)
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+    await expect(
+      client.changeMasterPassword({
+        currentPassword: 'wrong password',
+        newPassword: 'replacement master password'
+      })
+    ).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
+    await expect(client.status()).resolves.toEqual({ status: 'unlocked' })
+    await expect(client.listPersonalLogins()).resolves.not.toHaveLength(0)
+    expect(mutationCalls).toBe(1)
+
+    const abort = new AbortController()
+    abort.abort()
+    await expect(
+      client.changeMasterPassword({
+        currentPassword: PASSWORD,
+        newPassword: 'another replacement password',
+        signal: abort.signal
+      })
+    ).rejects.toMatchObject({ code: 'ABORTED' })
+    await expect(client.status()).resolves.toEqual({ status: 'unlocked' })
+  })
   it('decrypts organization keys and keeps shared ciphers separate from personal items', async () => {
     const sync = await encryptedSync()
     const userKey = Buffer.alloc(64, 7)
