@@ -190,6 +190,8 @@ const MAX_USERNAME_LENGTH = 512
 const MAX_PASSWORD_LENGTH = 16_384
 const AUTHENTICATOR_SETUP_TTL_MS = 5 * 60 * 1_000
 const MAX_AUTHENTICATOR_SETUP_SESSIONS = 8
+const EMAIL_TWO_FACTOR_SETUP_TTL_MS = 5 * 60 * 1_000
+const MAX_EMAIL_TWO_FACTOR_SETUP_SESSIONS = 8
 const MAX_URI_LENGTH = 4096
 const MAX_LOGIN_URIS = 1_000
 const MAX_NOTES_LENGTH = 65_536
@@ -2783,6 +2785,16 @@ interface AuthenticatorSetupSession {
   readonly expiresAt: number
 }
 
+interface EmailTwoFactorSetupSession {
+  readonly generation: number
+  readonly client: BitwardenSyncClient
+  readonly verificationMode: 'server-token' | 'master-password'
+  userVerificationToken: string | null
+  phase: 'ready-to-send' | 'awaiting-code'
+  email: string | null
+  readonly expiresAt: number
+}
+
 export class VaultService {
   private key: Buffer | null = null
   private salt: Buffer | null = null
@@ -2795,6 +2807,7 @@ export class VaultService {
   private readonly notificationTokenAborts = new Set<AbortController>()
   private readonly accountSecurityAborts = new Set<AbortController>()
   private readonly authenticatorSetupSessions = new Map<string, AuthenticatorSetupSession>()
+  private readonly emailTwoFactorSetupSessions = new Map<string, EmailTwoFactorSetupSession>()
   private syncInProgress = false
   private syncLastError: string | null = null
   private activeAttachmentOperation: {
@@ -3475,6 +3488,277 @@ export class VaultService {
       if ('masterPassword' in completion) completion.masterPassword = ''
       if ('userVerificationToken' in completion) completion.userVerificationToken = ''
       lease.key = ''
+      lease.userVerificationToken = null
+    }
+  }
+
+  async beginAccountEmailTwoFactorSetup(request: { masterPassword: string }): Promise<{
+    sessionId: string
+    requiresMasterPassword: boolean
+    expiresAt: number
+  }> {
+    if (
+      typeof request.masterPassword !== 'string' ||
+      request.masterPassword.length === 0 ||
+      request.masterPassword.length > MAX_PASSWORD_LENGTH
+    ) {
+      request.masterPassword = ''
+      throw new VaultError('INVALID_INPUT')
+    }
+    let lease: {
+      generation: number
+      client: BitwardenSyncClient
+      request: NonNullable<BitwardenSyncClient['beginEmailTwoFactorSetup']>
+      abort: AbortController
+    }
+    try {
+      lease = await this.exclusive(async () => {
+        const sync = this.requireSyncData()
+        const client = this.getOrCreateSyncClient(sync)
+        if (!client.beginEmailTwoFactorSetup || !client.exportState().session) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        const abort = new AbortController()
+        this.accountSecurityAborts.add(abort)
+        return {
+          generation: this.generation,
+          client,
+          request: client.beginEmailTwoFactorSetup.bind(client),
+          abort
+        }
+      })
+    } catch (error) {
+      request.masterPassword = ''
+      throw error
+    }
+    try {
+      const setup = await lease.request(request.masterPassword, lease.abort.signal)
+      return await this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        this.requireData()
+        if (
+          lease.abort.signal.aborted ||
+          lease.generation !== this.generation ||
+          this.syncClient !== lease.client ||
+          !lease.client.exportState().session
+        ) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        if (setup.enabled) throw new VaultError('INVALID_INPUT')
+        this.evictExpiredEmailTwoFactorSetupSessions()
+        while (this.emailTwoFactorSetupSessions.size >= MAX_EMAIL_TWO_FACTOR_SETUP_SESSIONS) {
+          const oldest = this.emailTwoFactorSetupSessions.keys().next().value
+          if (typeof oldest !== 'string') break
+          this.deleteEmailTwoFactorSetupSession(oldest)
+        }
+        const sessionId = randomUUID()
+        const expiresAt = this.now().getTime() + EMAIL_TWO_FACTOR_SETUP_TTL_MS
+        this.emailTwoFactorSetupSessions.set(sessionId, {
+          generation: lease.generation,
+          client: lease.client,
+          verificationMode: setup.verificationMode,
+          userVerificationToken: setup.userVerificationToken ?? null,
+          phase: 'ready-to-send',
+          email: null,
+          expiresAt
+        })
+        await this.persistCurrentClientState().catch(() => undefined)
+        return {
+          sessionId,
+          requiresMasterPassword: setup.verificationMode === 'master-password',
+          expiresAt
+        }
+      })
+    } catch (error) {
+      return this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+          throw new VaultError('LOCKED')
+        }
+        if (error instanceof BitwardenDirectError && error.code === 'USER_VERIFICATION_FAILED') {
+          throw new VaultError('INVALID_MASTER_PASSWORD')
+        }
+        if (error instanceof VaultError) throw error
+        throw this.mapSyncError(error)
+      })
+    } finally {
+      request.masterPassword = ''
+    }
+  }
+
+  async sendAccountEmailTwoFactorSetup(request: {
+    sessionId: string
+    email: string
+    masterPassword?: string
+  }): Promise<void> {
+    if (
+      typeof request.email !== 'string' ||
+      request.email.length === 0 ||
+      request.email.length > 256 ||
+      request.email.trim() !== request.email ||
+      /[\0\r\n]/u.test(request.email) ||
+      !/^[^\s@]+@[^\s@]+$/u.test(request.email)
+    ) {
+      request.email = ''
+      if (request.masterPassword !== undefined) request.masterPassword = ''
+      throw new VaultError('INVALID_INPUT')
+    }
+    let lease: EmailTwoFactorSetupSession & {
+      request: NonNullable<BitwardenSyncClient['sendEmailTwoFactorSetup']>
+      abort: AbortController
+      emailForSetup: string
+    }
+    try {
+      lease = await this.exclusive(async () => {
+        const session = this.requireEmailTwoFactorSetupSession(request.sessionId, 'ready-to-send')
+        if (!session.client.sendEmailTwoFactorSetup) throw new VaultError('SYNC_FAILED')
+        this.validateEmailTwoFactorSetupPassword(session, request.masterPassword)
+        const abort = new AbortController()
+        this.accountSecurityAborts.add(abort)
+        const result = {
+          ...session,
+          request: session.client.sendEmailTwoFactorSetup.bind(session.client),
+          abort,
+          emailForSetup: request.email
+        }
+        this.deleteEmailTwoFactorSetupSession(request.sessionId)
+        return result
+      })
+    } catch (error) {
+      request.email = ''
+      if (request.masterPassword !== undefined) request.masterPassword = ''
+      throw error
+    }
+    const mutation = {
+      email: lease.emailForSetup,
+      verificationMode: lease.verificationMode,
+      ...(lease.userVerificationToken
+        ? { userVerificationToken: lease.userVerificationToken }
+        : {}),
+      ...(lease.verificationMode === 'master-password'
+        ? { masterPassword: request.masterPassword }
+        : {})
+    }
+    try {
+      await lease.request(mutation, lease.abort.signal)
+      await this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        this.requireData()
+        if (
+          lease.abort.signal.aborted ||
+          lease.generation !== this.generation ||
+          this.syncClient !== lease.client ||
+          !lease.client.exportState().session ||
+          lease.expiresAt <= this.now().getTime()
+        ) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        this.evictExpiredEmailTwoFactorSetupSessions()
+        while (this.emailTwoFactorSetupSessions.size >= MAX_EMAIL_TWO_FACTOR_SETUP_SESSIONS) {
+          const oldest = this.emailTwoFactorSetupSessions.keys().next().value
+          if (typeof oldest !== 'string') break
+          this.deleteEmailTwoFactorSetupSession(oldest)
+        }
+        this.emailTwoFactorSetupSessions.set(request.sessionId, {
+          generation: lease.generation,
+          client: lease.client,
+          verificationMode: lease.verificationMode,
+          userVerificationToken: lease.userVerificationToken,
+          phase: 'awaiting-code',
+          email: lease.emailForSetup,
+          expiresAt: lease.expiresAt
+        })
+        await this.persistCurrentClientState().catch(() => undefined)
+      })
+    } catch (error) {
+      await this.exclusive(async () => this.accountSecurityAborts.delete(lease.abort))
+      this.throwEmailTwoFactorSetupError(error, lease)
+    } finally {
+      request.email = ''
+      if (request.masterPassword !== undefined) request.masterPassword = ''
+      mutation.email = ''
+      if ('masterPassword' in mutation) mutation.masterPassword = ''
+      if ('userVerificationToken' in mutation) mutation.userVerificationToken = ''
+      lease.emailForSetup = ''
+      lease.userVerificationToken = null
+    }
+  }
+
+  async completeAccountEmailTwoFactorSetup(request: {
+    sessionId: string
+    token: string
+    masterPassword?: string
+  }): Promise<void> {
+    if (!/^\d{1,50}$/u.test(request.token)) {
+      request.token = ''
+      if (request.masterPassword !== undefined) request.masterPassword = ''
+      throw new VaultError('INVALID_INPUT')
+    }
+    let lease: EmailTwoFactorSetupSession & {
+      request: NonNullable<BitwardenSyncClient['completeEmailTwoFactorSetup']>
+      abort: AbortController
+      emailForSetup: string
+    }
+    try {
+      lease = await this.exclusive(async () => {
+        const session = this.requireEmailTwoFactorSetupSession(request.sessionId, 'awaiting-code')
+        if (!session.client.completeEmailTwoFactorSetup || !session.email) {
+          throw new VaultError('SYNC_FAILED')
+        }
+        this.validateEmailTwoFactorSetupPassword(session, request.masterPassword)
+        const abort = new AbortController()
+        this.accountSecurityAborts.add(abort)
+        const result = {
+          ...session,
+          request: session.client.completeEmailTwoFactorSetup.bind(session.client),
+          abort,
+          emailForSetup: session.email
+        }
+        this.deleteEmailTwoFactorSetupSession(request.sessionId)
+        return result
+      })
+    } catch (error) {
+      request.token = ''
+      if (request.masterPassword !== undefined) request.masterPassword = ''
+      throw error
+    }
+    const mutation = {
+      email: lease.emailForSetup,
+      token: request.token,
+      verificationMode: lease.verificationMode,
+      ...(lease.userVerificationToken
+        ? { userVerificationToken: lease.userVerificationToken }
+        : {}),
+      ...(lease.verificationMode === 'master-password'
+        ? { masterPassword: request.masterPassword }
+        : {})
+    }
+    try {
+      await lease.request(mutation, lease.abort.signal)
+      await this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        this.requireData()
+        if (
+          lease.abort.signal.aborted ||
+          lease.generation !== this.generation ||
+          this.syncClient !== lease.client ||
+          !lease.client.exportState().session
+        ) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        await this.persistCurrentClientState().catch(() => undefined)
+      })
+    } catch (error) {
+      await this.exclusive(async () => this.accountSecurityAborts.delete(lease.abort))
+      this.throwEmailTwoFactorSetupError(error, lease)
+    } finally {
+      request.token = ''
+      if (request.masterPassword !== undefined) request.masterPassword = ''
+      mutation.email = ''
+      mutation.token = ''
+      if ('masterPassword' in mutation) mutation.masterPassword = ''
+      if ('userVerificationToken' in mutation) mutation.userVerificationToken = ''
+      lease.emailForSetup = ''
       lease.userVerificationToken = null
     }
   }
@@ -6243,6 +6527,9 @@ export class VaultService {
     for (const sessionId of this.authenticatorSetupSessions.keys()) {
       this.deleteAuthenticatorSetupSession(sessionId)
     }
+    for (const sessionId of this.emailTwoFactorSetupSessions.keys()) {
+      this.deleteEmailTwoFactorSetupSession(sessionId)
+    }
   }
 
   private evictExpiredAuthenticatorSetupSessions(): void {
@@ -6273,6 +6560,76 @@ export class VaultService {
     session.key = ''
     session.userVerificationToken = null
     this.authenticatorSetupSessions.delete(sessionId)
+  }
+
+  private evictExpiredEmailTwoFactorSetupSessions(): void {
+    const now = this.now().getTime()
+    for (const [sessionId, session] of this.emailTwoFactorSetupSessions) {
+      if (session.expiresAt <= now) this.deleteEmailTwoFactorSetupSession(sessionId)
+    }
+  }
+
+  private requireEmailTwoFactorSetupSession(
+    sessionId: string,
+    phase: EmailTwoFactorSetupSession['phase']
+  ): EmailTwoFactorSetupSession {
+    this.evictExpiredEmailTwoFactorSetupSessions()
+    const session = this.emailTwoFactorSetupSessions.get(sessionId)
+    if (!session) throw new VaultError('INVALID_INPUT')
+    if (
+      session.generation !== this.generation ||
+      session.client !== this.syncClient ||
+      !session.client.exportState().session
+    ) {
+      this.deleteEmailTwoFactorSetupSession(sessionId)
+      throw new VaultError('INVALID_INPUT')
+    }
+    if (session.phase !== phase) throw new VaultError('INVALID_INPUT')
+    return session
+  }
+
+  private deleteEmailTwoFactorSetupSession(sessionId: string): void {
+    const session = this.emailTwoFactorSetupSessions.get(sessionId)
+    if (!session) return
+    session.userVerificationToken = null
+    session.email = null
+    this.emailTwoFactorSetupSessions.delete(sessionId)
+  }
+
+  private validateEmailTwoFactorSetupPassword(
+    session: EmailTwoFactorSetupSession,
+    masterPassword: string | undefined
+  ): void {
+    if (session.verificationMode === 'server-token') {
+      if (masterPassword !== undefined) throw new VaultError('INVALID_INPUT')
+      return
+    }
+    if (
+      typeof masterPassword !== 'string' ||
+      masterPassword.length === 0 ||
+      masterPassword.length > MAX_PASSWORD_LENGTH
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+  }
+
+  private throwEmailTwoFactorSetupError(
+    error: unknown,
+    lease: { abort: AbortController; generation: number }
+  ): never {
+    if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+      throw new VaultError('LOCKED')
+    }
+    if (error instanceof BitwardenDirectError) {
+      if (error.code === 'USER_VERIFICATION_FAILED') {
+        throw new VaultError('INVALID_MASTER_PASSWORD')
+      }
+      if (error.code === 'TWO_FACTOR_MUTATION_UNKNOWN') {
+        throw new VaultError('TWO_FACTOR_MUTATION_UNKNOWN')
+      }
+    }
+    if (error instanceof VaultError) throw error
+    throw this.mapSyncError(error)
   }
 
   private mapSyncError(error: unknown): VaultError {

@@ -12,6 +12,8 @@ import {
   type AppSettingsUpdate,
   type AccountApiKeyCopyRequest,
   type AccountAuthenticatorCompleteRequest,
+  type AccountEmailTwoFactorCompleteRequest,
+  type AccountEmailTwoFactorSendRequest,
   type AttachmentCancelRequest,
   type AttachmentDeleteRequest,
   type AttachmentDownloadRequest,
@@ -2193,6 +2195,85 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       }
       try {
         return await vault.completeAccountAuthenticatorSetup(request)
+      } finally {
+        request.token = ''
+        if (request.masterPassword !== undefined) request.masterPassword = ''
+      }
+    }
+  )
+  registerHandler(
+    IPC_CHANNELS.accountBeginEmailTwoFactorSetup,
+    getMainWindow,
+    async (_event, input) => {
+      const record = exactRecord(input, ['masterPassword'])
+      const request = { masterPassword: requiredString(record, 'masterPassword') }
+      if (request.masterPassword.length === 0 || request.masterPassword.length > 16_384) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      try {
+        return await vault.beginAccountEmailTwoFactorSetup(request)
+      } finally {
+        request.masterPassword = ''
+      }
+    }
+  )
+  registerHandler(
+    IPC_CHANNELS.accountSendEmailTwoFactorSetup,
+    getMainWindow,
+    async (_event, input) => {
+      const record = exactRecord(input, ['sessionId', 'email', 'masterPassword'])
+      const request: AccountEmailTwoFactorSendRequest = {
+        sessionId: requiredString(record, 'sessionId'),
+        email: requiredString(record, 'email'),
+        ...(record.masterPassword === undefined
+          ? {}
+          : { masterPassword: requiredString(record, 'masterPassword') })
+      }
+      if (
+        !UUID_PATTERN.test(request.sessionId) ||
+        request.email.length === 0 ||
+        request.email.length > 256 ||
+        request.email.trim() !== request.email ||
+        !/^[^\s@]+@[^\s@]+$/u.test(request.email) ||
+        (request.masterPassword !== undefined &&
+          (request.masterPassword.length === 0 || request.masterPassword.length > 16_384))
+      ) {
+        request.email = ''
+        if (request.masterPassword !== undefined) request.masterPassword = ''
+        throw new VaultError('INVALID_INPUT')
+      }
+      try {
+        return await vault.sendAccountEmailTwoFactorSetup(request)
+      } finally {
+        request.email = ''
+        if (request.masterPassword !== undefined) request.masterPassword = ''
+      }
+    }
+  )
+  registerHandler(
+    IPC_CHANNELS.accountCompleteEmailTwoFactorSetup,
+    getMainWindow,
+    async (_event, input) => {
+      const record = exactRecord(input, ['sessionId', 'token', 'masterPassword'])
+      const request: AccountEmailTwoFactorCompleteRequest = {
+        sessionId: requiredString(record, 'sessionId'),
+        token: requiredString(record, 'token'),
+        ...(record.masterPassword === undefined
+          ? {}
+          : { masterPassword: requiredString(record, 'masterPassword') })
+      }
+      if (
+        !UUID_PATTERN.test(request.sessionId) ||
+        !/^\d{1,50}$/u.test(request.token) ||
+        (request.masterPassword !== undefined &&
+          (request.masterPassword.length === 0 || request.masterPassword.length > 16_384))
+      ) {
+        request.token = ''
+        if (request.masterPassword !== undefined) request.masterPassword = ''
+        throw new VaultError('INVALID_INPUT')
+      }
+      try {
+        return await vault.completeAccountEmailTwoFactorSetup(request)
       } finally {
         request.token = ''
         if (request.masterPassword !== undefined) request.masterPassword = ''

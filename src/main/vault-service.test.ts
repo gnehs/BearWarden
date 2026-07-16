@@ -333,6 +333,14 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
       userVerificationToken: null
     }),
     completeAuthenticatorSetup: async () => undefined,
+    beginEmailTwoFactorSetup: async () => ({
+      enabled: false,
+      email: null,
+      verificationMode: 'master-password' as const,
+      userVerificationToken: null
+    }),
+    sendEmailTwoFactorSetup: async () => undefined,
+    completeEmailTwoFactorSetup: async () => undefined,
     getEquivalentDomainSettings: async () => structuredClone(equivalentDomainSettings),
     updateEquivalentDomainSettings: async (update) => {
       const excluded = new Set(update.excludedGlobalEquivalentDomains)
@@ -3755,6 +3763,204 @@ describe('VaultService encrypted local data', () => {
       },
       expect.any(AbortSignal)
     )
+  })
+
+  it('uses a phased Email 2FA session with fresh Vaultwarden proofs', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const begin = vi.spyOn(fake!, 'beginEmailTwoFactorSetup')
+    const send = vi.spyOn(fake!, 'sendEmailTwoFactorSetup')
+    const complete = vi.spyOn(fake!, 'completeEmailTwoFactorSetup')
+
+    const beginRequest = { masterPassword: 'remote master password' }
+    const setup = await service.beginAccountEmailTwoFactorSetup(beginRequest)
+    expect(beginRequest.masterPassword).toBe('')
+    expect(setup).toMatchObject({ requiresMasterPassword: true })
+    expect(JSON.stringify(setup)).not.toContain('userVerificationToken')
+    expect(begin).toHaveBeenCalledWith('remote master password', expect.any(AbortSignal))
+
+    await expect(
+      service.completeAccountEmailTwoFactorSetup({
+        sessionId: setup.sessionId,
+        token: '123456',
+        masterPassword: 'remote master password'
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+
+    const sendRequest = {
+      sessionId: setup.sessionId,
+      email: 'factor@example.test',
+      masterPassword: 'fresh send password'
+    }
+    await service.sendAccountEmailTwoFactorSetup(sendRequest)
+    expect(sendRequest).toMatchObject({ email: '', masterPassword: '' })
+    expect(send).toHaveBeenCalledWith(
+      {
+        email: '',
+        verificationMode: 'master-password',
+        masterPassword: ''
+      },
+      expect.any(AbortSignal)
+    )
+    await expect(
+      service.sendAccountEmailTwoFactorSetup({
+        sessionId: setup.sessionId,
+        email: 'factor@example.test',
+        masterPassword: 'must not replay'
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+
+    const completeRequest = {
+      sessionId: setup.sessionId,
+      token: '123456',
+      masterPassword: 'fresh complete password'
+    }
+    await service.completeAccountEmailTwoFactorSetup(completeRequest)
+    expect(completeRequest).toMatchObject({ token: '', masterPassword: '' })
+    expect(complete).toHaveBeenCalledWith(
+      {
+        email: '',
+        token: '',
+        verificationMode: 'master-password',
+        masterPassword: ''
+      },
+      expect.any(AbortSignal)
+    )
+    await expect(
+      service.completeAccountEmailTwoFactorSetup({
+        sessionId: setup.sessionId,
+        token: '123456',
+        masterPassword: 'must not replay'
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+  })
+
+  it('consumes official Email 2FA sessions when send outcome is unknown', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    vi.spyOn(fake!, 'beginEmailTwoFactorSetup').mockResolvedValue({
+      enabled: false,
+      email: null,
+      verificationMode: 'server-token',
+      userVerificationToken: 'main-only-email-capability'
+    })
+    vi.spyOn(fake!, 'sendEmailTwoFactorSetup').mockRejectedValueOnce(
+      new BitwardenDirectError('TWO_FACTOR_MUTATION_UNKNOWN')
+    )
+    vi.spyOn(fake!, 'completeEmailTwoFactorSetup').mockRejectedValueOnce(
+      new BitwardenDirectError('TWO_FACTOR_MUTATION_UNKNOWN')
+    )
+
+    const setup = await service.beginAccountEmailTwoFactorSetup({
+      masterPassword: 'remote master password'
+    })
+    expect(setup.requiresMasterPassword).toBe(false)
+    expect(JSON.stringify(setup)).not.toContain('main-only-email-capability')
+    await expect(
+      service.sendAccountEmailTwoFactorSetup({
+        sessionId: setup.sessionId,
+        email: 'factor@example.test'
+      })
+    ).rejects.toMatchObject({ code: 'TWO_FACTOR_MUTATION_UNKNOWN' })
+    await expect(
+      service.sendAccountEmailTwoFactorSetup({
+        sessionId: setup.sessionId,
+        email: 'factor@example.test'
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+
+    const completionSetup = await service.beginAccountEmailTwoFactorSetup({
+      masterPassword: 'remote master password'
+    })
+    await service.sendAccountEmailTwoFactorSetup({
+      sessionId: completionSetup.sessionId,
+      email: 'factor@example.test'
+    })
+    await expect(
+      service.completeAccountEmailTwoFactorSetup({
+        sessionId: completionSetup.sessionId,
+        token: '123456'
+      })
+    ).rejects.toMatchObject({ code: 'TWO_FACTOR_MUTATION_UNKNOWN' })
+    await expect(
+      service.completeAccountEmailTwoFactorSetup({
+        sessionId: completionSetup.sessionId,
+        token: '123456'
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+  })
+
+  it('fails closed for enabled, expired, or locked Email 2FA setup sessions', async () => {
+    let currentTime = Date.parse('2026-07-16T00:00:00.000Z')
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      now: () => new Date(currentTime),
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    vi.spyOn(fake!, 'beginEmailTwoFactorSetup').mockResolvedValueOnce({
+      enabled: true,
+      email: 'factor@example.test',
+      verificationMode: 'server-token',
+      userVerificationToken: 'must-be-discarded'
+    })
+    await expect(
+      service.beginAccountEmailTwoFactorSetup({ masterPassword: 'remote master password' })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+
+    const expired = await service.beginAccountEmailTwoFactorSetup({
+      masterPassword: 'remote master password'
+    })
+    currentTime += 5 * 60 * 1_000 + 1
+    await expect(
+      service.sendAccountEmailTwoFactorSetup({
+        sessionId: expired.sessionId,
+        email: 'factor@example.test',
+        masterPassword: 'fresh password'
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+
+    const abandoned = await service.beginAccountEmailTwoFactorSetup({
+      masterPassword: 'remote master password'
+    })
+    await service.lock()
+    await expect(
+      service.sendAccountEmailTwoFactorSetup({
+        sessionId: abandoned.sessionId,
+        email: 'factor@example.test',
+        masterPassword: 'fresh password'
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
   })
 
   it('opens only the fixed HIBP attribution URL after verifying the vault is unlocked', async () => {

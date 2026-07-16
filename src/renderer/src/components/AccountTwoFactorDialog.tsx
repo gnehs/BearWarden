@@ -2,6 +2,7 @@ import { Copy, ShieldCheck } from 'lucide-react'
 import { useState } from 'react'
 import type {
   AccountAuthenticatorSetup,
+  AccountEmailTwoFactorSetup,
   AccountTwoFactorProvider
 } from '../../../shared/vault-contract'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
@@ -42,6 +43,13 @@ function AccountTwoFactorDialog(): React.JSX.Element {
   const [authenticatorSetup, setAuthenticatorSetup] = useState<AccountAuthenticatorSetup | null>(
     null
   )
+  const [emailSetup, setEmailSetup] = useState<AccountEmailTwoFactorSetup | null>(null)
+  const [emailSetupPassword, setEmailSetupPassword] = useState('')
+  const [emailAddress, setEmailAddress] = useState('')
+  const [emailSendPassword, setEmailSendPassword] = useState('')
+  const [emailToken, setEmailToken] = useState('')
+  const [emailCompletionPassword, setEmailCompletionPassword] = useState('')
+  const [emailCodeSent, setEmailCodeSent] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -66,6 +74,13 @@ function AccountTwoFactorDialog(): React.JSX.Element {
     setCompletionPassword('')
     setAuthenticatorToken('')
     setAuthenticatorSetup(null)
+    setEmailSetup(null)
+    setEmailSetupPassword('')
+    setEmailAddress('')
+    setEmailSendPassword('')
+    setEmailToken('')
+    setEmailCompletionPassword('')
+    setEmailCodeSent(false)
     setError('')
     setSuccess('')
     if (next) void load()
@@ -158,6 +173,126 @@ function AccountTwoFactorDialog(): React.JSX.Element {
         setError('主密碼驗證失敗，請重新開始設定。')
       } else {
         setError('無法啟用驗證器，請重新開始設定。')
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function resetEmailSetup(): void {
+    setEmailSetup(null)
+    setEmailAddress('')
+    setEmailSendPassword('')
+    setEmailToken('')
+    setEmailCompletionPassword('')
+    setEmailCodeSent(false)
+  }
+
+  async function beginEmailSetup(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    if (!emailSetupPassword) {
+      setError('請輸入主密碼。')
+      return
+    }
+    setBusy(true)
+    setError('')
+    setSuccess('')
+    try {
+      const setup = await window.bearwarden.accountSecurity.beginEmailTwoFactorSetup({
+        masterPassword: emailSetupPassword
+      })
+      setEmailSetup(setup)
+      setEmailSetupPassword('')
+    } catch (setupError) {
+      setEmailSetupPassword('')
+      setError(
+        setupError instanceof Error && setupError.message.includes('INVALID_MASTER_PASSWORD')
+          ? '主密碼驗證失敗。'
+          : '無法開始設定 Email 雙重驗證。'
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function sendEmailSetupCode(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    if (!emailSetup || !/^[^\s@]+@[^\s@]+$/.test(emailAddress)) {
+      setError('請輸入有效的 Email 地址。')
+      return
+    }
+    if (emailSetup.requiresMasterPassword && !emailSendPassword) {
+      setError('此伺服器要求再次輸入主密碼。')
+      return
+    }
+    setBusy(true)
+    setError('')
+    setSuccess('')
+    try {
+      await window.bearwarden.accountSecurity.sendEmailTwoFactorSetup({
+        sessionId: emailSetup.sessionId,
+        email: emailAddress,
+        ...(emailSetup.requiresMasterPassword ? { masterPassword: emailSendPassword } : {})
+      })
+      setEmailSendPassword('')
+      setEmailCodeSent(true)
+      setSuccess('驗證碼已寄出。')
+    } catch (setupError) {
+      const outcomeUnknown =
+        setupError instanceof Error && setupError.message.includes('TWO_FACTOR_MUTATION_UNKNOWN')
+      resetEmailSetup()
+      if (outcomeUnknown) {
+        await load()
+        setError('寄送結果不明；已重新整理狀態，請勿直接重送。')
+      } else if (
+        setupError instanceof Error &&
+        setupError.message.includes('INVALID_MASTER_PASSWORD')
+      ) {
+        setError('主密碼驗證失敗，請重新開始設定。')
+      } else {
+        setError('無法寄出驗證碼，請重新開始設定。')
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function completeEmailSetup(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    if (!emailSetup || !emailCodeSent || !/^\d{1,50}$/.test(emailToken)) {
+      setError('請輸入 Email 中的數字驗證碼。')
+      return
+    }
+    if (emailSetup.requiresMasterPassword && !emailCompletionPassword) {
+      setError('此伺服器要求再次輸入主密碼。')
+      return
+    }
+    setBusy(true)
+    setError('')
+    setSuccess('')
+    try {
+      await window.bearwarden.accountSecurity.completeEmailTwoFactorSetup({
+        sessionId: emailSetup.sessionId,
+        token: emailToken,
+        ...(emailSetup.requiresMasterPassword ? { masterPassword: emailCompletionPassword } : {})
+      })
+      resetEmailSetup()
+      setSuccess('Email 雙重驗證已啟用。')
+      await load()
+    } catch (setupError) {
+      const outcomeUnknown =
+        setupError instanceof Error && setupError.message.includes('TWO_FACTOR_MUTATION_UNKNOWN')
+      resetEmailSetup()
+      if (outcomeUnknown) {
+        await load()
+        setError('啟用結果不明；已重新整理狀態，請勿直接重試。')
+      } else if (
+        setupError instanceof Error &&
+        setupError.message.includes('INVALID_MASTER_PASSWORD')
+      ) {
+        setError('主密碼驗證失敗，請重新開始設定。')
+      } else {
+        setError('無法啟用 Email 雙重驗證，請重新開始設定。')
       }
     } finally {
       setBusy(false)
@@ -302,6 +437,101 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                 )}
                 <Button type="submit" disabled={busy || authenticatorToken.length !== 6}>
                   啟用驗證器
+                </Button>
+              </form>
+            )}
+          </div>
+        )}
+        {!providers.some((provider) => provider.type === 1 && provider.enabled) && (
+          <div className="grid gap-4 border-t pt-4">
+            <div>
+              <h3 className="text-sm font-medium">設定 Email 雙重驗證</h3>
+              <p className="text-muted-foreground text-sm">
+                驗證碼會寄到指定地址。Email 地址只保留在這次短期設定流程中。
+              </p>
+            </div>
+            {!emailSetup ? (
+              <form className="grid gap-4" onSubmit={(event) => void beginEmailSetup(event)}>
+                <Field>
+                  <FieldLabel htmlFor="email-2fa-setup-password">主密碼</FieldLabel>
+                  <Input
+                    id="email-2fa-setup-password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={emailSetupPassword}
+                    disabled={busy}
+                    onChange={(event) => setEmailSetupPassword(event.target.value)}
+                  />
+                </Field>
+                <Button type="submit" disabled={busy}>
+                  開始設定
+                </Button>
+              </form>
+            ) : !emailCodeSent ? (
+              <form className="grid gap-4" onSubmit={(event) => void sendEmailSetupCode(event)}>
+                <Field>
+                  <FieldLabel htmlFor="email-2fa-address">接收驗證碼的 Email</FieldLabel>
+                  <Input
+                    id="email-2fa-address"
+                    type="email"
+                    autoComplete="email"
+                    maxLength={256}
+                    value={emailAddress}
+                    disabled={busy}
+                    onChange={(event) => setEmailAddress(event.target.value)}
+                  />
+                </Field>
+                {emailSetup.requiresMasterPassword && (
+                  <Field>
+                    <FieldLabel htmlFor="email-2fa-send-password">再次輸入主密碼</FieldLabel>
+                    <Input
+                      id="email-2fa-send-password"
+                      type="password"
+                      autoComplete="current-password"
+                      value={emailSendPassword}
+                      disabled={busy}
+                      onChange={(event) => setEmailSendPassword(event.target.value)}
+                    />
+                    <FieldDescription>Vaultwarden 會在寄送前重新驗證主密碼。</FieldDescription>
+                  </Field>
+                )}
+                <Button type="submit" disabled={busy || emailAddress.length === 0}>
+                  寄送驗證碼
+                </Button>
+              </form>
+            ) : (
+              <form className="grid gap-4" onSubmit={(event) => void completeEmailSetup(event)}>
+                <Field>
+                  <FieldLabel htmlFor="email-2fa-token">Email 驗證碼</FieldLabel>
+                  <Input
+                    id="email-2fa-token"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={50}
+                    value={emailToken}
+                    disabled={busy}
+                    onChange={(event) =>
+                      setEmailToken(event.target.value.replace(/\D/g, '').slice(0, 50))
+                    }
+                  />
+                  <FieldDescription>驗證碼已寄至 {emailAddress}。</FieldDescription>
+                </Field>
+                {emailSetup.requiresMasterPassword && (
+                  <Field>
+                    <FieldLabel htmlFor="email-2fa-completion-password">再次輸入主密碼</FieldLabel>
+                    <Input
+                      id="email-2fa-completion-password"
+                      type="password"
+                      autoComplete="current-password"
+                      value={emailCompletionPassword}
+                      disabled={busy}
+                      onChange={(event) => setEmailCompletionPassword(event.target.value)}
+                    />
+                    <FieldDescription>Vaultwarden 會在啟用時再次驗證主密碼。</FieldDescription>
+                  </Field>
+                )}
+                <Button type="submit" disabled={busy || emailToken.length === 0}>
+                  啟用 Email 雙重驗證
                 </Button>
               </form>
             )}

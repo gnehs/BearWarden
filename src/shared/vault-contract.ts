@@ -98,6 +98,9 @@ export const IPC_CHANNELS = {
   accountBeginAuthenticatorSetup: 'account-security:begin-authenticator-setup',
   accountCopyAuthenticatorKey: 'account-security:copy-authenticator-key',
   accountCompleteAuthenticatorSetup: 'account-security:complete-authenticator-setup',
+  accountBeginEmailTwoFactorSetup: 'account-security:begin-email-two-factor-setup',
+  accountSendEmailTwoFactorSetup: 'account-security:send-email-two-factor-setup',
+  accountCompleteEmailTwoFactorSetup: 'account-security:complete-email-two-factor-setup',
   domainRulesGet: 'domain-rules:get',
   domainRulesUpdate: 'domain-rules:update',
   sendList: 'send:list',
@@ -775,6 +778,28 @@ export interface AccountAuthenticatorCompleteRequest extends AccountAuthenticato
   masterPassword?: string
 }
 
+export interface AccountEmailTwoFactorSetupRequest {
+  masterPassword: string
+}
+
+export interface AccountEmailTwoFactorSetup {
+  sessionId: string
+  requiresMasterPassword: boolean
+  expiresAt: number
+}
+
+export interface AccountEmailTwoFactorSendRequest {
+  sessionId: string
+  email: string
+  masterPassword?: string
+}
+
+export interface AccountEmailTwoFactorCompleteRequest {
+  sessionId: string
+  token: string
+  masterPassword?: string
+}
+
 export interface GlobalEquivalentDomainView {
   type: number
   domains: string[]
@@ -1358,6 +1383,11 @@ export interface BearWardenAPI {
     ) => Promise<AccountAuthenticatorSetup>
     copyAuthenticatorKey: (request: AccountAuthenticatorSetupLocator) => Promise<void>
     completeAuthenticatorSetup: (request: AccountAuthenticatorCompleteRequest) => Promise<void>
+    beginEmailTwoFactorSetup: (
+      request: AccountEmailTwoFactorSetupRequest
+    ) => Promise<AccountEmailTwoFactorSetup>
+    sendEmailTwoFactorSetup: (request: AccountEmailTwoFactorSendRequest) => Promise<void>
+    completeEmailTwoFactorSetup: (request: AccountEmailTwoFactorCompleteRequest) => Promise<void>
   }
   domainRules: {
     get: () => Promise<EquivalentDomainSettingsView>

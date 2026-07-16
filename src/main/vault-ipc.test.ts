@@ -342,6 +342,16 @@ describe('registerVaultIpc reprompt gate', () => {
       }),
       copyAccountAuthenticatorKey: vi.fn(async () => undefined),
       completeAccountAuthenticatorSetup: vi.fn(async () => undefined),
+      beginAccountEmailTwoFactorSetup: vi.fn(async (request: { masterPassword: string }) => {
+        if (request.masterPassword !== 'remote master password') throw new Error('missing proof')
+        return {
+          sessionId: '20000000-0000-4000-8000-000000000002',
+          requiresMasterPassword: true,
+          expiresAt: 1_784_236_800_000
+        }
+      }),
+      sendAccountEmailTwoFactorSetup: vi.fn(async () => undefined),
+      completeAccountEmailTwoFactorSetup: vi.fn(async () => undefined),
       getEquivalentDomainSettings: vi.fn(async () => ({
         equivalentDomains: [['first.example', 'second.example']],
         globalEquivalentDomains: [
@@ -797,6 +807,55 @@ describe('registerVaultIpc reprompt gate', () => {
     ]) {
       await expect(complete(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
+  })
+
+  it('keeps Email 2FA capabilities in main across the two mutation phases', async () => {
+    const { event, vault } = harness()
+    const begin = electronMock.handlers.get(IPC_CHANNELS.accountBeginEmailTwoFactorSetup)!
+    const send = electronMock.handlers.get(IPC_CHANNELS.accountSendEmailTwoFactorSetup)!
+    const complete = electronMock.handlers.get(IPC_CHANNELS.accountCompleteEmailTwoFactorSetup)!
+    const sessionId = '20000000-0000-4000-8000-000000000002'
+
+    const setup = await begin(event, { masterPassword: 'remote master password' })
+    expect(setup).toEqual({
+      sessionId,
+      requiresMasterPassword: true,
+      expiresAt: 1_784_236_800_000
+    })
+    expect(JSON.stringify(setup)).not.toContain('userVerificationToken')
+    expect(vault.beginAccountEmailTwoFactorSetup).toHaveBeenCalledWith({ masterPassword: '' })
+
+    await expect(
+      send(event, {
+        sessionId,
+        email: 'factor@example.test',
+        masterPassword: 'remote master password'
+      })
+    ).resolves.toBeUndefined()
+    expect(vault.sendAccountEmailTwoFactorSetup).toHaveBeenCalledWith({
+      sessionId,
+      email: '',
+      masterPassword: ''
+    })
+    await expect(
+      complete(event, {
+        sessionId,
+        token: '123456',
+        masterPassword: 'remote master password'
+      })
+    ).resolves.toBeUndefined()
+    expect(vault.completeAccountEmailTwoFactorSetup).toHaveBeenCalledWith({
+      sessionId,
+      token: '',
+      masterPassword: ''
+    })
+
+    await expect(
+      send(event, { sessionId, email: 'factor@example.test', userVerificationToken: 'forbidden' })
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    await expect(complete(event, { sessionId, token: 'not-numeric' })).rejects.toThrow(
+      'BEARWARDEN:INVALID_INPUT'
+    )
   })
 
   it.each([
