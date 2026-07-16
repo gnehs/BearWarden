@@ -1,5 +1,6 @@
-import { randomInt as nodeRandomInt, randomUUID } from 'node:crypto'
+import { createHash, randomInt as nodeRandomInt, randomUUID } from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { utils } from 'ssh2'
 import type {
   EditorSecretsRequest,
   AttachmentCancelRequest,
@@ -110,6 +111,11 @@ import type { VaultAttachmentFileService } from './vault-attachment-files'
 import { type StoredPasskeyCredential, toPasskeyView } from './passkey'
 import { generateTotp } from './totp'
 import { generateSshKeyMaterial, type SshKeyMaterial } from './ssh-key'
+import {
+  signSshAgentData as createSshAgentSignature,
+  type SshAgentSignature
+} from './ssh-agent-crypto'
+import { SSH_AGENT_MAX_MESSAGE_LENGTH, type SshAgentRsaHash } from './ssh-agent-protocol'
 import {
   fetchWebsiteIconDataUrl,
   parseWebsiteHostname,
@@ -232,6 +238,34 @@ export interface VaultExportSnapshot {
   snapshot: PortableVaultSnapshot
   skippedTrashItems: number
 }
+
+/** Main-process-only SSH Agent identity metadata. Private key material is never exposed here. */
+export interface SshAgentVaultIdentity {
+  itemId: string
+  name: string
+  publicKeyBlob: Buffer
+  fingerprint: string
+  reprompt: VaultReprompt
+  generation: number
+}
+
+export interface SshAgentVaultSignRequest {
+  publicKeyBlob: Buffer
+  data: Buffer
+  rsaHash: SshAgentRsaHash | undefined
+  /** The unlocked-vault epoch in which the approval context was created. */
+  expectedGeneration: number
+}
+
+export interface SshAgentVaultSignResult extends SshAgentSignature {
+  itemId: string
+  generation: number
+}
+
+export type SshAgentVaultAuthorizationValidator = (
+  ids: readonly string[],
+  state: { generation: number }
+) => boolean
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -581,6 +615,26 @@ function isVaultItemType(value: unknown): value is VaultItemType {
     value === 'secureNote' ||
     value === 'sshKey'
   )
+}
+
+function parseSupportedSshAgentPublicKeyBlob(publicKey: string): Buffer | null {
+  const parsed = utils.parseKey(publicKey)
+  if (parsed instanceof Error || Array.isArray(parsed) || parsed.isPrivateKey()) return null
+  if (
+    parsed.type !== 'ssh-ed25519' &&
+    parsed.type !== 'ssh-rsa' &&
+    parsed.type !== 'ecdsa-sha2-nistp256' &&
+    parsed.type !== 'ecdsa-sha2-nistp384' &&
+    parsed.type !== 'ecdsa-sha2-nistp521'
+  ) {
+    return null
+  }
+  const blob = parsed.getPublicSSH()
+  return blob.length === 0 || blob.length > SSH_AGENT_MAX_MESSAGE_LENGTH ? null : Buffer.from(blob)
+}
+
+function sshAgentFingerprint(publicKeyBlob: Buffer): string {
+  return `SHA256:${createHash('sha256').update(publicKeyBlob).digest('base64').replace(/=+$/u, '')}`
 }
 
 function parseStoredPasskey(value: unknown): StoredPasskeyCredential {
@@ -2625,6 +2679,88 @@ export class VaultService {
       assertUuid(request.id)
       const login = this.findLogin(this.requireData(), request.id)
       return { reprompt: login.reprompt, generation: this.generation }
+    })
+  }
+
+  /**
+   * Returns a point-in-time public identity snapshot for the main-process SSH Agent. Invalid or
+   * unsupported public keys are omitted rather than allowing unusable identities onto the wire.
+   */
+  listSshAgentIdentities(): Promise<SshAgentVaultIdentity[]> {
+    return this.exclusive(async () => {
+      const data = this.requireData()
+      const generation = this.generation
+      const identities: SshAgentVaultIdentity[] = []
+      for (const login of data.logins) {
+        if (login.type !== 'sshKey' || login.deletedAt !== null || login.archivedAt !== null) {
+          continue
+        }
+        const publicKeyBlob = parseSupportedSshAgentPublicKeyBlob(login.publicKey)
+        if (!publicKeyBlob) continue
+        identities.push({
+          itemId: login.id,
+          name: login.name,
+          publicKeyBlob,
+          fingerprint: sshAgentFingerprint(publicKeyBlob),
+          reprompt: login.reprompt,
+          generation
+        })
+      }
+      return identities
+    })
+  }
+
+  /**
+   * Signs inside the vault mutex after atomically re-checking the item and its reprompt policy.
+   * The validator is intentionally synchronous so an approval capability cannot be raced by sync.
+   */
+  signSshAgentRequest(
+    request: SshAgentVaultSignRequest,
+    validateAuthorization: SshAgentVaultAuthorizationValidator
+  ): Promise<SshAgentVaultSignResult> {
+    return this.runAuthorizedOperation(validateAuthorization, async (authorize) => {
+      if (
+        !Buffer.isBuffer(request.publicKeyBlob) ||
+        request.publicKeyBlob.length === 0 ||
+        request.publicKeyBlob.length > SSH_AGENT_MAX_MESSAGE_LENGTH ||
+        !Buffer.isBuffer(request.data) ||
+        request.data.length > SSH_AGENT_MAX_MESSAGE_LENGTH ||
+        (request.rsaHash !== undefined &&
+          request.rsaHash !== 'sha256' &&
+          request.rsaHash !== 'sha512') ||
+        !Number.isSafeInteger(request.expectedGeneration) ||
+        request.expectedGeneration < 0
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      if (request.expectedGeneration !== this.generation) throw new VaultError('LOCKED')
+
+      const matches = this.requireData().logins.filter((login) => {
+        if (login.type !== 'sshKey' || login.deletedAt !== null || login.archivedAt !== null) {
+          return false
+        }
+        return parseSupportedSshAgentPublicKeyBlob(login.publicKey)?.equals(request.publicKeyBlob)
+      })
+      if (matches.length === 0) throw new VaultError('NOT_FOUND')
+      // The public key is the protocol identifier. Refuse an ambiguous duplicate instead of
+      // accidentally selecting the copy with the weaker reprompt policy.
+      if (matches.length !== 1) throw new VaultError('INVALID_INPUT')
+      const login = matches[0]!
+
+      authorize([login.id])
+      const signature = createSshAgentSignature(
+        login.privateKey,
+        request.publicKeyBlob,
+        request.data,
+        request.rsaHash
+      )
+      if (request.expectedGeneration !== this.generation) throw new VaultError('LOCKED')
+      return {
+        itemId: login.id,
+        generation: this.generation,
+        algorithm: signature.algorithm,
+        signature: signature.signature
+      }
     })
   }
 
