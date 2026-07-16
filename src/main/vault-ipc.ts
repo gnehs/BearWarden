@@ -208,7 +208,9 @@ function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
     'lockOnSuspend',
     'clearClipboardSeconds',
     'defaultSort',
-    'theme'
+    'theme',
+    'sshAgentEnabled',
+    'sshAgentPromptBehavior'
   ])
   const result: AppSettingsUpdate = {}
   if (record.contentProtection !== undefined) {
@@ -250,6 +252,20 @@ function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
       throw new VaultError('INVALID_INPUT')
     }
     result.theme = record.theme
+  }
+  if (record.sshAgentEnabled !== undefined) {
+    if (typeof record.sshAgentEnabled !== 'boolean') throw new VaultError('INVALID_INPUT')
+    result.sshAgentEnabled = record.sshAgentEnabled
+  }
+  if (record.sshAgentPromptBehavior !== undefined) {
+    if (
+      record.sshAgentPromptBehavior !== 'always' &&
+      record.sshAgentPromptBehavior !== 'never' &&
+      record.sshAgentPromptBehavior !== 'rememberUntilLock'
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    result.sshAgentPromptBehavior = record.sshAgentPromptBehavior
   }
   return result
 }

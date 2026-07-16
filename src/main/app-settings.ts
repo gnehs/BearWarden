@@ -6,7 +6,7 @@ import type { AppSettings, AppSettingsUpdate, VaultStatus } from '../shared/vaul
 import type { EncryptedVaultStore } from './encrypted-vault-store'
 import { VaultError } from './vault-errors'
 
-const SETTINGS_VERSION = 2
+const SETTINGS_VERSION = 3
 const MAX_SETTINGS_BYTES = 16 * 1024
 const MAX_TOUCH_ID_BYTES = 64 * 1024
 
@@ -17,6 +17,14 @@ interface StoredSettings extends Omit<AppSettings, 'touchIdAvailable' | 'touchId
 export interface AppSettingsRuntime {
   applyContentProtection: (enabled: boolean) => void
   applyClipboardTimeout: (seconds: AppSettings['clearClipboardSeconds']) => void
+  /**
+   * Synchronously publishes persisted SSH-agent preferences to the main-process owner.
+   * The runtime owns any asynchronous socket lifecycle work.
+   */
+  applySshAgentSettings: (settings: {
+    enabled: boolean
+    promptBehavior: AppSettings['sshAgentPromptBehavior']
+  }) => void
   lockVault: () => Promise<void>
   unlockVault: (masterPassword: string) => Promise<VaultStatus>
 }
@@ -30,7 +38,9 @@ const DEFAULTS: StoredSettings = {
   lockOnSuspend: true,
   clearClipboardSeconds: 30,
   defaultSort: 'recent',
-  theme: 'system'
+  theme: 'system',
+  sshAgentEnabled: false,
+  sshAgentPromptBehavior: 'always'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -38,14 +48,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function parseSettings(value: unknown): StoredSettings {
-  if (!isRecord(value) || (value.version !== 1 && value.version !== SETTINGS_VERSION)) {
+  if (
+    !isRecord(value) ||
+    (value.version !== 1 && value.version !== 2 && value.version !== SETTINGS_VERSION)
+  ) {
     throw new Error('invalid settings')
   }
   const autoLockMinutes = value.autoLockMinutes
   const clearClipboardSeconds = value.clearClipboardSeconds
   if (
     typeof value.contentProtection !== 'boolean' ||
-    (value.version === SETTINGS_VERSION && typeof value.showWebsiteIcons !== 'boolean') ||
+    (value.version !== 1 && typeof value.showWebsiteIcons !== 'boolean') ||
     (autoLockMinutes !== 0 &&
       autoLockMinutes !== 1 &&
       autoLockMinutes !== 5 &&
@@ -60,7 +73,12 @@ function parseSettings(value: unknown): StoredSettings {
       clearClipboardSeconds !== 60 &&
       clearClipboardSeconds !== 120) ||
     (value.defaultSort !== 'recent' && value.defaultSort !== 'name') ||
-    (value.theme !== 'system' && value.theme !== 'light' && value.theme !== 'dark')
+    (value.theme !== 'system' && value.theme !== 'light' && value.theme !== 'dark') ||
+    (value.version === SETTINGS_VERSION && typeof value.sshAgentEnabled !== 'boolean') ||
+    (value.version === SETTINGS_VERSION &&
+      value.sshAgentPromptBehavior !== 'always' &&
+      value.sshAgentPromptBehavior !== 'never' &&
+      value.sshAgentPromptBehavior !== 'rememberUntilLock')
   ) {
     throw new Error('invalid settings')
   }
@@ -73,7 +91,13 @@ function parseSettings(value: unknown): StoredSettings {
     lockOnSuspend: value.lockOnSuspend,
     clearClipboardSeconds,
     defaultSort: value.defaultSort,
-    theme: value.theme
+    theme: value.theme,
+    sshAgentEnabled:
+      value.version === SETTINGS_VERSION ? (value.sshAgentEnabled as boolean) : false,
+    sshAgentPromptBehavior:
+      value.version === SETTINGS_VERSION
+        ? (value.sshAgentPromptBehavior as AppSettings['sshAgentPromptBehavior'])
+        : 'always'
   }
 }
 
@@ -273,6 +297,10 @@ export class AppSettingsService {
   private applyRuntimeSettings(): void {
     this.runtime.applyContentProtection(this.settings.contentProtection)
     this.runtime.applyClipboardTimeout(this.settings.clearClipboardSeconds)
+    this.runtime.applySshAgentSettings({
+      enabled: this.settings.sshAgentEnabled,
+      promptBehavior: this.settings.sshAgentPromptBehavior
+    })
   }
 
   private resetAutoLock(): void {

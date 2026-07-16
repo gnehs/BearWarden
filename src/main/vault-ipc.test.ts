@@ -27,6 +27,57 @@ import { SshKeyImportError } from './ssh-key-import'
 
 beforeEach(() => electronMock.handlers.clear())
 
+describe('registerVaultIpc settings validation', () => {
+  function settingsHarness(): {
+    event: unknown
+    settings: { update: ReturnType<typeof vi.fn> }
+  } {
+    const mainFrame = { url: 'app://bearwarden/index.html' }
+    const webContents = {
+      id: 91,
+      mainFrame,
+      getURL: () => mainFrame.url,
+      send: vi.fn(),
+      isDestroyed: () => false
+    }
+    const settings = { update: vi.fn(async (update) => update), get: vi.fn() }
+    registerVaultIpc({
+      vault: {} as VaultService,
+      portability: {} as Parameters<typeof registerVaultIpc>[0]['portability'],
+      settings: settings as unknown as AppSettingsService,
+      sshKeyImportSessions: new SshKeyImportSessionStore({ readClipboard: () => '' }),
+      getMainWindow: () =>
+        ({ isDestroyed: () => false, webContents }) as unknown as ReturnType<
+          Parameters<typeof registerVaultIpc>[0]['getMainWindow']
+        >
+    })
+    return { event: { sender: webContents, senderFrame: mainFrame }, settings }
+  }
+
+  it('whitelists and validates SSH agent settings before they reach persistence', async () => {
+    const { event, settings } = settingsHarness()
+    const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!
+
+    await expect(
+      update(event, { sshAgentEnabled: true, sshAgentPromptBehavior: 'rememberUntilLock' })
+    ).resolves.toEqual({ sshAgentEnabled: true, sshAgentPromptBehavior: 'rememberUntilLock' })
+    expect(settings.update).toHaveBeenCalledWith({
+      sshAgentEnabled: true,
+      sshAgentPromptBehavior: 'rememberUntilLock'
+    })
+
+    for (const invalid of [
+      { sshAgentEnabled: 'true' },
+      { sshAgentPromptBehavior: 'ask-every-time' },
+      { sshAgentPromptBehavior: null },
+      { sshAgentEnabled: true, privateKey: 'must-not-be-accepted' }
+    ]) {
+      await expect(update(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(settings.update).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('RepromptAuthorizationStore', () => {
   it('binds an opaque token to sender, item, vault generation, and expiry', () => {
     let now = 1_000

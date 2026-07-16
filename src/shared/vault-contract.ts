@@ -718,6 +718,9 @@ export interface SshKeyUpdateImportedRequest extends LoginUpdateRequest {
 
 export type AppTheme = 'system' | 'light' | 'dark'
 
+/** Matches Bitwarden's SSH agent prompt behavior values. */
+export type SshAgentPromptBehavior = 'always' | 'never' | 'rememberUntilLock'
+
 export interface AppSettings {
   contentProtection: boolean
   showWebsiteIcons: boolean
@@ -727,6 +730,10 @@ export interface AppSettings {
   clearClipboardSeconds: 0 | 15 | 30 | 60 | 120
   defaultSort: LoginSort
   theme: AppTheme
+  /** Whether BearWarden exposes SSH keys through the local SSH agent socket. */
+  sshAgentEnabled: boolean
+  /** Controls whether individual SSH signing requests require user approval. */
+  sshAgentPromptBehavior: SshAgentPromptBehavior
   touchIdAvailable: boolean
   touchIdEnabled: boolean
 }

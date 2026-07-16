@@ -25,6 +25,7 @@ type TestMock = ReturnType<typeof vi.fn>
 interface TestRuntime {
   applyContentProtection: TestMock
   applyClipboardTimeout: TestMock
+  applySshAgentSettings: TestMock
   lockVault: TestMock
   unlockVault: TestMock
 }
@@ -66,6 +67,7 @@ describe('AppSettingsService', () => {
     const runtime = {
       applyContentProtection: vi.fn(),
       applyClipboardTimeout: vi.fn(),
+      applySshAgentSettings: vi.fn(),
       lockVault: vi.fn().mockResolvedValue(undefined),
       unlockVault: vi.fn().mockResolvedValue({ state: 'unlocked' as const })
     }
@@ -89,7 +91,9 @@ describe('AppSettingsService', () => {
       lockOnSuspend: true,
       clearClipboardSeconds: 30,
       defaultSort: 'recent',
-      theme: 'system'
+      theme: 'system',
+      sshAgentEnabled: false,
+      sshAgentPromptBehavior: 'always'
     })
 
     const updated = await service.update({
@@ -97,17 +101,30 @@ describe('AppSettingsService', () => {
       showWebsiteIcons: false,
       autoLockMinutes: 0,
       clearClipboardSeconds: 60,
-      theme: 'dark'
+      theme: 'dark',
+      sshAgentEnabled: true,
+      sshAgentPromptBehavior: 'rememberUntilLock'
     })
     expect(updated).toMatchObject({
       contentProtection: false,
       showWebsiteIcons: false,
       autoLockMinutes: 0,
       clearClipboardSeconds: 60,
-      theme: 'dark'
+      theme: 'dark',
+      sshAgentEnabled: true,
+      sshAgentPromptBehavior: 'rememberUntilLock'
     })
     expect(runtime.applyContentProtection).toHaveBeenLastCalledWith(false)
     expect(runtime.applyClipboardTimeout).toHaveBeenLastCalledWith(60)
+    expect(runtime.applySshAgentSettings).toHaveBeenLastCalledWith({
+      enabled: true,
+      promptBehavior: 'rememberUntilLock'
+    })
+    expect(JSON.parse(await readFile(join(directory, 'settings.json'), 'utf8'))).toMatchObject({
+      version: 3,
+      sshAgentEnabled: true,
+      sshAgentPromptBehavior: 'rememberUntilLock'
+    })
     expect(JSON.parse(await readFile(join(directory, 'settings.json'), 'utf8'))).not.toHaveProperty(
       'masterPassword'
     )
@@ -131,7 +148,67 @@ describe('AppSettingsService', () => {
     )
     const { service } = createService(settingsPath)
     await service.initialize()
-    expect(await service.get()).toMatchObject({ showWebsiteIcons: false })
+    expect(await service.get()).toMatchObject({
+      showWebsiteIcons: false,
+      sshAgentEnabled: false,
+      sshAgentPromptBehavior: 'always'
+    })
+    service.dispose()
+  })
+
+  it('migrates version 2 settings without silently enabling the SSH agent', async () => {
+    const settingsPath = join(directory, 'settings.json')
+    await writeFile(
+      settingsPath,
+      JSON.stringify({
+        version: 2,
+        contentProtection: true,
+        showWebsiteIcons: true,
+        autoLockMinutes: 15,
+        lockOnScreenLock: true,
+        lockOnSuspend: true,
+        clearClipboardSeconds: 30,
+        defaultSort: 'recent',
+        theme: 'system'
+      })
+    )
+    const { service, runtime } = createService(settingsPath)
+    await service.initialize()
+    expect(await service.get()).toMatchObject({
+      sshAgentEnabled: false,
+      sshAgentPromptBehavior: 'always'
+    })
+    expect(runtime.applySshAgentSettings).toHaveBeenLastCalledWith({
+      enabled: false,
+      promptBehavior: 'always'
+    })
+    service.dispose()
+  })
+
+  it('rejects malformed persisted SSH agent settings and keeps secure defaults', async () => {
+    const settingsPath = join(directory, 'settings.json')
+    await writeFile(
+      settingsPath,
+      JSON.stringify({
+        version: 3,
+        contentProtection: true,
+        showWebsiteIcons: true,
+        autoLockMinutes: 15,
+        lockOnScreenLock: true,
+        lockOnSuspend: true,
+        clearClipboardSeconds: 30,
+        defaultSort: 'recent',
+        theme: 'system',
+        sshAgentEnabled: true,
+        sshAgentPromptBehavior: 'ask-every-time'
+      })
+    )
+    const { service } = createService(settingsPath)
+    await service.initialize()
+    await expect(service.get()).resolves.toMatchObject({
+      sshAgentEnabled: false,
+      sshAgentPromptBehavior: 'always'
+    })
     service.dispose()
   })
 

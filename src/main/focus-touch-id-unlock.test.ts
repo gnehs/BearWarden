@@ -31,6 +31,8 @@ function createRuntime(
     clearClipboardSeconds: 30,
     defaultSort: 'recent',
     theme: 'system',
+    sshAgentEnabled: false,
+    sshAgentPromptBehavior: 'always',
     touchIdAvailable: true,
     touchIdEnabled: true
   }

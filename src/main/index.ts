@@ -11,7 +11,12 @@ import {
   shell
 } from 'electron'
 import { electronApp, is } from '@electron-toolkit/utils'
-import { IPC_CHANNELS, IPC_EVENTS, type SyncStatus } from '../shared/vault-contract'
+import {
+  IPC_CHANNELS,
+  IPC_EVENTS,
+  type SshAgentPromptBehavior,
+  type SyncStatus
+} from '../shared/vault-contract'
 import { BitwardenDirectClient } from './bitwarden-direct'
 import { AutoSyncCoordinator } from './auto-sync-coordinator'
 import { AppSettingsService } from './app-settings'
@@ -37,6 +42,11 @@ let sshKeyImportSessions: SshKeyImportSessionStore | null = null
 let contentProtectionEnabled = true
 let vaultLockGeneration = 0
 let rendererHandlesLockRequests = false
+const sshAgentRuntime = {
+  applySettings(settings: { enabled: boolean; promptBehavior: SshAgentPromptBehavior }): void {
+    void settings
+  }
+}
 
 class SensitiveClipboard {
   private fingerprint: Buffer | null = null
@@ -364,6 +374,9 @@ if (hasSingleInstanceLock)
           if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setContentProtection(enabled)
         },
         applyClipboardTimeout: (seconds) => sensitiveClipboard.setClearDelay(seconds),
+        applySshAgentSettings: (next) => {
+          sshAgentRuntime.applySettings(next)
+        },
         lockVault: lockVaultForInactivity,
         unlockVault: async (masterPassword) => {
           if (!vault) throw new Error('Vault service unavailable')
