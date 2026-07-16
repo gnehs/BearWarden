@@ -130,7 +130,11 @@ import {
   type RandomInt
 } from './credential-generator'
 import { loadEffLongWordlist } from './eff-wordlist'
-import type { PortableVaultSnapshot } from './vault-portability-codec'
+import { buildBitwardenJson, type PortableVaultSnapshot } from './vault-portability-codec'
+import type {
+  NativeAttachmentBackupEntry,
+  NativeAttachmentBackupSource
+} from './native-attachment-backup'
 import {
   completeSyncMetadata,
   fingerprintLogin,
@@ -323,6 +327,13 @@ export interface VaultServiceOptions {
 export interface VaultExportSnapshot {
   snapshot: PortableVaultSnapshot
   skippedTrashItems: number
+}
+
+export interface VaultNativeAttachmentBackupSource extends NativeAttachmentBackupSource {
+  exportedFolders: number
+  exportedItems: number
+  skippedTrashItems: number
+  dispose(): void
 }
 
 /** Main-process-only SSH Agent identity metadata. Private key material is never exposed here. */
@@ -2806,6 +2817,7 @@ export class VaultService {
   private syncAbort: AbortController | null = null
   private readonly notificationTokenAborts = new Set<AbortController>()
   private readonly accountSecurityAborts = new Set<AbortController>()
+  private readonly nativeAttachmentBackupAborts = new Set<AbortController>()
   private readonly authenticatorSetupSessions = new Map<string, AuthenticatorSetupSession>()
   private readonly emailTwoFactorSetupSessions = new Map<string, EmailTwoFactorSetupSession>()
   private syncInProgress = false
@@ -2930,6 +2942,7 @@ export class VaultService {
     this.syncAbort?.abort()
     this.abortNotificationTokenLeases()
     this.abortAccountSecurityRequests()
+    this.abortNativeAttachmentBackups()
     this.activeExposedPasswordOperation?.abort.abort()
     this.activeAccountBreachOperation?.abort.abort()
     return this.exclusive(async () => {
@@ -2947,6 +2960,7 @@ export class VaultService {
     this.syncAbort?.abort()
     this.abortNotificationTokenLeases()
     this.abortAccountSecurityRequests()
+    this.abortNativeAttachmentBackups()
     this.activeExposedPasswordOperation?.abort.abort()
     this.activeExposedPasswordOperation = null
     this.activeAccountBreachOperation?.abort.abort()
@@ -3840,6 +3854,7 @@ export class VaultService {
     this.syncAbort?.abort()
     this.abortNotificationTokenLeases()
     this.abortAccountSecurityRequests()
+    this.abortNativeAttachmentBackups()
     this.activeAccountBreachOperation?.abort.abort()
     return this.exclusive(async () => {
       const current = this.requireData()
@@ -3978,6 +3993,7 @@ export class VaultService {
     this.syncAbort?.abort()
     this.abortNotificationTokenLeases()
     this.abortAccountSecurityRequests()
+    this.abortNativeAttachmentBackups()
     this.activeAccountBreachOperation?.abort.abort()
     return this.exclusive(async () => {
       const next = cloneData(this.requireData())
@@ -5305,6 +5321,229 @@ export class VaultService {
     })
   }
 
+  async createNativeAttachmentBackupSource(
+    masterPassword: string
+  ): Promise<VaultNativeAttachmentBackupSource> {
+    // Bitwarden's attachment metadata contains encrypted-envelope size, while the native archive
+    // requires exact plaintext sizes in its authenticated manifest. Preflight therefore downloads,
+    // authenticates and counts every plaintext once without retaining it. Each later open (including
+    // a resume) deliberately re-downloads and re-authenticates the complete ciphertext before bytes
+    // at the committed offset are yielded. A native export consequently transfers attachments twice.
+    type Candidate = NativeAttachmentBackupEntry & { remoteItemId: string }
+    const prepared = await this.exclusive(async () => {
+      await this.assertMasterPassword(masterPassword)
+      const data = this.requireData()
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      const snapshot = this.localSyncSnapshot(data)
+      const activeItems = snapshot.logins.filter((item) => item.deletedAt === null)
+      const candidates: Candidate[] = []
+      for (const item of data.logins.filter((login) => login.deletedAt === null)) {
+        const mapping = sync.loginMappings.find((entry) => entry.localId === item.id)
+        if (!mapping) continue
+        for (const attachment of item.attachments) {
+          candidates.push({
+            id: attachment.id,
+            itemId: item.id,
+            fileName: attachment.fileName,
+            size: 0,
+            remoteItemId: mapping.remoteId
+          })
+        }
+      }
+      const abort = new AbortController()
+      this.nativeAttachmentBackupAborts.add(abort)
+      const portable: PortableVaultSnapshot = {
+        folders: snapshot.folders.map((folder) => ({ ...folder })),
+        items: activeItems.map((item) => ({
+          ...item,
+          uris: cloneLoginUris(item.uris),
+          passkeys: item.passkeys.map((passkey) => ({ ...passkey })),
+          customFields: cloneCustomFields(item.customFields),
+          passwordHistory: clonePasswordHistory(item.passwordHistory)
+        }))
+      }
+      return {
+        abort,
+        candidates,
+        client,
+        generation: this.generation,
+        portable,
+        skippedTrashItems: snapshot.logins.length - activeItems.length
+      }
+    })
+
+    let disposed = false
+    const ensureCurrent = (): void => {
+      if (
+        disposed ||
+        prepared.abort.signal.aborted ||
+        prepared.generation !== this.generation ||
+        this.syncClient !== prepared.client ||
+        !this.data?.sync?.state.session
+      ) {
+        throw new VaultError('LOCKED')
+      }
+    }
+    const download = async (
+      candidate: Candidate,
+      consume: (chunks: AsyncIterable<Buffer>) => Promise<number>
+    ): Promise<number> => {
+      ensureCurrent()
+      let streamed:
+        | Awaited<ReturnType<NonNullable<BitwardenSyncClient['downloadAttachmentStream']>>>
+        | undefined
+      let clearText: Buffer | undefined
+      try {
+        const result = prepared.client.downloadAttachmentStream
+          ? await prepared.client.downloadAttachmentStream(
+              candidate.remoteItemId,
+              candidate.id,
+              prepared.abort.signal
+            )
+          : await prepared.client.downloadAttachment(
+              candidate.remoteItemId,
+              candidate.id,
+              prepared.abort.signal
+            )
+        ensureCurrent()
+        if (result.fileName !== candidate.fileName) throw new VaultError('ATTACHMENT_FAILED')
+        if ('dispose' in result) streamed = result
+        else clearText = result.data
+        const chunks: AsyncIterable<Buffer> = streamed
+          ? streamed.data.chunks(prepared.abort.signal)
+          : (async function* (): AsyncIterable<Buffer> {
+              yield clearText!
+            })()
+        return await consume(chunks)
+      } catch (error) {
+        if (prepared.abort.signal.aborted || prepared.generation !== this.generation) {
+          throw new VaultError('LOCKED')
+        }
+        if (error instanceof VaultError) throw error
+        throw new VaultError('ATTACHMENT_FAILED')
+      } finally {
+        clearText?.fill(0)
+        await streamed?.dispose().catch(() => undefined)
+      }
+    }
+
+    try {
+      const entries: NativeAttachmentBackupEntry[] = []
+      for (const candidate of prepared.candidates) {
+        const size = await download(candidate, async (chunks) => {
+          let bytes = 0
+          for await (const chunk of chunks) {
+            try {
+              bytes += chunk.length
+            } finally {
+              chunk.fill(0)
+            }
+          }
+          return bytes
+        })
+        entries.push({
+          id: candidate.id,
+          itemId: candidate.itemId,
+          fileName: candidate.fileName,
+          size
+        })
+      }
+      ensureCurrent()
+      const source: VaultNativeAttachmentBackupSource = {
+        vaultJson: buildBitwardenJson(prepared.portable),
+        attachments: entries,
+        exportedFolders: prepared.portable.folders.length,
+        exportedItems: prepared.portable.items.length,
+        skippedTrashItems: prepared.skippedTrashItems,
+        openAttachment: (entry, offset, signal) => {
+          const index = entries.findIndex(
+            (candidate) =>
+              candidate.id === entry.id &&
+              candidate.itemId === entry.itemId &&
+              candidate.fileName === entry.fileName &&
+              candidate.size === entry.size
+          )
+          if (index < 0 || !Number.isSafeInteger(offset) || offset < 0 || offset > entry.size) {
+            throw new VaultError('INVALID_INPUT')
+          }
+          const candidate = prepared.candidates[index]!
+          return (async function* (): AsyncIterable<Buffer> {
+            ensureCurrent()
+            const operationSignal = signal
+              ? AbortSignal.any([prepared.abort.signal, signal])
+              : prepared.abort.signal
+            let skipped = 0
+            let total = 0
+            let streamed:
+              | Awaited<ReturnType<NonNullable<BitwardenSyncClient['downloadAttachmentStream']>>>
+              | undefined
+            let clearText: Buffer | undefined
+            try {
+              const result = prepared.client.downloadAttachmentStream
+                ? await prepared.client.downloadAttachmentStream(
+                    candidate.remoteItemId,
+                    candidate.id,
+                    operationSignal
+                  )
+                : await prepared.client.downloadAttachment(
+                    candidate.remoteItemId,
+                    candidate.id,
+                    operationSignal
+                  )
+              ensureCurrent()
+              if (result.fileName !== candidate.fileName) {
+                throw new VaultError('ATTACHMENT_FAILED')
+              }
+              if ('dispose' in result) streamed = result
+              else clearText = result.data
+              const chunks: AsyncIterable<Buffer> = streamed
+                ? streamed.data.chunks(operationSignal)
+                : (async function* (): AsyncIterable<Buffer> {
+                    yield clearText!
+                  })()
+              for await (const chunk of chunks) {
+                if (operationSignal.aborted) throw new VaultError('LOCKED')
+                total += chunk.length
+                if (skipped + chunk.length <= offset) {
+                  skipped += chunk.length
+                  chunk.fill(0)
+                  continue
+                }
+                const start = Math.max(0, offset - skipped)
+                if (start > 0) chunk.subarray(0, start).fill(0)
+                skipped += chunk.length
+                yield chunk.subarray(start)
+              }
+              if (total !== entry.size) throw new VaultError('ATTACHMENT_FAILED')
+            } catch (error) {
+              if (prepared.abort.signal.aborted) {
+                throw new VaultError('LOCKED')
+              }
+              if (error instanceof VaultError) throw error
+              throw new VaultError('ATTACHMENT_FAILED')
+            } finally {
+              clearText?.fill(0)
+              await streamed?.dispose().catch(() => undefined)
+            }
+          })()
+        },
+        dispose: () => {
+          if (disposed) return
+          disposed = true
+          prepared.abort.abort()
+          this.nativeAttachmentBackupAborts.delete(prepared.abort)
+        }
+      }
+      return source
+    } catch (error) {
+      disposed = true
+      prepared.abort.abort()
+      this.nativeAttachmentBackupAborts.delete(prepared.abort)
+      throw error
+    }
+  }
+
   importPortableSnapshot(
     snapshot: PortableVaultSnapshot,
     skippedTrashItems: number,
@@ -6530,6 +6769,11 @@ export class VaultService {
     for (const sessionId of this.emailTwoFactorSetupSessions.keys()) {
       this.deleteEmailTwoFactorSetupSession(sessionId)
     }
+  }
+
+  private abortNativeAttachmentBackups(): void {
+    for (const abort of this.nativeAttachmentBackupAborts) abort.abort()
+    this.nativeAttachmentBackupAborts.clear()
   }
 
   private evictExpiredAuthenticatorSetupSessions(): void {

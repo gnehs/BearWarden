@@ -15,6 +15,7 @@ import {
   parseBitwardenOrChromiumCsv
 } from './vault-portability-codec'
 import { VaultError } from './vault-errors'
+import { writeNativeAttachmentBackup } from './native-attachment-backup'
 import type { VaultService } from './vault-service'
 
 const MAX_PORTABLE_FILE_BYTES = 64 * 1024 * 1024
@@ -40,6 +41,12 @@ function exportFileName(now: Date): string {
     .replace(/\.\d{3}Z$/, 'Z')
     .replace('T', '_')
   return `bitwarden_encrypted_export_${stamp}.json`
+}
+
+function nativeExportFileName(now: Date): string {
+  return exportFileName(now)
+    .replace('bitwarden_encrypted_export_', 'bearwarden_backup_')
+    .replace(/\.json$/, '.bwbackup')
 }
 
 async function syncDirectory(path: string): Promise<void> {
@@ -133,11 +140,35 @@ export class VaultPortabilityService {
     }
 
     await this.vault.verifyPortabilityOwner(request.masterPassword)
-    const path = await this.picker.chooseExportPath(exportFileName(this.now()))
+    const format = request.format ?? 'bitwarden-json'
+    if (format !== 'bitwarden-json' && format !== 'bearwarden-native') {
+      throw new VaultError('INVALID_INPUT')
+    }
+    const path = await this.picker.chooseExportPath(
+      format === 'bearwarden-native' ? nativeExportFileName(this.now()) : exportFileName(this.now())
+    )
     if (path === null) {
       return { canceled: true, exportedFolders: 0, exportedItems: 0, skippedTrashItems: 0 }
     }
     if (typeof path !== 'string' || path.length === 0) throw new VaultError('INTERNAL_ERROR')
+
+    if (format === 'bearwarden-native') {
+      const source = await this.vault.createNativeAttachmentBackupSource(request.masterPassword)
+      try {
+        const result = await writeNativeAttachmentBackup(path, request.password, source)
+        return {
+          canceled: false,
+          exportedFolders: source.exportedFolders,
+          exportedItems: source.exportedItems,
+          skippedTrashItems: source.skippedTrashItems,
+          attachmentCount: result.attachmentCount,
+          attachmentBytes: result.attachmentBytes,
+          resumed: result.resumed
+        }
+      } finally {
+        source.dispose()
+      }
+    }
 
     const exported = await this.vault.exportPortableSnapshot(request.masterPassword)
     const clearText = buildBitwardenJson(exported.snapshot)

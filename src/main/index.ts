@@ -536,11 +536,16 @@ if (hasSingleInstanceLock)
     })
     const portability = new VaultPortabilityService(vault, {
       chooseExportPath: async (defaultName) => {
+        const native = defaultName.endsWith('.bwbackup')
         const options = {
           title: '匯出加密保管庫',
           defaultPath: defaultName,
           buttonLabel: '匯出',
-          filters: [{ name: 'Bitwarden JSON', extensions: ['json'] }],
+          filters: [
+            native
+              ? { name: 'BearWarden 原生附件備份', extensions: ['bwbackup'] }
+              : { name: 'Bitwarden JSON', extensions: ['json'] }
+          ],
           properties: ['showOverwriteConfirmation' as const]
         }
         const result = mainWindow

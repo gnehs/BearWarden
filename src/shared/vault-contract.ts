@@ -174,6 +174,11 @@ export interface VaultExportRequest {
   masterPassword: string
   /** A portable backup password; it is used only in the main process. */
   password: string
+  /**
+   * Internal preview only; the renderer does not expose it until native restore exists.
+   * Omitted for the interoperable Bitwarden JSON default.
+   */
+  format?: 'bitwarden-json' | 'bearwarden-native'
 }
 
 export interface VaultImportRequest {
@@ -188,6 +193,10 @@ export interface VaultExportResult {
   exportedFolders: number
   exportedItems: number
   skippedTrashItems: number
+  /** Present only for the UI-hidden, main-process native attachment backup preview. */
+  attachmentCount?: number
+  attachmentBytes?: number
+  resumed?: boolean
 }
 
 export interface VaultImportResult {

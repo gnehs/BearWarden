@@ -12,6 +12,7 @@ import {
 } from './vault-portability-codec'
 import { VaultPortabilityService, type VaultPortabilityPicker } from './vault-portability'
 import type { VaultService } from './vault-service'
+import { inspectNativeAttachmentBackup } from './native-attachment-backup'
 
 const MASTER_PASSWORD = 'correct horse battery staple'
 const BACKUP_PASSWORD = 'portable backup password'
@@ -97,6 +98,7 @@ async function harness(options?: {
   vault: {
     verifyPortabilityOwner: ReturnType<typeof vi.fn>
     exportPortableSnapshot: ReturnType<typeof vi.fn>
+    createNativeAttachmentBackupSource: ReturnType<typeof vi.fn>
     importPortableSnapshot: ReturnType<typeof vi.fn>
   }
   picker: VaultPortabilityPicker
@@ -107,9 +109,19 @@ async function harness(options?: {
   const outputPath = join(directory, 'nested', 'backup.json')
   const inputPath = join(directory, 'input.json')
   const snapshot = portableSnapshot()
+  const disposeNativeSource = vi.fn()
   const vault = {
     verifyPortabilityOwner: vi.fn(async () => undefined),
     exportPortableSnapshot: vi.fn(async () => ({ snapshot, skippedTrashItems: 2 })),
+    createNativeAttachmentBackupSource: vi.fn(async () => ({
+      vaultJson: buildBitwardenJson(snapshot),
+      attachments: [],
+      exportedFolders: snapshot.folders.length,
+      exportedItems: snapshot.items.length,
+      skippedTrashItems: 2,
+      openAttachment: vi.fn(),
+      dispose: disposeNativeSource
+    })),
     importPortableSnapshot: vi.fn(async () => ({
       importedFolders: snapshot.folders.length,
       importedItems: snapshot.items.length,
@@ -171,6 +183,36 @@ describe('VaultPortabilityService', () => {
       password: 'sample-secret'
     })
     expect((await stat(outputPath)).mode & 0o777).toBe(0o600)
+  })
+
+  it('keeps native attachment backup behind an explicit main-process format', async () => {
+    const { outputPath, picker, service, vault } = await harness()
+
+    await expect(
+      service.exportVault({
+        masterPassword: MASTER_PASSWORD,
+        password: BACKUP_PASSWORD,
+        format: 'bearwarden-native'
+      })
+    ).resolves.toEqual({
+      canceled: false,
+      exportedFolders: 1,
+      exportedItems: 1,
+      skippedTrashItems: 2,
+      attachmentCount: 0,
+      attachmentBytes: 0,
+      resumed: false
+    })
+
+    expect(picker.chooseExportPath).toHaveBeenCalledWith(
+      'bearwarden_backup_20260716_030405Z.bwbackup'
+    )
+    expect(vault.createNativeAttachmentBackupSource).toHaveBeenCalledWith(MASTER_PASSWORD)
+    expect(vault.exportPortableSnapshot).not.toHaveBeenCalled()
+    const nativeSource = await vault.createNativeAttachmentBackupSource.mock.results[0]!.value
+    expect(nativeSource.dispose).toHaveBeenCalledOnce()
+    const inspected = await inspectNativeAttachmentBackup(outputPath, BACKUP_PASSWORD)
+    expect(parseBitwardenJson(inspected.vaultJson).snapshot.items).toHaveLength(1)
   })
 
   it('verifies the owner but does no data work when a native picker is canceled', async () => {

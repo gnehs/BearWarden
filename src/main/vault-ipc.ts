@@ -210,10 +210,18 @@ export interface VaultIpcOptions {
 }
 
 function parseVaultExport(value: unknown): VaultExportRequest {
-  const record = exactRecord(value, ['masterPassword', 'password'])
+  const record = exactRecord(value, ['masterPassword', 'password', 'format'])
+  if (
+    record.format !== undefined &&
+    record.format !== 'bitwarden-json' &&
+    record.format !== 'bearwarden-native'
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
   return {
     masterPassword: requiredString(record, 'masterPassword'),
-    password: requiredString(record, 'password')
+    password: requiredString(record, 'password'),
+    ...(record.format === undefined ? {} : { format: record.format })
   }
 }
 

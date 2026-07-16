@@ -1935,6 +1935,108 @@ describe('VaultService encrypted local data', () => {
     expect(dispose).toHaveBeenCalledOnce()
   })
 
+  it('preflights native backup sizes, re-downloads for offset resume, and aborts on lock', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.remoteLogins[0]!.attachments = [
+          {
+            id: 'attachment-id',
+            fileName: 'document.txt',
+            size: 99,
+            sizeName: '99 B',
+            legacy: false
+          }
+        ]
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const produced: Buffer[] = []
+    const dispose = vi.fn(async () => undefined)
+    fake!.downloadAttachmentStream = vi.fn(async () => ({
+      fileName: 'document.txt',
+      data: {
+        size: 6,
+        async *chunks() {
+          const first = Buffer.from('abc')
+          const second = Buffer.from('def')
+          produced.push(first, second)
+          yield first
+          yield second
+        }
+      },
+      dispose
+    }))
+
+    const source = await service.createNativeAttachmentBackupSource(MASTER_PASSWORD)
+    expect(source.attachments).toEqual([
+      expect.objectContaining({ id: 'attachment-id', fileName: 'document.txt', size: 6 })
+    ])
+    expect(produced).toEqual([Buffer.alloc(3), Buffer.alloc(3)])
+
+    const resumed: Buffer[] = []
+    for await (const chunk of source.openAttachment(source.attachments[0]!, 3)) {
+      resumed.push(Buffer.from(chunk))
+      chunk.fill(0)
+    }
+    expect(Buffer.concat(resumed).toString()).toBe('def')
+    expect(fake!.downloadAttachmentStream).toHaveBeenCalledTimes(2)
+    expect(produced).toEqual([Buffer.alloc(3), Buffer.alloc(3), Buffer.alloc(3), Buffer.alloc(3)])
+
+    await service.lock()
+    await expect(async () => {
+      for await (const chunk of source.openAttachment(source.attachments[0]!, 0)) chunk.fill(0)
+    }).rejects.toMatchObject({ code: 'LOCKED' })
+    source.dispose()
+    expect(dispose).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects a native backup when a verified download changes its file name', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.remoteLogins[0]!.attachments = [
+          {
+            id: 'attachment-id',
+            fileName: 'expected.txt',
+            size: 16,
+            sizeName: '16 B',
+            legacy: false
+          }
+        ]
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    fake!.downloadAttachmentStream = vi.fn(async () => ({
+      fileName: 'unexpected.txt',
+      data: {
+        size: 0,
+        async *chunks(signal?: AbortSignal) {
+          if (signal?.aborted) yield Buffer.alloc(0)
+        }
+      },
+      dispose: vi.fn(async () => undefined)
+    }))
+
+    await expect(service.createNativeAttachmentBackupSource(MASTER_PASSWORD)).rejects.toMatchObject(
+      { code: 'ATTACHMENT_FAILED' }
+    )
+  })
+
   it('cancels before downloading when the main-process save picker is dismissed', async () => {
     const chooseSavePath = vi.fn(async () => null)
     const attachmentFiles = new VaultAttachmentFileService({ chooseSavePath })

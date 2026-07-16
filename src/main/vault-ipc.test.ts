@@ -505,6 +505,16 @@ describe('registerVaultIpc reprompt gate', () => {
       masterPassword: 'correct horse battery staple',
       password: 'portable backup password'
     })
+    await exportVault(event, {
+      masterPassword: 'correct horse battery staple',
+      password: 'portable backup password',
+      format: 'bearwarden-native'
+    })
+    expect(portability.exportVault).toHaveBeenLastCalledWith({
+      masterPassword: 'correct horse battery staple',
+      password: 'portable backup password',
+      format: 'bearwarden-native'
+    })
     await expect(
       importVault(event, {
         masterPassword: 'correct horse battery staple',
@@ -519,6 +529,11 @@ describe('registerVaultIpc reprompt gate', () => {
         masterPassword: 'correct horse battery staple',
         password: 'portable backup password',
         path: '/tmp/renderer-controlled.json'
+      },
+      {
+        masterPassword: 'correct horse battery staple',
+        password: 'portable backup password',
+        format: 'unknown'
       }
     ]) {
       await expect(exportVault(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
