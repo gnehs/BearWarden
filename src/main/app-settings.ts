@@ -147,6 +147,7 @@ export class AppSettingsService {
   private settings: StoredSettings = { ...DEFAULTS }
   private autoLockTimer: NodeJS.Timeout | null = null
   private touchIdUnlock: Promise<VaultStatus> | null = null
+  private touchIdOperationInProgress = false
 
   constructor(
     private readonly settingsPath: string,
@@ -233,6 +234,29 @@ export class AppSettingsService {
     })
     this.touchIdUnlock = operation
     return operation
+  }
+
+  /**
+   * Performs one operation-scoped biometric verification without decrypting or returning the
+   * stored master password. Concurrent requests never share one successful Touch ID prompt.
+   */
+  async verifyTouchIdOperation(operation: 'createPasskey' | 'usePasskey'): Promise<void> {
+    if (!(await this.touchIdAvailable()) || !(await exists(this.touchIdPath))) {
+      throw new VaultError('TOUCH_ID_UNAVAILABLE')
+    }
+    if (this.touchIdOperationInProgress) throw new VaultError('TOUCH_ID_FAILED')
+    this.touchIdOperationInProgress = true
+    try {
+      await systemPreferences.promptTouchID(
+        operation === 'createPasskey'
+          ? '建立新的 BearWarden 通行密鑰'
+          : '使用 BearWarden 通行密鑰登入'
+      )
+    } catch {
+      throw new VaultError('TOUCH_ID_FAILED')
+    } finally {
+      this.touchIdOperationInProgress = false
+    }
   }
 
   private async performTouchIdUnlock(): Promise<VaultStatus> {

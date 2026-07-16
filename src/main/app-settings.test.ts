@@ -296,6 +296,73 @@ describe('AppSettingsService', () => {
     service.dispose()
   })
 
+  it('verifies one passkey operation without decrypting the stored unlock secret', async () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    const { service, store, runtime } = createService()
+    await service.initialize()
+    await service.enableTouchId('fake-master-password')
+    vi.mocked(systemPreferences.promptTouchID).mockClear()
+    vi.mocked(safeStorage.decryptStringAsync).mockClear()
+    vi.mocked(store.unlock).mockClear()
+
+    await expect(service.verifyTouchIdOperation('createPasskey')).resolves.toBeUndefined()
+    await expect(service.verifyTouchIdOperation('usePasskey')).resolves.toBeUndefined()
+
+    expect(systemPreferences.promptTouchID).toHaveBeenNthCalledWith(
+      1,
+      '建立新的 BearWarden 通行密鑰'
+    )
+    expect(systemPreferences.promptTouchID).toHaveBeenNthCalledWith(
+      2,
+      '使用 BearWarden 通行密鑰登入'
+    )
+    expect(safeStorage.decryptStringAsync).not.toHaveBeenCalled()
+    expect(store.unlock).not.toHaveBeenCalled()
+    expect(runtime.unlockVault).not.toHaveBeenCalled()
+    service.dispose()
+  })
+
+  it('does not share one Touch ID verification across concurrent passkey requests', async () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    const { service } = createService()
+    await service.initialize()
+    await service.enableTouchId('fake-master-password')
+    vi.mocked(systemPreferences.promptTouchID).mockClear()
+
+    let finishPrompt!: () => void
+    vi.mocked(systemPreferences.promptTouchID).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishPrompt = resolve
+        })
+    )
+    const first = service.verifyTouchIdOperation('usePasskey')
+    await vi.waitFor(() => expect(systemPreferences.promptTouchID).toHaveBeenCalledOnce())
+    await expect(service.verifyTouchIdOperation('usePasskey')).rejects.toMatchObject({
+      code: 'TOUCH_ID_FAILED'
+    })
+    finishPrompt()
+    await expect(first).resolves.toBeUndefined()
+    expect(systemPreferences.promptTouchID).toHaveBeenCalledOnce()
+    service.dispose()
+  })
+
+  it('requires Touch ID to be enabled and maps a canceled operation verification safely', async () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    const { service } = createService()
+    await service.initialize()
+
+    await expect(service.verifyTouchIdOperation('usePasskey')).rejects.toMatchObject({
+      code: 'TOUCH_ID_UNAVAILABLE'
+    })
+    await service.enableTouchId('fake-master-password')
+    vi.mocked(systemPreferences.promptTouchID).mockRejectedValueOnce(new Error('cancelled'))
+    await expect(service.verifyTouchIdOperation('createPasskey')).rejects.toMatchObject({
+      code: 'TOUCH_ID_FAILED'
+    })
+    service.dispose()
+  })
+
   it('disables Touch ID when asynchronous safe storage is unavailable', async () => {
     Object.defineProperty(process, 'platform', { value: 'darwin' })
     vi.mocked(safeStorage.isAsyncEncryptionAvailable).mockResolvedValue(false)
