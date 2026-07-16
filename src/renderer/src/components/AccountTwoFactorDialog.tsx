@@ -1,9 +1,10 @@
-import { Copy, ShieldCheck, ShieldOff, TriangleAlert } from 'lucide-react'
+import { Copy, KeyRound, Plus, ShieldCheck, ShieldOff, Trash2, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import type {
   AccountAuthenticatorSetup,
   AccountEmailTwoFactorSetup,
-  AccountTwoFactorProvider
+  AccountTwoFactorProvider,
+  AccountWebAuthnKeyView
 } from '../../../shared/vault-contract'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
 import {
@@ -28,9 +29,16 @@ import {
   DialogTitle,
   DialogTrigger
 } from '@renderer/components/ui/dialog'
-import { Field, FieldDescription, FieldLabel } from '@renderer/components/ui/field'
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@renderer/components/ui/field'
 import { Input } from '@renderer/components/ui/input'
 import { Spinner } from '@renderer/components/ui/spinner'
+import {
+  canEnrollWebAuthnKey,
+  canRemoveWebAuthnKey,
+  isWebAuthnMutationOutcomeUnknown,
+  webAuthnActionError,
+  webAuthnKeyPresentation
+} from './account-webauthn-ui'
 
 const providerNames: Record<number, string> = {
   0: '驗證器應用程式',
@@ -42,6 +50,55 @@ const providerNames: Record<number, string> = {
   6: '組織 Duo',
   7: 'FIDO2 WebAuthn',
   8: 'Recovery Code'
+}
+
+interface AccountWebAuthnKeyListProps {
+  keys: readonly AccountWebAuthnKeyView[]
+  busy: boolean
+  onRemove: (key: AccountWebAuthnKeyView) => void
+}
+
+export function AccountWebAuthnKeyList({
+  keys,
+  busy,
+  onRemove
+}: AccountWebAuthnKeyListProps): React.JSX.Element {
+  const keyViews = webAuthnKeyPresentation(keys)
+
+  return (
+    <FieldGroup>
+      <Field>
+        <FieldLabel>已註冊的安全金鑰</FieldLabel>
+        {keyViews.length === 0 ? (
+          <FieldDescription>尚未註冊安全金鑰。您可以新增第一把金鑰。</FieldDescription>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {keyViews.map((key) => (
+              <div key={key.id} className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">{key.name}</Badge>
+                {key.migrated && <Badge variant="secondary">已移轉</Badge>}
+                {canRemoveWebAuthnKey(busy, keyViews.length) && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    disabled={busy}
+                    onClick={() => onRemove(key)}
+                  >
+                    <Trash2 data-icon="inline-start" aria-hidden="true" />
+                    移除
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {keyViews.length === 1 && (
+          <FieldDescription>至少保留一把安全金鑰；此處不提供移除最後一把金鑰。</FieldDescription>
+        )}
+      </Field>
+    </FieldGroup>
+  )
 }
 
 function AccountTwoFactorDialog(): React.JSX.Element {
@@ -64,6 +121,16 @@ function AccountTwoFactorDialog(): React.JSX.Element {
   const [disableTarget, setDisableTarget] = useState<0 | 1 | null>(null)
   const [disablePassword, setDisablePassword] = useState('')
   const [disableError, setDisableError] = useState('')
+  const [webAuthnKeys, setWebAuthnKeys] = useState<AccountWebAuthnKeyView[] | null>(null)
+  const [webAuthnListPassword, setWebAuthnListPassword] = useState('')
+  const [webAuthnName, setWebAuthnName] = useState('')
+  const [webAuthnEnrollmentPassword, setWebAuthnEnrollmentPassword] = useState('')
+  const [webAuthnRemovalTarget, setWebAuthnRemovalTarget] = useState<AccountWebAuthnKeyView | null>(
+    null
+  )
+  const [webAuthnRemovalPassword, setWebAuthnRemovalPassword] = useState('')
+  const [webAuthnError, setWebAuthnError] = useState('')
+  const [webAuthnSuccess, setWebAuthnSuccess] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -98,6 +165,14 @@ function AccountTwoFactorDialog(): React.JSX.Element {
     setDisableTarget(null)
     setDisablePassword('')
     setDisableError('')
+    setWebAuthnKeys(null)
+    setWebAuthnListPassword('')
+    setWebAuthnName('')
+    setWebAuthnEnrollmentPassword('')
+    setWebAuthnRemovalTarget(null)
+    setWebAuthnRemovalPassword('')
+    setWebAuthnError('')
+    setWebAuthnSuccess('')
     setError('')
     setSuccess('')
     if (next) void load()
@@ -394,6 +469,135 @@ function AccountTwoFactorDialog(): React.JSX.Element {
     }
   }
 
+  async function listWebAuthnKeys(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    if (busy) return
+    if (!webAuthnListPassword) {
+      setWebAuthnError('請輸入主密碼。')
+      return
+    }
+    const request = { masterPassword: webAuthnListPassword }
+    setWebAuthnListPassword('')
+    setBusy(true)
+    setWebAuthnError('')
+    setWebAuthnSuccess('')
+    try {
+      setWebAuthnKeys(await window.bearwarden.accountSecurity.listWebAuthnKeys(request))
+    } catch (listFailure) {
+      setWebAuthnError(webAuthnActionError(listFailure, 'list'))
+    } finally {
+      request.masterPassword = ''
+      setBusy(false)
+    }
+  }
+
+  async function refreshWebAuthnSecurity(masterPassword: string): Promise<void> {
+    const [nextProviders, nextKeys] = await Promise.all([
+      window.bearwarden.accountSecurity.twoFactorStatus(),
+      window.bearwarden.accountSecurity.listWebAuthnKeys({ masterPassword })
+    ])
+    setProviders(nextProviders)
+    setWebAuthnKeys(nextKeys)
+  }
+
+  async function enrollWebAuthnKey(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    if (busy || webAuthnKeys === null) return
+    if (!canEnrollWebAuthnKey(busy, webAuthnName, webAuthnEnrollmentPassword)) {
+      setWebAuthnError('請輸入安全金鑰名稱與主密碼。')
+      return
+    }
+    const request = {
+      masterPassword: webAuthnEnrollmentPassword,
+      name: webAuthnName.trim()
+    }
+    let enrollmentCompleted = false
+    setWebAuthnName('')
+    setWebAuthnEnrollmentPassword('')
+    setBusy(true)
+    setWebAuthnError('')
+    setWebAuthnSuccess('')
+    try {
+      await window.bearwarden.accountSecurity.enrollWebAuthnKey(request)
+      enrollmentCompleted = true
+      await refreshWebAuthnSecurity(request.masterPassword)
+      setWebAuthnSuccess('安全金鑰已新增，已重新整理雙重驗證與金鑰清單。')
+    } catch (enrollmentFailure) {
+      if (isWebAuthnMutationOutcomeUnknown(enrollmentFailure) || enrollmentCompleted) {
+        setWebAuthnKeys(null)
+        try {
+          await refreshWebAuthnSecurity(request.masterPassword)
+        } catch {
+          // The renderer must not retain a possibly stale list after a failed refresh.
+        }
+      }
+      setWebAuthnError(
+        enrollmentCompleted
+          ? '安全金鑰可能已新增，但無法重新整理清單。請重新輸入主密碼確認，勿直接重試。'
+          : webAuthnActionError(enrollmentFailure, 'enroll')
+      )
+    } finally {
+      request.masterPassword = ''
+      request.name = ''
+      setBusy(false)
+    }
+  }
+
+  function changeWebAuthnRemovalTarget(target: AccountWebAuthnKeyView | null): void {
+    if (busy) return
+    setWebAuthnRemovalTarget(target)
+    setWebAuthnRemovalPassword('')
+    setWebAuthnError('')
+    setWebAuthnSuccess('')
+  }
+
+  async function removeWebAuthnKey(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    if (
+      busy ||
+      !webAuthnRemovalTarget ||
+      !webAuthnRemovalPassword ||
+      !canRemoveWebAuthnKey(busy, webAuthnKeys?.length ?? 0)
+    ) {
+      return
+    }
+    const request = {
+      id: webAuthnRemovalTarget.id,
+      masterPassword: webAuthnRemovalPassword,
+      confirm: true as const
+    }
+    let removalCompleted = false
+    setWebAuthnRemovalPassword('')
+    setBusy(true)
+    setWebAuthnError('')
+    setWebAuthnSuccess('')
+    try {
+      await window.bearwarden.accountSecurity.removeWebAuthnKey(request)
+      removalCompleted = true
+      await refreshWebAuthnSecurity(request.masterPassword)
+      setWebAuthnRemovalTarget(null)
+      setWebAuthnSuccess('安全金鑰已移除，已重新整理雙重驗證與金鑰清單。')
+    } catch (removalFailure) {
+      if (isWebAuthnMutationOutcomeUnknown(removalFailure) || removalCompleted) {
+        setWebAuthnRemovalTarget(null)
+        setWebAuthnKeys(null)
+        try {
+          await refreshWebAuthnSecurity(request.masterPassword)
+        } catch {
+          // The renderer must not retain a possibly stale list after a failed refresh.
+        }
+      }
+      setWebAuthnError(
+        removalCompleted
+          ? '安全金鑰可能已移除，但無法重新整理清單。請重新輸入主密碼確認，勿直接重試。'
+          : webAuthnActionError(removalFailure, 'remove')
+      )
+    } finally {
+      request.masterPassword = ''
+      setBusy(false)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
       <DialogTrigger render={<Button variant="outline" size="sm" type="button" />}>
@@ -624,6 +828,109 @@ function AccountTwoFactorDialog(): React.JSX.Element {
             )}
           </div>
         )}
+        <div className="flex flex-col gap-4 border-t pt-4">
+          <div className="flex flex-col gap-1">
+            <h3 className="text-sm font-medium">管理 FIDO2 安全金鑰</h3>
+            <p className="text-muted-foreground text-sm">
+              新增時會開啟系統提示；依金鑰設定，您可能需要觸碰金鑰或輸入 PIN。
+            </p>
+          </div>
+          <Alert>
+            <KeyRound aria-hidden="true" />
+            <AlertDescription>
+              請先安全保存 Recovery Code。安全金鑰遺失時，Recovery Code 可協助您重新取得帳號存取權。
+            </AlertDescription>
+          </Alert>
+          {webAuthnKeys === null ? (
+            <form
+              className="flex flex-col gap-4"
+              onSubmit={(event) => void listWebAuthnKeys(event)}
+            >
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="webauthn-list-master-password">主密碼</FieldLabel>
+                  <Input
+                    id="webauthn-list-master-password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={webAuthnListPassword}
+                    disabled={busy}
+                    onChange={(event) => setWebAuthnListPassword(event.target.value)}
+                  />
+                  <FieldDescription>驗證後才會讀取帳號目前註冊的安全金鑰。</FieldDescription>
+                </Field>
+              </FieldGroup>
+              <Button type="submit" disabled={busy || webAuthnListPassword.length === 0}>
+                {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
+                驗證並讀取安全金鑰
+              </Button>
+            </form>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <AccountWebAuthnKeyList
+                keys={webAuthnKeys}
+                busy={busy}
+                onRemove={changeWebAuthnRemovalTarget}
+              />
+              <form
+                className="flex flex-col gap-4"
+                onSubmit={(event) => void enrollWebAuthnKey(event)}
+              >
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="webauthn-key-name">安全金鑰名稱</FieldLabel>
+                    <Input
+                      id="webauthn-key-name"
+                      autoComplete="off"
+                      maxLength={256}
+                      value={webAuthnName}
+                      disabled={busy}
+                      onChange={(event) => setWebAuthnName(event.target.value)}
+                    />
+                    <FieldDescription>
+                      例如「辦公室 USB 安全金鑰」。名稱只用於辨識這把金鑰。
+                    </FieldDescription>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="webauthn-enrollment-master-password">主密碼</FieldLabel>
+                    <Input
+                      id="webauthn-enrollment-master-password"
+                      type="password"
+                      autoComplete="current-password"
+                      value={webAuthnEnrollmentPassword}
+                      disabled={busy}
+                      onChange={(event) => setWebAuthnEnrollmentPassword(event.target.value)}
+                    />
+                    <FieldDescription>
+                      主密碼只會用於這次新增請求，送出後立即清空。
+                    </FieldDescription>
+                  </Field>
+                </FieldGroup>
+                <Button
+                  type="submit"
+                  disabled={!canEnrollWebAuthnKey(busy, webAuthnName, webAuthnEnrollmentPassword)}
+                >
+                  {busy ? (
+                    <Spinner data-icon="inline-start" aria-hidden="true" />
+                  ) : (
+                    <Plus data-icon="inline-start" aria-hidden="true" />
+                  )}
+                  新增安全金鑰
+                </Button>
+              </form>
+            </div>
+          )}
+          {webAuthnError && (
+            <Alert variant="destructive">
+              <AlertDescription>{webAuthnError}</AlertDescription>
+            </Alert>
+          )}
+          {webAuthnSuccess && (
+            <Alert>
+              <AlertDescription>{webAuthnSuccess}</AlertDescription>
+            </Alert>
+          )}
+        </div>
         <form className="grid gap-4" onSubmit={(event) => void copyRecoveryCode(event)}>
           <Field>
             <FieldLabel htmlFor="recovery-code-master-password">主密碼</FieldLabel>
@@ -723,6 +1030,59 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                 >
                   {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
                   確認停用{disableTarget === null ? '' : providerNames[disableTarget]}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </form>
+          </AlertDialogContent>
+        </AlertDialog>
+        <AlertDialog
+          open={webAuthnRemovalTarget !== null}
+          onOpenChange={(next) => {
+            if (!next) changeWebAuthnRemovalTarget(null)
+          }}
+        >
+          <AlertDialogContent>
+            <form
+              className="flex flex-col gap-4"
+              onSubmit={(event) => void removeWebAuthnKey(event)}
+            >
+              <AlertDialogHeader>
+                <AlertDialogMedia>
+                  <TriangleAlert aria-hidden="true" />
+                </AlertDialogMedia>
+                <AlertDialogTitle>移除這把安全金鑰？</AlertDialogTitle>
+                <AlertDialogDescription>
+                  移除後將無法用這把安全金鑰登入。請輸入新的主密碼確認；不會沿用任何先前的驗證。
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="webauthn-removal-master-password">主密碼</FieldLabel>
+                  <Input
+                    id="webauthn-removal-master-password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={webAuthnRemovalPassword}
+                    disabled={busy}
+                    autoFocus
+                    onChange={(event) => setWebAuthnRemovalPassword(event.target.value)}
+                  />
+                  <FieldDescription>每次移除都必須重新輸入主密碼。</FieldDescription>
+                </Field>
+              </FieldGroup>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={busy}>返回</AlertDialogCancel>
+                <AlertDialogAction
+                  type="submit"
+                  variant="destructive"
+                  disabled={
+                    busy ||
+                    webAuthnRemovalPassword.length === 0 ||
+                    !canRemoveWebAuthnKey(busy, webAuthnKeys?.length ?? 0)
+                  }
+                >
+                  {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
+                  確認移除安全金鑰
                 </AlertDialogAction>
               </AlertDialogFooter>
             </form>
