@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Encoder } from 'cbor-x'
 import {
   deriveMasterKey,
+  decryptBitwardenBytes,
   decryptBitwardenAttachmentBuffer,
   decryptBitwardenCipherBlob,
   decryptBitwardenString,
@@ -1074,6 +1075,105 @@ describe('BitwardenDirectClient', () => {
     expect(JSON.stringify(await client.listSends())).not.toContain('fileUpload')
     seed.fill(0)
     sendKey.fill(0)
+    userKey.fill(0)
+  })
+
+  it('creates a file Send through Direct multipart upload and validates the authoritative reload', async () => {
+    const sync = await encryptedSync()
+    sync.sends = []
+    const userKey = Buffer.alloc(64, 7)
+    const fileId = '0123456789abcdef0123456789abcdef'
+    let created: JsonObject | null = null
+    const fetch = vi.fn<FetchLike>().mockImplementation(async (url, init) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/identity/connect/token')) {
+        return jsonResponse({
+          access_token: 'access-token',
+          refresh_token: 'refresh-token',
+          expires_in: 3_600
+        })
+      }
+      if (url.includes('/api/sync?')) return jsonResponse({ ...sync, sends: created ? [created] : [] })
+      if (url.endsWith('/api/sends/file/v2')) {
+        const request = JSON.parse(String(init?.body)) as JsonObject
+        created = {
+          ...request,
+          id: SEND_ID,
+          accessId: 'UAAAAAAAQABAAAAAAAAAAQ',
+          file: {
+            ...(request.file as JsonObject),
+            id: fileId,
+            size: request.fileLength,
+            sizeName: 'encrypted bytes'
+          },
+          accessCount: 0,
+          revisionDate: '2026-07-16T00:00:00.000Z',
+          expirationDate: null,
+          deletionDate: '2026-07-30T00:00:00.000Z'
+        }
+        return jsonResponse({
+          object: 'send-fileUpload',
+          fileUploadType: 0,
+          url: `/api/sends/${SEND_ID}/file/${fileId}`,
+          sendResponse: created
+        })
+      }
+      if (url.endsWith(`/api/sends/${SEND_ID}/file/${fileId}`)) {
+        expect(init?.method).toBe('POST')
+        expect(init?.body).toBeInstanceOf(FormData)
+        return new Response(null, { status: 204 })
+      }
+      if (url.endsWith('/api/sends')) return jsonResponse(created ? [created] : [])
+      if (url.endsWith(`/api/sends/${SEND_ID}`) && init?.method === 'DELETE') {
+        return new Response(null, { status: 204 })
+      }
+      return jsonResponse({ message: 'not found' }, 404)
+    })
+    const http = new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+
+    const plaintext = Buffer.from('file send payload')
+    const saved = await client.createFileSend({
+      name: 'File Send',
+      notes: null,
+      fileName: 'payload.txt',
+      data: plaintext,
+      maxAccessCount: null,
+      expirationDate: null,
+      deletionDate: '2026-07-30T00:00:00.000Z',
+      password: null,
+      disabled: false,
+      hideEmail: true
+    })
+    expect(saved).toMatchObject({
+      id: SEND_ID,
+      type: 'file',
+      file: { id: fileId, fileName: 'payload.txt' }
+    })
+    const createCall = fetch.mock.calls.find(([url]) => url.endsWith('/api/sends/file/v2'))
+    const createRequest = JSON.parse(String(createCall?.[1]?.body)) as JsonObject
+    const seed = decryptBitwardenBytes(String(createRequest.key), userKey)
+    const sendKey = deriveBitwardenSendKey(seed)
+    const uploadCall = fetch.mock.calls.find(([url]) => url.endsWith(`/api/sends/${SEND_ID}/file/${fileId}`))
+    const form = uploadCall?.[1]?.body as FormData
+    const uploadedBlob = form.get('data')
+    expect(uploadedBlob).toBeInstanceOf(Blob)
+    expect((uploadedBlob as File).name).toBe(String((createRequest.file as JsonObject).fileName))
+    const encryptedBytes = Buffer.from(await (uploadedBlob as Blob).arrayBuffer())
+    expect(decryptBitwardenAttachmentBuffer(encryptedBytes, sendKey)).toEqual(plaintext)
+    expect(JSON.stringify(saved)).not.toContain(seed.toString('base64url'))
+    encryptedBytes.fill(0)
+    sendKey.fill(0)
+    seed.fill(0)
+    plaintext.fill(0)
     userKey.fill(0)
   })
 

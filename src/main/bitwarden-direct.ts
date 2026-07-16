@@ -32,6 +32,7 @@ import {
   type BitwardenEquivalentDomainSettings,
   type BitwardenEquivalentDomainUpdate,
   type BitwardenEmergencyAccess,
+  type BitwardenSendFileRequest,
   type BitwardenSendRequest,
   type BitwardenPrelogin,
   type BitwardenSession,
@@ -70,6 +71,7 @@ const MAX_SEND_FILE_ID_LENGTH = 256
 const MAX_SEND_FILE_NAME_LENGTH = 255
 const MAX_SEND_FILE_SIZE = 550_502_400
 const MAX_SEND_FILE_SIZE_NAME_LENGTH = 64
+const MAX_SEND_FILE_PLAINTEXT_BYTES = 128 * 1024 * 1024 - 65
 const MINIMUM_CLIENT_VERSION = '2024.12.0'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 
@@ -267,6 +269,20 @@ export interface BitwardenSendDraft {
   hideEmail: boolean
 }
 
+/** Main-process-only file Send draft. Plaintext bytes never cross the renderer boundary. */
+export interface BitwardenFileSendDraft {
+  name: string
+  notes: string | null
+  fileName: string
+  data: Buffer
+  maxAccessCount: number | null
+  expirationDate: string | null
+  deletionDate: string
+  password?: string | null
+  disabled: boolean
+  hideEmail: boolean
+}
+
 export interface BitwardenLoginDraft extends Partial<VaultItemFields> {
   type?: VaultItemType
   name: string
@@ -317,6 +333,7 @@ export interface BitwardenSyncClient {
   listOrganizationCiphers?(): Promise<BitwardenOrganizationCipher[]>
   listEmergencyAccess?(signal?: AbortSignal): Promise<BitwardenEmergencyAccess[]>
   listSends?(signal?: AbortSignal): Promise<BitwardenSendItem[]>
+  createFileSend?(draft: BitwardenFileSendDraft, signal?: AbortSignal): Promise<BitwardenSendItem>
   createSend?(draft: BitwardenSendDraft, signal?: AbortSignal): Promise<BitwardenSendItem>
   updateSend?(
     id: string,
@@ -1511,6 +1528,115 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       request.notes = null
       request.text.text = ''
       request.password = null
+    }
+  }
+
+  async createFileSend(
+    draft: BitwardenFileSendDraft,
+    signal?: AbortSignal
+  ): Promise<BitwardenSendItem> {
+    const userKey = this.requireUserKey()
+    if (
+      typeof draft.fileName !== 'string' ||
+      draft.fileName.length === 0 ||
+      draft.fileName.length > MAX_SEND_FILE_NAME_LENGTH ||
+      /[\0\r\n/\\]/u.test(draft.fileName) ||
+      !Buffer.isBuffer(draft.data) ||
+      draft.data.length > MAX_SEND_FILE_PLAINTEXT_BYTES
+    ) {
+      throw new BitwardenDirectError(
+        Buffer.isBuffer(draft.data) && draft.data.length > MAX_SEND_FILE_PLAINTEXT_BYTES
+          ? 'TOO_LARGE'
+          : 'INVALID_RESPONSE'
+      )
+    }
+    const seed = randomBytes(16)
+    let sendKey: Buffer | null = null
+    let encryptedData: Buffer | null = null
+    let createdId: string | null = null
+    let uploaded = false
+    let request: BitwardenSendFileRequest | null = null
+    try {
+      sendKey = deriveBitwardenSendKey(seed)
+      const encryptedFileName = encryptBitwardenString(draft.fileName, sendKey)
+      encryptedData = encryptBitwardenAttachmentBuffer(draft.data, sendKey)
+      const password = draft.password?.length ? draft.password : null
+      const authType = password ? 1 : 2
+      request = {
+        type: 1,
+        fileLength: encryptedData.length,
+        authType,
+        name: encryptBitwardenString(draft.name, sendKey),
+        notes: draft.notes === null ? null : encryptBitwardenString(draft.notes, sendKey),
+        key: encryptBitwardenBytes(seed, userKey),
+        maxAccessCount: draft.maxAccessCount,
+        expirationDate: draft.expirationDate,
+        deletionDate: draft.deletionDate,
+        file: { fileName: encryptedFileName },
+        password: null,
+        emails: null,
+        disabled: draft.disabled,
+        hideEmail: draft.hideEmail
+      }
+      if (password) {
+        const passwordHash = await deriveBitwardenSendPasswordHash(password, seed)
+        try {
+          request.password = passwordHash.toString('base64')
+        } finally {
+          passwordHash.fill(0)
+        }
+      }
+      const upload = await this.http.createFileSend(request, signal)
+      createdId = assertUuidValue(requiredStringProperty(upload.sendResponse, 'id'))
+      if (upload.fileUploadType !== 'direct') throw new BitwardenDirectError('INVALID_RESPONSE')
+      const created = this.decryptSend(upload.sendResponse, userKey)
+      if (
+        created.item.type !== 'file' ||
+        !created.item.file ||
+        created.item.file.fileName !== draft.fileName
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      this.sends.set(created.item.id, created)
+      await this.http.uploadSendFileDirect(
+        created.item.id,
+        created.item.file.id,
+        encryptedFileName,
+        encryptedData,
+        signal
+      )
+      uploaded = true
+      await this.sync(signal)
+      const confirmed = this.sends.get(created.item.id)
+      if (
+        !confirmed ||
+        confirmed.item.type !== 'file' ||
+        !confirmed.item.file ||
+        confirmed.item.file.fileName !== draft.fileName
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      return {
+        ...confirmed.item,
+        ...(confirmed.item.file ? { file: { ...confirmed.item.file } } : {})
+      }
+    } catch (error) {
+      if (createdId && !uploaded) {
+        await this.http.deleteSend(createdId).catch(() => undefined)
+        this.sends.delete(createdId)
+      }
+      throw this.mapError(error)
+    } finally {
+      if (request) {
+        request.key = ''
+        request.name = ''
+        request.notes = null
+        request.file.fileName = ''
+        request.password = null
+      }
+      seed.fill(0)
+      sendKey?.fill(0)
+      encryptedData?.fill(0)
     }
   }
 

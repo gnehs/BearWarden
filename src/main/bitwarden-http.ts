@@ -132,6 +132,30 @@ export interface BitwardenSendRequest {
   hideEmail: boolean
 }
 
+/** Authenticated owner request for a file Send. File bytes are uploaded separately. */
+export interface BitwardenSendFileRequest {
+  type: 1
+  fileLength: number
+  authType: 1 | 2
+  name: string
+  notes: string | null
+  key: string
+  maxAccessCount: number | null
+  expirationDate: string | null
+  deletionDate: string
+  file: { fileName: string }
+  password: string | null
+  emails: null
+  disabled: boolean
+  hideEmail: boolean
+}
+
+export interface BitwardenSendFileUpload {
+  fileUploadType: 'direct' | 'azure'
+  url: string
+  sendResponse: JsonObject
+}
+
 export interface PasswordTokenForm {
   email: string
   /** Already transformed by the caller's crypto layer; never a raw master password. */
@@ -223,6 +247,8 @@ const MAX_EQUIVALENT_DOMAIN_TOTAL = 100_000
 const MAX_EQUIVALENT_DOMAIN_BYTES = 1_024
 const MAX_SENDS = 10_000
 const MAX_SEND_STRING_BYTES = 1_024 * 1_024
+const MAX_SEND_FILE_BYTES = 128 * 1024 * 1024
+const MAX_SEND_FILE_URL_BYTES = 64 * 1024
 // Binary decryption currently holds ciphertext and plaintext in memory at once. Keep
 // this below Bitwarden's server limit until the file pipeline supports streaming.
 const MAX_ATTACHMENT_BYTES = 128 * 1024 * 1024
@@ -786,6 +812,50 @@ export class BitwardenHttpClient {
         body: request as unknown as JsonObject,
         signal
       })
+    )
+  }
+
+  async createFileSend(
+    request: BitwardenSendFileRequest,
+    signal?: AbortSignal
+  ): Promise<BitwardenSendFileUpload> {
+    if (
+      !Number.isSafeInteger(request.fileLength) ||
+      request.fileLength < 1 ||
+      request.fileLength > MAX_SEND_FILE_BYTES
+    ) {
+      throw new BitwardenHttpError(
+        request.fileLength > MAX_SEND_FILE_BYTES ? 'TOO_LARGE' : 'INVALID_RESPONSE'
+      )
+    }
+    const response = await this.requestJson('POST', `${this.urls.apiUrl}/sends/file/v2`, {
+      body: request as unknown as JsonObject,
+      signal
+    })
+    return parseSendFileUpload(response)
+  }
+
+  async uploadSendFileDirect(
+    sendId: string,
+    fileId: string,
+    encryptedFileName: string,
+    data: Buffer,
+    signal?: AbortSignal
+  ): Promise<void> {
+    if (!Buffer.isBuffer(data) || data.length < 1 || data.length > MAX_SEND_FILE_BYTES) {
+      throw new BitwardenHttpError(data.length > MAX_SEND_FILE_BYTES ? 'TOO_LARGE' : 'INVALID_RESPONSE')
+    }
+    const form = new FormData()
+    form.append(
+      'data',
+      new Blob([attachmentBody(data)], { type: 'application/octet-stream' }),
+      assertEncryptedAttachmentValue(encryptedFileName)
+    )
+    await this.requestMultipart(
+      'POST',
+      `${this.urls.apiUrl}/sends/${encodeURIComponent(assertId(sendId))}/file/${encodeURIComponent(assertId(fileId))}`,
+      form,
+      signal
     )
   }
 
@@ -1537,6 +1607,37 @@ function parseSendEntity(value: JsonValue): JsonObject {
     return nested
   }
   return value
+}
+
+function sendProperty(record: JsonObject, lower: string, upper: string): JsonValue | undefined {
+  return record[lower] ?? record[upper]
+}
+
+function parseSendFileUpload(value: JsonValue): BitwardenSendFileUpload {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const fileUploadType = sendProperty(value, 'fileUploadType', 'FileUploadType')
+  const url = sendProperty(value, 'url', 'Url')
+  const sendResponse = sendProperty(value, 'sendResponse', 'SendResponse')
+  const normalizedType =
+    fileUploadType === 0 || fileUploadType === '0'
+      ? 'direct'
+      : fileUploadType === 1 || fileUploadType === '1'
+        ? 'azure'
+        : null
+  if (
+    normalizedType === null ||
+    typeof url !== 'string' ||
+    url.length === 0 ||
+    Buffer.byteLength(url, 'utf8') > MAX_SEND_FILE_URL_BYTES ||
+    !isRecord(sendResponse)
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return {
+    fileUploadType: normalizedType,
+    url,
+    sendResponse: parseSendEntity(sendResponse)
+  }
 }
 
 function parseSendList(value: JsonValue): JsonObject[] {
