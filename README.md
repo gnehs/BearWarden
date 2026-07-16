@@ -42,7 +42,8 @@ BearWarden 是一個以「快速找到、安心使用」為核心的桌面密碼
 - SSH 私鑰匯入只在主程序讀取一次剪貼簿；renderer 僅取得綁定視窗與保管庫世代的短效單次 token、公鑰及指紋，鎖定、取消、逾期或程式結束都會清除未完成 session。
 - SSH Agent 的私鑰、public key blob 與待簽內容只留在主程序；renderer 僅收到項目名稱、指紋、用途與 forwarding 狀態。每次核准使用短效單次 grant，鎖定、停用、renderer reload 或逾時都會失效。
 - 附件上傳會在主程序建立獨立金鑰與 authenticated type-2 加密 envelope，再依伺服器指定的 Direct 或 Azure 流程傳送；下載會重新取得短效網址、先驗證 metadata，再於主程序驗證 HMAC／解密，並以 `0600` 暫存檔與原子替換寫入。上傳、下載、刪除與 legacy Fix 支援進度、主動取消及鎖定中止，明文 Buffer 用畢後會清除。
-- 附件目前採記憶體內加解密，加密後的 envelope 上限為 128 MiB；超過此上限的大檔串流、可讀的剩餘儲存額度，以及附件 ZIP 匯入／匯出仍未實作。
+- 附件以 1 MiB chunk 在主程序串流加解密，支援 Bitwarden 桌面端同級的 500 MiB 明文上限；加密 envelope 只落在權限為 `0600` 的短生命週期暫存檔，驗證、取消或失敗後都會清除。
+- BearWarden `.bwbackup` 會以獨立備份密碼加密個人項目與附件，逐段驗證、支援中斷續傳與原子完成，並可在還原前完整預檢。這是 BearWarden 的完整備份格式，不是 Bitwarden 相容 ZIP。
 - 受重新提示保護的項目清單不包含使用者名稱、URI 或 TOTP 中繼資料；主密碼驗證後取得的 capability 會在 60 秒後失效。
 - 鎖定時會清除主程序內的金鑰與已解密資料。
 
