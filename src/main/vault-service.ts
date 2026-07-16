@@ -57,6 +57,7 @@ import type {
   VaultLoginUri,
   VaultPasswordHistoryEntry,
   VaultItemType,
+  VaultHealthExposedReport,
   VaultHealthReport,
   VaultReprompt,
   VaultUriMatch,
@@ -89,6 +90,7 @@ import { resolveBitwardenUrls } from './bitwarden-http'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import { searchVaultItems, type VaultSearchItem } from './vault-search'
 import { analyzeVaultHealth, type VaultHealthItem } from './vault-health'
+import { hashPasswordsForPwnedLookup, PwnedPasswordsClient } from './pwned-passwords'
 import {
   generateCatchAllEmail,
   generatePassphrase,
@@ -2021,6 +2023,25 @@ type AttachmentAuthorizationValidator = (
   state: { generation: number }
 ) => boolean
 
+interface ExposedPasswordSnapshot {
+  readonly generation: number
+  readonly revision: string
+  readonly candidates: readonly {
+    id: string
+    name: string
+    subtitle: string
+  }[]
+  readonly hashes: string[]
+  readonly protectedSkippedCount: number
+}
+
+interface ActiveExposedPasswordOperation {
+  readonly generation: number
+  readonly revision: string
+  readonly abort: AbortController
+  readonly promise: Promise<VaultHealthExposedReport>
+}
+
 export class VaultService {
   private key: Buffer | null = null
   private salt: Buffer | null = null
@@ -2046,6 +2067,7 @@ export class VaultService {
   private readonly attachmentFiles: VaultAttachmentFileService | null
   private readonly websiteIconCache = new Map<string, string | null>()
   private readonly websiteIconRequests = new Map<string, Promise<string | null>>()
+  private activeExposedPasswordOperation: ActiveExposedPasswordOperation | null = null
 
   constructor(
     private readonly store: EncryptedVaultStore<unknown>,
@@ -2144,6 +2166,7 @@ export class VaultService {
 
   lock(): Promise<VaultStatus> {
     this.syncAbort?.abort()
+    this.activeExposedPasswordOperation?.abort.abort()
     return this.exclusive(async () => {
       try {
         await this.syncClient?.lock()
@@ -2157,6 +2180,8 @@ export class VaultService {
 
   dispose(): void {
     this.syncAbort?.abort()
+    this.activeExposedPasswordOperation?.abort.abort()
+    this.activeExposedPasswordOperation = null
     this.syncAbort = null
     this.activeAttachmentOperation = null
     this.syncClient = null
@@ -2457,6 +2482,145 @@ export class VaultService {
         },
         weakPasswords,
         reusedPasswords
+      }
+    })
+  }
+
+  /**
+   * Runs an explicit HIBP Pwned Passwords check without holding the vault mutex during network
+   * I/O. Only SHA-1 range material leaves the initial snapshot, and only five-character prefixes
+   * are sent to HIBP by the fixed-origin client.
+   */
+  async getExposedPasswordReport(): Promise<VaultHealthExposedReport> {
+    const snapshot = await this.exclusive(async () => this.captureExposedPasswordSnapshot())
+    const active = this.activeExposedPasswordOperation
+    if (
+      active &&
+      !active.abort.signal.aborted &&
+      active.generation === snapshot.generation &&
+      active.revision === snapshot.revision
+    ) {
+      snapshot.hashes.fill('')
+      return active.promise
+    }
+
+    active?.abort.abort()
+    const abort = new AbortController()
+    const client = new PwnedPasswordsClient({ fetch: this.fetch })
+    const promise = this.resolveExposedPasswordSnapshot(snapshot, client, abort.signal).finally(
+      () => {
+        snapshot.hashes.fill('')
+        if (this.activeExposedPasswordOperation?.promise === promise) {
+          this.activeExposedPasswordOperation = null
+        }
+      }
+    )
+    this.activeExposedPasswordOperation = {
+      generation: snapshot.generation,
+      revision: snapshot.revision,
+      abort,
+      promise
+    }
+    return promise
+  }
+
+  cancelExposedPasswordReport(): boolean {
+    const active = this.activeExposedPasswordOperation
+    if (!active || active.abort.signal.aborted) return false
+    active.abort.abort()
+    return true
+  }
+
+  private captureExposedPasswordSnapshot(): ExposedPasswordSnapshot {
+    const data = this.requireData()
+    const passwords: string[] = []
+    const candidates: ExposedPasswordSnapshot['candidates'][number][] = []
+    let protectedSkippedCount = 0
+
+    for (const login of data.logins) {
+      if (login.type !== 'login' || login.deletedAt !== null || login.archivedAt !== null) continue
+      if (login.reprompt === 1) {
+        // A protected item's password and username are outside this report's read boundary.
+        protectedSkippedCount += 1
+        continue
+      }
+      if (!login.password) continue
+
+      const summary = toSummary(login)
+      candidates.push({ id: summary.id, name: summary.name, subtitle: summary.subtitle })
+      passwords.push(login.password)
+    }
+
+    try {
+      const hashes = hashPasswordsForPwnedLookup(passwords)
+      const revisionHash = createHash('sha256')
+      revisionHash.update(String(protectedSkippedCount), 'utf8')
+      for (let index = 0; index < candidates.length; index += 1) {
+        const candidate = candidates[index]!
+        for (const value of [candidate.id, candidate.name, candidate.subtitle, hashes[index]!]) {
+          revisionHash.update(String(Buffer.byteLength(value, 'utf8')), 'utf8')
+          revisionHash.update(':', 'utf8')
+          revisionHash.update(value, 'utf8')
+          revisionHash.update(';', 'utf8')
+        }
+      }
+      return {
+        generation: this.generation,
+        revision: revisionHash.digest('hex'),
+        candidates,
+        hashes,
+        protectedSkippedCount
+      }
+    } catch {
+      throw new VaultError('HEALTH_CHECK_FAILED')
+    } finally {
+      passwords.fill('')
+    }
+  }
+
+  private async resolveExposedPasswordSnapshot(
+    snapshot: ExposedPasswordSnapshot,
+    client: PwnedPasswordsClient,
+    signal: AbortSignal
+  ): Promise<VaultHealthExposedReport> {
+    let counts: number[]
+    try {
+      counts = await client.lookupSha1Hashes(snapshot.hashes, signal)
+    } catch {
+      return this.exclusive(async () => {
+        this.requireData()
+        if (snapshot.generation !== this.generation) throw new VaultError('LOCKED')
+        throw new VaultError('HEALTH_CHECK_FAILED')
+      })
+    }
+
+    return this.exclusive(async () => {
+      this.requireData()
+      if (snapshot.generation !== this.generation) throw new VaultError('LOCKED')
+      const currentSnapshot = this.captureExposedPasswordSnapshot()
+      try {
+        if (currentSnapshot.revision !== snapshot.revision) {
+          throw new VaultError('HEALTH_CHECK_FAILED')
+        }
+      } finally {
+        currentSnapshot.hashes.fill('')
+      }
+
+      const exposedPasswords = snapshot.candidates
+        .flatMap((candidate, index) => {
+          const exposedCount = counts[index] ?? 0
+          return exposedCount > 0 ? [{ ...candidate, exposedCount }] : []
+        })
+        .sort((first, second) => second.exposedCount - first.exposedCount)
+
+      return {
+        generatedAt: this.nowIso(),
+        totals: {
+          analyzedCount: snapshot.candidates.length,
+          exposedPasswordCount: exposedPasswords.length,
+          protectedSkippedCount: snapshot.protectedSkippedCount
+        },
+        exposedPasswords
       }
     })
   }

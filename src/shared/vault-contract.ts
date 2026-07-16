@@ -7,6 +7,8 @@ export const IPC_CHANNELS = {
   vaultExport: 'vault:export',
   vaultImport: 'vault:import',
   vaultHealthReport: 'vault:health-report',
+  vaultHealthExposedPasswords: 'vault:health-exposed-passwords',
+  vaultHealthCancelExposedPasswords: 'vault:health-cancel-exposed-passwords',
   folderList: 'folder:list',
   folderCreate: 'folder:create',
   folderUpdate: 'folder:update',
@@ -114,6 +116,7 @@ export type VaultErrorCode =
   | 'ATTACHMENT_STORAGE_LIMIT'
   | 'ATTACHMENT_REJECTED'
   | 'ATTACHMENT_CANCELED'
+  | 'HEALTH_CHECK_FAILED'
   | 'TOUCH_ID_UNAVAILABLE'
   | 'TOUCH_ID_FAILED'
   | 'INTERNAL_ERROR'
@@ -508,6 +511,17 @@ export interface VaultHealthReusedFinding {
 }
 
 /**
+ * A renderer-safe exposed-password finding. Only the locally matched occurrence count crosses IPC;
+ * the password and its complete SHA-1 hash remain in the main process.
+ */
+export interface VaultHealthExposedFinding {
+  id: string
+  name: string
+  subtitle: string
+  exposedCount: number
+}
+
+/**
  * Local vault-health results. Protected, archived, and trashed items are deliberately excluded.
  */
 export interface VaultHealthReport {
@@ -520,6 +534,20 @@ export interface VaultHealthReport {
   }
   weakPasswords: VaultHealthWeakFinding[]
   reusedPasswords: VaultHealthReusedFinding[]
+}
+
+/**
+ * Results from a user-initiated HIBP Pwned Passwords range check. The main process sends only a
+ * five-character SHA-1 prefix to HIBP and compares the returned padded range locally.
+ */
+export interface VaultHealthExposedReport {
+  generatedAt: string
+  totals: {
+    analyzedCount: number
+    exposedPasswordCount: number
+    protectedSkippedCount: number
+  }
+  exposedPasswords: VaultHealthExposedFinding[]
 }
 
 export type SyncState = 'unconfigured' | 'locked' | 'ready' | 'syncing' | 'error'
@@ -904,6 +932,10 @@ export interface BearWardenAPI {
   health: {
     /** Runs entirely in main; the renderer receives only safe finding metadata. */
     report: () => Promise<VaultHealthReport>
+    /** Performs an explicit k-anonymous HIBP range check from the main process. */
+    exposedPasswords: () => Promise<VaultHealthExposedReport>
+    /** Cancels the active HIBP report, if any. */
+    cancelExposedPasswords: () => Promise<boolean>
   }
   folders: {
     list: () => Promise<FolderView[]>

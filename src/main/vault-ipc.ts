@@ -55,6 +55,7 @@ import {
   type SyncUnlockRequest,
   type VaultErrorCode,
   type VaultExportRequest,
+  type VaultHealthExposedReport,
   type VaultHealthReport,
   type VaultImportRequest,
   type TouchIdEnableRequest,
@@ -1131,7 +1132,7 @@ function parseLoginList(value: unknown): LoginListRequest {
 
 /** Vault health intentionally accepts only an explicit empty object: no renderer-supplied scope
  * or authorization material may influence which decrypted records are analyzed. */
-function parseVaultHealthReport(value: unknown): RecordValue {
+function parseVaultHealthEmptyRequest(value: unknown): RecordValue {
   return exactRecord(value, [])
 }
 
@@ -1339,8 +1340,24 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     IPC_CHANNELS.vaultHealthReport,
     getMainWindow,
     (_event, input) => {
-      parseVaultHealthReport(input)
+      parseVaultHealthEmptyRequest(input)
       return vault.getHealthReport()
+    }
+  )
+  registerHandler<VaultHealthExposedReport>(
+    IPC_CHANNELS.vaultHealthExposedPasswords,
+    getMainWindow,
+    (_event, input) => {
+      parseVaultHealthEmptyRequest(input)
+      return vault.getExposedPasswordReport()
+    }
+  )
+  registerHandler<boolean>(
+    IPC_CHANNELS.vaultHealthCancelExposedPasswords,
+    getMainWindow,
+    async (_event, input) => {
+      parseVaultHealthEmptyRequest(input)
+      return vault.cancelExposedPasswordReport()
     }
   )
   registerHandler(IPC_CHANNELS.loginAuthorize, getMainWindow, async (event, input) => {

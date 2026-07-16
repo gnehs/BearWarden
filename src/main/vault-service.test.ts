@@ -21,6 +21,7 @@ import {
 } from './vault-service'
 import { VaultAttachmentFileService } from './vault-attachment-files'
 import { createPasskeyCredential } from './passkey-authenticator'
+import { hashPasswordForPwnedLookup } from './pwned-passwords'
 
 const MASTER_PASSWORD = 'correct horse battery staple'
 const ATTACHMENT_OPERATION_ID = '70000000-0000-4000-8000-000000000001'
@@ -2501,6 +2502,182 @@ describe('VaultService encrypted local data', () => {
     }
     expect(write).not.toHaveBeenCalled()
     expect(await service.unlockedGeneration()).toBe(beforeGeneration)
+  })
+
+  it('checks exposed passwords through padded hash ranges without exposing protected or raw data', async () => {
+    const exposedPassword = 'password'
+    const safePassword = 'A unique test-only passphrase that is not in the mocked range'
+    const exposedHash = hashPasswordForPwnedLookup(exposedPassword)
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async (input) => {
+      const url = String(input)
+      const line = url.endsWith(exposedHash.slice(0, 5))
+        ? `${exposedHash.slice(5)}:42`
+        : `${'0'.repeat(35)}:0`
+      return new Response(`${line}\r\n`, {
+        status: 200,
+        headers: { 'content-type': 'text/plain' }
+      })
+    })
+    const { service, store } = await createHarness({ fetch: fetcher })
+    await service.setup(MASTER_PASSWORD)
+    const exposedFirst = await service.createLogin({
+      name: 'Exposed first',
+      username: 'visible-user',
+      password: exposedPassword
+    })
+    const exposedSecond = await service.createLogin({
+      name: 'Exposed second',
+      password: exposedPassword
+    })
+    await service.createLogin({ name: 'Safe account', password: safePassword })
+    const protectedLogin = await service.createLogin({
+      name: 'Protected account',
+      username: 'protected-user-canary',
+      password: 'protected-password-canary',
+      reprompt: 1
+    })
+    const archived = await service.createLogin({
+      name: 'Archived account',
+      password: 'archived-password-canary'
+    })
+    const trashed = await service.createLogin({
+      name: 'Trashed account',
+      password: 'trashed-password-canary'
+    })
+    await service.archiveLogin({ id: archived.id })
+    await service.deleteLogin({ id: trashed.id })
+
+    const internalData = (service as unknown as { data: { logins: { id: string }[] } | null }).data
+    const rawProtected = internalData?.logins.find((login) => login.id === protectedLogin.id)
+    Object.defineProperties(rawProtected!, {
+      password: {
+        get: () => {
+          throw new Error('exposed report must not read a protected password')
+        }
+      },
+      username: {
+        get: () => {
+          throw new Error('exposed report must not read a protected username')
+        }
+      }
+    })
+
+    const write = vi.spyOn(store, 'write')
+    const generation = await service.unlockedGeneration()
+    const report = await service.getExposedPasswordReport()
+
+    expect(report.totals).toEqual({
+      analyzedCount: 3,
+      exposedPasswordCount: 2,
+      protectedSkippedCount: 1
+    })
+    expect(report.exposedPasswords).toEqual([
+      { id: exposedFirst.id, name: 'Exposed first', subtitle: 'visible-user', exposedCount: 42 },
+      { id: exposedSecond.id, name: 'Exposed second', subtitle: '', exposedCount: 42 }
+    ])
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    for (const [input, init] of fetcher.mock.calls) {
+      expect(String(input)).toMatch(/^https:\/\/api\.pwnedpasswords\.com\/range\/[A-F0-9]{5}$/u)
+      expect(new Headers(init?.headers).has('authorization')).toBe(false)
+    }
+    const payload = JSON.stringify(report)
+    for (const forbidden of [
+      exposedPassword,
+      safePassword,
+      exposedHash,
+      'protected-password-canary',
+      'protected-user-canary',
+      'archived-password-canary',
+      'trashed-password-canary'
+    ]) {
+      expect(payload).not.toContain(forbidden)
+    }
+    expect(write).not.toHaveBeenCalled()
+    expect(await service.unlockedGeneration()).toBe(generation)
+  })
+
+  it('fails the complete exposed report on HIBP errors and supports explicit cancellation', async () => {
+    const failedFetch = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response('service unavailable', {
+        status: 503,
+        headers: { 'content-type': 'text/plain' }
+      })
+    )
+    const failedHarness = await createHarness({ fetch: failedFetch })
+    await failedHarness.service.setup(MASTER_PASSWORD)
+    await failedHarness.service.createLogin({ name: 'Candidate', password: 'password' })
+    await expect(failedHarness.service.getExposedPasswordReport()).rejects.toMatchObject({
+      code: 'HEALTH_CHECK_FAILED'
+    })
+
+    const pendingFetch = vi.fn<typeof fetch>().mockImplementation(
+      async (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal
+          if (signal?.aborted) {
+            reject(signal.reason)
+            return
+          }
+          signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
+        })
+    )
+    const pendingHarness = await createHarness({ fetch: pendingFetch })
+    await pendingHarness.service.setup(MASTER_PASSWORD)
+    await pendingHarness.service.createLogin({ name: 'Candidate', password: 'password' })
+    const operation = pendingHarness.service.getExposedPasswordReport()
+    const canceledExpectation = expect(operation).rejects.toMatchObject({
+      code: 'HEALTH_CHECK_FAILED'
+    })
+    await vi.waitFor(() => expect(pendingFetch).toHaveBeenCalledOnce())
+    expect(pendingHarness.service.cancelExposedPasswordReport()).toBe(true)
+    expect(pendingHarness.service.cancelExposedPasswordReport()).toBe(false)
+    await canceledExpectation
+
+    const lockFetch = vi.fn<typeof fetch>().mockImplementation(
+      async (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init?.signal?.reason), {
+            once: true
+          })
+        })
+    )
+    const lockHarness = await createHarness({ fetch: lockFetch })
+    await lockHarness.service.setup(MASTER_PASSWORD)
+    await lockHarness.service.createLogin({ name: 'Candidate', password: 'password' })
+    const lockOperation = lockHarness.service.getExposedPasswordReport()
+    const lockExpectation = expect(lockOperation).rejects.toMatchObject({ code: 'LOCKED' })
+    await vi.waitFor(() => expect(lockFetch).toHaveBeenCalledOnce())
+    await expect(lockHarness.service.lock()).resolves.toEqual({ state: 'locked' })
+    await lockExpectation
+  })
+
+  it('does not hold the vault mutex during HIBP I/O and discards a report after vault changes', async () => {
+    const hash = hashPasswordForPwnedLookup('password')
+    let finishRequest!: () => void
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(
+      async () =>
+        new Promise<Response>((resolve) => {
+          finishRequest = () =>
+            resolve(
+              new Response(`${hash.slice(5)}:7\r\n`, {
+                status: 200,
+                headers: { 'content-type': 'text/plain' }
+              })
+            )
+        })
+    )
+    const { service } = await createHarness({ fetch: fetcher })
+    await service.setup(MASTER_PASSWORD)
+    const login = await service.createLogin({ name: 'Candidate', password: 'password' })
+
+    const operation = service.getExposedPasswordReport()
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce())
+    await expect(
+      service.updateLogin({ id: login.id, name: 'Changed while checking' })
+    ).resolves.toMatchObject({ id: login.id, name: 'Changed while checking' })
+    finishRequest()
+
+    await expect(operation).rejects.toMatchObject({ code: 'HEALTH_CHECK_FAILED' })
   })
 
   it('keeps deleted items in trash, blocks ordinary mutations, and restores or purges them', async () => {

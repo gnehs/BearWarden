@@ -278,6 +278,16 @@ describe('registerVaultIpc reprompt gate', () => {
         weakPasswords: [{ id: 'item-a', name: 'Example', subtitle: '', score: 0 }],
         reusedPasswords: []
       })),
+      getExposedPasswordReport: vi.fn(async () => ({
+        generatedAt: '2026-07-16T00:00:00.000Z',
+        totals: {
+          analyzedCount: 2,
+          exposedPasswordCount: 1,
+          protectedSkippedCount: 1
+        },
+        exposedPasswords: [{ id: 'item-a', name: 'Example', subtitle: '', exposedCount: 42 }]
+      })),
+      cancelExposedPasswordReport: vi.fn(() => true),
       createLogin: vi.fn(async (request) => ({ id: 'created', ...request })),
       cloneLogin: vi.fn(async () => ({ id: 'clone' })),
       archiveLogins: vi.fn(async ({ ids }: { ids: string[] }) => ids.map((id) => ({ id }))),
@@ -459,6 +469,32 @@ describe('registerVaultIpc reprompt gate', () => {
       await expect(health(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
     expect(vault.getHealthReport).toHaveBeenCalledOnce()
+  })
+
+  it('exposes and cancels the explicit HIBP report only through exact empty requests', async () => {
+    const { event, vault } = harness()
+    const exposed = electronMock.handlers.get(IPC_CHANNELS.vaultHealthExposedPasswords)!
+    const cancel = electronMock.handlers.get(IPC_CHANNELS.vaultHealthCancelExposedPasswords)!
+
+    await expect(exposed(event, {})).resolves.toEqual({
+      generatedAt: '2026-07-16T00:00:00.000Z',
+      totals: {
+        analyzedCount: 2,
+        exposedPasswordCount: 1,
+        protectedSkippedCount: 1
+      },
+      exposedPasswords: [{ id: 'item-a', name: 'Example', subtitle: '', exposedCount: 42 }]
+    })
+    expect(vault.getExposedPasswordReport).toHaveBeenCalledWith()
+    await expect(cancel(event, {})).resolves.toBe(true)
+    expect(vault.cancelExposedPasswordReport).toHaveBeenCalledWith()
+
+    for (const invalid of [undefined, null, [], { password: 'must-not-be-accepted' }]) {
+      await expect(exposed(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+      await expect(cancel(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(vault.getExposedPasswordReport).toHaveBeenCalledOnce()
+    expect(vault.cancelExposedPasswordReport).toHaveBeenCalledOnce()
   })
 
   it.each([
