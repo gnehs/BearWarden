@@ -62,6 +62,30 @@ export interface BitwardenAttachmentUpload {
   fileUploadType: 'direct' | 'azure'
 }
 
+/**
+ * Safe, structured HIBP breach metadata returned by Vaultwarden's authenticated
+ * proxy. Descriptions and logo paths are deliberately excluded: the former is
+ * remote HTML and neither is needed to identify or remediate a breach.
+ */
+export interface BitwardenAccountBreach {
+  name: string
+  title: string
+  domain: string
+  breachDate: string
+  addedDate: string
+  pwnCount: number
+  dataClasses: string[]
+  isVerified: boolean
+}
+
+/**
+ * Vaultwarden returns a synthetic, otherwise-successful row when its HIBP API
+ * key is absent. Keep that distinct from both a clean account and a breach.
+ */
+export type BitwardenAccountBreachReport =
+  | { status: 'complete'; breaches: BitwardenAccountBreach[] }
+  | { status: 'unavailable'; reason: 'server-hibp-unconfigured' }
+
 export interface PasswordTokenForm {
   email: string
   /** Already transformed by the caller's crypto layer; never a raw master password. */
@@ -136,6 +160,10 @@ const EU_URLS: BitwardenUrls = {
 const RETRYABLE_METHODS = new Set(['GET', 'PUT', 'DELETE'])
 const DEFAULT_MAX_RETRIES = 5
 const MAX_RESPONSE_BYTES = 128 * 1024 * 1024
+const MAX_HIBP_BREACH_RESPONSE_BYTES = 4 * 1024 * 1024
+const MAX_HIBP_BREACHES = 10_000
+const MAX_HIBP_DATA_CLASSES = 100
+const MAX_HIBP_STRING_BYTES = 4_096
 // Binary decryption currently holds ciphertext and plaintext in memory at once. Keep
 // this below Bitwarden's server limit until the file pipeline supports streaming.
 const MAX_ATTACHMENT_BYTES = 128 * 1024 * 1024
@@ -368,12 +396,16 @@ function parseErrorJson(text: string): JsonValue | null {
   }
 }
 
-async function boundedResponseText(response: Response): Promise<string> {
+async function boundedResponseText(
+  response: Response,
+  maxResponseBytes = MAX_RESPONSE_BYTES,
+  tooLargeCode: BitwardenHttpErrorCode = 'INVALID_RESPONSE'
+): Promise<string> {
   const contentLength = response.headers.get('content-length')
   if (contentLength !== null) {
     const parsed = Number(contentLength)
-    if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > MAX_RESPONSE_BYTES) {
-      throw new BitwardenHttpError('INVALID_RESPONSE')
+    if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > maxResponseBytes) {
+      throw new BitwardenHttpError(tooLargeCode)
     }
   }
   if (!response.body) return ''
@@ -386,7 +418,7 @@ async function boundedResponseText(response: Response): Promise<string> {
       const { done, value } = await reader.read()
       if (done) break
       bytes += value.byteLength
-      if (bytes > MAX_RESPONSE_BYTES) throw new BitwardenHttpError('INVALID_RESPONSE')
+      if (bytes > maxResponseBytes) throw new BitwardenHttpError(tooLargeCode)
       chunks.push(decoder.decode(value, { stream: true }))
     }
     chunks.push(decoder.decode())
@@ -576,6 +608,42 @@ export class BitwardenHttpClient {
     if (!date || !Number.isFinite(Date.parse(date)))
       throw new BitwardenHttpError('INVALID_RESPONSE')
     return date
+  }
+
+  /**
+   * Queries the authenticated Vaultwarden HIBP proxy. The server, rather than
+   * this client, forwards the complete email address to HIBP when configured.
+   * Do not log the email or include it in any error metadata.
+   */
+  async getAccountBreachReport(
+    email: string,
+    signal?: AbortSignal
+  ): Promise<BitwardenAccountBreachReport> {
+    if (!isValidBreachEmail(email)) throw new BitwardenHttpError('INVALID_RESPONSE')
+    let response: JsonValue
+    try {
+      response = await this.requestJson(
+        'GET',
+        `${this.urls.apiUrl}/hibp/breach?username=${encodeURIComponent(email)}`,
+        {
+          signal,
+          maxResponseBytes: MAX_HIBP_BREACH_RESPONSE_BYTES,
+          tooLargeCode: 'TOO_LARGE'
+        }
+      )
+    } catch (error) {
+      // HIBP and Vaultwarden both define a 404 as a successful no-breach
+      // result. Do not normalize any other error to an empty result.
+      if (
+        error instanceof BitwardenHttpError &&
+        error.code === 'NOT_FOUND' &&
+        error.status === 404
+      ) {
+        return { status: 'complete', breaches: [] }
+      }
+      throw error
+    }
+    return parseAccountBreachReport(response)
   }
 
   async sync(signal?: AbortSignal): Promise<JsonObject> {
@@ -991,6 +1059,8 @@ export class BitwardenHttpClient {
       signal?: AbortSignal
       authenticate?: boolean
       headers?: HeadersInit
+      maxResponseBytes?: number
+      tooLargeCode?: BitwardenHttpErrorCode
     } = {}
   ): Promise<JsonValue> {
     const authenticate = request.authenticate ?? true
@@ -1052,7 +1122,11 @@ export class BitwardenHttpClient {
         if (delay > 0) await this.sleep(delay, request.signal)
         continue
       }
-      const text = await boundedResponseText(response)
+      const text = await boundedResponseText(
+        response,
+        request.maxResponseBytes,
+        request.tooLargeCode
+      )
       const payload =
         text.length === 0 ? null : response.ok ? parseJson(text) : parseErrorJson(text)
       if (!response.ok) throw toHttpError(response.status, payload)
@@ -1064,6 +1138,114 @@ export class BitwardenHttpClient {
 function assertId(value: string): string {
   if (!string(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
   return value
+}
+
+function isValidBreachEmail(value: string): boolean {
+  // This is intentionally only a transport guard, not a deliverability check.
+  // HIBP trims and treats email casing as insensitive; callers retain the exact
+  // submitted address so no unexpected transformation is sent to the server.
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 512 &&
+    value.trim() === value &&
+    !/[\0\r\n]/u.test(value) &&
+    /^[^\s@]+@[^\s@]+$/u.test(value)
+  )
+}
+
+function hibpProperty(record: JsonObject, lower: string, upper: string): JsonValue | undefined {
+  return record[lower] ?? record[upper]
+}
+
+function boundedHibpString(value: JsonValue | undefined): string | undefined {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.trim() !== value ||
+    /[\0\r\n]/u.test(value) ||
+    Buffer.byteLength(value, 'utf8') > MAX_HIBP_STRING_BYTES
+  ) {
+    return undefined
+  }
+  return value
+}
+
+function isVaultwardenHibpUnconfigured(row: JsonObject): boolean {
+  const name = hibpProperty(row, 'name', 'Name')
+  const title = hibpProperty(row, 'title', 'Title')
+  const pwnCount = hibpProperty(row, 'pwnCount', 'PwnCount')
+  const dataClasses = hibpProperty(row, 'dataClasses', 'DataClasses')
+  return (
+    name === 'HaveIBeenPwned' &&
+    title === 'Manual HIBP Check' &&
+    pwnCount === 0 &&
+    Array.isArray(dataClasses) &&
+    dataClasses.length === 1 &&
+    dataClasses[0] === 'Error - No API key set!'
+  )
+}
+
+function parseHibpBreach(row: JsonObject): BitwardenAccountBreach {
+  const name = boundedHibpString(hibpProperty(row, 'name', 'Name'))
+  const title = boundedHibpString(hibpProperty(row, 'title', 'Title'))
+  const breachDate = boundedHibpString(hibpProperty(row, 'breachDate', 'BreachDate'))
+  const addedDate = boundedHibpString(hibpProperty(row, 'addedDate', 'AddedDate'))
+  const domain = boundedHibpString(hibpProperty(row, 'domain', 'Domain'))
+  const pwnCount = hibpProperty(row, 'pwnCount', 'PwnCount')
+  const dataClasses = hibpProperty(row, 'dataClasses', 'DataClasses')
+  const isVerified = hibpProperty(row, 'isVerified', 'IsVerified')
+  if (!Array.isArray(dataClasses) || dataClasses.length > MAX_HIBP_DATA_CLASSES) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  const normalizedDataClasses = dataClasses.map((value) => {
+    const dataClass = boundedHibpString(value)
+    if (!dataClass) throw new BitwardenHttpError('INVALID_RESPONSE')
+    return dataClass
+  })
+  if (
+    !name ||
+    !title ||
+    !breachDate ||
+    !addedDate ||
+    !domain ||
+    !Number.isSafeInteger(pwnCount) ||
+    typeof pwnCount !== 'number' ||
+    pwnCount < 0 ||
+    typeof isVerified !== 'boolean' ||
+    !Number.isFinite(Date.parse(breachDate)) ||
+    !Number.isFinite(Date.parse(addedDate))
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return {
+    name,
+    title,
+    domain,
+    breachDate,
+    addedDate,
+    pwnCount,
+    dataClasses: normalizedDataClasses,
+    isVerified
+  }
+}
+
+function parseAccountBreachReport(value: JsonValue): BitwardenAccountBreachReport {
+  if (!Array.isArray(value) || value.length > MAX_HIBP_BREACHES) {
+    throw new BitwardenHttpError(
+      value instanceof Array && value.length > MAX_HIBP_BREACHES ? 'TOO_LARGE' : 'INVALID_RESPONSE'
+    )
+  }
+  if (value.length === 1 && isRecord(value[0]) && isVaultwardenHibpUnconfigured(value[0])) {
+    return { status: 'unavailable', reason: 'server-hibp-unconfigured' }
+  }
+  return {
+    status: 'complete',
+    breaches: value.map((row) => {
+      if (!isRecord(row)) throw new BitwardenHttpError('INVALID_RESPONSE')
+      return parseHibpBreach(row)
+    })
+  }
 }
 
 interface ParsedAttachmentDownload {

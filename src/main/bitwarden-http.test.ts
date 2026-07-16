@@ -132,6 +132,108 @@ describe('BitwardenHttpClient', () => {
     expect(fetch.mock.calls[2]?.[1]?.body).toBe(JSON.stringify({ name: '2.encrypted', type: 1 }))
   })
 
+  it('queries Vaultwarden account breaches with auth and excludes remote HTML from the safe model', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      json([
+        {
+          Name: 'ExampleBreach',
+          Title: 'Example Breach',
+          Domain: 'example.test',
+          BreachDate: '2025-01-02',
+          AddedDate: '2025-02-03T04:05:06Z',
+          ModifiedDate: '2025-03-04T05:06:07Z',
+          PwnCount: 12,
+          DataClasses: ['Email addresses', 'Passwords'],
+          IsVerified: true,
+          Description: '<img src=x onerror=alert(1)>'
+        }
+      ])
+    )
+    const client = new BitwardenHttpClient({
+      server: 'https://vault.example.test/bw',
+      fetch
+    })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 1 })
+
+    await expect(client.getAccountBreachReport('person+tag@example.test')).resolves.toEqual({
+      status: 'complete',
+      breaches: [
+        {
+          name: 'ExampleBreach',
+          title: 'Example Breach',
+          domain: 'example.test',
+          breachDate: '2025-01-02',
+          addedDate: '2025-02-03T04:05:06Z',
+          pwnCount: 12,
+          dataClasses: ['Email addresses', 'Passwords'],
+          isVerified: true
+        }
+      ]
+    })
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      'https://vault.example.test/bw/api/hibp/breach?username=person%2Btag%40example.test'
+    )
+    expect(new Headers(fetch.mock.calls[0]?.[1]?.headers).get('authorization')).toBe(
+      'Bearer access'
+    )
+  })
+
+  it('normalizes the Vaultwarden no-breach 404 but not other failures', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(json({ reason: 'Not Found' }, 404))
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 1 })
+
+    await expect(client.getAccountBreachReport('person@example.test')).resolves.toEqual({
+      status: 'complete',
+      breaches: []
+    })
+  })
+
+  it('marks Vaultwarden HIBP key placeholders unavailable instead of reporting a breach', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      json([
+        {
+          name: 'HaveIBeenPwned',
+          title: 'Manual HIBP Check',
+          pwnCount: 0,
+          dataClasses: ['Error - No API key set!'],
+          description: '<a>untrusted remote html</a>'
+        }
+      ])
+    )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 1 })
+
+    await expect(client.getAccountBreachReport('person@example.test')).resolves.toEqual({
+      status: 'unavailable',
+      reason: 'server-hibp-unconfigured'
+    })
+  })
+
+  it('rejects malformed or oversized account-breach responses', async () => {
+    const malformed = vi.fn<FetchLike>().mockResolvedValue(json([{ Name: 'only-a-name' }]))
+    const malformedClient = new BitwardenHttpClient({ server: 'us', fetch: malformed })
+    malformedClient.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 1 })
+    await expect(
+      malformedClient.getAccountBreachReport('person@example.test')
+    ).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+
+    const oversized = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(
+        new Response('[]', { headers: { 'content-length': String(4 * 1024 * 1024 + 1) } })
+      )
+    const oversizedClient = new BitwardenHttpClient({ server: 'us', fetch: oversized })
+    oversizedClient.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 1 })
+    await expect(
+      oversizedClient.getAccountBreachReport('person@example.test')
+    ).rejects.toMatchObject({
+      code: 'TOO_LARGE'
+    })
+  })
+
   it('uses the personal folder and cipher CRUD routes', async () => {
     const fetch = vi.fn<FetchLike>().mockImplementation(async (url, init) => {
       if (
