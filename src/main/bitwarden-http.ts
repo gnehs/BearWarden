@@ -5,6 +5,12 @@
  * all cryptography and durable storage.
  */
 
+import {
+  AccountWebAuthnCodecError,
+  parseAccountWebAuthnChallengeFromTokenError,
+  type AccountWebAuthnChallenge
+} from './account-webauthn-codec'
+
 export type BitwardenEnvironment = 'us' | 'eu' | string
 export type JsonPrimitive = string | number | boolean | null
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[]
@@ -284,7 +290,9 @@ export class BitwardenHttpError extends Error {
     readonly code: BitwardenHttpErrorCode,
     readonly status?: number,
     /** Non-secret, schema-checked error metadata supplied by the service. */
-    readonly details?: JsonObject
+    readonly details?: JsonObject,
+    /** Strictly normalized provider-7 request options; the raw token error is not retained. */
+    readonly webAuthnChallenge?: AccountWebAuthnChallenge
   ) {
     super(`Bitwarden HTTP request failed (${code})`)
     this.name = 'BitwardenHttpError'
@@ -2914,6 +2922,7 @@ function toHttpError(status: number, payload: JsonValue): BitwardenHttpError {
   const details = isRecord(payload) ? payload : undefined
   const message = [
     details?.error,
+    details?.error_description,
     details?.errorMessage,
     details?.message,
     details?.ErrorMessage,
@@ -2930,7 +2939,19 @@ function toHttpError(status: number, payload: JsonValue): BitwardenHttpError {
   if (status === 400 && message.includes('user verification failed')) {
     return new BitwardenHttpError('USER_VERIFICATION_FAILED', status)
   }
-  if (message.includes('two factor')) return new BitwardenHttpError('TWO_FACTOR', status, details)
+  if (message.includes('two factor')) {
+    try {
+      const webAuthnChallenge = parseAccountWebAuthnChallengeFromTokenError(payload)
+      return webAuthnChallenge
+        ? new BitwardenHttpError('TWO_FACTOR', status, undefined, webAuthnChallenge)
+        : new BitwardenHttpError('TWO_FACTOR', status, details)
+    } catch (error) {
+      if (error instanceof AccountWebAuthnCodecError) {
+        return new BitwardenHttpError('INVALID_RESPONSE', status)
+      }
+      throw error
+    }
+  }
   if (message.includes('new device') || message.includes('verification')) {
     return new BitwardenHttpError('NEW_DEVICE', status, details)
   }

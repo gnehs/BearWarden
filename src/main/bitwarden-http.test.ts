@@ -13,6 +13,17 @@ function json(body: unknown, status = 200, headers?: HeadersInit): Response {
   })
 }
 
+function vaultwardenChallengeFixture(): Record<string, unknown> {
+  return {
+    allowCredentials: [{ id: Buffer.alloc(32, 2).toString('base64url'), type: 'public-key' }],
+    challenge: Buffer.alloc(32, 1).toString('base64url'),
+    extensions: { appid: 'https://vault.example.test/app-id.json', getCredBlob: false },
+    rpId: 'vault.example.test',
+    timeout: 60_000,
+    userVerification: 'discouraged'
+  }
+}
+
 describe('resolveBitwardenUrls', () => {
   it('maps the public Bitwarden cloud URLs to their split API and identity origins', () => {
     expect(resolveBitwardenUrls('https://bitwarden.com')).toEqual({
@@ -752,6 +763,102 @@ describe('BitwardenHttpClient', () => {
     const requestHeaders = new Headers(init?.headers)
     expect(requestHeaders.get('bitwarden-client-name')).toBe('desktop')
     expect(requestHeaders.get('bitwarden-client-version')).toBe('1.0.0')
+  })
+
+  it.each([
+    {
+      label: 'Vaultwarden camelCase',
+      providersKey: 'TwoFactorProviders2',
+      provider: {
+        allowCredentials: [{ id: Buffer.alloc(32, 2).toString('base64url'), type: 'public-key' }],
+        challenge: Buffer.alloc(32, 1).toString('base64url'),
+        extensions: {
+          appid: 'https://vault.example.test/app-id.json',
+          getCredBlob: false
+        },
+        rpId: 'vault.example.test',
+        timeout: 60_000,
+        userVerification: 'discouraged'
+      }
+    },
+    {
+      label: 'official PascalCase',
+      providersKey: 'twoFactorProviders2',
+      provider: {
+        AllowCredentials: [{ Id: Buffer.alloc(32, 2).toString('base64url'), Type: 'public-key' }],
+        Challenge: Buffer.alloc(32, 1).toString('base64url'),
+        Extensions: { AppId: 'https://vault.example.test/app-id.json', Uvm: true },
+        RpId: 'vault.example.test',
+        Timeout: 60_000,
+        UserVerification: 'preferred'
+      }
+    }
+  ])(
+    'preserves a strict provider-7 challenge from $label without raw error metadata',
+    async ({ providersKey, provider }) => {
+      const fetch = vi.fn<FetchLike>().mockResolvedValue(
+        json(
+          {
+            error: 'invalid_grant',
+            error_description: 'Two factor required.',
+            [providersKey]: { '0': null, '1': null, '3': { Nfc: true }, '7': provider },
+            serverSecret: 'must-not-escape'
+          },
+          400
+        )
+      )
+      const client = new BitwardenHttpClient({ server: 'https://vault.example.test', fetch })
+
+      const error = await client
+        .passwordToken({ email: 'person@example.test', password: 'derived-secret' })
+        .catch((caught: unknown) => caught)
+      expect(error).toBeInstanceOf(BitwardenHttpError)
+      expect(error).toMatchObject({
+        code: 'TWO_FACTOR',
+        status: 400,
+        details: undefined,
+        webAuthnChallenge: {
+          challenge: Buffer.alloc(32, 1).toString('base64url'),
+          rpId: 'vault.example.test',
+          allowCredentials: [{ id: Buffer.alloc(32, 2).toString('base64url') }]
+        }
+      })
+      expect(JSON.stringify(error)).not.toContain('must-not-escape')
+      expect(fetch).toHaveBeenCalledOnce()
+    }
+  )
+
+  it('keeps providers 0/1/3 behavior and rejects malformed provider 7 without retry', async () => {
+    const legacyPayload = {
+      error: 'invalid_grant',
+      error_description: 'Two factor required.',
+      TwoFactorProviders2: { '0': null, '1': null, '3': { Nfc: true } }
+    }
+    const legacyFetch = vi.fn<FetchLike>().mockResolvedValue(json(legacyPayload, 400))
+    const legacy = new BitwardenHttpClient({ server: 'us', fetch: legacyFetch })
+    await expect(
+      legacy.passwordToken({ email: 'person@example.test', password: 'derived-secret' })
+    ).rejects.toMatchObject({
+      code: 'TWO_FACTOR',
+      details: legacyPayload,
+      webAuthnChallenge: undefined
+    })
+
+    const malformedFetch = vi.fn<FetchLike>().mockResolvedValue(
+      json(
+        {
+          error: 'invalid_grant',
+          error_description: 'Two factor required.',
+          TwoFactorProviders2: { '7': { ...vaultwardenChallengeFixture(), challenge: 'bad=' } }
+        },
+        400
+      )
+    )
+    const malformed = new BitwardenHttpClient({ server: 'us', fetch: malformedFetch })
+    await expect(
+      malformed.passwordToken({ email: 'person@example.test', password: 'derived-secret' })
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE', details: undefined })
+    expect(malformedFetch).toHaveBeenCalledOnce()
   })
 
   it('serializes refreshes and retries each rejected authenticated GET only once', async () => {
