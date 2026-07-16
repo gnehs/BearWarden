@@ -236,6 +236,50 @@ describe('VaultPortabilityService', () => {
     expect(vault.importPortableSnapshot).toHaveBeenCalledTimes(2)
   })
 
+  it('auto-detects Bitwarden and Chromium CSV without changing the JSON flow', async () => {
+    const { inputPath, service, vault } = await harness()
+    await writeFile(
+      inputPath,
+      [
+        'folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp',
+        'Imported,1,login,CSV Login,,,0,https://example.test,csv-user,csv-secret,'
+      ].join('\n')
+    )
+    await expect(service.importVault({ masterPassword: MASTER_PASSWORD })).resolves.toMatchObject({
+      canceled: false,
+      importedItems: 1
+    })
+    expect(vault.importPortableSnapshot).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        folders: [{ id: 'csv-folder-1', name: 'Imported' }],
+        items: [
+          expect.objectContaining({
+            type: 'login',
+            name: 'CSV Login',
+            username: 'csv-user',
+            password: 'csv-secret'
+          })
+        ]
+      }),
+      0,
+      MASTER_PASSWORD
+    )
+
+    await writeFile(
+      inputPath,
+      'name,url,username,password,note\nChrome,https://chrome.test,user,password,note'
+    )
+    await service.importVault({ masterPassword: MASTER_PASSWORD })
+    expect(vault.importPortableSnapshot).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        folders: [],
+        items: [expect.objectContaining({ name: 'Chrome', uri: 'https://chrome.test' })]
+      }),
+      0,
+      MASTER_PASSWORD
+    )
+  })
+
   it('rejects missing or incorrect passwords, malformed files, and oversized files before mutation', async () => {
     const { inputPath, service, vault } = await harness()
     const encrypted = await encryptBitwardenPasswordProtectedJson(
@@ -254,6 +298,13 @@ describe('VaultPortabilityService', () => {
     await expect(service.importVault({ masterPassword: MASTER_PASSWORD })).rejects.toMatchObject({
       code: 'INVALID_INPUT'
     })
+    await writeFile(
+      inputPath,
+      'name,url,username,password\nChrome,https://example.test,user,password'
+    )
+    await expect(
+      service.importVault({ masterPassword: MASTER_PASSWORD, password: BACKUP_PASSWORD })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
     await truncate(inputPath, 64 * 1024 * 1024 + 1)
     await expect(service.importVault({ masterPassword: MASTER_PASSWORD })).rejects.toMatchObject({
       code: 'INVALID_INPUT'

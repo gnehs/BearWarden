@@ -550,10 +550,11 @@ if (hasSingleInstanceLock)
       },
       chooseImportPath: async () => {
         const options = {
-          title: '匯入 Bitwarden 保管庫',
+          title: '匯入密碼資料',
           buttonLabel: '匯入',
           filters: [
             { name: 'Bitwarden JSON', extensions: ['json'] },
+            { name: 'Bitwarden 或 Chrome CSV', extensions: ['csv'] },
             { name: '所有檔案', extensions: ['*'] }
           ],
           properties: ['openFile' as const]

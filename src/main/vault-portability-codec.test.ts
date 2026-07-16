@@ -7,6 +7,7 @@ import {
   decryptBitwardenPasswordProtectedJson,
   encryptBitwardenPasswordProtectedJson,
   parseBitwardenJson,
+  parseBitwardenOrChromiumCsv,
   type PortableVaultItem,
   type PortableVaultSnapshot
 } from './vault-portability-codec'
@@ -218,6 +219,96 @@ describe('Bitwarden plaintext JSON portability', () => {
     expect(() => buildBitwardenJson(maximumSshKey)).not.toThrow()
     maximumSshKey.items[4]!.privateKey += 'x'
     expect(() => buildBitwardenJson(maximumSshKey)).toThrowError(VaultError)
+  })
+})
+
+describe('Bitwarden and Chromium CSV portability', () => {
+  it('parses the official Bitwarden CSV fields with RFC 4180 quoting and folders', () => {
+    const csv = [
+      'folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp',
+      'Social,1,login,"Example, Inc.","line one\r\nline ""two""","PIN: 1234\r\nRegion: TW",1,https://example.test,user,secret,TOTPSEED',
+      'Social,0,note,Recovery,"secure,note",,0,,,,',
+      ''
+    ].join('\r\n')
+
+    expect(parseBitwardenOrChromiumCsv(csv)).toEqual({
+      skippedTrashItems: 0,
+      snapshot: {
+        folders: [{ id: 'csv-folder-1', name: 'Social' }],
+        items: [
+          expect.objectContaining({
+            id: 'csv-item-1',
+            type: 'login',
+            name: 'Example, Inc.',
+            notes: 'line one\r\nline "two"',
+            folderId: 'csv-folder-1',
+            favorite: true,
+            reprompt: 1,
+            uri: 'https://example.test',
+            username: 'user',
+            password: 'secret',
+            totp: 'TOTPSEED',
+            customFields: [
+              { name: 'PIN', value: '1234', type: 'text', linkedId: null },
+              { name: 'Region', value: 'TW', type: 'text', linkedId: null }
+            ]
+          }),
+          expect.objectContaining({
+            id: 'csv-item-2',
+            type: 'secureNote',
+            name: 'Recovery',
+            notes: 'secure,note',
+            folderId: 'csv-folder-1'
+          })
+        ]
+      }
+    })
+  })
+
+  it('detects Chrome and Chromium CSV, including notes and Android application URIs', () => {
+    const csv = [
+      '\ufeffname,url,username,password,note',
+      'Example,https://example.test,alice,secret,"browser note"',
+      ',android://hash@com.example.app/path,bob,android-secret,'
+    ].join('\n')
+
+    const parsed = parseBitwardenOrChromiumCsv(csv)
+    expect(parsed.snapshot.folders).toEqual([])
+    expect(parsed.snapshot.items).toEqual([
+      expect.objectContaining({
+        name: 'Example',
+        uri: 'https://example.test',
+        username: 'alice',
+        password: 'secret',
+        notes: 'browser note'
+      }),
+      expect.objectContaining({
+        name: 'com.example.app',
+        uri: 'androidapp://com.example.app',
+        username: 'bob',
+        password: 'android-secret'
+      })
+    ])
+  })
+
+  it('fails closed on malformed CSV, unknown schemas, lossy note rows, and bounds', async () => {
+    for (const csv of [
+      'name,url,username,password\n"unterminated,https://example.test,user,secret',
+      'name,url,username,password\nname,"quoted"tail,user,secret',
+      'unknown,url,username,password\nname,https://example.test,user,secret',
+      'folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n,,card,Card,,,,,,,,',
+      'folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n,,note,Note,,,,https://example.test,,,',
+      `name,url,username,password\n${'x'.repeat(257)},https://example.test,user,secret`,
+      `name,url,username,password\nname,https://example.test,user,${'x'.repeat(16_385)}`
+    ]) {
+      await expectInvalidInput(() => parseBitwardenOrChromiumCsv(csv))
+    }
+
+    const tooManyRows = [
+      'name,url,username,password',
+      ...Array.from({ length: 40_001 }, () => 'name,https://example.test,user,secret')
+    ].join('\n')
+    await expectInvalidInput(() => parseBitwardenOrChromiumCsv(tooManyRows))
   })
 })
 

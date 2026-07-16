@@ -51,6 +51,10 @@ const MAX_PASSKEYS = 1_000
 const MAX_PASSKEY_FIELD_LENGTH = 4_096
 const MAX_PASSWORD_HISTORY = 5
 const MAX_SSH_PRIVATE_KEY_LENGTH = 1024 * 1024
+const MAX_CSV_ROWS = 40_001
+const MAX_CSV_FOLDERS = 2_000
+const MAX_CSV_COLUMNS = 32
+const MAX_CSV_FIELD_BYTES = 1024 * 1024
 const EXPORT_KDF_ITERATIONS = 600_000
 const MIN_PBKDF2_ITERATIONS = 5_000
 const MAX_PBKDF2_ITERATIONS = 10_000_000
@@ -409,6 +413,292 @@ export function parseBitwardenJson(text: string): {
     else items.push(item)
   }
   return { snapshot: { folders, items }, skippedTrashItems }
+}
+
+const BITWARDEN_CSV_HEADER = [
+  'folder',
+  'favorite',
+  'type',
+  'name',
+  'notes',
+  'fields',
+  'reprompt',
+  'login_uri',
+  'login_username',
+  'login_password',
+  'login_totp'
+] as const
+const CHROMIUM_CSV_HEADERS = [
+  ['name', 'url', 'username', 'password'],
+  ['name', 'url', 'username', 'password', 'note']
+] as const
+
+function boundedCsvField(value: string): string {
+  if (Buffer.byteLength(value, 'utf8') > MAX_CSV_FIELD_BYTES || value.includes('\0')) {
+    invalidInput()
+  }
+  return value
+}
+
+/** Strict RFC 4180 records with LF accepted for browser exports on Unix. */
+function parseCsv(text: string): string[][] {
+  if (typeof text !== 'string' || Buffer.byteLength(text, 'utf8') > MAX_JSON_BYTES) invalidInput()
+  const input = text.startsWith('\ufeff') ? text.slice(1) : text
+  if (input.length === 0) invalidInput()
+  const rows: string[][] = []
+  let index = 0
+  while (index < input.length) {
+    if (rows.length >= MAX_CSV_ROWS) invalidInput()
+    const row: string[] = []
+    let endedRow = false
+    while (!endedRow) {
+      if (row.length >= MAX_CSV_COLUMNS) invalidInput()
+      let value: string
+      if (input[index] === '"') {
+        index += 1
+        let segmentStart = index
+        let decodedLength = 0
+        const parts: string[] = []
+        let closed = false
+        while (index < input.length) {
+          if (input[index] !== '"') {
+            index += 1
+            if (decodedLength + index - segmentStart > MAX_CSV_FIELD_BYTES) invalidInput()
+            continue
+          }
+          decodedLength += index - segmentStart
+          if (decodedLength > MAX_CSV_FIELD_BYTES) invalidInput()
+          parts.push(input.slice(segmentStart, index))
+          if (input[index + 1] === '"') {
+            parts.push('"')
+            decodedLength += 1
+            if (decodedLength > MAX_CSV_FIELD_BYTES) invalidInput()
+            index += 2
+            segmentStart = index
+            continue
+          }
+          index += 1
+          closed = true
+          break
+        }
+        if (!closed) invalidInput()
+        value = boundedCsvField(parts.join(''))
+        const next = input[index]
+        if (next !== undefined && next !== ',' && next !== '\n' && next !== '\r') invalidInput()
+      } else {
+        const start = index
+        while (
+          index < input.length &&
+          input[index] !== ',' &&
+          input[index] !== '\n' &&
+          input[index] !== '\r'
+        ) {
+          if (input[index] === '"') invalidInput()
+          index += 1
+          if (index - start > MAX_CSV_FIELD_BYTES) invalidInput()
+        }
+        value = boundedCsvField(input.slice(start, index))
+      }
+      row.push(value)
+      if (index >= input.length) {
+        endedRow = true
+      } else if (input[index] === ',') {
+        index += 1
+        if (index === input.length) {
+          row.push('')
+          endedRow = true
+        }
+      } else if (input[index] === '\n') {
+        index += 1
+        endedRow = true
+      } else if (input[index] === '\r' && input[index + 1] === '\n') {
+        index += 2
+        endedRow = true
+      } else {
+        invalidInput()
+      }
+    }
+    rows.push(row)
+  }
+  return rows
+}
+
+function csvBoolean(value: string): boolean {
+  if (value === '' || value === '0') return false
+  if (value === '1') return true
+  return invalidInput()
+}
+
+function csvReprompt(value: string): VaultReprompt {
+  if (value === '' || value === '0') return 0
+  if (value === '1') return 1
+  return invalidInput()
+}
+
+function csvCustomFields(value: string): VaultCustomField[] {
+  if (value === '') return []
+  const lines = value.split(/\r?\n/u)
+  if (lines.length > MAX_CUSTOM_FIELDS) invalidInput()
+  return lines.map((line) => {
+    const separator = line.indexOf(': ')
+    if (separator <= 0) invalidInput()
+    return {
+      name: string(line.slice(0, separator), MAX_CUSTOM_FIELD_LENGTH, false),
+      value: string(line.slice(separator + 2), MAX_CUSTOM_FIELD_LENGTH),
+      type: 'text',
+      linkedId: null
+    }
+  })
+}
+
+function csvItem(input: {
+  index: number
+  type: 'login' | 'secureNote'
+  name: string
+  notes: string
+  folderId: string | null
+  favorite: boolean
+  reprompt: VaultReprompt
+  uri: string
+  username: string
+  password: string
+  totp: string
+  customFields?: VaultCustomField[]
+}): PortableVaultItem {
+  const fields = emptyItemFields()
+  fields.username = string(input.username, MAX_USERNAME_LENGTH)
+  fields.password = string(input.password, MAX_PASSWORD_LENGTH)
+  fields.totp = string(input.totp, MAX_PASSWORD_LENGTH)
+  const uri = input.uri === '' ? null : string(input.uri, MAX_URI_LENGTH, false)
+  fields.uri = uri
+  return {
+    ...fields,
+    id: `csv-item-${input.index}`,
+    type: input.type,
+    name: string(input.name, MAX_NAME_LENGTH, false),
+    notes: input.notes === '' ? null : string(input.notes, MAX_NOTES_LENGTH),
+    folderId: input.folderId,
+    favorite: input.favorite,
+    deletedAt: null,
+    archivedAt: null,
+    reprompt: input.reprompt,
+    uris: uri === null ? [] : [{ uri, match: null }],
+    passkeys: [],
+    customFields: input.customFields ?? [],
+    passwordHistory: []
+  }
+}
+
+function exactHeader(row: readonly string[], expected: readonly string[]): boolean {
+  return row.length === expected.length && row.every((value, index) => value === expected[index])
+}
+
+function parseBitwardenCsvRows(rows: string[][]): PortableVaultSnapshot {
+  if (!exactHeader(rows[0] ?? [], BITWARDEN_CSV_HEADER)) invalidInput()
+  const folders: PortableVaultFolder[] = []
+  const folderIds = new Map<string, string>()
+  const items = rows.slice(1).map((row, index) => {
+    if (row.length !== BITWARDEN_CSV_HEADER.length) invalidInput()
+    const [
+      folder,
+      favorite,
+      rawType,
+      name,
+      notes,
+      fields,
+      repromptValue,
+      uri,
+      username,
+      password,
+      totp
+    ] = row as [
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string
+    ]
+    if (rawType !== 'login' && rawType !== 'note') invalidInput()
+    let folderId: string | null = null
+    if (folder !== '') {
+      string(folder, MAX_NAME_LENGTH, false)
+      folderId = folderIds.get(folder) ?? null
+      if (folderId === null) {
+        if (folders.length >= MAX_CSV_FOLDERS) invalidInput()
+        folderId = `csv-folder-${folders.length + 1}`
+        folderIds.set(folder, folderId)
+        folders.push({ id: folderId, name: folder })
+      }
+    }
+    if (rawType === 'note' && (uri !== '' || username !== '' || password !== '' || totp !== '')) {
+      invalidInput()
+    }
+    return csvItem({
+      index: index + 1,
+      type: rawType === 'login' ? 'login' : 'secureNote',
+      name,
+      notes,
+      folderId,
+      favorite: csvBoolean(favorite),
+      reprompt: csvReprompt(repromptValue),
+      uri,
+      username,
+      password,
+      totp,
+      customFields: csvCustomFields(fields)
+    })
+  })
+  return { folders, items }
+}
+
+function normalizeChromiumUrl(value: string): { name: string | null; uri: string } {
+  const match = /^android:\/\/.*@([^/]+)\//u.exec(value)
+  return match ? { name: match[1]!, uri: `androidapp://${match[1]}` } : { name: null, uri: value }
+}
+
+function parseChromiumCsvRows(rows: string[][], header: readonly string[]): PortableVaultSnapshot {
+  return {
+    folders: [],
+    items: rows.slice(1).map((row, index) => {
+      if (row.length !== header.length) invalidInput()
+      const [name, url, username, password, notes = ''] = row
+      const normalized = normalizeChromiumUrl(url!)
+      return csvItem({
+        index: index + 1,
+        type: 'login',
+        name: name || normalized.name || '--',
+        notes,
+        folderId: null,
+        favorite: false,
+        reprompt: 0,
+        uri: normalized.uri,
+        username: username!,
+        password: password!,
+        totp: ''
+      })
+    })
+  }
+}
+
+export function parseBitwardenOrChromiumCsv(text: string): {
+  snapshot: PortableVaultSnapshot
+  skippedTrashItems: 0
+} {
+  const rows = parseCsv(text)
+  if (rows.length < 2 || rows.length > MAX_CSV_ROWS) invalidInput()
+  const header = rows[0]!
+  if (exactHeader(header, BITWARDEN_CSV_HEADER)) {
+    return { snapshot: parseBitwardenCsvRows(rows), skippedTrashItems: 0 }
+  }
+  const chromiumHeader = CHROMIUM_CSV_HEADERS.find((candidate) => exactHeader(header, candidate))
+  if (!chromiumHeader) invalidInput()
+  return { snapshot: parseChromiumCsvRows(rows, chromiumHeader), skippedTrashItems: 0 }
 }
 
 function exportPasskey(passkey: StoredPasskeyCredential): JsonObject {

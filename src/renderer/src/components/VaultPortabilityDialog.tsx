@@ -105,11 +105,11 @@ function VaultPortabilityDialog({
 
   return (
     <Modal
-      title={exporting ? '匯出加密備份' : '匯入 Bitwarden JSON'}
+      title={exporting ? '匯出加密備份' : '匯入密碼資料'}
       description={
         exporting
           ? '建立可攜、受密碼保護的 Bitwarden JSON 備份。'
-          : '將 Bitwarden JSON 加入目前的保管庫。既有項目不會被覆蓋。'
+          : '將 Bitwarden JSON、Bitwarden CSV 或 Chrome／Chromium 密碼 CSV 加入目前的保管庫。既有項目不會被覆蓋。'
       }
       busy={busy}
       onClose={onClose}
@@ -125,7 +125,7 @@ function VaultPortabilityDialog({
               <AlertDescription>
                 {exporting
                   ? '垃圾桶、附件與 Sends 不會包含在這份備份中；忘記備份密碼後將無法解密。'
-                  : '所有項目都會以新識別碼加入。支援密碼保護或未加密的 Bitwarden JSON；垃圾桶項目會略過。'}
+                  : '所有項目都會以新識別碼加入。格式會自動辨識；JSON 垃圾桶項目會略過，CSV 不會包含附件或 Passkey。'}
               </AlertDescription>
             </Alert>
 
@@ -161,7 +161,7 @@ function VaultPortabilityDialog({
                 <FieldDescription>
                   {exporting
                     ? '至少 12 個字元，且可以和主密碼不同。'
-                    : '密碼保護的匯出檔需要填寫；未加密 JSON 請留空。'}
+                    : '密碼保護的 JSON 需要填寫；未加密 JSON 或 CSV 請留空。'}
                 </FieldDescription>
               </Field>
 

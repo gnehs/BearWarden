@@ -11,7 +11,8 @@ import {
   buildBitwardenJson,
   decryptBitwardenPasswordProtectedJson,
   encryptBitwardenPasswordProtectedJson,
-  parseBitwardenJson
+  parseBitwardenJson,
+  parseBitwardenOrChromiumCsv
 } from './vault-portability-codec'
 import { VaultError } from './vault-errors'
 import type { VaultService } from './vault-service'
@@ -107,6 +108,12 @@ function parseDocumentShape(text: string): Record<string, unknown> {
   }
 }
 
+function beginsWithJsonObject(text: string): boolean {
+  let index = text.charCodeAt(0) === 0xfeff ? 1 : 0
+  while (index < text.length && /\s/u.test(text[index]!)) index += 1
+  return text[index] === '{'
+}
+
 export class VaultPortabilityService {
   constructor(
     private readonly vault: VaultService,
@@ -164,15 +171,21 @@ export class VaultPortabilityService {
     if (typeof path !== 'string' || path.length === 0) throw new VaultError('INTERNAL_ERROR')
 
     const document = await readBoundedFile(path)
-    const shape = parseDocumentShape(document)
-    let clearText = document
-    if (shape.encrypted === true) {
-      if (shape.passwordProtected !== true || request.password === undefined) {
-        throw new VaultError('INVALID_INPUT')
+    let parsed: ReturnType<typeof parseBitwardenJson>
+    if (beginsWithJsonObject(document)) {
+      const shape = parseDocumentShape(document)
+      let clearText = document
+      if (shape.encrypted === true) {
+        if (shape.passwordProtected !== true || request.password === undefined) {
+          throw new VaultError('INVALID_INPUT')
+        }
+        clearText = await decryptBitwardenPasswordProtectedJson(document, request.password)
       }
-      clearText = await decryptBitwardenPasswordProtectedJson(document, request.password)
+      parsed = parseBitwardenJson(clearText)
+    } else {
+      if (request.password !== undefined) throw new VaultError('INVALID_INPUT')
+      parsed = parseBitwardenOrChromiumCsv(document)
     }
-    const parsed = parseBitwardenJson(clearText)
     const imported = await this.vault.importPortableSnapshot(
       parsed.snapshot,
       parsed.skippedTrashItems,
