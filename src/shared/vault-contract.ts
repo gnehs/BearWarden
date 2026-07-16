@@ -82,7 +82,9 @@ export const IPC_CHANNELS = {
   syncConnect: 'sync:connect',
   syncUnlock: 'sync:unlock',
   syncNow: 'sync:now',
-  syncDisconnect: 'sync:disconnect'
+  syncDisconnect: 'sync:disconnect',
+  domainRulesGet: 'domain-rules:get',
+  domainRulesUpdate: 'domain-rules:update'
 } as const
 
 export const IPC_EVENTS = {
@@ -114,6 +116,7 @@ export type VaultErrorCode =
   | 'SYNC_NEW_DEVICE_REQUIRED'
   | 'SYNC_UNSUPPORTED_ACCOUNT'
   | 'SYNC_FAILED'
+  | 'SYNC_CONFLICT'
   | 'ATTACHMENT_FAILED'
   | 'ATTACHMENT_TOO_LARGE'
   | 'ATTACHMENT_STORAGE_LIMIT'
@@ -622,6 +625,26 @@ export interface SyncResult extends SyncStatus {
   conflicts: number
 }
 
+export interface GlobalEquivalentDomainView {
+  type: number
+  domains: string[]
+  excluded: boolean
+}
+
+/** Account-scoped domain rules fetched from the configured Bitwarden-compatible server. */
+export interface EquivalentDomainSettingsView {
+  equivalentDomains: string[][]
+  globalEquivalentDomains: GlobalEquivalentDomainView[]
+  /** SHA-256 revision used to reject stale replacement writes. */
+  revision: string
+}
+
+export interface EquivalentDomainSettingsUpdate {
+  equivalentDomains: string[][]
+  excludedGlobalEquivalentDomains: number[]
+  expectedRevision: string
+}
+
 /** Decrypted non-password fields for a login editor. */
 export interface LoginView extends LoginSummary {
   notes: string | null
@@ -1069,6 +1092,10 @@ export interface BearWardenAPI {
     now: () => Promise<SyncResult>
     disconnect: () => Promise<SyncStatus>
     onChanged: (listener: (status: SyncStatus) => void) => () => void
+  }
+  domainRules: {
+    get: () => Promise<EquivalentDomainSettingsView>
+    update: (request: EquivalentDomainSettingsUpdate) => Promise<EquivalentDomainSettingsView>
   }
   settings: {
     get: () => Promise<AppSettings>

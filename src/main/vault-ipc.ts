@@ -18,6 +18,8 @@ import {
   type AttachmentUploadRequest,
   type CustomFieldRequest,
   type EditorSecretsRequest,
+  type EquivalentDomainSettingsUpdate,
+  type EquivalentDomainSettingsView,
   type CredentialGeneratorRequest,
   type FolderCreateRequest,
   type FolderDeleteRequest,
@@ -85,6 +87,10 @@ const MAX_PASSKEY_CREDENTIAL_ID_LENGTH = 4_096
 const MAX_ISO_TIMESTAMP_LENGTH = 64
 const MAX_SSH_KEY_IMPORT_TOKEN_LENGTH = 128
 const MAX_SSH_KEY_IMPORT_PASSPHRASE_BYTES = 1_024
+const MAX_EQUIVALENT_DOMAIN_GROUPS = 10_000
+const MAX_EQUIVALENT_DOMAINS_PER_GROUP = 1_000
+const MAX_EQUIVALENT_DOMAIN_TOTAL = 100_000
+const MAX_EQUIVALENT_DOMAIN_LENGTH = 1_024
 
 interface RepromptAuthorizationEntry {
   senderId: number
@@ -1148,6 +1154,49 @@ function parseVaultHealthAccountBreachRequest(value: unknown): VaultHealthAccoun
   return { email }
 }
 
+function parseEquivalentDomainSettingsUpdate(value: unknown): EquivalentDomainSettingsUpdate {
+  const record = exactRecord(value, [
+    'equivalentDomains',
+    'excludedGlobalEquivalentDomains',
+    'expectedRevision'
+  ])
+  if (
+    !Array.isArray(record.equivalentDomains) ||
+    record.equivalentDomains.length > MAX_EQUIVALENT_DOMAIN_GROUPS ||
+    !Array.isArray(record.excludedGlobalEquivalentDomains) ||
+    record.excludedGlobalEquivalentDomains.length > MAX_EQUIVALENT_DOMAIN_GROUPS ||
+    typeof record.expectedRevision !== 'string' ||
+    !/^[0-9a-f]{64}$/u.test(record.expectedRevision)
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  let total = 0
+  const equivalentDomains = record.equivalentDomains.map((candidate) => {
+    if (!Array.isArray(candidate) || candidate.length > MAX_EQUIVALENT_DOMAINS_PER_GROUP) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    total += candidate.length
+    if (total > MAX_EQUIVALENT_DOMAIN_TOTAL) throw new VaultError('INVALID_INPUT')
+    return candidate.map((domain) => {
+      if (typeof domain !== 'string' || domain.length > MAX_EQUIVALENT_DOMAIN_LENGTH) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      return domain
+    })
+  })
+  const excludedGlobalEquivalentDomains = record.excludedGlobalEquivalentDomains.map((type) => {
+    if (typeof type !== 'number' || !Number.isInteger(type) || type < 0 || type > 2_147_483_647) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    return type
+  })
+  return {
+    equivalentDomains,
+    excludedGlobalEquivalentDomains,
+    expectedRevision: record.expectedRevision
+  }
+}
+
 function optionalTwoFactorMethod(
   record: RecordValue,
   key: string
@@ -1803,6 +1852,20 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     options.afterSyncChanged?.(status)
     return status
   })
+  registerHandler<EquivalentDomainSettingsView>(
+    IPC_CHANNELS.domainRulesGet,
+    getMainWindow,
+    (_event, input) => {
+      parseNoInput(input)
+      return vault.getEquivalentDomainSettings()
+    }
+  )
+  registerHandler<EquivalentDomainSettingsView>(
+    IPC_CHANNELS.domainRulesUpdate,
+    getMainWindow,
+    (_event, input) =>
+      vault.updateEquivalentDomainSettings(parseEquivalentDomainSettingsUpdate(input))
+  )
   registerHandler(IPC_CHANNELS.settingsGet, getMainWindow, (_event, input) => {
     parseNoInput(input)
     return settings.get()

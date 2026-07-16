@@ -295,6 +295,20 @@ describe('registerVaultIpc reprompt gate', () => {
       })),
       cancelAccountBreachReport: vi.fn(() => true),
       openHibpWebsite: vi.fn(async () => undefined),
+      getEquivalentDomainSettings: vi.fn(async () => ({
+        equivalentDomains: [['first.example', 'second.example']],
+        globalEquivalentDomains: [
+          { type: 1, domains: ['google.com', 'gmail.com'], excluded: false }
+        ],
+        revision: 'a'.repeat(64)
+      })),
+      updateEquivalentDomainSettings: vi.fn(async () => ({
+        equivalentDomains: [['first.example', 'second.example']],
+        globalEquivalentDomains: [
+          { type: 1, domains: ['google.com', 'gmail.com'], excluded: true }
+        ],
+        revision: 'b'.repeat(64)
+      })),
       createLogin: vi.fn(async (request) => ({ id: 'created', ...request })),
       cloneLogin: vi.fn(async () => ({ id: 'clone' })),
       archiveLogins: vi.fn(async ({ ids }: { ids: string[] }) => ids.map((id) => ({ id }))),
@@ -547,6 +561,39 @@ describe('registerVaultIpc reprompt gate', () => {
       await expect(open(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
     expect(vault.openHibpWebsite).toHaveBeenCalledOnce()
+  })
+
+  it('validates equivalent-domain reads and bounded replacement writes', async () => {
+    const { event, vault } = harness()
+    const get = electronMock.handlers.get(IPC_CHANNELS.domainRulesGet)!
+    const update = electronMock.handlers.get(IPC_CHANNELS.domainRulesUpdate)!
+
+    await expect(get(event, undefined)).resolves.toMatchObject({ revision: 'a'.repeat(64) })
+    expect(vault.getEquivalentDomainSettings).toHaveBeenCalledWith()
+    const request = {
+      equivalentDomains: [['first.example', 'second.example']],
+      excludedGlobalEquivalentDomains: [1],
+      expectedRevision: 'a'.repeat(64)
+    }
+    await expect(update(event, request)).resolves.toMatchObject({ revision: 'b'.repeat(64) })
+    expect(vault.updateEquivalentDomainSettings).toHaveBeenCalledWith(request)
+
+    for (const invalid of [
+      undefined,
+      null,
+      {},
+      { ...request, extra: true },
+      { ...request, expectedRevision: 'short' },
+      { ...request, equivalentDomains: [['x'.repeat(1025)]] },
+      { ...request, excludedGlobalEquivalentDomains: [-1] }
+    ]) {
+      await expect(update(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    for (const invalid of [null, [], {}, { extra: true }]) {
+      await expect(get(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(vault.updateEquivalentDomainSettings).toHaveBeenCalledOnce()
+    expect(vault.getEquivalentDomainSettings).toHaveBeenCalledOnce()
   })
 
   it.each([

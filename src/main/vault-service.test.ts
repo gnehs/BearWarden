@@ -238,6 +238,16 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
   const hardDeletedIds: string[] = []
   const editedLoginIds: string[] = []
   const downloadedAttachmentIds: string[] = []
+  let equivalentDomainSettings = {
+    equivalentDomains: [['remote.example.invalid', 'remote-login.example.invalid']],
+    globalEquivalentDomains: [
+      {
+        type: 1,
+        domains: ['google.com', 'gmail.com'],
+        excluded: false
+      }
+    ]
+  }
   const hardDeleteLogin = async (id: string): Promise<void> => {
     hardDeletedIds.push(id)
     const index = remoteLogins.findIndex((login) => login.id === id)
@@ -274,11 +284,18 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
     },
     sync: async () => undefined,
     getAccountBreachReport: async () => ({ status: 'complete', breaches: [] }),
-    getEquivalentDomainSettings: async () => ({
-      equivalentDomains: [],
-      globalEquivalentDomains: []
-    }),
-    updateEquivalentDomainSettings: async () => undefined,
+    getEquivalentDomainSettings: async () => structuredClone(equivalentDomainSettings),
+    updateEquivalentDomainSettings: async (update) => {
+      const excluded = new Set(update.excludedGlobalEquivalentDomains)
+      equivalentDomainSettings = {
+        equivalentDomains: structuredClone(update.equivalentDomains),
+        globalEquivalentDomains: equivalentDomainSettings.globalEquivalentDomains.map((group) => ({
+          ...group,
+          domains: [...group.domains],
+          excluded: excluded.has(group.type)
+        }))
+      }
+    },
     listFolders: async () => remoteFolders.map((folder) => ({ ...folder })),
     listPersonalLogins: async () =>
       remoteLogins.map((login) => ({
@@ -514,6 +531,7 @@ describe('VaultService encrypted local data', () => {
     expect(encryptedFile).not.toContain('test-refresh-token')
     expect(encryptedFile).not.toContain('sync@example.invalid')
     expect(encryptedFile).not.toContain('locally-changed-secret')
+    expect(encryptedFile).not.toContain('remote-login.example.invalid')
 
     await service.lock()
     await service.unlock(MASTER_PASSWORD)
@@ -522,6 +540,133 @@ describe('VaultService encrypted local data', () => {
       configured: true,
       state: 'ready'
     })
+  })
+
+  it('refreshes, canonicalizes, confirms, and encrypts account equivalent-domain settings', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { filePath, service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+
+    const initial = await service.getEquivalentDomainSettings()
+    expect(initial).toMatchObject({
+      equivalentDomains: [['remote.example.invalid', 'remote-login.example.invalid']],
+      globalEquivalentDomains: [{ type: 1, domains: ['google.com', 'gmail.com'], excluded: false }],
+      revision: expect.stringMatching(/^[0-9a-f]{64}$/)
+    })
+    const update = vi.spyOn(fake!, 'updateEquivalentDomainSettings')
+    const confirmed = await service.updateEquivalentDomainSettings({
+      equivalentDomains: [
+        [' HTTPS://WWW.Example.CO.UK/path ', 'example.co.uk'],
+        ['bücher.example', 'BÜCHER.EXAMPLE'],
+        ['127.0.0.1', 'localhost']
+      ],
+      excludedGlobalEquivalentDomains: [1],
+      expectedRevision: initial.revision
+    })
+
+    expect(update).toHaveBeenCalledWith(
+      {
+        equivalentDomains: [['example.co.uk'], ['bücher.example'], ['127.0.0.1', 'localhost']],
+        excludedGlobalEquivalentDomains: [1]
+      },
+      expect.any(AbortSignal)
+    )
+    expect(confirmed).toMatchObject({
+      equivalentDomains: [['example.co.uk'], ['bücher.example'], ['127.0.0.1', 'localhost']],
+      globalEquivalentDomains: [{ type: 1, domains: ['google.com', 'gmail.com'], excluded: true }],
+      revision: expect.stringMatching(/^[0-9a-f]{64}$/)
+    })
+    expect(confirmed.revision).not.toBe(initial.revision)
+
+    const encrypted = await readFile(filePath, 'utf8')
+    expect(encrypted).not.toContain('example.co.uk')
+    expect(encrypted).not.toContain('bücher.example')
+  })
+
+  it('rejects stale or unknown equivalent-domain replacements before writing', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const initial = await service.getEquivalentDomainSettings()
+    const update = vi.spyOn(fake!, 'updateEquivalentDomainSettings')
+    vi.spyOn(fake!, 'getEquivalentDomainSettings').mockResolvedValueOnce({
+      equivalentDomains: [['changed.example.invalid']],
+      globalEquivalentDomains: [{ type: 1, domains: ['google.com', 'gmail.com'], excluded: false }]
+    })
+
+    await expect(
+      service.updateEquivalentDomainSettings({
+        equivalentDomains: [['one.example.invalid']],
+        excludedGlobalEquivalentDomains: [],
+        expectedRevision: initial.revision
+      })
+    ).rejects.toMatchObject({ code: 'SYNC_CONFLICT' })
+    expect(update).not.toHaveBeenCalled()
+
+    const refreshed = await service.getEquivalentDomainSettings()
+    await expect(
+      service.updateEquivalentDomainSettings({
+        equivalentDomains: [['one.example.invalid']],
+        excludedGlobalEquivalentDomains: [999],
+        expectedRevision: refreshed.revision
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('aborts an equivalent-domain refresh when the local vault locks', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    let started!: () => void
+    const didStart = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    vi.spyOn(fake!, 'getEquivalentDomainSettings').mockImplementation(
+      (signal) =>
+        new Promise((_resolve, reject) => {
+          started()
+          signal?.addEventListener('abort', () => reject(new BitwardenDirectError('ABORTED')), {
+            once: true
+          })
+        })
+    )
+
+    const pending = service.getEquivalentDomainSettings()
+    const rejection = expect(pending).rejects.toMatchObject({ code: 'LOCKED' })
+    await didStart
+    await expect(service.lock()).resolves.toEqual({ state: 'locked' })
+    await rejection
   })
 
   it('deletes one passkey atomically without returning private key material', async () => {
@@ -4289,7 +4434,7 @@ describe('VaultService encrypted local data', () => {
       expect(await service.revealPassword({ id: migrated.id })).toBe('legacy-secret')
       await service.lock()
       const unlocked = await store.unlock(MASTER_PASSWORD)
-      expect((unlocked.data as { version: number }).version).toBe(14)
+      expect((unlocked.data as { version: number }).version).toBe(15)
       unlocked.key.fill(0)
       unlocked.salt.fill(0)
     }
@@ -4424,7 +4569,7 @@ describe('VaultService encrypted local data', () => {
     expect(history.at(-1)?.credential).toBe('historical-198')
   })
 
-  it('migrates V12 to an empty encrypted V14 generator history', async () => {
+  it('migrates V12 to an empty encrypted V15 generator history', async () => {
     const { filePath, service, store } = await createHarness()
     await service.setup(MASTER_PASSWORD)
     await service.lock()
@@ -4445,12 +4590,12 @@ describe('VaultService encrypted local data', () => {
     await expect(reopened.generatorHistory()).resolves.toEqual([])
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
-    expect(migrated.data).toMatchObject({ version: 14, generatorHistory: [] })
+    expect(migrated.data).toMatchObject({ version: 15, generatorHistory: [] })
     migrated.key.fill(0)
     migrated.salt.fill(0)
   })
 
-  it('migrates V13 login records to V14 with empty attachment metadata', async () => {
+  it('migrates V13 login records to V15 with empty attachment metadata', async () => {
     const { filePath, service, store } = await createHarness()
     await service.setup(MASTER_PASSWORD)
     const login = await service.createLogin({ name: 'Pre-attachment item' })
@@ -4479,11 +4624,78 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 14,
+      version: 15,
       logins: [expect.objectContaining({ attachments: [] })]
     })
     migrated.key.fill(0)
     migrated.salt.fill(0)
+  })
+
+  it('migrates V14 sync data to V15 with no cached equivalent-domain settings', async () => {
+    const { filePath, service, store } = await createHarness({
+      createSyncClient: (sync) => createSyncFake(sync.state)
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.lock()
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as {
+      version: number
+      sync: Record<string, unknown>
+    }
+    data.version = 14
+    delete data.sync.domainSettings
+    await store.write(data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopenedStore = new EncryptedVaultStore<unknown>(filePath)
+    const reopened = new VaultService(reopenedStore, {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await expect(reopened.unlock(MASTER_PASSWORD)).resolves.toEqual({ state: 'unlocked' })
+    await reopened.lock()
+    const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
+    expect(migrated.data).toMatchObject({
+      version: 15,
+      sync: { domainSettings: null }
+    })
+    migrated.key.fill(0)
+    migrated.salt.fill(0)
+  })
+
+  it('rejects malformed V15 equivalent-domain data as a corrupt vault', async () => {
+    const { filePath, service, store } = await createHarness({
+      createSyncClient: (sync) => createSyncFake(sync.state)
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.lock()
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as {
+      sync: { domainSettings: { equivalentDomains: string[][] } }
+    }
+    data.sync.domainSettings.equivalentDomains = [['bad,domain.example']]
+    await store.write(data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopened = new VaultService(new EncryptedVaultStore<unknown>(filePath), {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await expect(reopened.unlock(MASTER_PASSWORD)).rejects.toMatchObject({
+      code: 'CORRUPT_VAULT'
+    })
   })
 
   it.each([

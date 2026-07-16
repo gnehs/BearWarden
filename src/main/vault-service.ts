@@ -1,9 +1,12 @@
 import { createHash, randomInt as nodeRandomInt, randomUUID } from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { isIP } from 'node:net'
+import { parse as parseDomain } from 'tldts'
 import { utils } from 'ssh2'
 import type {
   EditorSecretsRequest,
+  EquivalentDomainSettingsUpdate,
+  EquivalentDomainSettingsView,
   AttachmentCancelRequest,
   AttachmentCancelResult,
   AttachmentDeleteRequest,
@@ -88,7 +91,11 @@ import {
   type BitwardenSyncClient,
   type BitwardenTwoFactor
 } from './bitwarden-direct'
-import { resolveBitwardenUrls } from './bitwarden-http'
+import {
+  resolveBitwardenUrls,
+  type BitwardenEquivalentDomainSettings,
+  type BitwardenEquivalentDomainUpdate
+} from './bitwarden-http'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import { searchVaultItems, type VaultSearchItem } from './vault-search'
 import { analyzeVaultHealth, type VaultHealthItem } from './vault-health'
@@ -149,7 +156,8 @@ const MULTIPLE_URIS_DATA_VERSION = 11
 const PASSWORD_HISTORY_DATA_VERSION = 12
 const GENERATOR_HISTORY_DATA_VERSION = 13
 const ATTACHMENTS_DATA_VERSION = 14
-const DATA_VERSION = 14
+const EQUIVALENT_DOMAINS_DATA_VERSION = 15
+const DATA_VERSION = 15
 const MIN_MASTER_PASSWORD_LENGTH = 12
 const MAX_MASTER_PASSWORD_LENGTH = 1024
 const MAX_NAME_LENGTH = 256
@@ -171,6 +179,10 @@ const MAX_GENERATOR_HISTORY = 200
 const MAX_GENERATED_CREDENTIAL_LENGTH = 512
 const MAX_SSH_PRIVATE_KEY_LENGTH = 1024 * 1024
 const MAX_SYNC_SECRET_LENGTH = 16_384
+const MAX_EQUIVALENT_DOMAIN_GROUPS = 10_000
+const MAX_EQUIVALENT_DOMAINS_PER_GROUP = 1_000
+const MAX_EQUIVALENT_DOMAIN_TOTAL = 100_000
+const MAX_EQUIVALENT_DOMAIN_LENGTH = 1_024
 const MAX_TWO_FACTOR_CODE_LENGTH = 256
 const MAX_PASSKEY_CREDENTIAL_DESCRIPTORS = 1_000
 const MAX_PASSKEY_CREDENTIAL_ID_BYTES = 1_023
@@ -227,6 +239,7 @@ export interface PersistedSyncData {
   folderTombstones: SyncTombstone[]
   loginTombstones: SyncTombstone[]
   pendingLoginMutation: PendingLoginMutation | null
+  domainSettings: BitwardenEquivalentDomainSettings | null
 }
 
 interface VaultData {
@@ -1204,12 +1217,182 @@ function parseDirectState(value: unknown): BitwardenDirectState {
   return { session, deviceIdentifier, profileId, securityStamp }
 }
 
+function parseStoredEquivalentDomain(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value !== value.trim() ||
+    /[\0\r\n,]/u.test(value) ||
+    Buffer.byteLength(value, 'utf8') > MAX_EQUIVALENT_DOMAIN_LENGTH
+  ) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  return value
+}
+
+function parseStoredEquivalentDomainGroups(value: unknown): string[][] {
+  if (!Array.isArray(value) || value.length > MAX_EQUIVALENT_DOMAIN_GROUPS) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  let total = 0
+  return value.map((group) => {
+    if (!Array.isArray(group) || group.length > MAX_EQUIVALENT_DOMAINS_PER_GROUP) {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+    total += group.length
+    if (total > MAX_EQUIVALENT_DOMAIN_TOTAL) throw new VaultError('CORRUPT_VAULT')
+    return group.map(parseStoredEquivalentDomain)
+  })
+}
+
+function parseStoredEquivalentDomainSettings(value: unknown): BitwardenEquivalentDomainSettings {
+  if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
+  const equivalentDomains = parseStoredEquivalentDomainGroups(value.equivalentDomains)
+  if (
+    !Array.isArray(value.globalEquivalentDomains) ||
+    value.globalEquivalentDomains.length > MAX_EQUIVALENT_DOMAIN_GROUPS
+  ) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  let total = equivalentDomains.reduce((count, group) => count + group.length, 0)
+  const seenTypes = new Set<number>()
+  const globalEquivalentDomains = value.globalEquivalentDomains.map((candidate) => {
+    if (!isRecord(candidate)) throw new VaultError('CORRUPT_VAULT')
+    const { type, domains, excluded } = candidate
+    if (
+      typeof type !== 'number' ||
+      !Number.isInteger(type) ||
+      type < 0 ||
+      type > 2_147_483_647 ||
+      seenTypes.has(type) ||
+      !Array.isArray(domains) ||
+      domains.length > MAX_EQUIVALENT_DOMAINS_PER_GROUP ||
+      typeof excluded !== 'boolean'
+    ) {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+    seenTypes.add(type)
+    total += domains.length
+    if (total > MAX_EQUIVALENT_DOMAIN_TOTAL) throw new VaultError('CORRUPT_VAULT')
+    return { type, domains: domains.map(parseStoredEquivalentDomain), excluded }
+  })
+  return { equivalentDomains, globalEquivalentDomains }
+}
+
+function cloneEquivalentDomainSettings(
+  settings: BitwardenEquivalentDomainSettings
+): BitwardenEquivalentDomainSettings {
+  return {
+    equivalentDomains: settings.equivalentDomains.map((group) => [...group]),
+    globalEquivalentDomains: settings.globalEquivalentDomains.map((group) => ({
+      ...group,
+      domains: [...group.domains]
+    }))
+  }
+}
+
+function validateRemoteEquivalentDomainSettings(value: unknown): BitwardenEquivalentDomainSettings {
+  try {
+    return parseStoredEquivalentDomainSettings(value)
+  } catch {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+}
+
+function equivalentDomainRevision(settings: BitwardenEquivalentDomainSettings): string {
+  return createHash('sha256').update(JSON.stringify(settings)).digest('hex')
+}
+
+function equivalentDomainSettingsView(
+  settings: BitwardenEquivalentDomainSettings
+): EquivalentDomainSettingsView {
+  return {
+    ...cloneEquivalentDomainSettings(settings),
+    revision: equivalentDomainRevision(settings)
+  }
+}
+
+function normalizeEquivalentDomain(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > MAX_EQUIVALENT_DOMAIN_LENGTH ||
+    /[\0\r\n,]/u.test(value)
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const normalized = value.trim()
+  if (
+    normalized.length === 0 ||
+    normalized.startsWith('data:') ||
+    normalized.startsWith('about:')
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  let parsed: ReturnType<typeof parseDomain>
+  try {
+    parsed = parseDomain(normalized, { allowPrivateDomains: true, validHosts: ['localhost'] })
+  } catch {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const domain = parsed.isIp || parsed.hostname === 'localhost' ? parsed.hostname : parsed.domain
+  if (!domain || Buffer.byteLength(domain, 'utf8') > MAX_EQUIVALENT_DOMAIN_LENGTH) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return domain.toLowerCase()
+}
+
+function normalizeEquivalentDomainUpdate(
+  request: EquivalentDomainSettingsUpdate
+): BitwardenEquivalentDomainUpdate {
+  if (
+    !Array.isArray(request.equivalentDomains) ||
+    request.equivalentDomains.length > MAX_EQUIVALENT_DOMAIN_GROUPS ||
+    !Array.isArray(request.excludedGlobalEquivalentDomains) ||
+    request.excludedGlobalEquivalentDomains.length > MAX_EQUIVALENT_DOMAIN_GROUPS
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  let total = 0
+  const seenGroups = new Set<string>()
+  const equivalentDomains: string[][] = []
+  for (const candidate of request.equivalentDomains) {
+    if (!Array.isArray(candidate) || candidate.length > MAX_EQUIVALENT_DOMAINS_PER_GROUP) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    const group = [...new Set(candidate.map(normalizeEquivalentDomain))]
+    if (group.length === 0) continue
+    total += group.length
+    if (total > MAX_EQUIVALENT_DOMAIN_TOTAL) throw new VaultError('INVALID_INPUT')
+    const signature = [...group].sort().join('\0')
+    if (seenGroups.has(signature)) continue
+    seenGroups.add(signature)
+    equivalentDomains.push(group)
+  }
+  const seenTypes = new Set<number>()
+  const excludedGlobalEquivalentDomains = request.excludedGlobalEquivalentDomains.map((type) => {
+    if (
+      typeof type !== 'number' ||
+      !Number.isInteger(type) ||
+      type < 0 ||
+      type > 2_147_483_647 ||
+      seenTypes.has(type)
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    seenTypes.add(type)
+    return type
+  })
+  return { equivalentDomains, excludedGlobalEquivalentDomains }
+}
+
 function parseSyncData(
   value: unknown,
   folderIds: Set<string>,
   loginIds: Set<string>,
   isCliData: boolean,
-  allowMissingPendingMutation: boolean
+  allowMissingPendingMutation: boolean,
+  allowMissingDomainSettings: boolean
 ): PersistedSyncData | null {
   if (value === null) return null
   if (!isRecord(value) || value.provider !== 'bitwarden') {
@@ -1304,6 +1487,13 @@ function parseSyncData(
     throw new VaultError('CORRUPT_VAULT')
   }
 
+  const domainSettings =
+    value.domainSettings === undefined && allowMissingDomainSettings
+      ? null
+      : value.domainSettings === null
+        ? null
+        : parseStoredEquivalentDomainSettings(value.domainSettings)
+
   return {
     provider: 'bitwarden',
     serverUrl: value.serverUrl,
@@ -1321,7 +1511,8 @@ function parseSyncData(
     loginMappings,
     folderTombstones,
     loginTombstones,
-    pendingLoginMutation
+    pendingLoginMutation,
+    domainSettings
   }
 }
 
@@ -1343,6 +1534,7 @@ function parseVaultData(value: unknown): VaultData {
       MULTIPLE_URIS_DATA_VERSION,
       PASSWORD_HISTORY_DATA_VERSION,
       GENERATOR_HISTORY_DATA_VERSION,
+      ATTACHMENTS_DATA_VERSION,
       DATA_VERSION
     ].includes(value.version) ||
     !Array.isArray(value.folders) ||
@@ -1393,7 +1585,8 @@ function parseVaultData(value: unknown): VaultData {
           folderIds,
           loginIds,
           dataVersion === CLI_DATA_VERSION,
-          dataVersion < DATA_VERSION
+          dataVersion < DATA_VERSION,
+          dataVersion < EQUIVALENT_DOMAINS_DATA_VERSION
         )
 
   return {
@@ -1742,6 +1935,9 @@ function cloneData(data: VaultData): VaultData {
           loginMappings: data.sync.loginMappings.map((entry) => ({ ...entry })),
           folderTombstones: data.sync.folderTombstones.map((entry) => ({ ...entry })),
           loginTombstones: data.sync.loginTombstones.map((entry) => ({ ...entry })),
+          domainSettings: data.sync.domainSettings
+            ? cloneEquivalentDomainSettings(data.sync.domainSettings)
+            : null,
           pendingLoginMutation: data.sync.pendingLoginMutation
             ? {
                 ...data.sync.pendingLoginMutation,
@@ -2240,7 +2436,8 @@ export class VaultService {
           loginMappings: [],
           folderTombstones: [],
           loginTombstones: [],
-          pendingLoginMutation: null
+          pendingLoginMutation: null,
+          domainSettings: null
         }
         const client = this.createSyncClient(sync)
         await client.login({ email, password, twoFactor, newDeviceOtp, signal: abort.signal })
@@ -2340,6 +2537,81 @@ export class VaultService {
       await this.persist(next)
       this.data = next
       return { configured: false, state: 'unconfigured' }
+    })
+  }
+
+  getEquivalentDomainSettings(): Promise<EquivalentDomainSettingsView> {
+    return this.exclusive(async () => {
+      const current = this.requireData()
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      const abort = this.startSyncOperation()
+      try {
+        const settings = validateRemoteEquivalentDomainSettings(
+          await client.getEquivalentDomainSettings(abort.signal)
+        )
+        if (abort.signal.aborted) throw new BitwardenDirectError('ABORTED')
+        const next = cloneData(current)
+        if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+        next.sync.domainSettings = cloneEquivalentDomainSettings(settings)
+        next.sync.state = client.exportState()
+        next.updatedAt = this.nowIso()
+        await this.persist(next)
+        if (abort.signal.aborted) throw new BitwardenDirectError('ABORTED')
+        this.data = next
+        this.syncLastError = null
+        return equivalentDomainSettingsView(settings)
+      } catch (error) {
+        throw this.mapSyncError(error)
+      } finally {
+        this.finishSyncOperation(abort)
+      }
+    })
+  }
+
+  updateEquivalentDomainSettings(
+    request: EquivalentDomainSettingsUpdate
+  ): Promise<EquivalentDomainSettingsView> {
+    return this.exclusive(async () => {
+      if (!/^[0-9a-f]{64}$/u.test(request.expectedRevision)) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      const update = normalizeEquivalentDomainUpdate(request)
+      const current = this.requireData()
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      const abort = this.startSyncOperation()
+      try {
+        const serverSettings = validateRemoteEquivalentDomainSettings(
+          await client.getEquivalentDomainSettings(abort.signal)
+        )
+        if (equivalentDomainRevision(serverSettings) !== request.expectedRevision) {
+          throw new VaultError('SYNC_CONFLICT')
+        }
+        const globalTypes = new Set(serverSettings.globalEquivalentDomains.map(({ type }) => type))
+        if (update.excludedGlobalEquivalentDomains.some((type) => !globalTypes.has(type))) {
+          throw new VaultError('INVALID_INPUT')
+        }
+        await client.updateEquivalentDomainSettings(update, abort.signal)
+        const confirmed = validateRemoteEquivalentDomainSettings(
+          await client.getEquivalentDomainSettings(abort.signal)
+        )
+        if (abort.signal.aborted) throw new BitwardenDirectError('ABORTED')
+        const next = cloneData(current)
+        if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+        next.sync.domainSettings = cloneEquivalentDomainSettings(confirmed)
+        next.sync.state = client.exportState()
+        next.updatedAt = this.nowIso()
+        await this.persist(next)
+        if (abort.signal.aborted) throw new BitwardenDirectError('ABORTED')
+        this.data = next
+        this.syncLastError = null
+        return equivalentDomainSettingsView(confirmed)
+      } catch (error) {
+        throw this.mapSyncError(error)
+      } finally {
+        this.finishSyncOperation(abort)
+      }
     })
   }
 
@@ -4520,10 +4792,14 @@ export class VaultService {
     const sync = current.sync
     if (!sync) throw new VaultError('SYNC_AUTH_REQUIRED')
     await client.sync(signal)
-    let [remoteFolders, remoteLogins] = await Promise.all([
+    const initialRemote = await Promise.all([
       client.listFolders(signal),
-      client.listPersonalLogins(signal)
+      client.listPersonalLogins(signal),
+      client.getEquivalentDomainSettings(signal)
     ])
+    let remoteFolders = initialRemote[0]
+    let remoteLogins = initialRemote[1]
+    const domainSettings = validateRemoteEquivalentDomainSettings(initialRemote[2])
     const next = cloneData(current)
     if (next.sync?.pendingLoginMutation) {
       await this.resumePendingLoginMutation(next, client, remoteFolders, remoteLogins, signal)
@@ -4599,7 +4875,8 @@ export class VaultService {
       loginMappings: metadata.loginLinks.map((link) => ({ ...link })),
       folderTombstones: [],
       loginTombstones: [],
-      pendingLoginMutation: null
+      pendingLoginMutation: null,
+      domainSettings: cloneEquivalentDomainSettings(domainSettings)
     }
     next.updatedAt = syncedAt
     await this.persist(next)
