@@ -10,6 +10,12 @@ import {
   parseAccountWebAuthnChallengeFromTokenError,
   type AccountWebAuthnChallenge
 } from './account-webauthn-codec'
+import {
+  parseAccountWebAuthnRegistrationChallengeFromResponse,
+  serializeAccountWebAuthnAttestation,
+  type AccountWebAuthnAttestation,
+  type AccountWebAuthnRegistrationChallenge
+} from './account-webauthn-registration-codec'
 
 export type BitwardenEnvironment = 'us' | 'eu' | string
 export type JsonPrimitive = string | number | boolean | null
@@ -150,6 +156,31 @@ export interface BitwardenEmailTwoFactorSetup {
   email: string | null
   verificationMode: 'server-token' | 'master-password'
   userVerificationToken: string | null
+}
+
+/** Renderer-safe metadata for a registered WebAuthn two-step-login key. */
+export interface BitwardenWebAuthnKey {
+  /** Server-assigned numeric slot. This is never a WebAuthn credential id. */
+  id: number
+  name: string
+  migrated: boolean
+}
+
+export interface BitwardenWebAuthnSetup {
+  enabled: boolean
+  keys: BitwardenWebAuthnKey[]
+  verificationMode: 'server-token' | 'master-password'
+  /** Main-process-only capability for the official Bitwarden setup flow. */
+  userVerificationToken: string | null
+}
+
+export interface BitwardenWebAuthnDeviceRegistration {
+  id: number
+  name: string
+  attestation: AccountWebAuthnAttestation
+  verificationMode: BitwardenWebAuthnSetup['verificationMode']
+  userVerificationToken?: string
+  masterPasswordHash?: string
 }
 
 /**
@@ -337,6 +368,9 @@ const MAX_SEND_FILE_BYTES = 128 * 1024 * 1024
 const MAX_SEND_FILE_URL_BYTES = 64 * 1024
 const MAX_ATTACHMENT_BYTES = 500 * 1024 * 1024 + 65
 const MAX_ATTACHMENT_URL_BYTES = 64 * 1024
+const MAX_WEBAUTHN_KEYS = 64
+const MAX_WEBAUTHN_KEY_ID = 2_147_483_647
+const MAX_WEBAUTHN_KEY_NAME_BYTES = 256
 
 function isRecord(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -1133,6 +1167,149 @@ export class BitwardenHttpClient {
       throw normalizeUserVerificationError(error)
     } finally {
       clearEmailTwoFactorBody(body)
+    }
+  }
+
+  async getWebAuthnSetup(
+    masterPasswordHash: string,
+    signal?: AbortSignal
+  ): Promise<BitwardenWebAuthnSetup> {
+    const body = { masterPasswordHash: assertMasterPasswordHash(masterPasswordHash) }
+    try {
+      const response = await this.requestJson(
+        'POST',
+        `${this.urls.apiUrl}/two-factor/get-webauthn`,
+        {
+          body,
+          signal,
+          maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+          tooLargeCode: 'TOO_LARGE'
+        }
+      )
+      return parseWebAuthnSetup(response)
+    } catch (error) {
+      throw normalizeUserVerificationError(error)
+    } finally {
+      body.masterPasswordHash = ''
+    }
+  }
+
+  async getWebAuthnRegistrationChallenge(
+    request:
+      | { verificationMode: 'server-token'; userVerificationToken: string }
+      | { verificationMode: 'master-password'; masterPasswordHash: string },
+    signal?: AbortSignal
+  ): Promise<AccountWebAuthnRegistrationChallenge> {
+    const body: JsonObject = {}
+    if (request.verificationMode === 'server-token') {
+      body.userVerificationToken = assertVerificationToken(request.userVerificationToken)
+    } else if (request.verificationMode === 'master-password') {
+      body.masterPasswordHash = assertMasterPasswordHash(request.masterPasswordHash)
+    } else {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    try {
+      const response = await this.requestJson(
+        'POST',
+        `${this.urls.apiUrl}/two-factor/get-webauthn-challenge`,
+        {
+          body,
+          signal,
+          retry: false,
+          maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+          tooLargeCode: 'TOO_LARGE'
+        }
+      )
+      try {
+        return parseAccountWebAuthnRegistrationChallengeFromResponse(response)
+      } catch {
+        throw new BitwardenHttpError('INVALID_RESPONSE')
+      }
+    } catch (error) {
+      throw normalizeUserVerificationError(error)
+    } finally {
+      if (typeof body.userVerificationToken === 'string') body.userVerificationToken = ''
+      if (typeof body.masterPasswordHash === 'string') body.masterPasswordHash = ''
+    }
+  }
+
+  async enableWebAuthn(
+    request: BitwardenWebAuthnDeviceRegistration,
+    signal?: AbortSignal
+  ): Promise<BitwardenWebAuthnKey[]> {
+    const id = assertWebAuthnKeyId(request.id)
+    const name = assertWebAuthnKeyName(request.name)
+    let deviceResponse: JsonObject
+    try {
+      const serialized = JSON.parse(serializeAccountWebAuthnAttestation(request.attestation))
+      if (!isRecord(serialized)) throw new BitwardenHttpError('INVALID_RESPONSE')
+      deviceResponse = serialized
+    } catch {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    const body: JsonObject = { id, name, deviceResponse }
+    try {
+      if (request.verificationMode === 'server-token') {
+        body.userVerificationToken = assertVerificationToken(request.userVerificationToken)
+      } else if (request.verificationMode === 'master-password') {
+        body.masterPasswordHash = assertMasterPasswordHash(request.masterPasswordHash)
+      } else {
+        throw new BitwardenHttpError('INVALID_RESPONSE')
+      }
+      const response = await this.requestJson('PUT', `${this.urls.apiUrl}/two-factor/webauthn`, {
+        body,
+        signal,
+        retry: false,
+        maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+        tooLargeCode: 'TOO_LARGE'
+      })
+      const details = parseWebAuthnDetailsResponse(response)
+      const added = details.keys.find((key) => key.id === id)
+      if (!details.enabled || !added || added.name !== name) {
+        throw new BitwardenHttpError('INVALID_RESPONSE')
+      }
+      return details.keys
+    } catch (error) {
+      throw normalizeUserVerificationError(error)
+    } finally {
+      clearWebAuthnMutationBody(body)
+    }
+  }
+
+  async deleteWebAuthnKey(
+    request:
+      | { id: number; verificationMode: 'server-token'; userVerificationToken: string }
+      | { id: number; verificationMode: 'master-password'; masterPasswordHash: string },
+    signal?: AbortSignal
+  ): Promise<BitwardenWebAuthnKey[]> {
+    const id = assertWebAuthnKeyId(request.id)
+    const body: JsonObject = { id }
+    if (request.verificationMode === 'server-token') {
+      body.userVerificationToken = assertVerificationToken(request.userVerificationToken)
+    } else if (request.verificationMode === 'master-password') {
+      body.masterPasswordHash = assertMasterPasswordHash(request.masterPasswordHash)
+    } else {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    try {
+      const response = await this.requestJson('DELETE', `${this.urls.apiUrl}/two-factor/webauthn`, {
+        body,
+        signal,
+        retry: false,
+        maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+        tooLargeCode: 'TOO_LARGE'
+      })
+      const details = parseWebAuthnDetailsResponse(response)
+      if (details.keys.some((key) => key.id === id)) {
+        throw new BitwardenHttpError('INVALID_RESPONSE')
+      }
+      return details.keys
+    } catch (error) {
+      throw normalizeUserVerificationError(error)
+    } finally {
+      body.id = -1
+      if (typeof body.userVerificationToken === 'string') body.userVerificationToken = ''
+      if (typeof body.masterPasswordHash === 'string') body.masterPasswordHash = ''
     }
   }
 
@@ -2228,6 +2405,130 @@ function assertVerificationToken(value: unknown): string {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
   return value
+}
+
+function webAuthnAlias(
+  value: JsonObject,
+  names: readonly string[],
+  required = true
+): JsonValue | undefined {
+  const present = names.filter((name) => Object.hasOwn(value, name))
+  if (present.length > 1 || (required && present.length !== 1)) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return present.length === 0 ? undefined : value[present[0]!]
+}
+
+function assertWebAuthnKeyId(value: unknown): number {
+  if (
+    typeof value !== 'number' ||
+    !Number.isSafeInteger(value) ||
+    value < 1 ||
+    value > MAX_WEBAUTHN_KEY_ID
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function assertWebAuthnKeyName(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.trim() !== value ||
+    Buffer.byteLength(value, 'utf8') > MAX_WEBAUTHN_KEY_NAME_BYTES ||
+    /[\0\r\n]/u.test(value)
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function parseWebAuthnKey(value: JsonValue): BitwardenWebAuthnKey {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const id = assertWebAuthnKeyId(webAuthnAlias(value, ['id', 'Id']))
+  const name = assertWebAuthnKeyName(webAuthnAlias(value, ['name', 'Name']))
+  const migrated = webAuthnAlias(value, ['migrated', 'Migrated'])
+  if (typeof migrated !== 'boolean') throw new BitwardenHttpError('INVALID_RESPONSE')
+  return { id, name, migrated }
+}
+
+function parseWebAuthnDetails(value: JsonValue): {
+  enabled: boolean
+  keys: BitwardenWebAuthnKey[]
+} {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const enabled = webAuthnAlias(value, ['enabled', 'Enabled'])
+  const rawKeys = webAuthnAlias(value, ['keys', 'Keys'])
+  if (
+    typeof enabled !== 'boolean' ||
+    !Array.isArray(rawKeys) ||
+    rawKeys.length > MAX_WEBAUTHN_KEYS
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  const keys = rawKeys.map((key) => parseWebAuthnKey(key))
+  if (new Set(keys.map(({ id }) => id)).size !== keys.length) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return { enabled, keys }
+}
+
+function parseWebAuthnDetailsResponse(value: JsonValue): {
+  enabled: boolean
+  keys: BitwardenWebAuthnKey[]
+} {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const nested = webAuthnAlias(value, ['webAuthn', 'WebAuthn'], false)
+  return parseWebAuthnDetails(nested === undefined ? value : nested)
+}
+
+function parseWebAuthnSetup(value: JsonValue): BitwardenWebAuthnSetup {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const nested = webAuthnAlias(value, ['webAuthn', 'WebAuthn'], false)
+  if (nested !== undefined) {
+    if (
+      webAuthnAlias(value, ['enabled', 'Enabled'], false) !== undefined ||
+      webAuthnAlias(value, ['keys', 'Keys'], false) !== undefined
+    ) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    return {
+      ...parseWebAuthnDetails(nested),
+      verificationMode: 'server-token',
+      userVerificationToken: assertVerificationToken(
+        webAuthnAlias(value, ['userVerificationToken', 'UserVerificationToken'])
+      )
+    }
+  }
+  if (
+    webAuthnAlias(value, ['userVerificationToken', 'UserVerificationToken'], false) !== undefined
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return {
+    ...parseWebAuthnDetails(value),
+    verificationMode: 'master-password',
+    userVerificationToken: null
+  }
+}
+
+function clearWebAuthnMutationBody(body: JsonObject): void {
+  body.id = -1
+  body.name = ''
+  if (typeof body.userVerificationToken === 'string') body.userVerificationToken = ''
+  if (typeof body.masterPasswordHash === 'string') body.masterPasswordHash = ''
+  if (!isRecord(body.deviceResponse)) return
+  body.deviceResponse.id = ''
+  body.deviceResponse.rawId = ''
+  body.deviceResponse.type = ''
+  body.deviceResponse.extensions = null
+  if (isRecord(body.deviceResponse.response)) {
+    body.deviceResponse.response.AttestationObject = ''
+    body.deviceResponse.response.clientDataJson = ''
+  }
+  body.deviceResponse.response = null
+  body.deviceResponse = null
 }
 
 function assertTotpSetupKey(value: unknown): string {

@@ -42,6 +42,8 @@ import {
   type BitwardenPrelogin,
   type BitwardenPersonalApiKey,
   type BitwardenTwoFactorProvider,
+  type BitwardenWebAuthnKey,
+  type BitwardenWebAuthnSetup,
   type BitwardenSession,
   type JsonObject,
   type JsonValue
@@ -69,6 +71,10 @@ import {
   type AccountWebAuthnAssertion,
   type AccountWebAuthnChallenge
 } from './account-webauthn-codec'
+import type {
+  AccountWebAuthnAttestation,
+  AccountWebAuthnRegistrationChallenge
+} from './account-webauthn-registration-codec'
 
 const USER_KEY_BYTES = 64
 const MAX_REMOTE_ENTITIES = 100_000
@@ -92,6 +98,7 @@ const MAX_SEND_FILE_SIZE = 550_502_400
 const MAX_SEND_FILE_SIZE_NAME_LENGTH = 64
 const MAX_SEND_FILE_PLAINTEXT_BYTES = 128 * 1024 * 1024 - 65
 const MAX_SYNC_SECRET_LENGTH = 16_384
+const MAX_WEBAUTHN_REGISTRATION_SLOTS = 10
 const MINIMUM_CLIENT_VERSION = '2024.12.0'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 const userKeyEncoder = new Encoder({
@@ -137,6 +144,23 @@ function protocolClientVersion(value: string | undefined): string {
     if (requested[index]! < minimum[index]!) return MINIMUM_CLIENT_VERSION
   }
   return match[4] ? MINIMUM_CLIENT_VERSION : value
+}
+
+function nextWebAuthnRegistrationId(keys: readonly BitwardenWebAuthnKey[]): number {
+  const occupied = new Set(keys.map(({ id }) => id))
+  for (let id = 1; id <= MAX_WEBAUTHN_REGISTRATION_SLOTS; id += 1) {
+    if (!occupied.has(id)) return id
+  }
+  throw new BitwardenDirectError('CONFLICT')
+}
+
+function clearAccountWebAuthnAttestation(attestation: AccountWebAuthnAttestation): void {
+  attestation.id = ''
+  attestation.rawId = ''
+  attestation.response.clientDataJSON = ''
+  attestation.response.attestationObject = ''
+  attestation.clientExtensionResults = {}
+  attestation.authenticatorAttachment = null
 }
 
 export type BitwardenDirectErrorCode =
@@ -369,6 +393,26 @@ export interface BitwardenMasterPasswordChangeRequest {
   signal?: AbortSignal
 }
 
+/** Main-process-only setup state. It must not be persisted in exportState(). */
+export interface BitwardenWebAuthnRegistrationSetup {
+  enabled: boolean
+  keys: BitwardenWebAuthnKey[]
+  registrationId: number
+  registrationChallenge: AccountWebAuthnRegistrationChallenge
+  verificationMode: BitwardenWebAuthnSetup['verificationMode']
+  userVerificationToken: string | null
+}
+
+export interface BitwardenWebAuthnRegistrationRequest {
+  id: number
+  name: string
+  attestation: AccountWebAuthnAttestation
+  verificationMode: BitwardenWebAuthnSetup['verificationMode']
+  userVerificationToken?: string
+  /** Required only for Vaultwarden. Cleared after the request finishes. */
+  masterPassword?: string
+}
+
 export interface BitwardenDirectState {
   session: BitwardenSession | null
   deviceIdentifier: string
@@ -430,6 +474,15 @@ export interface BitwardenSyncClient {
     },
     signal?: AbortSignal
   ): Promise<void>
+  beginWebAuthnSetup?(
+    masterPassword: string,
+    signal?: AbortSignal
+  ): Promise<BitwardenWebAuthnRegistrationSetup>
+  completeWebAuthnSetup?(
+    request: BitwardenWebAuthnRegistrationRequest,
+    signal?: AbortSignal
+  ): Promise<void>
+  deleteWebAuthnKey?(id: number, masterPassword: string, signal?: AbortSignal): Promise<void>
   /** Authenticated Vaultwarden HIBP account-breach report; it does not require vault decryption. */
   getAccountBreachReport(email: string, signal?: AbortSignal): Promise<BitwardenAccountBreachReport>
   getEquivalentDomainSettings(signal?: AbortSignal): Promise<BitwardenEquivalentDomainSettings>
@@ -2179,6 +2232,185 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       request.token = ''
       if (request.masterPassword !== undefined) request.masterPassword = ''
       if (request.userVerificationToken !== undefined) request.userVerificationToken = ''
+    }
+  }
+
+  async beginWebAuthnSetup(
+    masterPassword: string,
+    signal?: AbortSignal
+  ): Promise<BitwardenWebAuthnRegistrationSetup> {
+    let masterKey: Buffer | null = null
+    let passwordKey: Buffer | null = null
+    let masterPasswordHash = ''
+    let setup: BitwardenWebAuthnSetup | null = null
+    try {
+      if (
+        typeof masterPassword !== 'string' ||
+        masterPassword.length === 0 ||
+        masterPassword.length > MAX_SYNC_SECRET_LENGTH
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      this.requireProfileId()
+      const prelogin = await this.http.prelogin(this.email, signal)
+      masterKey = await deriveMasterKey(
+        masterPassword,
+        prelogin.salt ?? this.email,
+        kdfFromPrelogin(prelogin)
+      )
+      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      masterPasswordHash = passwordKey.toString('base64')
+      setup = await this.http.getWebAuthnSetup(masterPasswordHash, signal)
+      const registrationChallenge = await this.http.getWebAuthnRegistrationChallenge(
+        setup.verificationMode === 'server-token'
+          ? {
+              verificationMode: 'server-token',
+              userVerificationToken: setup.userVerificationToken!
+            }
+          : { verificationMode: 'master-password', masterPasswordHash },
+        signal
+      )
+      await this.captureSession()
+      return {
+        enabled: setup.enabled,
+        keys: setup.keys.map((key) => ({ ...key })),
+        registrationId: nextWebAuthnRegistrationId(setup.keys),
+        registrationChallenge,
+        verificationMode: setup.verificationMode,
+        userVerificationToken: setup.userVerificationToken
+      }
+    } catch (error) {
+      throw this.mapError(error)
+    } finally {
+      masterKey?.fill(0)
+      passwordKey?.fill(0)
+      masterPasswordHash = ''
+      if (setup) {
+        setup.userVerificationToken = null
+        setup.keys.splice(0)
+      }
+    }
+  }
+
+  async completeWebAuthnSetup(
+    request: BitwardenWebAuthnRegistrationRequest,
+    signal?: AbortSignal
+  ): Promise<void> {
+    let masterKey: Buffer | null = null
+    let passwordKey: Buffer | null = null
+    let masterPasswordHash = ''
+    let mutationStarted = false
+    try {
+      if (
+        !Number.isSafeInteger(request.id) ||
+        request.id < 1 ||
+        request.id > MAX_WEBAUTHN_REGISTRATION_SLOTS
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      this.requireProfileId()
+      if (request.verificationMode === 'master-password') {
+        const password = request.masterPassword
+        if (
+          typeof password !== 'string' ||
+          password.length === 0 ||
+          password.length > MAX_SYNC_SECRET_LENGTH
+        ) {
+          throw new BitwardenDirectError('INVALID_RESPONSE')
+        }
+        const prelogin = await this.http.prelogin(this.email, signal)
+        masterKey = await deriveMasterKey(
+          password,
+          prelogin.salt ?? this.email,
+          kdfFromPrelogin(prelogin)
+        )
+        passwordKey = await derivePasswordKey(masterKey, password)
+        masterPasswordHash = passwordKey.toString('base64')
+      }
+      mutationStarted = true
+      await this.http.enableWebAuthn(
+        {
+          id: request.id,
+          name: request.name,
+          attestation: request.attestation,
+          verificationMode: request.verificationMode,
+          ...(request.userVerificationToken
+            ? { userVerificationToken: request.userVerificationToken }
+            : {}),
+          ...(masterPasswordHash ? { masterPasswordHash } : {})
+        },
+        signal
+      )
+      await this.captureSession()
+    } catch (error) {
+      const mapped = this.mapError(error)
+      if (mutationStarted && mapped.code === 'NETWORK') {
+        throw new BitwardenDirectError('TWO_FACTOR_MUTATION_UNKNOWN')
+      }
+      throw mapped
+    } finally {
+      masterKey?.fill(0)
+      passwordKey?.fill(0)
+      masterPasswordHash = ''
+      if (request.masterPassword !== undefined) request.masterPassword = ''
+      if (request.userVerificationToken !== undefined) request.userVerificationToken = ''
+      clearAccountWebAuthnAttestation(request.attestation)
+    }
+  }
+
+  async deleteWebAuthnKey(id: number, masterPassword: string, signal?: AbortSignal): Promise<void> {
+    let masterKey: Buffer | null = null
+    let passwordKey: Buffer | null = null
+    let masterPasswordHash = ''
+    let setup: BitwardenWebAuthnSetup | null = null
+    let mutationStarted = false
+    try {
+      if (
+        !Number.isSafeInteger(id) ||
+        id < 1 ||
+        typeof masterPassword !== 'string' ||
+        masterPassword.length === 0 ||
+        masterPassword.length > MAX_SYNC_SECRET_LENGTH
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      this.requireProfileId()
+      const prelogin = await this.http.prelogin(this.email, signal)
+      masterKey = await deriveMasterKey(
+        masterPassword,
+        prelogin.salt ?? this.email,
+        kdfFromPrelogin(prelogin)
+      )
+      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      masterPasswordHash = passwordKey.toString('base64')
+      setup = await this.http.getWebAuthnSetup(masterPasswordHash, signal)
+      if (!setup.keys.some((key) => key.id === id)) throw new BitwardenDirectError('NOT_FOUND')
+      mutationStarted = true
+      await this.http.deleteWebAuthnKey(
+        setup.verificationMode === 'server-token'
+          ? {
+              id,
+              verificationMode: 'server-token',
+              userVerificationToken: setup.userVerificationToken!
+            }
+          : { id, verificationMode: 'master-password', masterPasswordHash },
+        signal
+      )
+      await this.captureSession()
+    } catch (error) {
+      const mapped = this.mapError(error)
+      if (mutationStarted && mapped.code === 'NETWORK') {
+        throw new BitwardenDirectError('TWO_FACTOR_MUTATION_UNKNOWN')
+      }
+      throw mapped
+    } finally {
+      masterKey?.fill(0)
+      passwordKey?.fill(0)
+      masterPasswordHash = ''
+      if (setup) {
+        setup.userVerificationToken = null
+        setup.keys.splice(0)
+      }
     }
   }
 

@@ -30,6 +30,7 @@ import {
   type BitwardenTwoFactor
 } from './bitwarden-direct'
 import type { AccountWebAuthnAssertion } from './account-webauthn-codec'
+import type { AccountWebAuthnAttestation } from './account-webauthn-registration-codec'
 import {
   BitwardenHttpClient,
   BitwardenHttpError,
@@ -56,6 +57,8 @@ const COLLECTION_ID = '70000000-0000-4000-8000-000000000001'
 const ORGANIZATION_CIPHER_ID = '80000000-0000-4000-8000-000000000001'
 const ACCOUNT_WEBAUTHN_CHALLENGE = Buffer.alloc(32, 0x31).toString('base64url')
 const ACCOUNT_WEBAUTHN_CREDENTIAL_ID = Buffer.alloc(32, 0x32).toString('base64url')
+const ACCOUNT_WEBAUTHN_REGISTRATION_USER_ID = Buffer.alloc(16, 0x33).toString('base64url')
+const ACCOUNT_WEBAUTHN_ATTESTATION_OBJECT = Buffer.alloc(128, 0x34).toString('base64url')
 
 function accountWebAuthnAssertion(): AccountWebAuthnAssertion {
   return {
@@ -94,6 +97,38 @@ function accountWebAuthnProvider(pascalCase: boolean): JsonObject {
         timeout: 60_000,
         userVerification: 'discouraged'
       }
+}
+
+function accountWebAuthnRegistrationOptions(): JsonObject {
+  return {
+    rp: { id: 'vault.example.invalid', name: 'Vault' },
+    user: {
+      id: ACCOUNT_WEBAUTHN_REGISTRATION_USER_ID,
+      name: EMAIL,
+      displayName: 'Bear'
+    },
+    challenge: ACCOUNT_WEBAUTHN_CHALLENGE,
+    pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+    timeout: 60_000,
+    excludeCredentials: [],
+    authenticatorSelection: { userVerification: 'discouraged' },
+    attestation: 'none',
+    extensions: {}
+  }
+}
+
+function accountWebAuthnAttestation(): AccountWebAuthnAttestation {
+  return {
+    id: ACCOUNT_WEBAUTHN_CREDENTIAL_ID,
+    rawId: ACCOUNT_WEBAUTHN_CREDENTIAL_ID,
+    type: 'public-key',
+    response: {
+      clientDataJSON: Buffer.from('{"type":"webauthn.create"}').toString('base64url'),
+      attestationObject: ACCOUNT_WEBAUTHN_ATTESTATION_OBJECT
+    },
+    clientExtensionResults: {},
+    authenticatorAttachment: 'cross-platform'
+  }
 }
 
 async function encryptedSync(
@@ -2311,6 +2346,177 @@ describe('BitwardenDirectClient', () => {
     expect(bodies[5]).toMatchObject({
       email: factorEmail,
       token: '654321',
+      masterPasswordHash: expect.any(String)
+    })
+  })
+
+  it('runs the official WebAuthn setup with a server-selected slot and no exported ceremony state', async () => {
+    const requests: Array<{ url: string; method: string; body: JsonObject }> = []
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url, init) => {
+        const method = init?.method ?? 'GET'
+        const body = init?.body ? (JSON.parse(String(init.body)) as JsonObject) : {}
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        requests.push({ url, method, body })
+        if (url.endsWith('/api/two-factor/get-webauthn')) {
+          const deleting =
+            requests.filter(({ url: requestUrl }) =>
+              requestUrl.endsWith('/api/two-factor/get-webauthn')
+            ).length > 1
+          return jsonResponse({
+            webAuthn: {
+              enabled: deleting,
+              keys: deleting
+                ? [
+                    { id: 2, name: 'Existing key', migrated: false },
+                    { id: 1, name: 'New key', migrated: false }
+                  ]
+                : [{ id: 2, name: 'Existing key', migrated: false }]
+            },
+            userVerificationToken: deleting ? 'delete-capability' : 'setup-capability'
+          })
+        }
+        if (url.endsWith('/api/two-factor/get-webauthn-challenge')) {
+          return jsonResponse({ options: accountWebAuthnRegistrationOptions() })
+        }
+        if (url.endsWith('/api/two-factor/webauthn') && method === 'PUT') {
+          return jsonResponse({
+            webAuthn: {
+              enabled: true,
+              keys: [
+                { id: 2, name: 'Existing key', migrated: false },
+                { id: 1, name: 'New key', migrated: false }
+              ]
+            }
+          })
+        }
+        if (url.endsWith('/api/two-factor/webauthn') && method === 'DELETE') {
+          return jsonResponse({
+            webAuthn: {
+              enabled: true,
+              keys: [{ id: 2, name: 'Existing key', migrated: false }]
+            }
+          })
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    const setup = await client.beginWebAuthnSetup(PASSWORD)
+    expect(setup).toMatchObject({
+      registrationId: 1,
+      verificationMode: 'server-token',
+      userVerificationToken: 'setup-capability',
+      keys: [{ id: 2, name: 'Existing key', migrated: false }]
+    })
+    const attestation = accountWebAuthnAttestation()
+    await client.completeWebAuthnSetup({
+      id: setup.registrationId,
+      name: 'New key',
+      attestation,
+      verificationMode: setup.verificationMode,
+      userVerificationToken: setup.userVerificationToken!
+    })
+    expect(attestation.id).toBe('')
+    expect(attestation.response.attestationObject).toBe('')
+    await client.deleteWebAuthnKey(1, PASSWORD)
+
+    expect(requests.map(({ url, method }) => [url, method])).toEqual([
+      ['https://vault.example.invalid/api/two-factor/get-webauthn', 'POST'],
+      ['https://vault.example.invalid/api/two-factor/get-webauthn-challenge', 'POST'],
+      ['https://vault.example.invalid/api/two-factor/webauthn', 'PUT'],
+      ['https://vault.example.invalid/api/two-factor/get-webauthn', 'POST'],
+      ['https://vault.example.invalid/api/two-factor/webauthn', 'DELETE']
+    ])
+    expect(requests[1]?.body).toEqual({ userVerificationToken: 'setup-capability' })
+    expect(requests[2]?.body).toMatchObject({
+      id: 1,
+      name: 'New key',
+      userVerificationToken: 'setup-capability'
+    })
+    expect(requests[4]?.body).toEqual({ id: 1, userVerificationToken: 'delete-capability' })
+    const exported = JSON.stringify(client.exportState())
+    expect(exported).not.toContain(ACCOUNT_WEBAUTHN_CHALLENGE)
+    expect(exported).not.toContain(ACCOUNT_WEBAUTHN_ATTESTATION_OBJECT)
+    expect(exported).not.toContain('setup-capability')
+  })
+
+  it('uses a fresh Vaultwarden proof and reports an unknown WebAuthn mutation outcome', async () => {
+    let preloginRequests = 0
+    let mutationRequests = 0
+    const bodies: JsonObject[] = []
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      maxRetries: 5,
+      fetch: async (url, init) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          preloginRequests += 1
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (init?.body) bodies.push(JSON.parse(String(init.body)) as JsonObject)
+        if (url.endsWith('/api/two-factor/get-webauthn')) {
+          return jsonResponse({ enabled: false, keys: [], object: 'twoFactorWebAuthn' })
+        }
+        if (url.endsWith('/api/two-factor/get-webauthn-challenge')) {
+          return jsonResponse({
+            ...accountWebAuthnRegistrationOptions(),
+            status: 'ok',
+            errorMessage: ''
+          })
+        }
+        if (url.endsWith('/api/two-factor/webauthn') && init?.method === 'PUT') {
+          mutationRequests += 1
+          throw new TypeError('connection closed after request write')
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    const setup = await client.beginWebAuthnSetup(PASSWORD)
+    expect(setup).toMatchObject({ registrationId: 1, verificationMode: 'master-password' })
+    const request = {
+      id: setup.registrationId,
+      name: 'Vaultwarden key',
+      attestation: accountWebAuthnAttestation(),
+      verificationMode: 'master-password' as const,
+      masterPassword: PASSWORD
+    }
+    await expect(client.completeWebAuthnSetup(request)).rejects.toMatchObject({
+      code: 'TWO_FACTOR_MUTATION_UNKNOWN'
+    })
+    expect(preloginRequests).toBe(2)
+    expect(mutationRequests).toBe(1)
+    expect(request.masterPassword).toBe('')
+    expect(request.attestation.id).toBe('')
+    expect(bodies[1]).toEqual({ masterPasswordHash: expect.any(String) })
+    expect(bodies[2]).toMatchObject({
+      id: 1,
+      name: 'Vaultwarden key',
       masterPasswordHash: expect.any(String)
     })
   })

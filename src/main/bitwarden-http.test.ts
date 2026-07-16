@@ -24,6 +24,45 @@ function vaultwardenChallengeFixture(): Record<string, unknown> {
   }
 }
 
+const REGISTRATION_CREDENTIAL_ID = Buffer.alloc(32, 0x33).toString('base64url')
+const REGISTRATION_CLIENT_DATA = Buffer.from('{"type":"webauthn.create"}').toString('base64url')
+const REGISTRATION_ATTESTATION = Buffer.alloc(128, 0x34).toString('base64url')
+
+function registrationOptions(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    rp: { id: 'vault.example.test', name: 'Vault' },
+    user: {
+      id: Buffer.alloc(16, 0x32).toString('base64url'),
+      name: 'person@example.test',
+      displayName: 'Person'
+    },
+    challenge: Buffer.alloc(32, 0x31).toString('base64url'),
+    pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+    timeout: 60_000,
+    excludeCredentials: [],
+    authenticatorSelection: { userVerification: 'discouraged' },
+    attestation: 'none',
+    extensions: {},
+    ...overrides
+  }
+}
+
+function registrationAttestation(): Parameters<
+  BitwardenHttpClient['enableWebAuthn']
+>[0]['attestation'] {
+  return {
+    id: REGISTRATION_CREDENTIAL_ID,
+    rawId: REGISTRATION_CREDENTIAL_ID,
+    type: 'public-key',
+    response: {
+      clientDataJSON: REGISTRATION_CLIENT_DATA,
+      attestationObject: REGISTRATION_ATTESTATION
+    },
+    clientExtensionResults: {},
+    authenticatorAttachment: 'cross-platform'
+  }
+}
+
 describe('resolveBitwardenUrls', () => {
   it('maps the public Bitwarden cloud URLs to their split API and identity origins', () => {
     expect(resolveBitwardenUrls('https://bitwarden.com')).toEqual({
@@ -715,6 +754,190 @@ describe('BitwardenHttpClient', () => {
       })
     ).rejects.toMatchObject({ code: 'AUTH', status: 401 })
     expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('uses official WebAuthn capabilities and exact canonical mutation bodies', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        json({
+          WebAuthn: {
+            Enabled: false,
+            Keys: [{ Id: 2, Name: 'Existing key', Migrated: false }]
+          },
+          UserVerificationToken: 'official-webauthn-capability'
+        })
+      )
+      .mockResolvedValueOnce(
+        json({ Options: registrationOptions(), Object: 'twoFactorWebAuthnChallenge' })
+      )
+      .mockResolvedValueOnce(
+        json({
+          webAuthn: {
+            enabled: true,
+            keys: [
+              { id: 2, name: 'Existing key', migrated: false },
+              { id: 1, name: 'New security key', migrated: false }
+            ]
+          }
+        })
+      )
+      .mockResolvedValueOnce(
+        json({
+          webAuthn: { enabled: true, keys: [{ id: 2, name: 'Existing key', migrated: false }] }
+        })
+      )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(client.getWebAuthnSetup('fresh-proof')).resolves.toEqual({
+      enabled: false,
+      keys: [{ id: 2, name: 'Existing key', migrated: false }],
+      verificationMode: 'server-token',
+      userVerificationToken: 'official-webauthn-capability'
+    })
+    await client.getWebAuthnRegistrationChallenge({
+      verificationMode: 'server-token',
+      userVerificationToken: 'official-webauthn-capability'
+    })
+    await client.enableWebAuthn({
+      id: 1,
+      name: 'New security key',
+      attestation: registrationAttestation(),
+      verificationMode: 'server-token',
+      userVerificationToken: 'official-webauthn-capability'
+    })
+    await client.deleteWebAuthnKey({
+      id: 1,
+      verificationMode: 'server-token',
+      userVerificationToken: 'official-webauthn-capability'
+    })
+
+    expect(fetch.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
+      ['https://api.bitwarden.com/two-factor/get-webauthn', 'POST'],
+      ['https://api.bitwarden.com/two-factor/get-webauthn-challenge', 'POST'],
+      ['https://api.bitwarden.com/two-factor/webauthn', 'PUT'],
+      ['https://api.bitwarden.com/two-factor/webauthn', 'DELETE']
+    ])
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      masterPasswordHash: 'fresh-proof'
+    })
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
+      userVerificationToken: 'official-webauthn-capability'
+    })
+    expect(JSON.parse(String(fetch.mock.calls[2]?.[1]?.body))).toEqual({
+      id: 1,
+      name: 'New security key',
+      userVerificationToken: 'official-webauthn-capability',
+      deviceResponse: {
+        id: REGISTRATION_CREDENTIAL_ID,
+        rawId: REGISTRATION_CREDENTIAL_ID,
+        type: 'public-key',
+        extensions: {},
+        response: {
+          AttestationObject: REGISTRATION_ATTESTATION,
+          clientDataJson: REGISTRATION_CLIENT_DATA
+        }
+      }
+    })
+    expect(JSON.parse(String(fetch.mock.calls[3]?.[1]?.body))).toEqual({
+      id: 1,
+      userVerificationToken: 'official-webauthn-capability'
+    })
+  })
+
+  it('uses the flat Vaultwarden WebAuthn dialect with master-password proof', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(json({ enabled: false, keys: [], object: 'twoFactorWebAuthn' }))
+      .mockResolvedValueOnce(json({ ...registrationOptions(), status: 'ok', errorMessage: '' }))
+      .mockResolvedValueOnce(
+        json({
+          enabled: true,
+          keys: [{ id: 1, name: 'Vaultwarden key', migrated: false }],
+          object: 'twoFactorU2f'
+        })
+      )
+      .mockResolvedValueOnce(json({ enabled: true, keys: [], object: 'twoFactorU2f' }))
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(client.getWebAuthnSetup('fresh-vw-proof')).resolves.toMatchObject({
+      verificationMode: 'master-password',
+      userVerificationToken: null
+    })
+    await client.getWebAuthnRegistrationChallenge({
+      verificationMode: 'master-password',
+      masterPasswordHash: 'fresh-vw-proof'
+    })
+    await client.enableWebAuthn({
+      id: 1,
+      name: 'Vaultwarden key',
+      attestation: registrationAttestation(),
+      verificationMode: 'master-password',
+      masterPasswordHash: 'fresh-vw-proof'
+    })
+    await client.deleteWebAuthnKey({
+      id: 1,
+      verificationMode: 'master-password',
+      masterPasswordHash: 'fresh-vw-proof'
+    })
+
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
+      masterPasswordHash: 'fresh-vw-proof'
+    })
+    expect(JSON.parse(String(fetch.mock.calls[2]?.[1]?.body))).toMatchObject({
+      id: 1,
+      name: 'Vaultwarden key',
+      masterPasswordHash: 'fresh-vw-proof'
+    })
+    expect(JSON.parse(String(fetch.mock.calls[3]?.[1]?.body))).toEqual({
+      id: 1,
+      masterPasswordHash: 'fresh-vw-proof'
+    })
+  })
+
+  it('rejects malformed WebAuthn metadata/challenges and never replays mutations', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        json({
+          enabled: true,
+          keys: [{ id: REGISTRATION_CREDENTIAL_ID, name: 'wrong', migrated: false }]
+        })
+      )
+      .mockResolvedValueOnce(json({ ...registrationOptions(), status: 'failed', errorMessage: '' }))
+      .mockResolvedValueOnce(json({ message: 'ambiguous failure' }, 503))
+      .mockResolvedValueOnce(json({ message: 'ambiguous failure' }, 503))
+    const client = new BitwardenHttpClient({ server: 'us', fetch, maxRetries: 5 })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(client.getWebAuthnSetup('proof')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    await expect(
+      client.getWebAuthnRegistrationChallenge({
+        verificationMode: 'master-password',
+        masterPasswordHash: 'proof'
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(
+      client.enableWebAuthn({
+        id: 1,
+        name: 'Key',
+        attestation: registrationAttestation(),
+        verificationMode: 'master-password',
+        masterPasswordHash: 'proof'
+      })
+    ).rejects.toMatchObject({ code: 'NETWORK', status: 503 })
+    await expect(
+      client.deleteWebAuthnKey({
+        id: 1,
+        verificationMode: 'master-password',
+        masterPasswordHash: 'proof'
+      })
+    ).rejects.toMatchObject({ code: 'NETWORK', status: 503 })
+    expect(fetch).toHaveBeenCalledTimes(4)
   })
 
   it('parses both current nested and legacy prelogin KDF payloads', async () => {
