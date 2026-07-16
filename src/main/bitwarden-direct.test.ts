@@ -24,7 +24,12 @@ import {
   stretchMasterKey,
   type BitwardenXChaCha20Poly1305Key
 } from './bitwarden-crypto'
-import { addAggregateRemoteRows, BitwardenDirectClient } from './bitwarden-direct'
+import {
+  addAggregateRemoteRows,
+  BitwardenDirectClient,
+  type BitwardenTwoFactor
+} from './bitwarden-direct'
+import type { AccountWebAuthnAssertion } from './account-webauthn-codec'
 import {
   BitwardenHttpClient,
   BitwardenHttpError,
@@ -49,6 +54,47 @@ const SEND_ID = '50000000-0000-4000-8000-000000000001'
 const ORGANIZATION_ID = '60000000-0000-4000-8000-000000000001'
 const COLLECTION_ID = '70000000-0000-4000-8000-000000000001'
 const ORGANIZATION_CIPHER_ID = '80000000-0000-4000-8000-000000000001'
+const ACCOUNT_WEBAUTHN_CHALLENGE = Buffer.alloc(32, 0x31).toString('base64url')
+const ACCOUNT_WEBAUTHN_CREDENTIAL_ID = Buffer.alloc(32, 0x32).toString('base64url')
+
+function accountWebAuthnAssertion(): AccountWebAuthnAssertion {
+  return {
+    id: ACCOUNT_WEBAUTHN_CREDENTIAL_ID,
+    rawId: ACCOUNT_WEBAUTHN_CREDENTIAL_ID,
+    type: 'public-key',
+    response: {
+      clientDataJSON: Buffer.from('{"type":"webauthn.get"}').toString('base64url'),
+      authenticatorData: Buffer.alloc(37, 1).toString('base64url'),
+      signature: Buffer.alloc(70, 2).toString('base64url'),
+      userHandle: null
+    },
+    clientExtensionResults: { appid: true, uvm: [[1, 2, 3]] },
+    authenticatorAttachment: 'cross-platform'
+  }
+}
+
+function accountWebAuthnProvider(pascalCase: boolean): JsonObject {
+  return pascalCase
+    ? {
+        AllowCredentials: [{ Id: ACCOUNT_WEBAUTHN_CREDENTIAL_ID, Type: 'public-key' }],
+        Challenge: ACCOUNT_WEBAUTHN_CHALLENGE,
+        Extensions: { AppId: 'https://vault.example.invalid/app-id.json', Uvm: true },
+        RpId: 'vault.example.invalid',
+        Timeout: 60_000,
+        UserVerification: 'preferred'
+      }
+    : {
+        allowCredentials: [{ id: ACCOUNT_WEBAUTHN_CREDENTIAL_ID, type: 'public-key' }],
+        challenge: ACCOUNT_WEBAUTHN_CHALLENGE,
+        extensions: {
+          appid: 'https://vault.example.invalid/app-id.json',
+          getCredBlob: false
+        },
+        rpId: 'vault.example.invalid',
+        timeout: 60_000,
+        userVerification: 'discouraged'
+      }
+}
 
 async function encryptedSync(
   options: {
@@ -810,6 +856,264 @@ async function expectInvalidSync(sync: JsonObject): Promise<void> {
 }
 
 describe('BitwardenDirectClient', () => {
+  it.each([
+    { label: 'Vaultwarden camelCase', pascalCase: false, providersKey: 'TwoFactorProviders2' },
+    { label: 'official PascalCase', pascalCase: true, providersKey: 'twoFactorProviders2' }
+  ])('propagates a strict $label challenge without raw token error details', async (fixture) => {
+    let tokenRequests = 0
+    const fetch = vi.fn<FetchLike>(async (url) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/identity/connect/token')) {
+        tokenRequests += 1
+        return jsonResponse(
+          {
+            error: 'invalid_grant',
+            error_description: 'Two factor required.',
+            [fixture.providersKey]: {
+              '0': null,
+              '1': null,
+              '3': null,
+              '7': accountWebAuthnProvider(fixture.pascalCase)
+            },
+            rawServerSecret: 'must-not-escape'
+          },
+          400
+        )
+      }
+      return jsonResponse({ message: 'not found' }, 404)
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
+    })
+
+    const error = await client
+      .login({ email: EMAIL, password: PASSWORD })
+      .catch((caught: unknown) => caught)
+    expect(error).toMatchObject({
+      code: 'TWO_FACTOR_REQUIRED',
+      webAuthnChallenge: {
+        challenge: ACCOUNT_WEBAUTHN_CHALLENGE,
+        rpId: 'vault.example.invalid',
+        allowCredentials: [{ id: ACCOUNT_WEBAUTHN_CREDENTIAL_ID, type: 'public-key' }],
+        timeout: 60_000
+      }
+    })
+    expect(JSON.stringify(error)).not.toContain('must-not-escape')
+    expect(client.exportState()).not.toHaveProperty('webAuthnChallenge')
+    expect(tokenRequests).toBe(1)
+  })
+
+  it.each([true, false])(
+    'submits the exact provider-7 assertion form with remember=%s only on the user retry',
+    async (remember) => {
+      const tokenForms: URLSearchParams[] = []
+      const fetch = vi.fn<FetchLike>(async (url, init) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          tokenForms.push(new URLSearchParams(String(init?.body)))
+          if (tokenForms.length === 1) {
+            return jsonResponse(
+              {
+                error: 'invalid_grant',
+                error_description: 'Two factor required.',
+                TwoFactorProviders2: { '7': accountWebAuthnProvider(false) }
+              },
+              400
+            )
+          }
+          return jsonResponse({
+            access_token: 'access',
+            refresh_token: 'refresh',
+            expires_in: 3600
+          })
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      })
+      const client = new BitwardenDirectClient({
+        serverUrl: 'https://vault.example.invalid',
+        email: EMAIL,
+        deviceName: 'Test desktop',
+        deviceType: 99,
+        httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
+      })
+
+      await expect(client.login({ email: EMAIL, password: PASSWORD })).rejects.toMatchObject({
+        code: 'TWO_FACTOR_REQUIRED'
+      })
+      await client.login({
+        email: EMAIL,
+        password: PASSWORD,
+        twoFactor: { method: 7, assertion: accountWebAuthnAssertion(), remember }
+      })
+
+      expect(tokenForms).toHaveLength(2)
+      expect(Object.fromEntries(tokenForms[0]!)).not.toHaveProperty('twoFactorProvider')
+      expect(Object.fromEntries(tokenForms[1]!)).toEqual({
+        grant_type: 'password',
+        username: EMAIL,
+        password: expect.any(String),
+        scope: 'api offline_access',
+        client_id: 'desktop',
+        deviceIdentifier: expect.any(String),
+        deviceType: '99',
+        deviceName: 'Test desktop',
+        twoFactorProvider: '7',
+        twoFactorToken: JSON.stringify({
+          id: ACCOUNT_WEBAUTHN_CREDENTIAL_ID,
+          rawId: ACCOUNT_WEBAUTHN_CREDENTIAL_ID,
+          type: 'public-key',
+          response: {
+            clientDataJson: accountWebAuthnAssertion().response.clientDataJSON,
+            authenticatorData: accountWebAuthnAssertion().response.authenticatorData,
+            signature: accountWebAuthnAssertion().response.signature
+          },
+          extensions: { appid: true, uvm: [[1, 2, 3]] }
+        }),
+        twoFactorRemember: remember ? '1' : '0'
+      })
+    }
+  )
+
+  it.each([
+    { method: 0, code: '123456' },
+    { method: 1, code: '654321' },
+    { method: 3, code: 'recovery-code' }
+  ] satisfies readonly BitwardenTwoFactor[])(
+    'keeps provider $method token and remember defaults unchanged',
+    async (twoFactor) => {
+      let tokenForm: URLSearchParams | null = null
+      const fetch = vi.fn<FetchLike>(async (url, init) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          tokenForm = new URLSearchParams(String(init?.body))
+          return jsonResponse({
+            access_token: 'access',
+            refresh_token: 'refresh',
+            expires_in: 3600
+          })
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      })
+      const client = new BitwardenDirectClient({
+        serverUrl: 'https://vault.example.invalid',
+        email: EMAIL,
+        httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
+      })
+
+      await client.login({ email: EMAIL, password: PASSWORD, twoFactor })
+      expect(tokenForm).not.toBeNull()
+      expect(tokenForm!.get('twoFactorProvider')).toBe(String(twoFactor.method))
+      expect(tokenForm!.get('twoFactorToken')).toBe(twoFactor.code)
+      expect(tokenForm!.get('twoFactorRemember')).toBe('1')
+    }
+  )
+
+  it.each([
+    { httpCode: 'ABORTED' as const, directCode: 'ABORTED' },
+    { httpCode: 'NETWORK' as const, directCode: 'NETWORK' }
+  ])('does not retry a provider-7 request after $httpCode', async ({ httpCode, directCode }) => {
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url) =>
+        url.endsWith('/identity/accounts/prelogin/password')
+          ? jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+          : jsonResponse({ message: 'not found' }, 404)
+    })
+    const passwordToken = vi
+      .spyOn(http, 'passwordToken')
+      .mockRejectedValue(new BitwardenHttpError(httpCode))
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+
+    await expect(
+      client.login({
+        email: EMAIL,
+        password: PASSWORD,
+        twoFactor: { method: 7, assertion: accountWebAuthnAssertion(), remember: false }
+      })
+    ).rejects.toMatchObject({ code: directCode })
+    expect(passwordToken).toHaveBeenCalledOnce()
+  })
+
+  it('rejects an invalid assertion before the token request', async () => {
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url) =>
+        url.endsWith('/identity/accounts/prelogin/password')
+          ? jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+          : jsonResponse({ message: 'not found' }, 404)
+    })
+    const passwordToken = vi.spyOn(http, 'passwordToken')
+    const invalidAssertion = {
+      ...accountWebAuthnAssertion(),
+      rawId: `${ACCOUNT_WEBAUTHN_CREDENTIAL_ID}=`
+    }
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+
+    await expect(
+      client.login({
+        email: EMAIL,
+        password: PASSWORD,
+        twoFactor: { method: 7, assertion: invalidAssertion, remember: false }
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    expect(passwordToken).not.toHaveBeenCalled()
+  })
+
+  it('does not retain a previous WebAuthn challenge for a new login attempt', async () => {
+    let tokenRequests = 0
+    const fetch = vi.fn<FetchLike>(async (url) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/identity/connect/token')) {
+        tokenRequests += 1
+        return jsonResponse(
+          {
+            error: 'invalid_grant',
+            error_description: 'Two factor required.',
+            TwoFactorProviders2:
+              tokenRequests === 1
+                ? { '7': accountWebAuthnProvider(false) }
+                : { '0': null, '1': null, '3': null }
+          },
+          400
+        )
+      }
+      return jsonResponse({ message: 'not found' }, 404)
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
+    })
+
+    await expect(client.login({ email: EMAIL, password: PASSWORD })).rejects.toMatchObject({
+      code: 'TWO_FACTOR_REQUIRED',
+      webAuthnChallenge: expect.any(Object)
+    })
+    await expect(client.login({ email: EMAIL, password: PASSWORD })).rejects.toMatchObject({
+      code: 'TWO_FACTOR_REQUIRED',
+      webAuthnChallenge: undefined
+    })
+    expect(tokenRequests).toBe(2)
+  })
+
   it('rewraps the same user key for an official PBKDF2 password change and clears state', async () => {
     const sync = await encryptedSync()
     const bodies: JsonObject[] = []

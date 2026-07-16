@@ -64,6 +64,11 @@ import {
   type BitwardenAttachmentByteSource,
   type BitwardenEncryptedAttachmentFile
 } from './bitwarden-attachment-stream'
+import {
+  serializeAccountWebAuthnAssertion,
+  type AccountWebAuthnAssertion,
+  type AccountWebAuthnChallenge
+} from './account-webauthn-codec'
 
 const USER_KEY_BYTES = 64
 const MAX_REMOTE_ENTITIES = 100_000
@@ -155,7 +160,11 @@ export type BitwardenDirectErrorCode =
   | 'MASTER_PASSWORD_CHANGE_UNKNOWN'
 
 export class BitwardenDirectError extends Error {
-  constructor(readonly code: BitwardenDirectErrorCode) {
+  constructor(
+    readonly code: BitwardenDirectErrorCode,
+    /** Main-process-only, strictly normalized provider-7 request options. */
+    readonly webAuthnChallenge?: AccountWebAuthnChallenge
+  ) {
     super(`Bitwarden direct sync failed (${code})`)
     this.name = 'BitwardenDirectError'
   }
@@ -164,7 +173,18 @@ export class BitwardenDirectError extends Error {
 export interface BitwardenTwoFactor {
   method: 0 | 1 | 3
   code: string
+  /** Existing providers continue to remember by default. */
+  remember?: boolean
 }
+
+export interface BitwardenWebAuthnTwoFactor {
+  method: 7
+  assertion: AccountWebAuthnAssertion
+  /** WebAuthn requires an explicit user choice. */
+  remember: boolean
+}
+
+export type BitwardenLoginTwoFactor = BitwardenTwoFactor | BitwardenWebAuthnTwoFactor
 
 export interface BitwardenFolder {
   id: string
@@ -330,14 +350,14 @@ export interface BitwardenLoginDraft extends Partial<VaultItemFields> {
 export interface BitwardenLoginRequest {
   email: string
   password: string
-  twoFactor?: BitwardenTwoFactor
+  twoFactor?: BitwardenLoginTwoFactor
   newDeviceOtp?: string
   signal?: AbortSignal
 }
 
 export interface BitwardenUnlockRequest {
   password: string
-  twoFactor?: BitwardenTwoFactor
+  twoFactor?: BitwardenLoginTwoFactor
   newDeviceOtp?: string
   signal?: AbortSignal
 }
@@ -3257,7 +3277,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
 
   private async deriveAndAuthenticate(
     password: string,
-    twoFactor: BitwardenTwoFactor | undefined,
+    twoFactor: BitwardenLoginTwoFactor | undefined,
     newDeviceOtp: string | undefined,
     requestToken: boolean,
     signal?: AbortSignal
@@ -3265,6 +3285,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     let masterKey: Buffer | null = null
     let passwordKey: Buffer | null = null
     let stretched: ReturnType<typeof stretchMasterKey> | null = null
+    let twoFactorToken: string | undefined
     try {
       const prelogin = await this.http.prelogin(this.email, signal)
       masterKey = await deriveMasterKey(
@@ -3275,6 +3296,26 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       passwordKey = await derivePasswordKey(masterKey, password)
       stretched = stretchMasterKey(masterKey)
       if (requestToken) {
+        let twoFactorRemember: boolean | undefined
+        if (twoFactor) {
+          if (twoFactor.method === 7) {
+            if (typeof twoFactor.remember !== 'boolean') {
+              throw new BitwardenDirectError('INVALID_RESPONSE')
+            }
+            twoFactorToken = serializeAccountWebAuthnAssertion(twoFactor.assertion)
+            twoFactorRemember = twoFactor.remember
+          } else {
+            if (
+              (twoFactor.method !== 0 && twoFactor.method !== 1 && twoFactor.method !== 3) ||
+              typeof twoFactor.code !== 'string' ||
+              (twoFactor.remember !== undefined && typeof twoFactor.remember !== 'boolean')
+            ) {
+              throw new BitwardenDirectError('INVALID_RESPONSE')
+            }
+            twoFactorToken = twoFactor.code
+            twoFactorRemember = twoFactor.remember ?? true
+          }
+        }
         const session = await this.http.passwordToken(
           {
             email: this.email,
@@ -3286,8 +3327,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
             ...(twoFactor
               ? {
                   twoFactorProvider: twoFactor.method,
-                  twoFactorToken: twoFactor.code,
-                  twoFactorRemember: true
+                  twoFactorToken,
+                  twoFactorRemember
                 }
               : {})
           },
@@ -3303,6 +3344,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     } catch (error) {
       throw this.mapError(error)
     } finally {
+      // JavaScript strings are immutable; release the local assertion/token reference promptly.
+      twoFactorToken = undefined
       masterKey?.fill(0)
       passwordKey?.fill(0)
       stretched?.encKey.fill(0)
@@ -4187,7 +4230,9 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     }
     if (error instanceof BitwardenHttpError) {
       if (error.code === 'AUTH') return new BitwardenDirectError('AUTH_REQUIRED')
-      if (error.code === 'TWO_FACTOR') return new BitwardenDirectError('TWO_FACTOR_REQUIRED')
+      if (error.code === 'TWO_FACTOR') {
+        return new BitwardenDirectError('TWO_FACTOR_REQUIRED', error.webAuthnChallenge)
+      }
       if (error.code === 'NEW_DEVICE') return new BitwardenDirectError('NEW_DEVICE_REQUIRED')
       if (error.code === 'CONFLICT') return new BitwardenDirectError('CONFLICT')
       if (error.code === 'ABORTED') return new BitwardenDirectError('ABORTED')
