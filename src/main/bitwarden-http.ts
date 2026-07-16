@@ -132,24 +132,6 @@ export interface BitwardenSendRequest {
   hideEmail: boolean
 }
 
-/** Authenticated owner update for an existing file Send. The encrypted file is retained. */
-export interface BitwardenSendFileUpdateRequest {
-  type: 1
-  fileLength: number
-  authType: 1 | 2
-  name: string
-  notes: string | null
-  key: string
-  maxAccessCount: number | null
-  expirationDate: string | null
-  deletionDate: string
-  file: { id: string; fileName: string; size: string; sizeName: string | null }
-  password: string | null
-  emails: null
-  disabled: boolean
-  hideEmail: boolean
-}
-
 /** Authenticated owner request for a file Send. File bytes are uploaded separately. */
 export interface BitwardenSendFileRequest {
   type: 1
@@ -944,7 +926,7 @@ export class BitwardenHttpClient {
 
   async updateSend(
     id: string,
-    request: BitwardenSendRequest | BitwardenSendFileUpdateRequest,
+    request: BitwardenSendRequest,
     signal?: AbortSignal
   ): Promise<JsonObject> {
     return parseSendEntity(
