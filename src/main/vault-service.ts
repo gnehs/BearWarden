@@ -302,6 +302,8 @@ interface VaultData {
 
 export interface VaultPlatform {
   copyText: (text: string) => void | Promise<void>
+  /** Copies highly sensitive text with a hard lifetime cap independent of user settings. */
+  copySensitiveText?: (text: string, maxLifetimeSeconds: number) => void | Promise<void>
   openExternal: (url: string) => void | Promise<void>
 }
 
@@ -3032,6 +3034,105 @@ export class VaultService {
         if (error instanceof VaultError) throw error
         throw this.mapSyncError(error)
       })
+    }
+  }
+
+  copyAccountApiClientId(): Promise<void> {
+    return this.exclusive(async () => {
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      const state = client.exportState()
+      if (!state.session || !state.profileId) throw new VaultError('SYNC_AUTH_REQUIRED')
+      await this.platform.copyText(`user.${state.profileId}`)
+    })
+  }
+
+  async copyPersonalApiKey(request: {
+    masterPassword: string
+    rotate: boolean
+    confirmRotation: boolean
+  }): Promise<{ rotated: boolean; revisionDate: string }> {
+    if (
+      typeof request.masterPassword !== 'string' ||
+      request.masterPassword.length === 0 ||
+      request.masterPassword.length > MAX_PASSWORD_LENGTH ||
+      typeof request.rotate !== 'boolean' ||
+      typeof request.confirmRotation !== 'boolean' ||
+      request.confirmRotation !== request.rotate
+    ) {
+      request.masterPassword = ''
+      throw new VaultError('INVALID_INPUT')
+    }
+    const copySensitiveText = this.platform.copySensitiveText
+    if (!copySensitiveText) {
+      request.masterPassword = ''
+      throw new VaultError('INTERNAL_ERROR')
+    }
+    let lease: {
+      generation: number
+      client: BitwardenSyncClient
+      request: NonNullable<BitwardenSyncClient['getPersonalApiKey']>
+      abort: AbortController
+    }
+    try {
+      lease = await this.exclusive(async () => {
+        const sync = this.requireSyncData()
+        const client = this.getOrCreateSyncClient(sync)
+        if (!client.getPersonalApiKey) throw new VaultError('SYNC_FAILED')
+        const state = client.exportState()
+        if (!state.session || !state.profileId) throw new VaultError('SYNC_AUTH_REQUIRED')
+        const abort = new AbortController()
+        this.accountSecurityAborts.add(abort)
+        return {
+          generation: this.generation,
+          client,
+          request: client.getPersonalApiKey.bind(client),
+          abort
+        }
+      })
+    } catch (error) {
+      request.masterPassword = ''
+      throw error
+    }
+    let result: Awaited<ReturnType<NonNullable<BitwardenSyncClient['getPersonalApiKey']>>> | null =
+      null
+    try {
+      result = await lease.request(request.masterPassword, request.rotate, lease.abort.signal)
+      return await this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        this.requireData()
+        if (
+          lease.abort.signal.aborted ||
+          lease.generation !== this.generation ||
+          this.syncClient !== lease.client ||
+          !lease.client.exportState().session
+        ) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        await copySensitiveText(result!.clientSecret, 30)
+        await this.persistCurrentClientState().catch(() => undefined)
+        return { rotated: request.rotate, revisionDate: result!.revisionDate }
+      })
+    } catch (error) {
+      return this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+          throw new VaultError('LOCKED')
+        }
+        if (error instanceof BitwardenDirectError) {
+          if (error.code === 'USER_VERIFICATION_FAILED') {
+            throw new VaultError('INVALID_MASTER_PASSWORD')
+          }
+          if (error.code === 'API_KEY_ROTATION_UNKNOWN') {
+            throw new VaultError('API_KEY_ROTATION_UNKNOWN')
+          }
+        }
+        if (error instanceof VaultError) throw error
+        throw this.mapSyncError(error)
+      })
+    } finally {
+      request.masterPassword = ''
+      if (result) result.clientSecret = ''
     }
   }
 

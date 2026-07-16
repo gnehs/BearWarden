@@ -191,7 +191,9 @@ const api: BearWardenAPI = {
   },
   accountSecurity: {
     profile: () => ipcRenderer.invoke(IPC_CHANNELS.accountSecurityProfile),
-    resendVerification: () => ipcRenderer.invoke(IPC_CHANNELS.accountResendVerification)
+    resendVerification: () => ipcRenderer.invoke(IPC_CHANNELS.accountResendVerification),
+    copyApiClientId: () => ipcRenderer.invoke(IPC_CHANNELS.accountCopyApiClientId),
+    copyApiKey: (request) => ipcRenderer.invoke(IPC_CHANNELS.accountCopyApiKey, request)
   },
   domainRules: {
     get: () => ipcRenderer.invoke(IPC_CHANNELS.domainRulesGet),

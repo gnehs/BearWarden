@@ -53,6 +53,7 @@ import {
   SelectValue
 } from '@renderer/components/ui/select'
 import { Spinner } from '@renderer/components/ui/spinner'
+import AccountApiKeyDialog from './AccountApiKeyDialog'
 
 const BITWARDEN_CLOUD_URL = 'https://bitwarden.com'
 
@@ -540,6 +541,7 @@ function SyncDialog({
                   </AlertDescription>
                 </Alert>
               )}
+              {accountProfile && <AccountApiKeyDialog />}
               {accountSecurityError && (
                 <Alert variant="destructive">
                   <AlertDescription>{accountSecurityError}</AlertDescription>

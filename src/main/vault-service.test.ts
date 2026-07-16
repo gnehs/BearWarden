@@ -93,12 +93,14 @@ async function createHarness(options: VaultServiceOptions = {}): Promise<{
   store: EncryptedVaultStore<unknown>
   service: VaultService
   copyText: ReturnType<typeof vi.fn>
+  copySensitiveText: ReturnType<typeof vi.fn>
   openExternal: ReturnType<typeof vi.fn>
 }> {
   const directory = await mkdtemp(join(tmpdir(), 'bearwarden-test-'))
   temporaryDirectories.push(directory)
   const filePath = join(directory, 'vault', 'vault.json')
   const copyText = vi.fn()
+  const copySensitiveText = vi.fn()
   const openExternal = vi.fn()
   let idIndex = 0
   let clock = Date.parse('2026-07-14T00:00:00.000Z')
@@ -107,6 +109,7 @@ async function createHarness(options: VaultServiceOptions = {}): Promise<{
     store,
     {
       copyText,
+      copySensitiveText,
       openExternal
     },
     {
@@ -115,7 +118,7 @@ async function createHarness(options: VaultServiceOptions = {}): Promise<{
       ...options
     }
   )
-  return { directory, filePath, store, service, copyText, openExternal }
+  return { directory, filePath, store, service, copyText, copySensitiveText, openExternal }
 }
 
 const PASSKEY_RP_ID = 'login.example.invalid'
@@ -313,6 +316,11 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
       twoFactorEnabled: true
     }),
     resendVerificationEmail: async () => undefined,
+    getPersonalApiKey: async (_masterPassword, rotate) => ({
+      clientId: 'user.90000000-0000-4000-8000-000000000099',
+      clientSecret: rotate ? 'rotated-client-secret' : 'existing-client-secret',
+      revisionDate: rotate ? '2026-07-16T00:01:00Z' : '2026-07-16T00:00:00Z'
+    }),
     getEquivalentDomainSettings: async () => structuredClone(equivalentDomainSettings),
     updateEquivalentDomainSettings: async (update) => {
       const excluded = new Set(update.excludedGlobalEquivalentDomains)
@@ -3320,6 +3328,85 @@ describe('VaultService encrypted local data', () => {
     await vi.waitFor(() => expect(profile).toHaveBeenCalledTimes(2))
     await expect(service.lock()).resolves.toEqual({ state: 'locked' })
     await locked
+  })
+
+  it('copies personal API credentials only in main and requires explicit rotation confirmation', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service, copyText, copySensitiveText } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const getApiKey = vi.spyOn(fake!, 'getPersonalApiKey')
+
+    await expect(service.copyAccountApiClientId()).resolves.toBeUndefined()
+    expect(copyText).toHaveBeenCalledWith('user.90000000-0000-4000-8000-000000000099')
+
+    const viewRequest = {
+      masterPassword: 'remote master password',
+      rotate: false,
+      confirmRotation: false
+    }
+    await expect(service.copyPersonalApiKey(viewRequest)).resolves.toEqual({
+      rotated: false,
+      revisionDate: '2026-07-16T00:00:00Z'
+    })
+    expect(viewRequest.masterPassword).toBe('')
+    expect(copySensitiveText).toHaveBeenLastCalledWith('existing-client-secret', 30)
+
+    const rotateRequest = {
+      masterPassword: 'remote master password',
+      rotate: true,
+      confirmRotation: true
+    }
+    await expect(service.copyPersonalApiKey(rotateRequest)).resolves.toEqual({
+      rotated: true,
+      revisionDate: '2026-07-16T00:01:00Z'
+    })
+    expect(copySensitiveText).toHaveBeenLastCalledWith('rotated-client-secret', 30)
+    expect(getApiKey).toHaveBeenNthCalledWith(
+      2,
+      'remote master password',
+      true,
+      expect.any(AbortSignal)
+    )
+
+    for (const invalid of [
+      { masterPassword: 'password', rotate: true, confirmRotation: false },
+      { masterPassword: 'password', rotate: false, confirmRotation: true }
+    ]) {
+      await expect(service.copyPersonalApiKey(invalid)).rejects.toMatchObject({
+        code: 'INVALID_INPUT'
+      })
+      expect(invalid.masterPassword).toBe('')
+    }
+    expect(getApiKey).toHaveBeenCalledTimes(2)
+
+    getApiKey.mockRejectedValueOnce(new BitwardenDirectError('USER_VERIFICATION_FAILED'))
+    await expect(
+      service.copyPersonalApiKey({
+        masterPassword: 'wrong password',
+        rotate: false,
+        confirmRotation: false
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_MASTER_PASSWORD' })
+
+    getApiKey.mockRejectedValueOnce(new BitwardenDirectError('API_KEY_ROTATION_UNKNOWN'))
+    await expect(
+      service.copyPersonalApiKey({
+        masterPassword: 'remote master password',
+        rotate: true,
+        confirmRotation: true
+      })
+    ).rejects.toMatchObject({ code: 'API_KEY_ROTATION_UNKNOWN' })
+    expect(copySensitiveText).toHaveBeenCalledTimes(2)
   })
 
   it('opens only the fixed HIBP attribution URL after verifying the vault is unlocked', async () => {

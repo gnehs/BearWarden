@@ -10,6 +10,7 @@ import {
   MAX_LOGIN_SEARCH_QUERY_LENGTH,
   MAX_ACCOUNT_BREACH_EMAIL_LENGTH,
   type AppSettingsUpdate,
+  type AccountApiKeyCopyRequest,
   type AttachmentCancelRequest,
   type AttachmentDeleteRequest,
   type AttachmentDownloadRequest,
@@ -303,6 +304,24 @@ function parseTouchIdEnable(value: unknown): TouchIdEnableRequest {
 
 function parseNoInput(value: unknown): void {
   if (value !== undefined) throw new VaultError('INVALID_INPUT')
+}
+
+function parseAccountApiKeyCopy(value: unknown): AccountApiKeyCopyRequest {
+  const record = exactRecord(value, ['masterPassword', 'rotate', 'confirmRotation'])
+  const masterPassword = requiredString(record, 'masterPassword')
+  if (
+    masterPassword.length > 16_384 ||
+    typeof record.rotate !== 'boolean' ||
+    typeof record.confirmRotation !== 'boolean' ||
+    record.confirmRotation !== record.rotate
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return {
+    masterPassword,
+    rotate: record.rotate,
+    confirmRotation: record.confirmRotation
+  }
 }
 
 function parseGeneratorBooleanOptions(
@@ -2093,6 +2112,18 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   registerHandler(IPC_CHANNELS.accountResendVerification, getMainWindow, (_event, input) => {
     parseNoInput(input)
     return vault.resendAccountVerificationEmail()
+  })
+  registerHandler(IPC_CHANNELS.accountCopyApiClientId, getMainWindow, (_event, input) => {
+    parseNoInput(input)
+    return vault.copyAccountApiClientId()
+  })
+  registerHandler(IPC_CHANNELS.accountCopyApiKey, getMainWindow, async (_event, input) => {
+    const request = parseAccountApiKeyCopy(input)
+    try {
+      return await vault.copyPersonalApiKey(request)
+    } finally {
+      request.masterPassword = ''
+    }
   })
   registerHandler<EquivalentDomainSettingsView>(
     IPC_CHANNELS.domainRulesGet,

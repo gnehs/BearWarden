@@ -1,4 +1,3 @@
-import { createHash, timingSafeEqual } from 'node:crypto'
 import { join } from 'node:path'
 import {
   app,
@@ -36,6 +35,7 @@ import { SshAgentRendererBridge } from './ssh-agent-renderer-bridge'
 import { SshAgentServer } from './ssh-agent-server'
 import { PasskeyCeremonyService } from './passkey-ceremony-service'
 import { PasskeyRendererBridge } from './passkey-renderer-bridge'
+import { SensitiveClipboard } from './sensitive-clipboard'
 import icon from '../../resources/icon.png?asset'
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
@@ -201,60 +201,7 @@ function refreshSshAgentAfterVaultChange(): void {
     .catch(() => undefined)
 }
 
-class SensitiveClipboard {
-  private fingerprint: Buffer | null = null
-  private clearTimer: NodeJS.Timeout | null = null
-  private clearDelayMs = 30_000
-
-  setClearDelay(seconds: 0 | 15 | 30 | 60 | 120): void {
-    this.clearDelayMs = seconds * 1_000
-    this.clearTimerIfNeeded()
-    if (this.fingerprint && this.clearDelayMs > 0) {
-      this.scheduleClear()
-    }
-  }
-
-  write(text: string): void {
-    this.clearTimerIfNeeded()
-    this.fingerprint?.fill(0)
-    clipboard.writeText(text)
-    this.fingerprint = this.digest(text)
-    this.scheduleClear()
-  }
-
-  clearIfOwned(): void {
-    this.clearTimerIfNeeded()
-    const expected = this.fingerprint
-    this.fingerprint = null
-    if (!expected) return
-
-    let current: Buffer | null = null
-    try {
-      current = this.digest(clipboard.readText())
-      if (timingSafeEqual(expected, current)) clipboard.clear()
-    } finally {
-      expected.fill(0)
-      current?.fill(0)
-    }
-  }
-
-  private clearTimerIfNeeded(): void {
-    if (this.clearTimer) clearTimeout(this.clearTimer)
-    this.clearTimer = null
-  }
-
-  private scheduleClear(): void {
-    if (this.clearDelayMs === 0 || !this.fingerprint) return
-    this.clearTimer = setTimeout(() => this.clearIfOwned(), this.clearDelayMs)
-    this.clearTimer.unref()
-  }
-
-  private digest(value: string): Buffer {
-    return createHash('sha256').update(value, 'utf8').digest()
-  }
-}
-
-const sensitiveClipboard = new SensitiveClipboard()
+const sensitiveClipboard = new SensitiveClipboard(clipboard)
 const focusTouchIdUnlockControllers = new WeakMap<BrowserWindow, FocusTouchIdUnlockController>()
 
 function parseAllowedExternalUrl(value: string): URL | null {
@@ -513,6 +460,8 @@ if (hasSingleInstanceLock)
       store,
       {
         copyText: (text) => sensitiveClipboard.write(text),
+        copySensitiveText: (text, maxLifetimeSeconds) =>
+          sensitiveClipboard.write(text, maxLifetimeSeconds),
         openExternal: openAllowedExternalUrl
       },
       {

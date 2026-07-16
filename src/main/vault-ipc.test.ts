@@ -304,6 +304,14 @@ describe('registerVaultIpc reprompt gate', () => {
         twoFactorEnabled: true
       })),
       resendAccountVerificationEmail: vi.fn(async () => undefined),
+      copyAccountApiClientId: vi.fn(async () => undefined),
+      copyPersonalApiKey: vi.fn(async (request: { masterPassword: string; rotate: boolean }) => {
+        if (request.masterPassword !== 'remote master password') throw new Error('missing proof')
+        return {
+          rotated: request.rotate,
+          revisionDate: '2026-07-16T00:00:00Z'
+        }
+      }),
       getEquivalentDomainSettings: vi.fn(async () => ({
         equivalentDomains: [['first.example', 'second.example']],
         globalEquivalentDomains: [
@@ -652,6 +660,41 @@ describe('registerVaultIpc reprompt gate', () => {
     }
     expect(vault.getAccountSecurityProfile).toHaveBeenCalledOnce()
     expect(vault.resendAccountVerificationEmail).toHaveBeenCalledOnce()
+  })
+
+  it('never returns an API key secret across IPC and gates rotation confirmation', async () => {
+    const { event, vault } = harness()
+    const copyClientId = electronMock.handlers.get(IPC_CHANNELS.accountCopyApiClientId)!
+    const copyApiKey = electronMock.handlers.get(IPC_CHANNELS.accountCopyApiKey)!
+
+    await expect(copyClientId(event, undefined)).resolves.toBeUndefined()
+    const request = {
+      masterPassword: 'remote master password',
+      rotate: false,
+      confirmRotation: false
+    }
+    await expect(copyApiKey(event, request)).resolves.toEqual({
+      rotated: false,
+      revisionDate: '2026-07-16T00:00:00Z'
+    })
+    expect(JSON.stringify(await copyApiKey(event, { ...request }))).not.toContain('secret')
+    expect(vault.copyPersonalApiKey).toHaveBeenCalledWith({
+      masterPassword: '',
+      rotate: false,
+      confirmRotation: false
+    })
+
+    for (const invalid of [
+      undefined,
+      null,
+      {},
+      { ...request, rotate: true },
+      { ...request, confirmRotation: true },
+      { ...request, clientSecret: 'renderer-supplied-secret' }
+    ]) {
+      await expect(copyApiKey(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(vault.copyPersonalApiKey).toHaveBeenCalledTimes(2)
   })
 
   it.each([

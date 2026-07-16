@@ -91,6 +91,8 @@ export const IPC_CHANNELS = {
   syncDisconnect: 'sync:disconnect',
   accountSecurityProfile: 'account-security:profile',
   accountResendVerification: 'account-security:resend-verification',
+  accountCopyApiClientId: 'account-security:copy-api-client-id',
+  accountCopyApiKey: 'account-security:copy-api-key',
   domainRulesGet: 'domain-rules:get',
   domainRulesUpdate: 'domain-rules:update',
   sendList: 'send:list',
@@ -139,6 +141,7 @@ export type VaultErrorCode =
   | 'ATTACHMENT_REJECTED'
   | 'ATTACHMENT_CANCELED'
   | 'HEALTH_CHECK_FAILED'
+  | 'API_KEY_ROTATION_UNKNOWN'
   | 'TOUCH_ID_UNAVAILABLE'
   | 'TOUCH_ID_FAILED'
   | 'INTERNAL_ERROR'
@@ -717,6 +720,18 @@ export interface AccountSecurityProfile {
   twoFactorEnabled: boolean
 }
 
+export interface AccountApiKeyCopyRequest {
+  masterPassword: string
+  rotate: boolean
+  /** Must be true for rotation; ignored values are rejected rather than coerced. */
+  confirmRotation: boolean
+}
+
+export interface AccountApiKeyCopyResult {
+  rotated: boolean
+  revisionDate: string
+}
+
 export interface GlobalEquivalentDomainView {
   type: number
   domains: string[]
@@ -1280,6 +1295,8 @@ export interface BearWardenAPI {
   accountSecurity: {
     profile: () => Promise<AccountSecurityProfile>
     resendVerification: () => Promise<void>
+    copyApiClientId: () => Promise<void>
+    copyApiKey: (request: AccountApiKeyCopyRequest) => Promise<AccountApiKeyCopyResult>
   }
   domainRules: {
     get: () => Promise<EquivalentDomainSettingsView>

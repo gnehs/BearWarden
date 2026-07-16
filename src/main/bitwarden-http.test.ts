@@ -154,10 +154,14 @@ describe('BitwardenHttpClient', () => {
     const fetch = vi
       .fn<FetchLike>()
       .mockResolvedValueOnce(json({ message: 'User verification failed.' }, 400))
+      .mockResolvedValueOnce(json({ message: 'Invalid password' }, 400))
       .mockResolvedValueOnce(json({ message: 'New device verification required.' }, 400))
     const client = new BitwardenHttpClient({ server: 'us', fetch })
     client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
 
+    await expect(client.getPersonalApiKey('wrong-derived-proof', false)).rejects.toMatchObject({
+      code: 'USER_VERIFICATION_FAILED'
+    })
     await expect(client.getPersonalApiKey('wrong-derived-proof', false)).rejects.toMatchObject({
       code: 'USER_VERIFICATION_FAILED'
     })

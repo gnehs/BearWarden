@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Encoder } from 'cbor-x'
 import {
   deriveMasterKey,
+  derivePasswordKey,
   decryptBitwardenBytes,
   decryptBitwardenAttachmentBuffer,
   encryptBitwardenAttachmentBuffer,
@@ -1334,8 +1335,18 @@ describe('BitwardenDirectClient', () => {
       revisionDate: '2026-07-16T00:00:00Z'
     })
     expect(requestBodies).toHaveLength(1)
-    expect(requestBodies[0]?.masterPasswordHash).toMatch(/^[A-Za-z0-9+/]+={0,2}$/u)
-    expect(requestBodies[0]?.masterPasswordHash).not.toBe(PASSWORD)
+    const expectedMasterKey = await deriveMasterKey(PASSWORD, EMAIL, {
+      type: 'pbkdf2',
+      iterations: 5_000
+    })
+    const expectedPasswordKey = await derivePasswordKey(expectedMasterKey, PASSWORD)
+    try {
+      expect(requestBodies[0]?.masterPasswordHash).toBe(expectedPasswordKey.toString('base64'))
+      expect(requestBodies[0]?.masterPasswordHash).not.toBe(PASSWORD)
+    } finally {
+      expectedMasterKey.fill(0)
+      expectedPasswordKey.fill(0)
+    }
     await expect(client.status()).resolves.toEqual({ status: 'locked' })
   })
 

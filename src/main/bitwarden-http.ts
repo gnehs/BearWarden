@@ -774,6 +774,18 @@ export class BitwardenHttpClient {
         }
       )
       return parsePersonalApiKey(response)
+    } catch (error) {
+      // Vaultwarden uses "Invalid password" while Bitwarden Server uses
+      // "User verification failed" for this endpoint. Neither means the
+      // authenticated session itself expired.
+      if (
+        error instanceof BitwardenHttpError &&
+        error.status === 400 &&
+        (error.code === 'AUTH' || error.code === 'USER_VERIFICATION_FAILED')
+      ) {
+        throw new BitwardenHttpError('USER_VERIFICATION_FAILED', 400)
+      }
+      throw error
     } finally {
       body.masterPasswordHash = ''
     }
