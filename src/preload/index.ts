@@ -10,6 +10,12 @@ const api: BearWardenAPI = {
     enablePin: (request) => ipcRenderer.invoke(IPC_CHANNELS.vaultPinEnable, request),
     disablePin: () => ipcRenderer.invoke(IPC_CHANNELS.vaultPinDisable),
     unlockPin: (request) => ipcRenderer.invoke(IPC_CHANNELS.vaultPinUnlock, request),
+    masterPasswordChangeStatus: () =>
+      ipcRenderer.invoke(IPC_CHANNELS.vaultMasterPasswordChangeStatus),
+    changeMasterPassword: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.vaultMasterPasswordChange, request),
+    resolveMasterPasswordChange: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.vaultMasterPasswordChangeResolve, request),
     lock: () => ipcRenderer.invoke(IPC_CHANNELS.vaultLock),
     setLockRequestReady: (ready) => ipcRenderer.send(IPC_CHANNELS.vaultLockRequestReady, ready),
     onLocked: (listener) => {

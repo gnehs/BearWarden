@@ -690,6 +690,11 @@ if (hasSingleInstanceLock)
         await refreshSshAgentAfterUnlock().catch(() => undefined)
         scheduleSshAgentLifecycle()
       },
+      afterMasterPasswordChanged: (status) => {
+        passkeyCeremonyService?.onVaultMutation()
+        handleSyncChanged(status)
+        notifyVaultChanged()
+      },
       afterMutation: () => {
         passkeyCeremonyService?.onVaultMutation()
         autoSync?.request()

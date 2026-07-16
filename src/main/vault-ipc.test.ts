@@ -196,6 +196,297 @@ describe('registerVaultIpc shared main-process hooks', () => {
   })
 })
 
+describe('registerVaultIpc master-password transaction', () => {
+  function harness(vaultOverrides: Partial<VaultService> = {}): {
+    event: unknown
+    vault: Record<string, ReturnType<typeof vi.fn>>
+    settings: { disableTouchId: ReturnType<typeof vi.fn> }
+    beforeSyncReconfigure: ReturnType<typeof vi.fn>
+    afterSyncChanged: ReturnType<typeof vi.fn>
+    afterMasterPasswordChanged: ReturnType<typeof vi.fn>
+    dispose: () => void
+  } {
+    const mainFrame = { url: 'app://bearwarden/index.html' }
+    const webContents = {
+      id: 74,
+      mainFrame,
+      getURL: () => mainFrame.url,
+      send: vi.fn(),
+      isDestroyed: () => false
+    }
+    const vault = {
+      masterPasswordChangeStatus: vi.fn(async () => ({
+        phase: null,
+        needsReconnect: false,
+        needsRemoteVerification: false
+      })),
+      changeMasterPassword: vi.fn(async () => undefined),
+      resolveMasterPasswordChange: vi.fn(async () => ({ status: 'resolved' as const })),
+      syncStatus: vi.fn(async () => ({ configured: true, state: 'locked' as const })),
+      status: vi.fn(async () => ({ state: 'unlocked' as const })),
+      ...vaultOverrides
+    } as unknown as Record<string, ReturnType<typeof vi.fn>>
+    const settings = { disableTouchId: vi.fn(async () => ({ touchIdEnabled: false })) }
+    const beforeSyncReconfigure = vi.fn(async () => undefined)
+    const afterSyncChanged = vi.fn()
+    const afterMasterPasswordChanged = vi.fn()
+    const dispose = registerVaultIpc({
+      vault: vault as unknown as VaultService,
+      portability: {} as Parameters<typeof registerVaultIpc>[0]['portability'],
+      settings: settings as unknown as AppSettingsService,
+      sshKeyImportSessions: new SshKeyImportSessionStore({ readClipboard: () => '' }),
+      getMainWindow: () => ({ isDestroyed: () => false, webContents }) as never,
+      beforeSyncReconfigure,
+      afterSyncChanged,
+      afterMasterPasswordChanged
+    })
+    return {
+      event: { sender: webContents, senderFrame: mainFrame },
+      vault,
+      settings,
+      beforeSyncReconfigure,
+      afterSyncChanged,
+      afterMasterPasswordChanged,
+      dispose
+    }
+  }
+
+  it('validates exact bounded input, scrubs it, clears Touch ID, and requires reconnect', async () => {
+    const h = harness()
+    const input = {
+      currentPassword: 'correct horse battery staple',
+      newPassword: 'replacement horse battery staple',
+      hint: 'safe hint'
+    }
+
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.vaultMasterPasswordChange)!(h.event, input)
+    ).resolves.toEqual({ state: 'completed', requiresReconnect: true })
+    expect(h.vault.changeMasterPassword).toHaveBeenCalledWith({
+      currentPassword: '',
+      newPassword: '',
+      hint: null
+    })
+    expect(input).toEqual({ currentPassword: '', newPassword: '', hint: null })
+    expect(h.beforeSyncReconfigure).toHaveBeenCalledOnce()
+    expect(h.settings.disableTouchId).toHaveBeenCalledOnce()
+    expect(h.afterMasterPasswordChanged).toHaveBeenCalledWith({
+      configured: true,
+      state: 'locked'
+    })
+
+    for (const invalid of [
+      {
+        currentPassword: 'correct horse battery staple',
+        newPassword: 'replacement horse battery staple',
+        extra: 'not allowed'
+      },
+      { currentPassword: 'too short', newPassword: 'replacement horse battery staple' },
+      {
+        currentPassword: 'correct horse battery staple',
+        newPassword: 'replacement horse battery staple',
+        hint: 'x'.repeat(51)
+      },
+      {
+        currentPassword: 'correct horse battery staple',
+        newPassword: 'correct horse battery staple'
+      }
+    ]) {
+      await expect(
+        electronMock.handlers.get(IPC_CHANNELS.vaultMasterPasswordChange)!(h.event, invalid)
+      ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+      expect(invalid.currentPassword).toBe('')
+      expect(invalid.newPassword).toBe('')
+    }
+    expect(h.vault.changeMasterPassword).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns a typed verification state for an unknown result without replaying and clears Touch ID fail-closed', async () => {
+    const changeMasterPassword = vi.fn(async () => {
+      throw new VaultError('SYNC_FAILED')
+    })
+    const h = harness({
+      changeMasterPassword,
+      status: vi.fn(async () => ({ state: 'locked' as const }))
+    })
+    const input = {
+      currentPassword: 'correct horse battery staple',
+      newPassword: 'replacement horse battery staple'
+    }
+
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.vaultMasterPasswordChange)!(h.event, input)
+    ).resolves.toEqual({ state: 'needs-remote-verification', requiresReconnect: true })
+    expect(changeMasterPassword).toHaveBeenCalledOnce()
+    expect(h.settings.disableTouchId).toHaveBeenCalledOnce()
+    expect(input).toEqual({ currentPassword: '', newPassword: '' })
+  })
+
+  it('rejects accessors and symbol keys without invoking getters, and compares NFC passwords', async () => {
+    const h = harness()
+    let getterCalls = 0
+    const accessorInput = Object.defineProperties(
+      {},
+      {
+        currentPassword: {
+          enumerable: true,
+          get: () => {
+            getterCalls += 1
+            return 'correct horse battery staple'
+          }
+        },
+        newPassword: {
+          enumerable: true,
+          value: 'replacement horse battery staple',
+          writable: true
+        }
+      }
+    )
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.vaultMasterPasswordChange)!(h.event, accessorInput)
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    expect(getterCalls).toBe(0)
+
+    const symbolInput = {
+      currentPassword: 'correct horse battery staple',
+      newPassword: 'replacement horse battery staple',
+      [Symbol('hidden')]: 'not allowed'
+    }
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.vaultMasterPasswordChange)!(h.event, symbolInput)
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+
+    const nfcInput = {
+      currentPassword: 'correct horse caf\u00e9',
+      newPassword: 'correct horse cafe\u0301'
+    }
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.vaultMasterPasswordChange)!(h.event, nfcInput)
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    expect(h.vault.changeMasterPassword).not.toHaveBeenCalled()
+  })
+
+  it('preserves valid whitespace password material while normalizing to NFC', async () => {
+    const observed: Array<{ currentPassword: string; newPassword: string }> = []
+    const h = harness({
+      changeMasterPassword: vi.fn(async (request) => {
+        observed.push({
+          currentPassword: request.currentPassword,
+          newPassword: request.newPassword
+        })
+      })
+    })
+    await electronMock.handlers.get(IPC_CHANNELS.vaultMasterPasswordChange)!(h.event, {
+      currentPassword: '            ',
+      newPassword: '             '
+    })
+    expect(observed).toEqual([{ currentPassword: '            ', newPassword: '             ' }])
+  })
+
+  it.each(['change', 'resolve'] as const)(
+    'clears Touch ID and returns resume-required when %s fails after remote confirmation',
+    async (operation) => {
+      const failure = vi.fn(async () => {
+        throw new Error('injected post-confirmation failure')
+      })
+      const h = harness({
+        ...(operation === 'change'
+          ? { changeMasterPassword: failure }
+          : { resolveMasterPasswordChange: failure }),
+        masterPasswordChangeStatus: vi.fn(async () => ({
+          phase: 'remote-confirmed' as const,
+          needsReconnect: false,
+          needsRemoteVerification: false
+        }))
+      })
+      const channel =
+        operation === 'change'
+          ? IPC_CHANNELS.vaultMasterPasswordChange
+          : IPC_CHANNELS.vaultMasterPasswordChangeResolve
+
+      await expect(
+        electronMock.handlers.get(channel)!(h.event, {
+          currentPassword: 'correct horse battery staple',
+          newPassword: 'replacement horse battery staple'
+        })
+      ).resolves.toEqual({ state: 'resume-required', requiresReconnect: true })
+      expect(failure).toHaveBeenCalledOnce()
+      expect(h.settings.disableTouchId).toHaveBeenCalledOnce()
+    }
+  )
+
+  it.each([
+    ['prepared', 'needs-remote-verification'],
+    ['remote-confirmed', 'resume-required'],
+    ['local-rekeyed', 'resume-required']
+  ] as const)(
+    'invalidates a persisted Touch ID capsule on restart status %s and exposes no journal metadata',
+    async (phase, state) => {
+      const h = harness({
+        masterPasswordChangeStatus: vi.fn(async () => ({
+          phase,
+          needsReconnect: false,
+          needsRemoteVerification: phase === 'prepared'
+        }))
+      })
+      const response = await electronMock.handlers.get(
+        IPC_CHANNELS.vaultMasterPasswordChangeStatus
+      )!(h.event, undefined)
+
+      expect(response).toEqual({ state, requiresReconnect: true })
+      expect(Object.keys(response as object).sort()).toEqual(['requiresReconnect', 'state'])
+      expect(h.settings.disableTouchId).toHaveBeenCalledOnce()
+    }
+  )
+
+  it.each([
+    ['remote-not-changed', 'remote-not-changed'],
+    ['needs-reconnect', 'needs-reconnect'],
+    ['indeterminate', 'indeterminate']
+  ] as const)(
+    'maps safe resolution %s without exposing transaction metadata',
+    async (result, state) => {
+      const h = harness({
+        resolveMasterPasswordChange: vi.fn(async () => ({ status: result }))
+      })
+      const input = {
+        currentPassword: 'correct horse battery staple',
+        newPassword: 'replacement horse battery staple'
+      }
+      const response = await electronMock.handlers.get(
+        IPC_CHANNELS.vaultMasterPasswordChangeResolve
+      )!(h.event, input)
+
+      expect(response).toEqual({ state, requiresReconnect: true })
+      expect(JSON.stringify(response)).not.toContain('fingerprint')
+      expect(JSON.stringify(response)).not.toContain('startedAt')
+      expect(h.settings.disableTouchId).not.toHaveBeenCalled()
+      expect(h.afterSyncChanged).toHaveBeenCalledOnce()
+      expect(input).toEqual({ currentPassword: '', newPassword: '' })
+    }
+  )
+
+  it('suppresses lifecycle callbacks after disposal while still invalidating Touch ID on completion', async () => {
+    let finish!: () => void
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    const h = harness({ changeMasterPassword: vi.fn(() => pending) })
+    const handler = electronMock.handlers.get(IPC_CHANNELS.vaultMasterPasswordChange)!
+    const operation = handler(h.event, {
+      currentPassword: 'correct horse battery staple',
+      newPassword: 'replacement horse battery staple'
+    })
+    await vi.waitFor(() => expect(h.vault.changeMasterPassword).toHaveBeenCalledOnce())
+    h.dispose()
+    finish()
+
+    await expect(operation).resolves.toEqual({ state: 'completed', requiresReconnect: true })
+    expect(h.settings.disableTouchId).toHaveBeenCalledOnce()
+    expect(h.afterMasterPasswordChanged).not.toHaveBeenCalled()
+  })
+})
+
 describe('registerVaultIpc reprompt gate', () => {
   const operationId = '70000000-0000-4000-8000-000000000001'
   function harness(): {

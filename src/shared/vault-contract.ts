@@ -6,6 +6,9 @@ export const IPC_CHANNELS = {
   vaultPinEnable: 'vault:pin-enable',
   vaultPinDisable: 'vault:pin-disable',
   vaultPinUnlock: 'vault:pin-unlock',
+  vaultMasterPasswordChangeStatus: 'vault:master-password-change-status',
+  vaultMasterPasswordChange: 'vault:master-password-change',
+  vaultMasterPasswordChangeResolve: 'vault:master-password-change-resolve',
   vaultLock: 'vault:lock',
   vaultLockRequestReady: 'vault:lock-request-ready',
   vaultExport: 'vault:export',
@@ -181,6 +184,31 @@ export interface VaultSetupRequest {
 
 export interface VaultUnlockRequest {
   masterPassword: string
+}
+
+export interface MasterPasswordChangeRequest {
+  currentPassword: string
+  newPassword: string
+  hint?: string | null
+}
+
+export interface MasterPasswordChangeResolutionRequest {
+  currentPassword: string
+  newPassword: string
+}
+
+export type MasterPasswordChangeState =
+  | 'idle'
+  | 'needs-remote-verification'
+  | 'resume-required'
+  | 'completed'
+  | 'remote-not-changed'
+  | 'needs-reconnect'
+  | 'indeterminate'
+
+export interface MasterPasswordChangeStatus {
+  state: MasterPasswordChangeState
+  requiresReconnect: boolean
 }
 
 export interface PinUnlockStatus {
@@ -1352,6 +1380,13 @@ export interface BearWardenAPI {
     enablePin: (request: PinUnlockEnableRequest) => Promise<PinUnlockStatus>
     disablePin: () => Promise<PinUnlockStatus>
     unlockPin: (request: PinUnlockRequest) => Promise<VaultStatus>
+    masterPasswordChangeStatus: () => Promise<MasterPasswordChangeStatus>
+    changeMasterPassword: (
+      request: MasterPasswordChangeRequest
+    ) => Promise<MasterPasswordChangeStatus>
+    resolveMasterPasswordChange: (
+      request: MasterPasswordChangeResolutionRequest
+    ) => Promise<MasterPasswordChangeStatus>
     lock: () => Promise<VaultStatus>
     setLockRequestReady: (ready: boolean) => void
     onLocked: (listener: () => void) => () => void

@@ -50,6 +50,9 @@ import {
   type LoginMoveRequest,
   type LoginMoveManyRequest,
   type LoginUpdateRequest,
+  type MasterPasswordChangeRequest,
+  type MasterPasswordChangeResolutionRequest,
+  type MasterPasswordChangeStatus,
   type ItemFieldRequest,
   type SshKeyImportCancelRequest,
   type SshKeyImportPassphraseRequest,
@@ -206,6 +209,7 @@ export interface VaultIpcOptions {
   afterLock?: () => void
   afterUnlock?: (masterPassword: string) => void | Promise<void>
   afterPinUnlock?: () => void | Promise<void>
+  afterMasterPasswordChanged?: (status: SyncStatus) => void
   afterMutation?: () => void
   beforeSyncReconfigure?: () => void | Promise<void>
   afterSyncChanged?: (status: SyncStatus) => void
@@ -339,6 +343,81 @@ function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
 function parseTouchIdEnable(value: unknown): TouchIdEnableRequest {
   const record = exactRecord(value, ['masterPassword'])
   return { masterPassword: requiredString(record, 'masterPassword') }
+}
+
+function parseMasterPasswordChange(value: unknown, includeHint: true): MasterPasswordChangeRequest
+function parseMasterPasswordChange(
+  value: unknown,
+  includeHint: false
+): MasterPasswordChangeResolutionRequest
+function parseMasterPasswordChange(
+  value: unknown,
+  includeHint: boolean
+): MasterPasswordChangeRequest | MasterPasswordChangeResolutionRequest {
+  const allowedKeys = includeHint
+    ? ['currentPassword', 'newPassword', 'hint']
+    : ['currentPassword', 'newPassword']
+  if (!isRecord(value)) throw new VaultError('INVALID_INPUT')
+  const keys = Reflect.ownKeys(value)
+  if (
+    keys.some((key) => typeof key !== 'string' || !allowedKeys.includes(key)) ||
+    !Object.hasOwn(value, 'currentPassword') ||
+    !Object.hasOwn(value, 'newPassword')
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  for (const key of keys) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+    if (!descriptor || !('value' in descriptor)) throw new VaultError('INVALID_INPUT')
+  }
+  const currentValue = Object.getOwnPropertyDescriptor(value, 'currentPassword')?.value
+  const newValue = Object.getOwnPropertyDescriptor(value, 'newPassword')?.value
+  const hintValue = Object.getOwnPropertyDescriptor(value, 'hint')?.value
+  if (
+    typeof currentValue !== 'string' ||
+    typeof newValue !== 'string' ||
+    (hintValue !== undefined && hintValue !== null && typeof hintValue !== 'string')
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const currentPassword = currentValue.normalize('NFC')
+  const newPassword = newValue.normalize('NFC')
+  const hint = includeHint ? hintValue : undefined
+  if (
+    currentPassword.length < 12 ||
+    currentPassword.length > 1_024 ||
+    newPassword.length < 12 ||
+    newPassword.length > 1_024 ||
+    currentPassword === newPassword ||
+    (typeof hint === 'string' && hint.length > 50)
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return includeHint
+    ? { currentPassword, newPassword, ...(hint === undefined ? {} : { hint }) }
+    : { currentPassword, newPassword }
+}
+
+function scrubMasterPasswordChangeInput(value: unknown): void {
+  if (!isRecord(value)) return
+  for (const [key, replacement] of [
+    ['currentPassword', ''],
+    ['newPassword', ''],
+    ['hint', null]
+  ] as const) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+    if (descriptor && 'value' in descriptor && descriptor.writable) value[key] = replacement
+  }
+}
+
+function publicMasterPasswordChangeStatus(status: {
+  phase: 'prepared' | 'remote-confirmed' | 'local-rekeyed' | null
+}): MasterPasswordChangeStatus {
+  if (status.phase === null) return { state: 'idle', requiresReconnect: false }
+  if (status.phase === 'prepared') {
+    return { state: 'needs-remote-verification', requiresReconnect: true }
+  }
+  return { state: 'resume-required', requiresReconnect: true }
 }
 
 function parsePinEnable(value: unknown): PinUnlockEnableRequest {
@@ -1585,6 +1664,7 @@ function registerHandler<T>(
 
 export function registerVaultIpc(options: VaultIpcOptions): () => void {
   const { vault, portability, settings, getMainWindow } = options
+  let disposed = false
   const sshKeyImportSessions = options.sshKeyImportSessions
   const authorizations =
     options.repromptAuthorizations ??
@@ -1630,6 +1710,55 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     notifyMutation()
     return result
   }
+  const reconnectStatus = async (
+    state: MasterPasswordChangeStatus['state']
+  ): Promise<MasterPasswordChangeStatus> => {
+    if (disposed) return { state, requiresReconnect: true }
+    try {
+      const syncStatus = await vault.syncStatus()
+      options.afterSyncChanged?.(syncStatus)
+    } catch {
+      // The transaction result remains authoritative if an auxiliary lifecycle notification fails.
+    }
+    return { state, requiresReconnect: true }
+  }
+  const completedMasterPasswordChange = async (): Promise<MasterPasswordChangeStatus> => {
+    authorizations.clear()
+    await settings.disableTouchId()
+    if (disposed) return { state: 'completed', requiresReconnect: true }
+    try {
+      const syncStatus = await vault.syncStatus()
+      options.afterMasterPasswordChanged?.(syncStatus)
+    } catch {
+      // Touch ID is already invalidated and the completed transaction must remain definitive.
+    }
+    return { state: 'completed', requiresReconnect: true }
+  }
+  const failedMasterPasswordChange = async (
+    error: unknown
+  ): Promise<MasterPasswordChangeStatus> => {
+    const vaultStatus = await vault.status()
+    if (vaultStatus.state === 'locked') {
+      authorizations.clear()
+      await settings.disableTouchId()
+      return { state: 'needs-remote-verification', requiresReconnect: true }
+    }
+    const transactionStatus = await vault.masterPasswordChangeStatus()
+    if (transactionStatus.phase === 'prepared') {
+      authorizations.clear()
+      await settings.disableTouchId()
+      return { state: 'needs-remote-verification', requiresReconnect: true }
+    }
+    if (
+      transactionStatus.phase === 'remote-confirmed' ||
+      transactionStatus.phase === 'local-rekeyed'
+    ) {
+      authorizations.clear()
+      await settings.disableTouchId()
+      return { state: 'resume-required', requiresReconnect: true }
+    }
+    throw error
+  }
   registerHandler(IPC_CHANNELS.vaultStatus, getMainWindow, () => vault.status())
   registerHandler(IPC_CHANNELS.vaultSetup, getMainWindow, async (_event, input) => {
     const request = parseSetup(input)
@@ -1674,6 +1803,68 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       request.pin = ''
     }
   })
+  registerHandler(
+    IPC_CHANNELS.vaultMasterPasswordChangeStatus,
+    getMainWindow,
+    async (_event, input) => {
+      parseNoInput(input)
+      const status = await vault.masterPasswordChangeStatus()
+      if (status.phase !== null) {
+        authorizations.clear()
+        await settings.disableTouchId()
+      }
+      return publicMasterPasswordChangeStatus(status)
+    }
+  )
+  registerHandler(IPC_CHANNELS.vaultMasterPasswordChange, getMainWindow, async (_event, input) => {
+    let request: MasterPasswordChangeRequest | null = null
+    try {
+      request = parseMasterPasswordChange(input, true)
+      await Promise.resolve(options.beforeSyncReconfigure?.())
+      try {
+        await vault.changeMasterPassword(request)
+      } catch (error) {
+        return await failedMasterPasswordChange(error)
+      }
+      return await completedMasterPasswordChange()
+    } finally {
+      if (request) {
+        request.currentPassword = ''
+        request.newPassword = ''
+        request.hint = null
+      }
+      scrubMasterPasswordChangeInput(input)
+    }
+  })
+  registerHandler(
+    IPC_CHANNELS.vaultMasterPasswordChangeResolve,
+    getMainWindow,
+    async (_event, input) => {
+      let request: MasterPasswordChangeResolutionRequest | null = null
+      try {
+        request = parseMasterPasswordChange(input, false)
+        await Promise.resolve(options.beforeSyncReconfigure?.())
+        let result: Awaited<ReturnType<VaultService['resolveMasterPasswordChange']>>
+        try {
+          result = await vault.resolveMasterPasswordChange(request)
+        } catch (error) {
+          return await failedMasterPasswordChange(error)
+        }
+        if (result.status === 'resolved') return await completedMasterPasswordChange()
+        if (result.status === 'remote-not-changed') {
+          return await reconnectStatus('remote-not-changed')
+        }
+        if (result.status === 'needs-reconnect') return await reconnectStatus('needs-reconnect')
+        return await reconnectStatus('indeterminate')
+      } finally {
+        if (request) {
+          request.currentPassword = ''
+          request.newPassword = ''
+        }
+        scrubMasterPasswordChangeInput(input)
+      }
+    }
+  )
   registerHandler(IPC_CHANNELS.vaultLock, getMainWindow, async () => {
     await Promise.resolve(options.beforeLock?.())
     authorizations.clear()
@@ -2504,6 +2695,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   })
 
   return () => {
+    disposed = true
     authorizations.clear()
     sshKeyImportSessions.clearAll()
     void portability.disposeNativeRestoreSession?.()
