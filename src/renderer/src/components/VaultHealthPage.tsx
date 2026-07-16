@@ -2,6 +2,8 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  ExternalLink,
+  KeyRound,
   MailSearch,
   RefreshCw,
   Search,
@@ -11,7 +13,10 @@ import {
   X
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import type {
+  InactiveTwoFactorFinding,
+  InactiveTwoFactorReport,
   VaultHealthAccountBreachFinding,
   VaultHealthReport,
   VaultHealthExposedFinding,
@@ -53,7 +58,66 @@ import {
   type ExposedPasswordCheckState
 } from '../lib/vault-health-ui'
 
-type HealthTab = 'reused' | 'weak' | 'unsecured' | 'exposed' | 'account'
+type HealthTab = 'reused' | 'weak' | 'unsecured' | 'inactive-two-factor' | 'exposed' | 'account'
+
+export type InactiveTwoFactorCheckState =
+  | { status: 'idle'; revision: string }
+  | { status: 'loading'; revision: string; requestId: number }
+  | { status: 'failed'; revision: string }
+  | { status: 'success'; revision: string; report: InactiveTwoFactorReport }
+
+// Exported for security-state regression tests; this file otherwise remains the page boundary.
+// eslint-disable-next-line react-refresh/only-export-components
+export function createInactiveTwoFactorIdleState(revision: string): InactiveTwoFactorCheckState {
+  return { status: 'idle', revision }
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function resolveInactiveTwoFactorCheck(
+  current: InactiveTwoFactorCheckState,
+  revision: string,
+  requestId: number,
+  report: InactiveTwoFactorReport
+): InactiveTwoFactorCheckState {
+  if (
+    current.status !== 'loading' ||
+    current.revision !== revision ||
+    current.requestId !== requestId
+  ) {
+    return current
+  }
+  return { status: 'success', revision, report }
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function failInactiveTwoFactorCheck(
+  current: InactiveTwoFactorCheckState,
+  revision: string,
+  requestId: number
+): InactiveTwoFactorCheckState {
+  if (
+    current.status !== 'loading' ||
+    current.revision !== revision ||
+    current.requestId !== requestId
+  ) {
+    return current
+  }
+  return { status: 'failed', revision }
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export async function openInactiveTwoFactorDocumentation(
+  finding: Pick<InactiveTwoFactorFinding, 'matchedDomain' | 'documentationUrl'>
+): Promise<void> {
+  if (finding.documentationUrl === null) return
+  try {
+    await window.bearwarden.health.openTwoFactorDocumentation({
+      matchedDomain: finding.matchedDomain
+    })
+  } catch {
+    toast.error('無法開啟雙因素驗證設定說明')
+  }
+}
 
 interface VaultHealthPageProps {
   revision: string
@@ -185,6 +249,208 @@ function UnsecuredWebsiteFindingCard({
         </CardAction>
       </CardHeader>
     </Card>
+  )
+}
+
+function InactiveTwoFactorFindingCard({
+  finding,
+  onOpenItem
+}: {
+  finding: InactiveTwoFactorFinding
+  onOpenItem: (id: string) => void
+}): React.JSX.Element {
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>{finding.name}</CardTitle>
+        <CardDescription>2fa.directory 服務：{finding.matchedDomain}</CardDescription>
+        <CardAction className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            aria-label={`查看${finding.name}`}
+            onClick={() => onOpenItem(finding.id)}
+          >
+            查看項目
+          </Button>
+          {finding.documentationUrl !== null && (
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              aria-label={`開啟${finding.name}的雙因素驗證設定說明`}
+              onClick={() => {
+                void openInactiveTwoFactorDocumentation(finding)
+              }}
+            >
+              <ExternalLink data-icon="inline-start" />
+              設定說明
+            </Button>
+          )}
+        </CardAction>
+      </CardHeader>
+    </Card>
+  )
+}
+
+function InactiveTwoFactorPrivacyNotice(): React.JSX.Element {
+  return (
+    <Alert>
+      <ShieldCheck />
+      <AlertTitle>只在你要求時下載服務清單</AlertTitle>
+      <AlertDescription>
+        按下檢查後，主程序只會下載 2fa.directory 的靜態 TOTP
+        服務清單並在本機比對；保管庫網域、URI、密碼與 TOTP 都不會上傳。
+      </AlertDescription>
+    </Alert>
+  )
+}
+
+function InactiveTwoFactorIdle({ onStart }: { onStart: () => void }): React.JSX.Element {
+  return (
+    <Empty className="min-h-56">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <KeyRound />
+        </EmptyMedia>
+        <EmptyTitle>尚未檢查未啟用雙因素驗證的登入項目</EmptyTitle>
+        <EmptyDescription>
+          只有在你按下按鈕後才會載入服務清單；垃圾桶、封存與已有 TOTP 的項目會略過。
+        </EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <Button type="button" onClick={onStart}>
+          <Search data-icon="inline-start" />
+          檢查雙因素驗證
+        </Button>
+      </EmptyContent>
+    </Empty>
+  )
+}
+
+function InactiveTwoFactorLoading(): React.JSX.Element {
+  return (
+    <Empty className="min-h-56" aria-live="polite" aria-busy="true">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <Spinner />
+        </EmptyMedia>
+        <EmptyTitle>正在載入 2fa.directory 服務清單</EmptyTitle>
+        <EmptyDescription>主程序正在本機比對服務網域，不會上傳任何保管庫資料。</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
+  )
+}
+
+function InactiveTwoFactorFailed({ onRetry }: { onRetry: () => void }): React.JSX.Element {
+  return (
+    <Alert variant="destructive">
+      <WifiOff />
+      <AlertTitle>無法完成雙因素驗證檢查</AlertTitle>
+      <AlertDescription>
+        2fa.directory 網路、服務清單或回應驗證失敗，本次結果為未知；請稍後重試。
+      </AlertDescription>
+      <AlertAction>
+        <Button variant="outline" size="sm" type="button" onClick={onRetry}>
+          重試
+        </Button>
+      </AlertAction>
+    </Alert>
+  )
+}
+
+function InactiveTwoFactorSuccess({
+  report,
+  onOpenItem
+}: {
+  report: InactiveTwoFactorReport
+  onOpenItem: (id: string) => void
+}): React.JSX.Element {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>本次已分析</CardTitle>
+            <CardDescription>本次檢查納入的有效個人登入項目</CardDescription>
+            <CardAction>
+              <Badge variant="secondary">{report.analyzedCount}</Badge>
+            </CardAction>
+          </CardHeader>
+          <CardContent>服務網域只在本機與靜態清單比對。</CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>可啟用 TOTP</CardTitle>
+            <CardDescription>服務支援 TOTP，但登入項目尚未設定</CardDescription>
+            <CardAction>
+              <Badge variant={report.findings.length ? 'destructive' : 'secondary'}>
+                {report.findings.length}
+              </Badge>
+            </CardAction>
+          </CardHeader>
+          <CardContent>可從項目檢視進入編輯流程，或查看服務提供的設定說明。</CardContent>
+        </Card>
+      </div>
+
+      <Alert>
+        <ShieldCheck />
+        <AlertTitle>已略過不適用的項目</AlertTitle>
+        <AlertDescription className="flex flex-wrap gap-2">
+          <Badge variant="outline">已有 TOTP {report.excludedTotpCount}</Badge>
+          <Badge variant="outline">垃圾桶 {report.excludedDeletedCount}</Badge>
+          <Badge variant="outline">封存 {report.excludedArchivedCount}</Badge>
+        </AlertDescription>
+      </Alert>
+
+      {report.findings.length ? (
+        report.findings.map((finding) => (
+          <InactiveTwoFactorFindingCard
+            key={finding.id}
+            finding={finding}
+            onOpenItem={onOpenItem}
+          />
+        ))
+      ) : (
+        <Empty className="min-h-56">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <CheckCircle2 />
+            </EmptyMedia>
+            <EmptyTitle>沒有找到尚未設定 TOTP 的支援服務</EmptyTitle>
+            <EmptyDescription>
+              本次已分析的登入項目，沒有符合 2fa.directory TOTP 清單且尚未設定 TOTP 的服務。
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      )}
+    </div>
+  )
+}
+
+export function InactiveTwoFactorPanel({
+  state,
+  onStart,
+  onOpenItem
+}: {
+  state: InactiveTwoFactorCheckState
+  onStart: () => void
+  onOpenItem: (id: string) => void
+}): React.JSX.Element {
+  return (
+    <div className="flex flex-col gap-3">
+      <InactiveTwoFactorPrivacyNotice />
+      {state.status === 'idle' ? (
+        <InactiveTwoFactorIdle onStart={onStart} />
+      ) : state.status === 'loading' ? (
+        <InactiveTwoFactorLoading />
+      ) : state.status === 'failed' ? (
+        <InactiveTwoFactorFailed onRetry={onStart} />
+      ) : (
+        <InactiveTwoFactorSuccess report={state.report} onOpenItem={onOpenItem} />
+      )}
+    </div>
   )
 }
 
@@ -651,6 +917,11 @@ export default function VaultHealthPage({
   const exposedRequestIdRef = useRef(0)
   const exposedRevisionRef = useRef(revision)
   const exposedRequestActiveRef = useRef(false)
+  const [inactiveTwoFactorState, setInactiveTwoFactorState] = useState<InactiveTwoFactorCheckState>(
+    () => createInactiveTwoFactorIdleState(revision)
+  )
+  const inactiveTwoFactorRequestIdRef = useRef(0)
+  const inactiveTwoFactorRevisionRef = useRef(revision)
   const [accountBreachEmail, setAccountBreachEmail] = useState('')
   const [accountBreachEmailInvalid, setAccountBreachEmailInvalid] = useState(false)
   const [accountBreachState, setAccountBreachState] = useState<AccountBreachCheckState>(() =>
@@ -713,6 +984,25 @@ export default function VaultHealthPage({
     void window.bearwarden.health.cancelExposedPasswords().catch(() => {
       // Cancellation is best effort; stale request IDs keep late responses from reaching the UI.
     })
+  }, [revision])
+
+  const startInactiveTwoFactorCheck = useCallback(async (): Promise<void> => {
+    const requestId = ++inactiveTwoFactorRequestIdRef.current
+    const requestRevision = revision
+    setInactiveTwoFactorState({ status: 'loading', revision: requestRevision, requestId })
+
+    try {
+      const nextReport = await window.bearwarden.health.inactiveTwoFactor()
+      if (requestId !== inactiveTwoFactorRequestIdRef.current) return
+      setInactiveTwoFactorState((current) =>
+        resolveInactiveTwoFactorCheck(current, requestRevision, requestId, nextReport)
+      )
+    } catch {
+      if (requestId !== inactiveTwoFactorRequestIdRef.current) return
+      setInactiveTwoFactorState((current) =>
+        failInactiveTwoFactorCheck(current, requestRevision, requestId)
+      )
+    }
   }, [revision])
 
   const startAccountBreachCheck = useCallback(async (): Promise<void> => {
@@ -781,6 +1071,13 @@ export default function VaultHealthPage({
     })
   }, [revision])
 
+  useEffect(() => {
+    if (inactiveTwoFactorRevisionRef.current === revision) return
+    inactiveTwoFactorRevisionRef.current = revision
+    inactiveTwoFactorRequestIdRef.current += 1
+    setInactiveTwoFactorState(createInactiveTwoFactorIdleState(revision))
+  }, [revision])
+
   useEffect(
     () => () => {
       if (!exposedRequestActiveRef.current) return
@@ -807,6 +1104,10 @@ export default function VaultHealthPage({
 
   const visibleExposedState =
     exposedState.revision === revision ? exposedState : createExposedPasswordIdleState(revision)
+  const visibleInactiveTwoFactorState =
+    inactiveTwoFactorState.revision === revision
+      ? inactiveTwoFactorState
+      : createInactiveTwoFactorIdleState(revision)
   const visibleAccountBreachState =
     accountBreachState.revision === revision
       ? accountBreachState
@@ -829,7 +1130,8 @@ export default function VaultHealthPage({
                 <p className="eyebrow">Vault Health</p>
                 <h1 id="health-title">保管庫健康報告</h1>
                 <p className="settings-subtitle">
-                  找出重複、容易猜中、出現在已知外洩紀錄的密碼與未加密網站 URI。
+                  找出重複、容易猜中、出現在已知外洩紀錄的密碼、未加密網站
+                  URI，以及可啟用雙因素驗證的服務。
                 </p>
               </div>
             </div>
@@ -936,7 +1238,7 @@ export default function VaultHealthPage({
               )}
 
               <Tabs value={tab} onValueChange={(value) => setTab(value as HealthTab)}>
-                <TabsList className="w-full sm:w-fit">
+                <TabsList className="h-auto w-full flex-wrap sm:w-fit">
                   <TabsTrigger value="reused">
                     重複密碼
                     <Badge variant="secondary">{report.totals.reusedPasswordCount}</Badge>
@@ -948,6 +1250,24 @@ export default function VaultHealthPage({
                   <TabsTrigger value="unsecured">
                     不安全網站
                     <Badge variant="secondary">{report.totals.unsecuredWebsiteCount}</Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="inactive-two-factor">
+                    未啟用雙因素驗證
+                    {visibleInactiveTwoFactorState.status === 'loading' ? (
+                      <Spinner />
+                    ) : visibleInactiveTwoFactorState.status === 'success' ? (
+                      <Badge
+                        variant={
+                          visibleInactiveTwoFactorState.report.findings.length
+                            ? 'destructive'
+                            : 'secondary'
+                        }
+                      >
+                        {visibleInactiveTwoFactorState.report.findings.length}
+                      </Badge>
+                    ) : visibleInactiveTwoFactorState.status === 'failed' ? (
+                      <Badge variant="outline">未知</Badge>
+                    ) : null}
                   </TabsTrigger>
                   <TabsTrigger value="exposed">
                     外洩密碼
@@ -1022,6 +1342,13 @@ export default function VaultHealthPage({
                   ) : (
                     <HealthEmpty kind="unsecured" />
                   )}
+                </TabsContent>
+                <TabsContent value="inactive-two-factor" className="pt-3">
+                  <InactiveTwoFactorPanel
+                    state={visibleInactiveTwoFactorState}
+                    onStart={() => void startInactiveTwoFactorCheck()}
+                    onOpenItem={onOpenItem}
+                  />
                 </TabsContent>
                 <TabsContent value="exposed" className="pt-3">
                   <ExposedPasswordPanel
