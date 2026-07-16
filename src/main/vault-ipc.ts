@@ -1499,6 +1499,9 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     }
     return vault.getSharedLogin({ id: input.id })
   })
+  registerHandler(IPC_CHANNELS.emergencyAccessList, getMainWindow, () =>
+    vault.listEmergencyAccess()
+  )
   registerHandler(IPC_CHANNELS.folderCreate, getMainWindow, (_event, input) =>
     afterMutation(vault.createFolder(parseFolderCreate(input)))
   )

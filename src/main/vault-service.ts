@@ -54,6 +54,7 @@ import type {
   SharedLoginListRequest,
   SharedLoginSummary,
   SharedLoginView,
+  EmergencyAccessView,
   VaultCopyField,
   VaultAttachmentView,
   VaultCustomField,
@@ -106,7 +107,8 @@ import {
 import {
   resolveBitwardenUrls,
   type BitwardenEquivalentDomainSettings,
-  type BitwardenEquivalentDomainUpdate
+  type BitwardenEquivalentDomainUpdate,
+  type BitwardenEmergencyAccess
 } from './bitwarden-http'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import type { BitwardenNotificationConnectionInfo } from './bitwarden-notifications'
@@ -1533,6 +1535,10 @@ function sendViewFromRemote(send: BitwardenSendItem): StoredSend {
     authType: send.authType === 1 ? 'password' : 'none',
     passwordProtected: send.passwordProtected
   }
+}
+
+function emergencyAccessViewFromRemote(value: BitwardenEmergencyAccess): EmergencyAccessView {
+  return { ...value }
 }
 
 function validateRemoteEquivalentDomainSettings(value: unknown): BitwardenEquivalentDomainSettings {
@@ -3868,6 +3874,20 @@ export class VaultService {
         throw new VaultError('NOT_FOUND')
       }
       return toSharedView(login)
+    })
+  }
+
+  listEmergencyAccess(): Promise<EmergencyAccessView[]> {
+    return this.exclusive(async () => {
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      if (!client.listEmergencyAccess) return []
+      try {
+        const entries = await client.listEmergencyAccess()
+        return entries.map(emergencyAccessViewFromRemote)
+      } catch (error) {
+        throw this.mapSyncError(error)
+      }
     })
   }
 

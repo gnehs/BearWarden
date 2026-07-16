@@ -50,6 +50,7 @@ import {
   Settings2,
   Search,
   Send as SendIcon,
+  ShieldAlert,
   ShieldCheck,
   Sparkles,
   Star,
@@ -108,6 +109,7 @@ import SyncDialog from './SyncDialog'
 import SettingsPage from './SettingsPage'
 import SendsPage from './SendsPage'
 import OrganizationsPage from './OrganizationsPage'
+import EmergencyAccessPage from './EmergencyAccessPage'
 import VaultHealthPage from './VaultHealthPage'
 import VaultPortabilityDialog, { type VaultPortabilityMode } from './VaultPortabilityDialog'
 import VirtualizedItemList from './VirtualizedItemList'
@@ -852,6 +854,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [healthOpen, setHealthOpen] = useState(false)
   const [sendsOpen, setSendsOpen] = useState(false)
   const [organizationsOpen, setOrganizationsOpen] = useState(false)
+  const [emergencyAccessOpen, setEmergencyAccessOpen] = useState(false)
   const [settingsBusy, setSettingsBusy] = useState(false)
   const [touchIdPassword, setTouchIdPassword] = useState('')
   const [portabilityDialogMode, setPortabilityDialogMode] = useState<VaultPortabilityMode | null>(
@@ -1866,7 +1869,8 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       const command = event.metaKey || event.ctrlKey
       if (!command) return
       const key = event.key.toLocaleLowerCase()
-      if (settingsOpen || healthOpen || sendsOpen || organizationsOpen) return
+      if (settingsOpen || healthOpen || sendsOpen || organizationsOpen || emergencyAccessOpen)
+        return
       if (
         key === 'a' &&
         !editorMode &&
@@ -1920,6 +1924,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     selectedSummary,
     scope.kind,
     organizationsOpen,
+    emergencyAccessOpen,
     sendsOpen,
     settingsOpen,
     updateSelectedIds
@@ -1939,11 +1944,12 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       healthOpen ||
       sendsOpen ||
       organizationsOpen ||
+      emergencyAccessOpen ||
       !settingsReturnFocusRef.current?.isConnected
     )
       return
     queueMicrotask(() => settingsReturnFocusRef.current?.focus())
-  }, [healthOpen, organizationsOpen, sendsOpen, settingsOpen])
+  }, [emergencyAccessOpen, healthOpen, organizationsOpen, sendsOpen, settingsOpen])
 
   function selectScope(nextScope: Scope): void {
     requestEditorTransition(() => {
@@ -1954,6 +1960,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       setHealthOpen(false)
       setSendsOpen(false)
       setOrganizationsOpen(false)
+      setEmergencyAccessOpen(false)
       setTouchIdPassword('')
       setEditorMode(null)
       setMoveSnapshot(null)
@@ -1969,6 +1976,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       setHealthOpen(false)
       setSendsOpen(false)
       setOrganizationsOpen(false)
+      setEmergencyAccessOpen(false)
       setTouchIdPassword('')
       setEditorMode(null)
       setMoveSnapshot(null)
@@ -1983,6 +1991,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       setHealthOpen(false)
       setSendsOpen(false)
       setOrganizationsOpen(false)
+      setEmergencyAccessOpen(false)
       setSidebarOpen(false)
       setEditorMode(null)
       setMoveSnapshot(null)
@@ -2005,6 +2014,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       setSettingsOpen(false)
       setSendsOpen(false)
       setOrganizationsOpen(false)
+      setEmergencyAccessOpen(false)
       setSearchOpen(false)
       setSidebarOpen(false)
       setEditorMode(null)
@@ -2027,6 +2037,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       setSettingsOpen(false)
       setHealthOpen(false)
       setOrganizationsOpen(false)
+      setEmergencyAccessOpen(false)
       setSearchOpen(false)
       setSidebarOpen(false)
       setEditorMode(null)
@@ -2049,6 +2060,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       setSettingsOpen(false)
       setHealthOpen(false)
       setSendsOpen(false)
+      setEmergencyAccessOpen(false)
       setSearchOpen(false)
       setSidebarOpen(false)
       setEditorMode(null)
@@ -2061,6 +2073,29 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   function closeOrganizations(): void {
     setOrganizationsOpen(false)
+  }
+
+  function openEmergencyAccess(): void {
+    requestEditorTransition(() => {
+      settingsReturnFocusRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null
+      setEmergencyAccessOpen(true)
+      setSettingsOpen(false)
+      setHealthOpen(false)
+      setSendsOpen(false)
+      setOrganizationsOpen(false)
+      setSearchOpen(false)
+      setSidebarOpen(false)
+      setEditorMode(null)
+      setMoveSnapshot(null)
+      clearItemSelection()
+      setRevealedSecrets(emptyRevealedSecrets)
+      setRevealedCustomFields(emptyRevealedCustomFields)
+    })
+  }
+
+  function closeEmergencyAccess(): void {
+    setEmergencyAccessOpen(false)
   }
 
   function openHealthItem(id: string): void {
@@ -3283,60 +3318,69 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         )}
       >
         <header className="titlebar">
-          {!settingsOpen && !healthOpen && !sendsOpen && !organizationsOpen && (
-            <TooltipIconButton
-              variant="outline"
-              size="icon"
-              className="icon-button titlebar-menu"
-              type="button"
-              label={sidebarOpen ? '關閉側邊欄' : '開啟側邊欄'}
-              aria-expanded={sidebarOpen}
-              onClick={() => setSidebarOpen((open) => !open)}
-            >
-              {sidebarOpen ? <X /> : <Menu />}
-            </TooltipIconButton>
-          )}
-          <BrandMark />
-          {!settingsOpen && !healthOpen && !sendsOpen && !organizationsOpen && (
-            <InputGroup className="search-field titlebar-search">
-              <Button
-                variant="ghost"
-                className="titlebar-search-trigger"
+          {!settingsOpen &&
+            !healthOpen &&
+            !sendsOpen &&
+            !organizationsOpen &&
+            !emergencyAccessOpen && (
+              <TooltipIconButton
+                variant="outline"
+                size="icon"
+                className="icon-button titlebar-menu"
                 type="button"
-                aria-label={query ? `搜尋保管庫項目，目前為 ${query}` : '搜尋保管庫項目'}
-                aria-haspopup="dialog"
-                aria-expanded={searchOpen}
-                onClick={() => setSearchOpen(true)}
+                label={sidebarOpen ? '關閉側邊欄' : '開啟側邊欄'}
+                aria-expanded={sidebarOpen}
+                onClick={() => setSidebarOpen((open) => !open)}
               >
-                <span className={cn('truncate', !query && 'text-muted-foreground')}>
-                  {query || '搜尋保管庫；以 > 開始進階搜尋'}
-                </span>
-              </Button>
-              <InputGroupAddon align="inline-start">
-                <Search aria-hidden="true" />
-              </InputGroupAddon>
-              {query && (
-                <InputGroupAddon align="inline-end">
-                  <InputGroupButton
-                    size="icon-xs"
-                    type="button"
-                    aria-label="清除搜尋"
-                    onClick={() => updateQuery('')}
-                  >
-                    <X />
-                  </InputGroupButton>
+                {sidebarOpen ? <X /> : <Menu />}
+              </TooltipIconButton>
+            )}
+          <BrandMark />
+          {!settingsOpen &&
+            !healthOpen &&
+            !sendsOpen &&
+            !organizationsOpen &&
+            !emergencyAccessOpen && (
+              <InputGroup className="search-field titlebar-search">
+                <Button
+                  variant="ghost"
+                  className="titlebar-search-trigger"
+                  type="button"
+                  aria-label={query ? `搜尋保管庫項目，目前為 ${query}` : '搜尋保管庫項目'}
+                  aria-haspopup="dialog"
+                  aria-expanded={searchOpen}
+                  onClick={() => setSearchOpen(true)}
+                >
+                  <span className={cn('truncate', !query && 'text-muted-foreground')}>
+                    {query || '搜尋保管庫；以 > 開始進階搜尋'}
+                  </span>
+                </Button>
+                <InputGroupAddon align="inline-start">
+                  <Search aria-hidden="true" />
                 </InputGroupAddon>
-              )}
-              <InputGroupAddon align="inline-end">
-                <Kbd>{commandLabel} F</Kbd>
-              </InputGroupAddon>
-            </InputGroup>
-          )}
+                {query && (
+                  <InputGroupAddon align="inline-end">
+                    <InputGroupButton
+                      size="icon-xs"
+                      type="button"
+                      aria-label="清除搜尋"
+                      onClick={() => updateQuery('')}
+                    >
+                      <X />
+                    </InputGroupButton>
+                  </InputGroupAddon>
+                )}
+                <InputGroupAddon align="inline-end">
+                  <Kbd>{commandLabel} F</Kbd>
+                </InputGroupAddon>
+              </InputGroup>
+            )}
           <div className="titlebar-drag" aria-hidden="true" />
           {!settingsOpen &&
             !healthOpen &&
             !sendsOpen &&
             !organizationsOpen &&
+            !emergencyAccessOpen &&
             scope.kind !== 'archive' &&
             scope.kind !== 'trash' && (
               <TooltipIconButton
@@ -3423,7 +3467,8 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         <div
           className={cn(
             'workspace',
-            (settingsOpen || healthOpen || sendsOpen || organizationsOpen) && 'settings-mode'
+            (settingsOpen || healthOpen || sendsOpen || organizationsOpen || emergencyAccessOpen) &&
+              'settings-mode'
           )}
         >
           {sidebarOpen && (
@@ -3552,6 +3597,16 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 </Button>
                 <Button
                   variant="ghost"
+                  className={cn('sidebar-settings-control', emergencyAccessOpen && 'active')}
+                  type="button"
+                  onClick={openEmergencyAccess}
+                  aria-current={emergencyAccessOpen ? 'page' : undefined}
+                >
+                  <ShieldAlert data-icon="inline-start" aria-hidden="true" />
+                  Emergency Access
+                </Button>
+                <Button
+                  variant="ghost"
                   className={cn('sidebar-settings-control', sendsOpen && 'active')}
                   type="button"
                   onClick={openSends}
@@ -3601,11 +3656,13 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 ? 'health-title'
                 : organizationsOpen
                   ? 'organizations-title'
-                  : sendsOpen
-                    ? 'sends-title'
-                    : settingsOpen
-                      ? 'settings-title'
-                      : 'list-title'
+                  : emergencyAccessOpen
+                    ? 'emergency-access-title'
+                    : sendsOpen
+                      ? 'sends-title'
+                      : settingsOpen
+                        ? 'settings-title'
+                        : 'list-title'
             }
           >
             {healthOpen ? (
@@ -3616,6 +3673,8 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
               />
             ) : organizationsOpen ? (
               <OrganizationsPage onBack={closeOrganizations} />
+            ) : emergencyAccessOpen ? (
+              <EmergencyAccessPage onBack={closeEmergencyAccess} />
             ) : sendsOpen ? (
               <SendsPage onBack={closeSends} />
             ) : settingsOpen ? (

@@ -17,6 +17,7 @@ export const IPC_CHANNELS = {
   collectionList: 'collection:list',
   sharedLoginList: 'shared-login:list',
   sharedLoginGet: 'shared-login:get',
+  emergencyAccessList: 'emergency-access:list',
   folderCreate: 'folder:create',
   folderUpdate: 'folder:update',
   folderDelete: 'folder:delete',
@@ -524,6 +525,19 @@ export interface SharedLoginView extends LoginView {
   viewPassword: boolean
   delete: boolean
   restore: boolean
+}
+
+export interface EmergencyAccessView {
+  id: string
+  role: 'trusted' | 'granted'
+  subjectId: string
+  name: string
+  email: string
+  type: number
+  status: number
+  waitTimeDays: number
+  creationDate: string
+  avatarColor: string
 }
 
 export interface LoginSummary {
@@ -1120,6 +1134,9 @@ export interface BearWardenAPI {
   sharedLogins: {
     list: (request?: SharedLoginListRequest) => Promise<SharedLoginSummary[]>
     get: (request: LoginIdRequest) => Promise<SharedLoginView>
+  }
+  emergencyAccess: {
+    list: () => Promise<EmergencyAccessView[]>
   }
   logins: {
     list: (request?: LoginListRequest) => Promise<LoginSummary[]>

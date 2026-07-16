@@ -64,6 +64,9 @@ const api: BearWardenAPI = {
     list: (request = {}) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginList, request),
     get: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginGet, request)
   },
+  emergencyAccess: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.emergencyAccessList)
+  },
   logins: {
     list: (request = {}) => ipcRenderer.invoke(IPC_CHANNELS.loginList, request),
     authorize: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginAuthorize, request),

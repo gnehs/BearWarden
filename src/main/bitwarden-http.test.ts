@@ -168,6 +168,62 @@ describe('BitwardenHttpClient', () => {
     expect(fetch.mock.calls[2]?.[1]?.body).toBe(JSON.stringify({ name: '2.encrypted', type: 1 }))
   })
 
+  it('parses trusted and granted Emergency Access metadata without exposing encrypted keys', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        json({
+          data: [
+            {
+              id: '60000000-0000-4000-8000-000000000001',
+              granteeId: '60000000-0000-4000-8000-000000000002',
+              name: 'Trusted contact',
+              email: 'trusted@example.invalid',
+              type: 0,
+              status: 1,
+              waitTimeDays: 7,
+              creationDate: '2026-07-16T00:00:00Z',
+              avatarColor: '#123456',
+              keyEncrypted: 'must-not-escape'
+            }
+          ]
+        })
+      )
+      .mockResolvedValueOnce(
+        json({
+          Data: [
+            {
+              Id: '60000000-0000-4000-8000-000000000003',
+              GrantorId: '60000000-0000-4000-8000-000000000004',
+              Name: 'Grantor contact',
+              Email: 'grantor@example.invalid',
+              Type: 1,
+              Status: 2,
+              WaitTimeDays: 14,
+              CreationDate: '2026-07-15T00:00:00Z',
+              AvatarColor: '#654321',
+              KeyEncrypted: 'must-not-escape'
+            }
+          ]
+        })
+      )
+    const client = new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 1 })
+    await expect(client.listEmergencyAccess()).resolves.toEqual([
+      expect.objectContaining({
+        role: 'trusted',
+        subjectId: '60000000-0000-4000-8000-000000000002',
+        email: 'trusted@example.invalid'
+      }),
+      expect.objectContaining({
+        role: 'granted',
+        subjectId: '60000000-0000-4000-8000-000000000004',
+        type: 1
+      })
+    ])
+    expect(JSON.stringify(fetch.mock.calls)).not.toContain('must-not-escape')
+  })
+
   it('queries Vaultwarden account breaches with auth and excludes remote HTML from the safe model', async () => {
     const fetch = vi.fn<FetchLike>().mockResolvedValue(
       json([

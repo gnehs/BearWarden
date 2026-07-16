@@ -103,6 +103,19 @@ export interface BitwardenEquivalentDomainUpdate {
   excludedGlobalEquivalentDomains: number[]
 }
 
+export interface BitwardenEmergencyAccess {
+  id: string
+  role: 'trusted' | 'granted'
+  subjectId: string
+  name: string
+  email: string
+  type: number
+  status: number
+  waitTimeDays: number
+  creationDate: string
+  avatarColor: string
+}
+
 export interface BitwardenSendRequest {
   type: 0
   authType: 1 | 2
@@ -197,6 +210,9 @@ const DEFAULT_MAX_RETRIES = 5
 const ACCESS_TOKEN_REFRESH_LEEWAY_MS = 60_000
 const MAX_RESPONSE_BYTES = 128 * 1024 * 1024
 const MAX_HIBP_BREACH_RESPONSE_BYTES = 4 * 1024 * 1024
+const MAX_EMERGENCY_ACCESS_RESPONSE_BYTES = 2 * 1024 * 1024
+const MAX_EMERGENCY_ACCESS_ENTRIES = 10_000
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 const MAX_HIBP_BREACHES = 10_000
 const MAX_HIBP_DATA_CLASSES = 100
 const MAX_HIBP_STRING_BYTES = 4_096
@@ -743,6 +759,25 @@ export class BitwardenHttpClient {
   async listSends(signal?: AbortSignal): Promise<JsonObject[]> {
     const response = await this.requestJson('GET', `${this.urls.apiUrl}/sends`, { signal })
     return parseSendList(response)
+  }
+
+  async listEmergencyAccess(signal?: AbortSignal): Promise<BitwardenEmergencyAccess[]> {
+    const [trusted, granted] = await Promise.all([
+      this.requestJson('GET', `${this.urls.apiUrl}/emergency-access/trusted`, {
+        signal,
+        maxResponseBytes: MAX_EMERGENCY_ACCESS_RESPONSE_BYTES,
+        tooLargeCode: 'TOO_LARGE'
+      }),
+      this.requestJson('GET', `${this.urls.apiUrl}/emergency-access/granted`, {
+        signal,
+        maxResponseBytes: MAX_EMERGENCY_ACCESS_RESPONSE_BYTES,
+        tooLargeCode: 'TOO_LARGE'
+      })
+    ])
+    return [
+      ...parseEmergencyAccessList(trusted, 'trusted'),
+      ...parseEmergencyAccessList(granted, 'granted')
+    ]
   }
 
   async createSend(request: BitwardenSendRequest, signal?: AbortSignal): Promise<JsonObject> {
@@ -1519,6 +1554,81 @@ function parseSendList(value: JsonValue): JsonObject[] {
     }
     return parsed
   })
+}
+
+function parseEmergencyAccessList(
+  value: JsonValue,
+  role: BitwardenEmergencyAccess['role']
+): BitwardenEmergencyAccess[] {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const rows = value.data ?? value.Data
+  if (!Array.isArray(rows) || rows.length > MAX_EMERGENCY_ACCESS_ENTRIES) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return rows.map((candidate) => {
+    if (!isRecord(candidate)) throw new BitwardenHttpError('INVALID_RESPONSE')
+    const id = emergencyStringProperty(candidate, 'id', 'Id')
+    const subjectId = emergencyStringProperty(
+      candidate,
+      role === 'trusted' ? 'granteeId' : 'grantorId',
+      role === 'trusted' ? 'GranteeId' : 'GrantorId'
+    )
+    const name = emergencyStringProperty(candidate, 'name', 'Name')
+    const email = emergencyStringProperty(candidate, 'email', 'Email')
+    const type = finiteInteger(emergencyProperty(candidate, 'type', 'Type'))
+    const status = finiteInteger(emergencyProperty(candidate, 'status', 'Status'))
+    const waitTimeDays = finiteInteger(emergencyProperty(candidate, 'waitTimeDays', 'WaitTimeDays'))
+    const creationDate = emergencyStringProperty(candidate, 'creationDate', 'CreationDate')
+    const avatarColor = emergencyStringProperty(candidate, 'avatarColor', 'AvatarColor')
+    if (
+      !id ||
+      !UUID_PATTERN.test(id) ||
+      !subjectId ||
+      !UUID_PATTERN.test(subjectId) ||
+      !name ||
+      Buffer.byteLength(name, 'utf8') > 256 ||
+      !email ||
+      Buffer.byteLength(email, 'utf8') > 512 ||
+      type === undefined ||
+      type < 0 ||
+      status === undefined ||
+      status < 0 ||
+      waitTimeDays === undefined ||
+      waitTimeDays < 1 ||
+      waitTimeDays > 32_767 ||
+      !creationDate ||
+      !Number.isFinite(Date.parse(creationDate)) ||
+      !avatarColor ||
+      avatarColor.length > 64
+    ) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    return {
+      id,
+      role,
+      subjectId,
+      name,
+      email,
+      type,
+      status,
+      waitTimeDays,
+      creationDate: new Date(creationDate).toISOString(),
+      avatarColor
+    }
+  })
+}
+
+function emergencyProperty(
+  record: JsonObject,
+  lower: string,
+  upper: string
+): JsonValue | undefined {
+  return record[lower] ?? record[upper]
+}
+
+function emergencyStringProperty(record: JsonObject, lower: string, upper: string): string | null {
+  const value = emergencyProperty(record, lower, upper)
+  return typeof value === 'string' ? value : null
 }
 
 interface ParsedAttachmentDownload {

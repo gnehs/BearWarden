@@ -31,6 +31,7 @@ import {
   type BitwardenAttachmentUpload,
   type BitwardenEquivalentDomainSettings,
   type BitwardenEquivalentDomainUpdate,
+  type BitwardenEmergencyAccess,
   type BitwardenSendRequest,
   type BitwardenPrelogin,
   type BitwardenSession,
@@ -300,6 +301,7 @@ export interface BitwardenSyncClient {
   listOrganizations?(): Promise<BitwardenOrganization[]>
   listCollections?(): Promise<BitwardenCollection[]>
   listOrganizationCiphers?(): Promise<BitwardenOrganizationCipher[]>
+  listEmergencyAccess?(signal?: AbortSignal): Promise<BitwardenEmergencyAccess[]>
   listSends?(signal?: AbortSignal): Promise<BitwardenSendItem[]>
   createSend?(draft: BitwardenSendDraft, signal?: AbortSignal): Promise<BitwardenSendItem>
   updateSend?(
@@ -1800,6 +1802,11 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   async listOrganizationCiphers(): Promise<BitwardenOrganizationCipher[]> {
     this.requireUserKey()
     return [...this.organizationCiphers.values()].map(cloneOrganizationCipher)
+  }
+
+  async listEmergencyAccess(signal?: AbortSignal): Promise<BitwardenEmergencyAccess[]> {
+    this.requireUserKey()
+    return this.http.listEmergencyAccess(signal)
   }
 
   async downloadAttachment(
