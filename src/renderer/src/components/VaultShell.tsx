@@ -49,6 +49,7 @@ import {
   RotateCcw,
   Settings2,
   Search,
+  Send as SendIcon,
   ShieldCheck,
   Sparkles,
   Star,
@@ -104,6 +105,7 @@ import {
 } from './VaultShell-security'
 import SyncDialog from './SyncDialog'
 import SettingsPage from './SettingsPage'
+import SendsPage from './SendsPage'
 import VaultHealthPage from './VaultHealthPage'
 import VaultPortabilityDialog, { type VaultPortabilityMode } from './VaultPortabilityDialog'
 import VirtualizedItemList from './VirtualizedItemList'
@@ -846,6 +848,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [healthOpen, setHealthOpen] = useState(false)
+  const [sendsOpen, setSendsOpen] = useState(false)
   const [settingsBusy, setSettingsBusy] = useState(false)
   const [touchIdPassword, setTouchIdPassword] = useState('')
   const [portabilityDialogMode, setPortabilityDialogMode] = useState<VaultPortabilityMode | null>(
@@ -1860,7 +1863,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       const command = event.metaKey || event.ctrlKey
       if (!command) return
       const key = event.key.toLocaleLowerCase()
-      if (settingsOpen || healthOpen) return
+      if (settingsOpen || healthOpen || sendsOpen) return
       if (
         key === 'a' &&
         !editorMode &&
@@ -1913,6 +1916,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     selectedLogin,
     selectedSummary,
     scope.kind,
+    sendsOpen,
     settingsOpen,
     updateSelectedIds
   ])
@@ -1926,9 +1930,10 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   }, [searchOpen])
 
   useEffect(() => {
-    if (settingsOpen || healthOpen || !settingsReturnFocusRef.current?.isConnected) return
+    if (settingsOpen || healthOpen || sendsOpen || !settingsReturnFocusRef.current?.isConnected)
+      return
     queueMicrotask(() => settingsReturnFocusRef.current?.focus())
-  }, [healthOpen, settingsOpen])
+  }, [healthOpen, sendsOpen, settingsOpen])
 
   function selectScope(nextScope: Scope): void {
     requestEditorTransition(() => {
@@ -1937,6 +1942,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       setSidebarOpen(false)
       setSettingsOpen(false)
       setHealthOpen(false)
+      setSendsOpen(false)
       setTouchIdPassword('')
       setEditorMode(null)
       setMoveSnapshot(null)
@@ -1950,6 +1956,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       setSidebarOpen(false)
       setSettingsOpen(false)
       setHealthOpen(false)
+      setSendsOpen(false)
       setTouchIdPassword('')
       setEditorMode(null)
       setMoveSnapshot(null)
@@ -1962,6 +1969,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         document.activeElement instanceof HTMLElement ? document.activeElement : null
       setSettingsOpen(true)
       setHealthOpen(false)
+      setSendsOpen(false)
       setSidebarOpen(false)
       setEditorMode(null)
       setMoveSnapshot(null)
@@ -1982,6 +1990,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         document.activeElement instanceof HTMLElement ? document.activeElement : null
       setHealthOpen(true)
       setSettingsOpen(false)
+      setSendsOpen(false)
       setSearchOpen(false)
       setSidebarOpen(false)
       setEditorMode(null)
@@ -1994,6 +2003,27 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   function closeHealth(): void {
     setHealthOpen(false)
+  }
+
+  function openSends(): void {
+    requestEditorTransition(() => {
+      settingsReturnFocusRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null
+      setSendsOpen(true)
+      setSettingsOpen(false)
+      setHealthOpen(false)
+      setSearchOpen(false)
+      setSidebarOpen(false)
+      setEditorMode(null)
+      setMoveSnapshot(null)
+      clearItemSelection()
+      setRevealedSecrets(emptyRevealedSecrets)
+      setRevealedCustomFields(emptyRevealedCustomFields)
+    })
+  }
+
+  function closeSends(): void {
+    setSendsOpen(false)
   }
 
   function openHealthItem(id: string): void {
@@ -3216,7 +3246,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         )}
       >
         <header className="titlebar">
-          {!settingsOpen && !healthOpen && (
+          {!settingsOpen && !healthOpen && !sendsOpen && (
             <TooltipIconButton
               variant="outline"
               size="icon"
@@ -3230,7 +3260,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             </TooltipIconButton>
           )}
           <BrandMark />
-          {!settingsOpen && !healthOpen && (
+          {!settingsOpen && !healthOpen && !sendsOpen && (
             <InputGroup className="search-field titlebar-search">
               <Button
                 variant="ghost"
@@ -3266,18 +3296,22 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             </InputGroup>
           )}
           <div className="titlebar-drag" aria-hidden="true" />
-          {!settingsOpen && !healthOpen && scope.kind !== 'archive' && scope.kind !== 'trash' && (
-            <TooltipIconButton
-              variant="outline"
-              size="icon"
-              className="icon-button titlebar-add-button"
-              type="button"
-              label="新增項目"
-              onClick={() => openEditor('create')}
-            >
-              <Plus aria-hidden="true" />
-            </TooltipIconButton>
-          )}
+          {!settingsOpen &&
+            !healthOpen &&
+            !sendsOpen &&
+            scope.kind !== 'archive' &&
+            scope.kind !== 'trash' && (
+              <TooltipIconButton
+                variant="outline"
+                size="icon"
+                className="icon-button titlebar-add-button"
+                type="button"
+                label="新增項目"
+                onClick={() => openEditor('create')}
+              >
+                <Plus aria-hidden="true" />
+              </TooltipIconButton>
+            )}
         </header>
 
         <CommandDialog
@@ -3348,7 +3382,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           </Command>
         </CommandDialog>
 
-        <div className={cn('workspace', (settingsOpen || healthOpen) && 'settings-mode')}>
+        <div
+          className={cn('workspace', (settingsOpen || healthOpen || sendsOpen) && 'settings-mode')}
+        >
           {sidebarOpen && (
             <Button
               variant="ghost"
@@ -3465,6 +3501,16 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
               <div className="flex min-w-0 flex-col">
                 <Button
                   variant="ghost"
+                  className={cn('sidebar-settings-control', sendsOpen && 'active')}
+                  type="button"
+                  onClick={openSends}
+                  aria-current={sendsOpen ? 'page' : undefined}
+                >
+                  <SendIcon data-icon="inline-start" aria-hidden="true" />
+                  Sends
+                </Button>
+                <Button
+                  variant="ghost"
                   className={cn('sidebar-settings-control', healthOpen && 'active')}
                   type="button"
                   onClick={openHealth}
@@ -3500,7 +3546,13 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           <section
             className="list-pane"
             aria-labelledby={
-              healthOpen ? 'health-title' : settingsOpen ? 'settings-title' : 'list-title'
+              healthOpen
+                ? 'health-title'
+                : sendsOpen
+                  ? 'sends-title'
+                  : settingsOpen
+                    ? 'settings-title'
+                    : 'list-title'
             }
           >
             {healthOpen ? (
@@ -3509,6 +3561,8 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 onBack={closeHealth}
                 onOpenItem={openHealthItem}
               />
+            ) : sendsOpen ? (
+              <SendsPage onBack={closeSends} />
             ) : settingsOpen ? (
               <SettingsPage
                 settings={settings}
