@@ -49,6 +49,7 @@ import {
   RotateCcw,
   Settings2,
   Search,
+  ShieldCheck,
   Sparkles,
   Star,
   Trash2,
@@ -103,6 +104,7 @@ import {
 } from './VaultShell-security'
 import SyncDialog from './SyncDialog'
 import SettingsPage from './SettingsPage'
+import VaultHealthPage from './VaultHealthPage'
 import VaultPortabilityDialog, { type VaultPortabilityMode } from './VaultPortabilityDialog'
 import VirtualizedItemList from './VirtualizedItemList'
 import { groupItemsByDate } from '../lib/item-date-groups'
@@ -120,6 +122,7 @@ import {
   vaultSearchListRequests,
   type VaultSearchMatches
 } from '../lib/vault-search-ui'
+import { vaultHealthRevision } from '../lib/vault-health-ui'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
 import { Button } from '@renderer/components/ui/button'
@@ -842,6 +845,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const SyncSidebarIcon = syncStateMeta[syncStatus.state].icon
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [healthOpen, setHealthOpen] = useState(false)
   const [settingsBusy, setSettingsBusy] = useState(false)
   const [touchIdPassword, setTouchIdPassword] = useState('')
   const [portabilityDialogMode, setPortabilityDialogMode] = useState<VaultPortabilityMode | null>(
@@ -1798,6 +1802,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     }
     return counts
   }, [activeItems])
+  const healthRevision = useMemo(() => vaultHealthRevision(items), [items])
 
   const scopeTitle = useMemo(() => {
     if (scope.kind === 'favorites') return '常用項目'
@@ -1855,9 +1860,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       const command = event.metaKey || event.ctrlKey
       if (!command) return
       const key = event.key.toLocaleLowerCase()
+      if (settingsOpen || healthOpen) return
       if (
         key === 'a' &&
-        !settingsOpen &&
         !editorMode &&
         !searchOpen &&
         event.target instanceof HTMLElement &&
@@ -1873,7 +1878,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             : (scopedItemIds[0] ?? null)
         activateLogin(nextActiveId)
       }
-      if (key === 'f' && !settingsOpen) {
+      if (key === 'f') {
         event.preventDefault()
         setSearchOpen(true)
       }
@@ -1900,6 +1905,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     activateLogin,
     busy,
     editorMode,
+    healthOpen,
     openMoveDialogForSelection,
     openEditor,
     scopedItemIds,
@@ -1920,9 +1926,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   }, [searchOpen])
 
   useEffect(() => {
-    if (settingsOpen || !settingsReturnFocusRef.current?.isConnected) return
+    if (settingsOpen || healthOpen || !settingsReturnFocusRef.current?.isConnected) return
     queueMicrotask(() => settingsReturnFocusRef.current?.focus())
-  }, [settingsOpen])
+  }, [healthOpen, settingsOpen])
 
   function selectScope(nextScope: Scope): void {
     requestEditorTransition(() => {
@@ -1930,6 +1936,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       setTypeFilter('all')
       setSidebarOpen(false)
       setSettingsOpen(false)
+      setHealthOpen(false)
       setTouchIdPassword('')
       setEditorMode(null)
       setMoveSnapshot(null)
@@ -1942,6 +1949,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       setTypeFilter(type)
       setSidebarOpen(false)
       setSettingsOpen(false)
+      setHealthOpen(false)
       setTouchIdPassword('')
       setEditorMode(null)
       setMoveSnapshot(null)
@@ -1953,6 +1961,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       settingsReturnFocusRef.current =
         document.activeElement instanceof HTMLElement ? document.activeElement : null
       setSettingsOpen(true)
+      setHealthOpen(false)
       setSidebarOpen(false)
       setEditorMode(null)
       setMoveSnapshot(null)
@@ -1965,6 +1974,34 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   function closeSettings(): void {
     setSettingsOpen(false)
     setTouchIdPassword('')
+  }
+
+  function openHealth(): void {
+    requestEditorTransition(() => {
+      settingsReturnFocusRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null
+      setHealthOpen(true)
+      setSettingsOpen(false)
+      setSearchOpen(false)
+      setSidebarOpen(false)
+      setEditorMode(null)
+      setMoveSnapshot(null)
+      clearItemSelection()
+      setRevealedSecrets(emptyRevealedSecrets)
+      setRevealedCustomFields(emptyRevealedCustomFields)
+    })
+  }
+
+  function closeHealth(): void {
+    setHealthOpen(false)
+  }
+
+  function openHealthItem(id: string): void {
+    setHealthOpen(false)
+    setScope({ kind: 'all' })
+    setTypeFilter('login')
+    updateQuery('')
+    selectLogin(id)
   }
 
   async function submitReprompt(masterPassword: string): Promise<void> {
@@ -3179,7 +3216,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         )}
       >
         <header className="titlebar">
-          {!settingsOpen && (
+          {!settingsOpen && !healthOpen && (
             <TooltipIconButton
               variant="outline"
               size="icon"
@@ -3193,7 +3230,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             </TooltipIconButton>
           )}
           <BrandMark />
-          {!settingsOpen && (
+          {!settingsOpen && !healthOpen && (
             <InputGroup className="search-field titlebar-search">
               <Button
                 variant="ghost"
@@ -3229,7 +3266,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             </InputGroup>
           )}
           <div className="titlebar-drag" aria-hidden="true" />
-          {!settingsOpen && scope.kind !== 'archive' && scope.kind !== 'trash' && (
+          {!settingsOpen && !healthOpen && scope.kind !== 'archive' && scope.kind !== 'trash' && (
             <TooltipIconButton
               variant="outline"
               size="icon"
@@ -3311,7 +3348,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           </Command>
         </CommandDialog>
 
-        <div className={cn('workspace', settingsOpen && 'settings-mode')}>
+        <div className={cn('workspace', (settingsOpen || healthOpen) && 'settings-mode')}>
           {sidebarOpen && (
             <Button
               variant="ghost"
@@ -3425,16 +3462,28 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             </div>
 
             <footer className="sidebar-footer">
-              <Button
-                variant="ghost"
-                className={cn('sidebar-settings-control', settingsOpen && 'active')}
-                type="button"
-                onClick={openSettings}
-                aria-current={settingsOpen ? 'page' : undefined}
-              >
-                <Settings2 data-icon="inline-start" aria-hidden="true" />
-                設定
-              </Button>
+              <div className="flex min-w-0 flex-col">
+                <Button
+                  variant="ghost"
+                  className={cn('sidebar-settings-control', healthOpen && 'active')}
+                  type="button"
+                  onClick={openHealth}
+                  aria-current={healthOpen ? 'page' : undefined}
+                >
+                  <ShieldCheck data-icon="inline-start" aria-hidden="true" />
+                  健康報告
+                </Button>
+                <Button
+                  variant="ghost"
+                  className={cn('sidebar-settings-control', settingsOpen && 'active')}
+                  type="button"
+                  onClick={openSettings}
+                  aria-current={settingsOpen ? 'page' : undefined}
+                >
+                  <Settings2 data-icon="inline-start" aria-hidden="true" />
+                  設定
+                </Button>
+              </div>
               <TooltipIconButton
                 variant="ghost"
                 size="icon"
@@ -3450,9 +3499,17 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
           <section
             className="list-pane"
-            aria-labelledby={settingsOpen ? 'settings-title' : 'list-title'}
+            aria-labelledby={
+              healthOpen ? 'health-title' : settingsOpen ? 'settings-title' : 'list-title'
+            }
           >
-            {settingsOpen ? (
+            {healthOpen ? (
+              <VaultHealthPage
+                revision={healthRevision}
+                onBack={closeHealth}
+                onOpenItem={openHealthItem}
+              />
+            ) : settingsOpen ? (
               <SettingsPage
                 settings={settings}
                 settingsBusy={settingsBusy}
