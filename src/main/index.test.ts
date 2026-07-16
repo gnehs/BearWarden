@@ -7,6 +7,10 @@ const harness = vi.hoisted(() => {
   const windows: FakeWindow[] = []
   let vaultOptions: Record<string, unknown> | null = null
   let vaultIpcOptions: Record<string, unknown> | null = null
+  let storePath: string | null = null
+  let storeOptions: Record<string, unknown> | null = null
+  let settingsPaths: { settingsPath: string; touchIdPath: string } | null = null
+  let twoFactorDirectoryPath: string | null = null
   const controller = {
     cancel: vi.fn(),
     dispose: vi.fn(),
@@ -93,6 +97,30 @@ const harness = vi.hoisted(() => {
     },
     setVaultIpcOptions: (value: Record<string, unknown>) => {
       vaultIpcOptions = value
+    },
+    get storePath(): string | null {
+      return storePath
+    },
+    setStorePath: (value: string) => {
+      storePath = value
+    },
+    get storeOptions(): Record<string, unknown> | null {
+      return storeOptions
+    },
+    setStoreOptions: (value: Record<string, unknown>) => {
+      storeOptions = value
+    },
+    get settingsPaths(): { settingsPath: string; touchIdPath: string } | null {
+      return settingsPaths
+    },
+    setSettingsPaths: (value: { settingsPath: string; touchIdPath: string }) => {
+      settingsPaths = value
+    },
+    get twoFactorDirectoryPath(): string | null {
+      return twoFactorDirectoryPath
+    },
+    setTwoFactorDirectoryPath: (value: string) => {
+      twoFactorDirectoryPath = value
     }
   }
 })
@@ -156,6 +184,10 @@ vi.mock('./bitwarden-notifications', () => ({
 }))
 vi.mock('./app-settings', () => ({
   AppSettingsService: class {
+    constructor(settingsPath: string, touchIdPath: string) {
+      harness.setSettingsPaths({ settingsPath, touchIdPath })
+    }
+
     initialize(): Promise<void> {
       return Promise.resolve()
     }
@@ -168,7 +200,28 @@ vi.mock('./app-settings', () => ({
     dispose(): void {}
   }
 }))
-vi.mock('./encrypted-vault-store', () => ({ EncryptedVaultStore: class {} }))
+vi.mock('./encrypted-vault-store', () => ({
+  EncryptedVaultStore: class {
+    constructor(filePath: string, options: Record<string, unknown>) {
+      harness.setStorePath(filePath)
+      harness.setStoreOptions(options)
+    }
+  }
+}))
+vi.mock('./account-storage-bootstrap', () => ({
+  bootstrapAccountStorage: vi.fn(async () => ({
+    mode: 'account',
+    activeAccountId: '11111111-1111-4111-8111-111111111111',
+    paths: {
+      vaultPath:
+        '/tmp/bearwarden-index-test/accounts/11111111-1111-4111-8111-111111111111/vault/vault.json',
+      settingsPath:
+        '/tmp/bearwarden-index-test/accounts/11111111-1111-4111-8111-111111111111/account-settings.json',
+      touchIdPath:
+        '/tmp/bearwarden-index-test/accounts/11111111-1111-4111-8111-111111111111/touch-id.bin'
+    }
+  }))
+}))
 vi.mock('./focus-touch-id-unlock', () => ({ FocusTouchIdUnlockController: class {} }))
 vi.mock('./application-menu', () => ({ installApplicationMenu: vi.fn() }))
 vi.mock('./vault-ipc', () => ({
@@ -248,6 +301,10 @@ vi.mock('./sensitive-clipboard', () => ({
 }))
 vi.mock('./two-factor-directory-cache', () => ({
   TwoFactorDirectoryCache: class {
+    constructor(path: string) {
+      harness.setTwoFactorDirectoryPath(path)
+    }
+
     dispose(): void {}
   }
 }))
@@ -258,6 +315,22 @@ beforeAll(async () => {
 })
 
 describe('main WebAuthn lifecycle wiring', () => {
+  it('wires vault secrets to the active storage while keeping the 2FA cache global', () => {
+    expect(harness.storePath).toBe(
+      '/tmp/bearwarden-index-test/accounts/11111111-1111-4111-8111-111111111111/vault/vault.json'
+    )
+    expect(harness.storeOptions).toMatchObject({ afterAtomicCommit: expect.any(Function) })
+    expect(harness.settingsPaths).toEqual({
+      settingsPath:
+        '/tmp/bearwarden-index-test/accounts/11111111-1111-4111-8111-111111111111/account-settings.json',
+      touchIdPath:
+        '/tmp/bearwarden-index-test/accounts/11111111-1111-4111-8111-111111111111/touch-id.bin'
+    })
+    expect(harness.twoFactorDirectoryPath).toBe(
+      '/tmp/bearwarden-index-test/cache/2fa-directory-totp-v4.json'
+    )
+  })
+
   it('keeps the account connector main-only and cancels it at every teardown boundary', async () => {
     const request = harness.vaultOptions!.requestAccountWebAuthnAssertion as (
       input: unknown

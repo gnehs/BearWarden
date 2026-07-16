@@ -18,6 +18,7 @@ import {
   createInitialAccountRegistry,
   type AccountRegistry
 } from './account-registry'
+import { hasPendingInitializationMarker } from './account-storage-initialization-marker'
 
 const JOURNAL_FORMAT = 'bearwarden-account-storage-migration'
 const JOURNAL_VERSION = 1
@@ -70,6 +71,15 @@ export type AccountStorageMigrationResult =
       readonly legacyTouchIdPath: string
     }
   | { readonly kind: 'no-legacy-vault' }
+  | {
+      /**
+       * Existing account-storage metadata cannot be trusted and there is no legacy vault to
+       * preserve. Callers must not mistake this for a clean install and create a new registry.
+       */
+      readonly kind: 'storage-unavailable'
+      readonly reason:
+        'journal-unavailable' | 'registry-unavailable' | 'target-missing' | 'target-corrupt'
+    }
 
 export interface AccountStorageMigrationOptions {
   readonly createUuid?: () => string
@@ -344,6 +354,7 @@ function temporaryStoragePaths(temporaryDirectory: string): AccountStoragePaths 
     vaultPath: join(vaultDirectory, 'vault.json'),
     settingsPath: join(temporaryDirectory, 'account-settings.json'),
     touchIdPath: join(temporaryDirectory, 'touch-id.bin'),
+    initializationMarkerPath: join(temporaryDirectory, '.pending-initialization'),
     displayMetadataPath: join(temporaryDirectory, 'display-metadata.bin')
   }
 }
@@ -431,7 +442,7 @@ export async function migrateLegacyAccountStorage(
   } catch {
     return legacyVaultExists
       ? legacyFallback(layout, 'registry-unavailable')
-      : { kind: 'no-legacy-vault' }
+      : { kind: 'storage-unavailable', reason: 'journal-unavailable' }
   }
 
   let registry: AccountRegistry | null
@@ -440,17 +451,34 @@ export async function migrateLegacyAccountStorage(
   } catch {
     return legacyVaultExists
       ? legacyFallback(layout, 'registry-unavailable')
-      : { kind: 'no-legacy-vault' }
+      : { kind: 'storage-unavailable', reason: 'registry-unavailable' }
   }
 
   if (registry) {
     const accountPaths = layout.account(registry.activeAccountId)
+    const accountDirectoryExists = await directoryExistsNoSymlink(accountPaths.accountDirectory)
+    const vaultDirectoryExists = await directoryExistsNoSymlink(accountPaths.vaultDirectory)
+    if (!accountDirectoryExists || !vaultDirectoryExists) {
+      return legacyVaultExists
+        ? legacyFallback(layout, 'target-missing')
+        : { kind: 'storage-unavailable', reason: 'target-missing' }
+    }
     if (!journal || journal.accountId !== registry.activeAccountId || !journal.files) {
-      return (await fileExistsNoSymlink(accountPaths.vaultPath))
-        ? { kind: 'account', accountId: registry.activeAccountId, accountPaths, registry }
-        : legacyVaultExists
-          ? legacyFallback(layout, 'target-missing')
-          : { kind: 'no-legacy-vault' }
+      if (await fileExistsNoSymlink(accountPaths.vaultPath)) {
+        return { kind: 'account', accountId: registry.activeAccountId, accountPaths, registry }
+      }
+      if (legacyVaultExists) return legacyFallback(layout, 'target-missing')
+
+      // A fresh account deliberately has no vault.json until EncryptedVaultStore.initialize()
+      // receives the user's master password. Its private directories are nevertheless created
+      // before the registry primary commit, so a restart can distinguish it from broken storage.
+      if (
+        !journal &&
+        (await hasPendingInitializationMarker(accountPaths.initializationMarkerPath))
+      ) {
+        return { kind: 'account', accountId: registry.activeAccountId, accountPaths, registry }
+      }
+      return { kind: 'storage-unavailable', reason: 'target-missing' }
     }
     if (!(await verifyFiles(accountPaths, journal.files))) {
       return legacyVaultExists
@@ -460,7 +488,12 @@ export async function migrateLegacyAccountStorage(
               ? 'target-corrupt'
               : 'target-missing'
           )
-        : { kind: 'no-legacy-vault' }
+        : {
+            kind: 'storage-unavailable',
+            reason: (await fileExistsNoSymlink(accountPaths.vaultPath))
+              ? 'target-corrupt'
+              : 'target-missing'
+          }
     }
     if (journal.phase !== 'committed') {
       journal = { ...journal, phase: 'committed' }
@@ -470,7 +503,14 @@ export async function migrateLegacyAccountStorage(
     return { kind: 'account', accountId: registry.activeAccountId, accountPaths, registry }
   }
 
-  if (!legacyVaultExists) return { kind: 'no-legacy-vault' }
+  if (!legacyVaultExists) {
+    // A clean install has neither a registry nor a journal. Retaining a journal without a
+    // registry means a previous migration was interrupted after its intent was persisted; do
+    // not overwrite that evidence by treating it as a fresh install.
+    return journal
+      ? { kind: 'storage-unavailable', reason: 'registry-unavailable' }
+      : { kind: 'no-legacy-vault' }
+  }
   await ensurePrivateDirectory(layout.accountsDirectory)
 
   if (!journal) {

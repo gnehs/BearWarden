@@ -38,6 +38,8 @@ import { PasskeyRendererBridge } from './passkey-renderer-bridge'
 import { AccountWebAuthnWindowController } from './account-webauthn-window'
 import { SensitiveClipboard } from './sensitive-clipboard'
 import { TwoFactorDirectoryCache } from './two-factor-directory-cache'
+import { bootstrapAccountStorage } from './account-storage-bootstrap'
+import { clearPendingInitializationMarker } from './account-storage-initialization-marker'
 import icon from '../../resources/icon.png?asset'
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
@@ -439,9 +441,15 @@ if (hasSingleInstanceLock)
     })
     session.defaultSession.setPermissionCheckHandler(() => false)
 
-    const store = new EncryptedVaultStore<unknown>(
-      join(app.getPath('userData'), 'vault', 'vault.json')
-    )
+    const activeStorage = await bootstrapAccountStorage(app.getPath('userData'))
+    const store = new EncryptedVaultStore<unknown>(activeStorage.paths.vaultPath, {
+      ...(activeStorage.mode === 'account'
+        ? {
+            afterAtomicCommit: () =>
+              clearPendingInitializationMarker(activeStorage.paths.initializationMarkerPath)
+          }
+        : {})
+    })
     const attachmentFiles = new VaultAttachmentFileService({
       chooseOpenFile: async () => {
         const options = {
@@ -618,8 +626,8 @@ if (hasSingleInstanceLock)
     )
 
     settings = new AppSettingsService(
-      join(app.getPath('userData'), 'settings.json'),
-      join(app.getPath('userData'), 'vault', 'touch-id.bin'),
+      activeStorage.paths.settingsPath,
+      activeStorage.paths.touchIdPath,
       store,
       {
         applyContentProtection: (enabled) => {

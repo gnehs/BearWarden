@@ -63,6 +63,8 @@ export interface EncryptedVaultStoreOptions {
     stage: EncryptedVaultStoreAtomicWriteStage,
     paths: { temporaryPath: string; destinationPath: string }
   ) => void | Promise<void>
+  /** Runs after the vault rename commit. Errors are intentionally ignored because the vault exists. */
+  afterAtomicCommit?: () => void | Promise<void>
 }
 
 interface InternalDecryptedVault<T> extends DecryptedVault<T> {
@@ -595,6 +597,12 @@ export class EncryptedVaultStore<T> {
       // as a failed rekey because the old destination can no longer be restored safely.
       await rename(temporaryPath, this.filePath)
       await syncDirectory(directory)
+      try {
+        await this.options.afterAtomicCommit?.()
+      } catch {
+        // The vault rename is committed. A post-commit cleanup failure must not be reported as a
+        // failed initialize/rekey because the caller cannot safely retry it as if no write happened.
+      }
     } catch (error) {
       await handle?.close().catch(() => undefined)
       await unlink(temporaryPath).catch(() => undefined)

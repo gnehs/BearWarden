@@ -11,6 +11,22 @@ afterEach(async () => {
 })
 
 describe('EncryptedVaultStore master-password proof', () => {
+  it('does not report a committed initialize as failed when post-commit cleanup fails', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'bearwarden-post-commit-cleanup-'))
+    directories.push(directory)
+    const filePath = join(directory, 'vault.json')
+    const store = new EncryptedVaultStore<{ marker: string }>(filePath, {
+      afterAtomicCommit: () => {
+        throw new Error('CLEANUP_FAILED')
+      }
+    })
+
+    const material = await store.initialize('correct horse battery staple', { marker: 'committed' })
+    expect((await stat(filePath)).isFile()).toBe(true)
+    material.key.fill(0)
+    material.salt.fill(0)
+  })
+
   it('verifies the current master password without reading or rewriting the vault', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'bearwarden-proof-'))
     directories.push(directory)
