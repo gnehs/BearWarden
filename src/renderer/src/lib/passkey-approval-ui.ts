@@ -1,6 +1,7 @@
 import type {
   PasskeyApprovalPrompt,
-  PasskeyVerificationMethod
+  PasskeyVerificationMethod,
+  VaultState
 } from '../../../shared/vault-contract'
 
 export type PasskeyApprovalUiVerificationMethod = Exclude<PasskeyVerificationMethod, 'none'>
@@ -11,6 +12,14 @@ export interface PasskeyApprovalUiSelection {
   selectedChoiceId?: string
   verificationMethod?: PasskeyApprovalUiVerificationMethod
   masterPassword: string
+}
+
+/** A single approval modal at a time prevents either request from being accepted implicitly. */
+export function shouldDenyPasskeyApproval(
+  state: VaultState | 'loading' | 'unavailable',
+  hasAnyApproval: boolean
+): boolean {
+  return state !== 'unlocked' || hasAnyApproval
 }
 
 export function isPasskeyApprovalExpired(

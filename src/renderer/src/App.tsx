@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import type { SshAgentApprovalPrompt, VaultState } from '../../shared/vault-contract'
+import type {
+  PasskeyApprovalPrompt,
+  SshAgentApprovalPrompt,
+  VaultState
+} from '../../shared/vault-contract'
 import AuthScreen from './components/AuthScreen'
+import PasskeyApprovalDialog from './components/PasskeyApprovalDialog'
 import SshAgentApprovalDialog from './components/SshAgentApprovalDialog'
 import VaultShell from './components/VaultShell'
-import { shouldDenySshAgentApproval } from './lib/ssh-agent-ui'
+import { shouldDenyPasskeyApproval } from './lib/passkey-approval-ui'
 import { applyThemePreference } from './lib/theme'
 
 type AppState = VaultState | 'loading' | 'unavailable'
@@ -14,13 +19,21 @@ function denySshAgentApproval(request: SshAgentApprovalPrompt): void {
     .catch(() => undefined)
 }
 
+function denyPasskeyApproval(request: PasskeyApprovalPrompt): void {
+  void window.bearwarden.passkeys
+    .respondApproval({ requestId: request.requestId, approved: false })
+    .catch(() => undefined)
+}
+
 function App(): React.JSX.Element {
   const [state, setState] = useState<AppState>('loading')
   const [retryKey, setRetryKey] = useState(0)
   const [sshAgentApproval, setSshAgentApproval] = useState<SshAgentApprovalPrompt | null>(null)
+  const [passkeyApproval, setPasskeyApproval] = useState<PasskeyApprovalPrompt | null>(null)
   const lastActivityAt = useRef(0)
   const stateRef = useRef<AppState>('loading')
   const sshAgentApprovalRef = useRef<SshAgentApprovalPrompt | null>(null)
+  const passkeyApprovalRef = useRef<PasskeyApprovalPrompt | null>(null)
 
   function updateState(nextState: AppState): void {
     stateRef.current = nextState
@@ -54,10 +67,14 @@ function App(): React.JSX.Element {
     let receivedStateEvent = false
     const unsubscribeLocked = window.bearwarden.vault.onLocked(() => {
       receivedStateEvent = true
-      const pending = sshAgentApprovalRef.current
+      const pendingSshAgentApproval = sshAgentApprovalRef.current
+      const pendingPasskeyApproval = passkeyApprovalRef.current
       sshAgentApprovalRef.current = null
+      passkeyApprovalRef.current = null
       setSshAgentApproval(null)
-      if (pending) denySshAgentApproval(pending)
+      setPasskeyApproval(null)
+      if (pendingSshAgentApproval) denySshAgentApproval(pendingSshAgentApproval)
+      if (pendingPasskeyApproval) denyPasskeyApproval(pendingPasskeyApproval)
       updateState('locked')
     })
     const unsubscribeUnlocked = window.bearwarden.vault.onUnlocked(() => {
@@ -84,7 +101,12 @@ function App(): React.JSX.Element {
   useEffect(() => {
     const unsubscribe = window.bearwarden.sshAgent.onApprovalRequested((request) => {
       // A prompt must never become an implicit approval while the UI is unavailable or locked.
-      if (shouldDenySshAgentApproval(stateRef.current, Boolean(sshAgentApprovalRef.current))) {
+      if (
+        shouldDenyPasskeyApproval(
+          stateRef.current,
+          Boolean(sshAgentApprovalRef.current || passkeyApprovalRef.current)
+        )
+      ) {
         denySshAgentApproval(request)
         return
       }
@@ -97,6 +119,29 @@ function App(): React.JSX.Element {
       const pending = sshAgentApprovalRef.current
       sshAgentApprovalRef.current = null
       if (pending) denySshAgentApproval(pending)
+    }
+  }, [])
+
+  useEffect(() => {
+    const unsubscribe = window.bearwarden.passkeys.onApprovalRequested((request) => {
+      if (
+        shouldDenyPasskeyApproval(
+          stateRef.current,
+          Boolean(sshAgentApprovalRef.current || passkeyApprovalRef.current)
+        )
+      ) {
+        denyPasskeyApproval(request)
+        return
+      }
+      passkeyApprovalRef.current = request
+      setPasskeyApproval(request)
+    })
+
+    return () => {
+      unsubscribe()
+      const pending = passkeyApprovalRef.current
+      passkeyApprovalRef.current = null
+      if (pending) denyPasskeyApproval(pending)
     }
   }, [])
 
@@ -129,6 +174,18 @@ function App(): React.JSX.Element {
               if (sshAgentApprovalRef.current?.requestId !== sshAgentApproval.requestId) return
               sshAgentApprovalRef.current = null
               setSshAgentApproval(null)
+            }}
+          />
+        )}
+        {passkeyApproval && (
+          <PasskeyApprovalDialog
+            request={passkeyApproval}
+            onVerifyPassword={(request) => window.bearwarden.passkeys.verifyApproval(request)}
+            onRespond={(response) => window.bearwarden.passkeys.respondApproval(response)}
+            onSettled={() => {
+              if (passkeyApprovalRef.current?.requestId !== passkeyApproval.requestId) return
+              passkeyApprovalRef.current = null
+              setPasskeyApproval(null)
             }}
           />
         )}

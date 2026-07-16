@@ -7,7 +7,8 @@ import {
   initialPasskeyApprovalVerificationMethod,
   isPasskeyApprovalExpired,
   passkeyApprovalResponseVerificationMethod,
-  requiresPasskeyApprovalPasswordVerification
+  requiresPasskeyApprovalPasswordVerification,
+  shouldDenyPasskeyApproval
 } from './passkey-approval-ui'
 
 function prompt(overrides: Partial<PasskeyApprovalPrompt> = {}): PasskeyApprovalPrompt {
@@ -25,6 +26,17 @@ function prompt(overrides: Partial<PasskeyApprovalPrompt> = {}): PasskeyApproval
 }
 
 describe('Passkey approval renderer policy', () => {
+  it('fails closed unless the vault is unlocked with no approval modal active', () => {
+    expect(shouldDenyPasskeyApproval('locked', false)).toBe(true)
+    expect(shouldDenyPasskeyApproval('loading', false)).toBe(true)
+    expect(shouldDenyPasskeyApproval('unavailable', false)).toBe(true)
+    const sshApprovalIsActive = true
+    const passkeyApprovalIsActive = true
+    expect(shouldDenyPasskeyApproval('unlocked', sshApprovalIsActive)).toBe(true)
+    expect(shouldDenyPasskeyApproval('unlocked', passkeyApprovalIsActive)).toBe(true)
+    expect(shouldDenyPasskeyApproval('unlocked', false)).toBe(false)
+  })
+
   it('selects its only credential and prefers Touch ID for actual UV', () => {
     expect(initialPasskeyApprovalChoice(prompt())).toBe('choice-1')
     expect(initialPasskeyApprovalChoice(prompt({ choices: [] }))).toBeUndefined()
