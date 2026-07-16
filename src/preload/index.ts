@@ -194,6 +194,7 @@ const api: BearWardenAPI = {
   sends: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.sendList),
     create: (request) => ipcRenderer.invoke(IPC_CHANNELS.sendCreate, request),
+    createFile: (request) => ipcRenderer.invoke(IPC_CHANNELS.sendCreateFile, request),
     update: (request) => ipcRenderer.invoke(IPC_CHANNELS.sendUpdate, request),
     removePassword: (request) => ipcRenderer.invoke(IPC_CHANNELS.sendRemovePassword, request),
     delete: (request) => ipcRenderer.invoke(IPC_CHANNELS.sendDelete, request),

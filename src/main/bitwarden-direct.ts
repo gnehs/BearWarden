@@ -1648,6 +1648,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     const userKey = this.requireUserKey()
     const cached = this.sends.get(assertUuidValue(id))
     if (!cached) throw new BitwardenDirectError('NOT_FOUND')
+    if (cached.item.type !== 'text') throw new BitwardenDirectError('INVALID_RESPONSE')
     const request = await this.encryptSendRequest(draft, userKey, cached.raw)
     try {
       const raw = await this.http.updateSend(cached.item.id, request, signal)

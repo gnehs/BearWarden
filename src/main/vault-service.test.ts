@@ -716,6 +716,70 @@ describe('VaultService encrypted local data', () => {
     await expect(service.listSends()).resolves.toEqual([])
   })
 
+  it('creates a file Send from a main-process file selection and clears plaintext after upload', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    let receivedData: Buffer | null = null
+    const fileService = {
+      chooseOpenFile: async () => ({ fileName: 'report.txt', size: 11 }),
+      readSelectedFile: async () => Buffer.from('hello world')
+    } as unknown as VaultAttachmentFileService
+    const { service } = await createHarness({
+      attachmentFiles: fileService,
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const remote: BitwardenSendItem = {
+      id: '50000000-0000-4000-8000-000000000002',
+      accessId: 'UAAAAAAAQABAAAAAAAAAAQ',
+      type: 'file',
+      name: 'Report Send',
+      notes: null,
+      text: '',
+      file: {
+        id: '0123456789abcdef0123456789abcdef',
+        fileName: 'report.txt',
+        size: 77,
+        sizeName: '77 B'
+      },
+      hidden: false,
+      maxAccessCount: null,
+      accessCount: 0,
+      revisionDate: '2026-07-16T00:00:00.000Z',
+      expirationDate: null,
+      deletionDate: '2026-07-30T00:00:00.000Z',
+      disabled: false,
+      hideEmail: true,
+      authType: 2,
+      passwordProtected: false
+    }
+    fake!.createFileSend = async (draft) => {
+      receivedData = draft.data
+      return { ...remote, file: { ...remote.file! } }
+    }
+    fake!.listSends = async () => [{ ...remote, file: { ...remote.file! } }]
+
+    const result = await service.createFileSend({
+      operationId: ATTACHMENT_OPERATION_ID,
+      name: remote.name,
+      deletionDate: remote.deletionDate
+    })
+    expect(result).toMatchObject({ canceled: false, send: { id: remote.id, type: 'file' } })
+    const captured = receivedData as Buffer | null
+    if (!captured) throw new Error('file bytes were not passed to the connector')
+    expect(Array.from(captured).every((byte) => byte === 0)).toBe(true)
+    await expect(service.listSends()).resolves.toEqual([
+      expect.objectContaining({ id: remote.id, type: 'file', file: remote.file })
+    ])
+  })
+
   it('leases encrypted notification credentials and preserves mappings across remote logout', async () => {
     const { filePath, service } = await createHarness({
       createSyncClient: (sync) => createSyncFake(sync.state)

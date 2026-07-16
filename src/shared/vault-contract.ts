@@ -92,6 +92,7 @@ export const IPC_CHANNELS = {
   domainRulesUpdate: 'domain-rules:update',
   sendList: 'send:list',
   sendCreate: 'send:create',
+  sendCreateFile: 'send:create-file',
   sendUpdate: 'send:update',
   sendRemovePassword: 'send:remove-password',
   sendDelete: 'send:delete',
@@ -760,6 +761,24 @@ export interface SendCreateRequest {
   hideEmail?: boolean
 }
 
+/** File selection happens in the main process; the renderer sends metadata only. */
+export interface SendFileCreateRequest {
+  operationId: string
+  name: string
+  notes?: string | null
+  maxAccessCount?: number | null
+  expirationDate?: string | null
+  deletionDate?: string | null
+  password?: string | null
+  disabled?: boolean
+  hideEmail?: boolean
+}
+
+export interface SendFileCreateResult {
+  canceled: boolean
+  send: SendView | null
+}
+
 export interface SendUpdateRequest extends SendCreateRequest {
   id: string
 }
@@ -1236,6 +1255,7 @@ export interface BearWardenAPI {
   sends: {
     list: () => Promise<SendView[]>
     create: (request: SendCreateRequest) => Promise<SendView>
+    createFile: (request: SendFileCreateRequest) => Promise<SendFileCreateResult>
     update: (request: SendUpdateRequest) => Promise<SendView>
     removePassword: (request: SendIdRequest) => Promise<SendView>
     delete: (request: SendIdRequest) => Promise<void>

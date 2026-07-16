@@ -79,6 +79,8 @@ import type {
   SyncUnlockRequest,
   TotpCodeView,
   SendCreateRequest,
+  SendFileCreateRequest,
+  SendFileCreateResult,
   SendUpdateRequest,
   SendIdRequest,
   SendView,
@@ -101,6 +103,7 @@ import {
   type BitwardenSendDraft,
   type BitwardenSendItem,
   type BitwardenDirectState,
+  type BitwardenFileSendDraft,
   type BitwardenSyncClient,
   type BitwardenTwoFactor
 } from './bitwarden-direct'
@@ -1997,13 +2000,23 @@ function normalizeNullableString(value: unknown, maxLength: number): string | nu
   return value
 }
 
-function normalizeSendDraft(request: SendCreateRequest | SendUpdateRequest): BitwardenSendDraft {
+interface NormalizedSendOptions {
+  name: string
+  notes: string | null
+  maxAccessCount: number | null
+  expirationDate: string | null
+  deletionDate: string
+  password: string | null | undefined
+  disabled: boolean
+  hideEmail: boolean
+}
+
+function normalizeSendOptions(
+  request: SendCreateRequest | SendUpdateRequest | SendFileCreateRequest
+): NormalizedSendOptions {
   const name = normalizeRequiredString(request.name, MAX_NAME_LENGTH)
   const notes = normalizeNullableString(request.notes, MAX_NOTES_LENGTH)
-  const text = normalizeString(request.text, MAX_SEND_TEXT_LENGTH)
-  const hidden = request.hidden ?? false
   const maxAccessCount = request.maxAccessCount ?? null
-  if (typeof hidden !== 'boolean') throw new VaultError('INVALID_INPUT')
   if (
     maxAccessCount !== null &&
     (!Number.isSafeInteger(maxAccessCount) || maxAccessCount < 1 || maxAccessCount > 2_147_483_647)
@@ -2042,8 +2055,6 @@ function normalizeSendDraft(request: SendCreateRequest | SendUpdateRequest): Bit
   return {
     name,
     notes,
-    text,
-    hidden,
     maxAccessCount,
     expirationDate,
     deletionDate,
@@ -2051,6 +2062,23 @@ function normalizeSendDraft(request: SendCreateRequest | SendUpdateRequest): Bit
     disabled,
     hideEmail
   }
+}
+
+function normalizeSendDraft(request: SendCreateRequest | SendUpdateRequest): BitwardenSendDraft {
+  const options = normalizeSendOptions(request)
+  const hidden = request.hidden ?? false
+  if (typeof hidden !== 'boolean') throw new VaultError('INVALID_INPUT')
+  return {
+    ...options,
+    text: normalizeString(request.text, MAX_SEND_TEXT_LENGTH),
+    hidden
+  }
+}
+
+function normalizeFileSendDraft(
+  request: SendFileCreateRequest
+): Omit<BitwardenFileSendDraft, 'fileName' | 'data'> {
+  return normalizeSendOptions(request)
 }
 
 function normalizeItemType(value: unknown): VaultItemType {
@@ -3250,6 +3278,66 @@ export class VaultService {
       } catch (error) {
         throw this.mapSyncError(error)
       } finally {
+        this.finishSyncOperation(abort)
+      }
+    })
+  }
+
+  async createFileSend(request: SendFileCreateRequest): Promise<SendFileCreateResult> {
+    const preflight = await this.exclusive(async () => {
+      assertUuid(request.operationId)
+      const files = this.attachmentFiles
+      if (!files) throw new VaultError('INTERNAL_ERROR')
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      if (!client.createFileSend) throw new VaultError('SYNC_FAILED')
+      return { files, generation: this.generation }
+    })
+    const selection = await preflight.files.chooseOpenFile()
+    if (selection === null) return { canceled: true, send: null }
+
+    return this.exclusive(async () => {
+      if (preflight.generation !== this.generation) throw new VaultError('LOCKED')
+      const current = this.requireData()
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      if (!client.createFileSend) throw new VaultError('SYNC_FAILED')
+      const normalized = normalizeFileSendDraft(request)
+      const abort = this.startSyncOperation()
+      let plaintext: Buffer | null = null
+      try {
+        plaintext = await preflight.files.readSelectedFile(selection, abort.signal)
+        const remote = await client.createFileSend(
+          {
+            ...normalized,
+            fileName: selection.fileName,
+            data: plaintext
+          },
+          abort.signal
+        )
+        const authoritative = (await client.listSends?.(abort.signal))?.find(
+          (send) => send.id === remote.id
+        )
+        if (!authoritative || authoritative.type !== 'file' || !authoritative.file) {
+          throw new VaultError('SYNC_FAILED')
+        }
+        const next = cloneData(current)
+        next.sends = [
+          ...next.sends.filter((send) => send.id !== authoritative.id),
+          sendViewFromRemote(authoritative)
+        ]
+        if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+        next.sync.state = client.exportState()
+        next.sync.lastSyncAt = this.nowIso()
+        next.updatedAt = this.nowIso()
+        await this.persist(next)
+        this.data = next
+        this.syncLastError = null
+        return { canceled: false, send: { ...sendViewFromRemote(authoritative) } }
+      } catch (error) {
+        throw this.mapSyncError(error)
+      } finally {
+        plaintext?.fill(0)
         this.finishSyncOperation(abort)
       }
     })

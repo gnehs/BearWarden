@@ -843,7 +843,9 @@ export class BitwardenHttpClient {
     signal?: AbortSignal
   ): Promise<void> {
     if (!Buffer.isBuffer(data) || data.length < 1 || data.length > MAX_SEND_FILE_BYTES) {
-      throw new BitwardenHttpError(data.length > MAX_SEND_FILE_BYTES ? 'TOO_LARGE' : 'INVALID_RESPONSE')
+      throw new BitwardenHttpError(
+        data.length > MAX_SEND_FILE_BYTES ? 'TOO_LARGE' : 'INVALID_RESPONSE'
+      )
     }
     const form = new FormData()
     form.append(

@@ -68,6 +68,7 @@ import {
   type VaultSetupRequest,
   type VaultUnlockRequest,
   type SendCreateRequest,
+  type SendFileCreateRequest,
   type SendUpdateRequest,
   type SendIdRequest
 } from '../shared/vault-contract'
@@ -1293,6 +1294,53 @@ function parseSendCreate(value: unknown): SendCreateRequest {
   return result
 }
 
+function parseSendFileCreate(value: unknown): SendFileCreateRequest {
+  const record = exactRecord(value, [
+    'operationId',
+    'name',
+    'notes',
+    'maxAccessCount',
+    'expirationDate',
+    'deletionDate',
+    'password',
+    'disabled',
+    'hideEmail'
+  ])
+  if (typeof record.operationId !== 'string' || !UUID_PATTERN.test(record.operationId)) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const result: SendFileCreateRequest = {
+    operationId: record.operationId,
+    name: requiredString(record, 'name')
+  }
+  const notes = optionalStringOrNull(record, 'notes')
+  const expirationDate = optionalStringOrNull(record, 'expirationDate')
+  const deletionDate = optionalStringOrNull(record, 'deletionDate')
+  const password = optionalStringOrNull(record, 'password')
+  if (notes !== undefined) result.notes = notes
+  if (expirationDate !== undefined) result.expirationDate = expirationDate
+  if (deletionDate !== undefined) result.deletionDate = deletionDate
+  if (password !== undefined) result.password = password
+  for (const key of ['disabled', 'hideEmail'] as const) {
+    if (record[key] !== undefined) {
+      if (typeof record[key] !== 'boolean') throw new VaultError('INVALID_INPUT')
+      result[key] = record[key]
+    }
+  }
+  if (record.maxAccessCount !== undefined) {
+    if (
+      record.maxAccessCount !== null &&
+      (typeof record.maxAccessCount !== 'number' ||
+        !Number.isSafeInteger(record.maxAccessCount) ||
+        record.maxAccessCount < 1)
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    result.maxAccessCount = record.maxAccessCount as number | null
+  }
+  return result
+}
+
 function parseSendUpdate(value: unknown): SendUpdateRequest {
   const record = exactRecord(value, [
     'id',
@@ -2010,6 +2058,9 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   })
   registerHandler(IPC_CHANNELS.sendCreate, getMainWindow, (_event, input) =>
     afterMutation(vault.createSend(parseSendCreate(input)))
+  )
+  registerHandler(IPC_CHANNELS.sendCreateFile, getMainWindow, (_event, input) =>
+    afterMutation(vault.createFileSend(parseSendFileCreate(input)))
   )
   registerHandler(IPC_CHANNELS.sendUpdate, getMainWindow, (_event, input) =>
     afterMutation(vault.updateSend(parseSendUpdate(input)))

@@ -1,4 +1,4 @@
-import { ArrowLeft, Copy, FileText, Pencil, Plus, Save, Trash2 } from 'lucide-react'
+import { ArrowLeft, Copy, FilePlus, FileText, Pencil, Plus, Save, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import type { SendCreateRequest, SendView } from '../../../shared/vault-contract'
@@ -138,6 +138,39 @@ function SendsPage({ onBack }: SendsPageProps): React.JSX.Element {
     }
   }
 
+  async function createFile(): Promise<void> {
+    const name = draft.name.trim()
+    if (name.length === 0) {
+      toast.error('請先填寫 Send 名稱')
+      return
+    }
+    setBusy(true)
+    try {
+      const result = await window.bearwarden.sends.createFile({
+        operationId: crypto.randomUUID(),
+        name,
+        notes: draft.notes,
+        maxAccessCount: draft.maxAccessCount,
+        expirationDate: draft.expirationDate,
+        deletionDate: draft.deletionDate,
+        password: draft.password,
+        disabled: draft.disabled,
+        hideEmail: draft.hideEmail
+      })
+      if (result.canceled || !result.send) return
+      setSends((current) => [
+        result.send!,
+        ...current.filter((send) => send.id !== result.send!.id)
+      ])
+      setSelectedId(null)
+      toast.success('檔案 Send 已建立')
+    } catch {
+      toast.error('檔案 Send 建立失敗，請確認同步已連線')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function remove(send: SendView): Promise<void> {
     setBusy(true)
     try {
@@ -194,10 +227,21 @@ function SendsPage({ onBack }: SendsPageProps): React.JSX.Element {
             <h1 id="sends-title">Sends</h1>
             <p className="settings-subtitle">文字與檔案 Send 都會先在主程序解密 metadata。</p>
           </div>
-          <Button className="ml-auto" type="button" onClick={startCreate} disabled={busy}>
-            <Plus data-icon="inline-start" />
-            新增 Send
-          </Button>
+          <div className="ml-auto flex gap-2">
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => void createFile()}
+              disabled={busy}
+            >
+              <FilePlus data-icon="inline-start" />
+              建立檔案 Send
+            </Button>
+            <Button type="button" onClick={startCreate} disabled={busy}>
+              <Plus data-icon="inline-start" />
+              新增文字 Send
+            </Button>
+          </div>
         </div>
       </header>
 

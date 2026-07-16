@@ -1095,7 +1095,8 @@ describe('BitwardenDirectClient', () => {
           expires_in: 3_600
         })
       }
-      if (url.includes('/api/sync?')) return jsonResponse({ ...sync, sends: created ? [created] : [] })
+      if (url.includes('/api/sync?'))
+        return jsonResponse({ ...sync, sends: created ? [created] : [] })
       if (url.endsWith('/api/sends/file/v2')) {
         const request = JSON.parse(String(init?.body)) as JsonObject
         created = {
@@ -1162,7 +1163,9 @@ describe('BitwardenDirectClient', () => {
     const createRequest = JSON.parse(String(createCall?.[1]?.body)) as JsonObject
     const seed = decryptBitwardenBytes(String(createRequest.key), userKey)
     const sendKey = deriveBitwardenSendKey(seed)
-    const uploadCall = fetch.mock.calls.find(([url]) => url.endsWith(`/api/sends/${SEND_ID}/file/${fileId}`))
+    const uploadCall = fetch.mock.calls.find(([url]) =>
+      url.endsWith(`/api/sends/${SEND_ID}/file/${fileId}`)
+    )
     const form = uploadCall?.[1]?.body as FormData
     const uploadedBlob = form.get('data')
     expect(uploadedBlob).toBeInstanceOf(Blob)
