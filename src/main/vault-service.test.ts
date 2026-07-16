@@ -1870,6 +1870,63 @@ describe('VaultService encrypted local data', () => {
     if (process.platform !== 'win32') expect((await stat(destination)).mode & 0o777).toBe(0o600)
   })
 
+  it('writes streamed attachment plaintext and disposes its encrypted spool', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'bearwarden-download-stream-test-'))
+    temporaryDirectories.push(directory)
+    const destination = join(directory, 'streamed-document.txt')
+    const attachmentFiles = new VaultAttachmentFileService({
+      chooseSavePath: vi.fn(async () => destination)
+    })
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      attachmentFiles,
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.remoteLogins[0]!.attachments = [
+          {
+            id: 'attachment-id',
+            fileName: 'document.txt',
+            size: 12,
+            sizeName: '12 B',
+            legacy: false
+          }
+        ]
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = (await service.listLogins())[0]!
+    const dispose = vi.fn(async () => undefined)
+    const streamedContents = 'fake streamed attachment contents'
+    fake!.downloadAttachmentStream = vi.fn(async () => ({
+      fileName: 'document.txt',
+      data: {
+        size: Buffer.byteLength(streamedContents),
+        async *chunks() {
+          yield Buffer.from('fake streamed ')
+          yield Buffer.from('attachment contents')
+        }
+      },
+      dispose
+    }))
+
+    await expect(
+      service.downloadAttachment({
+        id: local.id,
+        attachmentId: 'attachment-id',
+        operationId: ATTACHMENT_OPERATION_ID
+      })
+    ).resolves.toEqual({ canceled: false, fileName: 'document.txt' })
+    expect(await readFile(destination, 'utf8')).toBe(streamedContents)
+    expect(fake!.downloadAttachmentStream).toHaveBeenCalledOnce()
+    expect(dispose).toHaveBeenCalledOnce()
+  })
+
   it('cancels before downloading when the main-process save picker is dismissed', async () => {
     const chooseSavePath = vi.fn(async () => null)
     const attachmentFiles = new VaultAttachmentFileService({ chooseSavePath })
@@ -2073,6 +2130,47 @@ describe('VaultService encrypted local data', () => {
     ])
     expect(clearText).toEqual(Buffer.alloc('fake upload contents'.length))
     expect(fake!.remoteLogins[0]!.attachments).toHaveLength(1)
+  })
+
+  it('passes a bounded file source to streamed attachment upload', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'bearwarden-upload-stream-test-'))
+    temporaryDirectories.push(directory)
+    const source = join(directory, 'streamed.txt')
+    await writeFile(source, 'streamed upload contents')
+    const attachmentFiles = new VaultAttachmentFileService({
+      chooseSavePath: vi.fn(async () => null),
+      chooseOpenFile: vi.fn(async () => source)
+    })
+    const readSelectedFile = vi.spyOn(attachmentFiles, 'readSelectedFile')
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      attachmentFiles,
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = (await service.listLogins())[0]!
+    fake!.uploadAttachmentStream = vi.fn(async (id, fileName, source, signal, onCommitted) => {
+      const chunks: Buffer[] = []
+      for await (const chunk of source.chunks(signal)) chunks.push(Buffer.from(chunk))
+      return fake!.uploadAttachment(id, fileName, Buffer.concat(chunks), signal, onCommitted)
+    })
+
+    await expect(
+      service.uploadAttachment({ id: local.id, operationId: ATTACHMENT_OPERATION_ID })
+    ).resolves.toMatchObject({
+      canceled: false,
+      attachment: { fileName: 'streamed.txt', legacy: false }
+    })
+    expect(fake!.uploadAttachmentStream).toHaveBeenCalledOnce()
+    expect(readSelectedFile).not.toHaveBeenCalled()
   })
 
   it('allows lock to clear the vault while the native upload picker remains open', async () => {

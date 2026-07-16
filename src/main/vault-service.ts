@@ -4727,6 +4727,8 @@ export class VaultService {
       const client = this.getOrCreateSyncClient(sync)
       const operation = this.startAttachmentOperation(request.operationId)
       const { abort } = operation
+      let downloadedStream:
+        Awaited<ReturnType<NonNullable<typeof client.downloadAttachmentStream>>> | undefined
       let clearText: Buffer | undefined
       try {
         this.reportAttachmentProgress(
@@ -4739,12 +4741,11 @@ export class VaultService {
         )
         if (abort.signal.aborted) throw new VaultError('LOCKED')
         const generation = this.generation
-        const downloaded = await client.downloadAttachment(
-          mapping.remoteId,
-          attachment.id,
-          abort.signal
-        )
-        clearText = downloaded.data
+        const downloaded = client.downloadAttachmentStream
+          ? await client.downloadAttachmentStream(mapping.remoteId, attachment.id, abort.signal)
+          : await client.downloadAttachment(mapping.remoteId, attachment.id, abort.signal)
+        if ('dispose' in downloaded) downloadedStream = downloaded
+        else clearText = downloaded.data
         if (generation !== this.generation || abort.signal.aborted) {
           throw new VaultError('LOCKED')
         }
@@ -4759,7 +4760,11 @@ export class VaultService {
           attachment.size,
           attachment.size
         )
-        await preflight.files.write(destination, clearText, abort.signal)
+        if (downloadedStream) {
+          await preflight.files.writeStream(destination, downloadedStream.data, abort.signal)
+        } else {
+          await preflight.files.write(destination, clearText!, abort.signal)
+        }
         // The atomic rename is the commit point. Once the requested plaintext file exists,
         // report success even if a lock races with the final chmod/directory sync.
         return { canceled: false, fileName: attachment.fileName }
@@ -4767,6 +4772,7 @@ export class VaultService {
         throw this.mapAttachmentError(error, operation)
       } finally {
         clearText?.fill(0)
+        await downloadedStream?.dispose().catch(() => undefined)
         this.finishAttachmentOperation(operation)
       }
     })
@@ -4821,7 +4827,7 @@ export class VaultService {
           0,
           selection.size
         )
-        clearText = await preflight.files.readSelectedFile(selection, operation.abort.signal)
+        const selectedSource = preflight.files.selectedFileSource(selection)
         this.reportAttachmentProgress(
           reportProgress,
           request,
@@ -4846,13 +4852,24 @@ export class VaultService {
           0,
           selection.size
         )
-        const uploaded = await client.uploadAttachment(
-          mapping.remoteId,
-          selection.fileName,
-          clearText,
-          operation.abort.signal,
-          () => this.commitAttachmentOperation(operation)
-        )
+        const uploaded = client.uploadAttachmentStream
+          ? await client.uploadAttachmentStream(
+              mapping.remoteId,
+              selection.fileName,
+              selectedSource,
+              operation.abort.signal,
+              () => this.commitAttachmentOperation(operation)
+            )
+          : await (async () => {
+              clearText = await preflight.files.readSelectedFile(selection, operation.abort.signal)
+              return client.uploadAttachment(
+                mapping.remoteId,
+                selection.fileName,
+                clearText,
+                operation.abort.signal,
+                () => this.commitAttachmentOperation(operation)
+              )
+            })()
         this.commitAttachmentOperation(operation)
         this.reportAttachmentProgress(
           reportProgress,

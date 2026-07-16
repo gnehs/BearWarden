@@ -904,7 +904,7 @@ describe('BitwardenHttpClient', () => {
     })
     const oversized = vi
       .fn<FetchLike>()
-      .mockResolvedValueOnce(json(metadata(String(128 * 1024 * 1024 + 1))))
+      .mockResolvedValueOnce(json(metadata(String(500 * 1024 * 1024 + 66))))
     const oversizedClient = new BitwardenHttpClient({ server: 'us', fetch: oversized })
     oversizedClient.setSession({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 })
     await expect(
@@ -939,6 +939,78 @@ describe('BitwardenHttpClient', () => {
       controller.signal
     )
     await expect(abortedDownload.download()).rejects.toMatchObject({ code: 'ABORTED' })
+  })
+
+  it('streams attachment response chunks without joining them into one Buffer', async () => {
+    const size = 2 * 1024 * 1024 + 3
+    const payload = Buffer.alloc(size, 0x6b)
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        json({
+          id: 'attachment-id',
+          url: '/attachments/cipher-id/attachment-id',
+          fileName: '2.encrypted-name',
+          key: null,
+          size: String(size)
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(payload.subarray(0, 1024 * 1024))
+              controller.enqueue(payload.subarray(1024 * 1024))
+              controller.close()
+            }
+          }),
+          { headers: { 'content-length': String(size) } }
+        )
+      )
+    const client = new BitwardenHttpClient({ server: 'https://vault.example.test', fetch })
+    client.setSession({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 })
+
+    const prepared = await client.prepareAttachmentDownload('cipher-id', 'attachment-id')
+    const source = await prepared.downloadStream()
+    const chunks: Buffer[] = []
+    for await (const chunk of source.chunks()) chunks.push(Buffer.from(chunk))
+
+    expect(chunks).toHaveLength(2)
+    expect(Buffer.concat(chunks)).toEqual(payload)
+  })
+
+  it('cancels the attachment response when a downstream stream consumer stops early', async () => {
+    const cancel = vi.fn()
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        json({
+          id: 'attachment-id',
+          url: '/attachments/cipher-id/attachment-id',
+          fileName: '2.encrypted-name',
+          key: null,
+          size: '4'
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream({
+            pull(controller) {
+              controller.enqueue(Uint8Array.from([1, 2]))
+            },
+            cancel
+          })
+        )
+      )
+    const client = new BitwardenHttpClient({ server: 'https://vault.example.test', fetch })
+    client.setSession({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 })
+    const prepared = await client.prepareAttachmentDownload('cipher-id', 'attachment-id')
+    const source = await prepared.downloadStream()
+    const iterator = source.chunks()[Symbol.asyncIterator]()
+
+    await expect(iterator.next()).resolves.toMatchObject({ done: false })
+    await iterator.return?.()
+    expect(cancel).toHaveBeenCalledOnce()
   })
 
   it('creates V2 attachment metadata and uploads Direct multipart bytes to the fixed API route', async () => {
@@ -1069,7 +1141,7 @@ describe('BitwardenHttpClient', () => {
       redirect: 'error',
       referrerPolicy: 'no-referrer'
     })
-    expect(Buffer.from(init?.body as Uint8Array)).toEqual(encryptedBytes)
+    expect(Buffer.from(await (init?.body as Blob).arrayBuffer())).toEqual(encryptedBytes)
   })
 
   it('rejects unsafe, unsuccessful, oversized, or aborted Azure uploads', async () => {
@@ -1092,11 +1164,10 @@ describe('BitwardenHttpClient', () => {
     await expect(
       client.uploadAttachmentAzure('https://blob.example.test/file?sig=signed', bytes)
     ).rejects.toMatchObject({ code: 'NETWORK', status: 200 })
+    const oversizedBlob = new Blob()
+    Object.defineProperty(oversizedBlob, 'size', { value: 500 * 1024 * 1024 + 66 })
     await expect(
-      client.uploadAttachmentAzure(
-        'https://blob.example.test/file?sig=signed',
-        Buffer.allocUnsafe(128 * 1024 * 1024 + 1)
-      )
+      client.uploadAttachmentAzure('https://blob.example.test/file?sig=signed', oversizedBlob)
     ).rejects.toMatchObject({ code: 'TOO_LARGE' })
 
     const controller = new AbortController()
@@ -1213,17 +1284,14 @@ describe('BitwardenHttpClient', () => {
       client.createAttachment('cipher-id', {
         key: '2.encrypted-key',
         fileName: '2.encrypted-name',
-        fileSize: 128 * 1024 * 1024 + 1,
+        fileSize: 500 * 1024 * 1024 + 66,
         lastKnownRevisionDate: '2026-07-16T01:02:03.000Z'
       })
     ).rejects.toMatchObject({ code: 'TOO_LARGE' })
+    const oversizedBlob = new Blob()
+    Object.defineProperty(oversizedBlob, 'size', { value: 500 * 1024 * 1024 + 66 })
     await expect(
-      client.uploadAttachmentDirect(
-        'cipher-id',
-        'attachment-id',
-        '2.encrypted-name',
-        Buffer.allocUnsafe(128 * 1024 * 1024 + 1)
-      )
+      client.uploadAttachmentDirect('cipher-id', 'attachment-id', '2.encrypted-name', oversizedBlob)
     ).rejects.toMatchObject({ code: 'TOO_LARGE' })
   })
 })

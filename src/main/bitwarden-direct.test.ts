@@ -719,9 +719,12 @@ async function attachmentMutationHarness(
         nextUploadError = null
         throw error
       }
-      uploadedBytes.push(Buffer.from(data))
-      uploadedReferences.push(data)
-      publishPending(data)
+      const bytes = Buffer.isBuffer(data)
+        ? Buffer.from(data)
+        : Buffer.from(await data.arrayBuffer())
+      uploadedBytes.push(bytes)
+      if (Buffer.isBuffer(data)) uploadedReferences.push(data)
+      publishPending(bytes)
     }
   )
   vi.spyOn(http, 'uploadAttachmentAzure').mockImplementation(async (_url, data, signal) => {
@@ -732,9 +735,10 @@ async function attachmentMutationHarness(
       nextUploadError = null
       throw error
     }
-    uploadedBytes.push(Buffer.from(data))
-    uploadedReferences.push(data)
-    publishPending(data)
+    const bytes = Buffer.isBuffer(data) ? Buffer.from(data) : Buffer.from(await data.arrayBuffer())
+    uploadedBytes.push(bytes)
+    if (Buffer.isBuffer(data)) uploadedReferences.push(data)
+    publishPending(bytes)
   })
   vi.spyOn(http, 'deleteAttachment').mockImplementation(async (_id, attachmentId) => {
     events.push(`delete:${attachmentId}`)
@@ -1594,6 +1598,32 @@ describe('BitwardenDirectClient', () => {
     }
   })
 
+  it('streams an authenticated attachment without returning a plaintext Buffer', async () => {
+    const plaintext = Buffer.alloc(3 * 1024 * 1024 + 7, 0x5a)
+    const encrypted = encryptAttachmentFixture(plaintext, Buffer.alloc(64, 11))
+    const client = await syncedAttachmentClient(await encryptedSync(), 'attachment-id', encrypted)
+
+    const downloaded = await client.downloadAttachmentStream(LOGIN_ID, 'attachment-id')
+    const chunks: Buffer[] = []
+    const yieldedReferences: Buffer[] = []
+    try {
+      for await (const chunk of downloaded.data.chunks()) {
+        yieldedReferences.push(chunk)
+        chunks.push(Buffer.from(chunk))
+      }
+      expect(Buffer.concat(chunks)).toEqual(plaintext)
+      expect(Math.max(...chunks.map((chunk) => chunk.length))).toBeLessThanOrEqual(1024 * 1024)
+      expect(yieldedReferences.every((chunk) => chunk.equals(Buffer.alloc(chunk.length)))).toBe(
+        true
+      )
+      await expect(async () => {
+        for await (const _chunk of downloaded.data.chunks()) void _chunk
+      }).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    } finally {
+      await downloaded.dispose()
+    }
+  })
+
   it('uses the cipher key for a legacy attachment that has no attachment CEK', async () => {
     const plaintext = Buffer.from('legacy attachment payload', 'utf8')
     const encrypted = encryptAttachmentFixture(plaintext, Buffer.alloc(64, 9))
@@ -1716,6 +1746,29 @@ describe('BitwardenDirectClient', () => {
       encrypted.fill(0)
       clearText.fill(0)
       original.fill(0)
+    }
+  })
+
+  it('streams plaintext encryption into the attachment upload body', async () => {
+    const harness = await attachmentMutationHarness(await encryptedSync())
+    const chunks = [Buffer.alloc(1024 * 1024, 1), Buffer.alloc(1024 * 1024, 2), Buffer.of(3)]
+    const clearText = Buffer.concat(chunks)
+    await harness.client.uploadAttachmentStream(LOGIN_ID, 'streamed.bin', {
+      size: clearText.length,
+      async *chunks() {
+        for (const chunk of chunks) yield chunk
+      }
+    })
+
+    const request = harness.createdRequests[0]!
+    const itemKey = Buffer.alloc(64, 9)
+    const attachmentKey = decryptBitwardenWrappedKey(request.key, itemKey)
+    try {
+      expect(decryptBitwardenAttachmentBuffer(harness.uploadedBytes[0]!, attachmentKey)).toEqual(
+        clearText
+      )
+    } finally {
+      attachmentKey.fill(0)
     }
   })
 

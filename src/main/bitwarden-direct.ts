@@ -54,6 +54,13 @@ import type {
   VaultUriMatch
 } from '../shared/vault-contract'
 import type { StoredPasskeyCredential } from './passkey'
+import {
+  authenticatedAttachmentPlaintext,
+  encryptAttachmentSource,
+  spoolEncryptedAttachment,
+  type BitwardenAttachmentByteSource,
+  type BitwardenEncryptedAttachmentFile
+} from './bitwarden-attachment-stream'
 
 const USER_KEY_BYTES = 64
 const MAX_REMOTE_ENTITIES = 100_000
@@ -177,6 +184,12 @@ export interface BitwardenAttachment {
 export interface BitwardenDownloadedAttachment {
   fileName: string
   data: Buffer
+}
+
+export interface BitwardenStreamedAttachment {
+  fileName: string
+  data: BitwardenAttachmentByteSource
+  dispose(): Promise<void>
 }
 
 export interface BitwardenLoginItem extends VaultItemFields {
@@ -390,10 +403,22 @@ export interface BitwardenSyncClient {
     attachmentId: string,
     signal?: AbortSignal
   ): Promise<BitwardenDownloadedAttachment>
+  downloadAttachmentStream?(
+    id: string,
+    attachmentId: string,
+    signal?: AbortSignal
+  ): Promise<BitwardenStreamedAttachment>
   uploadAttachment(
     id: string,
     fileName: string,
     data: Buffer,
+    signal?: AbortSignal,
+    onCommitted?: () => void
+  ): Promise<BitwardenAttachment>
+  uploadAttachmentStream?(
+    id: string,
+    fileName: string,
+    data: BitwardenAttachmentByteSource,
     signal?: AbortSignal,
     onCommitted?: () => void
   ): Promise<BitwardenAttachment>
@@ -2337,6 +2362,78 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     }
   }
 
+  async downloadAttachmentStream(
+    id: string,
+    attachmentId: string,
+    signal?: AbortSignal
+  ): Promise<BitwardenStreamedAttachment> {
+    const userKey = this.requireUserKey()
+    if (signal?.aborted) throw new BitwardenDirectError('ABORTED')
+    const cached = this.logins.get(id)
+    const expected = cached?.item.attachments.find((attachment) => attachment.id === attachmentId)
+    if (!cached || !expected) throw new BitwardenDirectError('INVALID_RESPONSE')
+
+    let itemKey: BitwardenSymmetricKey | null = null
+    let attachmentKey: Buffer | null = null
+    let streamKey: Buffer | null = null
+    let encryptedFile: BitwardenEncryptedAttachmentFile | null = null
+    try {
+      itemKey = this.cipherKey(cached.raw, userKey)
+      if (!Buffer.isBuffer(itemKey) || itemKey.length !== USER_KEY_BYTES) {
+        throw new BitwardenDirectError('UNSUPPORTED_ACCOUNT_ENCRYPTION')
+      }
+      const response = await this.http.prepareAttachmentDownload(id, attachmentId, signal)
+      const metadata = freshAttachmentMetadata(response, attachmentId, expected, itemKey)
+      attachmentKey =
+        metadata.encryptedKey === null
+          ? itemKey
+          : decryptBitwardenWrappedKey(metadata.encryptedKey, itemKey)
+      if (attachmentKey.length !== USER_KEY_BYTES) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      const networkSource = await response.downloadStream(signal)
+      encryptedFile = await spoolEncryptedAttachment(networkSource, metadata.size, signal)
+      streamKey = Buffer.from(attachmentKey)
+      const plaintext = await authenticatedAttachmentPlaintext(encryptedFile, streamKey, signal)
+      const ownedFile = encryptedFile
+      const ownedKey = streamKey
+      encryptedFile = null
+      streamKey = null
+      return {
+        fileName: expected.fileName,
+        data: plaintext,
+        dispose: async () => {
+          ownedKey.fill(0)
+          await ownedFile.dispose()
+        }
+      }
+    } catch (error) {
+      await encryptedFile?.dispose().catch(() => undefined)
+      streamKey?.fill(0)
+      if (error instanceof BitwardenCryptoError && error.code === 'AUTHENTICATION_FAILED') {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      throw this.mapError(error)
+    } finally {
+      if (attachmentKey && attachmentKey !== itemKey) attachmentKey.fill(0)
+      if (itemKey && itemKey !== userKey) clearBitwardenSymmetricKey(itemKey)
+    }
+  }
+
+  async uploadAttachmentStream(
+    id: string,
+    fileName: string,
+    data: BitwardenAttachmentByteSource,
+    signal?: AbortSignal,
+    onCommitted?: () => void
+  ): Promise<BitwardenAttachment> {
+    try {
+      return await this.uploadAttachmentInternal(id, fileName, data, null, signal, onCommitted)
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
   async deleteAttachment(
     id: string,
     attachmentId: string,
@@ -2434,7 +2531,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   private async uploadAttachmentInternal(
     id: string,
     fileName: string,
-    data: Buffer,
+    data: Buffer | BitwardenAttachmentByteSource,
     allowedDuplicateId: string | null,
     signal?: AbortSignal,
     onCommitted?: () => void,
@@ -2446,7 +2543,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       typeof fileName !== 'string' ||
       fileName.length === 0 ||
       fileName.length > MAX_ATTACHMENT_FILE_NAME_LENGTH ||
-      !Buffer.isBuffer(data)
+      (!Buffer.isBuffer(data) &&
+        (!data || typeof data.size !== 'number' || typeof data.chunks !== 'function'))
     ) {
       throw new BitwardenDirectError('INVALID_RESPONSE')
     }
@@ -2472,6 +2570,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     let itemKey: BitwardenSymmetricKey | null = null
     let attachmentKey: Buffer | null = null
     let encryptedData: Buffer | null = null
+    let encryptedFile: BitwardenEncryptedAttachmentFile | null = null
     let created: BitwardenAttachmentUpload | null = null
     let committed = false
     try {
@@ -2485,13 +2584,18 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       attachmentKey = randomBytes(USER_KEY_BYTES)
       const encryptedFileName = encryptBitwardenString(fileName, itemKey)
       const wrappedKey = encryptBitwardenBytes(attachmentKey, itemKey, 'legacy-key')
-      encryptedData = encryptBitwardenAttachmentBuffer(data, attachmentKey)
+      if (Buffer.isBuffer(data)) {
+        encryptedData = encryptBitwardenAttachmentBuffer(data, attachmentKey)
+      } else {
+        encryptedFile = await encryptAttachmentSource(data, attachmentKey, signal)
+      }
+      const encryptedSize = encryptedData?.length ?? encryptedFile!.size
       created = await this.http.createAttachment(
         id,
         {
           key: wrappedKey,
           fileName: encryptedFileName,
-          fileSize: encryptedData.length,
+          fileSize: encryptedSize,
           lastKnownRevisionDate: revisionDate
         },
         signal
@@ -2500,16 +2604,17 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         throw new BitwardenDirectError('INVALID_RESPONSE')
       }
 
+      const uploadBody = encryptedData ?? (await encryptedFile!.blob())
       if (created.fileUploadType === 'direct') {
         await this.http.uploadAttachmentDirect(
           id,
           created.attachmentId,
           encryptedFileName,
-          encryptedData,
+          uploadBody,
           signal
         )
       } else {
-        await this.http.uploadAttachmentAzure(created.url, encryptedData, signal)
+        await this.http.uploadAttachmentAzure(created.url, uploadBody, signal)
       }
 
       await this.sync(signal)
@@ -2520,7 +2625,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         !attachment ||
         attachment.fileName !== fileName ||
         attachment.legacy ||
-        attachment.size !== encryptedData.length
+        attachment.size !== encryptedSize
       ) {
         throw new BitwardenDirectError('INVALID_RESPONSE')
       }
@@ -2541,6 +2646,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     } finally {
       attachmentKey?.fill(0)
       encryptedData?.fill(0)
+      await encryptedFile?.dispose().catch(() => undefined)
       if (itemKey && itemKey !== userKey) clearBitwardenSymmetricKey(itemKey)
     }
   }

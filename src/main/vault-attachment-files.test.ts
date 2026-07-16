@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   atomicWritePrivateAttachment,
+  atomicWritePrivateAttachmentStream,
   MAX_ATTACHMENT_PLAINTEXT_BYTES,
   safeAttachmentFileName,
   VaultAttachmentFileService
@@ -27,6 +28,23 @@ afterEach(async () => {
       .splice(0)
       .map((directory) => rm(directory, { recursive: true, force: true }))
   )
+})
+
+it('bounds streamed destination writes by the declared source size', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'bearwarden-stream-bound-test-'))
+  temporaryDirectories.push(directory)
+  const target = join(directory, 'must-not-exist.bin')
+
+  await expect(
+    atomicWritePrivateAttachmentStream(target, {
+      size: 1,
+      async *chunks() {
+        yield Buffer.from([1, 2])
+      }
+    })
+  ).rejects.toMatchObject({ code: 'ATTACHMENT_FAILED' })
+  await expect(stat(target)).rejects.toMatchObject({ code: 'ENOENT' })
+  expect(await readdir(directory)).toEqual([])
 })
 
 describe('vault attachment files', () => {

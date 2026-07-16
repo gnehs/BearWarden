@@ -45,6 +45,10 @@ export interface BitwardenAttachmentDownload {
   sizeName: string | null
   /** Fetches encrypted EncArrayBuffer bytes only after the caller validates this metadata. */
   download: (signal?: AbortSignal) => Promise<Buffer>
+  /** Streams encrypted bytes with an exact, authenticated metadata size bound. */
+  downloadStream: (
+    signal?: AbortSignal
+  ) => Promise<import('./bitwarden-attachment-stream').BitwardenAttachmentByteSource>
 }
 
 export interface BitwardenAttachmentUploadRequest {
@@ -283,9 +287,7 @@ const MAX_SENDS = 10_000
 const MAX_SEND_STRING_BYTES = 1_024 * 1_024
 const MAX_SEND_FILE_BYTES = 128 * 1024 * 1024
 const MAX_SEND_FILE_URL_BYTES = 64 * 1024
-// Binary decryption currently holds ciphertext and plaintext in memory at once. Keep
-// this below Bitwarden's server limit until the file pipeline supports streaming.
-const MAX_ATTACHMENT_BYTES = 128 * 1024 * 1024
+const MAX_ATTACHMENT_BYTES = 500 * 1024 * 1024 + 65
 const MAX_ATTACHMENT_URL_BYTES = 64 * 1024
 
 function isRecord(value: unknown): value is JsonObject {
@@ -1191,7 +1193,9 @@ export class BitwardenHttpClient {
       size: metadata.size,
       sizeName: metadata.sizeName,
       download: (downloadSignal) =>
-        this.requestAttachmentBytes(url, metadata.size, downloadSignal ?? signal)
+        this.requestAttachmentBytes(url, metadata.size, downloadSignal ?? signal),
+      downloadStream: (downloadSignal) =>
+        this.requestAttachmentStream(url, metadata.size, downloadSignal ?? signal)
     }
   }
 
@@ -1241,16 +1245,22 @@ export class BitwardenHttpClient {
     cipherId: string,
     attachmentId: string,
     encryptedFileName: string,
-    data: Buffer,
+    data: Buffer | Blob,
     signal?: AbortSignal
   ): Promise<void> {
-    const bytes = assertAttachmentBuffer(data)
+    const body =
+      data instanceof Blob
+        ? data
+        : new Blob([attachmentBody(assertAttachmentBuffer(data))], {
+            type: 'application/octet-stream'
+          })
+    if (body.size < 1 || body.size > MAX_ATTACHMENT_BYTES) {
+      throw new BitwardenHttpError(
+        body.size > MAX_ATTACHMENT_BYTES ? 'TOO_LARGE' : 'INVALID_RESPONSE'
+      )
+    }
     const form = new FormData()
-    form.append(
-      'data',
-      new Blob([attachmentBody(bytes)], { type: 'application/octet-stream' }),
-      assertEncryptedAttachmentValue(encryptedFileName)
-    )
+    form.append('data', body, assertEncryptedAttachmentValue(encryptedFileName))
     await this.requestMultipart(
       'POST',
       `${this.urls.apiUrl}/ciphers/${encodeURIComponent(assertId(cipherId))}/attachment/${encodeURIComponent(assertId(attachmentId))}`,
@@ -1259,8 +1269,22 @@ export class BitwardenHttpClient {
     )
   }
 
-  async uploadAttachmentAzure(url: string, data: Buffer, signal?: AbortSignal): Promise<void> {
-    const bytes = assertAttachmentBuffer(data)
+  async uploadAttachmentAzure(
+    url: string,
+    data: Buffer | Blob,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const body =
+      data instanceof Blob
+        ? data
+        : new Blob([attachmentBody(assertAttachmentBuffer(data))], {
+            type: 'application/octet-stream'
+          })
+    if (body.size < 1 || body.size > MAX_ATTACHMENT_BYTES) {
+      throw new BitwardenHttpError(
+        body.size > MAX_ATTACHMENT_BYTES ? 'TOO_LARGE' : 'INVALID_RESPONSE'
+      )
+    }
     const uploadUrl = resolveAttachmentUploadUrl(
       url,
       this.urls.webVaultUrl,
@@ -1288,7 +1312,7 @@ export class BitwardenHttpClient {
       response = await this.fetchFn(uploadUrl.toString(), {
         method: 'PUT',
         headers: uploadHeaders,
-        body: attachmentBody(bytes),
+        body,
         cache: 'no-store',
         credentials: 'omit',
         redirect: 'error',
@@ -1557,6 +1581,87 @@ export class BitwardenHttpClient {
       throw new BitwardenHttpError('NETWORK')
     } finally {
       reader.releaseLock()
+    }
+  }
+
+  private async requestAttachmentStream(
+    url: string,
+    expectedSize: number,
+    signal?: AbortSignal
+  ): Promise<import('./bitwarden-attachment-stream').BitwardenAttachmentByteSource> {
+    if (
+      !Number.isSafeInteger(expectedSize) ||
+      expectedSize < 1 ||
+      expectedSize > MAX_ATTACHMENT_BYTES
+    ) {
+      throw new BitwardenHttpError(
+        expectedSize > MAX_ATTACHMENT_BYTES ? 'TOO_LARGE' : 'INVALID_RESPONSE'
+      )
+    }
+    if (signal?.aborted) throw new BitwardenHttpError('ABORTED')
+    const timeoutSignal = AbortSignal.timeout(this.timeoutMs)
+    const fetchSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal
+    let response: Response
+    try {
+      response = await this.fetchFn(url, {
+        method: 'GET',
+        headers: { accept: 'application/octet-stream', 'cache-control': 'no-store' },
+        cache: 'no-store',
+        credentials: 'omit',
+        redirect: 'error',
+        referrerPolicy: 'no-referrer',
+        signal: fetchSignal
+      })
+    } catch (error) {
+      throw this.mapFetchFailure(error, signal, timeoutSignal)
+    }
+    if (response.status !== 200 || !response.body) {
+      await response.body?.cancel().catch(() => undefined)
+      throw response.status === 200
+        ? new BitwardenHttpError('INVALID_RESPONSE')
+        : toHttpError(response.status, null)
+    }
+    const contentEncoding = response.headers.get('content-encoding')
+    const contentLength = response.headers.get('content-length')
+    if (
+      (contentEncoding !== null && contentEncoding.toLowerCase() !== 'identity') ||
+      (contentLength !== null && Number(contentLength) !== expectedSize)
+    ) {
+      await response.body.cancel().catch(() => undefined)
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    let consumed = false
+    return {
+      size: expectedSize,
+      async *chunks(): AsyncGenerator<Buffer> {
+        if (consumed) throw new BitwardenHttpError('INVALID_RESPONSE')
+        consumed = true
+        const reader = response.body!.getReader()
+        let received = 0
+        let complete = false
+        try {
+          for (;;) {
+            const { done, value } = await reader.read()
+            if (done) break
+            received += value.byteLength
+            if (received > expectedSize) {
+              await reader.cancel().catch(() => undefined)
+              throw new BitwardenHttpError('INVALID_RESPONSE')
+            }
+            yield Buffer.from(value.buffer, value.byteOffset, value.byteLength)
+          }
+          if (received !== expectedSize) throw new BitwardenHttpError('INVALID_RESPONSE')
+          complete = true
+        } catch (error) {
+          if (error instanceof BitwardenHttpError) throw error
+          if (signal?.aborted) throw new BitwardenHttpError('ABORTED')
+          if (timeoutSignal.aborted) throw new BitwardenHttpError('NETWORK')
+          throw new BitwardenHttpError('NETWORK')
+        } finally {
+          if (!complete) await reader.cancel().catch(() => undefined)
+          reader.releaseLock()
+        }
+      }
     }
   }
 
