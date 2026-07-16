@@ -38,7 +38,21 @@ const api: BearWardenAPI = {
   },
   portability: {
     export: (request) => ipcRenderer.invoke(IPC_CHANNELS.vaultExport, request),
-    import: (request) => ipcRenderer.invoke(IPC_CHANNELS.vaultImport, request)
+    import: (request) => ipcRenderer.invoke(IPC_CHANNELS.vaultImport, request),
+    previewNativeRestore: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.nativeRestorePreview, request),
+    startNativeRestore: (request) => ipcRenderer.invoke(IPC_CHANNELS.nativeRestoreStart, request),
+    cancelNativeRestore: (request) => ipcRenderer.invoke(IPC_CHANNELS.nativeRestoreCancel, request),
+    clearCompletedNativeRestore: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.nativeRestoreClearCompleted, request),
+    onNativeRestoreProgress: (listener) => {
+      const wrappedListener = (
+        _event: IpcRendererEvent,
+        progress: Parameters<typeof listener>[0]
+      ): void => listener(progress)
+      ipcRenderer.on(IPC_EVENTS.nativeRestoreProgress, wrappedListener)
+      return () => ipcRenderer.removeListener(IPC_EVENTS.nativeRestoreProgress, wrappedListener)
+    }
   },
   health: {
     report: () => ipcRenderer.invoke(IPC_CHANNELS.vaultHealthReport, {}),

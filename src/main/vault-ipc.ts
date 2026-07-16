@@ -241,6 +241,25 @@ function parseVaultImport(value: unknown): VaultImportRequest {
   }
 }
 
+function parseNativeRestorePreview(value: unknown): { password: string } {
+  const record = exactRecord(value, ['password'])
+  return { password: requiredString(record, 'password') }
+}
+
+function parseNativeRestoreStart(value: unknown): { sessionId: string; masterPassword: string } {
+  const record = exactRecord(value, ['sessionId', 'masterPassword'])
+  const sessionId = requiredString(record, 'sessionId')
+  if (!UUID_PATTERN.test(sessionId)) throw new VaultError('INVALID_INPUT')
+  return { sessionId, masterPassword: requiredString(record, 'masterPassword') }
+}
+
+function parseNativeRestoreSession(value: unknown): { sessionId: string } {
+  const record = exactRecord(value, ['sessionId'])
+  const sessionId = requiredString(record, 'sessionId')
+  if (!UUID_PATTERN.test(sessionId)) throw new VaultError('INVALID_INPUT')
+  return { sessionId }
+}
+
 function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
   const record = exactRecord(value, [
     'contentProtection',
@@ -1670,6 +1689,49 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     if (!result.canceled && result.importedFolders + result.importedItems > 0) notifyMutation()
     return result
   })
+  registerHandler(IPC_CHANNELS.nativeRestorePreview, getMainWindow, async (event, input) => {
+    const request = parseNativeRestorePreview(input)
+    try {
+      return await portability.previewNativeRestore(event.sender.id, request.password)
+    } finally {
+      request.password = ''
+    }
+  })
+  registerHandler(IPC_CHANNELS.nativeRestoreStart, getMainWindow, async (event, input) => {
+    const request = parseNativeRestoreStart(input)
+    try {
+      const result = await portability.runNativeRestore(
+        event.sender.id,
+        request.sessionId,
+        request.masterPassword,
+        (summary, state) => {
+          try {
+            if (!event.sender.isDestroyed()) {
+              event.sender.send(IPC_EVENTS.nativeRestoreProgress, {
+                sessionId: request.sessionId,
+                state,
+                ...summary
+              })
+            }
+          } catch {
+            // Progress is advisory; renderer teardown must not invalidate persisted restore work.
+          }
+        }
+      )
+      if (result.state === 'complete') notifyMutation()
+      return result
+    } finally {
+      request.masterPassword = ''
+    }
+  })
+  registerHandler(IPC_CHANNELS.nativeRestoreCancel, getMainWindow, async (event, input) => {
+    const request = parseNativeRestoreSession(input)
+    await portability.cancelNativeRestore(event.sender.id, request.sessionId)
+  })
+  registerHandler(IPC_CHANNELS.nativeRestoreClearCompleted, getMainWindow, async (event, input) => {
+    const request = parseNativeRestoreSession(input)
+    await portability.clearCompletedNativeRestore(event.sender.id, request.sessionId)
+  })
   registerHandler(IPC_CHANNELS.folderList, getMainWindow, () => vault.listFolders())
   registerHandler(IPC_CHANNELS.organizationList, getMainWindow, () => vault.listOrganizations())
   registerHandler(IPC_CHANNELS.collectionList, getMainWindow, (_event, input) => {
@@ -2444,6 +2506,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   return () => {
     authorizations.clear()
     sshKeyImportSessions.clearAll()
+    void portability.disposeNativeRestoreSession?.()
     Object.values(IPC_CHANNELS).forEach((channel) => ipcMain.removeHandler(channel))
   }
 }

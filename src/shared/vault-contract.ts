@@ -10,6 +10,10 @@ export const IPC_CHANNELS = {
   vaultLockRequestReady: 'vault:lock-request-ready',
   vaultExport: 'vault:export',
   vaultImport: 'vault:import',
+  nativeRestorePreview: 'vault:native-restore-preview',
+  nativeRestoreStart: 'vault:native-restore-start',
+  nativeRestoreCancel: 'vault:native-restore-cancel',
+  nativeRestoreClearCompleted: 'vault:native-restore-clear-completed',
   vaultHealthReport: 'vault:health-report',
   vaultHealthExposedPasswords: 'vault:health-exposed-passwords',
   vaultHealthCancelExposedPasswords: 'vault:health-cancel-exposed-passwords',
@@ -126,6 +130,7 @@ export const IPC_EVENTS = {
   vaultChanged: 'vault:changed',
   syncChanged: 'sync:changed',
   attachmentProgress: 'attachment:progress',
+  nativeRestoreProgress: 'vault:native-restore-progress',
   passkeyApprovalRequested: 'passkey:approval-requested',
   sshAgentApprovalRequested: 'ssh-agent:approval-requested',
   sshAgentStatusChanged: 'ssh-agent:status-changed'
@@ -227,6 +232,56 @@ export interface VaultImportResult {
   importedFolders: number
   importedItems: number
   skippedTrashItems: number
+}
+
+export interface NativeRestoreSummary {
+  phase: 'syncing-items' | 'restoring-attachments' | 'needs-reconciliation' | 'complete'
+  totalItems: number
+  mappedItems: number
+  totalAttachments: number
+  uploadedAttachments: number
+  needsReconciliationAttachments: number
+  totalBytes: number
+  completedBytes: number
+}
+
+export interface NativeRestorePreviewRequest {
+  /** Used only by the main process to open the selected encrypted archive. */
+  password: string
+}
+
+export type NativeRestorePreviewResult =
+  | { canceled: true }
+  | {
+      canceled: false
+      sessionId: string
+      expiresAt: number
+      createdAt: string
+      folderCount: number
+      itemCount: number
+      attachmentCount: number
+      attachmentBytes: number
+      resumePhase: NativeRestoreSummary['phase'] | null
+    }
+
+export interface NativeRestoreStartRequest {
+  sessionId: string
+  /** Fresh local owner proof consumed only by the main process. */
+  masterPassword: string
+}
+
+export interface NativeRestoreSessionRequest {
+  sessionId: string
+}
+
+export interface NativeRestoreProgress extends NativeRestoreSummary {
+  sessionId: string
+  state: 'running' | 'partial' | 'conflict' | 'complete'
+}
+
+export interface NativeRestoreRunResult {
+  state: 'partial' | 'conflict' | 'complete'
+  summary: NativeRestoreSummary
 }
 
 export interface FolderView {
@@ -1307,6 +1362,13 @@ export interface BearWardenAPI {
   portability: {
     export: (request: VaultExportRequest) => Promise<VaultExportResult>
     import: (request: VaultImportRequest) => Promise<VaultImportResult>
+    previewNativeRestore: (
+      request: NativeRestorePreviewRequest
+    ) => Promise<NativeRestorePreviewResult>
+    startNativeRestore: (request: NativeRestoreStartRequest) => Promise<NativeRestoreRunResult>
+    cancelNativeRestore: (request: NativeRestoreSessionRequest) => Promise<void>
+    clearCompletedNativeRestore: (request: NativeRestoreSessionRequest) => Promise<void>
+    onNativeRestoreProgress: (listener: (progress: NativeRestoreProgress) => void) => () => void
   }
   health: {
     /** Runs entirely in main; the renderer receives only safe finding metadata. */

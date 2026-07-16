@@ -91,15 +91,23 @@ function portableSnapshot(): PortableVaultSnapshot {
 async function harness(options?: {
   exportPath?: string | null
   importPath?: string | null
+  now?: () => Date
 }): Promise<{
   directory: string
   outputPath: string
   inputPath: string
   vault: {
+    unlockedGeneration: ReturnType<typeof vi.fn>
     verifyPortabilityOwner: ReturnType<typeof vi.fn>
     exportPortableSnapshot: ReturnType<typeof vi.fn>
     createNativeAttachmentBackupSource: ReturnType<typeof vi.fn>
     importPortableSnapshot: ReturnType<typeof vi.fn>
+    nativeAttachmentRestoreStatus: ReturnType<typeof vi.fn>
+    beginNativeAttachmentRestore: ReturnType<typeof vi.fn>
+    syncNativeAttachmentRestoreItems: ReturnType<typeof vi.fn>
+    uploadNativeAttachmentRestoreEntry: ReturnType<typeof vi.fn>
+    reconcileNativeAttachmentRestoreEntry: ReturnType<typeof vi.fn>
+    clearCompletedNativeAttachmentRestore: ReturnType<typeof vi.fn>
   }
   picker: VaultPortabilityPicker
   service: VaultPortabilityService
@@ -111,6 +119,7 @@ async function harness(options?: {
   const snapshot = portableSnapshot()
   const disposeNativeSource = vi.fn()
   const vault = {
+    unlockedGeneration: vi.fn(async () => 4),
     verifyPortabilityOwner: vi.fn(async () => undefined),
     exportPortableSnapshot: vi.fn(async () => ({ snapshot, skippedTrashItems: 2 })),
     createNativeAttachmentBackupSource: vi.fn(async () => ({
@@ -126,7 +135,31 @@ async function harness(options?: {
       importedFolders: snapshot.folders.length,
       importedItems: snapshot.items.length,
       skippedTrashItems: 0
-    }))
+    })),
+    nativeAttachmentRestoreStatus: vi.fn(async () => null),
+    beginNativeAttachmentRestore: vi.fn(async () => ({
+      phase: 'syncing-items',
+      totalItems: 1,
+      mappedItems: 0,
+      totalAttachments: 0,
+      uploadedAttachments: 0,
+      needsReconciliationAttachments: 0,
+      totalBytes: 0,
+      completedBytes: 0
+    })),
+    syncNativeAttachmentRestoreItems: vi.fn(async () => ({
+      phase: 'complete',
+      totalItems: 1,
+      mappedItems: 1,
+      totalAttachments: 0,
+      uploadedAttachments: 0,
+      needsReconciliationAttachments: 0,
+      totalBytes: 0,
+      completedBytes: 0
+    })),
+    uploadNativeAttachmentRestoreEntry: vi.fn(),
+    reconcileNativeAttachmentRestoreEntry: vi.fn(),
+    clearCompletedNativeAttachmentRestore: vi.fn(async () => undefined)
   }
   const picker: VaultPortabilityPicker = {
     chooseExportPath: vi.fn(async () =>
@@ -145,7 +178,7 @@ async function harness(options?: {
     service: new VaultPortabilityService(
       vault as unknown as VaultService,
       picker,
-      () => new Date('2026-07-16T03:04:05.000Z')
+      options?.now ?? (() => new Date('2026-07-16T03:04:05.000Z'))
     )
   }
 }
@@ -352,5 +385,177 @@ describe('VaultPortabilityService', () => {
       code: 'INVALID_INPUT'
     })
     expect(vault.importPortableSnapshot).not.toHaveBeenCalled()
+  })
+
+  it('keeps native restore archive secrets in one owner-bound main session', async () => {
+    const { outputPath, picker, service, vault } = await harness()
+    await service.exportVault({
+      masterPassword: MASTER_PASSWORD,
+      password: BACKUP_PASSWORD,
+      format: 'bearwarden-native'
+    })
+    vi.mocked(picker.chooseImportPath).mockResolvedValue(outputPath)
+
+    const preview = await service.previewNativeRestore(7, BACKUP_PASSWORD)
+    expect(preview).toMatchObject({
+      canceled: false,
+      sessionId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      folderCount: 1,
+      itemCount: 1,
+      attachmentCount: 0,
+      attachmentBytes: 0,
+      resumePhase: null
+    })
+    expect(JSON.stringify(preview)).not.toContain(outputPath)
+    expect(JSON.stringify(preview)).not.toContain(BACKUP_PASSWORD)
+    expect(JSON.stringify(preview)).not.toContain('sample-secret')
+    if (preview.canceled) throw new Error('expected native restore session')
+    await expect(
+      service.runNativeRestore(8, preview.sessionId, MASTER_PASSWORD, vi.fn())
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    const progress = vi.fn()
+    await expect(
+      service.runNativeRestore(7, preview.sessionId, MASTER_PASSWORD, progress)
+    ).resolves.toMatchObject({ state: 'complete', summary: { phase: 'complete' } })
+    expect(vault.verifyPortabilityOwner).toHaveBeenLastCalledWith(MASTER_PASSWORD)
+    expect(vault.beginNativeAttachmentRestore).toHaveBeenCalledWith(
+      expect.objectContaining({ archiveFingerprint: expect.any(String) }),
+      MASTER_PASSWORD
+    )
+    expect(progress).toHaveBeenCalledWith(
+      expect.objectContaining({ phase: 'complete' }),
+      'complete'
+    )
+    await service.clearCompletedNativeRestore(7, preview.sessionId)
+    expect(vault.clearCompletedNativeAttachmentRestore).toHaveBeenCalledWith(expect.any(String))
+  })
+
+  it('replaces and cancels native restore sessions without mutating the durable journal', async () => {
+    const { outputPath, picker, service, vault } = await harness()
+    await service.exportVault({
+      masterPassword: MASTER_PASSWORD,
+      password: BACKUP_PASSWORD,
+      format: 'bearwarden-native'
+    })
+    vi.mocked(picker.chooseImportPath).mockResolvedValue(outputPath)
+    const first = await service.previewNativeRestore(7, BACKUP_PASSWORD)
+    const second = await service.previewNativeRestore(7, BACKUP_PASSWORD)
+    if (first.canceled || second.canceled) throw new Error('expected native restore sessions')
+    await expect(
+      service.runNativeRestore(7, first.sessionId, MASTER_PASSWORD, vi.fn())
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await service.cancelNativeRestore(7, second.sessionId)
+    expect(vault.beginNativeAttachmentRestore).not.toHaveBeenCalled()
+    expect(vault.clearCompletedNativeAttachmentRestore).not.toHaveBeenCalled()
+    await expect(
+      service.runNativeRestore(7, second.sessionId, MASTER_PASSWORD, vi.fn())
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+  })
+
+  it('expires only an unused native restore capability and never aborts an active restore', async () => {
+    let clock = Date.parse('2026-07-16T03:04:05.000Z')
+    const { outputPath, picker, service, vault } = await harness({
+      now: () => new Date(clock)
+    })
+    await service.exportVault({
+      masterPassword: MASTER_PASSWORD,
+      password: BACKUP_PASSWORD,
+      format: 'bearwarden-native'
+    })
+    vi.mocked(picker.chooseImportPath).mockResolvedValue(outputPath)
+    const expired = await service.previewNativeRestore(7, BACKUP_PASSWORD)
+    if (expired.canceled) throw new Error('expected native restore session')
+    clock += 5 * 60 * 1_000 + 1
+    await expect(
+      service.runNativeRestore(7, expired.sessionId, MASTER_PASSWORD, vi.fn())
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+
+    const active = await service.previewNativeRestore(7, BACKUP_PASSWORD)
+    if (active.canceled) throw new Error('expected native restore session')
+    vault.verifyPortabilityOwner.mockImplementationOnce(async () => {
+      clock += 30 * 60 * 1_000
+    })
+    await expect(
+      service.runNativeRestore(7, active.sessionId, MASTER_PASSWORD, vi.fn())
+    ).resolves.toMatchObject({ state: 'complete' })
+  })
+
+  it('streams a verified attachment and retries once only after authoritative missing reconciliation', async () => {
+    const { outputPath, picker, service, vault } = await harness()
+    const snapshot = portableSnapshot()
+    const bytes = Buffer.from('verified native attachment')
+    const entry = {
+      id: 'archive-attachment-1',
+      itemId: snapshot.items[0]!.id,
+      fileName: 'verified.txt',
+      size: bytes.length
+    }
+    vault.createNativeAttachmentBackupSource.mockResolvedValueOnce({
+      vaultJson: buildBitwardenJson(snapshot),
+      attachments: [entry],
+      exportedFolders: 1,
+      exportedItems: 1,
+      skippedTrashItems: 0,
+      openAttachment: async function* () {
+        yield Buffer.from(bytes)
+      },
+      dispose: vi.fn()
+    })
+    const restoring = {
+      phase: 'restoring-attachments' as const,
+      totalItems: 1,
+      mappedItems: 1,
+      totalAttachments: 1,
+      uploadedAttachments: 0,
+      needsReconciliationAttachments: 0,
+      totalBytes: bytes.length,
+      completedBytes: 0
+    }
+    const needs = {
+      ...restoring,
+      phase: 'needs-reconciliation' as const,
+      needsReconciliationAttachments: 1
+    }
+    const complete = {
+      ...restoring,
+      phase: 'complete' as const,
+      uploadedAttachments: 1,
+      completedBytes: bytes.length
+    }
+    vault.beginNativeAttachmentRestore.mockResolvedValueOnce({
+      ...restoring,
+      phase: 'syncing-items',
+      mappedItems: 0
+    })
+    vault.syncNativeAttachmentRestoreItems.mockResolvedValueOnce(restoring)
+    vault.nativeAttachmentRestoreStatus.mockResolvedValueOnce(null).mockResolvedValueOnce(needs)
+    let uploadAttempt = 0
+    vault.uploadNativeAttachmentRestoreEntry.mockImplementation(
+      async (_fingerprint, _key, source) => {
+        uploadAttempt += 1
+        const chunks: Buffer[] = []
+        for await (const chunk of source.chunks()) chunks.push(Buffer.from(chunk))
+        expect(Buffer.concat(chunks)).toEqual(bytes)
+        if (uploadAttempt === 1) throw new Error('response unknown')
+        return complete
+      }
+    )
+    vault.reconcileNativeAttachmentRestoreEntry.mockResolvedValueOnce({
+      outcome: 'missing',
+      summary: restoring
+    })
+    await service.exportVault({
+      masterPassword: MASTER_PASSWORD,
+      password: BACKUP_PASSWORD,
+      format: 'bearwarden-native'
+    })
+    vi.mocked(picker.chooseImportPath).mockResolvedValue(outputPath)
+    const preview = await service.previewNativeRestore(7, BACKUP_PASSWORD)
+    if (preview.canceled) throw new Error('expected native restore session')
+    await expect(
+      service.runNativeRestore(7, preview.sessionId, MASTER_PASSWORD, vi.fn())
+    ).resolves.toEqual({ state: 'complete', summary: complete })
+    expect(vault.uploadNativeAttachmentRestoreEntry).toHaveBeenCalledTimes(2)
+    expect(vault.reconcileNativeAttachmentRestoreEntry).toHaveBeenCalledOnce()
   })
 })

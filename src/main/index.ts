@@ -44,6 +44,7 @@ app.enableSandbox()
 
 let mainWindow: BrowserWindow | null = null
 let vault: VaultService | null = null
+let portability: VaultPortabilityService | null = null
 let settings: AppSettingsService | null = null
 let autoSync: AutoSyncCoordinator | null = null
 let serverNotifications: BitwardenNotificationCoordinator | null = null
@@ -295,6 +296,7 @@ async function beforeVaultLock(): Promise<void> {
   passkeyRendererBridge?.cancelAll()
   autoSync?.cancel()
   await stopServerNotifications()
+  await portability?.disposeNativeRestoreSession()
   vaultLockGeneration += 1
   sshKeyImportSessions?.clearAll()
   sshAgentCoordinator?.onLocked()
@@ -534,7 +536,7 @@ if (hasSingleInstanceLock)
           .finally(() => publishSshAgentStatus())
       }
     })
-    const portability = new VaultPortabilityService(vault, {
+    portability = new VaultPortabilityService(vault, {
       chooseExportPath: async (defaultName) => {
         const native = defaultName.endsWith('.bwbackup')
         const options = {
@@ -737,6 +739,8 @@ function disposeServices(): void {
   void serverNotifications?.dispose().catch(() => undefined)
   serverNotifications = null
   autoSync?.dispose()
+  void portability?.disposeNativeRestoreSession()
+  portability = null
   passkeyCeremonyService?.dispose()
   passkeyRendererBridge?.dispose()
   vault?.dispose()
@@ -760,7 +764,8 @@ app.on('before-quit', (event) => {
   repromptAuthorizations?.clear()
   shutdownPending = Promise.all([
     (sshAgentServer?.stop() ?? Promise.resolve()).catch(() => undefined),
-    (serverNotifications?.dispose() ?? Promise.resolve()).catch(() => undefined)
+    (serverNotifications?.dispose() ?? Promise.resolve()).catch(() => undefined),
+    (portability?.disposeNativeRestoreSession() ?? Promise.resolve()).catch(() => undefined)
   ]).then(() => {
     sshAgentBridge?.dispose()
     disposeServices()

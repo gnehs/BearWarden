@@ -204,6 +204,11 @@ describe('registerVaultIpc reprompt gate', () => {
     portability: {
       exportVault: ReturnType<typeof vi.fn>
       importVault: ReturnType<typeof vi.fn>
+      previewNativeRestore: ReturnType<typeof vi.fn>
+      runNativeRestore: ReturnType<typeof vi.fn>
+      cancelNativeRestore: ReturnType<typeof vi.fn>
+      clearCompletedNativeRestore: ReturnType<typeof vi.fn>
+      disposeNativeRestoreSession: ReturnType<typeof vi.fn>
     }
     afterMutation: ReturnType<typeof vi.fn>
     beforeSyncReconfigure: ReturnType<typeof vi.fn>
@@ -466,7 +471,35 @@ describe('registerVaultIpc reprompt gate', () => {
         importedFolders: 1,
         importedItems: 2,
         skippedTrashItems: 0
-      }))
+      })),
+      previewNativeRestore: vi.fn(async () => ({
+        canceled: false,
+        sessionId: '70000000-0000-4000-8000-000000000099',
+        expiresAt: 301_000,
+        createdAt: '2026-07-17T00:00:00.000Z',
+        folderCount: 1,
+        itemCount: 2,
+        attachmentCount: 1,
+        attachmentBytes: 23,
+        resumePhase: null
+      })),
+      runNativeRestore: vi.fn(async (_ownerId, _sessionId, _masterPassword, progress) => {
+        const summary = {
+          phase: 'complete' as const,
+          totalItems: 2,
+          mappedItems: 2,
+          totalAttachments: 1,
+          uploadedAttachments: 1,
+          needsReconciliationAttachments: 0,
+          totalBytes: 23,
+          completedBytes: 23
+        }
+        progress(summary, 'complete')
+        return { state: 'complete' as const, summary }
+      }),
+      cancelNativeRestore: vi.fn(async () => undefined),
+      clearCompletedNativeRestore: vi.fn(async () => undefined),
+      disposeNativeRestoreSession: vi.fn(async () => undefined)
     }
     const afterMutation = vi.fn()
     const beforeSyncReconfigure = vi.fn(async () => undefined)
@@ -575,6 +608,67 @@ describe('registerVaultIpc reprompt gate', () => {
         password: 123
       })
     ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+  })
+
+  it('keeps native restore sessions exact, sender-bound, progress-only, and secret-free', async () => {
+    const { event, portability, afterMutation } = harness()
+    const preview = electronMock.handlers.get(IPC_CHANNELS.nativeRestorePreview)!
+    const start = electronMock.handlers.get(IPC_CHANNELS.nativeRestoreStart)!
+    const cancel = electronMock.handlers.get(IPC_CHANNELS.nativeRestoreCancel)!
+    const clear = electronMock.handlers.get(IPC_CHANNELS.nativeRestoreClearCompleted)!
+    const sessionId = '70000000-0000-4000-8000-000000000099'
+    await expect(preview(event, { password: 'portable backup password' })).resolves.toMatchObject({
+      canceled: false,
+      sessionId,
+      attachmentCount: 1,
+      attachmentBytes: 23
+    })
+    expect(portability.previewNativeRestore).toHaveBeenCalledWith(7, 'portable backup password')
+    const result = await start(event, {
+      sessionId,
+      masterPassword: 'correct horse battery staple'
+    })
+    expect(result).toMatchObject({ state: 'complete', summary: { completedBytes: 23 } })
+    expect(portability.runNativeRestore).toHaveBeenCalledWith(
+      7,
+      sessionId,
+      'correct horse battery staple',
+      expect.any(Function)
+    )
+    expect(
+      (event as { sender: { send: ReturnType<typeof vi.fn> } }).sender.send
+    ).toHaveBeenCalledWith(
+      IPC_EVENTS.nativeRestoreProgress,
+      expect.objectContaining({ sessionId, state: 'complete', completedBytes: 23 })
+    )
+    expect(JSON.stringify(result)).not.toContain('correct horse battery staple')
+    expect(JSON.stringify(result)).not.toContain('portable backup password')
+    expect(afterMutation).toHaveBeenCalledOnce()
+    ;(event as { sender: { send: ReturnType<typeof vi.fn> } }).sender.send.mockImplementationOnce(
+      () => {
+        throw new Error('renderer closed')
+      }
+    )
+    await expect(
+      start(event, { sessionId, masterPassword: 'correct horse battery staple' })
+    ).resolves.toMatchObject({ state: 'complete' })
+    await cancel(event, { sessionId })
+    await clear(event, { sessionId })
+    expect(portability.cancelNativeRestore).toHaveBeenCalledWith(7, sessionId)
+    expect(portability.clearCompletedNativeRestore).toHaveBeenCalledWith(7, sessionId)
+
+    for (const invalid of [
+      { password: 'portable backup password', path: '/tmp/secret.bwbackup' },
+      {
+        sessionId,
+        masterPassword: 'correct horse battery staple',
+        archiveFingerprint: 'a'.repeat(64)
+      },
+      { sessionId: 'not-a-capability' }
+    ]) {
+      const handler = 'password' in invalid ? preview : 'masterPassword' in invalid ? start : cancel
+      await expect(handler(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
   })
 
   it('accepts a bounded empty vault query and rejects malformed list requests', async () => {
