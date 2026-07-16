@@ -65,6 +65,8 @@ import { toast } from 'sonner'
 import type {
   AppSettings,
   AppSettingsUpdate,
+  AccountMutationResult,
+  AccountStatus,
   AttachmentOperationKind,
   AttachmentOperationStage,
   AttachmentProgressEvent,
@@ -191,6 +193,7 @@ import { Spinner } from '@renderer/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { cn } from '@renderer/lib/utils'
 import { applyThemePreference } from '@renderer/lib/theme'
+import { accountMutationError, requestAccountAction } from './account-switcher-ui'
 
 type Scope =
   | { kind: 'all' }
@@ -851,6 +854,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const SyncSidebarIcon = syncStateMeta[syncStatus.state].icon
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null)
+  const [accountBusy, setAccountBusy] = useState(false)
+  const [accountError, setAccountError] = useState('')
   const [healthOpen, setHealthOpen] = useState(false)
   const [sendsOpen, setSendsOpen] = useState(false)
   const [organizationsOpen, setOrganizationsOpen] = useState(false)
@@ -870,6 +876,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     setQuery(bounded)
   }, [])
   const settingsReturnFocusRef = useRef<HTMLElement | null>(null)
+  const accountStatusRequestRef = useRef(0)
   const compactReturnIdRef = useRef<string | null>(null)
   const compactDetailFocusIdRef = useRef<string | null>(null)
   const selectedIdRef = useRef<string | null>(null)
@@ -1981,6 +1988,30 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     queueMicrotask(() => settingsReturnFocusRef.current?.focus())
   }, [emergencyAccessOpen, healthOpen, organizationsOpen, sendsOpen, settingsOpen])
 
+  useEffect(() => {
+    if (!settingsOpen) return
+    let active = true
+    const requestId = ++accountStatusRequestRef.current
+    queueMicrotask(() => {
+      if (!active) return
+      setAccountStatus(null)
+      setAccountError('')
+      void window.bearwarden.accounts.status().then(
+        (status) => {
+          if (active && requestId === accountStatusRequestRef.current) setAccountStatus(status)
+        },
+        () => {
+          if (active && requestId === accountStatusRequestRef.current) {
+            setAccountError('無法讀取本機帳號清單，請稍後再試。')
+          }
+        }
+      )
+    })
+    return () => {
+      active = false
+    }
+  }, [settingsOpen])
+
   function selectScope(nextScope: Scope): void {
     requestEditorTransition(() => {
       setScope(nextScope)
@@ -2207,6 +2238,28 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     } finally {
       setSettingsBusy(false)
     }
+  }
+
+  async function runAccountMutation(mutation: () => Promise<AccountMutationResult>): Promise<void> {
+    accountStatusRequestRef.current += 1
+    setAccountBusy(true)
+    setAccountError('')
+    try {
+      const result = await mutation()
+      setAccountStatus(result.status)
+      if (result.kind === 'unchanged') setAccountBusy(false)
+    } catch (accountMutationFailure) {
+      setAccountError(accountMutationError(accountMutationFailure))
+      setAccountBusy(false)
+    }
+  }
+
+  async function addLocalAccount(): Promise<void> {
+    await runAccountMutation(() => window.bearwarden.accounts.add())
+  }
+
+  async function switchLocalAccount(accountId: string): Promise<void> {
+    await runAccountMutation(() => window.bearwarden.accounts.switch(accountId))
   }
 
   function announceExported(result: VaultExportResult): void {
@@ -3721,6 +3774,17 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 onOpenSync={() => setSyncDialogOpen(true)}
                 onExportVault={() => setPortabilityDialogMode('export')}
                 onImportVault={() => setPortabilityDialogMode('import')}
+                accountStatus={accountStatus}
+                accountBusy={accountBusy}
+                accountError={accountError}
+                onRequestAccountAdd={(proceed) =>
+                  requestAccountAction(requestEditorTransition, proceed)
+                }
+                onRequestAccountSwitch={(proceed) =>
+                  requestAccountAction(requestEditorTransition, proceed)
+                }
+                onAddAccount={addLocalAccount}
+                onSwitchAccount={switchLocalAccount}
               />
             ) : (
               <>

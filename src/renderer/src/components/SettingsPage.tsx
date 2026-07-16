@@ -17,6 +17,7 @@ import {
   Upload
 } from 'lucide-react'
 import type {
+  AccountStatus,
   AppSettings,
   AppSettingsUpdate,
   PinUnlockStatus,
@@ -74,6 +75,7 @@ import {
 } from '@renderer/lib/ssh-agent-ui'
 import EquivalentDomainsDialog from './EquivalentDomainsDialog'
 import MasterPasswordChangeDialog from './MasterPasswordChangeDialog'
+import AccountSwitcherCard from './AccountSwitcherCard'
 
 const autoLockItems = [
   { label: '永不自動鎖定', value: 0 },
@@ -137,6 +139,13 @@ interface SettingsPageProps {
   onOpenSync: () => void
   onExportVault: () => void
   onImportVault: () => void
+  accountStatus: AccountStatus | null
+  accountBusy: boolean
+  accountError: string
+  onRequestAccountAdd: (proceed: () => void) => void
+  onRequestAccountSwitch: (proceed: () => void) => void
+  onAddAccount: () => Promise<void>
+  onSwitchAccount: (accountId: string) => Promise<void>
 }
 
 interface SettingsCardHeadingProps {
@@ -179,7 +188,14 @@ function SettingsPage({
   onDisableTouchId,
   onOpenSync,
   onExportVault,
-  onImportVault
+  onImportVault,
+  accountStatus,
+  accountBusy,
+  accountError,
+  onRequestAccountAdd,
+  onRequestAccountSwitch,
+  onAddAccount,
+  onSwitchAccount
 }: SettingsPageProps): React.JSX.Element {
   const [sshAgentStatus, setSshAgentStatus] = useState<SshAgentStatus>(initialSshAgentStatus)
   const [copySucceeded, setCopySucceeded] = useState(false)
@@ -349,6 +365,7 @@ function SettingsPage({
               <a href="#general-settings-title">一般</a>
               <a href="#pin-settings-title">PIN 解鎖</a>
               <a href="#touch-id-settings-title">Touch ID</a>
+              <a href="#local-accounts-settings-title">本機帳號</a>
               <a href="#sync-settings-title">同步與帳號</a>
               <a href="#portability-settings-title">資料可攜性</a>
             </nav>
@@ -940,6 +957,16 @@ function SettingsPage({
                   </>
                 )}
               </Card>
+
+              <AccountSwitcherCard
+                accountStatus={accountStatus}
+                busy={accountBusy}
+                error={accountError}
+                onRequestAdd={onRequestAccountAdd}
+                onRequestSwitch={onRequestAccountSwitch}
+                onAdd={onAddAccount}
+                onSwitch={onSwitchAccount}
+              />
 
               <Card className="settings-card" aria-labelledby="sync-settings-title">
                 <CardHeader>
