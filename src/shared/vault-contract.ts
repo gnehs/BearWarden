@@ -610,6 +610,12 @@ export interface VaultHealthReusedFinding {
   reuseCount: number
 }
 
+/** A renderer-safe unsecured-site finding. The matching URI and its query never leave main. */
+export interface VaultHealthUnsecuredWebsiteFinding {
+  id: string
+  name: string
+}
+
 /**
  * A renderer-safe exposed-password finding. Only the locally matched occurrence count crosses IPC;
  * the password and its complete SHA-1 hash remain in the main process.
@@ -630,10 +636,12 @@ export interface VaultHealthReport {
     analyzedCount: number
     weakPasswordCount: number
     reusedPasswordCount: number
+    unsecuredWebsiteCount: number
     protectedSkippedCount: number
   }
   weakPasswords: VaultHealthWeakFinding[]
   reusedPasswords: VaultHealthReusedFinding[]
+  unsecuredWebsites: VaultHealthUnsecuredWebsiteFinding[]
 }
 
 /**

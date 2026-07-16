@@ -34,7 +34,8 @@ function protectedItem(
 function findingShape(analysis: VaultHealthAnalysis): unknown {
   return {
     weak: analysis.weakPasswords.map((finding) => Object.keys(finding).sort()),
-    reused: analysis.reusedPasswords.map((finding) => Object.keys(finding).sort())
+    reused: analysis.reusedPasswords.map((finding) => Object.keys(finding).sort()),
+    unsecured: analysis.unsecuredWebsites.map((finding) => Object.keys(finding).sort())
   }
 }
 
@@ -122,6 +123,51 @@ describe('vault health', () => {
     expect(analysis.weakPasswords.every(({ id }) => id !== 'protected-weak')).toBe(true)
   })
 
+  it('reports each active login whose stored URI begins with the official http:// prefix', () => {
+    const analysis = analyzeVaultHealth([
+      item({
+        id: 'localhost',
+        name: 'Localhost',
+        password: '',
+        uris: [{ uri: 'http://localhost:8080/private?token=must-not-leak' }]
+      }),
+      item({
+        id: 'onion',
+        name: 'Onion',
+        uris: [
+          { uri: 'https://secure.example' },
+          { uri: 'http://examplehiddenservice.onion/login' }
+        ]
+      }),
+      item({ id: 'secure', name: 'Secure', uris: [{ uri: 'https://example.com' }] }),
+      item({ id: 'embedded', name: 'Embedded', uris: [{ uri: 'x-http://example.com' }] }),
+      item({ id: 'uppercase', name: 'Uppercase', uris: [{ uri: 'HTTP://example.com' }] }),
+      item({ id: 'space', name: 'Space', uris: [{ uri: ' http://example.com' }] })
+    ])
+
+    expect(analysis.unsecuredWebsites).toEqual([
+      { id: 'localhost', name: 'Localhost' },
+      { id: 'onion', name: 'Onion' }
+    ])
+    expect(analysis.unsecuredWebsiteCount).toBe(2)
+    expect(JSON.stringify(analysis)).not.toContain('localhost:8080')
+    expect(JSON.stringify(analysis)).not.toContain('must-not-leak')
+  })
+
+  it('excludes protected, trashed, archived, and non-login items from unsecured findings', () => {
+    const httpUris = [{ uri: 'http://private.example/query?secret=value' }]
+    const analysis = analyzeVaultHealth([
+      protectedItem({ id: 'protected', uris: httpUris } as Partial<VaultHealthProtectedItem>),
+      item({ id: 'trash-http', uris: httpUris, deletedAt: '2026-01-01T00:00:00.000Z' }),
+      item({ id: 'archive-http', uris: httpUris, archivedAt: '2026-01-01T00:00:00.000Z' }),
+      item({ id: 'card-http', type: 'card', uris: httpUris })
+    ])
+
+    expect(analysis.unsecuredWebsites).toEqual([])
+    expect(analysis.unsecuredWebsiteCount).toBe(0)
+    expect(analysis.protectedSkippedCount).toBe(1)
+  })
+
   it('excludes trash, archived, non-login, and empty-password items', () => {
     const analysis = analyzeVaultHealth([
       item({ id: 'active' }),
@@ -138,8 +184,10 @@ describe('vault health', () => {
       protectedSkippedCount: 0,
       weakPasswordCount: 0,
       reusedPasswordCount: 0,
+      unsecuredWebsiteCount: 0,
       weakPasswords: [],
-      reusedPasswords: []
+      reusedPasswords: [],
+      unsecuredWebsites: []
     })
   })
 
@@ -174,7 +222,8 @@ describe('vault health', () => {
 
     expect(findingShape(analysis)).toEqual({
       weak: analysis.weakPasswords.map(() => ['id', 'name', 'score']),
-      reused: analysis.reusedPasswords.map(() => ['id', 'name', 'reuseCount'])
+      reused: analysis.reusedPasswords.map(() => ['id', 'name', 'reuseCount']),
+      unsecured: analysis.unsecuredWebsites.map(() => ['id', 'name'])
     })
     expect(JSON.stringify(analysis)).not.toContain(secret)
     expect(JSON.stringify(analysis)).not.toContain('private-user')
@@ -211,6 +260,12 @@ describe('vault health', () => {
     Object.defineProperty(accessor, 'password', {
       get: () => {
         throw new Error('must not read password accessor')
+      },
+      enumerable: true
+    })
+    Object.defineProperty(accessor, 'uris', {
+      get: () => {
+        throw new Error('must not read URI accessor')
       },
       enumerable: true
     })
@@ -252,8 +307,10 @@ describe('vault health', () => {
       protectedSkippedCount: 0,
       weakPasswordCount: 0,
       reusedPasswordCount: 0,
+      unsecuredWebsiteCount: 0,
       weakPasswords: [],
-      reusedPasswords: []
+      reusedPasswords: [],
+      unsecuredWebsites: []
     })
     expect(analyzeVaultHealth([oversizedPassword]).analyzedCount).toBe(0)
   })

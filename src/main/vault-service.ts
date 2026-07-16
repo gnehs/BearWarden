@@ -4134,7 +4134,7 @@ export class VaultService {
   getHealthReport(): Promise<VaultHealthReport> {
     return this.exclusive(async () => {
       const data = this.requireData()
-      const summaryById = new Map<string, LoginSummary>()
+      const summaryById = new Map<string, { id: string; name: string; subtitle: string }>()
       const candidates: VaultHealthItem[] = []
 
       for (const login of data.logins) {
@@ -4153,14 +4153,16 @@ export class VaultService {
           continue
         }
 
-        const summary = toSummary(login)
-        summaryById.set(login.id, summary)
+        // Health findings never need a URI. Avoid `toSummary`, whose fallback subtitle may contain
+        // a complete URI including a private path or query when the username is empty.
+        summaryById.set(login.id, { id: login.id, name: login.name, subtitle: login.username })
         candidates.push({
           id: login.id,
           type: login.type,
           name: login.name,
           password: login.password,
           username: login.username,
+          uris: login.uris.map(({ uri }) => ({ uri })),
           reprompt: 0
         })
       }
@@ -4192,6 +4194,7 @@ export class VaultService {
             ]
           : []
       })
+      const unsecuredWebsites = analysis.unsecuredWebsites.map(({ id, name }) => ({ id, name }))
 
       return {
         generatedAt: this.nowIso(),
@@ -4199,10 +4202,12 @@ export class VaultService {
           analyzedCount: analysis.analyzedCount,
           weakPasswordCount: weakPasswords.length,
           reusedPasswordCount: reusedPasswords.length,
+          unsecuredWebsiteCount: unsecuredWebsites.length,
           protectedSkippedCount: analysis.protectedSkippedCount
         },
         weakPasswords,
-        reusedPasswords
+        reusedPasswords,
+        unsecuredWebsites
       }
     })
   }

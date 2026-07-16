@@ -5,6 +5,8 @@ const MAX_ID_LENGTH = 256
 const MAX_NAME_LENGTH = 5_000
 const MAX_PASSWORD_LENGTH = 16_384
 const MAX_USERNAME_LENGTH = 512
+const MAX_LOGIN_URIS = 1_000
+const MAX_URI_LENGTH = 4_096
 const MAX_TOTAL_INPUT_CHARACTERS = 32 * 1_024 * 1_024
 // The upstream zxcvbn guidance recommends ~100 characters to bound synchronous latency.
 // Reuse detection below still compares each complete, bounded password exactly.
@@ -33,6 +35,7 @@ export interface VaultHealthUnprotectedItem extends VaultHealthItemBase {
   readonly reprompt: 0
   readonly password: string
   readonly username?: string
+  readonly uris?: readonly { readonly uri: string }[]
 }
 
 export type VaultHealthItem = VaultHealthProtectedItem | VaultHealthUnprotectedItem
@@ -49,13 +52,20 @@ export interface ReusedPasswordFinding {
   readonly reuseCount: number
 }
 
+export interface UnsecuredWebsiteFinding {
+  readonly id: string
+  readonly name: string
+}
+
 export interface VaultHealthAnalysis {
   readonly analyzedCount: number
   readonly protectedSkippedCount: number
   readonly weakPasswordCount: number
   readonly reusedPasswordCount: number
+  readonly unsecuredWebsiteCount: number
   readonly weakPasswords: readonly WeakPasswordFinding[]
   readonly reusedPasswords: readonly ReusedPasswordFinding[]
+  readonly unsecuredWebsites: readonly UnsecuredWebsiteFinding[]
 }
 
 interface Candidate {
@@ -78,8 +88,10 @@ function emptyAnalysis(): VaultHealthAnalysis {
     protectedSkippedCount: 0,
     weakPasswordCount: 0,
     reusedPasswordCount: 0,
+    unsecuredWebsiteCount: 0,
     weakPasswords: [],
-    reusedPasswords: []
+    reusedPasswords: [],
+    unsecuredWebsites: []
   }
 }
 
@@ -137,6 +149,22 @@ function inputAt(items: readonly unknown[], index: number): unknown {
   }
 }
 
+function hasUnsecuredHttpUri(record: HealthRecord, budget: InputBudget): boolean {
+  const uris = ownData(record, 'uris')
+  if (uris === undefined) return false
+  if (!Array.isArray(uris) || uris.length > MAX_LOGIN_URIS) return false
+
+  let unsecured = false
+  for (let index = 0; index < uris.length; index += 1) {
+    const entry = inputAt(uris, index)
+    if (!isPlainRecord(entry)) continue
+    const uri = boundedString(entry, 'uri', MAX_URI_LENGTH, budget)
+    // Match Bitwarden's report semantics exactly: the stored URI must begin with lowercase http://.
+    if (uri?.indexOf('http://') === 0) unsecured = true
+  }
+  return unsecured
+}
+
 function usernameInputs(username: string): string[] {
   const atPosition = username.indexOf('@')
   const value = atPosition >= 0 ? username.slice(0, atPosition) : username
@@ -167,9 +195,11 @@ function compareNames(
 
 function parseCandidates(items: readonly unknown[]): {
   candidates: Candidate[]
+  unsecuredWebsites: (UnsecuredWebsiteFinding & { readonly originalIndex: number })[]
   protectedSkippedCount: number
 } {
   const candidates: Candidate[] = []
+  const unsecuredWebsites: (UnsecuredWebsiteFinding & { readonly originalIndex: number })[] = []
   const budget: InputBudget = { remaining: MAX_TOTAL_INPUT_CHARACTERS }
   let protectedSkippedCount = 0
 
@@ -189,9 +219,6 @@ function parseCandidates(items: readonly unknown[]): {
       continue
     }
 
-    const password = boundedString(value, 'password', MAX_PASSWORD_LENGTH, budget)
-    if (!password) continue
-
     const id = boundedString(value, 'id', MAX_ID_LENGTH, budget)
     const name = boundedString(value, 'name', MAX_NAME_LENGTH, budget)
     const usernameValue = ownData(value, 'username')
@@ -201,18 +228,26 @@ function parseCandidates(items: readonly unknown[]): {
         : boundedString(value, 'username', MAX_USERNAME_LENGTH, budget)
     if (!id || name === undefined || username === undefined) continue
 
+    if (hasUnsecuredHttpUri(value, budget)) {
+      unsecuredWebsites.push({ id, name, originalIndex: index })
+    }
+
+    const password = boundedString(value, 'password', MAX_PASSWORD_LENGTH, budget)
+    if (!password) continue
+
     candidates.push({ id, name, password, username, originalIndex: index })
   }
 
-  return { candidates, protectedSkippedCount }
+  return { candidates, unsecuredWebsites, protectedSkippedCount }
 }
 
 /**
  * Analyzes decrypted login secrets exclusively inside the main process.
  *
  * Passwords and usernames are used only as transient comparison inputs. The
- * returned object contains safe item metadata and aggregate counts, never a
- * password, hash, username, URI, or timestamp.
+ * returned object contains safe item metadata and aggregate counts, never a password, hash,
+ * username, URI, or timestamp. URI values are inspected only to identify an exact `http://`
+ * prefix and are discarded before this boundary returns.
  */
 export function analyzeVaultHealth(items: readonly VaultHealthItem[]): VaultHealthAnalysis {
   if (!Array.isArray(items) || items.length > MAX_HEALTH_ITEMS) return emptyAnalysis()
@@ -259,6 +294,7 @@ export function analyzeVaultHealth(items: readonly VaultHealthItem[]): VaultHeal
 
   weakWithOrder.sort((first, second) => first.score - second.score || compareNames(first, second))
   reusedWithOrder.sort(compareNames)
+  parsed.unsecuredWebsites.sort(compareNames)
 
   const weakPasswords: WeakPasswordFinding[] = weakWithOrder.map(({ id, name, score }) => ({
     id,
@@ -268,13 +304,16 @@ export function analyzeVaultHealth(items: readonly VaultHealthItem[]): VaultHeal
   const reusedPasswords: ReusedPasswordFinding[] = reusedWithOrder.map(
     ({ id, name, reuseCount }) => ({ id, name, reuseCount })
   )
+  const unsecuredWebsites = parsed.unsecuredWebsites.map(({ id, name }) => ({ id, name }))
 
   return {
     analyzedCount: parsed.candidates.length,
     protectedSkippedCount: parsed.protectedSkippedCount,
     weakPasswordCount: weakPasswords.length,
     reusedPasswordCount: reusedPasswords.length,
+    unsecuredWebsiteCount: unsecuredWebsites.length,
     weakPasswords,
-    reusedPasswords
+    reusedPasswords,
+    unsecuredWebsites
   }
 }

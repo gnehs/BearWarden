@@ -288,10 +288,12 @@ describe('registerVaultIpc reprompt gate', () => {
           analyzedCount: 1,
           weakPasswordCount: 1,
           reusedPasswordCount: 0,
+          unsecuredWebsiteCount: 1,
           protectedSkippedCount: 1
         },
         weakPasswords: [{ id: 'item-a', name: 'Example', subtitle: '', score: 0 }],
-        reusedPasswords: []
+        reusedPasswords: [],
+        unsecuredWebsites: [{ id: 'item-http', name: 'Local router' }]
       })),
       getExposedPasswordReport: vi.fn(async () => ({
         generatedAt: '2026-07-16T00:00:00.000Z',
@@ -549,10 +551,12 @@ describe('registerVaultIpc reprompt gate', () => {
         analyzedCount: 1,
         weakPasswordCount: 1,
         reusedPasswordCount: 0,
+        unsecuredWebsiteCount: 1,
         protectedSkippedCount: 1
       },
       weakPasswords: [{ id: 'item-a', name: 'Example', subtitle: '', score: 0 }],
-      reusedPasswords: []
+      reusedPasswords: [],
+      unsecuredWebsites: [{ id: 'item-http', name: 'Local router' }]
     })
     expect(vault.getHealthReport).toHaveBeenCalledWith()
 

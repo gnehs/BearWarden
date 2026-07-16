@@ -17,6 +17,7 @@ import type {
   VaultHealthExposedFinding,
   VaultHealthExposedReport,
   VaultHealthReusedFinding,
+  VaultHealthUnsecuredWebsiteFinding,
   VaultHealthWeakFinding
 } from '../../../shared/vault-contract'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from './ui/alert'
@@ -52,7 +53,7 @@ import {
   type ExposedPasswordCheckState
 } from '../lib/vault-health-ui'
 
-type HealthTab = 'reused' | 'weak' | 'exposed' | 'account'
+type HealthTab = 'reused' | 'weak' | 'unsecured' | 'exposed' | 'account'
 
 interface VaultHealthPageProps {
   revision: string
@@ -79,18 +80,20 @@ function HealthEmpty({
 }: {
   kind: Exclude<HealthTab, 'exposed' | 'account'>
 }): React.JSX.Element {
+  const copy =
+    kind === 'reused'
+      ? ['沒有重複使用的密碼', '目前分析到的登入項目沒有共用相同密碼。']
+      : kind === 'weak'
+        ? ['沒有弱密碼', '目前分析到的登入項目都高於弱密碼門檻。']
+        : ['沒有不安全網站', '有效的個人登入項目都沒有使用 http:// URI。']
   return (
     <Empty className="min-h-56">
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <CheckCircle2 />
         </EmptyMedia>
-        <EmptyTitle>{kind === 'reused' ? '沒有重複使用的密碼' : '沒有弱密碼'}</EmptyTitle>
-        <EmptyDescription>
-          {kind === 'reused'
-            ? '目前分析到的登入項目沒有共用相同密碼。'
-            : '目前分析到的登入項目都高於弱密碼門檻。'}
-        </EmptyDescription>
+        <EmptyTitle>{copy[0]}</EmptyTitle>
+        <EmptyDescription>{copy[1]}</EmptyDescription>
       </EmptyHeader>
     </Empty>
   )
@@ -141,6 +144,35 @@ function WeakFindingCard({
           <Badge variant={finding.score <= 1 ? 'destructive' : 'outline'}>
             {weakPasswordLabel(finding.score)}
           </Badge>
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            aria-label={`查看${finding.name}`}
+            onClick={() => onOpenItem(finding.id)}
+          >
+            查看
+          </Button>
+        </CardAction>
+      </CardHeader>
+    </Card>
+  )
+}
+
+function UnsecuredWebsiteFindingCard({
+  finding,
+  onOpenItem
+}: {
+  finding: VaultHealthUnsecuredWebsiteFinding
+  onOpenItem: (id: string) => void
+}): React.JSX.Element {
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>{finding.name}</CardTitle>
+        <CardDescription>至少一個 URI 明確使用 http://</CardDescription>
+        <CardAction className="flex items-center gap-2">
+          <Badge variant="destructive">未加密連線</Badge>
           <Button
             variant="outline"
             size="sm"
@@ -797,7 +829,7 @@ export default function VaultHealthPage({
                 <p className="eyebrow">Vault Health</p>
                 <h1 id="health-title">保管庫健康報告</h1>
                 <p className="settings-subtitle">
-                  找出重複、容易猜中或出現在已知外洩紀錄的登入密碼。
+                  找出重複、容易猜中、出現在已知外洩紀錄的密碼與未加密網站 URI。
                 </p>
               </div>
             </div>
@@ -837,11 +869,11 @@ export default function VaultHealthPage({
             <HealthLoading />
           ) : report ? (
             <>
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <Card>
                   <CardHeader>
                     <CardTitle>已分析</CardTitle>
-                    <CardDescription>未受重新提示保護的有效登入項目</CardDescription>
+                    <CardDescription>具有密碼且未受重新提示保護的有效登入項目</CardDescription>
                     <CardAction>
                       <Badge variant="secondary">{report.totals.analyzedCount}</Badge>
                     </CardAction>
@@ -876,6 +908,20 @@ export default function VaultHealthPage({
                   </CardHeader>
                   <CardContent>評分會納入登入使用者名稱中的可辨識字詞。</CardContent>
                 </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>不安全網站</CardTitle>
+                    <CardDescription>至少一個 URI 以 http:// 開頭的個人登入項目</CardDescription>
+                    <CardAction>
+                      <Badge
+                        variant={report.totals.unsecuredWebsiteCount ? 'destructive' : 'secondary'}
+                      >
+                        {report.totals.unsecuredWebsiteCount}
+                      </Badge>
+                    </CardAction>
+                  </CardHeader>
+                  <CardContent>URI 僅在本機比對，完整網址與查詢參數不會傳到畫面。</CardContent>
+                </Card>
               </div>
 
               {report.totals.protectedSkippedCount > 0 && (
@@ -884,7 +930,7 @@ export default function VaultHealthPage({
                   <AlertTitle>受保護項目未分析</AlertTitle>
                   <AlertDescription>
                     {report.totals.protectedSkippedCount}{' '}
-                    個啟用主密碼重新提示的登入項目已略過，避免健康標籤洩漏受保護密碼的特徵。
+                    個啟用主密碼重新提示的登入項目已略過，避免健康標籤洩漏受保護內容的特徵。
                   </AlertDescription>
                 </Alert>
               )}
@@ -898,6 +944,10 @@ export default function VaultHealthPage({
                   <TabsTrigger value="weak">
                     弱密碼
                     <Badge variant="secondary">{report.totals.weakPasswordCount}</Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="unsecured">
+                    不安全網站
+                    <Badge variant="secondary">{report.totals.unsecuredWebsiteCount}</Badge>
                   </TabsTrigger>
                   <TabsTrigger value="exposed">
                     外洩密碼
@@ -958,6 +1008,19 @@ export default function VaultHealthPage({
                     ))
                   ) : (
                     <HealthEmpty kind="weak" />
+                  )}
+                </TabsContent>
+                <TabsContent value="unsecured" className="flex flex-col gap-3 pt-3">
+                  {report.unsecuredWebsites.length ? (
+                    report.unsecuredWebsites.map((finding) => (
+                      <UnsecuredWebsiteFindingCard
+                        key={finding.id}
+                        finding={finding}
+                        onOpenItem={onOpenItem}
+                      />
+                    ))
+                  ) : (
+                    <HealthEmpty kind="unsecured" />
                   )}
                 </TabsContent>
                 <TabsContent value="exposed" className="pt-3">

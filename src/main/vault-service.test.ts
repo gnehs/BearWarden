@@ -3151,7 +3151,14 @@ describe('VaultService encrypted local data', () => {
       name: 'Protected account',
       username: 'protected-user-canary',
       password: 'protected-password-canary',
-      reprompt: 1
+      reprompt: 1,
+      uris: [{ uri: 'http://protected.example/private?token=protected-uri-canary', match: null }]
+    })
+    const unsecured = await service.createLogin({
+      name: 'Unsecured account',
+      username: '',
+      password: '',
+      uris: [{ uri: 'http://localhost:8080/private?token=unsecured-uri-canary', match: null }]
     })
     const archived = await service.createLogin({
       name: 'Archived account',
@@ -3177,6 +3184,16 @@ describe('VaultService encrypted local data', () => {
         get: () => {
           throw new Error('health must not read a protected username')
         }
+      },
+      uris: {
+        get: () => {
+          throw new Error('health must not read protected URIs')
+        }
+      }
+    })
+    Object.defineProperty(internalData!, 'sharedLogins', {
+      get: () => {
+        throw new Error('personal health must not read shared organization items')
       }
     })
 
@@ -3189,6 +3206,7 @@ describe('VaultService encrypted local data', () => {
       analyzedCount: 3,
       weakPasswordCount: 1,
       reusedPasswordCount: 2,
+      unsecuredWebsiteCount: 1,
       protectedSkippedCount: 1
     })
     expect(report.weakPasswords).toEqual(
@@ -3200,9 +3218,11 @@ describe('VaultService encrypted local data', () => {
         expect.objectContaining({ id: reusedSecond.id, reuseCount: 2 })
       ])
     )
+    expect(report.unsecuredWebsites).toEqual([{ id: unsecured.id, name: 'Unsecured account' }])
     const reportedIds = new Set([
       ...report.weakPasswords.map((finding) => finding.id),
-      ...report.reusedPasswords.map((finding) => finding.id)
+      ...report.reusedPasswords.map((finding) => finding.id),
+      ...report.unsecuredWebsites.map((finding) => finding.id)
     ])
     expect(reportedIds).not.toContain(protectedLogin.id)
     expect(reportedIds).not.toContain(archived.id)
@@ -3212,6 +3232,9 @@ describe('VaultService encrypted local data', () => {
       '123',
       'A very long reusable test passphrase 2026!',
       'protected-password-canary',
+      'protected-uri-canary',
+      'unsecured-uri-canary',
+      'localhost:8080',
       'archived-password-canary',
       'trashed-password-canary'
     ]) {
