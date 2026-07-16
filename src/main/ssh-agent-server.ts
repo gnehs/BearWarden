@@ -54,6 +54,8 @@ export interface SshAgentListRequest {
 
 /** Public data only. Private SSH material must never enter the transport layer. */
 export interface SshAgentSignRequest {
+  /** Correlates one approved request with exactly one provider signing call. */
+  requestId: string
   publicKeyBlob: Buffer
   data: Buffer
   flags: number
@@ -65,6 +67,8 @@ export interface SshAgentSignRequest {
 
 /** The approval surface intentionally does not receive the bytes being signed. */
 export interface SshAgentApprovalRequest {
+  /** Correlates one approval with exactly one provider signing call. */
+  requestId: string
   publicKeyBlob: Buffer
   flags: number
   rsaHash: SshAgentRsaHash | undefined
@@ -382,8 +386,10 @@ export class SshAgentConnectionHandler {
     if (message.type === 'unknown') return buildSshAgentFailure()
 
     const connection = this.connectionContext()
+    const requestId = randomUUID()
     const approval = await this.withDeadline((signal) =>
       this.options.approvalHandler.approveSign({
+        requestId,
         publicKeyBlob: Buffer.from(message.keyBlob),
         flags: message.flags,
         rsaHash: message.rsaHash,
@@ -396,6 +402,7 @@ export class SshAgentConnectionHandler {
 
     const signature = await this.withDeadline((signal) =>
       this.options.provider.sign({
+        requestId,
         publicKeyBlob: Buffer.from(message.keyBlob),
         data: Buffer.from(message.data),
         flags: message.flags,

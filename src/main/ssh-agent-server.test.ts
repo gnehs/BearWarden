@@ -162,11 +162,20 @@ describe('SshAgentConnectionHandler', () => {
     const socket = new FakeSocket()
     const keyBlob = publicKeyBlob()
     const approvals: Buffer[] = []
+    let approvedRequestId: string | undefined
+    let signedRequestId: string | undefined
     const handler = new SshAgentConnectionHandler(socket, {
-      provider: stubProvider(keyBlob),
+      provider: {
+        ...stubProvider(keyBlob),
+        sign: async (request) => {
+          signedRequestId = request.requestId
+          return { algorithm: 'ssh-ed25519', signature: Buffer.alloc(64, 7) }
+        }
+      },
       approvalHandler: {
         approveSign: async (request) => {
           approvals.push(request.publicKeyBlob)
+          approvedRequestId = request.requestId
           expect(request).not.toHaveProperty('data')
           return true
         }
@@ -186,6 +195,8 @@ describe('SshAgentConnectionHandler', () => {
     expect(responses[0]?.[0]).toBe(12)
     expect(responses[1]?.[0]).toBe(14)
     expect(approvals).toEqual([keyBlob])
+    expect(approvedRequestId).toMatch(/^[0-9a-f-]{36}$/u)
+    expect(signedRequestId).toBe(approvedRequestId)
   })
 
   it('dispatches coalesced requests sequentially to preserve approvals and response order', async () => {
