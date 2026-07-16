@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const electronMock = vi.hoisted(() => ({
-  handlers: new Map<string, (event: unknown, input: unknown) => Promise<unknown>>()
+  handlers: new Map<string, (event: unknown, input: unknown) => Promise<unknown>>(),
+  removeHandler: vi.fn()
 }))
 
 vi.mock('electron', () => ({
@@ -12,7 +13,7 @@ vi.mock('electron', () => ({
         electronMock.handlers.set(channel, handler)
       }
     ),
-    removeHandler: vi.fn()
+    removeHandler: electronMock.removeHandler
   },
   Menu: { buildFromTemplate: vi.fn() }
 }))
@@ -26,7 +27,34 @@ import { SshKeyImportSessionStore } from './ssh-key-import-session'
 import { SshKeyImportError } from './ssh-key-import'
 import { TwoFactorDirectoryCacheError } from './two-factor-directory-cache'
 
-beforeEach(() => electronMock.handlers.clear())
+beforeEach(() => {
+  electronMock.handlers.clear()
+  electronMock.removeHandler.mockClear()
+})
+
+describe('registerVaultIpc lifecycle', () => {
+  it('removes only the handlers owned by the vault IPC registration', () => {
+    const dispose = registerVaultIpc({
+      vault: {} as VaultService,
+      portability: {} as Parameters<typeof registerVaultIpc>[0]['portability'],
+      settings: {} as AppSettingsService,
+      sshKeyImportSessions: new SshKeyImportSessionStore({ readClipboard: () => '' }),
+      getMainWindow: () => null
+    })
+    const ownedChannels = new Set(electronMock.handlers.keys())
+
+    expect(ownedChannels.has(IPC_CHANNELS.passkeyVerifyApproval)).toBe(false)
+    expect(ownedChannels.has(IPC_CHANNELS.sshAgentStatus)).toBe(false)
+
+    dispose()
+    dispose()
+
+    expect(new Set(electronMock.removeHandler.mock.calls.map(([channel]) => channel))).toEqual(
+      ownedChannels
+    )
+    expect(electronMock.removeHandler).toHaveBeenCalledTimes(ownedChannels.size)
+  })
+})
 
 describe('registerVaultIpc settings validation', () => {
   function settingsHarness(): {

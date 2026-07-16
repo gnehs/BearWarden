@@ -1693,7 +1693,7 @@ function publicError(code: VaultErrorCode): Error {
   return new Error(`${IPC_ERROR_PREFIX}${code}`)
 }
 
-function registerHandler<T>(
+function registerTrustedHandler<T>(
   channel: string,
   getMainWindow: () => BrowserWindow | null,
   handler: (event: IpcMainInvokeEvent, input: unknown) => Promise<T>
@@ -1715,6 +1715,15 @@ function registerHandler<T>(
 export function registerVaultIpc(options: VaultIpcOptions): () => void {
   const { vault, portability, settings, getMainWindow } = options
   let disposed = false
+  const registeredChannels = new Set<string>()
+  const registerHandler = <T>(
+    channel: string,
+    windowProvider: () => BrowserWindow | null,
+    handler: (event: IpcMainInvokeEvent, input: unknown) => Promise<T>
+  ): void => {
+    registerTrustedHandler(channel, windowProvider, handler)
+    registeredChannels.add(channel)
+  }
   const sshKeyImportSessions = options.sshKeyImportSessions
   const authorizations =
     options.repromptAuthorizations ??
@@ -2778,6 +2787,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     authorizations.clear()
     sshKeyImportSessions.clearAll()
     void portability.disposeNativeRestoreSession?.()
-    Object.values(IPC_CHANNELS).forEach((channel) => ipcMain.removeHandler(channel))
+    registeredChannels.forEach((channel) => ipcMain.removeHandler(channel))
+    registeredChannels.clear()
   }
 }
