@@ -747,6 +747,100 @@ describe('VaultService encrypted local data', () => {
     ).resolves.toMatchObject({ credentials: [] })
   })
 
+  it('discovers renderer-safe atomic passkey creation targets from raw active login data', async () => {
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        const fake = createSyncFake(sync.state)
+        const protectedLogin = fake.remoteLogins[0]!
+        protectedLogin.name = 'Protected one-passkey login'
+        protectedLogin.reprompt = 1
+
+        const noPasskey = structuredClone(protectedLogin)
+        noPasskey.id = '90000000-0000-4000-8000-000000000005'
+        noPasskey.name = 'Zero-passkey login'
+        noPasskey.reprompt = 0
+        noPasskey.passkeys = []
+
+        const archived = structuredClone(protectedLogin)
+        archived.id = '90000000-0000-4000-8000-000000000006'
+        archived.archivedAt = '2026-07-14T01:00:00.000Z'
+
+        const deleted = structuredClone(protectedLogin)
+        deleted.id = '90000000-0000-4000-8000-000000000007'
+        deleted.deletedAt = '2026-07-14T01:00:00.000Z'
+
+        const nonLogin = structuredClone(protectedLogin)
+        nonLogin.id = '90000000-0000-4000-8000-000000000008'
+        nonLogin.type = 'card'
+
+        const multiplePasskeys = structuredClone(protectedLogin)
+        multiplePasskeys.id = '90000000-0000-4000-8000-000000000009'
+        multiplePasskeys.name = 'Legacy multiple-passkey login'
+        multiplePasskeys.passkeys = [
+          structuredClone(protectedLogin.passkeys[0]!),
+          structuredClone(protectedLogin.passkeys[0]!)
+        ]
+
+        fake.remoteLogins.push(noPasskey, archived, deleted, nonLogin, multiplePasskeys)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+
+    const protectedItem = (await service.listLogins()).find(
+      (item) => item.name === 'Protected one-passkey login'
+    )
+    const noPasskeyItem = (await service.listLogins()).find(
+      (item) => item.name === 'Zero-passkey login'
+    )
+    if (!protectedItem || !noPasskeyItem) throw new Error('missing synced creation target')
+    const generation = await service.unlockedGeneration()
+    const discovered = await service.discoverPasskeyCreationTargets()
+
+    expect(discovered.generation).toBe(generation)
+    expect(discovered.targets).toEqual([
+      {
+        itemId: protectedItem.id,
+        itemName: 'Protected one-passkey login',
+        itemUpdatedAt: expect.any(String),
+        reprompt: 1,
+        existingPasskeyCount: 1
+      },
+      {
+        itemId: noPasskeyItem.id,
+        itemName: 'Zero-passkey login',
+        itemUpdatedAt: expect.any(String),
+        reprompt: 0,
+        existingPasskeyCount: 0
+      }
+    ])
+    expect(Object.keys(discovered.targets[0]!).sort()).toEqual([
+      'existingPasskeyCount',
+      'itemId',
+      'itemName',
+      'itemUpdatedAt',
+      'reprompt'
+    ])
+    const serialized = JSON.stringify(discovered)
+    expect(serialized).not.toContain('fake-passkey-private-material')
+    expect(serialized).not.toContain('credential-id')
+    expect(serialized).not.toContain('remote-test-secret')
+    expect(serialized).not.toContain('keyValue')
+
+    discovered.targets[0]!.itemName = 'mutated caller snapshot'
+    const rediscovered = await service.discoverPasskeyCreationTargets()
+    expect(rediscovered.generation).toBe(generation)
+    expect(rediscovered.targets[0]).toMatchObject({ itemName: 'Protected one-passkey login' })
+
+    await service.lock()
+    await expect(service.discoverPasskeyCreationTargets()).rejects.toMatchObject({ code: 'LOCKED' })
+  })
+
   it('discovers exact-RP UUID and b64 IDs while excluding archived, deleted, and non-login items', async () => {
     const b64Id = Buffer.alloc(32, 0xa5)
     const uuidId = '52217b91-73f1-4fea-b3f2-54a7959fd5aa'

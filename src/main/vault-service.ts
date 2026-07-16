@@ -308,6 +308,23 @@ export interface PasskeyVaultDiscoveryResult {
   credentials: PasskeyVaultCredentialCandidate[]
 }
 
+/**
+ * Main-process-only, renderer-safe metadata for choosing a login during passkey creation.
+ * It intentionally excludes all credential and secret fields and must not be added to preload.
+ */
+export interface PasskeyVaultCreationTarget {
+  itemId: string
+  itemName: string
+  itemUpdatedAt: string
+  reprompt: VaultReprompt
+  existingPasskeyCount: 0 | 1
+}
+
+export interface PasskeyVaultCreationTargetDiscoveryResult {
+  generation: number
+  targets: PasskeyVaultCreationTarget[]
+}
+
 export interface PasskeyVaultCreateRequest {
   itemId: string
   expectedUpdatedAt: string
@@ -3321,6 +3338,34 @@ export class VaultService {
           discoverable: passkey.discoverable
         }))
       }
+    })
+  }
+
+  /**
+   * Returns one atomic unlocked-vault snapshot for a passkey-create picker. Read raw stored
+   * logins rather than list summaries: protected summaries intentionally redact passkey counts.
+   */
+  discoverPasskeyCreationTargets(): Promise<PasskeyVaultCreationTargetDiscoveryResult> {
+    return this.exclusive(async () => {
+      const data = this.requireData()
+      const targets: PasskeyVaultCreationTarget[] = []
+      for (const login of data.logins) {
+        if (login.type !== 'login' || login.deletedAt !== null || login.archivedAt !== null) {
+          continue
+        }
+        // Bitwarden permits only one passkey per login item. Legacy/corrupt multi-passkey items
+        // are excluded fail-closed instead of offering an ambiguous replacement target.
+        if (login.passkeys.length > 1) continue
+        const existingPasskeyCount: 0 | 1 = login.passkeys.length === 0 ? 0 : 1
+        targets.push({
+          itemId: login.id,
+          itemName: login.name,
+          itemUpdatedAt: login.updatedAt,
+          reprompt: login.reprompt,
+          existingPasskeyCount
+        })
+      }
+      return { generation: this.generation, targets }
     })
   }
 
