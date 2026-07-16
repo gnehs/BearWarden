@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto'
+import { createPrivateKey, randomBytes, randomUUID, type KeyObject } from 'node:crypto'
 import {
   BitwardenCryptoError,
   clearBitwardenSymmetricKey,
@@ -8,6 +8,7 @@ import {
   decryptBitwardenCipherBlob,
   decryptBitwardenString,
   decryptBitwardenWrappedKey,
+  decryptRsaPrivateKey,
   deriveMasterKey,
   derivePasswordKey,
   encryptBitwardenBytes,
@@ -52,6 +53,7 @@ const USER_KEY_BYTES = 64
 const MAX_REMOTE_ENTITIES = 100_000
 const MAX_CUSTOM_FIELDS = 1_000
 const MAX_CUSTOM_FIELD_STRING_LENGTH = 5_000
+const MAX_NAME_LENGTH = 256
 const MAX_LOGIN_URIS = 1_000
 const MAX_PASSKEYS_PER_ITEM = 1_000
 const MAX_ATTACHMENTS_PER_ITEM = 1_000
@@ -182,6 +184,40 @@ export interface BitwardenLoginItem extends VaultItemFields {
   attachments: BitwardenAttachment[]
 }
 
+/** Renderer-safe metadata for an organization membership. Organization keys stay in main. */
+export interface BitwardenOrganization {
+  id: string
+  name: string
+  status: number | null
+  type: number | null
+  enabled: boolean
+  identifier: string | null
+  hasPublicAndPrivateKeys: boolean
+}
+
+/** Renderer-safe metadata for a synced organization Collection. */
+export interface BitwardenCollection {
+  id: string
+  organizationId: string
+  name: string
+  externalId: string | null
+  readOnly: boolean
+  hidePasswords: boolean
+  manage: boolean
+  type: number
+  assigned: boolean
+}
+
+/** Decrypted organization cipher with server-authoritative collection permissions. */
+export type BitwardenOrganizationCipher = Omit<BitwardenLoginItem, 'organizationId'> & {
+  organizationId: string
+  collectionIds: string[]
+  edit: boolean
+  viewPassword: boolean
+  delete: boolean
+  restore: boolean
+}
+
 /** Decrypted personal text Send metadata; encrypted fields remain main-process-only cache data. */
 export interface BitwardenSendItem {
   id: string
@@ -261,6 +297,9 @@ export interface BitwardenSyncClient {
     update: BitwardenEquivalentDomainUpdate,
     signal?: AbortSignal
   ): Promise<void>
+  listOrganizations?(): Promise<BitwardenOrganization[]>
+  listCollections?(): Promise<BitwardenCollection[]>
+  listOrganizationCiphers?(): Promise<BitwardenOrganizationCipher[]>
   listSends?(signal?: AbortSignal): Promise<BitwardenSendItem[]>
   createSend?(draft: BitwardenSendDraft, signal?: AbortSignal): Promise<BitwardenSendItem>
   updateSend?(
@@ -827,6 +866,19 @@ function cloneLoginItem(item: BitwardenLoginItem): BitwardenLoginItem {
   }
 }
 
+function cloneOrganizationCipher(item: BitwardenOrganizationCipher): BitwardenOrganizationCipher {
+  const loginItem = cloneLoginItem({ ...item, organizationId: null })
+  return {
+    ...loginItem,
+    organizationId: item.organizationId,
+    collectionIds: [...item.collectionIds],
+    edit: item.edit,
+    viewPassword: item.viewPassword,
+    delete: item.delete,
+    restore: item.restore
+  }
+}
+
 function attachmentSize(record: JsonObject): number {
   const value = property(record, 'size')
   if (value === undefined || value === null) return 0
@@ -1339,6 +1391,9 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   private userKey: BitwardenSymmetricKey | null = null
   private folders = new Map<string, CachedFolder>()
   private logins = new Map<string, CachedLogin>()
+  private organizations = new Map<string, BitwardenOrganization>()
+  private collections = new Map<string, BitwardenCollection>()
+  private organizationCiphers = new Map<string, BitwardenOrganizationCipher>()
   private sends = new Map<string, CachedSend>()
 
   constructor(private readonly options: BitwardenDirectOptions) {
@@ -1564,15 +1619,68 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
 
       const nextFolders = new Map<string, CachedFolder>()
       const nextLogins = new Map<string, CachedLogin>()
+      const nextOrganizations = new Map<string, BitwardenOrganization>()
+      const nextCollections = new Map<string, BitwardenCollection>()
+      const nextOrganizationCiphers = new Map<string, BitwardenOrganizationCipher>()
       const nextSends = new Map<string, CachedSend>()
+      const organizationKeys = new Map<string, Buffer>()
       try {
         const folderRows = arrayProperty(payload, 'folders')
         const cipherRows = arrayProperty(payload, 'ciphers')
+        const collectionsValue = property(payload, 'collections')
+        const collectionRows =
+          collectionsValue === undefined || collectionsValue === null
+            ? []
+            : arrayProperty(payload, 'collections')
         const sendsValue = property(payload, 'sends')
         const sendRows =
           sendsValue === undefined || sendsValue === null ? [] : arrayProperty(payload, 'sends')
+        const organizationsValue = property(profile, 'organizationsNew')
+        const legacyOrganizationsValue = property(profile, 'organizations')
+        const organizationRows = (() => {
+          const rows =
+            Array.isArray(organizationsValue) && organizationsValue.length > 0
+              ? organizationsValue
+              : (legacyOrganizationsValue ?? organizationsValue)
+          if (rows === undefined || rows === null) return []
+          if (!Array.isArray(rows) || rows.length > MAX_REMOTE_ENTITIES) {
+            throw new BitwardenDirectError('INVALID_RESPONSE')
+          }
+          return rows
+        })()
+        const organizationRowsById = new Map<string, JsonObject>()
+        for (const value of organizationRows) {
+          if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+          const organization = this.parseOrganization(value)
+          if (organizationRowsById.has(organization.id)) {
+            throw new BitwardenDirectError('INVALID_RESPONSE')
+          }
+          organizationRowsById.set(organization.id, value)
+          nextOrganizations.set(organization.id, organization)
+        }
+        const hasOrganizationCiphers = cipherRows.some((value) => {
+          if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+          const organizationId = property(value, 'organizationId')
+          return organizationId !== undefined && organizationId !== null
+        })
+        const hasOrganizationEncryptedData = collectionRows.length > 0 || hasOrganizationCiphers
+        const accountPrivateKey = hasOrganizationEncryptedData
+          ? this.resolveAccountPrivateKey(profile, userKey)
+          : null
+        for (const [organizationId, rawOrganization] of organizationRowsById) {
+          const encryptedKey = stringProperty(rawOrganization, 'key')
+          if (!encryptedKey) continue
+          if (!accountPrivateKey) throw new BitwardenDirectError('UNSUPPORTED_ACCOUNT_ENCRYPTION')
+          const organizationKey = this.decryptOrganizationKey(
+            encryptedKey,
+            userKey,
+            accountPrivateKey
+          )
+          organizationKeys.set(organizationId, organizationKey)
+        }
         let aggregateRows = addAggregateRemoteRows(0, folderRows.length)
         aggregateRows = addAggregateRemoteRows(aggregateRows, cipherRows.length)
+        aggregateRows = addAggregateRemoteRows(aggregateRows, collectionRows.length)
         aggregateRows = addAggregateRemoteRows(aggregateRows, sendRows.length)
         for (const value of folderRows) {
           if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
@@ -1583,7 +1691,36 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
           if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
           const type = property(value, 'type')
           const organizationId = property(value, 'organizationId')
-          if (organizationId !== null && organizationId !== undefined) continue
+          if (organizationId !== null && organizationId !== undefined) {
+            if (typeof organizationId !== 'string' || !UUID_PATTERN.test(organizationId)) {
+              throw new BitwardenDirectError('INVALID_RESPONSE')
+            }
+            const organizationKey = organizationKeys.get(organizationId)
+            if (!organizationKey || !organizationRowsById.has(organizationId)) {
+              throw new BitwardenDirectError('INVALID_RESPONSE')
+            }
+            if (
+              property(value, 'type') !== 1 &&
+              property(value, 'type') !== 2 &&
+              property(value, 'type') !== 3 &&
+              property(value, 'type') !== 4 &&
+              property(value, 'type') !== 5
+            ) {
+              continue
+            }
+            const item = this.decryptLogin(value, organizationKey)
+            const organizationCipher = this.organizationCipher(value, item, organizationId)
+            nextOrganizationCiphers.set(organizationCipher.id, organizationCipher)
+            aggregateRows = addAggregateRemoteRows(
+              aggregateRows,
+              item.uris.length +
+                item.passkeys.length +
+                item.customFields.length +
+                item.passwordHistory.length +
+                item.attachments.length
+            )
+            continue
+          }
           if (type !== 1 && type !== 2 && type !== 3 && type !== 4 && type !== 5) continue
           const item = this.decryptLogin(value, userKey)
           aggregateRows = addAggregateRemoteRows(
@@ -1596,20 +1733,40 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
           )
           nextLogins.set(item.id, { raw: structuredClone(value), item })
         }
+        for (const value of collectionRows) {
+          if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+          const collection = this.decryptCollection(value, organizationKeys)
+          if (nextCollections.has(collection.id)) throw new BitwardenDirectError('INVALID_RESPONSE')
+          nextCollections.set(collection.id, collection)
+        }
+        for (const cipher of nextOrganizationCiphers.values()) {
+          for (const collectionId of cipher.collectionIds) {
+            const collection = nextCollections.get(collectionId)
+            if (!collection || collection.organizationId !== cipher.organizationId) {
+              throw new BitwardenDirectError('INVALID_RESPONSE')
+            }
+          }
+        }
         for (const value of sendRows) {
           if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
           const send = this.decryptSend(value, userKey)
           nextSends.set(send.item.id, send)
         }
       } catch (error) {
+        for (const organizationKey of organizationKeys.values()) organizationKey.fill(0)
         clearBitwardenSymmetricKey(userKey)
         throw error
       }
+
+      for (const organizationKey of organizationKeys.values()) organizationKey.fill(0)
 
       clearBitwardenSymmetricKey(this.userKey)
       this.userKey = userKey
       this.folders = nextFolders
       this.logins = nextLogins
+      this.organizations = nextOrganizations
+      this.collections = nextCollections
+      this.organizationCiphers = nextOrganizationCiphers
       this.sends = nextSends
       this.state.profileId = profileId
       this.state.securityStamp = securityStamp
@@ -1628,6 +1785,21 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   async listPersonalLogins(): Promise<BitwardenLoginItem[]> {
     this.requireUserKey()
     return [...this.logins.values()].map(({ item }) => cloneLoginItem(item))
+  }
+
+  async listOrganizations(): Promise<BitwardenOrganization[]> {
+    this.requireUserKey()
+    return [...this.organizations.values()].map((organization) => ({ ...organization }))
+  }
+
+  async listCollections(): Promise<BitwardenCollection[]> {
+    this.requireUserKey()
+    return [...this.collections.values()].map((collection) => ({ ...collection }))
+  }
+
+  async listOrganizationCiphers(): Promise<BitwardenOrganizationCipher[]> {
+    this.requireUserKey()
+    return [...this.organizationCiphers.values()].map(cloneOrganizationCipher)
   }
 
   async downloadAttachment(
@@ -2221,6 +2393,148 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     return {
       id: requiredStringProperty(raw, 'id'),
       name: decryptBitwardenString(requiredStringProperty(raw, 'name'), userKey)
+    }
+  }
+
+  private parseOrganization(raw: JsonObject): BitwardenOrganization {
+    const id = assertUuidValue(requiredStringProperty(raw, 'id'))
+    const name = requiredStringProperty(raw, 'name')
+    if (name.length > MAX_NAME_LENGTH) throw new BitwardenDirectError('INVALID_RESPONSE')
+    const statusValue = property(raw, 'status')
+    const typeValue = property(raw, 'type')
+    const parseOptionalInteger = (value: JsonValue | undefined): number | null => {
+      if (value === undefined || value === null) return null
+      if (!Number.isSafeInteger(value) || typeof value !== 'number' || value < 0) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      return value
+    }
+    return {
+      id,
+      name,
+      status: parseOptionalInteger(statusValue),
+      type: parseOptionalInteger(typeValue),
+      enabled: booleanProperty(raw, 'enabled', true),
+      identifier: nullableStringProperty(raw, 'identifier'),
+      hasPublicAndPrivateKeys: booleanProperty(raw, 'hasPublicAndPrivateKeys')
+    }
+  }
+
+  private resolveAccountPrivateKey(
+    profile: JsonObject,
+    userKey: BitwardenSymmetricKey
+  ): KeyObject | null {
+    const accountKeys = recordProperty(profile, 'accountKeys')
+    const encryptionPair = accountKeys
+      ? recordProperty(accountKeys, 'publicKeyEncryptionKeyPair')
+      : null
+    const wrappedPrivateKey = encryptionPair
+      ? stringProperty(encryptionPair, 'wrappedPrivateKey')
+      : null
+    if (wrappedPrivateKey?.startsWith('7.')) {
+      const privateKeyBytes = decryptBitwardenBytes(wrappedPrivateKey, userKey)
+      try {
+        return createPrivateKey({ key: privateKeyBytes, format: 'der', type: 'pkcs8' })
+      } catch {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      } finally {
+        privateKeyBytes.fill(0)
+      }
+    }
+
+    const legacyPrivateKey = stringProperty(profile, 'privateKey') ?? wrappedPrivateKey
+    if (!legacyPrivateKey || !Buffer.isBuffer(userKey)) return null
+    try {
+      return decryptRsaPrivateKey(legacyPrivateKey, userKey)
+    } catch {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+  }
+
+  private decryptOrganizationKey(
+    encryptedKey: string,
+    userKey: BitwardenSymmetricKey,
+    privateKey: KeyObject
+  ): Buffer {
+    const encoded = decryptBitwardenString(encryptedKey, userKey, privateKey)
+    if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(encoded) || encoded.length % 4 !== 0) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    const organizationKey = Buffer.from(encoded, 'base64')
+    if (
+      organizationKey.length !== USER_KEY_BYTES ||
+      organizationKey.toString('base64') !== encoded
+    ) {
+      organizationKey.fill(0)
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    return organizationKey
+  }
+
+  private decryptCollection(
+    raw: JsonObject,
+    organizationKeys: ReadonlyMap<string, Buffer>
+  ): BitwardenCollection {
+    const id = assertUuidValue(requiredStringProperty(raw, 'id'))
+    const organizationId = assertUuidValue(requiredStringProperty(raw, 'organizationId'))
+    const organizationKey = organizationKeys.get(organizationId)
+    if (!organizationKey) throw new BitwardenDirectError('INVALID_RESPONSE')
+    const name = decryptBitwardenString(requiredStringProperty(raw, 'name'), organizationKey)
+    if (name.length > MAX_NAME_LENGTH) throw new BitwardenDirectError('INVALID_RESPONSE')
+    const type = property(raw, 'type')
+    if (
+      type !== undefined &&
+      type !== null &&
+      (typeof type !== 'number' || !Number.isSafeInteger(type) || type < 0)
+    ) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    return {
+      id,
+      organizationId,
+      name,
+      externalId: nullableStringProperty(raw, 'externalId'),
+      readOnly: booleanProperty(raw, 'readOnly'),
+      hidePasswords: booleanProperty(raw, 'hidePasswords'),
+      manage: booleanProperty(raw, 'manage'),
+      type: (type ?? 0) as number,
+      assigned: booleanProperty(raw, 'assigned')
+    }
+  }
+
+  private organizationCipher(
+    raw: JsonObject,
+    item: BitwardenLoginItem,
+    organizationId: string
+  ): BitwardenOrganizationCipher {
+    const collectionIdsValue = property(raw, 'collectionIds')
+    if (
+      collectionIdsValue !== undefined &&
+      collectionIdsValue !== null &&
+      (!Array.isArray(collectionIdsValue) || collectionIdsValue.length > MAX_REMOTE_ENTITIES)
+    ) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    const collectionIds = (Array.isArray(collectionIdsValue) ? collectionIdsValue : []).map(
+      (value) => {
+        if (typeof value !== 'string' || !UUID_PATTERN.test(value)) {
+          throw new BitwardenDirectError('INVALID_RESPONSE')
+        }
+        return value
+      }
+    )
+    if (new Set(collectionIds).size !== collectionIds.length) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    const permissions = recordProperty(raw, 'permissions')
+    return {
+      ...item,
+      organizationId,
+      collectionIds,
+      edit: booleanProperty(raw, 'edit'),
+      viewPassword: booleanProperty(raw, 'viewPassword', true),
+      delete: permissions ? booleanProperty(permissions, 'delete') : false,
+      restore: permissions ? booleanProperty(permissions, 'restore') : false
     }
   }
 
@@ -2839,6 +3153,9 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     this.userKey = null
     this.folders.clear()
     this.logins.clear()
+    this.organizations.clear()
+    this.collections.clear()
+    this.organizationCiphers.clear()
     this.sends.clear()
   }
 

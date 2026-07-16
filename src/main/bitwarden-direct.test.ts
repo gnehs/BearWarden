@@ -1,4 +1,11 @@
-import { createCipheriv, createHmac, generateKeyPairSync, webcrypto } from 'node:crypto'
+import {
+  constants,
+  createCipheriv,
+  createHmac,
+  generateKeyPairSync,
+  publicEncrypt,
+  webcrypto
+} from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 import { Encoder } from 'cbor-x'
 import {
@@ -36,6 +43,9 @@ const SSH_ID = '30000000-0000-4000-8000-000000000005'
 const DELETED_AT = '2026-07-15T00:00:00.000Z'
 const ARCHIVED_AT = '2026-07-15T01:00:00.000Z'
 const SEND_ID = '50000000-0000-4000-8000-000000000001'
+const ORGANIZATION_ID = '60000000-0000-4000-8000-000000000001'
+const COLLECTION_ID = '70000000-0000-4000-8000-000000000001'
+const ORGANIZATION_CIPHER_ID = '80000000-0000-4000-8000-000000000001'
 
 async function encryptedSync(
   options: {
@@ -793,6 +803,119 @@ async function expectInvalidSync(sync: JsonObject): Promise<void> {
 }
 
 describe('BitwardenDirectClient', () => {
+  it('decrypts organization keys and keeps shared ciphers separate from personal items', async () => {
+    const sync = await encryptedSync()
+    const userKey = Buffer.alloc(64, 7)
+    const organizationKey = Buffer.alloc(64, 11)
+    const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 })
+    const privateKey = rsa.privateKey.export({ format: 'der', type: 'pkcs8' })
+    const encryptedOrganizationKey = publicEncrypt(
+      {
+        key: rsa.publicKey,
+        padding: constants.RSA_PKCS1_OAEP_PADDING,
+        oaepHash: 'sha256'
+      },
+      Buffer.from(organizationKey.toString('base64'))
+    )
+    const personalCipher = (sync.ciphers as JsonObject[])[0]!
+    const sharedCipher: JsonObject = {
+      ...personalCipher,
+      id: ORGANIZATION_CIPHER_ID,
+      organizationId: ORGANIZATION_ID,
+      collectionIds: [COLLECTION_ID],
+      folderId: null,
+      name: encryptBitwardenString('Shared Example', Buffer.alloc(64, 9)),
+      key: encryptBitwardenBytes(Buffer.alloc(64, 9), organizationKey),
+      edit: true,
+      viewPassword: false,
+      permissions: { delete: true, restore: false }
+    }
+    sync.profile = {
+      ...(sync.profile as JsonObject),
+      privateKey: encryptBitwardenBytes(privateKey, userKey),
+      organizations: [
+        {
+          id: ORGANIZATION_ID,
+          name: 'Shared Team',
+          key: `3.${encryptedOrganizationKey.toString('base64')}`,
+          status: 0,
+          type: 0,
+          enabled: true,
+          identifier: 'shared-team',
+          hasPublicAndPrivateKeys: false
+        }
+      ]
+    }
+    sync.collections = [
+      {
+        id: COLLECTION_ID,
+        organizationId: ORGANIZATION_ID,
+        name: encryptBitwardenString('Shared Collection', organizationKey),
+        externalId: null,
+        readOnly: false,
+        hidePasswords: false,
+        manage: true,
+        type: 0,
+        assigned: true
+      }
+    ]
+    sync.ciphers = [personalCipher, sharedCipher]
+    privateKey.fill(0)
+    userKey.fill(0)
+    organizationKey.fill(0)
+
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          return jsonResponse({
+            access_token: 'access-token',
+            refresh_token: 'refresh-token',
+            expires_in: 3_600
+          })
+        }
+        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+    await expect(client.listPersonalLogins()).resolves.toEqual([
+      expect.objectContaining({ id: LOGIN_ID, name: 'Example' })
+    ])
+    await expect(client.listOrganizations()).resolves.toEqual([
+      expect.objectContaining({ id: ORGANIZATION_ID, name: 'Shared Team' })
+    ])
+    await expect(client.listCollections()).resolves.toEqual([
+      expect.objectContaining({
+        id: COLLECTION_ID,
+        organizationId: ORGANIZATION_ID,
+        name: 'Shared Collection'
+      })
+    ])
+    await expect(client.listOrganizationCiphers()).resolves.toEqual([
+      expect.objectContaining({
+        id: ORGANIZATION_CIPHER_ID,
+        organizationId: ORGANIZATION_ID,
+        collectionIds: [COLLECTION_ID],
+        name: 'Shared Example',
+        username: 'bear@example.invalid',
+        viewPassword: false,
+        delete: true,
+        restore: false
+      })
+    ])
+  })
+
   it('syncs and decrypts personal text Sends while keeping the URL seed main-process-only', async () => {
     const sync = await encryptedSync()
     const userKey = Buffer.alloc(64, 7)
