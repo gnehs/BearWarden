@@ -1003,6 +1003,7 @@ describe('VaultService encrypted local data', () => {
 
     expect(authorize).toHaveBeenCalledWith([view.id], { generation })
     expect(assertion.counter).toBe('8')
+    expect(assertion.didPersistCounter).toBe(true)
     expect(Buffer.from(assertion.authenticatorData).readUInt32BE(33)).toBe(8)
     expect(JSON.stringify(assertion)).not.toContain('keyValue')
     expect(
@@ -1071,6 +1072,7 @@ describe('VaultService encrypted local data', () => {
     )
 
     expect(assertion.counter).toBe('0')
+    expect(assertion.didPersistCounter).toBe(false)
     expect(Buffer.from(assertion.authenticatorData).readUInt32BE(33)).toBe(0)
     expect(write).not.toHaveBeenCalled()
     await expect(service.getLogin({ id: login.id })).resolves.toMatchObject({

@@ -376,6 +376,8 @@ export interface PasskeyVaultAssertionResult {
   authenticatorData: Uint8Array
   signature: Uint8Array
   counter: string
+  /** Main-only lifecycle hint; true only when the encrypted vault committed a counter update. */
+  didPersistCounter: boolean
 }
 
 interface PasskeyVaultMatch {
@@ -3507,7 +3509,8 @@ export class VaultService {
         userHandle: assertion.userHandle === null ? null : Uint8Array.from(assertion.userHandle),
         authenticatorData: Uint8Array.from(assertion.authenticatorData),
         signature: Uint8Array.from(assertion.signature),
-        counter: assertion.counter
+        counter: assertion.counter,
+        didPersistCounter: assertion.counter !== match.passkey.counter
       }
     })
   }
