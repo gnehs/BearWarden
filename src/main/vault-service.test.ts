@@ -1,4 +1,5 @@
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { createPublicKey, verify } from 'node:crypto'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -11,8 +12,15 @@ import {
 } from './bitwarden-direct'
 import type { CustomFieldRequest, LoginView, VaultItemFields } from '../shared/vault-contract'
 import { EncryptedVaultStore } from './encrypted-vault-store'
-import { VaultService, type VaultServiceOptions } from './vault-service'
+import {
+  VaultService,
+  type PasskeyVaultAuthorizationValidator,
+  type PasskeyVaultCreateRequest,
+  type PasskeyVaultCreateResult,
+  type VaultServiceOptions
+} from './vault-service'
 import { VaultAttachmentFileService } from './vault-attachment-files'
+import { createPasskeyCredential } from './passkey-authenticator'
 
 const MASTER_PASSWORD = 'correct horse battery staple'
 const ATTACHMENT_OPERATION_ID = '70000000-0000-4000-8000-000000000001'
@@ -106,6 +114,35 @@ async function createHarness(options: VaultServiceOptions = {}): Promise<{
     }
   )
   return { directory, filePath, store, service, copyText, openExternal }
+}
+
+const PASSKEY_RP_ID = 'login.example.invalid'
+
+async function createVaultPasskey(
+  service: VaultService,
+  login: LoginView,
+  overrides: Partial<PasskeyVaultCreateRequest> = {},
+  validateAuthorization: PasskeyVaultAuthorizationValidator = () => true
+): Promise<PasskeyVaultCreateResult> {
+  const expectedGeneration = await service.unlockedGeneration()
+  return service.createPasskey(
+    {
+      itemId: login.id,
+      expectedUpdatedAt: login.updatedAt,
+      expectedGeneration,
+      rpId: PASSKEY_RP_ID,
+      rpName: 'Example',
+      userHandle: Buffer.from('opaque-test-user-handle'),
+      userName: 'test-user',
+      userDisplayName: 'Test User',
+      discoverable: true,
+      replaceExisting: false,
+      requireUserVerification: false,
+      userVerified: false,
+      ...overrides
+    },
+    validateAuthorization
+  )
 }
 
 function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient & {
@@ -572,6 +609,517 @@ describe('VaultService encrypted local data', () => {
     await expect(service.getLogin({ id: login.id })).resolves.toMatchObject({
       passkeys: [expect.objectContaining({ credentialId: 'credential-id' })]
     })
+  })
+
+  it('creates one passkey inside the authorized vault transaction and syncs it safely', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { filePath, service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    const login = await service.createLogin({
+      name: 'Passkey login',
+      username: '',
+      reprompt: 1
+    })
+    const generation = await service.unlockedGeneration()
+    const authorize = vi.fn<PasskeyVaultAuthorizationValidator>(() => true)
+
+    await expect(
+      createVaultPasskey(service, login, {
+        userVerified: false,
+        requireUserVerification: true
+      })
+    ).rejects.toMatchObject({ code: 'REPROMPT_REQUIRED' })
+    await expect(
+      createVaultPasskey(
+        service,
+        login,
+        { userVerified: true },
+        vi.fn<PasskeyVaultAuthorizationValidator>(() => false)
+      )
+    ).rejects.toMatchObject({ code: 'REPROMPT_REQUIRED' })
+
+    const created = await createVaultPasskey(
+      service,
+      login,
+      { userVerified: true, requireUserVerification: true },
+      authorize
+    )
+
+    expect(authorize).toHaveBeenCalledWith([login.id], { generation })
+    expect(created.generation).toBe(generation)
+    expect(created.publicKeyAlgorithm).toBe(-7)
+    expect(created.item).toMatchObject({
+      id: login.id,
+      username: 'test-user',
+      passkeys: [
+        expect.objectContaining({
+          credentialId: IDS[1],
+          rpId: PASSKEY_RP_ID,
+          discoverable: true
+        })
+      ]
+    })
+    expect(created.credentialId).toEqual(
+      Uint8Array.from(Buffer.from(IDS[1]!.replaceAll('-', ''), 'hex'))
+    )
+    expect(JSON.stringify(created)).not.toContain('keyValue')
+    expect(JSON.stringify(created)).not.toContain('PRIVATE KEY')
+
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const pushed = fake!.remoteLogins.find((item) => item.name === 'Passkey login')
+    expect(pushed?.passkeys).toHaveLength(1)
+    expect(pushed?.passkeys[0]).toMatchObject({
+      credentialId: IDS[1],
+      rpId: PASSKEY_RP_ID,
+      keyAlgorithm: 'ECDSA',
+      keyCurve: 'P-256'
+    })
+
+    await service.lock()
+    const reopened = new VaultService(new EncryptedVaultStore(filePath), {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await reopened.unlock(MASTER_PASSWORD)
+    const persisted = await reopened.discoverPasskeyCredentials({ rpId: PASSKEY_RP_ID })
+    expect(persisted.credentials).toHaveLength(1)
+    expect(JSON.stringify(persisted)).not.toContain('keyValue')
+  })
+
+  it('enforces exclude credentials, stale revisions, replacement intent, and one-passkey storage', async () => {
+    const { service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const first = await service.createLogin({ name: 'First login' })
+    const firstPasskey = await createVaultPasskey(service, first)
+    await service.archiveLogin({ id: first.id })
+
+    const second = await service.createLogin({ name: 'Second login' })
+    const secondPasskey = await createVaultPasskey(service, second, {
+      excludeCredentialIds: [firstPasskey.credentialId]
+    })
+    const third = await service.createLogin({ name: 'Third login' })
+    const write = vi.spyOn(store, 'write')
+
+    await expect(
+      createVaultPasskey(service, third, {
+        excludeCredentialIds: [secondPasskey.credentialId]
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      createVaultPasskey(service, secondPasskey.item, { replaceExisting: false })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      createVaultPasskey(service, secondPasskey.item, {
+        expectedUpdatedAt: '2026-01-01T00:00:00.000Z',
+        replaceExisting: true
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    expect(write).not.toHaveBeenCalled()
+
+    const replacement = await createVaultPasskey(service, secondPasskey.item, {
+      replaceExisting: true
+    })
+    expect(replacement.item.passkeys).toHaveLength(1)
+    expect(replacement.item.passkeys[0]!.credentialId).not.toBe(
+      secondPasskey.item.passkeys[0]!.credentialId
+    )
+  })
+
+  it('rolls back passkey creation when encrypted persistence fails', async () => {
+    const { service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const login = await service.createLogin({ name: 'Passkey login' })
+    vi.spyOn(store, 'write').mockRejectedValueOnce(new Error('injected persistence failure'))
+
+    await expect(createVaultPasskey(service, login)).rejects.toThrow('injected persistence failure')
+    await expect(service.getLogin({ id: login.id })).resolves.toMatchObject({ passkeys: [] })
+    await expect(
+      service.discoverPasskeyCredentials({ rpId: PASSKEY_RP_ID })
+    ).resolves.toMatchObject({ credentials: [] })
+  })
+
+  it('discovers exact-RP UUID and b64 IDs while excluding archived, deleted, and non-login items', async () => {
+    const b64Id = Buffer.alloc(32, 0xa5)
+    const uuidId = '52217b91-73f1-4fea-b3f2-54a7959fd5aa'
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        const fake = createSyncFake(sync.state)
+        const base = fake.remoteLogins[0]!
+        base.name = 'Discoverable b64'
+        base.passkeys[0]!.credentialId = `b64.${b64Id.toString('base64url')}`
+        base.passkeys[0]!.rpId = PASSKEY_RP_ID
+        base.passkeys[0]!.discoverable = true
+
+        const nonDiscoverable = structuredClone(base)
+        nonDiscoverable.id = '90000000-0000-4000-8000-000000000005'
+        nonDiscoverable.name = 'Allowed UUID'
+        nonDiscoverable.passkeys[0]!.credentialId = uuidId
+        nonDiscoverable.passkeys[0]!.discoverable = false
+        const archived = structuredClone(base)
+        archived.id = '90000000-0000-4000-8000-000000000006'
+        archived.archivedAt = '2026-07-14T01:00:00.000Z'
+        const deleted = structuredClone(base)
+        deleted.id = '90000000-0000-4000-8000-000000000007'
+        deleted.deletedAt = '2026-07-14T01:00:00.000Z'
+        const card = structuredClone(base)
+        card.id = '90000000-0000-4000-8000-000000000008'
+        card.type = 'card'
+        fake.remoteLogins.push(nonDiscoverable, archived, deleted, card)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+
+    const discoverable = await service.discoverPasskeyCredentials({ rpId: PASSKEY_RP_ID })
+    expect(discoverable.credentials).toHaveLength(1)
+    expect(discoverable.credentials[0]).toMatchObject({
+      itemName: 'Discoverable b64',
+      credentialId: Uint8Array.from(b64Id),
+      discoverable: true
+    })
+    const allowed = await service.discoverPasskeyCredentials({
+      rpId: PASSKEY_RP_ID,
+      allowCredentialIds: [Buffer.from(uuidId.replaceAll('-', ''), 'hex')]
+    })
+    expect(allowed.credentials).toHaveLength(1)
+    expect(allowed.credentials[0]).toMatchObject({
+      itemName: 'Allowed UUID',
+      credentialId: Uint8Array.from(Buffer.from(uuidId.replaceAll('-', ''), 'hex')),
+      discoverable: false
+    })
+    await expect(
+      service.discoverPasskeyCredentials({ rpId: 'other.example.invalid' })
+    ).resolves.toMatchObject({ credentials: [] })
+    expect(JSON.stringify(discoverable)).not.toContain('fake-passkey-private-material')
+  })
+
+  it('fails closed when an exact-RP credential ID is ambiguous', async () => {
+    const rawId = Buffer.alloc(24, 0x6c)
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        const fake = createSyncFake(sync.state)
+        const base = fake.remoteLogins[0]!
+        base.passkeys[0]!.credentialId = `b64.${rawId.toString('base64url')}`
+        base.passkeys[0]!.rpId = PASSKEY_RP_ID
+        const duplicate = structuredClone(base)
+        duplicate.id = '90000000-0000-4000-8000-000000000005'
+        duplicate.name = 'Duplicate credential'
+        duplicate.passkeys[0]!.discoverable = false
+        fake.remoteLogins.push(duplicate)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+
+    await expect(service.discoverPasskeyCredentials({ rpId: PASSKEY_RP_ID })).rejects.toMatchObject(
+      { code: 'INVALID_INPUT' }
+    )
+  })
+
+  it('signs a verifiable assertion and atomically persists a non-zero counter', async () => {
+    const softwareCredential = await createPasskeyCredential(
+      {
+        rpId: PASSKEY_RP_ID,
+        rpName: 'Example',
+        userHandle: Buffer.from('opaque-test-user-handle'),
+        userName: 'test-user',
+        userDisplayName: 'Test User',
+        discoverable: false,
+        userVerified: true
+      },
+      {
+        uuid: () => '52217b91-73f1-4fea-b3f2-54a7959fd5aa',
+        now: () => new Date('2026-07-14T00:00:00.000Z')
+      }
+    )
+    softwareCredential.credential.counter = '7'
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { filePath, service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.remoteLogins[0]!.passkeys = [structuredClone(softwareCredential.credential)]
+        fake.remoteLogins[0]!.reprompt = 1
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const login = (await service.listLogins()).find((item) => item.name === 'Remote login')!
+    const view = await service.getLogin({ id: login.id })
+    const generation = await service.unlockedGeneration()
+    const clientDataHash = Buffer.alloc(32, 0x42)
+    const authorize = vi.fn<PasskeyVaultAuthorizationValidator>(() => true)
+
+    await expect(
+      service.discoverPasskeyCredentials({ rpId: PASSKEY_RP_ID })
+    ).resolves.toMatchObject({ credentials: [] })
+    await expect(
+      service.getPasskeyAssertion(
+        {
+          itemId: view.id,
+          credentialId: softwareCredential.credentialId,
+          expectedUpdatedAt: view.updatedAt,
+          expectedGeneration: generation,
+          rpId: PASSKEY_RP_ID,
+          clientDataHash,
+          requireUserVerification: true,
+          userVerified: true
+        },
+        authorize
+      )
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' })
+
+    const assertion = await service.getPasskeyAssertion(
+      {
+        itemId: view.id,
+        credentialId: softwareCredential.credentialId,
+        expectedUpdatedAt: view.updatedAt,
+        expectedGeneration: generation,
+        rpId: PASSKEY_RP_ID,
+        clientDataHash,
+        allowCredentialIds: [softwareCredential.credentialId],
+        requireUserVerification: true,
+        userVerified: true
+      },
+      authorize
+    )
+
+    expect(authorize).toHaveBeenCalledWith([view.id], { generation })
+    expect(assertion.counter).toBe('8')
+    expect(Buffer.from(assertion.authenticatorData).readUInt32BE(33)).toBe(8)
+    expect(JSON.stringify(assertion)).not.toContain('keyValue')
+    expect(
+      verify(
+        'sha256',
+        Buffer.concat([Buffer.from(assertion.authenticatorData), clientDataHash]),
+        createPublicKey({
+          key: Buffer.from(softwareCredential.publicKey),
+          format: 'der',
+          type: 'spki'
+        }),
+        Buffer.from(assertion.signature)
+      )
+    ).toBe(true)
+
+    await service.syncNow()
+    expect(fake!.remoteLogins[0]!.passkeys[0]!.counter).toBe('8')
+    await service.lock()
+    const reopened = new VaultService(new EncryptedVaultStore(filePath), {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await reopened.unlock(MASTER_PASSWORD)
+    const persisted = await reopened.discoverPasskeyCredentials({
+      rpId: PASSKEY_RP_ID,
+      allowCredentialIds: [softwareCredential.credentialId]
+    })
+    const persistedCredential = persisted.credentials[0]!
+    const nextAssertion = await reopened.getPasskeyAssertion(
+      {
+        itemId: persistedCredential.itemId,
+        credentialId: persistedCredential.credentialId,
+        expectedUpdatedAt: persistedCredential.itemUpdatedAt,
+        expectedGeneration: persisted.generation,
+        rpId: PASSKEY_RP_ID,
+        clientDataHash: Buffer.alloc(32, 0x43),
+        allowCredentialIds: [persistedCredential.credentialId],
+        requireUserVerification: false,
+        userVerified: false
+      },
+      () => true
+    )
+    expect(nextAssertion.counter).toBe('9')
+  })
+
+  it('does not persist a disabled zero counter after assertion', async () => {
+    const { service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const login = await service.createLogin({ name: 'Zero counter login' })
+    const created = await createVaultPasskey(service, login)
+    const write = vi.spyOn(store, 'write')
+
+    const assertion = await service.getPasskeyAssertion(
+      {
+        itemId: created.item.id,
+        credentialId: created.credentialId,
+        expectedUpdatedAt: created.item.updatedAt,
+        expectedGeneration: created.generation,
+        rpId: PASSKEY_RP_ID,
+        clientDataHash: Buffer.alloc(32, 0x44),
+        allowCredentialIds: [created.credentialId],
+        requireUserVerification: false,
+        userVerified: false
+      },
+      () => true
+    )
+
+    expect(assertion.counter).toBe('0')
+    expect(Buffer.from(assertion.authenticatorData).readUInt32BE(33)).toBe(0)
+    expect(write).not.toHaveBeenCalled()
+    await expect(service.getLogin({ id: login.id })).resolves.toMatchObject({
+      updatedAt: created.item.updatedAt
+    })
+  })
+
+  it('rolls back failed counter persistence and rejects stale unlock epochs', async () => {
+    const softwareCredential = await createPasskeyCredential(
+      {
+        rpId: PASSKEY_RP_ID,
+        rpName: 'Example',
+        userHandle: Buffer.from('opaque-test-user-handle'),
+        userName: 'test-user',
+        userDisplayName: 'Test User',
+        discoverable: true,
+        userVerified: false
+      },
+      {
+        uuid: () => '52217b91-73f1-4fea-b3f2-54a7959fd5aa',
+        now: () => new Date('2026-07-14T00:00:00.000Z')
+      }
+    )
+    softwareCredential.credential.counter = '3'
+    const { service, store } = await createHarness({
+      createSyncClient: (sync) => {
+        const fake = createSyncFake(sync.state)
+        fake.remoteLogins[0]!.passkeys = [structuredClone(softwareCredential.credential)]
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const discovered = await service.discoverPasskeyCredentials({
+      rpId: PASSKEY_RP_ID,
+      allowCredentialIds: [softwareCredential.credentialId]
+    })
+    const selected = discovered.credentials[0]!
+    const request = {
+      itemId: selected.itemId,
+      credentialId: selected.credentialId,
+      expectedUpdatedAt: selected.itemUpdatedAt,
+      expectedGeneration: discovered.generation,
+      rpId: PASSKEY_RP_ID,
+      clientDataHash: Buffer.alloc(32, 0x45),
+      allowCredentialIds: [selected.credentialId],
+      requireUserVerification: false,
+      userVerified: false
+    }
+    const write = vi
+      .spyOn(store, 'write')
+      .mockRejectedValueOnce(new Error('injected persistence failure'))
+
+    await expect(service.getPasskeyAssertion(request, () => true)).rejects.toThrow(
+      'injected persistence failure'
+    )
+    write.mockRestore()
+    const retry = await service.getPasskeyAssertion(request, () => true)
+    expect(retry.counter).toBe('4')
+
+    const beforeLock = await service.discoverPasskeyCredentials({
+      rpId: PASSKEY_RP_ID,
+      allowCredentialIds: [softwareCredential.credentialId]
+    })
+    await service.lock()
+    await service.unlock(MASTER_PASSWORD)
+    await expect(
+      service.getPasskeyAssertion(
+        {
+          ...request,
+          expectedUpdatedAt: beforeLock.credentials[0]!.itemUpdatedAt,
+          expectedGeneration: beforeLock.generation
+        },
+        () => true
+      )
+    ).rejects.toMatchObject({ code: 'LOCKED' })
+  })
+
+  it('does not publish an assertion when the vault is disposed during counter commit', async () => {
+    const softwareCredential = await createPasskeyCredential(
+      {
+        rpId: PASSKEY_RP_ID,
+        rpName: 'Example',
+        userHandle: Buffer.from('opaque-test-user-handle'),
+        userName: 'test-user',
+        userDisplayName: 'Test User',
+        discoverable: true,
+        userVerified: false
+      },
+      {
+        uuid: () => '52217b91-73f1-4fea-b3f2-54a7959fd5aa',
+        now: () => new Date('2026-07-14T00:00:00.000Z')
+      }
+    )
+    softwareCredential.credential.counter = '11'
+    const { service, store } = await createHarness({
+      createSyncClient: (sync) => {
+        const fake = createSyncFake(sync.state)
+        fake.remoteLogins[0]!.passkeys = [structuredClone(softwareCredential.credential)]
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const discovered = await service.discoverPasskeyCredentials({
+      rpId: PASSKEY_RP_ID,
+      allowCredentialIds: [softwareCredential.credentialId]
+    })
+    const selected = discovered.credentials[0]!
+    vi.spyOn(store, 'write').mockImplementationOnce(async () => {
+      service.dispose()
+    })
+
+    await expect(
+      service.getPasskeyAssertion(
+        {
+          itemId: selected.itemId,
+          credentialId: selected.credentialId,
+          expectedUpdatedAt: selected.itemUpdatedAt,
+          expectedGeneration: discovered.generation,
+          rpId: PASSKEY_RP_ID,
+          clientDataHash: Buffer.alloc(32, 0x46),
+          allowCredentialIds: [selected.credentialId],
+          requireUserVerification: false,
+          userVerified: false
+        },
+        () => true
+      )
+    ).rejects.toMatchObject({ code: 'LOCKED' })
+    await service.unlock(MASTER_PASSWORD)
+    const unchanged = await service.discoverPasskeyCredentials({
+      rpId: PASSKEY_RP_ID,
+      allowCredentialIds: [softwareCredential.credentialId]
+    })
+    expect(unchanged.credentials[0]!.itemUpdatedAt).toBe(selected.itemUpdatedAt)
   })
 
   it('reconciles attachment-only remote changes without creating item conflicts', async () => {

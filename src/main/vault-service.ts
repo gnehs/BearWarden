@@ -1,5 +1,6 @@
 import { createHash, randomInt as nodeRandomInt, randomUUID } from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { isIP } from 'node:net'
 import { utils } from 'ssh2'
 import type {
   EditorSecretsRequest,
@@ -110,6 +111,10 @@ import {
 import { VaultError } from './vault-errors'
 import type { VaultAttachmentFileService } from './vault-attachment-files'
 import { type StoredPasskeyCredential, toPasskeyView } from './passkey'
+import {
+  createPasskeyCredential as createSoftwarePasskeyCredential,
+  getPasskeyAssertion as createSoftwarePasskeyAssertion
+} from './passkey-authenticator'
 import { generateTotp } from './totp'
 import { generateSshKeyMaterial, type SshKeyMaterial } from './ssh-key'
 import {
@@ -159,7 +164,12 @@ const MAX_GENERATED_CREDENTIAL_LENGTH = 512
 const MAX_SSH_PRIVATE_KEY_LENGTH = 1024 * 1024
 const MAX_SYNC_SECRET_LENGTH = 16_384
 const MAX_TWO_FACTOR_CODE_LENGTH = 256
+const MAX_PASSKEY_CREDENTIAL_DESCRIPTORS = 1_000
+const MAX_PASSKEY_CREDENTIAL_ID_BYTES = 1_023
+const MAX_PASSKEY_RP_ID_LENGTH = 253
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const PASSKEY_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u
+const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/u
 
 interface StoredLogin
   extends
@@ -268,8 +278,182 @@ export type SshAgentVaultAuthorizationValidator = (
   state: { generation: number }
 ) => boolean
 
+export type PasskeyVaultAuthorizationValidator = SshAgentVaultAuthorizationValidator
+
+/**
+ * Main-process-only metadata used by native/browser WebAuthn coordinators. No private key
+ * material is present, and this type must not be added to the preload contract.
+ */
+export interface PasskeyVaultCredentialCandidate {
+  itemId: string
+  itemName: string
+  itemUpdatedAt: string
+  reprompt: VaultReprompt
+  credentialId: Uint8Array
+  rpId: string
+  userHandle: string | null
+  userName: string | null
+  userDisplayName: string | null
+  discoverable: boolean
+}
+
+export interface PasskeyVaultDiscoveryRequest {
+  rpId: string
+  /** An absent or empty list requests discoverable credentials. */
+  allowCredentialIds?: readonly Uint8Array[]
+}
+
+export interface PasskeyVaultDiscoveryResult {
+  generation: number
+  credentials: PasskeyVaultCredentialCandidate[]
+}
+
+export interface PasskeyVaultCreateRequest {
+  itemId: string
+  expectedUpdatedAt: string
+  /** Binds an interactive approval to one unlocked-vault epoch. */
+  expectedGeneration: number
+  rpId: string
+  rpName: string
+  userHandle: Uint8Array
+  userName: string
+  userDisplayName: string
+  discoverable: boolean
+  excludeCredentialIds?: readonly Uint8Array[]
+  replaceExisting: boolean
+  requireUserVerification: boolean
+  /** Trusted only because this API is main-process-only. */
+  userVerified: boolean
+}
+
+export interface PasskeyVaultCreateResult {
+  item: LoginView
+  generation: number
+  credentialId: Uint8Array
+  attestationObject: Uint8Array
+  authenticatorData: Uint8Array
+  publicKey: Uint8Array
+  publicKeyAlgorithm: -7
+}
+
+export interface PasskeyVaultAssertionRequest {
+  itemId: string
+  credentialId: Uint8Array
+  expectedUpdatedAt: string
+  /** Binds credential selection and interactive approval to one unlocked-vault epoch. */
+  expectedGeneration: number
+  rpId: string
+  clientDataHash: Uint8Array
+  /** An absent or empty list requests a discoverable credential. */
+  allowCredentialIds?: readonly Uint8Array[]
+  requireUserVerification: boolean
+  /** Trusted only because this API is main-process-only. */
+  userVerified: boolean
+}
+
+export interface PasskeyVaultAssertionResult {
+  itemId: string
+  generation: number
+  credentialId: Uint8Array
+  userHandle: Uint8Array | null
+  authenticatorData: Uint8Array
+  signature: Uint8Array
+  counter: string
+}
+
+interface PasskeyVaultMatch {
+  login: StoredLogin
+  passkey: StoredPasskeyCredential
+  passkeyIndex: number
+  credentialId: Buffer
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function normalizePasskeyRpId(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > MAX_PASSKEY_RP_ID_LENGTH ||
+    value !== value.toLowerCase() ||
+    !/^[\x21-\x7e]+$/u.test(value) ||
+    isIP(value) !== 0
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  if (value === 'localhost') return value
+  if (value.endsWith('.') || !value.includes('.')) throw new VaultError('INVALID_INPUT')
+  for (const label of value.split('.')) {
+    if (
+      label.length === 0 ||
+      label.length > 63 ||
+      !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u.test(label)
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+  }
+  return value
+}
+
+function normalizePasskeyCredentialId(value: unknown): Buffer {
+  if (
+    !(value instanceof Uint8Array) ||
+    value.byteLength === 0 ||
+    value.byteLength > MAX_PASSKEY_CREDENTIAL_ID_BYTES
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return Buffer.from(value)
+}
+
+function normalizePasskeyCredentialIds(value: unknown): Buffer[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value) || value.length > MAX_PASSKEY_CREDENTIAL_DESCRIPTORS) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return value.map(normalizePasskeyCredentialId)
+}
+
+function decodeStoredPasskeyCredentialId(value: unknown): Buffer | null {
+  if (typeof value !== 'string') return null
+  if (value.startsWith('b64.')) {
+    const encoded = value.slice(4)
+    if (
+      encoded.length === 0 ||
+      encoded.length > Math.ceil((MAX_PASSKEY_CREDENTIAL_ID_BYTES * 4) / 3) ||
+      !BASE64URL_PATTERN.test(encoded)
+    ) {
+      return null
+    }
+    const decoded = Buffer.from(encoded, 'base64url')
+    return decoded.byteLength > 0 &&
+      decoded.byteLength <= MAX_PASSKEY_CREDENTIAL_ID_BYTES &&
+      decoded.toString('base64url') === encoded
+      ? decoded
+      : null
+  }
+  return PASSKEY_UUID_PATTERN.test(value) ? Buffer.from(value.replaceAll('-', ''), 'hex') : null
+}
+
+function credentialIdIsAllowed(
+  credentialId: Buffer,
+  allowCredentialIds: readonly Buffer[]
+): boolean {
+  return allowCredentialIds.some((allowed) => allowed.equals(credentialId))
+}
+
+function assertPasskeyApproval(
+  requireUserVerification: unknown,
+  userVerified: unknown
+): asserts userVerified is boolean {
+  if (typeof requireUserVerification !== 'boolean' || typeof userVerified !== 'boolean') {
+    throw new VaultError('INVALID_INPUT')
+  }
+  if (!userVerified && requireUserVerification) {
+    throw new VaultError('REPROMPT_REQUIRED')
+  }
 }
 
 function assertIsoDate(value: unknown): asserts value is string {
@@ -1729,6 +1913,58 @@ function isCompositeRemoteLoginUpdate(
   return steps > 1
 }
 
+function findPasskeyVaultMatches(
+  data: VaultData,
+  rpId: string,
+  allowCredentialIds: readonly Buffer[]
+): PasskeyVaultMatch[] {
+  const rpMatches: PasskeyVaultMatch[] = []
+  for (const login of data.logins) {
+    if (login.type !== 'login' || login.deletedAt !== null || login.archivedAt !== null) continue
+    login.passkeys.forEach((passkey, passkeyIndex) => {
+      if (passkey.rpId !== rpId) return
+      const credentialId = decodeStoredPasskeyCredentialId(passkey.credentialId)
+      if (credentialId === null) return
+      rpMatches.push({ login, passkey, passkeyIndex, credentialId })
+    })
+  }
+  // Refuse an ambiguous credential even when only one duplicate is discoverable. A hidden copy
+  // could otherwise become selectable solely by changing allowCredentials.
+  assertUnambiguousPasskeyMatches(rpMatches)
+  return rpMatches.filter(({ passkey, credentialId }) =>
+    allowCredentialIds.length > 0
+      ? credentialIdIsAllowed(credentialId, allowCredentialIds)
+      : passkey.discoverable
+  )
+}
+
+function assertUnambiguousPasskeyMatches(matches: readonly PasskeyVaultMatch[]): void {
+  const seen = new Set<string>()
+  for (const match of matches) {
+    const encoded = match.credentialId.toString('base64url')
+    if (seen.has(encoded)) throw new VaultError('INVALID_INPUT')
+    seen.add(encoded)
+  }
+}
+
+function activeVaultContainsCredentialId(
+  data: VaultData,
+  rpId: string,
+  credentialId: Buffer
+): boolean {
+  return data.logins.some(
+    (login) =>
+      login.type === 'login' &&
+      login.deletedAt === null &&
+      login.archivedAt === null &&
+      login.passkeys.some(
+        (passkey) =>
+          passkey.rpId === rpId &&
+          decodeStoredPasskeyCredentialId(passkey.credentialId)?.equals(credentialId)
+      )
+  )
+}
+
 type AttachmentAuthorizationValidator = (
   ids: readonly string[],
   state: { generation: number }
@@ -3061,6 +3297,176 @@ export class VaultService {
     })
   }
 
+  /** Main-process-only discovery. It deliberately returns metadata rather than stored keys. */
+  discoverPasskeyCredentials(
+    request: PasskeyVaultDiscoveryRequest
+  ): Promise<PasskeyVaultDiscoveryResult> {
+    return this.exclusive(async () => {
+      const data = this.requireData()
+      const rpId = normalizePasskeyRpId(request.rpId)
+      const allowCredentialIds = normalizePasskeyCredentialIds(request.allowCredentialIds)
+      const matches = findPasskeyVaultMatches(data, rpId, allowCredentialIds)
+      return {
+        generation: this.generation,
+        credentials: matches.map(({ login, passkey, credentialId }) => ({
+          itemId: login.id,
+          itemName: login.name,
+          itemUpdatedAt: login.updatedAt,
+          reprompt: login.reprompt,
+          credentialId: Uint8Array.from(credentialId),
+          rpId: passkey.rpId,
+          userHandle: passkey.userHandle,
+          userName: passkey.userName,
+          userDisplayName: passkey.userDisplayName,
+          discoverable: passkey.discoverable
+        }))
+      }
+    })
+  }
+
+  /**
+   * Creates and persists a software-authenticator credential without allowing its private key to
+   * leave this service. The validator and userVerified value must come from a main-process
+   * ceremony coordinator.
+   */
+  createPasskey(
+    request: PasskeyVaultCreateRequest,
+    validateAuthorization: PasskeyVaultAuthorizationValidator
+  ): Promise<PasskeyVaultCreateResult> {
+    return this.runAuthorizedOperation(validateAuthorization, async (authorize) => {
+      const current = this.requireData()
+      this.assertExpectedPasskeyGeneration(request.expectedGeneration)
+      assertUuid(request.itemId)
+      const next = cloneData(current)
+      const login = this.findLogin(next, request.itemId)
+      this.assertActiveLogin(login)
+      if (login.type !== 'login' || login.archivedAt !== null) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      this.assertExpectedPasskeyRevision(login, request.expectedUpdatedAt)
+      if (typeof request.replaceExisting !== 'boolean') throw new VaultError('INVALID_INPUT')
+      if (login.passkeys.length > 1 || (login.passkeys.length === 1 && !request.replaceExisting)) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      assertPasskeyApproval(request.requireUserVerification, request.userVerified)
+      const rpId = normalizePasskeyRpId(request.rpId)
+      const excludeCredentialIds = normalizePasskeyCredentialIds(request.excludeCredentialIds)
+      if (
+        excludeCredentialIds.some((credentialId) =>
+          activeVaultContainsCredentialId(current, rpId, credentialId)
+        )
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+
+      authorize([login.id])
+      const generation = this.generation
+      const now = this.nowIso()
+      const created = await createSoftwarePasskeyCredential(
+        {
+          rpId,
+          rpName: request.rpName,
+          userHandle: request.userHandle,
+          userName: request.userName,
+          userDisplayName: request.userDisplayName,
+          discoverable: request.discoverable,
+          userVerified: request.userVerified,
+          userPresent: true
+        },
+        {
+          uuid: () => this.validatedNewId(),
+          now: () => new Date(now)
+        }
+      )
+      if (generation !== this.generation) throw new VaultError('LOCKED')
+      const credentialId = Buffer.from(created.credentialId)
+      if (activeVaultContainsCredentialId(current, rpId, credentialId)) {
+        throw new VaultError('INVALID_INPUT')
+      }
+
+      login.passkeys = [created.credential]
+      if (login.username.length === 0) login.username = created.credential.userName ?? ''
+      login.updatedAt = now
+      next.updatedAt = now
+      await this.persist(next)
+      if (generation !== this.generation) throw new VaultError('LOCKED')
+      this.data = next
+      return {
+        item: toView(login),
+        generation,
+        credentialId: Uint8Array.from(created.credentialId),
+        attestationObject: Uint8Array.from(created.attestationObject),
+        authenticatorData: Uint8Array.from(created.authenticatorData),
+        publicKey: Uint8Array.from(created.publicKey),
+        publicKeyAlgorithm: created.publicKeyAlgorithm
+      }
+    })
+  }
+
+  /** Signs one assertion and atomically commits an enabled signature counter. */
+  getPasskeyAssertion(
+    request: PasskeyVaultAssertionRequest,
+    validateAuthorization: PasskeyVaultAuthorizationValidator
+  ): Promise<PasskeyVaultAssertionResult> {
+    return this.runAuthorizedOperation(validateAuthorization, async (authorize) => {
+      const current = this.requireData()
+      this.assertExpectedPasskeyGeneration(request.expectedGeneration)
+      assertUuid(request.itemId)
+      const rpId = normalizePasskeyRpId(request.rpId)
+      const requestedCredentialId = normalizePasskeyCredentialId(request.credentialId)
+      const allowCredentialIds = normalizePasskeyCredentialIds(request.allowCredentialIds)
+      const matches = findPasskeyVaultMatches(current, rpId, allowCredentialIds)
+      const selected = matches.filter(
+        (match) =>
+          match.login.id === request.itemId && match.credentialId.equals(requestedCredentialId)
+      )
+      if (selected.length === 0) throw new VaultError('NOT_FOUND')
+      if (selected.length !== 1) throw new VaultError('INVALID_INPUT')
+      const match = selected[0]!
+      this.assertExpectedPasskeyRevision(match.login, request.expectedUpdatedAt)
+      assertPasskeyApproval(request.requireUserVerification, request.userVerified)
+
+      authorize([match.login.id])
+      const generation = this.generation
+      const assertion = await createSoftwarePasskeyAssertion({
+        credential: match.passkey,
+        rpId,
+        clientDataHash: request.clientDataHash,
+        userVerified: request.userVerified,
+        userPresent: true
+      })
+      if (generation !== this.generation) throw new VaultError('LOCKED')
+      if (assertion.counter !== match.passkey.counter) {
+        const next = cloneData(current)
+        const nextLogin = this.findLogin(next, match.login.id)
+        const nextPasskey = nextLogin.passkeys[match.passkeyIndex]
+        if (
+          nextPasskey === undefined ||
+          nextPasskey.credentialId !== match.passkey.credentialId ||
+          nextPasskey.counter !== match.passkey.counter
+        ) {
+          throw new VaultError('LOCKED')
+        }
+        const now = this.nowIso()
+        nextPasskey.counter = assertion.counter
+        nextLogin.updatedAt = now
+        next.updatedAt = now
+        await this.persist(next)
+        if (generation !== this.generation) throw new VaultError('LOCKED')
+        this.data = next
+      }
+      return {
+        itemId: match.login.id,
+        generation,
+        credentialId: Uint8Array.from(assertion.credentialId),
+        userHandle: assertion.userHandle === null ? null : Uint8Array.from(assertion.userHandle),
+        authenticatorData: Uint8Array.from(assertion.authenticatorData),
+        signature: Uint8Array.from(assertion.signature),
+        counter: assertion.counter
+      }
+    })
+  }
+
   deleteLogin(request: LoginIdRequest): Promise<void> {
     return this.mutate((data, now) => {
       assertUuid(request.id)
@@ -4298,6 +4704,22 @@ export class VaultService {
 
   private assertActiveLogin(login: StoredLogin): void {
     if (login.deletedAt !== null) throw new VaultError('INVALID_INPUT')
+  }
+
+  private assertExpectedPasskeyGeneration(value: unknown): asserts value is number {
+    if (!Number.isSafeInteger(value) || (value as number) < 0) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    if (value !== this.generation) throw new VaultError('LOCKED')
+  }
+
+  private assertExpectedPasskeyRevision(
+    login: StoredLogin,
+    value: unknown
+  ): asserts value is string {
+    if (typeof value !== 'string' || value !== login.updatedAt) {
+      throw new VaultError('INVALID_INPUT')
+    }
   }
 
   private normalizeFolderId(data: VaultData, folderId: unknown): string | null {
