@@ -1,13 +1,25 @@
-import { describe, expect, it } from 'vitest'
-import type { VaultEditorSecretField } from '../../../shared/vault-contract'
+import { describe, expect, it, vi } from 'vitest'
+import type {
+  LoginView,
+  SshKeyCreateImportedRequest,
+  SshKeyUpdateImportedRequest,
+  VaultEditorSecretField
+} from '../../../shared/vault-contract'
 import {
+  applyImportedSshKey,
   applyGeneratedSshKey,
   canApplyGeneratedSshKey,
   canFinalizeGeneratedSshKey,
   clearSshKeyMaterial,
+  createLoginWithOptionalSshImport,
+  invalidateFailedSshImport,
+  isValidSshImportPassphrase,
   isSshKeyGenerationBlockingSave,
   sshKeyGenerationAction,
-  sshKeyMaterialState
+  sshKeyImportErrorMessage,
+  sshKeyImportResultAction,
+  sshKeyMaterialState,
+  updateLoginWithOptionalSshImport
 } from './ssh-key-editor-state'
 
 describe('SSH key editor state', () => {
@@ -123,6 +135,125 @@ describe('SSH key editor state', () => {
     expect(isSshKeyGenerationBlockingSave('sshKey', 'generating')).toBe(true)
     expect(isSshKeyGenerationBlockingSave('sshKey', 'error')).toBe(true)
     expect(isSshKeyGenerationBlockingSave('sshKey', 'ready')).toBe(false)
+    expect(isSshKeyGenerationBlockingSave('sshKey', 'error', 'main-only-token')).toBe(false)
     expect(isSshKeyGenerationBlockingSave('login', 'generating')).toBe(false)
+  })
+
+  it('applies only public import metadata for the current SSH request', () => {
+    const draft = {
+      type: 'sshKey' as const,
+      privateKey: 'generated-private',
+      publicKey: 'generated-public',
+      fingerprint: 'generated-fingerprint',
+      changedSecrets: ['privateKey'] as VaultEditorSecretField[]
+    }
+    const rendererSafeResult = {
+      status: 'ready' as const,
+      token: 'import-token',
+      expiresAt: Date.now() + 60_000,
+      publicKey: 'imported-public',
+      fingerprint: 'imported-fingerprint'
+    }
+
+    expect(Object.keys(rendererSafeResult)).not.toContain('privateKey')
+    expect(applyImportedSshKey(8, 8, draft, rendererSafeResult)).toEqual({
+      type: 'sshKey',
+      privateKey: '',
+      publicKey: 'imported-public',
+      fingerprint: 'imported-fingerprint',
+      sshImportToken: 'import-token',
+      changedSecrets: []
+    })
+    expect(applyImportedSshKey(7, 8, draft, rendererSafeResult)).toBe(draft)
+    expect(applyImportedSshKey(8, 8, { ...draft, type: 'login' }, rendererSafeResult)).toEqual({
+      ...draft,
+      type: 'login'
+    })
+  })
+
+  it('keeps a wrong-password import in the same retryable session', () => {
+    const wrongPassword = { status: 'error' as const, code: 'WrongPassword' as const }
+    expect(sshKeyImportResultAction(wrongPassword)).toBe('retryPassphrase')
+    expect(sshKeyImportErrorMessage(wrongPassword.code)).toBe('私鑰密碼錯誤，請重新輸入。')
+    expect(sshKeyImportResultAction({ status: 'error', code: 'SessionUnavailable' })).toBe('fail')
+  })
+
+  it('validates passphrase limits by UTF-8 bytes before IPC', () => {
+    expect(isValidSshImportPassphrase('')).toBe(false)
+    expect(isValidSshImportPassphrase('a'.repeat(1_024))).toBe(true)
+    expect(isValidSshImportPassphrase('é'.repeat(512))).toBe(true)
+    expect(isValidSshImportPassphrase('é'.repeat(513))).toBe(false)
+  })
+
+  it('invalidates only the consumed import token after a failed save', () => {
+    const draft = {
+      type: 'sshKey' as const,
+      privateKey: '',
+      publicKey: 'imported-public',
+      fingerprint: 'imported-fingerprint',
+      sshImportToken: 'consumed-token',
+      changedSecrets: ['password'] as VaultEditorSecretField[]
+    }
+
+    expect(invalidateFailedSshImport(draft, 'stale-token')).toBe(draft)
+    expect(invalidateFailedSshImport(draft, 'consumed-token')).toEqual({
+      type: 'sshKey',
+      privateKey: '',
+      publicKey: '',
+      fingerprint: '',
+      sshImportToken: undefined,
+      changedSecrets: ['password']
+    })
+  })
+
+  it('routes create saves through imported IPC without renderer private material', async () => {
+    const created = {} as LoginView
+    const create = vi.fn(async () => created)
+    const createImported = vi
+      .fn<(request: SshKeyCreateImportedRequest) => Promise<LoginView>>()
+      .mockResolvedValue(created)
+
+    await createLoginWithOptionalSshImport(
+      { name: 'Imported key', type: 'sshKey', privateKey: 'must-not-cross-renderer-ipc' },
+      'import-token',
+      { create, createImported }
+    )
+
+    expect(create).not.toHaveBeenCalled()
+    expect(createImported).toHaveBeenCalledOnce()
+    expect(createImported.mock.calls[0]?.[0]).toEqual({
+      name: 'Imported key',
+      type: 'sshKey',
+      importToken: 'import-token'
+    })
+  })
+
+  it('keeps normal create and imported update save paths distinct', async () => {
+    const saved = {} as LoginView
+    const create = vi.fn(async () => saved)
+    const createImported = vi.fn(async () => saved)
+    const update = vi.fn(async () => saved)
+    const updateImported = vi
+      .fn<(request: SshKeyUpdateImportedRequest) => Promise<LoginView>>()
+      .mockResolvedValue(saved)
+
+    await createLoginWithOptionalSshImport({ name: 'Generated key', type: 'sshKey' }, undefined, {
+      create,
+      createImported
+    })
+    await updateLoginWithOptionalSshImport(
+      { id: 'item-id', name: 'Imported replacement', privateKey: 'must-not-cross-renderer-ipc' },
+      'import-token',
+      { update, updateImported }
+    )
+
+    expect(create).toHaveBeenCalledOnce()
+    expect(createImported).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+    expect(updateImported.mock.calls[0]?.[0]).toEqual({
+      id: 'item-id',
+      name: 'Imported replacement',
+      importToken: 'import-token'
+    })
   })
 })

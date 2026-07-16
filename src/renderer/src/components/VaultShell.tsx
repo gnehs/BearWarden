@@ -92,6 +92,10 @@ import {
 import { FolderDragPreview, ItemDragPreview } from './DragPreview'
 import { FolderRow, type ItemSelectionModifiers } from './DndRows'
 import LoginEditor, { type LoginDraft } from './LoginEditor'
+import {
+  createLoginWithOptionalSshImport,
+  updateLoginWithOptionalSshImport
+} from './ssh-key-editor-state'
 import CredentialGeneratorDialog from './CredentialGeneratorDialog'
 import {
   isCurrentSelectedDetailResponse,
@@ -2260,7 +2264,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     }
   }
 
-  async function saveLogin(draft: LoginDraft): Promise<void> {
+  async function saveLogin(draft: LoginDraft): Promise<boolean> {
     setBusy(true)
     try {
       const changedSecrets = new Set(draft.changedSecrets)
@@ -2306,7 +2310,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         ...(changedSecrets.has('privateKey') ? { privateKey: draft.privateKey } : {})
       }
       if (editorMode === 'create') {
-        const created = await window.bearwarden.logins.create({
+        const request = {
           type: draft.type,
           name: draft.name,
           ...fields,
@@ -2315,6 +2319,10 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           favorite: draft.favorite,
           reprompt: draft.reprompt,
           customFields
+        }
+        const created = await createLoginWithOptionalSshImport(request, draft.sshImportToken, {
+          create: window.bearwarden.logins.create,
+          createImported: window.bearwarden.sshKeys.createImported
         })
         if (created.reprompt === 0) cacheLoginDetail(detailCacheRef.current, created)
         setItems((current) => [...current, toLoginSummary(created)])
@@ -2327,8 +2335,8 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         announce(`已建立「${created.name}」。`)
       } else if (selectedLogin) {
         const itemId = selectedLogin.id
-        const updated = await withReprompt([itemId], (tokenFor) =>
-          window.bearwarden.logins.update({
+        const updated = await withReprompt([itemId], (tokenFor) => {
+          const request = {
             id: itemId,
             expectedUpdatedAt: draft.expectedUpdatedAt ?? undefined,
             name: draft.name,
@@ -2339,8 +2347,12 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             reprompt: draft.reprompt,
             ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {}),
             customFields
+          }
+          return updateLoginWithOptionalSshImport(request, draft.sshImportToken, {
+            update: window.bearwarden.logins.update,
+            updateImported: window.bearwarden.sshKeys.updateImported
           })
-        )
+        })
         if (updated.reprompt === 0 || authorizationToken(itemId)) {
           cacheLoginDetail(detailCacheRef.current, updated)
         } else {
@@ -2356,8 +2368,10 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       editorDirtyRef.current = false
       setEditorDirty(false)
       setEditorMode(null)
+      return true
     } catch (saveError) {
       announceError(describeError(saveError))
+      return false
     } finally {
       setBusy(false)
     }

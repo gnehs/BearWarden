@@ -3,6 +3,7 @@ import {
   ArrowDown,
   ArrowUp,
   CheckSquare2,
+  ClipboardPaste,
   Eye,
   EyeOff,
   FileKey2,
@@ -10,6 +11,7 @@ import {
   Link2,
   ListPlus,
   Plus,
+  RefreshCw,
   Save,
   Sparkles,
   TextCursorInput,
@@ -40,6 +42,14 @@ import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
 import { Checkbox } from './ui/checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from './ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -88,13 +98,19 @@ import { Textarea } from './ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import CredentialGeneratorDialog from './CredentialGeneratorDialog'
 import {
+  applyImportedSshKey,
   applyGeneratedSshKey,
   canFinalizeGeneratedSshKey,
   clearSshKeyMaterial,
+  invalidateFailedSshImport,
+  isValidSshImportPassphrase,
   isSshKeyGenerationBlockingSave,
+  sshKeyImportErrorMessage,
+  sshKeyImportResultAction,
   sshKeyGenerationAction,
   sshKeyMaterialState,
-  type SshKeyGenerationState
+  type SshKeyGenerationState,
+  type SshKeyImportState
 } from './ssh-key-editor-state'
 
 type EditorSecretField = VaultEditorSecretField
@@ -284,6 +300,8 @@ export interface LoginDraft extends VaultItemFields {
   uris: VaultLoginUri[]
   changedSecrets: EditorSecretField[]
   customFields: EditorCustomField[]
+  /** Renderer-only handle for main-process-only imported private-key material. */
+  sshImportToken?: string
 }
 
 interface LoginEditorProps {
@@ -293,7 +311,7 @@ interface LoginEditorProps {
   authorizationToken?: string
   onCancel: () => void
   onDirtyChange: (dirty: boolean) => void
-  onSave: (draft: LoginDraft) => Promise<void>
+  onSave: (draft: LoginDraft) => Promise<boolean>
 }
 
 function typeLabel(type: VaultItemType): string {
@@ -312,6 +330,9 @@ function LoginEditor({
   const submittingRef = useRef(false)
   const editorMountedRef = useRef(true)
   const sshKeyGenerationRequestRef = useRef(0)
+  const sshKeyImportRequestRef = useRef(0)
+  const activeSshImportTokenRef = useRef<string | null>(null)
+  const sshImportPassphraseRef = useRef<HTMLInputElement>(null)
   const [editorSnapshot] = useState(() =>
     login
       ? {
@@ -363,10 +384,23 @@ function LoginEditor({
     login ? 'loading' : 'ready'
   )
   const [sshKeyGenerationState, setSshKeyGenerationState] = useState<SshKeyGenerationState>('idle')
+  const [sshKeyImportState, setSshKeyImportState] = useState<SshKeyImportState>('idle')
+  const [sshKeyImportSession, setSshKeyImportSession] = useState<{
+    token: string
+    expiresAt: number
+  } | null>(null)
+  const [sshKeyImportError, setSshKeyImportError] = useState('')
   const nameRef = useRef<HTMLInputElement>(null)
   const secretsUnavailable = secretLoadState !== 'ready'
-  const sshKeyUnavailable = isSshKeyGenerationBlockingSave(draft.type, sshKeyGenerationState)
-  const sshKeyFieldsDisabled = busy || secretsUnavailable || sshKeyGenerationState === 'generating'
+  const sshKeyImportPending =
+    sshKeyImportState === 'reading' ||
+    sshKeyImportState === 'awaitingPassphrase' ||
+    sshKeyImportState === 'submittingPassphrase'
+  const sshKeyUnavailable =
+    (draft.type === 'sshKey' && sshKeyImportPending) ||
+    isSshKeyGenerationBlockingSave(draft.type, sshKeyGenerationState, draft.sshImportToken)
+  const sshKeyFieldsDisabled =
+    busy || secretsUnavailable || sshKeyGenerationState === 'generating' || sshKeyImportPending
 
   useEffect(() => nameRef.current?.focus(), [])
   useEffect(() => {
@@ -376,6 +410,11 @@ function LoginEditor({
     editorMountedRef.current = true
     return () => {
       editorMountedRef.current = false
+      sshKeyImportRequestRef.current += 1
+      const importToken = activeSshImportTokenRef.current
+      activeSshImportTokenRef.current = null
+      if (importToken)
+        void window.bearwarden.sshKeys.cancelImport({ token: importToken }).catch(() => {})
     }
   }, [])
   useEffect(() => {
@@ -429,7 +468,12 @@ function LoginEditor({
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange])
   useEffect(() => () => onDirtyChange(false), [onDirtyChange])
   useEffect(() => {
-    if (secretLoadState !== 'ready' || draft.type !== 'sshKey' || sshKeyGenerationState !== 'idle')
+    if (
+      secretLoadState !== 'ready' ||
+      draft.type !== 'sshKey' ||
+      sshKeyGenerationState !== 'idle' ||
+      sshKeyImportState !== 'idle'
+    )
       return
 
     const requestId = ++sshKeyGenerationRequestRef.current
@@ -486,7 +530,8 @@ function LoginEditor({
     draft.publicKey,
     draft.type,
     secretLoadState,
-    sshKeyGenerationState
+    sshKeyGenerationState,
+    sshKeyImportState
   ])
   useEffect(() => {
     if (
@@ -516,8 +561,26 @@ function LoginEditor({
     })
   }, [draft.fingerprint, draft.privateKey, draft.publicKey, draft.type, sshKeyGenerationState])
 
+  function cancelActiveSshImport(clearImportedDraft = true): void {
+    sshKeyImportRequestRef.current += 1
+    const token = activeSshImportTokenRef.current
+    activeSshImportTokenRef.current = null
+    if (sshImportPassphraseRef.current) sshImportPassphraseRef.current.value = ''
+    setSshKeyImportSession(null)
+    setSshKeyImportError('')
+    setSshKeyImportState('idle')
+    if (token) void window.bearwarden.sshKeys.cancelImport({ token }).catch(() => {})
+    if (!clearImportedDraft || !token) return
+
+    setDraft((current) => {
+      if (current.sshImportToken !== token) return current
+      return { ...clearSshKeyMaterial(current), sshImportToken: undefined }
+    })
+  }
+
   function requestCancel(): void {
     if (busy) return
+    cancelActiveSshImport()
     onCancel()
   }
 
@@ -547,6 +610,7 @@ function LoginEditor({
   function updateItemType(type: VaultItemType): void {
     const leavingSshKey = draftRef.current.type === 'sshKey' && type !== 'sshKey'
     if (leavingSshKey) {
+      cancelActiveSshImport(false)
       sshKeyGenerationRequestRef.current += 1
       setSshKeyGenerationState('idle')
       setVisibleSecrets((current) => ({ ...current, privateKey: false }))
@@ -563,6 +627,7 @@ function LoginEditor({
       const cleared = leavingSshKey ? clearSshKeyMaterial(current) : current
       return {
         ...cleared,
+        ...(leavingSshKey ? { sshImportToken: undefined } : {}),
         type,
         ...(type === 'login' ? { uri: current.uris[0]?.uri ?? null } : { uri: null, uris: [] }),
         customFields: normalizeCustomFieldsForItemType(current.customFields, type)
@@ -570,14 +635,174 @@ function LoginEditor({
     })
   }
 
-  function retrySshKeyGeneration(): void {
-    if (busy || secretsUnavailable || sshKeyGenerationState !== 'error') return
+  function regenerateSshKey(): void {
+    if (busy || secretsUnavailable || sshKeyGenerationState === 'generating') return
+    cancelActiveSshImport(false)
     sshKeyGenerationRequestRef.current += 1
-    setDraft(clearSshKeyMaterial)
+    setDraft((current) => ({ ...clearSshKeyMaterial(current), sshImportToken: undefined }))
     setVisibleSecrets((current) => ({ ...current, privateKey: false }))
     setError('')
     setErrorKind(null)
     setSshKeyGenerationState('idle')
+  }
+
+  function applyReadySshImport(
+    requestId: number,
+    result: Extract<
+      Awaited<ReturnType<typeof window.bearwarden.sshKeys.beginImport>>,
+      { status: 'ready' }
+    >
+  ): void {
+    if (
+      !editorMountedRef.current ||
+      requestId !== sshKeyImportRequestRef.current ||
+      draftRef.current.type !== 'sshKey'
+    ) {
+      void window.bearwarden.sshKeys.cancelImport({ token: result.token }).catch(() => {})
+      return
+    }
+
+    activeSshImportTokenRef.current = result.token
+    setDraft((current) =>
+      applyImportedSshKey(requestId, sshKeyImportRequestRef.current, current, result)
+    )
+    setDirty(true)
+    setVisibleSecrets((current) => ({ ...current, privateKey: false }))
+    setSshKeyImportSession(null)
+    setSshKeyImportError('')
+    setSshKeyImportState('ready')
+    setSshKeyGenerationState('ready')
+    setError('')
+    setErrorKind(null)
+  }
+
+  async function beginSshKeyImport(): Promise<void> {
+    if (
+      busy ||
+      secretsUnavailable ||
+      draftRef.current.type !== 'sshKey' ||
+      sshKeyGenerationState === 'generating' ||
+      sshKeyImportPending
+    )
+      return
+
+    const replacingImport = Boolean(draftRef.current.sshImportToken)
+    cancelActiveSshImport(false)
+    sshKeyGenerationRequestRef.current += 1
+    const requestId = ++sshKeyImportRequestRef.current
+    if (replacingImport) {
+      setDraft((current) => ({ ...clearSshKeyMaterial(current), sshImportToken: undefined }))
+      setSshKeyGenerationState('error')
+    }
+    setSshKeyImportError('')
+    setSshKeyImportState('reading')
+
+    try {
+      const result = await window.bearwarden.sshKeys.beginImport()
+      if (
+        !editorMountedRef.current ||
+        requestId !== sshKeyImportRequestRef.current ||
+        draftRef.current.type !== 'sshKey'
+      ) {
+        if (result.status !== 'error') {
+          void window.bearwarden.sshKeys.cancelImport({ token: result.token }).catch(() => {})
+        }
+        return
+      }
+
+      if (result.status === 'ready') {
+        applyReadySshImport(requestId, result)
+        return
+      }
+      if (result.status === 'awaitingPassphrase') {
+        activeSshImportTokenRef.current = result.token
+        setSshKeyImportSession({ token: result.token, expiresAt: result.expiresAt })
+        setSshKeyImportState('awaitingPassphrase')
+        requestAnimationFrame(() => sshImportPassphraseRef.current?.focus())
+        return
+      }
+
+      setSshKeyImportState('idle')
+      setError(sshKeyImportErrorMessage(result.code))
+      setErrorKind('ssh')
+      setActiveTab('details')
+    } catch {
+      if (!editorMountedRef.current || requestId !== sshKeyImportRequestRef.current) return
+      setSshKeyImportState('idle')
+      setError('無法讀取剪貼簿中的 SSH 私鑰，請稍後再試。')
+      setErrorKind('ssh')
+      setActiveTab('details')
+    }
+  }
+
+  async function submitSshImportPassphrase(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    const session = sshKeyImportSession
+    const input = sshImportPassphraseRef.current
+    if (!session || !input || busy || sshKeyImportState === 'submittingPassphrase') return
+
+    const requestId = sshKeyImportRequestRef.current
+    let passphrase = input.value
+    input.value = ''
+    if (!isValidSshImportPassphrase(passphrase)) {
+      setSshKeyImportError(sshKeyImportErrorMessage('InvalidPassphrase'))
+      setSshKeyImportState('awaitingPassphrase')
+      requestAnimationFrame(() => sshImportPassphraseRef.current?.focus())
+      return
+    }
+    const request = { token: session.token, passphrase }
+    setSshKeyImportError('')
+    setSshKeyImportState('submittingPassphrase')
+
+    try {
+      const pendingResult = window.bearwarden.sshKeys.submitImportPassphrase(request)
+      passphrase = ''
+      request.passphrase = ''
+      const result = await pendingResult
+      if (
+        !editorMountedRef.current ||
+        requestId !== sshKeyImportRequestRef.current ||
+        activeSshImportTokenRef.current !== session.token ||
+        draftRef.current.type !== 'sshKey'
+      ) {
+        if (result.status !== 'error') {
+          void window.bearwarden.sshKeys.cancelImport({ token: result.token }).catch(() => {})
+        }
+        return
+      }
+
+      if (result.status === 'ready') {
+        applyReadySshImport(requestId, result)
+        return
+      }
+      if (result.status === 'awaitingPassphrase') {
+        activeSshImportTokenRef.current = result.token
+        setSshKeyImportSession({ token: result.token, expiresAt: result.expiresAt })
+        setSshKeyImportState('awaitingPassphrase')
+        return
+      }
+      if (sshKeyImportResultAction(result) === 'retryPassphrase') {
+        setSshKeyImportError(sshKeyImportErrorMessage(result.code))
+        setSshKeyImportState('awaitingPassphrase')
+        requestAnimationFrame(() => sshImportPassphraseRef.current?.focus())
+        return
+      }
+
+      cancelActiveSshImport(false)
+      setError(sshKeyImportErrorMessage(result.code))
+      setErrorKind('ssh')
+      setActiveTab('details')
+    } catch {
+      if (!editorMountedRef.current || requestId !== sshKeyImportRequestRef.current) return
+      setSshKeyImportError('無法驗證私鑰密碼，請重新輸入。')
+      setSshKeyImportState('awaitingPassphrase')
+      requestAnimationFrame(() => sshImportPassphraseRef.current?.focus())
+    }
+  }
+
+  function cancelSshImportPassphrase(): void {
+    cancelActiveSshImport(false)
+    if (sshKeyMaterialState(draftRef.current) === 'blank') setSshKeyGenerationState('idle')
   }
 
   function updateUri(index: number, patch: Partial<VaultLoginUri>): void {
@@ -929,26 +1154,57 @@ function LoginEditor({
       requestAnimationFrame(() => document.getElementById(`editor-uri-${blankUriIndex}`)?.focus())
       return
     }
-    if (
+    const importedSshKeyIncomplete =
       draft.type === 'sshKey' &&
+      Boolean(draft.sshImportToken) &&
+      (!draft.publicKey.trim() || !draft.fingerprint.trim() || Boolean(draft.privateKey))
+    const generatedSshKeyIncomplete =
+      draft.type === 'sshKey' &&
+      !draft.sshImportToken &&
       (!draft.privateKey.trim() || !draft.publicKey.trim() || !draft.fingerprint.trim())
-    ) {
-      setError('SSH 金鑰必須包含私鑰、公鑰與金鑰指紋。')
+    if (importedSshKeyIncomplete || generatedSshKeyIncomplete) {
+      setError(
+        draft.sshImportToken
+          ? '匯入的 SSH 金鑰工作階段或公開中繼資料不完整，請重新匯入。'
+          : 'SSH 金鑰必須包含私鑰、公鑰與金鑰指紋。'
+      )
       setErrorKind('ssh')
       setActiveTab('details')
-      const missingFieldId = !draft.privateKey.trim()
-        ? 'editor-privateKey'
-        : !draft.publicKey.trim()
+      const missingFieldId = draft.sshImportToken
+        ? !draft.publicKey.trim()
           ? 'editor-public-key'
           : 'editor-fingerprint'
+        : !draft.privateKey.trim()
+          ? 'editor-privateKey'
+          : !draft.publicKey.trim()
+            ? 'editor-public-key'
+            : 'editor-fingerprint'
       requestAnimationFrame(() => document.getElementById(missingFieldId)?.focus())
       return
     }
     setError('')
     setErrorKind(null)
     submittingRef.current = true
+    const submittedImportToken = draft.sshImportToken
     try {
-      await onSave({ ...draft, name: draft.name.trim(), username: draft.username.trim() })
+      const saved = await onSave({
+        ...draft,
+        name: draft.name.trim(),
+        username: draft.username.trim()
+      })
+      if (
+        !saved &&
+        submittedImportToken &&
+        draftRef.current.sshImportToken === submittedImportToken
+      ) {
+        cancelActiveSshImport(false)
+        setDraft((current) => invalidateFailedSshImport(current, submittedImportToken))
+        setSshKeyImportState('idle')
+        setSshKeyGenerationState('error')
+        setError('這次 SSH 私鑰匯入已失效，請重新從剪貼簿匯入後再儲存。')
+        setErrorKind('ssh')
+        setActiveTab('details')
+      }
     } finally {
       submittingRef.current = false
     }
@@ -1439,32 +1695,73 @@ function LoginEditor({
 
                 {draft.type === 'sshKey' && (
                   <>
-                    {secretInput('privateKey', '私鑰', {
-                      multiline: true,
-                      readOnly: true,
-                      disabled: sshKeyGenerationState === 'generating',
-                      addon:
-                        sshKeyGenerationState === 'generating' ? (
-                          <Spinner aria-label="正在產生 SSH 金鑰" />
-                        ) : sshKeyGenerationState === 'error' ? (
-                          <InputGroupButton
-                            type="button"
-                            variant="ghost"
-                            size="xs"
-                            onClick={retrySshKeyGeneration}
-                            disabled={busy || secretsUnavailable}
-                          >
-                            <Sparkles data-icon="inline-start" />
-                            重試產生
-                          </InputGroupButton>
-                        ) : null,
-                      description:
-                        sshKeyGenerationState === 'generating'
-                          ? '正在安全地建立新的 Ed25519 金鑰。'
-                          : sshKeyGenerationState === 'error'
-                            ? '自動產生失敗；請重試，或切換項目類型以取消。'
-                            : '金鑰材料為唯讀；私鑰可透過顯示按鈕暫時查看。'
-                    })}
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={regenerateSshKey}
+                        disabled={
+                          busy ||
+                          secretsUnavailable ||
+                          sshKeyGenerationState === 'generating' ||
+                          sshKeyImportPending
+                        }
+                      >
+                        {sshKeyGenerationState === 'generating' ? (
+                          <Spinner data-icon="inline-start" />
+                        ) : (
+                          <RefreshCw data-icon="inline-start" />
+                        )}
+                        {sshKeyGenerationState === 'generating' ? '產生中…' : '重新產生'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void beginSshKeyImport()}
+                        disabled={
+                          busy ||
+                          secretsUnavailable ||
+                          sshKeyGenerationState === 'generating' ||
+                          sshKeyImportPending
+                        }
+                      >
+                        {sshKeyImportState === 'reading' ? (
+                          <Spinner data-icon="inline-start" />
+                        ) : (
+                          <ClipboardPaste data-icon="inline-start" />
+                        )}
+                        {sshKeyImportState === 'reading' ? '讀取剪貼簿中…' : '從剪貼簿匯入'}
+                      </Button>
+                    </div>
+                    {draft.sshImportToken ? (
+                      <Field data-disabled>
+                        <FieldLabel htmlFor="editor-privateKey">私鑰</FieldLabel>
+                        <Textarea
+                          id="editor-privateKey"
+                          rows={3}
+                          value=""
+                          placeholder="私鑰只保留在安全的主程序，不會載入編輯畫面。"
+                          readOnly
+                          disabled
+                          autoComplete="off"
+                        />
+                        <FieldDescription>
+                          儲存時只會使用短效匯入代碼；此欄位不含也不顯示私鑰。
+                        </FieldDescription>
+                      </Field>
+                    ) : (
+                      secretInput('privateKey', '私鑰', {
+                        multiline: true,
+                        readOnly: true,
+                        disabled: sshKeyGenerationState === 'generating',
+                        description:
+                          sshKeyGenerationState === 'generating'
+                            ? '正在安全地建立新的 Ed25519 金鑰。'
+                            : sshKeyGenerationState === 'error'
+                              ? '自動產生失敗；請重試，或切換項目類型以取消。'
+                              : '金鑰材料為唯讀；私鑰可透過顯示按鈕暫時查看。'
+                      })
+                    )}
                     <Field
                       data-invalid={(errorKind === 'ssh' && !draft.publicKey.trim()) || undefined}
                       data-disabled={sshKeyFieldsDisabled || undefined}
@@ -1900,7 +2197,10 @@ function LoginEditor({
           取消
         </Button>
         <Button type="submit" disabled={busy || secretsUnavailable || sshKeyUnavailable}>
-          {busy || secretLoadState === 'loading' || sshKeyGenerationState === 'generating' ? (
+          {busy ||
+          secretLoadState === 'loading' ||
+          sshKeyGenerationState === 'generating' ||
+          sshKeyImportPending ? (
             <Spinner data-icon="inline-start" />
           ) : (
             <Save data-icon="inline-start" />
@@ -1909,9 +2209,68 @@ function LoginEditor({
             ? '載入中…'
             : sshKeyGenerationState === 'generating'
               ? '產生 SSH 金鑰中…'
-              : '儲存'}
+              : sshKeyImportState === 'reading'
+                ? '讀取剪貼簿中…'
+                : sshKeyImportState === 'awaitingPassphrase'
+                  ? '等待私鑰密碼…'
+                  : sshKeyImportState === 'submittingPassphrase'
+                    ? '驗證私鑰密碼中…'
+                    : '儲存'}
         </Button>
       </footer>
+      <Dialog
+        open={Boolean(sshKeyImportSession)}
+        onOpenChange={(open) => {
+          if (!open) cancelSshImportPassphrase()
+        }}
+      >
+        <DialogContent showCloseButton={false}>
+          <form onSubmit={(event) => void submitSshImportPassphrase(event)}>
+            <DialogHeader>
+              <DialogTitle>輸入 SSH 私鑰密碼</DialogTitle>
+              <DialogDescription>
+                剪貼簿中的私鑰已加密。密碼只會送往主程序解密這次匯入，不會儲存在編輯器草稿中。
+              </DialogDescription>
+            </DialogHeader>
+            <FieldGroup className="py-4">
+              <Field data-invalid={Boolean(sshKeyImportError) || undefined}>
+                <FieldLabel htmlFor="ssh-import-passphrase">私鑰密碼</FieldLabel>
+                <Input
+                  ref={sshImportPassphraseRef}
+                  id="ssh-import-passphrase"
+                  name="ssh-import-passphrase"
+                  type="password"
+                  autoComplete="off"
+                  disabled={busy || sshKeyImportState === 'submittingPassphrase'}
+                  aria-invalid={Boolean(sshKeyImportError) || undefined}
+                  aria-describedby={sshKeyImportError ? 'ssh-import-passphrase-error' : undefined}
+                />
+                {sshKeyImportError && (
+                  <FieldError id="ssh-import-passphrase-error" role="alert">
+                    {sshKeyImportError}
+                  </FieldError>
+                )}
+              </Field>
+            </FieldGroup>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={cancelSshImportPassphrase}
+                disabled={busy || sshKeyImportState === 'submittingPassphrase'}
+              >
+                取消
+              </Button>
+              <Button type="submit" disabled={busy || sshKeyImportState === 'submittingPassphrase'}>
+                {sshKeyImportState === 'submittingPassphrase' && (
+                  <Spinner data-icon="inline-start" />
+                )}
+                {sshKeyImportState === 'submittingPassphrase' ? '驗證中…' : '繼續匯入'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
       {generatorTarget && (
         <CredentialGeneratorDialog
           initialTab={generatorTarget}
