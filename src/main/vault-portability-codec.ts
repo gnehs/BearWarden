@@ -11,6 +11,7 @@ import type {
 import { VAULT_LINKED_FIELD_IDS_BY_TYPE } from '../shared/vault-contract'
 import {
   decryptBitwardenString,
+  deriveMasterKey,
   derivePbkdf2Sha256,
   encryptBitwardenString,
   stretchMasterKey
@@ -53,6 +54,11 @@ const MAX_SSH_PRIVATE_KEY_LENGTH = 1024 * 1024
 const EXPORT_KDF_ITERATIONS = 600_000
 const MIN_PBKDF2_ITERATIONS = 5_000
 const MAX_PBKDF2_ITERATIONS = 10_000_000
+const MIN_ARGON2_ITERATIONS = 2
+const MAX_ARGON2_ITERATIONS = 100
+const MIN_ARGON2_MEMORY_MIB = 16
+const MAX_ARGON2_MEMORY_MIB = 1_024
+const MAX_ARGON2_PARALLELISM = 64
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const WIRE_TYPE_BY_ITEM_TYPE = {
@@ -608,13 +614,21 @@ export async function decryptBitwardenPasswordProtectedJson(
     if (typeof password !== 'string' || password.length === 0 || password.length > 1_024)
       invalidInput()
     const outer = record(parseJson(text))
-    if (outer.encrypted !== true || outer.passwordProtected !== true || outer.kdfType !== 0) {
+    if (
+      outer.encrypted !== true ||
+      outer.passwordProtected !== true ||
+      (outer.kdfType !== 0 && outer.kdfType !== 1)
+    ) {
       invalidInput()
     }
     if (
       !Number.isSafeInteger(outer.kdfIterations) ||
-      (outer.kdfIterations as number) < MIN_PBKDF2_ITERATIONS ||
-      (outer.kdfIterations as number) > MAX_PBKDF2_ITERATIONS
+      (outer.kdfType === 0 &&
+        ((outer.kdfIterations as number) < MIN_PBKDF2_ITERATIONS ||
+          (outer.kdfIterations as number) > MAX_PBKDF2_ITERATIONS)) ||
+      (outer.kdfType === 1 &&
+        ((outer.kdfIterations as number) < MIN_ARGON2_ITERATIONS ||
+          (outer.kdfIterations as number) > MAX_ARGON2_ITERATIONS))
     ) {
       invalidInput()
     }
@@ -622,7 +636,26 @@ export async function decryptBitwardenPasswordProtectedJson(
     saltBytes = salt.bytes
     const validationCipher = string(outer.encKeyValidation_DO_NOT_EDIT, MAX_JSON_BYTES, false)
     const dataCipher = string(outer.data, MAX_JSON_BYTES, false)
-    masterKey = await derivePbkdf2Sha256(password, salt.encoded, outer.kdfIterations as number)
+    if (outer.kdfType === 0) {
+      masterKey = await derivePbkdf2Sha256(password, salt.encoded, outer.kdfIterations as number)
+    } else {
+      if (
+        !Number.isSafeInteger(outer.kdfMemory) ||
+        (outer.kdfMemory as number) < MIN_ARGON2_MEMORY_MIB ||
+        (outer.kdfMemory as number) > MAX_ARGON2_MEMORY_MIB ||
+        !Number.isSafeInteger(outer.kdfParallelism) ||
+        (outer.kdfParallelism as number) < 1 ||
+        (outer.kdfParallelism as number) > MAX_ARGON2_PARALLELISM
+      ) {
+        invalidInput()
+      }
+      masterKey = await deriveMasterKey(password, salt.encoded, {
+        type: 'argon2id',
+        iterations: outer.kdfIterations as number,
+        memoryMiB: outer.kdfMemory as number,
+        parallelism: outer.kdfParallelism as number
+      })
+    }
     ;({ encKey, macKey, combinedKey } = stretchMasterKey(masterKey))
     const validation = decryptBitwardenString(validationCipher, combinedKey)
     if (!UUID_PATTERN.test(validation)) invalidInput()

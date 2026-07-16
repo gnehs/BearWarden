@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { VaultItemType } from '../shared/vault-contract'
+import { deriveMasterKey, encryptBitwardenString, stretchMasterKey } from './bitwarden-crypto'
 import type { StoredPasskeyCredential } from './passkey'
 import {
   buildBitwardenJson,
@@ -266,6 +267,46 @@ describe('Bitwarden password-protected JSON portability', () => {
     ).rejects.toMatchObject({ name: 'VaultError', code: 'INVALID_INPUT' })
   })
 
+  it('decrypts official Argon2id password-protected exports', async () => {
+    const password = 'argon2-backup-password'
+    const clearText = buildBitwardenJson(snapshot())
+    const salt = Buffer.from('0123456789abcdef', 'utf8').toString('base64')
+    let masterKey: Buffer | undefined
+    let encKey: Buffer | undefined
+    let macKey: Buffer | undefined
+    let combinedKey: Buffer | undefined
+    try {
+      masterKey = await deriveMasterKey(password, salt, {
+        type: 'argon2id',
+        iterations: 2,
+        memoryMiB: 16,
+        parallelism: 1
+      })
+      ;({ encKey, macKey, combinedKey } = stretchMasterKey(masterKey))
+      const encrypted = JSON.stringify({
+        encrypted: true,
+        passwordProtected: true,
+        salt,
+        kdfType: 1,
+        kdfIterations: 2,
+        kdfMemory: 16,
+        kdfParallelism: 1,
+        encKeyValidation_DO_NOT_EDIT: encryptBitwardenString(
+          '00000000-0000-4000-8000-000000000001',
+          combinedKey
+        ),
+        data: encryptBitwardenString(clearText, combinedKey)
+      })
+
+      expect(await decryptBitwardenPasswordProtectedJson(encrypted, password)).toBe(clearText)
+    } finally {
+      masterKey?.fill(0)
+      encKey?.fill(0)
+      macKey?.fill(0)
+      combinedKey?.fill(0)
+    }
+  })
+
   it('rejects low, excessive, unsupported, and malformed KDF parameters', async () => {
     const encrypted = await encryptBitwardenPasswordProtectedJson('{}', 'backup-password')
     const outer = JSON.parse(encrypted)
@@ -281,12 +322,21 @@ describe('Bitwarden password-protected JSON portability', () => {
         'backup-password'
       )
     )
-    await expectInvalidInput(() =>
-      decryptBitwardenPasswordProtectedJson(
-        JSON.stringify({ ...outer, kdfType: 1, kdfMemory: 64, kdfParallelism: 4 }),
-        'backup-password'
+    for (const argonParams of [
+      { kdfIterations: 1, kdfMemory: 16, kdfParallelism: 1 },
+      { kdfIterations: 2, kdfMemory: 15, kdfParallelism: 1 },
+      { kdfIterations: 2, kdfMemory: 16, kdfParallelism: 0 },
+      { kdfIterations: 101, kdfMemory: 16, kdfParallelism: 1 },
+      { kdfIterations: 2, kdfMemory: 1_025, kdfParallelism: 1 },
+      { kdfIterations: 2, kdfMemory: 16, kdfParallelism: 65 }
+    ]) {
+      await expectInvalidInput(() =>
+        decryptBitwardenPasswordProtectedJson(
+          JSON.stringify({ ...outer, kdfType: 1, ...argonParams }),
+          'backup-password'
+        )
       )
-    )
+    }
     await expectInvalidInput(() =>
       decryptBitwardenPasswordProtectedJson(
         JSON.stringify({ ...outer, salt: `${outer.salt}=x` }),
