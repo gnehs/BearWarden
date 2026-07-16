@@ -45,6 +45,8 @@ export interface PasskeyPromptChoice {
   id: string
   label: string
   detail?: string
+  /** Safe policy metadata; it never grants access or proves that a reprompt succeeded. */
+  requiresReprompt?: boolean
 }
 
 interface PasskeyTrustedRequestBase {
@@ -257,13 +259,18 @@ function frozenChoices(value: unknown): readonly PasskeyPromptChoice[] {
       throw coordinatorError('INVALID_REQUEST')
     }
     const record = candidate as Record<string, unknown>
-    if (Object.keys(record).some((key) => key !== 'id' && key !== 'label' && key !== 'detail')) {
+    if (
+      Object.keys(record).some(
+        (key) => key !== 'id' && key !== 'label' && key !== 'detail' && key !== 'requiresReprompt'
+      )
+    ) {
       throw coordinatorError('INVALID_REQUEST')
     }
     if (
       !validBoundedString(record.id, MAX_PROMPT_CHOICE_ID_LENGTH) ||
       !validBoundedString(record.label, MAX_TEXT_LENGTH) ||
       (record.detail !== undefined && !validBoundedString(record.detail, MAX_TEXT_LENGTH, true)) ||
+      (record.requiresReprompt !== undefined && typeof record.requiresReprompt !== 'boolean') ||
       ids.has(record.id)
     ) {
       throw coordinatorError('INVALID_REQUEST')
@@ -272,7 +279,10 @@ function frozenChoices(value: unknown): readonly PasskeyPromptChoice[] {
     return Object.freeze({
       id: record.id,
       label: record.label,
-      ...(record.detail === undefined ? {} : { detail: record.detail })
+      ...(record.detail === undefined ? {} : { detail: record.detail }),
+      ...(record.requiresReprompt === undefined
+        ? {}
+        : { requiresReprompt: record.requiresReprompt })
     })
   })
   return Object.freeze(choices)

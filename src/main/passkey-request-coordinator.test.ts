@@ -27,7 +27,14 @@ function createRequest(
     rpId: 'login.example.test',
     rpName: 'Example Test',
     userVerification: 'preferred',
-    choices: [{ id: 'login-a', label: 'Example login', detail: 'example-user' }],
+    choices: [
+      {
+        id: 'login-a',
+        label: 'Example login',
+        detail: 'example-user',
+        requiresReprompt: true
+      }
+    ],
     userHandle: Uint8Array.from([9, 8, 7]),
     userName: 'example-user',
     userDisplayName: 'Example User',
@@ -101,7 +108,14 @@ describe('PasskeyRequestCoordinator', () => {
       rpId: 'login.example.test',
       rpName: 'Example Test',
       userVerification: 'discouraged',
-      choices: [{ id: 'login-a', label: 'Example login', detail: 'example-user' }],
+      choices: [
+        {
+          id: 'login-a',
+          label: 'Example login',
+          detail: 'example-user',
+          requiresReprompt: true
+        }
+      ],
       userName: 'example-user',
       userDisplayName: 'Example User'
     })

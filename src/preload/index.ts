@@ -98,7 +98,18 @@ const api: BearWardenAPI = {
     copyCustomField: (request) => ipcRenderer.invoke(IPC_CHANNELS.itemCopyCustomField, request)
   },
   passkeys: {
-    delete: (request) => ipcRenderer.invoke(IPC_CHANNELS.passkeyDelete, request)
+    delete: (request) => ipcRenderer.invoke(IPC_CHANNELS.passkeyDelete, request),
+    verifyApproval: (request) => ipcRenderer.invoke(IPC_CHANNELS.passkeyVerifyApproval, request),
+    respondApproval: (response) =>
+      ipcRenderer.invoke(IPC_CHANNELS.passkeyRespondApproval, response),
+    onApprovalRequested: (listener) => {
+      const wrappedListener = (
+        _event: IpcRendererEvent,
+        request: Parameters<typeof listener>[0]
+      ): void => listener(request)
+      ipcRenderer.on(IPC_EVENTS.passkeyApprovalRequested, wrappedListener)
+      return () => ipcRenderer.removeListener(IPC_EVENTS.passkeyApprovalRequested, wrappedListener)
+    }
   },
   generator: {
     generate: (request) => ipcRenderer.invoke(IPC_CHANNELS.generatorGenerate, request),

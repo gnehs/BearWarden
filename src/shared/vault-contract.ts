@@ -45,6 +45,8 @@ export const IPC_CHANNELS = {
   loginGetTotp: 'login:get-totp',
   loginCopyTotp: 'login:copy-totp',
   passkeyDelete: 'passkey:delete',
+  passkeyVerifyApproval: 'passkey:verify-approval',
+  passkeyRespondApproval: 'passkey:respond-approval',
   loginContextMenu: 'login:context-menu',
   loginWebsiteIcon: 'login:website-icon',
   itemRevealEditorSecrets: 'item:reveal-editor-secrets',
@@ -84,6 +86,7 @@ export const IPC_EVENTS = {
   vaultChanged: 'vault:changed',
   syncChanged: 'sync:changed',
   attachmentProgress: 'attachment:progress',
+  passkeyApprovalRequested: 'passkey:approval-requested',
   sshAgentApprovalRequested: 'ssh-agent:approval-requested',
   sshAgentStatusChanged: 'ssh-agent:status-changed'
 } as const
@@ -776,6 +779,48 @@ export interface SshAgentApprovalResponse {
   authorizationToken?: string
 }
 
+export type PasskeyCeremonyKind = 'create' | 'get'
+export type PasskeyUserVerificationRequirement = 'required' | 'preferred' | 'discouraged'
+export type PasskeyVerificationMethod = 'none' | 'touch-id' | 'master-password'
+
+/** Renderer-safe metadata only. Protocol bytes, credential IDs, and vault revisions stay in main. */
+export interface PasskeyApprovalChoice {
+  /** Request-local opaque identifier; it is not a WebAuthn credential ID. */
+  id: string
+  label: string
+  detail?: string
+  /** Display-only policy metadata. The actual reprompt proof is verified in main. */
+  requiresReprompt: boolean
+}
+
+export interface PasskeyApprovalPrompt {
+  requestId: string
+  expiresAt: number
+  kind: PasskeyCeremonyKind
+  rpId: string
+  rpName: string
+  userVerification: PasskeyUserVerificationRequirement
+  choices: readonly PasskeyApprovalChoice[]
+  verificationMethods: readonly Exclude<PasskeyVerificationMethod, 'none'>[]
+  userName?: string
+  userDisplayName?: string
+}
+
+/** Consent and method selection are not proof that user verification succeeded. */
+export interface PasskeyApprovalResponse {
+  requestId: string
+  approved: boolean
+  selectedChoiceId?: string
+  verificationMethod?: PasskeyVerificationMethod
+}
+
+/** Sends a password directly to a request-bound main-process verifier; no capability is returned. */
+export interface PasskeyApprovalVerificationRequest {
+  requestId: string
+  selectedChoiceId?: string
+  masterPassword: string
+}
+
 export interface AppSettings {
   contentProtection: boolean
   showWebsiteIcons: boolean
@@ -871,6 +916,10 @@ export interface BearWardenAPI {
   passkeys: {
     /** Deletes one passkey without exposing its private key material to the renderer. */
     delete: (request: PasskeyDeleteRequest) => Promise<LoginView>
+    /** Verifies a master password for one pending ceremony without starting a ceremony. */
+    verifyApproval: (request: PasskeyApprovalVerificationRequest) => Promise<void>
+    respondApproval: (response: PasskeyApprovalResponse) => Promise<void>
+    onApprovalRequested: (listener: (request: PasskeyApprovalPrompt) => void) => () => void
   }
   generator: {
     generate: (request: CredentialGeneratorRequest) => Promise<CredentialGeneratorResult>
