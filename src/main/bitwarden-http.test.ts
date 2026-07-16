@@ -187,6 +187,15 @@ describe('BitwardenHttpClient', () => {
       status: 'complete',
       breaches: []
     })
+
+    const unavailable = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(json({ reason: 'Service Unavailable' }, 503))
+    const unavailableClient = new BitwardenHttpClient({ server: 'us', fetch: unavailable })
+    unavailableClient.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 1 })
+    await expect(
+      unavailableClient.getAccountBreachReport('person@example.test')
+    ).rejects.toMatchObject({ code: 'NETWORK', status: 503 })
   })
 
   it('marks Vaultwarden HIBP key placeholders unavailable instead of reporting a breach', async () => {
