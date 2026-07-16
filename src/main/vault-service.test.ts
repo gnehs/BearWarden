@@ -2754,6 +2754,16 @@ describe('VaultService encrypted local data', () => {
     })
   })
 
+  it('opens only the fixed HIBP attribution URL after verifying the vault is unlocked', async () => {
+    const { service, openExternal } = await createHarness()
+    await expect(service.openHibpWebsite()).rejects.toMatchObject({ code: 'LOCKED' })
+    await service.setup(MASTER_PASSWORD)
+
+    await expect(service.openHibpWebsite()).resolves.toBeUndefined()
+    expect(openExternal).toHaveBeenCalledOnce()
+    expect(openExternal).toHaveBeenCalledWith('https://haveibeenpwned.com/')
+  })
+
   it('cancels account-breach I/O, releases the mutex, and fails closed on auth or lock changes', async () => {
     let fake: ReturnType<typeof createSyncFake> | null = null
     const { service } = await createHarness({
@@ -2776,11 +2786,9 @@ describe('VaultService encrypted local data', () => {
             reject(new BitwardenDirectError('ABORTED'))
             return
           }
-          signal?.addEventListener(
-            'abort',
-            () => reject(new BitwardenDirectError('ABORTED')),
-            { once: true }
-          )
+          signal?.addEventListener('abort', () => reject(new BitwardenDirectError('ABORTED')), {
+            once: true
+          })
         })
     )
     const canceled = service.getAccountBreachReport({ email: 'cancel@example.invalid' })
@@ -2801,11 +2809,9 @@ describe('VaultService encrypted local data', () => {
     accountReport.mockImplementationOnce(
       async (_email, signal) =>
         new Promise((_resolve, reject) => {
-          signal?.addEventListener(
-            'abort',
-            () => reject(new BitwardenDirectError('ABORTED')),
-            { once: true }
-          )
+          signal?.addEventListener('abort', () => reject(new BitwardenDirectError('ABORTED')), {
+            once: true
+          })
         })
     )
     const locked = service.getAccountBreachReport({ email: 'lock@example.invalid' })

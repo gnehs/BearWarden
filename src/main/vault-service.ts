@@ -2597,6 +2597,11 @@ export class VaultService {
     return true
   }
 
+  async openHibpWebsite(): Promise<void> {
+    await this.exclusive(async () => this.requireData())
+    await this.platform.openExternal('https://haveibeenpwned.com/')
+  }
+
   private normalizeAccountBreachEmail(value: unknown): string {
     const email = normalizeRequiredString(value, 254).toLowerCase()
     const firstAt = email.indexOf('@')

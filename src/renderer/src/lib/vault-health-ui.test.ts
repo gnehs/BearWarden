@@ -1,12 +1,23 @@
 import { describe, expect, it } from 'vitest'
-import type { LoginSummary, VaultHealthExposedReport } from '../../../shared/vault-contract'
+import type {
+  LoginSummary,
+  VaultHealthAccountBreachReport,
+  VaultHealthExposedReport
+} from '../../../shared/vault-contract'
 import {
+  beginAccountBreachCheck,
   beginExposedPasswordCheck,
+  cancelAccountBreachCheck,
   cancelExposedPasswordCheck,
+  createAccountBreachIdleState,
   createExposedPasswordIdleState,
+  failAccountBreachCheck,
   failExposedPasswordCheck,
+  invalidateAccountBreachCheck,
   invalidateExposedPasswordCheck,
+  isVaultHealthAccountBreachReport,
   isVaultHealthExposedReport,
+  resolveAccountBreachCheck,
   resolveExposedPasswordCheck,
   vaultHealthRevision,
   weakPasswordLabel
@@ -53,6 +64,28 @@ function exposedReport(
         name: 'Example',
         subtitle: '登入項目',
         exposedCount: 42
+      }
+    ],
+    ...overrides
+  }
+}
+
+function accountBreachReport(
+  overrides: Partial<Extract<VaultHealthAccountBreachReport, { status: 'complete' }>> = {}
+): Extract<VaultHealthAccountBreachReport, { status: 'complete' }> {
+  return {
+    generatedAt: '2026-07-16T01:00:00.000Z',
+    status: 'complete',
+    breaches: [
+      {
+        name: 'ExampleBreach',
+        title: 'Example Breach',
+        domain: 'example.invalid',
+        breachDate: '2025-01-01',
+        addedDate: '2025-01-02T00:00:00.000Z',
+        pwnCount: 42,
+        dataClasses: ['Email addresses'],
+        isVerified: true
       }
     ],
     ...overrides
@@ -208,6 +241,112 @@ describe('vault health renderer policy', () => {
     expect(cancelExposedPasswordCheck('revision-b')).toEqual({
       status: 'idle',
       revision: 'revision-b'
+    })
+  })
+
+  it('keeps account-breach checks idle until explicit email submission', () => {
+    expect(createAccountBreachIdleState('revision-a')).toEqual({
+      status: 'idle',
+      revision: 'revision-a'
+    })
+    expect(beginAccountBreachCheck('revision-a', 1, 'person@example.invalid')).toEqual({
+      status: 'loading',
+      revision: 'revision-a',
+      requestId: 1,
+      email: 'person@example.invalid'
+    })
+  })
+
+  it('accepts only bounded renderer-safe account-breach reports', () => {
+    expect(isVaultHealthAccountBreachReport(accountBreachReport())).toBe(true)
+    expect(isVaultHealthAccountBreachReport(accountBreachReport({ breaches: [] }))).toBe(true)
+    expect(
+      isVaultHealthAccountBreachReport({
+        generatedAt: '2026-07-16T01:00:00.000Z',
+        status: 'unavailable',
+        reason: 'server-hibp-unconfigured',
+        breaches: []
+      })
+    ).toBe(true)
+    expect(
+      isVaultHealthAccountBreachReport({
+        ...accountBreachReport(),
+        breaches: [
+          {
+            ...accountBreachReport().breaches[0],
+            description: '<img src=x onerror=alert(1)>'
+          }
+        ]
+      })
+    ).toBe(false)
+    expect(
+      isVaultHealthAccountBreachReport({
+        ...accountBreachReport(),
+        breaches: [
+          {
+            ...accountBreachReport().breaches[0],
+            breachDate: '2025-02-30'
+          }
+        ]
+      })
+    ).toBe(false)
+    expect(
+      isVaultHealthAccountBreachReport({
+        generatedAt: '2026-07-16T01:00:00.000Z',
+        status: 'unavailable',
+        reason: 'server-hibp-unconfigured',
+        breaches: [accountBreachReport().breaches[0]]
+      })
+    ).toBe(false)
+    const hostileOwnKeys = new Proxy(
+      {
+        generatedAt: '2026-07-16T01:00:00.000Z',
+        status: 'complete',
+        breaches: []
+      },
+      {
+        ownKeys: () => {
+          throw new Error('keys denied')
+        }
+      }
+    )
+    expect(isVaultHealthAccountBreachReport(hostileOwnKeys)).toBe(false)
+  })
+
+  it('does not let stale, malformed, failed, or cancelled account-breach responses imply safety', () => {
+    const loading = beginAccountBreachCheck('revision-b', 2, 'person@example.invalid')
+    const report = accountBreachReport({ breaches: [] })
+
+    expect(resolveAccountBreachCheck(loading, 'revision-b', 1, report)).toBe(loading)
+    expect(resolveAccountBreachCheck(loading, 'revision-a', 2, report)).toBe(loading)
+    expect(
+      resolveAccountBreachCheck(loading, 'revision-b', 2, { status: 'complete', breaches: [] })
+    ).toEqual({
+      status: 'failed',
+      revision: 'revision-b',
+      requestId: 2,
+      email: 'person@example.invalid'
+    })
+    expect(failAccountBreachCheck(loading, 'revision-b', 2)).toEqual({
+      status: 'failed',
+      revision: 'revision-b',
+      requestId: 2,
+      email: 'person@example.invalid'
+    })
+    expect(resolveAccountBreachCheck(loading, 'revision-b', 2, report)).toEqual({
+      status: 'success',
+      revision: 'revision-b',
+      requestId: 2,
+      email: 'person@example.invalid',
+      report
+    })
+    expect(invalidateAccountBreachCheck(loading, 'revision-c')).toEqual({
+      status: 'idle',
+      revision: 'revision-c'
+    })
+    expect(cancelAccountBreachCheck('revision-c')).toEqual({
+      status: 'idle',
+      revision: 'revision-c'
     })
   })
 })

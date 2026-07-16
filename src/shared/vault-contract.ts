@@ -11,6 +11,7 @@ export const IPC_CHANNELS = {
   vaultHealthCancelExposedPasswords: 'vault:health-cancel-exposed-passwords',
   vaultHealthAccountBreaches: 'vault:health-account-breaches',
   vaultHealthCancelAccountBreaches: 'vault:health-cancel-account-breaches',
+  vaultHealthOpenHibp: 'vault:health-open-hibp',
   folderList: 'folder:list',
   folderCreate: 'folder:create',
   folderUpdate: 'folder:update',
@@ -977,6 +978,8 @@ export interface BearWardenAPI {
     ) => Promise<VaultHealthAccountBreachReport>
     /** Cancels the active account-breach report, if any. */
     cancelAccountBreaches: () => Promise<boolean>
+    /** Opens the fixed HIBP attribution URL in the system browser. */
+    openHibpWebsite: () => Promise<void>
   }
   folders: {
     list: () => Promise<FolderView[]>

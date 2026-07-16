@@ -44,7 +44,8 @@ const api: BearWardenAPI = {
     accountBreaches: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.vaultHealthAccountBreaches, request),
     cancelAccountBreaches: () =>
-      ipcRenderer.invoke(IPC_CHANNELS.vaultHealthCancelAccountBreaches, {})
+      ipcRenderer.invoke(IPC_CHANNELS.vaultHealthCancelAccountBreaches, {}),
+    openHibpWebsite: () => ipcRenderer.invoke(IPC_CHANNELS.vaultHealthOpenHibp, {})
   },
   folders: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.folderList),

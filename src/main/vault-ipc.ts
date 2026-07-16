@@ -1139,9 +1139,7 @@ function parseVaultHealthEmptyRequest(value: unknown): RecordValue {
   return exactRecord(value, [])
 }
 
-function parseVaultHealthAccountBreachRequest(
-  value: unknown
-): VaultHealthAccountBreachRequest {
+function parseVaultHealthAccountBreachRequest(value: unknown): VaultHealthAccountBreachRequest {
   const record = exactRecord(value, ['email'])
   const email = requiredString(record, 'email').trim()
   if (email.length === 0 || email.length > MAX_ACCOUNT_BREACH_EMAIL_LENGTH) {
@@ -1387,6 +1385,10 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       return vault.cancelAccountBreachReport()
     }
   )
+  registerHandler<void>(IPC_CHANNELS.vaultHealthOpenHibp, getMainWindow, async (_event, input) => {
+    parseVaultHealthEmptyRequest(input)
+    await vault.openHibpWebsite()
+  })
   registerHandler(IPC_CHANNELS.loginAuthorize, getMainWindow, async (event, input) => {
     const request = parseLoginAuthorize(input)
     const generation = await vault.authorizeLogin(request)

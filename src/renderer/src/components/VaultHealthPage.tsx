@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  MailSearch,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -11,6 +12,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
+  VaultHealthAccountBreachFinding,
   VaultHealthReport,
   VaultHealthExposedFinding,
   VaultHealthExposedReport,
@@ -31,17 +33,26 @@ import {
 } from './ui/empty'
 import { Spinner } from './ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
+import { Input } from './ui/input'
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from './ui/field'
 import {
+  beginAccountBreachCheck,
   beginExposedPasswordCheck,
+  cancelAccountBreachCheck,
   cancelExposedPasswordCheck,
+  createAccountBreachIdleState,
   createExposedPasswordIdleState,
+  failAccountBreachCheck,
   failExposedPasswordCheck,
+  invalidateAccountBreachCheck,
+  resolveAccountBreachCheck,
   resolveExposedPasswordCheck,
   weakPasswordLabel,
+  type AccountBreachCheckState,
   type ExposedPasswordCheckState
 } from '../lib/vault-health-ui'
 
-type HealthTab = 'reused' | 'weak' | 'exposed'
+type HealthTab = 'reused' | 'weak' | 'exposed' | 'account'
 
 interface VaultHealthPageProps {
   revision: string
@@ -63,7 +74,11 @@ function HealthLoading(): React.JSX.Element {
   )
 }
 
-function HealthEmpty({ kind }: { kind: Exclude<HealthTab, 'exposed'> }): React.JSX.Element {
+function HealthEmpty({
+  kind
+}: {
+  kind: Exclude<HealthTab, 'exposed' | 'account'>
+}): React.JSX.Element {
   return (
     <Empty className="min-h-56">
       <EmptyHeader>
@@ -337,6 +352,257 @@ function ExposedPasswordPanel({
   )
 }
 
+function HibpWebsiteLink(): React.JSX.Element {
+  return (
+    <a
+      href="https://haveibeenpwned.com/"
+      onClick={(event) => {
+        event.preventDefault()
+        void window.bearwarden.health.openHibpWebsite().catch(() => {
+          // Attribution remains visible even if the system browser cannot be opened.
+        })
+      }}
+    >
+      Have I Been Pwned (HIBP)
+    </a>
+  )
+}
+
+function AccountBreachPrivacyNotice(): React.JSX.Element {
+  return (
+    <Alert>
+      <MailSearch />
+      <AlertTitle>完整電子郵件會離開此裝置</AlertTitle>
+      <AlertDescription>
+        只有在你送出查詢後，BearWarden 才會把完整電子郵件傳給已設定的 Vaultwarden
+        server；該伺服器會再將它傳給 <HibpWebsiteLink />
+        。這不是 k-anonymity 密碼檢查，請只查詢你有權檢查的帳號。
+      </AlertDescription>
+    </Alert>
+  )
+}
+
+function isValidAccountBreachEmail(email: string): boolean {
+  return email.length > 0 && email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+function AccountBreachForm({
+  email,
+  invalid,
+  loading,
+  onEmailChange,
+  onSubmit,
+  onCancel
+}: {
+  email: string
+  invalid: boolean
+  loading: boolean
+  onEmailChange: (value: string) => void
+  onSubmit: () => void
+  onCancel: () => void
+}): React.JSX.Element {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>查詢帳號外洩紀錄</CardTitle>
+        <CardDescription>輸入要透過 Vaultwarden 與 HIBP 查詢的電子郵件。</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault()
+            onSubmit()
+          }}
+        >
+          <FieldGroup>
+            <Field data-invalid={invalid || undefined} data-disabled={loading || undefined}>
+              <FieldLabel htmlFor="account-breach-email">電子郵件</FieldLabel>
+              <Input
+                id="account-breach-email"
+                type="email"
+                autoComplete="email"
+                maxLength={254}
+                value={email}
+                aria-invalid={invalid || undefined}
+                aria-describedby={invalid ? 'account-breach-email-error' : undefined}
+                disabled={loading}
+                onChange={(event) => onEmailChange(event.target.value)}
+              />
+              <FieldDescription>完整地址只會在按下「查詢帳號外洩」後送出。</FieldDescription>
+              {invalid && (
+                <FieldError id="account-breach-email-error">
+                  請輸入有效且不超過 254 個字元的電子郵件地址。
+                </FieldError>
+              )}
+            </Field>
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" disabled={loading}>
+                {loading ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <Search data-icon="inline-start" />
+                )}
+                查詢帳號外洩
+              </Button>
+              {loading && (
+                <Button variant="outline" type="button" onClick={onCancel}>
+                  <X data-icon="inline-start" />
+                  取消查詢
+                </Button>
+              )}
+            </div>
+          </FieldGroup>
+        </form>
+      </CardContent>
+    </Card>
+  )
+}
+
+function AccountBreachFindingCard({
+  breach
+}: {
+  breach: VaultHealthAccountBreachFinding
+}): React.JSX.Element {
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>{breach.title}</CardTitle>
+        <CardDescription>{breach.domain || breach.name}</CardDescription>
+        <CardAction className="flex items-center gap-2">
+          <Badge variant={breach.isVerified ? 'secondary' : 'outline'}>
+            {breach.isVerified ? '已驗證' : '未驗證'}
+          </Badge>
+          <Badge variant="outline">{breach.pwnCount.toLocaleString()} 筆帳號</Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-muted-foreground text-sm">
+          外洩日期：{breach.breachDate}；加入 HIBP：
+          {new Date(breach.addedDate).toLocaleDateString()}
+        </p>
+        {breach.dataClasses.length > 0 && (
+          <div className="flex flex-wrap gap-2" aria-label="受影響資料類別">
+            {breach.dataClasses.map((dataClass, index) => (
+              <Badge key={`${dataClass}-${index}`} variant="outline">
+                {dataClass}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function AccountBreachResults({
+  state
+}: {
+  state: AccountBreachCheckState
+}): React.JSX.Element | null {
+  if (state.status === 'idle') return null
+
+  if (state.status === 'loading') {
+    return (
+      <Alert aria-live="polite" aria-busy="true">
+        <Spinner />
+        <AlertTitle>正在查詢帳號外洩紀錄</AlertTitle>
+        <AlertDescription>
+          完整電子郵件正由已設定的 Vaultwarden server 轉送至 HIBP。
+        </AlertDescription>
+      </Alert>
+    )
+  }
+
+  if (state.status === 'failed') {
+    return (
+      <Alert variant="destructive">
+        <WifiOff />
+        <AlertTitle>無法判定帳號是否出現在外洩事件</AlertTitle>
+        <AlertDescription>
+          Vaultwarden、HIBP 網路或回應驗證失敗，本次結果為未知；這不代表帳號安全。
+        </AlertDescription>
+      </Alert>
+    )
+  }
+
+  if (state.status === 'unavailable') {
+    return (
+      <Alert>
+        <ShieldQuestion />
+        <AlertTitle>Vaultwarden 尚未設定 HIBP API key</AlertTitle>
+        <AlertDescription>
+          伺服器回傳的是未設定 API key 的提示，不是查詢結果；請由伺服器管理者設定 HIBP API key
+          後再試。
+        </AlertDescription>
+      </Alert>
+    )
+  }
+
+  return state.report.breaches.length ? (
+    <div className="flex flex-col gap-3">
+      <Alert>
+        <AlertTriangle />
+        <AlertTitle>找到 {state.report.breaches.length} 個已知外洩事件</AlertTitle>
+        <AlertDescription>
+          資料由 <HibpWebsiteLink /> 提供；請依受影響資料與密碼重複使用情況採取行動。
+        </AlertDescription>
+      </Alert>
+      {state.report.breaches.map((breach) => (
+        <AccountBreachFindingCard key={breach.name} breach={breach} />
+      ))}
+    </div>
+  ) : (
+    <Empty className="min-h-56">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <CheckCircle2 />
+        </EmptyMedia>
+        <EmptyTitle>本次未找到已知外洩事件</EmptyTitle>
+        <EmptyDescription>
+          HIBP 沒有回傳此帳號的已知外洩事件；這是本次查詢結果，不代表帳號永遠安全。
+        </EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <p className="text-muted-foreground text-sm">
+          資料來源： <HibpWebsiteLink />
+        </p>
+      </EmptyContent>
+    </Empty>
+  )
+}
+
+function AccountBreachPanel({
+  email,
+  invalid,
+  state,
+  onEmailChange,
+  onStart,
+  onCancel
+}: {
+  email: string
+  invalid: boolean
+  state: AccountBreachCheckState
+  onEmailChange: (value: string) => void
+  onStart: () => void
+  onCancel: () => void
+}): React.JSX.Element {
+  return (
+    <div className="flex flex-col gap-3">
+      <AccountBreachPrivacyNotice />
+      <AccountBreachForm
+        email={email}
+        invalid={invalid}
+        loading={state.status === 'loading'}
+        onEmailChange={onEmailChange}
+        onSubmit={onStart}
+        onCancel={onCancel}
+      />
+      <AccountBreachResults state={state} />
+    </div>
+  )
+}
+
 export default function VaultHealthPage({
   revision,
   onBack,
@@ -353,6 +619,14 @@ export default function VaultHealthPage({
   const exposedRequestIdRef = useRef(0)
   const exposedRevisionRef = useRef(revision)
   const exposedRequestActiveRef = useRef(false)
+  const [accountBreachEmail, setAccountBreachEmail] = useState('')
+  const [accountBreachEmailInvalid, setAccountBreachEmailInvalid] = useState(false)
+  const [accountBreachState, setAccountBreachState] = useState<AccountBreachCheckState>(() =>
+    createAccountBreachIdleState(revision)
+  )
+  const accountBreachRequestIdRef = useRef(0)
+  const accountBreachRevisionRef = useRef(revision)
+  const accountBreachRequestActiveRef = useRef(false)
 
   const loadReport = useCallback(async (): Promise<void> => {
     const requestId = ++requestIdRef.current
@@ -409,6 +683,47 @@ export default function VaultHealthPage({
     })
   }, [revision])
 
+  const startAccountBreachCheck = useCallback(async (): Promise<void> => {
+    const email = accountBreachEmail.trim().toLowerCase()
+    if (!isValidAccountBreachEmail(email)) {
+      setAccountBreachEmailInvalid(true)
+      return
+    }
+
+    setAccountBreachEmail(email)
+    setAccountBreachEmailInvalid(false)
+    const requestId = ++accountBreachRequestIdRef.current
+    const requestRevision = revision
+    accountBreachRequestActiveRef.current = true
+    setAccountBreachState(beginAccountBreachCheck(requestRevision, requestId, email))
+
+    try {
+      const nextReport = await window.bearwarden.health.accountBreaches({ email })
+      if (requestId !== accountBreachRequestIdRef.current) return
+      accountBreachRequestActiveRef.current = false
+      setAccountBreachState((current) =>
+        resolveAccountBreachCheck(current, requestRevision, requestId, nextReport)
+      )
+    } catch {
+      if (requestId !== accountBreachRequestIdRef.current) return
+      accountBreachRequestActiveRef.current = false
+      setAccountBreachState((current) =>
+        failAccountBreachCheck(current, requestRevision, requestId)
+      )
+    }
+  }, [accountBreachEmail, revision])
+
+  const cancelAccountBreachRequest = useCallback((): void => {
+    const wasActive = accountBreachRequestActiveRef.current
+    accountBreachRequestActiveRef.current = false
+    accountBreachRequestIdRef.current += 1
+    setAccountBreachState(cancelAccountBreachCheck(revision))
+    if (!wasActive) return
+    void window.bearwarden.health.cancelAccountBreaches().catch(() => {
+      // Cancellation is best effort; stale request IDs keep late responses from reaching the UI.
+    })
+  }, [revision])
+
   useEffect(() => {
     if (exposedRevisionRef.current === revision) return
     exposedRevisionRef.current = revision
@@ -417,6 +732,19 @@ export default function VaultHealthPage({
     exposedRequestIdRef.current += 1
     if (!wasActive) return
     void window.bearwarden.health.cancelExposedPasswords().catch(() => {
+      // A revision change invalidates the renderer state even if the main request already ended.
+    })
+  }, [revision])
+
+  useEffect(() => {
+    if (accountBreachRevisionRef.current === revision) return
+    accountBreachRevisionRef.current = revision
+    const wasActive = accountBreachRequestActiveRef.current
+    accountBreachRequestActiveRef.current = false
+    accountBreachRequestIdRef.current += 1
+    setAccountBreachState((current) => invalidateAccountBreachCheck(current, revision))
+    if (!wasActive) return
+    void window.bearwarden.health.cancelAccountBreaches().catch(() => {
       // A revision change invalidates the renderer state even if the main request already ended.
     })
   }, [revision])
@@ -433,8 +761,24 @@ export default function VaultHealthPage({
     []
   )
 
+  useEffect(
+    () => () => {
+      if (!accountBreachRequestActiveRef.current) return
+      accountBreachRequestActiveRef.current = false
+      accountBreachRequestIdRef.current += 1
+      void window.bearwarden.health.cancelAccountBreaches().catch(() => {
+        // Unmount cancellation must not surface as a failed account-breach report.
+      })
+    },
+    []
+  )
+
   const visibleExposedState =
     exposedState.revision === revision ? exposedState : createExposedPasswordIdleState(revision)
+  const visibleAccountBreachState =
+    accountBreachState.revision === revision
+      ? accountBreachState
+      : createAccountBreachIdleState(revision)
 
   return (
     <section className="flex min-h-0 flex-1 flex-col" aria-labelledby="health-title">
@@ -573,6 +917,26 @@ export default function VaultHealthPage({
                       <Badge variant="outline">未知</Badge>
                     ) : null}
                   </TabsTrigger>
+                  <TabsTrigger value="account">
+                    帳號外洩
+                    {visibleAccountBreachState.status === 'loading' ? (
+                      <Spinner />
+                    ) : visibleAccountBreachState.status === 'success' ? (
+                      <Badge
+                        variant={
+                          visibleAccountBreachState.report.breaches.length
+                            ? 'destructive'
+                            : 'secondary'
+                        }
+                      >
+                        {visibleAccountBreachState.report.breaches.length}
+                      </Badge>
+                    ) : visibleAccountBreachState.status === 'unavailable' ? (
+                      <Badge variant="outline">未設定</Badge>
+                    ) : visibleAccountBreachState.status === 'failed' ? (
+                      <Badge variant="outline">未知</Badge>
+                    ) : null}
+                  </TabsTrigger>
                 </TabsList>
                 <TabsContent value="reused" className="flex flex-col gap-3 pt-3">
                   {report.reusedPasswords.length ? (
@@ -602,6 +966,19 @@ export default function VaultHealthPage({
                     onStart={() => void startExposedPasswordCheck()}
                     onCancel={cancelExposedPasswordRequest}
                     onOpenItem={onOpenItem}
+                  />
+                </TabsContent>
+                <TabsContent value="account" className="pt-3">
+                  <AccountBreachPanel
+                    email={accountBreachEmail}
+                    invalid={accountBreachEmailInvalid}
+                    state={visibleAccountBreachState}
+                    onEmailChange={(value) => {
+                      setAccountBreachEmail(value)
+                      setAccountBreachEmailInvalid(false)
+                    }}
+                    onStart={() => void startAccountBreachCheck()}
+                    onCancel={cancelAccountBreachRequest}
                   />
                 </TabsContent>
               </Tabs>

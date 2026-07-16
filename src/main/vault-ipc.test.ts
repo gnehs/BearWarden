@@ -294,6 +294,7 @@ describe('registerVaultIpc reprompt gate', () => {
         breaches: []
       })),
       cancelAccountBreachReport: vi.fn(() => true),
+      openHibpWebsite: vi.fn(async () => undefined),
       createLogin: vi.fn(async (request) => ({ id: 'created', ...request })),
       cloneLogin: vi.fn(async () => ({ id: 'clone' })),
       archiveLogins: vi.fn(async ({ ids }: { ids: string[] }) => ids.map((id) => ({ id }))),
@@ -534,6 +535,18 @@ describe('registerVaultIpc reprompt gate', () => {
     }
     expect(vault.getAccountBreachReport).toHaveBeenCalledOnce()
     expect(vault.cancelAccountBreachReport).toHaveBeenCalledOnce()
+  })
+
+  it('opens only the fixed HIBP attribution target through an empty request', async () => {
+    const { event, vault } = harness()
+    const open = electronMock.handlers.get(IPC_CHANNELS.vaultHealthOpenHibp)!
+
+    await expect(open(event, {})).resolves.toBeUndefined()
+    expect(vault.openHibpWebsite).toHaveBeenCalledWith()
+    for (const invalid of [undefined, null, [], { url: 'https://example.invalid' }]) {
+      await expect(open(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(vault.openHibpWebsite).toHaveBeenCalledOnce()
   })
 
   it.each([
