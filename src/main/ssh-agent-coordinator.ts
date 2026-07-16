@@ -129,6 +129,7 @@ export class SshAgentCoordinator {
   private hasUnlocked = false
   private lockEpoch = 0
   private cacheEpoch = 0
+  private refreshEpoch = 0
 
   constructor(private readonly options: SshAgentCoordinatorOptions) {
     this.now = options.now ?? Date.now
@@ -143,9 +144,16 @@ export class SshAgentCoordinator {
     this.approvalHandler = { approveSign: (request) => this.approveSign(request) }
   }
 
+  get identityCount(): number {
+    return this.identities.length
+  }
+
   /** Refresh after unlock and after an SSH-key mutation or sync. */
   async refreshIdentities(): Promise<void> {
+    const lockEpoch = this.lockEpoch
+    const refreshEpoch = ++this.refreshEpoch
     const next = (await this.options.vault.listSshAgentIdentities()).map(cloneIdentity)
+    if (lockEpoch !== this.lockEpoch || refreshEpoch !== this.refreshEpoch) return
     this.identities = next
     this.locked = false
     this.hasUnlocked = true
@@ -170,6 +178,7 @@ export class SshAgentCoordinator {
   onLocked(): void {
     this.locked = true
     this.lockEpoch += 1
+    this.refreshEpoch += 1
     this.grants.clear()
     this.rememberedApprovals.clear()
   }
@@ -359,17 +368,21 @@ export class SshAgentCoordinator {
   }
 
   private async unlockAndRefresh(signal: AbortSignal): Promise<void> {
+    const lockEpoch = this.lockEpoch
     await Promise.resolve(this.options.focusWindow())
     const unlocked = await abortable(this.options.waitForUnlock(signal), signal)
     if (unlocked === false || signal.aborted) throw abortError()
-    await abortable(this.options.vault.listSshAgentIdentities(), signal).then((identities) => {
-      this.identities = identities.map(cloneIdentity)
-      this.locked = false
-      this.hasUnlocked = true
-      this.cacheEpoch += 1
-      this.grants.clear()
-      this.rememberedApprovals.clear()
-    })
+    const refreshEpoch = ++this.refreshEpoch
+    const identities = await abortable(this.options.vault.listSshAgentIdentities(), signal)
+    if (signal.aborted || lockEpoch !== this.lockEpoch || refreshEpoch !== this.refreshEpoch) {
+      throw abortError()
+    }
+    this.identities = identities.map(cloneIdentity)
+    this.locked = false
+    this.hasUnlocked = true
+    this.cacheEpoch += 1
+    this.grants.clear()
+    this.rememberedApprovals.clear()
   }
 
   private findExactIdentity(publicKeyBlob: Buffer): CachedIdentity | undefined {

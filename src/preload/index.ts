@@ -112,6 +112,27 @@ const api: BearWardenAPI = {
     createImported: (request) => ipcRenderer.invoke(IPC_CHANNELS.sshKeyCreateImported, request),
     updateImported: (request) => ipcRenderer.invoke(IPC_CHANNELS.sshKeyUpdateImported, request)
   },
+  sshAgent: {
+    status: () => ipcRenderer.invoke(IPC_CHANNELS.sshAgentStatus),
+    respondApproval: (response) =>
+      ipcRenderer.invoke(IPC_CHANNELS.sshAgentRespondApproval, response),
+    onApprovalRequested: (listener) => {
+      const wrappedListener = (
+        _event: IpcRendererEvent,
+        request: Parameters<typeof listener>[0]
+      ): void => listener(request)
+      ipcRenderer.on(IPC_EVENTS.sshAgentApprovalRequested, wrappedListener)
+      return () => ipcRenderer.removeListener(IPC_EVENTS.sshAgentApprovalRequested, wrappedListener)
+    },
+    onStatusChanged: (listener) => {
+      const wrappedListener = (
+        _event: IpcRendererEvent,
+        status: Parameters<typeof listener>[0]
+      ): void => listener(status)
+      ipcRenderer.on(IPC_EVENTS.sshAgentStatusChanged, wrappedListener)
+      return () => ipcRenderer.removeListener(IPC_EVENTS.sshAgentStatusChanged, wrappedListener)
+    }
+  },
   sync: {
     status: () => ipcRenderer.invoke(IPC_CHANNELS.syncStatus),
     connect: (request) => ipcRenderer.invoke(IPC_CHANNELS.syncConnect, request),

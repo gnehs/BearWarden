@@ -126,6 +126,63 @@ describe('RepromptAuthorizationStore', () => {
   })
 })
 
+describe('registerVaultIpc shared main-process hooks', () => {
+  function registerHarness(options: {
+    vault: Partial<VaultService>
+    repromptAuthorizations?: RepromptAuthorizationStore
+    afterSetup?: () => void | Promise<void>
+  }): { event: unknown } {
+    const mainFrame = { url: 'app://bearwarden/index.html' }
+    const webContents = {
+      id: 73,
+      mainFrame,
+      getURL: () => mainFrame.url,
+      send: vi.fn(),
+      isDestroyed: () => false
+    }
+    registerVaultIpc({
+      vault: options.vault as VaultService,
+      portability: {} as Parameters<typeof registerVaultIpc>[0]['portability'],
+      settings: {} as AppSettingsService,
+      sshKeyImportSessions: new SshKeyImportSessionStore({ readClipboard: () => '' }),
+      getMainWindow: () => ({ isDestroyed: () => false, webContents }) as never,
+      ...(options.repromptAuthorizations === undefined
+        ? {}
+        : { repromptAuthorizations: options.repromptAuthorizations }),
+      ...(options.afterSetup === undefined ? {} : { afterSetup: options.afterSetup })
+    })
+    return { event: { sender: webContents, senderFrame: mainFrame } }
+  }
+
+  it('issues renderer reprompt capabilities from the injected store', async () => {
+    const itemId = '00000000-0000-4000-8000-000000000001'
+    const store = new RepromptAuthorizationStore(
+      () => 2_000,
+      (size) => Buffer.alloc(size, 4)
+    )
+    const { event } = registerHarness({
+      vault: { authorizeLogin: vi.fn().mockResolvedValue(9) },
+      repromptAuthorizations: store
+    })
+    const authorize = electronMock.handlers.get(IPC_CHANNELS.loginAuthorize)!
+    const result = (await authorize(event, { id: itemId, masterPassword: 'test-only' })) as {
+      token: string
+    }
+    expect(store.validate(result.token, 73, itemId, 9)).toBe(true)
+  })
+
+  it('runs the successful setup hook without turning auxiliary failures into setup failures', async () => {
+    const afterSetup = vi.fn().mockRejectedValue(new Error('agent unavailable'))
+    const setup = vi.fn().mockResolvedValue({ state: 'unlocked' })
+    const { event } = registerHarness({ vault: { setup }, afterSetup })
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.vaultSetup)!(event, { masterPassword: 'test-only' })
+    ).resolves.toEqual({ state: 'unlocked' })
+    expect(setup).toHaveBeenCalledWith('test-only')
+    expect(afterSetup).toHaveBeenCalledOnce()
+  })
+})
+
 describe('registerVaultIpc reprompt gate', () => {
   const operationId = '70000000-0000-4000-8000-000000000001'
   function harness(): {

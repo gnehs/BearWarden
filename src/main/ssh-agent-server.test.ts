@@ -1,10 +1,11 @@
 import { generateKeyPairSync } from 'node:crypto'
+import { EventEmitter } from 'node:events'
 import { lstat, mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises'
 import { createConnection, createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Duplex } from 'node:stream'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { utils, type ParsedKey } from 'ssh2'
 import {
   SSH_AGENT_EXTENSION,
@@ -66,6 +67,20 @@ class FakeSocket extends Duplex {
 
   receive(chunk: Buffer): void {
     this.push(chunk)
+  }
+}
+
+class FakeListeningServer extends EventEmitter {
+  maxConnections = 0
+
+  listen(): this {
+    queueMicrotask(() => this.emit('listening'))
+    return this
+  }
+
+  close(callback?: () => void): this {
+    queueMicrotask(() => callback?.())
+    return this
   }
 }
 
@@ -394,7 +409,35 @@ async function requestAgent(path: string, body: Buffer): Promise<Buffer> {
 
 const unixTest = process.platform === 'win32' ? it.skip : it
 
-describe('SshAgentServer Unix listener', () => {
+describe('SshAgentServer listener lifecycle', () => {
+  it('reports a post-listen runtime error and tears the endpoint down', async () => {
+    const onRuntimeError = vi.fn()
+    const fakeServer = new FakeListeningServer()
+    const server = new SshAgentServer({
+      provider: stubProvider(),
+      approvalHandler: allowApproval,
+      platform: 'win32',
+      onRuntimeError,
+      testHooks: {
+        createServer: () => fakeServer as unknown as ReturnType<typeof createServer>
+      }
+    })
+    try {
+      await server.start()
+      const runtimeError = new Error('raw OS detail stays in main')
+      fakeServer.emit('error', runtimeError)
+
+      await eventually(() => {
+        expect(onRuntimeError).toHaveBeenCalledOnce()
+        expect(onRuntimeError).toHaveBeenCalledWith(runtimeError)
+        expect(server.status.running).toBe(false)
+        expect(server.status.socketPath).toBeUndefined()
+      })
+    } finally {
+      await server.stop()
+    }
+  })
+
   unixTest('serves its private socket and removes only that socket on stop', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'bearwarden-ssh-agent-'))
     const socketPath = join(directory, 'agent.sock')

@@ -363,4 +363,64 @@ describe('SshAgentCoordinator', () => {
     ).resolves.toEqual([])
     expect(current.waitForUnlock).toHaveBeenCalled()
   })
+
+  it('does not restore a stale identity refresh after lock or reset', async () => {
+    const current = harness()
+    let resolveRefresh!: (value: SshAgentVaultIdentity[]) => void
+    vi.mocked(current.vault.listSshAgentIdentities).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRefresh = resolve
+        })
+    )
+
+    const refresh = current.coordinator.onUnlocked()
+    await Promise.resolve()
+    current.coordinator.reset()
+    resolveRefresh([identity()])
+    await refresh
+
+    current.identities.length = 0
+    await expect(
+      current.coordinator.provider.listIdentities({
+        connection: connection(),
+        signal: new AbortController().signal
+      })
+    ).resolves.toEqual([])
+    expect(current.waitForUnlock).toHaveBeenCalledOnce()
+    expect(current.vault.listSshAgentIdentities).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps only the newest overlapping identity refresh', async () => {
+    const current = harness()
+    let resolveFirst!: (value: SshAgentVaultIdentity[]) => void
+    let resolveSecond!: (value: SshAgentVaultIdentity[]) => void
+    vi.mocked(current.vault.listSshAgentIdentities)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSecond = resolve
+          })
+      )
+
+    const first = current.coordinator.refreshIdentities()
+    const second = current.coordinator.refreshIdentities()
+    resolveSecond([identity({ name: 'Newest key' })])
+    await second
+    resolveFirst([identity({ name: 'Stale key' })])
+    await first
+
+    await expect(
+      current.coordinator.provider.listIdentities({
+        connection: connection(),
+        signal: new AbortController().signal
+      })
+    ).resolves.toEqual([{ keyBlob: KEY_BLOB, comment: 'Newest key' }])
+  })
 })

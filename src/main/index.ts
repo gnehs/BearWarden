@@ -15,6 +15,8 @@ import {
   IPC_CHANNELS,
   IPC_EVENTS,
   type SshAgentPromptBehavior,
+  type SshAgentStatus,
+  type SshAgentStatusErrorCode,
   type SyncStatus
 } from '../shared/vault-contract'
 import { BitwardenDirectClient } from './bitwarden-direct'
@@ -23,11 +25,14 @@ import { AppSettingsService } from './app-settings'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import { FocusTouchIdUnlockController } from './focus-touch-id-unlock'
 import { installApplicationMenu } from './application-menu'
-import { registerVaultIpc } from './vault-ipc'
+import { registerVaultIpc, RepromptAuthorizationStore } from './vault-ipc'
 import { VaultService } from './vault-service'
 import { VaultAttachmentFileService } from './vault-attachment-files'
 import { VaultPortabilityService } from './vault-portability'
 import { SshKeyImportSessionStore } from './ssh-key-import-session'
+import { SshAgentCoordinator } from './ssh-agent-coordinator'
+import { SshAgentRendererBridge } from './ssh-agent-renderer-bridge'
+import { SshAgentServer } from './ssh-agent-server'
 import icon from '../../resources/icon.png?asset'
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
@@ -39,13 +44,155 @@ let vault: VaultService | null = null
 let settings: AppSettingsService | null = null
 let autoSync: AutoSyncCoordinator | null = null
 let sshKeyImportSessions: SshKeyImportSessionStore | null = null
+let sshAgentCoordinator: SshAgentCoordinator | null = null
+let sshAgentBridge: SshAgentRendererBridge | null = null
+let sshAgentServer: SshAgentServer | null = null
+let repromptAuthorizations: RepromptAuthorizationStore | null = null
 let contentProtectionEnabled = true
 let vaultLockGeneration = 0
 let rendererHandlesLockRequests = false
+let sshAgentEnabled = false
+let sshAgentPromptBehavior: SshAgentPromptBehavior = 'always'
+let sshAgentLifecycleState: SshAgentStatus['state'] = 'stopped'
+let sshAgentLastError: SshAgentStatusErrorCode | undefined
+let sshAgentLifecycle = Promise.resolve()
+let sshAgentLifecycleEpoch = 0
+let shutdownPending: Promise<void> | null = null
+let shutdownComplete = false
+let servicesDisposed = false
 const sshAgentRuntime = {
   applySettings(settings: { enabled: boolean; promptBehavior: SshAgentPromptBehavior }): void {
-    void settings
+    sshAgentEnabled = settings.enabled
+    sshAgentPromptBehavior = settings.promptBehavior
+    sshAgentLifecycleEpoch += 1
+    if (!settings.enabled) {
+      sshAgentBridge?.cancelAll()
+      sshAgentCoordinator?.reset()
+    }
+    publishSshAgentStatus()
+    scheduleSshAgentLifecycle()
   }
+}
+
+function sshAgentErrorCode(error: unknown, operation: 'start' | 'stop'): SshAgentStatusErrorCode {
+  const code = error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined
+  const message = error instanceof Error ? error.message : ''
+  if (message === 'SSH_AGENT_SOCKET_IN_USE') return 'SOCKET_IN_USE'
+  if (message === 'SSH_AGENT_SOCKET_PATH_UNSAFE') return 'SOCKET_PATH_UNSAFE'
+  if (
+    message === 'SSH_AGENT_SOCKET_PATH_CHANGED' ||
+    message === 'SSH_AGENT_SOCKET_REPLACEMENT_RESTORE_FAILED'
+  ) {
+    return 'SOCKET_PATH_CHANGED'
+  }
+  if (code === 'EACCES' || code === 'EPERM') return 'SOCKET_PERMISSION_DENIED'
+  if (process.platform === 'win32' && code === 'EADDRINUSE') return 'PIPE_IN_USE'
+  return operation === 'start' ? 'START_FAILED' : 'STOP_FAILED'
+}
+
+function publishSshAgentStatus(): void {
+  const serverStatus = sshAgentServer?.status
+  sshAgentBridge?.updateStatus({
+    enabled: sshAgentEnabled,
+    running: serverStatus?.running ?? false,
+    state: sshAgentLifecycleState,
+    ...(serverStatus?.socketPath === undefined ? {} : { endpoint: serverStatus.socketPath }),
+    identityCount: sshAgentCoordinator?.identityCount ?? 0,
+    ...(sshAgentLastError === undefined ? {} : { lastError: sshAgentLastError })
+  })
+}
+
+function scheduleSshAgentLifecycle(): void {
+  const lifecycleEpoch = sshAgentLifecycleEpoch
+  sshAgentLifecycle = sshAgentLifecycle
+    .then(async () => {
+      if (lifecycleEpoch !== sshAgentLifecycleEpoch) return
+      const server = sshAgentServer
+      const currentVault = vault
+      if (!server || !currentVault) return
+      const vaultStatus = await currentVault.status()
+      if (lifecycleEpoch !== sshAgentLifecycleEpoch) return
+      const shouldRun = sshAgentEnabled && vaultStatus.state !== 'uninitialized'
+      if (!shouldRun) {
+        sshAgentBridge?.cancelAll()
+        sshAgentCoordinator?.reset()
+        try {
+          await server.stop()
+          sshAgentLifecycleState = 'stopped'
+          sshAgentLastError = undefined
+        } catch (error) {
+          if (lifecycleEpoch !== sshAgentLifecycleEpoch) return
+          sshAgentLifecycleState = 'error'
+          sshAgentLastError = sshAgentErrorCode(error, 'stop')
+        } finally {
+          // A refresh that raced with teardown must not leave an AFU public cache behind.
+          sshAgentCoordinator?.reset()
+        }
+        if (lifecycleEpoch !== sshAgentLifecycleEpoch) return
+        publishSshAgentStatus()
+        return
+      }
+
+      sshAgentLifecycleState = 'starting'
+      sshAgentLastError = undefined
+      publishSshAgentStatus()
+      try {
+        if (vaultStatus.state === 'unlocked') await sshAgentCoordinator?.onUnlocked()
+        if (lifecycleEpoch !== sshAgentLifecycleEpoch) return
+        await server.start()
+        if (lifecycleEpoch !== sshAgentLifecycleEpoch) return
+        sshAgentLifecycleState = 'ready'
+      } catch (error) {
+        if (lifecycleEpoch !== sshAgentLifecycleEpoch) return
+        sshAgentLifecycleState = 'error'
+        sshAgentLastError = sshAgentErrorCode(error, 'start')
+      }
+      publishSshAgentStatus()
+    })
+    .catch(() => {
+      if (lifecycleEpoch !== sshAgentLifecycleEpoch) return
+      sshAgentLifecycleState = 'error'
+      sshAgentLastError = 'START_FAILED'
+      publishSshAgentStatus()
+    })
+}
+
+function focusWindowForSshAgent(): void {
+  const window = mainWindow
+  if (!window || window.isDestroyed()) return
+  if (window.isMinimized()) window.restore()
+  if (!window.isVisible()) window.show()
+  if (!window.isFocused()) {
+    window.flashFrame(true)
+    window.once('focus', () => {
+      if (!window.isDestroyed()) window.flashFrame(false)
+    })
+  }
+  window.focus()
+}
+
+async function refreshSshAgentAfterUnlock(): Promise<void> {
+  const coordinator = sshAgentCoordinator
+  if (!coordinator) return
+  if (!sshAgentEnabled) {
+    sshAgentBridge?.notifyUnlocked()
+    return
+  }
+  try {
+    await coordinator.onUnlocked()
+    publishSshAgentStatus()
+  } finally {
+    sshAgentBridge?.notifyUnlocked()
+  }
+}
+
+function refreshSshAgentAfterVaultChange(): void {
+  const coordinator = sshAgentCoordinator
+  if (!coordinator || !sshAgentEnabled) return
+  void coordinator
+    .refreshIdentities()
+    .then(() => publishSshAgentStatus())
+    .catch(() => undefined)
 }
 
 class SensitiveClipboard {
@@ -142,6 +289,7 @@ function notifySyncChanged(status: SyncStatus): void {
 }
 
 function notifyVaultChanged(): void {
+  refreshSshAgentAfterVaultChange()
   const window = mainWindow
   if (!window || window.isDestroyed()) return
   window.webContents.send(IPC_EVENTS.vaultChanged)
@@ -158,6 +306,10 @@ function beforeVaultLock(): void {
   autoSync?.cancel()
   vaultLockGeneration += 1
   sshKeyImportSessions?.clearAll()
+  sshAgentCoordinator?.onLocked()
+  sshAgentBridge?.cancelAll()
+  repromptAuthorizations?.clear()
+  publishSshAgentStatus()
 }
 
 async function lockVault(): Promise<void> {
@@ -228,6 +380,7 @@ function createWindow(): BrowserWindow {
   })
 
   window.setContentProtection(contentProtectionEnabled)
+  sshAgentBridge?.attachWindow(window)
   window.webContents.on('did-start-loading', () => {
     rendererHandlesLockRequests = false
   })
@@ -328,6 +481,65 @@ if (hasSingleInstanceLock)
         attachmentFiles
       }
     )
+    repromptAuthorizations = new RepromptAuthorizationStore()
+    sshAgentBridge = new SshAgentRendererBridge({
+      getMainWindow: () => mainWindow,
+      focusWindow: () => focusWindowForSshAgent()
+    })
+    sshAgentCoordinator = new SshAgentCoordinator({
+      vault,
+      waitForUnlock: (signal) => sshAgentBridge?.waitForUnlock(signal) ?? Promise.resolve(false),
+      focusWindow: focusWindowForSshAgent,
+      getSettings: () => ({ sshAgentPromptBehavior }),
+      requestRendererApproval: (request, signal) => {
+        const bridge = sshAgentBridge
+        if (!bridge) return Promise.reject(new Error('SSH_AGENT_BRIDGE_UNAVAILABLE'))
+        return bridge.requestApproval(request, signal)
+      },
+      validateAuthorizationToken: (token, itemId, generation) => {
+        const window = mainWindow
+        return Boolean(
+          repromptAuthorizations &&
+          window &&
+          !window.isDestroyed() &&
+          !window.webContents.isDestroyed() &&
+          repromptAuthorizations.validate(token, window.webContents.id, itemId, generation)
+        )
+      }
+    })
+    sshAgentServer = new SshAgentServer({
+      provider: {
+        listIdentities: async (request) => {
+          if (!sshAgentEnabled) return []
+          const identities = await sshAgentCoordinator!.provider.listIdentities(request)
+          return sshAgentEnabled ? identities : []
+        },
+        sign: async (request) => {
+          if (!sshAgentEnabled) return undefined
+          const signature = await sshAgentCoordinator!.provider.sign(request)
+          return sshAgentEnabled ? signature : undefined
+        }
+      },
+      approvalHandler: {
+        approveSign: async (request) => {
+          if (!sshAgentEnabled) return false
+          const approved = await sshAgentCoordinator!.approvalHandler.approveSign(request)
+          return sshAgentEnabled && approved
+        }
+      },
+      onRuntimeError: (error) => {
+        sshAgentLifecycleEpoch += 1
+        sshAgentLifecycleState = 'error'
+        sshAgentLastError = sshAgentErrorCode(error, 'start')
+        publishSshAgentStatus()
+        // The server also schedules fail-closed teardown. This queued stop lets status publish
+        // again after the endpoint and connection set have actually been released.
+        void sshAgentServer
+          ?.stop()
+          .catch(() => undefined)
+          .finally(() => publishSshAgentStatus())
+      }
+    })
     const portability = new VaultPortabilityService(vault, {
       chooseExportPath: async (defaultName) => {
         const options = {
@@ -382,6 +594,8 @@ if (hasSingleInstanceLock)
           if (!vault) throw new Error('Vault service unavailable')
           const status = await vault.unlock(masterPassword)
           await unlockSyncWithLocalPassword(masterPassword).catch(() => undefined)
+          await refreshSshAgentAfterUnlock().catch(() => undefined)
+          scheduleSshAgentLifecycle()
           return status
         }
       }
@@ -398,16 +612,29 @@ if (hasSingleInstanceLock)
       settings,
       getMainWindow: () => mainWindow,
       sshKeyImportSessions,
+      repromptAuthorizations,
+      afterSetup: async () => {
+        await refreshSshAgentAfterUnlock().catch(() => undefined)
+        scheduleSshAgentLifecycle()
+      },
       beforeLock: beforeVaultLock,
       afterLock: () => {
         autoSync?.cancel()
         notifyVaultLocked()
       },
-      afterUnlock: unlockSyncWithLocalPassword,
-      afterMutation: () => autoSync?.request(),
+      afterUnlock: async (masterPassword) => {
+        await unlockSyncWithLocalPassword(masterPassword).catch(() => undefined)
+        await refreshSshAgentAfterUnlock().catch(() => undefined)
+        scheduleSshAgentLifecycle()
+      },
+      afterMutation: () => {
+        autoSync?.request()
+        refreshSshAgentAfterVaultChange()
+      },
       afterSyncChanged: (status) => {
         autoSync?.cancel()
         notifySyncChanged(status)
+        refreshSshAgentAfterVaultChange()
       }
     })
     ipcMain.on(IPC_CHANNELS.vaultLockRequestReady, (event, ready: unknown) => {
@@ -434,12 +661,37 @@ if (hasSingleInstanceLock)
     })
   })
 
-app.on('before-quit', () => {
+function disposeServices(): void {
+  if (servicesDisposed) return
+  servicesDisposed = true
   sensitiveClipboard.clearIfOwned()
   sshKeyImportSessions?.clearAll()
   autoSync?.dispose()
   vault?.dispose()
   settings?.dispose()
+}
+
+app.on('before-quit', (event) => {
+  if (shutdownComplete) {
+    disposeServices()
+    return
+  }
+  event.preventDefault()
+  if (shutdownPending) return
+
+  sshAgentEnabled = false
+  sshAgentLifecycleEpoch += 1
+  sshAgentBridge?.cancelAll()
+  sshAgentCoordinator?.reset()
+  repromptAuthorizations?.clear()
+  shutdownPending = (sshAgentServer?.stop() ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(() => {
+      sshAgentBridge?.dispose()
+      disposeServices()
+      shutdownComplete = true
+      app.quit()
+    })
 })
 
 app.on('window-all-closed', () => {

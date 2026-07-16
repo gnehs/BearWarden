@@ -105,9 +105,13 @@ export interface SshAgentServerOptions extends SshAgentConnectionHandlerOptions 
   getHomeDirectory?: () => string
   platform?: NodeJS.Platform
   maxConnections?: number
+  /** Main-process-only lifecycle signal. Callers must map raw OS errors before publishing. */
+  onRuntimeError?: (error: Error) => void
   /** @internal Deterministic lifecycle seam for transport race-condition tests. */
   testHooks?: {
     afterListeningBeforeSocketOwnership?: (socketPath: string) => void | Promise<void>
+    captureListeningServer?: (server: Server) => void
+    createServer?: (connectionListener: (socket: Socket) => void) => Server
   }
 }
 
@@ -516,7 +520,10 @@ export class SshAgentServer {
     if (this.platform !== 'win32') await removeConfirmedStaleSocket(endpoint)
 
     const epoch = ++this.currentEpoch
-    const server = createServer({ allowHalfOpen: false }, (socket) => this.accept(socket, epoch))
+    const connectionListener = (socket: Socket): void => this.accept(socket, epoch)
+    const server =
+      this.options.testHooks?.createServer?.(connectionListener) ??
+      createServer({ allowHalfOpen: false }, connectionListener)
     server.maxConnections = this.maxConnections
     this.server = server
     this.endpoint = endpoint
@@ -562,9 +569,16 @@ export class SshAgentServer {
       throw error
     }
 
-    server.on('error', () => {
-      if (this.server === server) void this.stop()
+    server.on('error', (error) => {
+      if (this.server !== server) return
+      try {
+        this.options.onRuntimeError?.(error)
+      } catch {
+        // Observability must not prevent fail-closed listener teardown.
+      }
+      void this.stop()
     })
+    this.options.testHooks?.captureListeningServer?.(server)
     return this.status
   }
 

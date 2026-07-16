@@ -61,6 +61,8 @@ export const IPC_CHANNELS = {
   sshKeyCancelImport: 'ssh-key:cancel-import',
   sshKeyCreateImported: 'ssh-key:create-imported',
   sshKeyUpdateImported: 'ssh-key:update-imported',
+  sshAgentStatus: 'ssh-agent:status',
+  sshAgentRespondApproval: 'ssh-agent:respond-approval',
   settingsGet: 'settings:get',
   settingsUpdate: 'settings:update',
   settingsEnableTouchId: 'settings:enable-touch-id',
@@ -80,7 +82,9 @@ export const IPC_EVENTS = {
   vaultUnlocked: 'vault:unlocked',
   vaultChanged: 'vault:changed',
   syncChanged: 'sync:changed',
-  attachmentProgress: 'attachment:progress'
+  attachmentProgress: 'attachment:progress',
+  sshAgentApprovalRequested: 'ssh-agent:approval-requested',
+  sshAgentStatusChanged: 'ssh-agent:status-changed'
 } as const
 
 export const IPC_ERROR_PREFIX = 'BEARWARDEN:'
@@ -721,6 +725,50 @@ export type AppTheme = 'system' | 'light' | 'dark'
 /** Matches Bitwarden's SSH agent prompt behavior values. */
 export type SshAgentPromptBehavior = 'always' | 'never' | 'rememberUntilLock'
 
+/** Stable, renderer-safe SSH agent lifecycle failures. Raw OS errors stay in main. */
+export type SshAgentStatusErrorCode =
+  | 'SOCKET_IN_USE'
+  | 'SOCKET_PATH_UNSAFE'
+  | 'SOCKET_PATH_CHANGED'
+  | 'SOCKET_PERMISSION_DENIED'
+  | 'PIPE_IN_USE'
+  | 'START_FAILED'
+  | 'STOP_FAILED'
+
+export interface SshAgentStatus {
+  enabled: boolean
+  running: boolean
+  state: 'stopped' | 'starting' | 'ready' | 'error'
+  /** Unix socket path or the fixed Windows OpenSSH named pipe. */
+  endpoint?: string
+  identityCount: number
+  lastError?: SshAgentStatusErrorCode
+}
+
+/** Public metadata only. The bytes being signed and all key material remain in main. */
+export interface SshAgentApprovalPrompt {
+  requestId: string
+  expiresAt: number
+  itemId: string
+  itemName: string
+  fingerprint: string
+  promptBehavior: SshAgentPromptBehavior
+  requiresAgentApproval: boolean
+  requiresReprompt: boolean
+  processName?: string
+  forwarded: boolean
+  hostFingerprint?: string
+  namespace?: 'git' | 'file' | 'unsupported'
+  rsaHash?: 'sha256' | 'sha512'
+}
+
+export interface SshAgentApprovalResponse {
+  requestId: string
+  approved: boolean
+  /** Existing renderer-bound reprompt capability, never a password or key. */
+  authorizationToken?: string
+}
+
 export interface AppSettings {
   contentProtection: boolean
   showWebsiteIcons: boolean
@@ -826,6 +874,12 @@ export interface BearWardenAPI {
     cancelImport: (request: SshKeyImportCancelRequest) => Promise<void>
     createImported: (request: SshKeyCreateImportedRequest) => Promise<LoginView>
     updateImported: (request: SshKeyUpdateImportedRequest) => Promise<LoginView>
+  }
+  sshAgent: {
+    status: () => Promise<SshAgentStatus>
+    respondApproval: (response: SshAgentApprovalResponse) => Promise<void>
+    onApprovalRequested: (listener: (request: SshAgentApprovalPrompt) => void) => () => void
+    onStatusChanged: (listener: (status: SshAgentStatus) => void) => () => void
   }
   sync: {
     status: () => Promise<SyncStatus>

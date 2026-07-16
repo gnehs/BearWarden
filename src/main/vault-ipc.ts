@@ -170,6 +170,9 @@ export interface VaultIpcOptions {
   getMainWindow: () => BrowserWindow | null
   /** Injected by the main process so clipboard reads and private material never enter preload. */
   sshKeyImportSessions: SshKeyImportSessionStore
+  /** Shared with other main-only authorization boundaries such as the SSH agent. */
+  repromptAuthorizations?: RepromptAuthorizationStore
+  afterSetup?: () => void | Promise<void>
   beforeLock?: () => void
   afterLock?: () => void
   afterUnlock?: (masterPassword: string) => void | Promise<void>
@@ -1181,10 +1184,9 @@ function registerHandler<T>(
 export function registerVaultIpc(options: VaultIpcOptions): () => void {
   const { vault, portability, settings, getMainWindow } = options
   const sshKeyImportSessions = options.sshKeyImportSessions
-  const authorizations = new RepromptAuthorizationStore(
-    options.repromptNow,
-    options.repromptRandomBytes
-  )
+  const authorizations =
+    options.repromptAuthorizations ??
+    new RepromptAuthorizationStore(options.repromptNow, options.repromptRandomBytes)
   const runAuthorizationBoundary = <T>(
     event: IpcMainInvokeEvent,
     token: string | undefined,
@@ -1227,9 +1229,12 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     return result
   }
   registerHandler(IPC_CHANNELS.vaultStatus, getMainWindow, () => vault.status())
-  registerHandler(IPC_CHANNELS.vaultSetup, getMainWindow, (_event, input) => {
+  registerHandler(IPC_CHANNELS.vaultSetup, getMainWindow, async (_event, input) => {
     const request = parseSetup(input)
-    return vault.setup(request.masterPassword)
+    authorizations.clear()
+    const status = await vault.setup(request.masterPassword)
+    await Promise.resolve(options.afterSetup?.()).catch(() => undefined)
+    return status
   })
   registerHandler(IPC_CHANNELS.vaultUnlock, getMainWindow, (_event, input) => {
     const request = parseUnlock(input)
