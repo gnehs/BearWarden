@@ -95,6 +95,9 @@ export const IPC_CHANNELS = {
   accountCopyApiKey: 'account-security:copy-api-key',
   accountTwoFactorStatus: 'account-security:two-factor-status',
   accountCopyRecoveryCode: 'account-security:copy-recovery-code',
+  accountBeginAuthenticatorSetup: 'account-security:begin-authenticator-setup',
+  accountCopyAuthenticatorKey: 'account-security:copy-authenticator-key',
+  accountCompleteAuthenticatorSetup: 'account-security:complete-authenticator-setup',
   domainRulesGet: 'domain-rules:get',
   domainRulesUpdate: 'domain-rules:update',
   sendList: 'send:list',
@@ -144,6 +147,7 @@ export type VaultErrorCode =
   | 'ATTACHMENT_CANCELED'
   | 'HEALTH_CHECK_FAILED'
   | 'API_KEY_ROTATION_UNKNOWN'
+  | 'TWO_FACTOR_MUTATION_UNKNOWN'
   | 'TOUCH_ID_UNAVAILABLE'
   | 'TOUCH_ID_FAILED'
   | 'INTERNAL_ERROR'
@@ -743,6 +747,26 @@ export interface AccountRecoveryCodeCopyRequest {
   masterPassword: string
 }
 
+export interface AccountAuthenticatorSetupRequest {
+  masterPassword: string
+}
+
+export interface AccountAuthenticatorSetup {
+  sessionId: string
+  key: string
+  requiresMasterPassword: boolean
+  expiresAt: number
+}
+
+export interface AccountAuthenticatorSetupLocator {
+  sessionId: string
+}
+
+export interface AccountAuthenticatorCompleteRequest extends AccountAuthenticatorSetupLocator {
+  token: string
+  masterPassword?: string
+}
+
 export interface GlobalEquivalentDomainView {
   type: number
   domains: string[]
@@ -1310,6 +1334,11 @@ export interface BearWardenAPI {
     copyApiKey: (request: AccountApiKeyCopyRequest) => Promise<AccountApiKeyCopyResult>
     twoFactorStatus: () => Promise<AccountTwoFactorProvider[]>
     copyRecoveryCode: (request: AccountRecoveryCodeCopyRequest) => Promise<void>
+    beginAuthenticatorSetup: (
+      request: AccountAuthenticatorSetupRequest
+    ) => Promise<AccountAuthenticatorSetup>
+    copyAuthenticatorKey: (request: AccountAuthenticatorSetupLocator) => Promise<void>
+    completeAuthenticatorSetup: (request: AccountAuthenticatorCompleteRequest) => Promise<void>
   }
   domainRules: {
     get: () => Promise<EquivalentDomainSettingsView>

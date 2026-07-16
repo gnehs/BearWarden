@@ -11,6 +11,7 @@ import {
   MAX_ACCOUNT_BREACH_EMAIL_LENGTH,
   type AppSettingsUpdate,
   type AccountApiKeyCopyRequest,
+  type AccountAuthenticatorCompleteRequest,
   type AttachmentCancelRequest,
   type AttachmentDeleteRequest,
   type AttachmentDownloadRequest,
@@ -2141,6 +2142,58 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       request.masterPassword = ''
     }
   })
+  registerHandler(
+    IPC_CHANNELS.accountBeginAuthenticatorSetup,
+    getMainWindow,
+    async (_event, input) => {
+      const record = exactRecord(input, ['masterPassword'])
+      const request = { masterPassword: requiredString(record, 'masterPassword') }
+      if (request.masterPassword.length === 0 || request.masterPassword.length > 16_384) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      try {
+        return await vault.beginAccountAuthenticatorSetup(request)
+      } finally {
+        request.masterPassword = ''
+      }
+    }
+  )
+  registerHandler(IPC_CHANNELS.accountCopyAuthenticatorKey, getMainWindow, (_event, input) => {
+    const record = exactRecord(input, ['sessionId'])
+    const sessionId = requiredString(record, 'sessionId')
+    if (!UUID_PATTERN.test(sessionId)) throw new VaultError('INVALID_INPUT')
+    return vault.copyAccountAuthenticatorKey({ sessionId })
+  })
+  registerHandler(
+    IPC_CHANNELS.accountCompleteAuthenticatorSetup,
+    getMainWindow,
+    async (_event, input) => {
+      const record = exactRecord(input, ['sessionId', 'token', 'masterPassword'])
+      const request: AccountAuthenticatorCompleteRequest = {
+        sessionId: requiredString(record, 'sessionId'),
+        token: requiredString(record, 'token'),
+        ...(record.masterPassword === undefined
+          ? {}
+          : { masterPassword: requiredString(record, 'masterPassword') })
+      }
+      if (
+        !UUID_PATTERN.test(request.sessionId) ||
+        !/^\d{6}$/.test(request.token) ||
+        (request.masterPassword !== undefined &&
+          (request.masterPassword.length === 0 || request.masterPassword.length > 16_384))
+      ) {
+        if (request.masterPassword !== undefined) request.masterPassword = ''
+        request.token = ''
+        throw new VaultError('INVALID_INPUT')
+      }
+      try {
+        return await vault.completeAccountAuthenticatorSetup(request)
+      } finally {
+        request.token = ''
+        if (request.masterPassword !== undefined) request.masterPassword = ''
+      }
+    }
+  )
   registerHandler<EquivalentDomainSettingsView>(
     IPC_CHANNELS.domainRulesGet,
     getMainWindow,

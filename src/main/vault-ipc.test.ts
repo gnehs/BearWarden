@@ -316,6 +316,17 @@ describe('registerVaultIpc reprompt gate', () => {
       copyTwoFactorRecoveryCode: vi.fn(async (request: { masterPassword: string }) => {
         if (request.masterPassword !== 'remote master password') throw new Error('missing proof')
       }),
+      beginAccountAuthenticatorSetup: vi.fn(async (request: { masterPassword: string }) => {
+        if (request.masterPassword !== 'remote master password') throw new Error('missing proof')
+        return {
+          sessionId: '10000000-0000-4000-8000-000000000001',
+          key: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP',
+          requiresMasterPassword: true,
+          expiresAt: 1_784_236_800_000
+        }
+      }),
+      copyAccountAuthenticatorKey: vi.fn(async () => undefined),
+      completeAccountAuthenticatorSetup: vi.fn(async () => undefined),
       getEquivalentDomainSettings: vi.fn(async () => ({
         equivalentDomains: [['first.example', 'second.example']],
         globalEquivalentDomains: [
@@ -719,6 +730,55 @@ describe('registerVaultIpc reprompt gate', () => {
       { masterPassword: 'password', recoveryCode: 'renderer-value' }
     ]) {
       await expect(recovery(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+  })
+
+  it('keeps authenticator setup capabilities in main and validates the one-time session boundary', async () => {
+    const { event, vault } = harness()
+    const begin = electronMock.handlers.get(IPC_CHANNELS.accountBeginAuthenticatorSetup)!
+    const copyKey = electronMock.handlers.get(IPC_CHANNELS.accountCopyAuthenticatorKey)!
+    const complete = electronMock.handlers.get(IPC_CHANNELS.accountCompleteAuthenticatorSetup)!
+    const sessionId = '10000000-0000-4000-8000-000000000001'
+
+    const setup = await begin(event, { masterPassword: 'remote master password' })
+    expect(setup).toEqual({
+      sessionId,
+      key: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP',
+      requiresMasterPassword: true,
+      expiresAt: 1_784_236_800_000
+    })
+    expect(JSON.stringify(setup)).not.toContain('userVerificationToken')
+    expect(vault.beginAccountAuthenticatorSetup).toHaveBeenCalledWith({ masterPassword: '' })
+
+    await expect(copyKey(event, { sessionId })).resolves.toBeUndefined()
+    await expect(
+      complete(event, {
+        sessionId,
+        token: '123456',
+        masterPassword: 'remote master password'
+      })
+    ).resolves.toBeUndefined()
+    expect(vault.completeAccountAuthenticatorSetup).toHaveBeenCalledWith({
+      sessionId,
+      token: '',
+      masterPassword: ''
+    })
+
+    for (const invalid of [
+      undefined,
+      {},
+      { sessionId: 'not-a-uuid' },
+      { sessionId, key: 'renderer-supplied-key' }
+    ]) {
+      await expect(copyKey(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    for (const invalid of [
+      undefined,
+      {},
+      { sessionId, token: '12345' },
+      { sessionId, token: '123456', userVerificationToken: 'must-not-cross' }
+    ]) {
+      await expect(complete(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
   })
 

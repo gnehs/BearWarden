@@ -188,6 +188,8 @@ const MAX_MASTER_PASSWORD_LENGTH = 1024
 const MAX_NAME_LENGTH = 256
 const MAX_USERNAME_LENGTH = 512
 const MAX_PASSWORD_LENGTH = 16_384
+const AUTHENTICATOR_SETUP_TTL_MS = 5 * 60 * 1_000
+const MAX_AUTHENTICATOR_SETUP_SESSIONS = 8
 const MAX_URI_LENGTH = 4096
 const MAX_LOGIN_URIS = 1_000
 const MAX_NOTES_LENGTH = 65_536
@@ -2772,6 +2774,15 @@ interface ActiveAccountBreachOperation {
   readonly promise: Promise<VaultHealthAccountBreachReport>
 }
 
+interface AuthenticatorSetupSession {
+  readonly generation: number
+  readonly client: BitwardenSyncClient
+  key: string
+  readonly verificationMode: 'server-token' | 'master-password'
+  userVerificationToken: string | null
+  readonly expiresAt: number
+}
+
 export class VaultService {
   private key: Buffer | null = null
   private salt: Buffer | null = null
@@ -2783,6 +2794,7 @@ export class VaultService {
   private syncAbort: AbortController | null = null
   private readonly notificationTokenAborts = new Set<AbortController>()
   private readonly accountSecurityAborts = new Set<AbortController>()
+  private readonly authenticatorSetupSessions = new Map<string, AuthenticatorSetupSession>()
   private syncInProgress = false
   private syncLastError: string | null = null
   private activeAttachmentOperation: {
@@ -3249,6 +3261,221 @@ export class VaultService {
     } finally {
       request.masterPassword = ''
       code = ''
+    }
+  }
+
+  async beginAccountAuthenticatorSetup(request: { masterPassword: string }): Promise<{
+    sessionId: string
+    key: string
+    requiresMasterPassword: boolean
+    expiresAt: number
+  }> {
+    if (
+      typeof request.masterPassword !== 'string' ||
+      request.masterPassword.length === 0 ||
+      request.masterPassword.length > MAX_PASSWORD_LENGTH
+    ) {
+      request.masterPassword = ''
+      throw new VaultError('INVALID_INPUT')
+    }
+    let lease: {
+      generation: number
+      client: BitwardenSyncClient
+      request: NonNullable<BitwardenSyncClient['beginAuthenticatorSetup']>
+      abort: AbortController
+    }
+    try {
+      lease = await this.exclusive(async () => {
+        const sync = this.requireSyncData()
+        const client = this.getOrCreateSyncClient(sync)
+        if (!client.beginAuthenticatorSetup || !client.exportState().session) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        const abort = new AbortController()
+        this.accountSecurityAborts.add(abort)
+        return {
+          generation: this.generation,
+          client,
+          request: client.beginAuthenticatorSetup.bind(client),
+          abort
+        }
+      })
+    } catch (error) {
+      request.masterPassword = ''
+      throw error
+    }
+    try {
+      const setup = await lease.request(request.masterPassword, lease.abort.signal)
+      return await this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        this.requireData()
+        if (
+          lease.abort.signal.aborted ||
+          lease.generation !== this.generation ||
+          this.syncClient !== lease.client ||
+          !lease.client.exportState().session
+        ) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        if (setup.enabled || !/^[A-Z2-7]{32}$/.test(setup.key)) {
+          throw new VaultError('INVALID_INPUT')
+        }
+        this.evictExpiredAuthenticatorSetupSessions()
+        while (this.authenticatorSetupSessions.size >= MAX_AUTHENTICATOR_SETUP_SESSIONS) {
+          const oldest = this.authenticatorSetupSessions.keys().next().value
+          if (typeof oldest !== 'string') break
+          this.deleteAuthenticatorSetupSession(oldest)
+        }
+        const sessionId = randomUUID()
+        const expiresAt = this.now().getTime() + AUTHENTICATOR_SETUP_TTL_MS
+        this.authenticatorSetupSessions.set(sessionId, {
+          generation: lease.generation,
+          client: lease.client,
+          key: setup.key,
+          verificationMode: setup.verificationMode,
+          userVerificationToken: setup.userVerificationToken ?? null,
+          expiresAt
+        })
+        await this.persistCurrentClientState().catch(() => undefined)
+        return {
+          sessionId,
+          key: setup.key,
+          requiresMasterPassword: setup.verificationMode === 'master-password',
+          expiresAt
+        }
+      })
+    } catch (error) {
+      return this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+          throw new VaultError('LOCKED')
+        }
+        if (error instanceof BitwardenDirectError && error.code === 'USER_VERIFICATION_FAILED') {
+          throw new VaultError('INVALID_MASTER_PASSWORD')
+        }
+        if (error instanceof VaultError) throw error
+        throw this.mapSyncError(error)
+      })
+    } finally {
+      request.masterPassword = ''
+    }
+  }
+
+  async copyAccountAuthenticatorKey(request: { sessionId: string }): Promise<void> {
+    const copySensitiveText = this.platform.copySensitiveText
+    if (!copySensitiveText) throw new VaultError('INTERNAL_ERROR')
+    await this.exclusive(async () => {
+      const session = this.requireAuthenticatorSetupSession(request.sessionId)
+      await copySensitiveText(session.key, 30)
+    })
+  }
+
+  async completeAccountAuthenticatorSetup(request: {
+    sessionId: string
+    token: string
+    masterPassword?: string
+  }): Promise<void> {
+    if (!/^\d{6}$/.test(request.token)) {
+      if (request.masterPassword !== undefined) request.masterPassword = ''
+      throw new VaultError('INVALID_INPUT')
+    }
+    let lease: {
+      generation: number
+      client: BitwardenSyncClient
+      request: NonNullable<BitwardenSyncClient['completeAuthenticatorSetup']>
+      key: string
+      verificationMode: 'server-token' | 'master-password'
+      userVerificationToken: string | null
+      abort: AbortController
+    }
+    try {
+      lease = await this.exclusive(async () => {
+        const session = this.requireAuthenticatorSetupSession(request.sessionId)
+        if (!session.client.completeAuthenticatorSetup) throw new VaultError('SYNC_FAILED')
+        if (session.verificationMode === 'server-token' && request.masterPassword !== undefined) {
+          throw new VaultError('INVALID_INPUT')
+        }
+        if (
+          session.verificationMode === 'master-password' &&
+          (typeof request.masterPassword !== 'string' ||
+            request.masterPassword.length === 0 ||
+            request.masterPassword.length > MAX_PASSWORD_LENGTH)
+        ) {
+          throw new VaultError('INVALID_INPUT')
+        }
+        const abort = new AbortController()
+        this.accountSecurityAborts.add(abort)
+        const result = {
+          generation: session.generation,
+          client: session.client,
+          request: session.client.completeAuthenticatorSetup.bind(session.client),
+          key: session.key,
+          verificationMode: session.verificationMode,
+          userVerificationToken: session.userVerificationToken,
+          abort
+        }
+        session.key = ''
+        session.userVerificationToken = null
+        this.authenticatorSetupSessions.delete(request.sessionId)
+        return result
+      })
+    } catch (error) {
+      request.token = ''
+      if (request.masterPassword !== undefined) request.masterPassword = ''
+      throw error
+    }
+    const completion = {
+      key: lease.key,
+      token: request.token,
+      verificationMode: lease.verificationMode,
+      ...(lease.userVerificationToken
+        ? { userVerificationToken: lease.userVerificationToken }
+        : {}),
+      ...(lease.verificationMode === 'master-password'
+        ? { masterPassword: request.masterPassword }
+        : {})
+    }
+    try {
+      await lease.request(completion, lease.abort.signal)
+      await this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        this.requireData()
+        if (
+          lease.abort.signal.aborted ||
+          lease.generation !== this.generation ||
+          this.syncClient !== lease.client ||
+          !lease.client.exportState().session
+        ) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        await this.persistCurrentClientState().catch(() => undefined)
+      })
+    } catch (error) {
+      await this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+      })
+      if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+        throw new VaultError('LOCKED')
+      }
+      if (error instanceof BitwardenDirectError) {
+        if (error.code === 'USER_VERIFICATION_FAILED') {
+          throw new VaultError('INVALID_MASTER_PASSWORD')
+        }
+        if (error.code === 'TWO_FACTOR_MUTATION_UNKNOWN') {
+          throw new VaultError('TWO_FACTOR_MUTATION_UNKNOWN')
+        }
+      }
+      if (error instanceof VaultError) throw error
+      throw this.mapSyncError(error)
+    } finally {
+      request.token = ''
+      if (request.masterPassword !== undefined) request.masterPassword = ''
+      completion.key = ''
+      completion.token = ''
+      if ('masterPassword' in completion) completion.masterPassword = ''
+      if ('userVerificationToken' in completion) completion.userVerificationToken = ''
+      lease.key = ''
+      lease.userVerificationToken = null
     }
   }
 
@@ -5991,6 +6218,39 @@ export class VaultService {
   private abortAccountSecurityRequests(): void {
     for (const abort of this.accountSecurityAborts) abort.abort()
     this.accountSecurityAborts.clear()
+    for (const sessionId of this.authenticatorSetupSessions.keys()) {
+      this.deleteAuthenticatorSetupSession(sessionId)
+    }
+  }
+
+  private evictExpiredAuthenticatorSetupSessions(): void {
+    const now = this.now().getTime()
+    for (const [sessionId, session] of this.authenticatorSetupSessions) {
+      if (session.expiresAt <= now) this.deleteAuthenticatorSetupSession(sessionId)
+    }
+  }
+
+  private requireAuthenticatorSetupSession(sessionId: string): AuthenticatorSetupSession {
+    this.evictExpiredAuthenticatorSetupSessions()
+    const session = this.authenticatorSetupSessions.get(sessionId)
+    if (
+      !session ||
+      session.generation !== this.generation ||
+      session.client !== this.syncClient ||
+      !session.client.exportState().session
+    ) {
+      if (session) this.deleteAuthenticatorSetupSession(sessionId)
+      throw new VaultError('INVALID_INPUT')
+    }
+    return session
+  }
+
+  private deleteAuthenticatorSetupSession(sessionId: string): void {
+    const session = this.authenticatorSetupSessions.get(sessionId)
+    if (!session) return
+    session.key = ''
+    session.userVerificationToken = null
+    this.authenticatorSetupSessions.delete(sessionId)
   }
 
   private mapSyncError(error: unknown): VaultError {
