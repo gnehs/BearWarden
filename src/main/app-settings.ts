@@ -163,9 +163,12 @@ async function syncDirectory(path: string): Promise<void> {
 export class AppSettingsService {
   private settings: StoredSettings = { ...DEFAULTS }
   private autoLockTimer: NodeJS.Timeout | null = null
+  private autoLockEpoch = 0
   private touchIdUnlock: Promise<VaultStatus> | null = null
   private touchIdOperationInProgress = false
   private settingsUpdateTail: Promise<void> = Promise.resolve()
+  private disposed = false
+  private lifecycleEpoch = 0
 
   constructor(
     private readonly settingsPath: string,
@@ -288,6 +291,7 @@ export class AppSettingsService {
   }
 
   unlockTouchId(): Promise<VaultStatus> {
+    if (this.disposed) return Promise.reject(new VaultError('TOUCH_ID_FAILED'))
     if (this.touchIdUnlock) return this.touchIdUnlock
 
     const operation = this.performTouchIdUnlock().finally(() => {
@@ -321,28 +325,40 @@ export class AppSettingsService {
   }
 
   private async performTouchIdUnlock(): Promise<VaultStatus> {
-    if (!(await this.touchIdAvailable()) || !(await exists(this.touchIdPath))) {
+    const operationEpoch = this.lifecycleEpoch
+    this.assertCurrent(operationEpoch)
+    if (!(await this.touchIdAvailable())) {
       throw new VaultError('TOUCH_ID_UNAVAILABLE')
     }
+    this.assertCurrent(operationEpoch)
+    if (!(await exists(this.touchIdPath))) throw new VaultError('TOUCH_ID_UNAVAILABLE')
+    this.assertCurrent(operationEpoch)
     let encrypted: Buffer | undefined
     let masterPassword: string | undefined
     try {
       await systemPreferences.promptTouchID('使用 Touch ID 解鎖 BearWarden')
+      this.assertCurrent(operationEpoch)
       encrypted = await readFile(this.touchIdPath)
+      this.assertCurrent(operationEpoch)
       if (encrypted.length === 0 || encrypted.length > MAX_TOUCH_ID_BYTES) {
         throw new VaultError('TOUCH_ID_FAILED')
       }
       const decrypted = await safeStorage.decryptStringAsync(encrypted)
       masterPassword = decrypted.result
+      this.assertCurrent(operationEpoch)
       if (decrypted.shouldReEncrypt) {
         const refreshed = await safeStorage.encryptStringAsync(masterPassword)
         try {
+          this.assertCurrent(operationEpoch)
           await atomicWrite(this.touchIdPath, refreshed)
         } finally {
           refreshed.fill(0)
         }
+        this.assertCurrent(operationEpoch)
       }
-      return await this.runtime.unlockVault(masterPassword)
+      const status = await this.runtime.unlockVault(masterPassword)
+      this.assertCurrent(operationEpoch)
+      return status
     } catch {
       throw new VaultError('TOUCH_ID_FAILED')
     } finally {
@@ -364,8 +380,18 @@ export class AppSettingsService {
   }
 
   dispose(): void {
+    if (this.disposed) return
+    this.disposed = true
+    this.lifecycleEpoch += 1
+    this.autoLockEpoch += 1
     if (this.autoLockTimer) clearTimeout(this.autoLockTimer)
     this.autoLockTimer = null
+  }
+
+  private assertCurrent(operationEpoch: number): void {
+    if (this.disposed || operationEpoch !== this.lifecycleEpoch) {
+      throw new VaultError('TOUCH_ID_FAILED')
+    }
   }
 
   private async touchIdAvailable(): Promise<boolean> {
@@ -391,11 +417,14 @@ export class AppSettingsService {
   private resetAutoLock(): void {
     if (this.autoLockTimer) clearTimeout(this.autoLockTimer)
     this.autoLockTimer = null
-    if (this.settings.autoLockMinutes === 0) return
-    this.autoLockTimer = setTimeout(
-      () => void this.runtime.lockVault().catch(() => undefined),
-      this.settings.autoLockMinutes * 60_000
-    )
+    this.autoLockEpoch += 1
+    if (this.disposed || this.settings.autoLockMinutes === 0) return
+    const timerEpoch = this.autoLockEpoch
+    this.autoLockTimer = setTimeout(() => {
+      if (this.disposed || timerEpoch !== this.autoLockEpoch) return
+      this.autoLockTimer = null
+      void this.runtime.lockVault().catch(() => undefined)
+    }, this.settings.autoLockMinutes * 60_000)
     this.autoLockTimer.unref()
   }
 }

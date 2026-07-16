@@ -424,6 +424,33 @@ describe('AppSettingsService', () => {
     service.dispose()
   })
 
+  it('fails closed when a pending Touch ID unlock belongs to a disposed service', async () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    const { service, runtime } = createService()
+    await service.initialize()
+    await service.enableTouchId('fake-master-password')
+    vi.mocked(systemPreferences.promptTouchID).mockClear()
+    vi.mocked(safeStorage.decryptStringAsync).mockClear()
+
+    let finishPrompt!: () => void
+    vi.mocked(systemPreferences.promptTouchID).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishPrompt = resolve
+        })
+    )
+
+    const pending = service.unlockTouchId()
+    await vi.waitFor(() => expect(systemPreferences.promptTouchID).toHaveBeenCalledOnce())
+    service.dispose()
+    service.dispose()
+    finishPrompt()
+
+    await expect(pending).rejects.toMatchObject({ code: 'TOUCH_ID_FAILED' })
+    expect(safeStorage.decryptStringAsync).not.toHaveBeenCalled()
+    expect(runtime.unlockVault).not.toHaveBeenCalled()
+  })
+
   it('verifies one passkey operation without decrypting the stored unlock secret', async () => {
     Object.defineProperty(process, 'platform', { value: 'darwin' })
     const { service, store, runtime } = createService()
@@ -520,5 +547,17 @@ describe('AppSettingsService', () => {
     await vi.advanceTimersByTimeAsync(60 * 60_000)
     expect(runtime.lockVault).toHaveBeenCalledTimes(1)
     service.dispose()
+  })
+
+  it('does not lock from an auto-lock timer after disposal', async () => {
+    vi.useFakeTimers()
+    const { service, runtime } = createService()
+    await service.initialize()
+
+    service.dispose()
+    service.dispose()
+    await vi.advanceTimersByTimeAsync(15 * 60_000)
+
+    expect(runtime.lockVault).not.toHaveBeenCalled()
   })
 })
