@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, FolderInput, History, KeyRound, X } from 'lucide-react'
+import { AlertTriangle, FolderInput, History, KeyRound, RotateCcw, X } from 'lucide-react'
 import type { FolderView, VaultPasswordHistoryEntry } from '../../../shared/vault-contract'
 import {
   AlertDialog,
@@ -443,13 +443,15 @@ interface PasswordHistoryDialogProps {
   count: number
   onClose: () => void
   onReveal: () => Promise<VaultPasswordHistoryEntry[]>
+  onRestore: (index: number, lastUsedDate: string) => Promise<void>
 }
 
 export function PasswordHistoryDialog({
   itemName,
   count,
   onClose,
-  onReveal
+  onReveal,
+  onRestore
 }: PasswordHistoryDialogProps): React.JSX.Element {
   const [entries, setEntries] = useState<VaultPasswordHistoryEntry[] | null>(null)
   const [busy, setBusy] = useState(false)
@@ -498,9 +500,38 @@ export function PasswordHistoryDialog({
                 <li key={`${entry.lastUsedDate}:${index}`}>
                   <code>{entry.password}</code>
                   <small>{new Date(entry.lastUsedDate).toLocaleString('zh-TW')}</small>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={async () => {
+                      setBusy(true)
+                      setError('')
+                      try {
+                        await onRestore(index, entry.lastUsedDate)
+                        if (!mountedRef.current) return
+                        clearEntries()
+                        onClose()
+                      } catch {
+                        if (mountedRef.current) {
+                          setError('無法套用這筆歷史，項目可能已在其他地方變更。')
+                        }
+                      } finally {
+                        if (mountedRef.current) setBusy(false)
+                      }
+                    }}
+                  >
+                    <RotateCcw data-icon="inline-start" aria-hidden="true" />
+                    套用為目前密碼
+                  </Button>
                 </li>
               ))}
             </ol>
+            <p className="text-muted-foreground mt-3 text-sm">
+              歷史中也可能包含「欄位名稱:
+              舊值」格式的隱藏欄位紀錄；只有確定要作為登入密碼的列才套用。
+            </p>
           </div>
         )}
         {error && (

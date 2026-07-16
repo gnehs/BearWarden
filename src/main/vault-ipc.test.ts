@@ -233,6 +233,7 @@ describe('registerVaultIpc reprompt gate', () => {
       getPasswordHistory: vi.fn(async () => [
         { password: 'old-secret', lastUsedDate: '2026-07-14T00:00:00.000Z' }
       ]),
+      restorePasswordHistory: vi.fn(async () => ({ id: 'item-a' })),
       downloadAttachment: vi.fn(async (request, _report, validate) => {
         requireAttachmentAuthorization(request, validate)
         return { canceled: false, fileName: 'document.txt' }
@@ -631,6 +632,16 @@ describe('registerVaultIpc reprompt gate', () => {
   it.each([
     [IPC_CHANNELS.loginGet, 'getLogin', { id: 'item-a' }],
     [IPC_CHANNELS.loginGetPasswordHistory, 'getPasswordHistory', { id: 'item-a' }],
+    [
+      IPC_CHANNELS.loginRestorePasswordHistory,
+      'restorePasswordHistory',
+      {
+        id: 'item-a',
+        index: 0,
+        lastUsedDate: '2026-07-14T00:00:00.000Z',
+        expectedUpdatedAt: '2026-07-16T00:00:00.000Z'
+      }
+    ],
     [IPC_CHANNELS.loginClone, 'cloneLogin', { id: 'item-a' }],
     [IPC_CHANNELS.loginUpdate, 'updateLogin', { id: 'item-a', name: 'Updated' }],
     [IPC_CHANNELS.loginDelete, 'deleteLogin', { id: 'item-a' }],
@@ -852,6 +863,25 @@ describe('registerVaultIpc reprompt gate', () => {
     )
     vault.getPasswordHistory.mockRejectedValueOnce(new VaultError('INVALID_INPUT'))
     await expect(getHistory(event, { id: 'item-a' })).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+
+    const restore = electronMock.handlers.get(IPC_CHANNELS.loginRestorePasswordHistory)!
+    const request = {
+      id: 'item-a',
+      index: 0,
+      lastUsedDate: '2026-07-14T00:00:00.000Z',
+      expectedUpdatedAt: '2026-07-16T00:00:00.000Z'
+    }
+    await expect(restore(event, request)).resolves.toEqual({ id: 'item-a' })
+    expect(vault.restorePasswordHistory).toHaveBeenCalledWith(request)
+    for (const invalid of [
+      { ...request, index: -1 },
+      { ...request, index: 5 },
+      { ...request, lastUsedDate: 'not-a-date' },
+      { ...request, expectedUpdatedAt: 'not-a-date' },
+      { ...request, password: 'renderer-secret' }
+    ]) {
+      await expect(restore(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
   })
 
   it('keeps attachment download paths out of renderer IPC', async () => {

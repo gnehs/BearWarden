@@ -1297,6 +1297,36 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     )
   }, [selectedLogin, withReprompt])
 
+  const restorePasswordHistory = useCallback(
+    async (index: number, lastUsedDate: string): Promise<void> => {
+      const login = selectedLogin
+      if (!login || login.deletedAt || login.type !== 'login') throw new Error('INVALID_INPUT')
+      const itemId = login.id
+      let operationAuthorizationToken: string | undefined
+      const updated = await withReprompt([itemId], (tokenFor) => {
+        operationAuthorizationToken = tokenFor(itemId)
+        return window.bearwarden.logins.restorePasswordHistory({
+          id: itemId,
+          index,
+          lastUsedDate,
+          expectedUpdatedAt: login.updatedAt,
+          ...(operationAuthorizationToken
+            ? { authorizationToken: operationAuthorizationToken }
+            : {})
+        })
+      })
+      const canRetainDetail = updated.reprompt === 0 || operationAuthorizationToken !== undefined
+      if (canRetainDetail) cacheLoginDetail(detailCacheRef.current, updated)
+      else detailCacheRef.current.delete(itemId)
+      setItems((current) =>
+        current.map((item) => (item.id === updated.id ? toLoginSummary(updated) : item))
+      )
+      setSelectedLogin(canRetainDetail ? updated : null)
+      toast.success('已套用歷史密碼。')
+    },
+    [selectedLogin, withReprompt]
+  )
+
   const refreshItems = useCallback(async (): Promise<void> => {
     const [activeItems, archivedItems, deletedItems] = await Promise.all([
       window.bearwarden.logins.list({ sort: 'name' }),
@@ -4582,6 +4612,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             count={selectedLogin.passwordHistoryCount}
             onClose={() => setPasswordHistoryDialogOpen(false)}
             onReveal={revealPasswordHistory}
+            onRestore={restorePasswordHistory}
           />
         )}
         {generatorDialogOpen && (

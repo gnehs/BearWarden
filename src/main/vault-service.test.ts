@@ -4314,6 +4314,36 @@ describe('VaultService encrypted local data', () => {
     ).toEqual(['password-three', 'password-four', 'password-three', 'password-two', 'password-one'])
   })
 
+  it('restores a stale-safe password-history entry and records the replaced password', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const created = await service.createLogin({ name: 'Restore history', password: 'old-secret' })
+    const updated = await service.updateLogin({ id: created.id, password: 'current-secret' })
+    const [entry] = await service.getPasswordHistory({ id: created.id })
+    expect(entry).toMatchObject({ password: 'old-secret' })
+
+    const restored = await service.restorePasswordHistory({
+      id: created.id,
+      index: 0,
+      lastUsedDate: entry!.lastUsedDate,
+      expectedUpdatedAt: updated.updatedAt
+    })
+    await expect(service.revealPassword({ id: created.id })).resolves.toBe('old-secret')
+    await expect(service.getPasswordHistory({ id: created.id })).resolves.toMatchObject([
+      { password: 'current-secret' },
+      { password: 'old-secret', lastUsedDate: entry!.lastUsedDate }
+    ])
+    await expect(
+      service.restorePasswordHistory({
+        id: created.id,
+        index: 0,
+        lastUsedDate: entry!.lastUsedDate,
+        expectedUpdatedAt: updated.updatedAt
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    expect(restored.updatedAt).not.toBe(updated.updatedAt)
+  })
+
   it('consumes duplicate hidden fields as a multiset when recording removed secrets', async () => {
     const { service } = await createHarness()
     await service.setup(MASTER_PASSWORD)

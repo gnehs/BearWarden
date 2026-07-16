@@ -74,6 +74,8 @@ const api: BearWardenAPI = {
     get: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginGet, request),
     getPasswordHistory: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.loginGetPasswordHistory, request),
+    restorePasswordHistory: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.loginRestorePasswordHistory, request),
     downloadAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentDownload, request),
     uploadAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentUpload, request),
     deleteAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentDelete, request),

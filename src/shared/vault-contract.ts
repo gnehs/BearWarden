@@ -27,6 +27,7 @@ export const IPC_CHANNELS = {
   loginAuthorizeMany: 'login:authorize-many',
   loginGet: 'login:get',
   loginGetPasswordHistory: 'login:get-password-history',
+  loginRestorePasswordHistory: 'login:restore-password-history',
   attachmentDownload: 'attachment:download',
   attachmentUpload: 'attachment:upload',
   attachmentDelete: 'attachment:delete',
@@ -347,6 +348,13 @@ export interface LoginAuthorizationRequest {
 
 export interface LoginIdRequest extends LoginAuthorizationRequest {
   id: string
+}
+
+/** Stale-safe locator for applying one main-process password-history entry. */
+export interface PasswordHistoryRestoreRequest extends LoginIdRequest {
+  index: number
+  lastUsedDate: string
+  expectedUpdatedAt: string
 }
 
 export interface PasskeyDeleteRequest extends LoginIdRequest {
@@ -1183,6 +1191,7 @@ export interface BearWardenAPI {
     authorizeMany: (request: LoginAuthorizeManyRequest) => Promise<LoginAuthorization>
     get: (request: LoginIdRequest) => Promise<LoginView>
     getPasswordHistory: (request: LoginIdRequest) => Promise<VaultPasswordHistoryEntry[]>
+    restorePasswordHistory: (request: PasswordHistoryRestoreRequest) => Promise<LoginView>
     downloadAttachment: (request: AttachmentDownloadRequest) => Promise<AttachmentDownloadResult>
     uploadAttachment: (request: AttachmentUploadRequest) => Promise<AttachmentUploadResult>
     deleteAttachment: (request: AttachmentDeleteRequest) => Promise<AttachmentDeleteResult>

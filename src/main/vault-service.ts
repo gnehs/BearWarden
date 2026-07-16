@@ -44,6 +44,7 @@ import type {
   LoginListRequest,
   LoginOpenUriRequest,
   PasskeyDeleteRequest,
+  PasswordHistoryRestoreRequest,
   LoginMoveRequest,
   LoginMoveManyRequest,
   LoginSummary,
@@ -4087,6 +4088,45 @@ export class VaultService {
       const login = this.findLogin(this.requireData(), request.id)
       this.assertActiveLogin(login)
       return clonePasswordHistory(login.passwordHistory)
+    })
+  }
+
+  restorePasswordHistory(request: PasswordHistoryRestoreRequest): Promise<LoginView> {
+    return this.mutate((data, now) => {
+      assertUuid(request.id)
+      if (
+        !Number.isSafeInteger(request.index) ||
+        request.index < 0 ||
+        request.index >= MAX_PASSWORD_HISTORY ||
+        typeof request.lastUsedDate !== 'string' ||
+        !Number.isFinite(Date.parse(request.lastUsedDate)) ||
+        typeof request.expectedUpdatedAt !== 'string'
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      const login = this.findLogin(data, request.id)
+      this.assertActiveLogin(login)
+      if (login.type !== 'login' || login.updatedAt !== request.expectedUpdatedAt) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      const entry = login.passwordHistory[request.index]
+      if (
+        !entry ||
+        entry.lastUsedDate !== request.lastUsedDate ||
+        entry.password === login.password
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      const previousPassword = login.password
+      const previousHistory = clonePasswordHistory(login.passwordHistory)
+      login.password = entry.password
+      login.passwordHistory = (
+        previousPassword.length > 0
+          ? [{ password: previousPassword, lastUsedDate: now }, ...previousHistory]
+          : previousHistory
+      ).slice(0, MAX_PASSWORD_HISTORY)
+      login.updatedAt = now
+      return toView(login)
     })
   }
 

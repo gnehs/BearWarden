@@ -39,6 +39,7 @@ import {
   type SharedLoginListRequest,
   type LoginOpenUriRequest,
   type PasskeyDeleteRequest,
+  type PasswordHistoryRestoreRequest,
   type LoginMoveRequest,
   type LoginMoveManyRequest,
   type LoginUpdateRequest,
@@ -609,6 +610,39 @@ function parseId(value: unknown): LoginIdRequest {
   const authorizationToken = optionalAuthorizationToken(record)
   return {
     id: requiredString(record, 'id'),
+    ...(authorizationToken ? { authorizationToken } : {})
+  }
+}
+
+function parsePasswordHistoryRestore(value: unknown): PasswordHistoryRestoreRequest {
+  const record = exactRecord(value, [
+    'id',
+    'index',
+    'lastUsedDate',
+    'expectedUpdatedAt',
+    'authorizationToken'
+  ])
+  const authorizationToken = optionalAuthorizationToken(record)
+  const id = requiredString(record, 'id')
+  const lastUsedDate = requiredString(record, 'lastUsedDate')
+  const expectedUpdatedAt = requiredString(record, 'expectedUpdatedAt')
+  if (
+    typeof record.index !== 'number' ||
+    !Number.isSafeInteger(record.index) ||
+    record.index < 0 ||
+    record.index >= 5 ||
+    lastUsedDate.length > MAX_ISO_TIMESTAMP_LENGTH ||
+    expectedUpdatedAt.length > MAX_ISO_TIMESTAMP_LENGTH ||
+    !Number.isFinite(Date.parse(lastUsedDate)) ||
+    !Number.isFinite(Date.parse(expectedUpdatedAt))
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return {
+    id,
+    index: record.index,
+    lastUsedDate,
+    expectedUpdatedAt,
     ...(authorizationToken ? { authorizationToken } : {})
   }
 }
@@ -1649,6 +1683,10 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   registerHandler(IPC_CHANNELS.loginGetPasswordHistory, getMainWindow, (event, input) => {
     const request = parseId(input)
     return runAuthorized(event, request, () => vault.getPasswordHistory(request))
+  })
+  registerHandler(IPC_CHANNELS.loginRestorePasswordHistory, getMainWindow, (event, input) => {
+    const request = parsePasswordHistoryRestore(input)
+    return runAuthorized(event, request, () => afterMutation(vault.restorePasswordHistory(request)))
   })
   const attachmentProgress =
     (event: IpcMainInvokeEvent) =>
