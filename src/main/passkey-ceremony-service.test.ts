@@ -19,6 +19,7 @@ import type {
 } from './vault-service'
 
 const RP_ID = 'login.example.test'
+const ORIGIN = 'https://login.example.test'
 const GENERATION = 7
 const ITEM_ID = '10000000-0000-4000-8000-000000000001'
 const ITEM_REVISION = '2026-07-16T00:00:00.000Z'
@@ -40,7 +41,7 @@ function createSnapshot(
     clientDataHash: Array.from({ length: 32 }, (_, index) => index),
     requestDigest: Array.from({ length: 32 }, (_, index) => 255 - index),
     challenge: Array.from({ length: 32 }, () => 0x42),
-    origin: 'https://login.example.test',
+    origin: ORIGIN,
     rpId: RP_ID,
     discoverable: true,
     options: {
@@ -79,7 +80,7 @@ function getSnapshot(
     clientDataHash: Array.from({ length: 32 }, (_, index) => index),
     requestDigest: Array.from({ length: 32 }, (_, index) => 255 - index),
     challenge: Array.from({ length: 32 }, () => 0x42),
-    origin: 'https://login.example.test',
+    origin: ORIGIN,
     rpId: RP_ID,
     options: {
       challenge: Array.from({ length: 32 }, () => 0x42),
@@ -277,6 +278,10 @@ describe('PasskeyCeremonyService', () => {
     expect(serializedPrompt).not.toContain(replacement.itemId)
     expect(serializedPrompt).not.toContain(replacement.itemUpdatedAt)
     expect(serializedPrompt).not.toContain(Buffer.from(CREDENTIAL_ID).toString('base64url'))
+    expect(harness.vault.discoverPasskeyCreationTargets).toHaveBeenCalledWith({
+      rpId: RP_ID,
+      origin: ORIGIN
+    })
     expect(harness.vault.createPasskey).toHaveBeenCalledWith(
       expect.objectContaining({
         itemId: replacement.itemId,

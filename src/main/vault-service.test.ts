@@ -906,12 +906,32 @@ describe('VaultService encrypted local data', () => {
         const protectedLogin = fake.remoteLogins[0]!
         protectedLogin.name = 'Protected one-passkey login'
         protectedLogin.reprompt = 1
+        protectedLogin.uri = 'https://remote.example.com'
+        protectedLogin.uris = [{ uri: protectedLogin.uri, match: null }]
+        fake.getEquivalentDomainSettings = async () => ({
+          equivalentDomains: [['example.com', 'example.net']],
+          globalEquivalentDomains: []
+        })
 
         const noPasskey = structuredClone(protectedLogin)
         noPasskey.id = '90000000-0000-4000-8000-000000000005'
         noPasskey.name = 'Zero-passkey login'
         noPasskey.reprompt = 0
         noPasskey.passkeys = []
+        noPasskey.uri = 'https://remote-login.example.net'
+        noPasskey.uris = [{ uri: noPasskey.uri, match: null }]
+
+        const unrelated = structuredClone(noPasskey)
+        unrelated.id = '90000000-0000-4000-8000-000000000010'
+        unrelated.name = 'Unrelated active login'
+        unrelated.uri = 'https://unrelated.test'
+        unrelated.uris = [{ uri: unrelated.uri, match: null }]
+
+        const neverMatch = structuredClone(noPasskey)
+        neverMatch.id = '90000000-0000-4000-8000-000000000011'
+        neverMatch.name = 'Explicit never-match login'
+        neverMatch.uri = 'https://remote.example.com'
+        neverMatch.uris = [{ uri: neverMatch.uri, match: 5 }]
 
         const archived = structuredClone(protectedLogin)
         archived.id = '90000000-0000-4000-8000-000000000006'
@@ -933,7 +953,15 @@ describe('VaultService encrypted local data', () => {
           structuredClone(protectedLogin.passkeys[0]!)
         ]
 
-        fake.remoteLogins.push(noPasskey, archived, deleted, nonLogin, multiplePasskeys)
+        fake.remoteLogins.push(
+          noPasskey,
+          unrelated,
+          neverMatch,
+          archived,
+          deleted,
+          nonLogin,
+          multiplePasskeys
+        )
         return fake
       }
     })
@@ -952,7 +980,11 @@ describe('VaultService encrypted local data', () => {
     )
     if (!protectedItem || !noPasskeyItem) throw new Error('missing synced creation target')
     const generation = await service.unlockedGeneration()
-    const discovered = await service.discoverPasskeyCreationTargets()
+    const discoveryRequest = {
+      rpId: 'remote.example.com',
+      origin: 'https://remote.example.com'
+    }
+    const discovered = await service.discoverPasskeyCreationTargets(discoveryRequest)
 
     expect(discovered.generation).toBe(generation)
     expect(discovered.targets).toEqual([
@@ -985,12 +1017,20 @@ describe('VaultService encrypted local data', () => {
     expect(serialized).not.toContain('keyValue')
 
     discovered.targets[0]!.itemName = 'mutated caller snapshot'
-    const rediscovered = await service.discoverPasskeyCreationTargets()
+    const rediscovered = await service.discoverPasskeyCreationTargets(discoveryRequest)
     expect(rediscovered.generation).toBe(generation)
     expect(rediscovered.targets[0]).toMatchObject({ itemName: 'Protected one-passkey login' })
+    await expect(
+      service.discoverPasskeyCreationTargets({
+        rpId: 'remote.example.com',
+        origin: 'https://unrelated.test'
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
 
     await service.lock()
-    await expect(service.discoverPasskeyCreationTargets()).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(service.discoverPasskeyCreationTargets(discoveryRequest)).rejects.toMatchObject({
+      code: 'LOCKED'
+    })
   })
 
   it('discovers exact-RP UUID and b64 IDs while excluding archived, deleted, and non-login items', async () => {

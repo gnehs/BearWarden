@@ -19,6 +19,7 @@ import type {
   PasskeyVaultAuthorizationValidator,
   PasskeyVaultCreateRequest,
   PasskeyVaultCreateResult,
+  PasskeyVaultCreationTargetDiscoveryRequest,
   PasskeyVaultCreationTargetDiscoveryResult,
   PasskeyVaultDiscoveryRequest,
   PasskeyVaultDiscoveryResult
@@ -32,7 +33,9 @@ const MAX_CHOICE_ID_LENGTH = 128
 type CeremonyErrorCode = ConstructorParameters<typeof PasskeyRequestCoordinatorError>[0]
 
 export interface PasskeyCeremonyVault {
-  discoverPasskeyCreationTargets(): Promise<PasskeyVaultCreationTargetDiscoveryResult>
+  discoverPasskeyCreationTargets(
+    request: PasskeyVaultCreationTargetDiscoveryRequest
+  ): Promise<PasskeyVaultCreationTargetDiscoveryResult>
   discoverPasskeyCredentials(
     request: PasskeyVaultDiscoveryRequest
   ): Promise<PasskeyVaultDiscoveryResult>
@@ -218,7 +221,10 @@ export class PasskeyCeremonyService {
     let state: RequestState | undefined
     try {
       assertNotAborted(snapshot.signal)
-      const discovery = await this.options.vault.discoverPasskeyCreationTargets()
+      const discovery = await this.options.vault.discoverPasskeyCreationTargets({
+        rpId: snapshot.rpId,
+        origin: snapshot.origin
+      })
       assertNotAborted(snapshot.signal)
       if (!validGeneration(discovery.generation)) throw ceremonyError('INVALID_REQUEST')
       if (discovery.targets.length === 0) throw ceremonyError('REQUEST_UNAVAILABLE')

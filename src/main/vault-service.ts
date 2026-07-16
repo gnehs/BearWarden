@@ -142,6 +142,8 @@ import {
   parseWebsiteHostname,
   resolveWebsiteIconUrl
 } from './website-icon'
+import { createUriMatchBudget, loginUrisMatch } from './uri-matcher'
+import { validatePasskeyOrigin } from './passkey-origin-validation'
 
 const LEGACY_DATA_VERSION = 1
 const CLI_DATA_VERSION = 2
@@ -344,6 +346,11 @@ export interface PasskeyVaultCreationTarget {
 export interface PasskeyVaultCreationTargetDiscoveryResult {
   generation: number
   targets: PasskeyVaultCreationTarget[]
+}
+
+export interface PasskeyVaultCreationTargetDiscoveryRequest {
+  rpId: string
+  origin: string
 }
 
 export interface PasskeyVaultCreateRequest {
@@ -4051,12 +4058,27 @@ export class VaultService {
    * Returns one atomic unlocked-vault snapshot for a passkey-create picker. Read raw stored
    * logins rather than list summaries: protected summaries intentionally redact passkey counts.
    */
-  discoverPasskeyCreationTargets(): Promise<PasskeyVaultCreationTargetDiscoveryResult> {
+  discoverPasskeyCreationTargets(
+    request: PasskeyVaultCreationTargetDiscoveryRequest
+  ): Promise<PasskeyVaultCreationTargetDiscoveryResult> {
     return this.exclusive(async () => {
       const data = this.requireData()
+      const rpId = normalizePasskeyRpId(request.rpId)
+      let targetUri: string
+      try {
+        targetUri = validatePasskeyOrigin({ origin: request.origin, rpId }).origin
+      } catch {
+        throw new VaultError('INVALID_INPUT')
+      }
       const targets: PasskeyVaultCreationTarget[] = []
+      const matchBudget = createUriMatchBudget()
       for (const login of data.logins) {
         if (login.type !== 'login' || login.deletedAt !== null || login.archivedAt !== null) {
+          continue
+        }
+        if (
+          !loginUrisMatch(login.uris, targetUri, data.sync?.domainSettings ?? null, 0, matchBudget)
+        ) {
           continue
         }
         // Bitwarden permits only one passkey per login item. Legacy/corrupt multi-passkey items
