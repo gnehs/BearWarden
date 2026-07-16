@@ -43,6 +43,7 @@ export interface PasskeyRendererBridgeOptions {
   getVerificationMethods: () =>
     readonly AvailableVerificationMethod[] | Promise<readonly AvailableVerificationMethod[]>
   verifyMasterPassword: (
+    requestId: string,
     selectedChoiceId: string | undefined,
     masterPassword: string,
     signal: AbortSignal
@@ -307,11 +308,27 @@ export class PasskeyRendererBridge {
     })
   }
 
-  /** Consumes one request-bound password proof. Touch ID is verified directly by app settings. */
+  /** Checks proof for WebAuthn UV without consuming a proof still needed by item reprompt. */
+  validateMasterPasswordProof(request: PasskeyPasswordProofBinding): boolean {
+    return this.matchesMasterPasswordProof(request, false)
+  }
+
+  /** Consumes one request-bound proof at the atomic Vault reprompt boundary. */
   consumeMasterPasswordProof(request: PasskeyPasswordProofBinding): boolean {
+    return this.matchesMasterPasswordProof(request, true)
+  }
+
+  discardMasterPasswordProof(requestId: string): void {
+    this.deleteProof(requestId)
+  }
+
+  private matchesMasterPasswordProof(
+    request: PasskeyPasswordProofBinding,
+    consume: boolean
+  ): boolean {
     const proof = this.passwordProofs.get(request.requestId)
     if (!proof) return false
-    this.deleteProof(request.requestId)
+    if (consume) this.deleteProof(request.requestId)
     const window = this.options.getMainWindow()
     return Boolean(
       !this.disposed &&
@@ -369,6 +386,7 @@ export class PasskeyRendererBridge {
     pending.verifyingPassword = true
     try {
       const generation = await this.options.verifyMasterPassword(
+        request.requestId,
         request.selectedChoiceId,
         request.masterPassword,
         pending.signal
@@ -463,7 +481,14 @@ export class PasskeyRendererBridge {
           throw publicInvalidInput()
         }
       } else {
-        this.deleteProof(response.requestId)
+        if (this.selectedChoiceRequiresReprompt(pending.prompt, response.selectedChoiceId)) {
+          const proof = this.passwordProofs.get(response.requestId)
+          if (!proof || proof.selectedChoiceId !== response.selectedChoiceId) {
+            throw publicInvalidInput()
+          }
+        } else {
+          this.deleteProof(response.requestId)
+        }
       }
     }
     this.resolvePending(pending, response)

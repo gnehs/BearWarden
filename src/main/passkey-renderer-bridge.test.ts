@@ -166,6 +166,7 @@ describe('PasskeyRendererBridge', () => {
       masterPassword: 'correct horse battery staple'
     })
     expect(verifyMasterPassword).toHaveBeenCalledWith(
+      'request-1',
       selectedChoiceId,
       'correct horse battery staple',
       expect.any(AbortSignal)
@@ -183,6 +184,8 @@ describe('PasskeyRendererBridge', () => {
       verificationMethod: 'master-password'
     })
 
+    expect(bridge.validateMasterPasswordProof(verificationRequest())).toBe(true)
+    expect(bridge.validateMasterPasswordProof(verificationRequest())).toBe(true)
     expect(bridge.consumeMasterPasswordProof(verificationRequest())).toBe(true)
     expect(bridge.consumeMasterPasswordProof(verificationRequest())).toBe(false)
     bridge.dispose()
@@ -358,6 +361,58 @@ describe('PasskeyRendererBridge', () => {
       verificationMethod: 'none'
     })
     await expect(operation).resolves.toMatchObject({ verificationMethod: 'none' })
+    expect(
+      bridge.consumeMasterPasswordProof({
+        requestId: 'request-1',
+        selectedChoiceId,
+        vaultGeneration: 7
+      })
+    ).toBe(true)
+    bridge.dispose()
+  })
+
+  it('preserves a protected-choice password proof while Touch ID performs separate UV', async () => {
+    const selectedChoiceId = '00000000-0000-4000-8000-000000000001'
+    const { bridge, trustedEvent } = harness()
+    const operation = bridge.requestConsent(
+      safePrompt({
+        userVerification: 'required',
+        choices: [
+          {
+            id: selectedChoiceId,
+            label: 'Protected account',
+            requiresReprompt: true
+          }
+        ]
+      }),
+      new AbortController().signal
+    )
+    await Promise.resolve()
+    const verifyApproval = electronMock.handlers.get(IPC_CHANNELS.passkeyVerifyApproval)!
+    const respond = electronMock.handlers.get(IPC_CHANNELS.passkeyRespondApproval)!
+
+    await expect(
+      Promise.resolve().then(() =>
+        respond(trustedEvent as never, {
+          requestId: 'request-1',
+          approved: true,
+          selectedChoiceId,
+          verificationMethod: 'touch-id'
+        })
+      )
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    await verifyApproval(trustedEvent as never, {
+      requestId: 'request-1',
+      selectedChoiceId,
+      masterPassword: 'master password'
+    })
+    await respond(trustedEvent as never, {
+      requestId: 'request-1',
+      approved: true,
+      selectedChoiceId,
+      verificationMethod: 'touch-id'
+    })
+    await expect(operation).resolves.toMatchObject({ verificationMethod: 'touch-id' })
     expect(
       bridge.consumeMasterPasswordProof({
         requestId: 'request-1',
