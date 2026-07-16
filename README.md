@@ -67,7 +67,7 @@ Windows 使用 OpenSSH 固定的 `\\.\pipe\openssh-ssh-agent` named pipe。啟�
 
 在「設定 → 資料可攜性」可匯入未加密或受密碼保護的 Bitwarden JSON，也可建立受獨立密碼保護的可攜 JSON 備份。兩個流程都會先在主程序重新驗證目前的主密碼；備份密碼不會成為 BearWarden 主密碼。
 
-匯入遵循 Bitwarden 的不去重語意：每個資料夾與項目都會取得新的本機 ID，撞名資料夾會加上 `Imported` 後綴。匯出不包含垃圾桶、附件或 Sends；匯入會略過 JSON 中的垃圾桶項目。帳號限制型加密 JSON 綁定原帳號金鑰，無法跨帳號攜帶，因此目前只支援[官方所述的 password-protected encrypted export](https://bitwarden.com/help/encrypted-export/)；格式與匯入限制以 [Bitwarden Import Data](https://bitwarden.com/help/import-data/) 為準。
+匯入遵循 Bitwarden 的不去重語意：每個資料夾與項目都會取得新的本機 ID，撞名資料夾會加上 `Imported` 後綴。匯出不包含垃圾桶、附件或 Sends；匯入會略過 JSON 中的垃圾桶項目。帳號限制型加密 JSON 綁定原帳號金鑰，無法跨帳號攜帶，因此目前只支援[官方所述的 password-protected encrypted export](https://bitwarden.com/help/encrypted-export/)；其 PBKDF2 與 Argon2id KDF 均可匯入，格式與限制以 [Bitwarden Import Data](https://bitwarden.com/help/import-data/) 為準。
 
 ## Bitwarden／Vaultwarden 同步
 
@@ -80,6 +80,7 @@ Cloud 與支援中的 Vaultwarden 版本執行相容測試。
 - Bitwarden Cloud 的伺服器網址填 `https://bitwarden.com`。
 - Vaultwarden 填部署站台的 HTTPS 根網址；開發測試僅後端允許 loopback HTTP。
 - 支援 Authenticator、Email、YubiKey OTP，以及新裝置電子郵件驗證碼。
+- 連線後會顯示 Email 驗證與雙重驗證狀態；未驗證時可要求伺服器重新寄送驗證信。
 
 主密碼不會寫入 BearWarden 密碼庫或設定；只在登入或解鎖時於主程序記憶體使用，
 衍生金鑰在鎖定時清除。登入 token、同步設定與 ID 對應只存放在已加密的本機密碼庫內。
