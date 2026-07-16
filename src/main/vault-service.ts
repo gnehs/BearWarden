@@ -72,6 +72,10 @@ import type {
   SyncStatus,
   SyncUnlockRequest,
   TotpCodeView,
+  SendCreateRequest,
+  SendUpdateRequest,
+  SendIdRequest,
+  SendView,
   VaultImportResult,
   VaultStatus
 } from '../shared/vault-contract'
@@ -87,6 +91,8 @@ import {
   type BitwardenFolder,
   type BitwardenLoginDraft,
   type BitwardenLoginItem,
+  type BitwardenSendDraft,
+  type BitwardenSendItem,
   type BitwardenDirectState,
   type BitwardenSyncClient,
   type BitwardenTwoFactor
@@ -160,7 +166,8 @@ const PASSWORD_HISTORY_DATA_VERSION = 12
 const GENERATOR_HISTORY_DATA_VERSION = 13
 const ATTACHMENTS_DATA_VERSION = 14
 const EQUIVALENT_DOMAINS_DATA_VERSION = 15
-const DATA_VERSION = 15
+const SENDS_DATA_VERSION = 16
+const DATA_VERSION = 16
 const MIN_MASTER_PASSWORD_LENGTH = 12
 const MAX_MASTER_PASSWORD_LENGTH = 1024
 const MAX_NAME_LENGTH = 256
@@ -180,6 +187,8 @@ const MAX_ATTACHMENT_FILE_NAME_LENGTH = 255
 const MAX_ATTACHMENT_SIZE_NAME_LENGTH = 64
 const MAX_GENERATOR_HISTORY = 200
 const MAX_GENERATED_CREDENTIAL_LENGTH = 512
+const MAX_SENDS = 10_000
+const MAX_SEND_TEXT_LENGTH = 1024 * 1024
 const MAX_SSH_PRIVATE_KEY_LENGTH = 1024 * 1024
 const MAX_SYNC_SECRET_LENGTH = 16_384
 const MAX_EQUIVALENT_DOMAIN_GROUPS = 10_000
@@ -210,6 +219,8 @@ interface StoredLogin
   customFields: VaultCustomField[]
   passwordHistory: VaultPasswordHistoryEntry[]
 }
+
+interface StoredSend extends SendView {}
 
 interface SyncEntityMapping {
   localId: string
@@ -251,6 +262,7 @@ interface VaultData {
   updatedAt: string
   folders: FolderView[]
   logins: StoredLogin[]
+  sends: StoredSend[]
   generatorHistory: GeneratorHistoryEntry[]
   sync: PersistedSyncData | null
 }
@@ -1147,6 +1159,82 @@ function parseStoredLogin(
   }
 }
 
+function parseStoredSend(value: unknown): StoredSend {
+  if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
+  const {
+    id,
+    accessId,
+    type,
+    name,
+    notes,
+    text,
+    hidden,
+    maxAccessCount,
+    accessCount,
+    revisionDate,
+    expirationDate,
+    deletionDate,
+    disabled,
+    hideEmail,
+    authType,
+    passwordProtected
+  } = value
+  if (
+    typeof id !== 'string' ||
+    !UUID_PATTERN.test(id) ||
+    typeof accessId !== 'string' ||
+    !/^[A-Za-z0-9_-]{16,128}$/u.test(accessId) ||
+    type !== 'text' ||
+    typeof name !== 'string' ||
+    name.length === 0 ||
+    name.length > MAX_NAME_LENGTH ||
+    (notes !== null && typeof notes !== 'string') ||
+    (typeof notes === 'string' && notes.length > MAX_NOTES_LENGTH) ||
+    typeof text !== 'string' ||
+    text.length > MAX_SEND_TEXT_LENGTH ||
+    typeof hidden !== 'boolean' ||
+    (maxAccessCount !== null &&
+      (typeof maxAccessCount !== 'number' ||
+        !Number.isSafeInteger(maxAccessCount) ||
+        (maxAccessCount as number) < 1)) ||
+    typeof accessCount !== 'number' ||
+    !Number.isSafeInteger(accessCount) ||
+    (accessCount as number) < 0 ||
+    typeof revisionDate !== 'string' ||
+    typeof deletionDate !== 'string' ||
+    !Number.isFinite(Date.parse(revisionDate)) ||
+    !Number.isFinite(Date.parse(deletionDate)) ||
+    (expirationDate !== null &&
+      (typeof expirationDate !== 'string' || !Number.isFinite(Date.parse(expirationDate)))) ||
+    typeof disabled !== 'boolean' ||
+    typeof hideEmail !== 'boolean' ||
+    (authType !== 'none' && authType !== 'password') ||
+    typeof passwordProtected !== 'boolean'
+  ) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  const parsedMaxAccessCount = maxAccessCount === null ? null : (maxAccessCount as number)
+  const parsedAccessCount = accessCount as number
+  return {
+    id,
+    accessId,
+    type,
+    name,
+    notes,
+    text,
+    hidden,
+    maxAccessCount: parsedMaxAccessCount,
+    accessCount: parsedAccessCount,
+    revisionDate,
+    expirationDate,
+    deletionDate,
+    disabled,
+    hideEmail,
+    authType,
+    passwordProtected
+  }
+}
+
 function parseSyncMappings(
   value: unknown,
   localIds: Set<string>,
@@ -1296,6 +1384,27 @@ function cloneEquivalentDomainSettings(
       ...group,
       domains: [...group.domains]
     }))
+  }
+}
+
+function sendViewFromRemote(send: BitwardenSendItem): StoredSend {
+  return {
+    id: send.id,
+    accessId: send.accessId,
+    type: 'text',
+    name: send.name,
+    notes: send.notes,
+    text: send.text,
+    hidden: send.hidden,
+    maxAccessCount: send.maxAccessCount,
+    accessCount: send.accessCount,
+    revisionDate: send.revisionDate,
+    expirationDate: send.expirationDate,
+    deletionDate: send.deletionDate,
+    disabled: send.disabled,
+    hideEmail: send.hideEmail,
+    authType: send.authType === 1 ? 'password' : 'none',
+    passwordProtected: send.passwordProtected
   }
 }
 
@@ -1543,6 +1652,7 @@ function parseVaultData(value: unknown): VaultData {
       PASSWORD_HISTORY_DATA_VERSION,
       GENERATOR_HISTORY_DATA_VERSION,
       ATTACHMENTS_DATA_VERSION,
+      SENDS_DATA_VERSION,
       DATA_VERSION
     ].includes(value.version) ||
     !Array.isArray(value.folders) ||
@@ -1603,6 +1713,19 @@ function parseVaultData(value: unknown): VaultData {
     updatedAt: value.updatedAt,
     folders,
     logins,
+    sends:
+      dataVersion < SENDS_DATA_VERSION
+        ? []
+        : (() => {
+            if (!Array.isArray(value.sends) || value.sends.length > MAX_SENDS) {
+              throw new VaultError('CORRUPT_VAULT')
+            }
+            const sends = value.sends.map(parseStoredSend)
+            if (new Set(sends.map((send) => send.id)).size !== sends.length) {
+              throw new VaultError('CORRUPT_VAULT')
+            }
+            return sends
+          })(),
     generatorHistory:
       dataVersion < GENERATOR_HISTORY_DATA_VERSION
         ? []
@@ -1640,6 +1763,62 @@ function normalizeNullableString(value: unknown, maxLength: number): string | nu
     throw new VaultError('INVALID_INPUT')
   }
   return value
+}
+
+function normalizeSendDraft(request: SendCreateRequest | SendUpdateRequest): BitwardenSendDraft {
+  const name = normalizeRequiredString(request.name, MAX_NAME_LENGTH)
+  const notes = normalizeNullableString(request.notes, MAX_NOTES_LENGTH)
+  const text = normalizeString(request.text, MAX_SEND_TEXT_LENGTH)
+  const hidden = request.hidden ?? false
+  const maxAccessCount = request.maxAccessCount ?? null
+  if (typeof hidden !== 'boolean') throw new VaultError('INVALID_INPUT')
+  if (
+    maxAccessCount !== null &&
+    (!Number.isSafeInteger(maxAccessCount) || maxAccessCount < 1 || maxAccessCount > 2_147_483_647)
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const expirationDate = request.expirationDate ?? null
+  const deletionDate =
+    request.deletionDate ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+  for (const value of [expirationDate, deletionDate]) {
+    if (value !== null && (typeof value !== 'string' || !Number.isFinite(Date.parse(value)))) {
+      throw new VaultError('INVALID_INPUT')
+    }
+  }
+  const password =
+    request.password === undefined
+      ? undefined
+      : normalizeNullableString(request.password, MAX_SYNC_SECRET_LENGTH)
+  const disabled = request.disabled ?? false
+  const hideEmail = request.hideEmail ?? true
+  if (typeof disabled !== 'boolean' || typeof hideEmail !== 'boolean') {
+    throw new VaultError('INVALID_INPUT')
+  }
+  if (expirationDate && Date.parse(expirationDate) <= Date.now()) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  if (
+    Date.parse(deletionDate) <= Date.now() ||
+    Date.parse(deletionDate) > Date.now() + 31 * 24 * 60 * 60 * 1000
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  if (expirationDate && Date.parse(expirationDate) > Date.parse(deletionDate)) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return {
+    name,
+    notes,
+    text,
+    hidden,
+    maxAccessCount,
+    expirationDate,
+    deletionDate,
+    password,
+    disabled,
+    hideEmail
+  }
 }
 
 function normalizeItemType(value: unknown): VaultItemType {
@@ -1931,6 +2110,7 @@ function cloneData(data: VaultData): VaultData {
       passwordHistory: clonePasswordHistory(login.passwordHistory),
       attachments: cloneAttachments(login.attachments)
     })),
+    sends: data.sends.map((send) => ({ ...send })),
     generatorHistory: cloneGeneratorHistory(data.generatorHistory),
     sync: data.sync
       ? {
@@ -2336,6 +2516,7 @@ export class VaultService {
         updatedAt: now,
         folders: [],
         logins: [],
+        sends: [],
         generatorHistory: [],
         sync: null
       }
@@ -2724,6 +2905,150 @@ export class VaultService {
         throw this.mapSyncError(error)
       } finally {
         this.finishSyncOperation(abort)
+      }
+    })
+  }
+
+  listSends(): Promise<SendView[]> {
+    return this.exclusive(async () =>
+      this.requireData()
+        .sends.map((send) => ({ ...send }))
+        .sort(
+          (left, right) => compareText(left.name, right.name) || left.id.localeCompare(right.id)
+        )
+    )
+  }
+
+  createSend(request: SendCreateRequest): Promise<SendView> {
+    return this.exclusive(async () => {
+      const draft = normalizeSendDraft(request)
+      const current = this.requireData()
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      if (!client.createSend) throw new VaultError('SYNC_FAILED')
+      const abort = this.startSyncOperation()
+      try {
+        const remote = await client.createSend(draft, abort.signal)
+        const next = cloneData(current)
+        next.sends = [
+          ...next.sends.filter((send) => send.id !== remote.id),
+          sendViewFromRemote(remote)
+        ]
+        if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+        next.sync.state = client.exportState()
+        next.updatedAt = this.nowIso()
+        await this.persist(next)
+        this.data = next
+        this.syncLastError = null
+        return { ...sendViewFromRemote(remote) }
+      } catch (error) {
+        throw this.mapSyncError(error)
+      } finally {
+        this.finishSyncOperation(abort)
+      }
+    })
+  }
+
+  updateSend(request: SendUpdateRequest): Promise<SendView> {
+    return this.exclusive(async () => {
+      assertUuid(request.id)
+      const draft = normalizeSendDraft(request)
+      const current = this.requireData()
+      if (!current.sends.some((send) => send.id === request.id)) throw new VaultError('NOT_FOUND')
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      if (!client.updateSend) throw new VaultError('SYNC_FAILED')
+      const abort = this.startSyncOperation()
+      try {
+        const remote = await client.updateSend(request.id, draft, abort.signal)
+        const next = cloneData(current)
+        next.sends = [
+          ...next.sends.filter((send) => send.id !== remote.id),
+          sendViewFromRemote(remote)
+        ]
+        if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+        next.sync.state = client.exportState()
+        next.updatedAt = this.nowIso()
+        await this.persist(next)
+        this.data = next
+        this.syncLastError = null
+        return { ...sendViewFromRemote(remote) }
+      } catch (error) {
+        throw this.mapSyncError(error)
+      } finally {
+        this.finishSyncOperation(abort)
+      }
+    })
+  }
+
+  removeSendPassword(request: SendIdRequest): Promise<SendView> {
+    return this.exclusive(async () => {
+      assertUuid(request.id)
+      const current = this.requireData()
+      if (!current.sends.some((send) => send.id === request.id)) throw new VaultError('NOT_FOUND')
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      if (!client.removeSendPassword) throw new VaultError('SYNC_FAILED')
+      const abort = this.startSyncOperation()
+      try {
+        const remote = await client.removeSendPassword(request.id, abort.signal)
+        const next = cloneData(current)
+        next.sends = [
+          ...next.sends.filter((send) => send.id !== remote.id),
+          sendViewFromRemote(remote)
+        ]
+        if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+        next.sync.state = client.exportState()
+        next.updatedAt = this.nowIso()
+        await this.persist(next)
+        this.data = next
+        this.syncLastError = null
+        return { ...sendViewFromRemote(remote) }
+      } catch (error) {
+        throw this.mapSyncError(error)
+      } finally {
+        this.finishSyncOperation(abort)
+      }
+    })
+  }
+
+  deleteSend(request: SendIdRequest): Promise<void> {
+    return this.exclusive(async () => {
+      assertUuid(request.id)
+      const current = this.requireData()
+      if (!current.sends.some((send) => send.id === request.id)) throw new VaultError('NOT_FOUND')
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      if (!client.deleteSend) throw new VaultError('SYNC_FAILED')
+      const abort = this.startSyncOperation()
+      try {
+        await client.deleteSend(request.id, abort.signal)
+        const next = cloneData(current)
+        next.sends = next.sends.filter((send) => send.id !== request.id)
+        if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+        next.sync.state = client.exportState()
+        next.updatedAt = this.nowIso()
+        await this.persist(next)
+        this.data = next
+        this.syncLastError = null
+      } catch (error) {
+        throw this.mapSyncError(error)
+      } finally {
+        this.finishSyncOperation(abort)
+      }
+    })
+  }
+
+  copySendLink(request: SendIdRequest): Promise<void> {
+    return this.exclusive(async () => {
+      assertUuid(request.id)
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      if (!client.copySendLink) throw new VaultError('SYNC_FAILED')
+      try {
+        await client.copySendLink(request.id, (value) => this.platform.copyText(value))
+      } catch (error) {
+        throw this.mapSyncError(error)
       }
     })
   }
@@ -4928,21 +5253,25 @@ export class VaultService {
     const initialRemote = await Promise.all([
       client.listFolders(signal),
       client.listPersonalLogins(signal),
-      client.getEquivalentDomainSettings(signal)
+      client.getEquivalentDomainSettings(signal),
+      client.listSends?.(signal) ?? Promise.resolve([] as BitwardenSendItem[])
     ])
     let remoteFolders = initialRemote[0]
     let remoteLogins = initialRemote[1]
     const domainSettings = validateRemoteEquivalentDomainSettings(initialRemote[2])
+    let remoteSends = initialRemote[3]
     const next = cloneData(current)
     if (next.sync?.pendingLoginMutation) {
       await this.resumePendingLoginMutation(next, client, remoteFolders, remoteLogins, signal)
       await client.sync(signal)
       const refreshed = await Promise.all([
         client.listFolders(signal),
-        client.listPersonalLogins(signal)
+        client.listPersonalLogins(signal),
+        client.listSends?.(signal) ?? Promise.resolve([] as BitwardenSendItem[])
       ])
       remoteFolders = refreshed[0]
       remoteLogins = refreshed[1]
+      remoteSends = refreshed[2]
     }
     const remoteSnapshot = this.remoteSyncSnapshot(remoteFolders, remoteLogins)
     const syncMetadata = this.syncMetadata(sync)
@@ -4993,12 +5322,14 @@ export class VaultService {
       client.listFolders(signal),
       client.listPersonalLogins(signal)
     ])
+    const finalRemoteSends = client.listSends ? await client.listSends(signal) : remoteSends
     this.reconcileServerAuthoritativeAttachments(
       next,
       metadata.loginLinks,
       finalRemoteFolders,
       finalRemoteLogins
     )
+    next.sends = finalRemoteSends.map(sendViewFromRemote)
     const syncedAt = this.nowIso()
     next.sync = {
       ...sync,

@@ -178,6 +178,14 @@ const api: BearWardenAPI = {
     get: () => ipcRenderer.invoke(IPC_CHANNELS.domainRulesGet),
     update: (request) => ipcRenderer.invoke(IPC_CHANNELS.domainRulesUpdate, request)
   },
+  sends: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.sendList),
+    create: (request) => ipcRenderer.invoke(IPC_CHANNELS.sendCreate, request),
+    update: (request) => ipcRenderer.invoke(IPC_CHANNELS.sendUpdate, request),
+    removePassword: (request) => ipcRenderer.invoke(IPC_CHANNELS.sendRemovePassword, request),
+    delete: (request) => ipcRenderer.invoke(IPC_CHANNELS.sendDelete, request),
+    copyLink: (request) => ipcRenderer.invoke(IPC_CHANNELS.sendCopyLink, request)
+  },
   settings: {
     get: () => ipcRenderer.invoke(IPC_CHANNELS.settingsGet),
     update: (request) => ipcRenderer.invoke(IPC_CHANNELS.settingsUpdate, request),

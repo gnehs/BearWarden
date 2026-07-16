@@ -84,7 +84,13 @@ export const IPC_CHANNELS = {
   syncNow: 'sync:now',
   syncDisconnect: 'sync:disconnect',
   domainRulesGet: 'domain-rules:get',
-  domainRulesUpdate: 'domain-rules:update'
+  domainRulesUpdate: 'domain-rules:update',
+  sendList: 'send:list',
+  sendCreate: 'send:create',
+  sendUpdate: 'send:update',
+  sendRemovePassword: 'send:remove-password',
+  sendDelete: 'send:delete',
+  sendCopyLink: 'send:copy-link'
 } as const
 
 export const IPC_EVENTS = {
@@ -645,6 +651,47 @@ export interface EquivalentDomainSettingsUpdate {
   expectedRevision: string
 }
 
+/** Renderer-safe metadata for a personal text Send. Encryption keys and proofs remain in main. */
+export interface SendView {
+  id: string
+  accessId: string
+  type: 'text'
+  name: string
+  notes: string | null
+  text: string
+  hidden: boolean
+  maxAccessCount: number | null
+  accessCount: number
+  revisionDate: string
+  expirationDate: string | null
+  deletionDate: string
+  disabled: boolean
+  hideEmail: boolean
+  authType: 'none' | 'password'
+  passwordProtected: boolean
+}
+
+export interface SendCreateRequest {
+  name: string
+  notes?: string | null
+  text: string
+  hidden?: boolean
+  maxAccessCount?: number | null
+  expirationDate?: string | null
+  deletionDate?: string | null
+  password?: string | null
+  disabled?: boolean
+  hideEmail?: boolean
+}
+
+export interface SendUpdateRequest extends SendCreateRequest {
+  id: string
+}
+
+export interface SendIdRequest {
+  id: string
+}
+
 /** Decrypted non-password fields for a login editor. */
 export interface LoginView extends LoginSummary {
   notes: string | null
@@ -1096,6 +1143,15 @@ export interface BearWardenAPI {
   domainRules: {
     get: () => Promise<EquivalentDomainSettingsView>
     update: (request: EquivalentDomainSettingsUpdate) => Promise<EquivalentDomainSettingsView>
+  }
+  sends: {
+    list: () => Promise<SendView[]>
+    create: (request: SendCreateRequest) => Promise<SendView>
+    update: (request: SendUpdateRequest) => Promise<SendView>
+    removePassword: (request: SendIdRequest) => Promise<SendView>
+    delete: (request: SendIdRequest) => Promise<void>
+    /** Copies the share link directly from main; the URL fragment seed never crosses IPC. */
+    copyLink: (request: SendIdRequest) => Promise<void>
   }
   settings: {
     get: () => Promise<AppSettings>

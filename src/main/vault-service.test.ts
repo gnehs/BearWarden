@@ -8,6 +8,7 @@ import {
   type BitwardenDirectState,
   type BitwardenLoginDraft,
   type BitwardenLoginItem,
+  type BitwardenSendItem,
   type BitwardenSyncClient
 } from './bitwarden-direct'
 import type { CustomFieldRequest, LoginView, VaultItemFields } from '../shared/vault-contract'
@@ -560,6 +561,79 @@ describe('VaultService encrypted local data', () => {
       configured: true,
       state: 'ready'
     })
+  })
+
+  it('manages personal text Sends and keeps an existing password unless explicitly removed', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { copyText, service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+
+    const sendId = '50000000-0000-4000-8000-000000000001'
+    let remote: BitwardenSendItem = {
+      id: sendId,
+      accessId: 'UAAAAAAAQABAAAAAAAAAAQ',
+      type: 'text',
+      name: 'Share note',
+      notes: null,
+      text: 'secret text',
+      hidden: false,
+      maxAccessCount: null,
+      accessCount: 0,
+      revisionDate: '2026-07-16T00:00:00.000Z',
+      expirationDate: null,
+      deletionDate: '2026-07-30T00:00:00.000Z',
+      disabled: false,
+      hideEmail: true,
+      authType: 1,
+      passwordProtected: true
+    }
+    fake!.createSend = async (draft) => {
+      remote = { ...remote, ...draft, authType: 1, passwordProtected: true }
+      return { ...remote }
+    }
+    fake!.updateSend = async (_id, draft) => {
+      expect(draft.password).toBeUndefined()
+      remote = { ...remote, ...draft }
+      return { ...remote }
+    }
+    fake!.removeSendPassword = async () => {
+      remote = { ...remote, authType: 2, passwordProtected: false }
+      return { ...remote }
+    }
+    fake!.deleteSend = async () => undefined
+    fake!.copySendLink = async (_id, copy) => copy('https://vault.example.invalid/#/send/link')
+
+    const created = await service.createSend({
+      name: remote.name,
+      text: remote.text,
+      password: 'send-password',
+      deletionDate: remote.deletionDate
+    })
+    expect(created).toMatchObject({ id: sendId, passwordProtected: true })
+    const updated = await service.updateSend({
+      id: sendId,
+      name: 'Updated note',
+      text: remote.text,
+      deletionDate: remote.deletionDate
+    })
+    expect(updated.name).toBe('Updated note')
+    expect(updated.passwordProtected).toBe(true)
+    await service.copySendLink({ id: sendId })
+    expect(copyText).toHaveBeenCalledWith('https://vault.example.invalid/#/send/link')
+    const withoutPassword = await service.removeSendPassword({ id: sendId })
+    expect(withoutPassword.passwordProtected).toBe(false)
+    await service.deleteSend({ id: sendId })
+    await expect(service.listSends()).resolves.toEqual([])
   })
 
   it('leases encrypted notification credentials and preserves mappings across remote logout', async () => {
@@ -4567,7 +4641,7 @@ describe('VaultService encrypted local data', () => {
       expect(await service.revealPassword({ id: migrated.id })).toBe('legacy-secret')
       await service.lock()
       const unlocked = await store.unlock(MASTER_PASSWORD)
-      expect((unlocked.data as { version: number }).version).toBe(15)
+      expect((unlocked.data as { version: number }).version).toBe(16)
       unlocked.key.fill(0)
       unlocked.salt.fill(0)
     }
@@ -4702,7 +4776,7 @@ describe('VaultService encrypted local data', () => {
     expect(history.at(-1)?.credential).toBe('historical-198')
   })
 
-  it('migrates V12 to an empty encrypted V15 generator history', async () => {
+  it('migrates V12 to an empty encrypted V16 generator history and Send cache', async () => {
     const { filePath, service, store } = await createHarness()
     await service.setup(MASTER_PASSWORD)
     await service.lock()
@@ -4723,12 +4797,12 @@ describe('VaultService encrypted local data', () => {
     await expect(reopened.generatorHistory()).resolves.toEqual([])
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
-    expect(migrated.data).toMatchObject({ version: 15, generatorHistory: [] })
+    expect(migrated.data).toMatchObject({ version: 16, generatorHistory: [], sends: [] })
     migrated.key.fill(0)
     migrated.salt.fill(0)
   })
 
-  it('migrates V13 login records to V15 with empty attachment metadata', async () => {
+  it('migrates V13 login records to V16 with empty attachment metadata and Send cache', async () => {
     const { filePath, service, store } = await createHarness()
     await service.setup(MASTER_PASSWORD)
     const login = await service.createLogin({ name: 'Pre-attachment item' })
@@ -4757,14 +4831,15 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 15,
-      logins: [expect.objectContaining({ attachments: [] })]
+      version: 16,
+      logins: [expect.objectContaining({ attachments: [] })],
+      sends: []
     })
     migrated.key.fill(0)
     migrated.salt.fill(0)
   })
 
-  it('migrates V14 sync data to V15 with no cached equivalent-domain settings', async () => {
+  it('migrates V14 sync data to V16 with no cached equivalent-domain settings or Sends', async () => {
     const { filePath, service, store } = await createHarness({
       createSyncClient: (sync) => createSyncFake(sync.state)
     })
@@ -4795,7 +4870,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 15,
+      version: 16,
       sync: { domainSettings: null }
     })
     migrated.key.fill(0)

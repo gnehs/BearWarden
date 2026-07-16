@@ -65,7 +65,10 @@ import {
   type VaultImportRequest,
   type TouchIdEnableRequest,
   type VaultSetupRequest,
-  type VaultUnlockRequest
+  type VaultUnlockRequest,
+  type SendCreateRequest,
+  type SendUpdateRequest,
+  type SendIdRequest
 } from '../shared/vault-contract'
 import type { AppSettingsService } from './app-settings'
 import { isVaultError, VaultError } from './vault-errors'
@@ -1198,6 +1201,80 @@ function parseEquivalentDomainSettingsUpdate(value: unknown): EquivalentDomainSe
   }
 }
 
+function parseSendId(value: unknown): SendIdRequest {
+  const record = exactRecord(value, ['id'])
+  if (typeof record.id !== 'string' || !UUID_PATTERN.test(record.id)) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return { id: record.id }
+}
+
+function parseSendCreate(value: unknown): SendCreateRequest {
+  const record = exactRecord(value, [
+    'name',
+    'notes',
+    'text',
+    'hidden',
+    'maxAccessCount',
+    'expirationDate',
+    'deletionDate',
+    'password',
+    'disabled',
+    'hideEmail'
+  ])
+  const result: SendCreateRequest = {
+    name: requiredString(record, 'name'),
+    text: requiredString(record, 'text')
+  }
+  const notes = optionalStringOrNull(record, 'notes')
+  const expirationDate = optionalStringOrNull(record, 'expirationDate')
+  const deletionDate = optionalStringOrNull(record, 'deletionDate')
+  const password = optionalStringOrNull(record, 'password')
+  if (notes !== undefined) result.notes = notes
+  if (expirationDate !== undefined) result.expirationDate = expirationDate
+  if (deletionDate !== undefined) result.deletionDate = deletionDate
+  if (password !== undefined) result.password = password
+  for (const key of ['hidden', 'disabled', 'hideEmail'] as const) {
+    if (record[key] !== undefined) {
+      if (typeof record[key] !== 'boolean') throw new VaultError('INVALID_INPUT')
+      result[key] = record[key]
+    }
+  }
+  if (record.maxAccessCount !== undefined) {
+    if (
+      record.maxAccessCount !== null &&
+      (typeof record.maxAccessCount !== 'number' ||
+        !Number.isSafeInteger(record.maxAccessCount) ||
+        record.maxAccessCount < 1)
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    result.maxAccessCount = record.maxAccessCount as number | null
+  }
+  return result
+}
+
+function parseSendUpdate(value: unknown): SendUpdateRequest {
+  const record = exactRecord(value, [
+    'id',
+    'name',
+    'notes',
+    'text',
+    'hidden',
+    'maxAccessCount',
+    'expirationDate',
+    'deletionDate',
+    'password',
+    'disabled',
+    'hideEmail'
+  ])
+  if (typeof record.id !== 'string' || !UUID_PATTERN.test(record.id)) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const { id, ...draft } = record
+  return { ...parseSendCreate(draft), id }
+}
+
 function optionalTwoFactorMethod(
   record: RecordValue,
   key: string
@@ -1868,6 +1945,25 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     getMainWindow,
     (_event, input) =>
       vault.updateEquivalentDomainSettings(parseEquivalentDomainSettingsUpdate(input))
+  )
+  registerHandler(IPC_CHANNELS.sendList, getMainWindow, (_event, input) => {
+    parseNoInput(input)
+    return vault.listSends()
+  })
+  registerHandler(IPC_CHANNELS.sendCreate, getMainWindow, (_event, input) =>
+    afterMutation(vault.createSend(parseSendCreate(input)))
+  )
+  registerHandler(IPC_CHANNELS.sendUpdate, getMainWindow, (_event, input) =>
+    afterMutation(vault.updateSend(parseSendUpdate(input)))
+  )
+  registerHandler(IPC_CHANNELS.sendRemovePassword, getMainWindow, (_event, input) =>
+    afterMutation(vault.removeSendPassword(parseSendId(input)))
+  )
+  registerHandler(IPC_CHANNELS.sendDelete, getMainWindow, (_event, input) =>
+    afterMutation(vault.deleteSend(parseSendId(input)))
+  )
+  registerHandler(IPC_CHANNELS.sendCopyLink, getMainWindow, (_event, input) =>
+    vault.copySendLink(parseSendId(input))
   )
   registerHandler(IPC_CHANNELS.settingsGet, getMainWindow, (_event, input) => {
     parseNoInput(input)
