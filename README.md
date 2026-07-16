@@ -9,6 +9,7 @@ BearWarden 是一個以「快速找到、安心使用」為核心的桌面密碼
 - 以主密碼建立、解鎖與鎖定本機密碼庫
 - 登入項目的新增、檢視、編輯與刪除
 - 每個登入項目可保存有順序的多個 URI，並設定 Bitwarden 相容的 URI match 規則
+- 設定帳號層級的自訂與內建等效網域；passkey 建立選擇器會以目前 origin、URI match 與等效網域篩選登入項目
 - 保存最近 5 筆密碼／隱藏欄位歷史；詳情只顯示安全計數，確認明文警告與必要的主密碼重新提示後才讀取
 - 垃圾桶、項目還原、永久刪除與清空垃圾桶，並支援所選項目的批次移入、還原與永久刪除
 - 項目複製、封存、取消封存與封存篩選，並支援批次移動、封存與取消封存
@@ -81,7 +82,7 @@ Cloud 與支援中的 Vaultwarden 版本執行相容測試。
 主密碼不會寫入 BearWarden 密碼庫或設定；只在登入或解鎖時於主程序記憶體使用，
 衍生金鑰在鎖定時清除。登入 token、同步設定與 ID 對應只存放在已加密的本機密碼庫內。
 
-目前同步範圍限個人保管庫的 items、folders、封存、垃圾桶與附件。附件 metadata 以 server 為準，支援安全上傳、下載、刪除及 legacy Fix；組織項目、Sends、Passkey 寫入與
+目前同步範圍限個人保管庫的 items、folders、封存、垃圾桶、附件與帳號等效網域。附件 metadata 以 server 為準，支援安全上傳、下載、刪除及 legacy Fix；等效網域可在設定頁編輯自訂群組及排除伺服器內建群組。組織項目、Sends、Passkey 寫入與
 SSO 尚不由 BearWarden 編輯。同步的自訂欄位可在項目詳情安全地顯示與編輯。附件主要流程已有自動化 fixture 覆蓋，但 Direct／Azure live server 相容驗證仍是後續工作。完整差距與
 實作順序記錄於 [`docs/vaultwarden-feature-gap.md`](docs/vaultwarden-feature-gap.md)。
 更新既有 login 時，direct connector 會保留 BearWarden 未支援的遠端欄位。若兩端同時修改，
