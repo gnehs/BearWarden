@@ -21,6 +21,7 @@ import {
 } from '../shared/vault-contract'
 import { BitwardenDirectClient } from './bitwarden-direct'
 import { AutoSyncCoordinator } from './auto-sync-coordinator'
+import { BitwardenNotificationCoordinator } from './bitwarden-notifications'
 import { AppSettingsService } from './app-settings'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import { FocusTouchIdUnlockController } from './focus-touch-id-unlock'
@@ -45,6 +46,7 @@ let mainWindow: BrowserWindow | null = null
 let vault: VaultService | null = null
 let settings: AppSettingsService | null = null
 let autoSync: AutoSyncCoordinator | null = null
+let serverNotifications: BitwardenNotificationCoordinator | null = null
 let sshKeyImportSessions: SshKeyImportSessionStore | null = null
 let sshAgentCoordinator: SshAgentCoordinator | null = null
 let sshAgentBridge: SshAgentRendererBridge | null = null
@@ -304,18 +306,48 @@ function notifyExternalVaultChanged(): void {
   notifyVaultChanged()
 }
 
+function refreshServerNotifications(): void {
+  void serverNotifications?.refresh().catch(() => undefined)
+}
+
+function stopServerNotifications(): Promise<void> {
+  return serverNotifications?.stop().catch(() => undefined) ?? Promise.resolve()
+}
+
+function handleSyncChanged(status: SyncStatus): void {
+  notifySyncChanged(status)
+  if (status.state === 'ready' || status.state === 'error') refreshServerNotifications()
+  else if (status.state === 'locked' || status.state === 'unconfigured') {
+    autoSync?.cancel()
+    void stopServerNotifications()
+  }
+}
+
+async function handleRemoteSyncLogout(): Promise<void> {
+  autoSync?.cancel()
+  const currentVault = vault
+  if (!currentVault) return
+  try {
+    handleSyncChanged(await currentVault.remoteLogoutSync())
+  } catch {
+    const status = await currentVault.syncStatus().catch(() => null)
+    if (status) handleSyncChanged(status)
+  }
+}
+
 async function unlockSyncWithLocalPassword(masterPassword: string): Promise<void> {
   if (!vault) return
   const status = await vault.unlockSyncWithLocalPassword(masterPassword)
   passkeyCeremonyService?.onVaultMutation()
-  notifySyncChanged(status)
+  handleSyncChanged(status)
   if (status.state === 'ready') autoSync?.request()
 }
 
-function beforeVaultLock(): void {
+async function beforeVaultLock(): Promise<void> {
   passkeyCeremonyService?.onLocked()
   passkeyRendererBridge?.cancelAll()
   autoSync?.cancel()
+  await stopServerNotifications()
   vaultLockGeneration += 1
   sshKeyImportSessions?.clearAll()
   sshAgentCoordinator?.onLocked()
@@ -326,7 +358,7 @@ function beforeVaultLock(): void {
 
 async function lockVault(): Promise<void> {
   if (!vault) return
-  beforeVaultLock()
+  await beforeVaultLock()
   await vault.lock()
   notifyVaultLocked()
 }
@@ -585,8 +617,13 @@ if (hasSingleInstanceLock)
     })
     autoSync = new AutoSyncCoordinator({
       vault,
-      onSyncChanged: notifySyncChanged,
+      onSyncChanged: handleSyncChanged,
       onVaultChanged: notifyExternalVaultChanged
+    })
+    serverNotifications = new BitwardenNotificationCoordinator({
+      source: vault,
+      onSyncRequested: () => autoSync?.request(),
+      onRemoteLogout: handleRemoteSyncLogout
     })
 
     settings = new AppSettingsService(
@@ -671,10 +708,13 @@ if (hasSingleInstanceLock)
         autoSync?.request()
         refreshSshAgentAfterVaultChange()
       },
+      beforeSyncReconfigure: async () => {
+        autoSync?.cancel()
+        await stopServerNotifications()
+      },
       afterSyncChanged: (status) => {
         passkeyCeremonyService?.onVaultMutation()
-        autoSync?.cancel()
-        notifySyncChanged(status)
+        handleSyncChanged(status)
         refreshSshAgentAfterVaultChange()
       }
     })
@@ -688,8 +728,10 @@ if (hasSingleInstanceLock)
       if (settings?.shouldLockOnScreenLock()) requestSystemLock()
     })
     powerMonitor.on('suspend', () => {
+      void stopServerNotifications()
       if (settings?.shouldLockOnSuspend()) requestSystemLock()
     })
+    powerMonitor.on('resume', () => refreshServerNotifications())
 
     mainWindow = createWindow()
     installApplicationMenu({
@@ -707,6 +749,8 @@ function disposeServices(): void {
   servicesDisposed = true
   sensitiveClipboard.clearIfOwned()
   sshKeyImportSessions?.clearAll()
+  void serverNotifications?.dispose().catch(() => undefined)
+  serverNotifications = null
   autoSync?.dispose()
   passkeyCeremonyService?.dispose()
   passkeyRendererBridge?.dispose()
@@ -729,14 +773,15 @@ app.on('before-quit', (event) => {
   sshAgentBridge?.cancelAll()
   sshAgentCoordinator?.reset()
   repromptAuthorizations?.clear()
-  shutdownPending = (sshAgentServer?.stop() ?? Promise.resolve())
-    .catch(() => undefined)
-    .then(() => {
-      sshAgentBridge?.dispose()
-      disposeServices()
-      shutdownComplete = true
-      app.quit()
-    })
+  shutdownPending = Promise.all([
+    (sshAgentServer?.stop() ?? Promise.resolve()).catch(() => undefined),
+    (serverNotifications?.dispose() ?? Promise.resolve()).catch(() => undefined)
+  ]).then(() => {
+    sshAgentBridge?.dispose()
+    disposeServices()
+    shutdownComplete = true
+    app.quit()
+  })
 })
 
 app.on('window-all-closed', () => {
