@@ -76,6 +76,19 @@ describe('registerVaultIpc settings validation', () => {
     }
     expect(settings.update).toHaveBeenCalledTimes(1)
   })
+
+  it('whitelists and validates the start-at-login preference', async () => {
+    const { event, settings } = settingsHarness()
+    const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!
+
+    await expect(update(event, { startAtLogin: true })).resolves.toEqual({ startAtLogin: true })
+    expect(settings.update).toHaveBeenCalledWith({ startAtLogin: true })
+
+    for (const invalid of [{ startAtLogin: 'true' }, { startAtLogin: null }]) {
+      await expect(update(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(settings.update).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('RepromptAuthorizationStore', () => {

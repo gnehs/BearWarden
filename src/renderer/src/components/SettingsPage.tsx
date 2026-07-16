@@ -637,6 +637,30 @@ function SettingsPage({
                         </SelectContent>
                       </Select>
                     </Field>
+                    <Separator />
+                    <Field
+                      className="settings-row"
+                      orientation="horizontal"
+                      data-disabled={!settings.startAtLoginAvailable}
+                    >
+                      <FieldContent>
+                        <FieldLabel htmlFor="start-at-login-switch">
+                          登入時啟動 BearWarden
+                        </FieldLabel>
+                        <FieldDescription id="start-at-login-description">
+                          {settings.startAtLoginAvailable
+                            ? '登入這台電腦後，自動啟動 BearWarden。'
+                            : '僅 macOS 與 Windows 的安裝版支援自動啟動。'}
+                        </FieldDescription>
+                      </FieldContent>
+                      <Switch
+                        id="start-at-login-switch"
+                        checked={settings.startAtLogin}
+                        disabled={settingsBusy || !settings.startAtLoginAvailable}
+                        aria-describedby="start-at-login-description"
+                        onCheckedChange={(checked) => void onUpdate({ startAtLogin: checked })}
+                      />
+                    </Field>
                   </FieldGroup>
                 </CardContent>
               </Card>

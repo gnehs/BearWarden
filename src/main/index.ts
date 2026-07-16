@@ -588,6 +588,27 @@ if (hasSingleInstanceLock)
         applySshAgentSettings: (next) => {
           sshAgentRuntime.applySettings(next)
         },
+        getStartAtLoginStatus: () => {
+          const available =
+            app.isPackaged && (process.platform === 'darwin' || process.platform === 'win32')
+          if (!available) return { available: false, enabled: false }
+          try {
+            return { available: true, enabled: app.getLoginItemSettings().openAtLogin }
+          } catch {
+            return { available: false, enabled: false }
+          }
+        },
+        setStartAtLogin: (enabled) => {
+          if (!app.isPackaged || (process.platform !== 'darwin' && process.platform !== 'win32')) {
+            return false
+          }
+          try {
+            app.setLoginItemSettings({ openAtLogin: enabled })
+            return app.getLoginItemSettings().openAtLogin === enabled
+          } catch {
+            return false
+          }
+        },
         lockVault: lockVaultForInactivity,
         unlockVault: async (masterPassword) => {
           if (!vault) throw new Error('Vault service unavailable')

@@ -1172,6 +1172,10 @@ export interface PasskeyApprovalVerificationRequest {
 export interface AppSettings {
   contentProtection: boolean
   showWebsiteIcons: boolean
+  /** Whether the installed desktop app starts when the current OS user signs in. */
+  startAtLogin: boolean
+  /** Electron only supports login items for packaged macOS and Windows apps. */
+  startAtLoginAvailable: boolean
   autoLockMinutes: 0 | 1 | 5 | 15 | 30 | 60
   lockOnScreenLock: boolean
   lockOnSuspend: boolean
@@ -1186,7 +1190,9 @@ export interface AppSettings {
   touchIdEnabled: boolean
 }
 
-export type AppSettingsUpdate = Partial<Omit<AppSettings, 'touchIdAvailable' | 'touchIdEnabled'>>
+export type AppSettingsUpdate = Partial<
+  Omit<AppSettings, 'startAtLoginAvailable' | 'touchIdAvailable' | 'touchIdEnabled'>
+>
 
 export interface TouchIdEnableRequest {
   masterPassword: string

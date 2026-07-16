@@ -231,6 +231,7 @@ function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
   const record = exactRecord(value, [
     'contentProtection',
     'showWebsiteIcons',
+    'startAtLogin',
     'autoLockMinutes',
     'lockOnScreenLock',
     'lockOnSuspend',
@@ -248,6 +249,10 @@ function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
   if (record.showWebsiteIcons !== undefined) {
     if (typeof record.showWebsiteIcons !== 'boolean') throw new VaultError('INVALID_INPUT')
     result.showWebsiteIcons = record.showWebsiteIcons
+  }
+  if (record.startAtLogin !== undefined) {
+    if (typeof record.startAtLogin !== 'boolean') throw new VaultError('INVALID_INPUT')
+    result.startAtLogin = record.startAtLogin
   }
   if (record.autoLockMinutes !== undefined) {
     const value = record.autoLockMinutes

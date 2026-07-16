@@ -6,12 +6,20 @@ import type { AppSettings, AppSettingsUpdate, VaultStatus } from '../shared/vaul
 import type { EncryptedVaultStore } from './encrypted-vault-store'
 import { VaultError } from './vault-errors'
 
-const SETTINGS_VERSION = 3
+const SETTINGS_VERSION = 4
 const MAX_SETTINGS_BYTES = 16 * 1024
 const MAX_TOUCH_ID_BYTES = 64 * 1024
 
-interface StoredSettings extends Omit<AppSettings, 'touchIdAvailable' | 'touchIdEnabled'> {
+interface StoredSettings extends Omit<
+  AppSettings,
+  'startAtLoginAvailable' | 'touchIdAvailable' | 'touchIdEnabled'
+> {
   version: typeof SETTINGS_VERSION
+}
+
+export interface StartAtLoginStatus {
+  available: boolean
+  enabled: boolean
 }
 
 export interface AppSettingsRuntime {
@@ -25,6 +33,9 @@ export interface AppSettingsRuntime {
     enabled: boolean
     promptBehavior: AppSettings['sshAgentPromptBehavior']
   }) => void
+  getStartAtLoginStatus: () => StartAtLoginStatus
+  /** Applies the preference and confirms the OS reports the requested state. */
+  setStartAtLogin: (enabled: boolean) => boolean
   lockVault: () => Promise<void>
   unlockVault: (masterPassword: string) => Promise<VaultStatus>
 }
@@ -33,6 +44,7 @@ const DEFAULTS: StoredSettings = {
   version: SETTINGS_VERSION,
   contentProtection: true,
   showWebsiteIcons: true,
+  startAtLogin: false,
   autoLockMinutes: 15,
   lockOnScreenLock: true,
   lockOnSuspend: true,
@@ -50,7 +62,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function parseSettings(value: unknown): StoredSettings {
   if (
     !isRecord(value) ||
-    (value.version !== 1 && value.version !== 2 && value.version !== SETTINGS_VERSION)
+    (value.version !== 1 &&
+      value.version !== 2 &&
+      value.version !== 3 &&
+      value.version !== SETTINGS_VERSION)
   ) {
     throw new Error('invalid settings')
   }
@@ -59,6 +74,7 @@ function parseSettings(value: unknown): StoredSettings {
   if (
     typeof value.contentProtection !== 'boolean' ||
     (value.version !== 1 && typeof value.showWebsiteIcons !== 'boolean') ||
+    (value.version === SETTINGS_VERSION && typeof value.startAtLogin !== 'boolean') ||
     (autoLockMinutes !== 0 &&
       autoLockMinutes !== 1 &&
       autoLockMinutes !== 5 &&
@@ -74,8 +90,8 @@ function parseSettings(value: unknown): StoredSettings {
       clearClipboardSeconds !== 120) ||
     (value.defaultSort !== 'recent' && value.defaultSort !== 'name') ||
     (value.theme !== 'system' && value.theme !== 'light' && value.theme !== 'dark') ||
-    (value.version === SETTINGS_VERSION && typeof value.sshAgentEnabled !== 'boolean') ||
-    (value.version === SETTINGS_VERSION &&
+    (value.version >= 3 && typeof value.sshAgentEnabled !== 'boolean') ||
+    (value.version >= 3 &&
       value.sshAgentPromptBehavior !== 'always' &&
       value.sshAgentPromptBehavior !== 'never' &&
       value.sshAgentPromptBehavior !== 'rememberUntilLock')
@@ -86,16 +102,16 @@ function parseSettings(value: unknown): StoredSettings {
     version: SETTINGS_VERSION,
     contentProtection: value.contentProtection,
     showWebsiteIcons: value.version === 1 ? false : (value.showWebsiteIcons as boolean),
+    startAtLogin: value.version === SETTINGS_VERSION ? (value.startAtLogin as boolean) : false,
     autoLockMinutes,
     lockOnScreenLock: value.lockOnScreenLock,
     lockOnSuspend: value.lockOnSuspend,
     clearClipboardSeconds,
     defaultSort: value.defaultSort,
     theme: value.theme,
-    sshAgentEnabled:
-      value.version === SETTINGS_VERSION ? (value.sshAgentEnabled as boolean) : false,
+    sshAgentEnabled: value.version >= 3 ? (value.sshAgentEnabled as boolean) : false,
     sshAgentPromptBehavior:
-      value.version === SETTINGS_VERSION
+      value.version >= 3
         ? (value.sshAgentPromptBehavior as AppSettings['sshAgentPromptBehavior'])
         : 'always'
   }
@@ -166,14 +182,19 @@ export class AppSettingsService {
         this.settings = { ...DEFAULTS }
       }
     }
+    const startAtLoginStatus = this.runtime.getStartAtLoginStatus()
+    this.settings.startAtLogin = startAtLoginStatus.available ? startAtLoginStatus.enabled : false
     this.applyRuntimeSettings()
     this.resetAutoLock()
   }
 
   async get(): Promise<AppSettings> {
     const touchIdAvailable = await this.touchIdAvailable()
+    const startAtLoginStatus = this.runtime.getStartAtLoginStatus()
     return {
       ...this.settings,
+      startAtLogin: startAtLoginStatus.available ? startAtLoginStatus.enabled : false,
+      startAtLoginAvailable: startAtLoginStatus.available,
       touchIdAvailable,
       touchIdEnabled: touchIdAvailable && (await exists(this.touchIdPath))
     }
@@ -185,7 +206,34 @@ export class AppSettingsService {
 
   async update(update: AppSettingsUpdate): Promise<AppSettings> {
     const candidate = parseSettings({ ...this.settings, ...update, version: SETTINGS_VERSION })
-    await atomicWrite(this.settingsPath, `${JSON.stringify(candidate)}\n`)
+    const previousStartAtLogin = this.runtime.getStartAtLoginStatus()
+    if (update.startAtLogin !== undefined) {
+      if (!previousStartAtLogin.available && update.startAtLogin) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      candidate.startAtLogin = previousStartAtLogin.available ? update.startAtLogin : false
+      if (
+        previousStartAtLogin.available &&
+        candidate.startAtLogin !== previousStartAtLogin.enabled &&
+        !this.runtime.setStartAtLogin(candidate.startAtLogin)
+      ) {
+        throw new Error('failed to update OS login item')
+      }
+    } else {
+      candidate.startAtLogin = previousStartAtLogin.available ? previousStartAtLogin.enabled : false
+    }
+    try {
+      await atomicWrite(this.settingsPath, `${JSON.stringify(candidate)}\n`)
+    } catch (error) {
+      if (
+        update.startAtLogin !== undefined &&
+        previousStartAtLogin.available &&
+        candidate.startAtLogin !== previousStartAtLogin.enabled
+      ) {
+        this.runtime.setStartAtLogin(previousStartAtLogin.enabled)
+      }
+      throw error
+    }
     this.settings = candidate
     this.applyRuntimeSettings()
     this.resetAutoLock()

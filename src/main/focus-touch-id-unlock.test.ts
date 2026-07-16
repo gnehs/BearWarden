@@ -25,6 +25,8 @@ function createRuntime(
   const enabledSettings: AppSettings = {
     contentProtection: true,
     showWebsiteIcons: true,
+    startAtLogin: false,
+    startAtLoginAvailable: true,
     autoLockMinutes: 15,
     lockOnScreenLock: true,
     lockOnSuspend: true,

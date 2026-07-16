@@ -26,6 +26,8 @@ interface TestRuntime {
   applyContentProtection: TestMock
   applyClipboardTimeout: TestMock
   applySshAgentSettings: TestMock
+  getStartAtLoginStatus: TestMock
+  setStartAtLogin: TestMock
   lockVault: TestMock
   unlockVault: TestMock
 }
@@ -68,6 +70,8 @@ describe('AppSettingsService', () => {
       applyContentProtection: vi.fn(),
       applyClipboardTimeout: vi.fn(),
       applySshAgentSettings: vi.fn(),
+      getStartAtLoginStatus: vi.fn(() => ({ available: false, enabled: false })),
+      setStartAtLogin: vi.fn(() => false),
       lockVault: vi.fn().mockResolvedValue(undefined),
       unlockVault: vi.fn().mockResolvedValue({ state: 'unlocked' as const })
     }
@@ -86,6 +90,8 @@ describe('AppSettingsService', () => {
     expect(await service.get()).toMatchObject({
       contentProtection: true,
       showWebsiteIcons: true,
+      startAtLogin: false,
+      startAtLoginAvailable: false,
       autoLockMinutes: 15,
       lockOnScreenLock: true,
       lockOnSuspend: true,
@@ -121,7 +127,8 @@ describe('AppSettingsService', () => {
       promptBehavior: 'rememberUntilLock'
     })
     expect(JSON.parse(await readFile(join(directory, 'settings.json'), 'utf8'))).toMatchObject({
-      version: 3,
+      version: 4,
+      startAtLogin: false,
       sshAgentEnabled: true,
       sshAgentPromptBehavior: 'rememberUntilLock'
     })
@@ -182,6 +189,90 @@ describe('AppSettingsService', () => {
       enabled: false,
       promptBehavior: 'always'
     })
+    service.dispose()
+  })
+
+  it('migrates version 3 settings and adopts the existing OS login item state', async () => {
+    const settingsPath = join(directory, 'settings.json')
+    await writeFile(
+      settingsPath,
+      JSON.stringify({
+        version: 3,
+        contentProtection: true,
+        showWebsiteIcons: true,
+        autoLockMinutes: 15,
+        lockOnScreenLock: true,
+        lockOnSuspend: true,
+        clearClipboardSeconds: 30,
+        defaultSort: 'recent',
+        theme: 'system',
+        sshAgentEnabled: false,
+        sshAgentPromptBehavior: 'always'
+      })
+    )
+    const { service, runtime } = createService(settingsPath)
+    runtime.getStartAtLoginStatus.mockReturnValue({ available: true, enabled: true })
+    await service.initialize()
+
+    await expect(service.get()).resolves.toMatchObject({
+      startAtLogin: true,
+      startAtLoginAvailable: true
+    })
+    expect(runtime.setStartAtLogin).not.toHaveBeenCalled()
+    service.dispose()
+  })
+
+  it('updates and confirms the installed OS login item before persisting it', async () => {
+    const { service, runtime } = createService()
+    let enabled = false
+    runtime.getStartAtLoginStatus.mockImplementation(() => ({ available: true, enabled }))
+    runtime.setStartAtLogin.mockImplementation((next: boolean) => {
+      enabled = next
+      return true
+    })
+    await service.initialize()
+
+    await expect(service.update({ startAtLogin: true })).resolves.toMatchObject({
+      startAtLogin: true,
+      startAtLoginAvailable: true
+    })
+    expect(runtime.setStartAtLogin).toHaveBeenCalledWith(true)
+    expect(JSON.parse(await readFile(join(directory, 'settings.json'), 'utf8'))).toMatchObject({
+      version: 4,
+      startAtLogin: true
+    })
+    service.dispose()
+  })
+
+  it('rejects enabling login startup when the platform does not support it', async () => {
+    const { service, runtime } = createService()
+    await service.initialize()
+
+    await expect(service.update({ startAtLogin: true })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    expect(runtime.setStartAtLogin).not.toHaveBeenCalled()
+    await expect(readFile(join(directory, 'settings.json'))).rejects.toMatchObject({
+      code: 'ENOENT'
+    })
+    service.dispose()
+  })
+
+  it('rolls back the OS login item when settings persistence fails', async () => {
+    const settingsPath = join(directory, 'settings-directory')
+    await mkdir(settingsPath)
+    const { service, runtime } = createService(settingsPath)
+    let enabled = false
+    runtime.getStartAtLoginStatus.mockImplementation(() => ({ available: true, enabled }))
+    runtime.setStartAtLogin.mockImplementation((next: boolean) => {
+      enabled = next
+      return true
+    })
+    await service.initialize()
+
+    await expect(service.update({ startAtLogin: true })).rejects.toThrow()
+    expect(runtime.setStartAtLogin.mock.calls).toEqual([[true], [false]])
+    expect(enabled).toBe(false)
     service.dispose()
   })
 
