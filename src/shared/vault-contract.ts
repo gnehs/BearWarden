@@ -718,14 +718,23 @@ export interface EquivalentDomainSettingsUpdate {
   expectedRevision: string
 }
 
-/** Renderer-safe metadata for a personal text Send. Encryption keys and proofs remain in main. */
+/** Renderer-safe metadata for a personal file Send. File bytes and URLs remain in main. */
+export interface SendFileView {
+  id: string
+  fileName: string
+  size: number
+  sizeName: string | null
+}
+
+/** Renderer-safe metadata for a personal Send. Encryption keys and proofs remain in main. */
 export interface SendView {
   id: string
   accessId: string
-  type: 'text'
+  type: 'text' | 'file'
   name: string
   notes: string | null
   text: string
+  file?: SendFileView
   hidden: boolean
   maxAccessCount: number | null
   accessCount: number

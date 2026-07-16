@@ -1002,6 +1002,81 @@ describe('BitwardenDirectClient', () => {
     sendKey.fill(0)
     userKey.fill(0)
   })
+
+  it('syncs file Send metadata without exposing encrypted bytes or URL capabilities', async () => {
+    const sync = await encryptedSync()
+    const userKey = Buffer.alloc(64, 7)
+    const seed = Buffer.alloc(16, 4)
+    const sendKey = deriveBitwardenSendKey(seed)
+    const send: JsonObject = {
+      id: SEND_ID,
+      accessId: 'UAAAAAAAQABAAAAAAAAAAQ',
+      type: 1,
+      key: encryptBitwardenBytes(seed, userKey),
+      name: encryptBitwardenString('Encrypted archive', sendKey),
+      notes: null,
+      file: {
+        id: '0123456789abcdef0123456789abcdef',
+        fileName: encryptBitwardenString('archive.txt', sendKey),
+        size: '1234',
+        sizeName: '1.2 KB'
+      },
+      maxAccessCount: null,
+      accessCount: 0,
+      revisionDate: '2026-07-16T00:00:00.000Z',
+      expirationDate: null,
+      deletionDate: '2026-07-30T00:00:00.000Z',
+      authType: 2,
+      password: null,
+      disabled: false,
+      hideEmail: true
+    }
+    sync.sends = [send]
+    const fetch = vi.fn<FetchLike>().mockImplementation(async (url) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/identity/connect/token')) {
+        return jsonResponse({
+          access_token: 'access-token',
+          refresh_token: 'refresh-token',
+          expires_in: 3_600
+        })
+      }
+      if (url.includes('/api/sync?')) return jsonResponse(sync)
+      if (url.endsWith('/api/sends')) return jsonResponse(send)
+      return jsonResponse({ message: 'not found' }, 404)
+    })
+    const http = new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+    await expect(client.listSends()).resolves.toEqual([
+      expect.objectContaining({
+        id: SEND_ID,
+        type: 'file',
+        name: 'Encrypted archive',
+        text: '',
+        file: {
+          id: '0123456789abcdef0123456789abcdef',
+          fileName: 'archive.txt',
+          size: 1234,
+          sizeName: '1.2 KB'
+        }
+      })
+    ])
+    expect(JSON.stringify(await client.listSends())).not.toContain(seed.toString('base64url'))
+    expect(JSON.stringify(await client.listSends())).not.toContain('fileUpload')
+    seed.fill(0)
+    sendKey.fill(0)
+    userKey.fill(0)
+  })
+
   it('passes authenticated account-breach reports through without requiring decrypted vault keys', async () => {
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',

@@ -1,4 +1,4 @@
-import { ArrowLeft, Copy, Pencil, Plus, Save, Trash2 } from 'lucide-react'
+import { ArrowLeft, Copy, FileText, Pencil, Plus, Save, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import type { SendCreateRequest, SendView } from '../../../shared/vault-contract'
@@ -53,6 +53,9 @@ const emptyDraft: SendCreateRequest = {
 }
 
 function draftFromSend(send: SendView): SendCreateRequest {
+  if (send.type !== 'text') {
+    throw new Error('File Sends are read-only until file transfer support is enabled')
+  }
   return {
     name: send.name,
     notes: send.notes,
@@ -102,6 +105,10 @@ function SendsPage({ onBack }: SendsPageProps): React.JSX.Element {
   }
 
   function startEdit(send: SendView): void {
+    if (send.type !== 'text') {
+      toast.info('檔案 Send 目前只能查看與複製連結')
+      return
+    }
     setSelectedId(send.id)
     setDraft(draftFromSend(send))
   }
@@ -109,6 +116,10 @@ function SendsPage({ onBack }: SendsPageProps): React.JSX.Element {
   async function save(): Promise<void> {
     if (draft.name.trim().length === 0 || draft.text.length === 0) {
       toast.error('請填寫 Send 名稱與內容')
+      return
+    }
+    if (selected?.type === 'file') {
+      toast.info('檔案 Send 編輯功能尚未開放')
       return
     }
     setBusy(true)
@@ -181,7 +192,7 @@ function SendsPage({ onBack }: SendsPageProps): React.JSX.Element {
           <div className="settings-title-group">
             <p className="eyebrow">Bitwarden Send</p>
             <h1 id="sends-title">Sends</h1>
-            <p className="settings-subtitle">目前支援端到端加密的個人文字 Send。</p>
+            <p className="settings-subtitle">文字與檔案 Send 都會先在主程序解密 metadata。</p>
           </div>
           <Button className="ml-auto" type="button" onClick={startCreate} disabled={busy}>
             <Plus data-icon="inline-start" />
@@ -220,6 +231,7 @@ function SendsPage({ onBack }: SendsPageProps): React.JSX.Element {
                   >
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
+                        {send.type === 'file' && <FileText aria-hidden="true" />}
                         {send.name}
                         {send.disabled && <Badge variant="outline">已停用</Badge>}
                       </CardTitle>
@@ -244,6 +256,7 @@ function SendsPage({ onBack }: SendsPageProps): React.JSX.Element {
                           type="button"
                           onClick={() => startEdit(send)}
                           aria-label="編輯 Send"
+                          disabled={send.type === 'file'}
                         >
                           <Pencil />
                         </Button>
@@ -259,9 +272,19 @@ function SendsPage({ onBack }: SendsPageProps): React.JSX.Element {
                       </CardAction>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-muted-foreground line-clamp-3 text-sm whitespace-pre-wrap">
-                        {send.text}
-                      </p>
+                      {send.type === 'file' && send.file ? (
+                        <div className="text-muted-foreground flex items-center gap-2 text-sm">
+                          <FileText aria-hidden="true" />
+                          <span className="truncate">{send.file.fileName}</span>
+                          <span className="shrink-0">
+                            {send.file.sizeName ?? `${send.file.size} bytes`}
+                          </span>
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground line-clamp-3 text-sm whitespace-pre-wrap">
+                          {send.text}
+                        </p>
+                      )}
                     </CardContent>
                   </Card>
                 ))

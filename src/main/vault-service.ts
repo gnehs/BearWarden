@@ -199,6 +199,10 @@ const MAX_GENERATED_CREDENTIAL_LENGTH = 512
 const MAX_SENDS = 10_000
 const MAX_REMOTE_ENTITIES = 100_000
 const MAX_SEND_TEXT_LENGTH = 1024 * 1024
+const MAX_SEND_FILE_ID_LENGTH = 256
+const MAX_SEND_FILE_NAME_LENGTH = 255
+const MAX_SEND_FILE_SIZE = 550_502_400
+const MAX_SEND_FILE_SIZE_NAME_LENGTH = 64
 const MAX_SSH_PRIVATE_KEY_LENGTH = 1024 * 1024
 const MAX_SYNC_SECRET_LENGTH = 16_384
 const MAX_EQUIVALENT_DOMAIN_GROUPS = 10_000
@@ -1191,6 +1195,7 @@ function parseStoredSend(value: unknown): StoredSend {
     name,
     notes,
     text,
+    file,
     hidden,
     maxAccessCount,
     accessCount,
@@ -1207,14 +1212,15 @@ function parseStoredSend(value: unknown): StoredSend {
     !UUID_PATTERN.test(id) ||
     typeof accessId !== 'string' ||
     !/^[A-Za-z0-9_-]{16,128}$/u.test(accessId) ||
-    type !== 'text' ||
+    (type !== 'text' && type !== 'file') ||
     typeof name !== 'string' ||
     name.length === 0 ||
     name.length > MAX_NAME_LENGTH ||
     (notes !== null && typeof notes !== 'string') ||
     (typeof notes === 'string' && notes.length > MAX_NOTES_LENGTH) ||
-    typeof text !== 'string' ||
-    text.length > MAX_SEND_TEXT_LENGTH ||
+    (type === 'text' && (typeof text !== 'string' || text.length > MAX_SEND_TEXT_LENGTH)) ||
+    (type === 'file' && text !== null && text !== undefined) ||
+    (type === 'file' && !isRecord(file)) ||
     typeof hidden !== 'boolean' ||
     (maxAccessCount !== null &&
       (typeof maxAccessCount !== 'number' ||
@@ -1236,6 +1242,29 @@ function parseStoredSend(value: unknown): StoredSend {
   ) {
     throw new VaultError('CORRUPT_VAULT')
   }
+  let parsedFile: SendView['file']
+  if (type === 'file') {
+    const fileRecord = isRecord(file) ? file : null
+    if (!fileRecord) throw new VaultError('CORRUPT_VAULT')
+    const { id: fileId, fileName, size, sizeName } = fileRecord
+    if (
+      typeof fileId !== 'string' ||
+      fileId.length === 0 ||
+      fileId.length > MAX_SEND_FILE_ID_LENGTH ||
+      typeof fileName !== 'string' ||
+      fileName.length === 0 ||
+      fileName.length > MAX_SEND_FILE_NAME_LENGTH ||
+      typeof size !== 'number' ||
+      !Number.isSafeInteger(size) ||
+      size < 1 ||
+      size > MAX_SEND_FILE_SIZE ||
+      (sizeName !== null &&
+        (typeof sizeName !== 'string' || sizeName.length > MAX_SEND_FILE_SIZE_NAME_LENGTH))
+    ) {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+    parsedFile = { id: fileId, fileName, size, sizeName }
+  }
   const parsedMaxAccessCount = maxAccessCount === null ? null : (maxAccessCount as number)
   const parsedAccessCount = accessCount as number
   return {
@@ -1244,7 +1273,8 @@ function parseStoredSend(value: unknown): StoredSend {
     type,
     name,
     notes,
-    text,
+    text: type === 'text' ? (text as string) : '',
+    ...(parsedFile ? { file: parsedFile } : {}),
     hidden,
     maxAccessCount: parsedMaxAccessCount,
     accessCount: parsedAccessCount,
@@ -1520,10 +1550,11 @@ function sendViewFromRemote(send: BitwardenSendItem): StoredSend {
   return {
     id: send.id,
     accessId: send.accessId,
-    type: 'text',
+    type: send.type,
     name: send.name,
     notes: send.notes,
-    text: send.text,
+    text: send.type === 'text' ? send.text : '',
+    ...(send.type === 'file' && send.file ? { file: { ...send.file } } : {}),
     hidden: send.hidden,
     maxAccessCount: send.maxAccessCount,
     accessCount: send.accessCount,
@@ -2322,7 +2353,10 @@ function cloneData(data: VaultData): VaultData {
       passwordHistory: clonePasswordHistory(login.passwordHistory),
       attachments: cloneAttachments(login.attachments)
     })),
-    sends: data.sends.map((send) => ({ ...send })),
+    sends: data.sends.map((send) => ({
+      ...send,
+      ...(send.file ? { file: { ...send.file } } : {})
+    })),
     generatorHistory: cloneGeneratorHistory(data.generatorHistory),
     sync: data.sync
       ? {

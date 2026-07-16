@@ -66,6 +66,10 @@ const MAX_URI_LENGTH = 4_096
 const MAX_PASSWORD_LENGTH = 16_384
 const MAX_PASSWORD_HISTORY = 5
 const MAX_AGGREGATE_REMOTE_ROWS = 1_000_000
+const MAX_SEND_FILE_ID_LENGTH = 256
+const MAX_SEND_FILE_NAME_LENGTH = 255
+const MAX_SEND_FILE_SIZE = 550_502_400
+const MAX_SEND_FILE_SIZE_NAME_LENGTH = 64
 const MINIMUM_CLIENT_VERSION = '2024.12.0'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 
@@ -219,14 +223,24 @@ export type BitwardenOrganizationCipher = Omit<BitwardenLoginItem, 'organization
   restore: boolean
 }
 
-/** Decrypted personal text Send metadata; encrypted fields remain main-process-only cache data. */
+/** Renderer-safe metadata for a decrypted file Send. File bytes remain main-process-only. */
+export interface BitwardenSendFile {
+  id: string
+  fileName: string
+  size: number
+  sizeName: string | null
+}
+
+/** Decrypted personal Send metadata; encrypted fields remain main-process-only cache data. */
 export interface BitwardenSendItem {
   id: string
   accessId: string
-  type: 'text'
+  type: 'text' | 'file'
   name: string
   notes: string | null
   text: string
+  /** Present only for file Sends. The encrypted file bytes never leave main. */
+  file?: BitwardenSendFile
   hidden: boolean
   maxAccessCount: number | null
   accessCount: number
@@ -2547,7 +2561,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
 
   private decryptSend(raw: JsonObject, userKey: BitwardenSymmetricKey): CachedSend {
     const type = property(raw, 'type')
-    if (type !== 0) throw new BitwardenDirectError('INVALID_RESPONSE')
+    if (type !== 0 && type !== 1) throw new BitwardenDirectError('INVALID_RESPONSE')
     const id = assertUuidValue(requiredStringProperty(raw, 'id'))
     const accessId = requiredStringProperty(raw, 'accessId')
     if (!/^[A-Za-z0-9_-]{16,128}$/u.test(accessId)) {
@@ -2561,9 +2575,11 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       sendKey = deriveBitwardenSendKey(seed)
       const encryptedName = requiredStringProperty(raw, 'name')
       const notesValue = property(raw, 'notes')
-      const text = recordProperty(raw, 'text')
-      if (!text) throw new BitwardenDirectError('INVALID_RESPONSE')
-      const encryptedText = requiredStringProperty(text, 'text')
+      const text = type === 0 ? recordProperty(raw, 'text') : null
+      const file = type === 1 ? recordProperty(raw, 'file') : null
+      if ((type === 0 && !text) || (type === 1 && !file)) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
       const notes =
         notesValue === null || notesValue === undefined
           ? null
@@ -2600,16 +2616,47 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       ) {
         throw new BitwardenDirectError('INVALID_RESPONSE')
       }
+      let fileMetadata: BitwardenSendFile | undefined
+      let textValue = ''
+      if (text) {
+        const encryptedText = requiredStringProperty(text, 'text')
+        textValue = decryptBitwardenString(encryptedText, sendKey)
+      } else if (file) {
+        const fileId = requiredStringProperty(file, 'id')
+        const fileName = decryptBitwardenString(requiredStringProperty(file, 'fileName'), sendKey)
+        const sizeValue = property(file, 'size')
+        const size =
+          typeof sizeValue === 'string' && /^\d+$/u.test(sizeValue)
+            ? Number(sizeValue)
+            : typeof sizeValue === 'number' && Number.isSafeInteger(sizeValue)
+              ? sizeValue
+              : NaN
+        const sizeName = nullableStringProperty(file, 'sizeName')
+        if (
+          fileId.length === 0 ||
+          fileId.length > MAX_SEND_FILE_ID_LENGTH ||
+          fileName.length === 0 ||
+          fileName.length > MAX_SEND_FILE_NAME_LENGTH ||
+          !Number.isSafeInteger(size) ||
+          size < 1 ||
+          size > MAX_SEND_FILE_SIZE ||
+          (sizeName !== null && sizeName.length > MAX_SEND_FILE_SIZE_NAME_LENGTH)
+        ) {
+          throw new BitwardenDirectError('INVALID_RESPONSE')
+        }
+        fileMetadata = { id: fileId, fileName, size, sizeName }
+      }
       return {
         raw: structuredClone(raw),
         item: {
           id,
           accessId,
-          type: 'text',
+          type: type === 0 ? 'text' : 'file',
           name: decryptBitwardenString(encryptedName, sendKey),
           notes,
-          text: decryptBitwardenString(encryptedText, sendKey),
-          hidden: booleanProperty(text, 'hidden'),
+          text: textValue,
+          ...(fileMetadata ? { file: fileMetadata } : {}),
+          hidden: booleanProperty(text ?? {}, 'hidden'),
           maxAccessCount,
           accessCount,
           revisionDate,
