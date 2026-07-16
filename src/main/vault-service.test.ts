@@ -493,6 +493,108 @@ afterEach(async () => {
 })
 
 describe('VaultService encrypted local data', () => {
+  it('enables memory-only PIN unlock with fresh proof and preserves it across ordinary lock', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const enableRequest = { pin: 'bear-2026', masterPassword: MASTER_PASSWORD }
+
+    await expect(service.enablePinUnlock(enableRequest)).resolves.toEqual({
+      available: true,
+      remainingAttempts: 5
+    })
+    expect(enableRequest).toEqual({ pin: '', masterPassword: '' })
+    await expect(service.lock()).resolves.toEqual({ state: 'locked' })
+    await expect(service.listLogins()).rejects.toMatchObject({ code: 'LOCKED' })
+    expect(service.pinUnlockStatus()).toEqual({ available: true, remainingAttempts: 5 })
+
+    const unlockRequest = { pin: 'bear-2026' }
+    await expect(service.unlockWithPin(unlockRequest)).resolves.toEqual({ state: 'unlocked' })
+    expect(unlockRequest.pin).toBe('')
+    await expect(service.listLogins()).resolves.toEqual([])
+  })
+
+  it('requires a correct master-password proof and destroys PIN capability after five failures', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const wrongProof = { pin: 'bear-2026', masterPassword: 'wrong master password' }
+    await expect(service.enablePinUnlock(wrongProof)).rejects.toMatchObject({
+      code: 'INVALID_MASTER_PASSWORD'
+    })
+    expect(wrongProof).toEqual({ pin: '', masterPassword: '' })
+    expect(service.pinUnlockStatus()).toEqual({ available: false, remainingAttempts: 0 })
+
+    await service.enablePinUnlock({ pin: 'bear-2026', masterPassword: MASTER_PASSWORD })
+    await service.lock()
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      const request = { pin: `wrong-${attempt}` }
+      await expect(service.unlockWithPin(request)).rejects.toMatchObject({ code: 'INVALID_PIN' })
+      expect(request.pin).toBe('')
+      expect(service.pinUnlockStatus()).toEqual({
+        available: true,
+        remainingAttempts: 5 - attempt
+      })
+    }
+    await expect(service.unlockWithPin({ pin: 'wrong-5' })).rejects.toMatchObject({
+      code: 'PIN_DISABLED'
+    })
+    expect(service.pinUnlockStatus()).toEqual({ available: false, remainingAttempts: 0 })
+    await expect(service.unlockWithPin({ pin: 'bear-2026' })).rejects.toMatchObject({
+      code: 'PIN_DISABLED'
+    })
+  })
+
+  it('invalidates PIN capability on lifecycle changes and races fail closed', async () => {
+    const { service } = await createHarness({
+      createSyncClient: (sync) => createSyncFake(sync.state)
+    })
+    await service.setup(MASTER_PASSWORD)
+
+    const enableRequest = { pin: 'pending-pin', masterPassword: MASTER_PASSWORD }
+    const pendingEnable = service.enablePinUnlock(enableRequest)
+    const lockDuringEnable = service.lock()
+    await expect(pendingEnable).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(lockDuringEnable).resolves.toEqual({ state: 'locked' })
+    expect(enableRequest).toEqual({ pin: '', masterPassword: '' })
+    expect(service.pinUnlockStatus()).toEqual({ available: false, remainingAttempts: 0 })
+    await service.unlock(MASTER_PASSWORD)
+
+    await service.enablePinUnlock({ pin: 'account-pin', masterPassword: MASTER_PASSWORD })
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    expect(service.pinUnlockStatus()).toEqual({ available: false, remainingAttempts: 0 })
+
+    await service.enablePinUnlock({ pin: 'disconnect-pin', masterPassword: MASTER_PASSWORD })
+    await service.disconnectSync()
+    expect(service.pinUnlockStatus()).toEqual({ available: false, remainingAttempts: 0 })
+
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.enablePinUnlock({ pin: 'logout-pin', masterPassword: MASTER_PASSWORD })
+    await service.remoteLogoutSync()
+    expect(service.pinUnlockStatus()).toEqual({ available: false, remainingAttempts: 0 })
+
+    await service.enablePinUnlock({ pin: 'race-pin', masterPassword: MASTER_PASSWORD })
+    await service.lock()
+    const unlockRequest = { pin: 'race-pin' }
+    const pendingUnlock = service.unlockWithPin(unlockRequest)
+    await vi.waitFor(() => expect(unlockRequest.pin).toBe(''))
+    const pendingLock = service.lock()
+    await expect(pendingUnlock).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(pendingLock).resolves.toEqual({ state: 'locked' })
+    expect(service.pinUnlockStatus()).toEqual({ available: true, remainingAttempts: 5 })
+
+    await service.unlock(MASTER_PASSWORD)
+    await service.enablePinUnlock({ pin: 'dispose-pin', masterPassword: MASTER_PASSWORD })
+    service.dispose()
+    expect(service.pinUnlockStatus()).toEqual({ available: false, remainingAttempts: 0 })
+  })
+
   it('loads a synced login icon only through its configured server endpoint', async () => {
     const iconBytes = Uint8Array.from([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,

@@ -10,6 +10,7 @@ import {
   Fingerprint,
   KeyRound,
   LockKeyhole,
+  LockKeyholeOpen,
   Palette,
   Settings2,
   ShieldCheck,
@@ -18,6 +19,7 @@ import {
 import type {
   AppSettings,
   AppSettingsUpdate,
+  PinUnlockStatus,
   SshAgentPromptBehavior,
   SshAgentStatus,
   SyncStatus
@@ -180,6 +182,15 @@ function SettingsPage({
 }: SettingsPageProps): React.JSX.Element {
   const [sshAgentStatus, setSshAgentStatus] = useState<SshAgentStatus>(initialSshAgentStatus)
   const [copySucceeded, setCopySucceeded] = useState(false)
+  const [pinStatus, setPinStatus] = useState<PinUnlockStatus>({
+    available: false,
+    remainingAttempts: 0
+  })
+  const [pin, setPin] = useState('')
+  const [pinConfirmation, setPinConfirmation] = useState('')
+  const [pinMasterPassword, setPinMasterPassword] = useState('')
+  const [pinBusy, setPinBusy] = useState(false)
+  const [pinFeedback, setPinFeedback] = useState('')
 
   useEffect(() => {
     let active = true
@@ -205,6 +216,72 @@ function SettingsPage({
       unsubscribe()
     }
   }, [])
+
+  useEffect(() => {
+    let active = true
+    void window.bearwarden.vault.pinStatus().then(
+      (status) => {
+        if (active) setPinStatus(status)
+      },
+      () => {
+        if (active) setPinFeedback('無法讀取 PIN 解鎖狀態。')
+      }
+    )
+    return () => {
+      active = false
+    }
+  }, [])
+
+  async function enablePinUnlock(): Promise<void> {
+    setPinFeedback('')
+    if (pin.normalize('NFC').length < 4) {
+      setPinFeedback('PIN 至少需要 4 個字元。')
+      return
+    }
+    if (pin !== pinConfirmation) {
+      setPinFeedback('兩次輸入的 PIN 不一致。')
+      return
+    }
+    if (!pinMasterPassword) {
+      setPinFeedback('請輸入主密碼以確認。')
+      return
+    }
+    const request = { pin, masterPassword: pinMasterPassword }
+    setPin('')
+    setPinConfirmation('')
+    setPinMasterPassword('')
+    setPinBusy(true)
+    try {
+      setPinStatus(await window.bearwarden.vault.enablePin(request))
+      setPinFeedback('PIN 解鎖已啟用；只在這次執行期間有效。')
+    } catch (error) {
+      setPinFeedback(
+        error instanceof Error && error.message.includes('INVALID_MASTER_PASSWORD')
+          ? '主密碼驗證失敗。'
+          : '無法啟用 PIN 解鎖。'
+      )
+    } finally {
+      request.pin = ''
+      request.masterPassword = ''
+      setPinBusy(false)
+    }
+  }
+
+  async function disablePinUnlock(): Promise<void> {
+    setPinBusy(true)
+    setPinFeedback('')
+    try {
+      setPinStatus(await window.bearwarden.vault.disablePin())
+      setPinFeedback('PIN 解鎖已停用。')
+    } catch {
+      setPinFeedback('無法停用 PIN 解鎖。')
+    } finally {
+      setPin('')
+      setPinConfirmation('')
+      setPinMasterPassword('')
+      setPinBusy(false)
+    }
+  }
 
   const sshAgentStatusPresentationValue = sshAgentStatusPresentation(
     settings?.sshAgentEnabled ?? false,
@@ -269,6 +346,7 @@ function SettingsPage({
               <a href="#ssh-agent-settings-title">SSH Agent</a>
               <a href="#privacy-settings-title">隱私與剪貼簿</a>
               <a href="#general-settings-title">一般</a>
+              <a href="#pin-settings-title">PIN 解鎖</a>
               <a href="#touch-id-settings-title">Touch ID</a>
               <a href="#sync-settings-title">同步與帳號</a>
               <a href="#portability-settings-title">資料可攜性</a>
@@ -665,6 +743,123 @@ function SettingsPage({
                     </Field>
                   </FieldGroup>
                 </CardContent>
+              </Card>
+
+              <Card className="settings-card" aria-labelledby="pin-settings-title">
+                <CardHeader>
+                  <SettingsCardHeading
+                    id="pin-settings-title"
+                    icon={LockKeyholeOpen}
+                    title="PIN 解鎖"
+                    description="使用短期 PIN 解鎖本機保管庫。"
+                  />
+                  <CardAction>
+                    <Badge variant={pinStatus.available ? 'default' : 'secondary'}>
+                      {pinStatus.available ? '已啟用' : '未啟用'}
+                    </Badge>
+                  </CardAction>
+                </CardHeader>
+                {pinStatus.available ? (
+                  <>
+                    <CardContent className="grid gap-2">
+                      <p className="settings-card-note">
+                        PIN
+                        加密憑證只保留在記憶體中；重新啟動、登出、斷開或切換帳號後，必須使用主密碼。
+                      </p>
+                      <p className="text-muted-foreground text-sm">
+                        PIN 連續錯誤 5 次會自動停用。目前可嘗試 {pinStatus.remainingAttempts} 次。
+                      </p>
+                      {pinFeedback && (
+                        <p className="text-muted-foreground text-sm">{pinFeedback}</p>
+                      )}
+                    </CardContent>
+                    <CardFooter>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        type="button"
+                        disabled={pinBusy || settingsBusy}
+                        onClick={() => void disablePinUnlock()}
+                      >
+                        停用 PIN 解鎖
+                      </Button>
+                    </CardFooter>
+                  </>
+                ) : (
+                  <>
+                    <CardContent className="grid gap-4">
+                      <p className="settings-card-note">
+                        PIN 與加密憑證不會寫入磁碟。普通鎖定後可用
+                        PIN，但程式重新啟動時一定需要主密碼。
+                      </p>
+                      <FieldGroup>
+                        <Field>
+                          <FieldLabel htmlFor="pin-unlock-pin">PIN</FieldLabel>
+                          <Input
+                            id="pin-unlock-pin"
+                            type="password"
+                            autoComplete="new-password"
+                            value={pin}
+                            disabled={pinBusy || settingsBusy}
+                            onChange={(event) => setPin(event.target.value)}
+                          />
+                          <FieldDescription>
+                            至少 4 個字元，建議不要使用容易猜測的數字。
+                          </FieldDescription>
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="pin-unlock-confirmation">再次輸入 PIN</FieldLabel>
+                          <Input
+                            id="pin-unlock-confirmation"
+                            type="password"
+                            autoComplete="new-password"
+                            value={pinConfirmation}
+                            disabled={pinBusy || settingsBusy}
+                            onChange={(event) => setPinConfirmation(event.target.value)}
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="pin-unlock-master-password">確認主密碼</FieldLabel>
+                          <Input
+                            id="pin-unlock-master-password"
+                            type="password"
+                            autoComplete="current-password"
+                            value={pinMasterPassword}
+                            disabled={pinBusy || settingsBusy}
+                            onChange={(event) => setPinMasterPassword(event.target.value)}
+                          />
+                          <FieldDescription>
+                            主密碼每次啟用時都會在 main process 重新驗證。
+                          </FieldDescription>
+                        </Field>
+                      </FieldGroup>
+                      {pinFeedback && (
+                        <p className="text-muted-foreground text-sm">{pinFeedback}</p>
+                      )}
+                    </CardContent>
+                    <CardFooter>
+                      <Button
+                        size="sm"
+                        type="button"
+                        disabled={
+                          pinBusy ||
+                          settingsBusy ||
+                          pin.length < 4 ||
+                          pinConfirmation.length < 4 ||
+                          !pinMasterPassword
+                        }
+                        onClick={() => void enablePinUnlock()}
+                      >
+                        {pinBusy ? (
+                          <Spinner data-icon="inline-start" aria-hidden="true" />
+                        ) : (
+                          <LockKeyhole data-icon="inline-start" aria-hidden="true" />
+                        )}
+                        啟用 PIN 解鎖
+                      </Button>
+                    </CardFooter>
+                  </>
+                )}
               </Card>
 
               <Card className="settings-card" aria-labelledby="touch-id-settings-title">

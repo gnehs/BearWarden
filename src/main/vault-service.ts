@@ -117,6 +117,7 @@ import {
   type BitwardenEmergencyAccess
 } from './bitwarden-http'
 import { EncryptedVaultStore } from './encrypted-vault-store'
+import { PinUnlockCapability, PinUnlockError } from './pin-unlock'
 import type { BitwardenNotificationConnectionInfo } from './bitwarden-notifications'
 import { searchVaultItems, type VaultSearchItem } from './vault-search'
 import { analyzeVaultHealth, type VaultHealthItem } from './vault-health'
@@ -2810,6 +2811,8 @@ export class VaultService {
   private key: Buffer | null = null
   private salt: Buffer | null = null
   private data: VaultData | null = null
+  private pinUnlockCapability: PinUnlockCapability | null = null
+  private pinLifecycleEpoch = 0
   private generation = 0
   private operationQueue: Promise<void> = Promise.resolve()
   private readonly exclusiveContext = new AsyncLocalStorage<{ active: boolean }>()
@@ -2938,7 +2941,136 @@ export class VaultService {
     })
   }
 
+  pinUnlockStatus(): import('../shared/vault-contract').PinUnlockStatus {
+    const status = this.pinUnlockCapability?.status()
+    if (!status?.available) return { available: false, remainingAttempts: 0 }
+    return status
+  }
+
+  enablePinUnlock(request: {
+    pin: string
+    masterPassword: string
+  }): Promise<import('../shared/vault-contract').PinUnlockStatus> {
+    const lifecycleEpoch = this.pinLifecycleEpoch
+    const generation = this.generation
+    return this.exclusive(async () => {
+      let capability: PinUnlockCapability | null = null
+      try {
+        if (generation !== this.generation || lifecycleEpoch !== this.pinLifecycleEpoch) {
+          throw new VaultError('LOCKED')
+        }
+        this.requireData()
+        if (
+          typeof request.pin !== 'string' ||
+          request.pin.normalize('NFC').length < 4 ||
+          request.pin.length > 1_024 ||
+          typeof request.masterPassword !== 'string' ||
+          request.masterPassword.length === 0 ||
+          request.masterPassword.length > MAX_MASTER_PASSWORD_LENGTH
+        ) {
+          throw new VaultError('INVALID_INPUT')
+        }
+        await this.assertMasterPassword(request.masterPassword)
+        if (!this.key || !this.salt) throw new VaultError('LOCKED')
+        capability = await PinUnlockCapability.create(request.pin, this.key, this.salt)
+        if (
+          generation !== this.generation ||
+          lifecycleEpoch !== this.pinLifecycleEpoch ||
+          !this.data ||
+          !this.key ||
+          !this.salt
+        ) {
+          throw new VaultError('LOCKED')
+        }
+        this.pinUnlockCapability?.dispose()
+        this.pinUnlockCapability = capability
+        capability = null
+        return this.pinUnlockStatus()
+      } catch (error) {
+        if (error instanceof PinUnlockError) throw this.mapPinUnlockError(error)
+        throw error
+      } finally {
+        request.pin = ''
+        request.masterPassword = ''
+        capability?.dispose()
+      }
+    })
+  }
+
+  disablePinUnlock(): import('../shared/vault-contract').PinUnlockStatus {
+    this.invalidatePinUnlockCapability()
+    return this.pinUnlockStatus()
+  }
+
+  unlockWithPin(request: { pin: string }): Promise<VaultStatus> {
+    const capability = this.pinUnlockCapability
+    const lifecycleEpoch = this.pinLifecycleEpoch
+    const generation = this.generation
+    return this.exclusive(async () => {
+      let material: { key: Buffer; salt: Buffer } | null = null
+      let unlocked: Awaited<ReturnType<EncryptedVaultStore<unknown>['unlockWithKey']>> | null = null
+      try {
+        if (generation !== this.generation || lifecycleEpoch !== this.pinLifecycleEpoch) {
+          throw new VaultError('LOCKED')
+        }
+        if (this.data && this.key && this.salt) return { state: 'unlocked' }
+        if (!capability?.status().available) throw new VaultError('PIN_DISABLED')
+        if (
+          typeof request.pin !== 'string' ||
+          request.pin.length < 4 ||
+          request.pin.length > 1_024
+        ) {
+          throw new VaultError('INVALID_INPUT')
+        }
+        const materialPromise = capability.unlock(request.pin)
+        request.pin = ''
+        material = await materialPromise
+        if (
+          lifecycleEpoch !== this.pinLifecycleEpoch ||
+          generation !== this.generation ||
+          capability !== this.pinUnlockCapability
+        ) {
+          throw new VaultError('LOCKED')
+        }
+        unlocked = await this.store.unlockWithKey(material.key, material.salt)
+        if (
+          lifecycleEpoch !== this.pinLifecycleEpoch ||
+          generation !== this.generation ||
+          capability !== this.pinUnlockCapability
+        ) {
+          throw new VaultError('LOCKED')
+        }
+        const requiresMigration = isRecord(unlocked.data) && unlocked.data.version !== DATA_VERSION
+        this.data = parseVaultData(unlocked.data)
+        this.key = unlocked.key
+        this.salt = unlocked.salt
+        unlocked = null
+        if (requiresMigration) await this.persist(this.data)
+        return { state: 'unlocked' }
+      } catch (error) {
+        if (error instanceof PinUnlockError) {
+          if (
+            capability &&
+            !capability.status().available &&
+            this.pinUnlockCapability === capability
+          ) {
+            this.pinUnlockCapability = null
+          }
+          throw this.mapPinUnlockError(error)
+        }
+        throw error
+      } finally {
+        request.pin = ''
+        material?.key.fill(0)
+        material?.salt.fill(0)
+        unlocked?.key.fill(0)
+        unlocked?.salt.fill(0)
+      }
+    })
+  }
+
   lock(): Promise<VaultStatus> {
+    this.generation += 1
     this.syncAbort?.abort()
     this.abortNotificationTokenLeases()
     this.abortAccountSecurityRequests()
@@ -2951,12 +3083,18 @@ export class VaultService {
       } catch {
         // Local vault locking must never depend on the remote connector.
       }
-      this.dispose()
+      this.clearUnlockedRuntimeState()
       return this.currentStatus()
     })
   }
 
   dispose(): void {
+    this.generation += 1
+    this.invalidatePinUnlockCapability()
+    this.clearUnlockedRuntimeState()
+  }
+
+  private clearUnlockedRuntimeState(): void {
     this.syncAbort?.abort()
     this.abortNotificationTokenLeases()
     this.abortAccountSecurityRequests()
@@ -2969,7 +3107,6 @@ export class VaultService {
     this.activeAttachmentOperation = null
     this.syncClient = null
     this.syncInProgress = false
-    this.generation += 1
     this.key?.fill(0)
     this.salt?.fill(0)
     this.key = null
@@ -3991,6 +4128,7 @@ export class VaultService {
 
   /** Applies a trusted authenticated LogOut notification without deleting sync mappings. */
   remoteLogoutSync(): Promise<SyncStatus> {
+    this.invalidatePinUnlockCapability()
     this.syncAbort?.abort()
     this.abortNotificationTokenLeases()
     this.abortAccountSecurityRequests()
@@ -4021,6 +4159,7 @@ export class VaultService {
   }
 
   connectSync(request: SyncConnectRequest): Promise<SyncResult> {
+    this.invalidatePinUnlockCapability()
     return this.exclusive(async () => {
       const current = this.requireData()
       const serverUrl = this.normalizeSyncServerUrl(request.serverUrl)
@@ -4130,6 +4269,7 @@ export class VaultService {
   }
 
   disconnectSync(): Promise<SyncStatus> {
+    this.invalidatePinUnlockCapability()
     this.syncAbort?.abort()
     this.abortNotificationTokenLeases()
     this.abortAccountSecurityRequests()
@@ -8008,6 +8148,19 @@ export class VaultService {
     const valid = await this.store.verifyMasterPassword(candidate, this.key, this.salt)
     if (generation !== this.generation) throw new VaultError('LOCKED')
     if (!valid) throw new VaultError('INVALID_MASTER_PASSWORD')
+  }
+
+  private invalidatePinUnlockCapability(): void {
+    this.pinLifecycleEpoch += 1
+    this.pinUnlockCapability?.dispose()
+    this.pinUnlockCapability = null
+  }
+
+  private mapPinUnlockError(error: PinUnlockError): VaultError {
+    if (error.code === 'INVALID_INPUT') return new VaultError('INVALID_INPUT')
+    if (error.code === 'INVALID_PIN') return new VaultError('INVALID_PIN')
+    if (error.code === 'RATE_LIMITED') return new VaultError('RATE_LIMITED')
+    return new VaultError('PIN_DISABLED')
   }
 
   private validatedNewId(): string {

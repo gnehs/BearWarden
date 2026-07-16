@@ -44,6 +44,8 @@ import {
   type SharedLoginListRequest,
   type LoginOpenUriRequest,
   type PasskeyDeleteRequest,
+  type PinUnlockEnableRequest,
+  type PinUnlockRequest,
   type PasswordHistoryRestoreRequest,
   type LoginMoveRequest,
   type LoginMoveManyRequest,
@@ -203,6 +205,7 @@ export interface VaultIpcOptions {
   beforeLock?: () => void | Promise<void>
   afterLock?: () => void
   afterUnlock?: (masterPassword: string) => void | Promise<void>
+  afterPinUnlock?: () => void | Promise<void>
   afterMutation?: () => void
   beforeSyncReconfigure?: () => void | Promise<void>
   afterSyncChanged?: (status: SyncStatus) => void
@@ -317,6 +320,35 @@ function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
 function parseTouchIdEnable(value: unknown): TouchIdEnableRequest {
   const record = exactRecord(value, ['masterPassword'])
   return { masterPassword: requiredString(record, 'masterPassword') }
+}
+
+function parsePinEnable(value: unknown): PinUnlockEnableRequest {
+  const record = exactRecord(value, ['pin', 'masterPassword'])
+  const request = {
+    pin: requiredString(record, 'pin'),
+    masterPassword: requiredString(record, 'masterPassword')
+  }
+  if (
+    request.pin.normalize('NFC').length < 4 ||
+    request.pin.length > 1_024 ||
+    request.masterPassword.length === 0 ||
+    request.masterPassword.length > 16_384
+  ) {
+    request.pin = ''
+    request.masterPassword = ''
+    throw new VaultError('INVALID_INPUT')
+  }
+  return request
+}
+
+function parsePinUnlock(value: unknown): PinUnlockRequest {
+  const record = exactRecord(value, ['pin'])
+  const request = { pin: requiredString(record, 'pin') }
+  if (request.pin.normalize('NFC').length < 4 || request.pin.length > 1_024) {
+    request.pin = ''
+    throw new VaultError('INVALID_INPUT')
+  }
+  return request
 }
 
 function parseNoInput(value: unknown): void {
@@ -1594,6 +1626,34 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       await Promise.resolve(options.afterUnlock?.(request.masterPassword)).catch(() => undefined)
       return status
     })
+  })
+  registerHandler(IPC_CHANNELS.vaultPinStatus, getMainWindow, async (_event, input) => {
+    parseNoInput(input)
+    return vault.pinUnlockStatus()
+  })
+  registerHandler(IPC_CHANNELS.vaultPinEnable, getMainWindow, async (_event, input) => {
+    const request = parsePinEnable(input)
+    try {
+      return await vault.enablePinUnlock(request)
+    } finally {
+      request.pin = ''
+      request.masterPassword = ''
+    }
+  })
+  registerHandler(IPC_CHANNELS.vaultPinDisable, getMainWindow, async (_event, input) => {
+    parseNoInput(input)
+    return vault.disablePinUnlock()
+  })
+  registerHandler(IPC_CHANNELS.vaultPinUnlock, getMainWindow, async (_event, input) => {
+    const request = parsePinUnlock(input)
+    authorizations.clear()
+    try {
+      const status = await vault.unlockWithPin(request)
+      await Promise.resolve(options.afterPinUnlock?.()).catch(() => undefined)
+      return status
+    } finally {
+      request.pin = ''
+    }
   })
   registerHandler(IPC_CHANNELS.vaultLock, getMainWindow, async () => {
     await Promise.resolve(options.beforeLock?.())

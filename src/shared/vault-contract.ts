@@ -2,6 +2,10 @@ export const IPC_CHANNELS = {
   vaultStatus: 'vault:status',
   vaultSetup: 'vault:setup',
   vaultUnlock: 'vault:unlock',
+  vaultPinStatus: 'vault:pin-status',
+  vaultPinEnable: 'vault:pin-enable',
+  vaultPinDisable: 'vault:pin-disable',
+  vaultPinUnlock: 'vault:pin-unlock',
   vaultLock: 'vault:lock',
   vaultLockRequestReady: 'vault:lock-request-ready',
   vaultExport: 'vault:export',
@@ -134,6 +138,9 @@ export type VaultErrorCode =
   | 'NOT_INITIALIZED'
   | 'LOCKED'
   | 'INVALID_MASTER_PASSWORD'
+  | 'INVALID_PIN'
+  | 'PIN_DISABLED'
+  | 'RATE_LIMITED'
   | 'REPROMPT_REQUIRED'
   | 'CORRUPT_VAULT'
   | 'NOT_FOUND'
@@ -169,6 +176,20 @@ export interface VaultSetupRequest {
 
 export interface VaultUnlockRequest {
   masterPassword: string
+}
+
+export interface PinUnlockStatus {
+  available: boolean
+  remainingAttempts: number
+}
+
+export interface PinUnlockEnableRequest {
+  pin: string
+  masterPassword: string
+}
+
+export interface PinUnlockRequest {
+  pin: string
 }
 
 export interface VaultExportRequest {
@@ -1272,6 +1293,10 @@ export interface BearWardenAPI {
     status: () => Promise<VaultStatus>
     setup: (request: VaultSetupRequest) => Promise<VaultStatus>
     unlock: (request: VaultUnlockRequest) => Promise<VaultStatus>
+    pinStatus: () => Promise<PinUnlockStatus>
+    enablePin: (request: PinUnlockEnableRequest) => Promise<PinUnlockStatus>
+    disablePin: () => Promise<PinUnlockStatus>
+    unlockPin: (request: PinUnlockRequest) => Promise<VaultStatus>
     lock: () => Promise<VaultStatus>
     setLockRequestReady: (ready: boolean) => void
     onLocked: (listener: () => void) => () => void

@@ -234,6 +234,18 @@ describe('registerVaultIpc reprompt gate', () => {
       }
     }
     const vault: Record<string, ReturnType<typeof vi.fn>> = {
+      pinUnlockStatus: vi.fn(() => ({ available: true, remainingAttempts: 5 })),
+      enablePinUnlock: vi.fn(async (request: { pin: string; masterPassword: string }) => {
+        if (request.pin !== 'bear-2026' || request.masterPassword !== 'master password') {
+          throw new Error('missing PIN proof')
+        }
+        return { available: true, remainingAttempts: 5 }
+      }),
+      disablePinUnlock: vi.fn(() => ({ available: false, remainingAttempts: 0 })),
+      unlockWithPin: vi.fn(async (request: { pin: string }) => {
+        if (request.pin !== 'bear-2026') throw new Error('missing PIN')
+        return { state: 'unlocked' }
+      }),
       loginAuthorizationState: vi.fn(async () => authorizationState),
       authorizeLogin: vi.fn(async ({ masterPassword }: { masterPassword: string }) => {
         if (masterPassword !== 'correct horse battery staple') {
@@ -743,6 +755,49 @@ describe('registerVaultIpc reprompt gate', () => {
     expect(vault.getAccountSecurityProfile).toHaveBeenCalledOnce()
     expect(vault.getAccountDevices).toHaveBeenCalledOnce()
     expect(vault.resendAccountVerificationEmail).toHaveBeenCalledOnce()
+  })
+
+  it('keeps PIN capability IPC exact and clears all copied secrets', async () => {
+    const { event, vault } = harness()
+    const status = electronMock.handlers.get(IPC_CHANNELS.vaultPinStatus)!
+    const enable = electronMock.handlers.get(IPC_CHANNELS.vaultPinEnable)!
+    const disable = electronMock.handlers.get(IPC_CHANNELS.vaultPinDisable)!
+    const unlock = electronMock.handlers.get(IPC_CHANNELS.vaultPinUnlock)!
+
+    await expect(status(event, undefined)).resolves.toEqual({
+      available: true,
+      remainingAttempts: 5
+    })
+    await expect(
+      enable(event, { pin: 'bear-2026', masterPassword: 'master password' })
+    ).resolves.toEqual({ available: true, remainingAttempts: 5 })
+    expect(vault.enablePinUnlock).toHaveBeenCalledWith({ pin: '', masterPassword: '' })
+    await expect(unlock(event, { pin: 'bear-2026' })).resolves.toEqual({ state: 'unlocked' })
+    expect(vault.unlockWithPin).toHaveBeenCalledWith({ pin: '' })
+    await expect(disable(event, undefined)).resolves.toEqual({
+      available: false,
+      remainingAttempts: 0
+    })
+
+    for (const invalid of [null, {}, [], { extra: true }]) {
+      await expect(status(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+      await expect(disable(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    for (const invalid of [
+      undefined,
+      null,
+      {},
+      { pin: '123', masterPassword: 'master password' },
+      { pin: 'bear-2026', masterPassword: '' },
+      { pin: 'bear-2026', masterPassword: 'master password', persist: true }
+    ]) {
+      await expect(enable(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    for (const invalid of [undefined, null, {}, { pin: '123' }, { pin: 'bear-2026', id: 'x' }]) {
+      await expect(unlock(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(vault.enablePinUnlock).toHaveBeenCalledOnce()
+    expect(vault.unlockWithPin).toHaveBeenCalledOnce()
   })
 
   it('never returns an API key secret across IPC and gates rotation confirmation', async () => {

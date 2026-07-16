@@ -684,6 +684,10 @@ if (hasSingleInstanceLock)
         await refreshSshAgentAfterUnlock().catch(() => undefined)
         scheduleSshAgentLifecycle()
       },
+      afterPinUnlock: async () => {
+        await refreshSshAgentAfterUnlock().catch(() => undefined)
+        scheduleSshAgentLifecycle()
+      },
       afterMutation: () => {
         passkeyCeremonyService?.onVaultMutation()
         autoSync?.request()
