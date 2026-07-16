@@ -93,6 +93,26 @@ export interface NativeAttachmentBackupInspection {
   attachmentDigests: string[]
 }
 
+export interface NativeAttachmentBackupPreview extends NativeAttachmentBackupInspection {
+  /** SHA-256 of the exact encrypted archive bytes read from the verified file handle. */
+  archiveFingerprint: string
+  attachmentBytes: number
+}
+
+export interface NativeAttachmentBackupReader {
+  /** Available only after every encrypted record, footer, size, and digest has been verified. */
+  readonly preview: NativeAttachmentBackupPreview
+  /**
+   * Opens one attachment from the same verified file handle. Only one iterator may be active.
+   * Chunks are producer-owned and are cleared after the consumer advances.
+   */
+  openAttachment(
+    attachment: NativeAttachmentBackupEntry,
+    signal?: AbortSignal
+  ): AsyncIterable<Buffer>
+  dispose(): Promise<void>
+}
+
 interface BackupManifest {
   type: 'manifest'
   createdAt: string
@@ -106,6 +126,19 @@ interface BackupFooter {
   attachmentDigests: string[]
 }
 
+interface ArchiveFileIdentity {
+  dev: number
+  ino: number
+  size: number
+  mtimeMs: number
+}
+
+interface IndexedAttachmentRecords {
+  position: number
+  recordIndex: number
+  count: number
+}
+
 interface ScannedArchive {
   header: BackupHeader
   headerBytes: Buffer
@@ -116,6 +149,12 @@ interface ScannedArchive {
   nextRecordIndex: number
   validBytes: number
   tornTail: boolean
+  readerState?: {
+    key: Buffer
+    fingerprint: string
+    identity: ArchiveFileIdentity
+    records: IndexedAttachmentRecords[]
+  }
 }
 
 function invalidInput(): never {
@@ -367,25 +406,31 @@ async function writeExactly(
 
 async function scanArchive(
   handle: Awaited<ReturnType<typeof open>>,
-  password: string
+  password: string,
+  options: { reader?: boolean; signal?: AbortSignal } = {}
 ): Promise<ScannedArchive> {
+  throwIfAborted(options.signal)
   const stats = await handle.stat()
   const minimum = MAGIC.length + HEADER_LENGTH_BYTES
   if (!stats.isFile() || stats.size < minimum) invalidInput()
+  const fingerprint = options.reader ? createHash('sha256') : null
   const prefix = await readExactly(handle, minimum, 0)
   if (!prefix || !prefix.subarray(0, MAGIC.length).equals(MAGIC)) {
     prefix?.fill(0)
     invalidInput()
   }
+  fingerprint?.update(prefix)
   const headerLength = prefix.readUInt32BE(MAGIC.length)
   prefix.fill(0)
   if (headerLength <= 0 || headerLength > MAX_HEADER_BYTES) invalidInput()
   const headerBytes = await readExactly(handle, headerLength, minimum)
   if (!headerBytes) invalidInput()
+  fingerprint?.update(headerBytes)
   const header = parseHeader(headerBytes)
   const salt = decodeBase64(header.kdf.salt, SALT_BYTES)
   const key = await deriveKey(password, salt)
   salt.fill(0)
+  throwIfAborted(options.signal)
 
   let position = minimum + headerLength
   let recordIndex = 0
@@ -394,14 +439,18 @@ async function scanArchive(
   let offsets: number[] = []
   let hashes: Hash[] = []
   let tornTail = false
+  let completed = false
+  const records: IndexedAttachmentRecords[] = []
   try {
     while (position < stats.size) {
+      throwIfAborted(options.signal)
       const lengthBytes = await readExactly(handle, RECORD_LENGTH_BYTES, position)
       if (!lengthBytes) {
         tornTail = true
         break
       }
       const ciphertextLength = lengthBytes.readUInt32BE(0)
+      fingerprint?.update(lengthBytes)
       lengthBytes.fill(0)
       if (ciphertextLength <= 0 || ciphertextLength > MAX_RECORD_BYTES) invalidInput()
       const recordBytes = RECORD_LENGTH_BYTES + NONCE_BYTES + AUTH_TAG_BYTES + ciphertextLength
@@ -418,6 +467,8 @@ async function scanArchive(
         tornTail = true
         break
       }
+      fingerprint?.update(encrypted)
+      throwIfAborted(options.signal)
       let plaintext: Buffer | undefined
       try {
         plaintext = decryptRecord(
@@ -432,6 +483,11 @@ async function scanArchive(
           manifest = parseManifest(plaintext)
           offsets = manifest.attachments.map(() => 0)
           hashes = manifest.attachments.map(() => createHash('sha256'))
+          if (options.reader) {
+            for (let index = 0; index < manifest.attachments.length; index += 1) {
+              records.push({ position: -1, recordIndex: -1, count: 0 })
+            }
+          }
         } else {
           if (!manifest || footer) invalidInput()
           const type = plaintext[0]
@@ -446,6 +502,14 @@ async function scanArchive(
             }
             const chunk = plaintext.subarray(13)
             if (chunk.length > CHUNK_BYTES || offset + chunk.length > entry.size) invalidInput()
+            const indexed = records[attachmentIndex]
+            if (indexed) {
+              if (indexed.count === 0) {
+                indexed.position = position
+                indexed.recordIndex = recordIndex
+              }
+              indexed.count += 1
+            }
             hashes[attachmentIndex]!.update(chunk)
             offsets[attachmentIndex] += chunk.length
           } else if (type === 3) {
@@ -462,7 +526,7 @@ async function scanArchive(
       recordIndex += 1
     }
     if (!manifest) invalidInput()
-    return {
+    const result: ScannedArchive = {
       header,
       headerBytes,
       manifest,
@@ -473,11 +537,26 @@ async function scanArchive(
       validBytes: position,
       tornTail
     }
+    if (options.reader) {
+      result.readerState = {
+        key,
+        fingerprint: fingerprint!.digest('hex'),
+        identity: {
+          dev: stats.dev,
+          ino: stats.ino,
+          size: stats.size,
+          mtimeMs: stats.mtimeMs
+        },
+        records
+      }
+    }
+    completed = true
+    return result
   } catch (error) {
     headerBytes.fill(0)
     throw error
   } finally {
-    key.fill(0)
+    if (!completed || !options.reader) key.fill(0)
   }
 }
 
@@ -755,6 +834,195 @@ export async function writeNativeAttachmentBackup(
     key?.fill(0)
     salt?.fill(0)
     headerBytes?.fill(0)
+  }
+}
+
+function sameFileIdentity(
+  stats: Awaited<ReturnType<Awaited<ReturnType<typeof open>>['stat']>>,
+  expected: ArchiveFileIdentity
+): boolean {
+  return (
+    stats.isFile() &&
+    stats.dev === expected.dev &&
+    stats.ino === expected.ino &&
+    stats.size === expected.size &&
+    stats.mtimeMs === expected.mtimeMs
+  )
+}
+
+function readerCanceled(signal: AbortSignal): never {
+  if (signal.aborted) throw new VaultError('ATTACHMENT_CANCELED')
+  invalidInput()
+}
+
+export async function openNativeAttachmentBackup(
+  path: string,
+  password: string,
+  options: { signal?: AbortSignal } = {}
+): Promise<NativeAttachmentBackupReader> {
+  validatePath(path)
+  validatePassword(password)
+  throwIfAborted(options.signal)
+  let handle: Awaited<ReturnType<typeof open>> | undefined
+  let scanned: ScannedArchive | undefined
+  try {
+    const before = await lstat(path)
+    if (!before.isFile() || before.isSymbolicLink()) invalidInput()
+    const flags = constants.O_RDONLY | (process.platform === 'win32' ? 0 : constants.O_NOFOLLOW)
+    handle = await open(path, flags)
+    const opened = await handle.stat()
+    if (
+      !opened.isFile() ||
+      opened.dev !== before.dev ||
+      opened.ino !== before.ino ||
+      opened.size !== before.size
+    ) {
+      invalidInput()
+    }
+    scanned = await scanArchive(handle, password, { reader: true, signal: options.signal })
+    const attachmentDigests = verifyCompletedArchive(scanned)
+    const state = scanned.readerState
+    if (!state || !(await handle.stat()).isFile()) invalidInput()
+    if (!sameFileIdentity(await handle.stat(), state.identity)) invalidInput()
+
+    const ownedHandle = handle
+    const ownedKey = state.key
+    const ownedHeader = scanned.headerBytes
+    const internalManifest = scanned.manifest
+    const internalFooter = scanned.footer!
+    const internalRecords = state.records
+    const internalAbort = new AbortController()
+    let active = false
+    let disposed = false
+    let attachmentBytes = 0
+    for (const entry of internalManifest.attachments) {
+      attachmentBytes += entry.size
+      if (!Number.isSafeInteger(attachmentBytes)) invalidInput()
+    }
+    const preview: NativeAttachmentBackupPreview = Object.freeze({
+      createdAt: internalManifest.createdAt,
+      vaultJson: internalManifest.vaultJson,
+      attachments: Object.freeze(
+        internalManifest.attachments.map((entry) => Object.freeze({ ...entry }))
+      ),
+      attachmentDigests: Object.freeze([...attachmentDigests]),
+      archiveFingerprint: state.fingerprint,
+      attachmentBytes
+    }) as NativeAttachmentBackupPreview
+
+    const reader: NativeAttachmentBackupReader = {
+      preview,
+      openAttachment: (requested, signal) => {
+        if (disposed) invalidInput()
+        const validated = validateEntry(requested)
+        const attachmentIndex = internalManifest.attachments.findIndex(
+          (entry) =>
+            entry.id === validated.id &&
+            entry.itemId === validated.itemId &&
+            entry.fileName === validated.fileName &&
+            entry.size === validated.size
+        )
+        if (attachmentIndex < 0) invalidInput()
+        return (async function* (): AsyncIterable<Buffer> {
+          let acquired = false
+          const operationSignal = signal
+            ? AbortSignal.any([internalAbort.signal, signal])
+            : internalAbort.signal
+          const hash = createHash('sha256')
+          let expectedOffset = 0
+          try {
+            if (active) invalidInput()
+            active = true
+            acquired = true
+            throwIfAborted(operationSignal)
+            if (!sameFileIdentity(await ownedHandle.stat(), state.identity)) invalidInput()
+            const indexed = internalRecords[attachmentIndex]!
+            let position = indexed.position
+            let recordIndex = indexed.recordIndex
+            for (let ordinal = 0; ordinal < indexed.count; ordinal += 1) {
+              throwIfAborted(operationSignal)
+              const lengthBytes = await readExactly(ownedHandle, RECORD_LENGTH_BYTES, position)
+              if (!lengthBytes) invalidInput()
+              const ciphertextLength = lengthBytes.readUInt32BE(0)
+              lengthBytes.fill(0)
+              if (ciphertextLength <= 0 || ciphertextLength > MAX_RECORD_BYTES) invalidInput()
+              const encrypted = await readExactly(
+                ownedHandle,
+                NONCE_BYTES + AUTH_TAG_BYTES + ciphertextLength,
+                position + RECORD_LENGTH_BYTES
+              )
+              if (!encrypted) invalidInput()
+              let plaintext: Buffer | undefined
+              try {
+                throwIfAborted(operationSignal)
+                plaintext = decryptRecord(
+                  encrypted.subarray(NONCE_BYTES + AUTH_TAG_BYTES),
+                  encrypted.subarray(NONCE_BYTES, NONCE_BYTES + AUTH_TAG_BYTES),
+                  encrypted.subarray(0, NONCE_BYTES),
+                  ownedKey,
+                  ownedHeader,
+                  recordIndex
+                )
+                if (
+                  plaintext.length <= 13 ||
+                  plaintext[0] !== 2 ||
+                  plaintext.readUInt32BE(1) !== attachmentIndex ||
+                  Number(plaintext.readBigUInt64BE(5)) !== expectedOffset
+                ) {
+                  invalidInput()
+                }
+                const chunk = plaintext.subarray(13)
+                if (chunk.length === 0 || expectedOffset + chunk.length > validated.size) {
+                  invalidInput()
+                }
+                hash.update(chunk)
+                expectedOffset += chunk.length
+                throwIfAborted(operationSignal)
+                yield chunk
+                throwIfAborted(operationSignal)
+              } finally {
+                encrypted.fill(0)
+                plaintext?.fill(0)
+              }
+              position += RECORD_LENGTH_BYTES + NONCE_BYTES + AUTH_TAG_BYTES + ciphertextLength
+              recordIndex += 1
+            }
+            if (
+              expectedOffset !== validated.size ||
+              hash.digest('hex') !== internalFooter.attachmentDigests[attachmentIndex] ||
+              !sameFileIdentity(await ownedHandle.stat(), state.identity)
+            ) {
+              invalidInput()
+            }
+          } catch (error) {
+            if (operationSignal.aborted) readerCanceled(operationSignal)
+            if (error instanceof VaultError) throw error
+            invalidInput()
+          } finally {
+            if (acquired) active = false
+          }
+        })()
+      },
+      dispose: async () => {
+        if (disposed) return
+        disposed = true
+        internalAbort.abort()
+        await ownedHandle.close().catch(() => undefined)
+        ownedKey.fill(0)
+        ownedHeader.fill(0)
+      }
+    }
+    scanned = undefined
+    handle = undefined
+    return reader
+  } catch (error) {
+    scanned?.readerState?.key.fill(0)
+    scanned?.headerBytes.fill(0)
+    if (options.signal?.aborted) throw new VaultError('ATTACHMENT_CANCELED')
+    if (error instanceof VaultError) throw error
+    throw new VaultError('INVALID_INPUT')
+  } finally {
+    await handle?.close().catch(() => undefined)
   }
 }
 
