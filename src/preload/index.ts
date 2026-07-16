@@ -97,6 +97,9 @@ const api: BearWardenAPI = {
     revealCustomField: (request) => ipcRenderer.invoke(IPC_CHANNELS.itemRevealCustomField, request),
     copyCustomField: (request) => ipcRenderer.invoke(IPC_CHANNELS.itemCopyCustomField, request)
   },
+  passkeys: {
+    delete: (request) => ipcRenderer.invoke(IPC_CHANNELS.passkeyDelete, request)
+  },
   generator: {
     generate: (request) => ipcRenderer.invoke(IPC_CHANNELS.generatorGenerate, request),
     history: () => ipcRenderer.invoke(IPC_CHANNELS.generatorHistoryList),

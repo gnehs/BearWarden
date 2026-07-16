@@ -44,6 +44,7 @@ export const IPC_CHANNELS = {
   loginOpenUri: 'login:open-uri',
   loginGetTotp: 'login:get-totp',
   loginCopyTotp: 'login:copy-totp',
+  passkeyDelete: 'passkey:delete',
   loginContextMenu: 'login:context-menu',
   loginWebsiteIcon: 'login:website-icon',
   itemRevealEditorSecrets: 'item:reveal-editor-secrets',
@@ -320,6 +321,12 @@ export interface LoginAuthorizationRequest {
 
 export interface LoginIdRequest extends LoginAuthorizationRequest {
   id: string
+}
+
+export interface PasskeyDeleteRequest extends LoginIdRequest {
+  credentialId: string
+  /** Optional optimistic-concurrency token from the item snapshot. */
+  expectedUpdatedAt?: string
 }
 
 export type AttachmentOperationKind = 'download' | 'upload' | 'delete' | 'fix-legacy'
@@ -860,6 +867,10 @@ export interface BearWardenAPI {
     copyField: (request: ItemFieldRequest) => Promise<void>
     revealCustomField: (request: CustomFieldRequest) => Promise<string>
     copyCustomField: (request: CustomFieldRequest) => Promise<void>
+  }
+  passkeys: {
+    /** Deletes one passkey without exposing its private key material to the renderer. */
+    delete: (request: PasskeyDeleteRequest) => Promise<LoginView>
   }
   generator: {
     generate: (request: CredentialGeneratorRequest) => Promise<CredentialGeneratorResult>

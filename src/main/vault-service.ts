@@ -39,6 +39,7 @@ import type {
   LoginIdRequest,
   LoginListRequest,
   LoginOpenUriRequest,
+  PasskeyDeleteRequest,
   LoginMoveRequest,
   LoginMoveManyRequest,
   LoginSummary,
@@ -3024,6 +3025,37 @@ export class VaultService {
         }
       }
       login.passwordHistory = [...newHistory, ...previousHistory].slice(0, MAX_PASSWORD_HISTORY)
+      login.updatedAt = now
+      return toView(login)
+    })
+  }
+
+  deletePasskey(request: PasskeyDeleteRequest): Promise<LoginView> {
+    return this.mutate((data, now) => {
+      assertUuid(request.id)
+      if (
+        typeof request.credentialId !== 'string' ||
+        request.credentialId.length === 0 ||
+        request.credentialId.length > MAX_ITEM_FIELD_LENGTH
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      const login = this.findLogin(data, request.id)
+      this.assertActiveLogin(login)
+      if (login.type !== 'login') throw new VaultError('INVALID_INPUT')
+      if (
+        request.expectedUpdatedAt !== undefined &&
+        (typeof request.expectedUpdatedAt !== 'string' ||
+          request.expectedUpdatedAt !== login.updatedAt)
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      const matchingIndexes = login.passkeys.flatMap((passkey, index) =>
+        passkey.credentialId === request.credentialId ? [index] : []
+      )
+      if (matchingIndexes.length === 0) throw new VaultError('NOT_FOUND')
+      if (matchingIndexes.length !== 1) throw new VaultError('INVALID_INPUT')
+      login.passkeys.splice(matchingIndexes[0]!, 1)
       login.updatedAt = now
       return toView(login)
     })

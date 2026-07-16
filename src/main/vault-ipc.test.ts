@@ -275,6 +275,7 @@ describe('registerVaultIpc reprompt gate', () => {
       deleteLoginsPermanently: vi.fn(async ({ ids }: { ids: string[] }) => ids.length),
       updateLogin: vi.fn(async () => ({ id: 'item-a' })),
       deleteLogin: vi.fn(async () => undefined),
+      deletePasskey: vi.fn(async () => ({ id: 'item-a', passkeys: [] })),
       setLoginFavorite: vi.fn(async () => ({ id: 'item-a' })),
       moveLogin: vi.fn(async () => ({ id: 'item-a' })),
       getTotp: vi.fn(async () => ({ code: '123456', period: 30, remainingSeconds: 12 })),
@@ -405,6 +406,7 @@ describe('registerVaultIpc reprompt gate', () => {
     [IPC_CHANNELS.loginClone, 'cloneLogin', { id: 'item-a' }],
     [IPC_CHANNELS.loginUpdate, 'updateLogin', { id: 'item-a', name: 'Updated' }],
     [IPC_CHANNELS.loginDelete, 'deleteLogin', { id: 'item-a' }],
+    [IPC_CHANNELS.passkeyDelete, 'deletePasskey', { id: 'item-a', credentialId: 'credential-a' }],
     [IPC_CHANNELS.loginSetFavorite, 'setLoginFavorite', { id: 'item-a', favorite: true }],
     [IPC_CHANNELS.loginMove, 'moveLogin', { id: 'item-a', folderId: null }],
     [IPC_CHANNELS.loginGetTotp, 'getTotp', { id: 'item-a' }],
@@ -512,6 +514,32 @@ describe('registerVaultIpc reprompt gate', () => {
       expect(vault[method]).toHaveBeenCalledOnce()
       expect(vault[method]).toHaveBeenCalledWith({ id: 'item-a' })
     }
+  })
+
+  it('validates and authorizes exact passkey deletion requests before notifying mutations', async () => {
+    const { event, vault, afterMutation, setAuthorizationState } = harness()
+    setAuthorizationState({ reprompt: 0, generation: 3 })
+    const handler = electronMock.handlers.get(IPC_CHANNELS.passkeyDelete)!
+    const request = {
+      id: 'item-a',
+      credentialId: 'credential-a',
+      expectedUpdatedAt: '2026-07-16T00:00:00.000Z'
+    }
+
+    await expect(handler(event, request)).resolves.toEqual({ id: 'item-a', passkeys: [] })
+    expect(vault.deletePasskey).toHaveBeenCalledWith(request)
+    expect(afterMutation).toHaveBeenCalledOnce()
+
+    for (const invalid of [
+      { ...request, extra: true },
+      { ...request, credentialId: 7 },
+      { ...request, credentialId: 'x'.repeat(4_097) },
+      { ...request, expectedUpdatedAt: null }
+    ]) {
+      await expect(handler(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(vault.deletePasskey).toHaveBeenCalledOnce()
+    expect(afterMutation).toHaveBeenCalledOnce()
   })
 
   const batchOperations = [

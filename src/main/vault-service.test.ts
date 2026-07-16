@@ -480,6 +480,100 @@ describe('VaultService encrypted local data', () => {
     })
   })
 
+  it('deletes one passkey atomically without returning private key material', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { filePath, service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const login = (await service.listLogins())[0]!
+    const before = await service.getLogin({ id: login.id })
+
+    const updated = await service.deletePasskey({
+      id: login.id,
+      credentialId: 'credential-id',
+      expectedUpdatedAt: before.updatedAt
+    })
+
+    expect(updated.passkeys).toEqual([])
+    expect(updated.updatedAt).not.toBe(before.updatedAt)
+    expect(JSON.stringify(updated)).not.toContain('fake-passkey-private-material')
+    await service.syncNow()
+    expect(fake!.remoteLogins[0]!.passkeys).toEqual([])
+    await service.lock()
+    const reopened = new VaultService(new EncryptedVaultStore(filePath), {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await reopened.unlock(MASTER_PASSWORD)
+    await expect(reopened.getLogin({ id: login.id })).resolves.toMatchObject({ passkeys: [] })
+  })
+
+  it('rejects stale, missing, and ambiguous passkey deletion without changing the item', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service, store } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.remoteLogins[0]!.passkeys.push({ ...fake.remoteLogins[0]!.passkeys[0]! })
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const login = (await service.listLogins())[0]!
+    const before = await service.getLogin({ id: login.id })
+    const write = vi.spyOn(store, 'write')
+
+    await expect(
+      service.deletePasskey({
+        id: login.id,
+        credentialId: 'credential-id',
+        expectedUpdatedAt: '2026-01-01T00:00:00.000Z'
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.deletePasskey({ id: login.id, credentialId: 'missing-credential' })
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    await expect(
+      service.deletePasskey({ id: login.id, credentialId: 'credential-id' })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    expect(write).not.toHaveBeenCalled()
+    await expect(service.getLogin({ id: login.id })).resolves.toEqual(before)
+  })
+
+  it('keeps a passkey when persistence fails during deletion', async () => {
+    const { service, store } = await createHarness({
+      createSyncClient: (sync) => createSyncFake(sync.state)
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const login = (await service.listLogins())[0]!
+    vi.spyOn(store, 'write').mockRejectedValueOnce(new Error('injected persistence failure'))
+
+    await expect(
+      service.deletePasskey({ id: login.id, credentialId: 'credential-id' })
+    ).rejects.toThrow('injected persistence failure')
+    await expect(service.getLogin({ id: login.id })).resolves.toMatchObject({
+      passkeys: [expect.objectContaining({ credentialId: 'credential-id' })]
+    })
+  })
+
   it('reconciles attachment-only remote changes without creating item conflicts', async () => {
     let fake: ReturnType<typeof createSyncFake> | null = null
     const { filePath, service } = await createHarness({

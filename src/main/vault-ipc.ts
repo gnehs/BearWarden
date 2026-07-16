@@ -33,6 +33,7 @@ import {
   type LoginIdRequest,
   type LoginListRequest,
   type LoginOpenUriRequest,
+  type PasskeyDeleteRequest,
   type LoginMoveRequest,
   type LoginMoveManyRequest,
   type LoginUpdateRequest,
@@ -74,6 +75,8 @@ const REPROMPT_TOKEN_TTL_MS = 60_000
 const MAX_REPROMPT_TOKENS = 128
 const MAX_LOGIN_URIS = 1_000
 const MAX_URI_LENGTH = 4_096
+const MAX_PASSKEY_CREDENTIAL_ID_LENGTH = 4_096
+const MAX_ISO_TIMESTAMP_LENGTH = 64
 const MAX_SSH_KEY_IMPORT_TOKEN_LENGTH = 128
 const MAX_SSH_KEY_IMPORT_PASSPHRASE_BYTES = 1_024
 
@@ -587,6 +590,32 @@ function parseId(value: unknown): LoginIdRequest {
   const authorizationToken = optionalAuthorizationToken(record)
   return {
     id: requiredString(record, 'id'),
+    ...(authorizationToken ? { authorizationToken } : {})
+  }
+}
+
+function parsePasskeyDelete(value: unknown): PasskeyDeleteRequest {
+  const record = exactRecord(value, [
+    'id',
+    'credentialId',
+    'expectedUpdatedAt',
+    'authorizationToken'
+  ])
+  const authorizationToken = optionalAuthorizationToken(record)
+  const expectedUpdatedAt = optionalStringOrNull(record, 'expectedUpdatedAt')
+  const credentialId = requiredString(record, 'credentialId')
+  if (
+    credentialId.length === 0 ||
+    credentialId.length > MAX_PASSKEY_CREDENTIAL_ID_LENGTH ||
+    expectedUpdatedAt === null ||
+    (expectedUpdatedAt !== undefined && expectedUpdatedAt.length > MAX_ISO_TIMESTAMP_LENGTH)
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return {
+    id: requiredString(record, 'id'),
+    credentialId,
+    ...(expectedUpdatedAt === undefined ? {} : { expectedUpdatedAt }),
     ...(authorizationToken ? { authorizationToken } : {})
   }
 }
@@ -1400,6 +1429,10 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   registerHandler(IPC_CHANNELS.loginUpdate, getMainWindow, (event, input) => {
     const request = parseLoginUpdate(input)
     return runAuthorized(event, request, () => afterMutation(vault.updateLogin(request)))
+  })
+  registerHandler(IPC_CHANNELS.passkeyDelete, getMainWindow, (event, input) => {
+    const request = parsePasskeyDelete(input)
+    return runAuthorized(event, request, () => afterMutation(vault.deletePasskey(request)))
   })
   registerHandler(IPC_CHANNELS.loginEmptyTrash, getMainWindow, (event, input) => {
     const request = parseEmptyTrash(input)
