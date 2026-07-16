@@ -1,18 +1,27 @@
+import { useEffect, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   ArrowLeft,
   ClipboardCheck,
   Cloud,
+  Copy,
   DatabaseBackup,
   Download,
   Fingerprint,
+  KeyRound,
   LockKeyhole,
   Palette,
   Settings2,
   ShieldCheck,
   Upload
 } from 'lucide-react'
-import type { AppSettings, AppSettingsUpdate, SyncStatus } from '../../../shared/vault-contract'
+import type {
+  AppSettings,
+  AppSettingsUpdate,
+  SshAgentPromptBehavior,
+  SshAgentStatus,
+  SyncStatus
+} from '../../../shared/vault-contract'
 import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -40,6 +49,12 @@ import {
 } from '@renderer/components/ui/field'
 import { Input } from '@renderer/components/ui/input'
 import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput
+} from '@renderer/components/ui/input-group'
+import {
   Select,
   SelectContent,
   SelectGroup,
@@ -50,6 +65,11 @@ import {
 import { Separator } from '@renderer/components/ui/separator'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Switch } from '@renderer/components/ui/switch'
+import {
+  isWindowsSshAgentEndpoint,
+  sshAgentSocketExportCommand,
+  sshAgentStatusPresentation
+} from '@renderer/lib/ssh-agent-ui'
 
 const autoLockItems = [
   { label: '永不自動鎖定', value: 0 },
@@ -78,6 +98,19 @@ const themeItems = [
   { label: '淺色', value: 'light' },
   { label: '深色', value: 'dark' }
 ] as const
+
+const sshAgentPromptItems: ReadonlyArray<{ label: string; value: SshAgentPromptBehavior }> = [
+  { label: '每次簽署都詢問', value: 'always' },
+  { label: '從不詢問（自動核准）', value: 'never' },
+  { label: '鎖定前記住核准結果', value: 'rememberUntilLock' }
+]
+
+const initialSshAgentStatus: SshAgentStatus = {
+  enabled: false,
+  running: false,
+  state: 'stopped',
+  identityCount: 0
+}
 
 const syncLabels: Record<SyncStatus['state'], string> = {
   unconfigured: '尚未設定',
@@ -144,6 +177,55 @@ function SettingsPage({
   onExportVault,
   onImportVault
 }: SettingsPageProps): React.JSX.Element {
+  const [sshAgentStatus, setSshAgentStatus] = useState<SshAgentStatus>(initialSshAgentStatus)
+  const [copySucceeded, setCopySucceeded] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    void window.bearwarden.sshAgent.status().then(
+      (status) => {
+        if (active) setSshAgentStatus(status)
+      },
+      () => {
+        if (active) {
+          setSshAgentStatus({
+            ...initialSshAgentStatus,
+            state: 'error',
+            lastError: 'START_FAILED'
+          })
+        }
+      }
+    )
+    const unsubscribe = window.bearwarden.sshAgent.onStatusChanged((status) => {
+      if (active) setSshAgentStatus(status)
+    })
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [])
+
+  const sshAgentStatusPresentationValue = sshAgentStatusPresentation(
+    settings?.sshAgentEnabled ?? false,
+    sshAgentStatus
+  )
+  const sshAgentEndpoint = sshAgentStatus.endpoint
+  const usesWindowsNamedPipe = isWindowsSshAgentEndpoint(sshAgentEndpoint)
+  const sshAgentCommand = usesWindowsNamedPipe
+    ? undefined
+    : sshAgentSocketExportCommand(sshAgentEndpoint)
+
+  async function copySshAgentCommand(): Promise<void> {
+    try {
+      if (!sshAgentCommand) return
+      await navigator.clipboard.writeText(sshAgentCommand)
+      setCopySucceeded(true)
+      window.setTimeout(() => setCopySucceeded(false), 2_000)
+    } catch {
+      setCopySucceeded(false)
+    }
+  }
+
   return (
     <div className="settings-page" aria-labelledby="settings-title">
       <header className="settings-header">
@@ -183,6 +265,7 @@ function SettingsPage({
             <nav className="settings-nav" aria-label="設定章節">
               <p>設定章節</p>
               <a href="#security-settings-title">安全性</a>
+              <a href="#ssh-agent-settings-title">SSH Agent</a>
               <a href="#privacy-settings-title">隱私與剪貼簿</a>
               <a href="#general-settings-title">一般</a>
               <a href="#touch-id-settings-title">Touch ID</a>
@@ -288,6 +371,142 @@ function SettingsPage({
                     </Field>
                   </FieldGroup>
                 </CardContent>
+              </Card>
+
+              <Card className="settings-card" aria-labelledby="ssh-agent-settings-title">
+                <CardHeader>
+                  <SettingsCardHeading
+                    id="ssh-agent-settings-title"
+                    icon={KeyRound}
+                    title="SSH Agent"
+                    description="讓終端機與 Git 經由本機 socket 使用保管庫中的 SSH 金鑰。"
+                  />
+                  <CardAction>
+                    <Badge variant={sshAgentStatusPresentationValue.variant}>
+                      {sshAgentStatusPresentationValue.label}
+                    </Badge>
+                  </CardAction>
+                </CardHeader>
+                <CardContent className="settings-card-content">
+                  <FieldGroup className="gap-0">
+                    <Field className="settings-row" orientation="horizontal">
+                      <FieldContent>
+                        <FieldLabel htmlFor="ssh-agent-switch">啟用 SSH Agent</FieldLabel>
+                        <FieldDescription id="ssh-agent-description">
+                          BearWarden 只會提供未封存、未刪除的 SSH 金鑰；每次簽署依下方規則核准。
+                        </FieldDescription>
+                      </FieldContent>
+                      <Switch
+                        id="ssh-agent-switch"
+                        checked={settings.sshAgentEnabled}
+                        disabled={settingsBusy}
+                        aria-describedby="ssh-agent-description"
+                        onCheckedChange={(checked) => void onUpdate({ sshAgentEnabled: checked })}
+                      />
+                    </Field>
+                    <Separator />
+                    <Field
+                      className="settings-row settings-row-select"
+                      orientation="horizontal"
+                      data-disabled={!settings.sshAgentEnabled}
+                    >
+                      <FieldContent>
+                        <FieldLabel htmlFor="ssh-agent-prompt-select">簽署核准方式</FieldLabel>
+                        <FieldDescription id="ssh-agent-prompt-description">
+                          「鎖定前記住」會區分本機請求；透過 forwarding
+                          的請求還必須對應已驗證的遠端主機指紋。鎖定後會清除。
+                        </FieldDescription>
+                      </FieldContent>
+                      <Select
+                        items={sshAgentPromptItems}
+                        value={settings.sshAgentPromptBehavior}
+                        disabled={settingsBusy || !settings.sshAgentEnabled}
+                        onValueChange={(value) =>
+                          void onUpdate({
+                            sshAgentPromptBehavior: value as SshAgentPromptBehavior
+                          })
+                        }
+                      >
+                        <SelectTrigger
+                          id="ssh-agent-prompt-select"
+                          aria-describedby="ssh-agent-prompt-description"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {sshAgentPromptItems.map((item) => (
+                              <SelectItem key={item.value} value={item.value}>
+                                {item.label}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Separator />
+                    <Field className="settings-row settings-row-stacked">
+                      <FieldLabel htmlFor="ssh-agent-command">終端機設定</FieldLabel>
+                      {usesWindowsNamedPipe ? (
+                        <FieldDescription>
+                          BearWarden 使用固定的 <code>\\.\pipe\openssh-ssh-agent</code> named
+                          pipe。請先停用系統的 OpenSSH Authentication Agent，避免兩個 agent
+                          爭用同一個 pipe。
+                        </FieldDescription>
+                      ) : sshAgentCommand ? (
+                        <>
+                          <FieldDescription>
+                            在終端機環境中設定 <code>SSH_AUTH_SOCK</code>，讓 SSH 與 Git 使用
+                            BearWarden 的本機 socket。
+                          </FieldDescription>
+                          <InputGroup>
+                            <InputGroupInput
+                              id="ssh-agent-command"
+                              value={sshAgentCommand}
+                              readOnly
+                              aria-label="SSH Agent 終端機設定指令"
+                            />
+                            <InputGroupAddon align="inline-end">
+                              <InputGroupButton
+                                aria-label="複製 SSH Agent 設定指令"
+                                onClick={() => void copySshAgentCommand()}
+                              >
+                                <Copy data-icon="inline-start" aria-hidden="true" />
+                                {copySucceeded ? '已複製' : '複製'}
+                              </InputGroupButton>
+                            </InputGroupAddon>
+                          </InputGroup>
+                        </>
+                      ) : (
+                        <FieldDescription>
+                          Agent endpoint 含有無法安全放入 shell
+                          指令的控制字元，因此未提供複製指令。請在修正
+                          <code>BEARWARDEN_SSH_AUTH_SOCK</code> 後重新啟用 Agent。
+                        </FieldDescription>
+                      )}
+                    </Field>
+                    {sshAgentStatus.state === 'error' && (
+                      <>
+                        <Separator />
+                        <Field className="settings-row settings-row-stacked">
+                          <FieldLabel>Agent 無法啟動</FieldLabel>
+                          <FieldDescription>
+                            {sshAgentStatus.lastError === 'SOCKET_IN_USE' ||
+                            sshAgentStatus.lastError === 'PIPE_IN_USE'
+                              ? '既有 SSH Agent 正在使用相同 endpoint。請停止該 Agent 後重新啟用 BearWarden SSH Agent。'
+                              : 'BearWarden 無法安全地建立 SSH Agent endpoint。請確認家目錄權限與 socket 路徑後再試。'}
+                          </FieldDescription>
+                        </Field>
+                      </>
+                    )}
+                  </FieldGroup>
+                </CardContent>
+                <CardFooter>
+                  <p className="settings-card-note">
+                    {sshAgentStatus.identityCount} 把可用 SSH
+                    金鑰。私鑰與實際簽署資料不會傳到畫面程序。
+                  </p>
+                </CardFooter>
               </Card>
 
               <Card className="settings-card" aria-labelledby="privacy-settings-title">

@@ -1,15 +1,31 @@
 import { useEffect, useRef, useState } from 'react'
-import type { VaultState } from '../../shared/vault-contract'
+import type { SshAgentApprovalPrompt, VaultState } from '../../shared/vault-contract'
 import AuthScreen from './components/AuthScreen'
+import SshAgentApprovalDialog from './components/SshAgentApprovalDialog'
 import VaultShell from './components/VaultShell'
+import { shouldDenySshAgentApproval } from './lib/ssh-agent-ui'
 import { applyThemePreference } from './lib/theme'
 
 type AppState = VaultState | 'loading' | 'unavailable'
 
+function denySshAgentApproval(request: SshAgentApprovalPrompt): void {
+  void window.bearwarden.sshAgent
+    .respondApproval({ requestId: request.requestId, approved: false })
+    .catch(() => undefined)
+}
+
 function App(): React.JSX.Element {
   const [state, setState] = useState<AppState>('loading')
   const [retryKey, setRetryKey] = useState(0)
+  const [sshAgentApproval, setSshAgentApproval] = useState<SshAgentApprovalPrompt | null>(null)
   const lastActivityAt = useRef(0)
+  const stateRef = useRef<AppState>('loading')
+  const sshAgentApprovalRef = useRef<SshAgentApprovalPrompt | null>(null)
+
+  function updateState(nextState: AppState): void {
+    stateRef.current = nextState
+    setState(nextState)
+  }
 
   useEffect(() => {
     let active = true
@@ -38,20 +54,24 @@ function App(): React.JSX.Element {
     let receivedStateEvent = false
     const unsubscribeLocked = window.bearwarden.vault.onLocked(() => {
       receivedStateEvent = true
-      setState('locked')
+      const pending = sshAgentApprovalRef.current
+      sshAgentApprovalRef.current = null
+      setSshAgentApproval(null)
+      if (pending) denySshAgentApproval(pending)
+      updateState('locked')
     })
     const unsubscribeUnlocked = window.bearwarden.vault.onUnlocked(() => {
       receivedStateEvent = true
-      setState('unlocked')
+      updateState('unlocked')
     })
 
     window.bearwarden.vault
       .status()
       .then((status) => {
-        if (active && !receivedStateEvent) setState(status.state)
+        if (active && !receivedStateEvent) updateState(status.state)
       })
       .catch(() => {
-        if (active && !receivedStateEvent) setState('unavailable')
+        if (active && !receivedStateEvent) updateState('unavailable')
       })
 
     return () => {
@@ -60,6 +80,25 @@ function App(): React.JSX.Element {
       unsubscribeUnlocked()
     }
   }, [retryKey])
+
+  useEffect(() => {
+    const unsubscribe = window.bearwarden.sshAgent.onApprovalRequested((request) => {
+      // A prompt must never become an implicit approval while the UI is unavailable or locked.
+      if (shouldDenySshAgentApproval(stateRef.current, Boolean(sshAgentApprovalRef.current))) {
+        denySshAgentApproval(request)
+        return
+      }
+      sshAgentApprovalRef.current = request
+      setSshAgentApproval(request)
+    })
+
+    return () => {
+      unsubscribe()
+      const pending = sshAgentApprovalRef.current
+      sshAgentApprovalRef.current = null
+      if (pending) denySshAgentApproval(pending)
+    }
+  }, [])
 
   useEffect(() => {
     if (state !== 'unlocked') return
@@ -79,15 +118,30 @@ function App(): React.JSX.Element {
   }, [state])
 
   if (state === 'unlocked') {
-    return <VaultShell onLocked={() => setState('locked')} />
+    return (
+      <>
+        <VaultShell onLocked={() => updateState('locked')} />
+        {sshAgentApproval && (
+          <SshAgentApprovalDialog
+            request={sshAgentApproval}
+            onRespond={(response) => window.bearwarden.sshAgent.respondApproval(response)}
+            onSettled={() => {
+              if (sshAgentApprovalRef.current?.requestId !== sshAgentApproval.requestId) return
+              sshAgentApprovalRef.current = null
+              setSshAgentApproval(null)
+            }}
+          />
+        )}
+      </>
+    )
   }
 
   return (
     <AuthScreen
       state={state}
-      onAuthenticated={() => setState('unlocked')}
+      onAuthenticated={() => updateState('unlocked')}
       onRetry={() => {
-        setState('loading')
+        updateState('loading')
         setRetryKey((key) => key + 1)
       }}
     />
