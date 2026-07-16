@@ -298,6 +298,119 @@ describe('BitwardenHttpClient', () => {
     expect(fetch).toHaveBeenCalledOnce()
   })
 
+  it('branches official and Vaultwarden Email 2FA setup capabilities', async () => {
+    const email = 'factor@example.test'
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        json({
+          email: { enabled: false, email: null },
+          userVerificationToken: 'official-email-capability',
+          object: 'twoFactorEmail'
+        })
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(
+        json({
+          email: { enabled: true, email },
+          object: 'twoFactorEmailUpdate'
+        })
+      )
+      .mockResolvedValueOnce(json({ enabled: false, email: null, object: 'twoFactorEmail' }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(json({ enabled: 'true', email, object: 'twoFactorEmail' }))
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(client.getEmailTwoFactorSetup('derived-proof')).resolves.toEqual({
+      enabled: false,
+      email: null,
+      verificationMode: 'server-token',
+      userVerificationToken: 'official-email-capability'
+    })
+    await client.sendEmailTwoFactorSetup({
+      email,
+      verificationMode: 'server-token',
+      userVerificationToken: 'official-email-capability'
+    })
+    await client.enableEmailTwoFactor({
+      email,
+      token: '123456',
+      verificationMode: 'server-token',
+      userVerificationToken: 'official-email-capability'
+    })
+    await expect(client.getEmailTwoFactorSetup('fresh-proof')).resolves.toEqual({
+      enabled: false,
+      email: null,
+      verificationMode: 'master-password',
+      userVerificationToken: null
+    })
+    await client.sendEmailTwoFactorSetup({
+      email,
+      verificationMode: 'master-password',
+      masterPasswordHash: 'fresh-send-proof'
+    })
+    await client.enableEmailTwoFactor({
+      email,
+      token: '654321',
+      verificationMode: 'master-password',
+      masterPasswordHash: 'fresh-enable-proof'
+    })
+
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
+      email,
+      userVerificationToken: 'official-email-capability'
+    })
+    expect(JSON.parse(String(fetch.mock.calls[2]?.[1]?.body))).toEqual({
+      email,
+      token: '123456',
+      userVerificationToken: 'official-email-capability'
+    })
+    expect(JSON.parse(String(fetch.mock.calls[4]?.[1]?.body))).toEqual({
+      email,
+      masterPasswordHash: 'fresh-send-proof'
+    })
+    expect(JSON.parse(String(fetch.mock.calls[5]?.[1]?.body))).toEqual({
+      email,
+      token: '654321',
+      masterPasswordHash: 'fresh-enable-proof'
+    })
+  })
+
+  it('never retries Email 2FA setup mutations', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(json({ message: 'temporary failure' }, 503))
+      .mockResolvedValueOnce(json({ message: 'temporary failure' }, 503))
+      .mockResolvedValueOnce(json({ message: 'expired capability' }, 401))
+    const client = new BitwardenHttpClient({ server: 'us', fetch, maxRetries: 5 })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(
+      client.sendEmailTwoFactorSetup({
+        email: 'factor@example.test',
+        verificationMode: 'server-token',
+        userVerificationToken: 'one-time-capability'
+      })
+    ).rejects.toMatchObject({ code: 'NETWORK', status: 503 })
+    await expect(
+      client.enableEmailTwoFactor({
+        email: 'factor@example.test',
+        token: '123456',
+        verificationMode: 'server-token',
+        userVerificationToken: 'one-time-capability'
+      })
+    ).rejects.toMatchObject({ code: 'NETWORK', status: 503 })
+    await expect(
+      client.sendEmailTwoFactorSetup({
+        email: 'factor@example.test',
+        verificationMode: 'server-token',
+        userVerificationToken: 'expired-capability'
+      })
+    ).rejects.toMatchObject({ code: 'AUTH', status: 401 })
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
   it('parses both current nested and legacy prelogin KDF payloads', async () => {
     const fetch = vi
       .fn<FetchLike>()

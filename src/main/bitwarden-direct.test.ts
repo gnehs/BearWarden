@@ -1495,6 +1495,125 @@ describe('BitwardenDirectClient', () => {
     expect(mutationRequests).toBe(2)
   })
 
+  it('supports official and Vaultwarden Email 2FA setup with fresh proofs', async () => {
+    const factorEmail = 'factor@example.test'
+    const bodies: JsonObject[] = []
+    let preloginRequests = 0
+    let mode: 'official' | 'vaultwarden' = 'official'
+    let failMutation = false
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url, init) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          preloginRequests += 1
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/api/two-factor/get-email')) {
+          bodies.push(JSON.parse(String(init?.body)))
+          return mode === 'official'
+            ? jsonResponse({
+                email: { enabled: false, email: null },
+                userVerificationToken: 'bound-email-capability',
+                object: 'twoFactorEmail'
+              })
+            : jsonResponse({ enabled: false, email: null, object: 'twoFactorEmail' })
+        }
+        if (url.endsWith('/api/two-factor/send-email')) {
+          bodies.push(JSON.parse(String(init?.body)))
+          if (failMutation) throw new TypeError('connection closed after request write')
+          return new Response(null, { status: 204 })
+        }
+        if (url.endsWith('/api/two-factor/email')) {
+          bodies.push(JSON.parse(String(init?.body)))
+          if (failMutation) throw new TypeError('connection closed after request write')
+          return mode === 'official'
+            ? jsonResponse({
+                email: { enabled: true, email: factorEmail },
+                object: 'twoFactorEmailUpdate'
+              })
+            : jsonResponse({ enabled: 'true', email: factorEmail, object: 'twoFactorEmail' })
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: '90000000-0000-4000-8000-000000000099',
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.beginEmailTwoFactorSetup(PASSWORD)).resolves.toMatchObject({
+      verificationMode: 'server-token',
+      userVerificationToken: 'bound-email-capability'
+    })
+    const officialSend = {
+      email: factorEmail,
+      verificationMode: 'server-token' as const,
+      userVerificationToken: 'bound-email-capability'
+    }
+    await expect(client.sendEmailTwoFactorSetup(officialSend)).resolves.toBeUndefined()
+    expect(officialSend.userVerificationToken).toBe('')
+
+    failMutation = true
+    const officialComplete = {
+      email: factorEmail,
+      token: '123456',
+      verificationMode: 'server-token' as const,
+      userVerificationToken: 'bound-email-capability'
+    }
+    await expect(client.completeEmailTwoFactorSetup(officialComplete)).rejects.toMatchObject({
+      code: 'TWO_FACTOR_MUTATION_UNKNOWN'
+    })
+    expect(officialComplete.token).toBe('')
+    expect(officialComplete.userVerificationToken).toBe('')
+
+    failMutation = false
+    mode = 'vaultwarden'
+    await expect(client.beginEmailTwoFactorSetup(PASSWORD)).resolves.toMatchObject({
+      verificationMode: 'master-password',
+      userVerificationToken: null
+    })
+    const vaultwardenSend = {
+      email: factorEmail,
+      verificationMode: 'master-password' as const,
+      masterPassword: PASSWORD
+    }
+    await expect(client.sendEmailTwoFactorSetup(vaultwardenSend)).resolves.toBeUndefined()
+    expect(vaultwardenSend.masterPassword).toBe('')
+    const vaultwardenComplete = {
+      email: factorEmail,
+      token: '654321',
+      verificationMode: 'master-password' as const,
+      masterPassword: PASSWORD
+    }
+    await expect(client.completeEmailTwoFactorSetup(vaultwardenComplete)).resolves.toBeUndefined()
+    expect(vaultwardenComplete.masterPassword).toBe('')
+    expect(vaultwardenComplete.token).toBe('')
+
+    expect(preloginRequests).toBe(4)
+    expect(bodies[1]).toEqual({
+      email: factorEmail,
+      userVerificationToken: 'bound-email-capability'
+    })
+    expect(bodies[2]).toEqual({
+      email: factorEmail,
+      token: '123456',
+      userVerificationToken: 'bound-email-capability'
+    })
+    expect(bodies[4]).toMatchObject({ email: factorEmail, masterPasswordHash: expect.any(String) })
+    expect(bodies[5]).toMatchObject({
+      email: factorEmail,
+      token: '654321',
+      masterPasswordHash: expect.any(String)
+    })
+  })
+
   it('passes authenticated equivalent-domain settings through without requiring decrypted vault keys', async () => {
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',

@@ -109,6 +109,13 @@ export interface BitwardenAuthenticatorSetup {
   userVerificationToken: string | null
 }
 
+export interface BitwardenEmailTwoFactorSetup {
+  enabled: boolean
+  email: string | null
+  verificationMode: 'server-token' | 'master-password'
+  userVerificationToken: string | null
+}
+
 /**
  * Vaultwarden returns a synthetic, otherwise-successful row when its HIBP API
  * key is absent. Keep that distinct from both a clean account and a breach.
@@ -921,6 +928,81 @@ export class BitwardenHttpClient {
     }
   }
 
+  async getEmailTwoFactorSetup(
+    masterPasswordHash: string,
+    signal?: AbortSignal
+  ): Promise<BitwardenEmailTwoFactorSetup> {
+    const body = { masterPasswordHash: assertMasterPasswordHash(masterPasswordHash) }
+    try {
+      const response = await this.requestJson('POST', `${this.urls.apiUrl}/two-factor/get-email`, {
+        body,
+        signal,
+        maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+        tooLargeCode: 'TOO_LARGE'
+      })
+      return parseEmailTwoFactorSetup(response)
+    } catch (error) {
+      throw normalizeUserVerificationError(error)
+    } finally {
+      body.masterPasswordHash = ''
+    }
+  }
+
+  async sendEmailTwoFactorSetup(
+    request: {
+      email: string
+      verificationMode: BitwardenEmailTwoFactorSetup['verificationMode']
+      userVerificationToken?: string
+      masterPasswordHash?: string
+    },
+    signal?: AbortSignal
+  ): Promise<void> {
+    const body: JsonObject = { email: assertTwoFactorEmail(request.email) }
+    try {
+      appendEmailVerification(body, request)
+      await this.requestJson('POST', `${this.urls.apiUrl}/two-factor/send-email`, {
+        body,
+        signal,
+        retry: false,
+        maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+        tooLargeCode: 'TOO_LARGE'
+      })
+    } catch (error) {
+      throw normalizeUserVerificationError(error)
+    } finally {
+      clearEmailTwoFactorBody(body)
+    }
+  }
+
+  async enableEmailTwoFactor(
+    request: {
+      email: string
+      token: string
+      verificationMode: BitwardenEmailTwoFactorSetup['verificationMode']
+      userVerificationToken?: string
+      masterPasswordHash?: string
+    },
+    signal?: AbortSignal
+  ): Promise<void> {
+    const email = assertTwoFactorEmail(request.email)
+    const body: JsonObject = { email, token: assertEmailVerificationCode(request.token) }
+    try {
+      appendEmailVerification(body, request)
+      const response = await this.requestJson('PUT', `${this.urls.apiUrl}/two-factor/email`, {
+        body,
+        signal,
+        retry: false,
+        maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+        tooLargeCode: 'TOO_LARGE'
+      })
+      parseEnabledEmailTwoFactor(response, email)
+    } catch (error) {
+      throw normalizeUserVerificationError(error)
+    } finally {
+      clearEmailTwoFactorBody(body)
+    }
+  }
+
   /**
    * Queries the authenticated Vaultwarden HIBP proxy. The server, rather than
    * this client, forwards the complete email address to HIBP when configured.
@@ -1721,7 +1803,7 @@ export class BitwardenHttpClient {
         throw new BitwardenHttpError('NETWORK')
       }
 
-      if (response.status === 401 && authenticate && !refreshed) {
+      if (response.status === 401 && authenticate && !refreshed && request.retry !== false) {
         refreshed = true
         // A different request may already have rotated this account's token.
         // In that case retry with the current token instead of spending the
@@ -1928,6 +2010,106 @@ function parseEnabledAuthenticator(value: JsonValue, expectedKey: string): void 
   const nested = value.authenticator ?? value.Authenticator
   const details = parseAuthenticatorDetails(nested === undefined ? value : nested)
   if (!details.enabled || details.key !== expectedKey) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+}
+
+function assertTwoFactorEmail(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 256 ||
+    value.trim() !== value ||
+    /[\0\r\n]/u.test(value) ||
+    !/^[^\s@]+@[^\s@]+$/u.test(value)
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function assertEmailVerificationCode(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 50 ||
+    value.trim() !== value ||
+    /[\0\r\n]/u.test(value)
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function appendEmailVerification(
+  body: JsonObject,
+  request: {
+    verificationMode: BitwardenEmailTwoFactorSetup['verificationMode']
+    userVerificationToken?: string
+    masterPasswordHash?: string
+  }
+): void {
+  if (request.verificationMode === 'server-token') {
+    body.userVerificationToken = assertVerificationToken(request.userVerificationToken)
+  } else if (request.verificationMode === 'master-password') {
+    body.masterPasswordHash = assertMasterPasswordHash(request.masterPasswordHash)
+  } else {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+}
+
+function clearEmailTwoFactorBody(body: JsonObject): void {
+  body.email = ''
+  if (typeof body.token === 'string') body.token = ''
+  if (typeof body.userVerificationToken === 'string') body.userVerificationToken = ''
+  if (typeof body.masterPasswordHash === 'string') body.masterPasswordHash = ''
+}
+
+function parseEmailTwoFactorDetails(value: JsonValue): { enabled: boolean; email: string | null } {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const enabled = value.enabled ?? value.Enabled
+  const rawEmail = value.email ?? value.Email
+  if (typeof enabled !== 'boolean') throw new BitwardenHttpError('INVALID_RESPONSE')
+  const email = rawEmail === null || rawEmail === undefined ? null : assertTwoFactorEmail(rawEmail)
+  if (enabled && email === null) throw new BitwardenHttpError('INVALID_RESPONSE')
+  return { enabled, email }
+}
+
+function parseEmailTwoFactorSetup(value: JsonValue): BitwardenEmailTwoFactorSetup {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const object = value.object ?? value.Object
+  if (object !== undefined && object !== 'twoFactorEmail') {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  const nested = value.email ?? value.Email
+  if (isRecord(nested)) {
+    return {
+      ...parseEmailTwoFactorDetails(nested),
+      verificationMode: 'server-token',
+      userVerificationToken: assertVerificationToken(
+        value.userVerificationToken ?? value.UserVerificationToken
+      )
+    }
+  }
+  return {
+    ...parseEmailTwoFactorDetails(value),
+    verificationMode: 'master-password',
+    userVerificationToken: null
+  }
+}
+
+function parseEnabledEmailTwoFactor(value: JsonValue, expectedEmail: string): void {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const object = value.object ?? value.Object
+  if (object !== undefined && object !== 'twoFactorEmail' && object !== 'twoFactorEmailUpdate') {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  const nested = value.email ?? value.Email
+  const detailsSource = isRecord(nested) ? nested : value
+  const rawEnabled = detailsSource.enabled ?? detailsSource.Enabled
+  const enabled = rawEnabled === true || rawEnabled === 'true'
+  const rawEmail = detailsSource.email ?? detailsSource.Email
+  if (!enabled || assertTwoFactorEmail(rawEmail).toLowerCase() !== expectedEmail.toLowerCase()) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
 }
