@@ -104,7 +104,13 @@ const api: BearWardenAPI = {
     copyHistory: (request) => ipcRenderer.invoke(IPC_CHANNELS.generatorHistoryCopy, request)
   },
   sshKeys: {
-    generate: () => ipcRenderer.invoke(IPC_CHANNELS.sshKeyGenerate)
+    generate: () => ipcRenderer.invoke(IPC_CHANNELS.sshKeyGenerate),
+    beginImport: () => ipcRenderer.invoke(IPC_CHANNELS.sshKeyBeginImport),
+    submitImportPassphrase: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.sshKeySubmitImportPassphrase, request),
+    cancelImport: (request) => ipcRenderer.invoke(IPC_CHANNELS.sshKeyCancelImport, request),
+    createImported: (request) => ipcRenderer.invoke(IPC_CHANNELS.sshKeyCreateImported, request),
+    updateImported: (request) => ipcRenderer.invoke(IPC_CHANNELS.sshKeyUpdateImported, request)
   },
   sync: {
     status: () => ipcRenderer.invoke(IPC_CHANNELS.syncStatus),

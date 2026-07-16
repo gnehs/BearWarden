@@ -1726,6 +1726,25 @@ export class VaultService {
     return this.exclusive(async () => this.currentStatus())
   }
 
+  /**
+   * Captures the unlocked-vault epoch for short-lived main-process capabilities. Callers must
+   * re-enter normal service operations afterwards; this intentionally does not hold the mutex.
+   */
+  unlockedGeneration(): Promise<number> {
+    return this.exclusive(async () => {
+      this.requireData()
+      return this.generation
+    })
+  }
+
+  /** Runs a short, main-process-only capability commit against one unlocked-vault epoch. */
+  runUnlockedOperation<T>(operation: (generation: number) => Promise<T>): Promise<T> {
+    return this.exclusive(async () => {
+      this.requireData()
+      return operation(this.generation)
+    })
+  }
+
   setup(masterPassword: string): Promise<VaultStatus> {
     return this.exclusive(async () => {
       if (await this.store.exists()) throw new VaultError('ALREADY_INITIALIZED')

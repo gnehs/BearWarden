@@ -22,6 +22,7 @@ import { registerVaultIpc } from './vault-ipc'
 import { VaultService } from './vault-service'
 import { VaultAttachmentFileService } from './vault-attachment-files'
 import { VaultPortabilityService } from './vault-portability'
+import { SshKeyImportSessionStore } from './ssh-key-import-session'
 import icon from '../../resources/icon.png?asset'
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
@@ -32,6 +33,7 @@ let mainWindow: BrowserWindow | null = null
 let vault: VaultService | null = null
 let settings: AppSettingsService | null = null
 let autoSync: AutoSyncCoordinator | null = null
+let sshKeyImportSessions: SshKeyImportSessionStore | null = null
 let contentProtectionEnabled = true
 let vaultLockGeneration = 0
 let rendererHandlesLockRequests = false
@@ -142,10 +144,15 @@ async function unlockSyncWithLocalPassword(masterPassword: string): Promise<void
   if (status.state === 'ready') autoSync?.request()
 }
 
-async function lockVault(): Promise<void> {
-  if (!vault) return
+function beforeVaultLock(): void {
   autoSync?.cancel()
   vaultLockGeneration += 1
+  sshKeyImportSessions?.clearAll()
+}
+
+async function lockVault(): Promise<void> {
+  if (!vault) return
+  beforeVaultLock()
   await vault.lock()
   notifyVaultLocked()
 }
@@ -368,14 +375,19 @@ if (hasSingleInstanceLock)
     )
     await settings.initialize()
 
+    sshKeyImportSessions = new SshKeyImportSessionStore({
+      readClipboard: () => clipboard.readText()
+    })
+
     registerVaultIpc({
       vault,
       portability,
       settings,
       getMainWindow: () => mainWindow,
+      sshKeyImportSessions,
+      beforeLock: beforeVaultLock,
       afterLock: () => {
         autoSync?.cancel()
-        vaultLockGeneration += 1
         notifyVaultLocked()
       },
       afterUnlock: unlockSyncWithLocalPassword,
@@ -411,6 +423,7 @@ if (hasSingleInstanceLock)
 
 app.on('before-quit', () => {
   sensitiveClipboard.clearIfOwned()
+  sshKeyImportSessions?.clearAll()
   autoSync?.dispose()
   vault?.dispose()
   settings?.dispose()

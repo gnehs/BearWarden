@@ -22,6 +22,8 @@ import type { AppSettingsService } from './app-settings'
 import { VaultError } from './vault-errors'
 import { registerVaultIpc, RepromptAuthorizationStore } from './vault-ipc'
 import type { VaultService } from './vault-service'
+import { SshKeyImportSessionStore } from './ssh-key-import-session'
+import { SshKeyImportError } from './ssh-key-import'
 
 beforeEach(() => electronMock.handlers.clear())
 
@@ -225,6 +227,7 @@ describe('registerVaultIpc reprompt gate', () => {
       vault: vault as unknown as VaultService,
       portability: portability as unknown as Parameters<typeof registerVaultIpc>[0]['portability'],
       settings: {} as AppSettingsService,
+      sshKeyImportSessions: new SshKeyImportSessionStore({ readClipboard: () => '' }),
       getMainWindow: () =>
         ({ isDestroyed: () => false, webContents }) as unknown as ReturnType<
           Parameters<typeof registerVaultIpc>[0]['getMainWindow']
@@ -729,5 +732,282 @@ describe('registerVaultIpc reprompt gate', () => {
       ids,
       masterPassword: 'correct horse battery staple'
     })
+  })
+})
+
+describe('registerVaultIpc SSH clipboard imports', () => {
+  function harness(): {
+    event: { sender: { id: number }; senderFrame: { url: string } }
+    secondEvent: { sender: { id: number }; senderFrame: { url: string } }
+    useSecondSender: () => void
+    vault: Record<string, ReturnType<typeof vi.fn>>
+    setGeneration: (generation: number) => void
+    setTargetType: (type: 'login' | 'sshKey') => void
+    reads: () => number
+    beforeLock: ReturnType<typeof vi.fn>
+    afterMutation: ReturnType<typeof vi.fn>
+  } {
+    let reads = 0
+    let generation = 9
+    let targetType: 'login' | 'sshKey' = 'sshKey'
+    let currentWindow: { isDestroyed: () => boolean; webContents: unknown }
+    const mainFrame = { url: 'app://bearwarden/index.html' }
+    const webContents = {
+      id: 17,
+      mainFrame,
+      getURL: () => mainFrame.url,
+      isDestroyed: () => false
+    }
+    const secondFrame = { url: 'app://bearwarden/index.html' }
+    const secondWebContents = {
+      id: 18,
+      mainFrame: secondFrame,
+      getURL: () => secondFrame.url,
+      isDestroyed: () => false
+    }
+    currentWindow = { isDestroyed: () => false, webContents }
+    const event = { sender: webContents, senderFrame: mainFrame }
+    const secondEvent = { sender: secondWebContents, senderFrame: secondFrame }
+    const sessions = new SshKeyImportSessionStore({
+      readClipboard: () => {
+        reads += 1
+        return 'encrypted'
+      },
+      parser: {
+        importSshKey: (key, password) => {
+          if (key.toString('utf8') !== 'encrypted') throw new SshKeyImportError('ParsingError')
+          if (!password) throw new SshKeyImportError('PasswordRequired')
+          if (password.toString('utf8') !== 'correct passphrase') {
+            throw new SshKeyImportError('WrongPassword')
+          }
+          return {
+            privateKey: 'main-process-private-key',
+            publicKey: 'ssh-ed25519 public-key',
+            fingerprint: 'SHA256:main-process-fingerprint'
+          }
+        }
+      }
+    })
+    const vault: Record<string, ReturnType<typeof vi.fn>> = {
+      unlockedGeneration: vi.fn(async () => generation),
+      runUnlockedOperation: vi.fn(async (operation) => operation(generation)),
+      authorizeLogin: vi.fn(async () => generation),
+      getLogin: vi.fn(async () => ({ type: targetType })),
+      runAuthorizedOperation: vi.fn(async (validate, operation) =>
+        operation((ids: readonly string[]) => {
+          if (!validate(ids, { generation })) throw new VaultError('REPROMPT_REQUIRED')
+        })
+      ),
+      createLogin: vi.fn(async (request) => ({
+        id: 'created',
+        type: request.type,
+        publicKey: request.publicKey,
+        fingerprint: request.fingerprint
+      })),
+      updateLogin: vi.fn(async (request) => ({
+        id: request.id,
+        type: 'sshKey',
+        publicKey: request.publicKey,
+        fingerprint: request.fingerprint
+      })),
+      lock: vi.fn(async () => ({ state: 'locked' }))
+    }
+    const beforeLock = vi.fn(() => sessions.clearAll())
+    const afterMutation = vi.fn()
+    registerVaultIpc({
+      vault: vault as unknown as VaultService,
+      portability: {} as Parameters<typeof registerVaultIpc>[0]['portability'],
+      settings: {} as AppSettingsService,
+      getMainWindow: () => currentWindow as never,
+      sshKeyImportSessions: sessions,
+      beforeLock,
+      afterMutation,
+      repromptNow: () => 1_000,
+      repromptRandomBytes: (size) => Buffer.alloc(size, 1)
+    })
+    return {
+      event,
+      secondEvent,
+      useSecondSender: () => {
+        currentWindow = { isDestroyed: () => false, webContents: secondWebContents }
+      },
+      vault,
+      setGeneration: (next) => {
+        generation = next
+      },
+      setTargetType: (type) => {
+        targetType = type
+      },
+      reads: () => reads,
+      beforeLock,
+      afterMutation
+    }
+  }
+
+  it('reads the clipboard once and never returns imported private material to the renderer', async () => {
+    const { event, reads, vault, afterMutation } = harness()
+    const begin = electronMock.handlers.get(IPC_CHANNELS.sshKeyBeginImport)!
+    const submit = electronMock.handlers.get(IPC_CHANNELS.sshKeySubmitImportPassphrase)!
+    const create = electronMock.handlers.get(IPC_CHANNELS.sshKeyCreateImported)!
+
+    await expect(
+      begin(
+        {
+          ...(event as Record<string, unknown>),
+          senderFrame: { url: 'https://untrusted.example.invalid' }
+        },
+        undefined
+      )
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    expect(reads()).toBe(0)
+
+    const awaiting = (await begin(event, undefined)) as { status: string; token: string }
+    expect(reads()).toBe(1)
+    expect(awaiting).toMatchObject({ status: 'awaitingPassphrase' })
+    expect(awaiting).not.toHaveProperty('privateKey')
+
+    await expect(
+      submit(event, { token: awaiting.token, passphrase: 'incorrect passphrase' })
+    ).resolves.toEqual({ status: 'error', code: 'WrongPassword' })
+    const ready = (await submit(event, {
+      token: awaiting.token,
+      passphrase: 'correct passphrase'
+    })) as { status: string; token: string; publicKey: string; fingerprint: string }
+    expect(ready).toMatchObject({
+      status: 'ready',
+      publicKey: 'ssh-ed25519 public-key',
+      fingerprint: 'SHA256:main-process-fingerprint'
+    })
+    expect(ready).not.toHaveProperty('privateKey')
+
+    const created = await create(event, {
+      importToken: ready.token,
+      name: 'Imported SSH key',
+      type: 'login',
+      privateKey: 'renderer-controlled-private-key',
+      publicKey: 'renderer-controlled-public-key',
+      fingerprint: 'renderer-controlled-fingerprint'
+    })
+    expect(vault.createLogin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'sshKey',
+        privateKey: 'main-process-private-key',
+        publicKey: 'ssh-ed25519 public-key',
+        fingerprint: 'SHA256:main-process-fingerprint'
+      })
+    )
+    expect(created).not.toHaveProperty('privateKey')
+    expect(afterMutation).toHaveBeenCalledTimes(1)
+    await expect(create(event, { importToken: ready.token, name: 'Again' })).rejects.toThrow(
+      'BEARWARDEN:INVALID_INPUT'
+    )
+  })
+
+  it('strictly validates passphrases and binds sessions to the trusted sender and vault generation', async () => {
+    const { event, secondEvent, useSecondSender, setGeneration } = harness()
+    const begin = electronMock.handlers.get(IPC_CHANNELS.sshKeyBeginImport)!
+    const submit = electronMock.handlers.get(IPC_CHANNELS.sshKeySubmitImportPassphrase)!
+    const awaiting = (await begin(event, undefined)) as { token: string }
+
+    await expect(submit(event, { token: awaiting.token, passphrase: '' })).rejects.toThrow(
+      'BEARWARDEN:INVALID_INPUT'
+    )
+    useSecondSender()
+    await expect(
+      submit(secondEvent, { token: awaiting.token, passphrase: 'correct passphrase' })
+    ).resolves.toEqual({ status: 'error', code: 'SessionUnavailable' })
+
+    const next = (await begin(secondEvent, undefined)) as { token: string }
+    setGeneration(10)
+    await expect(
+      submit(secondEvent, { token: next.token, passphrase: 'correct passphrase' })
+    ).resolves.toEqual({ status: 'error', code: 'SessionUnavailable' })
+  })
+
+  it('clears import sessions before locking and keeps update reprompt authorization and mutation sync', async () => {
+    const { event, vault, beforeLock, afterMutation } = harness()
+    const begin = electronMock.handlers.get(IPC_CHANNELS.sshKeyBeginImport)!
+    const submit = electronMock.handlers.get(IPC_CHANNELS.sshKeySubmitImportPassphrase)!
+    const lock = electronMock.handlers.get(IPC_CHANNELS.vaultLock)!
+    const authorize = electronMock.handlers.get(IPC_CHANNELS.loginAuthorize)!
+    const update = electronMock.handlers.get(IPC_CHANNELS.sshKeyUpdateImported)!
+
+    const awaiting = (await begin(event, undefined)) as { token: string }
+    const ready = (await submit(event, {
+      token: awaiting.token,
+      passphrase: 'correct passphrase'
+    })) as { token: string }
+    const authorization = (await authorize(event, {
+      id: '70000000-0000-4000-8000-000000000001',
+      masterPassword: 'correct horse battery staple'
+    })) as { token: string }
+    await expect(
+      update(event, {
+        id: '70000000-0000-4000-8000-000000000001',
+        importToken: ready.token,
+        authorizationToken: authorization.token,
+        expectedUpdatedAt: '2026-07-16T00:00:00.000Z'
+      })
+    ).resolves.toMatchObject({ type: 'sshKey' })
+    expect(vault.updateLogin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        privateKey: 'main-process-private-key',
+        publicKey: 'ssh-ed25519 public-key',
+        fingerprint: 'SHA256:main-process-fingerprint'
+      })
+    )
+    expect(afterMutation).toHaveBeenCalledTimes(1)
+
+    const secondAwaiting = (await begin(event, undefined)) as { token: string }
+    const secondReady = (await submit(event, {
+      token: secondAwaiting.token,
+      passphrase: 'correct passphrase'
+    })) as { token: string }
+    await lock(event, undefined)
+    expect(beforeLock).toHaveBeenCalledTimes(1)
+    const authorizationAfterLock = (await authorize(event, {
+      id: '70000000-0000-4000-8000-000000000001',
+      masterPassword: 'correct horse battery staple'
+    })) as { token: string }
+    await expect(
+      update(event, {
+        id: '70000000-0000-4000-8000-000000000001',
+        importToken: secondReady.token,
+        authorizationToken: authorizationAfterLock.token,
+        expectedUpdatedAt: '2026-07-16T00:00:00.000Z'
+      })
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    expect(vault.updateLogin).toHaveBeenCalledTimes(1)
+    expect(afterMutation).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects a non-SSH update before consuming the imported token', async () => {
+    const { event, setTargetType, afterMutation } = harness()
+    const begin = electronMock.handlers.get(IPC_CHANNELS.sshKeyBeginImport)!
+    const submit = electronMock.handlers.get(IPC_CHANNELS.sshKeySubmitImportPassphrase)!
+    const authorize = electronMock.handlers.get(IPC_CHANNELS.loginAuthorize)!
+    const update = electronMock.handlers.get(IPC_CHANNELS.sshKeyUpdateImported)!
+    const id = '70000000-0000-4000-8000-000000000001'
+    const awaiting = (await begin(event, undefined)) as { token: string }
+    const ready = (await submit(event, {
+      token: awaiting.token,
+      passphrase: 'correct passphrase'
+    })) as { token: string }
+    const authorization = (await authorize(event, {
+      id,
+      masterPassword: 'correct horse battery staple'
+    })) as { token: string }
+
+    setTargetType('login')
+    await expect(
+      update(event, { id, importToken: ready.token, authorizationToken: authorization.token })
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    expect(afterMutation).not.toHaveBeenCalled()
+
+    setTargetType('sshKey')
+    await expect(
+      update(event, { id, importToken: ready.token, authorizationToken: authorization.token })
+    ).resolves.toMatchObject({ type: 'sshKey' })
+    expect(afterMutation).toHaveBeenCalledTimes(1)
   })
 })

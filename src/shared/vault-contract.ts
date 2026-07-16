@@ -56,6 +56,11 @@ export const IPC_CHANNELS = {
   generatorHistoryClear: 'generator:history-clear',
   generatorHistoryCopy: 'generator:history-copy',
   sshKeyGenerate: 'ssh-key:generate',
+  sshKeyBeginImport: 'ssh-key:begin-import',
+  sshKeySubmitImportPassphrase: 'ssh-key:submit-import-passphrase',
+  sshKeyCancelImport: 'ssh-key:cancel-import',
+  sshKeyCreateImported: 'ssh-key:create-imported',
+  sshKeyUpdateImported: 'ssh-key:update-imported',
   settingsGet: 'settings:get',
   settingsUpdate: 'settings:update',
   settingsEnableTouchId: 'settings:enable-touch-id',
@@ -663,6 +668,42 @@ export interface SshKeyMaterial {
   fingerprint: string
 }
 
+/** Renderer-safe result of an SSH clipboard import. Private key material remains in main only. */
+export type SshKeyImportResult =
+  | { status: 'awaitingPassphrase'; token: string; expiresAt: number }
+  | { status: 'ready'; token: string; expiresAt: number; publicKey: string; fingerprint: string }
+  | {
+      status: 'error'
+      code:
+        | 'EmptyClipboard'
+        | 'ClipboardTooLarge'
+        | 'ParsingError'
+        | 'UnsupportedKeyType'
+        | 'WrongPassword'
+        | 'InvalidPassphrase'
+        | 'SessionUnavailable'
+        | 'SessionLimitReached'
+    }
+
+export interface SshKeyImportPassphraseRequest {
+  token: string
+  passphrase: string
+}
+
+export interface SshKeyImportCancelRequest {
+  token: string
+}
+
+/** The token identifies main-process-only imported key material. Supplied SSH fields are ignored. */
+export interface SshKeyCreateImportedRequest extends LoginCreateRequest {
+  importToken: string
+}
+
+/** The token identifies main-process-only imported key material. Supplied SSH fields are ignored. */
+export interface SshKeyUpdateImportedRequest extends LoginUpdateRequest {
+  importToken: string
+}
+
 export type AppTheme = 'system' | 'light' | 'dark'
 
 export interface AppSettings {
@@ -761,6 +802,11 @@ export interface BearWardenAPI {
   }
   sshKeys: {
     generate: () => Promise<SshKeyMaterial>
+    beginImport: () => Promise<SshKeyImportResult>
+    submitImportPassphrase: (request: SshKeyImportPassphraseRequest) => Promise<SshKeyImportResult>
+    cancelImport: (request: SshKeyImportCancelRequest) => Promise<void>
+    createImported: (request: SshKeyCreateImportedRequest) => Promise<LoginView>
+    updateImported: (request: SshKeyUpdateImportedRequest) => Promise<LoginView>
   }
   sync: {
     status: () => Promise<SyncStatus>

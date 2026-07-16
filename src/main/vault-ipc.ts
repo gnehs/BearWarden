@@ -37,6 +37,10 @@ import {
   type LoginMoveManyRequest,
   type LoginUpdateRequest,
   type ItemFieldRequest,
+  type SshKeyImportCancelRequest,
+  type SshKeyImportPassphraseRequest,
+  type SshKeyCreateImportedRequest,
+  type SshKeyUpdateImportedRequest,
   type VaultCustomFieldSource,
   type VaultCustomFieldType,
   type VaultCustomFieldUpdate,
@@ -59,6 +63,7 @@ import { isVaultError, VaultError } from './vault-errors'
 import type { VaultService } from './vault-service'
 import type { VaultPortabilityService } from './vault-portability'
 import { showItemContextMenu } from './item-context-menu'
+import { SshKeyImportSessionStore } from './ssh-key-import-session'
 
 type RecordValue = Record<string, unknown>
 
@@ -69,6 +74,8 @@ const REPROMPT_TOKEN_TTL_MS = 60_000
 const MAX_REPROMPT_TOKENS = 128
 const MAX_LOGIN_URIS = 1_000
 const MAX_URI_LENGTH = 4_096
+const MAX_SSH_KEY_IMPORT_TOKEN_LENGTH = 128
+const MAX_SSH_KEY_IMPORT_PASSPHRASE_BYTES = 1_024
 
 interface RepromptAuthorizationEntry {
   senderId: number
@@ -161,6 +168,9 @@ export interface VaultIpcOptions {
   portability: VaultPortabilityService
   settings: AppSettingsService
   getMainWindow: () => BrowserWindow | null
+  /** Injected by the main process so clipboard reads and private material never enter preload. */
+  sshKeyImportSessions: SshKeyImportSessionStore
+  beforeLock?: () => void
   afterLock?: () => void
   afterUnlock?: (masterPassword: string) => void | Promise<void>
   afterMutation?: () => void
@@ -659,7 +669,10 @@ function parseFolderReorder(value: unknown): FolderReorderRequest {
   return { orderedIds: [...record.orderedIds] as string[] }
 }
 
-function parseLoginCreate(value: unknown): LoginCreateRequest {
+function parseLoginCreate(
+  value: unknown,
+  allowedAdditionalKeys: readonly string[] = []
+): LoginCreateRequest {
   const fieldKeys = [
     'username',
     'password',
@@ -702,7 +715,8 @@ function parseLoginCreate(value: unknown): LoginCreateRequest {
     'reprompt',
     'customFields',
     'uris',
-    ...fieldKeys
+    ...fieldKeys,
+    ...allowedAdditionalKeys
   ])
   const result: LoginCreateRequest = {
     name: requiredString(record, 'name')
@@ -739,7 +753,10 @@ function parseLoginCreate(value: unknown): LoginCreateRequest {
   return result
 }
 
-function parseLoginUpdate(value: unknown): LoginUpdateRequest {
+function parseLoginUpdate(
+  value: unknown,
+  allowedAdditionalKeys: readonly string[] = []
+): LoginUpdateRequest {
   const fieldKeys = [
     'username',
     'password',
@@ -784,7 +801,8 @@ function parseLoginUpdate(value: unknown): LoginUpdateRequest {
     'authorizationToken',
     'customFields',
     'uris',
-    ...fieldKeys
+    ...fieldKeys,
+    ...allowedAdditionalKeys
   ])
   const result: LoginUpdateRequest = { id: requiredString(record, 'id') }
   const authorizationToken = optionalAuthorizationToken(record)
@@ -814,6 +832,46 @@ function parseLoginUpdate(value: unknown): LoginUpdateRequest {
   if (customFields !== undefined) result.customFields = customFields
   if (record.uris !== undefined) result.uris = parseLoginUris(record.uris)
   return result
+}
+
+function parseSshKeyImportToken(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > MAX_SSH_KEY_IMPORT_TOKEN_LENGTH ||
+    Buffer.byteLength(value, 'utf8') > MAX_SSH_KEY_IMPORT_TOKEN_LENGTH ||
+    !/^[A-Za-z0-9_-]+$/u.test(value)
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return value
+}
+
+function parseSshKeyImportPassphrase(value: unknown): SshKeyImportPassphraseRequest {
+  const record = exactRecord(value, ['token', 'passphrase'])
+  const passphrase = requiredString(record, 'passphrase')
+  const bytes = Buffer.byteLength(passphrase, 'utf8')
+  if (bytes < 1 || bytes > MAX_SSH_KEY_IMPORT_PASSPHRASE_BYTES) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return { token: parseSshKeyImportToken(record.token), passphrase }
+}
+
+function parseSshKeyImportCancel(value: unknown): SshKeyImportCancelRequest {
+  const record = exactRecord(value, ['token'])
+  return { token: parseSshKeyImportToken(record.token) }
+}
+
+function parseSshKeyCreateImported(value: unknown): SshKeyCreateImportedRequest {
+  const request = parseLoginCreate(value, ['importToken'])
+  const token = parseSshKeyImportToken((value as RecordValue).importToken)
+  return { ...request, importToken: token }
+}
+
+function parseSshKeyUpdateImported(value: unknown): SshKeyUpdateImportedRequest {
+  const request = parseLoginUpdate(value, ['importToken'])
+  const token = parseSshKeyImportToken((value as RecordValue).importToken)
+  return { ...request, importToken: token }
 }
 
 function parseLoginUris(value: unknown): VaultLoginUri[] {
@@ -1106,6 +1164,7 @@ function registerHandler<T>(
 
 export function registerVaultIpc(options: VaultIpcOptions): () => void {
   const { vault, portability, settings, getMainWindow } = options
+  const sshKeyImportSessions = options.sshKeyImportSessions
   const authorizations = new RepromptAuthorizationStore(
     options.repromptNow,
     options.repromptRandomBytes
@@ -1165,6 +1224,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     })
   })
   registerHandler(IPC_CHANNELS.vaultLock, getMainWindow, async () => {
+    options.beforeLock?.()
     authorizations.clear()
     const status = await vault.lock()
     options.afterLock?.()
@@ -1501,6 +1561,101 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     parseNoInput(input)
     return vault.generateSshKey()
   })
+  const importContext = async (
+    event: IpcMainInvokeEvent
+  ): Promise<{ senderId: number; vaultGeneration: number }> => ({
+    senderId: event.sender.id,
+    vaultGeneration: await vault.unlockedGeneration()
+  })
+  const recheckImportResult = async <T>(
+    context: { senderId: number; vaultGeneration: number },
+    result: T
+  ): Promise<T> => {
+    try {
+      await vault.runUnlockedOperation(async (generation) => {
+        if (generation !== context.vaultGeneration) throw new VaultError('LOCKED')
+      })
+      return result
+    } catch (error) {
+      const token =
+        typeof result === 'object' && result !== null && 'token' in result
+          ? (result as { token?: unknown }).token
+          : undefined
+      if (typeof token === 'string') sshKeyImportSessions.cancel(token, context)
+      throw error
+    }
+  }
+  registerHandler(IPC_CHANNELS.sshKeyBeginImport, getMainWindow, async (event, input) => {
+    parseNoInput(input)
+    const context = await importContext(event)
+    const result = sshKeyImportSessions.begin(context)
+    return recheckImportResult(context, result)
+  })
+  registerHandler(
+    IPC_CHANNELS.sshKeySubmitImportPassphrase,
+    getMainWindow,
+    async (event, input) => {
+      const request = parseSshKeyImportPassphrase(input)
+      const context = await importContext(event)
+      const result = sshKeyImportSessions.submitPassphrase(
+        request.token,
+        context,
+        request.passphrase
+      )
+      return recheckImportResult(context, result)
+    }
+  )
+  registerHandler(IPC_CHANNELS.sshKeyCancelImport, getMainWindow, async (event, input) => {
+    const request = parseSshKeyImportCancel(input)
+    const context = await importContext(event)
+    sshKeyImportSessions.cancel(request.token, context)
+  })
+  registerHandler(IPC_CHANNELS.sshKeyCreateImported, getMainWindow, (event, input) => {
+    const request = parseSshKeyCreateImported(input)
+    return vault.runUnlockedOperation(async (generation) => {
+      const consumed = sshKeyImportSessions.consumeReady(request.importToken, {
+        senderId: event.sender.id,
+        vaultGeneration: generation
+      })
+      if (consumed.status !== 'ready') throw new VaultError('INVALID_INPUT')
+      const draft = { ...request }
+      delete (draft as { importToken?: unknown }).importToken
+      return afterMutation(
+        vault.createLogin({
+          ...draft,
+          type: 'sshKey',
+          privateKey: consumed.material.privateKey,
+          publicKey: consumed.material.publicKey,
+          fingerprint: consumed.material.fingerprint
+        })
+      )
+    })
+  })
+  registerHandler(IPC_CHANNELS.sshKeyUpdateImported, getMainWindow, (event, input) => {
+    const request = parseSshKeyUpdateImported(input)
+    return runAuthorized(event, request, async () => {
+      // An imported update can only replace material on an existing SSH item. Check before
+      // consuming the one-time token so a mismatched item cannot burn the imported key.
+      const existing = await vault.getLogin(request)
+      if (existing.type !== 'sshKey') throw new VaultError('INVALID_INPUT')
+      const generation = await vault.unlockedGeneration()
+      const consumed = sshKeyImportSessions.consumeReady(request.importToken, {
+        senderId: event.sender.id,
+        vaultGeneration: generation
+      })
+      if (consumed.status !== 'ready') throw new VaultError('INVALID_INPUT')
+      const draft = { ...request }
+      delete (draft as { importToken?: unknown }).importToken
+      return afterMutation(
+        vault.updateLogin({
+          ...draft,
+          privateKey: consumed.material.privateKey,
+          publicKey: consumed.material.publicKey,
+          fingerprint: consumed.material.fingerprint
+        })
+      )
+    })
+  })
   registerHandler(IPC_CHANNELS.syncStatus, getMainWindow, () => vault.syncStatus())
   registerHandler(IPC_CHANNELS.syncConnect, getMainWindow, async (_event, input) => {
     const result = await vault.connectSync(parseSyncConnect(input))
@@ -1547,6 +1702,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
 
   return () => {
     authorizations.clear()
+    sshKeyImportSessions.clearAll()
     Object.values(IPC_CHANNELS).forEach((channel) => ipcMain.removeHandler(channel))
   }
 }
