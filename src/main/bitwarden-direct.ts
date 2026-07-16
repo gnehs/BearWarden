@@ -132,6 +132,8 @@ export type BitwardenDirectErrorCode =
   | 'ATTACHMENT_REJECTED'
   | 'UNSUPPORTED_ACCOUNT_ENCRYPTION'
   | 'ACCOUNT_CHANGED'
+  | 'USER_VERIFICATION_FAILED'
+  | 'API_KEY_ROTATION_UNKNOWN'
 
 export class BitwardenDirectError extends Error {
   constructor(readonly code: BitwardenDirectErrorCode) {
@@ -1524,6 +1526,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     let masterKey: Buffer | null = null
     let passwordKey: Buffer | null = null
     let result: BitwardenPersonalApiKey | null = null
+    let rotationRequestStarted = false
     try {
       if (
         typeof masterPassword !== 'string' ||
@@ -1540,6 +1543,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         kdfFromPrelogin(prelogin)
       )
       passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      rotationRequestStarted = rotate
       result = await this.http.getPersonalApiKey(passwordKey.toString('base64'), rotate, signal)
       await this.captureSession()
       return {
@@ -1548,7 +1552,11 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         revisionDate: result.revisionDate
       }
     } catch (error) {
-      throw this.mapError(error)
+      const mapped = this.mapError(error)
+      if (rotationRequestStarted && mapped.code === 'NETWORK') {
+        throw new BitwardenDirectError('API_KEY_ROTATION_UNKNOWN')
+      }
+      throw mapped
     } finally {
       masterKey?.fill(0)
       passwordKey?.fill(0)
@@ -3510,6 +3518,9 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       if (error.code === 'STORAGE_LIMIT') return new BitwardenDirectError('STORAGE_LIMIT')
       if (error.code === 'ATTACHMENT_REJECTED') {
         return new BitwardenDirectError('ATTACHMENT_REJECTED')
+      }
+      if (error.code === 'USER_VERIFICATION_FAILED') {
+        return new BitwardenDirectError('USER_VERIFICATION_FAILED')
       }
       if (error.code === 'INVALID_RESPONSE') return new BitwardenDirectError('INVALID_RESPONSE')
       return new BitwardenDirectError('NETWORK')

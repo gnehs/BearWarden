@@ -224,6 +224,7 @@ export type BitwardenHttpErrorCode =
   | 'TOO_LARGE'
   | 'STORAGE_LIMIT'
   | 'ATTACHMENT_REJECTED'
+  | 'USER_VERIFICATION_FAILED'
 
 export class BitwardenHttpError extends Error {
   constructor(
@@ -2077,6 +2078,9 @@ function toHttpError(status: number, payload: JsonValue): BitwardenHttpError {
   if (status === 404) return new BitwardenHttpError('NOT_FOUND', status, details)
   if (status === 413) return new BitwardenHttpError('TOO_LARGE', status, details)
   if (status === 409) return new BitwardenHttpError('CONFLICT', status, details)
+  if (status === 400 && message.includes('user verification failed')) {
+    return new BitwardenHttpError('USER_VERIFICATION_FAILED', status)
+  }
   if (message.includes('two factor')) return new BitwardenHttpError('TWO_FACTOR', status, details)
   if (message.includes('new device') || message.includes('verification')) {
     return new BitwardenHttpError('NEW_DEVICE', status, details)

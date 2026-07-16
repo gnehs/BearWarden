@@ -1339,6 +1339,39 @@ describe('BitwardenDirectClient', () => {
     await expect(client.status()).resolves.toEqual({ status: 'locked' })
   })
 
+  it('reports an unknown rotation outcome without retrying the POST', async () => {
+    let rotationRequests = 0
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/api/accounts/rotate-api-key')) {
+          rotationRequests += 1
+          throw new TypeError('connection closed after request write')
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: '90000000-0000-4000-8000-000000000099',
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.getPersonalApiKey(PASSWORD, true)).rejects.toMatchObject({
+      code: 'API_KEY_ROTATION_UNKNOWN'
+    })
+    expect(rotationRequests).toBe(1)
+  })
+
   it('passes authenticated equivalent-domain settings through without requiring decrypted vault keys', async () => {
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',
