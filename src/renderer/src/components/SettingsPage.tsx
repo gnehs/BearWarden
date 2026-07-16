@@ -70,6 +70,7 @@ import {
   sshAgentSocketExportCommand,
   sshAgentStatusPresentation
 } from '@renderer/lib/ssh-agent-ui'
+import EquivalentDomainsDialog from './EquivalentDomainsDialog'
 
 const autoLockItems = [
   { label: '永不自動鎖定', value: 0 },
@@ -753,7 +754,8 @@ function SettingsPage({
                     </div>
                   </div>
                 </CardContent>
-                <CardFooter>
+                <CardFooter className="gap-2">
+                  {syncStatus.configured && <EquivalentDomainsDialog />}
                   <Button variant="outline" size="sm" type="button" onClick={onOpenSync}>
                     {syncStatus.configured ? '管理同步與帳號' : '設定 Bitwarden 同步'}
                   </Button>
