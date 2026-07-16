@@ -32,6 +32,7 @@ import {
   type BitwardenEquivalentDomainSettings,
   type BitwardenEquivalentDomainUpdate,
   type BitwardenEmergencyAccess,
+  type BitwardenSendFileUpdateRequest,
   type BitwardenSendFileRequest,
   type BitwardenSendRequest,
   type BitwardenPrelogin,
@@ -284,6 +285,19 @@ export interface BitwardenFileSendDraft {
   hideEmail: boolean
 }
 
+/** Main-process-only metadata update for an existing file Send. */
+export interface BitwardenFileSendUpdateDraft {
+  name: string
+  notes: string | null
+  maxAccessCount: number | null
+  expirationDate: string | null
+  deletionDate: string
+  /** Undefined preserves the existing server-side password proof. */
+  password?: string | null
+  disabled: boolean
+  hideEmail: boolean
+}
+
 export interface BitwardenLoginDraft extends Partial<VaultItemFields> {
   type?: VaultItemType
   name: string
@@ -344,6 +358,11 @@ export interface BitwardenSyncClient {
   updateSend?(
     id: string,
     draft: BitwardenSendDraft,
+    signal?: AbortSignal
+  ): Promise<BitwardenSendItem>
+  updateFileSend?(
+    id: string,
+    draft: BitwardenFileSendUpdateDraft,
     signal?: AbortSignal
   ): Promise<BitwardenSendItem>
   removeSendPassword?(id: string, signal?: AbortSignal): Promise<BitwardenSendItem>
@@ -1745,6 +1764,94 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       request.notes = null
       request.text.text = ''
       request.password = null
+    }
+  }
+
+  async updateFileSend(
+    id: string,
+    draft: BitwardenFileSendUpdateDraft,
+    signal?: AbortSignal
+  ): Promise<BitwardenSendItem> {
+    const userKey = this.requireUserKey()
+    const cached = this.sends.get(assertUuidValue(id))
+    if (!cached) throw new BitwardenDirectError('NOT_FOUND')
+    if (cached.item.type !== 'file' || !cached.item.file) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    const rawFile = recordProperty(cached.raw, 'file')
+    if (!rawFile) throw new BitwardenDirectError('INVALID_RESPONSE')
+    const seed = decryptBitwardenBytes(requiredStringProperty(cached.raw, 'key'), userKey)
+    let sendKey: Buffer | null = null
+    let request: BitwardenSendFileUpdateRequest | null = null
+    try {
+      if (seed.length !== 16) throw new BitwardenDirectError('INVALID_RESPONSE')
+      sendKey = deriveBitwardenSendKey(seed)
+      const preservePassword = draft.password === undefined
+      const existingPassword = nullableStringProperty(cached.raw, 'password')
+      const password = preservePassword
+        ? existingPassword
+        : draft.password?.length
+          ? draft.password
+          : null
+      const authType = preservePassword ? cached.item.authType : password ? 1 : 2
+      request = {
+        type: 1,
+        fileLength: cached.item.file.size,
+        authType,
+        name: encryptBitwardenString(draft.name, sendKey),
+        notes: draft.notes === null ? null : encryptBitwardenString(draft.notes, sendKey),
+        key: requiredStringProperty(cached.raw, 'key'),
+        maxAccessCount: draft.maxAccessCount,
+        expirationDate: draft.expirationDate,
+        deletionDate: draft.deletionDate,
+        file: {
+          id: cached.item.file.id,
+          fileName: requiredStringProperty(rawFile, 'fileName'),
+          size: String(cached.item.file.size),
+          sizeName: cached.item.file.sizeName
+        },
+        password: preservePassword ? existingPassword : null,
+        emails: null,
+        disabled: draft.disabled,
+        hideEmail: draft.hideEmail
+      }
+      if (password && !preservePassword) {
+        const passwordHash = await deriveBitwardenSendPasswordHash(password, seed)
+        try {
+          request.password = passwordHash.toString('base64')
+        } finally {
+          passwordHash.fill(0)
+        }
+      }
+      const raw = await this.http.updateSend(cached.item.id, request, signal)
+      const next = this.decryptSend(raw, userKey)
+      if (
+        next.item.type !== 'file' ||
+        !next.item.file ||
+        next.item.file.id !== cached.item.file.id ||
+        next.item.file.fileName !== cached.item.file.fileName ||
+        next.item.file.size !== cached.item.file.size
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      this.sends.set(next.item.id, next)
+      return {
+        ...next.item,
+        ...(next.item.file ? { file: { ...next.item.file } } : {})
+      }
+    } catch (error) {
+      throw this.mapError(error)
+    } finally {
+      seed.fill(0)
+      sendKey?.fill(0)
+      if (request) {
+        request.key = ''
+        request.name = ''
+        request.notes = null
+        request.file.fileName = ''
+        request.file.size = ''
+        request.password = null
+      }
     }
   }
 

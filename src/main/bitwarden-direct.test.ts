@@ -1034,7 +1034,8 @@ describe('BitwardenDirectClient', () => {
       hideEmail: true
     }
     sync.sends = [send]
-    const fetch = vi.fn<FetchLike>().mockImplementation(async (url) => {
+    let updateBody: JsonObject | null = null
+    const fetch = vi.fn<FetchLike>().mockImplementation(async (url, init) => {
       if (url.endsWith('/identity/accounts/prelogin/password')) {
         return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
       }
@@ -1047,6 +1048,19 @@ describe('BitwardenDirectClient', () => {
       }
       if (url.includes('/api/sync?')) return jsonResponse(sync)
       if (url.endsWith('/api/sends')) return jsonResponse(send)
+      if (url.endsWith(`/api/sends/${SEND_ID}`) && init?.method === 'PUT') {
+        updateBody = JSON.parse(String(init.body)) as JsonObject
+        const request = updateBody
+        return jsonResponse({
+          ...send,
+          name: request.name,
+          notes: request.notes,
+          file: send.file,
+          authType: request.authType,
+          password: request.password,
+          revisionDate: '2026-07-16T01:00:00.000Z'
+        })
+      }
       return jsonResponse({ message: 'not found' }, 404)
     })
     const http = new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
@@ -1074,6 +1088,37 @@ describe('BitwardenDirectClient', () => {
     ])
     expect(JSON.stringify(await client.listSends())).not.toContain(seed.toString('base64url'))
     expect(JSON.stringify(await client.listSends())).not.toContain('fileUpload')
+    const updated = await client.updateFileSend(SEND_ID, {
+      name: 'Renamed archive',
+      notes: 'Updated owner note',
+      maxAccessCount: 3,
+      expirationDate: null,
+      deletionDate: '2026-07-30T00:00:00.000Z',
+      password: 'new send password',
+      disabled: true,
+      hideEmail: false
+    })
+    expect(updated).toMatchObject({
+      type: 'file',
+      name: 'Renamed archive',
+      notes: 'Updated owner note',
+      file: { id: '0123456789abcdef0123456789abcdef', size: 1234 },
+      passwordProtected: true
+    })
+    expect(updateBody).toMatchObject({
+      type: 1,
+      fileLength: 1234,
+      authType: 1,
+      maxAccessCount: 3,
+      disabled: true,
+      hideEmail: false,
+      file: {
+        id: '0123456789abcdef0123456789abcdef',
+        size: '1234'
+      }
+    })
+    expect(String(updateBody?.password)).not.toContain('new send password')
+    expect(String(updateBody?.key)).toBe(String(send.key))
     seed.fill(0)
     sendKey.fill(0)
     userKey.fill(0)
