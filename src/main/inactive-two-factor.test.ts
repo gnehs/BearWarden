@@ -61,7 +61,7 @@ describe('inactive two-factor dataset loader', () => {
     expect(Object.isFrozen(parsed.entries)).toBe(true)
   })
 
-  it('rejects unsupported versions, unknown fields, missing TOTP, duplicates, and ICANN suffixes', () => {
+  it('rejects unsupported versions, unknown fields, missing TOTP, and duplicates', () => {
     expectCode(() => loadTwoFactorDirectoryTotpJson('{}', 3), 'UNSUPPORTED_DATASET_VERSION')
     expectCode(
       () =>
@@ -80,10 +80,6 @@ describe('inactive two-factor dataset loader', () => {
           'EXAMPLE.com': { methods: ['totp'] },
           'example.com': { methods: ['totp'] }
         }),
-      'INVALID_DATASET'
-    )
-    expectCode(
-      () => parseTwoFactorDirectoryTotpData({ 'co.uk': { methods: ['totp'] } }),
       'INVALID_DATASET'
     )
   })
@@ -186,7 +182,8 @@ describe('inactive two-factor analysis', () => {
       ...Object.fromEntries(
         dataset().entries.map((entry) => [entry.domain, { methods: ['totp'] }])
       ),
-      'github.io': { methods: ['totp'] }
+      'github.io': { methods: ['totp'] },
+      'gov.uk': { methods: ['totp'] }
     })
     const report = analyzeInactiveTwoFactor(
       [
@@ -226,11 +223,13 @@ describe('inactive two-factor analysis', () => {
       analyzeInactiveTwoFactor(
         [
           item({ id: 'private-root', uris: ['https://github.io'] }),
-          item({ id: 'private-tenant', uris: ['https://unlisted.github.io'] })
+          item({ id: 'private-tenant', uris: ['https://unlisted.github.io'] }),
+          item({ id: 'icann-root', uris: ['https://gov.uk'] }),
+          item({ id: 'icann-tenant', uris: ['https://service.gov.uk'] })
         ],
         withPrivateSuffix
       ).findings.map(({ id }) => id)
-    ).toEqual(['private-root'])
+    ).toEqual(['private-root', 'icann-root'])
   })
 
   it('accepts bounded bare hosts and HTTP(S), but rejects credentials and other schemes', () => {

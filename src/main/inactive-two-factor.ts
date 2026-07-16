@@ -195,9 +195,9 @@ function canonicalHostname(value: string): string | null {
     return null
   }
   const parsed = parseDomain(ascii, { allowPrivateDomains: true })
-  // A few official entries (for example pythonanywhere.com) are themselves private suffixes.
-  // They are safe as exact hosts, but matchDatasetDomain prevents them from covering tenants.
-  if (parsed.isIp || (!parsed.domain && !parsed.isPrivate)) return null
+  // The official dataset contains service keys that are themselves ICANN or private suffixes.
+  // They remain safe as exact hosts; matchDatasetDomain prevents them from covering tenants.
+  if (parsed.isIp) return null
   return ascii
 }
 
@@ -356,7 +356,7 @@ function matchDatasetDomain(
     const match = entries.get(suffix)
     if (match) {
       const parsed = parseDomain(match.domain, { allowPrivateDomains: true })
-      // A dataset key that is itself a private suffix applies only to the exact service host.
+      // A dataset key that is itself an ICANN or private suffix applies only to the exact host.
       // Treating it as a normal suffix would incorrectly flag every independent tenant.
       if (suffix === hostname || parsed.domain !== null) return match
     }
