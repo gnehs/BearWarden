@@ -18,6 +18,7 @@ import {
   type PasskeyVaultAuthorizationValidator,
   type PasskeyVaultCreateRequest,
   type PasskeyVaultCreateResult,
+  type VaultAccountWebAuthnAssertionRequester,
   type VaultServiceOptions
 } from './vault-service'
 import { VaultAttachmentFileService } from './vault-attachment-files'
@@ -25,6 +26,7 @@ import { createPasskeyCredential } from './passkey-authenticator'
 import { hashPasswordForPwnedLookup } from './pwned-passwords'
 import { buildBitwardenJson } from './vault-portability-codec'
 import { parseTwoFactorDirectoryTotpData } from './inactive-two-factor'
+import type { AccountWebAuthnAssertion, AccountWebAuthnChallenge } from './account-webauthn-codec'
 
 const MASTER_PASSWORD = 'correct horse battery staple'
 const ATTACHMENT_OPERATION_ID = '70000000-0000-4000-8000-000000000001'
@@ -124,6 +126,36 @@ async function createHarness(options: VaultServiceOptions = {}): Promise<{
 }
 
 const PASSKEY_RP_ID = 'login.example.invalid'
+
+function createAccountWebAuthnChallenge(seed = 1): AccountWebAuthnChallenge {
+  return {
+    challenge: Buffer.alloc(32, seed).toString('base64url'),
+    rpId: 'vault.example.invalid',
+    allowCredentials: [
+      {
+        type: 'public-key',
+        id: Buffer.alloc(32, seed + 1).toString('base64url'),
+        transports: ['internal']
+      }
+    ],
+    timeout: 60_000,
+    userVerification: 'preferred',
+    extensions: {}
+  }
+}
+
+const ACCOUNT_WEBAUTHN_ASSERTION: AccountWebAuthnAssertion = {
+  id: Buffer.alloc(32, 7).toString('base64url'),
+  rawId: Buffer.alloc(32, 7).toString('base64url'),
+  type: 'public-key',
+  response: {
+    clientDataJSON: Buffer.from('provider-7-client-data').toString('base64url'),
+    authenticatorData: Buffer.from('provider-7-authenticator-data').toString('base64url'),
+    signature: Buffer.from('provider-7-signature').toString('base64url'),
+    userHandle: null
+  },
+  clientExtensionResults: {}
+}
 
 async function createVaultPasskey(
   service: VaultService,
@@ -1121,6 +1153,386 @@ describe('VaultService encrypted local data', () => {
     )
     await service.getWebsiteIcon({ id: login.id })
     expect(fetcher).toHaveBeenCalledOnce()
+  })
+
+  it.each([true, false])(
+    'retries connect once with provider 7 and explicit remember=%s',
+    async (remember) => {
+      const challenge = createAccountWebAuthnChallenge(1)
+      const loginRequests: Parameters<BitwardenSyncClient['login']>[0][] = []
+      const requestAccountWebAuthnAssertion = vi.fn<VaultAccountWebAuthnAssertionRequester>(
+        async () => ACCOUNT_WEBAUTHN_ASSERTION
+      )
+      const { service } = await createHarness({
+        requestAccountWebAuthnAssertion,
+        createSyncClient: (sync) => {
+          const client = createSyncFake(sync.state)
+          const login = client.login.bind(client)
+          client.login = async (request) => {
+            loginRequests.push(request)
+            if (loginRequests.length === 1) {
+              throw new BitwardenDirectError('TWO_FACTOR_REQUIRED', challenge)
+            }
+            await login(request)
+          }
+          return client
+        }
+      })
+      await service.setup(MASTER_PASSWORD)
+
+      await expect(
+        service.connectSync({
+          serverUrl: 'https://vault.example.invalid/base/',
+          email: 'sync@example.invalid',
+          masterPassword: 'remote master password',
+          webAuthnRemember: remember
+        })
+      ).resolves.toMatchObject({ configured: true, state: 'ready' })
+
+      expect(loginRequests).toHaveLength(2)
+      expect(loginRequests[0]!.twoFactor).toBeUndefined()
+      expect(loginRequests[1]!.twoFactor).toEqual({
+        method: 7,
+        assertion: ACCOUNT_WEBAUTHN_ASSERTION,
+        remember
+      })
+      expect(requestAccountWebAuthnAssertion).toHaveBeenCalledOnce()
+      const connectorRequest = requestAccountWebAuthnAssertion.mock.calls[0]![0]
+      expect(connectorRequest).toEqual({
+        webVaultUrl: 'https://vault.example.invalid/base',
+        challenge,
+        remember,
+        signal: expect.any(AbortSignal)
+      })
+      expect(connectorRequest.signal).toBe(loginRequests[0]!.signal)
+      expect(connectorRequest.signal).toBe(loginRequests[1]!.signal)
+      expect(connectorRequest.signal.aborted).toBe(false)
+
+      const retained = JSON.stringify(service)
+      expect(retained).not.toContain(challenge.challenge)
+      expect(retained).not.toContain(ACCOUNT_WEBAUTHN_ASSERTION.response.signature)
+      expect(Reflect.ownKeys(service)).not.toContain('webAuthnChallenge')
+      expect(Reflect.ownKeys(service)).not.toContain('webAuthnAssertion')
+    }
+  )
+
+  it('retries unlock once with the persisted exact Web Vault URL', async () => {
+    const challenge = createAccountWebAuthnChallenge(3)
+    const unlockRequests: Parameters<BitwardenSyncClient['unlock']>[0][] = []
+    const requestAccountWebAuthnAssertion = vi.fn<VaultAccountWebAuthnAssertionRequester>(
+      async () => ACCOUNT_WEBAUTHN_ASSERTION
+    )
+    let clientCount = 0
+    const { service } = await createHarness({
+      requestAccountWebAuthnAssertion,
+      createSyncClient: (sync) => {
+        clientCount += 1
+        const client = createSyncFake(sync.state)
+        if (clientCount === 2) {
+          const unlock = client.unlock.bind(client)
+          client.unlock = async (request) => {
+            unlockRequests.push(request)
+            if (unlockRequests.length === 1) {
+              throw new BitwardenDirectError('TWO_FACTOR_REQUIRED', challenge)
+            }
+            await unlock(request)
+          }
+        }
+        return client
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://self-hosted.example.invalid/bitwarden',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.remoteLogoutSync()
+
+    await expect(
+      service.unlockSync({
+        masterPassword: 'remote master password',
+        webAuthnRemember: false
+      })
+    ).resolves.toMatchObject({ configured: true, state: 'ready' })
+
+    expect(unlockRequests).toHaveLength(2)
+    expect(unlockRequests[0]!.twoFactor).toBeUndefined()
+    expect(unlockRequests[1]!.twoFactor).toEqual({
+      method: 7,
+      assertion: ACCOUNT_WEBAUTHN_ASSERTION,
+      remember: false
+    })
+    expect(requestAccountWebAuthnAssertion).toHaveBeenCalledWith({
+      webVaultUrl: 'https://self-hosted.example.invalid/bitwarden',
+      challenge,
+      remember: false,
+      signal: expect.any(AbortSignal)
+    })
+  })
+
+  it('does not request provider 7 without both a callback and explicit remember choice', async () => {
+    const challenge = createAccountWebAuthnChallenge(5)
+    let missingCallbackLoginCalls = 0
+    const missingCallbackHarness = await createHarness({
+      createSyncClient: (sync) => {
+        const client = createSyncFake(sync.state)
+        client.login = async () => {
+          missingCallbackLoginCalls += 1
+          throw new BitwardenDirectError('TWO_FACTOR_REQUIRED', challenge)
+        }
+        return client
+      }
+    })
+    await missingCallbackHarness.service.setup(MASTER_PASSWORD)
+
+    await expect(
+      missingCallbackHarness.service.connectSync({
+        serverUrl: 'https://vault.example.invalid',
+        email: 'sync@example.invalid',
+        masterPassword: 'remote master password',
+        webAuthnRemember: true
+      })
+    ).rejects.toMatchObject({ code: 'SYNC_AUTH_REQUIRED', message: 'SYNC_AUTH_REQUIRED' })
+    expect(missingCallbackLoginCalls).toBe(1)
+
+    const requestAccountWebAuthnAssertion = vi.fn<VaultAccountWebAuthnAssertionRequester>(
+      async () => ACCOUNT_WEBAUTHN_ASSERTION
+    )
+    let missingRememberLoginCalls = 0
+    const missingRememberHarness = await createHarness({
+      requestAccountWebAuthnAssertion,
+      createSyncClient: (sync) => {
+        const client = createSyncFake(sync.state)
+        client.login = async () => {
+          missingRememberLoginCalls += 1
+          throw new BitwardenDirectError('TWO_FACTOR_REQUIRED', challenge)
+        }
+        return client
+      }
+    })
+    await missingRememberHarness.service.setup(MASTER_PASSWORD)
+
+    await expect(
+      missingRememberHarness.service.connectSync({
+        serverUrl: 'https://vault.example.invalid',
+        email: 'sync@example.invalid',
+        masterPassword: 'remote master password'
+      })
+    ).rejects.toMatchObject({ code: 'SYNC_AUTH_REQUIRED', message: 'SYNC_AUTH_REQUIRED' })
+    expect(missingRememberLoginCalls).toBe(1)
+    expect(requestAccountWebAuthnAssertion).not.toHaveBeenCalled()
+  })
+
+  it('maps connector cancellation and timeout details to the stable generic sync error', async () => {
+    const challenge = createAccountWebAuthnChallenge(7)
+    const rawConnectorDetail = 'remote connector timeout: credential-secret-detail'
+    const requestAccountWebAuthnAssertion = vi.fn<VaultAccountWebAuthnAssertionRequester>(
+      async () => {
+        throw new Error(rawConnectorDetail)
+      }
+    )
+    let loginCalls = 0
+    const { service } = await createHarness({
+      requestAccountWebAuthnAssertion,
+      createSyncClient: (sync) => {
+        const client = createSyncFake(sync.state)
+        client.login = async () => {
+          loginCalls += 1
+          throw new BitwardenDirectError('TWO_FACTOR_REQUIRED', challenge)
+        }
+        return client
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+
+    let publicError: unknown
+    try {
+      await service.connectSync({
+        serverUrl: 'https://vault.example.invalid',
+        email: 'sync@example.invalid',
+        masterPassword: 'remote master password',
+        webAuthnRemember: true
+      })
+    } catch (error) {
+      publicError = error
+    }
+    expect(publicError).toMatchObject({ code: 'SYNC_FAILED', message: 'SYNC_FAILED' })
+    expect(String(publicError)).not.toContain(rawConnectorDetail)
+    expect(JSON.stringify(await service.syncStatus())).not.toContain(rawConnectorDetail)
+    expect(JSON.stringify(service)).not.toContain(challenge.challenge)
+    expect(loginCalls).toBe(1)
+    expect(requestAccountWebAuthnAssertion).toHaveBeenCalledOnce()
+  })
+
+  it.each(['lock', 'dispose'] as const)(
+    'aborts a pending provider-7 connector when the service receives %s',
+    async (action) => {
+      const challenge = createAccountWebAuthnChallenge(action === 'lock' ? 9 : 11)
+      let started!: () => void
+      const didStart = new Promise<void>((resolve) => {
+        started = resolve
+      })
+      let connectorSignal: AbortSignal | undefined
+      const requestAccountWebAuthnAssertion = vi.fn<VaultAccountWebAuthnAssertionRequester>(
+        async (request) => {
+          connectorSignal = request.signal
+          started()
+          return new Promise<AccountWebAuthnAssertion>((_resolve, reject) => {
+            request.signal.addEventListener(
+              'abort',
+              () => reject(new Error('connector aborted with raw detail')),
+              { once: true }
+            )
+          })
+        }
+      )
+      const { service } = await createHarness({
+        requestAccountWebAuthnAssertion,
+        createSyncClient: (sync) => {
+          const client = createSyncFake(sync.state)
+          client.login = async () => {
+            throw new BitwardenDirectError('TWO_FACTOR_REQUIRED', challenge)
+          }
+          return client
+        }
+      })
+      await service.setup(MASTER_PASSWORD)
+
+      const pending = service.connectSync({
+        serverUrl: 'https://vault.example.invalid',
+        email: 'sync@example.invalid',
+        masterPassword: 'remote master password',
+        webAuthnRemember: false
+      })
+      const rejected = expect(pending).rejects.toMatchObject({ code: 'LOCKED', message: 'LOCKED' })
+      await didStart
+      if (action === 'lock') {
+        await expect(service.lock()).resolves.toEqual({ state: 'locked' })
+      } else {
+        service.dispose()
+      }
+
+      await rejected
+      expect(connectorSignal?.aborted).toBe(true)
+      expect(requestAccountWebAuthnAssertion).toHaveBeenCalledOnce()
+    }
+  )
+
+  it('does not loop or expose a second provider-7 challenge', async () => {
+    const firstChallenge = createAccountWebAuthnChallenge(13)
+    const secondChallenge = createAccountWebAuthnChallenge(15)
+    const requestAccountWebAuthnAssertion = vi.fn<VaultAccountWebAuthnAssertionRequester>(
+      async () => ACCOUNT_WEBAUTHN_ASSERTION
+    )
+    let loginCalls = 0
+    const { service } = await createHarness({
+      requestAccountWebAuthnAssertion,
+      createSyncClient: (sync) => {
+        const client = createSyncFake(sync.state)
+        client.login = async () => {
+          loginCalls += 1
+          throw new BitwardenDirectError(
+            'TWO_FACTOR_REQUIRED',
+            loginCalls === 1 ? firstChallenge : secondChallenge
+          )
+        }
+        return client
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+
+    let publicError: unknown
+    try {
+      await service.connectSync({
+        serverUrl: 'https://vault.example.invalid',
+        email: 'sync@example.invalid',
+        masterPassword: 'remote master password',
+        webAuthnRemember: true
+      })
+    } catch (error) {
+      publicError = error
+    }
+
+    expect(publicError).toMatchObject({ code: 'SYNC_AUTH_REQUIRED', message: 'SYNC_AUTH_REQUIRED' })
+    expect(String(publicError)).not.toContain(firstChallenge.challenge)
+    expect(String(publicError)).not.toContain(secondChallenge.challenge)
+    expect(loginCalls).toBe(2)
+    expect(requestAccountWebAuthnAssertion).toHaveBeenCalledOnce()
+    expect(JSON.stringify(service)).not.toContain(firstChallenge.challenge)
+    expect(JSON.stringify(service)).not.toContain(secondChallenge.challenge)
+    expect(JSON.stringify(service)).not.toContain(ACCOUNT_WEBAUTHN_ASSERTION.response.signature)
+  })
+
+  it.each(['0', '1', '3'] as const)(
+    'preserves legacy provider %s request behavior',
+    async (twoFactorMethod) => {
+      const loginRequests: Parameters<BitwardenSyncClient['login']>[0][] = []
+      const requestAccountWebAuthnAssertion = vi.fn<VaultAccountWebAuthnAssertionRequester>(
+        async () => ACCOUNT_WEBAUTHN_ASSERTION
+      )
+      const { service } = await createHarness({
+        requestAccountWebAuthnAssertion,
+        createSyncClient: (sync) => {
+          const client = createSyncFake(sync.state)
+          const login = client.login.bind(client)
+          client.login = async (request) => {
+            loginRequests.push(request)
+            await login(request)
+          }
+          return client
+        }
+      })
+      await service.setup(MASTER_PASSWORD)
+
+      await service.connectSync({
+        serverUrl: 'https://vault.example.invalid',
+        email: 'sync@example.invalid',
+        masterPassword: 'remote master password',
+        twoFactorMethod,
+        twoFactorCode: `legacy-${twoFactorMethod}`
+      })
+
+      expect(loginRequests).toHaveLength(1)
+      expect(loginRequests[0]!.twoFactor).toEqual({
+        method: Number(twoFactorMethod),
+        code: `legacy-${twoFactorMethod}`
+      })
+      expect(requestAccountWebAuthnAssertion).not.toHaveBeenCalled()
+    }
+  )
+
+  it('does not fall back from an explicitly selected legacy provider to provider 7', async () => {
+    const challenge = createAccountWebAuthnChallenge(17)
+    const requestAccountWebAuthnAssertion = vi.fn<VaultAccountWebAuthnAssertionRequester>(
+      async () => ACCOUNT_WEBAUTHN_ASSERTION
+    )
+    let loginCalls = 0
+    const { service } = await createHarness({
+      requestAccountWebAuthnAssertion,
+      createSyncClient: (sync) => {
+        const client = createSyncFake(sync.state)
+        client.login = async () => {
+          loginCalls += 1
+          throw new BitwardenDirectError('TWO_FACTOR_REQUIRED', challenge)
+        }
+        return client
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+
+    await expect(
+      service.connectSync({
+        serverUrl: 'https://vault.example.invalid',
+        email: 'sync@example.invalid',
+        masterPassword: 'remote master password',
+        twoFactorMethod: '0',
+        twoFactorCode: '123456',
+        webAuthnRemember: true
+      })
+    ).rejects.toMatchObject({ code: 'SYNC_AUTH_REQUIRED' })
+    expect(loginCalls).toBe(1)
+    expect(requestAccountWebAuthnAssertion).not.toHaveBeenCalled()
   })
 
   it('pulls and pushes through the direct connector while encrypting its session at rest', async () => {

@@ -850,6 +850,7 @@ export interface SyncConnectRequest {
   masterPassword: string
   twoFactorMethod?: SyncTwoFactorMethod
   twoFactorCode?: string
+  webAuthnRemember?: boolean
   newDeviceOtp?: string
 }
 
@@ -857,6 +858,7 @@ export interface SyncUnlockRequest {
   masterPassword: string
   twoFactorMethod?: SyncTwoFactorMethod
   twoFactorCode?: string
+  webAuthnRemember?: boolean
   newDeviceOtp?: string
 }
 

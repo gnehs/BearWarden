@@ -107,6 +107,7 @@ import {
   type BitwardenSendItem,
   type BitwardenDirectState,
   type BitwardenFileSendDraft,
+  type BitwardenLoginTwoFactor,
   type BitwardenSyncClient,
   type BitwardenTwoFactor
 } from './bitwarden-direct'
@@ -196,6 +197,7 @@ import {
 } from './website-icon'
 import { createUriMatchBudget, loginUrisMatch } from './uri-matcher'
 import { validatePasskeyOrigin } from './passkey-origin-validation'
+import type { AccountWebAuthnAssertion, AccountWebAuthnChallenge } from './account-webauthn-codec'
 
 const LEGACY_DATA_VERSION = 1
 const CLI_DATA_VERSION = 2
@@ -376,6 +378,18 @@ export interface VaultPlatform {
   openExternal: (url: string) => void | Promise<void>
 }
 
+/** Main-process-only input for the native Web Vault provider-7 connector. */
+export interface VaultAccountWebAuthnRequest {
+  readonly webVaultUrl: string
+  readonly challenge: AccountWebAuthnChallenge
+  readonly remember: boolean
+  readonly signal: AbortSignal
+}
+
+export type VaultAccountWebAuthnAssertionRequester = (
+  request: VaultAccountWebAuthnRequest
+) => Promise<AccountWebAuthnAssertion>
+
 export interface VaultServiceOptions {
   now?: () => Date
   createId?: () => string
@@ -383,6 +397,8 @@ export interface VaultServiceOptions {
   fetch?: typeof fetch
   randomInt?: RandomInt
   attachmentFiles?: VaultAttachmentFileService
+  /** Main-process-only bridge to the one-shot Web Vault provider-7 connector. */
+  requestAccountWebAuthnAssertion?: VaultAccountWebAuthnAssertionRequester
 }
 
 export interface VaultExportSnapshot {
@@ -2964,6 +2980,7 @@ export class VaultService {
   private readonly fetch: typeof fetch
   private readonly randomInt: RandomInt
   private readonly attachmentFiles: VaultAttachmentFileService | null
+  private readonly requestAccountWebAuthnAssertion: VaultAccountWebAuthnAssertionRequester | null
   private readonly websiteIconCache = new Map<string, string | null>()
   private readonly websiteIconRequests = new Map<string, Promise<string | null>>()
   private activeExposedPasswordOperation: ActiveExposedPasswordOperation | null = null
@@ -2979,6 +2996,7 @@ export class VaultService {
     this.fetch = options.fetch ?? fetch
     this.randomInt = options.randomInt ?? nodeRandomInt
     this.attachmentFiles = options.attachmentFiles ?? null
+    this.requestAccountWebAuthnAssertion = options.requestAccountWebAuthnAssertion ?? null
     this.createSyncClient =
       options.createSyncClient ??
       (() => {
@@ -4510,7 +4528,20 @@ export class VaultService {
           domainSettings: null
         }
         const client = this.createSyncClient(sync)
-        await client.login({ email, password, twoFactor, newDeviceOtp, signal: abort.signal })
+        await this.authenticateSyncWithWebAuthnRetry(
+          (retryTwoFactor) =>
+            client.login({
+              email,
+              password,
+              twoFactor: retryTwoFactor,
+              newDeviceOtp,
+              signal: abort.signal
+            }),
+          twoFactor,
+          request.webAuthnRemember,
+          sync.serverUrl,
+          abort.signal
+        )
         const next = cloneData(current)
         sync.state = client.exportState()
         next.sync = sync
@@ -4537,7 +4568,19 @@ export class VaultService {
       const client = this.getOrCreateSyncClient(sync)
       const abort = this.startSyncOperation()
       try {
-        await client.unlock({ password, twoFactor, newDeviceOtp, signal: abort.signal })
+        await this.authenticateSyncWithWebAuthnRetry(
+          (retryTwoFactor) =>
+            client.unlock({
+              password,
+              twoFactor: retryTwoFactor,
+              newDeviceOtp,
+              signal: abort.signal
+            }),
+          twoFactor,
+          request.webAuthnRemember,
+          sync.serverUrl,
+          abort.signal
+        )
         await this.persistCurrentClientState()
         this.syncLastError = null
         return this.baseSyncStatus(sync, 'ready')
@@ -7623,6 +7666,49 @@ export class VaultService {
       throw new VaultError('INVALID_INPUT')
     }
     return { method: Number(method) as BitwardenTwoFactor['method'], code }
+  }
+
+  private async authenticateSyncWithWebAuthnRetry(
+    authenticate: (twoFactor: BitwardenLoginTwoFactor | undefined) => Promise<void>,
+    initialTwoFactor: BitwardenTwoFactor | undefined,
+    webAuthnRemember: unknown,
+    serverUrl: string,
+    signal: AbortSignal
+  ): Promise<void> {
+    try {
+      await authenticate(initialTwoFactor)
+    } catch (error) {
+      if (signal.aborted) throw new BitwardenDirectError('ABORTED')
+      if (
+        !(error instanceof BitwardenDirectError) ||
+        error.code !== 'TWO_FACTOR_REQUIRED' ||
+        error.webAuthnChallenge === undefined ||
+        initialTwoFactor !== undefined ||
+        typeof webAuthnRemember !== 'boolean' ||
+        this.requestAccountWebAuthnAssertion === null
+      ) {
+        throw error
+      }
+
+      let assertion: AccountWebAuthnAssertion
+      try {
+        assertion = await this.requestAccountWebAuthnAssertion(
+          Object.freeze({
+            webVaultUrl: resolveBitwardenUrls(serverUrl).webVaultUrl,
+            challenge: error.webAuthnChallenge,
+            remember: webAuthnRemember,
+            signal
+          })
+        )
+      } catch {
+        // Connector cancellation, timeout, and remote details collapse to stable public errors.
+        throw new BitwardenDirectError(signal.aborted ? 'ABORTED' : 'INVALID_RESPONSE')
+      }
+      if (signal.aborted) throw new BitwardenDirectError('ABORTED')
+
+      // This is the only retry. A second provider-7 challenge propagates to the normal mapper.
+      await authenticate({ method: 7, assertion, remember: webAuthnRemember })
+    }
   }
 
   private normalizeNewDeviceOtp(value: string | undefined): string | undefined {
