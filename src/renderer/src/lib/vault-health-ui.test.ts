@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import type { LoginSummary } from '../../../shared/vault-contract'
-import { vaultHealthRevision, weakPasswordLabel } from './vault-health-ui'
+import type { LoginSummary, VaultHealthExposedReport } from '../../../shared/vault-contract'
+import {
+  beginExposedPasswordCheck,
+  cancelExposedPasswordCheck,
+  createExposedPasswordIdleState,
+  failExposedPasswordCheck,
+  invalidateExposedPasswordCheck,
+  isVaultHealthExposedReport,
+  resolveExposedPasswordCheck,
+  vaultHealthRevision,
+  weakPasswordLabel
+} from './vault-health-ui'
 
 function summary(overrides: Partial<LoginSummary> = {}): LoginSummary {
   return {
@@ -23,6 +33,28 @@ function summary(overrides: Partial<LoginSummary> = {}): LoginSummary {
     deletedAt: null,
     archivedAt: null,
     reprompt: 0,
+    ...overrides
+  }
+}
+
+function exposedReport(
+  overrides: Partial<VaultHealthExposedReport> = {}
+): VaultHealthExposedReport {
+  return {
+    generatedAt: '2026-07-16T01:00:00.000Z',
+    totals: {
+      analyzedCount: 2,
+      exposedPasswordCount: 1,
+      protectedSkippedCount: 1
+    },
+    exposedPasswords: [
+      {
+        id: '11111111-1111-4111-8111-111111111111',
+        name: 'Example',
+        subtitle: '登入項目',
+        exposedCount: 42
+      }
+    ],
     ...overrides
   }
 }
@@ -51,5 +83,131 @@ describe('vault health renderer policy', () => {
     const first = summary()
     const second = summary({ id: '22222222-2222-4222-8222-222222222222' })
     expect(vaultHealthRevision([first, second])).toBe(vaultHealthRevision([second, first]))
+  })
+
+  it('starts exposed-password checks idle until an explicit action begins a request', () => {
+    const idle = createExposedPasswordIdleState('revision-a')
+    expect(idle).toEqual({ status: 'idle', revision: 'revision-a' })
+
+    expect(beginExposedPasswordCheck('revision-a', 1)).toEqual({
+      status: 'loading',
+      revision: 'revision-a',
+      requestId: 1
+    })
+  })
+
+  it('accepts only bounded, internally consistent exposed-password reports', () => {
+    expect(isVaultHealthExposedReport(exposedReport())).toBe(true)
+    expect(
+      isVaultHealthExposedReport(
+        exposedReport({
+          totals: {
+            analyzedCount: 2,
+            exposedPasswordCount: 0,
+            protectedSkippedCount: 1
+          }
+        })
+      )
+    ).toBe(false)
+    expect(
+      isVaultHealthExposedReport({ ...exposedReport(), password: 'must-not-cross-renderer' })
+    ).toBe(false)
+    expect(
+      isVaultHealthExposedReport(
+        exposedReport({
+          exposedPasswords: [
+            {
+              id: '11111111-1111-4111-8111-111111111111',
+              name: 'Example',
+              subtitle: '',
+              exposedCount: 0
+            }
+          ]
+        })
+      )
+    ).toBe(false)
+
+    const finding = exposedReport().exposedPasswords[0]!
+    const largeValidReport = exposedReport({
+      totals: {
+        analyzedCount: 10_001,
+        exposedPasswordCount: 10_001,
+        protectedSkippedCount: 0
+      },
+      exposedPasswords: Array(10_001).fill(finding)
+    })
+    expect(isVaultHealthExposedReport(largeValidReport)).toBe(true)
+    expect(
+      isVaultHealthExposedReport({
+        ...largeValidReport,
+        totals: {
+          analyzedCount: 50_001,
+          exposedPasswordCount: 50_001,
+          protectedSkippedCount: 0
+        },
+        exposedPasswords: Array(50_001).fill(finding)
+      })
+    ).toBe(false)
+
+    const hostilePrototype = new Proxy(
+      {},
+      {
+        getPrototypeOf: () => {
+          throw new Error('prototype denied')
+        }
+      }
+    )
+    expect(isVaultHealthExposedReport(hostilePrototype)).toBe(false)
+  })
+
+  it('does not let stale request or revision responses overwrite current state', () => {
+    const current = beginExposedPasswordCheck('revision-b', 2)
+    const report = exposedReport()
+
+    expect(resolveExposedPasswordCheck(current, 'revision-b', 1, report)).toBe(current)
+    expect(resolveExposedPasswordCheck(current, 'revision-a', 2, report)).toBe(current)
+    expect(failExposedPasswordCheck(current, 'revision-b', 1)).toBe(current)
+    expect(resolveExposedPasswordCheck(current, 'revision-b', 2, report)).toEqual({
+      status: 'success',
+      revision: 'revision-b',
+      requestId: 2,
+      report
+    })
+  })
+
+  it('treats malformed or failed checks as unknown instead of a successful empty report', () => {
+    const loading = beginExposedPasswordCheck('revision-a', 3)
+    const malformed = { ...exposedReport(), exposedPasswords: [] }
+
+    expect(resolveExposedPasswordCheck(loading, 'revision-a', 3, malformed)).toEqual({
+      status: 'failed',
+      revision: 'revision-a',
+      requestId: 3
+    })
+    expect(failExposedPasswordCheck(loading, 'revision-a', 3)).toEqual({
+      status: 'failed',
+      revision: 'revision-a',
+      requestId: 3
+    })
+  })
+
+  it('invalidates results on vault revision changes and keeps cancellation non-failing', () => {
+    const report = exposedReport()
+    const success = resolveExposedPasswordCheck(
+      beginExposedPasswordCheck('revision-a', 4),
+      'revision-a',
+      4,
+      report
+    )
+
+    expect(invalidateExposedPasswordCheck(success, 'revision-a')).toBe(success)
+    expect(invalidateExposedPasswordCheck(success, 'revision-b')).toEqual({
+      status: 'idle',
+      revision: 'revision-b'
+    })
+    expect(cancelExposedPasswordCheck('revision-b')).toEqual({
+      status: 'idle',
+      revision: 'revision-b'
+    })
   })
 })
