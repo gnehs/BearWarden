@@ -35,6 +35,7 @@ import { SshAgentRendererBridge } from './ssh-agent-renderer-bridge'
 import { SshAgentServer } from './ssh-agent-server'
 import { PasskeyCeremonyService } from './passkey-ceremony-service'
 import { PasskeyRendererBridge } from './passkey-renderer-bridge'
+import { AccountWebAuthnWindowController } from './account-webauthn-window'
 import { SensitiveClipboard } from './sensitive-clipboard'
 import { TwoFactorDirectoryCache } from './two-factor-directory-cache'
 import icon from '../../resources/icon.png?asset'
@@ -55,6 +56,7 @@ let sshAgentBridge: SshAgentRendererBridge | null = null
 let sshAgentServer: SshAgentServer | null = null
 let passkeyCeremonyService: PasskeyCeremonyService | null = null
 let passkeyRendererBridge: PasskeyRendererBridge | null = null
+let accountWebAuthnController: AccountWebAuthnWindowController | null = null
 let repromptAuthorizations: RepromptAuthorizationStore | null = null
 let twoFactorDirectory: TwoFactorDirectoryCache | null = null
 let contentProtectionEnabled = true
@@ -204,6 +206,10 @@ function refreshSshAgentAfterVaultChange(): void {
     .catch(() => undefined)
 }
 
+function cancelAccountWebAuthnCeremony(): void {
+  accountWebAuthnController?.cancel()
+}
+
 const sensitiveClipboard = new SensitiveClipboard(clipboard)
 const focusTouchIdUnlockControllers = new WeakMap<BrowserWindow, FocusTouchIdUnlockController>()
 
@@ -274,6 +280,7 @@ function handleSyncChanged(status: SyncStatus): void {
 }
 
 async function handleRemoteSyncLogout(): Promise<void> {
+  cancelAccountWebAuthnCeremony()
   autoSync?.cancel()
   const currentVault = vault
   if (!currentVault) return
@@ -294,6 +301,7 @@ async function unlockSyncWithLocalPassword(masterPassword: string): Promise<void
 }
 
 async function beforeVaultLock(): Promise<void> {
+  cancelAccountWebAuthnCeremony()
   passkeyCeremonyService?.onLocked()
   passkeyRendererBridge?.cancelAll()
   autoSync?.cancel()
@@ -383,6 +391,9 @@ function createWindow(): BrowserWindow {
   window.on('ready-to-show', () => window.show())
   window.on('close', requestSystemLock)
   window.on('closed', () => {
+    // The connector deliberately has no relationship with the primary renderer. If its owner
+    // window goes away, abort the native ceremony rather than leaving an orphaned prompt alive.
+    cancelAccountWebAuthnCeremony()
     focusTouchIdUnlockControllers.delete(window)
     if (mainWindow === window) mainWindow = null
   })
@@ -460,6 +471,18 @@ if (hasSingleInstanceLock)
         return result.canceled || !result.filePath ? null : result.filePath
       }
     })
+
+    // This controller owns its private IPC endpoints and native connector windows. Construct it
+    // before the sync service can request provider-7 WebAuthn, but never route ceremony data via
+    // the primary renderer. A construction failure must not prevent use of the local vault: the
+    // stable requester below rejects and VaultService maps it to its generic sync failure.
+    let capturedAccountWebAuthnController: AccountWebAuthnWindowController | null = null
+    try {
+      capturedAccountWebAuthnController = new AccountWebAuthnWindowController()
+      accountWebAuthnController = capturedAccountWebAuthnController
+    } catch {
+      // Keep the local vault usable without exposing native WebAuthn initialization details.
+    }
     vault = new VaultService(
       store,
       {
@@ -476,7 +499,12 @@ if (hasSingleInstanceLock)
             clientVersion: app.getVersion(),
             state: sync.state
           }),
-        attachmentFiles
+        attachmentFiles,
+        requestAccountWebAuthnAssertion: ({ webVaultUrl, challenge, signal }) => {
+          const controller = capturedAccountWebAuthnController
+          if (!controller) return Promise.reject(new Error('ACCOUNT_WEBAUTHN_UNAVAILABLE'))
+          return controller.run({ webVaultUrl, challenge, signal })
+        }
       }
     )
     repromptAuthorizations = new RepromptAuthorizationStore()
@@ -708,6 +736,7 @@ if (hasSingleInstanceLock)
         refreshSshAgentAfterVaultChange()
       },
       beforeSyncReconfigure: async () => {
+        cancelAccountWebAuthnCeremony()
         autoSync?.cancel()
         await stopServerNotifications()
       },
@@ -724,9 +753,11 @@ if (hasSingleInstanceLock)
     })
 
     powerMonitor.on('lock-screen', () => {
+      cancelAccountWebAuthnCeremony()
       if (settings?.shouldLockOnScreenLock()) requestSystemLock()
     })
     powerMonitor.on('suspend', () => {
+      cancelAccountWebAuthnCeremony()
       void stopServerNotifications()
       if (settings?.shouldLockOnSuspend()) requestSystemLock()
     })
@@ -755,6 +786,9 @@ function disposeServices(): void {
   portability = null
   passkeyCeremonyService?.dispose()
   passkeyRendererBridge?.dispose()
+  const controller = accountWebAuthnController
+  accountWebAuthnController = null
+  controller?.dispose()
   twoFactorDirectory?.dispose()
   twoFactorDirectory = null
   vault?.dispose()
@@ -771,6 +805,7 @@ app.on('before-quit', (event) => {
 
   sshAgentEnabled = false
   sshAgentLifecycleEpoch += 1
+  cancelAccountWebAuthnCeremony()
   passkeyCeremonyService?.onLocked()
   passkeyRendererBridge?.cancelAll()
   sshAgentBridge?.cancelAll()
