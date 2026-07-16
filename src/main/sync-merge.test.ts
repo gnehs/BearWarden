@@ -656,6 +656,133 @@ describe('planSync', () => {
     ])
   })
 
+  it('preserves an offline password edit when another device adds a passkey', () => {
+    const original = login('local-1')
+    const remoteBase = { ...original, id: 'remote-1' }
+    const metadata: SyncMetadata = {
+      version: 1,
+      folderLinks: [],
+      loginLinks: [
+        {
+          localId: original.id,
+          remoteId: remoteBase.id,
+          baseFingerprint: fingerprintLogin(original)
+        }
+      ]
+    }
+    const local = { ...original, password: 'offline-password-edit' }
+    const remotePasskey = {
+      credentialId: 'remote-device-credential',
+      keyType: 'public-key',
+      keyAlgorithm: 'ECDSA',
+      keyCurve: 'P-256',
+      keyValue: 'remote-device-private-material',
+      rpId: 'example.invalid',
+      userHandle: 'remote-user-handle',
+      userName: 'bear@example.invalid',
+      counter: '0',
+      rpName: 'Example',
+      userDisplayName: 'Bear',
+      discoverable: true,
+      creationDate: '2026-07-14T01:00:00.000Z'
+    }
+    const remote = { ...remoteBase, passkeys: [remotePasskey] }
+
+    const plan = planSync(snapshot([local]), snapshot([remote]), metadata)
+
+    expect(plan.actions).toMatchObject([
+      {
+        kind: 'conflict-copy',
+        entity: 'login',
+        reason: 'both-modified',
+        resolution: 'remote-primary-local-copy',
+        local: { password: 'offline-password-edit', passkeys: [] },
+        remote: { password: 'secret', passkeys: [remotePasskey] }
+      }
+    ])
+    expect(plan.nextMetadata.loginLinks).toMatchObject([
+      { localId: original.id, remoteId: remote.id, baseFingerprint: fingerprintLogin(remote) }
+    ])
+  })
+
+  it('keeps both independently-created passkeys when two offline devices edit one login', () => {
+    const original = login('local-1')
+    const remoteBase = { ...original, id: 'remote-1' }
+    const metadata: SyncMetadata = {
+      version: 1,
+      folderLinks: [],
+      loginLinks: [
+        {
+          localId: original.id,
+          remoteId: remoteBase.id,
+          baseFingerprint: fingerprintLogin(original)
+        }
+      ]
+    }
+    const passkey = (device: 'local' | 'remote'): SyncLogin['passkeys'][number] => ({
+      credentialId: `${device}-device-credential`,
+      keyType: 'public-key',
+      keyAlgorithm: 'ECDSA',
+      keyCurve: 'P-256',
+      keyValue: `${device}-device-private-material`,
+      rpId: 'example.invalid',
+      userHandle: `${device}-user-handle`,
+      userName: 'bear@example.invalid',
+      counter: '0',
+      rpName: 'Example',
+      userDisplayName: 'Bear',
+      discoverable: true,
+      creationDate: device === 'local' ? '2026-07-14T01:00:00.000Z' : '2026-07-14T02:00:00.000Z'
+    })
+    const local = { ...original, passkeys: [passkey('local')] }
+    const remote = { ...remoteBase, passkeys: [passkey('remote')] }
+
+    const [action] = planSync(snapshot([local]), snapshot([remote]), metadata).actions
+
+    expect(action).toMatchObject({
+      kind: 'conflict-copy',
+      entity: 'login',
+      reason: 'both-modified',
+      local: { passkeys: [expect.objectContaining({ credentialId: 'local-device-credential' })] },
+      remote: { passkeys: [expect.objectContaining({ credentialId: 'remote-device-credential' })] }
+    })
+    expect(JSON.stringify(action)).toContain('local-device-private-material')
+    expect(JSON.stringify(action)).toContain('remote-device-private-material')
+  })
+
+  it('ignores server revision timestamps but tracks passkey credential mutations', () => {
+    const original = login('local-1')
+    const passkey = {
+      credentialId: 'credential-id',
+      keyType: 'public-key',
+      keyAlgorithm: 'ECDSA',
+      keyCurve: 'P-256',
+      keyValue: 'private-material',
+      rpId: 'example.invalid',
+      userHandle: null,
+      userName: 'bear@example.invalid',
+      counter: '0',
+      rpName: 'Example',
+      userDisplayName: 'Bear',
+      discoverable: true,
+      creationDate: '2026-07-14T01:00:00.000Z'
+    }
+    const withPasskey = { ...original, passkeys: [passkey] }
+
+    expect(
+      fingerprintLogin({
+        ...withPasskey,
+        updatedAt: '2099-01-01T00:00:00.000Z'
+      })
+    ).toBe(fingerprintLogin(withPasskey))
+    expect(
+      fingerprintLogin({
+        ...withPasskey,
+        passkeys: [{ ...passkey, credentialId: 'replacement-credential-id' }]
+      })
+    ).not.toBe(fingerprintLogin(withPasskey))
+  })
+
   it('adopts V12 history when both sides already share tracked custom fields', () => {
     const customFields = [{ name: 'tracked', value: 'same', type: 'text' as const, linkedId: null }]
     const original = { ...login('local-1'), customFields }

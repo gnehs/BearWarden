@@ -326,6 +326,13 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
       { type: 1, enabled: true }
     ],
     getTwoFactorRecoveryCode: async () => 'RECOVERY-CODE',
+    beginAuthenticatorSetup: async () => ({
+      enabled: false,
+      key: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP',
+      verificationMode: 'master-password' as const,
+      userVerificationToken: null
+    }),
+    completeAuthenticatorSetup: async () => undefined,
     getEquivalentDomainSettings: async () => structuredClone(equivalentDomainSettings),
     updateEquivalentDomainSettings: async (update) => {
       const excluded = new Set(update.excludedGlobalEquivalentDomains)
@@ -2404,6 +2411,79 @@ describe('VaultService encrypted local data', () => {
     }
   )
 
+  it('preserves passkeys from both devices when an offline edit races a remote replacement', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = (await service.listLogins())[0]!
+
+    await service.updateLogin({ id: local.id, password: 'offline-device-password' })
+    fake!.remoteLogins[0]!.passkeys = [
+      {
+        ...fake!.remoteLogins[0]!.passkeys[0]!,
+        credentialId: 'other-device-credential',
+        keyValue: 'other-device-private-material',
+        creationDate: '2026-07-14T03:00:00.000Z'
+      }
+    ]
+    fake!.remoteLogins[0]!.revisionDate = '2026-07-14T03:00:01.000Z'
+
+    await expect(service.syncNow()).resolves.toMatchObject({ conflicts: 1 })
+
+    expect(fake!.remoteLogins).toHaveLength(1)
+    expect(fake!.remoteLogins[0]).toMatchObject({
+      password: 'remote-test-secret',
+      passkeys: [expect.objectContaining({ credentialId: 'other-device-credential' })]
+    })
+    const localCopies = await service.listLogins()
+    expect(localCopies).toHaveLength(2)
+    expect(localCopies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'Remote login',
+          passkeyCount: 1
+        }),
+        expect.objectContaining({
+          name: expect.stringContaining('BearWarden conflict'),
+          passkeyCount: 1
+        })
+      ])
+    )
+    const localDetails = await Promise.all(localCopies.map(({ id }) => service.getLogin({ id })))
+    expect(localDetails).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'Remote login',
+          passkeys: [expect.objectContaining({ credentialId: 'other-device-credential' })]
+        }),
+        expect.objectContaining({
+          name: expect.stringContaining('BearWarden conflict'),
+          passkeys: [expect.objectContaining({ credentialId: 'credential-id' })]
+        })
+      ])
+    )
+    expect(JSON.stringify(localDetails)).not.toContain('private-material')
+
+    await expect(service.syncNow()).resolves.toMatchObject({ conflicts: 0, pushed: 1 })
+    const remoteConflict = fake!.remoteLogins.find((entry) =>
+      entry.name.includes('BearWarden conflict')
+    )
+    expect(remoteConflict).toMatchObject({
+      password: 'offline-device-password',
+      passkeys: [expect.objectContaining({ credentialId: 'credential-id' })]
+    })
+  })
+
   it('syncs soft-delete, restore, content edits, and permanent deletion with distinct APIs', async () => {
     let fake: ReturnType<typeof createSyncFake> | null = null
     const { service } = await createHarness({
@@ -3445,6 +3525,115 @@ describe('VaultService encrypted local data', () => {
       service.copyTwoFactorRecoveryCode({ masterPassword: 'wrong password' })
     ).rejects.toMatchObject({ code: 'INVALID_MASTER_PASSWORD' })
     expect(copySensitiveText).toHaveBeenCalledOnce()
+  })
+
+  it('uses expiring single-use authenticator sessions without exposing server capabilities', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service, copySensitiveText } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const begin = vi.spyOn(fake!, 'beginAuthenticatorSetup')
+    const complete = vi.spyOn(fake!, 'completeAuthenticatorSetup')
+
+    const beginRequest = { masterPassword: 'remote master password' }
+    const setup = await service.beginAccountAuthenticatorSetup(beginRequest)
+    expect(beginRequest.masterPassword).toBe('')
+    expect(setup.sessionId).toMatch(/^[0-9a-f-]{36}$/)
+    expect(setup).toMatchObject({
+      key: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP',
+      requiresMasterPassword: true
+    })
+    expect(JSON.stringify(setup)).not.toContain('userVerificationToken')
+    expect(begin).toHaveBeenCalledWith('remote master password', expect.any(AbortSignal))
+
+    await service.copyAccountAuthenticatorKey({ sessionId: setup.sessionId })
+    expect(copySensitiveText).toHaveBeenCalledWith(setup.key, 30)
+    const completeRequest = {
+      sessionId: setup.sessionId,
+      token: '123456',
+      masterPassword: 'remote master password'
+    }
+    await expect(
+      service.completeAccountAuthenticatorSetup(completeRequest)
+    ).resolves.toBeUndefined()
+    expect(completeRequest).toMatchObject({ token: '', masterPassword: '' })
+    expect(complete).toHaveBeenCalledWith(
+      {
+        key: '',
+        token: '',
+        verificationMode: 'master-password',
+        masterPassword: ''
+      },
+      expect.any(AbortSignal)
+    )
+    await expect(
+      service.completeAccountAuthenticatorSetup({
+        sessionId: setup.sessionId,
+        token: '123456',
+        masterPassword: 'remote master password'
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+
+    const abandoned = await service.beginAccountAuthenticatorSetup({
+      masterPassword: 'remote master password'
+    })
+    await service.lock()
+    await expect(
+      service.copyAccountAuthenticatorKey({ sessionId: abandoned.sessionId })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    expect(copySensitiveText).toHaveBeenCalledOnce()
+  })
+
+  it('binds official authenticator capabilities to main and reports ambiguous mutations', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    vi.spyOn(fake!, 'beginAuthenticatorSetup').mockResolvedValue({
+      enabled: false,
+      key: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP',
+      verificationMode: 'server-token',
+      userVerificationToken: 'main-only-capability'
+    })
+    const complete = vi
+      .spyOn(fake!, 'completeAuthenticatorSetup')
+      .mockRejectedValueOnce(new BitwardenDirectError('TWO_FACTOR_MUTATION_UNKNOWN'))
+
+    const setup = await service.beginAccountAuthenticatorSetup({
+      masterPassword: 'remote master password'
+    })
+    expect(setup.requiresMasterPassword).toBe(false)
+    expect(JSON.stringify(setup)).not.toContain('main-only-capability')
+    await expect(
+      service.completeAccountAuthenticatorSetup({ sessionId: setup.sessionId, token: '654321' })
+    ).rejects.toMatchObject({ code: 'TWO_FACTOR_MUTATION_UNKNOWN' })
+    expect(complete).toHaveBeenCalledWith(
+      {
+        key: '',
+        token: '',
+        verificationMode: 'server-token',
+        userVerificationToken: ''
+      },
+      expect.any(AbortSignal)
+    )
   })
 
   it('opens only the fixed HIBP attribution URL after verifying the vault is unlocked', async () => {
