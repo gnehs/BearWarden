@@ -81,6 +81,7 @@ Cloud 與支援中的 Vaultwarden 版本執行相容測試。
 - Vaultwarden 填部署站台的 HTTPS 根網址；開發測試僅後端允許 loopback HTTP。
 - 支援 Authenticator、Email、YubiKey OTP，以及新裝置電子郵件驗證碼。
 - 連線後會顯示 Email 驗證與雙重驗證狀態；未驗證時可要求伺服器重新寄送驗證信。
+- 可在主程序重新驗證主密碼後複製個人 API Client ID／Secret，或經二次確認輪替；Secret 不會回傳 renderer 或寫入保管庫，剪貼簿最晚 30 秒清除。
 
 主密碼不會寫入 BearWarden 密碼庫或設定；只在登入或解鎖時於主程序記憶體使用，
 衍生金鑰在鎖定時清除。登入 token、同步設定與 ID 對應只存放在已加密的本機密碼庫內。
