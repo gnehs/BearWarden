@@ -288,6 +288,12 @@ describe('registerVaultIpc reprompt gate', () => {
         exposedPasswords: [{ id: 'item-a', name: 'Example', subtitle: '', exposedCount: 42 }]
       })),
       cancelExposedPasswordReport: vi.fn(() => true),
+      getAccountBreachReport: vi.fn(async () => ({
+        generatedAt: '2026-07-16T00:00:00.000Z',
+        status: 'complete' as const,
+        breaches: []
+      })),
+      cancelAccountBreachReport: vi.fn(() => true),
       createLogin: vi.fn(async (request) => ({ id: 'created', ...request })),
       cloneLogin: vi.fn(async () => ({ id: 'clone' })),
       archiveLogins: vi.fn(async ({ ids }: { ids: string[] }) => ids.map((id) => ({ id }))),
@@ -495,6 +501,39 @@ describe('registerVaultIpc reprompt gate', () => {
     }
     expect(vault.getExposedPasswordReport).toHaveBeenCalledOnce()
     expect(vault.cancelExposedPasswordReport).toHaveBeenCalledOnce()
+  })
+
+  it('accepts only a bounded email for the explicit account-breach report', async () => {
+    const { event, vault } = harness()
+    const account = electronMock.handlers.get(IPC_CHANNELS.vaultHealthAccountBreaches)!
+    const cancel = electronMock.handlers.get(IPC_CHANNELS.vaultHealthCancelAccountBreaches)!
+
+    await expect(account(event, { email: '  member@example.invalid  ' })).resolves.toEqual({
+      generatedAt: '2026-07-16T00:00:00.000Z',
+      status: 'complete',
+      breaches: []
+    })
+    expect(vault.getAccountBreachReport).toHaveBeenCalledWith({
+      email: 'member@example.invalid'
+    })
+    await expect(cancel(event, {})).resolves.toBe(true)
+    expect(vault.cancelAccountBreachReport).toHaveBeenCalledWith()
+
+    for (const invalid of [
+      undefined,
+      null,
+      {},
+      { email: '' },
+      { email: 'x'.repeat(255) },
+      { email: 'member@example.invalid', authorizationToken: 'not-accepted' }
+    ]) {
+      await expect(account(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    for (const invalid of [undefined, null, [], { email: 'must-not-be-accepted' }]) {
+      await expect(cancel(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(vault.getAccountBreachReport).toHaveBeenCalledOnce()
+    expect(vault.cancelAccountBreachReport).toHaveBeenCalledOnce()
   })
 
   it.each([

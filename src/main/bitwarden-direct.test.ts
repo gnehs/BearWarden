@@ -790,6 +790,35 @@ async function expectInvalidSync(sync: JsonObject): Promise<void> {
 }
 
 describe('BitwardenDirectClient', () => {
+  it('passes authenticated account-breach reports through without requiring decrypted vault keys', async () => {
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url) => {
+        if (url.endsWith('/api/hibp/breach?username=person%40example.test')) {
+          return jsonResponse([])
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: 1 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: null,
+        securityStamp: null
+      }
+    })
+
+    await expect(client.getAccountBreachReport('person@example.test')).resolves.toEqual({
+      status: 'complete',
+      breaches: []
+    })
+    await expect(client.status()).resolves.toEqual({ status: 'locked' })
+  })
+
   it('rejects a response whose aggregate nested rows exceed the sync budget', () => {
     expect(addAggregateRemoteRows(2, 1, 3)).toBe(3)
     expect(() => addAggregateRemoteRows(3, 1, 3)).toThrow(

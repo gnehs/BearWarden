@@ -40,7 +40,11 @@ const api: BearWardenAPI = {
     report: () => ipcRenderer.invoke(IPC_CHANNELS.vaultHealthReport, {}),
     exposedPasswords: () => ipcRenderer.invoke(IPC_CHANNELS.vaultHealthExposedPasswords, {}),
     cancelExposedPasswords: () =>
-      ipcRenderer.invoke(IPC_CHANNELS.vaultHealthCancelExposedPasswords, {})
+      ipcRenderer.invoke(IPC_CHANNELS.vaultHealthCancelExposedPasswords, {}),
+    accountBreaches: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.vaultHealthAccountBreaches, request),
+    cancelAccountBreaches: () =>
+      ipcRenderer.invoke(IPC_CHANNELS.vaultHealthCancelAccountBreaches, {})
   },
   folders: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.folderList),

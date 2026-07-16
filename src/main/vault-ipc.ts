@@ -8,6 +8,7 @@ import {
   MAX_LOGIN_MOVE_MANY_IDS,
   MAX_LOGIN_AUTHORIZE_MANY_IDS,
   MAX_LOGIN_SEARCH_QUERY_LENGTH,
+  MAX_ACCOUNT_BREACH_EMAIL_LENGTH,
   type AppSettingsUpdate,
   type AttachmentCancelRequest,
   type AttachmentDeleteRequest,
@@ -56,6 +57,8 @@ import {
   type VaultErrorCode,
   type VaultExportRequest,
   type VaultHealthExposedReport,
+  type VaultHealthAccountBreachReport,
+  type VaultHealthAccountBreachRequest,
   type VaultHealthReport,
   type VaultImportRequest,
   type TouchIdEnableRequest,
@@ -1136,6 +1139,17 @@ function parseVaultHealthEmptyRequest(value: unknown): RecordValue {
   return exactRecord(value, [])
 }
 
+function parseVaultHealthAccountBreachRequest(
+  value: unknown
+): VaultHealthAccountBreachRequest {
+  const record = exactRecord(value, ['email'])
+  const email = requiredString(record, 'email').trim()
+  if (email.length === 0 || email.length > MAX_ACCOUNT_BREACH_EMAIL_LENGTH) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return { email }
+}
+
 function optionalTwoFactorMethod(
   record: RecordValue,
   key: string
@@ -1358,6 +1372,19 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     async (_event, input) => {
       parseVaultHealthEmptyRequest(input)
       return vault.cancelExposedPasswordReport()
+    }
+  )
+  registerHandler<VaultHealthAccountBreachReport>(
+    IPC_CHANNELS.vaultHealthAccountBreaches,
+    getMainWindow,
+    (_event, input) => vault.getAccountBreachReport(parseVaultHealthAccountBreachRequest(input))
+  )
+  registerHandler<boolean>(
+    IPC_CHANNELS.vaultHealthCancelAccountBreaches,
+    getMainWindow,
+    async (_event, input) => {
+      parseVaultHealthEmptyRequest(input)
+      return vault.cancelAccountBreachReport()
     }
   )
   registerHandler(IPC_CHANNELS.loginAuthorize, getMainWindow, async (event, input) => {

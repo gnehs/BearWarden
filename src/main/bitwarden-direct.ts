@@ -23,6 +23,7 @@ import {
 import {
   BitwardenHttpClient,
   BitwardenHttpError,
+  type BitwardenAccountBreachReport,
   type BitwardenAttachmentDownload,
   type BitwardenAttachmentUpload,
   type BitwardenPrelogin,
@@ -213,6 +214,8 @@ export interface BitwardenDirectState {
 
 export interface BitwardenSyncClient {
   status(signal?: AbortSignal): Promise<{ status: 'unauthenticated' | 'locked' | 'unlocked' }>
+  /** Authenticated Vaultwarden HIBP account-breach report; it does not require vault decryption. */
+  getAccountBreachReport(email: string, signal?: AbortSignal): Promise<BitwardenAccountBreachReport>
   login(request: BitwardenLoginRequest): Promise<void>
   unlock(request: BitwardenUnlockRequest): Promise<void>
   sync(signal?: AbortSignal): Promise<void>
@@ -1314,6 +1317,17 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   async status(): Promise<{ status: 'unauthenticated' | 'locked' | 'unlocked' }> {
     if (!this.http.exportSession()) return { status: 'unauthenticated' }
     return { status: this.stretchedKey ? 'unlocked' : 'locked' }
+  }
+
+  async getAccountBreachReport(
+    email: string,
+    signal?: AbortSignal
+  ): Promise<BitwardenAccountBreachReport> {
+    try {
+      return await this.http.getAccountBreachReport(email, signal)
+    } catch (error) {
+      throw this.mapError(error)
+    }
   }
 
   async login(request: BitwardenLoginRequest): Promise<void> {

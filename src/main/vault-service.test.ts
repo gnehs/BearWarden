@@ -273,6 +273,7 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
       unlocked = true
     },
     sync: async () => undefined,
+    getAccountBreachReport: async () => ({ status: 'complete', breaches: [] }),
     listFolders: async () => remoteFolders.map((folder) => ({ ...folder })),
     listPersonalLogins: async () =>
       remoteLogins.map((login) => ({
@@ -2678,6 +2679,140 @@ describe('VaultService encrypted local data', () => {
     finishRequest()
 
     await expect(operation).rejects.toMatchObject({ code: 'HEALTH_CHECK_FAILED' })
+  })
+
+  it('queries account breaches only through the configured connector and preserves unavailable', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service, store } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await expect(
+      service.getAccountBreachReport({ email: 'member@example.invalid' })
+    ).rejects.toMatchObject({ code: 'SYNC_AUTH_REQUIRED' })
+    await expect(service.getAccountBreachReport({ email: 'not-an-email' })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const accountReport = vi.spyOn(fake!, 'getAccountBreachReport').mockResolvedValueOnce({
+      status: 'complete',
+      breaches: [
+        {
+          name: 'ExampleBreach',
+          title: 'Example Breach',
+          domain: 'example.invalid',
+          breachDate: '2026-01-02',
+          addedDate: '2026-01-03T00:00:00Z',
+          pwnCount: 123,
+          dataClasses: ['Email addresses', 'Passwords'],
+          isVerified: true
+        }
+      ]
+    })
+    const write = vi.spyOn(store, 'write')
+
+    await expect(
+      service.getAccountBreachReport({ email: '  MEMBER@EXAMPLE.INVALID  ' })
+    ).resolves.toEqual({
+      generatedAt: expect.stringMatching(/^2026-07-14T/u),
+      status: 'complete',
+      breaches: [
+        {
+          name: 'ExampleBreach',
+          title: 'Example Breach',
+          domain: 'example.invalid',
+          breachDate: '2026-01-02',
+          addedDate: '2026-01-03T00:00:00Z',
+          pwnCount: 123,
+          dataClasses: ['Email addresses', 'Passwords'],
+          isVerified: true
+        }
+      ]
+    })
+    expect(accountReport).toHaveBeenCalledWith('member@example.invalid', expect.any(AbortSignal))
+    expect(write).not.toHaveBeenCalled()
+
+    accountReport.mockResolvedValueOnce({
+      status: 'unavailable',
+      reason: 'server-hibp-unconfigured'
+    })
+    await expect(
+      service.getAccountBreachReport({ email: 'other@example.invalid' })
+    ).resolves.toEqual({
+      generatedAt: expect.stringMatching(/^2026-07-14T/u),
+      status: 'unavailable',
+      reason: 'server-hibp-unconfigured',
+      breaches: []
+    })
+  })
+
+  it('cancels account-breach I/O, releases the mutex, and fails closed on auth or lock changes', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const accountReport = vi.spyOn(fake!, 'getAccountBreachReport')
+    accountReport.mockImplementationOnce(
+      async (_email, signal) =>
+        new Promise((_resolve, reject) => {
+          if (signal?.aborted) {
+            reject(new BitwardenDirectError('ABORTED'))
+            return
+          }
+          signal?.addEventListener(
+            'abort',
+            () => reject(new BitwardenDirectError('ABORTED')),
+            { once: true }
+          )
+        })
+    )
+    const canceled = service.getAccountBreachReport({ email: 'cancel@example.invalid' })
+    const canceledExpectation = expect(canceled).rejects.toMatchObject({
+      code: 'HEALTH_CHECK_FAILED'
+    })
+    await vi.waitFor(() => expect(accountReport).toHaveBeenCalledOnce())
+    await expect(service.listLogins()).resolves.toEqual(expect.any(Array))
+    expect(service.cancelAccountBreachReport()).toBe(true)
+    expect(service.cancelAccountBreachReport()).toBe(false)
+    await canceledExpectation
+
+    accountReport.mockRejectedValueOnce(new BitwardenDirectError('AUTH_REQUIRED'))
+    await expect(
+      service.getAccountBreachReport({ email: 'auth@example.invalid' })
+    ).rejects.toMatchObject({ code: 'SYNC_AUTH_REQUIRED' })
+
+    accountReport.mockImplementationOnce(
+      async (_email, signal) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener(
+            'abort',
+            () => reject(new BitwardenDirectError('ABORTED')),
+            { once: true }
+          )
+        })
+    )
+    const locked = service.getAccountBreachReport({ email: 'lock@example.invalid' })
+    const lockedExpectation = expect(locked).rejects.toMatchObject({ code: 'LOCKED' })
+    await vi.waitFor(() => expect(accountReport).toHaveBeenCalledTimes(3))
+    await service.lock()
+    await lockedExpectation
   })
 
   it('keeps deleted items in trash, blocks ordinary mutations, and restores or purges them', async () => {

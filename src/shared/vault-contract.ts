@@ -9,6 +9,8 @@ export const IPC_CHANNELS = {
   vaultHealthReport: 'vault:health-report',
   vaultHealthExposedPasswords: 'vault:health-exposed-passwords',
   vaultHealthCancelExposedPasswords: 'vault:health-cancel-exposed-passwords',
+  vaultHealthAccountBreaches: 'vault:health-account-breaches',
+  vaultHealthCancelAccountBreaches: 'vault:health-cancel-account-breaches',
   folderList: 'folder:list',
   folderCreate: 'folder:create',
   folderUpdate: 'folder:update',
@@ -550,6 +552,39 @@ export interface VaultHealthExposedReport {
   exposedPasswords: VaultHealthExposedFinding[]
 }
 
+/** An explicit account-breach query. The complete address is sent through the configured
+ * Vaultwarden server to HIBP, so this request must only be created after user confirmation. */
+export interface VaultHealthAccountBreachRequest {
+  email: string
+}
+
+export const MAX_ACCOUNT_BREACH_EMAIL_LENGTH = 254
+
+/** Renderer-safe breach metadata. HIBP's HTML description is deliberately excluded. */
+export interface VaultHealthAccountBreachFinding {
+  name: string
+  title: string
+  domain: string
+  breachDate: string
+  addedDate: string
+  pwnCount: number
+  dataClasses: string[]
+  isVerified: boolean
+}
+
+export type VaultHealthAccountBreachReport =
+  | {
+      generatedAt: string
+      status: 'complete'
+      breaches: VaultHealthAccountBreachFinding[]
+    }
+  | {
+      generatedAt: string
+      status: 'unavailable'
+      reason: 'server-hibp-unconfigured'
+      breaches: []
+    }
+
 export type SyncState = 'unconfigured' | 'locked' | 'ready' | 'syncing' | 'error'
 
 export interface SyncStatus {
@@ -936,6 +971,12 @@ export interface BearWardenAPI {
     exposedPasswords: () => Promise<VaultHealthExposedReport>
     /** Cancels the active HIBP report, if any. */
     cancelExposedPasswords: () => Promise<boolean>
+    /** Sends the complete address through the configured Vaultwarden server to HIBP. */
+    accountBreaches: (
+      request: VaultHealthAccountBreachRequest
+    ) => Promise<VaultHealthAccountBreachReport>
+    /** Cancels the active account-breach report, if any. */
+    cancelAccountBreaches: () => Promise<boolean>
   }
   folders: {
     list: () => Promise<FolderView[]>

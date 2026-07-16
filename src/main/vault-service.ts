@@ -58,6 +58,8 @@ import type {
   VaultPasswordHistoryEntry,
   VaultItemType,
   VaultHealthExposedReport,
+  VaultHealthAccountBreachReport,
+  VaultHealthAccountBreachRequest,
   VaultHealthReport,
   VaultReprompt,
   VaultUriMatch,
@@ -2042,6 +2044,14 @@ interface ActiveExposedPasswordOperation {
   readonly promise: Promise<VaultHealthExposedReport>
 }
 
+interface ActiveAccountBreachOperation {
+  readonly generation: number
+  readonly email: string
+  readonly client: BitwardenSyncClient
+  readonly abort: AbortController
+  readonly promise: Promise<VaultHealthAccountBreachReport>
+}
+
 export class VaultService {
   private key: Buffer | null = null
   private salt: Buffer | null = null
@@ -2068,6 +2078,7 @@ export class VaultService {
   private readonly websiteIconCache = new Map<string, string | null>()
   private readonly websiteIconRequests = new Map<string, Promise<string | null>>()
   private activeExposedPasswordOperation: ActiveExposedPasswordOperation | null = null
+  private activeAccountBreachOperation: ActiveAccountBreachOperation | null = null
 
   constructor(
     private readonly store: EncryptedVaultStore<unknown>,
@@ -2167,6 +2178,7 @@ export class VaultService {
   lock(): Promise<VaultStatus> {
     this.syncAbort?.abort()
     this.activeExposedPasswordOperation?.abort.abort()
+    this.activeAccountBreachOperation?.abort.abort()
     return this.exclusive(async () => {
       try {
         await this.syncClient?.lock()
@@ -2182,6 +2194,8 @@ export class VaultService {
     this.syncAbort?.abort()
     this.activeExposedPasswordOperation?.abort.abort()
     this.activeExposedPasswordOperation = null
+    this.activeAccountBreachOperation?.abort.abort()
+    this.activeAccountBreachOperation = null
     this.syncAbort = null
     this.activeAttachmentOperation = null
     this.syncClient = null
@@ -2310,6 +2324,7 @@ export class VaultService {
 
   disconnectSync(): Promise<SyncStatus> {
     this.syncAbort?.abort()
+    this.activeAccountBreachOperation?.abort.abort()
     return this.exclusive(async () => {
       const next = cloneData(this.requireData())
       const client = this.syncClient
@@ -2529,6 +2544,125 @@ export class VaultService {
     if (!active || active.abort.signal.aborted) return false
     active.abort.abort()
     return true
+  }
+
+  /**
+   * Queries the configured Vaultwarden HIBP proxy without holding the vault mutex during network
+   * I/O. Unlike the password range report, this explicitly discloses the complete address through
+   * the configured server, so callers must only invoke it after a user action.
+   */
+  async getAccountBreachReport(
+    request: VaultHealthAccountBreachRequest
+  ): Promise<VaultHealthAccountBreachReport> {
+    const snapshot = await this.exclusive(async () => {
+      const email = this.normalizeAccountBreachEmail(request.email)
+      const sync = this.requireSyncData()
+      return {
+        generation: this.generation,
+        email,
+        client: this.getOrCreateSyncClient(sync)
+      }
+    })
+    const active = this.activeAccountBreachOperation
+    if (
+      active &&
+      !active.abort.signal.aborted &&
+      active.generation === snapshot.generation &&
+      active.email === snapshot.email &&
+      active.client === snapshot.client
+    ) {
+      return active.promise
+    }
+
+    active?.abort.abort()
+    const abort = new AbortController()
+    const promise = this.resolveAccountBreachReport(
+      snapshot.generation,
+      snapshot.client,
+      snapshot.email,
+      abort.signal
+    ).finally(() => {
+      if (this.activeAccountBreachOperation?.promise === promise) {
+        this.activeAccountBreachOperation = null
+      }
+    })
+    this.activeAccountBreachOperation = { ...snapshot, abort, promise }
+    return promise
+  }
+
+  cancelAccountBreachReport(): boolean {
+    const active = this.activeAccountBreachOperation
+    if (!active || active.abort.signal.aborted) return false
+    active.abort.abort()
+    return true
+  }
+
+  private normalizeAccountBreachEmail(value: unknown): string {
+    const email = normalizeRequiredString(value, 254).toLowerCase()
+    const firstAt = email.indexOf('@')
+    if (
+      /\s/u.test(email) ||
+      firstAt <= 0 ||
+      firstAt !== email.lastIndexOf('@') ||
+      firstAt === email.length - 1
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    return email
+  }
+
+  private async resolveAccountBreachReport(
+    generation: number,
+    client: BitwardenSyncClient,
+    email: string,
+    signal: AbortSignal
+  ): Promise<VaultHealthAccountBreachReport> {
+    let report: Awaited<ReturnType<BitwardenSyncClient['getAccountBreachReport']>>
+    try {
+      report = await client.getAccountBreachReport(email, signal)
+    } catch (error) {
+      return this.exclusive(async () => {
+        this.requireData()
+        if (generation !== this.generation) throw new VaultError('LOCKED')
+        if (this.syncClient !== client || !this.requireData().sync) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        if (error instanceof BitwardenDirectError && error.code === 'AUTH_REQUIRED') {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        throw new VaultError('HEALTH_CHECK_FAILED')
+      })
+    }
+
+    return this.exclusive(async () => {
+      this.requireData()
+      if (generation !== this.generation) throw new VaultError('LOCKED')
+      if (this.syncClient !== client || !this.requireData().sync) {
+        throw new VaultError('SYNC_AUTH_REQUIRED')
+      }
+      if (report.status === 'unavailable') {
+        return {
+          generatedAt: this.nowIso(),
+          status: 'unavailable',
+          reason: report.reason,
+          breaches: []
+        }
+      }
+      return {
+        generatedAt: this.nowIso(),
+        status: 'complete',
+        breaches: report.breaches.map((breach) => ({
+          name: breach.name,
+          title: breach.title,
+          domain: breach.domain,
+          breachDate: breach.breachDate,
+          addedDate: breach.addedDate,
+          pwnCount: breach.pwnCount,
+          dataClasses: [...breach.dataClasses],
+          isVerified: breach.isVerified
+        }))
+      }
+    })
   }
 
   private captureExposedPasswordSnapshot(): ExposedPasswordSnapshot {
