@@ -193,6 +193,7 @@ describe('registerVaultIpc reprompt gate', () => {
       importVault: ReturnType<typeof vi.fn>
     }
     afterMutation: ReturnType<typeof vi.fn>
+    beforeSyncReconfigure: ReturnType<typeof vi.fn>
     setAuthorizationState: (state: { reprompt: 0 | 1; generation: number }) => void
   } {
     const mainFrame = { url: 'app://bearwarden/index.html' }
@@ -309,6 +310,8 @@ describe('registerVaultIpc reprompt gate', () => {
         ],
         revision: 'b'.repeat(64)
       })),
+      connectSync: vi.fn(async () => ({ configured: true, state: 'ready' })),
+      disconnectSync: vi.fn(async () => ({ configured: false, state: 'unconfigured' })),
       createLogin: vi.fn(async (request) => ({ id: 'created', ...request })),
       cloneLogin: vi.fn(async () => ({ id: 'clone' })),
       archiveLogins: vi.fn(async ({ ids }: { ids: string[] }) => ids.map((id) => ({ id }))),
@@ -379,6 +382,7 @@ describe('registerVaultIpc reprompt gate', () => {
       }))
     }
     const afterMutation = vi.fn()
+    const beforeSyncReconfigure = vi.fn(async () => undefined)
     registerVaultIpc({
       vault: vault as unknown as VaultService,
       portability: portability as unknown as Parameters<typeof registerVaultIpc>[0]['portability'],
@@ -390,18 +394,46 @@ describe('registerVaultIpc reprompt gate', () => {
         >,
       repromptNow: () => 1_000,
       repromptRandomBytes: (size) => Buffer.alloc(size, 5),
-      afterMutation
+      afterMutation,
+      beforeSyncReconfigure
     })
     return {
       event,
       vault,
       portability,
       afterMutation,
+      beforeSyncReconfigure,
       setAuthorizationState: (state) => {
         authorizationState = state
       }
     }
   }
+
+  it('invalidates the old notification lease before connect and disconnect reconfiguration', async () => {
+    const { event, vault, beforeSyncReconfigure } = harness()
+    const order: string[] = []
+    beforeSyncReconfigure.mockImplementation(async () => {
+      order.push('before')
+    })
+    vault.connectSync.mockImplementation(async () => {
+      order.push('connect')
+      return { configured: true, state: 'ready' }
+    })
+    vault.disconnectSync.mockImplementation(async () => {
+      order.push('disconnect')
+      return { configured: false, state: 'unconfigured' }
+    })
+
+    await electronMock.handlers.get(IPC_CHANNELS.syncConnect)!(event, {
+      serverUrl: 'https://vault.example.invalid',
+      email: 'person@example.invalid',
+      masterPassword: 'remote password'
+    })
+    await electronMock.handlers.get(IPC_CHANNELS.syncDisconnect)!(event, undefined)
+
+    expect(order).toEqual(['before', 'connect', 'before', 'disconnect'])
+    expect(beforeSyncReconfigure).toHaveBeenCalledTimes(2)
+  })
 
   it('keeps portability IPC path-free, exact, and password-proof scoped', async () => {
     const { event, portability } = harness()

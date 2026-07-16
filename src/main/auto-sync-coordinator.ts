@@ -58,6 +58,13 @@ export class AutoSyncCoordinator {
 
     try {
       const status = await this.options.vault.syncStatus()
+      if (status.state === 'syncing') {
+        // A manual sync may be in progress while a remote invalidation arrives. Keep the request
+        // pending so the notification is not consumed at the edge of that server snapshot.
+        this.requested = true
+        this.notifySyncChanged(status)
+        return
+      }
       if (status.state !== 'ready' && status.state !== 'error') {
         this.notifySyncChanged(status)
         return

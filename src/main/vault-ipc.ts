@@ -188,10 +188,11 @@ export interface VaultIpcOptions {
   /** Shared with other main-only authorization boundaries such as the SSH agent. */
   repromptAuthorizations?: RepromptAuthorizationStore
   afterSetup?: () => void | Promise<void>
-  beforeLock?: () => void
+  beforeLock?: () => void | Promise<void>
   afterLock?: () => void
   afterUnlock?: (masterPassword: string) => void | Promise<void>
   afterMutation?: () => void
+  beforeSyncReconfigure?: () => void | Promise<void>
   afterSyncChanged?: (status: SyncStatus) => void
   repromptNow?: () => number
   repromptRandomBytes?: (size: number) => Buffer
@@ -1351,7 +1352,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     })
   })
   registerHandler(IPC_CHANNELS.vaultLock, getMainWindow, async () => {
-    options.beforeLock?.()
+    await Promise.resolve(options.beforeLock?.())
     authorizations.clear()
     const status = await vault.lock()
     options.afterLock?.()
@@ -1833,6 +1834,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   })
   registerHandler(IPC_CHANNELS.syncStatus, getMainWindow, () => vault.syncStatus())
   registerHandler(IPC_CHANNELS.syncConnect, getMainWindow, async (_event, input) => {
+    await Promise.resolve(options.beforeSyncReconfigure?.())
     const result = await vault.connectSync(parseSyncConnect(input))
     options.afterSyncChanged?.(result)
     return result
@@ -1848,6 +1850,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     return result
   })
   registerHandler(IPC_CHANNELS.syncDisconnect, getMainWindow, async () => {
+    await Promise.resolve(options.beforeSyncReconfigure?.())
     const status = await vault.disconnectSync()
     options.afterSyncChanged?.(status)
     return status

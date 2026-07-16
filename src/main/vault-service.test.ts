@@ -281,8 +281,28 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
     },
     unlock: async () => {
       unlocked = true
+      if (!state.session) {
+        state = {
+          ...state,
+          session: {
+            accessToken: 'test-access-token-after-logout',
+            refreshToken: 'test-refresh-token-after-logout',
+            expiresAt: 2
+          }
+        }
+      }
     },
-    sync: async () => undefined,
+    sync: async () => {
+      state = {
+        ...state,
+        profileId: '90000000-0000-4000-8000-000000000099',
+        securityStamp: 'test-security-stamp'
+      }
+    },
+    notificationAccessToken: async () => {
+      if (!state.session) throw new Error('missing fake session')
+      return state.session.accessToken
+    },
     getAccountBreachReport: async () => ({ status: 'complete', breaches: [] }),
     getEquivalentDomainSettings: async () => structuredClone(equivalentDomainSettings),
     updateEquivalentDomainSettings: async (update) => {
@@ -540,6 +560,79 @@ describe('VaultService encrypted local data', () => {
       configured: true,
       state: 'ready'
     })
+  })
+
+  it('leases encrypted notification credentials and preserves mappings across remote logout', async () => {
+    const { filePath, service } = await createHarness({
+      createSyncClient: (sync) => createSyncFake(sync.state)
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid/base',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+
+    await expect(service.notificationConnectionInfo()).resolves.toMatchObject({
+      notificationsUrl: 'https://vault.example.invalid/base/notifications',
+      accessToken: 'test-access-token',
+      userId: '90000000-0000-4000-8000-000000000099',
+      deviceIdentifier: expect.stringMatching(/^[0-9a-f-]{36}$/)
+    })
+    expect(await readFile(filePath, 'utf8')).not.toContain('test-access-token')
+
+    await expect(service.remoteLogoutSync()).resolves.toMatchObject({
+      configured: true,
+      state: 'locked',
+      serverUrl: 'https://vault.example.invalid/base'
+    })
+    await expect(service.notificationConnectionInfo()).resolves.toBeNull()
+    expect(await service.listLogins()).toHaveLength(1)
+
+    await expect(
+      service.unlockSync({ masterPassword: 'remote master password' })
+    ).resolves.toMatchObject({ configured: true, state: 'ready' })
+    await expect(service.notificationConnectionInfo()).resolves.toMatchObject({
+      accessToken: 'test-access-token-after-logout',
+      userId: '90000000-0000-4000-8000-000000000099'
+    })
+    await expect(service.syncNow()).resolves.toMatchObject({ conflicts: 0 })
+    expect(await service.listLogins()).toHaveLength(1)
+  })
+
+  it('aborts a late notification-token lease without reviving it after lock', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+
+    let release!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const tokenLease = vi
+      .spyOn(fake!, 'notificationAccessToken')
+      .mockImplementation(async (signal) => {
+        await waiting
+        if (signal?.aborted) throw new BitwardenDirectError('ABORTED')
+        return 'late-access-token'
+      })
+    const pending = service.notificationConnectionInfo()
+    await vi.waitFor(() => expect(tokenLease).toHaveBeenCalledOnce())
+
+    await service.lock()
+    release()
+    await expect(pending).resolves.toBeNull()
+    await expect(service.status()).resolves.toEqual({ state: 'locked' })
   })
 
   it('refreshes, canonicalizes, confirms, and encrypts account equivalent-domain settings', async () => {

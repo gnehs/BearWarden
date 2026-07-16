@@ -105,6 +105,21 @@ describe('AutoSyncCoordinator', () => {
     expect(onVaultChanged).not.toHaveBeenCalled()
   })
 
+  it('keeps a remote invalidation pending while a manual sync is running', async () => {
+    const { coordinator, syncStatus, syncNow, onSyncChanged } = createHarness()
+    syncStatus
+      .mockResolvedValueOnce({ configured: true, state: 'syncing' })
+      .mockResolvedValueOnce(READY_STATUS)
+
+    coordinator.request()
+    await vi.advanceTimersByTimeAsync(250)
+    expect(syncNow).not.toHaveBeenCalled()
+    expect(onSyncChanged).toHaveBeenCalledWith({ configured: true, state: 'syncing' })
+
+    await vi.advanceTimersByTimeAsync(250)
+    expect(syncNow).toHaveBeenCalledOnce()
+  })
+
   it('contains sync failures and reports the resulting error status', async () => {
     const { coordinator, syncStatus, syncNow, onSyncChanged, onVaultChanged } = createHarness()
     const errorStatus: SyncStatus = {

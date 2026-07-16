@@ -97,6 +97,7 @@ import {
   type BitwardenEquivalentDomainUpdate
 } from './bitwarden-http'
 import { EncryptedVaultStore } from './encrypted-vault-store'
+import type { BitwardenNotificationConnectionInfo } from './bitwarden-notifications'
 import { searchVaultItems, type VaultSearchItem } from './vault-search'
 import { analyzeVaultHealth, type VaultHealthItem } from './vault-health'
 import { hashPasswordsForPwnedLookup, PwnedPasswordsClient } from './pwned-passwords'
@@ -2264,6 +2265,7 @@ export class VaultService {
   private readonly exclusiveContext = new AsyncLocalStorage<{ active: boolean }>()
   private syncClient: BitwardenSyncClient | null = null
   private syncAbort: AbortController | null = null
+  private readonly notificationTokenAborts = new Set<AbortController>()
   private syncInProgress = false
   private syncLastError: string | null = null
   private activeAttachmentOperation: {
@@ -2380,6 +2382,7 @@ export class VaultService {
 
   lock(): Promise<VaultStatus> {
     this.syncAbort?.abort()
+    this.abortNotificationTokenLeases()
     this.activeExposedPasswordOperation?.abort.abort()
     this.activeAccountBreachOperation?.abort.abort()
     return this.exclusive(async () => {
@@ -2395,6 +2398,7 @@ export class VaultService {
 
   dispose(): void {
     this.syncAbort?.abort()
+    this.abortNotificationTokenLeases()
     this.activeExposedPasswordOperation?.abort.abort()
     this.activeExposedPasswordOperation = null
     this.activeAccountBreachOperation?.abort.abort()
@@ -2415,6 +2419,107 @@ export class VaultService {
 
   syncStatus(): Promise<SyncStatus> {
     return this.exclusive(async () => this.currentSyncStatus(true))
+  }
+
+  /** Main-process-only notification credentials. Never expose this through IPC or renderer state. */
+  async notificationConnectionInfo(): Promise<BitwardenNotificationConnectionInfo | null> {
+    const lease = await this.exclusive(async () => {
+      const sync = this.requireData().sync
+      if (!sync) return null
+      const client = this.getOrCreateSyncClient(sync)
+      const status = await client.status()
+      if (status.status !== 'unlocked') return null
+      const state = client.exportState()
+      const notificationAccessToken = client.notificationAccessToken?.bind(client)
+      if (!state.session || !state.profileId || !notificationAccessToken) return null
+      const abort = new AbortController()
+      this.notificationTokenAborts.add(abort)
+      return {
+        client,
+        notificationAccessToken,
+        generation: this.generation,
+        abort,
+        notificationsUrl: resolveBitwardenUrls(sync.serverUrl).notificationsUrl,
+        userId: state.profileId,
+        deviceIdentifier: state.deviceIdentifier
+      }
+    })
+    if (!lease) return null
+
+    let accessToken: string
+    try {
+      accessToken = await lease.notificationAccessToken(lease.abort.signal)
+    } catch {
+      await this.exclusive(async () => {
+        this.notificationTokenAborts.delete(lease.abort)
+      })
+      if (lease.abort.signal.aborted) return null
+      throw new Error('NOTIFICATION_TOKEN_UNAVAILABLE')
+    }
+
+    return this.exclusive(async () => {
+      this.notificationTokenAborts.delete(lease.abort)
+      const current = this.requireData()
+      if (
+        lease.abort.signal.aborted ||
+        lease.generation !== this.generation ||
+        lease.client !== this.syncClient ||
+        !current.sync
+      ) {
+        return null
+      }
+      const state = lease.client.exportState()
+      if (
+        !state.session ||
+        state.session.accessToken !== accessToken ||
+        state.profileId !== lease.userId
+      ) {
+        return null
+      }
+      if (JSON.stringify(state) !== JSON.stringify(current.sync.state)) {
+        const next = cloneData(current)
+        if (!next.sync) return null
+        next.sync.state = state
+        next.updatedAt = this.nowIso()
+        await this.persist(next)
+        this.data = next
+      }
+      return {
+        notificationsUrl: lease.notificationsUrl,
+        accessToken,
+        userId: lease.userId,
+        deviceIdentifier: lease.deviceIdentifier
+      }
+    })
+  }
+
+  /** Applies a trusted authenticated LogOut notification without deleting sync mappings. */
+  remoteLogoutSync(): Promise<SyncStatus> {
+    this.syncAbort?.abort()
+    this.abortNotificationTokenLeases()
+    this.activeAccountBreachOperation?.abort.abort()
+    return this.exclusive(async () => {
+      const current = this.requireData()
+      if (!current.sync) return { configured: false, state: 'unconfigured' }
+      const client = this.syncClient
+      this.syncClient = null
+      this.syncLastError = null
+      try {
+        await client?.logout()
+      } catch {
+        // A server-directed logout is fail-closed locally even if connector cleanup fails.
+      }
+      const next = cloneData(current)
+      if (!next.sync) return { configured: false, state: 'unconfigured' }
+      next.sync.state = {
+        ...(client?.exportState() ?? next.sync.state),
+        session: null
+      }
+      next.updatedAt = this.nowIso()
+      await this.persist(next)
+      this.data = next
+      return this.baseSyncStatus(next.sync, 'locked')
+    })
   }
 
   connectSync(request: SyncConnectRequest): Promise<SyncResult> {
@@ -2528,6 +2633,7 @@ export class VaultService {
 
   disconnectSync(): Promise<SyncStatus> {
     this.syncAbort?.abort()
+    this.abortNotificationTokenLeases()
     this.activeAccountBreachOperation?.abort.abort()
     return this.exclusive(async () => {
       const next = cloneData(this.requireData())
@@ -4654,6 +4760,11 @@ export class VaultService {
   private finishSyncOperation(abort: AbortController): void {
     if (this.syncAbort === abort) this.syncAbort = null
     this.syncInProgress = false
+  }
+
+  private abortNotificationTokenLeases(): void {
+    for (const abort of this.notificationTokenAborts) abort.abort()
+    this.notificationTokenAborts.clear()
   }
 
   private mapSyncError(error: unknown): VaultError {
