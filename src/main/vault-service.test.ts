@@ -563,6 +563,86 @@ describe('VaultService encrypted local data', () => {
     })
   })
 
+  it('persists organization collections and shared items without entering personal sync merge', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        const organizationId = '60000000-0000-4000-8000-000000000001'
+        const collectionId = '70000000-0000-4000-8000-000000000001'
+        const shared = {
+          ...fake.remoteLogins[0]!,
+          id: '80000000-0000-4000-8000-000000000001',
+          organizationId,
+          collectionIds: [collectionId],
+          edit: true,
+          viewPassword: false,
+          delete: true,
+          restore: false
+        }
+        fake.listOrganizations = async () => [
+          {
+            id: organizationId,
+            name: 'Shared Team',
+            status: 0,
+            type: 0,
+            enabled: true,
+            identifier: 'shared-team',
+            hasPublicAndPrivateKeys: false
+          }
+        ]
+        fake.listCollections = async () => [
+          {
+            id: collectionId,
+            organizationId,
+            name: 'Shared Collection',
+            externalId: null,
+            readOnly: false,
+            hidePasswords: false,
+            manage: true,
+            type: 0,
+            assigned: true
+          }
+        ]
+        fake.listOrganizationCiphers = async () => [structuredClone(shared)]
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+
+    await expect(service.listOrganizations()).resolves.toEqual([
+      expect.objectContaining({ id: '60000000-0000-4000-8000-000000000001' })
+    ])
+    await expect(service.listCollections()).resolves.toEqual([
+      expect.objectContaining({ id: '70000000-0000-4000-8000-000000000001' })
+    ])
+    const shared = (await service.listSharedLogins())[0]!
+    expect(shared).toMatchObject({
+      id: '80000000-0000-4000-8000-000000000001',
+      organizationId: '60000000-0000-4000-8000-000000000001',
+      collectionIds: ['70000000-0000-4000-8000-000000000001'],
+      shared: true,
+      viewPassword: false,
+      delete: true
+    })
+    expect((await service.listLogins()).map((login) => login.id)).not.toContain(shared.id)
+    await expect(service.getSharedLogin({ id: shared.id })).resolves.toMatchObject({
+      id: shared.id,
+      viewPassword: false,
+      username: '',
+      hasTotp: false
+    })
+
+    await service.lock()
+    await service.unlock(MASTER_PASSWORD)
+    await expect(service.listSharedLogins()).resolves.toHaveLength(1)
+  })
+
   it('manages personal text Sends and keeps an existing password unless explicitly removed', async () => {
     let fake: ReturnType<typeof createSyncFake> | null = null
     const { copyText, service } = await createHarness({
@@ -4641,7 +4721,7 @@ describe('VaultService encrypted local data', () => {
       expect(await service.revealPassword({ id: migrated.id })).toBe('legacy-secret')
       await service.lock()
       const unlocked = await store.unlock(MASTER_PASSWORD)
-      expect((unlocked.data as { version: number }).version).toBe(16)
+      expect((unlocked.data as { version: number }).version).toBe(17)
       unlocked.key.fill(0)
       unlocked.salt.fill(0)
     }
@@ -4797,7 +4877,7 @@ describe('VaultService encrypted local data', () => {
     await expect(reopened.generatorHistory()).resolves.toEqual([])
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
-    expect(migrated.data).toMatchObject({ version: 16, generatorHistory: [], sends: [] })
+    expect(migrated.data).toMatchObject({ version: 17, generatorHistory: [], sends: [] })
     migrated.key.fill(0)
     migrated.salt.fill(0)
   })
@@ -4831,7 +4911,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 16,
+      version: 17,
       logins: [expect.objectContaining({ attachments: [] })],
       sends: []
     })
@@ -4870,7 +4950,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 16,
+      version: 17,
       sync: { domainSettings: null }
     })
     migrated.key.fill(0)

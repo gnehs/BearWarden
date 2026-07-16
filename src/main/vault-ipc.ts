@@ -36,6 +36,7 @@ import {
   type LoginFavoriteRequest,
   type LoginIdRequest,
   type LoginListRequest,
+  type SharedLoginListRequest,
   type LoginOpenUriRequest,
   type PasskeyDeleteRequest,
   type LoginMoveRequest,
@@ -1143,6 +1144,44 @@ function parseLoginList(value: unknown): LoginListRequest {
   return result
 }
 
+function parseSharedLoginList(value: unknown): SharedLoginListRequest {
+  if (value === undefined || value === null) return {}
+  if (typeof value !== 'object' || Array.isArray(value)) throw new VaultError('INVALID_INPUT')
+  const candidate = value as RecordValue
+  const result: SharedLoginListRequest = {}
+  if (candidate.organizationId !== undefined) {
+    if (
+      typeof candidate.organizationId !== 'string' ||
+      !UUID_PATTERN.test(candidate.organizationId)
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    result.organizationId = candidate.organizationId
+  }
+  if (candidate.collectionId !== undefined) {
+    if (typeof candidate.collectionId !== 'string' || !UUID_PATTERN.test(candidate.collectionId)) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    result.collectionId = candidate.collectionId
+  }
+  if (candidate.query !== undefined) {
+    if (
+      typeof candidate.query !== 'string' ||
+      candidate.query.length > MAX_LOGIN_SEARCH_QUERY_LENGTH
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    result.query = candidate.query
+  }
+  if (candidate.sort !== undefined) {
+    if (candidate.sort !== 'recent' && candidate.sort !== 'name') {
+      throw new VaultError('INVALID_INPUT')
+    }
+    result.sort = candidate.sort
+  }
+  return result
+}
+
 /** Vault health intentionally accepts only an explicit empty object: no renderer-supplied scope
  * or authorization material may influence which decrypted records are analyzed. */
 function parseVaultHealthEmptyRequest(value: unknown): RecordValue {
@@ -1444,6 +1483,22 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     return result
   })
   registerHandler(IPC_CHANNELS.folderList, getMainWindow, () => vault.listFolders())
+  registerHandler(IPC_CHANNELS.organizationList, getMainWindow, () => vault.listOrganizations())
+  registerHandler(IPC_CHANNELS.collectionList, getMainWindow, (_event, input) => {
+    if (input === undefined || input === null) return vault.listCollections()
+    if (typeof input !== 'string' || !UUID_PATTERN.test(input))
+      throw new VaultError('INVALID_INPUT')
+    return vault.listCollections(input)
+  })
+  registerHandler(IPC_CHANNELS.sharedLoginList, getMainWindow, (_event, input) =>
+    vault.listSharedLogins(parseSharedLoginList(input))
+  )
+  registerHandler(IPC_CHANNELS.sharedLoginGet, getMainWindow, (_event, input) => {
+    if (!isRecord(input) || typeof input.id !== 'string' || !UUID_PATTERN.test(input.id)) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    return vault.getSharedLogin({ id: input.id })
+  })
   registerHandler(IPC_CHANNELS.folderCreate, getMainWindow, (_event, input) =>
     afterMutation(vault.createFolder(parseFolderCreate(input)))
   )

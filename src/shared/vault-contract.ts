@@ -13,6 +13,10 @@ export const IPC_CHANNELS = {
   vaultHealthCancelAccountBreaches: 'vault:health-cancel-account-breaches',
   vaultHealthOpenHibp: 'vault:health-open-hibp',
   folderList: 'folder:list',
+  organizationList: 'organization:list',
+  collectionList: 'collection:list',
+  sharedLoginList: 'shared-login:list',
+  sharedLoginGet: 'shared-login:get',
   folderCreate: 'folder:create',
   folderUpdate: 'folder:update',
   folderDelete: 'folder:delete',
@@ -471,6 +475,55 @@ export interface LoginListRequest {
   deleted?: boolean
   /** True lists non-trash archived items; otherwise they are excluded. */
   archived?: boolean
+}
+
+export interface OrganizationView {
+  id: string
+  name: string
+  status: number | null
+  type: number | null
+  enabled: boolean
+  identifier: string | null
+  hasPublicAndPrivateKeys: boolean
+}
+
+export interface CollectionView {
+  id: string
+  organizationId: string
+  name: string
+  externalId: string | null
+  readOnly: boolean
+  hidePasswords: boolean
+  manage: boolean
+  type: number
+  assigned: boolean
+}
+
+export interface SharedLoginListRequest {
+  organizationId?: string
+  collectionId?: string
+  query?: string
+  sort?: LoginSort
+}
+
+export interface SharedLoginSummary extends LoginSummary {
+  organizationId: string
+  collectionIds: string[]
+  shared: true
+  edit: boolean
+  viewPassword: boolean
+  delete: boolean
+  restore: boolean
+}
+
+export interface SharedLoginView extends LoginView {
+  organizationId: string
+  collectionIds: string[]
+  shared: true
+  edit: boolean
+  viewPassword: boolean
+  delete: boolean
+  restore: boolean
 }
 
 export interface LoginSummary {
@@ -1057,6 +1110,16 @@ export interface BearWardenAPI {
     update: (request: FolderUpdateRequest) => Promise<FolderView>
     delete: (request: FolderDeleteRequest) => Promise<void>
     reorder: (request: FolderReorderRequest) => Promise<FolderView[]>
+  }
+  organizations: {
+    list: () => Promise<OrganizationView[]>
+  }
+  collections: {
+    list: (organizationId?: string) => Promise<CollectionView[]>
+  }
+  sharedLogins: {
+    list: (request?: SharedLoginListRequest) => Promise<SharedLoginSummary[]>
+    get: (request: LoginIdRequest) => Promise<SharedLoginView>
   }
   logins: {
     list: (request?: LoginListRequest) => Promise<LoginSummary[]>

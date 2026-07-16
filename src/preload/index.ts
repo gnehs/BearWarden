@@ -54,6 +54,16 @@ const api: BearWardenAPI = {
     delete: (request) => ipcRenderer.invoke(IPC_CHANNELS.folderDelete, request),
     reorder: (request) => ipcRenderer.invoke(IPC_CHANNELS.folderReorder, request)
   },
+  organizations: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.organizationList)
+  },
+  collections: {
+    list: (organizationId) => ipcRenderer.invoke(IPC_CHANNELS.collectionList, organizationId)
+  },
+  sharedLogins: {
+    list: (request = {}) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginList, request),
+    get: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginGet, request)
+  },
   logins: {
     list: (request = {}) => ipcRenderer.invoke(IPC_CHANNELS.loginList, request),
     authorize: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginAuthorize, request),

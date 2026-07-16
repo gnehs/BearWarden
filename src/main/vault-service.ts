@@ -49,6 +49,11 @@ import type {
   LoginSummary,
   LoginUpdateRequest,
   LoginView,
+  OrganizationView,
+  CollectionView,
+  SharedLoginListRequest,
+  SharedLoginSummary,
+  SharedLoginView,
   VaultCopyField,
   VaultAttachmentView,
   VaultCustomField,
@@ -91,6 +96,7 @@ import {
   type BitwardenFolder,
   type BitwardenLoginDraft,
   type BitwardenLoginItem,
+  type BitwardenOrganizationCipher,
   type BitwardenSendDraft,
   type BitwardenSendItem,
   type BitwardenDirectState,
@@ -167,7 +173,8 @@ const GENERATOR_HISTORY_DATA_VERSION = 13
 const ATTACHMENTS_DATA_VERSION = 14
 const EQUIVALENT_DOMAINS_DATA_VERSION = 15
 const SENDS_DATA_VERSION = 16
-const DATA_VERSION = 16
+const ORGANIZATIONS_DATA_VERSION = 17
+const DATA_VERSION = 17
 const MIN_MASTER_PASSWORD_LENGTH = 12
 const MAX_MASTER_PASSWORD_LENGTH = 1024
 const MAX_NAME_LENGTH = 256
@@ -188,6 +195,7 @@ const MAX_ATTACHMENT_SIZE_NAME_LENGTH = 64
 const MAX_GENERATOR_HISTORY = 200
 const MAX_GENERATED_CREDENTIAL_LENGTH = 512
 const MAX_SENDS = 10_000
+const MAX_REMOTE_ENTITIES = 100_000
 const MAX_SEND_TEXT_LENGTH = 1024 * 1024
 const MAX_SSH_PRIVATE_KEY_LENGTH = 1024 * 1024
 const MAX_SYNC_SECRET_LENGTH = 16_384
@@ -221,6 +229,16 @@ interface StoredLogin
 }
 
 interface StoredSend extends SendView {}
+
+interface StoredSharedLogin extends StoredLogin {
+  organizationId: string
+  collectionIds: string[]
+  shared: true
+  edit: boolean
+  viewPassword: boolean
+  delete: boolean
+  restore: boolean
+}
 
 interface SyncEntityMapping {
   localId: string
@@ -262,6 +280,9 @@ interface VaultData {
   updatedAt: string
   folders: FolderView[]
   logins: StoredLogin[]
+  organizations: OrganizationView[]
+  collections: CollectionView[]
+  sharedLogins: StoredSharedLogin[]
   sends: StoredSend[]
   generatorHistory: GeneratorHistoryEntry[]
   sync: PersistedSyncData | null
@@ -1235,6 +1256,112 @@ function parseStoredSend(value: unknown): StoredSend {
   }
 }
 
+function parseStoredOrganization(value: unknown): OrganizationView {
+  if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
+  const { id, name, status, type, enabled, identifier, hasPublicAndPrivateKeys } = value
+  if (
+    typeof id !== 'string' ||
+    !UUID_PATTERN.test(id) ||
+    typeof name !== 'string' ||
+    name.length === 0 ||
+    name.length > MAX_NAME_LENGTH ||
+    (status !== null &&
+      (typeof status !== 'number' || !Number.isSafeInteger(status) || status < 0)) ||
+    (type !== null && (typeof type !== 'number' || !Number.isSafeInteger(type) || type < 0)) ||
+    typeof enabled !== 'boolean' ||
+    (identifier !== null &&
+      (typeof identifier !== 'string' || identifier.length > MAX_NAME_LENGTH)) ||
+    typeof hasPublicAndPrivateKeys !== 'boolean'
+  ) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  return {
+    id,
+    name,
+    status,
+    type,
+    enabled,
+    identifier,
+    hasPublicAndPrivateKeys
+  }
+}
+
+function parseStoredCollection(value: unknown): CollectionView {
+  if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
+  const { id, organizationId, name, externalId, readOnly, hidePasswords, manage, type, assigned } =
+    value
+  if (
+    typeof id !== 'string' ||
+    !UUID_PATTERN.test(id) ||
+    typeof organizationId !== 'string' ||
+    !UUID_PATTERN.test(organizationId) ||
+    typeof name !== 'string' ||
+    name.length === 0 ||
+    name.length > MAX_NAME_LENGTH ||
+    (externalId !== null &&
+      (typeof externalId !== 'string' || externalId.length > MAX_NAME_LENGTH)) ||
+    typeof readOnly !== 'boolean' ||
+    typeof hidePasswords !== 'boolean' ||
+    typeof manage !== 'boolean' ||
+    typeof type !== 'number' ||
+    !Number.isSafeInteger(type) ||
+    type < 0 ||
+    typeof assigned !== 'boolean'
+  ) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  return {
+    id,
+    organizationId,
+    name,
+    externalId,
+    readOnly,
+    hidePasswords,
+    manage,
+    type,
+    assigned
+  }
+}
+
+function parseStoredSharedLogin(value: unknown): StoredSharedLogin {
+  if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
+  const login = parseStoredLogin(value)
+  const {
+    organizationId,
+    collectionIds,
+    shared,
+    edit,
+    viewPassword,
+    delete: canDelete,
+    restore
+  } = value
+  if (
+    typeof organizationId !== 'string' ||
+    !UUID_PATTERN.test(organizationId) ||
+    !Array.isArray(collectionIds) ||
+    collectionIds.length > MAX_REMOTE_ENTITIES ||
+    collectionIds.some((id) => typeof id !== 'string' || !UUID_PATTERN.test(id)) ||
+    new Set(collectionIds).size !== collectionIds.length ||
+    shared !== true ||
+    typeof edit !== 'boolean' ||
+    typeof viewPassword !== 'boolean' ||
+    typeof canDelete !== 'boolean' ||
+    typeof restore !== 'boolean'
+  ) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  return {
+    ...login,
+    organizationId,
+    collectionIds: [...collectionIds],
+    shared,
+    edit,
+    viewPassword,
+    delete: canDelete,
+    restore
+  }
+}
+
 function parseSyncMappings(
   value: unknown,
   localIds: Set<string>,
@@ -1653,6 +1780,7 @@ function parseVaultData(value: unknown): VaultData {
       GENERATOR_HISTORY_DATA_VERSION,
       ATTACHMENTS_DATA_VERSION,
       SENDS_DATA_VERSION,
+      ORGANIZATIONS_DATA_VERSION,
       DATA_VERSION
     ].includes(value.version) ||
     !Array.isArray(value.folders) ||
@@ -1695,6 +1823,70 @@ function parseVaultData(value: unknown): VaultData {
     throw new VaultError('CORRUPT_VAULT')
   }
 
+  const organizations =
+    dataVersion < ORGANIZATIONS_DATA_VERSION
+      ? []
+      : (() => {
+          if (
+            !Array.isArray(value.organizations) ||
+            value.organizations.length > MAX_REMOTE_ENTITIES
+          ) {
+            throw new VaultError('CORRUPT_VAULT')
+          }
+          const parsed = value.organizations.map(parseStoredOrganization)
+          if (new Set(parsed.map((organization) => organization.id)).size !== parsed.length) {
+            throw new VaultError('CORRUPT_VAULT')
+          }
+          return parsed
+        })()
+  const organizationIds = new Set(organizations.map((organization) => organization.id))
+  const collections =
+    dataVersion < ORGANIZATIONS_DATA_VERSION
+      ? []
+      : (() => {
+          if (!Array.isArray(value.collections) || value.collections.length > MAX_REMOTE_ENTITIES) {
+            throw new VaultError('CORRUPT_VAULT')
+          }
+          const parsed = value.collections.map(parseStoredCollection)
+          if (
+            new Set(parsed.map((collection) => collection.id)).size !== parsed.length ||
+            parsed.some((collection) => !organizationIds.has(collection.organizationId))
+          ) {
+            throw new VaultError('CORRUPT_VAULT')
+          }
+          return parsed
+        })()
+  const collectionIds = new Set(collections.map((collection) => collection.id))
+  const sharedLogins =
+    dataVersion < ORGANIZATIONS_DATA_VERSION
+      ? []
+      : (() => {
+          if (
+            !Array.isArray(value.sharedLogins) ||
+            value.sharedLogins.length > MAX_REMOTE_ENTITIES
+          ) {
+            throw new VaultError('CORRUPT_VAULT')
+          }
+          const parsed = value.sharedLogins.map(parseStoredSharedLogin)
+          if (
+            new Set(parsed.map((login) => login.id)).size !== parsed.length ||
+            parsed.some(
+              (login) =>
+                loginIds.has(login.id) ||
+                !organizationIds.has(login.organizationId) ||
+                login.collectionIds.some((id) => !collectionIds.has(id)) ||
+                login.collectionIds.some(
+                  (id) =>
+                    collections.find((collection) => collection.id === id)?.organizationId !==
+                    login.organizationId
+                )
+            )
+          ) {
+            throw new VaultError('CORRUPT_VAULT')
+          }
+          return parsed
+        })()
+
   const sync =
     dataVersion === LEGACY_DATA_VERSION
       ? null
@@ -1713,6 +1905,9 @@ function parseVaultData(value: unknown): VaultData {
     updatedAt: value.updatedAt,
     folders,
     logins,
+    organizations,
+    collections,
+    sharedLogins,
     sends:
       dataVersion < SENDS_DATA_VERSION
         ? []
@@ -2110,6 +2305,17 @@ function cloneData(data: VaultData): VaultData {
       passwordHistory: clonePasswordHistory(login.passwordHistory),
       attachments: cloneAttachments(login.attachments)
     })),
+    organizations: data.organizations.map((organization) => ({ ...organization })),
+    collections: data.collections.map((collection) => ({ ...collection })),
+    sharedLogins: data.sharedLogins.map((login) => ({
+      ...login,
+      collectionIds: [...login.collectionIds],
+      uris: cloneLoginUris(login.uris),
+      passkeys: login.passkeys.map((passkey) => ({ ...passkey })),
+      customFields: cloneCustomFields(login.customFields),
+      passwordHistory: clonePasswordHistory(login.passwordHistory),
+      attachments: cloneAttachments(login.attachments)
+    })),
     sends: data.sends.map((send) => ({ ...send })),
     generatorHistory: cloneGeneratorHistory(data.generatorHistory),
     sync: data.sync
@@ -2227,6 +2433,19 @@ function toSummary(login: StoredLogin): LoginSummary {
   }
 }
 
+function toSharedSummary(login: StoredSharedLogin): SharedLoginSummary {
+  return {
+    ...toSummary(login),
+    organizationId: login.organizationId,
+    collectionIds: [...login.collectionIds],
+    shared: true,
+    edit: login.edit,
+    viewPassword: login.viewPassword,
+    delete: login.delete,
+    restore: login.restore
+  }
+}
+
 function toVaultSearchItem(login: StoredLogin): VaultSearchItem {
   const protectedItem = login.reprompt === 1 || login.deletedAt !== null
   const searchable: VaultSearchItem = {
@@ -2306,6 +2525,50 @@ function toView(login: StoredLogin): LoginView {
     identityUsername: login.identityUsername,
     publicKey: login.publicKey,
     fingerprint: login.fingerprint
+  }
+}
+
+function toSharedView(login: StoredSharedLogin): SharedLoginView {
+  const view = toView(login)
+  const safeView = login.viewPassword
+    ? view
+    : {
+        ...view,
+        username: '',
+        notes: null,
+        hasTotp: false,
+        customFields: view.customFields.map((field) => ({ ...field, value: null })),
+        cardholderName: '',
+        brand: '',
+        expMonth: '',
+        expYear: '',
+        title: '',
+        firstName: '',
+        middleName: '',
+        lastName: '',
+        address1: '',
+        address2: '',
+        address3: '',
+        city: '',
+        state: '',
+        postalCode: '',
+        country: '',
+        company: '',
+        email: '',
+        phone: '',
+        identityUsername: '',
+        publicKey: '',
+        fingerprint: ''
+      }
+  return {
+    ...safeView,
+    organizationId: login.organizationId,
+    collectionIds: [...login.collectionIds],
+    shared: true,
+    edit: login.edit,
+    viewPassword: login.viewPassword,
+    delete: login.delete,
+    restore: login.restore
   }
 }
 
@@ -2516,6 +2779,9 @@ export class VaultService {
         updatedAt: now,
         folders: [],
         logins: [],
+        organizations: [],
+        collections: [],
+        sharedLogins: [],
         sends: [],
         generatorHistory: [],
         sync: null
@@ -3528,6 +3794,80 @@ export class VaultService {
         }
         return compareText(left.name, right.name) || left.id.localeCompare(right.id)
       })
+    })
+  }
+
+  listOrganizations(): Promise<OrganizationView[]> {
+    return this.exclusive(async () => {
+      const data = this.requireData()
+      return data.organizations.map((organization) => ({ ...organization }))
+    })
+  }
+
+  listCollections(organizationId?: string): Promise<CollectionView[]> {
+    return this.exclusive(async () => {
+      const data = this.requireData()
+      if (organizationId !== undefined) assertUuid(organizationId)
+      return data.collections
+        .filter(
+          (collection) =>
+            organizationId === undefined || collection.organizationId === organizationId
+        )
+        .map((collection) => ({ ...collection }))
+    })
+  }
+
+  listSharedLogins(request: SharedLoginListRequest = {}): Promise<SharedLoginSummary[]> {
+    return this.exclusive(async () => {
+      const data = this.requireData()
+      if (request.sort !== undefined && request.sort !== 'recent' && request.sort !== 'name') {
+        throw new VaultError('INVALID_INPUT')
+      }
+      if (
+        request.query !== undefined &&
+        (typeof request.query !== 'string' || request.query.length > MAX_LOGIN_SEARCH_QUERY_LENGTH)
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      if (request.organizationId !== undefined) assertUuid(request.organizationId)
+      if (request.collectionId !== undefined) assertUuid(request.collectionId)
+      const scoped = data.sharedLogins.filter(
+        (login) =>
+          login.deletedAt === null &&
+          login.archivedAt === null &&
+          (request.organizationId === undefined ||
+            login.organizationId === request.organizationId) &&
+          (request.collectionId === undefined || login.collectionIds.includes(request.collectionId))
+      )
+      const filtered =
+        request.query === undefined
+          ? scoped
+          : (() => {
+              const matchingIds = new Set(
+                searchVaultItems(scoped.map(toVaultSearchItem), request.query).map(
+                  (searchable) => searchable.id
+                )
+              )
+              return scoped.filter((login) => matchingIds.has(login.id))
+            })()
+      return filtered
+        .map(toSharedSummary)
+        .sort((left, right) =>
+          request.sort === 'name'
+            ? compareText(left.name, right.name) || left.id.localeCompare(right.id)
+            : right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id)
+        )
+    })
+  }
+
+  getSharedLogin(request: LoginIdRequest): Promise<SharedLoginView> {
+    return this.exclusive(async () => {
+      assertUuid(request.id)
+      const login = this.requireData().sharedLogins.find((candidate) => candidate.id === request.id)
+      if (!login || login.deletedAt !== null || login.archivedAt !== null) {
+        throw new VaultError('NOT_FOUND')
+      }
+      return toSharedView(login)
     })
   }
 
@@ -5250,6 +5590,7 @@ export class VaultService {
     const sync = current.sync
     if (!sync) throw new VaultError('SYNC_AUTH_REQUIRED')
     await client.sync(signal)
+    const sharedSnapshot = await this.fetchSharedSnapshot(client)
     const initialRemote = await Promise.all([
       client.listFolders(signal),
       client.listPersonalLogins(signal),
@@ -5261,6 +5602,11 @@ export class VaultService {
     const domainSettings = validateRemoteEquivalentDomainSettings(initialRemote[2])
     let remoteSends = initialRemote[3]
     const next = cloneData(current)
+    if (sharedSnapshot) {
+      next.organizations = sharedSnapshot.organizations
+      next.collections = sharedSnapshot.collections
+      next.sharedLogins = sharedSnapshot.sharedLogins
+    }
     if (next.sync?.pendingLoginMutation) {
       await this.resumePendingLoginMutation(next, client, remoteFolders, remoteLogins, signal)
       await client.sync(signal)
@@ -5322,6 +5668,7 @@ export class VaultService {
       client.listFolders(signal),
       client.listPersonalLogins(signal)
     ])
+    const finalSharedSnapshot = await this.fetchSharedSnapshot(client)
     const finalRemoteSends = client.listSends ? await client.listSends(signal) : remoteSends
     this.reconcileServerAuthoritativeAttachments(
       next,
@@ -5330,6 +5677,11 @@ export class VaultService {
       finalRemoteLogins
     )
     next.sends = finalRemoteSends.map(sendViewFromRemote)
+    if (finalSharedSnapshot) {
+      next.organizations = finalSharedSnapshot.organizations
+      next.collections = finalSharedSnapshot.collections
+      next.sharedLogins = finalSharedSnapshot.sharedLogins
+    }
     const syncedAt = this.nowIso()
     next.sync = {
       ...sync,
@@ -5347,6 +5699,59 @@ export class VaultService {
     this.data = next
     this.syncLastError = null
     return { ...this.baseSyncStatus(next.sync, 'ready'), ...counts }
+  }
+
+  private async fetchSharedSnapshot(client: BitwardenSyncClient): Promise<{
+    organizations: OrganizationView[]
+    collections: CollectionView[]
+    sharedLogins: StoredSharedLogin[]
+  } | null> {
+    if (!client.listOrganizations || !client.listCollections || !client.listOrganizationCiphers) {
+      return null
+    }
+    try {
+      const [organizations, collections, sharedLogins] = await Promise.all([
+        client.listOrganizations(),
+        client.listCollections(),
+        client.listOrganizationCiphers()
+      ])
+      const parsedOrganizations = organizations.map(parseStoredOrganization)
+      const organizationIds = new Set(parsedOrganizations.map((organization) => organization.id))
+      if (organizationIds.size !== parsedOrganizations.length)
+        throw new Error('duplicate organization')
+      const parsedCollections = collections.map(parseStoredCollection)
+      const collectionIds = new Set(parsedCollections.map((collection) => collection.id))
+      if (
+        collectionIds.size !== parsedCollections.length ||
+        parsedCollections.some((collection) => !organizationIds.has(collection.organizationId))
+      ) {
+        throw new Error('invalid collection membership')
+      }
+      const parsedSharedLogins = sharedLogins.map((login) => this.sharedLoginFromRemote(login))
+      const sharedIds = new Set(parsedSharedLogins.map((login) => login.id))
+      if (
+        sharedIds.size !== parsedSharedLogins.length ||
+        parsedSharedLogins.some(
+          (login) =>
+            !organizationIds.has(login.organizationId) ||
+            login.collectionIds.some(
+              (id) =>
+                !collectionIds.has(id) ||
+                parsedCollections.find((collection) => collection.id === id)?.organizationId !==
+                  login.organizationId
+            )
+        )
+      ) {
+        throw new Error('invalid shared cipher membership')
+      }
+      return {
+        organizations: parsedOrganizations,
+        collections: parsedCollections,
+        sharedLogins: parsedSharedLogins
+      }
+    } catch {
+      throw new VaultError('SYNC_FAILED')
+    }
   }
 
   private async resumePendingLoginMutation(
@@ -5731,6 +6136,38 @@ export class VaultService {
     }
     data.logins.push(login)
     return login
+  }
+
+  private sharedLoginFromRemote(source: BitwardenOrganizationCipher): StoredSharedLogin {
+    const normalized = this.remoteSyncSnapshot([], [{ ...source, organizationId: null }]).logins[0]
+    if (!normalized) throw new VaultError('SYNC_FAILED')
+    return {
+      id: source.id,
+      type: normalizeItemType(normalized.type),
+      name: normalizeRequiredString(normalized.name, MAX_NAME_LENGTH),
+      notes: normalizeNullableString(normalized.notes, MAX_NOTES_LENGTH),
+      folderId: null,
+      favorite: normalized.favorite,
+      lastUsedAt: null,
+      createdAt: normalized.createdAt ?? this.nowIso(),
+      updatedAt: normalized.updatedAt ?? this.nowIso(),
+      deletedAt: normalized.deletedAt,
+      archivedAt: normalized.archivedAt,
+      reprompt: normalized.reprompt,
+      passkeys: validateRemotePasskeys(normalized.passkeys),
+      customFields: cloneCustomFields(normalized.customFields),
+      passwordHistory: clonePasswordHistory(normalized.passwordHistory),
+      attachments: validateRemoteAttachments(source.attachments),
+      uris: remoteLoginUris(normalized),
+      ...normalizeItemFieldsForStorage(normalized),
+      organizationId: source.organizationId,
+      collectionIds: [...source.collectionIds],
+      shared: true,
+      edit: source.edit,
+      viewPassword: source.viewPassword,
+      delete: source.delete,
+      restore: source.restore
+    }
   }
 
   private updateLocalLogin(
