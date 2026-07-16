@@ -93,6 +93,11 @@ export interface BitwardenPersonalApiKey {
   revisionDate: string
 }
 
+export interface BitwardenTwoFactorProvider {
+  type: number
+  enabled: boolean
+}
+
 /**
  * Vaultwarden returns a synthetic, otherwise-successful row when its HIBP API
  * key is absent. Keep that distinct from both a clean account and a breach.
@@ -778,6 +783,54 @@ export class BitwardenHttpClient {
       // Vaultwarden uses "Invalid password" while Bitwarden Server uses
       // "User verification failed" for this endpoint. Neither means the
       // authenticated session itself expired.
+      if (
+        error instanceof BitwardenHttpError &&
+        error.status === 400 &&
+        (error.code === 'AUTH' || error.code === 'USER_VERIFICATION_FAILED')
+      ) {
+        throw new BitwardenHttpError('USER_VERIFICATION_FAILED', 400)
+      }
+      throw error
+    } finally {
+      body.masterPasswordHash = ''
+    }
+  }
+
+  async getTwoFactorProviders(signal?: AbortSignal): Promise<BitwardenTwoFactorProvider[]> {
+    const response = await this.requestJson('GET', `${this.urls.apiUrl}/two-factor`, {
+      signal,
+      maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+      tooLargeCode: 'TOO_LARGE'
+    })
+    return parseTwoFactorProviders(response)
+  }
+
+  async getTwoFactorRecoveryCode(
+    masterPasswordHash: string,
+    signal?: AbortSignal
+  ): Promise<string> {
+    if (
+      typeof masterPasswordHash !== 'string' ||
+      masterPasswordHash.length === 0 ||
+      masterPasswordHash.length > 1_024 ||
+      /[\0\r\n]/u.test(masterPasswordHash)
+    ) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    const body = { masterPasswordHash }
+    try {
+      const response = await this.requestJson(
+        'POST',
+        `${this.urls.apiUrl}/two-factor/get-recover`,
+        {
+          body,
+          signal,
+          maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+          tooLargeCode: 'TOO_LARGE'
+        }
+      )
+      return parseTwoFactorRecoveryCode(response)
+    } catch (error) {
       if (
         error instanceof BitwardenHttpError &&
         error.status === 400 &&
@@ -1564,6 +1617,50 @@ function parsePersonalApiKey(value: JsonValue): BitwardenPersonalApiKey {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
   return { apiKey, revisionDate }
+}
+
+function parseTwoFactorProviders(value: JsonValue): BitwardenTwoFactorProvider[] {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const data = value.data ?? value.Data
+  const object = value.object ?? value.Object
+  if (!Array.isArray(data) || data.length > 32 || (object !== undefined && object !== 'list')) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  const seen = new Set<number>()
+  return data.map((entry) => {
+    if (!isRecord(entry)) throw new BitwardenHttpError('INVALID_RESPONSE')
+    const type = finiteInteger(entry.type ?? entry.Type)
+    const enabled = entry.enabled ?? entry.Enabled
+    const providerObject = entry.object ?? entry.Object
+    if (
+      type === undefined ||
+      type < 0 ||
+      type > 8 ||
+      seen.has(type) ||
+      typeof enabled !== 'boolean' ||
+      (providerObject !== undefined && providerObject !== 'twoFactorProvider')
+    ) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    seen.add(type)
+    return { type, enabled }
+  })
+}
+
+function parseTwoFactorRecoveryCode(value: JsonValue): string {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const code = value.code ?? value.Code
+  const object = value.object ?? value.Object
+  if (
+    typeof code !== 'string' ||
+    code.length === 0 ||
+    code.length > 128 ||
+    /[\0\r\n]/u.test(code) ||
+    (object !== undefined && object !== 'twoFactorRecover')
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return code
 }
 
 function isValidBreachEmail(value: string): boolean {

@@ -1383,6 +1383,48 @@ describe('BitwardenDirectClient', () => {
     expect(rotationRequests).toBe(1)
   })
 
+  it('derives a fresh proof to retrieve the 2FA recovery code without unlocking', async () => {
+    const requestBodies: JsonObject[] = []
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url, init) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/api/two-factor/get-recover')) {
+          requestBodies.push(JSON.parse(String(init?.body)))
+          return jsonResponse({ code: 'RECOVERY-CODE', object: 'twoFactorRecover' })
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: '90000000-0000-4000-8000-000000000099',
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.getTwoFactorRecoveryCode(PASSWORD)).resolves.toBe('RECOVERY-CODE')
+    const masterKey = await deriveMasterKey(PASSWORD, EMAIL, {
+      type: 'pbkdf2',
+      iterations: 5_000
+    })
+    const passwordKey = await derivePasswordKey(masterKey, PASSWORD)
+    try {
+      expect(requestBodies[0]?.masterPasswordHash).toBe(passwordKey.toString('base64'))
+    } finally {
+      masterKey.fill(0)
+      passwordKey.fill(0)
+    }
+    await expect(client.status()).resolves.toEqual({ status: 'locked' })
+  })
+
   it('passes authenticated equivalent-domain settings through without requiring decrypted vault keys', async () => {
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',

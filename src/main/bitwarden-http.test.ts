@@ -170,6 +170,58 @@ describe('BitwardenHttpClient', () => {
     })
   })
 
+  it('lists bounded 2FA providers and retrieves a recovery code with proof', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        json({
+          data: [
+            { type: 0, enabled: true, object: 'twoFactorProvider' },
+            { type: 1, enabled: true, object: 'twoFactorProvider' }
+          ],
+          object: 'list',
+          continuationToken: null
+        })
+      )
+      .mockResolvedValueOnce(json({ code: 'RECOVERY-CODE', object: 'twoFactorRecover' }))
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(client.getTwoFactorProviders()).resolves.toEqual([
+      { type: 0, enabled: true },
+      { type: 1, enabled: true }
+    ])
+    await expect(client.getTwoFactorRecoveryCode('derived-proof')).resolves.toBe('RECOVERY-CODE')
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+      'https://api.bitwarden.com/two-factor',
+      'https://api.bitwarden.com/two-factor/get-recover'
+    ])
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
+      masterPasswordHash: 'derived-proof'
+    })
+  })
+
+  it('rejects duplicate providers and malformed recovery secrets', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        json({
+          data: [
+            { type: 0, enabled: true },
+            { type: 0, enabled: true }
+          ],
+          object: 'list'
+        })
+      )
+      .mockResolvedValueOnce(json({ code: 'secret\nleak', object: 'twoFactorRecover' }))
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+    await expect(client.getTwoFactorProviders()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(client.getTwoFactorRecoveryCode('derived-proof')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+  })
+
   it('parses both current nested and legacy prelogin KDF payloads', async () => {
     const fetch = vi
       .fn<FetchLike>()

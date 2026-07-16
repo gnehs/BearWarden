@@ -37,6 +37,7 @@ import {
   type BitwardenSendRequest,
   type BitwardenPrelogin,
   type BitwardenPersonalApiKey,
+  type BitwardenTwoFactorProvider,
   type BitwardenSession,
   type JsonObject,
   type JsonValue
@@ -333,6 +334,8 @@ export interface BitwardenSyncClient {
     rotate: boolean,
     signal?: AbortSignal
   ): Promise<{ clientId: string; clientSecret: string; revisionDate: string }>
+  getTwoFactorProviders?(signal?: AbortSignal): Promise<BitwardenTwoFactorProvider[]>
+  getTwoFactorRecoveryCode?(masterPassword: string, signal?: AbortSignal): Promise<string>
   /** Authenticated Vaultwarden HIBP account-breach report; it does not require vault decryption. */
   getAccountBreachReport(email: string, signal?: AbortSignal): Promise<BitwardenAccountBreachReport>
   getEquivalentDomainSettings(signal?: AbortSignal): Promise<BitwardenEquivalentDomainSettings>
@@ -1561,6 +1564,44 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       masterKey?.fill(0)
       passwordKey?.fill(0)
       if (result) result.apiKey = ''
+    }
+  }
+
+  async getTwoFactorProviders(signal?: AbortSignal): Promise<BitwardenTwoFactorProvider[]> {
+    try {
+      return await this.http.getTwoFactorProviders(signal)
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  async getTwoFactorRecoveryCode(masterPassword: string, signal?: AbortSignal): Promise<string> {
+    let masterKey: Buffer | null = null
+    let passwordKey: Buffer | null = null
+    try {
+      if (
+        typeof masterPassword !== 'string' ||
+        masterPassword.length === 0 ||
+        masterPassword.length > MAX_SYNC_SECRET_LENGTH
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      this.requireProfileId()
+      const prelogin = await this.http.prelogin(this.email, signal)
+      masterKey = await deriveMasterKey(
+        masterPassword,
+        prelogin.salt ?? this.email,
+        kdfFromPrelogin(prelogin)
+      )
+      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      const code = await this.http.getTwoFactorRecoveryCode(passwordKey.toString('base64'), signal)
+      await this.captureSession()
+      return code
+    } catch (error) {
+      throw this.mapError(error)
+    } finally {
+      masterKey?.fill(0)
+      passwordKey?.fill(0)
     }
   }
 
