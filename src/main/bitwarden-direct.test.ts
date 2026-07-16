@@ -1297,6 +1297,48 @@ describe('BitwardenDirectClient', () => {
     await expect(client.status()).resolves.toEqual({ status: 'locked' })
   })
 
+  it('derives a fresh master-password proof for personal API key access without unlocking', async () => {
+    const requestBodies: JsonObject[] = []
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url, init) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/api/accounts/api-key')) {
+          requestBodies.push(JSON.parse(String(init?.body)))
+          return jsonResponse({
+            apiKey: 'personal-client-secret',
+            revisionDate: '2026-07-16T00:00:00Z',
+            object: 'apiKey'
+          })
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: '90000000-0000-4000-8000-000000000099',
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.getPersonalApiKey(PASSWORD, false)).resolves.toEqual({
+      clientId: 'user.90000000-0000-4000-8000-000000000099',
+      clientSecret: 'personal-client-secret',
+      revisionDate: '2026-07-16T00:00:00Z'
+    })
+    expect(requestBodies).toHaveLength(1)
+    expect(requestBodies[0]?.masterPasswordHash).toMatch(/^[A-Za-z0-9+/]+={0,2}$/u)
+    expect(requestBodies[0]?.masterPasswordHash).not.toBe(PASSWORD)
+    await expect(client.status()).resolves.toEqual({ status: 'locked' })
+  })
+
   it('passes authenticated equivalent-domain settings through without requiring decrypted vault keys', async () => {
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',

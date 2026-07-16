@@ -88,6 +88,11 @@ export interface BitwardenAccountSecurityProfile {
   twoFactorEnabled: boolean
 }
 
+export interface BitwardenPersonalApiKey {
+  apiKey: string
+  revisionDate: string
+}
+
 /**
  * Vaultwarden returns a synthetic, otherwise-successful row when its HIBP API
  * key is absent. Keep that distinct from both a clean account and a breach.
@@ -740,6 +745,37 @@ export class BitwardenHttpClient {
       tooLargeCode: 'TOO_LARGE'
     })
     if (response !== null) throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+
+  async getPersonalApiKey(
+    masterPasswordHash: string,
+    rotate: boolean,
+    signal?: AbortSignal
+  ): Promise<BitwardenPersonalApiKey> {
+    if (
+      typeof masterPasswordHash !== 'string' ||
+      masterPasswordHash.length === 0 ||
+      masterPasswordHash.length > 1_024 ||
+      /[\0\r\n]/u.test(masterPasswordHash)
+    ) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    const body = { masterPasswordHash }
+    try {
+      const response = await this.requestJson(
+        'POST',
+        `${this.urls.apiUrl}/accounts/${rotate ? 'rotate-api-key' : 'api-key'}`,
+        {
+          body,
+          signal,
+          maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+          tooLargeCode: 'TOO_LARGE'
+        }
+      )
+      return parsePersonalApiKey(response)
+    } finally {
+      body.masterPasswordHash = ''
+    }
   }
 
   /**
@@ -1496,6 +1532,25 @@ function parseAccountSecurityProfile(value: JsonValue): BitwardenAccountSecurity
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
   return { id, name, email, emailVerified, twoFactorEnabled }
+}
+
+function parsePersonalApiKey(value: JsonValue): BitwardenPersonalApiKey {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const apiKey = value.apiKey ?? value.ApiKey
+  const revisionDate = value.revisionDate ?? value.RevisionDate
+  const object = value.object ?? value.Object
+  if (
+    typeof apiKey !== 'string' ||
+    apiKey.length === 0 ||
+    apiKey.length > 512 ||
+    /[\0\r\n]/u.test(apiKey) ||
+    typeof revisionDate !== 'string' ||
+    !Number.isFinite(Date.parse(revisionDate)) ||
+    (object !== undefined && object !== 'apiKey')
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return { apiKey, revisionDate }
 }
 
 function isValidBreachEmail(value: string): boolean {

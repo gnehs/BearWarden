@@ -98,6 +98,58 @@ describe('BitwardenHttpClient', () => {
     })
   })
 
+  it('retrieves and rotates a personal API key with only the derived password proof', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        json({
+          apiKey: 'existing-client-secret',
+          revisionDate: '2026-07-16T00:00:00Z',
+          object: 'apiKey'
+        })
+      )
+      .mockResolvedValueOnce(
+        json({
+          apiKey: 'rotated-client-secret',
+          revisionDate: '2026-07-16T00:01:00Z',
+          object: 'apiKey'
+        })
+      )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(client.getPersonalApiKey('derived-password-proof', false)).resolves.toMatchObject({
+      apiKey: 'existing-client-secret'
+    })
+    await expect(client.getPersonalApiKey('derived-password-proof', true)).resolves.toMatchObject({
+      apiKey: 'rotated-client-secret'
+    })
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+      'https://api.bitwarden.com/accounts/api-key',
+      'https://api.bitwarden.com/accounts/rotate-api-key'
+    ])
+    for (const call of fetch.mock.calls) {
+      expect(JSON.parse(String(call[1]?.body))).toEqual({
+        masterPasswordHash: 'derived-password-proof'
+      })
+    }
+  })
+
+  it('rejects malformed personal API key responses', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      json({
+        apiKey: 'secret\nheader-injection',
+        revisionDate: 'not-a-date',
+        object: 'apiKey'
+      })
+    )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+    await expect(client.getPersonalApiKey('derived-password-proof', false)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+  })
+
   it('parses both current nested and legacy prelogin KDF payloads', async () => {
     const fetch = vi
       .fn<FetchLike>()

@@ -36,6 +36,7 @@ import {
   type BitwardenSendFileRequest,
   type BitwardenSendRequest,
   type BitwardenPrelogin,
+  type BitwardenPersonalApiKey,
   type BitwardenSession,
   type JsonObject,
   type JsonValue
@@ -325,6 +326,11 @@ export interface BitwardenSyncClient {
   status(signal?: AbortSignal): Promise<{ status: 'unauthenticated' | 'locked' | 'unlocked' }>
   getAccountSecurityProfile?(signal?: AbortSignal): Promise<BitwardenAccountSecurityProfile>
   resendVerificationEmail?(signal?: AbortSignal): Promise<void>
+  getPersonalApiKey?(
+    masterPassword: string,
+    rotate: boolean,
+    signal?: AbortSignal
+  ): Promise<{ clientId: string; clientSecret: string; revisionDate: string }>
   /** Authenticated Vaultwarden HIBP account-breach report; it does not require vault decryption. */
   getAccountBreachReport(email: string, signal?: AbortSignal): Promise<BitwardenAccountBreachReport>
   getEquivalentDomainSettings(signal?: AbortSignal): Promise<BitwardenEquivalentDomainSettings>
@@ -1507,6 +1513,46 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       await this.http.resendVerificationEmail(signal)
     } catch (error) {
       throw this.mapError(error)
+    }
+  }
+
+  async getPersonalApiKey(
+    masterPassword: string,
+    rotate: boolean,
+    signal?: AbortSignal
+  ): Promise<{ clientId: string; clientSecret: string; revisionDate: string }> {
+    let masterKey: Buffer | null = null
+    let passwordKey: Buffer | null = null
+    let result: BitwardenPersonalApiKey | null = null
+    try {
+      if (
+        typeof masterPassword !== 'string' ||
+        masterPassword.length === 0 ||
+        masterPassword.length > MAX_SYNC_SECRET_LENGTH
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      const profileId = this.requireProfileId()
+      const prelogin = await this.http.prelogin(this.email, signal)
+      masterKey = await deriveMasterKey(
+        masterPassword,
+        prelogin.salt ?? this.email,
+        kdfFromPrelogin(prelogin)
+      )
+      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      result = await this.http.getPersonalApiKey(passwordKey.toString('base64'), rotate, signal)
+      await this.captureSession()
+      return {
+        clientId: `user.${profileId}`,
+        clientSecret: result.apiKey,
+        revisionDate: result.revisionDate
+      }
+    } catch (error) {
+      throw this.mapError(error)
+    } finally {
+      masterKey?.fill(0)
+      passwordKey?.fill(0)
+      if (result) result.apiKey = ''
     }
   }
 
