@@ -5,7 +5,7 @@ import {
   scrypt as deriveWithScrypt,
   timingSafeEqual
 } from 'node:crypto'
-import { chmod, mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises'
+import { mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { VaultError } from './vault-errors'
 
@@ -15,6 +15,8 @@ const KEY_LENGTH = 32
 const SALT_LENGTH = 16
 const IV_LENGTH = 12
 const AUTH_TAG_LENGTH = 16
+const MIN_MASTER_PASSWORD_LENGTH = 12
+const MAX_MASTER_PASSWORD_BYTES = 1_024
 const MAX_VAULT_BYTES = 64 * 1024 * 1024
 const SCRYPT_PARAMETERS = {
   N: 2 ** 17,
@@ -51,6 +53,20 @@ export interface DecryptedVault<T> {
 export interface VaultKeyMaterial {
   key: Buffer
   salt: Buffer
+}
+
+export type EncryptedVaultStoreAtomicWriteStage = 'before-temporary-write' | 'before-rename'
+
+export interface EncryptedVaultStoreOptions {
+  /** Observability/fault-injection boundary. Throwing aborts before the destination is replaced. */
+  atomicWriteHook?: (
+    stage: EncryptedVaultStoreAtomicWriteStage,
+    paths: { temporaryPath: string; destinationPath: string }
+  ) => void | Promise<void>
+}
+
+interface InternalDecryptedVault<T> extends DecryptedVault<T> {
+  serializedEnvelope?: Buffer
 }
 
 function deriveKey(masterPassword: string, salt: Buffer): Promise<Buffer> {
@@ -146,18 +162,25 @@ async function syncDirectory(path: string): Promise<void> {
   } catch {
     // Directory fsync is not supported on every Electron target, notably Windows.
   } finally {
-    await directoryHandle?.close()
+    await directoryHandle?.close().catch(() => undefined)
   }
 }
 
 export class EncryptedVaultStore<T> {
   readonly filePath: string
+  private operationTail: Promise<void> = Promise.resolve()
+  private readonly options: EncryptedVaultStoreOptions
 
-  constructor(filePath: string) {
+  constructor(filePath: string, options: EncryptedVaultStoreOptions = {}) {
     this.filePath = filePath
+    this.options = options
   }
 
   async exists(): Promise<boolean> {
+    return this.runSerialized(() => this.existsUnserialized())
+  }
+
+  private async existsUnserialized(): Promise<boolean> {
     try {
       await stat(this.filePath)
       return true
@@ -168,13 +191,17 @@ export class EncryptedVaultStore<T> {
   }
 
   async initialize(masterPassword: string, data: T): Promise<VaultKeyMaterial> {
-    if (await this.exists()) throw new VaultError('ALREADY_INITIALIZED')
+    return this.runSerialized(() => this.initializeUnserialized(masterPassword, data))
+  }
+
+  private async initializeUnserialized(masterPassword: string, data: T): Promise<VaultKeyMaterial> {
+    if (await this.existsUnserialized()) throw new VaultError('ALREADY_INITIALIZED')
 
     const salt = randomBytes(SALT_LENGTH)
     const key = await deriveKey(masterPassword, salt)
 
     try {
-      await this.write(data, key, salt)
+      await this.writeUnserialized(data, key, salt)
       return { key, salt }
     } catch (error) {
       key.fill(0)
@@ -184,6 +211,13 @@ export class EncryptedVaultStore<T> {
   }
 
   async unlock(masterPassword: string): Promise<DecryptedVault<T>> {
+    return this.runSerialized(() => this.unlockUnserialized(masterPassword))
+  }
+
+  private async unlockUnserialized(
+    masterPassword: string,
+    includeSerializedEnvelope = false
+  ): Promise<InternalDecryptedVault<T>> {
     let fileContents: Buffer | undefined
     let salt: Buffer | undefined
     let iv: Buffer | undefined
@@ -226,7 +260,12 @@ export class EncryptedVaultStore<T> {
         } catch {
           throw new VaultError('CORRUPT_VAULT')
         }
-        return { data, key, salt: Buffer.from(salt) }
+        return {
+          data,
+          key,
+          salt: Buffer.from(salt),
+          serializedEnvelope: includeSerializedEnvelope ? Buffer.from(fileContents) : undefined
+        }
       } finally {
         plaintext.fill(0)
       }
@@ -253,6 +292,13 @@ export class EncryptedVaultStore<T> {
    * Caller-owned buffers are never retained or modified.
    */
   async unlockWithKey(vaultKey: Buffer, expectedSalt: Buffer): Promise<DecryptedVault<T>> {
+    return this.runSerialized(() => this.unlockWithKeyUnserialized(vaultKey, expectedSalt))
+  }
+
+  private async unlockWithKeyUnserialized(
+    vaultKey: Buffer,
+    expectedSalt: Buffer
+  ): Promise<DecryptedVault<T>> {
     if (vaultKey.length !== KEY_LENGTH || expectedSalt.length !== SALT_LENGTH) {
       throw new VaultError('INTERNAL_ERROR')
     }
@@ -335,6 +381,16 @@ export class EncryptedVaultStore<T> {
     currentKey: Buffer,
     salt: Buffer
   ): Promise<boolean> {
+    return this.runSerialized(() =>
+      this.verifyMasterPasswordUnserialized(candidate, currentKey, salt)
+    )
+  }
+
+  private async verifyMasterPasswordUnserialized(
+    candidate: string,
+    currentKey: Buffer,
+    salt: Buffer
+  ): Promise<boolean> {
     if (currentKey.length !== KEY_LENGTH || salt.length !== SALT_LENGTH) {
       throw new VaultError('INTERNAL_ERROR')
     }
@@ -349,6 +405,96 @@ export class EncryptedVaultStore<T> {
   }
 
   async write(data: T, key: Buffer, salt: Buffer): Promise<void> {
+    return this.runSerialized(() => this.writeBoundUnserialized(data, key, salt))
+  }
+
+  private async writeBoundUnserialized(data: T, key: Buffer, salt: Buffer): Promise<void> {
+    let currentContents: Buffer | undefined
+    let envelopeSalt: Buffer | undefined
+    try {
+      const fileStats = await stat(this.filePath)
+      if (!fileStats.isFile() || fileStats.size <= 0 || fileStats.size > MAX_VAULT_BYTES) {
+        throw new VaultError('CORRUPT_VAULT')
+      }
+      currentContents = await readFile(this.filePath)
+      let envelope: VaultEnvelopeV1
+      try {
+        envelope = parseEnvelope(JSON.parse(currentContents.toString('utf8')))
+      } catch {
+        throw new VaultError('CORRUPT_VAULT')
+      }
+      envelopeSalt = decodeBase64(envelope.kdf.salt, SALT_LENGTH)
+      if (salt.length !== SALT_LENGTH || !timingSafeEqual(envelopeSalt, salt)) {
+        throw new VaultError('CORRUPT_VAULT')
+      }
+      await this.writeUnserialized(data, key, salt, currentContents)
+    } finally {
+      currentContents?.fill(0)
+      envelopeSalt?.fill(0)
+    }
+  }
+
+  /**
+   * Re-encrypts the local envelope with a fresh salt and password-derived key. This intentionally
+   * does not rotate or mutate any Bitwarden account encryption key contained in the plaintext.
+   */
+  async rekey(currentPassword: string, newPassword: string): Promise<VaultKeyMaterial> {
+    return this.runSerialized(() => this.rekeyUnserialized(currentPassword, newPassword))
+  }
+
+  private async rekeyUnserialized(
+    currentPassword: string,
+    newPassword: string
+  ): Promise<VaultKeyMaterial> {
+    if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
+      throw new VaultError('INVALID_INPUT')
+    }
+    const normalizedCurrentPassword = currentPassword.normalize('NFC')
+    const normalizedNewPassword = newPassword.normalize('NFC')
+    if (
+      normalizedCurrentPassword.length === 0 ||
+      normalizedNewPassword.length < MIN_MASTER_PASSWORD_LENGTH ||
+      Buffer.byteLength(normalizedCurrentPassword, 'utf8') > MAX_MASTER_PASSWORD_BYTES ||
+      Buffer.byteLength(normalizedNewPassword, 'utf8') > MAX_MASTER_PASSWORD_BYTES ||
+      normalizedNewPassword === normalizedCurrentPassword
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+
+    let unlocked: InternalDecryptedVault<T> | undefined
+    let newSalt: Buffer | undefined
+    let newKey: Buffer | undefined
+    try {
+      unlocked = await this.unlockUnserialized(normalizedCurrentPassword, true)
+      if (!unlocked.serializedEnvelope) throw new VaultError('INTERNAL_ERROR')
+
+      do {
+        newSalt?.fill(0)
+        newKey?.fill(0)
+        newSalt = randomBytes(SALT_LENGTH)
+        newKey = await deriveKey(normalizedNewPassword, newSalt)
+      } while (timingSafeEqual(newSalt, unlocked.salt) || timingSafeEqual(newKey, unlocked.key))
+      await this.writeUnserialized(unlocked.data, newKey, newSalt, unlocked.serializedEnvelope)
+
+      const result = { key: newKey, salt: newSalt }
+      newKey = undefined
+      newSalt = undefined
+      return result
+    } finally {
+      unlocked?.key.fill(0)
+      unlocked?.salt.fill(0)
+      unlocked?.serializedEnvelope?.fill(0)
+      newKey?.fill(0)
+      newSalt?.fill(0)
+    }
+  }
+
+  private async writeUnserialized(
+    data: T,
+    key: Buffer,
+    salt: Buffer,
+    expectedCurrentContents?: Buffer
+  ): Promise<void> {
     if (key.length !== KEY_LENGTH || salt.length !== SALT_LENGTH) {
       throw new VaultError('INTERNAL_ERROR')
     }
@@ -383,19 +529,25 @@ export class EncryptedVaultStore<T> {
       }
       const plaintext = Buffer.from(JSON.stringify(data), 'utf8')
       let encrypted: Buffer | undefined
+      let aad: Buffer | undefined
+      let authTag: Buffer | undefined
 
       try {
         const cipher = createCipheriv('aes-256-gcm', operationKey, iv, {
           authTagLength: AUTH_TAG_LENGTH
         })
-        cipher.setAAD(authenticatedMetadata(envelope))
+        aad = authenticatedMetadata(envelope)
+        cipher.setAAD(aad)
         encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()])
-        envelope.cipher.authTag = cipher.getAuthTag().toString('base64')
+        authTag = cipher.getAuthTag()
+        envelope.cipher.authTag = authTag.toString('base64')
         envelope.ciphertext = encrypted.toString('base64')
-        await this.atomicWrite(`${JSON.stringify(envelope)}\n`)
+        await this.atomicWrite(`${JSON.stringify(envelope)}\n`, expectedCurrentContents)
       } finally {
         plaintext.fill(0)
         encrypted?.fill(0)
+        aad?.fill(0)
+        authTag?.fill(0)
         iv.fill(0)
       }
     } finally {
@@ -404,24 +556,58 @@ export class EncryptedVaultStore<T> {
     }
   }
 
-  private async atomicWrite(contents: string): Promise<void> {
+  private async atomicWrite(contents: string, expectedCurrentContents?: Buffer): Promise<void> {
     const directory = dirname(this.filePath)
-    const temporaryPath = `${this.filePath}.${process.pid}.${randomBytes(8).toString('hex')}.tmp`
+    const temporaryNameEntropy = randomBytes(8)
+    const temporaryPath = `${this.filePath}.${process.pid}.${temporaryNameEntropy.toString('hex')}.tmp`
+    temporaryNameEntropy.fill(0)
     let handle: Awaited<ReturnType<typeof open>> | undefined
 
     try {
       handle = await open(temporaryPath, 'wx', 0o600)
+      await this.options.atomicWriteHook?.('before-temporary-write', {
+        temporaryPath,
+        destinationPath: this.filePath
+      })
       await handle.writeFile(contents, { encoding: 'utf8' })
       await handle.sync()
       await handle.close()
       handle = undefined
+      await this.options.atomicWriteHook?.('before-rename', {
+        temporaryPath,
+        destinationPath: this.filePath
+      })
+      if (expectedCurrentContents) {
+        const currentContents = await readFile(this.filePath)
+        try {
+          if (
+            currentContents.length !== expectedCurrentContents.length ||
+            !timingSafeEqual(currentContents, expectedCurrentContents)
+          ) {
+            throw new VaultError('CORRUPT_VAULT')
+          }
+        } finally {
+          currentContents.fill(0)
+        }
+      }
+      // Rename is the commit point and the final operation whose failure is propagated. Directory
+      // durability is attempted below, but an unsupported/failed directory fsync cannot be reported
+      // as a failed rekey because the old destination can no longer be restored safely.
       await rename(temporaryPath, this.filePath)
-      await chmod(this.filePath, 0o600)
       await syncDirectory(directory)
     } catch (error) {
-      await handle?.close()
+      await handle?.close().catch(() => undefined)
       await unlink(temporaryPath).catch(() => undefined)
       throw error
     }
+  }
+
+  private runSerialized<R>(operation: () => Promise<R>): Promise<R> {
+    const result = this.operationTail.then(operation, operation)
+    this.operationTail = result.then(
+      () => undefined,
+      () => undefined
+    )
+    return result
   }
 }
