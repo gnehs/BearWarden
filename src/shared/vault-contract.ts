@@ -93,6 +93,8 @@ export const IPC_CHANNELS = {
   accountResendVerification: 'account-security:resend-verification',
   accountCopyApiClientId: 'account-security:copy-api-client-id',
   accountCopyApiKey: 'account-security:copy-api-key',
+  accountTwoFactorStatus: 'account-security:two-factor-status',
+  accountCopyRecoveryCode: 'account-security:copy-recovery-code',
   domainRulesGet: 'domain-rules:get',
   domainRulesUpdate: 'domain-rules:update',
   sendList: 'send:list',
@@ -732,6 +734,15 @@ export interface AccountApiKeyCopyResult {
   revisionDate: string
 }
 
+export interface AccountTwoFactorProvider {
+  type: number
+  enabled: boolean
+}
+
+export interface AccountRecoveryCodeCopyRequest {
+  masterPassword: string
+}
+
 export interface GlobalEquivalentDomainView {
   type: number
   domains: string[]
@@ -1297,6 +1308,8 @@ export interface BearWardenAPI {
     resendVerification: () => Promise<void>
     copyApiClientId: () => Promise<void>
     copyApiKey: (request: AccountApiKeyCopyRequest) => Promise<AccountApiKeyCopyResult>
+    twoFactorStatus: () => Promise<AccountTwoFactorProvider[]>
+    copyRecoveryCode: (request: AccountRecoveryCodeCopyRequest) => Promise<void>
   }
   domainRules: {
     get: () => Promise<EquivalentDomainSettingsView>

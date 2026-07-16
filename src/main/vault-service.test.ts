@@ -321,6 +321,11 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
       clientSecret: rotate ? 'rotated-client-secret' : 'existing-client-secret',
       revisionDate: rotate ? '2026-07-16T00:01:00Z' : '2026-07-16T00:00:00Z'
     }),
+    getTwoFactorProviders: async () => [
+      { type: 0, enabled: true },
+      { type: 1, enabled: true }
+    ],
+    getTwoFactorRecoveryCode: async () => 'RECOVERY-CODE',
     getEquivalentDomainSettings: async () => structuredClone(equivalentDomainSettings),
     updateEquivalentDomainSettings: async (update) => {
       const excluded = new Set(update.excludedGlobalEquivalentDomains)
@@ -3407,6 +3412,39 @@ describe('VaultService encrypted local data', () => {
       })
     ).rejects.toMatchObject({ code: 'API_KEY_ROTATION_UNKNOWN' })
     expect(copySensitiveText).toHaveBeenCalledTimes(2)
+  })
+
+  it('lists 2FA providers and copies the recovery code only through the sensitive clipboard', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service, copySensitiveText } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const recovery = vi.spyOn(fake!, 'getTwoFactorRecoveryCode')
+
+    await expect(service.getTwoFactorStatus()).resolves.toEqual([
+      { type: 0, enabled: true },
+      { type: 1, enabled: true }
+    ])
+    const request = { masterPassword: 'remote master password' }
+    await expect(service.copyTwoFactorRecoveryCode(request)).resolves.toBeUndefined()
+    expect(request.masterPassword).toBe('')
+    expect(recovery).toHaveBeenCalledWith('remote master password', expect.any(AbortSignal))
+    expect(copySensitiveText).toHaveBeenCalledWith('RECOVERY-CODE', 30)
+
+    recovery.mockRejectedValueOnce(new BitwardenDirectError('USER_VERIFICATION_FAILED'))
+    await expect(
+      service.copyTwoFactorRecoveryCode({ masterPassword: 'wrong password' })
+    ).rejects.toMatchObject({ code: 'INVALID_MASTER_PASSWORD' })
+    expect(copySensitiveText).toHaveBeenCalledOnce()
   })
 
   it('opens only the fixed HIBP attribution URL after verifying the vault is unlocked', async () => {

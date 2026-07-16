@@ -3136,6 +3136,122 @@ export class VaultService {
     }
   }
 
+  async getTwoFactorStatus(): Promise<{ type: number; enabled: boolean }[]> {
+    const lease = await this.exclusive(async () => {
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      if (!client.getTwoFactorProviders) throw new VaultError('SYNC_FAILED')
+      const abort = new AbortController()
+      this.accountSecurityAborts.add(abort)
+      return {
+        generation: this.generation,
+        client,
+        request: client.getTwoFactorProviders.bind(client),
+        abort
+      }
+    })
+    try {
+      const providers = await lease.request(lease.abort.signal)
+      return await this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        this.requireData()
+        if (
+          lease.abort.signal.aborted ||
+          lease.generation !== this.generation ||
+          this.syncClient !== lease.client ||
+          !lease.client.exportState().session
+        ) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        await this.persistCurrentClientState().catch(() => undefined)
+        return providers.map((provider) => ({ ...provider }))
+      })
+    } catch (error) {
+      return this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+          throw new VaultError('LOCKED')
+        }
+        if (error instanceof VaultError) throw error
+        throw this.mapSyncError(error)
+      })
+    }
+  }
+
+  async copyTwoFactorRecoveryCode(request: { masterPassword: string }): Promise<void> {
+    if (
+      typeof request.masterPassword !== 'string' ||
+      request.masterPassword.length === 0 ||
+      request.masterPassword.length > MAX_PASSWORD_LENGTH
+    ) {
+      request.masterPassword = ''
+      throw new VaultError('INVALID_INPUT')
+    }
+    const copySensitiveText = this.platform.copySensitiveText
+    if (!copySensitiveText) {
+      request.masterPassword = ''
+      throw new VaultError('INTERNAL_ERROR')
+    }
+    let lease: {
+      generation: number
+      client: BitwardenSyncClient
+      request: NonNullable<BitwardenSyncClient['getTwoFactorRecoveryCode']>
+      abort: AbortController
+    }
+    try {
+      lease = await this.exclusive(async () => {
+        const sync = this.requireSyncData()
+        const client = this.getOrCreateSyncClient(sync)
+        if (!client.getTwoFactorRecoveryCode) throw new VaultError('SYNC_FAILED')
+        if (!client.exportState().session) throw new VaultError('SYNC_AUTH_REQUIRED')
+        const abort = new AbortController()
+        this.accountSecurityAborts.add(abort)
+        return {
+          generation: this.generation,
+          client,
+          request: client.getTwoFactorRecoveryCode.bind(client),
+          abort
+        }
+      })
+    } catch (error) {
+      request.masterPassword = ''
+      throw error
+    }
+    let code = ''
+    try {
+      code = await lease.request(request.masterPassword, lease.abort.signal)
+      await this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        this.requireData()
+        if (
+          lease.abort.signal.aborted ||
+          lease.generation !== this.generation ||
+          this.syncClient !== lease.client ||
+          !lease.client.exportState().session
+        ) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        await copySensitiveText(code, 30)
+        await this.persistCurrentClientState().catch(() => undefined)
+      })
+    } catch (error) {
+      return this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+          throw new VaultError('LOCKED')
+        }
+        if (error instanceof BitwardenDirectError && error.code === 'USER_VERIFICATION_FAILED') {
+          throw new VaultError('INVALID_MASTER_PASSWORD')
+        }
+        if (error instanceof VaultError) throw error
+        throw this.mapSyncError(error)
+      })
+    } finally {
+      request.masterPassword = ''
+      code = ''
+    }
+  }
+
   /** Main-process-only notification credentials. Never expose this through IPC or renderer state. */
   async notificationConnectionInfo(): Promise<BitwardenNotificationConnectionInfo | null> {
     const lease = await this.exclusive(async () => {

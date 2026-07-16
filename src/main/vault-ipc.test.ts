@@ -312,6 +312,10 @@ describe('registerVaultIpc reprompt gate', () => {
           revisionDate: '2026-07-16T00:00:00Z'
         }
       }),
+      getTwoFactorStatus: vi.fn(async () => [{ type: 0, enabled: true }]),
+      copyTwoFactorRecoveryCode: vi.fn(async (request: { masterPassword: string }) => {
+        if (request.masterPassword !== 'remote master password') throw new Error('missing proof')
+      }),
       getEquivalentDomainSettings: vi.fn(async () => ({
         equivalentDomains: [['first.example', 'second.example']],
         globalEquivalentDomains: [
@@ -695,6 +699,27 @@ describe('registerVaultIpc reprompt gate', () => {
       await expect(copyApiKey(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
     expect(vault.copyPersonalApiKey).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps recovery codes out of IPC responses and rejects extra fields', async () => {
+    const { event, vault } = harness()
+    const status = electronMock.handlers.get(IPC_CHANNELS.accountTwoFactorStatus)!
+    const recovery = electronMock.handlers.get(IPC_CHANNELS.accountCopyRecoveryCode)!
+
+    await expect(status(event, undefined)).resolves.toEqual([{ type: 0, enabled: true }])
+    await expect(
+      recovery(event, { masterPassword: 'remote master password' })
+    ).resolves.toBeUndefined()
+    expect(vault.copyTwoFactorRecoveryCode).toHaveBeenCalledWith({ masterPassword: '' })
+    for (const invalid of [
+      undefined,
+      null,
+      {},
+      { masterPassword: '' },
+      { masterPassword: 'password', recoveryCode: 'renderer-value' }
+    ]) {
+      await expect(recovery(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
   })
 
   it.each([

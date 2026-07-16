@@ -2125,6 +2125,22 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       request.masterPassword = ''
     }
   })
+  registerHandler(IPC_CHANNELS.accountTwoFactorStatus, getMainWindow, (_event, input) => {
+    parseNoInput(input)
+    return vault.getTwoFactorStatus()
+  })
+  registerHandler(IPC_CHANNELS.accountCopyRecoveryCode, getMainWindow, async (_event, input) => {
+    const record = exactRecord(input, ['masterPassword'])
+    const request = { masterPassword: requiredString(record, 'masterPassword') }
+    if (request.masterPassword.length === 0 || request.masterPassword.length > 16_384) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    try {
+      return await vault.copyTwoFactorRecoveryCode(request)
+    } finally {
+      request.masterPassword = ''
+    }
+  })
   registerHandler<EquivalentDomainSettingsView>(
     IPC_CHANNELS.domainRulesGet,
     getMainWindow,
