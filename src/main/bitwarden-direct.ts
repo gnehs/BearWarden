@@ -223,6 +223,7 @@ export interface BitwardenSyncClient {
     update: BitwardenEquivalentDomainUpdate,
     signal?: AbortSignal
   ): Promise<void>
+  notificationAccessToken?(signal?: AbortSignal): Promise<string>
   login(request: BitwardenLoginRequest): Promise<void>
   unlock(request: BitwardenUnlockRequest): Promise<void>
   sync(signal?: AbortSignal): Promise<void>
@@ -1353,6 +1354,16 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   ): Promise<void> {
     try {
       await this.http.updateEquivalentDomainSettings(update, signal)
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  async notificationAccessToken(signal?: AbortSignal): Promise<string> {
+    try {
+      const token = await this.http.activeAccessToken(signal)
+      await this.captureSession()
+      return token
     } catch (error) {
       throw this.mapError(error)
     }

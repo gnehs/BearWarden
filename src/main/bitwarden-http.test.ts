@@ -18,6 +18,7 @@ describe('resolveBitwardenUrls', () => {
     expect(resolveBitwardenUrls('https://bitwarden.com')).toEqual({
       apiUrl: 'https://api.bitwarden.com',
       identityUrl: 'https://identity.bitwarden.com',
+      notificationsUrl: 'https://notifications.bitwarden.com',
       webVaultUrl: 'https://vault.bitwarden.com'
     })
   })
@@ -25,9 +26,11 @@ describe('resolveBitwardenUrls', () => {
   it('uses Bitwarden cloud origins and preserves a self-hosted reverse-proxy prefix', () => {
     expect(resolveBitwardenUrls('us').apiUrl).toBe('https://api.bitwarden.com')
     expect(resolveBitwardenUrls('eu').identityUrl).toBe('https://identity.bitwarden.eu')
+    expect(resolveBitwardenUrls('eu').notificationsUrl).toBe('https://notifications.bitwarden.eu')
     expect(resolveBitwardenUrls('https://vault.example.test/bw')).toEqual({
       apiUrl: 'https://vault.example.test/bw/api',
       identityUrl: 'https://vault.example.test/bw/identity',
+      notificationsUrl: 'https://vault.example.test/bw/notifications',
       webVaultUrl: 'https://vault.example.test/bw'
     })
   })
@@ -113,6 +116,39 @@ describe('BitwardenHttpClient', () => {
       expiresAt: 60_000
     })
     expect(client.exportSession()?.accessToken).toBe('new-access')
+  })
+
+  it('reuses a live notification token and serializes proactive refresh near expiry', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(
+        json({ access_token: 'fresh-access', refresh_token: 'fresh-refresh', expires_in: 3_600 })
+      )
+    const changed = vi.fn()
+    const client = new BitwardenHttpClient({
+      server: 'us',
+      fetch,
+      onSessionChanged: changed,
+      now: () => 1_000
+    })
+    client.setSession({ accessToken: 'live-access', refreshToken: 'refresh', expiresAt: 61_001 })
+    await expect(client.activeAccessToken()).resolves.toBe('live-access')
+    expect(fetch).not.toHaveBeenCalled()
+
+    client.setSession({
+      accessToken: 'expiring-access',
+      refreshToken: 'refresh',
+      expiresAt: 61_000
+    })
+    await expect(
+      Promise.all([client.activeAccessToken(), client.activeAccessToken()])
+    ).resolves.toEqual(['fresh-access', 'fresh-access'])
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(changed).toHaveBeenCalledWith({
+      accessToken: 'fresh-access',
+      refreshToken: 'fresh-refresh',
+      expiresAt: 3_601_000
+    })
   })
 
   it('uses Retry-After only for idempotent operations, and keeps encrypted payloads untouched', async () => {

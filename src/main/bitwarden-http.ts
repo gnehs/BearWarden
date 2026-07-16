@@ -15,6 +15,7 @@ export interface JsonObject {
 export interface BitwardenUrls {
   apiUrl: string
   identityUrl: string
+  notificationsUrl: string
   webVaultUrl: string
 }
 
@@ -166,15 +167,18 @@ export class BitwardenHttpError extends Error {
 const US_URLS: BitwardenUrls = {
   apiUrl: 'https://api.bitwarden.com',
   identityUrl: 'https://identity.bitwarden.com',
+  notificationsUrl: 'https://notifications.bitwarden.com',
   webVaultUrl: 'https://vault.bitwarden.com'
 }
 const EU_URLS: BitwardenUrls = {
   apiUrl: 'https://api.bitwarden.eu',
   identityUrl: 'https://identity.bitwarden.eu',
+  notificationsUrl: 'https://notifications.bitwarden.eu',
   webVaultUrl: 'https://vault.bitwarden.eu'
 }
 const RETRYABLE_METHODS = new Set(['GET', 'PUT', 'DELETE'])
 const DEFAULT_MAX_RETRIES = 5
+const ACCESS_TOKEN_REFRESH_LEEWAY_MS = 60_000
 const MAX_RESPONSE_BYTES = 128 * 1024 * 1024
 const MAX_HIBP_BREACH_RESPONSE_BYTES = 4 * 1024 * 1024
 const MAX_HIBP_BREACHES = 10_000
@@ -397,6 +401,7 @@ export function resolveBitwardenUrls(
   return {
     apiUrl: appendPath(base, 'api'),
     identityUrl: appendPath(base, 'identity'),
+    notificationsUrl: appendPath(base, 'notifications'),
     webVaultUrl: base.toString().replace(/\/$/, '')
   }
 }
@@ -614,6 +619,18 @@ export class BitwardenHttpClient {
       })
     }
     return this.refreshInFlight
+  }
+
+  /** Returns a token suitable for a new long-lived connection, refreshing it near expiry. */
+  async activeAccessToken(signal?: AbortSignal): Promise<string> {
+    if (signal?.aborted) throw new BitwardenHttpError('ABORTED')
+    if (!this.session) throw new BitwardenHttpError('AUTH')
+    if (this.session.expiresAt - this.now() <= ACCESS_TOKEN_REFRESH_LEEWAY_MS) {
+      await this.refresh(signal)
+    }
+    if (signal?.aborted) throw new BitwardenHttpError('ABORTED')
+    if (!this.session) throw new BitwardenHttpError('AUTH')
+    return this.session.accessToken
   }
 
   async revisionDate(signal?: AbortSignal): Promise<string> {
