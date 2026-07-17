@@ -31,6 +31,15 @@
 4. 多帳號切換、移除中斷、重啟續作與 stale operation 壓力測試。
 5. Windows OpenSSH named pipe、實體 FIDO2 security key 與附件 transport 真機驗證。
 
+## 已完成：垃圾桶密碼歷史窄化唯讀入口
+
+- [x] 沿用既有密碼歷史窄 IPC，不載入垃圾桶項目的完整 `LoginView`。
+- [x] 主程序在同一個 exclusive boundary 重新檢查 deleted／reprompt 狀態與 sender／item／vault generation-bound authorization。
+- [x] 垃圾桶 detail cache 無論是否有 token 都會失效，不能繞過 main 的完整 detail 拒絕。
+- [x] 垃圾桶對話框只允許明文警告後查看，不提供「套用為目前密碼」。
+- [x] 還原歷史 mutation、目前內容、附件與編輯入口仍必須先還原項目。
+- [x] Commit：`feat(vault): show password history for trashed items`
+
 ## Passkey 外部 provider transport
 
 此階段先做安全可行性閘門。現有 authenticator、create/get ceremony、操作級 UV、項目選擇與 provider-neutral ingress 已完成，但尚無可信的外部網站 transport。
@@ -58,7 +67,6 @@
 - [ ] SSO／trusted device：先完成金鑰交換、裝置信任、撤銷、跨帳號隔離與 recovery threat model。
 - [ ] HIBP breached-domain：必須有已驗證網域及可安全使用的 server proxy；不可用帳號 breach endpoint 偽裝。
 - [ ] 附件剩餘額度：只有伺服器提供個人使用者可讀、可驗證的 authoritative quota 時才顯示。
-- [ ] 垃圾桶中的密碼歷史：若補 UI，只能使用既有 reprompt 保護的窄化唯讀入口，不得因此暴露其他已刪除內容。
 
 ## 每階段完成門檻
 
