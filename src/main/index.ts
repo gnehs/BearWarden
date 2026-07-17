@@ -279,6 +279,7 @@ function stopServerNotifications(): Promise<void> {
 }
 
 function handleSyncChanged(status: SyncStatus): void {
+  autoSync?.updateStatus(status)
   notifySyncChanged(status)
   if (status.state === 'ready' || status.state === 'error') refreshServerNotifications()
   else if (status.state === 'locked' || status.state === 'unconfigured') {
@@ -305,7 +306,7 @@ async function unlockSyncWithLocalPassword(masterPassword: string): Promise<void
   const status = await vault.unlockSyncWithLocalPassword(masterPassword)
   passkeyCeremonyService?.onVaultMutation()
   handleSyncChanged(status)
-  if (status.state === 'ready') autoSync?.request()
+  if (status.state === 'ready' || status.state === 'error') autoSync?.requestImmediate()
 }
 
 async function beforeVaultLock(): Promise<void> {
@@ -791,6 +792,7 @@ if (hasSingleInstanceLock)
         scheduleSshAgentLifecycle()
       },
       afterPinUnlock: async () => {
+        autoSync?.requestImmediate()
         await refreshSshAgentAfterUnlock().catch(() => undefined)
         scheduleSshAgentLifecycle()
       },
@@ -830,7 +832,10 @@ if (hasSingleInstanceLock)
       void stopServerNotifications()
       if (settings?.shouldLockOnSuspend()) requestSystemLock()
     })
-    powerMonitor.on('resume', () => refreshServerNotifications())
+    powerMonitor.on('resume', () => {
+      refreshServerNotifications()
+      autoSync?.requestImmediate()
+    })
 
     mainWindow = createWindow()
     installApplicationMenu({
@@ -840,7 +845,9 @@ if (hasSingleInstanceLock)
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow()
+      autoSync?.requestImmediate()
     })
+    app.on('browser-window-focus', () => autoSync?.requestImmediate())
   })
 
 function disposeServices(): void {

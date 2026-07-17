@@ -17,6 +17,11 @@ const harness = vi.hoisted(() => {
   let accountSwitchRoot: string | null = null
   let accountSwitchOptions: Record<string, unknown> | null = null
   let accountSwitchService: unknown = null
+  let serverNotificationOptions: Record<string, unknown> | null = null
+  const autoSyncRequest = vi.fn()
+  const autoSyncRequestImmediate = vi.fn()
+  const autoSyncUpdateStatus = vi.fn()
+  const autoSyncCancel = vi.fn()
   const lifecycleEvents: string[] = []
   const appQuit = vi.fn(() => lifecycleEvents.push('app.quit'))
   const appRelaunch = vi.fn(() => lifecycleEvents.push('app.relaunch'))
@@ -167,6 +172,16 @@ const harness = vi.hoisted(() => {
       accountSwitchOptions = options
       accountSwitchService = value
     },
+    get serverNotificationOptions(): Record<string, unknown> | null {
+      return serverNotificationOptions
+    },
+    setServerNotificationOptions: (value: Record<string, unknown>) => {
+      serverNotificationOptions = value
+    },
+    autoSyncRequest,
+    autoSyncRequestImmediate,
+    autoSyncUpdateStatus,
+    autoSyncCancel,
     lifecycleEvents,
     appQuit,
     appRelaunch
@@ -213,13 +228,19 @@ vi.mock('../../resources/icon.png?asset', () => ({ default: 'icon' }))
 vi.mock('./bitwarden-direct', () => ({ BitwardenDirectClient: class {} }))
 vi.mock('./auto-sync-coordinator', () => ({
   AutoSyncCoordinator: class {
-    cancel(): void {}
+    cancel = harness.autoSyncCancel
     dispose(): void {}
-    request(): void {}
+    request = harness.autoSyncRequest
+    requestImmediate = harness.autoSyncRequestImmediate
+    updateStatus = harness.autoSyncUpdateStatus
   }
 }))
 vi.mock('./bitwarden-notifications', () => ({
   BitwardenNotificationCoordinator: class {
+    constructor(options: Record<string, unknown>) {
+      harness.setServerNotificationOptions(options)
+    }
+
     refresh(): Promise<void> {
       return Promise.resolve()
     }
@@ -353,6 +374,7 @@ vi.mock('./ssh-agent-server', () => ({
 }))
 vi.mock('./passkey-ceremony-service', () => ({
   PasskeyCeremonyService: class {
+    onVaultMutation(): void {}
     onLocked(): void {}
     dispose(): void {}
   }
@@ -483,5 +505,29 @@ describe('main WebAuthn lifecycle wiring', () => {
     harness.appListeners.get('before-quit')!(quitEvent as never)
     await vi.waitFor(() => expect(harness.controller.dispose).toHaveBeenCalledOnce())
     expect(harness.registrationController.dispose).toHaveBeenCalledOnce()
+  })
+
+  it('keeps invalidations debounced while foreground, resume, and unlock boundaries sync immediately', async () => {
+    harness.autoSyncRequest.mockClear()
+    harness.autoSyncRequestImmediate.mockClear()
+    harness.autoSyncUpdateStatus.mockClear()
+
+    ;(harness.serverNotificationOptions!.onSyncRequested as () => void)()
+    expect(harness.autoSyncRequest).toHaveBeenCalledOnce()
+    expect(harness.autoSyncRequestImmediate).not.toHaveBeenCalled()
+
+    harness.powerMonitorListeners.get('resume')!()
+    harness.appListeners.get('browser-window-focus')!()
+    harness.appListeners.get('activate')!()
+    await (harness.vaultIpcOptions!.afterPinUnlock as () => Promise<void>)()
+    expect(harness.autoSyncRequestImmediate).toHaveBeenCalledTimes(4)
+
+    const ready: import('../shared/vault-contract').SyncStatus = {
+      configured: true,
+      state: 'ready',
+      serverUrl: 'https://vault.example.invalid'
+    }
+    ;(harness.vaultIpcOptions!.afterSyncChanged as (status: typeof ready) => void)(ready)
+    expect(harness.autoSyncUpdateStatus).toHaveBeenCalledWith(ready)
   })
 })
