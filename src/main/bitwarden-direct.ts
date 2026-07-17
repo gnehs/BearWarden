@@ -567,10 +567,16 @@ export interface BitwardenSyncClient {
     signal?: AbortSignal
   ): Promise<BitwardenLoginItem>
   softDeleteLogin(id: string, signal?: AbortSignal): Promise<void>
+  softDeleteLogins?(ids: readonly string[], signal?: AbortSignal): Promise<void>
   restoreLogin(id: string, signal?: AbortSignal): Promise<void>
+  restoreLogins?(ids: readonly string[], signal?: AbortSignal): Promise<void>
+  moveLogins?(ids: readonly string[], folderId: string | null, signal?: AbortSignal): Promise<void>
   archiveLogin(id: string, signal?: AbortSignal): Promise<void>
+  archiveLogins?(ids: readonly string[], signal?: AbortSignal): Promise<void>
   unarchiveLogin(id: string, signal?: AbortSignal): Promise<void>
+  unarchiveLogins?(ids: readonly string[], signal?: AbortSignal): Promise<void>
   hardDeleteLogin(id: string, signal?: AbortSignal): Promise<void>
+  hardDeleteLogins?(ids: readonly string[], signal?: AbortSignal): Promise<void>
   /** Backward-compatible alias for permanent deletion. */
   deleteLogin(id: string, signal?: AbortSignal): Promise<void>
   lock(): Promise<void>
@@ -3472,6 +3478,22 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     }
   }
 
+  async softDeleteLogins(ids: readonly string[], signal?: AbortSignal): Promise<void> {
+    try {
+      this.requireUserKey()
+      const cachedLogins = this.requireCachedLogins(ids)
+      await this.http.bulkSoftDeleteCiphers(ids, signal)
+      const deletedAt = new Date().toISOString()
+      for (const cached of cachedLogins) {
+        cached.raw.deletedDate = deletedAt
+        cached.item.deletedAt = deletedAt
+      }
+      await this.captureSession()
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
   async restoreLogin(id: string, signal?: AbortSignal): Promise<void> {
     const userKey = this.requireUserKey()
     try {
@@ -3480,6 +3502,40 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       const item = this.decryptLogin(raw, userKey)
       if (item.id !== id) throw new BitwardenDirectError('INVALID_RESPONSE')
       this.logins.set(item.id, { raw: structuredClone(raw), item })
+      await this.captureSession()
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  async restoreLogins(ids: readonly string[], signal?: AbortSignal): Promise<void> {
+    const userKey = this.requireUserKey()
+    try {
+      this.requireCachedLogins(ids)
+      const rows = await this.http.bulkRestoreCiphers(ids, signal)
+      this.replaceBulkLoginRows(ids, rows, userKey, (item) => item.deletedAt === null)
+      await this.captureSession()
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  async moveLogins(
+    ids: readonly string[],
+    folderId: string | null,
+    signal?: AbortSignal
+  ): Promise<void> {
+    try {
+      this.requireUserKey()
+      const cachedLogins = this.requireCachedLogins(ids)
+      if (folderId !== null && !this.folders.has(folderId)) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      await this.http.bulkMoveCiphers(ids, folderId, signal)
+      for (const cached of cachedLogins) {
+        cached.raw.folderId = folderId
+        cached.item.folderId = folderId
+      }
       await this.captureSession()
     } catch (error) {
       throw this.mapError(error)
@@ -3502,6 +3558,18 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     }
   }
 
+  async archiveLogins(ids: readonly string[], signal?: AbortSignal): Promise<void> {
+    const userKey = this.requireUserKey()
+    try {
+      this.requireCachedLogins(ids)
+      const rows = await this.http.bulkArchiveCiphers(ids, signal)
+      this.replaceBulkLoginRows(ids, rows, userKey, (item) => item.archivedAt !== null)
+      await this.captureSession()
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
   async unarchiveLogin(id: string, signal?: AbortSignal): Promise<void> {
     const userKey = this.requireUserKey()
     try {
@@ -3518,11 +3586,35 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     }
   }
 
+  async unarchiveLogins(ids: readonly string[], signal?: AbortSignal): Promise<void> {
+    const userKey = this.requireUserKey()
+    try {
+      this.requireCachedLogins(ids)
+      const rows = await this.http.bulkUnarchiveCiphers(ids, signal)
+      this.replaceBulkLoginRows(ids, rows, userKey, (item) => item.archivedAt === null)
+      await this.captureSession()
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
   async hardDeleteLogin(id: string, signal?: AbortSignal): Promise<void> {
     try {
       this.requireUserKey()
       await this.http.hardDeleteCipher(id, signal)
       this.logins.delete(id)
+      await this.captureSession()
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  async hardDeleteLogins(ids: readonly string[], signal?: AbortSignal): Promise<void> {
+    try {
+      this.requireUserKey()
+      this.requireCachedLogins(ids)
+      await this.http.bulkHardDeleteCiphers(ids, signal)
+      for (const id of ids) this.logins.delete(id)
       await this.captureSession()
     } catch (error) {
       throw this.mapError(error)
@@ -4472,6 +4564,42 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   private requireProfileId(): string {
     if (!this.state.profileId) throw new BitwardenDirectError('AUTH_REQUIRED')
     return this.state.profileId
+  }
+
+  private requireCachedLogins(ids: readonly string[]): CachedLogin[] {
+    const cachedLogins: CachedLogin[] = []
+    for (const id of ids) {
+      const cached = this.logins.get(id)
+      if (!cached) throw new BitwardenDirectError('INVALID_RESPONSE')
+      cachedLogins.push(cached)
+    }
+    return cachedLogins
+  }
+
+  private replaceBulkLoginRows(
+    ids: readonly string[],
+    rows: readonly JsonObject[],
+    userKey: BitwardenSymmetricKey,
+    validState: (item: BitwardenLoginItem) => boolean
+  ): void {
+    const expectedIds = new Map(ids.map((id) => [id.toLocaleLowerCase('en-US'), id] as const))
+    const replacements: CachedLogin[] = []
+    for (const raw of rows) {
+      if (property(raw, 'organizationId') !== null) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      const item = this.decryptLogin(raw, userKey)
+      if (expectedIds.get(item.id.toLocaleLowerCase('en-US')) !== item.id || !validState(item)) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      replacements.push({ raw: structuredClone(raw), item })
+    }
+    if (replacements.length !== expectedIds.size) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    for (const replacement of replacements) {
+      this.logins.set(replacement.item.id, replacement)
+    }
   }
 
   private async captureSession(): Promise<void> {

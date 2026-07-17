@@ -3533,6 +3533,120 @@ describe('BitwardenDirectClient', () => {
     ])
   })
 
+  it('applies validated bulk lifecycle responses to the personal cipher cache', async () => {
+    const sync = await encryptedSync({ allTypes: true })
+    const sourceRows = sync.ciphers as JsonObject[]
+    const ids = [LOGIN_ID, CARD_ID]
+    let rejectMoveResponse = true
+    const requests: string[] = []
+    const rowsFor = (operation: 'restore' | 'archive' | 'unarchive'): JsonObject[] =>
+      ids.map((id) => {
+        const source = sourceRows.find((row) => row.id === id)!
+        return {
+          ...source,
+          deletedDate: null,
+          archivedDate: operation === 'archive' ? ARCHIVED_AT : null,
+          revisionDate: '2026-07-17T00:00:00.000Z'
+        }
+      })
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url, init) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          return jsonResponse({
+            access_token: 'access-token',
+            refresh_token: 'refresh-token',
+            expires_in: 3600
+          })
+        }
+        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        requests.push(`${init?.method} ${url}`)
+        if (url.endsWith('/api/ciphers/restore')) {
+          return jsonResponse({ data: rowsFor('restore'), object: 'list', continuationToken: null })
+        }
+        if (url.endsWith('/api/ciphers/archive')) {
+          return jsonResponse({ data: rowsFor('archive'), object: 'list', continuationToken: null })
+        }
+        if (url.endsWith('/api/ciphers/unarchive')) {
+          return jsonResponse({
+            data: rowsFor('unarchive'),
+            object: 'list',
+            continuationToken: null
+          })
+        }
+        if (url.endsWith('/api/ciphers/move')) {
+          if (rejectMoveResponse) return jsonResponse({ ambiguous: true })
+          return new Response(null, { status: 204 })
+        }
+        if (url.endsWith('/api/ciphers/delete') || url.endsWith('/api/ciphers')) {
+          return new Response(null, { status: 204 })
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+    await expect(client.moveLogins(ids, null)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    expect(
+      (await client.listPersonalLogins())
+        .filter((item) => ids.includes(item.id))
+        .map((item) => item.folderId)
+    ).toEqual([FOLDER_ID, null])
+
+    rejectMoveResponse = false
+    await client.moveLogins(ids, null)
+    expect(
+      (await client.listPersonalLogins())
+        .filter((item) => ids.includes(item.id))
+        .map((item) => item.folderId)
+    ).toEqual([null, null])
+
+    await client.softDeleteLogins(ids)
+    expect(
+      (await client.listPersonalLogins())
+        .filter((item) => ids.includes(item.id))
+        .every((item) => item.deletedAt !== null)
+    ).toBe(true)
+    await client.restoreLogins(ids)
+    expect(
+      (await client.listPersonalLogins())
+        .filter((item) => ids.includes(item.id))
+        .every((item) => item.deletedAt === null)
+    ).toBe(true)
+    await client.archiveLogins(ids)
+    expect(
+      (await client.listPersonalLogins())
+        .filter((item) => ids.includes(item.id))
+        .every((item) => item.archivedAt === ARCHIVED_AT)
+    ).toBe(true)
+    await client.unarchiveLogins(ids)
+    expect(
+      (await client.listPersonalLogins())
+        .filter((item) => ids.includes(item.id))
+        .every((item) => item.archivedAt === null)
+    ).toBe(true)
+    await client.hardDeleteLogins(ids)
+    expect((await client.listPersonalLogins()).filter((item) => ids.includes(item.id))).toEqual([])
+    expect(requests).toEqual([
+      'POST https://vault.example.invalid/api/ciphers/move',
+      'POST https://vault.example.invalid/api/ciphers/move',
+      'PUT https://vault.example.invalid/api/ciphers/delete',
+      'PUT https://vault.example.invalid/api/ciphers/restore',
+      'PUT https://vault.example.invalid/api/ciphers/archive',
+      'PUT https://vault.example.invalid/api/ciphers/unarchive',
+      'POST https://vault.example.invalid/api/ciphers/delete'
+    ])
+  })
+
   it('lists and performs lossless V1 CRUD across card, identity, note, and SSH types', async () => {
     const sync = await encryptedSync({ allTypes: true })
     const writes: JsonObject[] = []
