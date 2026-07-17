@@ -354,7 +354,10 @@ function uniqueFingerprintPairs<T>(
 }
 
 function conflictName(name: string): string {
-  return `${name} (BearWarden conflict)`
+  const suffix = ' (BearWarden conflict)'
+  const codePoints = Array.from(name)
+  while (codePoints.join('').length > 256 - suffix.length) codePoints.pop()
+  return `${codePoints.join('')}${suffix}`
 }
 
 interface FolderMapping {

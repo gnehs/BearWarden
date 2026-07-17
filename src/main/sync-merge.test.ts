@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   completeSyncMetadata,
+  fingerprintFolder,
   fingerprintLogin,
   legacyCustomFieldBaselineUpgrades,
   legacyLoginFingerprint,
@@ -260,6 +261,53 @@ describe('planSync', () => {
         remote: { password: 'remote-secret' }
       }
     ])
+  })
+
+  it('keeps login and folder conflict-copy names within the persisted name limit', () => {
+    const baseLogin = login('base-id')
+    const loginPlan = planSync(
+      snapshot([{ ...login('local-1', '😀'.repeat(128)), password: 'local-secret' }]),
+      snapshot([login('remote-1', 'Remote edit', 'remote-secret')]),
+      {
+        version: 1,
+        folderLinks: [],
+        loginLinks: [
+          {
+            localId: 'local-1',
+            remoteId: 'remote-1',
+            baseFingerprint: fingerprintLogin(baseLogin)
+          }
+        ]
+      }
+    )
+    const loginConflict = loginPlan.actions[0]
+    expect(loginConflict).toMatchObject({ kind: 'conflict-copy', entity: 'login' })
+    if (loginConflict?.kind !== 'conflict-copy') throw new Error('Expected login conflict')
+    expect(loginConflict.conflictName.length).toBeLessThanOrEqual(256)
+    expect(loginConflict.conflictName).toMatch(/\(BearWarden conflict\)$/u)
+    expect(loginConflict.conflictName).not.toContain('\ud83d (')
+
+    const baseFolder = { id: 'base-folder', name: 'Base folder' }
+    const folderPlan = planSync(
+      snapshot([], [{ id: 'local-folder', name: 'x'.repeat(256) }]),
+      snapshot([], [{ id: 'remote-folder', name: 'Remote folder' }]),
+      {
+        version: 1,
+        folderLinks: [
+          {
+            localId: 'local-folder',
+            remoteId: 'remote-folder',
+            baseFingerprint: fingerprintFolder(baseFolder)
+          }
+        ],
+        loginLinks: []
+      }
+    )
+    const folderConflict = folderPlan.actions[0]
+    expect(folderConflict).toMatchObject({ kind: 'conflict-copy', entity: 'folder' })
+    if (folderConflict?.kind !== 'conflict-copy') throw new Error('Expected folder conflict')
+    expect(folderConflict.conflictName.length).toBe(256)
+    expect(folderConflict.conflictName).toMatch(/\(BearWarden conflict\)$/u)
   })
 
   it('plans soft-delete and restore transitions as linked updates', () => {
