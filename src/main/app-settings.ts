@@ -2,12 +2,18 @@ import { randomUUID } from 'node:crypto'
 import { chmod, mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { safeStorage, systemPreferences } from 'electron'
-import type { AppSettings, AppSettingsUpdate, VaultStatus } from '../shared/vault-contract'
+import { MAX_VAULT_TIMEOUT_MINUTES } from '../shared/vault-contract'
+import type {
+  AppSettings,
+  AppSettingsUpdate,
+  VaultStatus,
+  VaultTimeoutPolicy
+} from '../shared/vault-contract'
 import type { EncryptedVaultStore } from './encrypted-vault-store'
 import { VaultError } from './vault-errors'
 import type { VaultTimeoutCoordinator } from './vault-timeout-coordinator'
 
-const SETTINGS_VERSION = 4
+const SETTINGS_VERSION = 5
 const MAX_SETTINGS_BYTES = 16 * 1024
 const MAX_TOUCH_ID_BYTES = 64 * 1024
 
@@ -41,47 +47,94 @@ export interface AppSettingsRuntime {
   unlockVault: (masterPassword: string) => Promise<VaultStatus>
 }
 
-const DEFAULTS: StoredSettings = {
-  version: SETTINGS_VERSION,
-  contentProtection: true,
-  showWebsiteIcons: true,
-  startAtLogin: false,
-  autoLockMinutes: 15,
-  lockOnScreenLock: true,
-  lockOnSuspend: true,
-  clearClipboardSeconds: 30,
-  defaultSort: 'recent',
-  theme: 'system',
-  sshAgentEnabled: false,
-  sshAgentPromptBehavior: 'always'
+function defaultSettings(): StoredSettings {
+  return {
+    version: SETTINGS_VERSION,
+    contentProtection: true,
+    showWebsiteIcons: true,
+    startAtLogin: false,
+    vaultTimeoutPolicy: { type: 'appInactivity', minutes: 15 },
+    lockOnScreenLock: true,
+    lockOnSuspend: true,
+    clearClipboardSeconds: 30,
+    defaultSort: 'recent',
+    theme: 'system',
+    sshAgentEnabled: false,
+    sshAgentPromptBehavior: 'always'
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function parseSettings(value: unknown): StoredSettings {
+function parseVaultTimeoutPolicy(value: unknown): VaultTimeoutPolicy {
+  if (!isRecord(value)) throw new Error('invalid settings')
+  const keys = Object.keys(value)
+  if (value.type === 'onRestart' && keys.length === 1 && keys[0] === 'type') {
+    return { type: 'onRestart' }
+  }
+  if (
+    value.type === 'appInactivity' &&
+    keys.length === 2 &&
+    keys.includes('type') &&
+    keys.includes('minutes') &&
+    typeof value.minutes === 'number' &&
+    Number.isSafeInteger(value.minutes) &&
+    value.minutes >= 1 &&
+    value.minutes <= MAX_VAULT_TIMEOUT_MINUTES
+  ) {
+    return { type: 'appInactivity', minutes: value.minutes }
+  }
+  throw new Error('invalid settings')
+}
+
+function parseSettings(value: unknown): { settings: StoredSettings; needsMigration: boolean } {
   if (
     !isRecord(value) ||
     (value.version !== 1 &&
       value.version !== 2 &&
       value.version !== 3 &&
+      value.version !== 4 &&
       value.version !== SETTINGS_VERSION)
   ) {
     throw new Error('invalid settings')
   }
+  const isV5 = value.version === SETTINGS_VERSION
   const autoLockMinutes = value.autoLockMinutes
   const clearClipboardSeconds = value.clearClipboardSeconds
+  const legacyTimeoutValid =
+    autoLockMinutes === 0 ||
+    autoLockMinutes === 1 ||
+    autoLockMinutes === 5 ||
+    autoLockMinutes === 15 ||
+    autoLockMinutes === 30 ||
+    autoLockMinutes === 60
+  if (
+    isV5 &&
+    (Object.keys(value).length !== 12 ||
+      ![
+        'version',
+        'contentProtection',
+        'showWebsiteIcons',
+        'startAtLogin',
+        'vaultTimeoutPolicy',
+        'lockOnScreenLock',
+        'lockOnSuspend',
+        'clearClipboardSeconds',
+        'defaultSort',
+        'theme',
+        'sshAgentEnabled',
+        'sshAgentPromptBehavior'
+      ].every((key) => Object.prototype.hasOwnProperty.call(value, key)))
+  ) {
+    throw new Error('invalid settings')
+  }
   if (
     typeof value.contentProtection !== 'boolean' ||
     (value.version !== 1 && typeof value.showWebsiteIcons !== 'boolean') ||
-    (value.version === SETTINGS_VERSION && typeof value.startAtLogin !== 'boolean') ||
-    (autoLockMinutes !== 0 &&
-      autoLockMinutes !== 1 &&
-      autoLockMinutes !== 5 &&
-      autoLockMinutes !== 15 &&
-      autoLockMinutes !== 30 &&
-      autoLockMinutes !== 60) ||
+    (value.version >= 4 && typeof value.startAtLogin !== 'boolean') ||
+    (!isV5 && !legacyTimeoutValid) ||
     typeof value.lockOnScreenLock !== 'boolean' ||
     typeof value.lockOnSuspend !== 'boolean' ||
     (clearClipboardSeconds !== 0 &&
@@ -99,22 +152,30 @@ function parseSettings(value: unknown): StoredSettings {
   ) {
     throw new Error('invalid settings')
   }
+  const vaultTimeoutPolicy = isV5
+    ? parseVaultTimeoutPolicy(value.vaultTimeoutPolicy)
+    : autoLockMinutes === 0
+      ? ({ type: 'onRestart' } as const)
+      : ({ type: 'appInactivity', minutes: autoLockMinutes as number } as const)
   return {
-    version: SETTINGS_VERSION,
-    contentProtection: value.contentProtection,
-    showWebsiteIcons: value.version === 1 ? false : (value.showWebsiteIcons as boolean),
-    startAtLogin: value.version === SETTINGS_VERSION ? (value.startAtLogin as boolean) : false,
-    autoLockMinutes,
-    lockOnScreenLock: value.lockOnScreenLock,
-    lockOnSuspend: value.lockOnSuspend,
-    clearClipboardSeconds,
-    defaultSort: value.defaultSort,
-    theme: value.theme,
-    sshAgentEnabled: value.version >= 3 ? (value.sshAgentEnabled as boolean) : false,
-    sshAgentPromptBehavior:
-      value.version >= 3
-        ? (value.sshAgentPromptBehavior as AppSettings['sshAgentPromptBehavior'])
-        : 'always'
+    needsMigration: !isV5,
+    settings: {
+      version: SETTINGS_VERSION,
+      contentProtection: value.contentProtection,
+      showWebsiteIcons: value.version === 1 ? false : (value.showWebsiteIcons as boolean),
+      startAtLogin: value.version >= 4 ? (value.startAtLogin as boolean) : false,
+      vaultTimeoutPolicy,
+      lockOnScreenLock: value.lockOnScreenLock,
+      lockOnSuspend: value.lockOnSuspend,
+      clearClipboardSeconds,
+      defaultSort: value.defaultSort,
+      theme: value.theme,
+      sshAgentEnabled: value.version >= 3 ? (value.sshAgentEnabled as boolean) : false,
+      sshAgentPromptBehavior:
+        value.version >= 3
+          ? (value.sshAgentPromptBehavior as AppSettings['sshAgentPromptBehavior'])
+          : 'always'
+    }
   }
 }
 
@@ -138,8 +199,10 @@ async function atomicWrite(path: string, data: string | Buffer): Promise<void> {
     await handle.sync()
     await handle.close()
     handle = undefined
+    // Set the final mode before replacement so a failure cannot report an uncommitted write
+    // after rename has already made the new settings authoritative.
+    await chmod(temporaryPath, 0o600)
     await rename(temporaryPath, path)
-    await chmod(path, 0o600)
     await syncDirectory(directory)
   } catch (error) {
     await handle?.close()
@@ -156,40 +219,66 @@ async function syncDirectory(path: string): Promise<void> {
   } catch {
     // Directory fsync is not supported on every Electron target, notably Windows.
   } finally {
-    await handle?.close()
+    // The rename is already authoritative; durability hints must not make callers believe it
+    // failed to commit if a directory close is unsupported or transiently rejected.
+    await handle?.close().catch(() => undefined)
   }
 }
 
 export class AppSettingsService {
-  private settings: StoredSettings = { ...DEFAULTS }
+  private settings: StoredSettings = defaultSettings()
   private touchIdUnlock: Promise<VaultStatus> | null = null
   private touchIdOperationInProgress = false
   private settingsUpdateTail: Promise<void> = Promise.resolve()
   private disposed = false
   private lifecycleEpoch = 0
+  /** Corrupt or future bytes are readable only through secure defaults, never overwritten. */
+  private persistenceUnavailable = false
 
   constructor(
     private readonly settingsPath: string,
     private readonly touchIdPath: string,
     private readonly vaultStore: EncryptedVaultStore<unknown>,
     private readonly runtime: AppSettingsRuntime,
-    private readonly vaultTimeoutCoordinator: VaultTimeoutCoordinator
+    private readonly vaultTimeoutCoordinator: VaultTimeoutCoordinator,
+    /** Test seam; production persists settings through durable copy-on-write replacement. */
+    private readonly writeSettings: (
+      path: string,
+      data: string | Buffer
+    ) => Promise<void> = atomicWrite
   ) {}
 
   async initialize(): Promise<void> {
+    this.persistenceUnavailable = false
+    this.settings = defaultSettings()
+    let needsMigration = false
     try {
       const file = await readFile(this.settingsPath)
       if (file.length === 0 || file.length > MAX_SETTINGS_BYTES) throw new Error('invalid settings')
-      this.settings = parseSettings(JSON.parse(file.toString('utf8')))
+      const parsed = parseSettings(JSON.parse(file.toString('utf8')))
+      this.settings = parsed.settings
+      needsMigration = parsed.needsMigration
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        this.settings = { ...DEFAULTS }
+        this.settings = defaultSettings()
+        this.persistenceUnavailable = true
       }
     }
     const startAtLoginStatus = this.runtime.getStartAtLoginStatus()
     this.settings.startAtLogin = startAtLoginStatus.available ? startAtLoginStatus.enabled : false
+    if (needsMigration) {
+      // Copy-on-write: a failed migration leaves the original v1-v4 bytes untouched and can be
+      // retried safely the next time this account runtime initializes.
+      try {
+        await this.writeSettings(this.settingsPath, `${JSON.stringify(this.settings)}\n`)
+      } catch {
+        // Keep using the parsed legacy policy for this process, but never let a later update
+        // overwrite legacy bytes after a failed copy-on-write migration.
+        this.persistenceUnavailable = true
+      }
+    }
     this.applyRuntimeSettings()
-    this.vaultTimeoutCoordinator.updatePolicy(this.settings.autoLockMinutes)
+    this.vaultTimeoutCoordinator.updatePolicy(this.settings.vaultTimeoutPolicy)
   }
 
   async get(): Promise<AppSettings> {
@@ -219,7 +308,12 @@ export class AppSettingsService {
   }
 
   private async performUpdate(update: AppSettingsUpdate): Promise<AppSettings> {
-    const candidate = parseSettings({ ...this.settings, ...update, version: SETTINGS_VERSION })
+    if (this.persistenceUnavailable) throw new VaultError('INTERNAL_ERROR')
+    const candidate = parseSettings({
+      ...this.settings,
+      ...update,
+      version: SETTINGS_VERSION
+    }).settings
     const previousStartAtLogin = this.runtime.getStartAtLoginStatus()
     if (update.startAtLogin !== undefined) {
       if (!previousStartAtLogin.available && update.startAtLogin) {
@@ -238,7 +332,7 @@ export class AppSettingsService {
       candidate.startAtLogin = previousStartAtLogin.available ? previousStartAtLogin.enabled : false
     }
     try {
-      await atomicWrite(this.settingsPath, `${JSON.stringify(candidate)}\n`)
+      await this.writeSettings(this.settingsPath, `${JSON.stringify(candidate)}\n`)
     } catch (error) {
       if (
         update.startAtLogin !== undefined &&
@@ -251,7 +345,7 @@ export class AppSettingsService {
     }
     this.settings = candidate
     this.applyRuntimeSettings()
-    this.vaultTimeoutCoordinator.updatePolicy(this.settings.autoLockMinutes)
+    this.vaultTimeoutCoordinator.updatePolicy(this.settings.vaultTimeoutPolicy)
     return this.get()
   }
 

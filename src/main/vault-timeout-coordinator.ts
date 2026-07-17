@@ -1,5 +1,6 @@
-/** The persisted timeout values currently supported by the desktop client. */
-export type VaultAutoLockMinutes = 0 | 1 | 5 | 15 | 30 | 60
+import { MAX_VAULT_TIMEOUT_MINUTES, type VaultTimeoutPolicy } from '../shared/vault-contract'
+
+const MAX_TIMER_DELAY_MS = 2_147_483_647
 
 export interface VaultTimeoutLockBarrier {
   /**
@@ -10,23 +11,40 @@ export interface VaultTimeoutLockBarrier {
   lockVault: () => Promise<void>
 }
 
+export interface VaultTimeoutCoordinatorOptions {
+  /** Test seam for deadline accounting; production uses the wall clock. */
+  now?: () => number
+  /** Node clamps delays larger than this value; production uses Node's maximum. */
+  maxTimerDelayMs?: number
+}
+
 /**
  * Owns the main-process timeout lifecycle. Renderers may report activity, but
  * never own a timer or perform a timeout lock themselves.
  */
 export class VaultTimeoutCoordinator {
-  private autoLockMinutes: VaultAutoLockMinutes = 0
+  private policy: VaultTimeoutPolicy = { type: 'onRestart' }
   private timer: NodeJS.Timeout | null = null
+  private deadline: number | null = null
   private epoch = 0
   private lockOperation: Promise<void> | null = null
   private pendingEpoch: number | null = null
   private disposed = false
 
-  constructor(private readonly lockBarrier: VaultTimeoutLockBarrier) {}
+  private readonly now: () => number
+  private readonly maxTimerDelayMs: number
 
-  updatePolicy(autoLockMinutes: VaultAutoLockMinutes): void {
+  constructor(
+    private readonly lockBarrier: VaultTimeoutLockBarrier,
+    options: VaultTimeoutCoordinatorOptions = {}
+  ) {
+    this.now = options.now ?? (() => Date.now())
+    this.maxTimerDelayMs = options.maxTimerDelayMs ?? MAX_TIMER_DELAY_MS
+  }
+
+  updatePolicy(policy: VaultTimeoutPolicy): void {
     if (this.disposed) return
-    this.autoLockMinutes = autoLockMinutes
+    this.policy = policy
     this.resetTimer()
   }
 
@@ -39,6 +57,7 @@ export class VaultTimeoutCoordinator {
   cancel(): void {
     this.epoch += 1
     this.pendingEpoch = null
+    this.deadline = null
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
   }
@@ -51,16 +70,30 @@ export class VaultTimeoutCoordinator {
 
   private resetTimer(): void {
     this.cancel()
-    if (this.autoLockMinutes === 0) return
+    if (this.policy.type === 'onRestart') return
 
     const timerEpoch = this.epoch
-    this.timer = setTimeout(() => {
-      if (this.disposed || timerEpoch !== this.epoch) return
+    this.deadline = this.now() + Math.min(this.policy.minutes, MAX_VAULT_TIMEOUT_MINUTES) * 60_000
+    this.scheduleDeadline(timerEpoch)
+  }
+
+  private scheduleDeadline(timerEpoch: number): void {
+    if (this.disposed || timerEpoch !== this.epoch || this.deadline === null) return
+    const remaining = this.deadline - this.now()
+    if (remaining <= 0) {
       this.timer = null
       // The main-process barrier has already failed closed before any rejection can reach here.
       // A post-lock observer must not become an unhandled timer rejection.
       void this.lockIfCurrent(timerEpoch).catch(() => undefined)
-    }, this.autoLockMinutes * 60_000)
+      return
+    }
+    this.timer = setTimeout(
+      () => {
+        this.timer = null
+        this.scheduleDeadline(timerEpoch)
+      },
+      Math.min(remaining, this.maxTimerDelayMs)
+    )
     this.timer.unref()
   }
 

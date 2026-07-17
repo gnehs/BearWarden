@@ -1515,6 +1515,16 @@ export interface PasskeyApprovalVerificationRequest {
   masterPassword: string
 }
 
+/** Upper bound keeps storage, IPC, and timer calculations within safe limits. */
+export const MAX_VAULT_TIMEOUT_MINUTES = 525_600
+
+/**
+ * Timeout policy is deliberately closed: only policies implemented by the
+ * main process may be persisted or accepted from a renderer.
+ */
+export type VaultTimeoutPolicy =
+  { readonly type: 'appInactivity'; readonly minutes: number } | { readonly type: 'onRestart' }
+
 export interface AppSettings {
   contentProtection: boolean
   showWebsiteIcons: boolean
@@ -1524,7 +1534,7 @@ export interface AppSettings {
   startAtLoginAvailable: boolean
   /** macOS registered the login item, but the user still needs to approve it in System Settings. */
   startAtLoginNeedsApproval: boolean
-  autoLockMinutes: 0 | 1 | 5 | 15 | 30 | 60
+  vaultTimeoutPolicy: VaultTimeoutPolicy
   lockOnScreenLock: boolean
   lockOnSuspend: boolean
   clearClipboardSeconds: 0 | 15 | 30 | 60 | 120

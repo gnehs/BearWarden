@@ -64,7 +64,10 @@ describe('AppSettingsService', () => {
     vi.clearAllMocks()
   })
 
-  function createService(settingsPath = join(directory, 'settings.json')): {
+  function createService(
+    settingsPath = join(directory, 'settings.json'),
+    writeSettings?: (path: string, data: string | Buffer) => Promise<void>
+  ): {
     service: AppSettingsService
     store: EncryptedVaultStore<unknown>
     runtime: TestRuntime
@@ -97,7 +100,8 @@ describe('AppSettingsService', () => {
       join(directory, 'vault', 'touch-id.bin'),
       store,
       runtime,
-      timeoutCoordinator as unknown as VaultTimeoutCoordinator
+      timeoutCoordinator as unknown as VaultTimeoutCoordinator,
+      writeSettings
     )
     return {
       service,
@@ -117,7 +121,7 @@ describe('AppSettingsService', () => {
       startAtLogin: false,
       startAtLoginAvailable: false,
       startAtLoginNeedsApproval: false,
-      autoLockMinutes: 15,
+      vaultTimeoutPolicy: { type: 'appInactivity', minutes: 15 },
       lockOnScreenLock: true,
       lockOnSuspend: true,
       clearClipboardSeconds: 30,
@@ -130,7 +134,7 @@ describe('AppSettingsService', () => {
     const updated = await service.update({
       contentProtection: false,
       showWebsiteIcons: false,
-      autoLockMinutes: 0,
+      vaultTimeoutPolicy: { type: 'onRestart' },
       clearClipboardSeconds: 60,
       theme: 'dark',
       sshAgentEnabled: true,
@@ -139,7 +143,7 @@ describe('AppSettingsService', () => {
     expect(updated).toMatchObject({
       contentProtection: false,
       showWebsiteIcons: false,
-      autoLockMinutes: 0,
+      vaultTimeoutPolicy: { type: 'onRestart' },
       clearClipboardSeconds: 60,
       theme: 'dark',
       sshAgentEnabled: true,
@@ -152,7 +156,7 @@ describe('AppSettingsService', () => {
       promptBehavior: 'rememberUntilLock'
     })
     expect(JSON.parse(await readFile(join(directory, 'settings.json'), 'utf8'))).toMatchObject({
-      version: 4,
+      version: 5,
       startAtLogin: false,
       sshAgentEnabled: true,
       sshAgentPromptBehavior: 'rememberUntilLock'
@@ -183,8 +187,10 @@ describe('AppSettingsService', () => {
     expect(await service.get()).toMatchObject({
       showWebsiteIcons: false,
       sshAgentEnabled: false,
-      sshAgentPromptBehavior: 'always'
+      sshAgentPromptBehavior: 'always',
+      vaultTimeoutPolicy: { type: 'appInactivity', minutes: 15 }
     })
+    expect(JSON.parse(await readFile(settingsPath, 'utf8'))).toMatchObject({ version: 5 })
     service.dispose()
   })
 
@@ -252,6 +258,88 @@ describe('AppSettingsService', () => {
     service.dispose()
   })
 
+  it.each([
+    [0, { type: 'onRestart' }],
+    [1, { type: 'appInactivity', minutes: 1 }],
+    [5, { type: 'appInactivity', minutes: 5 }],
+    [15, { type: 'appInactivity', minutes: 15 }],
+    [30, { type: 'appInactivity', minutes: 30 }],
+    [60, { type: 'appInactivity', minutes: 60 }]
+  ] as const)(
+    'migrates the version 4 timeout value %i to the v5 discriminated policy',
+    async (autoLockMinutes, expectedPolicy) => {
+      const settingsPath = join(directory, 'settings.json')
+      await writeFile(
+        settingsPath,
+        JSON.stringify({
+          version: 4,
+          contentProtection: true,
+          showWebsiteIcons: true,
+          startAtLogin: false,
+          autoLockMinutes,
+          lockOnScreenLock: true,
+          lockOnSuspend: true,
+          clearClipboardSeconds: 30,
+          defaultSort: 'recent',
+          theme: 'system',
+          sshAgentEnabled: false,
+          sshAgentPromptBehavior: 'always'
+        })
+      )
+      const { service } = createService(settingsPath)
+      await service.initialize()
+
+      await expect(service.get()).resolves.toMatchObject({
+        vaultTimeoutPolicy: expectedPolicy
+      })
+      const migrated = JSON.parse(await readFile(settingsPath, 'utf8'))
+      expect(migrated).toMatchObject({ version: 5, vaultTimeoutPolicy: expectedPolicy })
+      expect(migrated).not.toHaveProperty('autoLockMinutes')
+      service.dispose()
+    }
+  )
+
+  it('preserves legacy settings bytes and blocks ordinary updates when copy-on-write migration fails', async () => {
+    const settingsPath = join(directory, 'settings.json')
+    const legacyBytes = JSON.stringify({
+      version: 4,
+      contentProtection: true,
+      showWebsiteIcons: true,
+      startAtLogin: false,
+      autoLockMinutes: 15,
+      lockOnScreenLock: true,
+      lockOnSuspend: true,
+      clearClipboardSeconds: 30,
+      defaultSort: 'recent',
+      theme: 'system',
+      sshAgentEnabled: false,
+      sshAgentPromptBehavior: 'always'
+    })
+    await writeFile(settingsPath, legacyBytes)
+    const failedWrite = vi
+      .fn<(path: string, data: string | Buffer) => Promise<void>>()
+      .mockRejectedValue(new Error('disk full'))
+    const { service } = createService(settingsPath, failedWrite)
+    await service.initialize()
+
+    await expect(readFile(settingsPath, 'utf8')).resolves.toBe(legacyBytes)
+    await expect(service.update({ theme: 'dark' })).rejects.toMatchObject({
+      code: 'INTERNAL_ERROR'
+    })
+    expect(failedWrite).toHaveBeenCalledOnce()
+    service.dispose()
+
+    const retry = createService(settingsPath)
+    await retry.service.initialize()
+    await expect(retry.service.get()).resolves.toMatchObject({
+      vaultTimeoutPolicy: { type: 'appInactivity', minutes: 15 }
+    })
+    await expect(readFile(settingsPath, 'utf8')).resolves.toMatchObject(
+      expect.stringContaining('"version":5')
+    )
+    retry.service.dispose()
+  })
+
   it('updates and confirms the installed OS login item before persisting it', async () => {
     const { service, runtime } = createService()
     let enabled = false
@@ -273,7 +361,7 @@ describe('AppSettingsService', () => {
     })
     expect(runtime.setStartAtLogin).toHaveBeenCalledWith(true)
     expect(JSON.parse(await readFile(join(directory, 'settings.json'), 'utf8'))).toMatchObject({
-      version: 4,
+      version: 5,
       startAtLogin: true
     })
     service.dispose()
@@ -311,7 +399,7 @@ describe('AppSettingsService', () => {
     service.dispose()
   })
 
-  it('rolls back the OS login item when settings persistence fails', async () => {
+  it('does not touch the OS login item when the settings file is unavailable', async () => {
     const settingsPath = join(directory, 'settings-directory')
     await mkdir(settingsPath)
     const { service, runtime } = createService(settingsPath)
@@ -327,8 +415,10 @@ describe('AppSettingsService', () => {
     })
     await service.initialize()
 
-    await expect(service.update({ startAtLogin: true })).rejects.toThrow()
-    expect(runtime.setStartAtLogin.mock.calls).toEqual([[true], [false]])
+    await expect(service.update({ startAtLogin: true })).rejects.toMatchObject({
+      code: 'INTERNAL_ERROR'
+    })
+    expect(runtime.setStartAtLogin).not.toHaveBeenCalled()
     expect(enabled).toBe(false)
     service.dispose()
   })
@@ -360,6 +450,28 @@ describe('AppSettingsService', () => {
     service.dispose()
   })
 
+  it.each([
+    '{"version":6,"unknown":"future"}',
+    '{"version":5,"contentProtection":true,"showWebsiteIcons":true,"startAtLogin":false,"vaultTimeoutPolicy":{"type":"appInactivity","minutes":0},"lockOnScreenLock":true,"lockOnSuspend":true,"clearClipboardSeconds":30,"defaultSort":"recent","theme":"system","sshAgentEnabled":false,"sshAgentPromptBehavior":"always"}',
+    '{"version":5,"contentProtection":true,"showWebsiteIcons":true,"startAtLogin":false,"vaultTimeoutPolicy":{"type":"onRestart","minutes":15},"lockOnScreenLock":true,"lockOnSuspend":true,"clearClipboardSeconds":30,"defaultSort":"recent","theme":"system","sshAgentEnabled":false,"sshAgentPromptBehavior":"always"}',
+    '{"version":5,"contentProtection":true,"showWebsiteIcons":true,"startAtLogin":false,"vaultTimeoutPolicy":{"type":"onRestart"},"lockOnScreenLock":true,"lockOnSuspend":true,"clearClipboardSeconds":30,"defaultSort":"recent","theme":"system","sshAgentEnabled":false,"sshAgentPromptBehavior":"always","unexpected":true}',
+    '{not json'
+  ])('fails closed without overwriting corrupt or future settings bytes: %s', async (bytes) => {
+    const settingsPath = join(directory, 'settings.json')
+    await writeFile(settingsPath, bytes)
+    const { service } = createService(settingsPath)
+    await service.initialize()
+
+    await expect(service.get()).resolves.toMatchObject({
+      vaultTimeoutPolicy: { type: 'appInactivity', minutes: 15 }
+    })
+    await expect(service.update({ theme: 'dark' })).rejects.toMatchObject({
+      code: 'INTERNAL_ERROR'
+    })
+    await expect(readFile(settingsPath, 'utf8')).resolves.toBe(bytes)
+    service.dispose()
+  })
+
   it('gates the encrypted local unlock secret behind Touch ID', async () => {
     Object.defineProperty(process, 'platform', { value: 'darwin' })
     const { service, store, runtime } = createService()
@@ -376,9 +488,10 @@ describe('AppSettingsService', () => {
   })
 
   it('does not apply a settings update when its atomic write fails', async () => {
-    const settingsPath = join(directory, 'settings-directory')
-    await mkdir(settingsPath)
-    const { service, runtime } = createService(settingsPath)
+    const failedWrite = vi
+      .fn<(path: string, data: string | Buffer) => Promise<void>>()
+      .mockRejectedValue(new Error('disk full'))
+    const { service, runtime } = createService(undefined, failedWrite)
     await service.initialize()
 
     await expect(
@@ -390,6 +503,7 @@ describe('AppSettingsService', () => {
     })
     expect(runtime.applyContentProtection).toHaveBeenLastCalledWith(true)
     expect(runtime.applyClipboardTimeout).toHaveBeenLastCalledWith(30)
+    expect(failedWrite).toHaveBeenCalledOnce()
     service.dispose()
   })
 
@@ -557,13 +671,16 @@ describe('AppSettingsService', () => {
   it('forwards the persisted timeout policy and renderer activity to the main-process coordinator', async () => {
     const { service, timeoutCoordinator } = createService()
     await service.initialize()
-    expect(timeoutCoordinator.updatePolicy).toHaveBeenLastCalledWith(15)
+    expect(timeoutCoordinator.updatePolicy).toHaveBeenLastCalledWith({
+      type: 'appInactivity',
+      minutes: 15
+    })
 
     service.activity()
     expect(timeoutCoordinator.activity).toHaveBeenCalledOnce()
 
-    await service.update({ autoLockMinutes: 0 })
-    expect(timeoutCoordinator.updatePolicy).toHaveBeenLastCalledWith(0)
+    await service.update({ vaultTimeoutPolicy: { type: 'onRestart' } })
+    expect(timeoutCoordinator.updatePolicy).toHaveBeenLastCalledWith({ type: 'onRestart' })
     service.dispose()
     expect(timeoutCoordinator.dispose).toHaveBeenCalledOnce()
   })

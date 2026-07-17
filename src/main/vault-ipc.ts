@@ -4,6 +4,7 @@ import {
   IPC_CHANNELS,
   IPC_ERROR_PREFIX,
   IPC_EVENTS,
+  MAX_VAULT_TIMEOUT_MINUTES,
   MAX_LOGIN_BATCH_IDS,
   MAX_LOGIN_MOVE_MANY_IDS,
   MAX_LOGIN_AUTHORIZE_MANY_IDS,
@@ -334,11 +335,11 @@ function parseNativeRestoreSession(value: unknown): { sessionId: string } {
 }
 
 function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
-  const record = exactRecord(value, [
+  const record = exactDataRecord(value, [
     'contentProtection',
     'showWebsiteIcons',
     'startAtLogin',
-    'autoLockMinutes',
+    'vaultTimeoutPolicy',
     'lockOnScreenLock',
     'lockOnSuspend',
     'clearClipboardSeconds',
@@ -360,12 +361,22 @@ function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
     if (typeof record.startAtLogin !== 'boolean') throw new VaultError('INVALID_INPUT')
     result.startAtLogin = record.startAtLogin
   }
-  if (record.autoLockMinutes !== undefined) {
-    const value = record.autoLockMinutes
-    if (value !== 0 && value !== 1 && value !== 5 && value !== 15 && value !== 30 && value !== 60) {
+  if (record.vaultTimeoutPolicy !== undefined) {
+    const policy = exactDataRecord(record.vaultTimeoutPolicy, ['type', 'minutes'])
+    if (policy.type === 'onRestart' && Object.keys(policy).length === 1) {
+      result.vaultTimeoutPolicy = { type: 'onRestart' }
+    } else if (
+      policy.type === 'appInactivity' &&
+      Object.keys(policy).length === 2 &&
+      typeof policy.minutes === 'number' &&
+      Number.isSafeInteger(policy.minutes) &&
+      policy.minutes >= 1 &&
+      policy.minutes <= MAX_VAULT_TIMEOUT_MINUTES
+    ) {
+      result.vaultTimeoutPolicy = { type: 'appInactivity', minutes: policy.minutes }
+    } else {
       throw new VaultError('INVALID_INPUT')
     }
-    result.autoLockMinutes = value
   }
   for (const key of ['lockOnScreenLock', 'lockOnSuspend'] as const) {
     if (record[key] !== undefined) {
@@ -892,6 +903,7 @@ function exactRecord(value: unknown, allowedKeys: readonly string[]): RecordValu
 
 function exactDataRecord(value: unknown, allowedKeys: readonly string[]): RecordValue {
   if (!isRecord(value)) throw new VaultError('INVALID_INPUT')
+  if (Object.getPrototypeOf(value) !== Object.prototype) throw new VaultError('INVALID_INPUT')
   const descriptors = Object.getOwnPropertyDescriptors(value)
   if (
     Reflect.ownKeys(value).some((key) =>

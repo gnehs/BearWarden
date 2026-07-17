@@ -12,6 +12,17 @@ import { shouldDenyPasskeyApproval } from './lib/passkey-approval-ui'
 import { applyThemePreference } from './lib/theme'
 
 type AppState = VaultState | 'loading' | 'unavailable'
+const activityThrottleMs = 10_000
+
+/** Returns the timestamp to retain when renderer activity should reach the main process. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function nextVaultActivityTimestamp(
+  now: number,
+  lastActivityAt: number,
+  force = false
+): number | null {
+  return force || now - lastActivityAt >= activityThrottleMs ? now : null
+}
 
 function denySshAgentApproval(request: SshAgentApprovalPrompt): void {
   void window.bearwarden.sshAgent
@@ -147,18 +158,28 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     if (state !== 'unlocked') return
-    const reportActivity = (): void => {
+    const reportActivity = (force = false): void => {
       const now = Date.now()
-      if (now - lastActivityAt.current < 10_000) return
-      lastActivityAt.current = now
+      const nextActivityAt = nextVaultActivityTimestamp(now, lastActivityAt.current, force)
+      if (nextActivityAt === null) return
+      lastActivityAt.current = nextActivityAt
       void window.bearwarden.settings.activity().catch(() => undefined)
     }
-    window.addEventListener('pointerdown', reportActivity, { passive: true })
-    window.addEventListener('keydown', reportActivity)
-    reportActivity()
+    const reportActivityFromEvent = (): void => reportActivity()
+    window.addEventListener('pointerdown', reportActivityFromEvent, { passive: true })
+    window.addEventListener('keydown', reportActivityFromEvent)
+    window.addEventListener('wheel', reportActivityFromEvent, { passive: true })
+    window.addEventListener('scroll', reportActivityFromEvent, { passive: true, capture: true })
+    // A vault may have just been locked and unlocked within the throttle window.
+    // Its new timeout epoch must still be armed without waiting for another UI event.
+    lastActivityAt.current = 0
+    reportActivity(true)
     return () => {
-      window.removeEventListener('pointerdown', reportActivity)
-      window.removeEventListener('keydown', reportActivity)
+      window.removeEventListener('pointerdown', reportActivityFromEvent)
+      window.removeEventListener('keydown', reportActivityFromEvent)
+      window.removeEventListener('wheel', reportActivityFromEvent)
+      window.removeEventListener('scroll', reportActivityFromEvent, { capture: true })
+      lastActivityAt.current = 0
     }
   }, [state])
 

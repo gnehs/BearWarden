@@ -28,7 +28,7 @@ function createRuntime(
     startAtLogin: false,
     startAtLoginAvailable: true,
     startAtLoginNeedsApproval: false,
-    autoLockMinutes: 15,
+    vaultTimeoutPolicy: { type: 'appInactivity', minutes: 15 },
     lockOnScreenLock: true,
     lockOnSuspend: true,
     clearClipboardSeconds: 30,

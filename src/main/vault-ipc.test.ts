@@ -703,6 +703,41 @@ describe('registerVaultIpc settings validation', () => {
     }
     expect(settings.update).toHaveBeenCalledTimes(1)
   })
+
+  it('accepts only exact, data-only vault timeout policies', async () => {
+    const { event, settings } = settingsHarness()
+    const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!
+
+    await expect(
+      update(event, { vaultTimeoutPolicy: { type: 'appInactivity', minutes: 525_600 } })
+    ).resolves.toEqual({ vaultTimeoutPolicy: { type: 'appInactivity', minutes: 525_600 } })
+    await expect(update(event, { vaultTimeoutPolicy: { type: 'onRestart' } })).resolves.toEqual({
+      vaultTimeoutPolicy: { type: 'onRestart' }
+    })
+
+    const accessorPolicy = { type: 'appInactivity' } as Record<string, unknown>
+    const getter = vi.fn(() => 15)
+    Object.defineProperty(accessorPolicy, 'minutes', { enumerable: true, get: getter })
+    const inheritedPolicy = Object.create({ type: 'onRestart' })
+    for (const invalid of [
+      { vaultTimeoutPolicy: { type: 'appInactivity', minutes: 0 } },
+      { vaultTimeoutPolicy: { type: 'appInactivity', minutes: -1 } },
+      { vaultTimeoutPolicy: { type: 'appInactivity', minutes: 1.5 } },
+      { vaultTimeoutPolicy: { type: 'appInactivity', minutes: Number.NaN } },
+      { vaultTimeoutPolicy: { type: 'appInactivity', minutes: Number.POSITIVE_INFINITY } },
+      { vaultTimeoutPolicy: { type: 'appInactivity', minutes: 525_601 } },
+      { vaultTimeoutPolicy: { type: 'onRestart', minutes: 1 } },
+      { vaultTimeoutPolicy: { type: 'systemIdle', minutes: 15 } },
+      { vaultTimeoutPolicy: { type: 'appInactivity', minutes: 15, extra: true } },
+      { vaultTimeoutPolicy: accessorPolicy },
+      { vaultTimeoutPolicy: inheritedPolicy },
+      Object.assign({ vaultTimeoutPolicy: { type: 'onRestart' } }, { [Symbol('extra')]: true })
+    ]) {
+      await expect(update(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(getter).not.toHaveBeenCalled()
+    expect(settings.update).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('registerVaultIpc settings activity', () => {

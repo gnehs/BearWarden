@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { VaultTimeoutPolicy } from '../shared/vault-contract'
 import { VaultTimeoutCoordinator } from './vault-timeout-coordinator'
+
+const inactivity = (minutes: number): VaultTimeoutPolicy => ({ type: 'appInactivity', minutes })
+const onRestart: VaultTimeoutPolicy = { type: 'onRestart' }
 
 describe('VaultTimeoutCoordinator', () => {
   afterEach(() => {
@@ -11,7 +15,7 @@ describe('VaultTimeoutCoordinator', () => {
     const lockVault = vi.fn().mockResolvedValue(undefined)
     const coordinator = new VaultTimeoutCoordinator({ lockVault })
 
-    coordinator.updatePolicy(1)
+    coordinator.updatePolicy(inactivity(1))
     await vi.advanceTimersByTimeAsync(30_000)
     coordinator.activity()
     await vi.advanceTimersByTimeAsync(59_999)
@@ -21,53 +25,93 @@ describe('VaultTimeoutCoordinator', () => {
     expect(lockVault).toHaveBeenCalledOnce()
   })
 
-  it('cancels the stale timer when the policy changes or timeout is disabled', async () => {
+  it('does not schedule a timer for the restart-only policy', async () => {
     vi.useFakeTimers()
     const lockVault = vi.fn().mockResolvedValue(undefined)
     const coordinator = new VaultTimeoutCoordinator({ lockVault })
 
-    coordinator.updatePolicy(1)
-    coordinator.updatePolicy(5)
+    coordinator.updatePolicy(onRestart)
+    coordinator.activity()
+    await vi.advanceTimersByTimeAsync(7 * 24 * 60 * 60_000)
+    expect(lockVault).not.toHaveBeenCalled()
+  })
+
+  it('cancels the stale timer when the policy changes', async () => {
+    vi.useFakeTimers()
+    const lockVault = vi.fn().mockResolvedValue(undefined)
+    const coordinator = new VaultTimeoutCoordinator({ lockVault })
+
+    coordinator.updatePolicy(inactivity(1))
+    coordinator.updatePolicy(inactivity(5))
     await vi.advanceTimersByTimeAsync(60_000)
     expect(lockVault).not.toHaveBeenCalled()
 
     await vi.advanceTimersByTimeAsync(4 * 60_000)
     expect(lockVault).toHaveBeenCalledOnce()
 
-    coordinator.updatePolicy(1)
-    coordinator.updatePolicy(0)
+    coordinator.updatePolicy(onRestart)
     await vi.advanceTimersByTimeAsync(60 * 60_000)
     expect(lockVault).toHaveBeenCalledOnce()
+  })
+
+  it('uses deadline chunks rather than an overflowing Node timeout', async () => {
+    vi.useFakeTimers()
+    const lockVault = vi.fn().mockResolvedValue(undefined)
+    let now = 0
+    const coordinator = new VaultTimeoutCoordinator(
+      { lockVault },
+      { maxTimerDelayMs: 60_000, now: () => now }
+    )
+
+    coordinator.updatePolicy(inactivity(3))
+    now = 60_000
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(lockVault).not.toHaveBeenCalled()
+    now = 120_000
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(lockVault).not.toHaveBeenCalled()
+    now = 179_999
+    await vi.advanceTimersByTimeAsync(59_999)
+    expect(lockVault).not.toHaveBeenCalled()
+    now = 180_000
+    await vi.advanceTimersByTimeAsync(1)
+    expect(lockVault).toHaveBeenCalledOnce()
+  })
+
+  it('does not let a stale deadline chunk lock after a policy replacement', async () => {
+    vi.useFakeTimers()
+    const lockVault = vi.fn().mockResolvedValue(undefined)
+    const coordinator = new VaultTimeoutCoordinator({ lockVault }, { maxTimerDelayMs: 60_000 })
+
+    coordinator.updatePolicy(inactivity(3))
+    await vi.advanceTimersByTimeAsync(60_000)
+    coordinator.updatePolicy(onRestart)
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    expect(lockVault).not.toHaveBeenCalled()
   })
 
   it('runs the current expired epoch after an in-flight post-lock observer settles', async () => {
     vi.useFakeTimers()
     let finishLock: (() => void) | undefined
-    let vaultUnlocked = false
     const lockVault = vi.fn(
       () =>
         new Promise<void>((resolve) => {
-          vaultUnlocked = false
           finishLock = resolve
         })
     )
     const coordinator = new VaultTimeoutCoordinator({ lockVault })
 
-    coordinator.updatePolicy(1)
+    coordinator.updatePolicy(inactivity(1))
     await vi.advanceTimersByTimeAsync(60_000)
     expect(lockVault).toHaveBeenCalledOnce()
 
     coordinator.activity()
     await vi.advanceTimersByTimeAsync(60_000)
     expect(lockVault).toHaveBeenCalledOnce()
-    vaultUnlocked = true
 
     finishLock?.()
     await Promise.resolve()
     expect(lockVault).toHaveBeenCalledTimes(2)
-    expect(vaultUnlocked).toBe(false)
-
-    finishLock?.()
   })
 
   it('does not replay a pending expiry after cancellation or disposal', async () => {
@@ -81,7 +125,7 @@ describe('VaultTimeoutCoordinator', () => {
     )
     const coordinator = new VaultTimeoutCoordinator({ lockVault })
 
-    coordinator.updatePolicy(1)
+    coordinator.updatePolicy(inactivity(1))
     await vi.advanceTimersByTimeAsync(60_000)
     coordinator.activity()
     await vi.advanceTimersByTimeAsync(60_000)
@@ -90,13 +134,30 @@ describe('VaultTimeoutCoordinator', () => {
     await Promise.resolve()
     expect(lockVault).toHaveBeenCalledOnce()
 
-    coordinator.updatePolicy(1)
+    coordinator.updatePolicy(inactivity(1))
     await vi.advanceTimersByTimeAsync(60_000)
     coordinator.activity()
     await vi.advanceTimersByTimeAsync(60_000)
     coordinator.dispose()
     finishLock?.()
     await Promise.resolve()
+    expect(lockVault).toHaveBeenCalledTimes(2)
+  })
+
+  it('releases a rejected post-lock observer so a later timer generation can lock', async () => {
+    vi.useFakeTimers()
+    const lockVault = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error('post-lock observer failed'))
+      .mockResolvedValueOnce(undefined)
+    const coordinator = new VaultTimeoutCoordinator({ lockVault })
+
+    coordinator.updatePolicy(inactivity(1))
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(lockVault).toHaveBeenCalledOnce()
+
+    coordinator.activity()
+    await vi.advanceTimersByTimeAsync(60_000)
     expect(lockVault).toHaveBeenCalledTimes(2)
   })
 
@@ -111,11 +172,11 @@ describe('VaultTimeoutCoordinator', () => {
     )
     const coordinator = new VaultTimeoutCoordinator({ lockVault })
 
-    coordinator.updatePolicy(1)
+    coordinator.updatePolicy(inactivity(1))
     await vi.advanceTimersByTimeAsync(60_000)
     coordinator.activity()
     await vi.advanceTimersByTimeAsync(60_000)
-    coordinator.updatePolicy(5)
+    coordinator.updatePolicy(inactivity(5))
     finishLock?.()
     await Promise.resolve()
     expect(lockVault).toHaveBeenCalledOnce()
@@ -125,37 +186,20 @@ describe('VaultTimeoutCoordinator', () => {
     finishLock?.()
   })
 
-  it('releases a rejected post-lock observer so a later timer generation can lock', async () => {
-    vi.useFakeTimers()
-    const lockVault = vi
-      .fn<() => Promise<void>>()
-      .mockRejectedValueOnce(new Error('post-lock observer failed'))
-      .mockResolvedValueOnce(undefined)
-    const coordinator = new VaultTimeoutCoordinator({ lockVault })
-
-    coordinator.updatePolicy(1)
-    await vi.advanceTimersByTimeAsync(60_000)
-    expect(lockVault).toHaveBeenCalledOnce()
-
-    coordinator.activity()
-    await vi.advanceTimersByTimeAsync(60_000)
-    expect(lockVault).toHaveBeenCalledTimes(2)
-  })
-
-  it('cancels a scheduled timeout when a lock or account-switch teardown invalidates it', async () => {
+  it('cancels a scheduled timeout when lock or account-switch teardown invalidates it', async () => {
     vi.useFakeTimers()
     const lockVault = vi.fn().mockResolvedValue(undefined)
     const coordinator = new VaultTimeoutCoordinator({ lockVault })
 
-    coordinator.updatePolicy(1)
+    coordinator.updatePolicy(inactivity(1))
     coordinator.cancel()
     await vi.advanceTimersByTimeAsync(60_000)
     expect(lockVault).not.toHaveBeenCalled()
 
-    coordinator.updatePolicy(1)
+    coordinator.updatePolicy(inactivity(1))
     coordinator.dispose()
     coordinator.activity()
-    coordinator.updatePolicy(5)
+    coordinator.updatePolicy(inactivity(5))
     await vi.advanceTimersByTimeAsync(60 * 60_000)
     expect(lockVault).not.toHaveBeenCalled()
   })

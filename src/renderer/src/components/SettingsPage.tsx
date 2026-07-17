@@ -23,8 +23,10 @@ import type {
   PinUnlockStatus,
   SshAgentPromptBehavior,
   SshAgentStatus,
-  SyncStatus
+  SyncStatus,
+  VaultTimeoutPolicy
 } from '../../../shared/vault-contract'
+import { MAX_VAULT_TIMEOUT_MINUTES } from '../../../shared/vault-contract'
 import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -78,14 +80,172 @@ import MasterPasswordChangeDialog from './MasterPasswordChangeDialog'
 import AccountSwitcherCard from './AccountSwitcherCard'
 import PersonalVaultPurgeDialog from './PersonalVaultPurgeDialog'
 
-const autoLockItems = [
-  { label: '永不自動鎖定', value: 0 },
-  { label: '1 分鐘', value: 1 },
-  { label: '5 分鐘', value: 5 },
-  { label: '15 分鐘', value: 15 },
-  { label: '30 分鐘', value: 30 },
-  { label: '60 分鐘', value: 60 }
+const vaultTimeoutPresetMinutes = [1, 5, 15, 30, 60, 240] as const
+const maxVaultTimeoutMinutes = MAX_VAULT_TIMEOUT_MINUTES
+const maxVaultTimeoutHours = Math.floor(maxVaultTimeoutMinutes / 60)
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const vaultTimeoutItems = [
+  { label: 'App 重新啟動時鎖定', value: 'onRestart' },
+  ...vaultTimeoutPresetMinutes.map((minutes) => ({
+    label: `${minutes} 分鐘`,
+    value: String(minutes)
+  })),
+  { label: '自訂', value: 'custom' }
 ] as const
+
+type VaultTimeoutSelectValue = (typeof vaultTimeoutItems)[number]['value']
+
+// These presentation helpers are exported solely for focused renderer tests.
+// eslint-disable-next-line react-refresh/only-export-components
+export function vaultTimeoutSelectValue(policy: VaultTimeoutPolicy): VaultTimeoutSelectValue {
+  if (policy.type === 'onRestart') return 'onRestart'
+  return vaultTimeoutPresetMinutes.includes(
+    policy.minutes as (typeof vaultTimeoutPresetMinutes)[number]
+  )
+    ? String(policy.minutes)
+    : 'custom'
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function vaultTimeoutCustomFields(policy: VaultTimeoutPolicy): {
+  hours: string
+  minutes: string
+} {
+  if (policy.type === 'onRestart') return { hours: '0', minutes: '1' }
+  return {
+    hours: String(Math.floor(policy.minutes / 60)),
+    minutes: String(policy.minutes % 60)
+  }
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function vaultTimeoutPolicyFromCustomFields(
+  hours: string,
+  minutes: string
+): VaultTimeoutPolicy | null {
+  if (!/^\d+$/.test(hours) || !/^\d+$/.test(minutes)) return null
+  const parsedHours = Number(hours)
+  const parsedMinutes = Number(minutes)
+  if (
+    !Number.isSafeInteger(parsedHours) ||
+    !Number.isSafeInteger(parsedMinutes) ||
+    parsedHours > maxVaultTimeoutHours ||
+    parsedMinutes > 59
+  ) {
+    return null
+  }
+  const totalMinutes = parsedHours * 60 + parsedMinutes
+  if (totalMinutes < 1 || totalMinutes > maxVaultTimeoutMinutes) return null
+  return { type: 'appInactivity', minutes: totalMinutes }
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function vaultTimeoutCustomValidationMessage(hours: string, minutes: string): string | null {
+  if (!/^\d+$/.test(hours) || !/^\d+$/.test(minutes)) {
+    return '請輸入整數的小時與分鐘。'
+  }
+  const parsedHours = Number(hours)
+  const parsedMinutes = Number(minutes)
+  if (parsedMinutes > 59) return '分鐘必須介於 0 到 59。'
+  if (
+    parsedHours > maxVaultTimeoutHours ||
+    parsedHours * 60 + parsedMinutes > maxVaultTimeoutMinutes
+  ) {
+    return '自訂閒置時間最長為 8,760 小時。'
+  }
+  if (!vaultTimeoutPolicyFromCustomFields(hours, minutes)) {
+    return '自訂閒置時間至少為 0 小時 1 分鐘。'
+  }
+  return null
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function applyVaultTimeoutCustomFields(
+  hours: string,
+  minutes: string,
+  onUpdate: (update: AppSettingsUpdate) => Promise<void>
+): string | null {
+  const validationMessage = vaultTimeoutCustomValidationMessage(hours, minutes)
+  if (validationMessage) return validationMessage
+  const policy = vaultTimeoutPolicyFromCustomFields(hours, minutes)
+  if (!policy) return '請確認自訂閒置時間。'
+  void onUpdate({ vaultTimeoutPolicy: policy })
+  return null
+}
+
+interface VaultTimeoutCustomFieldsProps {
+  policy: VaultTimeoutPolicy
+  disabled: boolean
+  onUpdate: (update: AppSettingsUpdate) => Promise<void>
+}
+
+function VaultTimeoutCustomFields({
+  policy,
+  disabled,
+  onUpdate
+}: VaultTimeoutCustomFieldsProps): React.JSX.Element {
+  const initialFields = vaultTimeoutCustomFields(policy)
+  const [hours, setHours] = useState(initialFields.hours)
+  const [minutes, setMinutes] = useState(initialFields.minutes)
+  const validationMessage = vaultTimeoutCustomValidationMessage(hours, minutes)
+
+  const apply = (): void => {
+    applyVaultTimeoutCustomFields(hours, minutes, onUpdate)
+  }
+
+  return (
+    <Field className="settings-row settings-row-select" orientation="horizontal">
+      <FieldContent>
+        <FieldLabel>自訂閒置時間</FieldLabel>
+        <FieldDescription id="vault-timeout-custom-description">
+          最短 0 小時 1 分鐘，最長 8,760 小時；分鐘必須介於 0 到 59。
+        </FieldDescription>
+      </FieldContent>
+      <div className="flex items-center gap-2" aria-describedby="vault-timeout-custom-description">
+        <Input
+          aria-label="自訂閒置時間小時"
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={maxVaultTimeoutHours}
+          step={1}
+          value={hours}
+          disabled={disabled}
+          aria-invalid={Boolean(validationMessage)}
+          onChange={(event) => setHours(event.target.value)}
+        />
+        <span aria-hidden="true">小時</span>
+        <Input
+          aria-label="自訂閒置時間分鐘"
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={59}
+          step={1}
+          value={minutes}
+          disabled={disabled}
+          aria-invalid={Boolean(validationMessage)}
+          onChange={(event) => setMinutes(event.target.value)}
+        />
+        <span aria-hidden="true">分鐘</span>
+        <Button
+          type="button"
+          size="sm"
+          disabled={disabled || Boolean(validationMessage)}
+          onClick={apply}
+        >
+          套用
+        </Button>
+        {validationMessage && (
+          <p className="text-destructive text-sm" role="alert">
+            {validationMessage}
+          </p>
+        )}
+      </div>
+    </Field>
+  )
+}
 
 const clipboardClearItems = [
   { label: '不自動清除', value: 0 },
@@ -219,6 +379,7 @@ function SettingsPage({
   const [pinMasterPassword, setPinMasterPassword] = useState('')
   const [pinBusy, setPinBusy] = useState(false)
   const [pinFeedback, setPinFeedback] = useState('')
+  const [customTimeoutSelected, setCustomTimeoutSelected] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -445,30 +606,44 @@ function SettingsPage({
                     <Separator />
                     <Field className="settings-row settings-row-select" orientation="horizontal">
                       <FieldContent>
-                        <FieldLabel htmlFor="auto-lock-select">閒置自動鎖定</FieldLabel>
-                        <FieldDescription id="auto-lock-description">
-                          一段時間沒有操作後，自動鎖定保管庫。
+                        <FieldLabel htmlFor="vault-timeout-select">閒置自動鎖定</FieldLabel>
+                        <FieldDescription id="vault-timeout-description">
+                          一段時間沒有操作後自動鎖定；關閉 App 時一律鎖定保管庫。
                         </FieldDescription>
                       </FieldContent>
                       <Select
-                        items={autoLockItems}
-                        value={settings.autoLockMinutes}
-                        disabled={settingsBusy}
-                        onValueChange={(value) =>
-                          void onUpdate({
-                            autoLockMinutes: value as AppSettings['autoLockMinutes']
-                          })
+                        items={vaultTimeoutItems}
+                        value={
+                          customTimeoutSelected
+                            ? 'custom'
+                            : vaultTimeoutSelectValue(settings.vaultTimeoutPolicy)
                         }
+                        disabled={settingsBusy}
+                        onValueChange={(value) => {
+                          if (value === 'onRestart') {
+                            setCustomTimeoutSelected(false)
+                            void onUpdate({ vaultTimeoutPolicy: { type: 'onRestart' } })
+                            return
+                          }
+                          if (value === 'custom') {
+                            setCustomTimeoutSelected(true)
+                            return
+                          }
+                          setCustomTimeoutSelected(false)
+                          void onUpdate({
+                            vaultTimeoutPolicy: { type: 'appInactivity', minutes: Number(value) }
+                          })
+                        }}
                       >
                         <SelectTrigger
-                          id="auto-lock-select"
-                          aria-describedby="auto-lock-description"
+                          id="vault-timeout-select"
+                          aria-describedby="vault-timeout-description"
                         >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
-                            {autoLockItems.map((item) => (
+                            {vaultTimeoutItems.map((item) => (
                               <SelectItem key={item.value} value={item.value}>
                                 {item.label}
                               </SelectItem>
@@ -477,6 +652,22 @@ function SettingsPage({
                         </SelectContent>
                       </Select>
                     </Field>
+                    {(customTimeoutSelected ||
+                      vaultTimeoutSelectValue(settings.vaultTimeoutPolicy) === 'custom') && (
+                      <>
+                        <Separator />
+                        <VaultTimeoutCustomFields
+                          key={
+                            settings.vaultTimeoutPolicy.type === 'appInactivity'
+                              ? settings.vaultTimeoutPolicy.minutes
+                              : 'onRestart'
+                          }
+                          policy={settings.vaultTimeoutPolicy}
+                          disabled={settingsBusy}
+                          onUpdate={onUpdate}
+                        />
+                      </>
+                    )}
                   </FieldGroup>
                 </CardContent>
               </Card>
