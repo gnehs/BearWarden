@@ -141,11 +141,15 @@ interface SettingsPageProps {
   onImportVault: () => void
   accountStatus: AccountStatus | null
   accountBusy: boolean
+  accountBusyLabel: string
   accountError: string
   onRequestAccountAdd: (proceed: () => void) => void
   onRequestAccountSwitch: (proceed: () => void) => void
+  onRequestAccountRemove: (proceed: () => void) => void
   onAddAccount: () => Promise<void>
   onSwitchAccount: (accountId: string) => Promise<void>
+  onReorderAccounts: (accountIds: readonly string[], expectedRevision: number) => Promise<void>
+  onRemoveAccount: (accountId: string) => Promise<void>
 }
 
 interface SettingsCardHeadingProps {
@@ -191,11 +195,15 @@ function SettingsPage({
   onImportVault,
   accountStatus,
   accountBusy,
+  accountBusyLabel,
   accountError,
   onRequestAccountAdd,
   onRequestAccountSwitch,
+  onRequestAccountRemove,
   onAddAccount,
-  onSwitchAccount
+  onSwitchAccount,
+  onReorderAccounts,
+  onRemoveAccount
 }: SettingsPageProps): React.JSX.Element {
   const [sshAgentStatus, setSshAgentStatus] = useState<SshAgentStatus>(initialSshAgentStatus)
   const [copySucceeded, setCopySucceeded] = useState(false)
@@ -961,11 +969,15 @@ function SettingsPage({
               <AccountSwitcherCard
                 accountStatus={accountStatus}
                 busy={accountBusy}
+                busyLabel={accountBusyLabel}
                 error={accountError}
                 onRequestAdd={onRequestAccountAdd}
                 onRequestSwitch={onRequestAccountSwitch}
+                onRequestRemove={onRequestAccountRemove}
                 onAdd={onAddAccount}
                 onSwitch={onSwitchAccount}
+                onReorder={onReorderAccounts}
+                onRemove={onRemoveAccount}
               />
 
               <Card className="settings-card" aria-labelledby="sync-settings-title">

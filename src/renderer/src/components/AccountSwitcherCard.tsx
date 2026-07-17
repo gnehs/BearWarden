@@ -31,33 +31,44 @@ import {
   FieldTitle
 } from '@renderer/components/ui/field'
 import { Spinner } from '@renderer/components/ui/spinner'
-import { AlertTriangle, Plus, RefreshCw } from 'lucide-react'
+import { AlertTriangle, ArrowDown, ArrowUp, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import {
   accountConfirmationContent,
+  accountMoveButtonDisabled,
+  accountRemoveButtonDisabled,
   accountSwitchButtonDisabled,
   localAccountPresentation,
   MAX_LOCAL_ACCOUNTS,
+  moveAccountIds,
   type AccountConfirmationAction
 } from './account-switcher-ui'
 
 interface AccountSwitcherCardProps {
   accountStatus: AccountStatus | null
   busy: boolean
+  busyLabel: string
   error: string
   onRequestAdd: (proceed: () => void) => void
   onRequestSwitch: (proceed: () => void) => void
+  onRequestRemove: (proceed: () => void) => void
   onAdd: () => Promise<void>
   onSwitch: (accountId: string) => Promise<void>
+  onReorder: (accountIds: readonly string[], expectedRevision: number) => Promise<void>
+  onRemove: (accountId: string) => Promise<void>
 }
 
 function AccountSwitcherCard({
   accountStatus,
   busy,
+  busyLabel,
   error,
   onRequestAdd,
   onRequestSwitch,
+  onRequestRemove,
   onAdd,
-  onSwitch
+  onSwitch,
+  onReorder,
+  onRemove
 }: AccountSwitcherCardProps): React.JSX.Element {
   const [confirmationAction, setConfirmationAction] = useState<AccountConfirmationAction | null>(
     null
@@ -69,7 +80,8 @@ function AccountSwitcherCard({
     if (!confirmationAction) return
     try {
       if (confirmationAction.kind === 'add') await onAdd()
-      else await onSwitch(confirmationAction.accountId)
+      else if (confirmationAction.kind === 'switch') await onSwitch(confirmationAction.accountId)
+      else await onRemove(confirmationAction.accountId)
     } catch {
       // VaultShell maps mutation failures to safe, visible renderer feedback.
     } finally {
@@ -84,7 +96,7 @@ function AccountSwitcherCard({
           <CardTitle id="local-accounts-settings-title" role="heading" aria-level={2}>
             本機帳號
           </CardTitle>
-          <CardDescription>在這台裝置上新增或切換保管庫帳號。</CardDescription>
+          <CardDescription>新增、排序、切換或移除這台裝置上的保管庫帳號。</CardDescription>
           <CardAction>
             <Badge variant="secondary">
               {accounts.length} / {MAX_LOCAL_ACCOUNTS}
@@ -101,12 +113,17 @@ function AccountSwitcherCard({
                 </FieldContent>
               </Field>
             ) : (
-              accounts.map((account) => (
+              accounts.map((account, index) => (
                 <AccountRow
                   key={account.id}
                   account={account}
+                  accounts={accounts}
+                  index={index}
+                  revision={accountStatus.revision}
                   busy={busy}
                   onRequestSwitch={onRequestSwitch}
+                  onRequestRemove={onRequestRemove}
+                  onReorder={onReorder}
                   onConfirm={(action) => setConfirmationAction(action)}
                 />
               ))
@@ -116,7 +133,7 @@ function AccountSwitcherCard({
                 <FieldContent>
                   <FieldDescription role="status" aria-live="polite">
                     <Spinner data-icon="inline-start" aria-hidden="true" />
-                    正在安全切換並重新啟動
+                    {busyLabel || '正在處理本機帳號'}
                   </FieldDescription>
                 </FieldContent>
               </Field>
@@ -150,20 +167,31 @@ function AccountSwitcherCard({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogMedia>
-              <AlertTriangle aria-hidden="true" />
+              {confirmation?.destructive ? (
+                <Trash2 aria-hidden="true" />
+              ) : (
+                <AlertTriangle aria-hidden="true" />
+              )}
             </AlertDialogMedia>
             <AlertDialogTitle>{confirmation?.title}</AlertDialogTitle>
             <AlertDialogDescription>{confirmation?.description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
-            <AlertDialogAction type="button" disabled={busy} onClick={() => void confirm()}>
+            <AlertDialogAction
+              type="button"
+              variant={confirmation?.destructive ? 'destructive' : 'default'}
+              disabled={busy}
+              onClick={() => void confirm()}
+            >
               {busy ? (
                 <Spinner data-icon="inline-start" aria-hidden="true" />
+              ) : confirmation?.destructive ? (
+                <Trash2 data-icon="inline-start" aria-hidden="true" />
               ) : (
                 <RefreshCw data-icon="inline-start" aria-hidden="true" />
               )}
-              鎖定並重新啟動
+              {confirmation?.actionLabel}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -174,18 +202,37 @@ function AccountSwitcherCard({
 
 interface AccountRowProps {
   account: AccountStatus['accounts'][number]
+  accounts: AccountStatus['accounts']
+  index: number
+  revision: number
   busy: boolean
   onRequestSwitch: (proceed: () => void) => void
+  onRequestRemove: (proceed: () => void) => void
+  onReorder: (accountIds: readonly string[], expectedRevision: number) => Promise<void>
   onConfirm: (action: AccountConfirmationAction) => void
 }
 
 function AccountRow({
   account,
+  accounts,
+  index,
+  revision,
   busy,
   onRequestSwitch,
+  onRequestRemove,
+  onReorder,
   onConfirm
 }: AccountRowProps): React.JSX.Element {
   const presentation = localAccountPresentation(account)
+  async function move(direction: 'up' | 'down'): Promise<void> {
+    const accountIds = moveAccountIds(accounts, account.id, direction)
+    if (!accountIds) return
+    try {
+      await onReorder(accountIds, revision)
+    } catch {
+      // VaultShell maps mutation failures to safe, visible renderer feedback.
+    }
+  }
   return (
     <Field orientation="responsive" data-disabled={busy || undefined}>
       <FieldContent>
@@ -193,19 +240,57 @@ function AccountRow({
         <FieldDescription>{presentation.description}</FieldDescription>
       </FieldContent>
       {presentation.active && <Badge>使用中</Badge>}
-      <Button
-        variant="outline"
-        size="sm"
-        type="button"
-        disabled={accountSwitchButtonDisabled(account, busy)}
-        onClick={() =>
-          onRequestSwitch(() =>
-            onConfirm({ kind: 'switch', accountId: account.id, slot: account.slot })
-          )
-        }
-      >
-        切換
-      </Button>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          type="button"
+          aria-label={`將${presentation.label}上移`}
+          disabled={accountMoveButtonDisabled(index, accounts.length, 'up', busy)}
+          onClick={() => void move('up')}
+        >
+          <ArrowUp aria-hidden="true" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          type="button"
+          aria-label={`將${presentation.label}下移`}
+          disabled={accountMoveButtonDisabled(index, accounts.length, 'down', busy)}
+          onClick={() => void move('down')}
+        >
+          <ArrowDown aria-hidden="true" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          type="button"
+          disabled={accountSwitchButtonDisabled(account, busy)}
+          onClick={() =>
+            onRequestSwitch(() =>
+              onConfirm({ kind: 'switch', accountId: account.id, slot: account.slot })
+            )
+          }
+        >
+          切換
+        </Button>
+        {!account.active && (
+          <Button
+            variant="destructive"
+            size="icon-sm"
+            type="button"
+            aria-label={`移除${presentation.label}`}
+            disabled={accountRemoveButtonDisabled(account, accounts.length, busy)}
+            onClick={() =>
+              onRequestRemove(() =>
+                onConfirm({ kind: 'remove', accountId: account.id, slot: account.slot })
+              )
+            }
+          >
+            <Trash2 aria-hidden="true" />
+          </Button>
+        )}
+      </div>
     </Field>
   )
 }

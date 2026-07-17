@@ -193,7 +193,11 @@ import { Spinner } from '@renderer/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { cn } from '@renderer/lib/utils'
 import { applyThemePreference } from '@renderer/lib/theme'
-import { accountMutationError, requestAccountAction } from './account-switcher-ui'
+import {
+  accountMutationError,
+  accountMutationKeepsBusy,
+  requestAccountAction
+} from './account-switcher-ui'
 
 type Scope =
   | { kind: 'all' }
@@ -856,6 +860,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null)
   const [accountBusy, setAccountBusy] = useState(false)
+  const [accountBusyLabel, setAccountBusyLabel] = useState('')
   const [accountError, setAccountError] = useState('')
   const [healthOpen, setHealthOpen] = useState(false)
   const [sendsOpen, setSendsOpen] = useState(false)
@@ -2240,26 +2245,75 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     }
   }
 
-  async function runAccountMutation(mutation: () => Promise<AccountMutationResult>): Promise<void> {
-    accountStatusRequestRef.current += 1
+  async function runAccountMutation(
+    operation: 'add' | 'switch' | 'reorder' | 'remove',
+    mutation: () => Promise<AccountMutationResult>
+  ): Promise<void> {
+    const requestId = ++accountStatusRequestRef.current
     setAccountBusy(true)
+    setAccountBusyLabel(
+      operation === 'add' || operation === 'switch'
+        ? '正在安全切換並重新啟動'
+        : operation === 'remove'
+          ? '正在安全移除本機帳號'
+          : '正在更新本機帳號順序'
+    )
     setAccountError('')
     try {
       const result = await mutation()
+      if (requestId !== accountStatusRequestRef.current) return
       setAccountStatus(result.status)
-      if (result.kind === 'unchanged') setAccountBusy(false)
+      if (!accountMutationKeepsBusy(result)) {
+        setAccountBusy(false)
+        setAccountBusyLabel('')
+        if (operation === 'remove') {
+          announce(
+            result.kind === 'updated' && result.cleanupPending
+              ? '本機帳號已移除；剩餘的加密本機資料會在下次啟動時再次安全清理。'
+              : '本機帳號與這台裝置上的資料已移除。'
+          )
+        } else if (operation === 'reorder' && result.kind === 'updated') {
+          announce('本機帳號順序已更新。')
+        }
+      }
     } catch (accountMutationFailure) {
+      if (requestId !== accountStatusRequestRef.current) return
       setAccountError(accountMutationError(accountMutationFailure))
       setAccountBusy(false)
+      setAccountBusyLabel('')
+      if (
+        accountMutationFailure instanceof Error &&
+        accountMutationFailure.message.includes('ACCOUNT_STALE_STATE')
+      ) {
+        void window.bearwarden.accounts.status().then(
+          (status) => {
+            if (requestId === accountStatusRequestRef.current) setAccountStatus(status)
+          },
+          () => undefined
+        )
+      }
     }
   }
 
   async function addLocalAccount(): Promise<void> {
-    await runAccountMutation(() => window.bearwarden.accounts.add())
+    await runAccountMutation('add', () => window.bearwarden.accounts.add())
   }
 
   async function switchLocalAccount(accountId: string): Promise<void> {
-    await runAccountMutation(() => window.bearwarden.accounts.switch(accountId))
+    await runAccountMutation('switch', () => window.bearwarden.accounts.switch(accountId))
+  }
+
+  async function reorderLocalAccounts(
+    accountIds: readonly string[],
+    expectedRevision: number
+  ): Promise<void> {
+    await runAccountMutation('reorder', () =>
+      window.bearwarden.accounts.reorder(accountIds, expectedRevision)
+    )
+  }
+
+  async function removeLocalAccount(accountId: string): Promise<void> {
+    await runAccountMutation('remove', () => window.bearwarden.accounts.remove(accountId, true))
   }
 
   function announceExported(result: VaultExportResult): void {
@@ -3776,6 +3830,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 onImportVault={() => setPortabilityDialogMode('import')}
                 accountStatus={accountStatus}
                 accountBusy={accountBusy}
+                accountBusyLabel={accountBusyLabel}
                 accountError={accountError}
                 onRequestAccountAdd={(proceed) =>
                   requestAccountAction(requestEditorTransition, proceed)
@@ -3783,8 +3838,13 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 onRequestAccountSwitch={(proceed) =>
                   requestAccountAction(requestEditorTransition, proceed)
                 }
+                onRequestAccountRemove={(proceed) =>
+                  requestAccountAction(requestEditorTransition, proceed)
+                }
                 onAddAccount={addLocalAccount}
                 onSwitchAccount={switchLocalAccount}
+                onReorderAccounts={reorderLocalAccounts}
+                onRemoveAccount={removeLocalAccount}
               />
             ) : (
               <>
