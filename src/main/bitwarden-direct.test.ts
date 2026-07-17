@@ -1835,6 +1835,209 @@ describe('BitwardenDirectClient', () => {
     await expect(client.status()).resolves.toEqual({ status: 'locked' })
   })
 
+  it('purges the personal vault with a fresh KDF-derived proof while preserving lock state', async () => {
+    const proofs: string[] = []
+    const onStateChanged = vi.fn()
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async () => jsonResponse({ message: 'not found' }, 404)
+    })
+    vi.spyOn(http, 'prelogin').mockResolvedValue({
+      kdfType: 0,
+      iterations: 6_000,
+      memory: null,
+      parallelism: null,
+      salt: 'account-specific-salt',
+      raw: {}
+    })
+    vi.spyOn(http, 'purgePersonalVault').mockImplementation(async (proof) => {
+      proofs.push(proof)
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      onStateChanged,
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.purgePersonalVault(PASSWORD)).resolves.toBeUndefined()
+    expect(http.prelogin).toHaveBeenCalledTimes(1)
+    expect(http.purgePersonalVault).toHaveBeenCalledTimes(1)
+    const masterKey = await deriveMasterKey(PASSWORD, 'account-specific-salt', {
+      type: 'pbkdf2',
+      iterations: 6_000
+    })
+    const passwordKey = await derivePasswordKey(masterKey, PASSWORD)
+    try {
+      expect(proofs).toEqual([passwordKey.toString('base64')])
+      expect(proofs[0]).not.toBe(PASSWORD)
+    } finally {
+      masterKey.fill(0)
+      passwordKey.fill(0)
+      proofs.fill('')
+    }
+    expect(onStateChanged).toHaveBeenCalledTimes(1)
+    await expect(client.status()).resolves.toEqual({ status: 'locked' })
+  })
+
+  it('does not clear an unlocked local cache after the purge POST succeeds', async () => {
+    const sync = await encryptedSync()
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          return jsonResponse({
+            access_token: 'access',
+            refresh_token: 'refresh',
+            expires_in: 3_600
+          })
+        }
+        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const purge = vi.spyOn(http, 'purgePersonalVault').mockResolvedValue()
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+    const before = await client.listPersonalLogins()
+
+    await client.purgePersonalVault(PASSWORD)
+
+    expect(purge).toHaveBeenCalledTimes(1)
+    await expect(client.status()).resolves.toEqual({ status: 'unlocked' })
+    await expect(client.listPersonalLogins()).resolves.toEqual(before)
+  })
+
+  it('requires authenticated profile ownership before deriving a purge proof', async () => {
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async () => jsonResponse({ message: 'not found' }, 404)
+    })
+    const prelogin = vi.spyOn(http, 'prelogin')
+    const purge = vi.spyOn(http, 'purgePersonalVault')
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: null,
+        securityStamp: null
+      }
+    })
+
+    await expect(client.purgePersonalVault(PASSWORD)).rejects.toMatchObject({
+      code: 'AUTH_REQUIRED'
+    })
+    expect(prelogin).not.toHaveBeenCalled()
+    expect(purge).not.toHaveBeenCalled()
+  })
+
+  it('distinguishes purge preflight and verification failures from unknown POST outcomes', async () => {
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async () => jsonResponse({ message: 'not found' }, 404)
+    })
+    vi.spyOn(http, 'prelogin').mockResolvedValue({
+      kdfType: 0,
+      iterations: 5_000,
+      memory: null,
+      parallelism: null,
+      salt: EMAIL,
+      raw: {}
+    })
+    const purge = vi.spyOn(http, 'purgePersonalVault')
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    vi.mocked(http.prelogin).mockRejectedValueOnce(new BitwardenHttpError('NETWORK'))
+    await expect(client.purgePersonalVault(PASSWORD)).rejects.toMatchObject({ code: 'NETWORK' })
+    expect(purge).not.toHaveBeenCalled()
+
+    purge.mockRejectedValueOnce(new BitwardenHttpError('USER_VERIFICATION_FAILED'))
+    await expect(client.purgePersonalVault(PASSWORD)).rejects.toMatchObject({
+      code: 'USER_VERIFICATION_FAILED'
+    })
+
+    purge.mockRejectedValueOnce(new BitwardenHttpError('NETWORK'))
+    await expect(client.purgePersonalVault(PASSWORD)).rejects.toMatchObject({
+      code: 'VAULT_PURGE_UNKNOWN'
+    })
+
+    purge.mockRejectedValueOnce(new BitwardenHttpError('ABORTED'))
+    await expect(client.purgePersonalVault(PASSWORD)).rejects.toMatchObject({
+      code: 'VAULT_PURGE_UNKNOWN'
+    })
+    expect(purge).toHaveBeenCalledTimes(3)
+    await expect(client.status()).resolves.toEqual({ status: 'locked' })
+  })
+
+  it('rejects invalid purge secrets and a pre-aborted request before starting the POST', async () => {
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async () => jsonResponse({ message: 'not found' }, 404)
+    })
+    vi.spyOn(http, 'prelogin').mockResolvedValue({
+      kdfType: 0,
+      iterations: 5_000,
+      memory: null,
+      parallelism: null,
+      salt: EMAIL,
+      raw: {}
+    })
+    const purge = vi.spyOn(http, 'purgePersonalVault')
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.purgePersonalVault('')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    await expect(client.purgePersonalVault('x'.repeat(16_385))).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    expect(http.prelogin).not.toHaveBeenCalled()
+
+    const controller = new AbortController()
+    controller.abort()
+    await expect(client.purgePersonalVault(PASSWORD, controller.signal)).rejects.toMatchObject({
+      code: 'ABORTED'
+    })
+    expect(purge).not.toHaveBeenCalled()
+  })
+
   it('derives a fresh master-password proof for personal API key access without unlocking', async () => {
     const requestBodies: JsonObject[] = []
     const http = new BitwardenHttpClient({
