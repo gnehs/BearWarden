@@ -208,6 +208,8 @@ export interface AccountStatus {
   readonly revision: number
   readonly activeAccountId: string
   readonly accounts: readonly AccountStatusEntry[]
+  /** A prior local removal remains journaled and will be retried safely. */
+  readonly cleanupPending?: true
 }
 
 export interface AccountReorderRequest {

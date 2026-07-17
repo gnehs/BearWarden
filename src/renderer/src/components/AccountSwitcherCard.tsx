@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { AccountStatus } from '../../../shared/vault-contract'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
 import {
@@ -73,19 +73,24 @@ function AccountSwitcherCard({
   const [confirmationAction, setConfirmationAction] = useState<AccountConfirmationAction | null>(
     null
   )
+  const addAccountButtonRef = useRef<HTMLButtonElement>(null)
   const accounts = accountStatus?.accounts ?? []
   const confirmation = confirmationAction ? accountConfirmationContent(confirmationAction) : null
 
   async function confirm(): Promise<void> {
     if (!confirmationAction) return
+    const action = confirmationAction
     try {
-      if (confirmationAction.kind === 'add') await onAdd()
-      else if (confirmationAction.kind === 'switch') await onSwitch(confirmationAction.accountId)
-      else await onRemove(confirmationAction.accountId)
+      if (action.kind === 'add') await onAdd()
+      else if (action.kind === 'switch') await onSwitch(action.accountId)
+      else await onRemove(action.accountId)
     } catch {
       // VaultShell maps mutation failures to safe, visible renderer feedback.
     } finally {
       setConfirmationAction(null)
+      if (action.kind === 'remove') {
+        queueMicrotask(() => addAccountButtonRef.current?.focus())
+      }
     }
   }
 
@@ -143,10 +148,19 @@ function AccountSwitcherCard({
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
+            {accountStatus?.cleanupPending && (
+              <Alert>
+                <AlertDescription>
+                  上次移除的本機資料尚未完成安全清理。BearWarden
+                  會在下次啟動再次嘗試；在完成前不會刪除或覆寫未知資料。
+                </AlertDescription>
+              </Alert>
+            )}
           </FieldGroup>
         </CardContent>
         <CardFooter>
           <Button
+            ref={addAccountButtonRef}
             size="sm"
             type="button"
             disabled={busy || accountStatus === null || accounts.length >= MAX_LOCAL_ACCOUNTS}

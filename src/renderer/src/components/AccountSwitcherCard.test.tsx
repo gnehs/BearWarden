@@ -3,10 +3,12 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   accountConfirmationContent,
   accountMoveButtonDisabled,
+  AccountMutationGate,
   accountMutationKeepsBusy,
   accountMutationError,
   accountRemoveButtonDisabled,
   accountSwitchButtonDisabled,
+  isCurrentAccountRefresh,
   localAccountCode,
   localAccountPresentation,
   localAccountLabel,
@@ -64,6 +66,20 @@ describe('AccountSwitcherCard presentation helpers', () => {
     expect(accountMutationKeepsBusy({ kind: 'relaunch-required', status })).toBe(true)
     expect(accountMutationKeepsBusy({ kind: 'updated', status })).toBe(false)
     expect(accountMutationKeepsBusy({ kind: 'unchanged', status })).toBe(false)
+  })
+
+  it('admits only one account mutation until the owner releases the gate', () => {
+    const gate = new AccountMutationGate()
+    expect(gate.tryEnter()).toBe(true)
+    expect(gate.tryEnter()).toBe(false)
+    gate.leave()
+    expect(gate.tryEnter()).toBe(true)
+  })
+
+  it('rejects a stale refresh after either mutation or status generation changes', () => {
+    expect(isCurrentAccountRefresh(3, 3, 7, 7)).toBe(true)
+    expect(isCurrentAccountRefresh(3, 4, 7, 7)).toBe(false)
+    expect(isCurrentAccountRefresh(3, 3, 7, 8)).toBe(false)
   })
 
   it('uses an explicit lock-and-restart confirmation for additions and switches', () => {

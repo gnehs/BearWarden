@@ -32,6 +32,7 @@ export interface AccountRemovalRecoveryCallbacks {
 
 export interface AccountRemovalJournalOptions {
   readonly createUuid?: () => string
+  readonly syncDirectory?: (path: string) => Promise<void>
 }
 
 export type AccountRemovalRecoveryResult = 'none' | 'preserved' | 'deleted'
@@ -86,7 +87,8 @@ function serializeJournal(entry: AccountRemovalJournalEntry): string {
 async function createPrivateJournal(
   path: string,
   contents: string,
-  createUuid: () => string
+  createUuid: () => string,
+  syncDirectoryEntry: (path: string) => Promise<void>
 ): Promise<void> {
   const directory = dirname(path)
   const temporaryPath = join(directory, `.account-removal-${createAccountId(createUuid)}.tmp`)
@@ -104,11 +106,11 @@ async function createPrivateJournal(
     handle = undefined
     // Publishing with link is atomic and, unlike rename, cannot replace another prepared journal.
     await link(temporaryPath, path)
-    await syncDirectory(directory)
+    await syncDirectoryEntry(directory)
   } finally {
     await handle?.close().catch(() => undefined)
     await unlink(temporaryPath).then(
-      () => syncDirectory(directory),
+      () => syncDirectoryEntry(directory),
       () => undefined
     )
   }
@@ -143,10 +145,12 @@ function sameEntry(left: AccountRemovalJournalEntry, right: AccountRemovalJourna
 export class AccountRemovalJournal {
   readonly paths: AccountPathLayout
   private readonly createUuid: () => string
+  private readonly syncDirectoryEntry: (path: string) => Promise<void>
 
   constructor(userDataDirectory: string, options: AccountRemovalJournalOptions = {}) {
     this.paths = createAccountPathLayout(userDataDirectory)
     this.createUuid = options.createUuid ?? randomUUID
+    this.syncDirectoryEntry = options.syncDirectory ?? syncDirectory
   }
 
   async prepare(accountId: string, expectedRevision: number): Promise<AccountRemovalJournalEntry> {
@@ -165,7 +169,8 @@ export class AccountRemovalJournal {
     await createPrivateJournal(
       this.paths.removalJournalPath,
       serializeJournal(entry),
-      this.createUuid
+      this.createUuid,
+      this.syncDirectoryEntry
     )
     return entry
   }
@@ -181,9 +186,10 @@ export class AccountRemovalJournal {
   }
 
   async recover(callbacks: AccountRemovalRecoveryCallbacks): Promise<AccountRemovalRecoveryResult> {
-    await this.assertAccountsDirectory(true)
+    const accountsDirectoryInfo = await this.assertAccountsDirectory(true)
     const entry = await this.read()
     if (!entry) return 'none'
+    if (!accountsDirectoryInfo) throw new Error('UNSAFE_ACCOUNT_REMOVAL_DIRECTORY')
 
     let registry: AccountRegistry
     try {
@@ -204,6 +210,7 @@ export class AccountRemovalJournal {
       if (!sourceInfo?.isDirectory() || sourceInfo.isSymbolicLink() || tombstoneInfo) {
         throw new Error('ACCOUNT_REMOVAL_SOURCE_NOT_INTACT')
       }
+      await this.assertAccountsDirectoryUnchanged(accountsDirectoryInfo)
       await this.clearEntry(entry)
       return 'preserved'
     }
@@ -221,6 +228,7 @@ export class AccountRemovalJournal {
     // The primary registry is the deletion commit point. Its current value must be recoverable
     // before the account bytes are renamed or removed.
     await callbacks.checkpointRegistry(registry)
+    await this.assertAccountsDirectoryUnchanged(accountsDirectoryInfo)
 
     const [checkedSourceInfo, checkedTombstoneInfo] = await Promise.all([
       pathInfo(source),
@@ -237,8 +245,10 @@ export class AccountRemovalJournal {
     }
 
     if (sourceInfo) {
+      await this.assertAccountsDirectoryUnchanged(accountsDirectoryInfo)
       await rename(source, tombstone)
-      await syncDirectory(this.paths.accountsDirectory)
+      await this.syncDirectoryEntry(this.paths.accountsDirectory)
+      await this.assertAccountsDirectoryUnchanged(accountsDirectoryInfo)
       const publishedTombstoneInfo = await pathInfo(tombstone)
       if (!sameNode(checkedSourceInfo, publishedTombstoneInfo)) {
         throw new Error('ACCOUNT_REMOVAL_PATH_CHANGED')
@@ -246,20 +256,22 @@ export class AccountRemovalJournal {
     }
 
     const renamedInfo = sourceInfo ?? tombstoneInfo
+    await this.assertAccountsDirectoryUnchanged(accountsDirectoryInfo)
     if (renamedInfo?.isDirectory() && !renamedInfo.isSymbolicLink()) {
       await rm(tombstone, { recursive: true })
     } else if (renamedInfo) {
       await unlink(tombstone)
     }
-    if (renamedInfo) await syncDirectory(this.paths.accountsDirectory)
+    if (renamedInfo) await this.syncDirectoryEntry(this.paths.accountsDirectory)
+    await this.assertAccountsDirectoryUnchanged(accountsDirectoryInfo)
     await this.clearEntry(entry)
     return 'deleted'
   }
 
-  private async assertAccountsDirectory(allowMissing: boolean): Promise<void> {
+  private async assertAccountsDirectory(allowMissing: boolean): Promise<Stats | null> {
     const info = await pathInfo(this.paths.accountsDirectory)
     if (!info) {
-      if (allowMissing) return
+      if (allowMissing) return null
       throw new Error('UNSAFE_ACCOUNT_REMOVAL_DIRECTORY')
     }
     if (!info.isDirectory() || info.isSymbolicLink() || (info.mode & 0o077) !== 0) {
@@ -272,9 +284,20 @@ export class AccountRemovalJournal {
         this.paths.accountsDirectory,
         constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | (constants.O_NOFOLLOW ?? 0)
       )
-      if (!(await handle.stat()).isDirectory()) throw new Error('UNSAFE_ACCOUNT_REMOVAL_DIRECTORY')
+      const openedInfo = await handle.stat()
+      if (!openedInfo.isDirectory() || !sameNode(info, openedInfo)) {
+        throw new Error('UNSAFE_ACCOUNT_REMOVAL_DIRECTORY')
+      }
+      return openedInfo
     } finally {
       await handle?.close().catch(() => undefined)
+    }
+  }
+
+  private async assertAccountsDirectoryUnchanged(expected: Stats): Promise<void> {
+    const current = await this.assertAccountsDirectory(false)
+    if (!current || !sameNode(expected, current)) {
+      throw new Error('ACCOUNT_REMOVAL_PATH_CHANGED')
     }
   }
 
@@ -301,7 +324,7 @@ export class AccountRemovalJournal {
     if (!current || !sameEntry(current, expected))
       throw new Error('ACCOUNT_REMOVAL_JOURNAL_CHANGED')
     await unlink(this.paths.removalJournalPath)
-    await syncDirectory(dirname(this.paths.removalJournalPath))
+    await this.syncDirectoryEntry(dirname(this.paths.removalJournalPath))
   }
 }
 

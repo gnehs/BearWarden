@@ -420,6 +420,7 @@ describe('main WebAuthn lifecycle wiring', () => {
     expect(harness.accountSwitchRoot).toBe('/tmp/bearwarden-index-test')
     expect(harness.accountSwitchOptions?.registryStore).toBe(harness.registryStore)
     expect(harness.accountSwitchOptions?.removalJournal).toBeDefined()
+    expect(harness.accountSwitchOptions?.initialCleanupPending).toBe(false)
     expect(harness.vaultIpcOptions?.accountSwitchService).toBe(harness.accountSwitchService)
   })
 

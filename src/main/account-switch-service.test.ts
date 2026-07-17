@@ -348,6 +348,61 @@ describe('AccountSwitchService account management', () => {
     })
   })
 
+  it('rejects and blocks later mutations when authoritative cleanup preserves the account', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bearwarden-account-remove-preserved-'))
+    const registryStore = memoryStore(registry())
+    const removalJournal = new AccountRemovalJournal(root)
+    vi.spyOn(removalJournal, 'prepare').mockResolvedValue({
+      accountId: ACCOUNT_B,
+      deletionId: NEW_ACCOUNT,
+      expectedRevision: 1
+    })
+    vi.spyOn(removalJournal, 'finish').mockResolvedValue('preserved')
+    const service = new AccountSwitchService(root, {
+      registryStore: registryStore.store,
+      removalJournal,
+      ...callbacks()
+    })
+
+    await expect(service.removeAccount(ACCOUNT_B, true)).rejects.toMatchObject({
+      code: 'ACCOUNT_REGISTRY_UPDATE_RESULT_UNKNOWN'
+    })
+    await expect(service.reorderAccounts([ACCOUNT_C, ACCOUNT_A], 2)).rejects.toMatchObject({
+      code: 'ACCOUNT_SWITCH_IN_PROGRESS'
+    })
+  })
+
+  it('exposes an opaque pending-cleanup flag after a failed startup recovery', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bearwarden-account-cleanup-status-'))
+    const registryStore = memoryStore(registry())
+    const service = new AccountSwitchService(root, {
+      registryStore: registryStore.store,
+      initialCleanupPending: true,
+      ...callbacks()
+    })
+
+    await expect(service.getStatus()).resolves.toMatchObject({
+      revision: 1,
+      cleanupPending: true
+    })
+
+    await expect(service.addAccount()).rejects.toMatchObject({
+      code: 'ACCOUNT_REMOVAL_UNAVAILABLE'
+    })
+    await expect(service.switchAccount(ACCOUNT_B)).rejects.toMatchObject({
+      code: 'ACCOUNT_REMOVAL_UNAVAILABLE'
+    })
+    await expect(
+      service.reorderAccounts([ACCOUNT_B, ACCOUNT_A, ACCOUNT_C], 1)
+    ).rejects.toMatchObject({
+      code: 'ACCOUNT_REMOVAL_UNAVAILABLE'
+    })
+    await expect(service.removeAccount(ACCOUNT_B, true)).rejects.toMatchObject({
+      code: 'ACCOUNT_REMOVAL_UNAVAILABLE'
+    })
+    expect(registryStore.store.save).not.toHaveBeenCalled()
+  })
+
   it('accepts an observed committed update and poisons later mutations when the result differs', async () => {
     const root = await mkdtemp(join(tmpdir(), 'bearwarden-account-update-reconcile-'))
     let current = registry()

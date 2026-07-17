@@ -98,6 +98,7 @@ describe('registerVaultIpc account boundary', () => {
     const status = {
       revision: 7,
       activeAccountId: accountA,
+      cleanupPending: true as const,
       accounts: [
         {
           id: accountA,
@@ -121,6 +122,7 @@ describe('registerVaultIpc account boundary', () => {
     ).resolves.toEqual({
       revision: 7,
       activeAccountId: accountA,
+      cleanupPending: true,
       accounts: [
         { id: accountA, active: true, slot: 1 },
         { id: accountB, active: false, slot: 2 }
@@ -133,6 +135,7 @@ describe('registerVaultIpc account boundary', () => {
       status: {
         revision: 7,
         activeAccountId: accountA,
+        cleanupPending: true,
         accounts: [
           { id: accountA, active: true, slot: 1 },
           { id: accountB, active: false, slot: 2 }

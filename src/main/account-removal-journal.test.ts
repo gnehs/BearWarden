@@ -7,7 +7,7 @@ import {
   parseAccountRemovalJournal,
   type AccountRemovalRecoveryCallbacks
 } from './account-removal-journal'
-import { createAccountPathLayout, ensurePrivateDirectory } from './account-paths'
+import { createAccountPathLayout, ensurePrivateDirectory, syncDirectory } from './account-paths'
 import { type AccountRegistry } from './account-registry'
 
 const ACCOUNT_ID = '11111111-1111-4111-8111-111111111111'
@@ -220,6 +220,42 @@ describe('AccountRemovalJournal', () => {
     await expect(lstat(paths.removalJournalPath)).resolves.toBeDefined()
   })
 
+  it('stops after quarantine when its directory durability barrier reports EIO', async () => {
+    const { root, paths } = await fixture()
+    const source = await createSource(paths)
+    const values = [DELETION_ID, TEMP_ID]
+    let failSync = false
+    const journal = new AccountRemovalJournal(root, {
+      createUuid: () => values.shift() ?? TEMP_ID,
+      syncDirectory: async (path) => {
+        if (failSync) {
+          const error = new Error('simulated directory fsync failure') as NodeJS.ErrnoException
+          error.code = 'EIO'
+          throw error
+        }
+        await syncDirectory(path)
+      }
+    })
+    await journal.prepare(ACCOUNT_ID, 1)
+    failSync = true
+
+    await expect(journal.recover(callbacks(registry(2, [OTHER_ACCOUNT_ID])))).rejects.toMatchObject(
+      {
+        code: 'EIO'
+      }
+    )
+    await expect(lstat(source)).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(
+      lstat(paths.accountRemovalTombstone(ACCOUNT_ID, DELETION_ID))
+    ).resolves.toBeDefined()
+    await expect(lstat(paths.removalJournalPath)).resolves.toBeDefined()
+
+    failSync = false
+    await expect(journal.recover(callbacks(registry(2, [OTHER_ACCOUNT_ID])))).resolves.toBe(
+      'deleted'
+    )
+  })
+
   it('fails closed on a source/tombstone collision', async () => {
     const { journal, paths } = await fixture()
     const source = await createSource(paths)
@@ -233,6 +269,26 @@ describe('AccountRemovalJournal', () => {
     await expect(lstat(source)).resolves.toBeDefined()
     await expect(lstat(tombstone)).resolves.toBeDefined()
     await expect(lstat(paths.removalJournalPath)).resolves.toBeDefined()
+  })
+
+  it('detects replacement of the validated accounts parent after checkpointing', async () => {
+    const { root, journal, paths } = await fixture()
+    await createSource(paths)
+    await journal.prepare(ACCOUNT_ID, 1)
+    const originalAccounts = join(root, 'accounts-original')
+
+    await expect(
+      journal.recover({
+        loadAuthoritativeRegistry: async () => registry(2, [OTHER_ACCOUNT_ID]),
+        checkpointRegistry: async () => {
+          await rename(paths.accountsDirectory, originalAccounts)
+          await mkdir(paths.accountsDirectory, { mode: 0o700 })
+          await writeFile(join(paths.accountsDirectory, 'keep.txt'), 'keep')
+        }
+      })
+    ).rejects.toThrow('ACCOUNT_REMOVAL_PATH_CHANGED')
+    await expect(readFile(join(paths.accountsDirectory, 'keep.txt'), 'utf8')).resolves.toBe('keep')
+    await expect(lstat(join(originalAccounts, ACCOUNT_ID, 'secret.bin'))).resolves.toBeDefined()
   })
 
   it('fails closed on malformed and oversized journals without loading the registry', async () => {

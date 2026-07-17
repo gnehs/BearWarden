@@ -36,6 +36,7 @@ export interface RendererSafeAccountStatus {
   readonly revision: number
   readonly activeAccountId: string
   readonly accounts: readonly RendererSafeAccountStatusEntry[]
+  readonly cleanupPending?: true
 }
 
 export type AccountSwitchMutationResult =
@@ -101,6 +102,7 @@ export interface AccountSwitchRegistryStore {
 export interface AccountSwitchServiceOptions {
   readonly registryStore?: AccountSwitchRegistryStore
   readonly removalJournal?: AccountRemovalJournal
+  readonly initialCleanupPending?: boolean
   readonly createUuid?: () => string
   /** Must finish deactivating account-bound state before the registry commit may begin. */
   readonly beforeActivation: (
@@ -120,7 +122,10 @@ function copyEntry(entry: AccountRegistryEntry): AccountRegistryEntry {
     : { id: entry.id, identityHash: entry.identityHash }
 }
 
-function rendererSafeStatus(registry: AccountRegistry): RendererSafeAccountStatus {
+function rendererSafeStatus(
+  registry: AccountRegistry,
+  cleanupPending = false
+): RendererSafeAccountStatus {
   const accounts = registry.accounts.map((account, index) =>
     Object.freeze({
       id: account.id,
@@ -131,7 +136,8 @@ function rendererSafeStatus(registry: AccountRegistry): RendererSafeAccountStatu
   return Object.freeze({
     revision: registry.revision,
     activeAccountId: registry.activeAccountId,
-    accounts: Object.freeze(accounts)
+    accounts: Object.freeze(accounts),
+    ...(cleanupPending ? { cleanupPending: true as const } : {})
   })
 }
 
@@ -204,6 +210,7 @@ export class AccountSwitchService {
   private readonly afterCommitRelaunch: AccountSwitchServiceOptions['afterCommitRelaunch']
   private mutationTail: Promise<void> = Promise.resolve()
   private relaunchPending = false
+  private accountRemovalCleanupPending: boolean
 
   constructor(userDataDirectory: string, options: AccountSwitchServiceOptions) {
     this.createUuid = options.createUuid
@@ -214,13 +221,14 @@ export class AccountSwitchService {
     this.removalJournal =
       options.removalJournal ??
       new AccountRemovalJournal(userDataDirectory, { createUuid: options.createUuid })
+    this.accountRemovalCleanupPending = options.initialCleanupPending === true
     this.beforeActivation = options.beforeActivation
     this.afterCommitRelaunch = options.afterCommitRelaunch
   }
 
   async getStatus(request?: unknown): Promise<RendererSafeAccountStatus> {
     this.assertEmptyRequest(request)
-    return rendererSafeStatus(await this.loadRegistry())
+    return rendererSafeStatus(await this.loadRegistry(), this.accountRemovalCleanupPending)
   }
 
   async listAccounts(request?: unknown): Promise<readonly RendererSafeAccountStatusEntry[]> {
@@ -284,6 +292,9 @@ export class AccountSwitchService {
       if (this.relaunchPending) {
         throw new AccountSwitchServiceError('ACCOUNT_SWITCH_IN_PROGRESS')
       }
+      if (this.accountRemovalCleanupPending) {
+        throw new AccountSwitchServiceError('ACCOUNT_REMOVAL_UNAVAILABLE')
+      }
       return mutate()
     })
     this.mutationTail = operation.then(
@@ -325,7 +336,10 @@ export class AccountSwitchService {
       throw new AccountSwitchServiceError('ACCOUNT_NOT_REGISTERED')
     }
     if (current.activeAccountId === accountId) {
-      return { kind: 'unchanged', status: rendererSafeStatus(current) }
+      return {
+        kind: 'unchanged',
+        status: rendererSafeStatus(current, this.accountRemovalCleanupPending)
+      }
     }
 
     await this.preflightAccountStorage(accountId)
@@ -370,10 +384,21 @@ export class AccountSwitchService {
       throw error
     }
     try {
-      await this.removalJournal.finish(recoveryCallbacks)
+      const cleanup = await this.removalJournal.finish(recoveryCallbacks)
+      if (cleanup !== 'deleted') {
+        this.relaunchPending = true
+        throw new AccountSwitchServiceError('ACCOUNT_REGISTRY_UPDATE_RESULT_UNKNOWN')
+      }
+      this.accountRemovalCleanupPending = false
       return result
-    } catch {
-      return { ...result, cleanupPending: true }
+    } catch (error) {
+      if (error instanceof AccountSwitchServiceError) throw error
+      this.accountRemovalCleanupPending = true
+      return {
+        ...result,
+        status: rendererSafeStatus(next, true),
+        cleanupPending: true
+      }
     }
   }
 
@@ -406,7 +431,10 @@ export class AccountSwitchService {
       throw new AccountSwitchServiceError('INVALID_ACCOUNT_SWITCH_REQUEST')
     }
     if (orderedAccountIds.every((id, index) => current.accounts[index]?.id === id)) {
-      return { kind: 'unchanged', status: rendererSafeStatus(current) }
+      return {
+        kind: 'unchanged',
+        status: rendererSafeStatus(current, this.accountRemovalCleanupPending)
+      }
     }
     const entries = new Map(current.accounts.map((account) => [account.id, account] as const))
     const next = parseAccountRegistry({
@@ -441,7 +469,10 @@ export class AccountSwitchService {
         throw new AccountSwitchServiceError('ACCOUNT_REGISTRY_UPDATE_RESULT_UNKNOWN')
       }
     }
-    return { kind: 'updated', status: rendererSafeStatus(next) }
+    return {
+      kind: 'updated',
+      status: rendererSafeStatus(next, this.accountRemovalCleanupPending)
+    }
   }
 
   private async prepareAccountStorage(accountId: string): Promise<void> {
@@ -530,7 +561,7 @@ export class AccountSwitchService {
       }
     }
 
-    const status = rendererSafeStatus(next)
+    const status = rendererSafeStatus(next, this.accountRemovalCleanupPending)
     this.relaunchPending = true
     try {
       await this.afterCommitRelaunch(accountId, reason)

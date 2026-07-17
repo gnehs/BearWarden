@@ -195,7 +195,9 @@ import { cn } from '@renderer/lib/utils'
 import { applyThemePreference } from '@renderer/lib/theme'
 import {
   accountMutationError,
+  isCurrentAccountRefresh,
   accountMutationKeepsBusy,
+  AccountMutationGate,
   requestAccountAction
 } from './account-switcher-ui'
 
@@ -882,6 +884,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   }, [])
   const settingsReturnFocusRef = useRef<HTMLElement | null>(null)
   const accountStatusRequestRef = useRef(0)
+  const accountMutationRequestRef = useRef(0)
+  const accountMutationGateRef = useRef(new AccountMutationGate())
+  const accountStaleRefreshPendingRef = useRef(false)
   const compactReturnIdRef = useRef<string | null>(null)
   const compactDetailFocusIdRef = useRef<string | null>(null)
   const selectedIdRef = useRef<string | null>(null)
@@ -1995,6 +2000,12 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   useEffect(() => {
     if (!settingsOpen) return
+    if (accountStaleRefreshPendingRef.current) {
+      accountStaleRefreshPendingRef.current = false
+      accountMutationGateRef.current.leave()
+      setAccountBusy(false)
+      setAccountBusyLabel('')
+    }
     let active = true
     const requestId = ++accountStatusRequestRef.current
     queueMicrotask(() => {
@@ -2249,7 +2260,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     operation: 'add' | 'switch' | 'reorder' | 'remove',
     mutation: () => Promise<AccountMutationResult>
   ): Promise<void> {
-    const requestId = ++accountStatusRequestRef.current
+    if (!accountMutationGateRef.current.tryEnter()) return
+    accountStatusRequestRef.current += 1
+    const mutationRequestId = ++accountMutationRequestRef.current
     setAccountBusy(true)
     setAccountBusyLabel(
       operation === 'add' || operation === 'switch'
@@ -2261,9 +2274,11 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     setAccountError('')
     try {
       const result = await mutation()
-      if (requestId !== accountStatusRequestRef.current) return
+      if (mutationRequestId !== accountMutationRequestRef.current) return
+      accountStatusRequestRef.current += 1
       setAccountStatus(result.status)
       if (!accountMutationKeepsBusy(result)) {
+        accountMutationGateRef.current.leave()
         setAccountBusy(false)
         setAccountBusyLabel('')
         if (operation === 'remove') {
@@ -2277,21 +2292,56 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         }
       }
     } catch (accountMutationFailure) {
-      if (requestId !== accountStatusRequestRef.current) return
-      setAccountError(accountMutationError(accountMutationFailure))
-      setAccountBusy(false)
-      setAccountBusyLabel('')
+      if (mutationRequestId !== accountMutationRequestRef.current) return
+      const message = accountMutationError(accountMutationFailure)
+      setAccountError(message)
       if (
         accountMutationFailure instanceof Error &&
         accountMutationFailure.message.includes('ACCOUNT_STALE_STATE')
       ) {
+        const statusRequestId = ++accountStatusRequestRef.current
+        accountStaleRefreshPendingRef.current = true
+        setAccountBusy(true)
+        setAccountBusyLabel('正在重新讀取本機帳號')
         void window.bearwarden.accounts.status().then(
           (status) => {
-            if (requestId === accountStatusRequestRef.current) setAccountStatus(status)
+            if (
+              !isCurrentAccountRefresh(
+                mutationRequestId,
+                accountMutationRequestRef.current,
+                statusRequestId,
+                accountStatusRequestRef.current
+              )
+            )
+              return
+            accountStaleRefreshPendingRef.current = false
+            setAccountStatus(status)
+            accountMutationGateRef.current.leave()
+            setAccountBusy(false)
+            setAccountBusyLabel('')
           },
-          () => undefined
+          () => {
+            if (
+              !isCurrentAccountRefresh(
+                mutationRequestId,
+                accountMutationRequestRef.current,
+                statusRequestId,
+                accountStatusRequestRef.current
+              )
+            )
+              return
+            accountStaleRefreshPendingRef.current = false
+            setAccountError(`${message} 無法重新讀取清單，請關閉設定後再試。`)
+            accountMutationGateRef.current.leave()
+            setAccountBusy(false)
+            setAccountBusyLabel('')
+          }
         )
+        return
       }
+      accountMutationGateRef.current.leave()
+      setAccountBusy(false)
+      setAccountBusyLabel('')
     }
   }
 

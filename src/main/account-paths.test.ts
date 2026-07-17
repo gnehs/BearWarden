@@ -2,7 +2,12 @@ import { mkdtemp, mkdir, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createAccountId, createAccountPathLayout, ensurePrivateDirectory } from './account-paths'
+import {
+  createAccountId,
+  createAccountPathLayout,
+  ensurePrivateDirectory,
+  syncDirectory
+} from './account-paths'
 
 const ACCOUNT_ID = '11111111-1111-4111-8111-111111111111'
 
@@ -56,5 +61,10 @@ describe('account paths', () => {
     await symlink(outside, linked)
 
     await expect(ensurePrivateDirectory(linked)).rejects.toThrow('UNSAFE_DIRECTORY')
+  })
+
+  it('does not swallow a missing-directory durability failure', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bearwarden-account-sync-directory-'))
+    await expect(syncDirectory(join(root, 'missing'))).rejects.toMatchObject({ code: 'ENOENT' })
   })
 })

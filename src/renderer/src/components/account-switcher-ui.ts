@@ -9,6 +9,31 @@ export type AccountConfirmationAction =
 
 export type AccountMoveDirection = 'up' | 'down'
 
+export class AccountMutationGate {
+  private active = false
+
+  tryEnter(): boolean {
+    if (this.active) return false
+    this.active = true
+    return true
+  }
+
+  leave(): void {
+    this.active = false
+  }
+}
+
+export function isCurrentAccountRefresh(
+  mutationRequestId: number,
+  currentMutationRequestId: number,
+  statusRequestId: number,
+  currentStatusRequestId: number
+): boolean {
+  return (
+    mutationRequestId === currentMutationRequestId && statusRequestId === currentStatusRequestId
+  )
+}
+
 export function localAccountLabel(slot: number): string {
   return `帳號 ${slot}`
 }

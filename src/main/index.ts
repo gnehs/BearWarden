@@ -450,14 +450,19 @@ if (hasSingleInstanceLock)
     const userDataDirectory = app.getPath('userData')
     const accountRegistryStore = new AccountRegistryStore(userDataDirectory)
     const accountRemovalJournal = new AccountRemovalJournal(userDataDirectory)
-    await accountRemovalJournal
-      .recover({
+    let accountRemovalCleanupPending = false
+    try {
+      await accountRemovalJournal.recover({
         loadAuthoritativeRegistry: () => accountRegistryStore.loadPrimary(),
         checkpointRegistry: async (registry) => {
           await accountRegistryStore.checkpoint(registry, registry.revision)
         }
       })
-      .catch(() => undefined)
+    } catch {
+      // An inactive account cleanup must not make the active vault unavailable. Preserve the
+      // journal and expose a renderer-safe pending flag so the user is not told cleanup finished.
+      accountRemovalCleanupPending = true
+    }
     const activeStorage = await bootstrapAccountStorage(userDataDirectory, {
       registryStore: accountRegistryStore
     })
@@ -556,6 +561,7 @@ if (hasSingleInstanceLock)
         ? new AccountSwitchService(userDataDirectory, {
             registryStore: accountRegistryStore,
             removalJournal: accountRemovalJournal,
+            initialCleanupPending: accountRemovalCleanupPending,
             beforeActivation: async () => {
               await beforeVaultLock()
               await activeVault.lock()

@@ -144,17 +144,24 @@ export async function openNoFollow(
 }
 
 export async function syncDirectory(path: string): Promise<void> {
-  let handle: FileHandle | undefined
+  const handle = await open(
+    path,
+    constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | (constants.O_NOFOLLOW ?? 0)
+  )
   try {
-    handle = await open(
-      path,
-      constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | (constants.O_NOFOLLOW ?? 0)
-    )
     await handle.sync()
-  } catch {
-    // Directory fsync is unavailable on some Electron targets, especially Windows.
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    // Windows does not expose a portable directory fsync through Node. Ignore only explicit
+    // unsupported-operation failures there; I/O and path failures must abort the transaction.
+    if (
+      process.platform !== 'win32' ||
+      (code !== 'EINVAL' && code !== 'ENOTSUP' && code !== 'EISDIR' && code !== 'EPERM')
+    ) {
+      throw error
+    }
   } finally {
-    await handle?.close().catch(() => undefined)
+    await handle.close().catch(() => undefined)
   }
 }
 
