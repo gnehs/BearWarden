@@ -32,6 +32,8 @@ export interface SyncLogin extends VaultItemFields {
   passkeys: StoredPasskeyCredential[]
   customFields: VaultCustomField[]
   passwordHistory: VaultPasswordHistoryEntry[]
+  passwordRevisionDate: string | null
+  autofillOnPageLoad: boolean | null
 }
 
 export interface SyncTombstone {
@@ -191,6 +193,8 @@ function loginFingerprintContent(
     fields: {
       username: login.username,
       password: login.password,
+      passwordRevisionDate: login.passwordRevisionDate,
+      autofillOnPageLoad: login.autofillOnPageLoad,
       totp: login.totp,
       uris: login.uris,
       cardholderName: login.cardholderName,
@@ -255,6 +259,8 @@ function preV11LoginFingerprintContent(
   const withoutUris = { ...fields }
   delete withoutReprompt.reprompt
   delete withoutUris.uris
+  delete withoutUris.passwordRevisionDate
+  delete withoutUris.autofillOnPageLoad
   return {
     ...withoutReprompt,
     fields: { ...withoutUris, uri: login.uri }
@@ -281,8 +287,14 @@ function legacyLoginFingerprintCandidates(
   }
   const custom = login.customFields.length > 0 ? { customFields: login.customFields } : {}
   const currentWithoutCustom = loginFingerprintContent(login, canonicalFolder)
+  const fieldsWithoutWireMetadata = {
+    ...(currentWithoutCustom.fields as Record<string, unknown>)
+  }
+  delete fieldsWithoutWireMetadata.passwordRevisionDate
+  delete fieldsWithoutWireMetadata.autofillOnPageLoad
+  const preWireMetadata = { ...currentWithoutCustom, fields: fieldsWithoutWireMetadata }
   return new Set(
-    [oldest, withReprompt, currentWithoutCustom].flatMap((content) => [
+    [oldest, withReprompt, preWireMetadata, currentWithoutCustom].flatMap((content) => [
       sha256(content),
       sha256({ ...content, ...lifecycle }),
       sha256({ ...content, ...custom }),
@@ -538,6 +550,8 @@ export interface LegacyCustomFieldBaselineUpgrade {
   uris?: VaultLoginUri[]
   reprompt?: VaultReprompt
   passwordHistory?: VaultPasswordHistoryEntry[]
+  passwordRevisionDate?: string | null
+  autofillOnPageLoad?: boolean | null
   baseFingerprint: string
 }
 
@@ -556,7 +570,10 @@ function hasDistinctPostLegacyState(login: SyncLogin, other: SyncLogin): boolean
     (login.customFields.length > 0 &&
       canonicalJson(login.customFields) !== canonicalJson(other.customFields)) ||
     (login.passwordHistory.length > 0 &&
-      canonicalJson(login.passwordHistory) !== canonicalJson(other.passwordHistory))
+      canonicalJson(login.passwordHistory) !== canonicalJson(other.passwordHistory)) ||
+    (login.passwordRevisionDate !== null &&
+      login.passwordRevisionDate !== other.passwordRevisionDate) ||
+    (login.autofillOnPageLoad !== null && login.autofillOnPageLoad !== other.autofillOnPageLoad)
   )
 }
 
@@ -643,6 +660,12 @@ export function legacyCustomFieldBaselineUpgrades(
     }
     if (localLogin.passwordHistory.length === 0 && remoteLogin.passwordHistory.length > 0) {
       upgrade.passwordHistory = remoteLogin.passwordHistory.map((entry) => ({ ...entry }))
+    }
+    if (localLogin.passwordRevisionDate === null && remoteLogin.passwordRevisionDate !== null) {
+      upgrade.passwordRevisionDate = remoteLogin.passwordRevisionDate
+    }
+    if (localLogin.autofillOnPageLoad === null && remoteLogin.autofillOnPageLoad !== null) {
+      upgrade.autofillOnPageLoad = remoteLogin.autofillOnPageLoad
     }
     upgrades.push(upgrade)
   }

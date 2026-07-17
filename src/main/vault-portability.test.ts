@@ -82,7 +82,9 @@ function portableSnapshot(): PortableVaultSnapshot {
         reprompt: 0,
         passkeys: [],
         customFields: [],
-        passwordHistory: []
+        passwordHistory: [],
+        passwordRevisionDate: null,
+        autofillOnPageLoad: null
       }
     ]
   }
@@ -240,7 +242,9 @@ describe('VaultPortabilityService', () => {
     expect(picker.chooseExportPath).toHaveBeenCalledWith(
       'bearwarden_backup_20260716_030405Z.bwbackup'
     )
-    expect(vault.createNativeAttachmentBackupSource).toHaveBeenCalledWith(MASTER_PASSWORD)
+    expect(vault.createNativeAttachmentBackupSource).toHaveBeenCalledWith(MASTER_PASSWORD, {
+      includeLoginWireMetadata: true
+    })
     expect(vault.exportPortableSnapshot).not.toHaveBeenCalled()
     const nativeSource = await vault.createNativeAttachmentBackupSource.mock.results[0]!.value
     expect(nativeSource.dispose).toHaveBeenCalledOnce()
@@ -263,7 +267,9 @@ describe('VaultPortabilityService', () => {
     })
 
     expect(picker.chooseExportPath).toHaveBeenCalledWith('bitwarden_export_20260716_030405Z.zip')
-    expect(vault.createNativeAttachmentBackupSource).toHaveBeenCalledWith(MASTER_PASSWORD)
+    expect(vault.createNativeAttachmentBackupSource).toHaveBeenCalledWith(MASTER_PASSWORD, {
+      includeLoginWireMetadata: false
+    })
     expect(vault.exportPortableSnapshot).not.toHaveBeenCalled()
     const source = await vault.createNativeAttachmentBackupSource.mock.results[0]!.value
     expect(source.dispose).toHaveBeenCalledOnce()

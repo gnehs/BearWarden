@@ -255,6 +255,8 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
         { name: 'linked-username', value: '', type: 'linked', linkedId: 100 }
       ],
       passwordHistory: [],
+      passwordRevisionDate: '2026-07-13T00:00:00.000Z',
+      autofillOnPageLoad: false,
       attachments: [],
       passkeys: [
         {
@@ -299,6 +301,8 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
     customFields: draft.customFields ?? [],
     passkeys: draft.passkeys ?? [],
     passwordHistory: draft.passwordHistory ?? [],
+    passwordRevisionDate: draft.passwordRevisionDate ?? null,
+    autofillOnPageLoad: draft.autofillOnPageLoad ?? null,
     attachments: [],
     creationDate: '2026-07-14T00:00:00.000Z',
     revisionDate: '2026-07-14T00:00:01.000Z',
@@ -7037,6 +7041,45 @@ describe('VaultService encrypted local data', () => {
     expect(restored.updatedAt).not.toBe(updated.updatedAt)
   })
 
+  it('updates password revision metadata only when the local password actually changes', async () => {
+    const { service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const created = await service.createLogin({ name: 'Password revision', password: 'first' })
+    const changed = await service.updateLogin({ id: created.id, password: 'second' })
+    expect((await service.exportPortableSnapshot(MASTER_PASSWORD)).snapshot.items[0]).toMatchObject(
+      {
+        passwordRevisionDate: changed.updatedAt
+      }
+    )
+    const renamed = await service.updateLogin({ id: created.id, name: 'Renamed only' })
+    await service.updateLogin({ id: created.id, password: 'second' })
+    expect((await service.exportPortableSnapshot(MASTER_PASSWORD)).snapshot.items[0]).toMatchObject(
+      {
+        passwordRevisionDate: changed.updatedAt
+      }
+    )
+    const [history] = await service.getPasswordHistory({ id: created.id })
+    const restored = await service.restorePasswordHistory({
+      id: created.id,
+      index: 0,
+      lastUsedDate: history!.lastUsedDate,
+      expectedUpdatedAt: (await service.getLogin({ id: created.id })).updatedAt
+    })
+    await service.lock()
+
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as {
+      logins: Array<{ passwordRevisionDate: string | null; autofillOnPageLoad: boolean | null }>
+    }
+    expect(changed.updatedAt).not.toBe(renamed.updatedAt)
+    expect(data.logins[0]).toMatchObject({
+      passwordRevisionDate: restored.updatedAt,
+      autofillOnPageLoad: null
+    })
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+  })
+
   it('consumes duplicate hidden fields as a multiset when recording removed secrets', async () => {
     const { service } = await createHarness()
     await service.setup(MASTER_PASSWORD)
@@ -7524,7 +7567,7 @@ describe('VaultService encrypted local data', () => {
       expect(await service.revealPassword({ id: migrated.id })).toBe('legacy-secret')
       await service.lock()
       const unlocked = await store.unlock(MASTER_PASSWORD)
-      expect((unlocked.data as { version: number }).version).toBe(19)
+      expect((unlocked.data as { version: number }).version).toBe(20)
       unlocked.key.fill(0)
       unlocked.salt.fill(0)
     }
@@ -7659,6 +7702,37 @@ describe('VaultService encrypted local data', () => {
     expect(history.at(-1)?.credential).toBe('historical-198')
   })
 
+  it('migrates V19 login wire metadata to explicit null defaults', async () => {
+    const { filePath, service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    await service.createLogin({ name: 'Pre-metadata login', password: 'secret' })
+    await service.lock()
+
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as {
+      version: number
+      logins: Array<Record<string, unknown>>
+    }
+    data.version = 19
+    delete data.logins[0]!.passwordRevisionDate
+    delete data.logins[0]!.autofillOnPageLoad
+    await store.write(data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopenedStore = new EncryptedVaultStore<unknown>(filePath)
+    const reopened = new VaultService(reopenedStore, { copyText: vi.fn(), openExternal: vi.fn() })
+    await reopened.unlock(MASTER_PASSWORD)
+    await reopened.lock()
+    const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
+    expect(migrated.data).toMatchObject({
+      version: 20,
+      logins: [{ passwordRevisionDate: null, autofillOnPageLoad: null }]
+    })
+    migrated.key.fill(0)
+    migrated.salt.fill(0)
+  })
+
   it('migrates V12 to an empty encrypted V16 generator history and Send cache', async () => {
     const { filePath, service, store } = await createHarness()
     await service.setup(MASTER_PASSWORD)
@@ -7681,7 +7755,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 19,
+      version: 20,
       generatorHistory: [],
       sends: [],
       nativeAttachmentRestore: null
@@ -7719,7 +7793,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 19,
+      version: 20,
       logins: [expect.objectContaining({ attachments: [] })],
       sends: []
     })
@@ -7758,7 +7832,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 19,
+      version: 20,
       sync: { domainSettings: null }
     })
     migrated.key.fill(0)

@@ -223,7 +223,8 @@ const SENDS_DATA_VERSION = 16
 const ORGANIZATIONS_DATA_VERSION = 17
 const NATIVE_ATTACHMENT_RESTORE_DATA_VERSION = 18
 const MASTER_PASSWORD_CHANGE_DATA_VERSION = 19
-const DATA_VERSION = 19
+const LOGIN_WIRE_METADATA_DATA_VERSION = 20
+const DATA_VERSION = 20
 const MIN_MASTER_PASSWORD_LENGTH = 12
 const MAX_MASTER_PASSWORD_LENGTH = 1024
 const MAX_NAME_LENGTH = 256
@@ -283,6 +284,8 @@ interface StoredLogin
   passkeys: StoredPasskeyCredential[]
   customFields: VaultCustomField[]
   passwordHistory: VaultPasswordHistoryEntry[]
+  passwordRevisionDate: string | null
+  autofillOnPageLoad: boolean | null
 }
 
 interface StoredSend extends SendView {}
@@ -1190,7 +1193,8 @@ function parseStoredLogin(
   allowMissingReprompt = false,
   allowMissingUris = false,
   allowMissingPasswordHistory = false,
-  allowMissingAttachments = false
+  allowMissingAttachments = false,
+  allowMissingLoginWireMetadata = false
 ): StoredLogin {
   if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
   if (
@@ -1274,6 +1278,26 @@ function parseStoredLogin(
       : [{ uri: fields.uri, match: null }]
     : parseStoredLoginUris(value.uris)
   if (fields.uri !== uriAlias(uris)) throw new VaultError('CORRUPT_VAULT')
+  let passwordRevisionDate: string | null
+  if (allowMissingLoginWireMetadata && value.passwordRevisionDate === undefined) {
+    passwordRevisionDate = null
+  } else if (value.passwordRevisionDate === null) {
+    passwordRevisionDate = null
+  } else {
+    assertIsoDate(value.passwordRevisionDate)
+    passwordRevisionDate = value.passwordRevisionDate
+  }
+  let autofillOnPageLoad: boolean | null
+  if (allowMissingLoginWireMetadata && value.autofillOnPageLoad === undefined) {
+    autofillOnPageLoad = null
+  } else if (value.autofillOnPageLoad === null || typeof value.autofillOnPageLoad === 'boolean') {
+    autofillOnPageLoad = value.autofillOnPageLoad
+  } else {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  if (type !== 'login' && (passwordRevisionDate !== null || autofillOnPageLoad !== null)) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
 
   return {
     id: value.id,
@@ -1310,6 +1334,8 @@ function parseStoredLogin(
             return value.customFields.map(parseCustomField)
           })(),
     passwordHistory: allowMissingPasswordHistory ? [] : parsePasswordHistory(value.passwordHistory),
+    passwordRevisionDate,
+    autofillOnPageLoad,
     attachments: allowMissingAttachments ? [] : parseStoredAttachments(value.attachments),
     uris,
     ...fields
@@ -1485,9 +1511,24 @@ function parseStoredCollection(value: unknown): CollectionView {
   }
 }
 
-function parseStoredSharedLogin(value: unknown): StoredSharedLogin {
+function parseStoredSharedLogin(
+  value: unknown,
+  allowMissingLoginWireMetadata = false
+): StoredSharedLogin {
   if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
-  const login = parseStoredLogin(value)
+  const login = parseStoredLogin(
+    value,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    allowMissingLoginWireMetadata
+  )
   const {
     organizationId,
     collectionIds,
@@ -1977,6 +2018,7 @@ function parseVaultData(value: unknown): VaultData {
       ORGANIZATIONS_DATA_VERSION,
       NATIVE_ATTACHMENT_RESTORE_DATA_VERSION,
       MASTER_PASSWORD_CHANGE_DATA_VERSION,
+      LOGIN_WIRE_METADATA_DATA_VERSION,
       DATA_VERSION
     ].includes(value.version) ||
     !Array.isArray(value.folders) ||
@@ -2000,7 +2042,8 @@ function parseVaultData(value: unknown): VaultData {
       dataVersion < REPROMPT_DATA_VERSION,
       dataVersion < MULTIPLE_URIS_DATA_VERSION,
       dataVersion < PASSWORD_HISTORY_DATA_VERSION,
-      dataVersion < ATTACHMENTS_DATA_VERSION
+      dataVersion < ATTACHMENTS_DATA_VERSION,
+      dataVersion < LOGIN_WIRE_METADATA_DATA_VERSION
     )
   )
   const folderIds = new Set(folders.map((folder) => folder.id))
@@ -2063,7 +2106,9 @@ function parseVaultData(value: unknown): VaultData {
           ) {
             throw new VaultError('CORRUPT_VAULT')
           }
-          const parsed = value.sharedLogins.map(parseStoredSharedLogin)
+          const parsed = value.sharedLogins.map((login) =>
+            parseStoredSharedLogin(login, dataVersion < LOGIN_WIRE_METADATA_DATA_VERSION)
+          )
           if (
             new Set(parsed.map((login) => login.id)).size !== parsed.length ||
             parsed.some(
@@ -5882,6 +5927,7 @@ export class VaultService {
           ? [{ password: previousPassword, lastUsedDate: now }, ...previousHistory]
           : previousHistory
       ).slice(0, MAX_PASSWORD_HISTORY)
+      login.passwordRevisionDate = now
       login.updatedAt = now
       return toView(login)
     })
@@ -6232,7 +6278,8 @@ export class VaultService {
   }
 
   async createNativeAttachmentBackupSource(
-    masterPassword: string
+    masterPassword: string,
+    options: { includeLoginWireMetadata?: boolean } = {}
   ): Promise<VaultNativeAttachmentBackupSource> {
     // Bitwarden's attachment metadata contains encrypted-envelope size, while the native archive
     // requires exact plaintext sizes in its authenticated manifest. Preflight therefore downloads,
@@ -6361,7 +6408,9 @@ export class VaultService {
       }
       ensureCurrent()
       const source: VaultNativeAttachmentBackupSource = {
-        vaultJson: buildBitwardenJson(prepared.portable),
+        vaultJson: buildBitwardenJson(prepared.portable, {
+          includeLoginWireMetadata: options.includeLoginWireMetadata === true
+        }),
         attachments: entries,
         exportedFolders: prepared.portable.folders.length,
         exportedItems: prepared.portable.items.length,
@@ -7144,6 +7193,8 @@ export class VaultService {
         passkeys: [],
         customFields,
         passwordHistory: [],
+        passwordRevisionDate: null,
+        autofillOnPageLoad: null,
         attachments: [],
         uris,
         ...fields
@@ -7176,6 +7227,8 @@ export class VaultService {
         passkeys: [],
         customFields: cloneCustomFields(source.customFields),
         passwordHistory: [],
+        passwordRevisionDate: source.passwordRevisionDate,
+        autofillOnPageLoad: source.autofillOnPageLoad,
         attachments: [],
         uris: cloneLoginUris(source.uris),
         // Deliberately build the stored shape instead of spreading the source so future
@@ -7304,6 +7357,13 @@ export class VaultService {
         }
       }
       login.passwordHistory = [...newHistory, ...previousHistory].slice(0, MAX_PASSWORD_HISTORY)
+      if (
+        login.type === 'login' &&
+        request.password !== undefined &&
+        login.password !== previousPassword
+      ) {
+        login.passwordRevisionDate = now
+      }
       login.updatedAt = now
       return toView(login)
     })
@@ -8542,6 +8602,12 @@ export class VaultService {
       if (upgrade.passwordHistory) {
         upgradedLogin.passwordHistory = clonePasswordHistory(upgrade.passwordHistory)
       }
+      if (upgrade.passwordRevisionDate !== undefined) {
+        upgradedLogin.passwordRevisionDate = upgrade.passwordRevisionDate
+      }
+      if (upgrade.autofillOnPageLoad !== undefined) {
+        upgradedLogin.autofillOnPageLoad = upgrade.autofillOnPageLoad
+      }
       const mapping = next.sync?.loginMappings.find(
         (entry) => entry.localId === upgrade.localId && entry.remoteId === upgrade.remoteId
       )
@@ -9261,6 +9327,8 @@ export class VaultService {
       passkeys: validateRemotePasskeys(source.passkeys),
       customFields: cloneCustomFields(source.customFields),
       passwordHistory: clonePasswordHistory(source.passwordHistory),
+      passwordRevisionDate: source.passwordRevisionDate,
+      autofillOnPageLoad: source.autofillOnPageLoad,
       attachments: [],
       uris: remoteLoginUris(source),
       ...normalizeItemFieldsForStorage(source)
@@ -9288,6 +9356,8 @@ export class VaultService {
       passkeys: validateRemotePasskeys(normalized.passkeys),
       customFields: cloneCustomFields(normalized.customFields),
       passwordHistory: clonePasswordHistory(normalized.passwordHistory),
+      passwordRevisionDate: normalized.passwordRevisionDate,
+      autofillOnPageLoad: normalized.autofillOnPageLoad,
       attachments: validateRemoteAttachments(source.attachments),
       uris: remoteLoginUris(normalized),
       ...normalizeItemFieldsForStorage(normalized),
@@ -9317,6 +9387,8 @@ export class VaultService {
     login.passkeys = validateRemotePasskeys(source.passkeys)
     login.customFields = cloneCustomFields(source.customFields)
     login.passwordHistory = clonePasswordHistory(source.passwordHistory)
+    login.passwordRevisionDate = source.passwordRevisionDate
+    login.autofillOnPageLoad = source.autofillOnPageLoad
     login.folderId = folderId
     login.favorite = source.favorite
     login.deletedAt = source.deletedAt
@@ -9369,7 +9441,9 @@ export class VaultService {
       reprompt: login.reprompt,
       passkeys: login.passkeys.map((passkey) => ({ ...passkey })),
       customFields: cloneCustomFields(login.customFields),
-      passwordHistory: clonePasswordHistory(login.passwordHistory)
+      passwordHistory: clonePasswordHistory(login.passwordHistory),
+      passwordRevisionDate: login.passwordRevisionDate,
+      autofillOnPageLoad: login.autofillOnPageLoad
     }
   }
 

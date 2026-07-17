@@ -293,10 +293,14 @@ function parseTypeData(
   fields: VaultItemFields
   uris: VaultLoginUri[]
   passkeys: StoredPasskeyCredential[]
+  passwordRevisionDate: string | null
+  autofillOnPageLoad: boolean | null
 } {
   const fields = emptyItemFields()
   let uris: VaultLoginUri[] = []
   let passkeys: StoredPasskeyCredential[] = []
+  let passwordRevisionDate: string | null = null
+  let autofillOnPageLoad: boolean | null = null
   if (type === 'login') {
     const login = record(raw.login)
     fields.username = optionalString(login.username, MAX_USERNAME_LENGTH)
@@ -305,6 +309,15 @@ function parseTypeData(
     uris = parseUris(login.uris)
     fields.uri = uris[0]?.uri ?? null
     passkeys = parsePasskeys(login.fido2Credentials)
+    passwordRevisionDate = nullableIsoDate(login.passwordRevisionDate)
+    if (
+      login.autofillOnPageLoad !== undefined &&
+      login.autofillOnPageLoad !== null &&
+      typeof login.autofillOnPageLoad !== 'boolean'
+    ) {
+      invalidInput()
+    }
+    autofillOnPageLoad = (login.autofillOnPageLoad as boolean | null | undefined) ?? null
   } else if (type === 'card') {
     const card = record(raw.card)
     fields.cardholderName = optionalString(card.cardholderName, MAX_ITEM_FIELD_LENGTH)
@@ -345,7 +358,7 @@ function parseTypeData(
     fields.publicKey = optionalString(sshKey.publicKey, MAX_ITEM_FIELD_LENGTH)
     fields.fingerprint = optionalString(sshKey.keyFingerprint, MAX_ITEM_FIELD_LENGTH)
   }
-  return { fields, uris, passkeys }
+  return { fields, uris, passkeys, passwordRevisionDate, autofillOnPageLoad }
 }
 
 function parseItem(rawValue: unknown, folderIds: ReadonlySet<string>): PortableVaultItem | null {
@@ -359,7 +372,10 @@ function parseItem(rawValue: unknown, folderIds: ReadonlySet<string>): PortableV
   const id = string(raw.id, MAX_ID_LENGTH, false)
   const folderId = nullableString(raw.folderId, MAX_ID_LENGTH)
   if (folderId !== null && !folderIds.has(folderId)) invalidInput()
-  const { fields, uris, passkeys } = parseTypeData(raw, type)
+  const { fields, uris, passkeys, passwordRevisionDate, autofillOnPageLoad } = parseTypeData(
+    raw,
+    type
+  )
   return {
     ...fields,
     id,
@@ -376,7 +392,9 @@ function parseItem(rawValue: unknown, folderIds: ReadonlySet<string>): PortableV
     uris,
     passkeys,
     customFields: parseCustomFields(raw.fields, type),
-    passwordHistory: parsePasswordHistory(raw.passwordHistory)
+    passwordHistory: parsePasswordHistory(raw.passwordHistory),
+    passwordRevisionDate,
+    autofillOnPageLoad
   }
 }
 
@@ -585,7 +603,9 @@ function csvItem(input: {
     uris: uri === null ? [] : [{ uri, match: null }],
     passkeys: [],
     customFields: input.customFields ?? [],
-    passwordHistory: []
+    passwordHistory: [],
+    passwordRevisionDate: null,
+    autofillOnPageLoad: null
   }
 }
 
@@ -719,7 +739,7 @@ function exportPasskey(passkey: StoredPasskeyCredential): JsonObject {
   }
 }
 
-function exportTypeData(item: PortableVaultItem): JsonObject {
+function exportTypeData(item: PortableVaultItem, includeLoginWireMetadata: boolean): JsonObject {
   switch (item.type) {
     case 'login':
       return {
@@ -728,7 +748,13 @@ function exportTypeData(item: PortableVaultItem): JsonObject {
           username: item.username,
           password: item.password,
           totp: item.totp,
-          fido2Credentials: item.passkeys.map(exportPasskey)
+          fido2Credentials: item.passkeys.map(exportPasskey),
+          ...(includeLoginWireMetadata
+            ? {
+                passwordRevisionDate: item.passwordRevisionDate,
+                autofillOnPageLoad: item.autofillOnPageLoad
+              }
+            : {})
         }
       }
     case 'secureNote':
@@ -778,7 +804,7 @@ function exportTypeData(item: PortableVaultItem): JsonObject {
   }
 }
 
-function exportItem(item: PortableVaultItem): JsonObject {
+function exportItem(item: PortableVaultItem, includeLoginWireMetadata: boolean): JsonObject {
   if (item.uri !== (item.uris[0]?.uri ?? null)) invalidInput()
   return {
     id: item.id,
@@ -795,7 +821,7 @@ function exportItem(item: PortableVaultItem): JsonObject {
       type: WIRE_TYPE_BY_CUSTOM_FIELD_TYPE[field.type],
       linkedId: field.linkedId
     })),
-    ...exportTypeData(item),
+    ...exportTypeData(item, includeLoginWireMetadata),
     passwordHistory: item.passwordHistory.map((entry) => ({
       password: entry.password,
       lastUsedDate: entry.lastUsedDate
@@ -808,7 +834,10 @@ function exportItem(item: PortableVaultItem): JsonObject {
   }
 }
 
-export function buildBitwardenJson(snapshot: PortableVaultSnapshot): string {
+export function buildBitwardenJson(
+  snapshot: PortableVaultSnapshot,
+  options: { includeLoginWireMetadata?: boolean } = {}
+): string {
   if (!isRecord(snapshot)) invalidInput()
   const folders = array(snapshot.folders, MAX_ENTITIES).map((raw) => {
     const folder = record(raw)
@@ -829,7 +858,7 @@ export function buildBitwardenJson(snapshot: PortableVaultSnapshot): string {
       isoDate(item.deletedAt)
       return false
     })
-    .map(exportItem)
+    .map((item) => exportItem(item, options.includeLoginWireMetadata === true))
   // Validate our runtime input and its relationships before returning a portable backup.
   const result = JSON.stringify({ encrypted: false, folders, items }, null, '  ')
   parseBitwardenJson(result)

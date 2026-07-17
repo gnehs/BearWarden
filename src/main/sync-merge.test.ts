@@ -62,7 +62,9 @@ function login(
     fingerprint: '',
     passkeys: [],
     customFields: [],
-    passwordHistory: []
+    passwordHistory: [],
+    passwordRevisionDate: null,
+    autofillOnPageLoad: null
   }
 }
 
@@ -653,6 +655,71 @@ describe('planSync', () => {
     ).toEqual([])
     expect(planSync(snapshot([local]), snapshot([remote]), metadata).actions).toMatchObject([
       { kind: 'conflict-copy', entity: 'login', reason: 'both-modified' }
+    ])
+  })
+
+  it('tracks login wire metadata including the explicit false autofill override', () => {
+    const original = login('local-1')
+    const remoteBase = { ...original, id: 'remote-1' }
+    const metadata: SyncMetadata = {
+      version: 1,
+      folderLinks: [],
+      loginLinks: [
+        {
+          localId: original.id,
+          remoteId: remoteBase.id,
+          baseFingerprint: fingerprintLogin(original)
+        }
+      ]
+    }
+    const remoteMetadata = {
+      ...remoteBase,
+      passwordRevisionDate: '2026-07-13T00:00:00.000Z',
+      autofillOnPageLoad: false
+    }
+
+    expect(fingerprintLogin(remoteMetadata)).not.toBe(fingerprintLogin(remoteBase))
+    expect(
+      planSync(snapshot([original]), snapshot([remoteMetadata]), metadata).actions
+    ).toMatchObject([{ kind: 'pull-update', entity: 'login' }])
+    expect(
+      planSync(
+        snapshot([{ ...original, autofillOnPageLoad: true }]),
+        snapshot([remoteMetadata]),
+        metadata
+      ).actions
+    ).toMatchObject([{ kind: 'conflict-copy', entity: 'login', reason: 'both-modified' }])
+  })
+
+  it('adopts remote login wire metadata from a pre-metadata baseline without a false conflict', () => {
+    const original = login('local-1')
+    const local = { ...original, name: 'Offline rename' }
+    const remote = {
+      ...original,
+      id: 'remote-1',
+      passwordRevisionDate: '2026-07-13T00:00:00.000Z',
+      autofillOnPageLoad: false
+    }
+    const metadata: SyncMetadata = {
+      version: 1,
+      folderLinks: [],
+      loginLinks: [
+        {
+          localId: local.id,
+          remoteId: remote.id,
+          baseFingerprint: legacyLoginFingerprint(original)
+        }
+      ]
+    }
+
+    expect(
+      legacyCustomFieldBaselineUpgrades(snapshot([local]), snapshot([remote]), metadata)
+    ).toMatchObject([
+      {
+        passwordRevisionDate: remote.passwordRevisionDate,
+        autofillOnPageLoad: false,
+        baseFingerprint: fingerprintLogin(remote)
+      }
     ])
   })
 

@@ -178,6 +178,8 @@ async function encryptedSync(
           login: {
             username: encryptBitwardenString('bear@example.invalid', itemKey),
             password: encryptBitwardenString('remote-secret', itemKey),
+            passwordRevisionDate: '2026-07-13T00:00:00Z',
+            autofillOnPageLoad: false,
             totp: encryptBitwardenString(
               options.totp ?? 'otpauth://totp/example.invalid?secret=JBSWY3DPEHPK3PXP',
               itemKey
@@ -504,7 +506,7 @@ async function encryptedV2Sync(
             type: 'login',
             username: 'v2-user@example.invalid',
             password: 'v2-remote-secret',
-            passwordRevisionDate: null,
+            passwordRevisionDate: '2026-07-13T00:00:00Z',
             uris: [
               { uri: 'https://primary.v2.example.invalid', match: 2 },
               {
@@ -514,7 +516,7 @@ async function encryptedV2Sync(
               }
             ],
             totp: 'otpauth://totp/example.invalid?secret=JBSWY3DPEHPK3PXP',
-            autofillOnPageLoad: null,
+            autofillOnPageLoad: false,
             fido2Credentials: Array.from({ length: options.passkeyCount ?? 1 }, () => ({
               credentialId: options.passkeyCredentialId ?? 'v2-credential-id',
               keyType: 'public-key',
@@ -3254,6 +3256,8 @@ describe('BitwardenDirectClient', () => {
         name: 'Example',
         username: EMAIL,
         password: 'remote-secret',
+        passwordRevisionDate: '2026-07-13T00:00:00.000Z',
+        autofillOnPageLoad: false,
         totp: 'otpauth://totp/example.invalid?secret=JBSWY3DPEHPK3PXP',
         passkeys: [expect.objectContaining({ rpId: 'example.invalid', discoverable: true })],
         customFields: [
@@ -3323,6 +3327,8 @@ describe('BitwardenDirectClient', () => {
     const originalLogin = (sync.ciphers as JsonObject[])[0]!.login as JsonObject
     expect(update.passwordHistory).toEqual((sync.ciphers as JsonObject[])[0]!.passwordHistory)
     expect((update.login as JsonObject).totp).toBe(originalLogin.totp)
+    expect((update.login as JsonObject).passwordRevisionDate).toBe('2026-07-13T00:00:00.000Z')
+    expect((update.login as JsonObject).autofillOnPageLoad).toBe(false)
     expect((update.login as JsonObject).fido2Credentials).toEqual(originalLogin.fido2Credentials)
     expect(
       (update.fields as JsonObject[]).map((field) => ({
@@ -3770,6 +3776,8 @@ describe('BitwardenDirectClient', () => {
         name: 'V2 Example',
         username: 'v2-user@example.invalid',
         password: 'v2-remote-secret',
+        passwordRevisionDate: '2026-07-13T00:00:00.000Z',
+        autofillOnPageLoad: false,
         totp: 'otpauth://totp/example.invalid?secret=JBSWY3DPEHPK3PXP',
         passkeys: [expect.objectContaining({ rpId: 'example.invalid', discoverable: true })],
         customFields: [
@@ -3850,6 +3858,8 @@ describe('BitwardenDirectClient', () => {
       futureRootField: 'preserve-root',
       typeData: {
         futureLoginField: { preserve: true },
+        passwordRevisionDate: '2026-07-13T00:00:00.000Z',
+        autofillOnPageLoad: false,
         uris: [
           { uri: 'https://edited-primary.v2.example.invalid', match: 2 },
           {

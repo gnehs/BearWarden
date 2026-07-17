@@ -262,6 +262,8 @@ export interface BitwardenLoginItem extends VaultItemFields {
   customFields: VaultCustomField[]
   passkeys: StoredPasskeyCredential[]
   passwordHistory: VaultPasswordHistoryEntry[]
+  passwordRevisionDate: string | null
+  autofillOnPageLoad: boolean | null
   attachments: BitwardenAttachment[]
 }
 
@@ -369,6 +371,8 @@ export interface BitwardenLoginDraft extends Partial<VaultItemFields> {
   customFields?: VaultCustomField[]
   passkeys?: StoredPasskeyCredential[]
   passwordHistory?: VaultPasswordHistoryEntry[]
+  passwordRevisionDate?: string | null
+  autofillOnPageLoad?: boolean | null
 }
 
 export interface BitwardenLoginRequest {
@@ -612,6 +616,8 @@ interface ResolvedBitwardenDraft extends VaultItemFields {
   customFields: VaultCustomField[]
   passkeys: StoredPasskeyCredential[]
   passwordHistory: VaultPasswordHistoryEntry[]
+  passwordRevisionDate: string | null
+  autofillOnPageLoad: boolean | null
   totpChanged: boolean
   customFieldsChanged: boolean
   passkeysChanged: boolean
@@ -664,6 +670,20 @@ function booleanProperty(record: JsonObject, name: string, fallback = false): bo
   if (value === undefined || value === null) return fallback
   if (typeof value !== 'boolean') throw new BitwardenDirectError('INVALID_RESPONSE')
   return value
+}
+
+function nullableBooleanProperty(record: JsonObject, name: string): boolean | null {
+  const value = property(record, name)
+  if (value === undefined || value === null) return null
+  if (typeof value !== 'boolean') throw new BitwardenDirectError('INVALID_RESPONSE')
+  return value
+}
+
+function nullableIsoDateProperty(record: JsonObject, name: string): string | null {
+  const value = nullableStringProperty(record, name)
+  if (value === null) return null
+  if (!Number.isFinite(Date.parse(value))) throw new BitwardenDirectError('INVALID_RESPONSE')
+  return new Date(value).toISOString()
 }
 
 function repromptProperty(record: JsonObject): VaultReprompt {
@@ -896,6 +916,11 @@ function passwordHistoryDate(value: unknown): string {
   return value
 }
 
+function draftNullableBoolean(value: unknown): boolean | null {
+  if (value === null || typeof value === 'boolean') return value
+  throw new BitwardenDirectError('INVALID_RESPONSE')
+}
+
 function checkedHistoryPassword(value: unknown): string {
   if (typeof value !== 'string' || value.length === 0 || value.length > MAX_PASSWORD_LENGTH) {
     throw new BitwardenDirectError('INVALID_RESPONSE')
@@ -995,6 +1020,16 @@ function resolveDraft(
     draft.passwordHistory === undefined
       ? clonePasswordHistory(previous?.passwordHistory ?? [])
       : validateDraftPasswordHistory(draft.passwordHistory)
+  const passwordRevisionDate =
+    draft.passwordRevisionDate === undefined
+      ? (previous?.passwordRevisionDate ?? null)
+      : draft.passwordRevisionDate === null
+        ? null
+        : passwordHistoryDate(draft.passwordRevisionDate)
+  const autofillOnPageLoad =
+    draft.autofillOnPageLoad === undefined
+      ? (previous?.autofillOnPageLoad ?? null)
+      : draftNullableBoolean(draft.autofillOnPageLoad)
   const type = draft.type ?? previous?.type ?? 'login'
   let uris: VaultLoginUri[]
   if (type !== 'login') {
@@ -1031,6 +1066,8 @@ function resolveDraft(
     uris,
     customFields,
     passwordHistory,
+    passwordRevisionDate: type === 'login' ? passwordRevisionDate : null,
+    autofillOnPageLoad: type === 'login' ? autofillOnPageLoad : null,
     passkeys: draft.passkeys ?? previous?.passkeys.map((passkey) => ({ ...passkey })) ?? [],
     totpChanged: previous === null || draft.totp !== undefined,
     customFieldsChanged:
@@ -3998,6 +4035,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         customFields: decryptLegacyCustomFields(property(raw, 'fields'), key),
         passkeys: [],
         passwordHistory: decryptLegacyPasswordHistory(property(raw, 'passwordHistory'), key),
+        passwordRevisionDate: null,
+        autofillOnPageLoad: null,
         attachments,
         creationDate: nullableStringProperty(raw, 'creationDate'),
         revisionDate: nullableStringProperty(raw, 'revisionDate'),
@@ -4011,6 +4050,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         if (!login) throw new BitwardenDirectError('INVALID_RESPONSE')
         item.username = decryptOptionalString(login, 'username', key)
         item.password = decryptOptionalString(login, 'password', key)
+        item.passwordRevisionDate = nullableIsoDateProperty(login, 'passwordRevisionDate')
+        item.autofillOnPageLoad = nullableBooleanProperty(login, 'autofillOnPageLoad')
         item.totp = decryptOptionalString(login, 'totp', key)
         item.passkeys = decryptFido2Credentials(login, key)
         const urisValue = property(login, 'uris')
@@ -4108,6 +4149,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       customFields: decryptBlobCustomFields(property(content, 'fields')),
       passkeys: [],
       passwordHistory: decryptBlobPasswordHistory(property(content, 'passwordHistory')),
+      passwordRevisionDate: null,
+      autofillOnPageLoad: null,
       attachments,
       creationDate: nullableStringProperty(raw, 'creationDate'),
       revisionDate: nullableStringProperty(raw, 'revisionDate'),
@@ -4119,6 +4162,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     if (itemType === 'login') {
       item.username = nullableStringProperty(typeData, 'username') ?? ''
       item.password = nullableStringProperty(typeData, 'password') ?? ''
+      item.passwordRevisionDate = nullableIsoDateProperty(typeData, 'passwordRevisionDate')
+      item.autofillOnPageLoad = nullableBooleanProperty(typeData, 'autofillOnPageLoad')
       item.totp = nullableStringProperty(typeData, 'totp') ?? ''
       item.passkeys = parseBlobFido2Credentials(typeData)
       const urisValue = property(typeData, 'uris')
@@ -4235,6 +4280,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     if (draft.type === 'login') {
       typeData.username = encryptBitwardenString(draft.username, key)
       typeData.password = encryptBitwardenString(draft.password, key)
+      typeData.passwordRevisionDate = draft.passwordRevisionDate
+      typeData.autofillOnPageLoad = draft.autofillOnPageLoad
       if (draft.totpChanged) {
         typeData.totp = draft.totp ? encryptBitwardenString(draft.totp, key) : null
       } else if (!Object.hasOwn(typeData, 'totp')) {
@@ -4326,14 +4373,14 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       const previousUris = property(typeData, 'uris')
       typeData.username = draft.username
       typeData.password = draft.password
+      typeData.passwordRevisionDate = draft.passwordRevisionDate
+      typeData.autofillOnPageLoad = draft.autofillOnPageLoad
       if (draft.totpChanged) typeData.totp = draft.totp || null
       if (draft.passkeysChanged) {
         typeData.fido2Credentials = draft.passkeys.map(passkeyToBlob)
       }
       typeData.uris = blobUris(draft.uris, previousUris)
-      if (!Object.hasOwn(typeData, 'passwordRevisionDate')) typeData.passwordRevisionDate = null
       if (!Object.hasOwn(typeData, 'totp')) typeData.totp = null
-      if (!Object.hasOwn(typeData, 'autofillOnPageLoad')) typeData.autofillOnPageLoad = null
       if (!Object.hasOwn(typeData, 'fido2Credentials')) typeData.fido2Credentials = []
     } else if (draft.type === 'card') {
       typeData.cardholderName = draft.cardholderName

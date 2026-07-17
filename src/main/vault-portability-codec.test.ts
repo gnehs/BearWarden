@@ -96,7 +96,9 @@ function item(type: VaultItemType, id = `${type}-id`): PortableVaultItem {
     passwordHistory:
       type === 'login'
         ? [{ password: 'previous-secret', lastUsedDate: '2026-06-01T00:00:00.000Z' }]
-        : []
+        : [],
+    passwordRevisionDate: null,
+    autofillOnPageLoad: null
   }
 }
 
@@ -117,6 +119,37 @@ async function expectInvalidInput(action: () => unknown | Promise<unknown>): Pro
 }
 
 describe('Bitwarden plaintext JSON portability', () => {
+  it('omits login wire metadata that is not part of the official export model', () => {
+    const original = snapshot()
+    original.items[0]!.passwordRevisionDate = '2026-06-02T00:00:00.000Z'
+    original.items[0]!.autofillOnPageLoad = false
+
+    const wire = JSON.parse(buildBitwardenJson(original))
+    expect(wire.items[0].login).not.toHaveProperty('passwordRevisionDate')
+    expect(wire.items[0].login).not.toHaveProperty('autofillOnPageLoad')
+    expect(parseBitwardenJson(JSON.stringify(wire)).snapshot.items[0]).toMatchObject({
+      passwordRevisionDate: null,
+      autofillOnPageLoad: null
+    })
+  })
+
+  it('round-trips login wire metadata for BearWarden full backups', () => {
+    const original = snapshot()
+    original.items[0]!.passwordRevisionDate = '2026-06-02T00:00:00.000Z'
+    original.items[0]!.autofillOnPageLoad = false
+
+    const json = buildBitwardenJson(original, { includeLoginWireMetadata: true })
+    const wire = JSON.parse(json)
+    expect(wire.items[0].login).toMatchObject({
+      passwordRevisionDate: '2026-06-02T00:00:00.000Z',
+      autofillOnPageLoad: false
+    })
+    expect(parseBitwardenJson(json).snapshot.items[0]).toMatchObject({
+      passwordRevisionDate: '2026-06-02T00:00:00.000Z',
+      autofillOnPageLoad: false
+    })
+  })
+
   it('round-trips all five supported item types and private metadata', () => {
     const original = snapshot()
     const json = buildBitwardenJson(original)

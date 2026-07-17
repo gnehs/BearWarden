@@ -407,7 +407,9 @@ export class VaultPortabilityService {
     if (typeof path !== 'string' || path.length === 0) throw new VaultError('INTERNAL_ERROR')
 
     if (format === 'bitwarden-zip') {
-      const source = await this.vault.createNativeAttachmentBackupSource(request.masterPassword)
+      const source = await this.vault.createNativeAttachmentBackupSource(request.masterPassword, {
+        includeLoginWireMetadata: false
+      })
       try {
         const result = await writeBitwardenAttachmentZip(path, source)
         return {
@@ -425,7 +427,9 @@ export class VaultPortabilityService {
 
     if (exportPassword === undefined) throw new VaultError('INTERNAL_ERROR')
     if (format === 'bearwarden-native') {
-      const source = await this.vault.createNativeAttachmentBackupSource(request.masterPassword)
+      const source = await this.vault.createNativeAttachmentBackupSource(request.masterPassword, {
+        includeLoginWireMetadata: true
+      })
       try {
         const result = await writeNativeAttachmentBackup(path, exportPassword, source)
         return {
