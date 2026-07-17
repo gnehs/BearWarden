@@ -340,6 +340,20 @@ async function lockVault(): Promise<void> {
 }
 
 async function lockVaultForInactivity(): Promise<void> {
+  const currentVault = vault
+  if (!currentVault) return
+  let unlocked = false
+  try {
+    unlocked = (await currentVault.status()).state === 'unlocked'
+  } catch {
+    // If the authoritative state cannot be read, force the same fail-closed lock barrier.
+    await lockVaultFailClosed()
+    return
+  }
+  if (!unlocked) {
+    vaultTimeoutCoordinator?.cancel()
+    return
+  }
   await lockVaultFailClosed()
   const window = mainWindow
   if (!window || window.isDestroyed()) return
@@ -718,9 +732,10 @@ if (hasSingleInstanceLock)
       { openExternal: (url) => shell.openExternal(url) }
     )
 
-    vaultTimeoutCoordinator = new VaultTimeoutCoordinator({
-      lockVault: lockVaultForInactivity
-    })
+    vaultTimeoutCoordinator = new VaultTimeoutCoordinator(
+      { lockVault: lockVaultForInactivity },
+      { getSystemIdleTime: () => powerMonitor.getSystemIdleTime() }
+    )
 
     settings = new AppSettingsService(
       activeStorage.paths.settingsPath,
@@ -871,6 +886,7 @@ if (hasSingleInstanceLock)
       if (settings?.shouldLockOnSuspend()) requestSystemLock()
     })
     powerMonitor.on('resume', () => {
+      vaultTimeoutCoordinator?.resume()
       refreshServerNotifications()
       autoSync?.requestImmediate()
     })

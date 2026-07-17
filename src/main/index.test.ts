@@ -19,12 +19,18 @@ const harness = vi.hoisted(() => {
   let accountSwitchService: unknown = null
   let serverNotificationOptions: Record<string, unknown> | null = null
   let focusTouchIdUnlockOptions: Record<string, unknown> | null = null
+  let vaultTimeoutBarrier: Record<string, unknown> | null = null
+  let vaultTimeoutOptions: Record<string, unknown> | null = null
+  let vaultState: 'uninitialized' | 'locked' | 'unlocked' = 'unlocked'
+  let systemIdleTime = 0
   const autoSyncRequest = vi.fn()
   const autoSyncRequestImmediate = vi.fn()
   const autoSyncUpdateStatus = vi.fn()
   const autoSyncCancel = vi.fn()
   const vaultTimeoutCancel = vi.fn()
   const vaultTimeoutDispose = vi.fn()
+  const vaultTimeoutResume = vi.fn()
+  const lockedWhileFocused = vi.fn(() => Promise.resolve())
   const lifecycleEvents: string[] = []
   const stopServerNotifications = vi.fn(() => {
     lifecycleEvents.push('notifications.stop')
@@ -199,12 +205,39 @@ const harness = vi.hoisted(() => {
     setFocusTouchIdUnlockOptions: (value: Record<string, unknown>) => {
       focusTouchIdUnlockOptions = value
     },
+    get vaultTimeoutBarrier(): Record<string, unknown> | null {
+      return vaultTimeoutBarrier
+    },
+    get vaultTimeoutOptions(): Record<string, unknown> | null {
+      return vaultTimeoutOptions
+    },
+    setVaultTimeoutConstructor: (
+      barrier: Record<string, unknown>,
+      options: Record<string, unknown>
+    ) => {
+      vaultTimeoutBarrier = barrier
+      vaultTimeoutOptions = options
+    },
+    get vaultState(): 'uninitialized' | 'locked' | 'unlocked' {
+      return vaultState
+    },
+    setVaultState: (state: 'uninitialized' | 'locked' | 'unlocked') => {
+      vaultState = state
+    },
+    get systemIdleTime(): number {
+      return systemIdleTime
+    },
+    setSystemIdleTime: (seconds: number) => {
+      systemIdleTime = seconds
+    },
     autoSyncRequest,
     autoSyncRequestImmediate,
     autoSyncUpdateStatus,
     autoSyncCancel,
     vaultTimeoutCancel,
     vaultTimeoutDispose,
+    vaultTimeoutResume,
+    lockedWhileFocused,
     stopServerNotifications,
     disposeNativeRestoreSession,
     vaultLock,
@@ -234,6 +267,7 @@ vi.mock('electron', () => ({
   dialog: {},
   ipcMain: { on: vi.fn() },
   powerMonitor: {
+    getSystemIdleTime: () => harness.systemIdleTime,
     on: (event: string, listener: (...args: never[]) => void) =>
       harness.powerMonitorListeners.set(event, listener)
   },
@@ -298,8 +332,12 @@ vi.mock('./app-settings', () => ({
 }))
 vi.mock('./vault-timeout-coordinator', () => ({
   VaultTimeoutCoordinator: class {
+    constructor(barrier: Record<string, unknown>, options: Record<string, unknown>) {
+      harness.setVaultTimeoutConstructor(barrier, options)
+    }
     cancel = harness.vaultTimeoutCancel
     dispose = harness.vaultTimeoutDispose
+    resume = harness.vaultTimeoutResume
   }
 }))
 vi.mock('./encrypted-vault-store', () => ({
@@ -353,6 +391,7 @@ vi.mock('./focus-touch-id-unlock', () => ({
     constructor(options: Record<string, unknown>) {
       harness.setFocusTouchIdUnlockOptions(options)
     }
+    lockedWhileFocused = harness.lockedWhileFocused
   }
 }))
 vi.mock('./application-menu', () => ({ installApplicationMenu: vi.fn() }))
@@ -369,6 +408,9 @@ vi.mock('./vault-service', () => ({
     }
     lock(): Promise<void> {
       return harness.vaultLock()
+    }
+    status(): Promise<{ state: 'uninitialized' | 'locked' | 'unlocked' }> {
+      return Promise.resolve({ state: harness.vaultState })
     }
     dispose(): void {}
   }
@@ -564,6 +606,29 @@ describe('main WebAuthn lifecycle wiring', () => {
     harness.windows[0]!.emit('close')
 
     await vi.waitFor(() => expect(harness.vaultTimeoutCancel).toHaveBeenCalledTimes(2))
+  })
+
+  it('uses the authoritative system idle clock and never timeout-locks an already locked vault', async () => {
+    harness.setSystemIdleTime(300)
+    const getSystemIdleTime = harness.vaultTimeoutOptions!.getSystemIdleTime as () => number
+    expect(getSystemIdleTime()).toBe(300)
+
+    harness.vaultLock.mockClear()
+    harness.vaultTimeoutCancel.mockClear()
+    harness.lockedWhileFocused.mockClear()
+    harness.setVaultState('locked')
+    await (harness.vaultTimeoutBarrier!.lockVault as () => Promise<void>)()
+    expect(harness.vaultLock).not.toHaveBeenCalled()
+    expect(harness.lockedWhileFocused).not.toHaveBeenCalled()
+    expect(harness.vaultTimeoutCancel).toHaveBeenCalledOnce()
+
+    harness.setVaultState('unlocked')
+    await (harness.vaultTimeoutBarrier!.lockVault as () => Promise<void>)()
+    expect(harness.vaultLock).toHaveBeenCalledOnce()
+    expect(harness.lockedWhileFocused).toHaveBeenCalledOnce()
+
+    harness.powerMonitorListeners.get('resume')!()
+    expect(harness.vaultTimeoutResume).toHaveBeenCalledOnce()
   })
 
   it('keeps the account connector main-only and cancels it at every teardown boundary', async () => {

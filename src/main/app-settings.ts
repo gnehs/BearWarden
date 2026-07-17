@@ -13,7 +13,7 @@ import type { EncryptedVaultStore } from './encrypted-vault-store'
 import { VaultError } from './vault-errors'
 import type { VaultTimeoutCoordinator } from './vault-timeout-coordinator'
 
-const SETTINGS_VERSION = 5
+const SETTINGS_VERSION = 6
 const MAX_SETTINGS_BYTES = 16 * 1024
 const MAX_TOUCH_ID_BYTES = 64 * 1024
 
@@ -68,11 +68,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function parseVaultTimeoutPolicy(value: unknown): VaultTimeoutPolicy {
+function parseVaultTimeoutPolicy(value: unknown, allowSystemIdle: boolean): VaultTimeoutPolicy {
   if (!isRecord(value)) throw new Error('invalid settings')
   const keys = Object.keys(value)
   if (value.type === 'onRestart' && keys.length === 1 && keys[0] === 'type') {
     return { type: 'onRestart' }
+  }
+  if (allowSystemIdle && value.type === 'systemIdle' && keys.length === 1 && keys[0] === 'type') {
+    return { type: 'systemIdle' }
   }
   if (
     value.type === 'appInactivity' &&
@@ -96,11 +99,13 @@ function parseSettings(value: unknown): { settings: StoredSettings; needsMigrati
       value.version !== 2 &&
       value.version !== 3 &&
       value.version !== 4 &&
+      value.version !== 5 &&
       value.version !== SETTINGS_VERSION)
   ) {
     throw new Error('invalid settings')
   }
-  const isV5 = value.version === SETTINGS_VERSION
+  const usesTimeoutPolicy = value.version === 5 || value.version === SETTINGS_VERSION
+  const isCurrent = value.version === SETTINGS_VERSION
   const autoLockMinutes = value.autoLockMinutes
   const clearClipboardSeconds = value.clearClipboardSeconds
   const legacyTimeoutValid =
@@ -111,7 +116,7 @@ function parseSettings(value: unknown): { settings: StoredSettings; needsMigrati
     autoLockMinutes === 30 ||
     autoLockMinutes === 60
   if (
-    isV5 &&
+    usesTimeoutPolicy &&
     (Object.keys(value).length !== 12 ||
       ![
         'version',
@@ -134,7 +139,7 @@ function parseSettings(value: unknown): { settings: StoredSettings; needsMigrati
     typeof value.contentProtection !== 'boolean' ||
     (value.version !== 1 && typeof value.showWebsiteIcons !== 'boolean') ||
     (value.version >= 4 && typeof value.startAtLogin !== 'boolean') ||
-    (!isV5 && !legacyTimeoutValid) ||
+    (!usesTimeoutPolicy && !legacyTimeoutValid) ||
     typeof value.lockOnScreenLock !== 'boolean' ||
     typeof value.lockOnSuspend !== 'boolean' ||
     (clearClipboardSeconds !== 0 &&
@@ -152,13 +157,13 @@ function parseSettings(value: unknown): { settings: StoredSettings; needsMigrati
   ) {
     throw new Error('invalid settings')
   }
-  const vaultTimeoutPolicy = isV5
-    ? parseVaultTimeoutPolicy(value.vaultTimeoutPolicy)
+  const vaultTimeoutPolicy = usesTimeoutPolicy
+    ? parseVaultTimeoutPolicy(value.vaultTimeoutPolicy, isCurrent)
     : autoLockMinutes === 0
       ? ({ type: 'onRestart' } as const)
       : ({ type: 'appInactivity', minutes: autoLockMinutes as number } as const)
   return {
-    needsMigration: !isV5,
+    needsMigration: !isCurrent,
     settings: {
       version: SETTINGS_VERSION,
       contentProtection: value.contentProtection,

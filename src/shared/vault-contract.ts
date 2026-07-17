@@ -1523,7 +1523,9 @@ export const MAX_VAULT_TIMEOUT_MINUTES = 525_600
  * main process may be persisted or accepted from a renderer.
  */
 export type VaultTimeoutPolicy =
-  { readonly type: 'appInactivity'; readonly minutes: number } | { readonly type: 'onRestart' }
+  | { readonly type: 'appInactivity'; readonly minutes: number }
+  | { readonly type: 'systemIdle' }
+  | { readonly type: 'onRestart' }
 
 export interface AppSettings {
   contentProtection: boolean

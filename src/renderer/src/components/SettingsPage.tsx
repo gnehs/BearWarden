@@ -87,6 +87,7 @@ const maxVaultTimeoutHours = Math.floor(maxVaultTimeoutMinutes / 60)
 // eslint-disable-next-line react-refresh/only-export-components
 export const vaultTimeoutItems = [
   { label: 'App 重新啟動時鎖定', value: 'onRestart' },
+  { label: '系統閒置 5 分鐘', value: 'systemIdle' },
   ...vaultTimeoutPresetMinutes.map((minutes) => ({
     label: `${minutes} 分鐘`,
     value: String(minutes)
@@ -100,6 +101,7 @@ type VaultTimeoutSelectValue = (typeof vaultTimeoutItems)[number]['value']
 // eslint-disable-next-line react-refresh/only-export-components
 export function vaultTimeoutSelectValue(policy: VaultTimeoutPolicy): VaultTimeoutSelectValue {
   if (policy.type === 'onRestart') return 'onRestart'
+  if (policy.type === 'systemIdle') return 'systemIdle'
   return vaultTimeoutPresetMinutes.includes(
     policy.minutes as (typeof vaultTimeoutPresetMinutes)[number]
   )
@@ -112,7 +114,7 @@ export function vaultTimeoutCustomFields(policy: VaultTimeoutPolicy): {
   hours: string
   minutes: string
 } {
-  if (policy.type === 'onRestart') return { hours: '0', minutes: '1' }
+  if (policy.type !== 'appInactivity') return { hours: '0', minutes: '1' }
   return {
     hours: String(Math.floor(policy.minutes / 60)),
     minutes: String(policy.minutes % 60)
@@ -625,6 +627,11 @@ function SettingsPage({
                             void onUpdate({ vaultTimeoutPolicy: { type: 'onRestart' } })
                             return
                           }
+                          if (value === 'systemIdle') {
+                            setCustomTimeoutSelected(false)
+                            void onUpdate({ vaultTimeoutPolicy: { type: 'systemIdle' } })
+                            return
+                          }
                           if (value === 'custom') {
                             setCustomTimeoutSelected(true)
                             return
@@ -660,7 +667,7 @@ function SettingsPage({
                           key={
                             settings.vaultTimeoutPolicy.type === 'appInactivity'
                               ? settings.vaultTimeoutPolicy.minutes
-                              : 'onRestart'
+                              : settings.vaultTimeoutPolicy.type
                           }
                           policy={settings.vaultTimeoutPolicy}
                           disabled={settingsBusy}

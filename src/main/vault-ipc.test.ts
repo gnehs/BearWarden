@@ -714,6 +714,9 @@ describe('registerVaultIpc settings validation', () => {
     await expect(update(event, { vaultTimeoutPolicy: { type: 'onRestart' } })).resolves.toEqual({
       vaultTimeoutPolicy: { type: 'onRestart' }
     })
+    await expect(update(event, { vaultTimeoutPolicy: { type: 'systemIdle' } })).resolves.toEqual({
+      vaultTimeoutPolicy: { type: 'systemIdle' }
+    })
 
     const accessorPolicy = { type: 'appInactivity' } as Record<string, unknown>
     const getter = vi.fn(() => 15)
@@ -728,6 +731,7 @@ describe('registerVaultIpc settings validation', () => {
       { vaultTimeoutPolicy: { type: 'appInactivity', minutes: 525_601 } },
       { vaultTimeoutPolicy: { type: 'onRestart', minutes: 1 } },
       { vaultTimeoutPolicy: { type: 'systemIdle', minutes: 15 } },
+      { vaultTimeoutPolicy: { type: 'systemIdle', extra: true } },
       { vaultTimeoutPolicy: { type: 'appInactivity', minutes: 15, extra: true } },
       { vaultTimeoutPolicy: accessorPolicy },
       { vaultTimeoutPolicy: inheritedPolicy },
@@ -736,7 +740,7 @@ describe('registerVaultIpc settings validation', () => {
       await expect(update(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
     expect(getter).not.toHaveBeenCalled()
-    expect(settings.update).toHaveBeenCalledTimes(2)
+    expect(settings.update).toHaveBeenCalledTimes(3)
   })
 })
 

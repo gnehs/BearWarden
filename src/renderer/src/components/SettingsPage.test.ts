@@ -23,6 +23,14 @@ describe('vault timeout settings UI', () => {
     expect(vaultTimeoutItems.map((item) => item.label).join('')).not.toContain('永不')
   })
 
+  it('offers the fixed five-minute system-idle policy without custom fields', () => {
+    expect(vaultTimeoutSelectValue({ type: 'systemIdle' })).toBe('systemIdle')
+    expect(vaultTimeoutItems).toContainEqual({
+      label: '系統閒置 5 分鐘',
+      value: 'systemIdle'
+    })
+  })
+
   it.each([
     ['0', '0', '至少'],
     ['0', '60', '0 到 59'],

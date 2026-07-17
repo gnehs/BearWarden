@@ -365,6 +365,8 @@ function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
     const policy = exactDataRecord(record.vaultTimeoutPolicy, ['type', 'minutes'])
     if (policy.type === 'onRestart' && Object.keys(policy).length === 1) {
       result.vaultTimeoutPolicy = { type: 'onRestart' }
+    } else if (policy.type === 'systemIdle' && Object.keys(policy).length === 1) {
+      result.vaultTimeoutPolicy = { type: 'systemIdle' }
     } else if (
       policy.type === 'appInactivity' &&
       Object.keys(policy).length === 2 &&
