@@ -4,22 +4,32 @@
 
 ## 明確排除
 
-- [ ] 不擴充 Send。
-- [ ] 不實作 Emergency Access。
-- [ ] 不實作 Organizations／Collections 寫入、分享或管理功能；既有只讀相容流程保留。
-- [ ] 不實作 Email forwarder 或保存第三方 forwarder API 憑證。
+- [x] 不擴充 Send。
+- [x] 不實作 Emergency Access。
+- [x] 不實作 Organizations／Collections 寫入、分享或管理功能；既有只讀相容流程保留。
+- [x] 不實作 Email forwarder 或保存第三方 forwarder API 憑證。
 
-## 下一階段：取消所有工作階段授權
+## 已完成：取消所有工作階段授權
 
-- [ ] 重新核對 Vaultwarden 與 Bitwarden Server 的 `security-stamp` 契約、主密碼 proof、回應格式及目前工作階段失效語意。
-- [ ] 在帳號安全設定加入「取消所有工作階段授權」，與單純列出裝置或移除本機帳號明確區隔。
-- [ ] 每次操作都要求新的主密碼驗證及明確破壞性確認。
-- [ ] Mutation 禁止自動重送；網路中斷、取消、逾時或 malformed response 後，不可把未知結果顯示為成功。
-- [ ] 遠端撤銷後清除目前遠端 session／notification capability，但保留本機加密 vault，不把它誤作刪除帳號或安全 logout。
-- [ ] 鎖定、切換帳號、renderer reload 與 app 關閉時中止舊操作，防止 stale response 套用到新帳號。
-- [ ] 使用 exact IPC schema；主密碼、hash、token、security stamp 與帳號識別資料不得進 renderer state、log 或錯誤訊息。
-- [ ] 補齊 HTTP、direct client、service、IPC、preload、UI、鎖定競態及 response-loss 測試。
-- [ ] 建議 commit：`feat(security): deauthorize all sessions`
+- [x] 重新核對 Vaultwarden 與 Bitwarden Server 的 `security-stamp` 契約、主密碼 proof、回應格式及目前工作階段失效語意。
+- [x] 在帳號安全設定加入「取消所有工作階段授權」，與單純列出裝置或移除本機帳號明確區隔。
+- [x] 每次操作都要求新的主密碼驗證及明確破壞性確認。
+- [x] Mutation 禁止自動重送；網路中斷、取消、逾時或 malformed response 後，不可把未知結果顯示為成功。
+- [x] 遠端撤銷後清除目前遠端 session／notification capability，但保留本機加密 vault，不把它誤作刪除帳號或安全 logout。
+- [x] 鎖定、切換帳號、renderer reload 與 app 關閉時中止舊操作，防止 stale response 套用到新帳號。
+- [x] 使用 exact IPC schema；主密碼、hash、token、security stamp 與帳號識別資料不得進 renderer state、log 或錯誤訊息。
+- [x] 補齊 HTTP、direct client、service、IPC、preload、UI、鎖定競態、通知 token rotation 及 response-loss 測試。
+- [x] Commit：`feat(security): deauthorize all sessions`
+
+## 下一階段
+
+優先順序如下；每一項都應獨立評估、驗證並 commit，不綁成單一大型變更。
+
+1. Passkey 外部 provider transport 的 caller authenticity 威脅模型與可行性閘門。
+2. Vaultwarden／Bitwarden Cloud 雙裝置與長時間離線 live fixtures。
+3. `.bwbackup` 定期復原演練與官方明文附件 ZIP 跨客戶端 fixture。
+4. 多帳號切換、移除中斷、重啟續作與 stale operation 壓力測試。
+5. Windows OpenSSH named pipe、實體 FIDO2 security key 與附件 transport 真機驗證。
 
 ## Passkey 外部 provider transport
 
