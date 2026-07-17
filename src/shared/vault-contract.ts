@@ -319,12 +319,22 @@ export type VaultExportRequest =
       format: 'bitwarden-csv' | 'bitwarden-zip'
     }
 
-export interface VaultImportRequest {
-  /** Proves the currently unlocked vault owner in the main process. */
-  masterPassword: string
-  /** Required for password-protected Bitwarden JSON; omitted for plaintext JSON. */
-  password?: string
-}
+export type VaultImportRequest =
+  | {
+      /** Proves the currently unlocked vault owner in the main process. */
+      masterPassword: string
+      /** Required for password-protected Bitwarden JSON; omitted for plaintext JSON/CSV. */
+      password?: string
+      /** Omitted for backward-compatible portable JSON/CSV imports. */
+      format?: 'portable'
+    }
+  | {
+      /** Proves the currently unlocked vault owner in the main process. */
+      masterPassword: string
+      /** KeePass XML is plaintext and must not accept a backup password. */
+      password?: never
+      format: 'keepass-xml'
+    }
 
 export interface VaultExportResult {
   canceled: boolean
@@ -363,6 +373,12 @@ export interface VaultImportResult {
   importedFolders: number
   importedItems: number
   skippedTrashItems: number
+  /** KeePass attachment references whose binary contents are intentionally not imported. */
+  skippedAttachments?: number
+  /** KeePass historical Entry records intentionally omitted from the active vault. */
+  skippedHistoryEntries?: number
+  /** KeePass template Entry records intentionally omitted from the active vault. */
+  skippedTemplateEntries?: number
 }
 
 export interface NativeRestoreSummary {

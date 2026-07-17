@@ -661,15 +661,24 @@ if (hasSingleInstanceLock)
           : await dialog.showSaveDialog(options)
         return result.canceled || !result.filePath ? null : result.filePath
       },
-      chooseImportPath: async () => {
+      chooseImportPath: async (format) => {
+        const native = format === 'bearwarden-native'
+        const keepass = format === 'keepass-xml'
         const options = {
-          title: '匯入密碼資料',
+          title: native
+            ? '還原 BearWarden 原生附件備份'
+            : keepass
+              ? '匯入 KeePass 2 XML'
+              : '匯入 Bitwarden 或 Chrome 密碼資料',
           buttonLabel: '匯入',
-          filters: [
-            { name: 'Bitwarden JSON', extensions: ['json'] },
-            { name: 'Bitwarden 或 Chrome CSV', extensions: ['csv'] },
-            { name: '所有檔案', extensions: ['*'] }
-          ],
+          filters: native
+            ? [{ name: 'BearWarden 原生附件備份', extensions: ['bwbackup'] }]
+            : keepass
+              ? [{ name: 'KeePass 2 XML', extensions: ['xml'] }]
+              : [
+                  { name: 'Bitwarden JSON', extensions: ['json'] },
+                  { name: 'Bitwarden 或 Chrome CSV', extensions: ['csv'] }
+                ],
           properties: ['openFile' as const]
         }
         const result = mainWindow

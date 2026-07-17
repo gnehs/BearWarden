@@ -529,6 +529,152 @@ describe('VaultPortabilityService', () => {
     )
   })
 
+  it('imports KeePass 2 XML atomically without a backup password and reports intentional losses', async () => {
+    const importNow = vi.fn(() => new Date('2030-01-02T03:04:05.000Z'))
+    const { inputPath, service, vault } = await harness({ now: importNow })
+    vault.importPortableSnapshot.mockImplementationOnce(async (snapshot, skippedTrashItems) => ({
+      importedFolders: snapshot.folders.length,
+      importedItems: snapshot.items.length,
+      skippedTrashItems
+    }))
+    const time = '2026-07-17T01:02:03Z'
+    const times = `<Times><CreationTime>${time}</CreationTime><LastModificationTime>${time}</LastModificationTime></Times>`
+    await writeFile(
+      inputPath,
+      `<?xml version="1.0" encoding="utf-8"?><KeePassFile><Meta><Generator>KeePass</Generator><RecycleBinUUID>AQEBAQEBAQEBAQEBAQEBAQ==</RecycleBinUUID><EntryTemplatesGroup>AAAAAAAAAAAAAAAAAAAAAA==</EntryTemplatesGroup></Meta><Root><Group><UUID>AgICAgICAgICAgICAgICAg==</UUID><Name>Database</Name>${times}<Group><UUID>AwMDAwMDAwMDAwMDAwMDAw==</UUID><Name>Work</Name>${times}<Entry><UUID>BAQEBAQEBAQEBAQEBAQEBA==</UUID>${times}<String><Key>Title</Key><Value>Portal</Value></String><String><Key>UserName</Key><Value>alice</Value></String><String><Key>Password</Key><Value>secret</Value></String><Binary><Key>document.txt</Key><Value Ref="0" /></Binary><History><Entry><UUID>BQUFBQUFBQUFBQUFBQUFBQ==</UUID>${times}<String><Key>Title</Key><Value>Old Portal</Value></String></Entry></History></Entry></Group><Group><UUID>AQEBAQEBAQEBAQEBAQEBAQ==</UUID><Name>Recycle Bin</Name>${times}<Entry><UUID>BgYGBgYGBgYGBgYGBgYGBg==</UUID>${times}<String><Key>Title</Key><Value>Deleted</Value></String></Entry></Group></Group><DeletedObjects /></Root></KeePassFile>`
+    )
+    const request = { masterPassword: MASTER_PASSWORD, format: 'keepass-xml' as const }
+
+    await expect(service.importVault(request)).resolves.toEqual({
+      canceled: false,
+      importedFolders: 1,
+      importedItems: 1,
+      skippedTrashItems: 1,
+      skippedAttachments: 1,
+      skippedHistoryEntries: 1,
+      skippedTemplateEntries: 0
+    })
+    expect(request.masterPassword).toBe('')
+    expect(importNow).toHaveBeenCalledOnce()
+    expect(vault.importPortableSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        folders: [expect.objectContaining({ name: 'Work' })],
+        items: [
+          expect.objectContaining({
+            type: 'login',
+            name: 'Portal',
+            username: 'alice',
+            password: 'secret'
+          })
+        ]
+      }),
+      1,
+      MASTER_PASSWORD
+    )
+  })
+
+  it('rejects files that do not match the format disclosed by the renderer', async () => {
+    const { inputPath, picker, service, vault } = await harness()
+
+    await writeFile(
+      inputPath,
+      '<?xml version="1.0"?><KeePassFile><Meta><Generator>KeePass</Generator></Meta><Root><Group><UUID>AAAAAAAAAAAAAAAAAAAAAQ==</UUID></Group><DeletedObjects /></Root></KeePassFile>'
+    )
+    await expect(service.importVault({ masterPassword: MASTER_PASSWORD })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    expect(picker.chooseImportPath).toHaveBeenLastCalledWith('portable')
+
+    await writeFile(
+      inputPath,
+      'name,url,username,password\nChrome,https://example.test,user,password'
+    )
+    await expect(
+      service.importVault({ masterPassword: MASTER_PASSWORD, format: 'keepass-xml' })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    expect(picker.chooseImportPath).toHaveBeenLastCalledWith('keepass-xml')
+
+    await writeFile(inputPath, buildBitwardenJson(portableSnapshot()))
+    await expect(
+      service.importVault({ masterPassword: MASTER_PASSWORD, format: 'keepass-xml' })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+
+    vi.mocked(picker.chooseImportPath).mockClear()
+    vi.mocked(vault.verifyPortabilityOwner).mockClear()
+    await expect(
+      service.importVault({
+        masterPassword: MASTER_PASSWORD,
+        password: BACKUP_PASSWORD,
+        format: 'keepass-xml'
+      } as never)
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    expect(vault.verifyPortabilityOwner).not.toHaveBeenCalled()
+    expect(picker.chooseImportPath).not.toHaveBeenCalled()
+
+    await expect(
+      service.importVault({ masterPassword: MASTER_PASSWORD, format: null } as never)
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    expect(vault.verifyPortabilityOwner).not.toHaveBeenCalled()
+    expect(picker.chooseImportPath).not.toHaveBeenCalled()
+    expect(vault.importPortableSnapshot).not.toHaveBeenCalled()
+  })
+
+  it('rejects a KeePass backup password and non-UTF-8 XML before mutation and scrubs all requests', async () => {
+    const { inputPath, service, vault } = await harness()
+    await writeFile(inputPath, '<?xml version="1.0"?><KeePassFile />')
+    const passwordRequest = {
+      masterPassword: MASTER_PASSWORD,
+      password: BACKUP_PASSWORD,
+      format: 'keepass-xml'
+    }
+    await expect(service.importVault(passwordRequest as never)).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    expect(passwordRequest).toEqual({
+      masterPassword: '',
+      password: '',
+      format: 'keepass-xml'
+    })
+
+    await writeFile(inputPath, Buffer.from([0xff, 0xfe, 0x3c, 0x00]))
+    const invalidEncodingRequest = {
+      masterPassword: MASTER_PASSWORD,
+      format: 'keepass-xml' as const
+    }
+    await expect(service.importVault(invalidEncodingRequest)).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    expect(invalidEncodingRequest.masterPassword).toBe('')
+
+    await writeFile(
+      inputPath,
+      '<?xml version="1.0"?><!DOCTYPE KeePassFile [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><KeePassFile />'
+    )
+    const maliciousRequest = { masterPassword: MASTER_PASSWORD, format: 'keepass-xml' as const }
+    await expect(service.importVault(maliciousRequest)).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    expect(maliciousRequest.masterPassword).toBe('')
+
+    await writeFile(
+      inputPath,
+      '<?xml version="1.0"?><KeePassFile><Meta><Generator>KeePass</Generator></Meta><Root><Group><UUID>AAAAAAAAAAAAAAAAAAAAAQ==</UUID><Entry><UUID>AAAAAAAAAAAAAAAAAAAAAg==</UUID><String><Key>TimeOtp-Secret</Key><Value>one</Value></String><String><Key>TimeOtp-Secret-Hex</Key><Value>6f6e65</Value></String></Entry></Group><DeletedObjects /></Root></KeePassFile>'
+    )
+    const invalidTotpRequest = { masterPassword: MASTER_PASSWORD, format: 'keepass-xml' as const }
+    await expect(service.importVault(invalidTotpRequest)).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    expect(invalidTotpRequest.masterPassword).toBe('')
+
+    const { service: canceledService } = await harness({ importPath: null })
+    const canceledRequest = { masterPassword: MASTER_PASSWORD }
+    await expect(canceledService.importVault(canceledRequest)).resolves.toMatchObject({
+      canceled: true
+    })
+    expect(canceledRequest.masterPassword).toBe('')
+    expect(vault.importPortableSnapshot).not.toHaveBeenCalled()
+  })
+
   it('rejects missing or incorrect passwords, malformed files, and oversized files before mutation', async () => {
     const { inputPath, service, vault } = await harness()
     const encrypted = await encryptBitwardenPasswordProtectedJson(

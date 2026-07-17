@@ -275,14 +275,39 @@ function parseVaultExport(value: unknown): VaultExportRequest {
 }
 
 function parseVaultImport(value: unknown): VaultImportRequest {
-  const record = exactRecord(value, ['masterPassword', 'password'])
+  const record = exactDataRecord(value, ['masterPassword', 'password', 'format'])
   const masterPassword = requiredString(record, 'masterPassword')
+  if (
+    record.format !== undefined &&
+    record.format !== 'portable' &&
+    record.format !== 'keepass-xml'
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
   if (record.password !== undefined && typeof record.password !== 'string') {
     throw new VaultError('INVALID_INPUT')
   }
+  if (record.format === 'keepass-xml') {
+    if (record.password !== undefined) throw new VaultError('INVALID_INPUT')
+    return { masterPassword, format: 'keepass-xml' }
+  }
   return {
     masterPassword,
-    ...(record.password === undefined ? {} : { password: record.password })
+    ...(record.password === undefined ? {} : { password: record.password }),
+    ...(record.format === undefined ? {} : { format: 'portable' as const })
+  }
+}
+
+function scrubVaultImportSecrets(value: unknown): void {
+  if (typeof value !== 'object' || value === null) return
+  for (const key of ['masterPassword', 'password'] as const) {
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key)
+      if (!descriptor || !('value' in descriptor)) continue
+      Reflect.defineProperty(value, key, { ...descriptor, value: '' })
+    } catch {
+      // Secret cleanup is best-effort and must not invoke accessors or mask the intended result.
+    }
   }
 }
 
@@ -2265,9 +2290,16 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     }
   })
   registerHandler(IPC_CHANNELS.vaultImport, getMainWindow, async (_event, input) => {
-    const result = await portability.importVault(parseVaultImport(input))
-    if (!result.canceled && result.importedFolders + result.importedItems > 0) notifyMutation()
-    return result
+    let request: VaultImportRequest | undefined
+    try {
+      request = parseVaultImport(input)
+      const result = await portability.importVault(request)
+      if (!result.canceled && result.importedFolders + result.importedItems > 0) notifyMutation()
+      return result
+    } finally {
+      scrubVaultImportSecrets(request)
+      scrubVaultImportSecrets(input)
+    }
   })
   registerHandler(IPC_CHANNELS.nativeRestorePreview, getMainWindow, async (event, input) => {
     const request = parseNativeRestorePreview(input)

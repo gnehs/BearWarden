@@ -1,4 +1,23 @@
-import type { VaultExportRequest, VaultExportResult } from '../../../shared/vault-contract'
+import type {
+  VaultExportRequest,
+  VaultExportResult,
+  VaultImportRequest,
+  VaultImportResult
+} from '../../../shared/vault-contract'
+
+export function createVaultImportRequest(
+  masterPassword: string,
+  backupPassword: string,
+  keepass: boolean
+): VaultImportRequest {
+  return keepass
+    ? { masterPassword, format: 'keepass-xml' }
+    : {
+        masterPassword,
+        format: 'portable',
+        ...(backupPassword ? { password: backupPassword } : {})
+      }
+}
 
 export async function executeVaultExport(
   request: VaultExportRequest,
@@ -46,4 +65,17 @@ export function formatVaultExportResult(result: VaultExportResult): string {
     ? '；檔案已發布到選定位置，但無法確認目錄 metadata 已持久化。請先檢查檔案是否完整，再決定是否重試'
     : ''
   return `匯出檔已儲存，共 ${result.exportedItems} 個項目、${result.exportedFolders} 個資料夾${attachments}${skipped}${unsupported}${passkeys}${lossSummary}${riskyFields}${durability}。`
+}
+
+export function formatVaultImportResult(result: VaultImportResult): string {
+  const skipped = result.skippedTrashItems
+    ? `，已略過 ${result.skippedTrashItems} 個垃圾桶項目`
+    : ''
+  const losses = [
+    result.skippedTemplateEntries ? `${result.skippedTemplateEntries} 個範本項目` : '',
+    result.skippedAttachments ? `${result.skippedAttachments} 個附件` : '',
+    result.skippedHistoryEntries ? `${result.skippedHistoryEntries} 筆歷史版本` : ''
+  ].filter(Boolean)
+  const lossSummary = losses.length > 0 ? `；KeePass 未匯入：${losses.join('、')}` : ''
+  return `匯入完成，共新增 ${result.importedItems} 個項目、${result.importedFolders} 個資料夾${skipped}${lossSummary}。`
 }

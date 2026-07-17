@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { executeVaultExport, formatVaultExportResult } from '../lib/vault-portability-ui'
-import { VaultCsvExportWarning } from './VaultPortabilityDialog'
+import {
+  createVaultImportRequest,
+  executeVaultExport,
+  formatVaultExportResult,
+  formatVaultImportResult
+} from '../lib/vault-portability-ui'
+import { VaultCsvExportWarning, VaultKeePassXmlImportWarning } from './VaultPortabilityDialog'
 
 describe('Bitwarden CSV export warning', () => {
   it('explains plaintext, formula, archive, and unsupported-data boundaries', () => {
@@ -105,5 +110,61 @@ describe('Bitwarden CSV export warning', () => {
       )
     ).rejects.toBe(intended)
     expect(failure).toMatchObject({ masterPassword: '', password: '' })
+  })
+})
+
+describe('KeePass XML import warning', () => {
+  it('binds each disclosed choice to an explicit import format and never sends a KeePass password', () => {
+    expect(createVaultImportRequest('owner-proof', 'backup-secret', true)).toEqual({
+      masterPassword: 'owner-proof',
+      format: 'keepass-xml'
+    })
+    expect(createVaultImportRequest('owner-proof', 'backup-secret', false)).toEqual({
+      masterPassword: 'owner-proof',
+      password: 'backup-secret',
+      format: 'portable'
+    })
+    expect(createVaultImportRequest('owner-proof', '', false)).toEqual({
+      masterPassword: 'owner-proof',
+      format: 'portable'
+    })
+  })
+
+  it('states the plaintext and intentionally omitted data boundaries', () => {
+    const markup = renderToStaticMarkup(<VaultKeePassXmlImportWarning />)
+
+    expect(markup).toContain('未加密明文')
+    expect(markup).toContain('安全刪除')
+    expect(markup).toContain('個人 Entry')
+    expect(markup).toContain('巢狀群組')
+    expect(markup).toContain('附件 Binary')
+    expect(markup).toContain('History')
+    expect(markup).toContain('進階 metadata')
+    expect(markup).toContain('回收桶')
+    expect(markup).toContain('範本群組')
+    expect(markup).toContain('TimeOtp')
+    expect(markup).toContain('可產碼格式')
+    expect(markup).toContain('互相衝突')
+    expect(markup).toContain('整次匯入會停止')
+    expect(markup).toContain('不會靜默略過驗證碼')
+  })
+
+  it('reports every intentionally omitted KeePass category after import', () => {
+    const message = formatVaultImportResult({
+      canceled: false,
+      importedFolders: 2,
+      importedItems: 3,
+      skippedTrashItems: 4,
+      skippedTemplateEntries: 5,
+      skippedAttachments: 6,
+      skippedHistoryEntries: 7
+    })
+
+    expect(message).toContain('3 個項目')
+    expect(message).toContain('2 個資料夾')
+    expect(message).toContain('4 個垃圾桶項目')
+    expect(message).toContain('5 個範本項目')
+    expect(message).toContain('6 個附件')
+    expect(message).toContain('7 筆歷史版本')
   })
 })

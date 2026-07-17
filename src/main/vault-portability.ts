@@ -26,6 +26,7 @@ import {
 } from './native-attachment-backup'
 import { writeBitwardenAttachmentZip } from './bitwarden-attachment-zip'
 import type { VaultService } from './vault-service'
+import { parseKeePass2Xml } from './vault-portability-keepass-xml'
 
 const MAX_PORTABLE_FILE_BYTES = 64 * 1024 * 1024
 const MIN_EXPORT_PASSWORD_LENGTH = 12
@@ -46,7 +47,9 @@ interface NativeRestoreSession {
 
 export interface VaultPortabilityPicker {
   chooseExportPath: (defaultName: string) => Promise<string | null>
-  chooseImportPath: () => Promise<string | null>
+  chooseImportPath: (
+    format: 'portable' | 'keepass-xml' | 'bearwarden-native'
+  ) => Promise<string | null>
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -200,6 +203,12 @@ function beginsWithJsonObject(text: string): boolean {
   return text[index] === '{'
 }
 
+function beginsWithXml(text: string): boolean {
+  let index = text.charCodeAt(0) === 0xfeff ? 1 : 0
+  while (index < text.length && /\s/u.test(text[index]!)) index += 1
+  return text[index] === '<'
+}
+
 export class VaultPortabilityService {
   private nativeRestoreSession: NativeRestoreSession | null = null
 
@@ -224,7 +233,7 @@ export class VaultPortabilityService {
       throw new VaultError('INVALID_INPUT')
     }
     const generation = await this.vault.unlockedGeneration()
-    const path = await this.picker.chooseImportPath()
+    const path = await this.picker.chooseImportPath('bearwarden-native')
     if (path === null) return { canceled: true }
     if (typeof path !== 'string' || path.length === 0) throw new VaultError('INTERNAL_ERROR')
     const abort = new AbortController()
@@ -558,45 +567,79 @@ export class VaultPortabilityService {
   }
 
   async importVault(request: VaultImportRequest): Promise<VaultImportResult> {
-    if (
-      !request ||
-      typeof request.masterPassword !== 'string' ||
-      (request.password !== undefined &&
-        (typeof request.password !== 'string' ||
-          request.password.length === 0 ||
-          request.password.length > MAX_EXPORT_PASSWORD_LENGTH))
-    ) {
-      throw new VaultError('INVALID_INPUT')
-    }
+    try {
+      const requestedFormat = (request as { format?: unknown } | null | undefined)?.format
+      const format = requestedFormat === undefined ? 'portable' : requestedFormat
+      if (
+        !request ||
+        typeof request.masterPassword !== 'string' ||
+        (format !== 'portable' && format !== 'keepass-xml') ||
+        (format === 'keepass-xml' && request.password !== undefined) ||
+        (request.password !== undefined &&
+          (typeof request.password !== 'string' ||
+            request.password.length === 0 ||
+            request.password.length > MAX_EXPORT_PASSWORD_LENGTH))
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
 
-    await this.vault.verifyPortabilityOwner(request.masterPassword)
-    const path = await this.picker.chooseImportPath()
-    if (path === null) {
-      return { canceled: true, importedFolders: 0, importedItems: 0, skippedTrashItems: 0 }
-    }
-    if (typeof path !== 'string' || path.length === 0) throw new VaultError('INTERNAL_ERROR')
+      await this.vault.verifyPortabilityOwner(request.masterPassword)
+      const path = await this.picker.chooseImportPath(format)
+      if (path === null) {
+        return { canceled: true, importedFolders: 0, importedItems: 0, skippedTrashItems: 0 }
+      }
+      if (typeof path !== 'string' || path.length === 0) throw new VaultError('INTERNAL_ERROR')
 
-    const document = await readBoundedFile(path)
-    let parsed: ReturnType<typeof parseBitwardenJson>
-    if (beginsWithJsonObject(document)) {
-      const shape = parseDocumentShape(document)
-      let clearText = document
-      if (shape.encrypted === true) {
-        if (shape.passwordProtected !== true || request.password === undefined) {
+      const document = await readBoundedFile(path)
+      let parsed: ReturnType<typeof parseBitwardenJson>
+      let keepassLosses: Pick<
+        VaultImportResult,
+        'skippedAttachments' | 'skippedHistoryEntries' | 'skippedTemplateEntries'
+      > = {}
+      if (beginsWithJsonObject(document)) {
+        if (format !== 'portable') throw new VaultError('INVALID_INPUT')
+        const shape = parseDocumentShape(document)
+        let clearText = document
+        if (shape.encrypted === true) {
+          if (shape.passwordProtected !== true || request.password === undefined) {
+            throw new VaultError('INVALID_INPUT')
+          }
+          clearText = await decryptBitwardenPasswordProtectedJson(document, request.password)
+        }
+        parsed = parseBitwardenJson(clearText)
+      } else if (beginsWithXml(document)) {
+        if (format !== 'keepass-xml' || request.password !== undefined) {
           throw new VaultError('INVALID_INPUT')
         }
-        clearText = await decryptBitwardenPasswordProtectedJson(document, request.password)
+        const importNow = this.now()
+        const keepass = parseKeePass2Xml(document, { now: importNow })
+        parsed = keepass
+        keepassLosses = {
+          skippedAttachments: keepass.skippedAttachments,
+          skippedHistoryEntries: keepass.skippedHistoryEntries,
+          skippedTemplateEntries: keepass.skippedTemplateEntries
+        }
+      } else {
+        if (format !== 'portable' || request.password !== undefined) {
+          throw new VaultError('INVALID_INPUT')
+        }
+        parsed = parseBitwardenOrChromiumCsv(document)
       }
-      parsed = parseBitwardenJson(clearText)
-    } else {
-      if (request.password !== undefined) throw new VaultError('INVALID_INPUT')
-      parsed = parseBitwardenOrChromiumCsv(document)
+      const imported = await this.vault.importPortableSnapshot(
+        parsed.snapshot,
+        parsed.skippedTrashItems,
+        request.masterPassword
+      )
+      return { canceled: false, ...imported, ...keepassLosses }
+    } finally {
+      if (request && typeof request === 'object') {
+        try {
+          request.masterPassword = ''
+          if (typeof request.password === 'string') request.password = ''
+        } catch {
+          // A frozen/exotic direct caller must not replace the intended import result or error.
+        }
+      }
     }
-    const imported = await this.vault.importPortableSnapshot(
-      parsed.snapshot,
-      parsed.skippedTrashItems,
-      request.masterPassword
-    )
-    return { canceled: false, ...imported }
   }
 }

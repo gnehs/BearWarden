@@ -14,7 +14,9 @@ import {
   type SyncResolvePendingImportRequest,
   type SyncStatus,
   type VaultExportRequest,
-  type VaultExportResult
+  type VaultExportResult,
+  type VaultImportRequest,
+  type VaultImportResult
 } from './vault-contract'
 
 describe('item history renderer contract', () => {
@@ -54,6 +56,21 @@ describe('vault export renderer contract', () => {
     expectTypeOf<VaultExportResult['multilineCustomFields']>().toEqualTypeOf<number | undefined>()
     expectTypeOf<VaultExportResult['colonValueCustomFields']>().toEqualTypeOf<number | undefined>()
     expectTypeOf<VaultExportResult['durabilityWarning']>().toEqualTypeOf<true | undefined>()
+  })
+})
+
+describe('vault import renderer contract', () => {
+  it('makes the selected import disclosure an explicit format contract', () => {
+    expectTypeOf<VaultImportRequest>().toMatchTypeOf<
+      | { masterPassword: string; password?: string; format?: 'portable' }
+      | { masterPassword: string; password?: never; format: 'keepass-xml' }
+    >()
+  })
+
+  it('exposes only aggregate KeePass loss counts', () => {
+    expectTypeOf<VaultImportResult['skippedAttachments']>().toEqualTypeOf<number | undefined>()
+    expectTypeOf<VaultImportResult['skippedHistoryEntries']>().toEqualTypeOf<number | undefined>()
+    expectTypeOf<VaultImportResult['skippedTemplateEntries']>().toEqualTypeOf<number | undefined>()
   })
 })
 

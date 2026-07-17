@@ -114,7 +114,7 @@ import OrganizationsPage from './OrganizationsPage'
 import EmergencyAccessPage from './EmergencyAccessPage'
 import VaultHealthPage from './VaultHealthPage'
 import VaultPortabilityDialog, { type VaultPortabilityMode } from './VaultPortabilityDialog'
-import { formatVaultExportResult } from '../lib/vault-portability-ui'
+import { formatVaultExportResult, formatVaultImportResult } from '../lib/vault-portability-ui'
 import VirtualizedItemList from './VirtualizedItemList'
 import { groupItemsByDate } from '../lib/item-date-groups'
 import { matchesVaultCategory, type VaultCategoryFilter } from '../lib/vault-category'
@@ -2364,12 +2364,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   async function refreshAfterImport(result: VaultImportResult): Promise<void> {
     await loadVault()
-    const skipped = result.skippedTrashItems
-      ? `，已略過 ${result.skippedTrashItems} 個垃圾桶項目`
-      : ''
-    announce(
-      `匯入完成，共新增 ${result.importedItems} 個項目、${result.importedFolders} 個資料夾${skipped}。`
-    )
+    announce(formatVaultImportResult(result))
   }
 
   const toggleFavorite = useCallback(

@@ -25,11 +25,11 @@ import { Input } from '@renderer/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@renderer/components/ui/native-select'
 import { Progress, ProgressLabel, ProgressValue } from '@renderer/components/ui/progress'
 import { Spinner } from '@renderer/components/ui/spinner'
-import { executeVaultExport } from '../lib/vault-portability-ui'
+import { createVaultImportRequest, executeVaultExport } from '../lib/vault-portability-ui'
 
 export type VaultPortabilityMode = 'export' | 'import'
 type ExportFormat = 'bitwarden-json' | 'bitwarden-csv' | 'bitwarden-zip' | 'bearwarden-native'
-type ImportFormat = 'portable' | 'bearwarden-native'
+type ImportFormat = 'portable' | 'keepass-xml' | 'bearwarden-native'
 
 interface VaultPortabilityDialogProps {
   mode: VaultPortabilityMode
@@ -66,6 +66,18 @@ export function VaultCsvExportWarning(): React.JSX.Element {
       JSON；若要包含附件，請用 BearWarden 完整備份。請只用文字編輯器檢視 CSV；若用試算表開啟，以
       =、+、- 或 @ 開頭的原始欄位可能被當成公式執行。BearWarden 為保持與 Bitwarden
       相容及資料不失真，不會改寫這些秘密。
+    </>
+  )
+}
+
+export function VaultKeePassXmlImportWarning(): React.JSX.Element {
+  return (
+    <>
+      KeePass 2 XML 是未加密明文，內含可直接讀取的密碼；請只從受信任的加密磁碟開啟，匯入後安全刪除。
+      BearWarden 只匯入個人 Entry，並將巢狀群組展平成資料夾路徑；附件 Binary、History 歷史版本與進階
+      metadata 不會匯入，回收桶與範本群組也會略過。現代 KeePass TimeOtp
+      欄位會轉成可產碼格式；若密鑰、
+      編碼或參數互相衝突或無法轉換，整次匯入會停止，不會靜默略過驗證碼。
     </>
   )
 }
@@ -126,6 +138,7 @@ function VaultPortabilityDialog({
     event.preventDefault()
     if (busy || submittingRef.current) return
     const nativeImport = mode === 'import' && importFormat === 'bearwarden-native'
+    const keepassImport = mode === 'import' && importFormat === 'keepass-xml'
     const plaintextZip = mode === 'export' && exportFormat === 'bitwarden-zip'
     const plaintextCsv = mode === 'export' && exportFormat === 'bitwarden-csv'
     const passwordlessExport = plaintextZip || plaintextCsv
@@ -163,10 +176,9 @@ function VaultPortabilityDialog({
         onExported(result)
         close()
       } else if (!nativeImport) {
-        const result = await onImport({
-          masterPassword,
-          ...(backupPassword ? { password: backupPassword } : {})
-        })
+        const result = await onImport(
+          createVaultImportRequest(masterPassword, backupPassword, keepassImport)
+        )
         scrubPasswords()
         if (result.canceled) return
         await onImported(result)
@@ -213,7 +225,9 @@ function VaultPortabilityDialog({
                   : '無法建立備份。請確認主密碼、儲存位置與備份密碼後再試一次。'
             : nativeImport
               ? '還原未完成。若顯示衝突，請先確認伺服器上的同名附件；進度已安全保留，可重新選取同一份備份續傳。'
-              : '無法匯入檔案。請確認主密碼、檔案格式與備份密碼後再試一次。'
+              : keepassImport
+                ? '無法匯入 KeePass XML。請確認主密碼，並確認檔案是由 KeePass 2 匯出的完整 XML。'
+                : '無法匯入檔案。請確認主密碼、檔案格式與備份密碼後再試一次。'
         )
       }
     } finally {
@@ -243,6 +257,7 @@ function VaultPortabilityDialog({
   const plaintextCsv = exporting && exportFormat === 'bitwarden-csv'
   const passwordlessExport = plaintextZip || plaintextCsv
   const nativeImport = !exporting && importFormat === 'bearwarden-native'
+  const keepassImport = !exporting && importFormat === 'keepass-xml'
   const completed = restoreResult?.state === 'complete'
   const progressPercent = progress?.totalBytes
     ? Math.min(100, Math.round((progress.completedBytes / progress.totalBytes) * 100))
@@ -272,7 +287,9 @@ function VaultPortabilityDialog({
               : '建立受密碼保護的可攜備份。'
           : nativeImport
             ? '從 BearWarden 完整備份還原項目與附件，可在中斷後安全續傳。'
-            : '將 Bitwarden JSON、Bitwarden CSV 或 Chrome／Chromium 密碼 CSV 加入目前的保管庫。既有項目不會被覆蓋。'
+            : keepassImport
+              ? '將 KeePass 2 匯出的明文 XML Entry 加入目前的保管庫。既有項目不會被覆蓋。'
+              : '將 Bitwarden JSON、Bitwarden CSV 或 Chrome／Chromium 密碼 CSV 加入目前的保管庫。既有項目不會被覆蓋。'
       }
       busy={busy && !(nativeImport && preview && !completed)}
       onClose={() => void closeSafely()}
@@ -294,7 +311,11 @@ function VaultPortabilityDialog({
                       setExportFormat(event.target.value as ExportFormat)
                       setBackupPassword('')
                       setConfirmPassword('')
-                    } else setImportFormat(event.target.value as ImportFormat)
+                    } else {
+                      setImportFormat(event.target.value as ImportFormat)
+                      setBackupPassword('')
+                      setConfirmPassword('')
+                    }
                   }}
                 >
                   {exporting ? (
@@ -316,6 +337,9 @@ function VaultPortabilityDialog({
                     <>
                       <NativeSelectOption value="portable">
                         Bitwarden JSON／CSV 或 Chrome CSV
+                      </NativeSelectOption>
+                      <NativeSelectOption value="keepass-xml">
+                        KeePass 2 明文 XML
                       </NativeSelectOption>
                       <NativeSelectOption value="bearwarden-native">
                         BearWarden 完整備份（.bwbackup）
@@ -339,19 +363,23 @@ function VaultPortabilityDialog({
                   ? 'ZIP 內的密碼與附件都是未加密明文'
                   : plaintextCsv
                     ? 'CSV 是不完整且未加密的明文匯出'
-                    : exporting && exportFormat === 'bearwarden-native'
-                      ? '完整備份不是 Bitwarden 相容格式'
-                      : nativeImport
-                        ? '可安全續傳，但不會自動解決伺服器衝突'
-                        : exporting
-                          ? '請妥善保存備份密碼'
-                          : '匯入不會自動去除重複項目'}
+                    : keepassImport
+                      ? 'KeePass XML 內的密碼是未加密明文'
+                      : exporting && exportFormat === 'bearwarden-native'
+                        ? '完整備份不是 Bitwarden 相容格式'
+                        : nativeImport
+                          ? '可安全續傳，但不會自動解決伺服器衝突'
+                          : exporting
+                            ? '請妥善保存備份密碼'
+                            : '匯入不會自動去除重複項目'}
               </AlertTitle>
               <AlertDescription>
                 {plaintextZip ? (
                   '只應儲存在受信任的加密磁碟，使用後請安全刪除。格式對齊 Bitwarden 個人保管庫 ZIP 匯出；官方目前不支援把附件 ZIP 批次匯入，因此 BearWarden 不宣稱可用它無損還原附件。垃圾桶與 Sends 不包含在內。'
                 ) : plaintextCsv ? (
                   <VaultCsvExportWarning />
+                ) : keepassImport ? (
+                  <VaultKeePassXmlImportWarning />
                 ) : exporting && exportFormat === 'bearwarden-native' ? (
                   '加密的 .bwbackup 會包含個人項目與附件，只能由支援此格式的 BearWarden 還原；Bitwarden 官方客戶端無法直接匯入。垃圾桶與 Sends 不包含在內。'
                 ) : nativeImport ? (
@@ -445,7 +473,7 @@ function VaultPortabilityDialog({
                     </FieldDescription>
                   </Field>
                 )}
-                {!preview && !passwordlessExport && (
+                {!preview && !passwordlessExport && !keepassImport && (
                   <Field>
                     <FieldLabel htmlFor="portability-backup-password">
                       {exporting

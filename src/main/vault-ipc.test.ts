@@ -18,7 +18,12 @@ vi.mock('electron', () => ({
   Menu: { buildFromTemplate: vi.fn() }
 }))
 
-import { IPC_CHANNELS, IPC_EVENTS, type VaultExportRequest } from '../shared/vault-contract'
+import {
+  IPC_CHANNELS,
+  IPC_EVENTS,
+  type VaultExportRequest,
+  type VaultImportRequest
+} from '../shared/vault-contract'
 import type { AppSettingsService } from './app-settings'
 import {
   AccountRelaunchResultUnknownError,
@@ -1737,7 +1742,9 @@ describe('registerVaultIpc reprompt gate', () => {
   it('keeps portability IPC path-free, exact, and password-proof scoped', async () => {
     const { event, portability } = harness()
     const observedRequests: VaultExportRequest[] = []
+    const observedImportRequests: VaultImportRequest[] = []
     const requestReferences: VaultExportRequest[] = []
+    const importRequestReferences: VaultImportRequest[] = []
     portability.exportVault.mockImplementation(async (value?: unknown) => {
       const request = value as VaultExportRequest
       observedRequests.push({ ...request } as VaultExportRequest)
@@ -1747,6 +1754,17 @@ describe('registerVaultIpc reprompt gate', () => {
         exportedFolders: 1,
         exportedItems: 2,
         skippedTrashItems: 1
+      }
+    })
+    portability.importVault.mockImplementation(async (value?: unknown) => {
+      const request = value as VaultImportRequest
+      observedImportRequests.push({ ...request } as VaultImportRequest)
+      importRequestReferences.push(request)
+      return {
+        canceled: false,
+        importedFolders: 1,
+        importedItems: 2,
+        skippedTrashItems: 0
       }
     })
     const exportVault = electronMock.handlers.get(IPC_CHANNELS.vaultExport)!
@@ -1787,12 +1805,58 @@ describe('registerVaultIpc reprompt gate', () => {
       masterPassword: 'correct horse battery staple',
       format: 'bitwarden-csv'
     })
+    const portableImportInput = {
+      masterPassword: 'correct horse battery staple',
+      password: 'portable backup password',
+      format: 'portable'
+    }
+    await expect(importVault(event, portableImportInput)).resolves.toMatchObject({
+      importedItems: 2
+    })
+    expect(observedImportRequests.at(-1)).toEqual({
+      masterPassword: 'correct horse battery staple',
+      password: 'portable backup password',
+      format: 'portable'
+    })
+    expect(portableImportInput).toEqual({ masterPassword: '', password: '', format: 'portable' })
     await expect(
       importVault(event, {
         masterPassword: 'correct horse battery staple',
-        password: 'portable backup password'
+        format: 'keepass-xml'
       })
     ).resolves.toMatchObject({ importedItems: 2 })
+    expect(observedImportRequests.at(-1)).toEqual({
+      masterPassword: 'correct horse battery staple',
+      format: 'keepass-xml'
+    })
+    await expect(
+      importVault(event, {
+        masterPassword: 'correct horse battery staple'
+      })
+    ).resolves.toMatchObject({ importedItems: 2 })
+    expect(observedImportRequests.at(-1)).toEqual({
+      masterPassword: 'correct horse battery staple'
+    })
+
+    let rejectedImportRequest: VaultImportRequest | undefined
+    portability.importVault.mockImplementationOnce(async (value?: unknown) => {
+      rejectedImportRequest = value as VaultImportRequest
+      throw new Error('intended import failure')
+    })
+    const rejectedImportInput = {
+      masterPassword: 'rejected-owner-proof',
+      password: 'rejected-backup-secret',
+      format: 'portable'
+    }
+    await expect(importVault(event, rejectedImportInput)).rejects.toThrow(
+      'BEARWARDEN:INTERNAL_ERROR'
+    )
+    expect(rejectedImportInput).toEqual({ masterPassword: '', password: '', format: 'portable' })
+    expect(rejectedImportRequest).toEqual({
+      masterPassword: '',
+      password: '',
+      format: 'portable'
+    })
 
     for (const invalid of [
       { password: 'portable backup password' },
@@ -1837,12 +1901,89 @@ describe('registerVaultIpc reprompt gate', () => {
         [Symbol('secret')]: 'must-not-cross-ipc'
       })
     ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
-    await expect(
-      importVault(event, {
-        masterPassword: 'correct horse battery staple',
+    const invalidImportInputs: Array<Record<PropertyKey, unknown>> = [
+      {
+        masterPassword: 'wrong-type-owner-proof',
         password: 123
-      })
-    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+      },
+      {
+        masterPassword: 'unknown-format-owner-proof',
+        password: 'unknown-format-backup-secret',
+        format: 'unknown'
+      },
+      {
+        masterPassword: 'keepass-owner-proof',
+        password: 'keepass-must-not-accept-password',
+        format: 'keepass-xml'
+      },
+      {
+        masterPassword: 'extra-key-owner-proof',
+        password: 'extra-key-backup-secret',
+        format: 'portable',
+        path: '/tmp/renderer-controlled.xml'
+      }
+    ]
+    for (const invalid of invalidImportInputs) {
+      await expect(importVault(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    for (const invalid of invalidImportInputs) {
+      expect(Object.getOwnPropertyDescriptor(invalid, 'masterPassword')?.value).toBe('')
+      expect(Object.getOwnPropertyDescriptor(invalid, 'password')?.value).toBe('')
+    }
+
+    let importGetterCalls = 0
+    const importAccessor = Object.defineProperties(
+      {},
+      {
+        masterPassword: {
+          enumerable: true,
+          get: () => {
+            importGetterCalls += 1
+            return 'must-not-be-read'
+          }
+        },
+        password: {
+          enumerable: true,
+          configurable: true,
+          writable: true,
+          value: 'accessor-shape-backup-secret'
+        },
+        format: { enumerable: true, value: 'portable' }
+      }
+    )
+    await expect(importVault(event, importAccessor)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    expect(importGetterCalls).toBe(0)
+    expect(Object.getOwnPropertyDescriptor(importAccessor, 'masterPassword')).toHaveProperty('get')
+    expect(Object.getOwnPropertyDescriptor(importAccessor, 'password')?.value).toBe('')
+
+    const importSymbol = Symbol('unexpected-import-key')
+    const importWithSymbol = {
+      masterPassword: 'symbol-owner-proof',
+      password: 'symbol-backup-secret',
+      format: 'portable',
+      [importSymbol]: true
+    }
+    await expect(importVault(event, importWithSymbol)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    expect(importWithSymbol).toMatchObject({ masterPassword: '', password: '' })
+
+    const importWithPrototype = Object.assign(Object.create({ inherited: true }), {
+      masterPassword: 'prototype-owner-proof',
+      password: 'prototype-backup-secret',
+      format: 'portable'
+    }) as Record<string, unknown>
+    await expect(importVault(event, importWithPrototype)).rejects.toThrow(
+      'BEARWARDEN:INVALID_INPUT'
+    )
+    expect(importWithPrototype).toMatchObject({ masterPassword: '', password: '' })
+
+    const frozenImport = Object.freeze({
+      masterPassword: 'frozen-owner-proof',
+      password: 'frozen-backup-secret',
+      format: 'unknown'
+    })
+    await expect(importVault(event, frozenImport)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    expect(frozenImport.masterPassword).toBe('frozen-owner-proof')
+    expect(frozenImport.password).toBe('frozen-backup-secret')
     expect(requestReferences).toHaveLength(4)
     expect(
       requestReferences.every(
@@ -1851,6 +1992,12 @@ describe('registerVaultIpc reprompt gate', () => {
           (!('password' in request) || request.password === undefined || request.password === '')
       )
     ).toBe(true)
+    expect(importRequestReferences).toHaveLength(3)
+    expect(importRequestReferences).toEqual([
+      { masterPassword: '', password: '', format: 'portable' },
+      { masterPassword: '', format: 'keepass-xml' },
+      { masterPassword: '' }
+    ])
   })
 
   it('keeps native restore sessions exact, sender-bound, progress-only, and secret-free', async () => {
