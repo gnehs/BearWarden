@@ -229,6 +229,9 @@ export interface VaultIpcOptions {
   twoFactorDirectory?: TwoFactorDirectoryCache
   afterSetup?: () => void | Promise<void>
   beforeLock?: () => void | Promise<void>
+  /** Always runs after a manual lock attempt, including teardown or lock failures. */
+  afterLockAttempt?: () => void
+  /** Runs only after a manual lock has succeeded. */
   afterLock?: () => void
   afterUnlock?: (masterPassword: string) => void | Promise<void>
   afterPinUnlock?: () => void | Promise<void>
@@ -2026,6 +2029,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   const { vault, portability, settings, getMainWindow } = options
   const accountSwitchService = options.accountSwitchService
   let disposed = false
+  let settingsActivityCheck: Promise<void> | null = null
   const registeredChannels = new Set<string>()
   const registerHandler = <T>(
     channel: string,
@@ -2274,11 +2278,20 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     }
   )
   registerHandler(IPC_CHANNELS.vaultLock, getMainWindow, async () => {
-    await Promise.resolve(options.beforeLock?.())
-    authorizations.clear()
-    const status = await vault.lock()
-    options.afterLock?.()
-    return status
+    try {
+      await Promise.resolve(options.beforeLock?.())
+      authorizations.clear()
+      const status = await vault.lock()
+      options.afterLock?.()
+      return status
+    } finally {
+      // Timer cleanup is defensive bookkeeping; it must not replace the lock outcome.
+      try {
+        options.afterLockAttempt?.()
+      } catch {
+        // A failed cleanup callback cannot safely change a successful lock into an IPC error.
+      }
+    }
   })
   registerHandler(IPC_CHANNELS.vaultExport, getMainWindow, async (_event, input) => {
     const request = parseVaultExport(input)
@@ -3216,11 +3229,27 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   })
   registerHandler(IPC_CHANNELS.settingsActivity, getMainWindow, async (_event, input) => {
     parseNoInput(input)
-    settings.activity()
+    if (disposed) return
+    if (settingsActivityCheck) return settingsActivityCheck
+
+    const check = (async () => {
+      // VaultService.status is exclusive with lock/unlock, so renderer activity is accepted only
+      // after the authoritative main-process state has been observed as unlocked.
+      if (disposed) return
+      const status = await vault.status()
+      if (disposed || status.state !== 'unlocked') return
+      settings.activity()
+    })()
+    const sharedCheck = check.finally(() => {
+      if (settingsActivityCheck === sharedCheck) settingsActivityCheck = null
+    })
+    settingsActivityCheck = sharedCheck
+    return sharedCheck
   })
 
   return () => {
     disposed = true
+    settingsActivityCheck = null
     authorizations.clear()
     sshKeyImportSessions.clearAll()
     void portability.disposeNativeRestoreSession?.()

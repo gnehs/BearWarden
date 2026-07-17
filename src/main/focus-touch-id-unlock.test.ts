@@ -182,6 +182,44 @@ describe('FocusTouchIdUnlockController', () => {
     expect(runtime.notifyUnlocked).not.toHaveBeenCalled()
   })
 
+  it('relocks a stale Touch ID result after fail-closed teardown rejects', async () => {
+    let lockGeneration = 0
+    let state: VaultStatus['state'] = 'locked'
+    const pendingUnlock = deferred<VaultStatus>()
+    const pendingTeardown = deferred<void>()
+    const lock = vi.fn(async () => {
+      lockGeneration += 1
+      try {
+        await pendingTeardown.promise
+      } catch {
+        // Equivalent to the main-process fail-closed barrier: the vault is already locked.
+        state = 'locked'
+      }
+    })
+    const runtime = createRuntime({
+      lockGeneration: vi.fn(() => lockGeneration),
+      vaultStatus: vi.fn(async () => ({ state })),
+      unlock: vi.fn(() => pendingUnlock.promise),
+      lock
+    })
+    const controller = new FocusTouchIdUnlockController(runtime)
+
+    const focus = controller.focus()
+    await vi.waitFor(() => expect(runtime.unlock).toHaveBeenCalledOnce())
+
+    const teardown = lock()
+    pendingTeardown.reject(new Error('teardown failed'))
+    await teardown
+
+    state = 'unlocked'
+    pendingUnlock.resolve({ state: 'unlocked' })
+    await focus
+
+    expect(lock).toHaveBeenCalledTimes(2)
+    expect(state).toBe('locked')
+    expect(runtime.notifyUnlocked).not.toHaveBeenCalled()
+  })
+
   it('does not prompt when Touch ID is disabled', async () => {
     const runtime = createRuntime({
       settings: vi.fn(async () => ({

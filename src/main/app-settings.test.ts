@@ -19,6 +19,7 @@ import { safeStorage, systemPreferences } from 'electron'
 import { AppSettingsService } from './app-settings'
 import type { EncryptedVaultStore } from './encrypted-vault-store'
 import { VaultError } from './vault-errors'
+import type { VaultTimeoutCoordinator } from './vault-timeout-coordinator'
 
 type TestMock = ReturnType<typeof vi.fn>
 
@@ -28,8 +29,14 @@ interface TestRuntime {
   applySshAgentSettings: TestMock
   getStartAtLoginStatus: TestMock
   setStartAtLogin: TestMock
-  lockVault: TestMock
   unlockVault: TestMock
+}
+
+interface TestTimeoutCoordinator {
+  updatePolicy: TestMock
+  activity: TestMock
+  cancel: TestMock
+  dispose: TestMock
 }
 
 describe('AppSettingsService', () => {
@@ -61,6 +68,7 @@ describe('AppSettingsService', () => {
     service: AppSettingsService
     store: EncryptedVaultStore<unknown>
     runtime: TestRuntime
+    timeoutCoordinator: TestTimeoutCoordinator
     touchIdPath: string
   } {
     const store = {
@@ -76,16 +84,28 @@ describe('AppSettingsService', () => {
         needsApproval: false
       })),
       setStartAtLogin: vi.fn(() => false),
-      lockVault: vi.fn().mockResolvedValue(undefined),
       unlockVault: vi.fn().mockResolvedValue({ state: 'unlocked' as const })
+    }
+    const timeoutCoordinator = {
+      updatePolicy: vi.fn(),
+      activity: vi.fn(),
+      cancel: vi.fn(),
+      dispose: vi.fn()
     }
     const service = new AppSettingsService(
       settingsPath,
       join(directory, 'vault', 'touch-id.bin'),
       store,
-      runtime
+      runtime,
+      timeoutCoordinator as unknown as VaultTimeoutCoordinator
     )
-    return { service, store, runtime, touchIdPath: join(directory, 'vault', 'touch-id.bin') }
+    return {
+      service,
+      store,
+      runtime,
+      timeoutCoordinator,
+      touchIdPath: join(directory, 'vault', 'touch-id.bin')
+    }
   }
 
   it('uses secure defaults and persists validated updates', async () => {
@@ -534,30 +554,17 @@ describe('AppSettingsService', () => {
     service.dispose()
   })
 
-  it('resets auto-lock after activity and honours the disabled setting', async () => {
-    const { service, runtime } = createService()
+  it('forwards the persisted timeout policy and renderer activity to the main-process coordinator', async () => {
+    const { service, timeoutCoordinator } = createService()
     await service.initialize()
-    vi.useFakeTimers()
-    service.activity()
+    expect(timeoutCoordinator.updatePolicy).toHaveBeenLastCalledWith(15)
 
-    await vi.advanceTimersByTimeAsync(15 * 60_000)
-    expect(runtime.lockVault).toHaveBeenCalledTimes(1)
+    service.activity()
+    expect(timeoutCoordinator.activity).toHaveBeenCalledOnce()
 
     await service.update({ autoLockMinutes: 0 })
-    await vi.advanceTimersByTimeAsync(60 * 60_000)
-    expect(runtime.lockVault).toHaveBeenCalledTimes(1)
+    expect(timeoutCoordinator.updatePolicy).toHaveBeenLastCalledWith(0)
     service.dispose()
-  })
-
-  it('does not lock from an auto-lock timer after disposal', async () => {
-    vi.useFakeTimers()
-    const { service, runtime } = createService()
-    await service.initialize()
-
-    service.dispose()
-    service.dispose()
-    await vi.advanceTimersByTimeAsync(15 * 60_000)
-
-    expect(runtime.lockVault).not.toHaveBeenCalled()
+    expect(timeoutCoordinator.dispose).toHaveBeenCalledOnce()
   })
 })

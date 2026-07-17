@@ -18,11 +18,26 @@ const harness = vi.hoisted(() => {
   let accountSwitchOptions: Record<string, unknown> | null = null
   let accountSwitchService: unknown = null
   let serverNotificationOptions: Record<string, unknown> | null = null
+  let focusTouchIdUnlockOptions: Record<string, unknown> | null = null
   const autoSyncRequest = vi.fn()
   const autoSyncRequestImmediate = vi.fn()
   const autoSyncUpdateStatus = vi.fn()
   const autoSyncCancel = vi.fn()
+  const vaultTimeoutCancel = vi.fn()
+  const vaultTimeoutDispose = vi.fn()
   const lifecycleEvents: string[] = []
+  const stopServerNotifications = vi.fn(() => {
+    lifecycleEvents.push('notifications.stop')
+    return Promise.resolve()
+  })
+  const disposeNativeRestoreSession = vi.fn(() => {
+    lifecycleEvents.push('portability.dispose')
+    return Promise.resolve()
+  })
+  const vaultLock = vi.fn(() => {
+    lifecycleEvents.push('vault.lock')
+    return Promise.resolve()
+  })
   const appQuit = vi.fn(() => lifecycleEvents.push('app.quit'))
   const appRelaunch = vi.fn(() => lifecycleEvents.push('app.relaunch'))
   const controller = {
@@ -178,10 +193,21 @@ const harness = vi.hoisted(() => {
     setServerNotificationOptions: (value: Record<string, unknown>) => {
       serverNotificationOptions = value
     },
+    get focusTouchIdUnlockOptions(): Record<string, unknown> | null {
+      return focusTouchIdUnlockOptions
+    },
+    setFocusTouchIdUnlockOptions: (value: Record<string, unknown>) => {
+      focusTouchIdUnlockOptions = value
+    },
     autoSyncRequest,
     autoSyncRequestImmediate,
     autoSyncUpdateStatus,
     autoSyncCancel,
+    vaultTimeoutCancel,
+    vaultTimeoutDispose,
+    stopServerNotifications,
+    disposeNativeRestoreSession,
+    vaultLock,
     lifecycleEvents,
     appQuit,
     appRelaunch
@@ -245,8 +271,7 @@ vi.mock('./bitwarden-notifications', () => ({
       return Promise.resolve()
     }
     stop(): Promise<void> {
-      harness.lifecycleEvents.push('notifications.stop')
-      return Promise.resolve()
+      return harness.stopServerNotifications()
     }
     dispose(): Promise<void> {
       return Promise.resolve()
@@ -269,6 +294,12 @@ vi.mock('./app-settings', () => ({
       return false
     }
     dispose(): void {}
+  }
+}))
+vi.mock('./vault-timeout-coordinator', () => ({
+  VaultTimeoutCoordinator: class {
+    cancel = harness.vaultTimeoutCancel
+    dispose = harness.vaultTimeoutDispose
   }
 }))
 vi.mock('./encrypted-vault-store', () => ({
@@ -317,7 +348,13 @@ vi.mock('./account-storage-bootstrap', () => ({
     }
   })
 }))
-vi.mock('./focus-touch-id-unlock', () => ({ FocusTouchIdUnlockController: class {} }))
+vi.mock('./focus-touch-id-unlock', () => ({
+  FocusTouchIdUnlockController: class {
+    constructor(options: Record<string, unknown>) {
+      harness.setFocusTouchIdUnlockOptions(options)
+    }
+  }
+}))
 vi.mock('./application-menu', () => ({ installApplicationMenu: vi.fn() }))
 vi.mock('./vault-ipc', () => ({
   RepromptAuthorizationStore: class {
@@ -331,8 +368,7 @@ vi.mock('./vault-service', () => ({
       harness.setVaultOptions(options)
     }
     lock(): Promise<void> {
-      harness.lifecycleEvents.push('vault.lock')
-      return Promise.resolve()
+      return harness.vaultLock()
     }
     dispose(): void {}
   }
@@ -341,8 +377,7 @@ vi.mock('./vault-attachment-files', () => ({ VaultAttachmentFileService: class {
 vi.mock('./vault-portability', () => ({
   VaultPortabilityService: class {
     disposeNativeRestoreSession(): Promise<void> {
-      harness.lifecycleEvents.push('portability.dispose')
-      return Promise.resolve()
+      return harness.disposeNativeRestoreSession()
     }
   }
 }))
@@ -451,10 +486,12 @@ describe('main WebAuthn lifecycle wiring', () => {
     const afterCommitRelaunch = harness.accountSwitchOptions!.afterCommitRelaunch as () => void
     const webContents = harness.windows[0]!.webContents
     harness.lifecycleEvents.length = 0
+    harness.vaultTimeoutCancel.mockClear()
     webContents.send.mockClear()
     webContents.reload.mockClear()
 
     await beforeActivation()
+    expect(harness.vaultTimeoutCancel).toHaveBeenCalledTimes(2)
     expect(harness.lifecycleEvents).toEqual([
       'notifications.stop',
       'portability.dispose',
@@ -470,6 +507,63 @@ describe('main WebAuthn lifecycle wiring', () => {
     expect(harness.lifecycleEvents).toEqual(['app.relaunch', 'app.quit'])
     expect(harness.appRelaunch).toHaveBeenCalledOnce()
     expect(harness.appQuit).toHaveBeenCalledOnce()
+  })
+
+  it('invalidates a pending timeout before every vault lock teardown', async () => {
+    harness.vaultTimeoutCancel.mockClear()
+
+    await (harness.vaultIpcOptions!.beforeLock as () => Promise<void>)()
+
+    expect(harness.vaultTimeoutCancel).toHaveBeenCalledOnce()
+  })
+
+  it('cancels timeout activity after an account-switch lock failure', async () => {
+    const beforeActivation = harness.accountSwitchOptions!.beforeActivation as () => Promise<void>
+    harness.vaultTimeoutCancel.mockClear()
+    harness.vaultLock.mockRejectedValueOnce(new Error('lock failed'))
+
+    await expect(beforeActivation()).rejects.toThrow('lock failed')
+
+    expect(harness.vaultTimeoutCancel).toHaveBeenCalledTimes(2)
+  })
+
+  it('wires manual locks to cancel timers after both success-only and attempt callbacks', () => {
+    const afterLock = harness.vaultIpcOptions!.afterLock as () => void
+    const afterLockAttempt = harness.vaultIpcOptions!.afterLockAttempt as () => void
+    harness.vaultTimeoutCancel.mockClear()
+
+    afterLock()
+    expect(harness.vaultTimeoutCancel).toHaveBeenCalledOnce()
+    afterLockAttempt()
+    expect(harness.vaultTimeoutCancel).toHaveBeenCalledTimes(2)
+  })
+
+  it('invalidates the Touch ID generation before asynchronous teardown can reject', async () => {
+    const lockGeneration = harness.focusTouchIdUnlockOptions!.lockGeneration as () => number
+    const initialGeneration = lockGeneration()
+    let rejectTeardown!: (reason: Error) => void
+    harness.disposeNativeRestoreSession.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectTeardown = reject
+        })
+    )
+    const beforeLock = harness.vaultIpcOptions!.beforeLock as () => Promise<void>
+
+    const locking = beforeLock()
+    expect(lockGeneration()).toBe(initialGeneration + 1)
+    await vi.waitFor(() => expect(rejectTeardown).toBeTypeOf('function'))
+    rejectTeardown(new Error('teardown failed'))
+
+    await expect(locking).rejects.toThrow('teardown failed')
+  })
+
+  it('cancels timeout activity again after a lock teardown completes', async () => {
+    harness.vaultTimeoutCancel.mockClear()
+
+    harness.windows[0]!.emit('close')
+
+    await vi.waitFor(() => expect(harness.vaultTimeoutCancel).toHaveBeenCalledTimes(2))
   })
 
   it('keeps the account connector main-only and cancels it at every teardown boundary', async () => {

@@ -5,6 +5,7 @@ import { safeStorage, systemPreferences } from 'electron'
 import type { AppSettings, AppSettingsUpdate, VaultStatus } from '../shared/vault-contract'
 import type { EncryptedVaultStore } from './encrypted-vault-store'
 import { VaultError } from './vault-errors'
+import type { VaultTimeoutCoordinator } from './vault-timeout-coordinator'
 
 const SETTINGS_VERSION = 4
 const MAX_SETTINGS_BYTES = 16 * 1024
@@ -37,7 +38,6 @@ export interface AppSettingsRuntime {
   getStartAtLoginStatus: () => StartAtLoginStatus
   /** Applies the preference and confirms the OS reports the requested state. */
   setStartAtLogin: (enabled: boolean) => boolean
-  lockVault: () => Promise<void>
   unlockVault: (masterPassword: string) => Promise<VaultStatus>
 }
 
@@ -162,8 +162,6 @@ async function syncDirectory(path: string): Promise<void> {
 
 export class AppSettingsService {
   private settings: StoredSettings = { ...DEFAULTS }
-  private autoLockTimer: NodeJS.Timeout | null = null
-  private autoLockEpoch = 0
   private touchIdUnlock: Promise<VaultStatus> | null = null
   private touchIdOperationInProgress = false
   private settingsUpdateTail: Promise<void> = Promise.resolve()
@@ -174,7 +172,8 @@ export class AppSettingsService {
     private readonly settingsPath: string,
     private readonly touchIdPath: string,
     private readonly vaultStore: EncryptedVaultStore<unknown>,
-    private readonly runtime: AppSettingsRuntime
+    private readonly runtime: AppSettingsRuntime,
+    private readonly vaultTimeoutCoordinator: VaultTimeoutCoordinator
   ) {}
 
   async initialize(): Promise<void> {
@@ -190,7 +189,7 @@ export class AppSettingsService {
     const startAtLoginStatus = this.runtime.getStartAtLoginStatus()
     this.settings.startAtLogin = startAtLoginStatus.available ? startAtLoginStatus.enabled : false
     this.applyRuntimeSettings()
-    this.resetAutoLock()
+    this.vaultTimeoutCoordinator.updatePolicy(this.settings.autoLockMinutes)
   }
 
   async get(): Promise<AppSettings> {
@@ -252,7 +251,7 @@ export class AppSettingsService {
     }
     this.settings = candidate
     this.applyRuntimeSettings()
-    this.resetAutoLock()
+    this.vaultTimeoutCoordinator.updatePolicy(this.settings.autoLockMinutes)
     return this.get()
   }
 
@@ -368,7 +367,7 @@ export class AppSettingsService {
   }
 
   activity(): void {
-    this.resetAutoLock()
+    this.vaultTimeoutCoordinator.activity()
   }
 
   shouldLockOnScreenLock(): boolean {
@@ -383,9 +382,7 @@ export class AppSettingsService {
     if (this.disposed) return
     this.disposed = true
     this.lifecycleEpoch += 1
-    this.autoLockEpoch += 1
-    if (this.autoLockTimer) clearTimeout(this.autoLockTimer)
-    this.autoLockTimer = null
+    this.vaultTimeoutCoordinator.dispose()
   }
 
   private assertCurrent(operationEpoch: number): void {
@@ -412,19 +409,5 @@ export class AppSettingsService {
       enabled: this.settings.sshAgentEnabled,
       promptBehavior: this.settings.sshAgentPromptBehavior
     })
-  }
-
-  private resetAutoLock(): void {
-    if (this.autoLockTimer) clearTimeout(this.autoLockTimer)
-    this.autoLockTimer = null
-    this.autoLockEpoch += 1
-    if (this.disposed || this.settings.autoLockMinutes === 0) return
-    const timerEpoch = this.autoLockEpoch
-    this.autoLockTimer = setTimeout(() => {
-      if (this.disposed || timerEpoch !== this.autoLockEpoch) return
-      this.autoLockTimer = null
-      void this.runtime.lockVault().catch(() => undefined)
-    }, this.settings.autoLockMinutes * 60_000)
-    this.autoLockTimer.unref()
   }
 }

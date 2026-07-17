@@ -705,6 +705,229 @@ describe('registerVaultIpc settings validation', () => {
   })
 })
 
+describe('registerVaultIpc settings activity', () => {
+  function activityHarness(status: ReturnType<typeof vi.fn>): {
+    event: unknown
+    settings: { activity: ReturnType<typeof vi.fn> }
+    status: typeof status
+    dispose: () => void
+  } {
+    const mainFrame = { url: 'app://bearwarden/index.html' }
+    const webContents = {
+      id: 94,
+      mainFrame,
+      getURL: () => mainFrame.url,
+      send: vi.fn(),
+      isDestroyed: () => false
+    }
+    const settings = { activity: vi.fn() }
+    const dispose = registerVaultIpc({
+      vault: { status } as unknown as VaultService,
+      portability: {} as Parameters<typeof registerVaultIpc>[0]['portability'],
+      settings: settings as unknown as AppSettingsService,
+      sshKeyImportSessions: new SshKeyImportSessionStore({ readClipboard: () => '' }),
+      getMainWindow: () => ({ isDestroyed: () => false, webContents }) as never
+    })
+    return { event: { sender: webContents, senderFrame: mainFrame }, settings, status, dispose }
+  }
+
+  it('coalesces concurrent activity while an authoritative status check is deferred', async () => {
+    let resolveStatus!: (value: { state: 'unlocked' }) => void
+    const status = vi.fn<() => Promise<{ state: 'unlocked' }>>().mockImplementationOnce(
+      () =>
+        new Promise<{ state: 'unlocked' }>((resolve) => {
+          resolveStatus = resolve
+        })
+    )
+    const harness = activityHarness(status)
+    const activity = electronMock.handlers.get(IPC_CHANNELS.settingsActivity)!
+
+    const calls = Array.from({ length: 1_000 }, () => activity(harness.event, undefined))
+    await vi.waitFor(() => expect(status).toHaveBeenCalledOnce())
+    expect(harness.settings.activity).not.toHaveBeenCalled()
+
+    resolveStatus({ state: 'unlocked' })
+    await Promise.all(calls)
+
+    expect(status).toHaveBeenCalledOnce()
+    expect(harness.settings.activity).toHaveBeenCalledOnce()
+  })
+
+  it('ignores activity when the authoritative vault status is locked', async () => {
+    const harness = activityHarness(vi.fn(async () => ({ state: 'locked' as const })))
+    const activity = electronMock.handlers.get(IPC_CHANNELS.settingsActivity)!
+
+    await expect(activity(harness.event, undefined)).resolves.toBeUndefined()
+
+    expect(harness.status).toHaveBeenCalledOnce()
+    expect(harness.settings.activity).not.toHaveBeenCalled()
+  })
+
+  it('accepts activity only when the authoritative vault status is unlocked', async () => {
+    const harness = activityHarness(vi.fn(async () => ({ state: 'unlocked' as const })))
+    const activity = electronMock.handlers.get(IPC_CHANNELS.settingsActivity)!
+
+    await expect(activity(harness.event, undefined)).resolves.toBeUndefined()
+
+    expect(harness.status).toHaveBeenCalledOnce()
+    expect(harness.settings.activity).toHaveBeenCalledOnce()
+  })
+
+  it('does not forward a deferred unlocked status after disposal', async () => {
+    let resolveStatus!: (value: { state: 'unlocked' }) => void
+    const harness = activityHarness(
+      vi.fn(
+        () =>
+          new Promise<{ state: 'unlocked' }>((resolve) => {
+            resolveStatus = resolve
+          })
+      )
+    )
+    const activity = electronMock.handlers.get(IPC_CHANNELS.settingsActivity)!
+
+    const pending = activity(harness.event, undefined)
+    await vi.waitFor(() => expect(harness.status).toHaveBeenCalledOnce())
+    harness.dispose()
+    resolveStatus({ state: 'unlocked' })
+    await expect(pending).resolves.toBeUndefined()
+
+    expect(harness.settings.activity).not.toHaveBeenCalled()
+  })
+
+  it('starts a fresh activity round after an authoritative status check fails', async () => {
+    const harness = activityHarness(
+      vi
+        .fn<() => Promise<{ state: 'unlocked' }>>()
+        .mockRejectedValueOnce(new Error('status unavailable'))
+        .mockResolvedValueOnce({ state: 'unlocked' })
+    )
+    const activity = electronMock.handlers.get(IPC_CHANNELS.settingsActivity)!
+
+    await expect(activity(harness.event, undefined)).rejects.toThrow('BEARWARDEN:INTERNAL_ERROR')
+    await expect(activity(harness.event, undefined)).resolves.toBeUndefined()
+
+    expect(harness.status).toHaveBeenCalledTimes(2)
+    expect(harness.settings.activity).toHaveBeenCalledOnce()
+  })
+})
+
+describe('registerVaultIpc manual lock lifecycle', () => {
+  function lockHarness(
+    options: {
+      beforeLock?: () => void | Promise<void>
+      lock?: () => Promise<{ state: 'locked' }>
+      afterLockAttempt?: () => void
+    } = {}
+  ): {
+    event: unknown
+    beforeLock: ReturnType<typeof vi.fn>
+    lock: ReturnType<typeof vi.fn>
+    afterLock: ReturnType<typeof vi.fn>
+    afterLockAttempt: ReturnType<typeof vi.fn>
+  } {
+    const mainFrame = { url: 'app://bearwarden/index.html' }
+    const webContents = {
+      id: 95,
+      mainFrame,
+      getURL: () => mainFrame.url,
+      send: vi.fn(),
+      isDestroyed: () => false
+    }
+    const beforeLock = vi.fn(options.beforeLock ?? (() => undefined))
+    const lock = vi.fn(options.lock ?? (async () => ({ state: 'locked' as const })))
+    const afterLock = vi.fn()
+    const afterLockAttempt = vi.fn(options.afterLockAttempt ?? (() => undefined))
+    registerVaultIpc({
+      vault: { lock } as unknown as VaultService,
+      portability: {} as Parameters<typeof registerVaultIpc>[0]['portability'],
+      settings: {} as AppSettingsService,
+      sshKeyImportSessions: new SshKeyImportSessionStore({ readClipboard: () => '' }),
+      getMainWindow: () => ({ isDestroyed: () => false, webContents }) as never,
+      beforeLock,
+      afterLock,
+      afterLockAttempt
+    })
+    return {
+      event: { sender: webContents, senderFrame: mainFrame },
+      beforeLock,
+      lock,
+      afterLock,
+      afterLockAttempt
+    }
+  }
+
+  it('cancels timeout coordination after a successful manual lock without changing success notification semantics', async () => {
+    const harness = lockHarness()
+    const lock = electronMock.handlers.get(IPC_CHANNELS.vaultLock)!
+
+    await expect(lock(harness.event, undefined)).resolves.toEqual({ state: 'locked' })
+
+    expect(harness.beforeLock).toHaveBeenCalledOnce()
+    expect(harness.lock).toHaveBeenCalledOnce()
+    expect(harness.afterLock).toHaveBeenCalledOnce()
+    expect(harness.afterLockAttempt).toHaveBeenCalledOnce()
+  })
+
+  it('runs the attempt cleanup after a failed manual lock without reporting lock success', async () => {
+    const harness = lockHarness({ lock: async () => Promise.reject(new Error('lock failed')) })
+    const lock = electronMock.handlers.get(IPC_CHANNELS.vaultLock)!
+
+    await expect(lock(harness.event, undefined)).rejects.toThrow('BEARWARDEN:INTERNAL_ERROR')
+
+    expect(harness.afterLock).not.toHaveBeenCalled()
+    expect(harness.afterLockAttempt).toHaveBeenCalledOnce()
+  })
+
+  it('runs the attempt cleanup when deferred manual-lock teardown fails before vault.lock', async () => {
+    let rejectTeardown!: (reason: Error) => void
+    const harness = lockHarness({
+      beforeLock: () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectTeardown = reject
+        })
+    })
+    const lock = electronMock.handlers.get(IPC_CHANNELS.vaultLock)!
+
+    const pending = lock(harness.event, undefined)
+    await vi.waitFor(() => expect(rejectTeardown).toBeTypeOf('function'))
+    rejectTeardown(new Error('teardown failed'))
+    await expect(pending).rejects.toThrow('BEARWARDEN:INTERNAL_ERROR')
+
+    expect(harness.lock).not.toHaveBeenCalled()
+    expect(harness.afterLock).not.toHaveBeenCalled()
+    expect(harness.afterLockAttempt).toHaveBeenCalledOnce()
+  })
+
+  it('preserves the original lock failure when best-effort attempt cleanup also throws', async () => {
+    const harness = lockHarness({
+      lock: async () => Promise.reject(new Error('lock failed')),
+      afterLockAttempt: () => {
+        throw new VaultError('INVALID_INPUT')
+      }
+    })
+    const lock = electronMock.handlers.get(IPC_CHANNELS.vaultLock)!
+
+    await expect(lock(harness.event, undefined)).rejects.toThrow('BEARWARDEN:INTERNAL_ERROR')
+
+    expect(harness.afterLockAttempt).toHaveBeenCalledOnce()
+    expect(harness.afterLock).not.toHaveBeenCalled()
+  })
+
+  it('preserves a successful lock status when best-effort attempt cleanup throws', async () => {
+    const harness = lockHarness({
+      afterLockAttempt: () => {
+        throw new Error('cleanup failed')
+      }
+    })
+    const lock = electronMock.handlers.get(IPC_CHANNELS.vaultLock)!
+
+    await expect(lock(harness.event, undefined)).resolves.toEqual({ state: 'locked' })
+
+    expect(harness.afterLock).toHaveBeenCalledOnce()
+    expect(harness.afterLockAttempt).toHaveBeenCalledOnce()
+  })
+})
+
 describe('RepromptAuthorizationStore', () => {
   it('binds an opaque token to sender, item, vault generation, and expiry', () => {
     let now = 1_000

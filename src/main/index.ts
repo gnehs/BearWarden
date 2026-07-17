@@ -44,6 +44,7 @@ import { AccountRegistryStore } from './account-registry'
 import { AccountSwitchService } from './account-switch-service'
 import { AccountRemovalJournal } from './account-removal-journal'
 import { clearPendingInitializationMarker } from './account-storage-initialization-marker'
+import { VaultTimeoutCoordinator } from './vault-timeout-coordinator'
 import icon from '../../resources/icon.png?asset'
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
@@ -54,6 +55,7 @@ let mainWindow: BrowserWindow | null = null
 let vault: VaultService | null = null
 let portability: VaultPortabilityService | null = null
 let settings: AppSettingsService | null = null
+let vaultTimeoutCoordinator: VaultTimeoutCoordinator | null = null
 let autoSync: AutoSyncCoordinator | null = null
 let serverNotifications: BitwardenNotificationCoordinator | null = null
 let sshKeyImportSessions: SshKeyImportSessionStore | null = null
@@ -310,13 +312,14 @@ async function unlockSyncWithLocalPassword(masterPassword: string): Promise<void
 }
 
 async function beforeVaultLock(): Promise<void> {
+  vaultLockGeneration += 1
+  vaultTimeoutCoordinator?.cancel()
   cancelAccountWebAuthnCeremony()
   passkeyCeremonyService?.onLocked()
   passkeyRendererBridge?.cancelAll()
   autoSync?.cancel()
   await stopServerNotifications()
   await portability?.disposeNativeRestoreSession()
-  vaultLockGeneration += 1
   sshKeyImportSessions?.clearAll()
   sshAgentCoordinator?.onLocked()
   sshAgentBridge?.cancelAll()
@@ -325,17 +328,26 @@ async function beforeVaultLock(): Promise<void> {
 }
 
 async function lockVault(): Promise<void> {
-  if (!vault) return
-  await beforeVaultLock()
-  await vault.lock()
-  notifyVaultLocked()
+  try {
+    if (!vault) return
+    await beforeVaultLock()
+    await vault.lock()
+    notifyVaultLocked()
+  } finally {
+    // Activity can arrive while asynchronous teardown runs; never leave that timer armed.
+    vaultTimeoutCoordinator?.cancel()
+  }
 }
 
 async function lockVaultForInactivity(): Promise<void> {
-  await lockVault()
+  await lockVaultFailClosed()
   const window = mainWindow
   if (!window || window.isDestroyed()) return
-  await focusTouchIdUnlockControllers.get(window)?.lockedWhileFocused()
+  // This only offers Touch ID after the fail-closed lock; it cannot affect the locked state.
+  await focusTouchIdUnlockControllers
+    .get(window)
+    ?.lockedWhileFocused()
+    .catch(() => undefined)
 }
 
 async function lockVaultFailClosed(): Promise<void> {
@@ -564,8 +576,12 @@ if (hasSingleInstanceLock)
             removalJournal: accountRemovalJournal,
             initialCleanupPending: accountRemovalCleanupPending,
             beforeActivation: async () => {
-              await beforeVaultLock()
-              await activeVault.lock()
+              try {
+                await beforeVaultLock()
+                await activeVault.lock()
+              } finally {
+                vaultTimeoutCoordinator?.cancel()
+              }
             },
             afterCommitRelaunch: () => {
               app.relaunch()
@@ -702,6 +718,10 @@ if (hasSingleInstanceLock)
       { openExternal: (url) => shell.openExternal(url) }
     )
 
+    vaultTimeoutCoordinator = new VaultTimeoutCoordinator({
+      lockVault: lockVaultForInactivity
+    })
+
     settings = new AppSettingsService(
       activeStorage.paths.settingsPath,
       activeStorage.paths.touchIdPath,
@@ -741,7 +761,6 @@ if (hasSingleInstanceLock)
             return false
           }
         },
-        lockVault: lockVaultForInactivity,
         unlockVault: async (masterPassword) => {
           if (!vault) throw new Error('Vault service unavailable')
           const status = await vault.unlock(masterPassword)
@@ -750,7 +769,8 @@ if (hasSingleInstanceLock)
           scheduleSshAgentLifecycle()
           return status
         }
-      }
+      },
+      vaultTimeoutCoordinator
     )
     await settings.initialize()
 
@@ -799,9 +819,11 @@ if (hasSingleInstanceLock)
       },
       beforeLock: beforeVaultLock,
       afterLock: () => {
+        vaultTimeoutCoordinator?.cancel()
         autoSync?.cancel()
         notifyVaultLocked()
       },
+      afterLockAttempt: () => vaultTimeoutCoordinator?.cancel(),
       afterUnlock: async (masterPassword) => {
         await unlockSyncWithLocalPassword(masterPassword).catch(() => undefined)
         await refreshSshAgentAfterUnlock().catch(() => undefined)
@@ -886,6 +908,8 @@ function disposeServices(): void {
   registrationController?.dispose()
   twoFactorDirectory?.dispose()
   twoFactorDirectory = null
+  vaultTimeoutCoordinator?.dispose()
+  vaultTimeoutCoordinator = null
   vault?.dispose()
   settings?.dispose()
 }
