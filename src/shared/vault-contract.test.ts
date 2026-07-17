@@ -1,12 +1,29 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import {
   IPC_CHANNELS,
+  type AccountRemoveRequest,
+  type AccountReorderRequest,
   type AccountWebAuthnKeyEnrollmentRequest,
   type AccountWebAuthnKeyRemovalRequest,
   type AccountWebAuthnKeyView,
   type AccountWebAuthnKeysRequest,
   type BearWardenAPI
 } from './vault-contract'
+
+describe('local account management renderer contract', () => {
+  it('keeps reorder and destructive removal requests narrow and explicit', () => {
+    expectTypeOf<AccountReorderRequest>().toEqualTypeOf<{
+      readonly accountIds: readonly string[]
+      readonly expectedRevision: number
+    }>()
+    expectTypeOf<AccountRemoveRequest>().toEqualTypeOf<{
+      readonly accountId: string
+      readonly confirm: true
+    }>()
+    expect(IPC_CHANNELS.accountReorder).toBe('account:reorder')
+    expect(IPC_CHANNELS.accountRemove).toBe('account:remove')
+  })
+})
 
 describe('account WebAuthn renderer contract', () => {
   it('limits the public view to server key metadata', () => {

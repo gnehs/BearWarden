@@ -181,6 +181,73 @@ describe('registerVaultIpc account boundary', () => {
     expect(service.switchAccount).toHaveBeenCalledWith(accountB)
   })
 
+  it('strictly validates reorder and explicit destructive removal payloads', async () => {
+    const accountC = '33333333-3333-4333-8333-333333333333'
+    const status = {
+      revision: 8,
+      activeAccountId: accountA,
+      accounts: [
+        { id: accountB, active: false, slot: 1 },
+        { id: accountA, active: true, slot: 2 }
+      ]
+    }
+    const service = {
+      reorderAccounts: vi.fn(async () => ({ kind: 'updated' as const, status })),
+      removeAccount: vi.fn(async () => ({
+        kind: 'updated' as const,
+        status: { ...status, revision: 9, accounts: status.accounts.slice(1) },
+        cleanupPending: true,
+        privatePath: '/private/account-b'
+      }))
+    }
+    const { event, untrustedEvent } = accountHarness(service)
+    const reorder = electronMock.handlers.get(IPC_CHANNELS.accountReorder)!
+    const remove = electronMock.handlers.get(IPC_CHANNELS.accountRemove)!
+
+    await expect(
+      reorder(event, { accountIds: [accountB, accountA], expectedRevision: 7 })
+    ).resolves.toEqual({ kind: 'updated', status })
+    expect(service.reorderAccounts).toHaveBeenCalledWith([accountB, accountA], 7)
+    await expect(remove(event, { accountId: accountB, confirm: true })).resolves.toEqual({
+      kind: 'updated',
+      cleanupPending: true,
+      status: { ...status, revision: 9, accounts: status.accounts.slice(1) }
+    })
+    expect(service.removeAccount).toHaveBeenCalledWith(accountB, true)
+
+    await expect(
+      reorder(untrustedEvent, { accountIds: [accountA, accountB], expectedRevision: 8 })
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    const sparse = [accountA, accountB]
+    delete sparse[0]
+    const accessor = [accountA, accountB]
+    Object.defineProperty(accessor, '1', { enumerable: true, get: () => accountB })
+    for (const input of [
+      undefined,
+      {},
+      { accountIds: [], expectedRevision: 7 },
+      { accountIds: [accountA, accountA], expectedRevision: 7 },
+      { accountIds: [accountA, '../vault'], expectedRevision: 7 },
+      { accountIds: [accountA, accountB, accountC, accountA], expectedRevision: 7 },
+      { accountIds: [accountA, accountB], expectedRevision: 0 },
+      { accountIds: [accountA, accountB], expectedRevision: 7, path: '/private' },
+      { accountIds: sparse, expectedRevision: 7 },
+      { accountIds: accessor, expectedRevision: 7 }
+    ]) {
+      await expect(reorder(event, input)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    for (const input of [
+      undefined,
+      {},
+      { accountId: accountB },
+      { accountId: accountB, confirm: false },
+      { accountId: '../vault', confirm: true },
+      { accountId: accountB, confirm: true, path: '/private' }
+    ]) {
+      await expect(remove(event, input)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+  })
+
   it('keeps legacy fallback unavailable and maps membership failures without leaking causes', async () => {
     const legacy = accountHarness()
     await expect(
@@ -218,6 +285,11 @@ describe('registerVaultIpc account boundary', () => {
   it.each([
     [new AccountSwitchServiceError('INVALID_ACCOUNT_SWITCH_REQUEST'), 'INVALID_INPUT'],
     [new AccountSwitchServiceError('ACCOUNT_LIMIT_REACHED'), 'ACCOUNT_LIMIT_REACHED'],
+    [
+      new AccountSwitchServiceError('ACCOUNT_ACTIVE_REMOVAL_FORBIDDEN'),
+      'ACCOUNT_ACTIVE_REMOVAL_FORBIDDEN'
+    ],
+    [new AccountSwitchServiceError('ACCOUNT_STALE_REORDER_REQUEST'), 'ACCOUNT_STALE_STATE'],
     [new AccountSwitchServiceError('ACCOUNT_SWITCH_IN_PROGRESS'), 'ACCOUNT_SWITCH_IN_PROGRESS'],
     [
       new AccountSwitchServiceError('ACCOUNT_REGISTRY_UPDATE_RESULT_UNKNOWN'),

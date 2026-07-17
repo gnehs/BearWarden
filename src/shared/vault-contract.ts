@@ -105,6 +105,8 @@ export const IPC_CHANNELS = {
   accountStatus: 'account:status',
   accountAdd: 'account:add',
   accountSwitch: 'account:switch',
+  accountReorder: 'account:reorder',
+  accountRemove: 'account:remove',
   accountSecurityProfile: 'account-security:profile',
   accountDevices: 'account-security:devices',
   accountResendVerification: 'account-security:resend-verification',
@@ -206,6 +208,16 @@ export interface AccountStatus {
   readonly revision: number
   readonly activeAccountId: string
   readonly accounts: readonly AccountStatusEntry[]
+}
+
+export interface AccountReorderRequest {
+  readonly accountIds: readonly string[]
+  readonly expectedRevision: number
+}
+
+export interface AccountRemoveRequest {
+  readonly accountId: string
+  readonly confirm: true
 }
 
 export type AccountMutationResult =
@@ -1618,6 +1630,11 @@ export interface BearWardenAPI {
     status: () => Promise<AccountStatus>
     add: () => Promise<AccountMutationResult>
     switch: (accountId: string) => Promise<AccountMutationResult>
+    reorder: (
+      accountIds: readonly string[],
+      expectedRevision: number
+    ) => Promise<AccountMutationResult>
+    remove: (accountId: string, confirm: true) => Promise<AccountMutationResult>
   }
   accountSecurity: {
     profile: () => Promise<AccountSecurityProfile>

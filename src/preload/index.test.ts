@@ -33,15 +33,21 @@ describe('preload account API', () => {
     const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
     const accountId = '22222222-2222-4222-8222-222222222222'
 
-    expect(Object.keys(api.accounts)).toEqual(['status', 'add', 'switch'])
+    const accountIds = [accountId, '33333333-3333-4333-8333-333333333333']
+
+    expect(Object.keys(api.accounts)).toEqual(['status', 'add', 'switch', 'reorder', 'remove'])
     await api.accounts.status()
     await api.accounts.add()
     await api.accounts.switch(accountId)
+    await api.accounts.reorder(accountIds, 7)
+    await api.accounts.remove(accountId, true)
 
     expect(electronMock.invoke.mock.calls).toEqual([
       [IPC_CHANNELS.accountStatus],
       [IPC_CHANNELS.accountAdd],
-      [IPC_CHANNELS.accountSwitch, { accountId }]
+      [IPC_CHANNELS.accountSwitch, { accountId }],
+      [IPC_CHANNELS.accountReorder, { accountIds, expectedRevision: 7 }],
+      [IPC_CHANNELS.accountRemove, { accountId, confirm: true }]
     ])
   })
 

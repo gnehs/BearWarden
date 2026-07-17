@@ -10,6 +10,8 @@ import {
   MAX_LOGIN_SEARCH_QUERY_LENGTH,
   MAX_ACCOUNT_BREACH_EMAIL_LENGTH,
   type AccountMutationResult,
+  type AccountRemoveRequest,
+  type AccountReorderRequest,
   type AccountStatus,
   type AppSettingsUpdate,
   type AccountApiKeyCopyRequest,
@@ -94,6 +96,7 @@ import {
 } from '../shared/vault-contract'
 import type { AppSettingsService } from './app-settings'
 import { ACCOUNT_ID_PATTERN } from './account-paths'
+import { ACCOUNT_REGISTRY_MAX_ACCOUNTS } from './account-registry'
 import type { AccountSwitchService } from './account-switch-service'
 import { accountSwitchVaultError, isVaultError, VaultError } from './vault-errors'
 import type { VaultService } from './vault-service'
@@ -475,6 +478,96 @@ function parseAccountSwitch(value: unknown): string {
   const accountId = requiredString(record, 'accountId')
   if (!ACCOUNT_ID_PATTERN.test(accountId)) throw new VaultError('INVALID_INPUT')
   return accountId
+}
+
+function strictRequiredDataRecord(value: unknown, requiredKeys: readonly string[]): RecordValue {
+  if (!isRecord(value)) throw new VaultError('INVALID_INPUT')
+  const descriptors = Object.getOwnPropertyDescriptors(value)
+  if (
+    Reflect.ownKeys(descriptors).some((key) => typeof key !== 'string') ||
+    Object.keys(descriptors).length !== requiredKeys.length
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const result: RecordValue = {}
+  for (const key of requiredKeys) {
+    const descriptor = descriptors[key]
+    if (
+      descriptor === undefined ||
+      descriptor.enumerable !== true ||
+      !('value' in descriptor) ||
+      descriptor.get !== undefined ||
+      descriptor.set !== undefined
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    result[key] = descriptor.value
+  }
+  return result
+}
+
+function strictAccountIdArray(value: unknown): readonly string[] {
+  if (
+    !Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Array.prototype ||
+    value.length < 1 ||
+    value.length > ACCOUNT_REGISTRY_MAX_ACCOUNTS
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value)
+  if (Reflect.ownKeys(descriptors).some((key) => typeof key !== 'string')) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const result: string[] = []
+  const allowedKeys = new Set(['length'])
+  for (let index = 0; index < value.length; index += 1) {
+    const key = String(index)
+    const descriptor = descriptors[key]
+    if (
+      descriptor === undefined ||
+      descriptor.enumerable !== true ||
+      !('value' in descriptor) ||
+      descriptor.get !== undefined ||
+      descriptor.set !== undefined ||
+      typeof descriptor.value !== 'string' ||
+      !ACCOUNT_ID_PATTERN.test(descriptor.value)
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    result.push(descriptor.value)
+    allowedKeys.add(key)
+  }
+  if (
+    Object.keys(descriptors).some((key) => !allowedKeys.has(key)) ||
+    new Set(result).size !== result.length
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return Object.freeze(result)
+}
+
+function parseAccountReorder(value: unknown): AccountReorderRequest {
+  const record = strictRequiredDataRecord(value, ['accountIds', 'expectedRevision'])
+  if (!Number.isSafeInteger(record.expectedRevision) || (record.expectedRevision as number) < 1) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return {
+    accountIds: strictAccountIdArray(record.accountIds),
+    expectedRevision: record.expectedRevision as number
+  }
+}
+
+function parseAccountRemove(value: unknown): AccountRemoveRequest {
+  const record = strictRequiredDataRecord(value, ['accountId', 'confirm'])
+  if (
+    typeof record.accountId !== 'string' ||
+    !ACCOUNT_ID_PATTERN.test(record.accountId) ||
+    record.confirm !== true
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return { accountId: record.accountId, confirm: true }
 }
 
 function publicAccountStatus(status: AccountStatus): AccountStatus {
@@ -1945,6 +2038,20 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     const accountId = parseAccountSwitch(input)
     return publicAccountMutation(
       await runAccountOperation((service) => service.switchAccount(accountId))
+    )
+  })
+  registerHandler(IPC_CHANNELS.accountReorder, getMainWindow, async (_event, input) => {
+    const request = parseAccountReorder(input)
+    return publicAccountMutation(
+      await runAccountOperation((service) =>
+        service.reorderAccounts(request.accountIds, request.expectedRevision)
+      )
+    )
+  })
+  registerHandler(IPC_CHANNELS.accountRemove, getMainWindow, async (_event, input) => {
+    const request = parseAccountRemove(input)
+    return publicAccountMutation(
+      await runAccountOperation((service) => service.removeAccount(request.accountId, true))
     )
   })
   registerHandler(IPC_CHANNELS.vaultStatus, getMainWindow, () => vault.status())
