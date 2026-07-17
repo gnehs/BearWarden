@@ -1868,8 +1868,20 @@ describe('VaultService encrypted local data', () => {
     await expect(service.getSharedLogin({ id: shared.id })).resolves.toMatchObject({
       id: shared.id,
       viewPassword: false,
+      passwordUpdatedAt: null,
       username: '',
       hasTotp: false
+    })
+
+    const [sharedRemote] = await fake!.listOrganizationCiphers!()
+    if (!sharedRemote) throw new Error('Missing shared fixture')
+    sharedRemote.viewPassword = true
+    fake!.listOrganizationCiphers = async () => [structuredClone(sharedRemote)]
+    await service.syncNow()
+    await expect(service.getSharedLogin({ id: shared.id })).resolves.toMatchObject({
+      id: shared.id,
+      viewPassword: true,
+      passwordUpdatedAt: '2026-07-13T00:00:00.000Z'
     })
 
     await service.lock()
@@ -2986,6 +2998,9 @@ describe('VaultService encrypted local data', () => {
       masterPassword: 'remote master password'
     })
     const local = (await service.listLogins())[0]!
+    await expect(service.getLogin({ id: local.id })).resolves.toMatchObject({
+      passwordUpdatedAt: '2026-07-13T00:00:00.000Z'
+    })
     fake!.remoteLogins[0]!.attachments = [
       {
         id: 'attachment-id',
@@ -3022,6 +3037,7 @@ describe('VaultService encrypted local data', () => {
     await service.lock()
     await service.unlock(MASTER_PASSWORD)
     await expect(service.getLogin({ id: local.id })).resolves.toMatchObject({
+      passwordUpdatedAt: '2026-07-13T00:00:00.000Z',
       attachmentCount: 1,
       attachments: [expect.objectContaining({ fileName: 'remote-document.txt' })]
     })
@@ -8271,6 +8287,44 @@ describe('VaultService encrypted local data', () => {
     })
     unlocked.key.fill(0)
     unlocked.salt.fill(0)
+  })
+
+  it('exposes password revision metadata only for authorized login details with a password', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+
+    const login = await service.createLogin({
+      name: 'Revision details',
+      password: 'first-secret'
+    })
+    expect(login.passwordUpdatedAt).toBeNull()
+
+    const changed = await service.updateLogin({ id: login.id, password: 'second-secret' })
+    expect(changed.passwordUpdatedAt).toBe(changed.updatedAt)
+
+    const renamed = await service.updateLogin({ id: login.id, name: 'Renamed details' })
+    expect(renamed.passwordUpdatedAt).toBe(changed.passwordUpdatedAt)
+
+    const withoutPassword = await service.updateLogin({ id: login.id, password: '' })
+    expect(withoutPassword.passwordUpdatedAt).toBeNull()
+
+    const card = await service.createLogin({
+      type: 'card',
+      name: 'Card without password history metadata'
+    })
+    expect(card.passwordUpdatedAt).toBeNull()
+
+    const protectedLogin = await service.updateLogin({
+      id: login.id,
+      password: 'protected-secret',
+      reprompt: 1
+    })
+    expect(protectedLogin.passwordUpdatedAt).toBe(protectedLogin.updatedAt)
+    const protectedSummary = (await service.listLogins({})).find(
+      (summary) => summary.id === login.id
+    )
+    expect(protectedSummary).not.toHaveProperty('passwordUpdatedAt')
+    expect(protectedSummary).toMatchObject({ reprompt: 1, username: '', uri: null, uris: [] })
   })
 
   it('consumes duplicate hidden fields as a multiset when recording removed secrets', async () => {

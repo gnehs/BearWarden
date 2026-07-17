@@ -1172,8 +1172,10 @@ export interface SendIdRequest {
   id: string
 }
 
-/** Decrypted non-password fields for a login editor. */
+/** Decrypted non-password fields and safe metadata for an authorized item detail view. */
 export interface LoginView extends LoginSummary {
+  /** Renderer-safe metadata shown only after the item-detail authorization gate. */
+  passwordUpdatedAt: string | null
   notes: string | null
   hasTotp: boolean
   passkeys: PasskeyView[]

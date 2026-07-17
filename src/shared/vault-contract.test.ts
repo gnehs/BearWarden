@@ -8,12 +8,19 @@ import {
   type AccountWebAuthnKeyView,
   type AccountWebAuthnKeysRequest,
   type BearWardenAPI,
+  type LoginView,
   type SyncPurgePersonalVaultRequest,
   type SyncPurgePersonalVaultResult,
   type SyncResolvePendingImportRequest,
   type SyncStatus,
   type VaultExportRequest
 } from './vault-contract'
+
+describe('item history renderer contract', () => {
+  it('exposes only nullable password revision metadata on an authorized item view', () => {
+    expectTypeOf<LoginView['passwordUpdatedAt']>().toEqualTypeOf<string | null>()
+  })
+})
 
 describe('vault export renderer contract', () => {
   it('makes plaintext ZIP passwordless while encrypted formats require a password', () => {

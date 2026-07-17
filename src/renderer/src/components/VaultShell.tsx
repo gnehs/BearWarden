@@ -131,8 +131,10 @@ import {
   type VaultSearchMatches
 } from '../lib/vault-search-ui'
 import { vaultHealthRevision } from '../lib/vault-health-ui'
+import { formatVaultDate as formatDate } from '../lib/vault-date'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
+import { ItemHistoryRows } from './ItemHistoryRows'
 import { Button } from '@renderer/components/ui/button'
 import {
   AlertDialog,
@@ -272,10 +274,6 @@ const sortItemsOptions = [
 const isMac = navigator.userAgent.includes('Mac')
 const commandLabel = isMac ? '⌘' : 'Ctrl'
 const moveShortcutLabel = isMac ? '⇧⌘M' : 'Ctrl+Shift+M'
-const dateTimeFormatter = new Intl.DateTimeFormat('zh-TW', {
-  dateStyle: 'medium',
-  timeStyle: 'short'
-})
 const detailCacheLimit = 48
 
 interface VaultShellProps {
@@ -441,13 +439,6 @@ function sortItems(items: LoginSummary[], mode: SortMode): LoginSummary[] {
     const nameResult = collator.compare(left.name, right.name)
     return nameResult || left.id.localeCompare(right.id)
   })
-}
-
-function formatDate(value: string | null): string {
-  if (!value) return '尚未使用'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '未知'
-  return dateTimeFormatter.format(date)
 }
 
 function hostLabel(uri: string | null): string {
@@ -4665,16 +4656,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                       <CardTitle id="history-title">項目歷史記錄</CardTitle>
                     </CardHeader>
                     <CardContent className="contents">
-                      <dl>
-                        <div>
-                          <dt>最後編輯紀錄</dt>
-                          <dd>{formatDate(selectedLogin.updatedAt)}</dd>
-                        </div>
-                        <div>
-                          <dt>建立於</dt>
-                          <dd>{formatDate(selectedLogin.createdAt)}</dd>
-                        </div>
-                      </dl>
+                      <ItemHistoryRows item={selectedLogin} formatDate={formatDate} />
                     </CardContent>
                   </Card>
 

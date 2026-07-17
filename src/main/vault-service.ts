@@ -284,6 +284,7 @@ interface StoredLogin
       | 'passkeys'
       | 'customFields'
       | 'passwordHistoryCount'
+      | 'passwordUpdatedAt'
       | 'attachmentCount'
     >,
     VaultItemFields {
@@ -2952,6 +2953,10 @@ function summarizeSecureNote(notes: string | null): string {
 function toView(login: StoredLogin): LoginView {
   return {
     ...toSummary(login),
+    passwordUpdatedAt:
+      login.type === 'login' && login.password.length > 0
+        ? (validRemoteDate(login.passwordRevisionDate) ?? null)
+        : null,
     // This method is only exposed through the main-process authorization gate. Restore fields
     // intentionally redacted from protected list summaries.
     username: login.type === 'login' ? login.username : '',
@@ -2995,6 +3000,7 @@ function toSharedView(login: StoredSharedLogin): SharedLoginView {
     ? view
     : {
         ...view,
+        passwordUpdatedAt: null,
         username: '',
         notes: null,
         hasTotp: false,

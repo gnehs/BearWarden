@@ -1,0 +1,43 @@
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, it, vi } from 'vitest'
+import { ItemHistoryRows } from './ItemHistoryRows'
+
+const baseItem = {
+  updatedAt: '2026-07-17T01:00:00.000Z',
+  createdAt: '2026-07-16T01:00:00.000Z',
+  passwordUpdatedAt: null
+}
+
+describe('ItemHistoryRows', () => {
+  it('shows the real password revision date when the authorized view provides it', () => {
+    const formatDate = vi.fn((value: string | null) => `formatted:${value}`)
+    const markup = renderToStaticMarkup(
+      <ItemHistoryRows
+        item={{ ...baseItem, passwordUpdatedAt: '2026-07-17T00:30:00.000Z' }}
+        formatDate={formatDate}
+      />
+    )
+
+    expect(markup).toContain('密碼最後更新')
+    expect(markup).toContain('formatted:2026-07-17T00:30:00.000Z')
+  })
+
+  it('does not invent a password history row when no revision date is available', () => {
+    const markup = renderToStaticMarkup(
+      <ItemHistoryRows item={baseItem} formatDate={(value) => String(value)} />
+    )
+
+    expect(markup).not.toContain('密碼最後更新')
+    expect(markup).toContain('最後編輯紀錄')
+    expect(markup).toContain('建立於')
+  })
+
+  it('renders the existing unknown-date label for invalid revision metadata', () => {
+    const markup = renderToStaticMarkup(
+      <ItemHistoryRows item={{ ...baseItem, passwordUpdatedAt: 'not-a-date' }} />
+    )
+
+    expect(markup).toContain('密碼最後更新')
+    expect(markup).toContain('未知')
+  })
+})
