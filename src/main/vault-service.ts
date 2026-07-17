@@ -2910,6 +2910,24 @@ function isCompositeRemoteLoginUpdate(
   return steps > 1
 }
 
+type BulkRemoteLoginMutation =
+  'soft-delete' | 'restore' | 'move' | 'archive' | 'unarchive' | 'hard-delete'
+const MAX_REMOTE_LOGIN_BATCH_IDS = 500
+
+interface BulkRemoteLoginCandidate {
+  action: Extract<SyncAction, { entity: 'login' }>
+  mutation: BulkRemoteLoginMutation
+  remoteId: string
+  folderId: string | null
+}
+
+function sameLoginContentExceptFolder(left: SyncLogin, right: SyncLogin): boolean {
+  return (
+    fingerprintLogin({ ...left, folderId: null, deletedAt: null, archivedAt: null }, null) ===
+    fingerprintLogin({ ...right, folderId: null, deletedAt: null, archivedAt: null }, null)
+  )
+}
+
 function findPasskeyVaultMatches(
   data: VaultData,
   rpId: string,
@@ -8622,8 +8640,37 @@ export class VaultService {
     const completed = new Map<string, SyncActionResult>()
     const counts = { pulled: 0, pushed: 0, deleted: 0, conflicts: 0 }
 
-    for (const action of plan.actions) {
+    for (let actionIndex = 0; actionIndex < plan.actions.length; actionIndex += 1) {
+      const action = plan.actions[actionIndex]!
       if (signal.aborted) throw new BitwardenDirectError('ABORTED')
+      const batchCandidate = this.bulkRemoteLoginCandidate(action, completed)
+      if (batchCandidate && this.supportsBulkRemoteLoginMutation(client, batchCandidate.mutation)) {
+        const batch: BulkRemoteLoginCandidate[] = [batchCandidate]
+        for (let nextIndex = actionIndex + 1; nextIndex < plan.actions.length; nextIndex += 1) {
+          if (batch.length === MAX_REMOTE_LOGIN_BATCH_IDS) break
+          const candidate = this.bulkRemoteLoginCandidate(plan.actions[nextIndex]!, completed)
+          if (
+            candidate === null ||
+            candidate.mutation !== batchCandidate.mutation ||
+            candidate.folderId !== batchCandidate.folderId
+          ) {
+            break
+          }
+          batch.push(candidate)
+        }
+        if (batch.length > 1) {
+          await this.executeBulkRemoteLoginMutation(client, batch, signal)
+          for (const candidate of batch) {
+            const result: SyncActionResult = { actionId: candidate.action.actionId }
+            results.push(result)
+            completed.set(candidate.action.actionId, result)
+            if (candidate.action.kind === 'delete-remote') counts.deleted += 1
+            else counts.pushed += 1
+          }
+          actionIndex += batch.length - 1
+          continue
+        }
+      }
       const result = await this.executeSyncAction(next, client, action, completed, signal)
       results.push(result)
       completed.set(action.actionId, result)
@@ -8901,6 +8948,115 @@ export class VaultService {
         baseFingerprint: entry.baseFingerprint
       }))
     }
+  }
+
+  private bulkRemoteLoginCandidate(
+    action: SyncAction,
+    completed: Map<string, SyncActionResult>
+  ): BulkRemoteLoginCandidate | null {
+    if (action.entity !== 'login') return null
+    if (action.kind === 'delete-remote') {
+      return {
+        action,
+        mutation: 'hard-delete',
+        remoteId: action.remoteId,
+        folderId: null
+      }
+    }
+    if (action.kind !== 'push-update') return null
+
+    const desiredDeleted = action.local.deletedAt !== null
+    const currentDeleted = action.remote.deletedAt !== null
+    const desiredArchived = action.local.archivedAt !== null
+    const currentArchived = action.remote.archivedAt !== null
+    if (!action.contentChanged) {
+      const mutations: BulkRemoteLoginMutation[] = []
+      if (currentDeleted && !desiredDeleted) mutations.push('restore')
+      if (currentArchived && !desiredArchived) mutations.push('unarchive')
+      if (desiredArchived && !currentArchived) mutations.push('archive')
+      if (desiredDeleted && !currentDeleted) mutations.push('soft-delete')
+      return mutations.length === 1
+        ? {
+            action,
+            mutation: mutations[0]!,
+            remoteId: action.remoteId,
+            folderId: null
+          }
+        : null
+    }
+
+    if (
+      desiredDeleted !== currentDeleted ||
+      desiredArchived !== currentArchived ||
+      !sameLoginContentExceptFolder(action.local, action.remote)
+    ) {
+      return null
+    }
+    const folderId = this.resolveFolderReference(action.remoteFolder, completed, 'remoteId')
+    if (folderId === action.remote.folderId) return null
+    return { action, mutation: 'move', remoteId: action.remoteId, folderId }
+  }
+
+  private supportsBulkRemoteLoginMutation(
+    client: BitwardenSyncClient,
+    mutation: BulkRemoteLoginMutation
+  ): boolean {
+    if (mutation === 'soft-delete') return client.softDeleteLogins !== undefined
+    if (mutation === 'restore') return client.restoreLogins !== undefined
+    if (mutation === 'move') return client.moveLogins !== undefined
+    if (mutation === 'archive') return client.archiveLogins !== undefined
+    if (mutation === 'unarchive') return client.unarchiveLogins !== undefined
+    return client.hardDeleteLogins !== undefined
+  }
+
+  private async executeBulkRemoteLoginMutation(
+    client: BitwardenSyncClient,
+    batch: readonly BulkRemoteLoginCandidate[],
+    signal: AbortSignal
+  ): Promise<void> {
+    const mutation = batch[0]?.mutation
+    if (!mutation || batch.some((candidate) => candidate.mutation !== mutation)) {
+      throw new VaultError('SYNC_FAILED')
+    }
+    const ids = batch.map((candidate) => candidate.remoteId)
+    try {
+      if (mutation === 'soft-delete') await client.softDeleteLogins!(ids, signal)
+      else if (mutation === 'restore') await client.restoreLogins!(ids, signal)
+      else if (mutation === 'move') await client.moveLogins!(ids, batch[0]!.folderId, signal)
+      else if (mutation === 'archive') await client.archiveLogins!(ids, signal)
+      else if (mutation === 'unarchive') await client.unarchiveLogins!(ids, signal)
+      else await client.hardDeleteLogins!(ids, signal)
+    } catch (error) {
+      if (signal.aborted) throw error
+      try {
+        await client.sync(signal)
+        const remote = new Map(
+          (await client.listPersonalLogins(signal)).map((login) => [login.id, login])
+        )
+        if (batch.every((candidate) => this.bulkRemoteLoginMutationApplied(candidate, remote))) {
+          return
+        }
+      } catch {
+        // The original mutation error is the most useful failure. A later sync retries safely
+        // from the server's authoritative state instead of assuming this batch was atomic.
+      }
+      if (signal.aborted) throw new BitwardenDirectError('ABORTED')
+      throw error
+    }
+  }
+
+  private bulkRemoteLoginMutationApplied(
+    candidate: BulkRemoteLoginCandidate,
+    remote: ReadonlyMap<string, BitwardenLoginItem>
+  ): boolean {
+    const current = remote.get(candidate.remoteId)
+    if (candidate.mutation === 'hard-delete') return current === undefined
+    if (!current) return false
+    if (candidate.mutation === 'soft-delete') return current.deletedAt !== null
+    if (candidate.mutation === 'restore') return current.deletedAt === null
+    if (candidate.mutation === 'archive') return current.archivedAt !== null
+    if (candidate.mutation === 'unarchive') return current.archivedAt === null
+    return current.folderId === candidate.folderId
   }
 
   private async executeSyncAction(

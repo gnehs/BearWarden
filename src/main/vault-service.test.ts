@@ -227,6 +227,11 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
   hardDeletedIds: string[]
   editedLoginIds: string[]
   downloadedAttachmentIds: string[]
+  bulkLifecycleCalls: Array<{
+    mutation: 'soft-delete' | 'restore' | 'move' | 'archive' | 'unarchive' | 'hard-delete'
+    ids: string[]
+    folderId?: string | null
+  }>
   readonly loginPassword: string | null
 } {
   let unlocked = false
@@ -316,6 +321,11 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
   const hardDeletedIds: string[] = []
   const editedLoginIds: string[] = []
   const downloadedAttachmentIds: string[] = []
+  const bulkLifecycleCalls: Array<{
+    mutation: 'soft-delete' | 'restore' | 'move' | 'archive' | 'unarchive' | 'hard-delete'
+    ids: string[]
+    folderId?: string | null
+  }> = []
   let equivalentDomainSettings = {
     equivalentDomains: [['remote.example.invalid', 'remote-login.example.invalid']],
     globalEquivalentDomains: [
@@ -339,6 +349,7 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
     hardDeletedIds,
     editedLoginIds,
     downloadedAttachmentIds,
+    bulkLifecycleCalls,
     get loginPassword() {
       return loginPassword
     },
@@ -546,20 +557,61 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
       const login = remoteLogins.find((candidate) => candidate.id === id)
       if (login) login.deletedAt = '2026-07-14T00:00:02.000Z'
     },
+    softDeleteLogins: async (ids) => {
+      bulkLifecycleCalls.push({ mutation: 'soft-delete', ids: [...ids] })
+      for (const id of ids) {
+        softDeletedIds.push(id)
+        const login = remoteLogins.find((candidate) => candidate.id === id)
+        if (login) login.deletedAt = '2026-07-14T00:00:02.000Z'
+      }
+    },
     restoreLogin: async (id) => {
       restoredIds.push(id)
       const login = remoteLogins.find((candidate) => candidate.id === id)
       if (login) login.deletedAt = null
     },
+    restoreLogins: async (ids) => {
+      bulkLifecycleCalls.push({ mutation: 'restore', ids: [...ids] })
+      for (const id of ids) {
+        restoredIds.push(id)
+        const login = remoteLogins.find((candidate) => candidate.id === id)
+        if (login) login.deletedAt = null
+      }
+    },
+    moveLogins: async (ids, folderId) => {
+      bulkLifecycleCalls.push({ mutation: 'move', ids: [...ids], folderId })
+      for (const id of ids) {
+        const login = remoteLogins.find((candidate) => candidate.id === id)
+        if (login) login.folderId = folderId
+      }
+    },
     archiveLogin: async (id) => {
       const login = remoteLogins.find((candidate) => candidate.id === id)
       if (login) login.archivedAt = '2026-07-14T00:00:03.000Z'
+    },
+    archiveLogins: async (ids) => {
+      bulkLifecycleCalls.push({ mutation: 'archive', ids: [...ids] })
+      for (const id of ids) {
+        const login = remoteLogins.find((candidate) => candidate.id === id)
+        if (login) login.archivedAt = '2026-07-14T00:00:03.000Z'
+      }
     },
     unarchiveLogin: async (id) => {
       const login = remoteLogins.find((candidate) => candidate.id === id)
       if (login) login.archivedAt = null
     },
+    unarchiveLogins: async (ids) => {
+      bulkLifecycleCalls.push({ mutation: 'unarchive', ids: [...ids] })
+      for (const id of ids) {
+        const login = remoteLogins.find((candidate) => candidate.id === id)
+        if (login) login.archivedAt = null
+      }
+    },
     hardDeleteLogin,
+    hardDeleteLogins: async (ids) => {
+      bulkLifecycleCalls.push({ mutation: 'hard-delete', ids: [...ids] })
+      for (const id of ids) await hardDeleteLogin(id)
+    },
     deleteLogin: hardDeleteLogin,
     lock: async () => {
       unlocked = false
@@ -3800,6 +3852,256 @@ describe('VaultService encrypted local data', () => {
     await service.syncNow()
     expect(fake!.hardDeletedIds).toEqual([remoteId])
     expect(fake!.remoteLogins).toEqual([])
+  })
+
+  it('batches contiguous personal lifecycle sync actions while preserving logical counts', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.remoteLogins.push({
+          ...structuredClone(fake.remoteLogins[0]!),
+          id: '90000000-0000-4000-8000-000000000005',
+          name: 'Second remote login'
+        })
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const ids = (await service.listLogins()).map((login) => login.id)
+    expect(ids).toHaveLength(2)
+
+    await service.archiveLogins({ ids })
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 2 })
+    await service.unarchiveLogins({ ids })
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 2 })
+    await service.deleteLogins({ ids })
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 2 })
+    await service.restoreLogins({ ids })
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 2 })
+    await service.deleteLogins({ ids })
+    await service.syncNow()
+    await service.deleteLoginsPermanently({ ids })
+    await expect(service.syncNow()).resolves.toMatchObject({ deleted: 2 })
+
+    expect(
+      fake!.bulkLifecycleCalls.map(({ mutation, ids: remoteIds }) => [mutation, remoteIds.length])
+    ).toEqual([
+      ['archive', 2],
+      ['unarchive', 2],
+      ['soft-delete', 2],
+      ['restore', 2],
+      ['soft-delete', 2],
+      ['hard-delete', 2]
+    ])
+  })
+
+  it('chunks more than 500 contiguous lifecycle actions at the transport boundary', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    let localId = 0
+    const { service } = await createHarness({
+      createId: () => `71000000-0000-4000-8000-${String((localId += 1)).padStart(12, '0')}`,
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        const template = fake.remoteLogins[0]!
+        for (let index = 0; index < 500; index += 1) {
+          fake.remoteLogins.push({
+            ...structuredClone(template),
+            id: `91000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+            name: `Remote batch login ${index + 1}`
+          })
+        }
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const ids = (await service.listLogins()).map((login) => login.id)
+    expect(ids).toHaveLength(501)
+    await service.archiveLogins({ ids: ids.slice(0, 500) })
+    await service.archiveLogin({ id: ids[500]! })
+
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 501 })
+    expect(
+      fake!.bulkLifecycleCalls
+        .filter((call) => call.mutation === 'archive')
+        .map((call) => call.ids.length)
+    ).toEqual([500])
+    expect(fake!.remoteLogins.every((login) => login.archivedAt !== null)).toBe(true)
+  })
+
+  it('reconciles a fully committed lifecycle batch when its response is lost', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.remoteLogins.push({
+          ...structuredClone(fake.remoteLogins[0]!),
+          id: '90000000-0000-4000-8000-000000000005',
+          name: 'Second remote login'
+        })
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const ids = (await service.listLogins()).map((login) => login.id)
+    fake!.archiveLogins = async (remoteIds) => {
+      for (const remoteId of remoteIds) {
+        const login = fake!.remoteLogins.find((candidate) => candidate.id === remoteId)!
+        login.archivedAt = '2026-07-14T00:00:03.000Z'
+      }
+      throw new Error('injected response loss')
+    }
+
+    await service.archiveLogins({ ids })
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 2 })
+    expect(fake!.remoteLogins.every((login) => login.archivedAt !== null)).toBe(true)
+  })
+
+  it('fails a partially committed lifecycle batch and converges safely on retry', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.remoteLogins.push({
+          ...structuredClone(fake.remoteLogins[0]!),
+          id: '90000000-0000-4000-8000-000000000005',
+          name: 'Second remote login'
+        })
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const ids = (await service.listLogins()).map((login) => login.id)
+    fake!.archiveLogins = async (remoteIds) => {
+      const login = fake!.remoteLogins.find((candidate) => candidate.id === remoteIds[0])!
+      login.archivedAt = '2026-07-14T00:00:03.000Z'
+      throw new Error('injected partial commit')
+    }
+
+    await service.archiveLogins({ ids })
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(fake!.remoteLogins.filter((login) => login.archivedAt !== null)).toHaveLength(1)
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 1 })
+    expect(fake!.remoteLogins.every((login) => login.archivedAt !== null)).toBe(true)
+  })
+
+  it('preserves cancellation while reconciling an unknown bulk mutation result', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.remoteLogins.push({
+          ...structuredClone(fake.remoteLogins[0]!),
+          id: '90000000-0000-4000-8000-000000000005',
+          name: 'Second remote login'
+        })
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const ids = (await service.listLogins()).map((login) => login.id)
+    await service.archiveLogins({ ids })
+    fake!.archiveLogins = async () => {
+      throw new Error('injected unknown result')
+    }
+    let reconciliationStarted!: () => void
+    const started = new Promise<void>((resolve) => {
+      reconciliationStarted = resolve
+    })
+    let syncCalls = 0
+    fake!.sync = async (signal) => {
+      syncCalls += 1
+      if (syncCalls === 1) return
+      reconciliationStarted()
+      await new Promise<void>((_resolve, reject) => {
+        if (signal?.aborted) {
+          reject(new BitwardenDirectError('ABORTED'))
+          return
+        }
+        signal?.addEventListener('abort', () => reject(new BitwardenDirectError('ABORTED')), {
+          once: true
+        })
+      })
+    }
+
+    const syncing = service.syncNow()
+    await started
+    const locking = service.lock()
+    await expect(syncing).rejects.toMatchObject({ code: 'LOCKED' })
+    await locking
+  })
+
+  it('batches pure folder moves but keeps content-and-folder edits on the ordinary route', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.remoteLogins.push({
+          ...structuredClone(fake.remoteLogins[0]!),
+          id: '90000000-0000-4000-8000-000000000005',
+          name: 'Second remote login'
+        })
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const ids = (await service.listLogins()).map((login) => login.id)
+    const originalFolder = (await service.listFolders())[0]!
+    const destination = await service.createFolder({ name: 'Bulk move destination' })
+    await service.syncNow()
+    for (const id of ids) await service.updateLogin({ id, folderId: destination.id })
+
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 2 })
+    expect(fake!.bulkLifecycleCalls).toContainEqual({
+      mutation: 'move',
+      ids: fake!.remoteLogins.map((login) => login.id),
+      folderId: '90000000-0000-4000-8000-000000000003'
+    })
+    expect(fake!.editedLoginIds).toEqual([])
+
+    for (const [index, id] of ids.entries()) {
+      await service.updateLogin({
+        id,
+        folderId: originalFolder.id,
+        password: `changed-secret-${index}`
+      })
+    }
+    const moveCallCount = fake!.bulkLifecycleCalls.filter((call) => call.mutation === 'move').length
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 2 })
+    expect(fake!.bulkLifecycleCalls.filter((call) => call.mutation === 'move')).toHaveLength(
+      moveCallCount
+    )
+    expect(fake!.editedLoginIds).toHaveLength(2)
   })
 
   it('resumes a partially completed trash update after restart without reviving or duplicating it', async () => {
