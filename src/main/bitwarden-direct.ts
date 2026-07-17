@@ -41,6 +41,7 @@ import {
   type BitwardenSendRequest,
   type BitwardenPrelogin,
   type BitwardenPersonalApiKey,
+  type BitwardenPersonalCipherImportRequest,
   type BitwardenTwoFactorProvider,
   type BitwardenWebAuthnKey,
   type BitwardenWebAuthnSetup,
@@ -99,6 +100,11 @@ const MAX_SEND_FILE_SIZE_NAME_LENGTH = 64
 const MAX_SEND_FILE_PLAINTEXT_BYTES = 128 * 1024 * 1024 - 65
 const MAX_SYNC_SECRET_LENGTH = 16_384
 const MAX_WEBAUTHN_REGISTRATION_SLOTS = 10
+const MIN_PERSONAL_IMPORT_CIPHERS = 2
+const MAX_PERSONAL_IMPORT_CIPHERS = 500
+const MIN_IMPORT_RECONCILIATION_MARKERS = 1
+const PREPARED_IMPORT_TOKEN_BYTES = 32
+const MAX_IMPORT_MARKER_LENGTH = 1_024
 const MINIMUM_CLIENT_VERSION = '2024.12.0'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 const userKeyEncoder = new Encoder({
@@ -375,6 +381,29 @@ export interface BitwardenLoginDraft extends Partial<VaultItemFields> {
   autofillOnPageLoad?: boolean | null
 }
 
+export interface BitwardenLoginImportEntry {
+  localId: string
+  draft: BitwardenLoginDraft
+}
+
+export interface BitwardenPreparedLoginImportEntry {
+  localId: string
+  /** The wrapped, per-item key used only to reconcile an unknown import result. */
+  marker: string
+  remoteFolderId: string | null
+}
+
+export interface BitwardenPreparedLoginImport {
+  /** Opaque, main-process-only capability. Prepared imports are never persisted. */
+  token: string
+  entries: BitwardenPreparedLoginImportEntry[]
+}
+
+export interface BitwardenReconciledLoginImportEntry {
+  marker: string
+  remoteId: string
+}
+
 export interface BitwardenLoginRequest {
   email: string
   password: string
@@ -561,6 +590,14 @@ export interface BitwardenSyncClient {
   editFolder(id: string, name: string, signal?: AbortSignal): Promise<BitwardenFolder>
   deleteFolder(id: string, signal?: AbortSignal): Promise<void>
   createLogin(draft: BitwardenLoginDraft, signal?: AbortSignal): Promise<BitwardenLoginItem>
+  prepareLoginImport?(
+    entries: readonly BitwardenLoginImportEntry[]
+  ): Promise<BitwardenPreparedLoginImport>
+  executePreparedLoginImport?(token: string, signal?: AbortSignal): Promise<void>
+  reconcileLoginImportMarkers?(
+    markers: readonly string[]
+  ): Promise<BitwardenReconciledLoginImportEntry[]>
+  discardPreparedLoginImport?(token: string): Promise<void>
   editLogin(
     id: string,
     draft: BitwardenLoginDraft,
@@ -608,6 +645,10 @@ interface CachedLogin {
 interface CachedSend {
   raw: JsonObject
   item: BitwardenSendItem
+}
+
+interface PreparedLoginImportPayload {
+  request: BitwardenPersonalCipherImportRequest
 }
 
 interface ResolvedBitwardenDraft extends VaultItemFields {
@@ -1683,6 +1724,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   private collections = new Map<string, BitwardenCollection>()
   private organizationCiphers = new Map<string, BitwardenOrganizationCipher>()
   private sends = new Map<string, CachedSend>()
+  private preparedLoginImports = new Map<string, PreparedLoginImportPayload>()
 
   constructor(private readonly options: BitwardenDirectOptions) {
     this.email = normalizeEmail(options.email)
@@ -3434,6 +3476,156 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     }
   }
 
+  async prepareLoginImport(
+    entries: readonly BitwardenLoginImportEntry[]
+  ): Promise<BitwardenPreparedLoginImport> {
+    const userKey = this.requireUserKey()
+    if (
+      !Array.isArray(entries) ||
+      entries.length < MIN_PERSONAL_IMPORT_CIPHERS ||
+      entries.length > MAX_PERSONAL_IMPORT_CIPHERS ||
+      this.preparedLoginImports.size !== 0
+    ) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+
+    const localIds = new Set<string>()
+    const markers = new Set<string>()
+    const folders: Array<{ id: string; name: string }> = []
+    const folderIndexes = new Map<string, number>()
+    const ciphers: JsonObject[] = []
+    const folderRelationships: Array<{ key: number; value: number }> = []
+    const preparedEntries: BitwardenPreparedLoginImportEntry[] = []
+
+    try {
+      for (const [index, entry] of entries.entries()) {
+        if (
+          !isRecord(entry) ||
+          typeof entry.localId !== 'string' ||
+          !isRecord(entry.draft) ||
+          typeof entry.draft.name !== 'string'
+        ) {
+          throw new BitwardenDirectError('INVALID_RESPONSE')
+        }
+        const localId = assertUuidValue(entry.localId)
+        const normalizedLocalId = localId.toLocaleLowerCase('en-US')
+        if (localIds.has(normalizedLocalId)) throw new BitwardenDirectError('INVALID_RESPONSE')
+        localIds.add(normalizedLocalId)
+
+        const resolved = resolveDraft(entry.draft as unknown as BitwardenLoginDraft, null)
+        const itemKey = randomBytes(USER_KEY_BYTES)
+        try {
+          const request = this.encryptLoginRequest(resolved, itemKey, null)
+          const marker = encryptBitwardenBytes(itemKey, userKey, 'legacy-key')
+          if (markers.has(marker)) throw new BitwardenDirectError('INVALID_RESPONSE')
+          markers.add(marker)
+          request.key = marker
+          request.organizationId = null
+          request.folderId = null
+          delete request.attachments
+          delete request.attachments2
+          delete request.collectionIds
+          ciphers.push(request)
+
+          if (resolved.folderId !== null) {
+            const cachedFolder = this.folders.get(resolved.folderId)
+            if (!cachedFolder || cachedFolder.item.id !== resolved.folderId) {
+              throw new BitwardenDirectError('INVALID_RESPONSE')
+            }
+            let folderIndex = folderIndexes.get(resolved.folderId)
+            if (folderIndex === undefined) {
+              folderIndex = folders.length
+              folderIndexes.set(resolved.folderId, folderIndex)
+              folders.push({
+                id: resolved.folderId,
+                name: requiredStringProperty(cachedFolder.raw, 'name')
+              })
+            }
+            folderRelationships.push({ key: index, value: folderIndex })
+          }
+          preparedEntries.push({
+            localId,
+            marker,
+            remoteFolderId: resolved.folderId
+          })
+        } finally {
+          itemKey.fill(0)
+        }
+      }
+
+      let token: string
+      do token = randomBytes(PREPARED_IMPORT_TOKEN_BYTES).toString('base64url')
+      while (this.preparedLoginImports.has(token))
+      this.preparedLoginImports.set(token, {
+        request: { folders, ciphers, folderRelationships }
+      })
+      return {
+        token,
+        entries: preparedEntries.map((entry) => ({ ...entry }))
+      }
+    } catch (error) {
+      this.clearPreparedLoginImportPayload({
+        request: { folders, ciphers, folderRelationships }
+      })
+      throw this.mapError(error)
+    }
+  }
+
+  async executePreparedLoginImport(token: string, signal?: AbortSignal): Promise<void> {
+    const payload = this.takePreparedLoginImport(token)
+    try {
+      this.requireUserKey()
+      await this.http.importPersonalCiphers(payload.request, signal)
+      await this.captureSession()
+    } catch (error) {
+      throw this.mapError(error)
+    } finally {
+      this.clearPreparedLoginImportPayload(payload)
+    }
+  }
+
+  async reconcileLoginImportMarkers(
+    markers: readonly string[]
+  ): Promise<BitwardenReconciledLoginImportEntry[]> {
+    this.requireUserKey()
+    if (
+      !Array.isArray(markers) ||
+      markers.length < MIN_IMPORT_RECONCILIATION_MARKERS ||
+      markers.length > MAX_PERSONAL_IMPORT_CIPHERS
+    ) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    const expected = new Set<string>()
+    for (const marker of markers) {
+      if (
+        typeof marker !== 'string' ||
+        marker.length === 0 ||
+        marker.length > MAX_IMPORT_MARKER_LENGTH ||
+        expected.has(marker)
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      expected.add(marker)
+    }
+
+    const matches = new Map<string, string>()
+    for (const [remoteId, cached] of this.logins) {
+      const marker = property(cached.raw, 'key')
+      if (typeof marker !== 'string' || !expected.has(marker)) continue
+      if (matches.has(marker)) throw new BitwardenDirectError('INVALID_RESPONSE')
+      matches.set(marker, remoteId)
+    }
+    return markers.flatMap((marker) => {
+      const remoteId = matches.get(marker)
+      return remoteId ? [{ marker, remoteId }] : []
+    })
+  }
+
+  async discardPreparedLoginImport(token: string): Promise<void> {
+    const payload = this.takePreparedLoginImport(token)
+    this.clearPreparedLoginImportPayload(payload)
+  }
+
   async editLogin(
     id: string,
     draft: BitwardenLoginDraft,
@@ -4611,7 +4803,39 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     await this.options.onStateChanged?.(this.exportState())
   }
 
+  private takePreparedLoginImport(token: string): PreparedLoginImportPayload {
+    if (
+      typeof token !== 'string' ||
+      token.length !== Math.ceil((PREPARED_IMPORT_TOKEN_BYTES * 8) / 6) ||
+      !/^[A-Za-z0-9_-]+$/u.test(token)
+    ) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    const payload = this.preparedLoginImports.get(token)
+    if (!payload) throw new BitwardenDirectError('INVALID_RESPONSE')
+    // Consume the capability before starting I/O. An unknown result can therefore never be retried.
+    this.preparedLoginImports.delete(token)
+    return payload
+  }
+
+  private clearPreparedLoginImportPayload(payload: PreparedLoginImportPayload): void {
+    for (const cipher of payload.request.ciphers) {
+      for (const key of Object.keys(cipher)) cipher[key] = null
+    }
+    for (const folder of payload.request.folders) {
+      folder.name = ''
+      folder.id = null
+    }
+    ;(payload.request.ciphers as JsonObject[]).splice(0)
+    ;(payload.request.folders as Array<{ id?: string | null; name: string }>).splice(0)
+    ;(payload.request.folderRelationships as Array<{ key: number; value: number }>).splice(0)
+  }
+
   private clearDecryptedState(): void {
+    for (const payload of this.preparedLoginImports.values()) {
+      this.clearPreparedLoginImportPayload(payload)
+    }
+    this.preparedLoginImports.clear()
     this.stretchedKey?.fill(0)
     clearBitwardenSymmetricKey(this.userKey)
     this.stretchedKey = null

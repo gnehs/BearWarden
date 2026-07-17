@@ -3647,6 +3647,189 @@ describe('BitwardenDirectClient', () => {
     ])
   })
 
+  it('prepares a personal import with per-item keys and reconciles only exact markers', async () => {
+    const sync = await encryptedSync()
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          return jsonResponse({
+            access_token: 'access-token',
+            refresh_token: 'refresh-token',
+            expires_in: 3_600
+          })
+        }
+        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+
+    let imported: {
+      folders: readonly { id?: string | null; name: string }[]
+      ciphers: readonly JsonObject[]
+      folderRelationships: readonly { key: number; value: number }[]
+    } | null = null
+    vi.spyOn(http, 'importPersonalCiphers').mockImplementation(async (request) => {
+      imported = structuredClone(request)
+    })
+    const localIds = [
+      '90000000-0000-4000-8000-000000000001',
+      '90000000-0000-4000-8000-000000000002'
+    ]
+    const prepared = await client.prepareLoginImport([
+      {
+        localId: localIds[0]!,
+        draft: {
+          name: 'Imported one',
+          username: 'first-user',
+          password: 'first-secret',
+          folderId: FOLDER_ID
+        }
+      },
+      {
+        localId: localIds[1]!,
+        draft: {
+          name: 'Imported two',
+          username: 'second-user',
+          password: 'second-secret',
+          folderId: null
+        }
+      }
+    ])
+
+    expect(prepared.token).toMatch(/^[A-Za-z0-9_-]{43}$/u)
+    expect(prepared.entries).toEqual([
+      expect.objectContaining({ localId: localIds[0], remoteFolderId: FOLDER_ID }),
+      expect.objectContaining({ localId: localIds[1], remoteFolderId: null })
+    ])
+    expect(new Set(prepared.entries.map((entry) => entry.marker)).size).toBe(2)
+    await client.executePreparedLoginImport(prepared.token)
+    expect(imported).not.toBeNull()
+    const request = imported!
+    expect(request.folders).toEqual([
+      {
+        id: FOLDER_ID,
+        name: (sync.folders as JsonObject[])[0]!.name
+      }
+    ])
+    expect(request.folderRelationships).toEqual([{ key: 0, value: 0 }])
+    expect(request.ciphers).toHaveLength(2)
+    expect(request.ciphers.map((cipher) => cipher.key)).toEqual(
+      prepared.entries.map((entry) => entry.marker)
+    )
+    expect(
+      request.ciphers.every(
+        (cipher) =>
+          cipher.organizationId === null &&
+          cipher.folderId === null &&
+          !Object.hasOwn(cipher, 'attachments') &&
+          !Object.hasOwn(cipher, 'collectionIds')
+      )
+    ).toBe(true)
+    expect(JSON.stringify(request)).not.toContain('first-secret')
+    expect(JSON.stringify(request)).not.toContain('second-secret')
+
+    const importedIds = [
+      'a0000000-0000-4000-8000-000000000001',
+      'a0000000-0000-4000-8000-000000000002'
+    ]
+    ;(sync.ciphers as JsonObject[]).push(
+      ...request.ciphers.map((cipher, index) => ({
+        ...cipher,
+        id: importedIds[index],
+        folderId: index === 0 ? FOLDER_ID : null,
+        creationDate: '2026-07-17T00:00:00.000Z',
+        revisionDate: '2026-07-17T00:00:00.000Z',
+        deletedDate: null,
+        archivedDate: null
+      }))
+    )
+    await client.sync()
+    await expect(
+      client.reconcileLoginImportMarkers([prepared.entries[1]!.marker, prepared.entries[0]!.marker])
+    ).resolves.toEqual([
+      { marker: prepared.entries[1]!.marker, remoteId: importedIds[1] },
+      { marker: prepared.entries[0]!.marker, remoteId: importedIds[0] }
+    ])
+    await expect(
+      client.reconcileLoginImportMarkers([prepared.entries[0]!.marker, '2.unknown-marker'])
+    ).resolves.toEqual([{ marker: prepared.entries[0]!.marker, remoteId: importedIds[0] }])
+  })
+
+  it('consumes prepared imports before I/O and clears them when the vault locks', async () => {
+    const sync = await encryptedSync()
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          return jsonResponse({
+            access_token: 'access-token',
+            refresh_token: 'refresh-token',
+            expires_in: 3_600
+          })
+        }
+        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+    const entries = [
+      {
+        localId: '90000000-0000-4000-8000-000000000011',
+        draft: { name: 'One', username: 'u1', password: 'p1' }
+      },
+      {
+        localId: '90000000-0000-4000-8000-000000000012',
+        draft: { name: 'Two', username: 'u2', password: 'p2' }
+      }
+    ]
+    const importSpy = vi
+      .spyOn(http, 'importPersonalCiphers')
+      .mockRejectedValueOnce(new BitwardenHttpError('NETWORK'))
+    const unknown = await client.prepareLoginImport(entries)
+    await expect(client.prepareLoginImport(entries)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    await expect(client.executePreparedLoginImport(unknown.token)).rejects.toMatchObject({
+      code: 'NETWORK'
+    })
+    await expect(client.executePreparedLoginImport(unknown.token)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    expect(importSpy).toHaveBeenCalledTimes(1)
+
+    const discarded = await client.prepareLoginImport(entries)
+    await client.discardPreparedLoginImport(discarded.token)
+    await expect(client.executePreparedLoginImport(discarded.token)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+
+    const locked = await client.prepareLoginImport(entries)
+    await client.lock()
+    await expect(client.executePreparedLoginImport(locked.token)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+  })
+
   it('lists and performs lossless V1 CRUD across card, identity, note, and SSH types', async () => {
     const sync = await encryptedSync({ allTypes: true })
     const writes: JsonObject[] = []
