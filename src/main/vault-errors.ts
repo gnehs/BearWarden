@@ -44,6 +44,8 @@ export function accountSwitchVaultError(error: unknown): VaultError | null {
     case 'ACCOUNT_ID_GENERATION_FAILED':
     case 'ACCOUNT_STORAGE_PREPARATION_FAILED':
     case 'ACCOUNT_STORAGE_UNAVAILABLE':
+    case 'ACCOUNT_REMOVAL_UNAVAILABLE':
+    case 'ACCOUNT_REMOVAL_PREPARATION_FAILED':
     case 'ACCOUNT_ACTIVATION_FAILED':
     case 'ACCOUNT_REGISTRY_UPDATE_FAILED':
       return new VaultError('ACCOUNT_SWITCH_UNAVAILABLE')

@@ -24,10 +24,12 @@ export interface AccountPathLayout {
   readonly registryPath: string
   readonly registryBackupPath: string
   readonly migrationJournalPath: string
+  readonly removalJournalPath: string
   readonly legacyVaultPath: string
   readonly legacySettingsPath: string
   readonly legacyTouchIdPath: string
   account(accountId: string): AccountStoragePaths
+  accountRemovalTombstone(accountId: string, deletionId: string): string
   migrationTemporaryDirectory(migrationId: string): string
 }
 
@@ -62,6 +64,7 @@ export function createAccountPathLayout(userDataDirectory: string): AccountPathL
     registryPath: join(accountsDirectory, 'registry.json'),
     registryBackupPath: join(accountsDirectory, 'registry.json.bak'),
     migrationJournalPath: join(root, 'account-migration.json'),
+    removalJournalPath: join(accountsDirectory, '.account-removal.json'),
     legacyVaultPath: join(root, 'vault', 'vault.json'),
     legacySettingsPath: join(root, 'settings.json'),
     legacyTouchIdPath: join(root, 'vault', 'touch-id.bin'),
@@ -79,6 +82,13 @@ export function createAccountPathLayout(userDataDirectory: string): AccountPathL
         initializationMarkerPath: join(accountDirectory, '.pending-initialization'),
         displayMetadataPath: join(accountDirectory, 'display-metadata.bin')
       }
+    },
+    accountRemovalTombstone(accountId: string, deletionId: string): string {
+      assertAccountId(accountId)
+      assertAccountId(deletionId)
+      const tombstone = join(accountsDirectory, `.removed-${accountId}-${deletionId}`)
+      assertDerivedChild(accountsDirectory, tombstone)
+      return tombstone
     },
     migrationTemporaryDirectory(migrationId: string): string {
       assertAccountId(migrationId)

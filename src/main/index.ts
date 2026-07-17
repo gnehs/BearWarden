@@ -42,6 +42,7 @@ import { TwoFactorDirectoryCache } from './two-factor-directory-cache'
 import { bootstrapAccountStorage } from './account-storage-bootstrap'
 import { AccountRegistryStore } from './account-registry'
 import { AccountSwitchService } from './account-switch-service'
+import { AccountRemovalJournal } from './account-removal-journal'
 import { clearPendingInitializationMarker } from './account-storage-initialization-marker'
 import icon from '../../resources/icon.png?asset'
 
@@ -448,6 +449,15 @@ if (hasSingleInstanceLock)
 
     const userDataDirectory = app.getPath('userData')
     const accountRegistryStore = new AccountRegistryStore(userDataDirectory)
+    const accountRemovalJournal = new AccountRemovalJournal(userDataDirectory)
+    await accountRemovalJournal
+      .recover({
+        loadAuthoritativeRegistry: () => accountRegistryStore.loadPrimary(),
+        checkpointRegistry: async (registry) => {
+          await accountRegistryStore.checkpoint(registry, registry.revision)
+        }
+      })
+      .catch(() => undefined)
     const activeStorage = await bootstrapAccountStorage(userDataDirectory, {
       registryStore: accountRegistryStore
     })
@@ -545,6 +555,7 @@ if (hasSingleInstanceLock)
       activeStorage.mode === 'account'
         ? new AccountSwitchService(userDataDirectory, {
             registryStore: accountRegistryStore,
+            removalJournal: accountRemovalJournal,
             beforeActivation: async () => {
               await beforeVaultLock()
               await activeVault.lock()

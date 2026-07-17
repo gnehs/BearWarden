@@ -211,7 +211,12 @@ export interface AccountStatus {
 export type AccountMutationResult =
   | { readonly kind: 'unchanged'; readonly status: AccountStatus }
   | { readonly kind: 'relaunch-required'; readonly status: AccountStatus }
-  | { readonly kind: 'updated'; readonly status: AccountStatus }
+  | {
+      readonly kind: 'updated'
+      readonly status: AccountStatus
+      /** The registry update committed; encrypted local bytes will be removed on a later retry. */
+      readonly cleanupPending?: boolean
+    }
 
 export interface InactiveTwoFactorFinding {
   id: string

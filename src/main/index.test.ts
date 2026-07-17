@@ -272,6 +272,13 @@ vi.mock('./account-switch-service', () => ({
     }
   }
 }))
+vi.mock('./account-removal-journal', () => ({
+  AccountRemovalJournal: class {
+    recover(): Promise<'none'> {
+      return Promise.resolve('none')
+    }
+  }
+}))
 vi.mock('./account-storage-bootstrap', () => ({
   bootstrapAccountStorage: vi.fn(async (_root: string, options: { registryStore: unknown }) => {
     harness.setBootstrapRegistryStore(options.registryStore)
@@ -412,6 +419,7 @@ describe('main WebAuthn lifecycle wiring', () => {
     expect(harness.bootstrapRegistryStore).toBe(harness.registryStore)
     expect(harness.accountSwitchRoot).toBe('/tmp/bearwarden-index-test')
     expect(harness.accountSwitchOptions?.registryStore).toBe(harness.registryStore)
+    expect(harness.accountSwitchOptions?.removalJournal).toBeDefined()
     expect(harness.vaultIpcOptions?.accountSwitchService).toBe(harness.accountSwitchService)
   })
 

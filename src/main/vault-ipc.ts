@@ -486,7 +486,11 @@ function publicAccountStatus(status: AccountStatus): AccountStatus {
 }
 
 function publicAccountMutation(result: AccountMutationResult): AccountMutationResult {
-  return { kind: result.kind, status: publicAccountStatus(result.status) }
+  return {
+    kind: result.kind,
+    status: publicAccountStatus(result.status),
+    ...(result.kind === 'updated' && result.cleanupPending === true ? { cleanupPending: true } : {})
+  }
 }
 
 function parseAccountApiKeyCopy(value: unknown): AccountApiKeyCopyRequest {

@@ -24,6 +24,7 @@ import {
   createPendingInitializationMarker,
   hasPendingInitializationMarker
 } from './account-storage-initialization-marker'
+import { AccountRemovalJournal } from './account-removal-journal'
 
 const ACCOUNT_A = '11111111-1111-4111-8111-111111111111'
 const ACCOUNT_B = '22222222-2222-4222-8222-222222222222'
@@ -53,6 +54,7 @@ interface MemoryStoreHarness {
   readonly store: AccountSwitchRegistryStore
   readonly load: ReturnType<typeof vi.fn>
   readonly save: ReturnType<typeof vi.fn>
+  readonly checkpoint: ReturnType<typeof vi.fn>
   current(): AccountRegistry
 }
 
@@ -68,7 +70,22 @@ function memoryStore(
     current = parseAccountRegistry(next)
     return current
   })
-  return { store: { load, save }, load, save, current: () => current }
+  const checkpoint = vi.fn(async (expected: AccountRegistry, expectedRevision: number) => {
+    if (
+      current.revision !== expectedRevision ||
+      JSON.stringify(current) !== JSON.stringify(expected)
+    ) {
+      throw new Error('ACCOUNT_REGISTRY_CHECKPOINT_CONFLICT')
+    }
+    return current
+  })
+  return {
+    store: { load, loadPrimary: load, save, checkpoint },
+    load,
+    save,
+    checkpoint,
+    current: () => current
+  }
 }
 
 function uuidSequence(...values: readonly string[]): () => string {
@@ -167,7 +184,10 @@ describe('AccountSwitchService renderer-safe status', () => {
     await expect(service.switchAccount({ toString: () => ACCOUNT_B })).rejects.toMatchObject({
       code: 'INVALID_ACCOUNT_SWITCH_REQUEST'
     })
-    await expect(service.removeAccount('../vault')).rejects.toMatchObject({
+    await expect(service.removeAccount('../vault', true)).rejects.toMatchObject({
+      code: 'INVALID_ACCOUNT_SWITCH_REQUEST'
+    })
+    await expect(service.removeAccount(ACCOUNT_B, false)).rejects.toMatchObject({
       code: 'INVALID_ACCOUNT_SWITCH_REQUEST'
     })
     await expect(service.reorderAccounts([ACCOUNT_A, ACCOUNT_B], 1.5)).rejects.toMatchObject({
@@ -257,7 +277,7 @@ describe('AccountSwitchService account management', () => {
       ...activation
     })
 
-    await expect(service.removeAccount(ACCOUNT_B)).resolves.toEqual({
+    await expect(service.removeAccount(ACCOUNT_B, true)).resolves.toEqual({
       kind: 'updated',
       status: {
         revision: 2,
@@ -285,13 +305,47 @@ describe('AccountSwitchService account management', () => {
       ...callbacks()
     })
 
-    await expect(service.removeAccount(ACCOUNT_A)).rejects.toMatchObject({
+    await expect(service.removeAccount(ACCOUNT_A, true)).rejects.toMatchObject({
       code: 'ACCOUNT_ACTIVE_REMOVAL_FORBIDDEN'
     })
-    await expect(service.removeAccount(NEW_ACCOUNT)).rejects.toMatchObject({
+    await expect(service.removeAccount(NEW_ACCOUNT, true)).rejects.toMatchObject({
       code: 'ACCOUNT_NOT_REGISTERED'
     })
     expect(registryStore.save).not.toHaveBeenCalled()
+  })
+
+  it('reports deferred cleanup without deleting early and completes it on recovery', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bearwarden-account-remove-recovery-'))
+    await prepareRegisteredVault(root, ACCOUNT_B)
+    const registryStore = memoryStore(registry())
+    const checkpoint = vi.fn(async () => {
+      throw new Error('CHECKPOINT_UNAVAILABLE')
+    })
+    const service = new AccountSwitchService(root, {
+      registryStore: { ...registryStore.store, checkpoint },
+      ...callbacks()
+    })
+    const accountDirectory = createAccountPathLayout(root).account(ACCOUNT_B).accountDirectory
+
+    await expect(service.removeAccount(ACCOUNT_B, true)).resolves.toMatchObject({
+      kind: 'updated',
+      cleanupPending: true,
+      status: { revision: 2 }
+    })
+    await expect(access(accountDirectory)).resolves.toBeUndefined()
+    await expect(access(createAccountPathLayout(root).removalJournalPath)).resolves.toBeUndefined()
+
+    const journal = new AccountRemovalJournal(root)
+    await expect(
+      journal.recover({
+        loadAuthoritativeRegistry: async () => registryStore.current(),
+        checkpointRegistry: async () => undefined
+      })
+    ).resolves.toBe('deleted')
+    await expect(access(accountDirectory)).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(access(createAccountPathLayout(root).removalJournalPath)).rejects.toMatchObject({
+      code: 'ENOENT'
+    })
   })
 
   it('accepts an observed committed update and poisons later mutations when the result differs', async () => {
@@ -300,6 +354,8 @@ describe('AccountSwitchService account management', () => {
     let saveAttempt = 0
     const store: AccountSwitchRegistryStore = {
       load: vi.fn(async () => current),
+      loadPrimary: vi.fn(async () => current),
+      checkpoint: vi.fn(async (expected) => expected),
       save: vi.fn(async (next) => {
         saveAttempt += 1
         current =
@@ -311,14 +367,14 @@ describe('AccountSwitchService account management', () => {
     }
     const service = new AccountSwitchService(root, { registryStore: store, ...callbacks() })
 
-    await expect(service.removeAccount(ACCOUNT_B)).resolves.toMatchObject({
+    await expect(service.removeAccount(ACCOUNT_B, true)).resolves.toMatchObject({
       kind: 'updated',
       status: { revision: 2, accounts: [{ id: ACCOUNT_A }, { id: ACCOUNT_C }] }
     })
     await expect(service.reorderAccounts([ACCOUNT_C, ACCOUNT_A], 2)).rejects.toMatchObject({
       code: 'ACCOUNT_REGISTRY_UPDATE_RESULT_UNKNOWN'
     })
-    await expect(service.removeAccount(ACCOUNT_C)).rejects.toMatchObject({
+    await expect(service.removeAccount(ACCOUNT_C, true)).rejects.toMatchObject({
       code: 'ACCOUNT_SWITCH_IN_PROGRESS'
     })
   })

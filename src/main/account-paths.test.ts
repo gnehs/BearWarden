@@ -17,6 +17,12 @@ describe('account paths', () => {
     expect(account.vaultPath).toBe(join(account.accountDirectory, 'vault', 'vault.json'))
     expect(account.settingsPath).toBe(join(account.accountDirectory, 'account-settings.json'))
     expect(account.touchIdPath).toBe(join(account.accountDirectory, 'touch-id.bin'))
+    expect(layout.removalJournalPath).toBe(
+      '/tmp/bearwarden-user-data/accounts/.account-removal.json'
+    )
+    expect(layout.accountRemovalTombstone(ACCOUNT_ID, ACCOUNT_ID)).toBe(
+      `/tmp/bearwarden-user-data/accounts/.removed-${ACCOUNT_ID}-${ACCOUNT_ID}`
+    )
   })
 
   it.each([
@@ -33,6 +39,13 @@ describe('account paths', () => {
 
   it('validates injected UUID generators before using them in paths', () => {
     expect(() => createAccountId(() => '../escape')).toThrow('INVALID_ACCOUNT_ID')
+  })
+
+  it('rejects unsafe removal tombstone identifiers', () => {
+    const layout = createAccountPathLayout('/tmp/bearwarden-user-data')
+    expect(() => layout.accountRemovalTombstone(ACCOUNT_ID, '../escape')).toThrow(
+      'INVALID_ACCOUNT_ID'
+    )
   })
 
   it('fails closed when a private directory path is a symlink', async () => {

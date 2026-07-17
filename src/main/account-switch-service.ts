@@ -16,6 +16,10 @@ import {
   createPendingInitializationMarker,
   hasPendingInitializationMarker
 } from './account-storage-initialization-marker'
+import {
+  AccountRemovalJournal,
+  type AccountRemovalRecoveryCallbacks
+} from './account-removal-journal'
 
 export type AccountActivationReason = 'add-account' | 'switch-account'
 
@@ -46,6 +50,7 @@ export type AccountSwitchMutationResult =
   | {
       readonly kind: 'updated'
       readonly status: RendererSafeAccountStatus
+      readonly cleanupPending?: boolean
     }
 
 export type AccountSwitchServiceErrorCode =
@@ -55,6 +60,8 @@ export type AccountSwitchServiceErrorCode =
   | 'ACCOUNT_NOT_REGISTERED'
   | 'ACCOUNT_ACTIVE_REMOVAL_FORBIDDEN'
   | 'ACCOUNT_STALE_REORDER_REQUEST'
+  | 'ACCOUNT_REMOVAL_UNAVAILABLE'
+  | 'ACCOUNT_REMOVAL_PREPARATION_FAILED'
   | 'ACCOUNT_ID_GENERATION_FAILED'
   | 'ACCOUNT_STORAGE_PREPARATION_FAILED'
   | 'ACCOUNT_STORAGE_UNAVAILABLE'
@@ -86,11 +93,14 @@ export class AccountRelaunchResultUnknownError extends Error {
 
 export interface AccountSwitchRegistryStore {
   load(): Promise<AccountRegistry | null>
+  loadPrimary?(): Promise<AccountRegistry | null>
   save(registry: AccountRegistry, expectedRevision: number | null): Promise<AccountRegistry>
+  checkpoint?(registry: AccountRegistry, expectedRevision: number): Promise<AccountRegistry>
 }
 
 export interface AccountSwitchServiceOptions {
   readonly registryStore?: AccountSwitchRegistryStore
+  readonly removalJournal?: AccountRemovalJournal
   readonly createUuid?: () => string
   /** Must finish deactivating account-bound state before the registry commit may begin. */
   readonly beforeActivation: (
@@ -189,6 +199,7 @@ export class AccountSwitchService {
   private readonly registryStore: AccountSwitchRegistryStore
   private readonly createUuid?: () => string
   private readonly paths: ReturnType<typeof createAccountPathLayout>
+  private readonly removalJournal: AccountRemovalJournal
   private readonly beforeActivation: AccountSwitchServiceOptions['beforeActivation']
   private readonly afterCommitRelaunch: AccountSwitchServiceOptions['afterCommitRelaunch']
   private mutationTail: Promise<void> = Promise.resolve()
@@ -200,6 +211,9 @@ export class AccountSwitchService {
     this.registryStore =
       options.registryStore ??
       new AccountRegistryStore(userDataDirectory, { createUuid: options.createUuid })
+    this.removalJournal =
+      options.removalJournal ??
+      new AccountRemovalJournal(userDataDirectory, { createUuid: options.createUuid })
     this.beforeActivation = options.beforeActivation
     this.afterCommitRelaunch = options.afterCommitRelaunch
   }
@@ -231,10 +245,13 @@ export class AccountSwitchService {
     return this.serializeMutation(() => this.performSwitchAccount(accountId))
   }
 
-  removeAccount(accountId: unknown): Promise<AccountSwitchMutationResult> {
+  removeAccount(accountId: unknown, confirm: unknown): Promise<AccountSwitchMutationResult> {
     try {
       assertAccountId(accountId)
     } catch {
+      return Promise.reject(new AccountSwitchServiceError('INVALID_ACCOUNT_SWITCH_REQUEST'))
+    }
+    if (confirm !== true) {
       return Promise.reject(new AccountSwitchServiceError('INVALID_ACCOUNT_SWITCH_REQUEST'))
     }
     return this.serializeMutation(() => this.performRemoveAccount(accountId))
@@ -329,12 +346,49 @@ export class AccountSwitchService {
     if (current.activeAccountId === accountId) {
       throw new AccountSwitchServiceError('ACCOUNT_ACTIVE_REMOVAL_FORBIDDEN')
     }
+    const recoveryCallbacks = this.accountRemovalRecoveryCallbacks()
+    try {
+      await this.removalJournal.prepare(accountId, current.revision)
+    } catch {
+      throw new AccountSwitchServiceError('ACCOUNT_REMOVAL_PREPARATION_FAILED')
+    }
     const next = parseAccountRegistry({
       ...current,
       revision: current.revision + 1,
       accounts: current.accounts.filter((account) => account.id !== accountId).map(copyEntry)
     })
-    return this.commitRegistryUpdate(current, next)
+    let result: Extract<AccountSwitchMutationResult, { kind: 'updated' }>
+    try {
+      result = await this.commitRegistryUpdate(current, next)
+    } catch (error) {
+      if (
+        !(error instanceof AccountSwitchServiceError) ||
+        error.code !== 'ACCOUNT_REGISTRY_UPDATE_RESULT_UNKNOWN'
+      ) {
+        await this.removalJournal.clear().catch(() => undefined)
+      }
+      throw error
+    }
+    try {
+      await this.removalJournal.finish(recoveryCallbacks)
+      return result
+    } catch {
+      return { ...result, cleanupPending: true }
+    }
+  }
+
+  private accountRemovalRecoveryCallbacks(): AccountRemovalRecoveryCallbacks {
+    const loadPrimary = this.registryStore.loadPrimary?.bind(this.registryStore)
+    const checkpoint = this.registryStore.checkpoint?.bind(this.registryStore)
+    if (!loadPrimary || !checkpoint) {
+      throw new AccountSwitchServiceError('ACCOUNT_REMOVAL_UNAVAILABLE')
+    }
+    return {
+      loadAuthoritativeRegistry: loadPrimary,
+      checkpointRegistry: async (registry) => {
+        await checkpoint(registry, registry.revision)
+      }
+    }
   }
 
   private async performReorderAccounts(
@@ -366,7 +420,7 @@ export class AccountSwitchService {
   private async commitRegistryUpdate(
     current: AccountRegistry,
     next: AccountRegistry
-  ): Promise<AccountSwitchMutationResult> {
+  ): Promise<Extract<AccountSwitchMutationResult, { kind: 'updated' }>> {
     try {
       await this.registryStore.save(next, current.revision)
     } catch {
