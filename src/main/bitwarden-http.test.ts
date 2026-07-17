@@ -1513,6 +1513,115 @@ describe('BitwardenHttpClient', () => {
     })
   })
 
+  it('posts a bounded personal cipher import contract and accepts only empty 200 or 204', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    const client = new BitwardenHttpClient({
+      server: 'https://vault.example.test/bw',
+      fetch,
+      maxRetries: 3
+    })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+    const request = {
+      folders: [{ name: '2.encrypted-folder' }],
+      ciphers: [
+        { type: 1, name: '2.encrypted-login', organizationId: null },
+        { type: 2, name: '2.encrypted-note', organizationId: null }
+      ],
+      folderRelationships: [{ key: 1, value: 0 }]
+    }
+
+    await expect(client.importPersonalCiphers(request)).resolves.toBeUndefined()
+    await expect(client.importPersonalCiphers(request)).resolves.toBeUndefined()
+
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(fetch.mock.calls.map(([url, init]) => `${init?.method} ${url}`)).toEqual([
+      'POST https://vault.example.test/bw/api/ciphers/import',
+      'POST https://vault.example.test/bw/api/ciphers/import'
+    ])
+    expect(new Headers(fetch.mock.calls[0]?.[1]?.headers).get('authorization')).toBe(
+      'Bearer access'
+    )
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(request)
+  })
+
+  it('rejects non-personal or structurally invalid cipher imports before transport', async () => {
+    const fetch = vi.fn<FetchLike>()
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+    const valid = {
+      folders: [{ name: '2.folder' }],
+      ciphers: [{ type: 1, name: '2.login', organizationId: null }],
+      folderRelationships: [{ key: 0, value: 0 }]
+    }
+    const invalidRequests: unknown[] = [
+      { ...valid, attachments: [] },
+      { ...valid, ciphers: [] },
+      { ...valid, folders: [{ name: '' }] },
+      { ...valid, folders: [{ id: 'not-a-uuid', name: '2.folder' }] },
+      { ...valid, folders: [{ name: '2.folder', organizationId: null }] },
+      { ...valid, ciphers: [{ type: 0, name: '2.login' }] },
+      { ...valid, ciphers: [{ type: 1, name: '' }] },
+      { ...valid, ciphers: [{ ...valid.ciphers[0], organizationId: 'org-id' }] },
+      { ...valid, ciphers: [{ ...valid.ciphers[0], attachments: [] }] },
+      { ...valid, ciphers: [{ ...valid.ciphers[0], collectionIds: [] }] },
+      { ...valid, ciphers: [{ ...valid.ciphers[0], organization_id: 'org-id' }] },
+      { ...valid, folderRelationships: [{ key: 0.5, value: 0 }] },
+      { ...valid, folderRelationships: [{ key: 1, value: 0 }] },
+      { ...valid, folderRelationships: [{ key: 0, value: 1 }] },
+      {
+        ...valid,
+        folderRelationships: [
+          { key: 0, value: 0 },
+          { key: 0, value: 0 }
+        ]
+      },
+      { ...valid, folders: Array.from({ length: 2_001 }, () => ({ name: '2.folder' })) },
+      { ...valid, ciphers: Array.from({ length: 7_001 }, () => ({ type: 2, name: '2.note' })) },
+      {
+        ...valid,
+        folderRelationships: Array.from({ length: 7_001 }, (_, key) => ({ key, value: 0 }))
+      },
+      { ...valid, ciphers: [{ type: 2, name: `2.${'x'.repeat(18 * 1024 * 1024)}` }] }
+    ]
+
+    for (const request of invalidRequests) {
+      await expect(client.importPersonalCiphers(request as never)).rejects.toMatchObject({
+        code: expect.stringMatching(/^(INVALID_RESPONSE|TOO_LARGE)$/u)
+      })
+    }
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('rejects nonempty or unexpected successful import responses and never retries', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(json({ object: 'importResult' }))
+      .mockResolvedValueOnce(new Response(null, { status: 201 }))
+      .mockResolvedValueOnce(json({ message: 'ambiguous failure' }, 503))
+    const client = new BitwardenHttpClient({ server: 'us', fetch, maxRetries: 3 })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+    const request = {
+      folders: [],
+      ciphers: [{ type: 2, name: '2.encrypted-note' }],
+      folderRelationships: []
+    }
+
+    await expect(client.importPersonalCiphers(request)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    await expect(client.importPersonalCiphers(request)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    await expect(client.importPersonalCiphers(request)).rejects.toMatchObject({
+      code: 'NETWORK',
+      status: 503
+    })
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
   it('uses bounded personal cipher bulk lifecycle routes and validates list state', async () => {
     const ids = ['30000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000002']
     const rows = ids.map((id) => ({

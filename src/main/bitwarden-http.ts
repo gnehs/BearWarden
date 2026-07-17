@@ -24,6 +24,26 @@ export interface JsonObject {
   [key: string]: JsonValue
 }
 
+export interface BitwardenCipherImportRelationship {
+  /** Zero-based index into the request's ciphers array. */
+  key: number
+  /** Zero-based index into the request's folders array. */
+  value: number
+}
+
+export interface BitwardenCipherImportFolder {
+  id?: string | null
+  /** Encrypted folder name. */
+  name: string
+}
+
+/** Encrypted, personal-vault-only payload for POST /ciphers/import. */
+export interface BitwardenPersonalCipherImportRequest {
+  folders: readonly BitwardenCipherImportFolder[]
+  ciphers: readonly JsonObject[]
+  folderRelationships: readonly BitwardenCipherImportRelationship[]
+}
+
 export interface BitwardenUrls {
   apiUrl: string
   identityUrl: string
@@ -372,6 +392,10 @@ const MAX_WEBAUTHN_KEYS = 64
 const MAX_WEBAUTHN_KEY_ID = 2_147_483_647
 const MAX_WEBAUTHN_KEY_NAME_BYTES = 256
 const MAX_BULK_CIPHER_IDS = 500
+const MAX_IMPORT_FOLDERS = 2_000
+const MAX_IMPORT_CIPHERS = 7_000
+const MAX_IMPORT_RELATIONSHIPS = 7_000
+const MAX_IMPORT_REQUEST_BYTES = 18 * 1024 * 1024
 
 function isRecord(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -1805,6 +1829,19 @@ export class BitwardenHttpClient {
   async createCipher(ciphertext: JsonObject, signal?: AbortSignal): Promise<JsonObject> {
     return this.entity('POST', '/ciphers', ciphertext, signal)
   }
+  async importPersonalCiphers(
+    request: BitwardenPersonalCipherImportRequest,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const body = assertPersonalCipherImportRequest(request)
+    const response = await this.requestJson('POST', `${this.urls.apiUrl}/ciphers/import`, {
+      body,
+      signal,
+      retry: false,
+      acceptedStatuses: [200, 204]
+    })
+    if (response !== null) throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
   async updateCipher(
     id: string,
     ciphertext: JsonObject,
@@ -2180,6 +2217,8 @@ export class BitwardenHttpClient {
       tooLargeCode?: BitwardenHttpErrorCode
       /** Overrides method-based retry safety. Mutating one-time 2FA capabilities set this false. */
       retry?: boolean
+      /** Narrows otherwise-successful HTTP statuses for strict compatibility endpoints. */
+      acceptedStatuses?: readonly number[]
     } = {}
   ): Promise<JsonValue> {
     const authenticate = request.authenticate ?? true
@@ -2249,6 +2288,9 @@ export class BitwardenHttpClient {
       const payload =
         text.length === 0 ? null : response.ok ? parseJson(text) : parseErrorJson(text)
       if (!response.ok) throw toHttpError(response.status, payload)
+      if (request.acceptedStatuses && !request.acceptedStatuses.includes(response.status)) {
+        throw new BitwardenHttpError('INVALID_RESPONSE')
+      }
       return payload
     }
   }
@@ -2274,6 +2316,132 @@ function assertBulkCipherIds(ids: readonly string[]): string[] {
   const uniqueIds = new Set(normalized.map((id) => id.toLocaleLowerCase('en-US')))
   if (uniqueIds.size !== normalized.length) throw new BitwardenHttpError('INVALID_RESPONSE')
   return normalized
+}
+
+function assertPersonalCipherImportRequest(
+  value: BitwardenPersonalCipherImportRequest
+): JsonObject {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const requestKeys = Object.keys(value)
+  if (
+    requestKeys.length !== 3 ||
+    !requestKeys.includes('folders') ||
+    !requestKeys.includes('ciphers') ||
+    !requestKeys.includes('folderRelationships')
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  const { folders, ciphers, folderRelationships } = value
+  if (
+    !Array.isArray(folders) ||
+    folders.length > MAX_IMPORT_FOLDERS ||
+    !Array.isArray(ciphers) ||
+    ciphers.length === 0 ||
+    ciphers.length > MAX_IMPORT_CIPHERS ||
+    !Array.isArray(folderRelationships) ||
+    folderRelationships.length > MAX_IMPORT_RELATIONSHIPS
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  for (const folder of folders) assertPersonalImportFolder(folder)
+  for (const cipher of ciphers) assertPersonalImportCipher(cipher)
+
+  const relationshipKeys = new Set<number>()
+  const relationships: JsonObject[] = folderRelationships.map((relationship) => {
+    if (
+      !isRecord(relationship) ||
+      Object.keys(relationship).length !== 2 ||
+      !Object.hasOwn(relationship, 'key') ||
+      !Object.hasOwn(relationship, 'value') ||
+      !Number.isSafeInteger(relationship.key) ||
+      !Number.isSafeInteger(relationship.value) ||
+      (relationship.key as number) < 0 ||
+      (relationship.key as number) >= ciphers.length ||
+      (relationship.value as number) < 0 ||
+      (relationship.value as number) >= folders.length ||
+      relationshipKeys.has(relationship.key as number)
+    ) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    relationshipKeys.add(relationship.key as number)
+    return { key: relationship.key as number, value: relationship.value as number }
+  })
+  const candidate: JsonObject = {
+    folders: folders.map((folder): JsonObject => {
+      const serializedFolder: JsonObject = { name: folder.name }
+      if (folder.id !== undefined) serializedFolder.id = folder.id
+      return serializedFolder
+    }),
+    ciphers: [...ciphers],
+    folderRelationships: relationships
+  }
+  let serialized: string
+  try {
+    serialized = JSON.stringify(candidate)
+  } catch {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  if (Buffer.byteLength(serialized, 'utf8') > MAX_IMPORT_REQUEST_BYTES) {
+    throw new BitwardenHttpError('TOO_LARGE')
+  }
+  const normalized = parseJson(serialized)
+  if (
+    !isRecord(normalized) ||
+    !Array.isArray(normalized.folders) ||
+    !Array.isArray(normalized.ciphers)
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  for (const folder of normalized.folders) assertPersonalImportFolder(folder)
+  for (const cipher of normalized.ciphers) assertPersonalImportCipher(cipher)
+  return normalized
+}
+
+function assertPersonalImportFolder(value: unknown): asserts value is BitwardenCipherImportFolder {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const keys = Object.keys(value)
+  if (
+    (keys.length !== 1 && keys.length !== 2) ||
+    !Object.hasOwn(value, 'name') ||
+    (keys.length === 2 && !Object.hasOwn(value, 'id')) ||
+    typeof value.name !== 'string' ||
+    value.name.length === 0 ||
+    (Object.hasOwn(value, 'id') && value.id !== null && assertUuidValue(value.id) === undefined)
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+}
+
+function assertUuidValue(value: unknown): string | undefined {
+  return typeof value === 'string' && UUID_PATTERN.test(value) ? value : undefined
+}
+
+function assertPersonalImportCipher(value: unknown): asserts value is JsonObject {
+  if (
+    !isRecord(value) ||
+    !Number.isSafeInteger(value.type) ||
+    (value.type as number) < 1 ||
+    (value.type as number) > 5 ||
+    typeof value.name !== 'string' ||
+    value.name.length === 0
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  for (const [key, fieldValue] of Object.entries(value)) {
+    const normalizedKey = key.toLocaleLowerCase('en-US').replace(/[^a-z]/gu, '')
+    if (normalizedKey === 'organizationid') {
+      if (fieldValue !== null) throw new BitwardenHttpError('INVALID_RESPONSE')
+      continue
+    }
+    if (
+      normalizedKey === 'org' ||
+      normalizedKey.startsWith('organization') ||
+      normalizedKey.startsWith('attachment') ||
+      normalizedKey.startsWith('collection')
+    ) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+  }
 }
 
 function parseBulkCipherList(
