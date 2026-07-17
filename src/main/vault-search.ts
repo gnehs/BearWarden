@@ -1,7 +1,7 @@
 import lunr from 'lunr'
 
 const MAX_QUERY_LENGTH = 1_024
-const MAX_SEARCH_ITEMS = 50_000
+const MAX_SEARCH_ITEMS_PER_BATCH = 50_000
 const MAX_COLLECTION_LENGTH = 1_000
 const MAX_SHORT_FIELD_LENGTH = 5_000
 const MAX_URI_LENGTH = 4_096
@@ -345,28 +345,36 @@ function safeOriginalItems<T>(items: readonly T[]): T[] {
 
 function basicSearch<T>(
   items: readonly T[],
-  documents: readonly SearchDocument[],
+  batches: Iterable<readonly SearchDocument[]>,
   query: string
 ): T[] {
   const terms = query.split(/\s+/u).filter(Boolean)
-  return documents
-    .filter((document) =>
-      terms.every(
-        (term) =>
-          document.basicText.some((candidate) => candidate.includes(term)) ||
-          (term.length >= 8 && document.shortid.includes(term))
-      )
-    )
-    .map((document) => items[document.originalIndex]!)
+  const results: T[] = []
+  for (const documents of batches) {
+    for (const document of documents) {
+      if (
+        terms.every(
+          (term) =>
+            document.basicText.some((candidate) => candidate.includes(term)) ||
+            (term.length >= 8 && document.shortid.includes(term))
+        )
+      ) {
+        results.push(items[document.originalIndex]!)
+      }
+    }
+  }
+  return results
 }
 
-function advancedSearch<T>(
-  items: readonly T[],
+interface ScoredSearchResult {
+  readonly originalIndex: number
+  readonly score: number
+}
+
+function advancedSearchBatch(
   documents: readonly SearchDocument[],
   query: string
-): T[] {
-  if (!query) return []
-
+): ScoredSearchResult[] {
   const index = lunr(function buildVaultSearchIndex() {
     this.ref('ref')
     for (const field of ADVANCED_FIELDS) this.field(field)
@@ -377,17 +385,79 @@ function advancedSearch<T>(
     for (const document of documents) this.add(document)
   })
 
-  try {
-    return index
-      .search(query)
-      .map((result) => Number.parseInt(result.ref, 10))
-      .filter((originalIndex) => Number.isSafeInteger(originalIndex) && originalIndex >= 0)
-      .map((originalIndex) => items[originalIndex])
-      .filter((item): item is T => item !== undefined)
-  } catch {
-    // Invalid/unknown Lunr syntax is an empty result, never a renderer-visible error.
-    return []
+  return index
+    .search(query)
+    .map((result) => ({
+      originalIndex: Number.parseInt(result.ref, 10),
+      score: result.score
+    }))
+    .filter(
+      (result) =>
+        Number.isSafeInteger(result.originalIndex) &&
+        result.originalIndex >= 0 &&
+        Number.isFinite(result.score)
+    )
+}
+
+function advancedSearch<T>(
+  items: readonly T[],
+  batches: Iterable<readonly SearchDocument[]>,
+  query: string
+): T[] {
+  if (!query) return []
+
+  const scoredResults: ScoredSearchResult[] = []
+  for (const documents of batches) {
+    scoredResults.push(...advancedSearchBatch(documents, query))
   }
+
+  // Lunr scores are the closest available relevance signal when each bounded
+  // index has different document frequencies. Use the original vault order as
+  // a deterministic tie-break so equally relevant results stay stable.
+  scoredResults.sort(
+    (left, right) => right.score - left.score || left.originalIndex - right.originalIndex
+  )
+  return scoredResults
+    .map((result) => items[result.originalIndex])
+    .filter((item): item is T => item !== undefined)
+}
+
+function* searchDocumentBatches<T>(items: readonly T[]): Generator<readonly SearchDocument[]> {
+  let documents: SearchDocument[] = []
+  let indexedCharacters = 0
+  let inspectedItems = 0
+
+  for (let index = 0; index < items.length; index += 1) {
+    if (inspectedItems === MAX_SEARCH_ITEMS_PER_BATCH) {
+      if (documents.length > 0) yield documents
+      documents = []
+      indexedCharacters = 0
+      inspectedItems = 0
+    }
+    inspectedItems += 1
+
+    const descriptor = Object.getOwnPropertyDescriptor(items, String(index))
+    if (!descriptor || !('value' in descriptor)) continue
+
+    // A fresh per-item budget preserves fail-closed behavior for a single
+    // adversarial record while allowing a legitimate vault to span batches.
+    const itemBudget: SearchBudget = { remaining: MAX_INDEXED_CHARACTERS }
+    const document = toSearchDocument(descriptor.value, index, itemBudget)
+    if (!document) continue
+    const documentCharacters = MAX_INDEXED_CHARACTERS - itemBudget.remaining
+
+    if (documents.length > 0 && indexedCharacters + documentCharacters > MAX_INDEXED_CHARACTERS) {
+      yield documents
+      documents = []
+      indexedCharacters = 0
+      inspectedItems = 1
+    }
+
+    documents.push(document)
+    indexedCharacters += documentCharacters
+  }
+
+  if (documents.length > 0) yield documents
 }
 
 /**
@@ -404,7 +474,7 @@ export function searchVaultItems<T extends VaultSearchItem>(
 ): T[] {
   try {
     if (!Array.isArray(items) || typeof query !== 'string') return []
-    if (items.length > MAX_SEARCH_ITEMS || query.length > MAX_QUERY_LENGTH) return []
+    if (query.length > MAX_QUERY_LENGTH) return []
 
     const trimmedQuery = query.trim()
     if (!trimmedQuery) return safeOriginalItems(items)
@@ -412,19 +482,14 @@ export function searchVaultItems<T extends VaultSearchItem>(
     const normalizedQuery = normalizeSearchText(trimmedQuery)
     const advanced = normalizedQuery.startsWith('>')
     const searchableQuery = advanced ? normalizedQuery.slice(1).trim() : normalizedQuery
-    const budget: SearchBudget = { remaining: MAX_INDEXED_CHARACTERS }
-    const documents: SearchDocument[] = []
-    for (let index = 0; index < items.length; index += 1) {
-      const descriptor = Object.getOwnPropertyDescriptor(items, String(index))
-      if (!descriptor || !('value' in descriptor)) continue
-      const document = toSearchDocument(descriptor.value, index, budget)
-      if (document) documents.push(document)
-    }
+    const batches = searchDocumentBatches(items)
 
     return advanced
-      ? advancedSearch(items, documents, searchableQuery)
-      : basicSearch(items, documents, searchableQuery)
+      ? advancedSearch(items, batches, searchableQuery)
+      : basicSearch(items, batches, searchableQuery)
   } catch {
+    // Invalid Lunr syntax and adversarial input are empty results, never a
+    // renderer-visible error or a partial result from an earlier batch.
     return []
   }
 }

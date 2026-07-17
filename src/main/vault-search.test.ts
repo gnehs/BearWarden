@@ -191,4 +191,54 @@ describe('vault search', () => {
     }))
     expect(searchVaultItems([item({ uris: oversizedUris })], 'example.com')).toEqual([])
   })
+
+  it('searches advanced queries across a 50,001-item batch boundary', () => {
+    const filler: VaultSearchItem = {
+      id: '00000000-0000-0000-0000-000000000000',
+      type: 'login',
+      name: 'Ordinary account'
+    }
+    const first = item({
+      id: '11111111-1111-1111-1111-111111111111',
+      name: 'Cross-batch marker'
+    })
+    const last = item({
+      id: '22222222-2222-2222-2222-222222222222',
+      name: 'Cross-batch marker'
+    })
+    const items = Array<VaultSearchItem>(50_001).fill(filler)
+    items[0] = first
+    items[50_000] = last
+
+    expect(ids(searchVaultItems(items, '>+name:cross +name:batch +name:marker'))).toEqual([
+      first.id,
+      last.id
+    ])
+  }, 30_000)
+
+  it('searches across the 32 MiB indexed-character batch budget', () => {
+    const largeNote = 'padding '.repeat(8_192)
+    const filler = item({
+      id: '00000000-0000-0000-0000-000000000000',
+      name: 'Ordinary account',
+      subtitle: '',
+      username: '',
+      uri: null,
+      uris: [],
+      notes: largeNote
+    })
+    const matching = item({
+      id: '33333333-3333-3333-3333-333333333333',
+      name: 'After indexed budget boundary',
+      subtitle: '',
+      username: '',
+      uri: null,
+      uris: [],
+      notes: largeNote
+    })
+    const items = Array<VaultSearchItem>(513).fill(filler)
+    items[512] = matching
+
+    expect(searchVaultItems(items, 'indexed boundary')).toEqual([matching])
+  }, 30_000)
 })
