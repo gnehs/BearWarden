@@ -13,7 +13,8 @@ import {
   type SyncPurgePersonalVaultResult,
   type SyncResolvePendingImportRequest,
   type SyncStatus,
-  type VaultExportRequest
+  type VaultExportRequest,
+  type VaultExportResult
 } from './vault-contract'
 
 describe('item history renderer contract', () => {
@@ -23,15 +24,36 @@ describe('item history renderer contract', () => {
 })
 
 describe('vault export renderer contract', () => {
-  it('makes plaintext ZIP passwordless while encrypted formats require a password', () => {
+  it('makes plaintext CSV and ZIP passwordless while encrypted formats require a password', () => {
     expectTypeOf<VaultExportRequest>().toMatchTypeOf<
       | {
           masterPassword: string
           password: string
           format?: 'bitwarden-json' | 'bearwarden-native'
         }
-      | { masterPassword: string; password?: never; format: 'bitwarden-zip' }
+      | {
+          masterPassword: string
+          password?: never
+          format: 'bitwarden-csv' | 'bitwarden-zip'
+        }
     >()
+    expectTypeOf<VaultExportResult['skippedAttachments']>().toEqualTypeOf<number | undefined>()
+    expectTypeOf<VaultExportResult['skippedPasswordHistoryEntries']>().toEqualTypeOf<
+      number | undefined
+    >()
+    expectTypeOf<VaultExportResult['simplifiedUriMatches']>().toEqualTypeOf<number | undefined>()
+    expectTypeOf<VaultExportResult['skippedPasswordRevisionDates']>().toEqualTypeOf<
+      number | undefined
+    >()
+    expectTypeOf<VaultExportResult['skippedAutofillSettings']>().toEqualTypeOf<number | undefined>()
+    expectTypeOf<VaultExportResult['simplifiedCustomFieldTypes']>().toEqualTypeOf<
+      number | undefined
+    >()
+    expectTypeOf<VaultExportResult['riskyCustomFields']>().toEqualTypeOf<number | undefined>()
+    expectTypeOf<VaultExportResult['emptyCustomFieldNames']>().toEqualTypeOf<number | undefined>()
+    expectTypeOf<VaultExportResult['multilineCustomFields']>().toEqualTypeOf<number | undefined>()
+    expectTypeOf<VaultExportResult['colonValueCustomFields']>().toEqualTypeOf<number | undefined>()
+    expectTypeOf<VaultExportResult['durabilityWarning']>().toEqualTypeOf<true | undefined>()
   })
 })
 

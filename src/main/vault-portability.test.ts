@@ -10,7 +10,12 @@ import {
   parseBitwardenJson,
   type PortableVaultSnapshot
 } from './vault-portability-codec'
-import { VaultPortabilityService, type VaultPortabilityPicker } from './vault-portability'
+import {
+  atomicWritePrivate,
+  syncDirectory,
+  VaultPortabilityService,
+  type VaultPortabilityPicker
+} from './vault-portability'
 import type { VaultService } from './vault-service'
 import { inspectNativeAttachmentBackup } from './native-attachment-backup'
 
@@ -94,6 +99,7 @@ async function harness(options?: {
   exportPath?: string | null
   importPath?: string | null
   now?: () => Date
+  writePrivate?: typeof atomicWritePrivate
 }): Promise<{
   directory: string
   outputPath: string
@@ -180,7 +186,8 @@ async function harness(options?: {
     service: new VaultPortabilityService(
       vault as unknown as VaultService,
       picker,
-      options?.now ?? (() => new Date('2026-07-16T03:04:05.000Z'))
+      options?.now ?? (() => new Date('2026-07-16T03:04:05.000Z')),
+      options?.writePrivate
     )
   }
 }
@@ -189,6 +196,55 @@ afterEach(async () => {
   await Promise.all(
     temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true }))
   )
+})
+
+describe('private export publication durability', () => {
+  it('distinguishes unsupported directory fsync from an EIO durability failure', async () => {
+    const directoryHandle = (
+      code: string
+    ): { sync: () => Promise<never>; close: () => Promise<void> } => ({
+      sync: vi.fn(async () => {
+        throw Object.assign(new Error(code), { code })
+      }),
+      close: vi.fn(async () => undefined)
+    })
+
+    await expect(
+      syncDirectory('/not-opened', {
+        platform: 'linux',
+        openDirectory: vi.fn(async () => directoryHandle('EINVAL'))
+      })
+    ).resolves.toBe('unsupported')
+    await expect(
+      syncDirectory('/not-opened', {
+        platform: 'win32',
+        openDirectory: vi.fn(async () => directoryHandle('EPERM'))
+      })
+    ).resolves.toBe('unsupported')
+    await expect(
+      syncDirectory('/not-opened', {
+        platform: 'linux',
+        openDirectory: vi.fn(async () => directoryHandle('EIO'))
+      })
+    ).resolves.toBe('unknown')
+  })
+
+  it('keeps the published file and returns a durability warning after directory EIO', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'bearwarden-portability-publish-test-'))
+    temporaryDirectories.push(directory)
+    const path = join(directory, 'export.csv')
+
+    await expect(
+      atomicWritePrivate(path, 'published-secret', async () => 'unknown')
+    ).resolves.toEqual({ durabilityWarning: true })
+    expect(await readFile(path, 'utf8')).toBe('published-secret')
+    expect((await stat(path)).mode & 0o777).toBe(0o600)
+
+    const supportedPath = join(directory, 'supported.csv')
+    await expect(
+      atomicWritePrivate(supportedPath, 'supported', async () => 'unsupported')
+    ).resolves.toEqual({ durabilityWarning: false })
+  })
 })
 
 describe('VaultPortabilityService', () => {
@@ -277,13 +333,85 @@ describe('VaultPortabilityService', () => {
     expect((await stat(outputPath)).mode & 0o777).toBe(0o600)
   })
 
-  it('rejects passwords for plaintext ZIP and requires them for encrypted exports', async () => {
+  it('writes a private current Bitwarden CSV atomically and scrubs its owner proof', async () => {
+    const { outputPath, picker, service, vault } = await harness()
+    const request = { masterPassword: MASTER_PASSWORD, format: 'bitwarden-csv' as const }
+
+    await expect(service.exportVault(request)).resolves.toEqual({
+      canceled: false,
+      exportedFolders: 1,
+      exportedItems: 1,
+      skippedTrashItems: 2,
+      skippedUnsupportedItems: 0,
+      skippedCards: 0,
+      skippedIdentities: 0,
+      skippedSshKeys: 0,
+      skippedPasskeys: 0,
+      skippedAttachments: 0,
+      skippedPasswordHistoryEntries: 0,
+      simplifiedUriMatches: 0,
+      skippedPasswordRevisionDates: 0,
+      skippedAutofillSettings: 0,
+      simplifiedCustomFieldTypes: 0,
+      riskyCustomFields: 0,
+      emptyCustomFieldNames: 0,
+      multilineCustomFields: 0,
+      colonValueCustomFields: 0
+    })
+
+    expect(picker.chooseExportPath).toHaveBeenCalledWith('bitwarden_export_20260716_030405Z.csv')
+    expect(vault.verifyPortabilityOwner).toHaveBeenCalledWith(MASTER_PASSWORD)
+    expect(vault.exportPortableSnapshot).toHaveBeenCalledWith(MASTER_PASSWORD)
+    expect(await readFile(outputPath, 'utf8')).toMatch(
+      /^folder,favorite,type,name,notes,fields,reprompt,archivedDate,login_uri,login_username,login_password,login_totp\r\n/u
+    )
+    expect((await stat(outputPath)).mode & 0o777).toBe(0o600)
+    expect(request).toEqual({ masterPassword: '', format: 'bitwarden-csv' })
+  })
+
+  it('reports a published CSV whose directory durability is unknown', async () => {
+    const writePrivate = vi.fn(async (path: string, contents: string) =>
+      atomicWritePrivate(path, contents, async () => 'unknown')
+    )
+    const { outputPath, service } = await harness({ writePrivate })
+
+    await expect(
+      service.exportVault({ masterPassword: MASTER_PASSWORD, format: 'bitwarden-csv' })
+    ).resolves.toMatchObject({ canceled: false, durabilityWarning: true })
+    expect(await readFile(outputPath, 'utf8')).toContain('folder,favorite,type')
+  })
+
+  it('does not let best-effort scrubbing replace frozen direct-call results or errors', async () => {
+    const { service } = await harness()
+    const valid = Object.freeze({
+      masterPassword: MASTER_PASSWORD,
+      format: 'bitwarden-csv' as const
+    })
+    await expect(service.exportVault(valid)).resolves.toMatchObject({
+      canceled: false,
+      exportedItems: 1
+    })
+
+    const invalid = Object.freeze({ masterPassword: MASTER_PASSWORD, format: 'unsupported' })
+    await expect(service.exportVault(invalid as never)).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+  })
+
+  it('rejects passwords for plaintext CSV and ZIP and requires them for encrypted exports', async () => {
     const { picker, service, vault } = await harness()
 
     await expect(
       service.exportVault({
         masterPassword: MASTER_PASSWORD,
         format: 'bitwarden-zip',
+        password: BACKUP_PASSWORD
+      } as never)
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.exportVault({
+        masterPassword: MASTER_PASSWORD,
+        format: 'bitwarden-csv',
         password: BACKUP_PASSWORD
       } as never)
     ).rejects.toMatchObject({ code: 'INVALID_INPUT' })

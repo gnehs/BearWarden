@@ -3,6 +3,7 @@ import type { VaultItemType } from '../shared/vault-contract'
 import { deriveMasterKey, encryptBitwardenString, stretchMasterKey } from './bitwarden-crypto'
 import type { StoredPasskeyCredential } from './passkey'
 import {
+  buildBitwardenCsv,
   buildBitwardenJson,
   decryptBitwardenPasswordProtectedJson,
   encryptBitwardenPasswordProtectedJson,
@@ -256,6 +257,118 @@ describe('Bitwarden plaintext JSON portability', () => {
 })
 
 describe('Bitwarden and Chromium CSV portability', () => {
+  it('publishes at most the importer-safe 2,000 distinct folder names', async () => {
+    const withFolders = (count: number): PortableVaultSnapshot => ({
+      folders: Array.from({ length: count }, (_, index) => ({
+        id: `folder-${index}`,
+        name: `Folder ${index}`
+      })),
+      items: Array.from({ length: count }, (_, index) => ({
+        ...item('secureNote', `note-${index}`),
+        folderId: `folder-${index}`
+      }))
+    })
+
+    const maximum = buildBitwardenCsv(withFolders(2_000))
+    expect(maximum.exportedFolders).toBe(2_000)
+    expect(parseBitwardenOrChromiumCsv(maximum.csv).snapshot.folders).toHaveLength(2_000)
+
+    await expectInvalidInput(() => buildBitwardenCsv(withFolders(2_001)))
+  })
+
+  it('exports the current 12-column CSV and round-trips quotes, newlines, URIs, and archive state', () => {
+    const original = snapshot()
+    const login = original.items[0]!
+    login.name = 'Example, "Primary"'
+    login.notes = 'first line\r\nsecond "line"'
+    login.password = '=FORMULA(unchanged-secret)'
+    login.uri = 'https://example.test/a,b'
+    login.uris = [
+      { uri: 'https://example.test/a,b', match: 1 },
+      { uri: 'https://second.test', match: 3 }
+    ]
+    login.customFields = [
+      { name: 'Provider: region', value: 'Taiwan', type: 'text', linkedId: null }
+    ]
+
+    const exported = buildBitwardenCsv(original)
+
+    expect(exported).toMatchObject({
+      exportedFolders: 1,
+      exportedItems: 2,
+      skippedCards: 1,
+      skippedIdentities: 1,
+      skippedSshKeys: 1,
+      skippedUnsupportedItems: 3,
+      skippedPasskeys: 1,
+      skippedAttachments: 0,
+      skippedPasswordHistoryEntries: 1,
+      simplifiedUriMatches: 2,
+      skippedPasswordRevisionDates: 0,
+      skippedAutofillSettings: 0,
+      simplifiedCustomFieldTypes: 0,
+      riskyCustomFields: 0
+    })
+    expect(exported.csv).toMatch(
+      /^folder,favorite,type,name,notes,fields,reprompt,archivedDate,login_uri,login_username,login_password,login_totp\r\n/u
+    )
+    expect(exported.csv.endsWith('\r\n')).toBe(true)
+
+    const parsed = parseBitwardenOrChromiumCsv(exported.csv)
+    expect(parsed.snapshot.items).toEqual([
+      expect.objectContaining({
+        type: 'login',
+        name: 'Example, "Primary"',
+        notes: 'first line\r\nsecond "line"',
+        archivedAt: null,
+        uri: 'https://example.test/a,b',
+        uris: [
+          { uri: 'https://example.test/a,b', match: null },
+          { uri: 'https://second.test', match: null }
+        ],
+        password: '=FORMULA(unchanged-secret)',
+        customFields: [{ name: 'Provider: region', value: 'Taiwan', type: 'text', linkedId: null }]
+      }),
+      expect.objectContaining({ type: 'secureNote', archivedAt: ARCHIVED_AT })
+    ])
+  })
+
+  it('counts every structural and metadata loss without blocking a compatible CSV export', () => {
+    const original = snapshot()
+    const login = original.items[0]!
+    Object.assign(login, {
+      attachments: [
+        { id: 'one', fileName: 'first.txt', size: 10 },
+        { id: 'two', fileName: 'second.txt', size: 20 }
+      ]
+    })
+    login.passwordRevisionDate = UPDATED_AT
+    login.autofillOnPageLoad = false
+    login.customFields = [
+      { name: '', value: 'empty-name', type: 'text', linkedId: null },
+      { name: 'line\nbreak', value: 'name-newline', type: 'text', linkedId: null },
+      { name: 'hidden', value: 'value\r\nnewline', type: 'hidden', linkedId: null },
+      { name: 'boolean', value: 'prefix: value', type: 'boolean', linkedId: null }
+    ]
+    original.items[2]!.passwordHistory = [
+      { password: 'unsupported-item-history', lastUsedDate: CREATED_AT }
+    ]
+
+    expect(buildBitwardenCsv(original)).toMatchObject({
+      exportedItems: 2,
+      skippedAttachments: 2,
+      skippedPasswordHistoryEntries: 2,
+      simplifiedUriMatches: 2,
+      skippedPasswordRevisionDates: 1,
+      skippedAutofillSettings: 1,
+      simplifiedCustomFieldTypes: 2,
+      riskyCustomFields: 4,
+      emptyCustomFieldNames: 1,
+      multilineCustomFields: 2,
+      colonValueCustomFields: 1
+    })
+  })
+
   it('parses the official Bitwarden CSV fields with RFC 4180 quoting and folders', () => {
     const csv = [
       'folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp',
@@ -418,10 +531,13 @@ describe('Bitwarden and Chromium CSV portability', () => {
       await expectInvalidInput(() => parseBitwardenOrChromiumCsv(csv))
     }
 
-    const tooManyRows = [
+    const maximumRows = [
       'name,url,username,password',
-      ...Array.from({ length: 40_001 }, () => 'name,https://example.test,user,secret')
+      ...Array.from({ length: 100_000 }, () => ',,,')
     ].join('\n')
+    expect(parseBitwardenOrChromiumCsv(maximumRows).snapshot.items).toHaveLength(100_000)
+
+    const tooManyRows = `${maximumRows}\n,,,'`
     await expectInvalidInput(() => parseBitwardenOrChromiumCsv(tooManyRows))
   })
 })

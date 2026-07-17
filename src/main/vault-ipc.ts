@@ -241,10 +241,11 @@ export interface VaultIpcOptions {
 }
 
 function parseVaultExport(value: unknown): VaultExportRequest {
-  const record = exactRecord(value, ['masterPassword', 'password', 'format'])
+  const record = exactDataRecord(value, ['masterPassword', 'password', 'format'])
   if (
     record.format !== undefined &&
     record.format !== 'bitwarden-json' &&
+    record.format !== 'bitwarden-csv' &&
     record.format !== 'bitwarden-zip' &&
     record.format !== 'bearwarden-native'
   ) {
@@ -252,14 +253,19 @@ function parseVaultExport(value: unknown): VaultExportRequest {
   }
   const format = record.format ?? 'bitwarden-json'
   if (
-    (format === 'bitwarden-zip' && record.password !== undefined) ||
-    (format !== 'bitwarden-zip' && typeof record.password !== 'string')
+    ((format === 'bitwarden-csv' || format === 'bitwarden-zip') && record.password !== undefined) ||
+    (format !== 'bitwarden-csv' &&
+      format !== 'bitwarden-zip' &&
+      typeof record.password !== 'string')
   ) {
     throw new VaultError('INVALID_INPUT')
   }
   const masterPassword = requiredString(record, 'masterPassword')
-  if (format === 'bitwarden-zip') {
-    return { masterPassword, format: 'bitwarden-zip' }
+  if (masterPassword.length === 0 || masterPassword.length > 1_024) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  if (format === 'bitwarden-csv' || format === 'bitwarden-zip') {
+    return { masterPassword, format }
   }
   return {
     masterPassword,
@@ -854,6 +860,25 @@ function exactRecord(value: unknown, allowedKeys: readonly string[]): RecordValu
     throw new VaultError('INVALID_INPUT')
   }
   return value
+}
+
+function exactDataRecord(value: unknown, allowedKeys: readonly string[]): RecordValue {
+  if (!isRecord(value)) throw new VaultError('INVALID_INPUT')
+  const descriptors = Object.getOwnPropertyDescriptors(value)
+  if (
+    Reflect.ownKeys(value).some((key) =>
+      typeof key !== 'string' ? true : !allowedKeys.includes(key)
+    )
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const result: RecordValue = Object.create(null) as RecordValue
+  for (const key of Object.keys(descriptors)) {
+    const descriptor = descriptors[key]!
+    if (!descriptor.enumerable || !('value' in descriptor)) throw new VaultError('INVALID_INPUT')
+    result[key] = descriptor.value
+  }
+  return result
 }
 
 function requiredString(record: RecordValue, key: string): string {
@@ -2230,9 +2255,15 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     options.afterLock?.()
     return status
   })
-  registerHandler(IPC_CHANNELS.vaultExport, getMainWindow, (_event, input) =>
-    portability.exportVault(parseVaultExport(input))
-  )
+  registerHandler(IPC_CHANNELS.vaultExport, getMainWindow, async (_event, input) => {
+    const request = parseVaultExport(input)
+    try {
+      return await portability.exportVault(request)
+    } finally {
+      request.masterPassword = ''
+      if ('password' in request && typeof request.password === 'string') request.password = ''
+    }
+  })
   registerHandler(IPC_CHANNELS.vaultImport, getMainWindow, async (_event, input) => {
     const result = await portability.importVault(parseVaultImport(input))
     if (!result.canceled && result.importedFolders + result.importedItems > 0) notifyMutation()

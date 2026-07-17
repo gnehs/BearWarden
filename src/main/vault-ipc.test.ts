@@ -18,7 +18,7 @@ vi.mock('electron', () => ({
   Menu: { buildFromTemplate: vi.fn() }
 }))
 
-import { IPC_CHANNELS, IPC_EVENTS } from '../shared/vault-contract'
+import { IPC_CHANNELS, IPC_EVENTS, type VaultExportRequest } from '../shared/vault-contract'
 import type { AppSettingsService } from './app-settings'
 import {
   AccountRelaunchResultUnknownError,
@@ -1538,12 +1538,15 @@ describe('registerVaultIpc reprompt gate', () => {
       operation(authorizationState.generation)
     )
     const portability = {
-      exportVault: vi.fn(async () => ({
-        canceled: false,
-        exportedFolders: 1,
-        exportedItems: 2,
-        skippedTrashItems: 1
-      })),
+      exportVault: vi.fn(async (request?: unknown) => {
+        void request
+        return {
+          canceled: false,
+          exportedFolders: 1,
+          exportedItems: 2,
+          skippedTrashItems: 1
+        }
+      }),
       importVault: vi.fn(async () => ({
         canceled: false,
         importedFolders: 1,
@@ -1733,6 +1736,19 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('keeps portability IPC path-free, exact, and password-proof scoped', async () => {
     const { event, portability } = harness()
+    const observedRequests: VaultExportRequest[] = []
+    const requestReferences: VaultExportRequest[] = []
+    portability.exportVault.mockImplementation(async (value?: unknown) => {
+      const request = value as VaultExportRequest
+      observedRequests.push({ ...request } as VaultExportRequest)
+      requestReferences.push(request)
+      return {
+        canceled: false,
+        exportedFolders: 1,
+        exportedItems: 2,
+        skippedTrashItems: 1
+      }
+    })
     const exportVault = electronMock.handlers.get(IPC_CHANNELS.vaultExport)!
     const importVault = electronMock.handlers.get(IPC_CHANNELS.vaultImport)!
     await expect(
@@ -1741,7 +1757,7 @@ describe('registerVaultIpc reprompt gate', () => {
         password: 'portable backup password'
       })
     ).resolves.toMatchObject({ exportedItems: 2 })
-    expect(portability.exportVault).toHaveBeenCalledWith({
+    expect(observedRequests.at(-1)).toEqual({
       masterPassword: 'correct horse battery staple',
       password: 'portable backup password'
     })
@@ -1750,7 +1766,7 @@ describe('registerVaultIpc reprompt gate', () => {
       password: 'portable backup password',
       format: 'bearwarden-native'
     })
-    expect(portability.exportVault).toHaveBeenLastCalledWith({
+    expect(observedRequests.at(-1)).toEqual({
       masterPassword: 'correct horse battery staple',
       password: 'portable backup password',
       format: 'bearwarden-native'
@@ -1759,9 +1775,17 @@ describe('registerVaultIpc reprompt gate', () => {
       masterPassword: 'correct horse battery staple',
       format: 'bitwarden-zip'
     })
-    expect(portability.exportVault).toHaveBeenLastCalledWith({
+    expect(observedRequests.at(-1)).toEqual({
       masterPassword: 'correct horse battery staple',
       format: 'bitwarden-zip'
+    })
+    await exportVault(event, {
+      masterPassword: 'correct horse battery staple',
+      format: 'bitwarden-csv'
+    })
+    expect(observedRequests.at(-1)).toEqual({
+      masterPassword: 'correct horse battery staple',
+      format: 'bitwarden-csv'
     })
     await expect(
       importVault(event, {
@@ -1787,16 +1811,46 @@ describe('registerVaultIpc reprompt gate', () => {
         masterPassword: 'correct horse battery staple',
         password: 'must-not-be-used-for-plaintext',
         format: 'bitwarden-zip'
+      },
+      {
+        masterPassword: 'correct horse battery staple',
+        password: 'must-not-be-used-for-plaintext',
+        format: 'bitwarden-csv'
       }
     ]) {
       await expect(exportVault(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
+    let getterCalls = 0
+    const accessor = Object.defineProperty({}, 'masterPassword', {
+      enumerable: true,
+      get: () => {
+        getterCalls += 1
+        return 'must-not-be-read'
+      }
+    })
+    await expect(exportVault(event, accessor)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    expect(getterCalls).toBe(0)
+    await expect(
+      exportVault(event, {
+        masterPassword: 'correct horse battery staple',
+        format: 'bitwarden-csv',
+        [Symbol('secret')]: 'must-not-cross-ipc'
+      })
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     await expect(
       importVault(event, {
         masterPassword: 'correct horse battery staple',
         password: 123
       })
     ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    expect(requestReferences).toHaveLength(4)
+    expect(
+      requestReferences.every(
+        (request) =>
+          request.masterPassword === '' &&
+          (!('password' in request) || request.password === undefined || request.password === '')
+      )
+    ).toBe(true)
   })
 
   it('keeps native restore sessions exact, sender-bound, progress-only, and secret-free', async () => {

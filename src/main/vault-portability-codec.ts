@@ -51,7 +51,7 @@ const MAX_PASSKEYS = 1_000
 const MAX_PASSKEY_FIELD_LENGTH = 4_096
 const MAX_PASSWORD_HISTORY = 5
 const MAX_SSH_PRIVATE_KEY_LENGTH = 1024 * 1024
-const MAX_CSV_ROWS = 40_001
+const MAX_CSV_ROWS = MAX_ENTITIES + 1
 const MAX_CSV_FOLDERS = 2_000
 const MAX_CSV_COLUMNS = 32
 const MAX_CSV_FIELD_BYTES = 1024 * 1024
@@ -446,7 +446,44 @@ const BITWARDEN_CSV_REQUIRED_COLUMNS = [
   'login_password',
   'login_totp'
 ] as const
+const BITWARDEN_CSV_CURRENT_COLUMNS = [
+  'folder',
+  'favorite',
+  'type',
+  'name',
+  'notes',
+  'fields',
+  'reprompt',
+  'archivedDate',
+  'login_uri',
+  'login_username',
+  'login_password',
+  'login_totp'
+] as const
 type BitwardenCsvColumn = (typeof BITWARDEN_CSV_REQUIRED_COLUMNS)[number] | 'archivedDate'
+
+export interface BitwardenCsvExport {
+  csv: string
+  exportedFolders: number
+  exportedItems: number
+  skippedCards: number
+  skippedIdentities: number
+  skippedSshKeys: number
+  skippedUnsupportedItems: number
+  skippedPasskeys: number
+  /** Number of attachment metadata records whose files and metadata CSV cannot carry. */
+  skippedAttachments: number
+  /** Number of individual password-history entries CSV cannot carry. */
+  skippedPasswordHistoryEntries: number
+  simplifiedUriMatches: number
+  skippedPasswordRevisionDates: number
+  skippedAutofillSettings: number
+  simplifiedCustomFieldTypes: number
+  riskyCustomFields: number
+  emptyCustomFieldNames: number
+  multilineCustomFields: number
+  colonValueCustomFields: number
+}
 
 const BITWARDEN_CSV_COLUMN_BY_HEADER = {
   folder: 'folder',
@@ -778,6 +815,125 @@ export function parseBitwardenOrChromiumCsv(text: string): {
   }
   const columns = bitwardenCsvColumns(header)
   return { snapshot: parseBitwardenCsvRows(rows, columns), skippedTrashItems: 0 }
+}
+
+function encodeCsvField(value: string): string {
+  boundedCsvField(value)
+  return /[",\r\n]/u.test(value) ? `"${value.replaceAll('"', '""')}"` : value
+}
+
+function encodeCsvRow(values: readonly string[]): string {
+  return values.map(encodeCsvField).join(',')
+}
+
+function exportCsvCustomFields(item: PortableVaultItem): string {
+  return item.customFields.map((field) => `${field.name}: ${field.value}`).join('\n')
+}
+
+/** Builds Bitwarden's current individual-vault CSV without altering formula-like secrets. */
+export function buildBitwardenCsv(snapshot: PortableVaultSnapshot): BitwardenCsvExport {
+  // Reuse the strict JSON codec as the canonical runtime/schema/relationship validator. It also
+  // removes trash entries, matching Bitwarden export behavior.
+  const validated = parseBitwardenJson(
+    buildBitwardenJson(snapshot, { includeLoginWireMetadata: true })
+  ).snapshot
+  const activeIds = new Set(validated.items.map((item) => item.id))
+  let skippedAttachments = 0
+  for (const raw of array(snapshot.items, MAX_ENTITIES)) {
+    const original = record(raw)
+    if (!activeIds.has(string(original.id, MAX_ID_LENGTH, false))) continue
+    if (original.attachments !== undefined) {
+      skippedAttachments += array(original.attachments, MAX_ENTITIES).length
+    }
+  }
+  const foldersById = new Map(validated.folders.map((folder) => [folder.id, folder.name]))
+  const representedFolders = new Set<string>()
+  const rows: string[][] = []
+  let skippedCards = 0
+  let skippedIdentities = 0
+  let skippedSshKeys = 0
+  let skippedPasskeys = 0
+  let skippedPasswordHistoryEntries = 0
+  let simplifiedUriMatches = 0
+  let skippedPasswordRevisionDates = 0
+  let skippedAutofillSettings = 0
+  let simplifiedCustomFieldTypes = 0
+  let riskyCustomFields = 0
+  let emptyCustomFieldNames = 0
+  let multilineCustomFields = 0
+  let colonValueCustomFields = 0
+
+  for (const item of validated.items) {
+    skippedPasswordHistoryEntries += item.passwordHistory.length
+    if (item.type === 'card') {
+      skippedCards += 1
+      continue
+    }
+    if (item.type === 'identity') {
+      skippedIdentities += 1
+      continue
+    }
+    if (item.type === 'sshKey') {
+      skippedSshKeys += 1
+      continue
+    }
+
+    const folder = item.folderId === null ? '' : (foldersById.get(item.folderId) ?? '')
+    if (folder !== '' && !representedFolders.has(folder)) {
+      if (representedFolders.size >= MAX_CSV_FOLDERS) invalidInput()
+      representedFolders.add(folder)
+    }
+    skippedPasskeys += item.passkeys.length
+    simplifiedUriMatches += item.uris.filter((uri) => uri.match !== null).length
+    if (item.passwordRevisionDate !== null) skippedPasswordRevisionDates += 1
+    if (item.autofillOnPageLoad !== null) skippedAutofillSettings += 1
+    for (const field of item.customFields) {
+      if (field.type !== 'text') simplifiedCustomFieldTypes += 1
+      const emptyName = field.name === ''
+      const multiline = /[\r\n]/u.test(field.name) || /[\r\n]/u.test(field.value)
+      const colonValue = field.value.includes(': ')
+      if (emptyName) emptyCustomFieldNames += 1
+      if (multiline) multilineCustomFields += 1
+      if (colonValue) colonValueCustomFields += 1
+      if (emptyName || multiline || colonValue) riskyCustomFields += 1
+    }
+    rows.push([
+      folder,
+      item.favorite ? '1' : '',
+      item.type === 'login' ? 'login' : 'note',
+      item.name,
+      item.notes ?? '',
+      exportCsvCustomFields(item),
+      String(item.reprompt),
+      item.archivedAt ?? '',
+      item.type === 'login' ? encodeCsvRow(item.uris.map((uri) => uri.uri)) : '',
+      item.type === 'login' ? item.username : '',
+      item.type === 'login' ? item.password : '',
+      item.type === 'login' ? item.totp : ''
+    ])
+  }
+
+  const skippedUnsupportedItems = skippedCards + skippedIdentities + skippedSshKeys
+  return {
+    csv: `${[BITWARDEN_CSV_CURRENT_COLUMNS, ...rows].map(encodeCsvRow).join('\r\n')}\r\n`,
+    exportedFolders: representedFolders.size,
+    exportedItems: rows.length,
+    skippedCards,
+    skippedIdentities,
+    skippedSshKeys,
+    skippedUnsupportedItems,
+    skippedPasskeys,
+    skippedAttachments,
+    skippedPasswordHistoryEntries,
+    simplifiedUriMatches,
+    skippedPasswordRevisionDates,
+    skippedAutofillSettings,
+    simplifiedCustomFieldTypes,
+    riskyCustomFields,
+    emptyCustomFieldNames,
+    multilineCustomFields,
+    colonValueCustomFields
+  }
 }
 
 function exportPasskey(passkey: StoredPasskeyCredential): JsonObject {

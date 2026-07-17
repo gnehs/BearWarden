@@ -11,6 +11,7 @@ import type {
   NativeRestoreSummary
 } from '../shared/vault-contract'
 import {
+  buildBitwardenCsv,
   buildBitwardenJson,
   decryptBitwardenPasswordProtectedJson,
   encryptBitwardenPasswordProtectedJson,
@@ -76,19 +77,64 @@ function zipExportFileName(now: Date): string {
     .replace(/\.json$/, '.zip')
 }
 
-async function syncDirectory(path: string): Promise<void> {
-  let handle: Awaited<ReturnType<typeof open>> | undefined
-  try {
-    handle = await open(path, 'r')
-    await handle.sync()
-  } catch {
-    // Directory fsync is not supported on every Electron target, notably Windows.
-  } finally {
-    await handle?.close()
-  }
+function csvExportFileName(now: Date): string {
+  return exportFileName(now)
+    .replace('bitwarden_encrypted_export_', 'bitwarden_export_')
+    .replace(/\.json$/, '.csv')
 }
 
-async function atomicWritePrivate(path: string, contents: string): Promise<void> {
+export type DirectorySyncResult = 'confirmed' | 'unsupported' | 'unknown'
+
+interface DirectoryHandle {
+  sync: () => Promise<void>
+  close: () => Promise<void>
+}
+
+function errorCode(error: unknown): string | null {
+  return typeof error === 'object' && error !== null && 'code' in error
+    ? String((error as { code?: unknown }).code)
+    : null
+}
+
+function unsupportedDirectorySyncError(error: unknown, platform: NodeJS.Platform): boolean {
+  const code = errorCode(error)
+  if (code === 'EINVAL' || code === 'ENOTSUP' || code === 'EOPNOTSUPP' || code === 'ENOSYS') {
+    return true
+  }
+  return platform === 'win32' && (code === 'EPERM' || code === 'EACCES')
+}
+
+export async function syncDirectory(
+  path: string,
+  options: {
+    platform?: NodeJS.Platform
+    openDirectory?: (path: string) => Promise<DirectoryHandle>
+  } = {}
+): Promise<DirectorySyncResult> {
+  let handle: DirectoryHandle | undefined
+  let result: DirectorySyncResult = 'confirmed'
+  try {
+    handle = await (options.openDirectory ?? (async (directory) => open(directory, 'r')))(path)
+    await handle.sync()
+  } catch (error) {
+    result = unsupportedDirectorySyncError(error, options.platform ?? process.platform)
+      ? 'unsupported'
+      : 'unknown'
+  } finally {
+    try {
+      await handle?.close()
+    } catch {
+      result = 'unknown'
+    }
+  }
+  return result
+}
+
+export async function atomicWritePrivate(
+  path: string,
+  contents: string,
+  directorySync: (path: string) => Promise<DirectorySyncResult> = syncDirectory
+): Promise<{ durabilityWarning: boolean }> {
   const directory = dirname(path)
   await mkdir(directory, { recursive: true, mode: 0o700 })
   const temporaryPath = `${path}.${process.pid}.${randomBytes(8).toString('hex')}.tmp`
@@ -97,11 +143,17 @@ async function atomicWritePrivate(path: string, contents: string): Promise<void>
     handle = await open(temporaryPath, 'wx', 0o600)
     await handle.writeFile(contents, { encoding: 'utf8' })
     await handle.sync()
+    await chmod(temporaryPath, 0o600)
     await handle.close()
     handle = undefined
     await rename(temporaryPath, path)
-    await chmod(path, 0o600)
-    await syncDirectory(directory)
+    let directorySyncResult: DirectorySyncResult = 'unknown'
+    try {
+      directorySyncResult = await directorySync(directory)
+    } catch {
+      // The file is already published; report uncertain durability instead of a false failure.
+    }
+    return { durabilityWarning: directorySyncResult === 'unknown' }
   } catch (error) {
     await handle?.close()
     await unlink(temporaryPath).catch(() => undefined)
@@ -154,7 +206,8 @@ export class VaultPortabilityService {
   constructor(
     private readonly vault: VaultService,
     private readonly picker: VaultPortabilityPicker,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly writePrivate: typeof atomicWritePrivate = atomicWritePrivate
   ) {}
 
   async previewNativeRestore(
@@ -372,89 +425,135 @@ export class VaultPortabilityService {
   }
 
   async exportVault(request: VaultExportRequest): Promise<VaultExportResult> {
-    if (!request || typeof request.masterPassword !== 'string') {
-      throw new VaultError('INVALID_INPUT')
-    }
-    const format = request.format ?? 'bitwarden-json'
-    if (
-      format !== 'bitwarden-json' &&
-      format !== 'bitwarden-zip' &&
-      format !== 'bearwarden-native'
-    ) {
-      throw new VaultError('INVALID_INPUT')
-    }
-    if (
-      (format === 'bitwarden-zip' && request.password !== undefined) ||
-      (format !== 'bitwarden-zip' &&
-        (typeof request.password !== 'string' ||
-          request.password.length < MIN_EXPORT_PASSWORD_LENGTH ||
-          request.password.length > MAX_EXPORT_PASSWORD_LENGTH))
-    ) {
-      throw new VaultError('INVALID_INPUT')
-    }
-    const exportPassword = format === 'bitwarden-zip' ? undefined : request.password
-    await this.vault.verifyPortabilityOwner(request.masterPassword)
-    const path = await this.picker.chooseExportPath(
-      format === 'bearwarden-native'
-        ? nativeExportFileName(this.now())
-        : format === 'bitwarden-zip'
-          ? zipExportFileName(this.now())
-          : exportFileName(this.now())
-    )
-    if (path === null) {
-      return { canceled: true, exportedFolders: 0, exportedItems: 0, skippedTrashItems: 0 }
-    }
-    if (typeof path !== 'string' || path.length === 0) throw new VaultError('INTERNAL_ERROR')
+    try {
+      if (!request || typeof request.masterPassword !== 'string') {
+        throw new VaultError('INVALID_INPUT')
+      }
+      const format = request.format ?? 'bitwarden-json'
+      if (
+        format !== 'bitwarden-json' &&
+        format !== 'bitwarden-csv' &&
+        format !== 'bitwarden-zip' &&
+        format !== 'bearwarden-native'
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      if (
+        ((format === 'bitwarden-csv' || format === 'bitwarden-zip') &&
+          request.password !== undefined) ||
+        (format !== 'bitwarden-csv' &&
+          format !== 'bitwarden-zip' &&
+          (typeof request.password !== 'string' ||
+            request.password.length < MIN_EXPORT_PASSWORD_LENGTH ||
+            request.password.length > MAX_EXPORT_PASSWORD_LENGTH))
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      const exportPassword =
+        format === 'bitwarden-csv' || format === 'bitwarden-zip' ? undefined : request.password
+      await this.vault.verifyPortabilityOwner(request.masterPassword)
+      const path = await this.picker.chooseExportPath(
+        format === 'bearwarden-native'
+          ? nativeExportFileName(this.now())
+          : format === 'bitwarden-zip'
+            ? zipExportFileName(this.now())
+            : format === 'bitwarden-csv'
+              ? csvExportFileName(this.now())
+              : exportFileName(this.now())
+      )
+      if (path === null) {
+        return { canceled: true, exportedFolders: 0, exportedItems: 0, skippedTrashItems: 0 }
+      }
+      if (typeof path !== 'string' || path.length === 0) throw new VaultError('INTERNAL_ERROR')
 
-    if (format === 'bitwarden-zip') {
-      const source = await this.vault.createNativeAttachmentBackupSource(request.masterPassword, {
-        includeLoginWireMetadata: false
-      })
-      try {
-        const result = await writeBitwardenAttachmentZip(path, source)
+      if (format === 'bitwarden-zip') {
+        const source = await this.vault.createNativeAttachmentBackupSource(request.masterPassword, {
+          includeLoginWireMetadata: false
+        })
+        try {
+          const result = await writeBitwardenAttachmentZip(path, source)
+          return {
+            canceled: false,
+            exportedFolders: source.exportedFolders,
+            exportedItems: source.exportedItems,
+            skippedTrashItems: source.skippedTrashItems,
+            attachmentCount: result.attachmentCount,
+            attachmentBytes: result.attachmentBytes
+          }
+        } finally {
+          source.dispose()
+        }
+      }
+
+      if (format === 'bitwarden-csv') {
+        const exported = await this.vault.exportPortableSnapshot(request.masterPassword)
+        const csv = buildBitwardenCsv(exported.snapshot)
+        const published = await this.writePrivate(path, csv.csv)
         return {
           canceled: false,
-          exportedFolders: source.exportedFolders,
-          exportedItems: source.exportedItems,
-          skippedTrashItems: source.skippedTrashItems,
-          attachmentCount: result.attachmentCount,
-          attachmentBytes: result.attachmentBytes
+          exportedFolders: csv.exportedFolders,
+          exportedItems: csv.exportedItems,
+          skippedTrashItems: exported.skippedTrashItems,
+          skippedUnsupportedItems: csv.skippedUnsupportedItems,
+          skippedCards: csv.skippedCards,
+          skippedIdentities: csv.skippedIdentities,
+          skippedSshKeys: csv.skippedSshKeys,
+          skippedPasskeys: csv.skippedPasskeys,
+          skippedAttachments: csv.skippedAttachments,
+          skippedPasswordHistoryEntries: csv.skippedPasswordHistoryEntries,
+          simplifiedUriMatches: csv.simplifiedUriMatches,
+          skippedPasswordRevisionDates: csv.skippedPasswordRevisionDates,
+          skippedAutofillSettings: csv.skippedAutofillSettings,
+          simplifiedCustomFieldTypes: csv.simplifiedCustomFieldTypes,
+          riskyCustomFields: csv.riskyCustomFields,
+          emptyCustomFieldNames: csv.emptyCustomFieldNames,
+          multilineCustomFields: csv.multilineCustomFields,
+          colonValueCustomFields: csv.colonValueCustomFields,
+          ...(published.durabilityWarning ? { durabilityWarning: true as const } : {})
         }
-      } finally {
-        source.dispose()
       }
-    }
 
-    if (exportPassword === undefined) throw new VaultError('INTERNAL_ERROR')
-    if (format === 'bearwarden-native') {
-      const source = await this.vault.createNativeAttachmentBackupSource(request.masterPassword, {
-        includeLoginWireMetadata: true
-      })
-      try {
-        const result = await writeNativeAttachmentBackup(path, exportPassword, source)
-        return {
-          canceled: false,
-          exportedFolders: source.exportedFolders,
-          exportedItems: source.exportedItems,
-          skippedTrashItems: source.skippedTrashItems,
-          attachmentCount: result.attachmentCount,
-          attachmentBytes: result.attachmentBytes,
-          resumed: result.resumed
+      if (exportPassword === undefined) throw new VaultError('INTERNAL_ERROR')
+      if (format === 'bearwarden-native') {
+        const source = await this.vault.createNativeAttachmentBackupSource(request.masterPassword, {
+          includeLoginWireMetadata: true
+        })
+        try {
+          const result = await writeNativeAttachmentBackup(path, exportPassword, source)
+          return {
+            canceled: false,
+            exportedFolders: source.exportedFolders,
+            exportedItems: source.exportedItems,
+            skippedTrashItems: source.skippedTrashItems,
+            attachmentCount: result.attachmentCount,
+            attachmentBytes: result.attachmentBytes,
+            resumed: result.resumed
+          }
+        } finally {
+          source.dispose()
         }
-      } finally {
-        source.dispose()
       }
-    }
 
-    const exported = await this.vault.exportPortableSnapshot(request.masterPassword)
-    const clearText = buildBitwardenJson(exported.snapshot)
-    const encrypted = await encryptBitwardenPasswordProtectedJson(clearText, exportPassword)
-    await atomicWritePrivate(path, `${encrypted}\n`)
-    return {
-      canceled: false,
-      exportedFolders: exported.snapshot.folders.length,
-      exportedItems: exported.snapshot.items.length,
-      skippedTrashItems: exported.skippedTrashItems
+      const exported = await this.vault.exportPortableSnapshot(request.masterPassword)
+      const clearText = buildBitwardenJson(exported.snapshot)
+      const encrypted = await encryptBitwardenPasswordProtectedJson(clearText, exportPassword)
+      const published = await this.writePrivate(path, `${encrypted}\n`)
+      return {
+        canceled: false,
+        exportedFolders: exported.snapshot.folders.length,
+        exportedItems: exported.snapshot.items.length,
+        skippedTrashItems: exported.skippedTrashItems,
+        ...(published.durabilityWarning ? { durabilityWarning: true as const } : {})
+      }
+    } finally {
+      if (request && typeof request === 'object') {
+        try {
+          request.masterPassword = ''
+          if ('password' in request && typeof request.password === 'string') request.password = ''
+        } catch {
+          // A frozen/exotic direct caller must not replace the intended export result or error.
+        }
+      }
     }
   }
 

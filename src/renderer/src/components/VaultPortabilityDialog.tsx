@@ -25,9 +25,10 @@ import { Input } from '@renderer/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@renderer/components/ui/native-select'
 import { Progress, ProgressLabel, ProgressValue } from '@renderer/components/ui/progress'
 import { Spinner } from '@renderer/components/ui/spinner'
+import { executeVaultExport } from '../lib/vault-portability-ui'
 
 export type VaultPortabilityMode = 'export' | 'import'
-type ExportFormat = 'bitwarden-json' | 'bitwarden-zip' | 'bearwarden-native'
+type ExportFormat = 'bitwarden-json' | 'bitwarden-csv' | 'bitwarden-zip' | 'bearwarden-native'
 type ImportFormat = 'portable' | 'bearwarden-native'
 
 interface VaultPortabilityDialogProps {
@@ -53,6 +54,20 @@ function formatBackupCreatedAt(value: string): string {
     dateStyle: 'medium',
     timeStyle: 'short'
   }).format(date)
+}
+
+export function VaultCsvExportWarning(): React.JSX.Element {
+  return (
+    <>
+      CSV
+      不是完整備份。它只會寫出未封存與封存的登入、安全筆記及部分文字值；不包含垃圾桶、附件、卡片、身分、SSH
+      金鑰、Passkey、密碼歷史或 Sends。URI 比對與部分登入 metadata 會遺失，自訂欄位會被壓成「名稱:
+      值」文字，型別及含空名稱、換行或「: 」的原始結構可能無法還原。若要較完整的可攜資料，請改用加密
+      JSON；若要包含附件，請用 BearWarden 完整備份。請只用文字編輯器檢視 CSV；若用試算表開啟，以
+      =、+、- 或 @ 開頭的原始欄位可能被當成公式執行。BearWarden 為保持與 Bitwarden
+      相容及資料不失真，不會改寫這些秘密。
+    </>
+  )
 }
 
 function VaultPortabilityDialog({
@@ -112,15 +127,20 @@ function VaultPortabilityDialog({
     if (busy || submittingRef.current) return
     const nativeImport = mode === 'import' && importFormat === 'bearwarden-native'
     const plaintextZip = mode === 'export' && exportFormat === 'bitwarden-zip'
+    const plaintextCsv = mode === 'export' && exportFormat === 'bitwarden-csv'
+    const passwordlessExport = plaintextZip || plaintextCsv
     if (!nativeImport && !masterPassword) {
       setError('請輸入目前的主密碼。')
       return
     }
-    if (((mode === 'export' && !plaintextZip) || nativeImport) && backupPassword.length < 12) {
+    if (
+      ((mode === 'export' && !passwordlessExport) || nativeImport) &&
+      backupPassword.length < 12
+    ) {
       setError('備份密碼至少需要 12 個字元。')
       return
     }
-    if (mode === 'export' && !plaintextZip && backupPassword !== confirmPassword) {
+    if (mode === 'export' && !passwordlessExport && backupPassword !== confirmPassword) {
       setError('兩次輸入的備份密碼不一致。')
       return
     }
@@ -130,14 +150,14 @@ function VaultPortabilityDialog({
     submittingRef.current = true
     try {
       if (mode === 'export') {
-        const exportRequest: VaultExportRequest = plaintextZip
-          ? { masterPassword, format: 'bitwarden-zip' }
+        const exportRequest: VaultExportRequest = passwordlessExport
+          ? { masterPassword, format: plaintextZip ? 'bitwarden-zip' : 'bitwarden-csv' }
           : {
               masterPassword,
               password: backupPassword,
               format: exportFormat === 'bearwarden-native' ? 'bearwarden-native' : 'bitwarden-json'
             }
-        const result = await onExport(exportRequest)
+        const result = await executeVaultExport(exportRequest, onExport)
         scrubPasswords()
         if (result.canceled) return
         onExported(result)
@@ -188,7 +208,9 @@ function VaultPortabilityDialog({
               ? 'ZIP 是否已完整寫入無法確認。請先檢查剛才選擇的儲存位置；若檔案存在，它包含未加密的密碼與附件，確認前請勿直接重試。'
               : plaintextZip
                 ? '無法建立 ZIP。請確認主密碼、儲存位置與附件狀態後再試一次。'
-                : '無法建立備份。請確認主密碼、儲存位置與備份密碼後再試一次。'
+                : plaintextCsv
+                  ? '無法建立 CSV。請確認主密碼與儲存位置後再試一次。'
+                  : '無法建立備份。請確認主密碼、儲存位置與備份密碼後再試一次。'
             : nativeImport
               ? '還原未完成。若顯示衝突，請先確認伺服器上的同名附件；進度已安全保留，可重新選取同一份備份續傳。'
               : '無法匯入檔案。請確認主密碼、檔案格式與備份密碼後再試一次。'
@@ -218,6 +240,8 @@ function VaultPortabilityDialog({
 
   const exporting = mode === 'export'
   const plaintextZip = exporting && exportFormat === 'bitwarden-zip'
+  const plaintextCsv = exporting && exportFormat === 'bitwarden-csv'
+  const passwordlessExport = plaintextZip || plaintextCsv
   const nativeImport = !exporting && importFormat === 'bearwarden-native'
   const completed = restoreResult?.state === 'complete'
   const progressPercent = progress?.totalBytes
@@ -232,7 +256,9 @@ function VaultPortabilityDialog({
         exporting
           ? plaintextZip
             ? '匯出 Bitwarden 附件 ZIP'
-            : '匯出加密備份'
+            : plaintextCsv
+              ? '匯出 Bitwarden CSV'
+              : '匯出加密備份'
           : nativeImport
             ? '還原完整備份'
             : '匯入密碼資料'
@@ -241,7 +267,9 @@ function VaultPortabilityDialog({
         exporting
           ? plaintextZip
             ? '建立可由 Bitwarden 相容工具解壓使用的個人保管庫與附件明文副本。'
-            : '建立受密碼保護的可攜備份。'
+            : plaintextCsv
+              ? '建立可重新匯入 Bitwarden 的登入與安全筆記明文副本。'
+              : '建立受密碼保護的可攜備份。'
           : nativeImport
             ? '從 BearWarden 完整備份還原項目與附件，可在中斷後安全續傳。'
             : '將 Bitwarden JSON、Bitwarden CSV 或 Chrome／Chromium 密碼 CSV 加入目前的保管庫。既有項目不會被覆蓋。'
@@ -274,6 +302,9 @@ function VaultPortabilityDialog({
                       <NativeSelectOption value="bitwarden-json">
                         Bitwarden 密碼保護 JSON
                       </NativeSelectOption>
+                      <NativeSelectOption value="bitwarden-csv">
+                        Bitwarden 明文 CSV（登入與安全筆記）
+                      </NativeSelectOption>
                       <NativeSelectOption value="bitwarden-zip">
                         Bitwarden 明文 ZIP（含附件）
                       </NativeSelectOption>
@@ -298,7 +329,7 @@ function VaultPortabilityDialog({
             <Alert>
               {nativeImport ? (
                 <ArchiveRestore aria-hidden="true" />
-              ) : exporting && !plaintextZip ? (
+              ) : exporting && !passwordlessExport ? (
                 <FileKey2 aria-hidden="true" />
               ) : (
                 <ShieldAlert aria-hidden="true" />
@@ -306,24 +337,30 @@ function VaultPortabilityDialog({
               <AlertTitle>
                 {plaintextZip
                   ? 'ZIP 內的密碼與附件都是未加密明文'
-                  : exporting && exportFormat === 'bearwarden-native'
-                    ? '完整備份不是 Bitwarden 相容格式'
-                    : nativeImport
-                      ? '可安全續傳，但不會自動解決伺服器衝突'
-                      : exporting
-                        ? '請妥善保存備份密碼'
-                        : '匯入不會自動去除重複項目'}
+                  : plaintextCsv
+                    ? 'CSV 是不完整且未加密的明文匯出'
+                    : exporting && exportFormat === 'bearwarden-native'
+                      ? '完整備份不是 Bitwarden 相容格式'
+                      : nativeImport
+                        ? '可安全續傳，但不會自動解決伺服器衝突'
+                        : exporting
+                          ? '請妥善保存備份密碼'
+                          : '匯入不會自動去除重複項目'}
               </AlertTitle>
               <AlertDescription>
-                {plaintextZip
-                  ? '只應儲存在受信任的加密磁碟，使用後請安全刪除。格式對齊 Bitwarden 個人保管庫 ZIP 匯出；官方目前不支援把附件 ZIP 批次匯入，因此 BearWarden 不宣稱可用它無損還原附件。垃圾桶與 Sends 不包含在內。'
-                  : exporting && exportFormat === 'bearwarden-native'
-                    ? '加密的 .bwbackup 會包含個人項目與附件，只能由支援此格式的 BearWarden 還原；Bitwarden 官方客戶端無法直接匯入。垃圾桶與 Sends 不包含在內。'
-                    : nativeImport
-                      ? '若上傳結果不明，BearWarden 會先比對伺服器附件的完整內容；只有確認不存在時才重試。取消只會停止本次工作，不會丟失續傳進度。'
-                      : exporting
-                        ? '垃圾桶、附件與 Sends 不會包含在 Bitwarden JSON 中；忘記備份密碼後將無法解密。'
-                        : '所有項目都會以新識別碼加入。JSON 垃圾桶項目會略過，CSV 不包含附件或 Passkey。'}
+                {plaintextZip ? (
+                  '只應儲存在受信任的加密磁碟，使用後請安全刪除。格式對齊 Bitwarden 個人保管庫 ZIP 匯出；官方目前不支援把附件 ZIP 批次匯入，因此 BearWarden 不宣稱可用它無損還原附件。垃圾桶與 Sends 不包含在內。'
+                ) : plaintextCsv ? (
+                  <VaultCsvExportWarning />
+                ) : exporting && exportFormat === 'bearwarden-native' ? (
+                  '加密的 .bwbackup 會包含個人項目與附件，只能由支援此格式的 BearWarden 還原；Bitwarden 官方客戶端無法直接匯入。垃圾桶與 Sends 不包含在內。'
+                ) : nativeImport ? (
+                  '若上傳結果不明，BearWarden 會先比對伺服器附件的完整內容；只有確認不存在時才重試。取消只會停止本次工作，不會丟失續傳進度。'
+                ) : exporting ? (
+                  '垃圾桶、附件與 Sends 不會包含在 Bitwarden JSON 中；忘記備份密碼後將無法解密。'
+                ) : (
+                  '所有項目都會以新識別碼加入。JSON 垃圾桶項目會略過，CSV 不包含附件或 Passkey。'
+                )}
               </AlertDescription>
             </Alert>
 
@@ -408,7 +445,7 @@ function VaultPortabilityDialog({
                     </FieldDescription>
                   </Field>
                 )}
-                {!preview && !plaintextZip && (
+                {!preview && !passwordlessExport && (
                   <Field>
                     <FieldLabel htmlFor="portability-backup-password">
                       {exporting
@@ -433,7 +470,7 @@ function VaultPortabilityDialog({
                     </FieldDescription>
                   </Field>
                 )}
-                {exporting && !plaintextZip && (
+                {exporting && !passwordlessExport && (
                   <Field>
                     <FieldLabel htmlFor="portability-confirm-password">再次輸入備份密碼</FieldLabel>
                     <Input
@@ -489,10 +526,10 @@ function VaultPortabilityDialog({
                 disabled={
                   busy ||
                   (!nativeImport && !masterPassword) ||
-                  (((exporting && !plaintextZip) || nativeImport) &&
+                  (((exporting && !passwordlessExport) || nativeImport) &&
                     !preview &&
                     backupPassword.length < 12) ||
-                  (exporting && !plaintextZip && backupPassword !== confirmPassword)
+                  (exporting && !passwordlessExport && backupPassword !== confirmPassword)
                 }
               >
                 {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}

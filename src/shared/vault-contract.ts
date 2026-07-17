@@ -314,9 +314,9 @@ export type VaultExportRequest =
   | {
       /** Proves the currently unlocked vault owner in the main process. */
       masterPassword: string
-      /** Bitwarden's attachment ZIP is intentionally plaintext and must not accept a password. */
+      /** Plaintext Bitwarden exports must not accept a backup password. */
       password?: never
-      format: 'bitwarden-zip'
+      format: 'bitwarden-csv' | 'bitwarden-zip'
     }
 
 export interface VaultImportRequest {
@@ -335,6 +335,27 @@ export interface VaultExportResult {
   attachmentCount?: number
   attachmentBytes?: number
   resumed?: boolean
+  /** Present for the intentionally lossy Bitwarden CSV format. */
+  skippedUnsupportedItems?: number
+  skippedCards?: number
+  skippedIdentities?: number
+  skippedSshKeys?: number
+  /** Number of Login-attached passkeys that CSV cannot represent. */
+  skippedPasskeys?: number
+  /** Number of attachment metadata records whose files and metadata CSV cannot carry. */
+  skippedAttachments?: number
+  /** Number of individual password-history entries CSV cannot carry. */
+  skippedPasswordHistoryEntries?: number
+  simplifiedUriMatches?: number
+  skippedPasswordRevisionDates?: number
+  skippedAutofillSettings?: number
+  simplifiedCustomFieldTypes?: number
+  riskyCustomFields?: number
+  emptyCustomFieldNames?: number
+  multilineCustomFields?: number
+  colonValueCustomFields?: number
+  /** The final file was published, but directory metadata durability could not be confirmed. */
+  durabilityWarning?: true
 }
 
 export interface VaultImportResult {

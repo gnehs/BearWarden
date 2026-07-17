@@ -95,6 +95,21 @@ describe('preload pending import API', () => {
   })
 })
 
+describe('preload portability API', () => {
+  it('forwards only the passwordless Bitwarden CSV request object', async () => {
+    electronMock.invoke.mockClear()
+    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
+    const request = {
+      masterPassword: 'test-master-password',
+      format: 'bitwarden-csv' as const
+    }
+
+    await api.portability.export(request)
+
+    expect(electronMock.invoke).toHaveBeenCalledWith(IPC_CHANNELS.vaultExport, request)
+  })
+})
+
 describe('preload personal vault purge API', () => {
   it('passes only the typed request through its dedicated channel', async () => {
     electronMock.invoke.mockClear()

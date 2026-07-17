@@ -114,6 +114,7 @@ import OrganizationsPage from './OrganizationsPage'
 import EmergencyAccessPage from './EmergencyAccessPage'
 import VaultHealthPage from './VaultHealthPage'
 import VaultPortabilityDialog, { type VaultPortabilityMode } from './VaultPortabilityDialog'
+import { formatVaultExportResult } from '../lib/vault-portability-ui'
 import VirtualizedItemList from './VirtualizedItemList'
 import { groupItemsByDate } from '../lib/item-date-groups'
 import { matchesVaultCategory, type VaultCategoryFilter } from '../lib/vault-category'
@@ -2358,14 +2359,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   }
 
   function announceExported(result: VaultExportResult): void {
-    const skipped = result.skippedTrashItems
-      ? `，已略過垃圾桶中的 ${result.skippedTrashItems} 個項目`
-      : ''
-    const attachments =
-      result.attachmentCount === undefined ? '' : `、${result.attachmentCount} 個附件`
-    announce(
-      `匯出檔已儲存，共 ${result.exportedItems} 個項目、${result.exportedFolders} 個資料夾${attachments}${skipped}。`
-    )
+    announce(formatVaultExportResult(result))
   }
 
   async function refreshAfterImport(result: VaultImportResult): Promise<void> {
