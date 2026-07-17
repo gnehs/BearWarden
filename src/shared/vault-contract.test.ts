@@ -8,6 +8,8 @@ import {
   type AccountWebAuthnKeyView,
   type AccountWebAuthnKeysRequest,
   type BearWardenAPI,
+  type SyncPurgePersonalVaultRequest,
+  type SyncPurgePersonalVaultResult,
   type SyncResolvePendingImportRequest,
   type SyncStatus,
   type VaultExportRequest
@@ -23,6 +25,32 @@ describe('vault export renderer contract', () => {
         }
       | { masterPassword: string; password?: never; format: 'bitwarden-zip' }
     >()
+  })
+})
+
+describe('personal vault purge renderer contract', () => {
+  it('requires two explicit confirmations and exposes only aggregate results', () => {
+    expectTypeOf<SyncPurgePersonalVaultRequest>().toEqualTypeOf<{
+      masterPassword: string
+      confirmation: 'PURGE'
+      confirmPurge: true
+    }>()
+    expectTypeOf<SyncPurgePersonalVaultResult>().toEqualTypeOf<
+      | { status: 'complete'; removedItems: number; removedFolders: number }
+      | {
+          status: 'pending'
+          remainingItems: number
+          remainingFolders: number
+          startedAt: string
+        }
+    >()
+    expectTypeOf<SyncStatus['pendingPurge']>().toEqualTypeOf<
+      { startedAt: string; remainingItems: number; remainingFolders: number } | undefined
+    >()
+    expectTypeOf<BearWardenAPI['sync']['purgePersonalVault']>().parameters.toEqualTypeOf<
+      [SyncPurgePersonalVaultRequest]
+    >()
+    expect(IPC_CHANNELS.syncPurgePersonalVault).toBe('sync:purge-personal-vault')
   })
 })
 

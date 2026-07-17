@@ -88,8 +88,25 @@ describe('preload pending import API', () => {
       'unlock',
       'now',
       'resolvePendingImport',
+      'purgePersonalVault',
       'disconnect',
       'onChanged'
     ])
+  })
+})
+
+describe('preload personal vault purge API', () => {
+  it('passes only the typed request through its dedicated channel', async () => {
+    electronMock.invoke.mockClear()
+    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
+    const request = {
+      masterPassword: 'test-master-password',
+      confirmation: 'PURGE' as const,
+      confirmPurge: true as const
+    }
+
+    await api.sync.purgePersonalVault(request)
+
+    expect(electronMock.invoke).toHaveBeenCalledWith(IPC_CHANNELS.syncPurgePersonalVault, request)
   })
 })

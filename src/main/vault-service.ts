@@ -75,6 +75,8 @@ import type {
   VaultUriMatch,
   VaultSecretField,
   SyncConnectRequest,
+  SyncPurgePersonalVaultRequest,
+  SyncPurgePersonalVaultResult,
   SyncResult,
   SyncStatus,
   SyncUnlockRequest,
@@ -225,7 +227,8 @@ const NATIVE_ATTACHMENT_RESTORE_DATA_VERSION = 18
 const MASTER_PASSWORD_CHANGE_DATA_VERSION = 19
 const LOGIN_WIRE_METADATA_DATA_VERSION = 20
 const PENDING_LOGIN_IMPORT_DATA_VERSION = 21
-const DATA_VERSION = 21
+const PERSONAL_VAULT_PURGE_DATA_VERSION = 22
+const DATA_VERSION = 22
 const MIN_MASTER_PASSWORD_LENGTH = 12
 const MAX_MASTER_PASSWORD_LENGTH = 1024
 const MAX_NAME_LENGTH = 256
@@ -336,6 +339,13 @@ interface PendingLoginImport {
   entries: PendingLoginImportEntry[]
 }
 
+interface PendingPersonalVaultPurge {
+  phase: 'prepared' | 'dispatched'
+  startedAt: string
+  remainingItems: number
+  remainingFolders: number
+}
+
 export interface PersistedSyncData {
   provider: 'bitwarden'
   serverUrl: string
@@ -348,6 +358,7 @@ export interface PersistedSyncData {
   loginTombstones: SyncTombstone[]
   pendingLoginMutation: PendingLoginMutation | null
   pendingLoginImport: PendingLoginImport | null
+  pendingPersonalVaultPurge: PendingPersonalVaultPurge | null
   domainSettings: BitwardenEquivalentDomainSettings | null
 }
 
@@ -1862,6 +1873,7 @@ function parseSyncData(
   isCliData: boolean,
   allowMissingPendingMutation: boolean,
   allowMissingPendingImport: boolean,
+  allowMissingPendingPurge: boolean,
   allowMissingDomainSettings: boolean
 ): PersistedSyncData | null {
   if (value === null) return null
@@ -2026,6 +2038,42 @@ function parseSyncData(
   }
   if (pendingLoginMutation && pendingLoginImport) throw new VaultError('CORRUPT_VAULT')
 
+  let pendingPersonalVaultPurge: PendingPersonalVaultPurge | null = null
+  if (value.pendingPersonalVaultPurge !== null && value.pendingPersonalVaultPurge !== undefined) {
+    const pending = value.pendingPersonalVaultPurge
+    if (
+      !isRecord(pending) ||
+      Reflect.ownKeys(pending).length !== 4 ||
+      !Object.hasOwn(pending, 'phase') ||
+      !Object.hasOwn(pending, 'startedAt') ||
+      !Object.hasOwn(pending, 'remainingItems') ||
+      !Object.hasOwn(pending, 'remainingFolders') ||
+      (pending.phase !== 'prepared' && pending.phase !== 'dispatched') ||
+      typeof pending.startedAt !== 'string' ||
+      !Number.isFinite(Date.parse(pending.startedAt)) ||
+      new Date(pending.startedAt).toISOString() !== pending.startedAt ||
+      !Number.isSafeInteger(pending.remainingItems) ||
+      (pending.remainingItems as number) < 0 ||
+      (pending.remainingItems as number) > MAX_REMOTE_ENTITIES ||
+      !Number.isSafeInteger(pending.remainingFolders) ||
+      (pending.remainingFolders as number) < 0 ||
+      (pending.remainingFolders as number) > MAX_REMOTE_ENTITIES
+    ) {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+    pendingPersonalVaultPurge = {
+      phase: pending.phase,
+      startedAt: pending.startedAt,
+      remainingItems: pending.remainingItems as number,
+      remainingFolders: pending.remainingFolders as number
+    }
+  } else if (!allowMissingPendingPurge && value.pendingPersonalVaultPurge === undefined) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  if (pendingPersonalVaultPurge && (pendingLoginMutation !== null || pendingLoginImport !== null)) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+
   const domainSettings =
     value.domainSettings === undefined && allowMissingDomainSettings
       ? null
@@ -2052,6 +2100,7 @@ function parseSyncData(
     loginTombstones,
     pendingLoginMutation,
     pendingLoginImport,
+    pendingPersonalVaultPurge,
     domainSettings
   }
 }
@@ -2108,6 +2157,7 @@ function parseVaultData(value: unknown): VaultData {
       MASTER_PASSWORD_CHANGE_DATA_VERSION,
       LOGIN_WIRE_METADATA_DATA_VERSION,
       PENDING_LOGIN_IMPORT_DATA_VERSION,
+      PERSONAL_VAULT_PURGE_DATA_VERSION,
       DATA_VERSION
     ].includes(value.version) ||
     !Array.isArray(value.folders) ||
@@ -2227,6 +2277,7 @@ function parseVaultData(value: unknown): VaultData {
           dataVersion === CLI_DATA_VERSION,
           dataVersion < PENDING_LOGIN_MUTATION_DATA_VERSION,
           dataVersion < PENDING_LOGIN_IMPORT_DATA_VERSION,
+          dataVersion < PERSONAL_VAULT_PURGE_DATA_VERSION,
           dataVersion < EQUIVALENT_DOMAINS_DATA_VERSION
         )
 
@@ -2248,6 +2299,13 @@ function parseVaultData(value: unknown): VaultData {
       : value.masterPasswordChange === null
         ? null
         : parseMasterPasswordChangeJournal(value.masterPasswordChange)
+
+  if (
+    sync?.pendingPersonalVaultPurge &&
+    (nativeAttachmentRestore !== null || masterPasswordChange !== null)
+  ) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
 
   return {
     version: DATA_VERSION,
@@ -2731,6 +2789,9 @@ function cloneData(data: VaultData): VaultData {
                 startedAt: data.sync.pendingLoginImport.startedAt,
                 entries: data.sync.pendingLoginImport.entries.map((entry) => ({ ...entry }))
               }
+            : null,
+          pendingPersonalVaultPurge: data.sync.pendingPersonalVaultPurge
+            ? { ...data.sync.pendingPersonalVaultPurge }
             : null
         }
       : null
@@ -2764,6 +2825,10 @@ function recordSyncDeletion(
 
 function assertNoPendingLoginImport(sync: PersistedSyncData | null): void {
   if (sync?.pendingLoginImport) throw new VaultError('SYNC_FAILED')
+}
+
+function assertNoPendingPersonalVaultPurge(sync: PersistedSyncData | null): void {
+  if (sync?.pendingPersonalVaultPurge) throw new VaultError('SYNC_FAILED')
 }
 
 function toSummary(login: StoredLogin): LoginSummary {
@@ -3394,6 +3459,7 @@ export class VaultService {
           throw new VaultError('INVALID_INPUT')
         }
         const current = this.requireData()
+        assertNoPendingPersonalVaultPurge(current.sync)
         this.assertMasterPasswordChangeAccount(current)
         const existing = current.masterPasswordChange
         if (existing?.phase === 'prepared') {
@@ -4869,15 +4935,16 @@ export class VaultService {
 
   /** Applies a trusted authenticated LogOut notification without deleting sync mappings. */
   remoteLogoutSync(): Promise<SyncStatus> {
-    this.invalidatePinUnlockCapability()
-    this.syncAbort?.abort()
-    this.abortNotificationTokenLeases()
-    this.abortAccountSecurityRequests()
-    this.abortNativeAttachmentBackups()
-    this.abortNativeAttachmentRestores()
-    this.activeAccountBreachOperation?.abort.abort()
     return this.exclusive(async () => {
       const current = this.requireData()
+      assertNoPendingPersonalVaultPurge(current.sync)
+      this.invalidatePinUnlockCapability()
+      this.syncAbort?.abort()
+      this.abortNotificationTokenLeases()
+      this.abortAccountSecurityRequests()
+      this.abortNativeAttachmentBackups()
+      this.abortNativeAttachmentRestores()
+      this.activeAccountBreachOperation?.abort.abort()
       if (!current.sync) return { configured: false, state: 'unconfigured' }
       const client = this.syncClient
       this.syncClient = null
@@ -4904,6 +4971,7 @@ export class VaultService {
     this.invalidatePinUnlockCapability()
     return this.exclusive(async () => {
       const current = this.requireData()
+      assertNoPendingPersonalVaultPurge(current.sync)
       const serverUrl = this.normalizeSyncServerUrl(request.serverUrl)
       const email = normalizeRequiredString(request.email, MAX_USERNAME_LENGTH)
       const password = normalizeSyncPassword(request.masterPassword)
@@ -4929,6 +4997,7 @@ export class VaultService {
           loginTombstones: [],
           pendingLoginMutation: null,
           pendingLoginImport: null,
+          pendingPersonalVaultPurge: null,
           domainSettings: null
         }
         const client = this.createSyncClient(sync)
@@ -5037,15 +5106,16 @@ export class VaultService {
   }
 
   disconnectSync(): Promise<SyncStatus> {
-    this.invalidatePinUnlockCapability()
-    this.syncAbort?.abort()
-    this.abortNotificationTokenLeases()
-    this.abortAccountSecurityRequests()
-    this.abortNativeAttachmentBackups()
-    this.abortNativeAttachmentRestores()
-    this.activeAccountBreachOperation?.abort.abort()
     return this.exclusive(async () => {
       const current = this.requireData()
+      assertNoPendingPersonalVaultPurge(current.sync)
+      this.invalidatePinUnlockCapability()
+      this.syncAbort?.abort()
+      this.abortNotificationTokenLeases()
+      this.abortAccountSecurityRequests()
+      this.abortNativeAttachmentBackups()
+      this.abortNativeAttachmentRestores()
+      this.activeAccountBreachOperation?.abort.abort()
       const next = cloneData(current)
       const client = this.syncClient
       this.syncClient = null
@@ -5083,6 +5153,142 @@ export class VaultService {
       this.data = next
       this.syncLastError = null
       return await this.currentSyncStatus(true)
+    })
+  }
+
+  purgePersonalVault(
+    request: SyncPurgePersonalVaultRequest
+  ): Promise<SyncPurgePersonalVaultResult> {
+    return this.exclusive(async () => {
+      let abort: AbortController | undefined
+      let didDispatch = false
+      let original: VaultData | undefined
+      let operationGeneration = -1
+      try {
+        if (
+          !isRecord(request) ||
+          (Object.getPrototypeOf(request) !== Object.prototype &&
+            Object.getPrototypeOf(request) !== null) ||
+          Reflect.ownKeys(request).length !== 3 ||
+          !Object.hasOwn(request, 'masterPassword') ||
+          !Object.hasOwn(request, 'confirmation') ||
+          !Object.hasOwn(request, 'confirmPurge') ||
+          typeof request.masterPassword !== 'string' ||
+          request.masterPassword.length === 0 ||
+          request.masterPassword.length > MAX_MASTER_PASSWORD_LENGTH ||
+          request.confirmation !== 'PURGE' ||
+          request.confirmPurge !== true
+        ) {
+          throw new VaultError('INVALID_INPUT')
+        }
+
+        const current = this.requireData()
+        operationGeneration = this.generation
+        original = cloneData(current)
+        if (
+          current.sync?.pendingLoginMutation ||
+          current.sync?.pendingLoginImport ||
+          current.nativeAttachmentRestore ||
+          current.masterPasswordChange ||
+          this.activeAttachmentOperation ||
+          this.nativeAttachmentBackupAborts.size > 0 ||
+          this.nativeAttachmentRestoreAborts.size > 0
+        ) {
+          throw new VaultError('SYNC_FAILED')
+        }
+        const sync = this.requireSyncData()
+        const client = this.getOrCreateSyncClient(sync)
+        if (!client.purgePersonalVault) throw new VaultError('SYNC_FAILED')
+        const remoteStatus = await client.status()
+        if (remoteStatus.status !== 'unlocked') throw new VaultError('SYNC_AUTH_REQUIRED')
+
+        // A prepared record proves the request was never durably marked as dispatched. It is safe
+        // to discard before this separately authorized attempt. A dispatched record is retried only
+        // here, never by ordinary synchronization.
+        if (current.sync?.pendingPersonalVaultPurge?.phase === 'prepared') {
+          const cleared = cloneData(current)
+          if (!cleared.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+          cleared.sync.pendingPersonalVaultPurge = null
+          cleared.updatedAt = this.nowIso()
+          await this.persist(cleared)
+          this.data = cleared
+          original = cloneData(cleared)
+        }
+
+        const active = this.requireData()
+        const retryingDispatched = active.sync?.pendingPersonalVaultPurge?.phase === 'dispatched'
+        if (retryingDispatched) {
+          // Never downgrade an earlier unknown outcome to prepared: a crash at that point would
+          // make unlock recovery erase the only durable evidence that a purge may have run.
+          didDispatch = true
+        } else {
+          const startedAt = this.nowIso()
+          const prepared = cloneData(active)
+          if (!prepared.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+          prepared.sync.pendingPersonalVaultPurge = {
+            phase: 'prepared',
+            startedAt,
+            remainingItems: active.logins.length,
+            remainingFolders: active.folders.length
+          }
+          prepared.updatedAt = this.nowIso()
+          await this.persist(prepared)
+          this.data = prepared
+
+          const dispatched = cloneData(prepared)
+          if (!dispatched.sync?.pendingPersonalVaultPurge) throw new VaultError('SYNC_FAILED')
+          dispatched.sync.pendingPersonalVaultPurge.phase = 'dispatched'
+          dispatched.updatedAt = this.nowIso()
+          try {
+            await this.persist(dispatched)
+            this.data = dispatched
+          } catch (error) {
+            await this.restorePreDispatchPurge(original).catch(() => undefined)
+            throw error
+          }
+          didDispatch = true
+        }
+        abort = this.startSyncOperation()
+
+        let remoteError: unknown
+        try {
+          await client.purgePersonalVault(request.masterPassword, abort.signal)
+        } catch (error) {
+          remoteError = error
+        }
+        if (abort.signal.aborted || operationGeneration !== this.generation) {
+          // Locking wins over a potentially slow reconciliation. The dispatched journal remains
+          // durable, so the next explicitly unlocked generic sync can reconcile without replaying.
+          throw new VaultError('LOCKED')
+        }
+        if (
+          remoteError instanceof BitwardenDirectError &&
+          remoteError.code === 'USER_VERIFICATION_FAILED'
+        ) {
+          await this.restorePreDispatchPurge(original)
+          throw new VaultError('INVALID_MASTER_PASSWORD')
+        }
+
+        const reconciled = await this.reconcilePersonalVaultPurge(client)
+        if (reconciled.status === 'complete') return reconciled
+        // A dispatched failure is intentionally surfaced as pending after an authoritative read.
+        // The caller may start one fresh, explicitly confirmed attempt; generic sync never replays.
+        return reconciled
+      } catch (error) {
+        if (!didDispatch && original) {
+          await this.restorePreDispatchPurge(original).catch(() => undefined)
+        }
+        if (error instanceof VaultError) throw error
+        throw this.mapSyncError(error)
+      } finally {
+        if (abort) this.finishSyncOperation(abort)
+        try {
+          request.masterPassword = ''
+          request.confirmation = '' as 'PURGE'
+        } catch {
+          // Validation rejects frozen/exotic inputs; never replace the intended service error.
+        }
+      }
     })
   }
 
@@ -6198,6 +6404,7 @@ export class VaultService {
       assertUuid(request.id)
       assertUuid(request.operationId)
       const data = this.requireData()
+      assertNoPendingPersonalVaultPurge(data.sync)
       const login = this.findLogin(data, request.id)
       this.assertActiveLogin(login)
       this.assertAttachmentAuthorized(login, validateAuthorization)
@@ -6217,6 +6424,7 @@ export class VaultService {
     return this.exclusive(async () => {
       if (preflight.generation !== this.generation) throw new VaultError('LOCKED')
       const data = this.requireData()
+      assertNoPendingPersonalVaultPurge(data.sync)
       const login = this.findLogin(data, request.id)
       this.assertActiveLogin(login)
       this.assertAttachmentAuthorized(login, validateAuthorization)
@@ -6440,6 +6648,7 @@ export class VaultService {
     const prepared = await this.exclusive(async () => {
       await this.assertMasterPassword(masterPassword)
       const data = this.requireData()
+      assertNoPendingPersonalVaultPurge(data.sync)
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
       const snapshot = this.localSyncSnapshot(data)
@@ -6687,6 +6896,7 @@ export class VaultService {
     return this.exclusive(async () => {
       await this.assertMasterPassword(masterPassword)
       const current = this.requireData()
+      assertNoPendingPersonalVaultPurge(current.sync)
       assertNoPendingLoginImport(current.sync)
       if (current.nativeAttachmentRestore !== null) throw new VaultError('INVALID_INPUT')
       if (
@@ -7002,6 +7212,8 @@ export class VaultService {
   ): Promise<Omit<VaultImportResult, 'canceled'>> {
     return this.exclusive(async () => {
       await this.assertMasterPassword(masterPassword)
+      const current = this.requireData()
+      assertNoPendingPersonalVaultPurge(current.sync)
       if (
         !snapshot ||
         !Array.isArray(snapshot.folders) ||
@@ -7016,7 +7228,7 @@ export class VaultService {
         return { importedFolders: 0, importedItems: 0, skippedTrashItems }
       }
 
-      const next = cloneData(this.requireData())
+      const next = cloneData(current)
       const generation = this.generation
       try {
         this.appendPortableSnapshot(next, snapshot)
@@ -7632,6 +7844,7 @@ export class VaultService {
   ): Promise<PasskeyVaultCreateResult> {
     return this.runAuthorizedOperation(validateAuthorization, async (authorize) => {
       const current = this.requireData()
+      assertNoPendingPersonalVaultPurge(current.sync)
       this.assertExpectedPasskeyGeneration(request.expectedGeneration)
       assertUuid(request.itemId)
       const next = cloneData(current)
@@ -7707,6 +7920,7 @@ export class VaultService {
   ): Promise<PasskeyVaultAssertionResult> {
     return this.runAuthorizedOperation(validateAuthorization, async (authorize) => {
       const current = this.requireData()
+      assertNoPendingPersonalVaultPurge(current.sync)
       this.assertExpectedPasskeyGeneration(request.expectedGeneration)
       assertUuid(request.itemId)
       const rpId = normalizePasskeyRpId(request.rpId)
@@ -8090,6 +8304,15 @@ export class VaultService {
               startedAt: sync.pendingLoginImport.startedAt
             }
           }
+        : {}),
+      ...(sync.pendingPersonalVaultPurge?.phase === 'dispatched'
+        ? {
+            pendingPurge: {
+              remainingItems: sync.pendingPersonalVaultPurge.remainingItems,
+              remainingFolders: sync.pendingPersonalVaultPurge.remainingFolders,
+              startedAt: sync.pendingPersonalVaultPurge.startedAt
+            }
+          }
         : {})
     }
   }
@@ -8389,7 +8612,8 @@ export class VaultService {
       (attachment) => attachment.status === 'attempting'
     )
     const completedPasswordChange = current.masterPasswordChange?.phase === 'local-rekeyed'
-    if (!requiresMigration && !interrupted && !completedPasswordChange) return
+    const preparedPurge = current.sync?.pendingPersonalVaultPurge?.phase === 'prepared'
+    if (!requiresMigration && !interrupted && !completedPasswordChange && !preparedPurge) return
     const next = cloneData(current)
     if (interrupted && next.nativeAttachmentRestore) {
       next.nativeAttachmentRestore = recoverInterruptedNativeAttachmentRestore(
@@ -8401,6 +8625,10 @@ export class VaultService {
     if (completedPasswordChange) {
       next.masterPasswordChange = null
       if (next.sync) next.sync.state.session = null
+      next.updatedAt = this.nowIso()
+    }
+    if (preparedPurge && next.sync) {
+      next.sync.pendingPersonalVaultPurge = null
       next.updatedAt = this.nowIso()
     }
     await this.persist(next)
@@ -8624,6 +8852,7 @@ export class VaultService {
       throw new VaultError('INVALID_INPUT')
     }
     const data = this.requireData()
+    assertNoPendingPersonalVaultPurge(data.sync)
     const login = this.findLogin(data, request.id)
     this.assertActiveLogin(login)
     this.assertAttachmentAuthorized(login, validateAuthorization)
@@ -8690,6 +8919,7 @@ export class VaultService {
   ): Promise<void> {
     const sync = current.sync
     if (!sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+    assertNoPendingPersonalVaultPurge(sync)
     const [remoteFolders, remoteLogins] = await Promise.all([
       client.listFolders(),
       client.listPersonalLogins()
@@ -8710,12 +8940,112 @@ export class VaultService {
     this.data = next
   }
 
+  private async restorePreDispatchPurge(original: VaultData): Promise<void> {
+    const restored = cloneData(original)
+    restored.updatedAt = this.nowIso()
+    await this.persist(restored)
+    this.data = restored
+  }
+
+  private async reconcilePersonalVaultPurge(
+    client: BitwardenSyncClient
+  ): Promise<SyncPurgePersonalVaultResult> {
+    const current = this.requireData()
+    const journal = current.sync?.pendingPersonalVaultPurge
+    if (journal?.phase !== 'dispatched') throw new VaultError('SYNC_FAILED')
+    try {
+      // Do not reuse the mutation signal: cancellation after dispatch must not suppress the
+      // authoritative read that distinguishes a completed purge from an unknown partial result.
+      await client.sync()
+      const [remoteFolders, remoteLogins] = await Promise.all([
+        client.listFolders(),
+        client.listPersonalLogins()
+      ])
+      if (remoteFolders.length === 0 && remoteLogins.length === 0) {
+        return await this.finalizePersonalVaultPurge(current, client)
+      }
+      const pending = cloneData(current)
+      if (!pending.sync?.pendingPersonalVaultPurge) throw new VaultError('SYNC_FAILED')
+      pending.sync.pendingPersonalVaultPurge.phase = 'dispatched'
+      pending.sync.pendingPersonalVaultPurge.remainingItems = remoteLogins.length
+      pending.sync.pendingPersonalVaultPurge.remainingFolders = remoteFolders.length
+      pending.sync.state = client.exportState()
+      pending.sync.lastSyncAt = this.nowIso()
+      pending.updatedAt = pending.sync.lastSyncAt
+      await this.persist(pending)
+      this.data = pending
+      this.syncLastError = null
+      return {
+        status: 'pending',
+        remainingItems: remoteLogins.length,
+        remainingFolders: remoteFolders.length,
+        startedAt: journal.startedAt
+      }
+    } catch (error) {
+      // The dispatched journal remains the sole source of truth when the authoritative read fails.
+      if (error instanceof VaultError) throw error
+      throw new VaultError('SYNC_FAILED')
+    }
+  }
+
+  private async finalizePersonalVaultPurge(
+    current: VaultData,
+    client: BitwardenSyncClient
+  ): Promise<{ status: 'complete'; removedItems: number; removedFolders: number }> {
+    if (current.sync?.pendingPersonalVaultPurge?.phase !== 'dispatched') {
+      throw new VaultError('SYNC_FAILED')
+    }
+    const removedItems = current.logins.length
+    const removedFolders = current.folders.length
+    const complete = cloneData(current)
+    complete.logins = []
+    complete.folders = []
+    complete.nativeAttachmentRestore = null
+    if (!complete.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+    complete.sync.folderMappings = []
+    complete.sync.loginMappings = []
+    complete.sync.folderTombstones = []
+    complete.sync.loginTombstones = []
+    complete.sync.pendingLoginMutation = null
+    complete.sync.pendingLoginImport = null
+    complete.sync.pendingPersonalVaultPurge = null
+    complete.sync.state = client.exportState()
+    complete.sync.lastSyncAt = this.nowIso()
+    complete.updatedAt = complete.sync.lastSyncAt
+    await this.persist(complete)
+    this.data = complete
+    this.syncLastError = null
+    return { status: 'complete', removedItems, removedFolders }
+  }
+
   private async performSync(
     current: VaultData,
     client: BitwardenSyncClient,
     signal: AbortSignal
   ): Promise<SyncResult> {
-    const sync = current.sync
+    let source = current
+    const pendingPurge = source.sync?.pendingPersonalVaultPurge
+    if (pendingPurge?.phase === 'prepared') {
+      const cleared = cloneData(source)
+      if (!cleared.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+      cleared.sync.pendingPersonalVaultPurge = null
+      cleared.updatedAt = this.nowIso()
+      await this.persist(cleared)
+      this.data = cleared
+      source = cleared
+    } else if (pendingPurge?.phase === 'dispatched') {
+      const reconciled = await this.reconcilePersonalVaultPurge(client)
+      if (reconciled.status === 'pending') throw new VaultError('SYNC_FAILED')
+      const completedSync = this.requireSyncData()
+      return {
+        ...this.baseSyncStatus(completedSync, 'ready'),
+        pulled: 0,
+        pushed: 0,
+        deleted: reconciled.removedItems + reconciled.removedFolders,
+        conflicts: 0
+      }
+    }
+    const sync = source.sync
     if (!sync) throw new VaultError('SYNC_AUTH_REQUIRED')
     await client.sync(signal)
     const sharedSnapshot = await this.fetchSharedSnapshot(client)
@@ -8729,7 +9059,7 @@ export class VaultService {
     let remoteLogins = initialRemote[1]
     const domainSettings = validateRemoteEquivalentDomainSettings(initialRemote[2])
     let remoteSends = initialRemote[3]
-    const next = cloneData(current)
+    const next = cloneData(source)
     if (sharedSnapshot) {
       next.organizations = sharedSnapshot.organizations
       next.collections = sharedSnapshot.collections
@@ -8903,6 +9233,7 @@ export class VaultService {
       loginTombstones: [],
       pendingLoginMutation: null,
       pendingLoginImport: null,
+      pendingPersonalVaultPurge: null,
       domainSettings: cloneEquivalentDomainSettings(domainSettings)
     }
     next.updatedAt = syncedAt
@@ -10098,6 +10429,7 @@ export class VaultService {
     return this.exclusive(async () => {
       assertUuid(request.id)
       const current = this.requireData()
+      assertNoPendingPersonalVaultPurge(current.sync)
       const generation = this.generation
       const currentLogin = this.findLogin(current, request.id)
       this.assertActiveLogin(currentLogin)
@@ -10117,6 +10449,7 @@ export class VaultService {
   private mutate<T>(mutation: (data: VaultData, now: string) => T): Promise<T> {
     return this.exclusive(async () => {
       const next = cloneData(this.requireData())
+      assertNoPendingPersonalVaultPurge(next.sync)
       const generation = this.generation
       const now = this.nowIso()
       const result = mutation(next, now)

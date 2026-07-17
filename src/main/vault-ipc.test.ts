@@ -61,6 +61,191 @@ describe('registerVaultIpc lifecycle', () => {
   })
 })
 
+describe('registerVaultIpc personal vault purge boundary', () => {
+  function purgeHarness(
+    purgePersonalVault: ReturnType<typeof vi.fn> = vi.fn(async (request: unknown) => {
+      void request
+      return {
+        status: 'complete' as const,
+        removedItems: 2,
+        removedFolders: 1
+      }
+    })
+  ): {
+    event: unknown
+    purgePersonalVault: typeof purgePersonalVault
+    syncStatus: ReturnType<typeof vi.fn>
+    afterSyncChanged: ReturnType<typeof vi.fn>
+    afterMutation: ReturnType<typeof vi.fn>
+  } {
+    const mainFrame = { url: 'app://bearwarden/index.html' }
+    const webContents = {
+      id: 101,
+      mainFrame,
+      getURL: () => mainFrame.url,
+      send: vi.fn(),
+      isDestroyed: () => false
+    }
+    const syncStatus = vi.fn(async () => ({ configured: true, state: 'ready' as const }))
+    const afterSyncChanged = vi.fn()
+    const afterMutation = vi.fn()
+    registerVaultIpc({
+      vault: { purgePersonalVault, syncStatus } as unknown as VaultService,
+      portability: {} as Parameters<typeof registerVaultIpc>[0]['portability'],
+      settings: {} as AppSettingsService,
+      sshKeyImportSessions: new SshKeyImportSessionStore({ readClipboard: () => '' }),
+      getMainWindow: () => ({ isDestroyed: () => false, webContents }) as never,
+      afterSyncChanged,
+      afterMutation
+    })
+    return {
+      event: { sender: webContents, senderFrame: mainFrame },
+      purgePersonalVault,
+      syncStatus,
+      afterSyncChanged,
+      afterMutation
+    }
+  }
+
+  it('requires exact explicit confirmation, scrubs parsed secrets, and publishes both changes', async () => {
+    let captured: { masterPassword: string; confirmation: string } | undefined
+    const purgePersonalVault = vi.fn(async (request) => {
+      captured = request
+      return { status: 'complete' as const, removedItems: 2, removedFolders: 1 }
+    })
+    const harness = purgeHarness(purgePersonalVault)
+
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.syncPurgePersonalVault)!(harness.event, {
+        masterPassword: 'remote-master-password',
+        confirmation: 'PURGE',
+        confirmPurge: true
+      })
+    ).resolves.toEqual({ status: 'complete', removedItems: 2, removedFolders: 1 })
+
+    expect(purgePersonalVault).toHaveBeenCalledOnce()
+    expect(captured).toEqual({ masterPassword: '', confirmation: '', confirmPurge: true })
+    expect(harness.syncStatus).toHaveBeenCalledOnce()
+    expect(harness.afterSyncChanged).toHaveBeenCalledWith({ configured: true, state: 'ready' })
+    expect(harness.afterMutation).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    {},
+    { masterPassword: '', confirmation: 'PURGE', confirmPurge: true },
+    { masterPassword: 'p'.repeat(1_025), confirmation: 'PURGE', confirmPurge: true },
+    { masterPassword: 'password', confirmation: 'purge', confirmPurge: true },
+    { masterPassword: 'password', confirmation: 'PURGE', confirmPurge: false },
+    { masterPassword: 'password', confirmation: 'PURGE', confirmPurge: true, extra: true },
+    Object.assign(
+      { masterPassword: 'password', confirmation: 'PURGE', confirmPurge: true },
+      { [Symbol('extra')]: true }
+    )
+  ])('rejects malformed purge requests without calling the service', async (request) => {
+    const harness = purgeHarness()
+
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.syncPurgePersonalVault)!(harness.event, request)
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    expect(harness.purgePersonalVault).not.toHaveBeenCalled()
+  })
+
+  it('rejects accessors without evaluating secret getters', async () => {
+    const harness = purgeHarness()
+    const getter = vi.fn(() => 'remote-master-password')
+    const request = { confirmation: 'PURGE', confirmPurge: true } as Record<string, unknown>
+    Object.defineProperty(request, 'masterPassword', { enumerable: true, get: getter })
+
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.syncPurgePersonalVault)!(harness.event, request)
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    expect(getter).not.toHaveBeenCalled()
+    expect(harness.purgePersonalVault).not.toHaveBeenCalled()
+  })
+
+  it('keeps the committed purge result authoritative when status notification fails', async () => {
+    const harness = purgeHarness()
+    harness.syncStatus.mockRejectedValueOnce(new Error('status unavailable'))
+
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.syncPurgePersonalVault)!(harness.event, {
+        masterPassword: 'remote-master-password',
+        confirmation: 'PURGE',
+        confirmPurge: true
+      })
+    ).resolves.toEqual({ status: 'complete', removedItems: 2, removedFolders: 1 })
+    expect(harness.afterMutation).toHaveBeenCalledOnce()
+    expect(harness.afterSyncChanged).not.toHaveBeenCalled()
+  })
+
+  it('scrubs parsed secrets when the service rejects the attempt', async () => {
+    let captured: { masterPassword: string; confirmation: string } | undefined
+    const purgePersonalVault = vi.fn(async (request) => {
+      captured = request
+      throw new VaultError('INVALID_MASTER_PASSWORD')
+    })
+    const harness = purgeHarness(purgePersonalVault)
+
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.syncPurgePersonalVault)!(harness.event, {
+        masterPassword: 'wrong-remote-password',
+        confirmation: 'PURGE',
+        confirmPurge: true
+      })
+    ).rejects.toThrow('BEARWARDEN:INVALID_MASTER_PASSWORD')
+    expect(captured).toEqual({ masterPassword: '', confirmation: '', confirmPurge: true })
+    expect(harness.afterMutation).not.toHaveBeenCalled()
+  })
+
+  it('publishes a pending journal status after purge reconciliation rejects', async () => {
+    let captured: { masterPassword: string; confirmation: string } | undefined
+    const purgePersonalVault = vi.fn(async (request) => {
+      captured = request
+      throw new VaultError('SYNC_FAILED')
+    })
+    const harness = purgeHarness(purgePersonalVault)
+    const pendingStatus = {
+      configured: true,
+      state: 'error' as const,
+      pendingPurge: {
+        startedAt: '2026-07-17T00:00:00.000Z',
+        remainingItems: 4,
+        remainingFolders: 2
+      }
+    }
+    harness.syncStatus.mockResolvedValueOnce(pendingStatus)
+
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.syncPurgePersonalVault)!(harness.event, {
+        masterPassword: 'remote-master-password',
+        confirmation: 'PURGE',
+        confirmPurge: true
+      })
+    ).rejects.toThrow('BEARWARDEN:SYNC_FAILED')
+    expect(harness.afterSyncChanged).toHaveBeenCalledWith(pendingStatus)
+    expect(captured).toEqual({ masterPassword: '', confirmation: '', confirmPurge: true })
+    expect(harness.afterMutation).not.toHaveBeenCalled()
+  })
+
+  it('does not replace the original purge error when rejection status refresh also fails', async () => {
+    const harness = purgeHarness(
+      vi.fn(async () => {
+        throw new VaultError('SYNC_FAILED')
+      })
+    )
+    harness.syncStatus.mockRejectedValueOnce(new Error('status unavailable'))
+
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.syncPurgePersonalVault)!(harness.event, {
+        masterPassword: 'remote-master-password',
+        confirmation: 'PURGE',
+        confirmPurge: true
+      })
+    ).rejects.toThrow('BEARWARDEN:SYNC_FAILED')
+    expect(harness.afterSyncChanged).not.toHaveBeenCalled()
+  })
+})
+
 describe('registerVaultIpc account boundary', () => {
   const accountA = '11111111-1111-4111-8111-111111111111'
   const accountB = '22222222-2222-4222-8222-222222222222'

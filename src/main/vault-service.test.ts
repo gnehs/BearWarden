@@ -221,7 +221,9 @@ async function createVaultPasskey(
 }
 
 function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient & {
+  remoteFolders: Array<{ id: string; name: string }>
   remoteLogins: BitwardenLoginItem[]
+  purgeCalls: string[]
   softDeletedIds: string[]
   restoredIds: string[]
   hardDeletedIds: string[]
@@ -330,6 +332,7 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
   }> = []
   const importBatches: Array<{ localIds: string[]; markers: string[] }> = []
   const importMarkerRemoteIds = new Map<string, string>()
+  const purgeCalls: string[] = []
   let preparedImport:
     | {
         token: string
@@ -355,7 +358,9 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
   }
 
   return {
+    remoteFolders,
     remoteLogins,
+    purgeCalls,
     softDeletedIds,
     restoredIds,
     hardDeletedIds,
@@ -674,6 +679,11 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
     hardDeleteLogins: async (ids) => {
       bulkLifecycleCalls.push({ mutation: 'hard-delete', ids: [...ids] })
       for (const id of ids) await hardDeleteLogin(id)
+    },
+    purgePersonalVault: async (masterPassword) => {
+      purgeCalls.push(masterPassword)
+      remoteFolders.splice(0)
+      remoteLogins.splice(0)
     },
     deleteLogin: hardDeleteLogin,
     lock: async () => {
@@ -4102,7 +4112,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const verified = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(verified.data).toMatchObject({
-      version: 21,
+      version: 22,
       sync: { pendingLoginImport: null }
     })
     verified.key.fill(0)
@@ -4116,6 +4126,453 @@ describe('VaultService encrypted local data', () => {
     await reopened.unlock(MASTER_PASSWORD)
     expect((await reopened.getLogin({ id: first.id })).name).toBe('Interrupted import one')
     expect((await reopened.getLogin({ id: second.id })).name).toBe('Interrupted import two')
+  })
+
+  it('purges every personal lifecycle state while preserving shared data, Sends, and settings', async () => {
+    let fake!: ReturnType<typeof createSyncFake>
+    const organizationId = '60000000-0000-4000-8000-000000000001'
+    const collectionId = '70000000-0000-4000-8000-000000000001'
+    const send: BitwardenSendItem = {
+      id: '50000000-0000-4000-8000-000000000001',
+      accessId: 'UAAAAAAAQABAAAAAAAAAAA',
+      type: 'text',
+      name: 'Preserved Send',
+      notes: null,
+      text: 'shared independently',
+      hidden: false,
+      maxAccessCount: null,
+      accessCount: 0,
+      revisionDate: '2026-07-16T00:00:00.000Z',
+      expirationDate: null,
+      deletionDate: '2026-07-30T00:00:00.000Z',
+      disabled: false,
+      hideEmail: true,
+      authType: 2,
+      passwordProtected: false
+    }
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.remoteLogins[0]!.attachments = [
+          {
+            id: '0123456789abcdef0123456789abcdef',
+            fileName: 'purged.txt',
+            size: 42,
+            sizeName: '42 B',
+            legacy: false
+          }
+        ]
+        const shared = {
+          ...structuredClone(fake.remoteLogins[0]!),
+          id: '80000000-0000-4000-8000-000000000001',
+          organizationId,
+          collectionIds: [collectionId],
+          edit: true,
+          viewPassword: true,
+          delete: false,
+          restore: false
+        }
+        fake.listOrganizations = async () => [
+          {
+            id: organizationId,
+            name: 'Preserved organization',
+            status: 0,
+            type: 0,
+            enabled: true,
+            identifier: null,
+            hasPublicAndPrivateKeys: false
+          }
+        ]
+        fake.listCollections = async () => [
+          {
+            id: collectionId,
+            organizationId,
+            name: 'Preserved collection',
+            externalId: null,
+            readOnly: false,
+            hidePasswords: false,
+            manage: true,
+            type: 0,
+            assigned: true
+          }
+        ]
+        fake.listOrganizationCiphers = async () => [shared]
+        fake.listSends = async () => [structuredClone(send)]
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.generateCredential({ algorithm: 'username', options: {} })
+    await service.createFolder({ name: 'Local purge folder' })
+    const archived = await service.createLogin({ name: 'Archived purge item' })
+    await service.archiveLogin({ id: archived.id })
+    const trashed = await service.createLogin({ name: 'Trash purge item' })
+    await service.deleteLogin({ id: trashed.id })
+    const originalPurge = fake.purgePersonalVault!.bind(fake)
+    fake.purgePersonalVault = async (password, signal) => {
+      await originalPurge(password, signal)
+      throw new BitwardenDirectError('VAULT_PURGE_UNKNOWN')
+    }
+    const request = {
+      masterPassword: 'remote master password',
+      confirmation: 'PURGE' as const,
+      confirmPurge: true as const
+    }
+
+    await expect(service.purgePersonalVault(request)).resolves.toMatchObject({
+      status: 'complete',
+      removedItems: 3,
+      removedFolders: 2
+    })
+    expect(request).toEqual({ masterPassword: '', confirmation: '', confirmPurge: true })
+    await expect(service.listLogins()).resolves.toEqual([])
+    await expect(service.listFolders()).resolves.toEqual([])
+    await expect(service.listOrganizations()).resolves.toHaveLength(1)
+    await expect(service.listCollections()).resolves.toHaveLength(1)
+    await expect(service.listSharedLogins()).resolves.toHaveLength(1)
+    await expect(service.listSends()).resolves.toEqual([
+      expect.objectContaining({ id: send.id, name: send.name })
+    ])
+    await expect(service.generatorHistory()).resolves.toHaveLength(1)
+    expect(fake.purgeCalls).toEqual(['remote master password'])
+  })
+
+  it('keeps partial purge outcomes pending, blocks mutation, and retries only with fresh proof', async () => {
+    let fake!: ReturnType<typeof createSyncFake>
+    const chooseOpenFile = vi.fn()
+    const { service } = await createHarness({
+      attachmentFiles: { chooseOpenFile } as unknown as VaultAttachmentFileService,
+      createSyncClient: (sync) => (fake = createSyncFake(sync.state))
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const retainedRemote = structuredClone(fake.remoteLogins[0]!)
+    fake.purgePersonalVault = async (password) => {
+      fake.purgeCalls.push(password)
+      fake.remoteLogins.splice(0)
+      throw new BitwardenDirectError('NETWORK')
+    }
+    const firstRequest = {
+      masterPassword: 'remote master password',
+      confirmation: 'PURGE' as const,
+      confirmPurge: true as const
+    }
+    await expect(service.purgePersonalVault(firstRequest)).resolves.toMatchObject({
+      status: 'pending',
+      remainingItems: 0,
+      remainingFolders: 1
+    })
+    await expect(service.syncStatus()).resolves.toMatchObject({
+      pendingPurge: { remainingItems: 0, remainingFolders: 1 }
+    })
+    await expect(service.createFolder({ name: 'Blocked' })).rejects.toMatchObject({
+      code: 'SYNC_FAILED'
+    })
+    await expect(
+      service.importPortableSnapshot({ folders: [], items: [] }, 0, MASTER_PASSWORD)
+    ).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    const pendingLogin = (await service.listLogins())[0]!
+    await expect(
+      service.uploadAttachment({
+        id: pendingLogin.id,
+        operationId: ATTACHMENT_OPERATION_ID
+      })
+    ).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(chooseOpenFile).not.toHaveBeenCalled()
+    await expect(service.disconnectSync()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    await expect(
+      service.connectSync({
+        serverUrl: 'https://other-vault.example.invalid',
+        email: 'other@example.invalid',
+        masterPassword: 'other remote password'
+      })
+    ).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    fake.remoteFolders.splice(0)
+    fake.remoteLogins.push(retainedRemote)
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    await expect(service.syncStatus()).resolves.toMatchObject({
+      pendingPurge: { remainingItems: 1, remainingFolders: 0 }
+    })
+    expect(fake.purgeCalls).toHaveLength(1)
+
+    fake.purgePersonalVault = async (password) => {
+      fake.purgeCalls.push(password)
+      fake.remoteFolders.splice(0)
+      fake.remoteLogins.splice(0)
+    }
+    await expect(
+      service.purgePersonalVault({
+        masterPassword: 'fresh remote proof',
+        confirmation: 'PURGE',
+        confirmPurge: true
+      })
+    ).resolves.toMatchObject({ status: 'complete' })
+    expect(fake.purgeCalls).toEqual(['remote master password', 'fresh remote proof'])
+  })
+
+  it('restores the prior purge journal for rejected proof and scrubs invalid requests', async () => {
+    let fake!: ReturnType<typeof createSyncFake>
+    const { service } = await createHarness({
+      createSyncClient: (sync) => (fake = createSyncFake(sync.state))
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    fake.purgePersonalVault = async () => {
+      throw new BitwardenDirectError('USER_VERIFICATION_FAILED')
+    }
+    const rejected = {
+      masterPassword: 'wrong remote proof',
+      confirmation: 'PURGE' as const,
+      confirmPurge: true as const
+    }
+    await expect(service.purgePersonalVault(rejected)).rejects.toMatchObject({
+      code: 'INVALID_MASTER_PASSWORD'
+    })
+    expect(rejected.masterPassword).toBe('')
+    expect((await service.syncStatus()).pendingPurge).toBeUndefined()
+
+    const invalid = {
+      masterPassword: 'still scrub me',
+      confirmation: 'purge',
+      confirmPurge: true
+    }
+    await expect(service.purgePersonalVault(invalid as never)).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    expect(invalid.masterPassword).toBe('')
+    expect(invalid.confirmation).toBe('')
+  })
+
+  it('recovers a dispatched purge after the final local commit fails without replaying it', async () => {
+    let fake!: ReturnType<typeof createSyncFake>
+    const { filePath, service, store } = await createHarness({
+      createSyncClient: (sync) => (fake = createSyncFake(sync.state))
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const write = store.write.bind(store)
+    let writes = 0
+    vi.spyOn(store, 'write').mockImplementation(async (...args) => {
+      writes += 1
+      if (writes === 3) throw new Error('injected final purge commit failure')
+      await write(...args)
+    })
+    await expect(
+      service.purgePersonalVault({
+        masterPassword: 'remote master password',
+        confirmation: 'PURGE',
+        confirmPurge: true
+      })
+    ).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(fake.purgeCalls).toHaveLength(1)
+    await service.lock()
+
+    const reopened = new VaultService(
+      new EncryptedVaultStore<unknown>(filePath),
+      { copyText: vi.fn(), openExternal: vi.fn() },
+      { createSyncClient: () => fake }
+    )
+    await reopened.unlock(MASTER_PASSWORD)
+    await reopened.unlockSync({ masterPassword: 'remote master password' })
+    await expect(reopened.syncNow()).resolves.toMatchObject({ state: 'ready' })
+    expect(fake.purgeCalls).toHaveLength(1)
+    await expect(reopened.listLogins()).resolves.toEqual([])
+    await expect(reopened.listFolders()).resolves.toEqual([])
+  })
+
+  it('rolls back a purge that never reached its durable dispatch point', async () => {
+    let fake!: ReturnType<typeof createSyncFake>
+    const { filePath, service, store } = await createHarness({
+      createSyncClient: (sync) => (fake = createSyncFake(sync.state))
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const write = store.write.bind(store)
+    let writes = 0
+    vi.spyOn(store, 'write').mockImplementation(async (...args) => {
+      writes += 1
+      if (writes === 2) throw new Error('injected dispatch persistence failure')
+      await write(...args)
+    })
+
+    await expect(
+      service.purgePersonalVault({
+        masterPassword: 'remote master password',
+        confirmation: 'PURGE',
+        confirmPurge: true
+      })
+    ).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(fake.purgeCalls).toEqual([])
+    await service.lock()
+    const reopenedStore = new EncryptedVaultStore<unknown>(filePath)
+    const persisted = await reopenedStore.unlock(MASTER_PASSWORD)
+    expect(persisted.data).toMatchObject({
+      sync: { pendingPersonalVaultPurge: null }
+    })
+    persisted.key.fill(0)
+    persisted.salt.fill(0)
+  })
+
+  it('never downgrades an existing dispatched purge while a fresh retry is in flight', async () => {
+    let fake!: ReturnType<typeof createSyncFake>
+    const { service, store } = await createHarness({
+      createSyncClient: (sync) => (fake = createSyncFake(sync.state))
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    fake.purgePersonalVault = async (password) => {
+      fake.purgeCalls.push(password)
+      throw new BitwardenDirectError('NETWORK')
+    }
+    await expect(
+      service.purgePersonalVault({
+        masterPassword: 'first proof',
+        confirmation: 'PURGE',
+        confirmPurge: true
+      })
+    ).resolves.toMatchObject({ status: 'pending' })
+
+    let entered!: () => void
+    let release!: () => void
+    const started = new Promise<void>((resolve) => (entered = resolve))
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    fake.purgePersonalVault = async (password) => {
+      fake.purgeCalls.push(password)
+      entered()
+      await gate
+      throw new BitwardenDirectError('NETWORK')
+    }
+    const retry = service.purgePersonalVault({
+      masterPassword: 'fresh proof',
+      confirmation: 'PURGE',
+      confirmPurge: true
+    })
+    await started
+    const durable = await store.unlock(MASTER_PASSWORD)
+    expect(durable.data).toMatchObject({
+      sync: { pendingPersonalVaultPurge: { phase: 'dispatched' } }
+    })
+    durable.key.fill(0)
+    durable.salt.fill(0)
+    release()
+    await expect(retry).resolves.toMatchObject({ status: 'pending' })
+    expect(fake.purgeCalls).toEqual(['first proof', 'fresh proof'])
+  })
+
+  it('rejects a concurrent disconnect without aborting a dispatched purge', async () => {
+    let fake!: ReturnType<typeof createSyncFake>
+    const { service } = await createHarness({
+      createSyncClient: (sync) => (fake = createSyncFake(sync.state))
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    let entered!: () => void
+    let release!: () => void
+    const started = new Promise<void>((resolve) => (entered = resolve))
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    let purgeSignal: AbortSignal | undefined
+    fake.purgePersonalVault = async (password, signal) => {
+      fake.purgeCalls.push(password)
+      purgeSignal = signal
+      entered()
+      await gate
+      throw new BitwardenDirectError('NETWORK')
+    }
+
+    const purging = service.purgePersonalVault({
+      masterPassword: 'remote master password',
+      confirmation: 'PURGE',
+      confirmPurge: true
+    })
+    await started
+    const disconnecting = service.disconnectSync()
+    const loggingOut = service.remoteLogoutSync()
+    await Promise.resolve()
+    expect(purgeSignal?.aborted).toBe(false)
+    release()
+    await expect(purging).resolves.toMatchObject({ status: 'pending' })
+    await expect(disconnecting).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    await expect(loggingOut).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(purgeSignal?.aborted).toBe(false)
+    await expect(service.syncStatus()).resolves.toMatchObject({
+      configured: true,
+      pendingPurge: { remainingItems: 1, remainingFolders: 1 }
+    })
+  })
+
+  it('lets lock abort purge transport without waiting for reconciliation or losing the journal', async () => {
+    let fake!: ReturnType<typeof createSyncFake>
+    const { service, store } = await createHarness({
+      createSyncClient: (sync) => (fake = createSyncFake(sync.state))
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const reconcileSync = vi.spyOn(fake, 'sync')
+    let entered!: () => void
+    const started = new Promise<void>((resolve) => (entered = resolve))
+    fake.purgePersonalVault = async (_password, signal) => {
+      entered()
+      await new Promise<never>((_resolve, reject) => {
+        if (signal?.aborted) {
+          reject(new BitwardenDirectError('ABORTED'))
+          return
+        }
+        signal?.addEventListener('abort', () => reject(new BitwardenDirectError('ABORTED')), {
+          once: true
+        })
+      })
+    }
+
+    const purging = service.purgePersonalVault({
+      masterPassword: 'remote master password',
+      confirmation: 'PURGE',
+      confirmPurge: true
+    })
+    await started
+    const locking = service.lock()
+    await expect(purging).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(locking).resolves.toEqual({ state: 'locked' })
+    expect(reconcileSync).not.toHaveBeenCalled()
+
+    const durable = await store.unlock(MASTER_PASSWORD)
+    expect(durable.data).toMatchObject({
+      sync: { pendingPersonalVaultPurge: { phase: 'dispatched' } }
+    })
+    durable.key.fill(0)
+    durable.salt.fill(0)
   })
 
   it('reverts a dispatched journal when an abort wins before transport execution', async () => {
@@ -8304,7 +8761,7 @@ describe('VaultService encrypted local data', () => {
       expect(await service.revealPassword({ id: migrated.id })).toBe('legacy-secret')
       await service.lock()
       const unlocked = await store.unlock(MASTER_PASSWORD)
-      expect((unlocked.data as { version: number }).version).toBe(21)
+      expect((unlocked.data as { version: number }).version).toBe(22)
       unlocked.key.fill(0)
       unlocked.salt.fill(0)
     }
@@ -8463,7 +8920,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 21,
+      version: 22,
       logins: [{ passwordRevisionDate: null, autofillOnPageLoad: null }]
     })
     migrated.key.fill(0)
@@ -8502,11 +8959,109 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 21,
+      version: 22,
       sync: { pendingLoginImport: null }
     })
     migrated.key.fill(0)
     migrated.salt.fill(0)
+  })
+
+  it('migrates V21 sync data to an explicit empty personal purge journal', async () => {
+    const { filePath, service, store } = await createHarness({
+      createSyncClient: (sync) => createSyncFake(sync.state)
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.lock()
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as { version: number; sync: Record<string, unknown> }
+    data.version = 21
+    delete data.sync.pendingPersonalVaultPurge
+    await store.write(data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopenedStore = new EncryptedVaultStore<unknown>(filePath)
+    const reopened = new VaultService(reopenedStore, {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await expect(reopened.unlock(MASTER_PASSWORD)).resolves.toEqual({ state: 'unlocked' })
+    await reopened.lock()
+    const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
+    expect(migrated.data).toMatchObject({
+      version: 22,
+      sync: { pendingPersonalVaultPurge: null }
+    })
+    migrated.key.fill(0)
+    migrated.salt.fill(0)
+  })
+
+  it('keeps the V21 pending import field mandatory while migrating the purge journal', async () => {
+    const { filePath, service, store } = await createHarness({
+      createSyncClient: (sync) => createSyncFake(sync.state)
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.lock()
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as { version: number; sync: Record<string, unknown> }
+    data.version = 21
+    delete data.sync.pendingLoginImport
+    delete data.sync.pendingPersonalVaultPurge
+    await store.write(data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopened = new VaultService(new EncryptedVaultStore<unknown>(filePath), {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await expect(reopened.unlock(MASTER_PASSWORD)).rejects.toMatchObject({
+      code: 'CORRUPT_VAULT'
+    })
+  })
+
+  it('rejects malformed V22 personal purge journals', async () => {
+    const { filePath, service, store } = await createHarness({
+      createSyncClient: (sync) => createSyncFake(sync.state)
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.lock()
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as {
+      sync: Record<string, unknown>
+    }
+    data.sync.pendingPersonalVaultPurge = {
+      phase: 'dispatched',
+      startedAt: 'not-an-iso-date',
+      remainingItems: 1,
+      remainingFolders: 1
+    }
+    await store.write(data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopened = new VaultService(new EncryptedVaultStore<unknown>(filePath), {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await expect(reopened.unlock(MASTER_PASSWORD)).rejects.toMatchObject({
+      code: 'CORRUPT_VAULT'
+    })
   })
 
   it('keeps the V8 pending mutation field mandatory while migrating V20', async () => {
@@ -8603,7 +9158,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 21,
+      version: 22,
       generatorHistory: [],
       sends: [],
       nativeAttachmentRestore: null
@@ -8641,7 +9196,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 21,
+      version: 22,
       logins: [expect.objectContaining({ attachments: [] })],
       sends: []
     })
@@ -8680,7 +9235,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 21,
+      version: 22,
       sync: { domainSettings: null }
     })
     migrated.key.fill(0)

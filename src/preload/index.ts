@@ -207,6 +207,8 @@ const api: BearWardenAPI = {
     now: () => ipcRenderer.invoke(IPC_CHANNELS.syncNow),
     resolvePendingImport: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.syncResolvePendingImport, request),
+    purgePersonalVault: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.syncPurgePersonalVault, request),
     disconnect: () => ipcRenderer.invoke(IPC_CHANNELS.syncDisconnect),
     onChanged: (listener) => {
       const wrappedListener = (

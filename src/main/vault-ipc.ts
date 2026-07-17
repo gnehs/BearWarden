@@ -75,6 +75,7 @@ import {
   type VaultLoginUri,
   type VaultItemType,
   type SyncConnectRequest,
+  type SyncPurgePersonalVaultRequest,
   type SyncResolvePendingImportRequest,
   type SyncStatus,
   type SyncTwoFactorMethod,
@@ -1899,6 +1900,40 @@ function parseSyncResolvePendingImport(value: unknown): SyncResolvePendingImport
   return { masterPassword, confirmRetry: true }
 }
 
+function parseSyncPurgePersonalVault(value: unknown): SyncPurgePersonalVaultRequest {
+  if (!isRecord(value)) throw new VaultError('INVALID_INPUT')
+  const keys = Reflect.ownKeys(value)
+  const allowedKeys = ['masterPassword', 'confirmation', 'confirmPurge']
+  if (
+    keys.length !== allowedKeys.length ||
+    keys.some((key) => typeof key !== 'string' || !allowedKeys.includes(key))
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value)
+  if (
+    allowedKeys.some((key) => {
+      const descriptor = descriptors[key]
+      return !descriptor || !('value' in descriptor)
+    })
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const masterPassword = descriptors.masterPassword!.value
+  const confirmation = descriptors.confirmation!.value
+  const confirmPurge = descriptors.confirmPurge!.value
+  if (
+    typeof masterPassword !== 'string' ||
+    masterPassword.length < 1 ||
+    masterPassword.length > MAX_SYNC_RESOLUTION_MASTER_PASSWORD_LENGTH ||
+    confirmation !== 'PURGE' ||
+    confirmPurge !== true
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return { masterPassword, confirmation, confirmPurge: true }
+}
+
 export function isTrustedVaultSender(
   event: IpcMainInvokeEvent,
   mainWindow: BrowserWindow | null
@@ -2789,6 +2824,34 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       return status
     } finally {
       request.masterPassword = ''
+    }
+  })
+  registerHandler(IPC_CHANNELS.syncPurgePersonalVault, getMainWindow, async (_event, input) => {
+    const request = parseSyncPurgePersonalVault(input)
+    try {
+      let result: Awaited<ReturnType<VaultService['purgePersonalVault']>>
+      try {
+        result = await vault.purgePersonalVault(request)
+      } catch (error) {
+        try {
+          const status = await vault.syncStatus()
+          options.afterSyncChanged?.(status)
+        } catch {
+          // Never replace the original purge/reconciliation error with refresh failure.
+        }
+        throw error
+      }
+      notifyMutation()
+      try {
+        const status = await vault.syncStatus()
+        options.afterSyncChanged?.(status)
+      } catch {
+        // The purge result remains authoritative if an auxiliary lifecycle notification fails.
+      }
+      return result
+    } finally {
+      request.masterPassword = ''
+      ;(request as { confirmation: string }).confirmation = ''
     }
   })
   registerHandler(IPC_CHANNELS.syncDisconnect, getMainWindow, async () => {

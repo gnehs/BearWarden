@@ -102,6 +102,7 @@ export const IPC_CHANNELS = {
   syncUnlock: 'sync:unlock',
   syncNow: 'sync:now',
   syncResolvePendingImport: 'sync:resolve-pending-import',
+  syncPurgePersonalVault: 'sync:purge-personal-vault',
   syncDisconnect: 'sync:disconnect',
   accountStatus: 'account:status',
   accountAdd: 'account:add',
@@ -903,12 +904,32 @@ export interface SyncStatus {
     count: number
     startedAt: string
   }
+  pendingPurge?: {
+    startedAt: string
+    remainingItems: number
+    remainingFolders: number
+  }
 }
 
 export interface SyncResolvePendingImportRequest {
   masterPassword: string
   confirmRetry: true
 }
+
+export interface SyncPurgePersonalVaultRequest {
+  masterPassword: string
+  confirmation: 'PURGE'
+  confirmPurge: true
+}
+
+export type SyncPurgePersonalVaultResult =
+  | { status: 'complete'; removedItems: number; removedFolders: number }
+  | {
+      status: 'pending'
+      remainingItems: number
+      remainingFolders: number
+      startedAt: string
+    }
 
 export type SyncTwoFactorMethod = '0' | '1' | '3'
 
@@ -1642,6 +1663,9 @@ export interface BearWardenAPI {
     unlock: (request: SyncUnlockRequest) => Promise<SyncStatus>
     now: () => Promise<SyncResult>
     resolvePendingImport: (request: SyncResolvePendingImportRequest) => Promise<SyncStatus>
+    purgePersonalVault: (
+      request: SyncPurgePersonalVaultRequest
+    ) => Promise<SyncPurgePersonalVaultResult>
     disconnect: () => Promise<SyncStatus>
     onChanged: (listener: (status: SyncStatus) => void) => () => void
   }
