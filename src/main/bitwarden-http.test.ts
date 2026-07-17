@@ -1884,6 +1884,132 @@ describe('BitwardenHttpClient', () => {
     expect(capturedBody?.masterPasswordHash).toBe('')
   })
 
+  it('deauthorizes all sessions with the exact non-retryable empty response contract', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(json({ message: 'response lost' }, 503))
+    const client = new BitwardenHttpClient({
+      server: 'https://vault.example.test/bw',
+      fetch,
+      maxRetries: 3
+    })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(client.deauthorizeAllSessions('fresh-proof')).resolves.toBeUndefined()
+    await expect(client.deauthorizeAllSessions('fresh-proof')).resolves.toBeUndefined()
+    await expect(client.deauthorizeAllSessions('fresh-proof')).rejects.toMatchObject({
+      code: 'NETWORK',
+      status: 503
+    })
+
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+      'https://vault.example.test/bw/api/accounts/security-stamp',
+      'https://vault.example.test/bw/api/accounts/security-stamp',
+      'https://vault.example.test/bw/api/accounts/security-stamp'
+    ])
+    expect(fetch.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' })
+    expect(new Headers(fetch.mock.calls[0]?.[1]?.headers).get('authorization')).toBe(
+      'Bearer access'
+    )
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      masterPasswordHash: 'fresh-proof'
+    })
+  })
+
+  it('rejects unsafe session-deauthorization proofs and nonempty successful responses', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(json({ deauthorized: true }))
+      .mockResolvedValueOnce(new Response(null, { status: 201 }))
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    for (const proof of [
+      '',
+      'proof\0suffix',
+      'proof\r',
+      'proof\n',
+      'x'.repeat(301),
+      'é'.repeat(151)
+    ]) {
+      await expect(client.deauthorizeAllSessions(proof)).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE'
+      })
+    }
+    await expect(client.deauthorizeAllSessions(new String('proof') as never)).rejects.toMatchObject(
+      {
+        code: 'INVALID_RESPONSE'
+      }
+    )
+    expect(fetch).not.toHaveBeenCalled()
+
+    await expect(client.deauthorizeAllSessions('x'.repeat(300))).resolves.toBeUndefined()
+    await expect(client.deauthorizeAllSessions('é'.repeat(150))).resolves.toBeUndefined()
+    await expect(client.deauthorizeAllSessions('valid-proof')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    await expect(client.deauthorizeAllSessions('valid-proof')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    expect(fetch).toHaveBeenCalledTimes(4)
+  })
+
+  it('normalizes definitive deauthorization proof failures and clears its request body', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(json({ message: 'Invalid password' }, 400))
+      .mockResolvedValueOnce(json({ message: 'Forbidden' }, 403))
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(client.deauthorizeAllSessions('wrong-proof')).rejects.toMatchObject({
+      code: 'USER_VERIFICATION_FAILED',
+      status: 400
+    })
+    await expect(client.deauthorizeAllSessions('valid-proof')).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+      status: 403
+    })
+
+    type RequestJsonProbe = {
+      requestJson(method: string, url: string, request: { body?: JsonObject }): Promise<JsonValue>
+    }
+    const probeClient = new BitwardenHttpClient({ server: 'us', fetch: vi.fn<FetchLike>() })
+    let capturedBody: JsonObject | undefined
+    vi.spyOn(probeClient as unknown as RequestJsonProbe, 'requestJson').mockImplementation(
+      async (_method, _url, request) => {
+        capturedBody = request.body
+        throw new BitwardenHttpError('ABORTED')
+      }
+    )
+    await expect(probeClient.deauthorizeAllSessions('sensitive-proof')).rejects.toMatchObject({
+      code: 'ABORTED'
+    })
+    expect(capturedBody).toBeDefined()
+    expect(Object.getPrototypeOf(capturedBody)).toBeNull()
+    expect(capturedBody?.masterPasswordHash).toBe('')
+  })
+
+  it('does not mark a pre-aborted deauthorization request as dispatched', async () => {
+    const fetch = vi.fn<FetchLike>()
+    const onDispatch = vi.fn()
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+    const controller = new AbortController()
+    controller.abort()
+
+    await expect(
+      client.deauthorizeAllSessions('valid-proof', controller.signal, onDispatch)
+    ).rejects.toMatchObject({ code: 'ABORTED' })
+    expect(fetch).not.toHaveBeenCalled()
+    expect(onDispatch).not.toHaveBeenCalled()
+  })
+
   it('uses bounded personal cipher bulk lifecycle routes and validates list state', async () => {
     const ids = ['30000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000002']
     const rows = ids.map((id) => ({

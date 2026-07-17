@@ -2127,6 +2127,232 @@ describe('BitwardenDirectClient', () => {
     expect(purge).not.toHaveBeenCalled()
   })
 
+  it('deauthorizes every session with a fresh proof and clears local authenticated state', async () => {
+    const sync = await encryptedSync()
+    const requestBodies: JsonObject[] = []
+    const stateChanges: Array<ReturnType<BitwardenDirectClient['exportState']>> = []
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url, init) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          return jsonResponse({
+            access_token: 'access',
+            refresh_token: 'refresh',
+            expires_in: 3600
+          })
+        }
+        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/accounts/security-stamp')) {
+          requestBodies.push(JSON.parse(String(init?.body)) as JsonObject)
+          return new Response(null, { status: 204 })
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      onStateChanged: (state) => {
+        stateChanges.push(structuredClone(state))
+      }
+    })
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+    await expect(client.listPersonalLogins()).resolves.toHaveLength(1)
+    const before = client.exportState()
+    stateChanges.splice(0)
+
+    await expect(client.deauthorizeAllSessions(PASSWORD)).resolves.toBeUndefined()
+
+    const expectedMasterKey = await deriveMasterKey(PASSWORD, EMAIL, {
+      type: 'pbkdf2',
+      iterations: 5_000
+    })
+    const expectedPasswordKey = await derivePasswordKey(expectedMasterKey, PASSWORD)
+    try {
+      expect(requestBodies).toEqual([
+        { masterPasswordHash: expectedPasswordKey.toString('base64') }
+      ])
+    } finally {
+      expectedMasterKey.fill(0)
+      expectedPasswordKey.fill(0)
+    }
+    await expect(client.status()).resolves.toEqual({ status: 'unauthenticated' })
+    await expect(client.listPersonalLogins()).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
+    expect(client.exportState()).toEqual({
+      session: null,
+      deviceIdentifier: before.deviceIdentifier,
+      profileId: PROFILE_ID,
+      securityStamp: null
+    })
+    expect(http.exportSession()).toBeNull()
+    expect(stateChanges).toEqual([client.exportState()])
+  })
+
+  it('preserves the session after deauthorization preflight and definitive proof failures', async () => {
+    const session = {
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      expiresAt: Date.now() + 60_000
+    }
+    const onStateChanged = vi.fn()
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async () => jsonResponse({ message: 'not found' }, 404)
+    })
+    const prelogin = vi.spyOn(http, 'prelogin').mockResolvedValue({
+      kdfType: 0,
+      iterations: 5_000,
+      memory: null,
+      parallelism: null,
+      salt: EMAIL,
+      raw: {}
+    })
+    const deauthorize = vi
+      .spyOn(http, 'deauthorizeAllSessions')
+      .mockRejectedValue(new BitwardenHttpError('USER_VERIFICATION_FAILED', 400))
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      onStateChanged,
+      state: {
+        session,
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.deauthorizeAllSessions('wrong password')).rejects.toMatchObject({
+      code: 'USER_VERIFICATION_FAILED'
+    })
+    expect(client.exportState()).toEqual({
+      session,
+      deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+      profileId: PROFILE_ID,
+      securityStamp: 'security-stamp'
+    })
+    expect(http.exportSession()).toEqual(session)
+    expect(onStateChanged).not.toHaveBeenCalled()
+
+    prelogin.mockRejectedValueOnce(new BitwardenHttpError('NETWORK'))
+    await expect(client.deauthorizeAllSessions(PASSWORD)).rejects.toMatchObject({ code: 'NETWORK' })
+    expect(deauthorize).toHaveBeenCalledTimes(1)
+
+    const controller = new AbortController()
+    controller.abort()
+    await expect(client.deauthorizeAllSessions(PASSWORD, controller.signal)).rejects.toMatchObject({
+      code: 'ABORTED'
+    })
+    expect(deauthorize).toHaveBeenCalledTimes(1)
+    expect(client.exportState().session).toEqual(session)
+    expect(onStateChanged).not.toHaveBeenCalled()
+
+    deauthorize.mockRejectedValueOnce(new BitwardenHttpError('ABORTED'))
+    await expect(client.deauthorizeAllSessions(PASSWORD)).rejects.toMatchObject({
+      code: 'ABORTED'
+    })
+    expect(deauthorize).toHaveBeenCalledTimes(2)
+    expect(client.exportState().session).toEqual(session)
+    expect(onStateChanged).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['response loss', new BitwardenHttpError('NETWORK')],
+    ['invalid response', new BitwardenHttpError('INVALID_RESPONSE')],
+    ['abort after dispatch', new BitwardenHttpError('ABORTED')]
+  ])('fails closed after an ambiguous deauthorization %s', async (_label, failure) => {
+    const session = {
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      expiresAt: Date.now() + 60_000
+    }
+    const stateChanges: Array<ReturnType<BitwardenDirectClient['exportState']>> = []
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async () => jsonResponse({ message: 'not found' }, 404)
+    })
+    vi.spyOn(http, 'prelogin').mockResolvedValue({
+      kdfType: 0,
+      iterations: 5_000,
+      memory: null,
+      parallelism: null,
+      salt: EMAIL,
+      raw: {}
+    })
+    const deauthorize = vi
+      .spyOn(http, 'deauthorizeAllSessions')
+      .mockImplementation(async (_proof, _signal, onDispatch) => {
+        onDispatch?.()
+        throw failure
+      })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      onStateChanged: (state) => {
+        stateChanges.push(structuredClone(state))
+      },
+      state: {
+        session,
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.deauthorizeAllSessions(PASSWORD)).rejects.toMatchObject({
+      code: 'SESSION_DEAUTHORIZATION_UNKNOWN'
+    })
+    expect(deauthorize).toHaveBeenCalledTimes(1)
+    await expect(client.status()).resolves.toEqual({ status: 'unauthenticated' })
+    expect(client.exportState()).toEqual({
+      session: null,
+      deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+      profileId: PROFILE_ID,
+      securityStamp: null
+    })
+    expect(http.exportSession()).toBeNull()
+    expect(stateChanges).toEqual([client.exportState()])
+  })
+
+  it('rejects invalid deauthorization inputs before deriving or dispatching', async () => {
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async () => jsonResponse({ message: 'not found' }, 404)
+    })
+    const prelogin = vi.spyOn(http, 'prelogin')
+    const deauthorize = vi.spyOn(http, 'deauthorizeAllSessions')
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: null,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.deauthorizeAllSessions(PASSWORD)).rejects.toMatchObject({
+      code: 'AUTH_REQUIRED'
+    })
+    await expect(client.deauthorizeAllSessions('')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    await expect(client.deauthorizeAllSessions('x'.repeat(16_385))).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    expect(prelogin).not.toHaveBeenCalled()
+    expect(deauthorize).not.toHaveBeenCalled()
+  })
+
   it('derives a fresh master-password proof for personal API key access without unlocking', async () => {
     const requestBodies: JsonObject[] = []
     const http = new BitwardenHttpClient({

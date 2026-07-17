@@ -235,6 +235,8 @@ const api: BearWardenAPI = {
     updateAvatar: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.accountSecurityUpdateAvatar, request),
     devices: () => ipcRenderer.invoke(IPC_CHANNELS.accountDevices),
+    deauthorizeSessions: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.accountDeauthorizeSessions, request),
     resendVerification: () => ipcRenderer.invoke(IPC_CHANNELS.accountResendVerification),
     copyApiClientId: () => ipcRenderer.invoke(IPC_CHANNELS.accountCopyApiClientId),
     copyApiKey: (request) => ipcRenderer.invoke(IPC_CHANNELS.accountCopyApiKey, request),

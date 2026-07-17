@@ -1707,6 +1707,8 @@ describe('registerVaultIpc reprompt gate', () => {
           }
         ]
       })),
+      syncStatus: vi.fn(async () => ({ configured: true, state: 'locked' as const })),
+      deauthorizeAllSessions: vi.fn(async () => undefined),
       resendAccountVerificationEmail: vi.fn(async () => undefined),
       copyAccountApiClientId: vi.fn(async () => undefined),
       copyPersonalApiKey: vi.fn(async (request: { masterPassword: string; rotate: boolean }) => {
@@ -2516,6 +2518,79 @@ describe('registerVaultIpc reprompt gate', () => {
     expect(vault.getAccountSecurityProfile).toHaveBeenCalledOnce()
     expect(vault.getAccountDevices).toHaveBeenCalledOnce()
     expect(vault.resendAccountVerificationEmail).toHaveBeenCalledOnce()
+  })
+
+  it('deauthorizes sessions only after exact confirmation and scrubs retained input', async () => {
+    const { event, vault, beforeSyncReconfigure, afterSyncChanged } = harness()
+    const deauthorize = electronMock.handlers.get(IPC_CHANNELS.accountDeauthorizeSessions)!
+    const order: string[] = []
+    beforeSyncReconfigure.mockImplementation(async () => {
+      order.push('before')
+    })
+    let retained: { masterPassword: string; confirmation: string; confirm: true } | undefined
+    vault.deauthorizeAllSessions.mockImplementation(async (request) => {
+      retained = request
+      order.push('mutation')
+    })
+    const input = {
+      masterPassword: 'remote master password',
+      confirmation: '取消所有工作階段',
+      confirm: true
+    }
+
+    await expect(deauthorize(event, input)).resolves.toBeUndefined()
+    expect(order).toEqual(['before', 'mutation'])
+    expect(vault.deauthorizeAllSessions).toHaveBeenCalledOnce()
+    expect(retained).toEqual({ masterPassword: '', confirmation: '', confirm: true })
+    expect(input).toEqual({ masterPassword: '', confirmation: '', confirm: true })
+    expect(afterSyncChanged).toHaveBeenCalledWith({ configured: true, state: 'locked' })
+
+    const accessor = { confirmation: '取消所有工作階段', confirm: true }
+    Object.defineProperty(accessor, 'masterPassword', {
+      enumerable: true,
+      get: () => {
+        throw new Error('must not invoke deauthorization IPC accessors')
+      }
+    })
+    const invalidInputs: unknown[] = [
+      undefined,
+      null,
+      {},
+      { masterPassword: '', confirmation: '取消所有工作階段', confirm: true },
+      { masterPassword: 'x'.repeat(16_385), confirmation: '取消所有工作階段', confirm: true },
+      { masterPassword: 'secret', confirmation: '錯誤', confirm: true },
+      { masterPassword: 'secret', confirmation: '取消所有工作階段', confirm: false },
+      { masterPassword: 'secret', confirmation: '取消所有工作階段', confirm: true, extra: true },
+      Object.assign(
+        { masterPassword: 'secret', confirmation: '取消所有工作階段', confirm: true },
+        { [Symbol('extra')]: true }
+      ),
+      accessor
+    ]
+    for (const invalid of invalidInputs) {
+      await expect(deauthorize(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(vault.deauthorizeAllSessions).toHaveBeenCalledOnce()
+    expect(beforeSyncReconfigure).toHaveBeenCalledOnce()
+  })
+
+  it('publishes auth-required state without replacing an unknown deauthorization result', async () => {
+    const { event, vault, afterSyncChanged } = harness()
+    const deauthorize = electronMock.handlers.get(IPC_CHANNELS.accountDeauthorizeSessions)!
+    vault.deauthorizeAllSessions.mockRejectedValueOnce(
+      new VaultError('SESSION_DEAUTHORIZATION_UNKNOWN')
+    )
+    const input = {
+      masterPassword: 'remote master password',
+      confirmation: '取消所有工作階段',
+      confirm: true
+    }
+
+    await expect(deauthorize(event, input)).rejects.toThrow(
+      'BEARWARDEN:SESSION_DEAUTHORIZATION_UNKNOWN'
+    )
+    expect(input).toEqual({ masterPassword: '', confirmation: '', confirm: true })
+    expect(afterSyncChanged).toHaveBeenCalledWith({ configured: true, state: 'locked' })
   })
 
   it('accepts only exact data-only bounded profile mutations', async () => {

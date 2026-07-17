@@ -448,6 +448,10 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
         pendingAuthRequest: false
       }
     ],
+    deauthorizeAllSessions: async () => {
+      unlocked = false
+      state = { ...state, session: null, securityStamp: null }
+    },
     resendVerificationEmail: async () => undefined,
     getPersonalApiKey: async (_masterPassword, rotate) => ({
       clientId: 'user.90000000-0000-4000-8000-000000000099',
@@ -6547,6 +6551,270 @@ describe('VaultService encrypted local data', () => {
     await vi.waitFor(() => expect(devices).toHaveBeenCalledOnce())
     await expect(service.lock()).resolves.toEqual({ state: 'locked' })
     await locked
+  })
+
+  it('deauthorizes every remote session while preserving the local encrypted vault', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const before = await service.listLogins()
+    const request = {
+      masterPassword: 'remote master password',
+      confirmation: '取消所有工作階段' as const,
+      confirm: true as const
+    }
+
+    await expect(service.deauthorizeAllSessions(request)).resolves.toMatchObject({
+      configured: true,
+      state: 'locked',
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid'
+    })
+    expect(request.masterPassword).toBe('')
+    expect(request.confirmation).toBe('')
+    expect(fake!.exportState()).toMatchObject({
+      session: null,
+      securityStamp: null,
+      profileId: '90000000-0000-4000-8000-000000000099'
+    })
+    expect(await service.listLogins()).toEqual(before)
+    await expect(service.syncStatus()).resolves.toMatchObject({ configured: true, state: 'locked' })
+  })
+
+  it('preserves unknown deauthorization outcome while failing remote auth closed', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const before = await service.listLogins()
+    const deauthorize = fake!.deauthorizeAllSessions!.bind(fake)
+    vi.spyOn(fake!, 'deauthorizeAllSessions').mockImplementationOnce(async () => {
+      await deauthorize('remote master password')
+      throw new BitwardenDirectError('SESSION_DEAUTHORIZATION_UNKNOWN')
+    })
+    const request = {
+      masterPassword: 'remote master password',
+      confirmation: '取消所有工作階段' as const,
+      confirm: true as const
+    }
+
+    await expect(service.deauthorizeAllSessions(request)).rejects.toMatchObject({
+      code: 'SESSION_DEAUTHORIZATION_UNKNOWN'
+    })
+    expect(request.masterPassword).toBe('')
+    expect(request.confirmation).toBe('')
+    expect(await service.listLogins()).toEqual(before)
+    await expect(service.syncStatus()).resolves.toMatchObject({ configured: true, state: 'locked' })
+  })
+
+  it('keeps the remote session after a definitive deauthorization proof failure', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    vi.spyOn(fake!, 'deauthorizeAllSessions').mockRejectedValueOnce(
+      new BitwardenDirectError('USER_VERIFICATION_FAILED')
+    )
+    const request = {
+      masterPassword: 'wrong remote password',
+      confirmation: '取消所有工作階段' as const,
+      confirm: true as const
+    }
+
+    await expect(service.deauthorizeAllSessions(request)).rejects.toMatchObject({
+      code: 'INVALID_MASTER_PASSWORD'
+    })
+    expect(fake!.exportState().session).not.toBeNull()
+    await expect(service.syncStatus()).resolves.toMatchObject({ configured: true, state: 'ready' })
+  })
+
+  it('does not dispatch deauthorization when fail-closed persistence fails', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service, store } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const deauthorize = vi.spyOn(fake!, 'deauthorizeAllSessions')
+    vi.spyOn(store, 'write').mockRejectedValueOnce(new Error('disk unavailable'))
+
+    await expect(
+      service.deauthorizeAllSessions({
+        masterPassword: 'remote master password',
+        confirmation: '取消所有工作階段',
+        confirm: true
+      })
+    ).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(deauthorize).not.toHaveBeenCalled()
+    await expect(service.syncStatus()).resolves.toMatchObject({ configured: true, state: 'ready' })
+  })
+
+  it('persists fail-closed auth state and blocks concurrent remote operations before dispatch', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const harness = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await harness.service.setup(MASTER_PASSWORD)
+    await harness.service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const original = fake!.deauthorizeAllSessions!.bind(fake)
+    let release: (() => void) | undefined
+    vi.spyOn(fake!, 'deauthorizeAllSessions').mockImplementationOnce(async (password, signal) => {
+      await new Promise<void>((resolve) => {
+        release = resolve
+      })
+      await original(password, signal)
+    })
+
+    const pending = harness.service.deauthorizeAllSessions({
+      masterPassword: 'remote master password',
+      confirmation: '取消所有工作階段',
+      confirm: true
+    })
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+    await expect(harness.service.getAccountDevices()).rejects.toMatchObject({
+      code: 'SYNC_FAILED'
+    })
+    await expect(harness.service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+
+    const recovered = new VaultService(
+      harness.store,
+      {
+        copyText: vi.fn(),
+        copySensitiveText: vi.fn(),
+        openExternal: vi.fn()
+      },
+      { createSyncClient: (sync) => createSyncFake(sync.state) }
+    )
+    await recovered.unlock(MASTER_PASSWORD)
+    await expect(recovered.syncStatus()).resolves.toMatchObject({
+      configured: true,
+      state: 'locked'
+    })
+
+    release?.()
+    await expect(pending).resolves.toMatchObject({ configured: true, state: 'locked' })
+  })
+
+  it('does not dispatch deauthorization across an active notification-token rotation', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const harness = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await harness.service.setup(MASTER_PASSWORD)
+    await harness.service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    let release: (() => void) | undefined
+    let rotated = false
+    const exportState = fake!.exportState.bind(fake)
+    vi.spyOn(fake!, 'exportState').mockImplementation(() => {
+      const state = exportState()
+      return rotated && state.session
+        ? {
+            ...state,
+            session: {
+              ...state.session,
+              accessToken: 'rotated-access-token',
+              refreshToken: 'rotated-refresh-token'
+            }
+          }
+        : state
+    })
+    const tokenRefresh = vi
+      .spyOn(fake!, 'notificationAccessToken')
+      .mockImplementationOnce(async () => {
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+        rotated = true
+        return 'rotated-access-token'
+      })
+    const deauthorize = vi.spyOn(fake!, 'deauthorizeAllSessions')
+    const pendingToken = harness.service.notificationConnectionInfo()
+    await vi.waitFor(() => expect(tokenRefresh).toHaveBeenCalledOnce())
+
+    await expect(
+      harness.service.deauthorizeAllSessions({
+        masterPassword: 'remote master password',
+        confirmation: '取消所有工作階段',
+        confirm: true
+      })
+    ).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(deauthorize).not.toHaveBeenCalled()
+    release?.()
+    await expect(pendingToken).resolves.toMatchObject({ accessToken: 'rotated-access-token' })
+
+    const recoveredStates: BitwardenDirectState[] = []
+    const recovered = new VaultService(
+      harness.store,
+      {
+        copyText: vi.fn(),
+        copySensitiveText: vi.fn(),
+        openExternal: vi.fn()
+      },
+      {
+        createSyncClient: (sync) => {
+          recoveredStates.push(structuredClone(sync.state))
+          return createSyncFake(sync.state)
+        }
+      }
+    )
+    await recovered.unlock(MASTER_PASSWORD)
+    await expect(recovered.syncStatus()).resolves.toMatchObject({
+      configured: true,
+      state: 'locked'
+    })
+    expect(recoveredStates[0]?.session).toMatchObject({
+      accessToken: 'rotated-access-token',
+      refreshToken: 'rotated-refresh-token'
+    })
   })
 
   it('copies personal API credentials only in main and requires explicit rotation confirmation', async () => {

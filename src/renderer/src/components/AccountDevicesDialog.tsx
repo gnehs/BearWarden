@@ -1,7 +1,11 @@
-import { Laptop, RefreshCw } from 'lucide-react'
-import { useState } from 'react'
-import type { AccountDevicesResult } from '../../../shared/vault-contract'
-import { Alert, AlertDescription } from '@renderer/components/ui/alert'
+import { Laptop, LogOut, RefreshCw, TriangleAlert } from 'lucide-react'
+import { useRef, useState, type FormEvent, type MutableRefObject } from 'react'
+import {
+  ACCOUNT_SESSION_DEAUTHORIZATION_CONFIRMATION,
+  type AccountDevicesResult,
+  type AccountSessionDeauthorizationRequest
+} from '../../../shared/vault-contract'
+import { Alert, AlertDescription, AlertTitle } from '@renderer/components/ui/alert'
 import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -13,7 +17,148 @@ import {
   DialogTitle,
   DialogTrigger
 } from '@renderer/components/ui/dialog'
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@renderer/components/ui/field'
+import { Input } from '@renderer/components/ui/input'
 import { Spinner } from '@renderer/components/ui/spinner'
+
+export const DEAUTHORIZE_SESSIONS_CONFIRMATION = ACCOUNT_SESSION_DEAUTHORIZATION_CONFIRMATION
+
+type DeauthorizeSessionsRequest = AccountSessionDeauthorizationRequest
+
+interface ExecuteDeauthorizeSessionsOptions {
+  lease: MutableRefObject<boolean>
+  request: DeauthorizeSessionsRequest
+  deauthorize: (request: DeauthorizeSessionsRequest) => Promise<void>
+  onAcquired: () => void
+}
+
+/** A ref-backed lease prevents two destructive requests before React commits `busy`. */
+// eslint-disable-next-line react-refresh/only-export-components
+export async function executeDeauthorizeSessions({
+  lease,
+  request,
+  deauthorize,
+  onAcquired
+}: ExecuteDeauthorizeSessionsOptions): Promise<boolean> {
+  if (lease.current) {
+    request.masterPassword = ''
+    ;(request as { confirmation: string }).confirmation = ''
+    return false
+  }
+  lease.current = true
+  try {
+    onAcquired()
+    await deauthorize(request)
+    return true
+  } finally {
+    request.masterPassword = ''
+    ;(request as { confirmation: string }).confirmation = ''
+    lease.current = false
+  }
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function deauthorizeSessionsError(error: unknown): string {
+  if (error instanceof Error && error.message.includes('INVALID_MASTER_PASSWORD')) {
+    return '主密碼驗證失敗；若要再試，請重新輸入主密碼與確認文字。'
+  }
+  if (error instanceof Error && error.message.includes('SESSION_DEAUTHORIZATION_UNKNOWN')) {
+    return '連線在取消過程中中斷，結果無法判定。可能已成功；請先重新登入或確認其他裝置狀態，不要直接重試。'
+  }
+  if (error instanceof Error && error.message.includes('SYNC_AUTH_REQUIRED')) {
+    return '目前登入已失效，請先重新登入。'
+  }
+  return '無法確認是否已取消所有工作階段。請先確認登入與其他裝置狀態，不要直接重試。'
+}
+
+interface DeauthorizeSessionsFormProps {
+  masterPassword: string
+  confirmation: string
+  busy: boolean
+  error: string
+  onMasterPasswordChange: (value: string) => void
+  onConfirmationChange: (value: string) => void
+  onCancel: () => void
+}
+
+export function DeauthorizeSessionsForm({
+  masterPassword,
+  confirmation,
+  busy,
+  error,
+  onMasterPasswordChange,
+  onConfirmationChange,
+  onCancel
+}: DeauthorizeSessionsFormProps): React.JSX.Element {
+  const confirmed = confirmation === DEAUTHORIZE_SESSIONS_CONFIRMATION
+
+  return (
+    <div className="border-destructive/40 grid gap-4 rounded-lg border p-4">
+      <Alert variant="destructive">
+        <TriangleAlert aria-hidden="true" />
+        <AlertTitle>這會取消所有工作階段</AlertTitle>
+        <AlertDescription>
+          包含目前裝置。所有裝置都必須重新登入，並在已啟用時再次完成雙重驗證。其他裝置可能最長約一小時才失效。
+          BearWarden 會保留這台電腦上的本機加密 vault，但在重新登入前不會再同步。
+        </AlertDescription>
+      </Alert>
+      <FieldGroup>
+        <Field>
+          <FieldLabel htmlFor="deauthorize-sessions-master-password">主密碼</FieldLabel>
+          <Input
+            id="deauthorize-sessions-master-password"
+            type="password"
+            autoComplete="current-password"
+            maxLength={1024}
+            value={masterPassword}
+            disabled={busy}
+            autoFocus
+            onChange={(event) => onMasterPasswordChange(event.target.value)}
+          />
+          <FieldDescription>每次嘗試都必須重新輸入，只用於這一次伺服器驗證。</FieldDescription>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="deauthorize-sessions-confirmation">
+            輸入「{DEAUTHORIZE_SESSIONS_CONFIRMATION}」確認
+          </FieldLabel>
+          <Input
+            id="deauthorize-sessions-confirmation"
+            type="text"
+            autoComplete="off"
+            maxLength={DEAUTHORIZE_SESSIONS_CONFIRMATION.length}
+            value={confirmation}
+            disabled={busy}
+            spellCheck={false}
+            onChange={(event) => onConfirmationChange(event.target.value)}
+          />
+          <FieldDescription>必須完全符合，不會自動修正空白或字元。</FieldDescription>
+        </Field>
+      </FieldGroup>
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="secondary" type="button" disabled={busy} onClick={onCancel}>
+          取消
+        </Button>
+        <Button
+          variant="destructive"
+          type="submit"
+          disabled={busy || !masterPassword || !confirmed}
+        >
+          {busy ? (
+            <Spinner data-icon="inline-start" aria-hidden="true" />
+          ) : (
+            <LogOut data-icon="inline-start" aria-hidden="true" />
+          )}
+          取消所有工作階段
+        </Button>
+      </div>
+    </div>
+  )
+}
 
 const deviceTypeNames: Record<number, string> = {
   0: 'Android',
@@ -60,6 +205,17 @@ function AccountDevicesDialog(): React.JSX.Element {
   const [result, setResult] = useState<AccountDevicesResult | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [deauthorizeOpen, setDeauthorizeOpen] = useState(false)
+  const [masterPassword, setMasterPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const [deauthorizeError, setDeauthorizeError] = useState('')
+  const [success, setSuccess] = useState('')
+  const submissionLease = useRef(false)
+
+  function clearDeauthorizationSecrets(): void {
+    setMasterPassword('')
+    setConfirmation('')
+  }
 
   async function load(): Promise<void> {
     setBusy(true)
@@ -75,11 +231,62 @@ function AccountDevicesDialog(): React.JSX.Element {
   }
 
   function changeOpen(next: boolean): void {
-    if (busy) return
+    if (busy || submissionLease.current) return
     setOpen(next)
     setResult(null)
     setError('')
+    setSuccess('')
+    setDeauthorizeOpen(false)
+    setDeauthorizeError('')
+    clearDeauthorizationSecrets()
     if (next) void load()
+  }
+
+  function changeDeauthorizeOpen(next: boolean): void {
+    if (busy || submissionLease.current) return
+    setDeauthorizeOpen(next)
+    setDeauthorizeError('')
+    setSuccess('')
+    clearDeauthorizationSecrets()
+  }
+
+  async function submitDeauthorization(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    if (busy || !masterPassword || confirmation !== DEAUTHORIZE_SESSIONS_CONFIRMATION) {
+      return
+    }
+    const request: DeauthorizeSessionsRequest = {
+      masterPassword,
+      confirmation: DEAUTHORIZE_SESSIONS_CONFIRMATION,
+      confirm: true
+    }
+    let acquired = false
+    try {
+      acquired = await executeDeauthorizeSessions({
+        lease: submissionLease,
+        request,
+        deauthorize: (deauthorizeRequest) =>
+          window.bearwarden.accountSecurity.deauthorizeSessions(deauthorizeRequest),
+        onAcquired: () => {
+          acquired = true
+          setBusy(true)
+          setError('')
+          setSuccess('')
+          setDeauthorizeError('')
+          clearDeauthorizationSecrets()
+        }
+      })
+      if (!acquired) return
+      setDeauthorizeOpen(false)
+      setResult(null)
+      setSuccess('已送出取消要求。目前裝置也必須重新登入才能繼續同步。')
+    } catch (deauthorizeFailure) {
+      if (!acquired) return
+      setDeauthorizeError(deauthorizeSessionsError(deauthorizeFailure))
+    } finally {
+      clearDeauthorizationSecrets()
+      if (acquired) setBusy(false)
+    }
   }
 
   return (
@@ -88,11 +295,11 @@ function AccountDevicesDialog(): React.JSX.Element {
         <Laptop data-icon="inline-start" aria-hidden="true" />
         帳號裝置
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>帳號裝置</DialogTitle>
           <DialogDescription>
-            唯讀顯示伺服器上的裝置活動與信任狀態，不會顯示裝置識別碼或網路資訊。
+            顯示伺服器上的裝置活動與信任狀態，並可取消所有工作階段。不會顯示裝置識別碼或網路資訊。
           </DialogDescription>
         </DialogHeader>
         {busy && result === null ? (
@@ -147,6 +354,43 @@ function AccountDevicesDialog(): React.JSX.Element {
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
+        {success && (
+          <Alert>
+            <AlertDescription>{success}</AlertDescription>
+          </Alert>
+        )}
+        {deauthorizeOpen ? (
+          <form className="grid gap-4" onSubmit={(event) => void submitDeauthorization(event)}>
+            <DeauthorizeSessionsForm
+              masterPassword={masterPassword}
+              confirmation={confirmation}
+              busy={busy}
+              error={deauthorizeError}
+              onMasterPasswordChange={setMasterPassword}
+              onConfirmationChange={setConfirmation}
+              onCancel={() => changeDeauthorizeOpen(false)}
+            />
+          </form>
+        ) : (
+          <div className="grid gap-2 rounded-lg border p-3">
+            <div>
+              <h3 className="font-medium">取消所有工作階段</h3>
+              <p className="text-muted-foreground text-sm">
+                強制這個帳號的所有裝置重新登入，不會刪除本機加密 vault。
+              </p>
+            </div>
+            <Button
+              className="justify-self-start"
+              variant="destructive"
+              type="button"
+              disabled={busy || Boolean(success)}
+              onClick={() => changeDeauthorizeOpen(true)}
+            >
+              <LogOut data-icon="inline-start" aria-hidden="true" />
+              開始取消工作階段
+            </Button>
+          </div>
+        )}
         <DialogFooter>
           <Button
             variant="secondary"
@@ -156,14 +400,21 @@ function AccountDevicesDialog(): React.JSX.Element {
           >
             關閉
           </Button>
-          <Button variant="outline" type="button" disabled={busy} onClick={() => void load()}>
-            {busy ? (
-              <Spinner data-icon="inline-start" aria-hidden="true" />
-            ) : (
-              <RefreshCw data-icon="inline-start" aria-hidden="true" />
-            )}
-            重新整理
-          </Button>
+          {!deauthorizeOpen && (
+            <Button
+              variant="outline"
+              type="button"
+              disabled={busy || Boolean(success)}
+              onClick={() => void load()}
+            >
+              {busy ? (
+                <Spinner data-icon="inline-start" aria-hidden="true" />
+              ) : (
+                <RefreshCw data-icon="inline-start" aria-hidden="true" />
+              )}
+              重新整理
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

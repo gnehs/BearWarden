@@ -3,6 +3,7 @@ import {
   IPC_CHANNELS,
   type AccountRemoveRequest,
   type AccountReorderRequest,
+  type AccountSessionDeauthorizationRequest,
   type AccountWebAuthnKeyEnrollmentRequest,
   type AccountWebAuthnKeyRemovalRequest,
   type AccountWebAuthnKeyView,
@@ -169,5 +170,22 @@ describe('account WebAuthn renderer contract', () => {
     expect(IPC_CHANNELS.accountSecurityRemoveWebAuthnKey).toBe(
       'account-security:remove-webauthn-key'
     )
+  })
+})
+
+describe('account session deauthorization renderer contract', () => {
+  it('requires a fresh password and two exact destructive confirmations', () => {
+    expectTypeOf<AccountSessionDeauthorizationRequest>().toEqualTypeOf<{
+      masterPassword: string
+      confirmation: '取消所有工作階段'
+      confirm: true
+    }>()
+    expectTypeOf<
+      BearWardenAPI['accountSecurity']['deauthorizeSessions']
+    >().parameters.toEqualTypeOf<[AccountSessionDeauthorizationRequest]>()
+    expectTypeOf<BearWardenAPI['accountSecurity']['deauthorizeSessions']>().returns.toEqualTypeOf<
+      Promise<void>
+    >()
+    expect(IPC_CHANNELS.accountDeauthorizeSessions).toBe('account-security:deauthorize-sessions')
   })
 })

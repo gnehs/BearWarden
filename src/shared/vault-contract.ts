@@ -113,6 +113,7 @@ export const IPC_CHANNELS = {
   accountSecurityUpdateName: 'account-security:update-name',
   accountSecurityUpdateAvatar: 'account-security:update-avatar',
   accountDevices: 'account-security:devices',
+  accountDeauthorizeSessions: 'account-security:deauthorize-sessions',
   accountResendVerification: 'account-security:resend-verification',
   accountCopyApiClientId: 'account-security:copy-api-client-id',
   accountCopyApiKey: 'account-security:copy-api-key',
@@ -187,6 +188,7 @@ export type VaultErrorCode =
   | 'TWO_FACTOR_MUTATION_UNKNOWN'
   | 'ACCOUNT_PROFILE_STALE'
   | 'ACCOUNT_PROFILE_MUTATION_UNKNOWN'
+  | 'SESSION_DEAUTHORIZATION_UNKNOWN'
   | 'TOUCH_ID_UNAVAILABLE'
   | 'TOUCH_ID_FAILED'
   | 'ACCOUNT_LIMIT_REACHED'
@@ -1060,6 +1062,14 @@ export interface AccountTwoFactorDisableRequest {
   confirm: true
 }
 
+export const ACCOUNT_SESSION_DEAUTHORIZATION_CONFIRMATION = '取消所有工作階段'
+
+export interface AccountSessionDeauthorizationRequest {
+  masterPassword: string
+  confirmation: typeof ACCOUNT_SESSION_DEAUTHORIZATION_CONFIRMATION
+  confirm: true
+}
+
 export interface AccountRecoveryCodeCopyRequest {
   masterPassword: string
 }
@@ -1756,6 +1766,7 @@ export interface BearWardenAPI {
     updateName: (request: AccountProfileNameUpdateRequest) => Promise<AccountSecurityProfile>
     updateAvatar: (request: AccountProfileAvatarUpdateRequest) => Promise<AccountSecurityProfile>
     devices: () => Promise<AccountDevicesResult>
+    deauthorizeSessions: (request: AccountSessionDeauthorizationRequest) => Promise<void>
     resendVerification: () => Promise<void>
     copyApiClientId: () => Promise<void>
     copyApiKey: (request: AccountApiKeyCopyRequest) => Promise<AccountApiKeyCopyResult>

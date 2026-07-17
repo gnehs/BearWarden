@@ -1946,6 +1946,35 @@ export class BitwardenHttpClient {
       body.masterPasswordHash = ''
     }
   }
+  async deauthorizeAllSessions(
+    masterPasswordHash: string,
+    signal?: AbortSignal,
+    onDispatch?: () => void
+  ): Promise<void> {
+    const body = Object.assign(Object.create(null) as JsonObject, {
+      masterPasswordHash: assertPurgeMasterPasswordHash(masterPasswordHash)
+    })
+    try {
+      const response = await this.requestJson(
+        'POST',
+        `${this.urls.apiUrl}/accounts/security-stamp`,
+        {
+          body,
+          signal,
+          retry: false,
+          acceptedStatuses: [200, 204],
+          maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+          tooLargeCode: 'INVALID_RESPONSE',
+          onDispatch
+        }
+      )
+      if (response !== null) throw new BitwardenHttpError('INVALID_RESPONSE')
+    } catch (error) {
+      throw normalizeUserVerificationError(error)
+    } finally {
+      body.masterPasswordHash = ''
+    }
+  }
   async updateCipher(
     id: string,
     ciphertext: JsonObject,
@@ -2323,6 +2352,8 @@ export class BitwardenHttpClient {
       retry?: boolean
       /** Narrows otherwise-successful HTTP statuses for strict compatibility endpoints. */
       acceptedStatuses?: readonly number[]
+      /** Called immediately before each transport attempt. */
+      onDispatch?: () => void
     } = {}
   ): Promise<JsonValue> {
     const authenticate = request.authenticate ?? true
@@ -2349,6 +2380,7 @@ export class BitwardenHttpClient {
         ? AbortSignal.any([request.signal, timeoutSignal])
         : timeoutSignal
       try {
+        request.onDispatch?.()
         response = await this.fetchFn(url, {
           method,
           headers: initHeaders,

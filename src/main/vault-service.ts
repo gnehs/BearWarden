@@ -21,6 +21,7 @@ import type {
   AttachmentTargetRequest,
   AttachmentUploadRequest,
   AttachmentUploadResult,
+  AccountSessionDeauthorizationRequest,
   EditorSecretsView,
   CredentialGeneratorRequest,
   CredentialGeneratorResult,
@@ -98,6 +99,7 @@ import {
   MAX_LOGIN_MOVE_MANY_IDS,
   MAX_LOGIN_SEARCH_QUERY_LENGTH,
   MAX_ACCOUNT_PROFILE_NAME_BYTES,
+  ACCOUNT_SESSION_DEAUTHORIZATION_CONFIRMATION,
   VAULT_LINKED_FIELD_IDS_BY_TYPE
 } from '../shared/vault-contract'
 import {
@@ -3234,6 +3236,19 @@ function clearAccountWebAuthnAttestation(attestation: AccountWebAuthnAttestation
   attestation.authenticatorAttachment = null
 }
 
+function scrubAccountSessionDeauthorizationRequest(value: unknown): void {
+  if (typeof value !== 'object' || value === null) return
+  for (const key of ['masterPassword', 'confirmation'] as const) {
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key)
+      if (!descriptor || !('value' in descriptor)) continue
+      Reflect.defineProperty(value, key, { ...descriptor, value: '' })
+    } catch {
+      // Cleanup is best-effort and must not invoke accessors or replace the intended result.
+    }
+  }
+}
+
 export class VaultService {
   private key: Buffer | null = null
   private salt: Buffer | null = null
@@ -3252,6 +3267,7 @@ export class VaultService {
   private readonly authenticatorSetupSessions = new Map<string, AuthenticatorSetupSession>()
   private readonly emailTwoFactorSetupSessions = new Map<string, EmailTwoFactorSetupSession>()
   private syncInProgress = false
+  private sessionDeauthorizationInProgress = false
   private syncLastError: string | null = null
   private activeAttachmentOperation: {
     operationId: string
@@ -3733,6 +3749,7 @@ export class VaultService {
     this.activeAttachmentOperation = null
     this.syncClient = null
     this.syncInProgress = false
+    this.sessionDeauthorizationInProgress = false
     this.key?.fill(0)
     this.salt?.fill(0)
     this.key = null
@@ -3953,6 +3970,169 @@ export class VaultService {
         if (error instanceof VaultError) throw error
         throw this.mapSyncError(error)
       })
+    }
+  }
+
+  async deauthorizeAllSessions(request: AccountSessionDeauthorizationRequest): Promise<SyncStatus> {
+    let lease: {
+      generation: number
+      client: BitwardenSyncClient
+      request: NonNullable<BitwardenSyncClient['deauthorizeAllSessions']>
+      abort: AbortController
+      masterPassword: string
+      originalState: BitwardenDirectState
+    }
+    try {
+      lease = await this.exclusive(async () => {
+        const descriptors =
+          typeof request === 'object' && request !== null
+            ? Object.getOwnPropertyDescriptors(request)
+            : Object.create(null)
+        const masterPassword = descriptors.masterPassword?.value
+        const confirmation = descriptors.confirmation?.value
+        const confirm = descriptors.confirm?.value
+        if (
+          !isRecord(request) ||
+          (Object.getPrototypeOf(request) !== Object.prototype &&
+            Object.getPrototypeOf(request) !== null) ||
+          Reflect.ownKeys(request).length !== 3 ||
+          !descriptors.masterPassword?.enumerable ||
+          !('value' in descriptors.masterPassword) ||
+          !descriptors.confirmation?.enumerable ||
+          !('value' in descriptors.confirmation) ||
+          !descriptors.confirm?.enumerable ||
+          !('value' in descriptors.confirm) ||
+          typeof masterPassword !== 'string' ||
+          masterPassword.length === 0 ||
+          masterPassword.length > MAX_SYNC_SECRET_LENGTH ||
+          confirmation !== ACCOUNT_SESSION_DEAUTHORIZATION_CONFIRMATION ||
+          confirm !== true
+        ) {
+          throw new VaultError('INVALID_INPUT')
+        }
+
+        const current = this.requireData()
+        if (
+          this.syncInProgress ||
+          current.sync?.pendingLoginMutation ||
+          current.sync?.pendingLoginImport ||
+          current.sync?.pendingPersonalVaultPurge ||
+          current.nativeAttachmentRestore ||
+          current.masterPasswordChange ||
+          this.activeAttachmentOperation ||
+          this.activeAccountBreachOperation ||
+          this.notificationTokenAborts.size > 0 ||
+          this.accountSecurityAborts.size > 0 ||
+          this.nativeAttachmentBackupAborts.size > 0 ||
+          this.nativeAttachmentRestoreAborts.size > 0
+        ) {
+          throw new VaultError('SYNC_FAILED')
+        }
+        const sync = this.requireSyncData()
+        const client = this.getOrCreateSyncClient(sync)
+        if (!client.deauthorizeAllSessions || !client.exportState().session) {
+          throw new VaultError('SYNC_AUTH_REQUIRED')
+        }
+        const abort = new AbortController()
+        const originalState = client.exportState()
+        const failClosed = cloneData(current)
+        if (!failClosed.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+        failClosed.sync.state = {
+          ...originalState,
+          session: null,
+          securityStamp: null
+        }
+        failClosed.updatedAt = this.nowIso()
+        this.sessionDeauthorizationInProgress = true
+        this.abortNotificationTokenLeases()
+        try {
+          await this.persist(failClosed)
+        } catch {
+          this.sessionDeauthorizationInProgress = false
+          throw new VaultError('SYNC_FAILED')
+        }
+        this.data = failClosed
+        this.accountSecurityAborts.add(abort)
+        return {
+          generation: this.generation,
+          client,
+          request: client.deauthorizeAllSessions.bind(client),
+          abort,
+          masterPassword,
+          originalState
+        }
+      })
+    } catch (error) {
+      scrubAccountSessionDeauthorizationRequest(request)
+      throw error
+    }
+
+    scrubAccountSessionDeauthorizationRequest(request)
+    let operationError: unknown = null
+    try {
+      await lease.request(lease.masterPassword, lease.abort.signal)
+    } catch (error) {
+      operationError = error
+    }
+
+    try {
+      return await this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        try {
+          const current = this.requireData()
+          if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+            throw new VaultError('LOCKED')
+          }
+          if (this.syncClient !== lease.client) throw new VaultError('SYNC_AUTH_REQUIRED')
+
+          if (operationError) {
+            if (operationError instanceof BitwardenDirectError) {
+              if (operationError.code === 'SESSION_DEAUTHORIZATION_UNKNOWN') {
+                const state = lease.client.exportState()
+                if (state.session || state.securityStamp !== null) {
+                  throw new VaultError('SYNC_FAILED')
+                }
+                this.abortNotificationTokenLeases()
+                this.syncLastError = null
+                throw new VaultError('SESSION_DEAUTHORIZATION_UNKNOWN')
+              }
+            }
+            if (operationError instanceof VaultError) throw operationError
+
+            const restored = cloneData(current)
+            if (!restored.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+            restored.sync.state = lease.originalState
+            restored.updatedAt = this.nowIso()
+            try {
+              await this.persist(restored)
+              this.data = restored
+            } catch {
+              this.syncClient = null
+              await lease.client.logout().catch(() => undefined)
+              throw new VaultError('SYNC_FAILED')
+            }
+            if (
+              operationError instanceof BitwardenDirectError &&
+              operationError.code === 'USER_VERIFICATION_FAILED'
+            ) {
+              throw new VaultError('INVALID_MASTER_PASSWORD')
+            }
+            throw this.mapSyncError(operationError)
+          }
+
+          const state = lease.client.exportState()
+          if (state.session || state.securityStamp !== null) throw new VaultError('SYNC_FAILED')
+          this.abortNotificationTokenLeases()
+          this.syncLastError = null
+          const sync = this.requireSyncData()
+          return this.baseSyncStatus(sync, 'locked')
+        } finally {
+          this.sessionDeauthorizationInProgress = false
+        }
+      })
+    } finally {
+      scrubAccountSessionDeauthorizationRequest(request)
+      lease.masterPassword = ''
     }
   }
 
@@ -5008,6 +5188,7 @@ export class VaultService {
         lease.abort.signal.aborted ||
         lease.generation !== this.generation ||
         lease.client !== this.syncClient ||
+        this.sessionDeauthorizationInProgress ||
         !current.sync
       ) {
         return null
@@ -8503,6 +8684,7 @@ export class VaultService {
   }
 
   private getOrCreateSyncClient(sync: PersistedSyncData): BitwardenSyncClient {
+    if (this.sessionDeauthorizationInProgress) throw new VaultError('SYNC_FAILED')
     this.syncClient ??= this.createSyncClient(sync)
     return this.syncClient
   }
@@ -8633,7 +8815,9 @@ export class VaultService {
   }
 
   private startSyncOperation(): AbortController {
-    if (this.syncInProgress) throw new VaultError('SYNC_FAILED')
+    if (this.syncInProgress || this.sessionDeauthorizationInProgress) {
+      throw new VaultError('SYNC_FAILED')
+    }
     this.abortAccountSecurityRequests()
     const abort = new AbortController()
     this.syncAbort = abort

@@ -188,6 +188,7 @@ export type BitwardenDirectErrorCode =
   | 'API_KEY_ROTATION_UNKNOWN'
   | 'TWO_FACTOR_MUTATION_UNKNOWN'
   | 'MASTER_PASSWORD_CHANGE_UNKNOWN'
+  | 'SESSION_DEAUTHORIZATION_UNKNOWN'
   | 'VAULT_PURGE_UNKNOWN'
   | 'ACCOUNT_PROFILE_STALE'
   | 'ACCOUNT_PROFILE_MUTATION_UNKNOWN'
@@ -472,6 +473,7 @@ export interface BitwardenSyncClient {
   getAccountDevices?(signal?: AbortSignal): Promise<BitwardenAccountDevice[]>
   resendVerificationEmail?(signal?: AbortSignal): Promise<void>
   purgePersonalVault?(masterPassword: string, signal?: AbortSignal): Promise<void>
+  deauthorizeAllSessions?(masterPassword: string, signal?: AbortSignal): Promise<void>
   getPersonalApiKey?(
     masterPassword: string,
     rotate: boolean,
@@ -1884,6 +1886,52 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       const mapped = this.mapError(error)
       if (mutationStarted && (mapped.code === 'NETWORK' || mapped.code === 'ABORTED')) {
         throw new BitwardenDirectError('VAULT_PURGE_UNKNOWN')
+      }
+      throw mapped
+    } finally {
+      masterKey?.fill(0)
+      passwordKey?.fill(0)
+      masterPasswordHash = ''
+    }
+  }
+
+  async deauthorizeAllSessions(masterPassword: string, signal?: AbortSignal): Promise<void> {
+    let masterKey: Buffer | null = null
+    let passwordKey: Buffer | null = null
+    let masterPasswordHash = ''
+    let mutationStarted = false
+    try {
+      if (
+        typeof masterPassword !== 'string' ||
+        masterPassword.length === 0 ||
+        masterPassword.length > MAX_SYNC_SECRET_LENGTH
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      this.requireProfileId()
+      const prelogin = await this.http.prelogin(this.email, signal)
+      masterKey = await deriveMasterKey(
+        masterPassword,
+        prelogin.salt ?? this.email,
+        kdfFromPrelogin(prelogin)
+      )
+      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      masterPasswordHash = passwordKey.toString('base64')
+      if (signal?.aborted) throw new BitwardenDirectError('ABORTED')
+      await this.http.deauthorizeAllSessions(masterPasswordHash, signal, () => {
+        mutationStarted = true
+      })
+      await this.clearDeauthorizedSession()
+    } catch (error) {
+      const mapped = this.mapError(error)
+      if (
+        mutationStarted &&
+        (mapped.code === 'NETWORK' ||
+          mapped.code === 'ABORTED' ||
+          mapped.code === 'INVALID_RESPONSE')
+      ) {
+        await this.clearDeauthorizedSession().catch(() => undefined)
+        throw new BitwardenDirectError('SESSION_DEAUTHORIZATION_UNKNOWN')
       }
       throw mapped
     } finally {
@@ -5034,6 +5082,14 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
 
   private async captureSession(): Promise<void> {
     this.state.session = this.http.exportSession()
+    await this.notifyStateChanged()
+  }
+
+  private async clearDeauthorizedSession(): Promise<void> {
+    this.clearDecryptedState()
+    this.state.session = null
+    this.state.securityStamp = null
+    this.http.clearSession()
     await this.notifyStateChanged()
   }
 

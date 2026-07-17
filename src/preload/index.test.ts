@@ -66,6 +66,23 @@ describe('preload account API', () => {
     ])
   })
 
+  it('forwards only the explicit session deauthorization request', async () => {
+    electronMock.invoke.mockClear()
+    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
+    const request = {
+      masterPassword: 'test-master-password',
+      confirmation: '取消所有工作階段' as const,
+      confirm: true as const
+    }
+
+    await api.accountSecurity.deauthorizeSessions(request)
+
+    expect(electronMock.invoke).toHaveBeenCalledWith(
+      IPC_CHANNELS.accountDeauthorizeSessions,
+      request
+    )
+  })
+
   it('exposes only the narrow account WebAuthn enrollment operations', async () => {
     electronMock.invoke.mockClear()
     const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI

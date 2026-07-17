@@ -4,6 +4,7 @@ import {
   IPC_CHANNELS,
   IPC_ERROR_PREFIX,
   IPC_EVENTS,
+  ACCOUNT_SESSION_DEAUTHORIZATION_CONFIRMATION,
   MAX_VAULT_TIMEOUT_MINUTES,
   MAX_LOGIN_BATCH_IDS,
   MAX_LOGIN_MOVE_MANY_IDS,
@@ -16,6 +17,7 @@ import {
   type AccountProfileNameUpdateRequest,
   type AccountRemoveRequest,
   type AccountReorderRequest,
+  type AccountSessionDeauthorizationRequest,
   type AccountStatus,
   type AppSettingsUpdate,
   type AccountApiKeyCopyRequest,
@@ -695,6 +697,38 @@ function parseAccountProfileAvatarUpdate(value: unknown): AccountProfileAvatarUp
   return {
     avatarColor: record.avatarColor?.toLocaleUpperCase('en-US') ?? null,
     expectedAvatarColor: record.expectedAvatarColor?.toLocaleUpperCase('en-US') ?? null
+  }
+}
+
+function parseAccountSessionDeauthorization(value: unknown): AccountSessionDeauthorizationRequest {
+  const record = exactDataRecord(value, ['masterPassword', 'confirmation', 'confirm'])
+  const request: AccountSessionDeauthorizationRequest = {
+    masterPassword: requiredString(record, 'masterPassword'),
+    confirmation: record.confirmation as typeof ACCOUNT_SESSION_DEAUTHORIZATION_CONFIRMATION,
+    confirm: record.confirm as true
+  }
+  if (
+    request.masterPassword.length === 0 ||
+    request.masterPassword.length > 16_384 ||
+    request.confirmation !== ACCOUNT_SESSION_DEAUTHORIZATION_CONFIRMATION ||
+    request.confirm !== true
+  ) {
+    request.masterPassword = ''
+    throw new VaultError('INVALID_INPUT')
+  }
+  return request
+}
+
+function scrubAccountSessionDeauthorization(value: unknown): void {
+  if (typeof value !== 'object' || value === null) return
+  for (const key of ['masterPassword', 'confirmation'] as const) {
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key)
+      if (!descriptor || !('value' in descriptor)) continue
+      Reflect.defineProperty(value, key, { ...descriptor, value: '' })
+    } catch {
+      // Best-effort cleanup must not invoke accessors or replace the operation result.
+    }
   }
 }
 
@@ -2994,6 +3028,34 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   registerHandler(IPC_CHANNELS.accountDevices, getMainWindow, (_event, input) => {
     parseNoInput(input)
     return vault.getAccountDevices()
+  })
+  registerHandler(IPC_CHANNELS.accountDeauthorizeSessions, getMainWindow, async (_event, input) => {
+    let request: AccountSessionDeauthorizationRequest | null = null
+    try {
+      request = parseAccountSessionDeauthorization(input)
+      await Promise.resolve(options.beforeSyncReconfigure?.())
+      try {
+        await vault.deauthorizeAllSessions(request)
+      } catch (error) {
+        try {
+          options.afterSyncChanged?.(await vault.syncStatus())
+        } catch {
+          // Never replace the mutation result with an auxiliary status refresh failure.
+        }
+        throw error
+      }
+      try {
+        options.afterSyncChanged?.(await vault.syncStatus())
+      } catch {
+        // The strict empty mutation response remains authoritative.
+      }
+    } finally {
+      if (request) {
+        request.masterPassword = ''
+        ;(request as { confirmation: string }).confirmation = ''
+      }
+      scrubAccountSessionDeauthorization(input)
+    }
   })
   registerHandler(IPC_CHANNELS.accountResendVerification, getMainWindow, (_event, input) => {
     parseNoInput(input)
