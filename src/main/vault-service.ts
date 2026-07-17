@@ -3166,6 +3166,11 @@ type AttachmentAuthorizationValidator = (
   state: { generation: number }
 ) => boolean
 
+type PasswordHistoryAuthorizationValidator = (
+  ids: readonly string[],
+  state: { generation: number }
+) => boolean
+
 interface ExposedPasswordSnapshot {
   readonly generation: number
   readonly revision: string
@@ -6525,11 +6530,19 @@ export class VaultService {
     })
   }
 
-  getPasswordHistory(request: LoginIdRequest): Promise<VaultPasswordHistoryEntry[]> {
+  getPasswordHistory(
+    request: LoginIdRequest,
+    validateAuthorization?: PasswordHistoryAuthorizationValidator
+  ): Promise<VaultPasswordHistoryEntry[]> {
     return this.exclusive(async () => {
       assertUuid(request.id)
       const login = this.findLogin(this.requireData(), request.id)
-      this.assertActiveLogin(login)
+      if (
+        (login.reprompt === 1 || login.deletedAt !== null) &&
+        !validateAuthorization?.([login.id], { generation: this.generation })
+      ) {
+        throw new VaultError('REPROMPT_REQUIRED')
+      }
       return clonePasswordHistory(login.passwordHistory)
     })
   }

@@ -2573,7 +2573,14 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   })
   registerHandler(IPC_CHANNELS.loginGetPasswordHistory, getMainWindow, (event, input) => {
     const request = parseId(input)
-    return runAuthorized(event, request, () => vault.getPasswordHistory(request))
+    return vault.getPasswordHistory(request, (ids, state) =>
+      authorizations.validateMany(
+        request.authorizationToken,
+        event.sender.id,
+        ids,
+        state.generation
+      )
+    )
   })
   registerHandler(IPC_CHANNELS.loginRestorePasswordHistory, getMainWindow, (event, input) => {
     const request = parsePasswordHistoryRestore(input)

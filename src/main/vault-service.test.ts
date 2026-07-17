@@ -8742,8 +8742,8 @@ describe('VaultService encrypted local data', () => {
     ])
   })
 
-  it('starts clones with empty history, retains archive/trash history, and rejects trash reads', async () => {
-    const { service } = await createHarness()
+  it('starts clones with empty history and exposes trash history through the narrow read only', async () => {
+    const { service, filePath } = await createHarness()
     await service.setup(MASTER_PASSWORD)
     const created = await service.createLogin({ name: 'Lifecycle history', password: 'old-secret' })
     await service.updateLogin({ id: created.id, password: 'new-secret' })
@@ -8756,13 +8756,51 @@ describe('VaultService encrypted local data', () => {
       { password: 'old-secret' }
     ])
     await service.deleteLogin({ id: created.id })
+    const encryptedBeforeRead = await readFile(filePath)
+    await expect(service.getPasswordHistory({ id: created.id }, () => false)).rejects.toMatchObject(
+      { code: 'REPROMPT_REQUIRED' }
+    )
+    await expect(service.getPasswordHistory({ id: created.id }, () => true)).resolves.toMatchObject(
+      [{ password: 'old-secret' }]
+    )
+    const trashHistory = await service.getPasswordHistory({ id: created.id }, () => true)
+    expect(await readFile(filePath)).toEqual(encryptedBeforeRead)
+    expect(trashHistory).toMatchObject([{ password: 'old-secret' }])
+    trashHistory[0]!.password = 'mutated-renderer-copy'
+    await expect(service.getPasswordHistory({ id: created.id }, () => true)).resolves.toMatchObject(
+      [{ password: 'old-secret' }]
+    )
+    const deletedSummary = (await service.listLogins({ deleted: true })).find(
+      (summary) => summary.id === created.id
+    )
+    expect(deletedSummary?.deletedAt).not.toBeNull()
+    await expect(
+      service.restorePasswordHistory({
+        id: created.id,
+        index: 0,
+        lastUsedDate: trashHistory[0]!.lastUsedDate,
+        expectedUpdatedAt: deletedSummary!.updatedAt
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await service.deleteLoginPermanently({ id: created.id })
     await expect(service.getPasswordHistory({ id: created.id })).rejects.toMatchObject({
+      code: 'NOT_FOUND'
+    })
+
+    const restored = await service.createLogin({ name: 'Restored history', password: 'first' })
+    await service.updateLogin({ id: restored.id, password: 'second' })
+    await service.deleteLogin({ id: restored.id })
+    await service.restoreLogin({ id: restored.id })
+    await expect(service.getPasswordHistory({ id: restored.id })).resolves.toMatchObject([
+      { password: 'first' }
+    ])
+    await expect(service.getLogin({ id: restored.id })).resolves.toMatchObject({
+      id: restored.id,
+      deletedAt: null
+    })
+    await expect(service.getPasswordHistory({ id: 'not-a-uuid' })).rejects.toMatchObject({
       code: 'INVALID_INPUT'
     })
-    await service.restoreLogin({ id: created.id })
-    await expect(service.getPasswordHistory({ id: created.id })).resolves.toMatchObject([
-      { password: 'old-secret' }
-    ])
   })
 
   it('rejects reveal and copy requests from a stale custom field snapshot', async () => {

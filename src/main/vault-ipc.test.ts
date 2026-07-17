@@ -1555,7 +1555,11 @@ describe('registerVaultIpc reprompt gate', () => {
     afterMutation: ReturnType<typeof vi.fn>
     beforeSyncReconfigure: ReturnType<typeof vi.fn>
     afterSyncChanged: ReturnType<typeof vi.fn>
-    setAuthorizationState: (state: { reprompt: 0 | 1; generation: number }) => void
+    setAuthorizationState: (state: {
+      reprompt: 0 | 1
+      generation: number
+      deleted?: boolean
+    }) => void
   } {
     const mainFrame = { url: 'app://bearwarden/index.html' }
     const webContents = {
@@ -1566,7 +1570,7 @@ describe('registerVaultIpc reprompt gate', () => {
       isDestroyed: () => false
     }
     const event = { sender: webContents, senderFrame: mainFrame }
-    let authorizationState: { reprompt: 0 | 1; generation: number } = {
+    let authorizationState: { reprompt: 0 | 1; generation: number; deleted?: boolean } = {
       reprompt: 1,
       generation: 3
     }
@@ -1603,9 +1607,20 @@ describe('registerVaultIpc reprompt gate', () => {
       }),
       authorizeLogins: vi.fn(async () => 3),
       getLogin: vi.fn(async () => ({ id: 'item-a' })),
-      getPasswordHistory: vi.fn(async () => [
-        { password: 'old-secret', lastUsedDate: '2026-07-14T00:00:00.000Z' }
-      ]),
+      getPasswordHistory: vi.fn(
+        async (
+          request: { id: string },
+          validate?: (ids: readonly string[], state: { generation: number }) => boolean
+        ) => {
+          if (
+            (authorizationState.reprompt === 1 || authorizationState.deleted) &&
+            !validate?.([request.id], authorizationState)
+          ) {
+            throw new VaultError('REPROMPT_REQUIRED')
+          }
+          return [{ password: 'old-secret', lastUsedDate: '2026-07-14T00:00:00.000Z' }]
+        }
+      ),
       restorePasswordHistory: vi.fn(async () => ({ id: 'item-a' })),
       downloadAttachment: vi.fn(async (request, _report, validate) => {
         requireAttachmentAuthorization(request, validate)
@@ -2881,7 +2896,6 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it.each([
     [IPC_CHANNELS.loginGet, 'getLogin', { id: 'item-a' }],
-    [IPC_CHANNELS.loginGetPasswordHistory, 'getPasswordHistory', { id: 'item-a' }],
     [
       IPC_CHANNELS.loginRestorePasswordHistory,
       'restorePasswordHistory',
@@ -2913,6 +2927,23 @@ describe('registerVaultIpc reprompt gate', () => {
       'BEARWARDEN:REPROMPT_REQUIRED'
     )
     expect(vault[method]).not.toHaveBeenCalled()
+  })
+
+  it('lets the service enforce deleted-history authorization inside the atomic read', async () => {
+    const { event, vault, setAuthorizationState } = harness()
+    setAuthorizationState({ reprompt: 0, generation: 3, deleted: true })
+    const handler = electronMock.handlers.get(IPC_CHANNELS.loginGetPasswordHistory)!
+
+    await expect(handler(event, { id: 'item-a' })).rejects.toThrow('BEARWARDEN:REPROMPT_REQUIRED')
+    expect(vault.getPasswordHistory).toHaveBeenCalledWith({ id: 'item-a' }, expect.any(Function))
+
+    const authorization = (await electronMock.handlers.get(IPC_CHANNELS.loginAuthorize)!(event, {
+      id: 'item-a',
+      masterPassword: 'correct horse battery staple'
+    })) as { token: string }
+    await expect(
+      handler(event, { id: 'item-a', authorizationToken: authorization.token })
+    ).resolves.toEqual([{ password: 'old-secret', lastUsedDate: '2026-07-14T00:00:00.000Z' }])
   })
 
   it.each([
@@ -3104,7 +3135,7 @@ describe('registerVaultIpc reprompt gate', () => {
     }
   )
 
-  it('uses a narrow exact history request and propagates the trash rejection', async () => {
+  it('uses a narrow exact history request and propagates service rejection', async () => {
     const { event, vault, setAuthorizationState } = harness()
     setAuthorizationState({ reprompt: 0, generation: 3 })
     const getHistory = electronMock.handlers.get(IPC_CHANNELS.loginGetPasswordHistory)!

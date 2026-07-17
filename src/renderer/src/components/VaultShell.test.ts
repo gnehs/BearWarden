@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { LoginSummary } from '../../../shared/vault-contract'
 import {
+  canUseCachedLoginDetail,
+  hasTrashPasswordHistory,
   isCurrentSelectedDetailResponse,
   protectedDetailInvalidationIds
 } from './VaultShell-security'
@@ -39,6 +41,16 @@ describe('protectedDetailInvalidationIds', () => {
     expect(protectedDetailInvalidationIds(summaries, (id) => id === 'authorized')).toEqual(
       new Set(['newly-protected'])
     )
+  })
+
+  it('treats every trashed summary as protected even when item reprompt is disabled', () => {
+    const trashed = { ...summary('trashed', 0), deletedAt: '2026-07-17T00:00:00.000Z' }
+
+    expect(protectedDetailInvalidationIds([trashed], () => false)).toEqual(new Set(['trashed']))
+    expect(protectedDetailInvalidationIds([trashed], () => true)).toEqual(new Set(['trashed']))
+    expect(canUseCachedLoginDetail(trashed, 0, true)).toBe(false)
+    expect(hasTrashPasswordHistory(trashed)).toBe(false)
+    expect(hasTrashPasswordHistory({ ...trashed, passwordHistoryCount: 1 })).toBe(true)
   })
 })
 

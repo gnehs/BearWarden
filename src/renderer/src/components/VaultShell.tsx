@@ -104,6 +104,8 @@ import {
 } from './ssh-key-editor-state'
 import CredentialGeneratorDialog from './CredentialGeneratorDialog'
 import {
+  canUseCachedLoginDetail,
+  hasTrashPasswordHistory,
   isCurrentSelectedDetailResponse,
   protectedDetailInvalidationIds
 } from './VaultShell-security'
@@ -810,6 +812,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedLogin, setSelectedLogin] = useState<LoginView | null>(null)
+  const selectedSummary = items.find((item) => item.id === selectedId) ?? null
   const [totpCodeState, setTotpCodeState] = useState<{
     itemId: string
     code: TotpCodeView
@@ -1199,9 +1202,13 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   const loadLoginDetail = useCallback(
     (id: string): Promise<LoginView> => {
-      const protectedItem = itemsRef.current.find((item) => item.id === id)?.reprompt === 1
+      const summary = itemsRef.current.find((item) => item.id === id)
+      if (summary?.deletedAt) return Promise.reject(new Error('INVALID_INPUT'))
       const cached = detailCacheRef.current.get(id)
-      if (cached && (!protectedItem || authorizationToken(id))) {
+      if (
+        cached &&
+        canUseCachedLoginDetail(summary, cached.reprompt, Boolean(authorizationToken(id)))
+      ) {
         detailCacheRef.current.delete(id)
         detailCacheRef.current.set(id, cached)
         return Promise.resolve(cached)
@@ -1256,8 +1263,10 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         if (id) compactReturnIdRef.current = id
         selectedIdRef.current = id
         const cached = id ? detailCacheRef.current.get(id) : undefined
+        const summary = id ? itemsRef.current.find((item) => item.id === id) : undefined
         const canUseCached =
-          cached && (cached.reprompt === 0 || Boolean(authorizationToken(cached.id)))
+          cached &&
+          canUseCachedLoginDetail(summary, cached.reprompt, Boolean(authorizationToken(cached.id)))
         if (canUseCached) setSelectedLogin(cached)
         else if (!id) setSelectedLogin(null)
         setSelectedId(id)
@@ -1295,16 +1304,16 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   )
 
   const revealPasswordHistory = useCallback(async () => {
-    const login = selectedLogin
-    if (!login || login.deletedAt) throw new Error('INVALID_INPUT')
-    const itemId = login.id
+    const summary = selectedSummary
+    if (!summary || summary.passwordHistoryCount === 0) throw new Error('INVALID_INPUT')
+    const itemId = summary.id
     return withReprompt([itemId], (tokenFor) =>
       window.bearwarden.logins.getPasswordHistory({
         id: itemId,
         ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
       })
     )
-  }, [selectedLogin, withReprompt])
+  }, [selectedSummary, withReprompt])
 
   const restorePasswordHistory = useCallback(
     async (index: number, lastUsedDate: string): Promise<void> => {
@@ -1770,7 +1779,6 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     }
   }, [selectedId, selectedLogin])
 
-  const selectedSummary = items.find((item) => item.id === selectedId) ?? null
   const selectedSummaries = useMemo(
     () => items.filter((item) => selectedIds.has(item.id)),
     [items, selectedIds]
@@ -4146,7 +4154,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     <CardHeader>
                       <CardTitle>這個項目已移至垃圾桶</CardTitle>
                       <CardDescription>
-                        為了保護已刪除的敏感資料，請先還原項目再查看或編輯內容。
+                        為了保護已刪除的敏感資料，請先還原項目再查看或編輯目前內容。
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -4165,6 +4173,31 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                       </dl>
                     </CardContent>
                   </Card>
+                  {hasTrashPasswordHistory(selectedSummary) && (
+                    <Card
+                      className="detail-card gap-0 py-0"
+                      role="region"
+                      aria-labelledby="trash-password-history-title"
+                    >
+                      <CardHeader className="bg-muted rounded-none border-b">
+                        <CardTitle id="trash-password-history-title">密碼歷史</CardTitle>
+                        <CardDescription>
+                          {selectedSummary.passwordHistoryCount} 筆唯讀紀錄
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <Button
+                          variant="outline"
+                          type="button"
+                          disabled={busy}
+                          onClick={() => setPasswordHistoryDialogOpen(true)}
+                        >
+                          <History data-icon="inline-start" aria-hidden="true" />
+                          查看密碼歷史
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  )}
                   <div className="danger-zone flex flex-wrap gap-2">
                     <Button type="button" disabled={busy} onClick={() => void restoreLogin()}>
                       <RotateCcw data-icon="inline-start" />
@@ -4759,13 +4792,13 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
               </AlertDialogContent>
             </AlertDialog>
           )}
-        {passwordHistoryDialogOpen && selectedLogin && (
+        {passwordHistoryDialogOpen && selectedSummary && (
           <PasswordHistoryDialog
-            itemName={selectedLogin.name}
-            count={selectedLogin.passwordHistoryCount}
+            itemName={selectedSummary.name}
+            count={selectedSummary.passwordHistoryCount}
             onClose={() => setPasswordHistoryDialogOpen(false)}
             onReveal={revealPasswordHistory}
-            onRestore={restorePasswordHistory}
+            {...(selectedSummary.deletedAt ? {} : { onRestore: restorePasswordHistory })}
           />
         )}
         {generatorDialogOpen && (
