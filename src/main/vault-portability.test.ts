@@ -248,6 +248,46 @@ describe('VaultPortabilityService', () => {
     expect(parseBitwardenJson(inspected.vaultJson).snapshot.items).toHaveLength(1)
   })
 
+  it('streams an explicitly plaintext Bitwarden ZIP through the attachment source', async () => {
+    const { outputPath, picker, service, vault } = await harness()
+
+    await expect(
+      service.exportVault({ masterPassword: MASTER_PASSWORD, format: 'bitwarden-zip' })
+    ).resolves.toEqual({
+      canceled: false,
+      exportedFolders: 1,
+      exportedItems: 1,
+      skippedTrashItems: 2,
+      attachmentCount: 0,
+      attachmentBytes: 0
+    })
+
+    expect(picker.chooseExportPath).toHaveBeenCalledWith('bitwarden_export_20260716_030405Z.zip')
+    expect(vault.createNativeAttachmentBackupSource).toHaveBeenCalledWith(MASTER_PASSWORD)
+    expect(vault.exportPortableSnapshot).not.toHaveBeenCalled()
+    const source = await vault.createNativeAttachmentBackupSource.mock.results[0]!.value
+    expect(source.dispose).toHaveBeenCalledOnce()
+    expect((await readFile(outputPath)).subarray(0, 2).toString('ascii')).toBe('PK')
+    expect((await stat(outputPath)).mode & 0o777).toBe(0o600)
+  })
+
+  it('rejects passwords for plaintext ZIP and requires them for encrypted exports', async () => {
+    const { picker, service, vault } = await harness()
+
+    await expect(
+      service.exportVault({
+        masterPassword: MASTER_PASSWORD,
+        format: 'bitwarden-zip',
+        password: BACKUP_PASSWORD
+      } as never)
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.exportVault({ masterPassword: MASTER_PASSWORD } as never)
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    expect(vault.verifyPortabilityOwner).not.toHaveBeenCalled()
+    expect(picker.chooseExportPath).not.toHaveBeenCalled()
+  })
+
   it('verifies the owner but does no data work when a native picker is canceled', async () => {
     const { service, vault } = await harness({ exportPath: null, importPath: null })
 

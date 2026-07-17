@@ -1508,6 +1508,14 @@ describe('registerVaultIpc reprompt gate', () => {
       password: 'portable backup password',
       format: 'bearwarden-native'
     })
+    await exportVault(event, {
+      masterPassword: 'correct horse battery staple',
+      format: 'bitwarden-zip'
+    })
+    expect(portability.exportVault).toHaveBeenLastCalledWith({
+      masterPassword: 'correct horse battery staple',
+      format: 'bitwarden-zip'
+    })
     await expect(
       importVault(event, {
         masterPassword: 'correct horse battery staple',
@@ -1527,6 +1535,11 @@ describe('registerVaultIpc reprompt gate', () => {
         masterPassword: 'correct horse battery staple',
         password: 'portable backup password',
         format: 'unknown'
+      },
+      {
+        masterPassword: 'correct horse battery staple',
+        password: 'must-not-be-used-for-plaintext',
+        format: 'bitwarden-zip'
       }
     ]) {
       await expect(exportVault(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')

@@ -7,8 +7,22 @@ import {
   type AccountWebAuthnKeyRemovalRequest,
   type AccountWebAuthnKeyView,
   type AccountWebAuthnKeysRequest,
-  type BearWardenAPI
+  type BearWardenAPI,
+  type VaultExportRequest
 } from './vault-contract'
+
+describe('vault export renderer contract', () => {
+  it('makes plaintext ZIP passwordless while encrypted formats require a password', () => {
+    expectTypeOf<VaultExportRequest>().toMatchTypeOf<
+      | {
+          masterPassword: string
+          password: string
+          format?: 'bitwarden-json' | 'bearwarden-native'
+        }
+      | { masterPassword: string; password?: never; format: 'bitwarden-zip' }
+    >()
+  })
+})
 
 describe('local account management renderer contract', () => {
   it('keeps reorder and destructive removal requests narrow and explicit', () => {

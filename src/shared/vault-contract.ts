@@ -187,6 +187,7 @@ export type VaultErrorCode =
   | 'ACCOUNT_SWITCH_UNAVAILABLE'
   | 'ACCOUNT_SWITCH_IN_PROGRESS'
   | 'ACCOUNT_SWITCH_RESULT_UNKNOWN'
+  | 'EXPORT_RESULT_UNKNOWN'
   | 'INTERNAL_ERROR'
 
 export type VaultState = 'uninitialized' | 'locked' | 'unlocked'
@@ -299,17 +300,22 @@ export interface PinUnlockRequest {
   pin: string
 }
 
-export interface VaultExportRequest {
-  /** Proves the currently unlocked vault owner in the main process. */
-  masterPassword: string
-  /** A portable backup password; it is used only in the main process. */
-  password: string
-  /**
-   * Internal preview only; the renderer does not expose it until native restore exists.
-   * Omitted for the interoperable Bitwarden JSON default.
-   */
-  format?: 'bitwarden-json' | 'bearwarden-native'
-}
+export type VaultExportRequest =
+  | {
+      /** Proves the currently unlocked vault owner in the main process. */
+      masterPassword: string
+      /** A portable backup password; it is used only in the main process. */
+      password: string
+      /** Omitted for the interoperable password-protected Bitwarden JSON default. */
+      format?: 'bitwarden-json' | 'bearwarden-native'
+    }
+  | {
+      /** Proves the currently unlocked vault owner in the main process. */
+      masterPassword: string
+      /** Bitwarden's attachment ZIP is intentionally plaintext and must not accept a password. */
+      password?: never
+      format: 'bitwarden-zip'
+    }
 
 export interface VaultImportRequest {
   /** Proves the currently unlocked vault owner in the main process. */
@@ -323,7 +329,7 @@ export interface VaultExportResult {
   exportedFolders: number
   exportedItems: number
   skippedTrashItems: number
-  /** Present only for the UI-hidden, main-process native attachment backup preview. */
+  /** Present for attachment-bearing exports. */
   attachmentCount?: number
   attachmentBytes?: number
   resumed?: boolean

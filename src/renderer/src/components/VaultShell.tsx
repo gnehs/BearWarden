@@ -2370,8 +2370,10 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     const skipped = result.skippedTrashItems
       ? `，已略過垃圾桶中的 ${result.skippedTrashItems} 個項目`
       : ''
+    const attachments =
+      result.attachmentCount === undefined ? '' : `、${result.attachmentCount} 個附件`
     announce(
-      `加密備份已儲存，共 ${result.exportedItems} 個項目、${result.exportedFolders} 個資料夾${skipped}。`
+      `匯出檔已儲存，共 ${result.exportedItems} 個項目、${result.exportedFolders} 個資料夾${attachments}${skipped}。`
     )
   }
 

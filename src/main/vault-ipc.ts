@@ -242,14 +242,26 @@ function parseVaultExport(value: unknown): VaultExportRequest {
   if (
     record.format !== undefined &&
     record.format !== 'bitwarden-json' &&
+    record.format !== 'bitwarden-zip' &&
     record.format !== 'bearwarden-native'
   ) {
     throw new VaultError('INVALID_INPUT')
   }
+  const format = record.format ?? 'bitwarden-json'
+  if (
+    (format === 'bitwarden-zip' && record.password !== undefined) ||
+    (format !== 'bitwarden-zip' && typeof record.password !== 'string')
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const masterPassword = requiredString(record, 'masterPassword')
+  if (format === 'bitwarden-zip') {
+    return { masterPassword, format: 'bitwarden-zip' }
+  }
   return {
-    masterPassword: requiredString(record, 'masterPassword'),
-    password: requiredString(record, 'password'),
-    ...(record.format === undefined ? {} : { format: record.format })
+    masterPassword,
+    password: record.password as string,
+    ...(format === 'bitwarden-json' && record.format === undefined ? {} : { format })
   }
 }
 

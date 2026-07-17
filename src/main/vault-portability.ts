@@ -23,6 +23,7 @@ import {
   writeNativeAttachmentBackup,
   type NativeAttachmentBackupReader
 } from './native-attachment-backup'
+import { writeBitwardenAttachmentZip } from './bitwarden-attachment-zip'
 import type { VaultService } from './vault-service'
 
 const MAX_PORTABLE_FILE_BYTES = 64 * 1024 * 1024
@@ -67,6 +68,12 @@ function nativeExportFileName(now: Date): string {
   return exportFileName(now)
     .replace('bitwarden_encrypted_export_', 'bearwarden_backup_')
     .replace(/\.json$/, '.bwbackup')
+}
+
+function zipExportFileName(now: Date): string {
+  return exportFileName(now)
+    .replace('bitwarden_encrypted_export_', 'bitwarden_export_')
+    .replace(/\.json$/, '.zip')
 }
 
 async function syncDirectory(path: string): Promise<void> {
@@ -365,33 +372,62 @@ export class VaultPortabilityService {
   }
 
   async exportVault(request: VaultExportRequest): Promise<VaultExportResult> {
+    if (!request || typeof request.masterPassword !== 'string') {
+      throw new VaultError('INVALID_INPUT')
+    }
+    const format = request.format ?? 'bitwarden-json'
     if (
-      !request ||
-      typeof request.masterPassword !== 'string' ||
-      typeof request.password !== 'string' ||
-      request.password.length < MIN_EXPORT_PASSWORD_LENGTH ||
-      request.password.length > MAX_EXPORT_PASSWORD_LENGTH
+      format !== 'bitwarden-json' &&
+      format !== 'bitwarden-zip' &&
+      format !== 'bearwarden-native'
     ) {
       throw new VaultError('INVALID_INPUT')
     }
-
-    await this.vault.verifyPortabilityOwner(request.masterPassword)
-    const format = request.format ?? 'bitwarden-json'
-    if (format !== 'bitwarden-json' && format !== 'bearwarden-native') {
+    if (
+      (format === 'bitwarden-zip' && request.password !== undefined) ||
+      (format !== 'bitwarden-zip' &&
+        (typeof request.password !== 'string' ||
+          request.password.length < MIN_EXPORT_PASSWORD_LENGTH ||
+          request.password.length > MAX_EXPORT_PASSWORD_LENGTH))
+    ) {
       throw new VaultError('INVALID_INPUT')
     }
+    const exportPassword = format === 'bitwarden-zip' ? undefined : request.password
+    await this.vault.verifyPortabilityOwner(request.masterPassword)
     const path = await this.picker.chooseExportPath(
-      format === 'bearwarden-native' ? nativeExportFileName(this.now()) : exportFileName(this.now())
+      format === 'bearwarden-native'
+        ? nativeExportFileName(this.now())
+        : format === 'bitwarden-zip'
+          ? zipExportFileName(this.now())
+          : exportFileName(this.now())
     )
     if (path === null) {
       return { canceled: true, exportedFolders: 0, exportedItems: 0, skippedTrashItems: 0 }
     }
     if (typeof path !== 'string' || path.length === 0) throw new VaultError('INTERNAL_ERROR')
 
+    if (format === 'bitwarden-zip') {
+      const source = await this.vault.createNativeAttachmentBackupSource(request.masterPassword)
+      try {
+        const result = await writeBitwardenAttachmentZip(path, source)
+        return {
+          canceled: false,
+          exportedFolders: source.exportedFolders,
+          exportedItems: source.exportedItems,
+          skippedTrashItems: source.skippedTrashItems,
+          attachmentCount: result.attachmentCount,
+          attachmentBytes: result.attachmentBytes
+        }
+      } finally {
+        source.dispose()
+      }
+    }
+
+    if (exportPassword === undefined) throw new VaultError('INTERNAL_ERROR')
     if (format === 'bearwarden-native') {
       const source = await this.vault.createNativeAttachmentBackupSource(request.masterPassword)
       try {
-        const result = await writeNativeAttachmentBackup(path, request.password, source)
+        const result = await writeNativeAttachmentBackup(path, exportPassword, source)
         return {
           canceled: false,
           exportedFolders: source.exportedFolders,
@@ -408,7 +444,7 @@ export class VaultPortabilityService {
 
     const exported = await this.vault.exportPortableSnapshot(request.masterPassword)
     const clearText = buildBitwardenJson(exported.snapshot)
-    const encrypted = await encryptBitwardenPasswordProtectedJson(clearText, request.password)
+    const encrypted = await encryptBitwardenPasswordProtectedJson(clearText, exportPassword)
     await atomicWritePrivate(path, `${encrypted}\n`)
     return {
       canceled: false,

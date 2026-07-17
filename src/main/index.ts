@@ -634,14 +634,17 @@ if (hasSingleInstanceLock)
     portability = new VaultPortabilityService(vault, {
       chooseExportPath: async (defaultName) => {
         const native = defaultName.endsWith('.bwbackup')
+        const zip = defaultName.endsWith('.zip')
         const options = {
-          title: '匯出加密保管庫',
+          title: zip ? '匯出 Bitwarden 明文附件 ZIP' : '匯出加密保管庫',
           defaultPath: defaultName,
           buttonLabel: '匯出',
           filters: [
             native
               ? { name: 'BearWarden 原生附件備份', extensions: ['bwbackup'] }
-              : { name: 'Bitwarden JSON', extensions: ['json'] }
+              : zip
+                ? { name: 'Bitwarden ZIP（含附件）', extensions: ['zip'] }
+                : { name: 'Bitwarden JSON', extensions: ['json'] }
           ],
           properties: ['showOverwriteConfirmation' as const]
         }
