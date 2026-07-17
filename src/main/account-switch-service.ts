@@ -23,11 +23,13 @@ export interface RendererSafeAccountStatusEntry {
   /** Opaque identifier. Display metadata must remain in account-scoped encrypted storage. */
   readonly id: string
   readonly active: boolean
-  /** One-based, stable position inherited from the registry's append-only account order. */
+  /** One-based position in the user-controlled local account order. */
   readonly slot: number
 }
 
 export interface RendererSafeAccountStatus {
+  /** Non-sensitive CAS token used to reject stale reorder requests. */
+  readonly revision: number
   readonly activeAccountId: string
   readonly accounts: readonly RendererSafeAccountStatusEntry[]
 }
@@ -41,12 +43,18 @@ export type AccountSwitchMutationResult =
       readonly kind: 'relaunch-required'
       readonly status: RendererSafeAccountStatus
     }
+  | {
+      readonly kind: 'updated'
+      readonly status: RendererSafeAccountStatus
+    }
 
 export type AccountSwitchServiceErrorCode =
   | 'INVALID_ACCOUNT_SWITCH_REQUEST'
   | 'ACCOUNT_REGISTRY_UNAVAILABLE'
   | 'ACCOUNT_LIMIT_REACHED'
   | 'ACCOUNT_NOT_REGISTERED'
+  | 'ACCOUNT_ACTIVE_REMOVAL_FORBIDDEN'
+  | 'ACCOUNT_STALE_REORDER_REQUEST'
   | 'ACCOUNT_ID_GENERATION_FAILED'
   | 'ACCOUNT_STORAGE_PREPARATION_FAILED'
   | 'ACCOUNT_STORAGE_UNAVAILABLE'
@@ -111,9 +119,40 @@ function rendererSafeStatus(registry: AccountRegistry): RendererSafeAccountStatu
     })
   )
   return Object.freeze({
+    revision: registry.revision,
     activeAccountId: registry.activeAccountId,
     accounts: Object.freeze(accounts)
   })
+}
+
+function safeAccountIdArray(value: unknown): readonly string[] | null {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return null
+  const descriptors = Object.getOwnPropertyDescriptors(value)
+  if (Reflect.ownKeys(descriptors).some((key) => typeof key !== 'string')) return null
+  const accountIds: string[] = []
+  const allowedKeys = new Set(['length'])
+  for (let index = 0; index < value.length; index += 1) {
+    const key = String(index)
+    const descriptor = descriptors[key]
+    if (
+      descriptor === undefined ||
+      descriptor.enumerable !== true ||
+      !('value' in descriptor) ||
+      descriptor.get !== undefined ||
+      descriptor.set !== undefined
+    ) {
+      return null
+    }
+    try {
+      assertAccountId(descriptor.value)
+    } catch {
+      return null
+    }
+    accountIds.push(descriptor.value)
+    allowedKeys.add(key)
+  }
+  if (Object.keys(descriptors).some((key) => !allowedKeys.has(key))) return null
+  return Object.freeze(accountIds)
 }
 
 function registryEqual(left: AccountRegistry, right: AccountRegistry): boolean {
@@ -192,6 +231,35 @@ export class AccountSwitchService {
     return this.serializeMutation(() => this.performSwitchAccount(accountId))
   }
 
+  removeAccount(accountId: unknown): Promise<AccountSwitchMutationResult> {
+    try {
+      assertAccountId(accountId)
+    } catch {
+      return Promise.reject(new AccountSwitchServiceError('INVALID_ACCOUNT_SWITCH_REQUEST'))
+    }
+    return this.serializeMutation(() => this.performRemoveAccount(accountId))
+  }
+
+  reorderAccounts(
+    orderedAccountIds: unknown,
+    expectedRevision: unknown
+  ): Promise<AccountSwitchMutationResult> {
+    const accountIds = safeAccountIdArray(orderedAccountIds)
+    if (
+      !accountIds ||
+      accountIds.length < 1 ||
+      accountIds.length > ACCOUNT_REGISTRY_MAX_ACCOUNTS ||
+      new Set(accountIds).size !== accountIds.length ||
+      !Number.isSafeInteger(expectedRevision) ||
+      (expectedRevision as number) < 1
+    ) {
+      return Promise.reject(new AccountSwitchServiceError('INVALID_ACCOUNT_SWITCH_REQUEST'))
+    }
+    return this.serializeMutation(() =>
+      this.performReorderAccounts(accountIds, expectedRevision as number)
+    )
+  }
+
   private serializeMutation(
     mutate: () => Promise<AccountSwitchMutationResult>
   ): Promise<AccountSwitchMutationResult> {
@@ -251,6 +319,75 @@ export class AccountSwitchService {
       accounts: current.accounts.map(copyEntry)
     })
     return this.commitActivation(current, next, accountId, 'switch-account')
+  }
+
+  private async performRemoveAccount(accountId: string): Promise<AccountSwitchMutationResult> {
+    const current = await this.loadRegistry()
+    if (!current.accounts.some((account) => account.id === accountId)) {
+      throw new AccountSwitchServiceError('ACCOUNT_NOT_REGISTERED')
+    }
+    if (current.activeAccountId === accountId) {
+      throw new AccountSwitchServiceError('ACCOUNT_ACTIVE_REMOVAL_FORBIDDEN')
+    }
+    const next = parseAccountRegistry({
+      ...current,
+      revision: current.revision + 1,
+      accounts: current.accounts.filter((account) => account.id !== accountId).map(copyEntry)
+    })
+    return this.commitRegistryUpdate(current, next)
+  }
+
+  private async performReorderAccounts(
+    orderedAccountIds: readonly string[],
+    expectedRevision: number
+  ): Promise<AccountSwitchMutationResult> {
+    const current = await this.loadRegistry()
+    if (current.revision !== expectedRevision) {
+      throw new AccountSwitchServiceError('ACCOUNT_STALE_REORDER_REQUEST')
+    }
+    if (
+      orderedAccountIds.length !== current.accounts.length ||
+      orderedAccountIds.some((id) => !current.accounts.some((account) => account.id === id))
+    ) {
+      throw new AccountSwitchServiceError('INVALID_ACCOUNT_SWITCH_REQUEST')
+    }
+    if (orderedAccountIds.every((id, index) => current.accounts[index]?.id === id)) {
+      return { kind: 'unchanged', status: rendererSafeStatus(current) }
+    }
+    const entries = new Map(current.accounts.map((account) => [account.id, account] as const))
+    const next = parseAccountRegistry({
+      ...current,
+      revision: current.revision + 1,
+      accounts: orderedAccountIds.map((id) => copyEntry(entries.get(id)!))
+    })
+    return this.commitRegistryUpdate(current, next)
+  }
+
+  private async commitRegistryUpdate(
+    current: AccountRegistry,
+    next: AccountRegistry
+  ): Promise<AccountSwitchMutationResult> {
+    try {
+      await this.registryStore.save(next, current.revision)
+    } catch {
+      let observed: AccountRegistry
+      try {
+        const loaded = await this.registryStore.load()
+        if (!loaded) throw new Error('ACCOUNT_REGISTRY_MISSING')
+        observed = parseAccountRegistry(loaded)
+      } catch {
+        this.relaunchPending = true
+        throw new AccountSwitchServiceError('ACCOUNT_REGISTRY_UPDATE_RESULT_UNKNOWN')
+      }
+      if (registryEqual(observed, current)) {
+        throw new AccountSwitchServiceError('ACCOUNT_REGISTRY_UPDATE_FAILED')
+      }
+      if (!registryEqual(observed, next)) {
+        this.relaunchPending = true
+        throw new AccountSwitchServiceError('ACCOUNT_REGISTRY_UPDATE_RESULT_UNKNOWN')
+      }
+    }
+    return { kind: 'updated', status: rendererSafeStatus(next) }
   }
 
   private async prepareAccountStorage(accountId: string): Promise<void> {

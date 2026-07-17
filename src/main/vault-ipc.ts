@@ -479,6 +479,7 @@ function parseAccountSwitch(value: unknown): string {
 
 function publicAccountStatus(status: AccountStatus): AccountStatus {
   return {
+    revision: status.revision,
     activeAccountId: status.activeAccountId,
     accounts: status.accounts.map(({ id, active, slot }) => ({ id, active, slot }))
   }

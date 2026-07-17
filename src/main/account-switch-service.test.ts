@@ -119,7 +119,7 @@ function callbacks(
 }
 
 describe('AccountSwitchService renderer-safe status', () => {
-  it('lists only opaque IDs, active flags and stable one-based slots', async () => {
+  it('lists only a revision, opaque IDs, active flags and one-based positions', async () => {
     const root = await mkdtemp(join(tmpdir(), 'bearwarden-switch-status-'))
     const registryStore = memoryStore(registry())
     const service = new AccountSwitchService(root, {
@@ -129,6 +129,7 @@ describe('AccountSwitchService renderer-safe status', () => {
 
     const status = await service.getStatus()
     expect(status).toEqual({
+      revision: 1,
       activeAccountId: ACCOUNT_A,
       accounts: [
         { id: ACCOUNT_A, active: true, slot: 1 },
@@ -143,7 +144,7 @@ describe('AccountSwitchService renderer-safe status', () => {
     expect(serialized).not.toContain('2'.repeat(64))
     expect(serialized).not.toContain('@')
     expect(serialized).not.toContain(root)
-    expect(Object.keys(status)).toEqual(['activeAccountId', 'accounts'])
+    expect(Object.keys(status)).toEqual(['revision', 'activeAccountId', 'accounts'])
     expect(Object.keys(status.accounts[0]!)).toEqual(['id', 'active', 'slot'])
   })
 
@@ -165,6 +166,160 @@ describe('AccountSwitchService renderer-safe status', () => {
     })
     await expect(service.switchAccount({ toString: () => ACCOUNT_B })).rejects.toMatchObject({
       code: 'INVALID_ACCOUNT_SWITCH_REQUEST'
+    })
+    await expect(service.removeAccount('../vault')).rejects.toMatchObject({
+      code: 'INVALID_ACCOUNT_SWITCH_REQUEST'
+    })
+    await expect(service.reorderAccounts([ACCOUNT_A, ACCOUNT_B], 1.5)).rejects.toMatchObject({
+      code: 'INVALID_ACCOUNT_SWITCH_REQUEST'
+    })
+  })
+})
+
+describe('AccountSwitchService account management', () => {
+  it('reorders an exact account permutation with a fresh revision and preserves identity hashes', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bearwarden-account-reorder-'))
+    const initial = registry()
+    const registryStore = memoryStore(initial)
+    const activation = callbacks()
+    const service = new AccountSwitchService(root, {
+      registryStore: registryStore.store,
+      ...activation
+    })
+    const requestedOrder = [ACCOUNT_C, ACCOUNT_A, ACCOUNT_B]
+    const result = service.reorderAccounts(requestedOrder, 1)
+    requestedOrder.reverse()
+
+    await expect(result).resolves.toEqual({
+      kind: 'updated',
+      status: {
+        revision: 2,
+        activeAccountId: ACCOUNT_A,
+        accounts: [
+          { id: ACCOUNT_C, active: false, slot: 1 },
+          { id: ACCOUNT_A, active: true, slot: 2 },
+          { id: ACCOUNT_B, active: false, slot: 3 }
+        ]
+      }
+    })
+    expect(registryStore.current()).toEqual({
+      ...initial,
+      revision: 2,
+      accounts: [initial.accounts[2], initial.accounts[0], initial.accounts[1]]
+    })
+    expect(activation.beforeActivation).not.toHaveBeenCalled()
+    expect(activation.afterCommitRelaunch).not.toHaveBeenCalled()
+  })
+
+  it('treats the current order as unchanged and rejects stale or non-permutation requests', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bearwarden-account-reorder-invalid-'))
+    const registryStore = memoryStore(registry())
+    const service = new AccountSwitchService(root, {
+      registryStore: registryStore.store,
+      ...callbacks()
+    })
+
+    await expect(
+      service.reorderAccounts([ACCOUNT_A, ACCOUNT_B, ACCOUNT_C], 1)
+    ).resolves.toMatchObject({ kind: 'unchanged', status: { revision: 1 } })
+    await expect(
+      service.reorderAccounts([ACCOUNT_C, ACCOUNT_A, ACCOUNT_B], 2)
+    ).rejects.toMatchObject({ code: 'ACCOUNT_STALE_REORDER_REQUEST' })
+    await expect(service.reorderAccounts([ACCOUNT_A, ACCOUNT_B], 1)).rejects.toMatchObject({
+      code: 'INVALID_ACCOUNT_SWITCH_REQUEST'
+    })
+    await expect(
+      service.reorderAccounts([ACCOUNT_A, ACCOUNT_B, ACCOUNT_B], 1)
+    ).rejects.toMatchObject({ code: 'INVALID_ACCOUNT_SWITCH_REQUEST' })
+    await expect(
+      service.reorderAccounts([ACCOUNT_A, ACCOUNT_B, NEW_ACCOUNT], 1)
+    ).rejects.toMatchObject({ code: 'INVALID_ACCOUNT_SWITCH_REQUEST' })
+    const sparse = [ACCOUNT_A, ACCOUNT_B, ACCOUNT_C]
+    delete sparse[1]
+    await expect(service.reorderAccounts(sparse, 1)).rejects.toMatchObject({
+      code: 'INVALID_ACCOUNT_SWITCH_REQUEST'
+    })
+    const accessor = [ACCOUNT_A, ACCOUNT_B, ACCOUNT_C]
+    Object.defineProperty(accessor, '1', { enumerable: true, get: () => ACCOUNT_B })
+    await expect(service.reorderAccounts(accessor, 1)).rejects.toMatchObject({
+      code: 'INVALID_ACCOUNT_SWITCH_REQUEST'
+    })
+    expect(registryStore.save).not.toHaveBeenCalled()
+  })
+
+  it('removes only an inactive registered account and preserves the remaining order and hashes', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bearwarden-account-remove-'))
+    const initial = registry()
+    const registryStore = memoryStore(initial)
+    const activation = callbacks()
+    const service = new AccountSwitchService(root, {
+      registryStore: registryStore.store,
+      ...activation
+    })
+
+    await expect(service.removeAccount(ACCOUNT_B)).resolves.toEqual({
+      kind: 'updated',
+      status: {
+        revision: 2,
+        activeAccountId: ACCOUNT_A,
+        accounts: [
+          { id: ACCOUNT_A, active: true, slot: 1 },
+          { id: ACCOUNT_C, active: false, slot: 2 }
+        ]
+      }
+    })
+    expect(registryStore.current()).toEqual({
+      ...initial,
+      revision: 2,
+      accounts: [initial.accounts[0], initial.accounts[2]]
+    })
+    expect(activation.beforeActivation).not.toHaveBeenCalled()
+    expect(activation.afterCommitRelaunch).not.toHaveBeenCalled()
+  })
+
+  it('rejects active and unknown account removal without changing the registry', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bearwarden-account-remove-invalid-'))
+    const registryStore = memoryStore(registry())
+    const service = new AccountSwitchService(root, {
+      registryStore: registryStore.store,
+      ...callbacks()
+    })
+
+    await expect(service.removeAccount(ACCOUNT_A)).rejects.toMatchObject({
+      code: 'ACCOUNT_ACTIVE_REMOVAL_FORBIDDEN'
+    })
+    await expect(service.removeAccount(NEW_ACCOUNT)).rejects.toMatchObject({
+      code: 'ACCOUNT_NOT_REGISTERED'
+    })
+    expect(registryStore.save).not.toHaveBeenCalled()
+  })
+
+  it('accepts an observed committed update and poisons later mutations when the result differs', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bearwarden-account-update-reconcile-'))
+    let current = registry()
+    let saveAttempt = 0
+    const store: AccountSwitchRegistryStore = {
+      load: vi.fn(async () => current),
+      save: vi.fn(async (next) => {
+        saveAttempt += 1
+        current =
+          saveAttempt === 1
+            ? parseAccountRegistry(next)
+            : registry(next.revision, ACCOUNT_A, [ACCOUNT_A, ACCOUNT_C, ACCOUNT_B])
+        throw new Error('INJECTED_AFTER_COMMIT')
+      })
+    }
+    const service = new AccountSwitchService(root, { registryStore: store, ...callbacks() })
+
+    await expect(service.removeAccount(ACCOUNT_B)).resolves.toMatchObject({
+      kind: 'updated',
+      status: { revision: 2, accounts: [{ id: ACCOUNT_A }, { id: ACCOUNT_C }] }
+    })
+    await expect(service.reorderAccounts([ACCOUNT_C, ACCOUNT_A], 2)).rejects.toMatchObject({
+      code: 'ACCOUNT_REGISTRY_UPDATE_RESULT_UNKNOWN'
+    })
+    await expect(service.removeAccount(ACCOUNT_C)).rejects.toMatchObject({
+      code: 'ACCOUNT_SWITCH_IN_PROGRESS'
     })
   })
 })
@@ -209,6 +364,7 @@ describe('AccountSwitchService switching', () => {
     await expect(service.switchAccount(ACCOUNT_B)).resolves.toEqual({
       kind: 'relaunch-required',
       status: {
+        revision: 2,
         activeAccountId: ACCOUNT_B,
         accounts: [
           { id: ACCOUNT_A, active: false, slot: 1 },

@@ -198,6 +198,36 @@ describe('AccountRegistryStore', () => {
     )
   })
 
+  it('checkpoints an exact primary revision to backup before destructive cleanup', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bearwarden-registry-checkpoint-'))
+    const store = new AccountRegistryStore(root, { createUuid: testUuid })
+    await store.save(registry(), null)
+    const updated = registry(2)
+    await store.save(updated, 1)
+
+    expect(JSON.parse(await readFile(store.paths.registryBackupPath, 'utf8')).revision).toBe(1)
+    await expect(store.loadPrimary()).resolves.toEqual(updated)
+    await expect(store.checkpoint(updated, 2)).resolves.toEqual(updated)
+    expect(JSON.parse(await readFile(store.paths.registryBackupPath, 'utf8'))).toEqual(updated)
+  })
+
+  it('refuses to checkpoint a missing, corrupt, stale or mismatched primary', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bearwarden-registry-checkpoint-reject-'))
+    const store = new AccountRegistryStore(root, { createUuid: testUuid })
+    await expect(store.loadPrimary()).resolves.toBeNull()
+    await store.save(registry(), null)
+    await expect(store.checkpoint(registry(2), 2)).rejects.toThrow(
+      'ACCOUNT_REGISTRY_CHECKPOINT_CONFLICT'
+    )
+    await expect(store.checkpoint(registry(), 2)).rejects.toThrow(
+      'ACCOUNT_REGISTRY_CHECKPOINT_CONFLICT'
+    )
+    await writeFile(store.paths.registryPath, '{broken')
+    await expect(store.loadPrimary()).rejects.toThrow()
+    await expect(store.checkpoint(registry(), 1)).rejects.toThrow()
+    expect((await store.load())?.revision).toBe(1)
+  })
+
   it('recovers a corrupt primary from a valid backup and ignores a corrupt backup', async () => {
     const root = await mkdtemp(join(tmpdir(), 'bearwarden-registry-'))
     const store = new AccountRegistryStore(root, { createUuid: testUuid })

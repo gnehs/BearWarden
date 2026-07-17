@@ -96,6 +96,7 @@ describe('registerVaultIpc account boundary', () => {
 
   it('projects exact renderer-safe status and mutation fields', async () => {
     const status = {
+      revision: 7,
       activeAccountId: accountA,
       accounts: [
         {
@@ -118,6 +119,7 @@ describe('registerVaultIpc account boundary', () => {
     await expect(
       electronMock.handlers.get(IPC_CHANNELS.accountStatus)!(event, undefined)
     ).resolves.toEqual({
+      revision: 7,
       activeAccountId: accountA,
       accounts: [
         { id: accountA, active: true, slot: 1 },
@@ -129,6 +131,7 @@ describe('registerVaultIpc account boundary', () => {
     ).resolves.toEqual({
       kind: 'relaunch-required',
       status: {
+        revision: 7,
         activeAccountId: accountA,
         accounts: [
           { id: accountA, active: true, slot: 1 },
@@ -141,11 +144,11 @@ describe('registerVaultIpc account boundary', () => {
 
   it('uses the trusted sender gate and exact no-input/switch parsers', async () => {
     const service = {
-      getStatus: vi.fn(async () => ({ activeAccountId: accountA, accounts: [] })),
+      getStatus: vi.fn(async () => ({ revision: 1, activeAccountId: accountA, accounts: [] })),
       addAccount: vi.fn(),
       switchAccount: vi.fn(async () => ({
         kind: 'unchanged' as const,
-        status: { activeAccountId: accountA, accounts: [] }
+        status: { revision: 1, activeAccountId: accountA, accounts: [] }
       }))
     }
     const { event, untrustedEvent } = accountHarness(service)
@@ -221,7 +224,11 @@ describe('registerVaultIpc account boundary', () => {
       'ACCOUNT_SWITCH_RESULT_UNKNOWN'
     ],
     [
-      new AccountRelaunchResultUnknownError({ activeAccountId: accountA, accounts: [] }),
+      new AccountRelaunchResultUnknownError({
+        revision: 1,
+        activeAccountId: accountA,
+        accounts: []
+      }),
       'ACCOUNT_SWITCH_RESULT_UNKNOWN'
     ]
   ])('maps account mutation failures to stable public codes', async (failure, publicCode) => {

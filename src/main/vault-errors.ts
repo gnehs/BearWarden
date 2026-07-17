@@ -32,6 +32,10 @@ export function accountSwitchVaultError(error: unknown): VaultError | null {
       return new VaultError('ACCOUNT_LIMIT_REACHED')
     case 'ACCOUNT_NOT_REGISTERED':
       return new VaultError('ACCOUNT_NOT_FOUND')
+    case 'ACCOUNT_ACTIVE_REMOVAL_FORBIDDEN':
+      return new VaultError('ACCOUNT_ACTIVE_REMOVAL_FORBIDDEN')
+    case 'ACCOUNT_STALE_REORDER_REQUEST':
+      return new VaultError('ACCOUNT_STALE_STATE')
     case 'ACCOUNT_REGISTRY_UPDATE_RESULT_UNKNOWN':
       return new VaultError('ACCOUNT_SWITCH_RESULT_UNKNOWN')
     case 'ACCOUNT_SWITCH_IN_PROGRESS':

@@ -180,6 +180,8 @@ export type VaultErrorCode =
   | 'TOUCH_ID_FAILED'
   | 'ACCOUNT_LIMIT_REACHED'
   | 'ACCOUNT_NOT_FOUND'
+  | 'ACCOUNT_ACTIVE_REMOVAL_FORBIDDEN'
+  | 'ACCOUNT_STALE_STATE'
   | 'ACCOUNT_SWITCH_UNAVAILABLE'
   | 'ACCOUNT_SWITCH_IN_PROGRESS'
   | 'ACCOUNT_SWITCH_RESULT_UNKNOWN'
@@ -195,11 +197,13 @@ export interface VaultStatus {
 export interface AccountStatusEntry {
   readonly id: string
   readonly active: boolean
-  /** One-based stable position from the append-only registry order. */
+  /** One-based position in the user-controlled local account order. */
   readonly slot: number
 }
 
 export interface AccountStatus {
+  /** Non-sensitive CAS token used to reject stale reorder requests. */
+  readonly revision: number
   readonly activeAccountId: string
   readonly accounts: readonly AccountStatusEntry[]
 }
@@ -207,6 +211,7 @@ export interface AccountStatus {
 export type AccountMutationResult =
   | { readonly kind: 'unchanged'; readonly status: AccountStatus }
   | { readonly kind: 'relaunch-required'; readonly status: AccountStatus }
+  | { readonly kind: 'updated'; readonly status: AccountStatus }
 
 export interface InactiveTwoFactorFinding {
   id: string

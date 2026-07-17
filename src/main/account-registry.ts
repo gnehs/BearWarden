@@ -156,6 +156,21 @@ function serializeRegistry(registry: AccountRegistry): string {
   return `${JSON.stringify(parseAccountRegistry(registry))}\n`
 }
 
+function registryEqual(left: AccountRegistry, right: AccountRegistry): boolean {
+  return (
+    left.format === right.format &&
+    left.version === right.version &&
+    left.revision === right.revision &&
+    left.activeAccountId === right.activeAccountId &&
+    left.accounts.length === right.accounts.length &&
+    left.accounts.every(
+      (account, index) =>
+        account.id === right.accounts[index]?.id &&
+        account.identityHash === right.accounts[index]?.identityHash
+    )
+  )
+}
+
 async function readRegistryFile(path: string): Promise<AccountRegistry | null> {
   let handle: Awaited<ReturnType<typeof openNoFollow>> | undefined
   try {
@@ -186,16 +201,21 @@ export class AccountRegistryStore {
     this.afterWriteStage = options.afterWriteStage
   }
 
-  async load(): Promise<AccountRegistry | null> {
+  private async requireAccountsDirectory(): Promise<boolean> {
     try {
       const accountsDirectory = await lstat(this.paths.accountsDirectory)
       if (!accountsDirectory.isDirectory() || accountsDirectory.isSymbolicLink()) {
         throw new Error('UNSAFE_ACCOUNT_REGISTRY_DIRECTORY')
       }
+      return true
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
       throw error
     }
+  }
+
+  async load(): Promise<AccountRegistry | null> {
+    if (!(await this.requireAccountsDirectory())) return null
     let primaryError: unknown
     try {
       const primary = await readRegistryFile(this.paths.registryPath)
@@ -225,6 +245,15 @@ export class AccountRegistryStore {
     return null
   }
 
+  /**
+   * Reads only the primary commit point. Destructive recovery must never make decisions from the
+   * previous revision retained in the backup file.
+   */
+  async loadPrimary(): Promise<AccountRegistry | null> {
+    if (!(await this.requireAccountsDirectory())) return null
+    return readRegistryFile(this.paths.registryPath)
+  }
+
   private async repairInitialBackup(primary: AccountRegistry): Promise<void> {
     let backup: AccountRegistry | null = null
     try {
@@ -248,6 +277,41 @@ export class AccountRegistryStore {
       () => undefined
     )
     return operation
+  }
+
+  checkpoint(registry: AccountRegistry, expectedRevision: number): Promise<AccountRegistry> {
+    const operation = this.operationTail.then(() =>
+      this.performCheckpoint(registry, expectedRevision)
+    )
+    this.operationTail = operation.then(
+      () => undefined,
+      () => undefined
+    )
+    return operation
+  }
+
+  private async performCheckpoint(
+    registry: AccountRegistry,
+    expectedRevision: number
+  ): Promise<AccountRegistry> {
+    const expected = parseAccountRegistry(registry)
+    if (expected.revision !== expectedRevision) {
+      throw new Error('ACCOUNT_REGISTRY_CHECKPOINT_CONFLICT')
+    }
+    if (!(await this.requireAccountsDirectory())) {
+      throw new Error('ACCOUNT_REGISTRY_CHECKPOINT_UNAVAILABLE')
+    }
+    const primary = await readRegistryFile(this.paths.registryPath)
+    if (!primary || !registryEqual(primary, expected)) {
+      throw new Error('ACCOUNT_REGISTRY_CHECKPOINT_CONFLICT')
+    }
+    await atomicWritePrivateFile(
+      this.paths.registryBackupPath,
+      serializeRegistry(primary),
+      this.createUuid
+    )
+    await this.afterWriteStage?.('backup')
+    return primary
   }
 
   private async performSave(
