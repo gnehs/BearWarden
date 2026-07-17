@@ -3878,6 +3878,12 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 onEnableTouchId={enableTouchId}
                 onDisableTouchId={disableTouchId}
                 onOpenSync={() => setSyncDialogOpen(true)}
+                onVaultPurged={async () => {
+                  await Promise.allSettled([
+                    loadVault(),
+                    window.bearwarden.sync.status().then(setSyncStatus)
+                  ])
+                }}
                 onExportVault={() => setPortabilityDialogMode('export')}
                 onImportVault={() => setPortabilityDialogMode('import')}
                 accountStatus={accountStatus}

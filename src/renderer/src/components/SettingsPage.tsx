@@ -76,6 +76,7 @@ import {
 import EquivalentDomainsDialog from './EquivalentDomainsDialog'
 import MasterPasswordChangeDialog from './MasterPasswordChangeDialog'
 import AccountSwitcherCard from './AccountSwitcherCard'
+import PersonalVaultPurgeDialog from './PersonalVaultPurgeDialog'
 
 const autoLockItems = [
   { label: '永不自動鎖定', value: 0 },
@@ -137,6 +138,7 @@ interface SettingsPageProps {
   onEnableTouchId: () => Promise<void>
   onDisableTouchId: () => Promise<void>
   onOpenSync: () => void
+  onVaultPurged: () => void | Promise<void>
   onExportVault: () => void
   onImportVault: () => void
   accountStatus: AccountStatus | null
@@ -191,6 +193,7 @@ function SettingsPage({
   onEnableTouchId,
   onDisableTouchId,
   onOpenSync,
+  onVaultPurged,
   onExportVault,
   onImportVault,
   accountStatus,
@@ -1018,6 +1021,13 @@ function SettingsPage({
                 <CardFooter className="gap-2">
                   {syncStatus.configured && <EquivalentDomainsDialog />}
                   {syncStatus.configured && <MasterPasswordChangeDialog onReconnect={onOpenSync} />}
+                  {syncStatus.configured && (
+                    <PersonalVaultPurgeDialog
+                      pendingPurge={syncStatus.pendingPurge}
+                      disabled={syncStatus.state === 'syncing'}
+                      onVaultChanged={onVaultPurged}
+                    />
+                  )}
                   <Button variant="outline" size="sm" type="button" onClick={onOpenSync}>
                     {syncStatus.configured ? '管理同步與帳號' : '設定 Bitwarden 同步'}
                   </Button>
