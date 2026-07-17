@@ -3,7 +3,9 @@ import {
   BitwardenHttpClient,
   BitwardenHttpError,
   resolveBitwardenUrls,
-  type FetchLike
+  type FetchLike,
+  type JsonObject,
+  type JsonValue
 } from './bitwarden-http'
 
 function json(body: unknown, status = 200, headers?: HeadersInit): Response {
@@ -1620,6 +1622,144 @@ describe('BitwardenHttpClient', () => {
       status: 503
     })
     expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('purges the personal vault with the exact non-retryable empty-200 contract', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(new Response(null, { status: 200 }))
+    const client = new BitwardenHttpClient({
+      server: 'https://vault.example.test/bw',
+      fetch,
+      maxRetries: 3
+    })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(client.purgePersonalVault('fresh-master-password-proof')).resolves.toBeUndefined()
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch.mock.calls[0]?.[0]).toBe('https://vault.example.test/bw/api/ciphers/purge')
+    expect(fetch.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' })
+    expect(new Headers(fetch.mock.calls[0]?.[1]?.headers).get('authorization')).toBe(
+      'Bearer access'
+    )
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      masterPasswordHash: 'fresh-master-password-proof'
+    })
+  })
+
+  it('rejects unsafe purge proofs and ambiguous successful responses', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(json({ purged: true }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    for (const proof of [
+      '',
+      'proof\0suffix',
+      'proof\r',
+      'proof\n',
+      'x'.repeat(301),
+      'é'.repeat(151)
+    ]) {
+      await expect(client.purgePersonalVault(proof)).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE'
+      })
+    }
+    await expect(client.purgePersonalVault(new String('proof') as never)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    expect(fetch).not.toHaveBeenCalled()
+
+    await expect(client.purgePersonalVault('x'.repeat(300))).resolves.toBeUndefined()
+    await expect(client.purgePersonalVault('é'.repeat(150))).resolves.toBeUndefined()
+    await expect(client.purgePersonalVault('valid-proof')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    await expect(client.purgePersonalVault('valid-proof')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    expect(fetch).toHaveBeenCalledTimes(4)
+  })
+
+  it('normalizes only invalid purge verification and never retries unknown outcomes', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(json({ message: 'Invalid password' }, 400))
+      .mockResolvedValueOnce(json({ message: 'User verification failed' }, 400))
+      .mockResolvedValueOnce(json({ message: 'Forbidden' }, 403))
+      .mockResolvedValueOnce(json({ message: 'Session expired' }, 401))
+      .mockResolvedValueOnce(json({ message: 'ambiguous failure' }, 503))
+    const client = new BitwardenHttpClient({ server: 'us', fetch, maxRetries: 3 })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(client.purgePersonalVault('proof-one')).rejects.toMatchObject({
+      code: 'USER_VERIFICATION_FAILED',
+      status: 400
+    })
+    await expect(client.purgePersonalVault('proof-two')).rejects.toMatchObject({
+      code: 'USER_VERIFICATION_FAILED',
+      status: 400
+    })
+    await expect(client.purgePersonalVault('proof-three')).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+      status: 403
+    })
+    await expect(client.purgePersonalVault('proof-four')).rejects.toMatchObject({
+      code: 'AUTH',
+      status: 401
+    })
+    await expect(client.purgePersonalVault('proof-five')).rejects.toMatchObject({
+      code: 'NETWORK',
+      status: 503
+    })
+    expect(fetch).toHaveBeenCalledTimes(5)
+  })
+
+  it('preserves abort and network failures while clearing a prototype-safe purge body', async () => {
+    const abortedFetch = vi.fn<FetchLike>()
+    const abortedClient = new BitwardenHttpClient({ server: 'us', fetch: abortedFetch })
+    abortedClient.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+    const controller = new AbortController()
+    controller.abort()
+    await expect(
+      abortedClient.purgePersonalVault('proof', controller.signal)
+    ).rejects.toMatchObject({
+      code: 'ABORTED'
+    })
+    expect(abortedFetch).not.toHaveBeenCalled()
+
+    const networkFetch = vi.fn<FetchLike>().mockRejectedValue(new TypeError('offline'))
+    const networkClient = new BitwardenHttpClient({
+      server: 'us',
+      fetch: networkFetch,
+      maxRetries: 3
+    })
+    networkClient.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+    await expect(networkClient.purgePersonalVault('proof')).rejects.toMatchObject({
+      code: 'NETWORK'
+    })
+    expect(networkFetch).toHaveBeenCalledTimes(1)
+
+    type RequestJsonProbe = {
+      requestJson(method: string, url: string, request: { body?: JsonObject }): Promise<JsonValue>
+    }
+    const probeClient = new BitwardenHttpClient({ server: 'us', fetch: vi.fn<FetchLike>() })
+    let capturedBody: JsonObject | undefined
+    vi.spyOn(probeClient as unknown as RequestJsonProbe, 'requestJson').mockImplementation(
+      async (_method, _url, request) => {
+        capturedBody = request.body
+        throw new BitwardenHttpError('NETWORK')
+      }
+    )
+    await expect(probeClient.purgePersonalVault('sensitive-proof')).rejects.toMatchObject({
+      code: 'NETWORK'
+    })
+    expect(capturedBody).toBeDefined()
+    expect(Object.getPrototypeOf(capturedBody)).toBeNull()
+    expect(capturedBody?.masterPasswordHash).toBe('')
   })
 
   it('uses bounded personal cipher bulk lifecycle routes and validates list state', async () => {

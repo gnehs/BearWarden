@@ -1842,6 +1842,26 @@ export class BitwardenHttpClient {
     })
     if (response !== null) throw new BitwardenHttpError('INVALID_RESPONSE')
   }
+  async purgePersonalVault(masterPasswordHash: string, signal?: AbortSignal): Promise<void> {
+    const body = Object.assign(Object.create(null) as JsonObject, {
+      masterPasswordHash: assertPurgeMasterPasswordHash(masterPasswordHash)
+    })
+    try {
+      const response = await this.requestJson('POST', `${this.urls.apiUrl}/ciphers/purge`, {
+        body,
+        signal,
+        retry: false,
+        acceptedStatuses: [200],
+        maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+        tooLargeCode: 'TOO_LARGE'
+      })
+      if (response !== null) throw new BitwardenHttpError('INVALID_RESPONSE')
+    } catch (error) {
+      throw normalizeUserVerificationError(error)
+    } finally {
+      body.masterPasswordHash = ''
+    }
+  }
   async updateCipher(
     id: string,
     ciphertext: JsonObject,
@@ -2316,6 +2336,18 @@ function assertBulkCipherIds(ids: readonly string[]): string[] {
   const uniqueIds = new Set(normalized.map((id) => id.toLocaleLowerCase('en-US')))
   if (uniqueIds.size !== normalized.length) throw new BitwardenHttpError('INVALID_RESPONSE')
   return normalized
+}
+
+function assertPurgeMasterPasswordHash(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    Buffer.byteLength(value, 'utf8') > 300 ||
+    /[\0\r\n]/u.test(value)
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return value
 }
 
 function assertPersonalCipherImportRequest(
