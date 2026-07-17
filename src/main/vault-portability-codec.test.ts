@@ -298,6 +298,87 @@ describe('Bitwarden and Chromium CSV portability', () => {
     })
   })
 
+  it('parses the current archivedDate schema by header name with BOM, CRLF, and multiline values', () => {
+    const csv = [
+      '\ufeffname,archivedDate,folder,type,favorite,notes,fields,reprompt,login_password,login_totp,login_uri,login_username',
+      `,${ARCHIVED_AT},Archive,login,1,"first line\r\nsecond line","Provider: Region: TW",1,secret,TOTP,"https://one.test,https://two.test",alice`
+    ].join('\r\n')
+
+    const parsed = parseBitwardenOrChromiumCsv(csv)
+    expect(parsed.snapshot.items).toEqual([
+      expect.objectContaining({
+        name: '--',
+        archivedAt: ARCHIVED_AT,
+        notes: 'first line\r\nsecond line',
+        uri: 'https://one.test',
+        uris: [
+          { uri: 'https://one.test', match: null },
+          { uri: 'https://two.test', match: null }
+        ],
+        username: 'alice',
+        password: 'secret',
+        totp: 'TOTP',
+        customFields: [{ name: 'Provider: Region', value: 'TW', type: 'text', linkedId: null }]
+      })
+    ])
+  })
+
+  it('retains legacy 11-column exports and their uri, username, password, and totp aliases', () => {
+    const csv = [
+      'password,folder,type,name,notes,fields,reprompt,uri,username,totp,favorite',
+      'legacy-secret,,login,Legacy,,,,https://legacy.test,legacy-user,LEGACYTOTP,0'
+    ].join('\n')
+
+    expect(parseBitwardenOrChromiumCsv(csv).snapshot.items).toEqual([
+      expect.objectContaining({
+        name: 'Legacy',
+        archivedAt: null,
+        uri: 'https://legacy.test',
+        uris: [{ uri: 'https://legacy.test', match: null }],
+        username: 'legacy-user',
+        password: 'legacy-secret',
+        totp: 'LEGACYTOTP'
+      })
+    ])
+  })
+
+  it('preserves ordered login URIs, including an inner quoted comma', () => {
+    const csv = [
+      'folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp',
+      ',0,login,Multiple,,,,"""https://one.test/a,b"",https://two.test",user,secret,'
+    ].join('\n')
+
+    expect(parseBitwardenOrChromiumCsv(csv).snapshot.items[0]).toMatchObject({
+      uri: 'https://one.test/a,b',
+      uris: [
+        { uri: 'https://one.test/a,b', match: null },
+        { uri: 'https://two.test', match: null }
+      ]
+    })
+  })
+
+  it('rejects invalid archive dates and ambiguous, missing, or unknown Bitwarden headers', async () => {
+    const currentHeader =
+      'folder,favorite,type,name,notes,fields,reprompt,archivedDate,login_uri,login_username,login_password,login_totp'
+    await expectInvalidInput(() =>
+      parseBitwardenOrChromiumCsv(
+        `${currentHeader}\n,,login,Invalid,,,,2026-07-03,https://example.test,user,secret,`
+      )
+    )
+
+    for (const header of [
+      'folder,favorite,type,name,notes,fields,reprompt,login_uri,uri,login_username,login_password,login_totp',
+      'folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password',
+      'folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,unexpected'
+    ]) {
+      await expectInvalidInput(() =>
+        parseBitwardenOrChromiumCsv(
+          `${header}\n${Array(header.split(',').length).fill('').join(',')}`
+        )
+      )
+    }
+  })
+
   it('detects Chrome and Chromium CSV, including notes and Android application URIs', () => {
     const csv = [
       '\ufeffname,url,username,password,note',
