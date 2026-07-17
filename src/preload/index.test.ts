@@ -51,6 +51,21 @@ describe('preload account API', () => {
     ])
   })
 
+  it('exposes only data-only profile mutation requests', async () => {
+    electronMock.invoke.mockClear()
+    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
+    const nameRequest = { name: '', expectedName: 'Before' }
+    const avatarRequest = { avatarColor: '#AABBCC', expectedAvatarColor: null }
+
+    await api.accountSecurity.updateName(nameRequest)
+    await api.accountSecurity.updateAvatar(avatarRequest)
+
+    expect(electronMock.invoke.mock.calls).toEqual([
+      [IPC_CHANNELS.accountSecurityUpdateName, nameRequest],
+      [IPC_CHANNELS.accountSecurityUpdateAvatar, avatarRequest]
+    ])
+  })
+
   it('exposes only the narrow account WebAuthn enrollment operations', async () => {
     electronMock.invoke.mockClear()
     const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI

@@ -416,6 +416,23 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
       id: state.profileId ?? '90000000-0000-4000-8000-000000000099',
       name: 'Sync User',
       email: 'sync@example.invalid',
+      avatarColor: '#336699',
+      emailVerified: false,
+      twoFactorEnabled: true
+    }),
+    updateAccountProfileName: async (name: string) => ({
+      id: state.profileId ?? '90000000-0000-4000-8000-000000000099',
+      name,
+      email: 'sync@example.invalid',
+      avatarColor: '#336699',
+      emailVerified: false,
+      twoFactorEnabled: true
+    }),
+    updateAccountAvatarColor: async (avatarColor: string | null) => ({
+      id: state.profileId ?? '90000000-0000-4000-8000-000000000099',
+      name: 'Sync User',
+      email: 'sync@example.invalid',
+      avatarColor,
       emailVerified: false,
       twoFactorEnabled: true
     }),
@@ -6385,6 +6402,7 @@ describe('VaultService encrypted local data', () => {
     await expect(service.getAccountSecurityProfile()).resolves.toEqual({
       name: 'Sync User',
       email: 'sync@example.invalid',
+      avatarColor: '#336699',
       emailVerified: false,
       twoFactorEnabled: true
     })
@@ -6403,6 +6421,63 @@ describe('VaultService encrypted local data', () => {
     await vi.waitFor(() => expect(profile).toHaveBeenCalledTimes(2))
     await expect(service.lock()).resolves.toEqual({ state: 'locked' })
     await locked
+  })
+
+  it('updates profile fields, maps stale results, and aborts safely on lock', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+
+    await expect(
+      service.updateAccountProfileName({ name: '', expectedName: 'Sync User' })
+    ).resolves.toMatchObject({ name: '', avatarColor: '#336699' })
+    await expect(
+      service.updateAccountAvatarColor({
+        avatarColor: '#aabbcc',
+        expectedAvatarColor: '#336699'
+      })
+    ).resolves.toMatchObject({ avatarColor: '#AABBCC' })
+
+    vi.spyOn(fake!, 'updateAccountProfileName').mockRejectedValueOnce(
+      new BitwardenDirectError('ACCOUNT_PROFILE_STALE')
+    )
+    await expect(
+      service.updateAccountProfileName({ name: 'Next', expectedName: 'Old' })
+    ).rejects.toMatchObject({ code: 'ACCOUNT_PROFILE_STALE' })
+
+    let mutationSignal: AbortSignal | undefined
+    let rejectMutation: ((error: Error) => void) | undefined
+    const mutation = vi
+      .spyOn(fake!, 'updateAccountProfileName')
+      .mockImplementationOnce(async (_name, _expected, signal) => {
+        mutationSignal = signal
+        return new Promise((_resolve, reject) => {
+          rejectMutation = reject
+        })
+      })
+    mutation.mockClear()
+    const pending = service.updateAccountProfileName({ name: 'Next', expectedName: 'Old' })
+    await vi.waitFor(() => expect(mutation).toHaveBeenCalled())
+    const pendingOutcome = pending.then(
+      () => null,
+      (error: unknown) => error
+    )
+    expect(mutationSignal?.aborted).toBe(false)
+    const lock = service.lock()
+    expect(mutationSignal?.aborted).toBe(true)
+    rejectMutation?.(new BitwardenDirectError('ACCOUNT_PROFILE_MUTATION_UNKNOWN'))
+    await lock
+    await expect(pendingOutcome).resolves.toMatchObject({ code: 'LOCKED' })
   })
 
   it('returns only renderer-safe account device fields and preserves unavailable', async () => {

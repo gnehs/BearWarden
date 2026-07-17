@@ -97,6 +97,7 @@ import {
   MAX_LOGIN_AUTHORIZE_MANY_IDS,
   MAX_LOGIN_MOVE_MANY_IDS,
   MAX_LOGIN_SEARCH_QUERY_LENGTH,
+  MAX_ACCOUNT_PROFILE_NAME_BYTES,
   VAULT_LINKED_FIELD_IDS_BY_TYPE
 } from '../shared/vault-contract'
 import {
@@ -3773,7 +3774,7 @@ export class VaultService {
           lease.generation !== this.generation ||
           this.syncClient !== lease.client ||
           !state.session ||
-          (state.profileId !== null && state.profileId !== profile.id) ||
+          state.profileId !== profile.id ||
           profile.email.toLowerCase() !== lease.email.toLowerCase()
         ) {
           throw new VaultError('SYNC_AUTH_REQUIRED')
@@ -3782,6 +3783,7 @@ export class VaultService {
         return {
           name: profile.name,
           email: profile.email,
+          avatarColor: profile.avatarColor,
           emailVerified: profile.emailVerified,
           twoFactorEnabled: profile.twoFactorEnabled
         }
@@ -3791,6 +3793,102 @@ export class VaultService {
         this.accountSecurityAborts.delete(lease.abort)
         if (lease.abort.signal.aborted || lease.generation !== this.generation) {
           throw new VaultError('LOCKED')
+        }
+        if (error instanceof VaultError) throw error
+        throw this.mapSyncError(error)
+      })
+    }
+  }
+
+  async updateAccountProfileName(request: {
+    name: string
+    expectedName: string
+  }): Promise<import('../shared/vault-contract').AccountSecurityProfile> {
+    if (
+      typeof request.name !== 'string' ||
+      typeof request.expectedName !== 'string' ||
+      Buffer.byteLength(request.name, 'utf8') > MAX_ACCOUNT_PROFILE_NAME_BYTES ||
+      Buffer.byteLength(request.expectedName, 'utf8') > MAX_ACCOUNT_PROFILE_NAME_BYTES ||
+      /[\0\r\n]/u.test(request.name) ||
+      /[\0\r\n]/u.test(request.expectedName)
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    return this.updateAccountProfile((client, signal) => {
+      if (!client.updateAccountProfileName) throw new VaultError('SYNC_FAILED')
+      return client.updateAccountProfileName(request.name, request.expectedName, signal)
+    })
+  }
+
+  async updateAccountAvatarColor(request: {
+    avatarColor: string | null
+    expectedAvatarColor: string | null
+  }): Promise<import('../shared/vault-contract').AccountSecurityProfile> {
+    const validColor = (value: unknown): value is string | null =>
+      value === null || (typeof value === 'string' && /^#[0-9a-f]{6}$/iu.test(value))
+    if (!validColor(request.avatarColor) || !validColor(request.expectedAvatarColor)) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    const avatarColor = request.avatarColor?.toLocaleUpperCase('en-US') ?? null
+    const expectedAvatarColor = request.expectedAvatarColor?.toLocaleUpperCase('en-US') ?? null
+    return this.updateAccountProfile((client, signal) => {
+      if (!client.updateAccountAvatarColor) throw new VaultError('SYNC_FAILED')
+      return client.updateAccountAvatarColor(avatarColor, expectedAvatarColor, signal)
+    })
+  }
+
+  private async updateAccountProfile(
+    request: (
+      client: BitwardenSyncClient,
+      signal: AbortSignal
+    ) => Promise<import('./bitwarden-http').BitwardenAccountSecurityProfile>
+  ): Promise<import('../shared/vault-contract').AccountSecurityProfile> {
+    const lease = await this.exclusive(async () => {
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      if (!client.exportState().session) throw new VaultError('SYNC_AUTH_REQUIRED')
+      const abort = new AbortController()
+      this.accountSecurityAborts.add(abort)
+      return { generation: this.generation, client, email: sync.email, abort }
+    })
+    try {
+      const profile = await request(lease.client, lease.abort.signal)
+      return await this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        this.requireData()
+        const state = lease.client.exportState()
+        if (
+          lease.abort.signal.aborted ||
+          lease.generation !== this.generation ||
+          this.syncClient !== lease.client ||
+          !state.session ||
+          state.profileId !== profile.id ||
+          profile.email.toLowerCase() !== lease.email.toLowerCase()
+        ) {
+          throw new VaultError('ACCOUNT_PROFILE_MUTATION_UNKNOWN')
+        }
+        await this.persistCurrentClientState()
+        return {
+          name: profile.name,
+          email: profile.email,
+          avatarColor: profile.avatarColor,
+          emailVerified: profile.emailVerified,
+          twoFactorEnabled: profile.twoFactorEnabled
+        }
+      })
+    } catch (error) {
+      return this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+          throw new VaultError('LOCKED')
+        }
+        if (error instanceof BitwardenDirectError) {
+          if (error.code === 'ACCOUNT_PROFILE_STALE') {
+            throw new VaultError('ACCOUNT_PROFILE_STALE')
+          }
+          if (error.code === 'ACCOUNT_PROFILE_MUTATION_UNKNOWN') {
+            throw new VaultError('ACCOUNT_PROFILE_MUTATION_UNKNOWN')
+          }
         }
         if (error instanceof VaultError) throw error
         throw this.mapSyncError(error)

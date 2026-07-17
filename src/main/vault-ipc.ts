@@ -10,7 +10,10 @@ import {
   MAX_LOGIN_AUTHORIZE_MANY_IDS,
   MAX_LOGIN_SEARCH_QUERY_LENGTH,
   MAX_ACCOUNT_BREACH_EMAIL_LENGTH,
+  MAX_ACCOUNT_PROFILE_NAME_BYTES,
   type AccountMutationResult,
+  type AccountProfileAvatarUpdateRequest,
+  type AccountProfileNameUpdateRequest,
   type AccountRemoveRequest,
   type AccountReorderRequest,
   type AccountStatus,
@@ -664,6 +667,34 @@ function parseAccountApiKeyCopy(value: unknown): AccountApiKeyCopyRequest {
     masterPassword,
     rotate: record.rotate,
     confirmRotation: record.confirmRotation
+  }
+}
+
+function parseAccountProfileNameUpdate(value: unknown): AccountProfileNameUpdateRequest {
+  const record = exactDataRecord(value, ['name', 'expectedName'])
+  const name = requiredString(record, 'name')
+  const expectedName = requiredString(record, 'expectedName')
+  if (
+    Buffer.byteLength(name, 'utf8') > MAX_ACCOUNT_PROFILE_NAME_BYTES ||
+    Buffer.byteLength(expectedName, 'utf8') > MAX_ACCOUNT_PROFILE_NAME_BYTES ||
+    /[\0\r\n]/u.test(name) ||
+    /[\0\r\n]/u.test(expectedName)
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return { name, expectedName }
+}
+
+function parseAccountProfileAvatarUpdate(value: unknown): AccountProfileAvatarUpdateRequest {
+  const record = exactDataRecord(value, ['avatarColor', 'expectedAvatarColor'])
+  const valid = (color: unknown): color is string | null =>
+    color === null || (typeof color === 'string' && /^#[0-9a-f]{6}$/iu.test(color))
+  if (!valid(record.avatarColor) || !valid(record.expectedAvatarColor)) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return {
+    avatarColor: record.avatarColor?.toLocaleUpperCase('en-US') ?? null,
+    expectedAvatarColor: record.expectedAvatarColor?.toLocaleUpperCase('en-US') ?? null
   }
 }
 
@@ -2953,6 +2984,12 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   registerHandler(IPC_CHANNELS.accountSecurityProfile, getMainWindow, (_event, input) => {
     parseNoInput(input)
     return vault.getAccountSecurityProfile()
+  })
+  registerHandler(IPC_CHANNELS.accountSecurityUpdateName, getMainWindow, (_event, input) => {
+    return vault.updateAccountProfileName(parseAccountProfileNameUpdate(input))
+  })
+  registerHandler(IPC_CHANNELS.accountSecurityUpdateAvatar, getMainWindow, (_event, input) => {
+    return vault.updateAccountAvatarColor(parseAccountProfileAvatarUpdate(input))
   })
   registerHandler(IPC_CHANNELS.accountDevices, getMainWindow, (_event, input) => {
     parseNoInput(input)

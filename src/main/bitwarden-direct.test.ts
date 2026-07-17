@@ -1835,6 +1835,95 @@ describe('BitwardenDirectClient', () => {
     await expect(client.status()).resolves.toEqual({ status: 'locked' })
   })
 
+  it('updates personal profile fields with stale checks and response-loss reconciliation', async () => {
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async () => jsonResponse({ message: 'not found' }, 404)
+    })
+    const baseProfile = {
+      id: PROFILE_ID,
+      name: 'Before',
+      email: EMAIL,
+      avatarColor: '#112233',
+      emailVerified: true,
+      twoFactorEnabled: false
+    }
+    const profile = vi
+      .spyOn(http, 'getAccountSecurityProfile')
+      .mockResolvedValueOnce(baseProfile)
+      .mockResolvedValueOnce({ ...baseProfile, name: 'After' })
+      .mockResolvedValueOnce({ ...baseProfile, name: 'Concurrent edit' })
+      .mockResolvedValueOnce({ ...baseProfile, avatarColor: '#AABBCC' })
+    const updateName = vi
+      .spyOn(http, 'updateAccountProfileName')
+      .mockRejectedValueOnce(new BitwardenHttpError('NETWORK'))
+    const updateAvatar = vi.spyOn(http, 'updateAccountAvatarColor').mockResolvedValue({
+      ...baseProfile,
+      avatarColor: '#AABBCC'
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.updateAccountProfileName('After', 'Before')).resolves.toMatchObject({
+      name: 'After'
+    })
+    await expect(client.updateAccountProfileName('Ignored', 'Before')).rejects.toMatchObject({
+      code: 'ACCOUNT_PROFILE_STALE'
+    })
+    await expect(client.updateAccountAvatarColor('#aabbcc', '#aabbcc')).resolves.toMatchObject({
+      avatarColor: '#AABBCC'
+    })
+    expect(updateName).toHaveBeenCalledOnce()
+    expect(updateAvatar).toHaveBeenCalledWith('#AABBCC', undefined)
+    expect(profile).toHaveBeenCalledTimes(4)
+  })
+
+  it('does not replay an ambiguous profile mutation when reconciliation differs', async () => {
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async () => jsonResponse({ message: 'not found' }, 404)
+    })
+    const current = {
+      id: PROFILE_ID,
+      name: 'Before',
+      email: EMAIL,
+      avatarColor: null,
+      emailVerified: true,
+      twoFactorEnabled: false
+    }
+    vi.spyOn(http, 'getAccountSecurityProfile')
+      .mockResolvedValueOnce(current)
+      .mockResolvedValueOnce(current)
+    const update = vi
+      .spyOn(http, 'updateAccountProfileName')
+      .mockRejectedValue(new BitwardenHttpError('NETWORK'))
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.updateAccountProfileName('After', 'Before')).rejects.toMatchObject({
+      code: 'ACCOUNT_PROFILE_MUTATION_UNKNOWN'
+    })
+    expect(update).toHaveBeenCalledOnce()
+  })
+
   it('purges the personal vault with a fresh KDF-derived proof while preserving lock state', async () => {
     const proofs: string[] = []
     const onStateChanged = vi.fn()

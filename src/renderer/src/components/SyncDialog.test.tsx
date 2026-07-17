@@ -2,6 +2,45 @@ import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { PendingImportWarning } from './PendingImportWarning'
 import { buildSyncTwoFactorRequest, WEB_AUTHN_TWO_FACTOR_METHOD } from './sync-two-factor-request'
+import {
+  accountProfileIdentity,
+  applyAccountProfileIfCurrent,
+  shouldAcceptAccountProfile
+} from './SyncDialog'
+
+describe('SyncDialog account profile identity gate', () => {
+  it('rejects an old mutation completion after the new account profile has loaded', () => {
+    const oldIdentity = accountProfileIdentity(
+      'https://vault.example.invalid',
+      'OLD@EXAMPLE.INVALID'
+    )
+    const newIdentity = accountProfileIdentity(
+      'https://vault.example.invalid',
+      'new@example.invalid'
+    )
+
+    expect(oldIdentity).toContain('old@example.invalid')
+    expect(shouldAcceptAccountProfile(newIdentity, newIdentity)).toBe(true)
+    expect(shouldAcceptAccountProfile(oldIdentity, newIdentity)).toBe(false)
+
+    const newProfile = {
+      name: 'New account',
+      email: 'new@example.invalid',
+      avatarColor: null,
+      emailVerified: true,
+      twoFactorEnabled: false
+    }
+    const oldCompletion = {
+      ...newProfile,
+      name: 'Old account',
+      email: 'old@example.invalid'
+    }
+    const loadedNewState = { owner: newIdentity, profile: newProfile }
+    expect(applyAccountProfileIfCurrent(loadedNewState, oldIdentity, oldCompletion)).toBe(
+      loadedNewState
+    )
+  })
+})
 
 describe('SyncDialog WebAuthn request boundary', () => {
   it('keeps legacy two-factor requests free of the WebAuthn remember flag', () => {

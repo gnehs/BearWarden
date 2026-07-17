@@ -16,6 +16,7 @@ import {
   type AccountWebAuthnAttestation,
   type AccountWebAuthnRegistrationChallenge
 } from './account-webauthn-registration-codec'
+import { MAX_ACCOUNT_PROFILE_NAME_BYTES } from '../shared/vault-contract'
 
 export type BitwardenEnvironment = 'us' | 'eu' | string
 export type JsonPrimitive = string | number | boolean | null
@@ -138,6 +139,7 @@ export interface BitwardenAccountSecurityProfile {
   id: string
   name: string
   email: string
+  avatarColor: string | null
   emailVerified: boolean
   twoFactorEnabled: boolean
 }
@@ -930,6 +932,40 @@ export class BitwardenHttpClient {
       tooLargeCode: 'TOO_LARGE'
     })
     return parseAccountSecurityProfile(response)
+  }
+
+  async updateAccountProfileName(
+    name: string,
+    signal?: AbortSignal
+  ): Promise<BitwardenAccountSecurityProfile> {
+    const canonicalName = assertAccountProfileName(name)
+    const response = await this.requestJson('PUT', `${this.urls.apiUrl}/accounts/profile`, {
+      body: { name: canonicalName },
+      signal,
+      retry: false,
+      maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+      tooLargeCode: 'TOO_LARGE'
+    })
+    const profile = parseAccountSecurityProfile(response)
+    if (profile.name !== canonicalName) throw new BitwardenHttpError('INVALID_RESPONSE')
+    return profile
+  }
+
+  async updateAccountAvatarColor(
+    avatarColor: string | null,
+    signal?: AbortSignal
+  ): Promise<BitwardenAccountSecurityProfile> {
+    const canonicalColor = assertAccountAvatarColor(avatarColor)
+    const response = await this.requestJson('PUT', `${this.urls.apiUrl}/accounts/avatar`, {
+      body: { avatarColor: canonicalColor },
+      signal,
+      retry: false,
+      maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+      tooLargeCode: 'TOO_LARGE'
+    })
+    const profile = parseAccountSecurityProfile(response)
+    if (profile.avatarColor !== canonicalColor) throw new BitwardenHttpError('INVALID_RESPONSE')
+    return profile
   }
 
   async getDevices(
@@ -2525,29 +2561,59 @@ function parseBulkCipherList(
   return rows
 }
 
+function assertAccountProfileName(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    Buffer.byteLength(value, 'utf8') > MAX_ACCOUNT_PROFILE_NAME_BYTES ||
+    /[\0\r\n]/u.test(value)
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function assertAccountAvatarColor(value: unknown): string | null {
+  if (value === null) return null
+  if (typeof value !== 'string' || !/^#[0-9a-f]{6}$/iu.test(value)) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return value.toLocaleUpperCase('en-US')
+}
+
 function parseAccountSecurityProfile(value: JsonValue): BitwardenAccountSecurityProfile {
   if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
   const id = value.id ?? value.Id
   const name = value.name ?? value.Name
   const email = value.email ?? value.Email
+  const hasAvatarColor = Object.hasOwn(value, 'avatarColor') || Object.hasOwn(value, 'AvatarColor')
+  const avatarColor = Object.hasOwn(value, 'avatarColor') ? value.avatarColor : value.AvatarColor
   const emailVerified = value.emailVerified ?? value.EmailVerified
   const twoFactorEnabled = value.twoFactorEnabled ?? value.TwoFactorEnabled
+  const object = value.object ?? value.Object
+  const parsedName = assertAccountProfileName(name)
+  const parsedAvatarColor = assertAccountAvatarColor(avatarColor)
   if (
     typeof id !== 'string' ||
     !UUID_PATTERN.test(id) ||
-    typeof name !== 'string' ||
-    name.length > 50 ||
-    /[\0\r\n]/u.test(name) ||
+    !hasAvatarColor ||
     typeof email !== 'string' ||
     email.length === 0 ||
     email.length > 254 ||
     /[\0\r\n]/u.test(email) ||
     typeof emailVerified !== 'boolean' ||
-    typeof twoFactorEnabled !== 'boolean'
+    typeof twoFactorEnabled !== 'boolean' ||
+    (object !== undefined && object !== 'profile')
   ) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
-  return { id, name, email, emailVerified, twoFactorEnabled }
+  return {
+    id,
+    name: parsedName,
+    email,
+    avatarColor: parsedAvatarColor,
+    emailVerified,
+    twoFactorEnabled
+  }
 }
 
 function deviceDate(value: unknown, nullable: false): string

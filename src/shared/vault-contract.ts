@@ -110,6 +110,8 @@ export const IPC_CHANNELS = {
   accountReorder: 'account:reorder',
   accountRemove: 'account:remove',
   accountSecurityProfile: 'account-security:profile',
+  accountSecurityUpdateName: 'account-security:update-name',
+  accountSecurityUpdateAvatar: 'account-security:update-avatar',
   accountDevices: 'account-security:devices',
   accountResendVerification: 'account-security:resend-verification',
   accountCopyApiClientId: 'account-security:copy-api-client-id',
@@ -153,6 +155,9 @@ export const IPC_EVENTS = {
 
 export const IPC_ERROR_PREFIX = 'BEARWARDEN:'
 
+/** Vaultwarden's profile endpoint enforces this limit as UTF-8 bytes. */
+export const MAX_ACCOUNT_PROFILE_NAME_BYTES = 50
+
 export type VaultErrorCode =
   | 'ALREADY_INITIALIZED'
   | 'NOT_INITIALIZED'
@@ -180,6 +185,8 @@ export type VaultErrorCode =
   | 'HEALTH_CHECK_FAILED'
   | 'API_KEY_ROTATION_UNKNOWN'
   | 'TWO_FACTOR_MUTATION_UNKNOWN'
+  | 'ACCOUNT_PROFILE_STALE'
+  | 'ACCOUNT_PROFILE_MUTATION_UNKNOWN'
   | 'TOUCH_ID_UNAVAILABLE'
   | 'TOUCH_ID_FAILED'
   | 'ACCOUNT_LIMIT_REACHED'
@@ -998,8 +1005,21 @@ export interface SyncResult extends SyncStatus {
 export interface AccountSecurityProfile {
   name: string
   email: string
+  avatarColor: string | null
   emailVerified: boolean
   twoFactorEnabled: boolean
+}
+
+/** Best-effort stale preflight; the server has no revision or If-Match precondition. */
+export interface AccountProfileNameUpdateRequest {
+  name: string
+  expectedName: string
+}
+
+/** Best-effort stale preflight; `null` restores the server-selected default. */
+export interface AccountProfileAvatarUpdateRequest {
+  avatarColor: string | null
+  expectedAvatarColor: string | null
 }
 
 export interface AccountDeviceView {
@@ -1732,6 +1752,8 @@ export interface BearWardenAPI {
   }
   accountSecurity: {
     profile: () => Promise<AccountSecurityProfile>
+    updateName: (request: AccountProfileNameUpdateRequest) => Promise<AccountSecurityProfile>
+    updateAvatar: (request: AccountProfileAvatarUpdateRequest) => Promise<AccountSecurityProfile>
     devices: () => Promise<AccountDevicesResult>
     resendVerification: () => Promise<void>
     copyApiClientId: () => Promise<void>

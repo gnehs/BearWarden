@@ -62,6 +62,7 @@ import {
 import { Spinner } from '@renderer/components/ui/spinner'
 import AccountApiKeyDialog from './AccountApiKeyDialog'
 import AccountDevicesDialog from './AccountDevicesDialog'
+import AccountProfileCard from './AccountProfileCard'
 import AccountTwoFactorDialog from './AccountTwoFactorDialog'
 import { PendingImportWarning } from './PendingImportWarning'
 import {
@@ -71,6 +72,36 @@ import {
 } from './sync-two-factor-request'
 
 const BITWARDEN_CLOUD_URL = 'https://bitwarden.com'
+
+// Exported solely for the account-switch race regression test.
+// eslint-disable-next-line react-refresh/only-export-components
+export function accountProfileIdentity(serverUrl?: string, email?: string): string {
+  return `${serverUrl ?? ''}\0${email?.toLowerCase() ?? ''}`
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function shouldAcceptAccountProfile(
+  responseIdentity: string,
+  currentIdentity: string
+): boolean {
+  return responseIdentity === currentIdentity
+}
+
+interface AccountProfileState {
+  owner: string
+  profile: AccountSecurityProfile | null
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function applyAccountProfileIfCurrent(
+  current: AccountProfileState,
+  responseIdentity: string,
+  profile: AccountSecurityProfile
+): AccountProfileState {
+  return shouldAcceptAccountProfile(responseIdentity, current.owner)
+    ? { owner: current.owner, profile }
+    : current
+}
 
 const twoFactorMethods: { label: string; value: SyncTwoFactorFormMethod }[] = [
   { label: '驗證器應用程式', value: '0' },
@@ -134,32 +165,48 @@ function SyncDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const [accountProfile, setAccountProfile] = useState<AccountSecurityProfile | null>(null)
+  const [accountProfileState, setAccountProfileState] = useState<AccountProfileState>({
+    owner: '',
+    profile: null
+  })
   const [accountSecurityError, setAccountSecurityError] = useState('')
   const [accountSecurityBusy, setAccountSecurityBusy] = useState(false)
 
   const configured = status.configured
   const requiresCredentials = !configured || status.state === 'locked'
   const isSyncing = busy || status.state === 'syncing'
+  const currentAccountProfileIdentity = accountProfileIdentity(status.serverUrl, status.email)
+  const visibleAccountProfile =
+    accountProfileState.owner === currentAccountProfileIdentity ? accountProfileState.profile : null
 
   useEffect(() => {
-    if (status.state !== 'ready') return
     let active = true
-    void window.bearwarden.accountSecurity
-      .profile()
-      .then((profile) => {
-        if (active) setAccountProfile(profile)
-      })
-      .catch(() => {
+    void Promise.resolve().then(async () => {
+      if (!active) return
+      setAccountProfileState({ owner: currentAccountProfileIdentity, profile: null })
+      setAccountSecurityError('')
+      if (status.state !== 'ready') {
+        setAccountSecurityBusy(false)
+        return
+      }
+      setAccountSecurityBusy(true)
+      try {
+        const profile = await window.bearwarden.accountSecurity.profile()
+        if (active) {
+          setAccountProfileState((current) =>
+            applyAccountProfileIfCurrent(current, currentAccountProfileIdentity, profile)
+          )
+        }
+      } catch {
         if (active) setAccountSecurityError('無法讀取帳號安全狀態。')
-      })
-      .finally(() => {
+      } finally {
         if (active) setAccountSecurityBusy(false)
-      })
+      }
+    })
     return () => {
       active = false
     }
-  }, [status.state])
+  }, [currentAccountProfileIdentity, status.state])
 
   async function resendVerification(): Promise<void> {
     setAccountSecurityBusy(true)
@@ -586,35 +633,49 @@ function SyncDialog({
                   onConfirm={() => void resolvePendingImport()}
                 />
               )}
-              {accountProfile && (
-                <Alert className="sync-status-card" role="status">
-                  <ShieldCheck aria-hidden="true" />
-                  <AlertDescription>
-                    <strong>{accountProfile.name || accountProfile.email}</strong>
-                    <br />
-                    Email：{accountProfile.emailVerified ? '已驗證' : '尚未驗證'} · 雙重驗證：
-                    {accountProfile.twoFactorEnabled ? '已啟用' : '尚未啟用'}
-                    {!accountProfile.emailVerified && (
-                      <Button
-                        className="mt-2"
-                        variant="outline"
-                        size="sm"
-                        type="button"
-                        disabled={accountSecurityBusy}
-                        onClick={() => void resendVerification()}
-                      >
-                        {accountSecurityBusy && (
-                          <Spinner data-icon="inline-start" aria-hidden="true" />
-                        )}
-                        重新寄送驗證信
-                      </Button>
-                    )}
-                  </AlertDescription>
-                </Alert>
+              {visibleAccountProfile && (
+                <>
+                  <AccountProfileCard
+                    key={currentAccountProfileIdentity}
+                    profile={visibleAccountProfile}
+                    onProfileChange={(profile) => {
+                      setAccountProfileState((current) =>
+                        applyAccountProfileIfCurrent(
+                          current,
+                          currentAccountProfileIdentity,
+                          profile
+                        )
+                      )
+                    }}
+                  />
+                  <Alert className="sync-status-card" role="status">
+                    <ShieldCheck aria-hidden="true" />
+                    <AlertDescription>
+                      Email：{visibleAccountProfile.emailVerified ? '已驗證' : '尚未驗證'} ·
+                      雙重驗證：
+                      {visibleAccountProfile.twoFactorEnabled ? '已啟用' : '尚未啟用'}
+                      {!visibleAccountProfile.emailVerified && (
+                        <Button
+                          className="mt-2"
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          disabled={accountSecurityBusy}
+                          onClick={() => void resendVerification()}
+                        >
+                          {accountSecurityBusy && (
+                            <Spinner data-icon="inline-start" aria-hidden="true" />
+                          )}
+                          重新寄送驗證信
+                        </Button>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                </>
               )}
-              {accountProfile && <AccountDevicesDialog />}
-              {accountProfile && <AccountApiKeyDialog />}
-              {accountProfile && <AccountTwoFactorDialog />}
+              {visibleAccountProfile && <AccountDevicesDialog />}
+              {visibleAccountProfile && <AccountApiKeyDialog />}
+              {visibleAccountProfile && <AccountTwoFactorDialog />}
               {accountSecurityError && (
                 <Alert variant="destructive">
                   <AlertDescription>{accountSecurityError}</AlertDescription>

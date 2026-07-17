@@ -1675,6 +1675,21 @@ describe('registerVaultIpc reprompt gate', () => {
       getAccountSecurityProfile: vi.fn(async () => ({
         name: 'Sync User',
         email: 'sync@example.invalid',
+        avatarColor: '#336699',
+        emailVerified: false,
+        twoFactorEnabled: true
+      })),
+      updateAccountProfileName: vi.fn(async (request) => ({
+        name: request.name,
+        email: 'sync@example.invalid',
+        avatarColor: '#336699',
+        emailVerified: false,
+        twoFactorEnabled: true
+      })),
+      updateAccountAvatarColor: vi.fn(async (request) => ({
+        name: 'Sync User',
+        email: 'sync@example.invalid',
+        avatarColor: request.avatarColor,
         emailVerified: false,
         twoFactorEnabled: true
       })),
@@ -2501,6 +2516,51 @@ describe('registerVaultIpc reprompt gate', () => {
     expect(vault.getAccountSecurityProfile).toHaveBeenCalledOnce()
     expect(vault.getAccountDevices).toHaveBeenCalledOnce()
     expect(vault.resendAccountVerificationEmail).toHaveBeenCalledOnce()
+  })
+
+  it('accepts only exact data-only bounded profile mutations', async () => {
+    const { event, vault } = harness()
+    const updateName = electronMock.handlers.get(IPC_CHANNELS.accountSecurityUpdateName)!
+    const updateAvatar = electronMock.handlers.get(IPC_CHANNELS.accountSecurityUpdateAvatar)!
+
+    await expect(updateName(event, { name: '', expectedName: 'Sync User' })).resolves.toMatchObject(
+      { name: '' }
+    )
+    await expect(
+      updateAvatar(event, { avatarColor: '#aabbcc', expectedAvatarColor: '#336699' })
+    ).resolves.toMatchObject({ avatarColor: '#AABBCC' })
+    expect(vault.updateAccountProfileName).toHaveBeenCalledWith({
+      name: '',
+      expectedName: 'Sync User'
+    })
+    expect(vault.updateAccountAvatarColor).toHaveBeenCalledWith({
+      avatarColor: '#AABBCC',
+      expectedAvatarColor: '#336699'
+    })
+
+    const unsafeAccessor = { expectedName: 'Sync User' }
+    Object.defineProperty(unsafeAccessor, 'name', {
+      enumerable: true,
+      get: () => {
+        throw new Error('must not invoke profile IPC accessors')
+      }
+    })
+    for (const invalid of [
+      { name: '你'.repeat(17), expectedName: 'Sync User' },
+      { name: 'line\nbreak', expectedName: 'Sync User' },
+      { name: 'Next', expectedName: 'Sync User', extra: true },
+      unsafeAccessor
+    ]) {
+      await expect(updateName(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    for (const invalid of [
+      { avatarColor: '#12345', expectedAvatarColor: null },
+      { avatarColor: 'javascript:', expectedAvatarColor: null },
+      { avatarColor: null },
+      { avatarColor: null, expectedAvatarColor: null, extra: true }
+    ]) {
+      await expect(updateAvatar(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
   })
 
   it('keeps PIN capability IPC exact and clears all copied secrets', async () => {

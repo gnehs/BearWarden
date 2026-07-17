@@ -15,6 +15,19 @@ function json(body: unknown, status = 200, headers?: HeadersInit): Response {
   })
 }
 
+function accountProfile(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: '10000000-0000-4000-8000-000000000001',
+    name: 'Test User',
+    email: 'person@example.invalid',
+    avatarColor: '#336699',
+    emailVerified: false,
+    twoFactorEnabled: true,
+    object: 'profile',
+    ...overrides
+  }
+}
+
 function vaultwardenChallengeFixture(): Record<string, unknown> {
   return {
     allowCredentials: [{ id: Buffer.alloc(32, 2).toString('base64url'), type: 'public-key' }],
@@ -178,6 +191,7 @@ describe('BitwardenHttpClient', () => {
           id: '10000000-0000-4000-8000-000000000001',
           name: 'Test User',
           email: 'person@example.test',
+          avatarColor: '#336699',
           emailVerified: false,
           twoFactorEnabled: true,
           privateKey: 'must-not-cross-the-safe-model'
@@ -191,6 +205,7 @@ describe('BitwardenHttpClient', () => {
       id: '10000000-0000-4000-8000-000000000001',
       name: 'Test User',
       email: 'person@example.test',
+      avatarColor: '#336699',
       emailVerified: false,
       twoFactorEnabled: true
     })
@@ -210,6 +225,7 @@ describe('BitwardenHttpClient', () => {
           id: 'not-an-id',
           name: 'Test User',
           email: 'person@example.test',
+          avatarColor: null,
           emailVerified: false,
           twoFactorEnabled: false
         })
@@ -224,6 +240,54 @@ describe('BitwardenHttpClient', () => {
     await expect(client.resendVerificationEmail()).rejects.toMatchObject({
       code: 'INVALID_RESPONSE'
     })
+  })
+
+  it('updates profile name and canonical avatar color with exact non-retried contracts', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(json(accountProfile({ name: '', avatarColor: '#aabbcc' })))
+      .mockResolvedValueOnce(json(accountProfile({ name: '', avatarColor: '#aabbcc' })))
+    const client = new BitwardenHttpClient({ server: 'us', fetch, maxRetries: 3 })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(client.updateAccountProfileName('')).resolves.toMatchObject({
+      name: '',
+      avatarColor: '#AABBCC'
+    })
+    await expect(client.updateAccountAvatarColor('#aabbcc')).resolves.toMatchObject({
+      avatarColor: '#AABBCC'
+    })
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+      'https://api.bitwarden.com/accounts/profile',
+      'https://api.bitwarden.com/accounts/avatar'
+    ])
+    expect(JSON.parse(String(fetch.mock.calls[0]![1]?.body))).toEqual({ name: '' })
+    expect(JSON.parse(String(fetch.mock.calls[1]![1]?.body))).toEqual({
+      avatarColor: '#AABBCC'
+    })
+  })
+
+  it('rejects missing avatar metadata, invalid profile inputs and ambiguous failures', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(json(accountProfile({ avatarColor: undefined })))
+      .mockResolvedValueOnce(json({ message: 'ambiguous' }, 503))
+    const client = new BitwardenHttpClient({ server: 'us', fetch, maxRetries: 3 })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(client.getAccountSecurityProfile()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    await expect(client.updateAccountAvatarColor('#123456')).rejects.toMatchObject({
+      code: 'NETWORK'
+    })
+    await expect(client.updateAccountProfileName('你'.repeat(17))).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    await expect(client.updateAccountAvatarColor('#xyzxyz')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    expect(fetch).toHaveBeenCalledTimes(2)
   })
 
   it('lists bounded account devices without exposing identifiers, keys, tokens, or IP data', async () => {

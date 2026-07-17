@@ -189,6 +189,8 @@ export type BitwardenDirectErrorCode =
   | 'TWO_FACTOR_MUTATION_UNKNOWN'
   | 'MASTER_PASSWORD_CHANGE_UNKNOWN'
   | 'VAULT_PURGE_UNKNOWN'
+  | 'ACCOUNT_PROFILE_STALE'
+  | 'ACCOUNT_PROFILE_MUTATION_UNKNOWN'
 
 export class BitwardenDirectError extends Error {
   constructor(
@@ -457,6 +459,16 @@ export interface BitwardenDirectState {
 export interface BitwardenSyncClient {
   status(signal?: AbortSignal): Promise<{ status: 'unauthenticated' | 'locked' | 'unlocked' }>
   getAccountSecurityProfile?(signal?: AbortSignal): Promise<BitwardenAccountSecurityProfile>
+  updateAccountProfileName?(
+    name: string,
+    expectedName: string,
+    signal?: AbortSignal
+  ): Promise<BitwardenAccountSecurityProfile>
+  updateAccountAvatarColor?(
+    avatarColor: string | null,
+    expectedAvatarColor: string | null,
+    signal?: AbortSignal
+  ): Promise<BitwardenAccountSecurityProfile>
   getAccountDevices?(signal?: AbortSignal): Promise<BitwardenAccountDevice[]>
   resendVerificationEmail?(signal?: AbortSignal): Promise<void>
   purgePersonalVault?(masterPassword: string, signal?: AbortSignal): Promise<void>
@@ -1790,6 +1802,38 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     } catch (error) {
       throw this.mapError(error)
     }
+  }
+
+  async updateAccountProfileName(
+    name: string,
+    expectedName: string,
+    signal?: AbortSignal
+  ): Promise<BitwardenAccountSecurityProfile> {
+    const current = await this.authoritativeAccountProfile(signal)
+    if (current.name !== expectedName) throw new BitwardenDirectError('ACCOUNT_PROFILE_STALE')
+    return this.applyAccountProfileMutation(
+      () => this.http.updateAccountProfileName(name, signal),
+      (profile) => profile.name === name,
+      signal
+    )
+  }
+
+  async updateAccountAvatarColor(
+    avatarColor: string | null,
+    expectedAvatarColor: string | null,
+    signal?: AbortSignal
+  ): Promise<BitwardenAccountSecurityProfile> {
+    const target = avatarColor?.toLocaleUpperCase('en-US') ?? null
+    const expected = expectedAvatarColor?.toLocaleUpperCase('en-US') ?? null
+    const current = await this.authoritativeAccountProfile(signal)
+    if (current.avatarColor !== expected) {
+      throw new BitwardenDirectError('ACCOUNT_PROFILE_STALE')
+    }
+    return this.applyAccountProfileMutation(
+      () => this.http.updateAccountAvatarColor(target, signal),
+      (profile) => profile.avatarColor === target,
+      signal
+    )
   }
 
   async getAccountDevices(signal?: AbortSignal): Promise<BitwardenAccountDevice[]> {
@@ -4781,6 +4825,64 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     }
     if (this.state.securityStamp && securityStamp && this.state.securityStamp !== securityStamp) {
       throw new BitwardenDirectError('ACCOUNT_CHANGED')
+    }
+  }
+
+  private assertAccountProfileOwnership(profile: BitwardenAccountSecurityProfile): void {
+    if (profile.id !== this.requireProfileId()) throw new BitwardenDirectError('ACCOUNT_CHANGED')
+    if (profile.email.toLocaleLowerCase('en-US') !== this.email.toLocaleLowerCase('en-US')) {
+      throw new BitwardenDirectError('ACCOUNT_CHANGED')
+    }
+  }
+
+  private async authoritativeAccountProfile(
+    signal?: AbortSignal
+  ): Promise<BitwardenAccountSecurityProfile> {
+    try {
+      this.requireProfileId()
+      const profile = await this.http.getAccountSecurityProfile(signal)
+      this.assertAccountProfileOwnership(profile)
+      await this.captureSession()
+      return profile
+    } catch (error) {
+      if (error instanceof BitwardenDirectError) throw error
+      throw this.mapError(error)
+    }
+  }
+
+  private async applyAccountProfileMutation(
+    mutate: () => Promise<BitwardenAccountSecurityProfile>,
+    matchesTarget: (profile: BitwardenAccountSecurityProfile) => boolean,
+    signal?: AbortSignal
+  ): Promise<BitwardenAccountSecurityProfile> {
+    try {
+      const profile = await mutate()
+      this.assertAccountProfileOwnership(profile)
+      if (!matchesTarget(profile)) throw new BitwardenDirectError('INVALID_RESPONSE')
+      await this.captureSession()
+      return profile
+    } catch (error) {
+      const mapped = error instanceof BitwardenDirectError ? error : this.mapError(error)
+      if (
+        mapped.code !== 'NETWORK' &&
+        mapped.code !== 'ABORTED' &&
+        mapped.code !== 'INVALID_RESPONSE' &&
+        mapped.code !== 'ACCOUNT_CHANGED'
+      ) {
+        throw mapped
+      }
+
+      // A request may have committed even when its response was lost or malformed.
+      // Reconcile once with an authoritative GET, but never automatically replay the mutation.
+      if (!signal?.aborted) {
+        try {
+          const current = await this.authoritativeAccountProfile(signal)
+          if (matchesTarget(current)) return current
+        } catch {
+          // The stable unknown-result error below intentionally hides transport details.
+        }
+      }
+      throw new BitwardenDirectError('ACCOUNT_PROFILE_MUTATION_UNKNOWN')
     }
   }
 
