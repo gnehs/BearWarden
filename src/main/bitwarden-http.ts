@@ -166,6 +166,13 @@ export interface BitwardenTwoFactorProvider {
   enabled: boolean
 }
 
+export interface BitwardenTwoFactorDisableSetup {
+  enabled: boolean
+  verificationMode: 'server-token' | 'master-password'
+  /** Main-process-only capability bound by the official server to the provider. */
+  userVerificationToken: string | null
+}
+
 export interface BitwardenAuthenticatorSetup {
   enabled: boolean
   key: string
@@ -1176,6 +1183,33 @@ export class BitwardenHttpClient {
     }
   }
 
+  async getTwoFactorDisableSetup(
+    type: 2 | 3,
+    masterPasswordHash: string,
+    signal?: AbortSignal
+  ): Promise<BitwardenTwoFactorDisableSetup> {
+    if (type !== 2 && type !== 3) throw new BitwardenHttpError('INVALID_RESPONSE')
+    const body = { masterPasswordHash: assertMasterPasswordHash(masterPasswordHash) }
+    const provider = type === 2 ? 'duo' : 'yubikey'
+    try {
+      const response = await this.requestJson(
+        'POST',
+        `${this.urls.apiUrl}/two-factor/get-${provider}`,
+        {
+          body,
+          signal,
+          maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES,
+          tooLargeCode: 'TOO_LARGE'
+        }
+      )
+      return parseTwoFactorDisableSetup(response, type)
+    } catch (error) {
+      throw normalizeUserVerificationError(error)
+    } finally {
+      body.masterPasswordHash = ''
+    }
+  }
+
   async sendEmailTwoFactorSetup(
     request: {
       email: string
@@ -1384,13 +1418,18 @@ export class BitwardenHttpClient {
         }
       | { type: 1; verificationMode: 'server-token'; userVerificationToken: string }
       | {
-          type: 0 | 1
+          type: 2 | 3 | 7
+          verificationMode: 'server-token'
+          userVerificationToken: string
+        }
+      | {
+          type: 0 | 1 | 2 | 3 | 7
           verificationMode: 'master-password'
           masterPasswordHash: string
         },
     signal?: AbortSignal
   ): Promise<void> {
-    if (request.type !== 0 && request.type !== 1) {
+    if (![0, 1, 2, 3, 7].includes(request.type)) {
       throw new BitwardenHttpError('INVALID_RESPONSE')
     }
     const body: JsonObject = {}
@@ -1398,7 +1437,16 @@ export class BitwardenHttpClient {
     let path: string
     if (request.verificationMode === 'server-token') {
       method = 'DELETE'
-      path = request.type === 0 ? 'authenticator' : 'email'
+      path =
+        request.type === 0
+          ? 'authenticator'
+          : request.type === 1
+            ? 'email'
+            : request.type === 2
+              ? 'duo'
+              : request.type === 3
+                ? 'yubikey'
+                : 'webauthn/all'
       body.userVerificationToken = assertVerificationToken(request.userVerificationToken)
       if (request.type === 0) body.key = assertTotpSetupKey(request.key)
     } else if (request.verificationMode === 'master-password') {
@@ -2755,6 +2803,44 @@ function parseTwoFactorProviders(value: JsonValue): BitwardenTwoFactorProvider[]
   })
 }
 
+function parseTwoFactorDisableSetup(value: JsonValue, type: 2 | 3): BitwardenTwoFactorDisableSetup {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const nestedName = type === 2 ? ['duo', 'Duo'] : ['yubiKey', 'YubiKey']
+  const presentNested = nestedName.filter((name) => Object.hasOwn(value, name))
+  if (presentNested.length > 1) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const expectedObject = type === 2 ? 'twoFactorDuo' : 'twoFactorYubiKey'
+  const object = value.object ?? value.Object
+  if (
+    object !== undefined &&
+    object !== expectedObject &&
+    !(type === 3 && object === 'twoFactorU2f')
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  if (presentNested.length === 1) {
+    const nested = value[presentNested[0]!]
+    if (!isRecord(nested) || typeof (nested.enabled ?? nested.Enabled) !== 'boolean') {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    return {
+      enabled: (nested.enabled ?? nested.Enabled) as boolean,
+      verificationMode: 'server-token',
+      userVerificationToken: assertVerificationToken(
+        value.userVerificationToken ?? value.UserVerificationToken
+      )
+    }
+  }
+  const enabled = value.enabled ?? value.Enabled
+  if (
+    typeof enabled !== 'boolean' ||
+    value.userVerificationToken !== undefined ||
+    value.UserVerificationToken !== undefined
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return { enabled, verificationMode: 'master-password', userVerificationToken: null }
+}
+
 function parseTwoFactorRecoveryCode(value: JsonValue): string {
   if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
   const code = value.code ?? value.Code
@@ -3084,7 +3170,7 @@ function parseEnabledEmailTwoFactor(value: JsonValue, expectedEmail: string): vo
 
 function parseDisabledTwoFactor(
   value: JsonValue,
-  expectedType: 0 | 1,
+  expectedType: 0 | 1 | 2 | 3 | 7,
   verificationMode: 'server-token' | 'master-password'
 ): void {
   if (verificationMode === 'server-token') {

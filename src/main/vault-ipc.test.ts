@@ -2675,6 +2675,9 @@ describe('registerVaultIpc reprompt gate', () => {
     expect(String(await disable(event, { ...request, type: 1 }))).not.toContain(
       'remote master password'
     )
+    for (const type of [2, 3, 7] as const) {
+      await expect(disable(event, { ...request, type })).resolves.toBeUndefined()
+    }
     expect(vault.disableTwoFactorProvider).toHaveBeenNthCalledWith(1, {
       type: 0,
       masterPassword: '',
@@ -2690,14 +2693,17 @@ describe('registerVaultIpc reprompt gate', () => {
       undefined,
       null,
       {},
-      { ...request, type: 2 },
+      { ...request, type: 4 },
+      { ...request, type: 5 },
+      { ...request, type: 6 },
+      { ...request, type: 8 },
       { ...request, confirm: false },
       { ...request, masterPassword: '' },
       { ...request, providerName: 'renderer-supplied-name' }
     ]) {
       await expect(disable(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
-    expect(vault.disableTwoFactorProvider).toHaveBeenCalledTimes(2)
+    expect(vault.disableTwoFactorProvider).toHaveBeenCalledTimes(5)
   })
 
   it('keeps authenticator setup capabilities in main and validates the one-time session boundary', async () => {

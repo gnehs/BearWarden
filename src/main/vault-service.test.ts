@@ -6686,8 +6686,18 @@ describe('VaultService encrypted local data', () => {
     expect(request.masterPassword).toBe('')
     expect(disable).toHaveBeenCalledWith(0, 'remote master password', expect.any(AbortSignal))
 
+    for (const type of [2, 3, 7] as const) {
+      await expect(
+        service.disableTwoFactorProvider({
+          type,
+          masterPassword: 'remote master password',
+          confirm: true
+        })
+      ).resolves.toBeUndefined()
+    }
+
     for (const invalid of [
-      { type: 2 as 0, masterPassword: 'password', confirm: true as const },
+      { type: 6 as 0, masterPassword: 'password', confirm: true as const },
       { type: 1 as const, masterPassword: 'password', confirm: false as true },
       { type: 1 as const, masterPassword: '', confirm: true as const }
     ]) {
@@ -6696,7 +6706,7 @@ describe('VaultService encrypted local data', () => {
       })
       expect(invalid.masterPassword).toBe('')
     }
-    expect(disable).toHaveBeenCalledOnce()
+    expect(disable).toHaveBeenCalledTimes(4)
 
     disable.mockRejectedValueOnce(new BitwardenDirectError('USER_VERIFICATION_FAILED'))
     await expect(
@@ -6743,7 +6753,7 @@ describe('VaultService encrypted local data', () => {
     )
 
     const request = {
-      type: 0 as const,
+      type: 7 as const,
       masterPassword: 'remote master password',
       confirm: true as const
     }

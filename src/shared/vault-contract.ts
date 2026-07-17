@@ -1053,7 +1053,8 @@ export interface AccountTwoFactorProvider {
 }
 
 export interface AccountTwoFactorDisableRequest {
-  type: 0 | 1
+  /** Personal providers only: Authenticator, Email, Duo, YubiKey OTP, or WebAuthn. */
+  type: 0 | 1 | 2 | 3 | 7
   masterPassword: string
   /** Destructive mutations require an explicit renderer confirmation. */
   confirm: true

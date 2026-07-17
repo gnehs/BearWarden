@@ -4138,12 +4138,12 @@ export class VaultService {
   }
 
   async disableTwoFactorProvider(request: {
-    type: 0 | 1
+    type: 0 | 1 | 2 | 3 | 7
     masterPassword: string
     confirm: true
   }): Promise<void> {
     if (
-      (request.type !== 0 && request.type !== 1) ||
+      !([0, 1, 2, 3, 7] as const).includes(request.type) ||
       request.confirm !== true ||
       typeof request.masterPassword !== 'string' ||
       request.masterPassword.length === 0 ||
@@ -4212,7 +4212,7 @@ export class VaultService {
       throw this.mapSyncError(error)
     } finally {
       request.masterPassword = ''
-      mutation.type = -1 as 0 | 1
+      mutation.type = -1 as 0 | 1 | 2 | 3 | 7
       mutation.masterPassword = ''
     }
   }

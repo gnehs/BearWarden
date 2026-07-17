@@ -4,6 +4,10 @@ import { describe, expect, it } from 'vitest'
 import {
   canEnrollWebAuthnKey,
   canRemoveWebAuthnKey,
+  enabledPersonalTwoFactorMethodCount,
+  hiddenProviderEscapeTargets,
+  isDisableablePersonalProvider,
+  isLastVisiblePersonalTwoFactorMethod,
   isWebAuthnMutationOutcomeUnknown,
   webAuthnActionError,
   webAuthnKeyPresentation
@@ -79,5 +83,42 @@ describe('account WebAuthn key renderer policy', () => {
     const forbidden = ['chal' + 'lenge', 'attest' + 'ation', 'to' + 'ken']
 
     expect(forbidden.every((field) => !markup.includes(field))).toBe(true)
+  })
+
+  it('allows only personal disable targets and counts no organization or recovery pseudo-provider', () => {
+    expect([0, 1, 2, 3, 7].every(isDisableablePersonalProvider)).toBe(true)
+    expect([4, 5, 6, 8].some(isDisableablePersonalProvider)).toBe(false)
+    expect(
+      enabledPersonalTwoFactorMethodCount([
+        { type: 7, enabled: true },
+        { type: 6, enabled: true },
+        { type: 8, enabled: true }
+      ])
+    ).toBe(1)
+  })
+
+  it('offers Duo and YubiKey escape targets only when status omits them', () => {
+    expect(hiddenProviderEscapeTargets([{ type: 2, enabled: true }])).toEqual([3])
+    expect(
+      hiddenProviderEscapeTargets([
+        { type: 2, enabled: true },
+        { type: 3, enabled: true }
+      ])
+    ).toEqual([])
+  })
+
+  it('warns only when the selected visible provider is the final personal method', () => {
+    expect(isLastVisiblePersonalTwoFactorMethod([{ type: 7, enabled: true }], 7)).toBe(true)
+    expect(isLastVisiblePersonalTwoFactorMethod([{ type: 0, enabled: true }], 2)).toBe(false)
+    expect(
+      isLastVisiblePersonalTwoFactorMethod(
+        [
+          { type: 0, enabled: true },
+          { type: 7, enabled: true },
+          { type: 6, enabled: true }
+        ],
+        7
+      )
+    ).toBe(false)
   })
 })

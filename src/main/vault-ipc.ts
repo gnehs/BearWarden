@@ -3058,12 +3058,12 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     async (_event, input) => {
       const record = exactRecord(input, ['type', 'masterPassword', 'confirm'])
       const request: AccountTwoFactorDisableRequest = {
-        type: record.type as 0 | 1,
+        type: record.type as 0 | 1 | 2 | 3 | 7,
         masterPassword: requiredString(record, 'masterPassword'),
         confirm: record.confirm as true
       }
       if (
-        (request.type !== 0 && request.type !== 1) ||
+        !([0, 1, 2, 3, 7] as const).includes(request.type) ||
         request.masterPassword.length === 0 ||
         request.masterPassword.length > 16_384 ||
         request.confirm !== true

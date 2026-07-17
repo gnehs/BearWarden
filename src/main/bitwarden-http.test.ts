@@ -568,6 +568,64 @@ describe('BitwardenHttpClient', () => {
     })
   })
 
+  it('uses provider-bound official capabilities for Duo, YubiKey, and whole WebAuthn disable', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        json({
+          duo: { enabled: true },
+          userVerificationToken: 'duo-capability',
+          object: 'twoFactorDuo'
+        })
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(
+        json({
+          yubiKey: { enabled: true },
+          userVerificationToken: 'yubikey-capability',
+          object: 'twoFactorYubiKey'
+        })
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(client.getTwoFactorDisableSetup(2, 'proof')).resolves.toMatchObject({
+      enabled: true,
+      verificationMode: 'server-token',
+      userVerificationToken: 'duo-capability'
+    })
+    await client.disableTwoFactorProvider({
+      type: 2,
+      verificationMode: 'server-token',
+      userVerificationToken: 'duo-capability'
+    })
+    await expect(client.getTwoFactorDisableSetup(3, 'proof')).resolves.toMatchObject({
+      enabled: true,
+      verificationMode: 'server-token',
+      userVerificationToken: 'yubikey-capability'
+    })
+    await client.disableTwoFactorProvider({
+      type: 3,
+      verificationMode: 'server-token',
+      userVerificationToken: 'yubikey-capability'
+    })
+    await client.disableTwoFactorProvider({
+      type: 7,
+      verificationMode: 'server-token',
+      userVerificationToken: 'webauthn-capability'
+    })
+
+    expect(fetch.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
+      ['https://api.bitwarden.com/two-factor/get-duo', 'POST'],
+      ['https://api.bitwarden.com/two-factor/duo', 'DELETE'],
+      ['https://api.bitwarden.com/two-factor/get-yubikey', 'POST'],
+      ['https://api.bitwarden.com/two-factor/yubikey', 'DELETE'],
+      ['https://api.bitwarden.com/two-factor/webauthn/all', 'DELETE']
+    ])
+  })
+
   it('disables Vaultwarden providers with a fresh master-password proof', async () => {
     const fetch = vi
       .fn<FetchLike>()
@@ -623,7 +681,7 @@ describe('BitwardenHttpClient', () => {
     ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
 
     const unsupported = {
-      type: 2,
+      type: 6,
       verificationMode: 'master-password',
       masterPasswordHash: 'fresh-derived-proof'
     } as unknown as Parameters<BitwardenHttpClient['disableTwoFactorProvider']>[0]

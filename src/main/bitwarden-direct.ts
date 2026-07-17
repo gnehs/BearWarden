@@ -480,7 +480,7 @@ export interface BitwardenSyncClient {
   getTwoFactorProviders?(signal?: AbortSignal): Promise<BitwardenTwoFactorProvider[]>
   getTwoFactorRecoveryCode?(masterPassword: string, signal?: AbortSignal): Promise<string>
   disableTwoFactorProvider?(
-    type: 0 | 1,
+    type: 0 | 1 | 2 | 3 | 7,
     masterPassword: string,
     signal?: AbortSignal
   ): Promise<void>
@@ -2077,7 +2077,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   }
 
   async disableTwoFactorProvider(
-    type: 0 | 1,
+    type: 0 | 1 | 2 | 3 | 7,
     masterPassword: string,
     signal?: AbortSignal
   ): Promise<void> {
@@ -2086,10 +2086,14 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     let masterPasswordHash = ''
     let authenticatorSetup: BitwardenAuthenticatorSetup | null = null
     let emailSetup: BitwardenEmailTwoFactorSetup | null = null
+    let providerSetup: Awaited<ReturnType<BitwardenHttpClient['getTwoFactorDisableSetup']>> | null =
+      null
+    let webAuthnSetup: BitwardenWebAuthnSetup | null = null
+    let usedUnverifiableProviderEscape = false
     let mutationStarted = false
     try {
       if (
-        (type !== 0 && type !== 1) ||
+        !([0, 1, 2, 3, 7] as const).includes(type) ||
         typeof masterPassword !== 'string' ||
         masterPassword.length === 0 ||
         masterPassword.length > MAX_SYNC_SECRET_LENGTH
@@ -2120,7 +2124,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
             : { type, verificationMode: 'master-password', masterPasswordHash },
           signal
         )
-      } else {
+      } else if (type === 1) {
         emailSetup = await this.http.getEmailTwoFactorSetup(masterPasswordHash, signal)
         if (!emailSetup.enabled) throw new BitwardenDirectError('INVALID_RESPONSE')
         mutationStarted = true
@@ -2134,11 +2138,76 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
             : { type, verificationMode: 'master-password', masterPasswordHash },
           signal
         )
+      } else if (type === 2 || type === 3) {
+        try {
+          providerSetup = await this.http.getTwoFactorDisableSetup(type, masterPasswordHash, signal)
+        } catch (error) {
+          if (
+            type !== 3 ||
+            !(error instanceof BitwardenHttpError) ||
+            !(
+              error.code === 'INVALID_RESPONSE' ||
+              (error.code === 'NETWORK' && error.status === 400)
+            )
+          ) {
+            throw error
+          }
+          // Vaultwarden can hide an already-enabled provider when its server-side
+          // Duo/Yubico integration is no longer usable. Its generic endpoint is the
+          // documented escape hatch and still validates this fresh password proof.
+          usedUnverifiableProviderEscape = true
+        }
+        // Vaultwarden reports `enabled: false` when the database row exists but
+        // the server-side Duo/Yubico integration is unusable. The generic endpoint
+        // is the only escape hatch for that state and is also a safe no-op when the
+        // provider is genuinely absent.
+        if (providerSetup && !providerSetup.enabled) usedUnverifiableProviderEscape = true
+        mutationStarted = true
+        await this.http.disableTwoFactorProvider(
+          providerSetup?.verificationMode === 'server-token' && !usedUnverifiableProviderEscape
+            ? {
+                type,
+                verificationMode: 'server-token',
+                userVerificationToken: providerSetup.userVerificationToken!
+              }
+            : { type, verificationMode: 'master-password', masterPasswordHash },
+          signal
+        )
+      } else {
+        webAuthnSetup = await this.http.getWebAuthnSetup(masterPasswordHash, signal)
+        if (!webAuthnSetup.enabled) throw new BitwardenDirectError('INVALID_RESPONSE')
+        mutationStarted = true
+        await this.http.disableTwoFactorProvider(
+          webAuthnSetup.verificationMode === 'server-token'
+            ? {
+                type,
+                verificationMode: 'server-token',
+                userVerificationToken: webAuthnSetup.userVerificationToken!
+              }
+            : { type, verificationMode: 'master-password', masterPasswordHash },
+          signal
+        )
       }
       await this.captureSession()
     } catch (error) {
       const mapped = this.mapError(error)
-      if (mutationStarted && mapped.code === 'NETWORK') {
+      if (
+        mutationStarted &&
+        (mapped.code === 'NETWORK' ||
+          mapped.code === 'ABORTED' ||
+          mapped.code === 'INVALID_RESPONSE') &&
+        !usedUnverifiableProviderEscape &&
+        (await this.isTwoFactorProviderAuthoritativelyDisabled(type, masterPasswordHash, signal))
+      ) {
+        await this.captureSession()
+        return
+      }
+      if (
+        mutationStarted &&
+        (mapped.code === 'NETWORK' ||
+          mapped.code === 'ABORTED' ||
+          mapped.code === 'INVALID_RESPONSE')
+      ) {
         throw new BitwardenDirectError('TWO_FACTOR_MUTATION_UNKNOWN')
       }
       throw mapped
@@ -2154,6 +2223,32 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         emailSetup.email = null
         emailSetup.userVerificationToken = null
       }
+      if (providerSetup) providerSetup.userVerificationToken = null
+      if (webAuthnSetup) {
+        webAuthnSetup.userVerificationToken = null
+        webAuthnSetup.keys.splice(0)
+      }
+    }
+  }
+
+  private async isTwoFactorProviderAuthoritativelyDisabled(
+    type: 0 | 1 | 2 | 3 | 7,
+    masterPasswordHash: string,
+    signal?: AbortSignal
+  ): Promise<boolean> {
+    try {
+      if (type === 0)
+        return !(await this.http.getAuthenticatorSetup(masterPasswordHash, signal)).enabled
+      if (type === 1)
+        return !(await this.http.getEmailTwoFactorSetup(masterPasswordHash, signal)).enabled
+      if (type === 2 || type === 3) {
+        return !(await this.http.getTwoFactorDisableSetup(type, masterPasswordHash, signal)).enabled
+      }
+      return !(await this.http.getWebAuthnSetup(masterPasswordHash, signal)).enabled
+    } catch {
+      // In particular, a Vaultwarden Yubico configuration failure makes absence
+      // impossible to prove. Keep the outcome unknown instead of guessing.
+      return false
     }
   }
 

@@ -1,4 +1,39 @@
-import type { AccountWebAuthnKeyView } from '../../../shared/vault-contract'
+import type {
+  AccountTwoFactorProvider,
+  AccountWebAuthnKeyView
+} from '../../../shared/vault-contract'
+
+export type DisableablePersonalProvider = 0 | 1 | 2 | 3 | 7
+
+export function isDisableablePersonalProvider(type: number): type is DisableablePersonalProvider {
+  return type === 0 || type === 1 || type === 2 || type === 3 || type === 7
+}
+
+export function enabledPersonalTwoFactorMethodCount(
+  providers: readonly AccountTwoFactorProvider[]
+): number {
+  return providers.filter(
+    ({ type, enabled }) => enabled && (isDisableablePersonalProvider(type) || type === 4)
+  ).length
+}
+
+export function isLastVisiblePersonalTwoFactorMethod(
+  providers: readonly AccountTwoFactorProvider[],
+  target: DisableablePersonalProvider
+): boolean {
+  return (
+    providers.some((provider) => provider.type === target && provider.enabled) &&
+    enabledPersonalTwoFactorMethodCount(providers) === 1
+  )
+}
+
+export function hiddenProviderEscapeTargets(
+  providers: readonly AccountTwoFactorProvider[]
+): Array<2 | 3> {
+  return ([2, 3] as const).filter(
+    (type) => !providers.some((provider) => provider.type === type && provider.enabled)
+  )
+}
 
 export type AccountWebAuthnAction = 'list' | 'enroll' | 'remove'
 

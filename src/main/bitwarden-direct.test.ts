@@ -2387,10 +2387,276 @@ describe('BitwardenDirectClient', () => {
     })
     expect(mutationRequests).toBe(1)
 
-    await expect(client.disableTwoFactorProvider(2 as 0, PASSWORD)).rejects.toMatchObject({
-      code: 'INVALID_RESPONSE'
+    for (const type of [4, 5, 6, 8]) {
+      await expect(client.disableTwoFactorProvider(type as 0, PASSWORD)).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE'
+      })
+    }
+    expect(fetch).toHaveBeenCalledTimes(5)
+  })
+
+  it('uses the fresh generic proof as the YubiKey escape hatch when Vaultwarden config is unusable', async () => {
+    let mutationBody: JsonObject | null = null
+    const fetch = vi.fn<FetchLike>(async (url, init) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/api/two-factor/get-yubikey')) {
+        return jsonResponse({ message: 'Yubico support is disabled' }, 400)
+      }
+      if (url.endsWith('/api/two-factor/disable')) {
+        mutationBody = JSON.parse(String(init?.body)) as JsonObject
+        return jsonResponse({ enabled: false, type: 3, object: 'twoFactorProvider' })
+      }
+      return jsonResponse({ message: 'not found' }, 404)
     })
-    expect(fetch).toHaveBeenCalledTimes(4)
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch }),
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.disableTwoFactorProvider(3, PASSWORD)).resolves.toBeUndefined()
+    expect(mutationBody).toMatchObject({ type: 3, masterPasswordHash: expect.any(String) })
+    expect(
+      fetch.mock.calls.filter(([url]) => url.endsWith('/api/two-factor/disable'))
+    ).toHaveLength(1)
+  })
+
+  it('keeps a lost YubiKey escape-hatch result unknown without replaying it', async () => {
+    let mutationRequests = 0
+    const fetch = vi.fn<FetchLike>(async (url) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/api/two-factor/get-yubikey')) {
+        return jsonResponse({ message: 'Yubico support is disabled' }, 400)
+      }
+      if (url.endsWith('/api/two-factor/disable')) {
+        mutationRequests += 1
+        throw new TypeError('response lost before outcome was known')
+      }
+      return jsonResponse({ message: 'not found' }, 404)
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch }),
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.disableTwoFactorProvider(3, PASSWORD)).rejects.toMatchObject({
+      code: 'TWO_FACTOR_MUTATION_UNKNOWN'
+    })
+    expect(mutationRequests).toBe(1)
+    expect(
+      fetch.mock.calls.filter(([url]) => url.endsWith('/api/two-factor/get-yubikey'))
+    ).toHaveLength(1)
+  })
+
+  it('uses the fresh generic proof when Vaultwarden hides a stale Duo provider row', async () => {
+    let mutationBody: JsonObject | null = null
+    const fetch = vi.fn<FetchLike>(async (url, init) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/api/two-factor/get-duo')) {
+        return jsonResponse({ enabled: false, object: 'twoFactorDuo' })
+      }
+      if (url.endsWith('/api/two-factor/disable')) {
+        mutationBody = JSON.parse(String(init?.body)) as JsonObject
+        return jsonResponse({ enabled: false, type: 2, object: 'twoFactorProvider' })
+      }
+      return jsonResponse({ message: 'not found' }, 404)
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch }),
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.disableTwoFactorProvider(2, PASSWORD)).resolves.toBeUndefined()
+    expect(mutationBody).toMatchObject({ type: 2, masterPasswordHash: expect.any(String) })
+    expect(
+      fetch.mock.calls.filter(([url]) => url.endsWith('/api/two-factor/disable'))
+    ).toHaveLength(1)
+  })
+
+  it('does not mistake a hidden stale Duo row for a confirmed lost-response disable', async () => {
+    let mutationRequests = 0
+    const fetch = vi.fn<FetchLike>(async (url) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/api/two-factor/get-duo')) {
+        return jsonResponse({ enabled: false, object: 'twoFactorDuo' })
+      }
+      if (url.endsWith('/api/two-factor/disable')) {
+        mutationRequests += 1
+        throw new TypeError('response lost before outcome was known')
+      }
+      return jsonResponse({ message: 'not found' }, 404)
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch }),
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.disableTwoFactorProvider(2, PASSWORD)).rejects.toMatchObject({
+      code: 'TWO_FACTOR_MUTATION_UNKNOWN'
+    })
+    expect(mutationRequests).toBe(1)
+    expect(
+      fetch.mock.calls.filter(([url]) => url.endsWith('/api/two-factor/get-duo'))
+    ).toHaveLength(1)
+  })
+
+  it('disables personal Duo, YubiKey, and the whole WebAuthn provider with fresh proofs', async () => {
+    const requests: Array<{ url: string; method: string; body: JsonObject }> = []
+    const fetch = vi.fn<FetchLike>(async (url, init) => {
+      const method = init?.method ?? 'GET'
+      const body = init?.body ? (JSON.parse(String(init.body)) as JsonObject) : {}
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      requests.push({ url, method, body })
+      if (url.endsWith('/api/two-factor/get-duo')) {
+        return jsonResponse({ enabled: true, object: 'twoFactorDuo' })
+      }
+      if (url.endsWith('/api/two-factor/get-yubikey')) {
+        return jsonResponse({
+          yubiKey: { enabled: true },
+          userVerificationToken: 'yubikey-capability',
+          object: 'twoFactorYubiKey'
+        })
+      }
+      if (url.endsWith('/api/two-factor/get-webauthn')) {
+        return jsonResponse({ enabled: true, keys: [], object: 'twoFactorWebAuthn' })
+      }
+      if (url.endsWith('/api/two-factor/yubikey')) return new Response(null, { status: 204 })
+      if (url.endsWith('/api/two-factor/disable')) {
+        return jsonResponse({ enabled: false, type: body.type, object: 'twoFactorProvider' })
+      }
+      return jsonResponse({ message: 'not found' }, 404)
+    })
+    const http = new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await client.disableTwoFactorProvider(2, PASSWORD)
+    await client.disableTwoFactorProvider(3, PASSWORD)
+    await client.disableTwoFactorProvider(7, PASSWORD)
+
+    expect(requests.map(({ url, method }) => [url, method])).toEqual([
+      ['https://vault.example.invalid/api/two-factor/get-duo', 'POST'],
+      ['https://vault.example.invalid/api/two-factor/disable', 'POST'],
+      ['https://vault.example.invalid/api/two-factor/get-yubikey', 'POST'],
+      ['https://vault.example.invalid/api/two-factor/yubikey', 'DELETE'],
+      ['https://vault.example.invalid/api/two-factor/get-webauthn', 'POST'],
+      ['https://vault.example.invalid/api/two-factor/disable', 'POST']
+    ])
+    expect(requests[1]?.body.type).toBe(2)
+    expect(requests[3]?.body).toEqual({ userVerificationToken: 'yubikey-capability' })
+    expect(requests[5]?.body.type).toBe(7)
+  })
+
+  it('reconciles a lost whole-WebAuthn disable response without replaying the mutation', async () => {
+    let enabled = true
+    let mutationRequests = 0
+    const fetch = vi.fn<FetchLike>(async (url) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/api/two-factor/get-webauthn')) {
+        return jsonResponse({ enabled, keys: [], object: 'twoFactorWebAuthn' })
+      }
+      if (url.endsWith('/api/two-factor/disable')) {
+        mutationRequests += 1
+        enabled = false
+        throw new TypeError('response lost after commit')
+      }
+      return jsonResponse({ message: 'not found' }, 404)
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch }),
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.disableTwoFactorProvider(7, PASSWORD)).resolves.toBeUndefined()
+    expect(mutationRequests).toBe(1)
+  })
+
+  it('keeps an ambiguous WebAuthn disable unknown when the provider remains enabled', async () => {
+    let mutationRequests = 0
+    const fetch = vi.fn<FetchLike>(async (url) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/api/two-factor/get-webauthn')) {
+        return jsonResponse({ enabled: true, keys: [], object: 'twoFactorWebAuthn' })
+      }
+      if (url.endsWith('/api/two-factor/disable')) {
+        mutationRequests += 1
+        throw new TypeError('response lost before outcome was known')
+      }
+      return jsonResponse({ message: 'not found' }, 404)
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch }),
+      state: {
+        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.disableTwoFactorProvider(7, PASSWORD)).rejects.toMatchObject({
+      code: 'TWO_FACTOR_MUTATION_UNKNOWN'
+    })
+    expect(mutationRequests).toBe(1)
   })
 
   it('lists safe account devices while locked, captures refreshed sessions, and maps errors', async () => {

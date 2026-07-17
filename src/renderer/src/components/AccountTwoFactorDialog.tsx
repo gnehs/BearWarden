@@ -35,7 +35,11 @@ import { Spinner } from '@renderer/components/ui/spinner'
 import {
   canEnrollWebAuthnKey,
   canRemoveWebAuthnKey,
+  hiddenProviderEscapeTargets,
+  isDisableablePersonalProvider,
+  isLastVisiblePersonalTwoFactorMethod,
   isWebAuthnMutationOutcomeUnknown,
+  type DisableablePersonalProvider,
   webAuthnActionError,
   webAuthnKeyPresentation
 } from './account-webauthn-ui'
@@ -118,7 +122,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
   const [emailToken, setEmailToken] = useState('')
   const [emailCompletionPassword, setEmailCompletionPassword] = useState('')
   const [emailCodeSent, setEmailCodeSent] = useState(false)
-  const [disableTarget, setDisableTarget] = useState<0 | 1 | null>(null)
+  const [disableTarget, setDisableTarget] = useState<DisableablePersonalProvider | null>(null)
   const [disablePassword, setDisablePassword] = useState('')
   const [disableError, setDisableError] = useState('')
   const [webAuthnKeys, setWebAuthnKeys] = useState<AccountWebAuthnKeyView[] | null>(null)
@@ -178,7 +182,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
     if (next) void load()
   }
 
-  function changeDisableTarget(type: 0 | 1 | null): void {
+  function changeDisableTarget(type: DisableablePersonalProvider | null): void {
     if (busy) return
     setDisableTarget(type)
     setDisablePassword('')
@@ -616,7 +620,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
             providers
               .filter((provider) => provider.enabled)
               .map((provider) => {
-                const canDisable = provider.type === 0 || provider.type === 1
+                const canDisable = isDisableablePersonalProvider(provider.type)
                 return (
                   <div key={provider.type} className="flex items-center gap-1">
                     <Badge variant="outline">
@@ -628,7 +632,9 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                         size="sm"
                         variant="destructive"
                         disabled={busy}
-                        onClick={() => changeDisableTarget(provider.type as 0 | 1)}
+                        onClick={() =>
+                          changeDisableTarget(provider.type as DisableablePersonalProvider)
+                        }
                       >
                         <ShieldOff data-icon="inline-start" aria-hidden="true" />
                         停用
@@ -641,6 +647,29 @@ function AccountTwoFactorDialog(): React.JSX.Element {
             <span className="text-muted-foreground text-sm">尚未啟用雙重驗證方式。</span>
           )}
         </div>
+        {hiddenProviderEscapeTargets(providers).length > 0 && (
+          <div className="grid gap-2 border-t pt-4">
+            <p className="text-muted-foreground text-sm">
+              若伺服器的 Duo 或 YubiKey 整合已失效，provider
+              可能不會出現在狀態清單，但仍會阻擋登入。可用下方逃生門以新的主密碼要求伺服器移除註冊。
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {hiddenProviderEscapeTargets(providers).map((type) => (
+                <Button
+                  key={type}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => changeDisableTarget(type)}
+                >
+                  <ShieldOff data-icon="inline-start" aria-hidden="true" />
+                  強制停用{providerNames[type]}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
         {!providers.some((provider) => provider.type === 0 && provider.enabled) && (
           <div className="grid gap-4 border-t pt-4">
             <div>
@@ -995,11 +1024,24 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                 </AlertDialogDescription>
               </AlertDialogHeader>
               {disableTarget !== null &&
-                providers.filter((provider) => provider.enabled).length === 1 && (
+                isLastVisiblePersonalTwoFactorMethod(providers, disableTarget) && (
                   <Alert variant="destructive">
                     <AlertDescription>
-                      這是目前最後一個雙重驗證方式。停用後帳號將不再受雙重驗證保護；建議先確認已安全保存
-                      Recovery Code。你仍可繼續停用。
+                      這是目前最後一個可用的個人雙重驗證方式。停用後帳號將不再要求 Recovery Code
+                      或其他雙重驗證；若組織政策強制
+                      2FA，伺服器也可能撤銷組織成員資格。你仍可繼續停用。
+                    </AlertDescription>
+                  </Alert>
+                )}
+              {disableTarget !== null &&
+                (disableTarget === 2 || disableTarget === 3) &&
+                !providers.some(
+                  (provider) => provider.type === disableTarget && provider.enabled
+                ) && (
+                  <Alert variant="destructive">
+                    <AlertDescription>
+                      伺服器目前無法顯示這個 provider
+                      的真實狀態。強制停用可能移除仍在使用的登入方式；若它是最後一個方式，帳號將不再受雙重驗證保護。
                     </AlertDescription>
                   </Alert>
                 )}
