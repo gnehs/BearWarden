@@ -1513,6 +1513,116 @@ describe('BitwardenHttpClient', () => {
     })
   })
 
+  it('uses bounded personal cipher bulk lifecycle routes and validates list state', async () => {
+    const ids = ['30000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000002']
+    const rows = ids.map((id) => ({
+      id,
+      organizationId: null,
+      deletedDate: null,
+      archivedDate: '2026-07-17T00:00:00.000Z'
+    }))
+    const fetch = vi.fn<FetchLike>().mockImplementation(async (url) => {
+      if (url.endsWith('/restore')) {
+        return json({
+          data: rows.map((row) => ({ ...row, archivedDate: null })),
+          object: 'list',
+          continuationToken: null
+        })
+      }
+      if (url.endsWith('/archive')) {
+        return json({ data: rows, object: 'list', continuationToken: null })
+      }
+      if (url.endsWith('/unarchive')) {
+        return json({
+          data: rows.map((row) => ({ ...row, archivedDate: null })),
+          object: 'list',
+          continuationToken: null
+        })
+      }
+      return new Response(null, { status: 204 })
+    })
+    const client = new BitwardenHttpClient({ server: 'https://vault.example.test', fetch })
+    client.setSession({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 })
+
+    await client.bulkSoftDeleteCiphers(ids)
+    await expect(client.bulkRestoreCiphers(ids)).resolves.toHaveLength(2)
+    await client.bulkMoveCiphers(ids, '20000000-0000-4000-8000-000000000001')
+    await expect(client.bulkArchiveCiphers(ids)).resolves.toHaveLength(2)
+    await expect(client.bulkUnarchiveCiphers(ids)).resolves.toHaveLength(2)
+    await client.bulkHardDeleteCiphers(ids)
+
+    expect(fetch.mock.calls.map(([url, init]) => `${init?.method} ${url}`)).toEqual([
+      'PUT https://vault.example.test/api/ciphers/delete',
+      'PUT https://vault.example.test/api/ciphers/restore',
+      'POST https://vault.example.test/api/ciphers/move',
+      'PUT https://vault.example.test/api/ciphers/archive',
+      'PUT https://vault.example.test/api/ciphers/unarchive',
+      'POST https://vault.example.test/api/ciphers/delete'
+    ])
+    expect(JSON.parse(String(fetch.mock.calls[2]?.[1]?.body))).toEqual({
+      ids,
+      folderId: '20000000-0000-4000-8000-000000000001'
+    })
+  })
+
+  it('rejects unsafe bulk cipher inputs and ambiguous bulk responses without retrying', async () => {
+    const id = '30000000-0000-4000-8000-000000000001'
+    const otherId = '30000000-0000-4000-8000-000000000002'
+    const client = new BitwardenHttpClient({ server: 'us', fetch: vi.fn<FetchLike>() })
+    client.setSession({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 })
+    await expect(client.bulkSoftDeleteCiphers([])).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    await expect(client.bulkSoftDeleteCiphers([id, id])).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    await expect(client.bulkSoftDeleteCiphers(['not-a-uuid'])).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    await expect(
+      client.bulkSoftDeleteCiphers(
+        Array.from(
+          { length: 501 },
+          (_, index) => `30000000-0000-4000-8000-${index.toString().padStart(12, '0')}`
+        )
+      )
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+
+    const nonEmptyFetch = vi.fn<FetchLike>().mockResolvedValue(json({ ok: true }))
+    const nonEmptyClient = new BitwardenHttpClient({ server: 'us', fetch: nonEmptyFetch })
+    nonEmptyClient.setSession({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 })
+    await expect(nonEmptyClient.bulkMoveCiphers([id], null)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+
+    const mismatchedFetch = vi.fn<FetchLike>().mockResolvedValue(
+      json({
+        data: [{ id: otherId, organizationId: null, deletedDate: null, archivedDate: null }],
+        object: 'list',
+        continuationToken: null
+      })
+    )
+    const mismatchedClient = new BitwardenHttpClient({ server: 'us', fetch: mismatchedFetch })
+    mismatchedClient.setSession({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 })
+    await expect(mismatchedClient.bulkRestoreCiphers([id])).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+
+    const partialFailureFetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(json({ message: 'partial' }, 503))
+    const partialFailureClient = new BitwardenHttpClient({
+      server: 'us',
+      fetch: partialFailureFetch
+    })
+    partialFailureClient.setSession({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 })
+    await expect(partialFailureClient.bulkHardDeleteCiphers([id])).rejects.toMatchObject({
+      code: 'NETWORK',
+      status: 503
+    })
+    expect(partialFailureFetch).toHaveBeenCalledTimes(1)
+  })
+
   it('rejects an oversized JSON response before buffering its body', async () => {
     const fetch = vi.fn<FetchLike>().mockResolvedValue(
       new Response('{}', {

@@ -371,6 +371,7 @@ const MAX_ATTACHMENT_URL_BYTES = 64 * 1024
 const MAX_WEBAUTHN_KEYS = 64
 const MAX_WEBAUTHN_KEY_ID = 2_147_483_647
 const MAX_WEBAUTHN_KEY_NAME_BYTES = 256
+const MAX_BULK_CIPHER_IDS = 500
 
 function isRecord(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -1841,8 +1842,63 @@ export class BitwardenHttpClient {
   async hardDeleteCipher(id: string, signal?: AbortSignal): Promise<void> {
     await this.deleteEntity(`/ciphers/${encodeURIComponent(assertId(id))}`, signal)
   }
+  async bulkSoftDeleteCiphers(ids: readonly string[], signal?: AbortSignal): Promise<void> {
+    await this.bulkEmptyCipherMutation('PUT', '/ciphers/delete', ids, undefined, signal)
+  }
+  async bulkRestoreCiphers(ids: readonly string[], signal?: AbortSignal): Promise<JsonObject[]> {
+    return this.bulkCipherListMutation('restore', ids, signal)
+  }
+  async bulkMoveCiphers(
+    ids: readonly string[],
+    folderId: string | null,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const normalizedFolderId = folderId === null ? null : assertUuid(folderId)
+    await this.bulkEmptyCipherMutation('POST', '/ciphers/move', ids, normalizedFolderId, signal)
+  }
+  async bulkArchiveCiphers(ids: readonly string[], signal?: AbortSignal): Promise<JsonObject[]> {
+    return this.bulkCipherListMutation('archive', ids, signal)
+  }
+  async bulkUnarchiveCiphers(ids: readonly string[], signal?: AbortSignal): Promise<JsonObject[]> {
+    return this.bulkCipherListMutation('unarchive', ids, signal)
+  }
+  async bulkHardDeleteCiphers(ids: readonly string[], signal?: AbortSignal): Promise<void> {
+    await this.bulkEmptyCipherMutation('POST', '/ciphers/delete', ids, undefined, signal)
+  }
   async deleteCipher(id: string, signal?: AbortSignal): Promise<void> {
     await this.hardDeleteCipher(id, signal)
+  }
+
+  private async bulkCipherListMutation(
+    operation: 'restore' | 'archive' | 'unarchive',
+    ids: readonly string[],
+    signal?: AbortSignal
+  ): Promise<JsonObject[]> {
+    const normalizedIds = assertBulkCipherIds(ids)
+    const response = await this.requestJson('PUT', `${this.urls.apiUrl}/ciphers/${operation}`, {
+      body: { ids: normalizedIds },
+      signal,
+      retry: false
+    })
+    return parseBulkCipherList(response, normalizedIds, operation)
+  }
+
+  private async bulkEmptyCipherMutation(
+    method: 'POST' | 'PUT',
+    path: string,
+    ids: readonly string[],
+    folderId: string | null | undefined,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const normalizedIds = assertBulkCipherIds(ids)
+    const body: JsonObject = { ids: normalizedIds }
+    if (folderId !== undefined) body.folderId = folderId
+    const response = await this.requestJson(method, `${this.urls.apiUrl}${path}`, {
+      body,
+      signal,
+      retry: false
+    })
+    if (response !== null) throw new BitwardenHttpError('INVALID_RESPONSE')
   }
 
   private async entity(
@@ -2201,6 +2257,72 @@ export class BitwardenHttpClient {
 function assertId(value: string): string {
   if (!string(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
   return value
+}
+
+function assertUuid(value: string): string {
+  if (typeof value !== 'string' || !UUID_PATTERN.test(value)) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function assertBulkCipherIds(ids: readonly string[]): string[] {
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > MAX_BULK_CIPHER_IDS) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  const normalized = ids.map(assertUuid)
+  const uniqueIds = new Set(normalized.map((id) => id.toLocaleLowerCase('en-US')))
+  if (uniqueIds.size !== normalized.length) throw new BitwardenHttpError('INVALID_RESPONSE')
+  return normalized
+}
+
+function parseBulkCipherList(
+  value: JsonValue,
+  requestedIds: readonly string[],
+  operation: 'restore' | 'archive' | 'unarchive'
+): JsonObject[] {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const object = 'object' in value ? value.object : value.Object
+  const continuationToken =
+    'continuationToken' in value ? value.continuationToken : value.ContinuationToken
+  const data = 'data' in value ? value.data : value.Data
+  if (object !== 'list' || continuationToken !== null || !Array.isArray(data)) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  if (data.length !== requestedIds.length) throw new BitwardenHttpError('INVALID_RESPONSE')
+
+  const expected = new Map(requestedIds.map((id) => [id.toLocaleLowerCase('en-US'), id] as const))
+  const seen = new Set<string>()
+  const rows: JsonObject[] = []
+  for (const row of data) {
+    if (!isRecord(row)) throw new BitwardenHttpError('INVALID_RESPONSE')
+    const id = row.id ?? row.Id
+    const deletedDate = 'deletedDate' in row ? row.deletedDate : row.DeletedDate
+    const archivedDate = 'archivedDate' in row ? row.archivedDate : row.ArchivedDate
+    const organizationId = 'organizationId' in row ? row.organizationId : row.OrganizationId
+    if (typeof id !== 'string' || !UUID_PATTERN.test(id)) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    const normalizedId = id.toLocaleLowerCase('en-US')
+    if (expected.get(normalizedId) !== id || seen.has(normalizedId)) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    if (
+      organizationId !== null ||
+      (operation === 'restore' && deletedDate !== null) ||
+      (operation === 'archive' &&
+        (typeof archivedDate !== 'string' ||
+          archivedDate.length === 0 ||
+          !Number.isFinite(Date.parse(archivedDate)))) ||
+      (operation === 'unarchive' && archivedDate !== null)
+    ) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    seen.add(normalizedId)
+    rows.push(row)
+  }
+  if (seen.size !== expected.size) throw new BitwardenHttpError('INVALID_RESPONSE')
+  return rows
 }
 
 function parseAccountSecurityProfile(value: JsonValue): BitwardenAccountSecurityProfile {
