@@ -63,6 +63,7 @@ import { Spinner } from '@renderer/components/ui/spinner'
 import AccountApiKeyDialog from './AccountApiKeyDialog'
 import AccountDevicesDialog from './AccountDevicesDialog'
 import AccountTwoFactorDialog from './AccountTwoFactorDialog'
+import { PendingImportWarning } from './PendingImportWarning'
 import {
   buildSyncTwoFactorRequest,
   WEB_AUTHN_TWO_FACTOR_METHOD,
@@ -94,6 +95,7 @@ function describeSyncError(error: unknown): string {
   if (error.message.includes('UNSUPPORTED_ACCOUNT'))
     return '此帳號使用尚未支援的新版帳號加密或登入方式；為避免資料損毀，BearWarden 不會進行任何遠端寫入。'
   if (error.message.includes('LOCKED')) return '保管庫已鎖定，請輸入主密碼後再試。'
+  if (error.message.includes('INVALID_MASTER_PASSWORD')) return '主密碼不正確。'
   if (error.message.includes('TWO_FACTOR')) return '雙重驗證無效、已過期或已取消，請重新嘗試。'
   if (error.message.includes('INVALID_URL')) return '請輸入有效的 HTTPS 伺服器網址。'
   return '同步未完成，請檢查連線與登入資訊後再試。'
@@ -268,6 +270,29 @@ function SyncDialog({
       await refreshAfterSuccess(result, '同步完成。')
     } catch (syncError) {
       setError(describeSyncError(syncError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function resolvePendingImport(): Promise<void> {
+    if (!masterPassword) {
+      setError('請輸入主密碼。')
+      return
+    }
+    setBusy(true)
+    setError('')
+    setSuccess('')
+    try {
+      const nextStatus = await window.bearwarden.sync.resolvePendingImport({
+        masterPassword,
+        confirmRetry: true
+      })
+      onStatusChange(nextStatus)
+      clearSecrets()
+      setSuccess('已允許重新傳送。按「立即同步」開始重試。')
+    } catch (resolveError) {
+      setError(describeSyncError(resolveError))
     } finally {
       setBusy(false)
     }
@@ -549,6 +574,18 @@ function SyncDialog({
                   <strong>{formatSyncTime(status.lastSyncAt)}</strong>
                 </div>
               </section>
+              {status.pendingImport && (
+                <PendingImportWarning
+                  count={status.pendingImport.count}
+                  startedAt={status.pendingImport.startedAt}
+                  masterPassword={masterPassword}
+                  showPassword={showPassword}
+                  busy={busy}
+                  onMasterPasswordChange={setMasterPassword}
+                  onTogglePassword={() => setShowPassword((visible) => !visible)}
+                  onConfirm={() => void resolvePendingImport()}
+                />
+              )}
               {accountProfile && (
                 <Alert className="sync-status-card" role="status">
                   <ShieldCheck aria-hidden="true" />

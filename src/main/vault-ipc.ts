@@ -75,6 +75,7 @@ import {
   type VaultLoginUri,
   type VaultItemType,
   type SyncConnectRequest,
+  type SyncResolvePendingImportRequest,
   type SyncStatus,
   type SyncTwoFactorMethod,
   type SyncUnlockRequest,
@@ -125,6 +126,7 @@ const MAX_EQUIVALENT_DOMAIN_GROUPS = 10_000
 const MAX_EQUIVALENT_DOMAINS_PER_GROUP = 1_000
 const MAX_EQUIVALENT_DOMAIN_TOTAL = 100_000
 const MAX_EQUIVALENT_DOMAIN_LENGTH = 1_024
+const MAX_SYNC_RESOLUTION_MASTER_PASSWORD_LENGTH = 1_024
 
 interface RepromptAuthorizationEntry {
   senderId: number
@@ -1884,6 +1886,19 @@ function parseSyncUnlock(value: unknown): SyncUnlockRequest {
   return result
 }
 
+function parseSyncResolvePendingImport(value: unknown): SyncResolvePendingImportRequest {
+  const record = exactRecord(value, ['masterPassword', 'confirmRetry'])
+  const masterPassword = requiredString(record, 'masterPassword')
+  if (
+    masterPassword.length === 0 ||
+    masterPassword.length > MAX_SYNC_RESOLUTION_MASTER_PASSWORD_LENGTH
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  if (record.confirmRetry !== true) throw new VaultError('INVALID_INPUT')
+  return { masterPassword, confirmRetry: true }
+}
+
 export function isTrustedVaultSender(
   event: IpcMainInvokeEvent,
   mainWindow: BrowserWindow | null
@@ -2765,6 +2780,16 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     const result = await vault.syncNow()
     options.afterSyncChanged?.(result)
     return result
+  })
+  registerHandler(IPC_CHANNELS.syncResolvePendingImport, getMainWindow, async (_event, input) => {
+    const request = parseSyncResolvePendingImport(input)
+    try {
+      const status = await vault.resolvePendingLoginImport(request)
+      options.afterSyncChanged?.(status)
+      return status
+    } finally {
+      request.masterPassword = ''
+    }
   })
   registerHandler(IPC_CHANNELS.syncDisconnect, getMainWindow, async () => {
     await Promise.resolve(options.beforeSyncReconfigure?.())

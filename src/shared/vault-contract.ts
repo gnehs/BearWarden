@@ -101,6 +101,7 @@ export const IPC_CHANNELS = {
   syncConnect: 'sync:connect',
   syncUnlock: 'sync:unlock',
   syncNow: 'sync:now',
+  syncResolvePendingImport: 'sync:resolve-pending-import',
   syncDisconnect: 'sync:disconnect',
   accountStatus: 'account:status',
   accountAdd: 'account:add',
@@ -898,6 +899,15 @@ export interface SyncStatus {
   email?: string
   lastSyncAt?: string
   lastError?: string
+  pendingImport?: {
+    count: number
+    startedAt: string
+  }
+}
+
+export interface SyncResolvePendingImportRequest {
+  masterPassword: string
+  confirmRetry: true
 }
 
 export type SyncTwoFactorMethod = '0' | '1' | '3'
@@ -1631,6 +1641,7 @@ export interface BearWardenAPI {
     connect: (request: SyncConnectRequest) => Promise<SyncResult>
     unlock: (request: SyncUnlockRequest) => Promise<SyncStatus>
     now: () => Promise<SyncResult>
+    resolvePendingImport: (request: SyncResolvePendingImportRequest) => Promise<SyncStatus>
     disconnect: () => Promise<SyncStatus>
     onChanged: (listener: (status: SyncStatus) => void) => () => void
   }

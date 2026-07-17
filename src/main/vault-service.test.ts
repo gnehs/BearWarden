@@ -232,6 +232,8 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
     ids: string[]
     folderId?: string | null
   }>
+  importBatches: Array<{ localIds: string[]; markers: string[] }>
+  importMarkerRemoteIds: Map<string, string>
   readonly loginPassword: string | null
 } {
   let unlocked = false
@@ -326,6 +328,16 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
     ids: string[]
     folderId?: string | null
   }> = []
+  const importBatches: Array<{ localIds: string[]; markers: string[] }> = []
+  const importMarkerRemoteIds = new Map<string, string>()
+  let preparedImport:
+    | {
+        token: string
+        entries: Array<{ localId: string; marker: string; draft: BitwardenLoginDraft }>
+      }
+    | undefined
+  let importToken = 0
+  let remoteLoginId = 4
   let equivalentDomainSettings = {
     equivalentDomains: [['remote.example.invalid', 'remote-login.example.invalid']],
     globalEquivalentDomains: [
@@ -350,6 +362,8 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
     editedLoginIds,
     downloadedAttachmentIds,
     bulkLifecycleCalls,
+    importBatches,
+    importMarkerRemoteIds,
     get loginPassword() {
       return loginPassword
     },
@@ -541,9 +555,58 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
       if (index >= 0) remoteFolders.splice(index, 1)
     },
     createLogin: async (draft) => {
-      const login = fromDraft('90000000-0000-4000-8000-000000000004', draft)
+      const login = fromDraft(
+        `90000000-0000-4000-8000-${String((remoteLoginId += 1)).padStart(12, '0')}`,
+        draft
+      )
       remoteLogins.push(login)
       return structuredClone(login)
+    },
+    prepareLoginImport: async (entries) => {
+      if (preparedImport) throw new Error('fake import already prepared')
+      const token = `prepared-import-${(importToken += 1)}`
+      preparedImport = {
+        token,
+        entries: entries.map((entry, index) => ({
+          localId: entry.localId,
+          marker: `2.fake-import-marker-${importToken}-${index}`,
+          draft: structuredClone(entry.draft)
+        }))
+      }
+      return {
+        token,
+        entries: preparedImport.entries.map((entry) => ({
+          localId: entry.localId,
+          marker: entry.marker,
+          remoteFolderId: entry.draft.folderId ?? null
+        }))
+      }
+    },
+    executePreparedLoginImport: async (token) => {
+      if (!preparedImport || preparedImport.token !== token) throw new Error('missing fake import')
+      const executing = preparedImport
+      preparedImport = undefined
+      importBatches.push({
+        localIds: executing.entries.map((entry) => entry.localId),
+        markers: executing.entries.map((entry) => entry.marker)
+      })
+      for (const entry of executing.entries) {
+        const login = fromDraft(
+          `90000000-0000-4000-8000-${String((remoteLoginId += 1)).padStart(12, '0')}`,
+          entry.draft
+        )
+        remoteLogins.push(login)
+        importMarkerRemoteIds.set(entry.marker, login.id)
+      }
+    },
+    reconcileLoginImportMarkers: async (markers) =>
+      markers.flatMap((marker) => {
+        const remoteId = importMarkerRemoteIds.get(marker)
+        return remoteId ? [{ marker, remoteId }] : []
+      }),
+    discardPreparedLoginImport: async (token) => {
+      if (!preparedImport || preparedImport.token !== token) throw new Error('missing fake import')
+      preparedImport = undefined
     },
     editLogin: async (id, draft) => {
       editedLoginIds.push(id)
@@ -615,9 +678,11 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
     deleteLogin: hardDeleteLogin,
     lock: async () => {
       unlocked = false
+      preparedImport = undefined
     },
     logout: async () => {
       unlocked = false
+      preparedImport = undefined
       state = { ...state, session: null }
     },
     exportState: () => structuredClone(state)
@@ -3852,6 +3917,375 @@ describe('VaultService encrypted local data', () => {
     await service.syncNow()
     expect(fake!.hardDeletedIds).toEqual([remoteId])
     expect(fake!.remoteLogins).toEqual([])
+  })
+
+  it('imports contiguous personal creates once and persists their reconciled mappings', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake ??= createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.createLogin({ name: 'First imported create', password: 'first-secret' })
+    await service.createLogin({ name: 'Second imported create', password: 'second-secret' })
+
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 2 })
+    expect(fake!.importBatches).toHaveLength(1)
+    expect(fake!.importBatches[0]!.localIds).toHaveLength(2)
+    expect(fake!.remoteLogins).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'First imported create', password: 'first-secret' }),
+        expect.objectContaining({ name: 'Second imported create', password: 'second-secret' })
+      ])
+    )
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 0 })
+    expect(fake!.importBatches).toHaveLength(1)
+  })
+
+  it('discards malformed prepared imports before persisting or dispatching them', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake ??= createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.createLogin({ name: 'Malformed import one' })
+    await service.createLogin({ name: 'Malformed import two' })
+
+    const prepare = fake!.prepareLoginImport!.bind(fake)
+    const execute = vi.spyOn(fake!, 'executePreparedLoginImport')
+    const discard = vi.spyOn(fake!, 'discardPreparedLoginImport')
+    fake!.prepareLoginImport = async (entries) => {
+      const prepared = await prepare(entries)
+      return { ...prepared, entries: [...prepared.entries, prepared.entries[0]!] }
+    }
+
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(execute).not.toHaveBeenCalled()
+    expect(discard).toHaveBeenCalledOnce()
+    expect(fake!.importBatches).toEqual([])
+
+    fake!.prepareLoginImport = prepare
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 2 })
+    expect(fake!.importBatches).toHaveLength(1)
+  })
+
+  it('reconciles full and partial personal imports without resending the prepared payload', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake ??= createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const execute = fake!.executePreparedLoginImport!.bind(fake)
+    fake!.executePreparedLoginImport = async (token, signal) => {
+      await execute(token, signal)
+      throw new Error('injected full response loss')
+    }
+    await service.createLogin({ name: 'Full response loss one' })
+    await service.createLogin({ name: 'Full response loss two' })
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 2 })
+    expect(fake!.importBatches).toHaveLength(1)
+
+    fake!.executePreparedLoginImport = async (token, signal) => {
+      await execute(token, signal)
+      const batch = fake!.importBatches.at(-1)!
+      const missingMarker = batch.markers[1]!
+      const missingRemoteId = fake!.importMarkerRemoteIds.get(missingMarker)!
+      fake!.importMarkerRemoteIds.delete(missingMarker)
+      const index = fake!.remoteLogins.findIndex((login) => login.id === missingRemoteId)
+      const [temporarilyInvisible] = fake!.remoteLogins.splice(index, 1)
+      setTimeout(() => {
+        if (temporarilyInvisible) fake!.remoteLogins.push(temporarilyInvisible)
+        fake!.importMarkerRemoteIds.set(missingMarker, missingRemoteId)
+      }, 0)
+      throw new Error('injected partial import')
+    }
+    await service.createLogin({ name: 'Partial import one' })
+    await service.createLogin({ name: 'Partial import two' })
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(fake!.importBatches).toHaveLength(2)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 0 })
+    expect(
+      fake!.remoteLogins.filter((login) => login.name.startsWith('Partial import'))
+    ).toHaveLength(2)
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 0 })
+    expect(fake!.importBatches).toHaveLength(2)
+
+    fake!.executePreparedLoginImport = async (token, signal) => {
+      await execute(token, signal)
+      const batch = fake!.importBatches.at(-1)!
+      const remoteId = fake!.importMarkerRemoteIds.get(batch.markers[0]!)!
+      fake!.remoteLogins.find((login) => login.id === remoteId)!.password =
+        'unexpected-server-value'
+      throw new Error('injected mismatched imported content')
+    }
+    await service.createLogin({ name: 'Strict marker one', password: 'expected-one' })
+    await service.createLogin({ name: 'Strict marker two', password: 'expected-two' })
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    const strictBatch = fake!.importBatches.at(-1)!
+    const strictRemoteId = fake!.importMarkerRemoteIds.get(strictBatch.markers[0]!)!
+    fake!.remoteLogins.find((login) => login.id === strictRemoteId)!.password = 'expected-one'
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 0 })
+    expect(fake!.importBatches).toHaveLength(3)
+  })
+
+  it('recovers a prepared import journal after pre-dispatch persistence failure', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { filePath, service, store } = await createHarness({
+      createSyncClient: (sync) => {
+        fake ??= createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const first = await service.createLogin({ name: 'Interrupted import one' })
+    const second = await service.createLogin({ name: 'Interrupted import two' })
+    const write = store.write.bind(store)
+    let writes = 0
+    vi.spyOn(store, 'write').mockImplementation(async (...args) => {
+      writes += 1
+      if (writes === 2) throw new Error('injected dispatch journal failure')
+      await write(...args)
+    })
+    const execute = vi.spyOn(fake!, 'executePreparedLoginImport')
+    const discard = vi.spyOn(fake!, 'discardPreparedLoginImport')
+
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(execute).not.toHaveBeenCalled()
+    expect(discard).toHaveBeenCalledOnce()
+    await service.lock()
+    expect(fake!.importBatches).toEqual([])
+
+    const reopenedStore = new EncryptedVaultStore<unknown>(filePath)
+    const reopened = new VaultService(
+      reopenedStore,
+      { copyText: vi.fn(), openExternal: vi.fn() },
+      { createSyncClient: () => fake! }
+    )
+    await reopened.unlock(MASTER_PASSWORD)
+    await reopened.deleteLogin({ id: first.id })
+    await expect(reopened.deleteLoginPermanently({ id: first.id })).rejects.toMatchObject({
+      code: 'SYNC_FAILED'
+    })
+    await reopened.restoreLogin({ id: first.id })
+    await expect(reopened.syncNow()).resolves.toMatchObject({ pushed: 2 })
+    expect(fake!.importBatches).toEqual([])
+    await expect(reopened.syncNow()).resolves.toMatchObject({ pushed: 0 })
+    await reopened.lock()
+    const verified = await reopenedStore.unlock(MASTER_PASSWORD)
+    expect(verified.data).toMatchObject({
+      version: 21,
+      sync: { pendingLoginImport: null }
+    })
+    verified.key.fill(0)
+    verified.salt.fill(0)
+    expect(fake!.remoteLogins).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'Interrupted import one' }),
+        expect.objectContaining({ name: 'Interrupted import two' })
+      ])
+    )
+    await reopened.unlock(MASTER_PASSWORD)
+    expect((await reopened.getLogin({ id: first.id })).name).toBe('Interrupted import one')
+    expect((await reopened.getLogin({ id: second.id })).name).toBe('Interrupted import two')
+  })
+
+  it('reverts a dispatched journal when an abort wins before transport execution', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service, store } = await createHarness({
+      createSyncClient: (sync) => {
+        fake ??= createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.createLogin({ name: 'Abort before dispatch one' })
+    await service.createLogin({ name: 'Abort before dispatch two' })
+
+    const write = store.write.bind(store)
+    let writes = 0
+    let releaseDispatchWrite!: () => void
+    let dispatchWriteStarted!: () => void
+    const dispatchWriteGate = new Promise<void>((resolve) => {
+      releaseDispatchWrite = resolve
+    })
+    const dispatchWriteEntered = new Promise<void>((resolve) => {
+      dispatchWriteStarted = resolve
+    })
+    vi.spyOn(store, 'write').mockImplementation(async (...args) => {
+      writes += 1
+      if (writes === 2) {
+        dispatchWriteStarted()
+        await dispatchWriteGate
+      }
+      await write(...args)
+    })
+    const execute = vi.spyOn(fake!, 'executePreparedLoginImport')
+
+    const syncing = service.syncNow()
+    await dispatchWriteEntered
+    const locking = service.lock()
+    releaseDispatchWrite()
+    await expect(syncing).rejects.toBeDefined()
+    await expect(locking).resolves.toEqual({ state: 'locked' })
+    expect(execute).not.toHaveBeenCalled()
+
+    const persisted = await store.unlock(MASTER_PASSWORD)
+    expect(persisted.data).toMatchObject({
+      sync: { pendingLoginImport: { phase: 'prepared', entries: [{}, {}] } }
+    })
+    persisted.key.fill(0)
+    persisted.salt.fill(0)
+  })
+
+  it('requires explicit master-password approval before retrying an unknown import', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { filePath, service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake ??= createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.createLogin({ name: 'Unknown import one' })
+    await service.createLogin({ name: 'Unknown import two' })
+    const execute = vi.fn(async () => {
+      throw new Error('injected failure before the server observed the request')
+    })
+    fake!.executePreparedLoginImport = execute
+
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    await expect(service.syncStatus()).resolves.toMatchObject({
+      state: 'error',
+      pendingImport: { count: 2, startedAt: expect.any(String) }
+    })
+    await service.lock()
+    const reopened = new VaultService(
+      new EncryptedVaultStore<unknown>(filePath),
+      { copyText: vi.fn(), openExternal: vi.fn() },
+      { createSyncClient: () => fake! }
+    )
+    await reopened.unlock(MASTER_PASSWORD)
+    await expect(reopened.syncStatus()).resolves.toMatchObject({
+      pendingImport: { count: 2, startedAt: expect.any(String) }
+    })
+    await reopened.unlockSync({ masterPassword: 'remote master password' })
+    await expect(reopened.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(execute).toHaveBeenCalledOnce()
+    await expect(
+      reopened.resolvePendingLoginImport({
+        masterPassword: 'incorrect master password',
+        confirmRetry: true
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_MASTER_PASSWORD' })
+    await expect(reopened.syncStatus()).resolves.toMatchObject({
+      pendingImport: { count: 2 }
+    })
+
+    await expect(
+      reopened.resolvePendingLoginImport({ masterPassword: MASTER_PASSWORD, confirmRetry: true })
+    ).resolves.toMatchObject({ state: 'ready' })
+    expect((await reopened.syncStatus()).pendingImport).toBeUndefined()
+    await reopened.lock()
+    const persisted = await new EncryptedVaultStore<unknown>(filePath).unlock(MASTER_PASSWORD)
+    expect(persisted.data).toMatchObject({
+      sync: { pendingLoginImport: { phase: 'retry-approved', entries: [{}, {}] } }
+    })
+    persisted.key.fill(0)
+    persisted.salt.fill(0)
+
+    const approved = new VaultService(
+      new EncryptedVaultStore<unknown>(filePath),
+      { copyText: vi.fn(), openExternal: vi.fn() },
+      { createSyncClient: () => fake! }
+    )
+    await approved.unlock(MASTER_PASSWORD)
+    await approved.unlockSync({ masterPassword: 'remote master password' })
+    await expect(approved.syncNow()).resolves.toMatchObject({ pushed: 2 })
+    expect(fake!.importBatches).toEqual([])
+    expect(execute).toHaveBeenCalledOnce()
+    expect(
+      fake!.remoteLogins.filter((login) => login.name.startsWith('Unknown import'))
+    ).toHaveLength(2)
+  })
+
+  it('can disconnect without discarding local data when an import result is unknown', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { filePath, service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake ??= createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const first = await service.createLogin({ name: 'Disconnect pending one' })
+    const second = await service.createLogin({ name: 'Disconnect pending two' })
+    fake!.executePreparedLoginImport = async () => {
+      throw new Error('injected unknown import result')
+    }
+
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    await expect(service.disconnectSync()).resolves.toEqual({
+      configured: false,
+      state: 'unconfigured'
+    })
+    expect((await service.getLogin({ id: first.id })).name).toBe('Disconnect pending one')
+    expect((await service.getLogin({ id: second.id })).name).toBe('Disconnect pending two')
+    await service.lock()
+    const reopened = new VaultService(new EncryptedVaultStore<unknown>(filePath), {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await reopened.unlock(MASTER_PASSWORD)
+    await expect(reopened.syncStatus()).resolves.toEqual({
+      configured: false,
+      state: 'unconfigured'
+    })
+    expect((await reopened.getLogin({ id: first.id })).name).toBe('Disconnect pending one')
+    expect((await reopened.getLogin({ id: second.id })).name).toBe('Disconnect pending two')
   })
 
   it('batches contiguous personal lifecycle sync actions while preserving logical counts', async () => {
@@ -7839,7 +8273,8 @@ describe('VaultService encrypted local data', () => {
                 folderMappings: [],
                 loginMappings: [],
                 folderTombstones: [],
-                loginTombstones: []
+                loginTombstones: [],
+                ...(version >= 8 ? { pendingLoginMutation: null } : {})
               }
             })
       }
@@ -7869,7 +8304,7 @@ describe('VaultService encrypted local data', () => {
       expect(await service.revealPassword({ id: migrated.id })).toBe('legacy-secret')
       await service.lock()
       const unlocked = await store.unlock(MASTER_PASSWORD)
-      expect((unlocked.data as { version: number }).version).toBe(20)
+      expect((unlocked.data as { version: number }).version).toBe(21)
       unlocked.key.fill(0)
       unlocked.salt.fill(0)
     }
@@ -8028,11 +8463,122 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 20,
+      version: 21,
       logins: [{ passwordRevisionDate: null, autofillOnPageLoad: null }]
     })
     migrated.key.fill(0)
     migrated.salt.fill(0)
+  })
+
+  it('migrates V20 sync data to an explicit empty pending import journal', async () => {
+    const { filePath, service, store } = await createHarness({
+      createSyncClient: (sync) => createSyncFake(sync.state)
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.lock()
+
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as {
+      version: number
+      sync: Record<string, unknown>
+    }
+    data.version = 20
+    delete data.sync.pendingLoginImport
+    await store.write(data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopenedStore = new EncryptedVaultStore<unknown>(filePath)
+    const reopened = new VaultService(reopenedStore, {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await expect(reopened.unlock(MASTER_PASSWORD)).resolves.toEqual({ state: 'unlocked' })
+    await reopened.lock()
+    const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
+    expect(migrated.data).toMatchObject({
+      version: 21,
+      sync: { pendingLoginImport: null }
+    })
+    migrated.key.fill(0)
+    migrated.salt.fill(0)
+  })
+
+  it('keeps the V8 pending mutation field mandatory while migrating V20', async () => {
+    const { filePath, service, store } = await createHarness({
+      createSyncClient: (sync) => createSyncFake(sync.state)
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.lock()
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as { version: number; sync: Record<string, unknown> }
+    data.version = 20
+    delete data.sync.pendingLoginMutation
+    delete data.sync.pendingLoginImport
+    await store.write(data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopened = new VaultService(new EncryptedVaultStore<unknown>(filePath), {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await expect(reopened.unlock(MASTER_PASSWORD)).rejects.toMatchObject({
+      code: 'CORRUPT_VAULT'
+    })
+  })
+
+  it('rejects malformed V21 pending import journals before exposing vault data', async () => {
+    const { filePath, service, store } = await createHarness({
+      createSyncClient: (sync) => createSyncFake(sync.state)
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const first = await service.createLogin({ name: 'Pending parser one' })
+    await service.createLogin({ name: 'Pending parser two' })
+    await service.lock()
+
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as {
+      sync: Record<string, unknown>
+    }
+    data.sync.pendingLoginImport = {
+      phase: 'prepared',
+      startedAt: '2026-07-17T00:00:00.000Z',
+      entries: [
+        {
+          localId: first.id,
+          marker: '2.prepared-marker',
+          remoteFolderId: null,
+          baseFingerprint: 'a'.repeat(64)
+        }
+      ]
+    }
+    await store.write(data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopened = new VaultService(new EncryptedVaultStore<unknown>(filePath), {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await expect(reopened.unlock(MASTER_PASSWORD)).rejects.toMatchObject({
+      code: 'CORRUPT_VAULT'
+    })
   })
 
   it('migrates V12 to an empty encrypted V16 generator history and Send cache', async () => {
@@ -8057,7 +8603,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 20,
+      version: 21,
       generatorHistory: [],
       sends: [],
       nativeAttachmentRestore: null
@@ -8095,7 +8641,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 20,
+      version: 21,
       logins: [expect.objectContaining({ attachments: [] })],
       sends: []
     })
@@ -8134,7 +8680,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 20,
+      version: 21,
       sync: { domainSettings: null }
     })
     migrated.key.fill(0)

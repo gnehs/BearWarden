@@ -8,6 +8,8 @@ import {
   type AccountWebAuthnKeyView,
   type AccountWebAuthnKeysRequest,
   type BearWardenAPI,
+  type SyncResolvePendingImportRequest,
+  type SyncStatus,
   type VaultExportRequest
 } from './vault-contract'
 
@@ -21,6 +23,22 @@ describe('vault export renderer contract', () => {
         }
       | { masterPassword: string; password?: never; format: 'bitwarden-zip' }
     >()
+  })
+})
+
+describe('pending sync import renderer contract', () => {
+  it('exposes only aggregate status and a master-password resolution request', () => {
+    expectTypeOf<SyncStatus['pendingImport']>().toEqualTypeOf<
+      { count: number; startedAt: string } | undefined
+    >()
+    expectTypeOf<SyncResolvePendingImportRequest>().toEqualTypeOf<{
+      masterPassword: string
+      confirmRetry: true
+    }>()
+    expectTypeOf<BearWardenAPI['sync']['resolvePendingImport']>().parameters.toEqualTypeOf<
+      [SyncResolvePendingImportRequest]
+    >()
+    expect(IPC_CHANNELS.syncResolvePendingImport).toBe('sync:resolve-pending-import')
   })
 })
 

@@ -1102,6 +1102,7 @@ describe('registerVaultIpc reprompt gate', () => {
     }
     afterMutation: ReturnType<typeof vi.fn>
     beforeSyncReconfigure: ReturnType<typeof vi.fn>
+    afterSyncChanged: ReturnType<typeof vi.fn>
     setAuthorizationState: (state: { reprompt: 0 | 1; generation: number }) => void
   } {
     const mainFrame = { url: 'app://bearwarden/index.html' }
@@ -1294,6 +1295,7 @@ describe('registerVaultIpc reprompt gate', () => {
       })),
       connectSync: vi.fn(async () => ({ configured: true, state: 'ready' })),
       unlockSync: vi.fn(async () => ({ configured: true, state: 'ready' })),
+      resolvePendingLoginImport: vi.fn(async () => ({ configured: true, state: 'ready' })),
       disconnectSync: vi.fn(async () => ({ configured: false, state: 'unconfigured' })),
       createLogin: vi.fn(async (request) => ({ id: 'created', ...request })),
       cloneLogin: vi.fn(async () => ({ id: 'clone' })),
@@ -1394,6 +1396,7 @@ describe('registerVaultIpc reprompt gate', () => {
     }
     const afterMutation = vi.fn()
     const beforeSyncReconfigure = vi.fn(async () => undefined)
+    const afterSyncChanged = vi.fn()
     registerVaultIpc({
       vault: vault as unknown as VaultService,
       portability: portability as unknown as Parameters<typeof registerVaultIpc>[0]['portability'],
@@ -1406,7 +1409,8 @@ describe('registerVaultIpc reprompt gate', () => {
       repromptNow: () => 1_000,
       repromptRandomBytes: (size) => Buffer.alloc(size, 5),
       afterMutation,
-      beforeSyncReconfigure
+      beforeSyncReconfigure,
+      afterSyncChanged
     })
     return {
       event,
@@ -1414,6 +1418,7 @@ describe('registerVaultIpc reprompt gate', () => {
       portability,
       afterMutation,
       beforeSyncReconfigure,
+      afterSyncChanged,
       setAuthorizationState: (state) => {
         authorizationState = state
       }
@@ -1444,6 +1449,63 @@ describe('registerVaultIpc reprompt gate', () => {
 
     expect(order).toEqual(['before', 'connect', 'before', 'disconnect'])
     expect(beforeSyncReconfigure).toHaveBeenCalledTimes(2)
+  })
+
+  it('validates and clears the master password before resolving an unknown import result', async () => {
+    const { event, vault, afterSyncChanged } = harness()
+    const resolve = electronMock.handlers.get(IPC_CHANNELS.syncResolvePendingImport)!
+    let received: { masterPassword: string; confirmRetry: true } | undefined
+    const status = {
+      configured: true,
+      state: 'ready',
+      pendingImport: { count: 2, startedAt: '2026-07-17T00:00:00.000Z' }
+    }
+    vault.resolvePendingLoginImport.mockImplementation(
+      async (request: { masterPassword: string; confirmRetry: true }) => {
+        received = request
+        expect(request).toEqual({ masterPassword: 'remote master password', confirmRetry: true })
+        return status
+      }
+    )
+
+    await expect(
+      resolve(event, { masterPassword: 'remote master password', confirmRetry: true })
+    ).resolves.toEqual(status)
+    expect(afterSyncChanged).toHaveBeenCalledWith(status)
+    expect(received).toEqual({ masterPassword: '', confirmRetry: true })
+
+    for (const invalid of [
+      undefined,
+      {},
+      { masterPassword: '', confirmRetry: true },
+      { masterPassword: 'x'.repeat(1_025), confirmRetry: true },
+      { masterPassword: 'remote master password' },
+      { masterPassword: 'remote master password', confirmRetry: false },
+      {
+        masterPassword: 'remote master password',
+        confirmRetry: true,
+        marker: 'must-not-cross-ipc'
+      },
+      {
+        masterPassword: 'remote master password',
+        confirmRetry: true,
+        localIds: ['must-not-cross-ipc']
+      }
+    ]) {
+      await expect(resolve(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(vault.resolvePendingLoginImport).toHaveBeenCalledTimes(1)
+
+    vault.resolvePendingLoginImport.mockImplementation(
+      async (request: { masterPassword: string; confirmRetry: true }) => {
+        received = request
+        throw new VaultError('INVALID_MASTER_PASSWORD')
+      }
+    )
+    await expect(
+      resolve(event, { masterPassword: 'wrong password', confirmRetry: true })
+    ).rejects.toThrow('BEARWARDEN:INVALID_MASTER_PASSWORD')
+    expect(received).toEqual({ masterPassword: '', confirmRetry: true })
   })
 
   it('accepts only the explicit WebAuthn remember flag for sync connect and unlock', async () => {

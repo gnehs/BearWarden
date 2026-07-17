@@ -72,3 +72,24 @@ describe('preload account API', () => {
     expect(Object.keys(api.accountSecurity)).toContain('removeWebAuthnKey')
   })
 })
+
+describe('preload pending import API', () => {
+  it('exposes one narrow request-response method', async () => {
+    electronMock.invoke.mockClear()
+    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
+    const request = { masterPassword: 'test-master-password', confirmRetry: true as const }
+
+    await api.sync.resolvePendingImport(request)
+
+    expect(electronMock.invoke).toHaveBeenCalledWith(IPC_CHANNELS.syncResolvePendingImport, request)
+    expect(Object.keys(api.sync)).toEqual([
+      'status',
+      'connect',
+      'unlock',
+      'now',
+      'resolvePendingImport',
+      'disconnect',
+      'onChanged'
+    ])
+  })
+})

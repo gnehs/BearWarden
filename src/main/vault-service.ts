@@ -224,7 +224,8 @@ const ORGANIZATIONS_DATA_VERSION = 17
 const NATIVE_ATTACHMENT_RESTORE_DATA_VERSION = 18
 const MASTER_PASSWORD_CHANGE_DATA_VERSION = 19
 const LOGIN_WIRE_METADATA_DATA_VERSION = 20
-const DATA_VERSION = 20
+const PENDING_LOGIN_IMPORT_DATA_VERSION = 21
+const DATA_VERSION = 21
 const MIN_MASTER_PASSWORD_LENGTH = 12
 const MAX_MASTER_PASSWORD_LENGTH = 1024
 const MAX_NAME_LENGTH = 256
@@ -262,6 +263,8 @@ const MAX_EQUIVALENT_DOMAINS_PER_GROUP = 1_000
 const MAX_EQUIVALENT_DOMAIN_TOTAL = 100_000
 const MAX_EQUIVALENT_DOMAIN_LENGTH = 1_024
 const MAX_TWO_FACTOR_CODE_LENGTH = 256
+const MAX_PENDING_LOGIN_IMPORT_ENTRIES = 500
+const MAX_PENDING_LOGIN_IMPORT_MARKER_LENGTH = 4_096
 const MAX_PASSKEY_CREDENTIAL_DESCRIPTORS = 1_000
 const MAX_PASSKEY_CREDENTIAL_ID_BYTES = 1_023
 const MAX_PASSKEY_RP_ID_LENGTH = 253
@@ -320,6 +323,19 @@ interface PendingLoginMutation {
   expectedRemoteFingerprints: string[]
 }
 
+interface PendingLoginImportEntry {
+  localId: string
+  marker: string
+  remoteFolderId: string | null
+  baseFingerprint: string
+}
+
+interface PendingLoginImport {
+  phase: 'prepared' | 'dispatched' | 'retry-approved'
+  startedAt: string
+  entries: PendingLoginImportEntry[]
+}
+
 export interface PersistedSyncData {
   provider: 'bitwarden'
   serverUrl: string
@@ -331,6 +347,7 @@ export interface PersistedSyncData {
   folderTombstones: SyncTombstone[]
   loginTombstones: SyncTombstone[]
   pendingLoginMutation: PendingLoginMutation | null
+  pendingLoginImport: PendingLoginImport | null
   domainSettings: BitwardenEquivalentDomainSettings | null
 }
 
@@ -1844,6 +1861,7 @@ function parseSyncData(
   loginIds: Set<string>,
   isCliData: boolean,
   allowMissingPendingMutation: boolean,
+  allowMissingPendingImport: boolean,
   allowMissingDomainSettings: boolean
 ): PersistedSyncData | null {
   if (value === null) return null
@@ -1939,6 +1957,75 @@ function parseSyncData(
     throw new VaultError('CORRUPT_VAULT')
   }
 
+  let pendingLoginImport: PendingLoginImport | null = null
+  if (value.pendingLoginImport !== null && value.pendingLoginImport !== undefined) {
+    const pending = value.pendingLoginImport
+    if (
+      !isRecord(pending) ||
+      Reflect.ownKeys(pending).length !== 3 ||
+      !Object.hasOwn(pending, 'phase') ||
+      !Object.hasOwn(pending, 'startedAt') ||
+      !Object.hasOwn(pending, 'entries') ||
+      (pending.phase !== 'prepared' &&
+        pending.phase !== 'dispatched' &&
+        pending.phase !== 'retry-approved') ||
+      typeof pending.startedAt !== 'string' ||
+      !Number.isFinite(Date.parse(pending.startedAt)) ||
+      !Array.isArray(pending.entries) ||
+      pending.entries.length < 1 ||
+      (pending.phase === 'prepared' && pending.entries.length < 2) ||
+      pending.entries.length > MAX_PENDING_LOGIN_IMPORT_ENTRIES
+    ) {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+    const entries: PendingLoginImportEntry[] = []
+    const localIds = new Set<string>()
+    const markers = new Set<string>()
+    for (const entry of pending.entries) {
+      if (
+        !isRecord(entry) ||
+        Reflect.ownKeys(entry).length !== 4 ||
+        !Object.hasOwn(entry, 'localId') ||
+        !Object.hasOwn(entry, 'marker') ||
+        !Object.hasOwn(entry, 'remoteFolderId') ||
+        !Object.hasOwn(entry, 'baseFingerprint') ||
+        typeof entry.localId !== 'string' ||
+        !UUID_PATTERN.test(entry.localId) ||
+        !loginIds.has(entry.localId) ||
+        localIds.has(entry.localId) ||
+        loginMappings.some((mapping) => mapping.localId === entry.localId) ||
+        loginTombstones.some((tombstone) => tombstone.localId === entry.localId) ||
+        typeof entry.marker !== 'string' ||
+        entry.marker.length === 0 ||
+        entry.marker.length > MAX_PENDING_LOGIN_IMPORT_MARKER_LENGTH ||
+        /[\0\r\n]/u.test(entry.marker) ||
+        markers.has(entry.marker) ||
+        typeof entry.baseFingerprint !== 'string' ||
+        !/^[0-9a-f]{64}$/u.test(entry.baseFingerprint) ||
+        (entry.remoteFolderId !== null &&
+          (typeof entry.remoteFolderId !== 'string' || !UUID_PATTERN.test(entry.remoteFolderId)))
+      ) {
+        throw new VaultError('CORRUPT_VAULT')
+      }
+      localIds.add(entry.localId)
+      markers.add(entry.marker)
+      entries.push({
+        localId: entry.localId,
+        marker: entry.marker,
+        remoteFolderId: entry.remoteFolderId,
+        baseFingerprint: entry.baseFingerprint
+      })
+    }
+    pendingLoginImport = {
+      phase: pending.phase,
+      startedAt: new Date(pending.startedAt).toISOString(),
+      entries
+    }
+  } else if (!allowMissingPendingImport && value.pendingLoginImport === undefined) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  if (pendingLoginMutation && pendingLoginImport) throw new VaultError('CORRUPT_VAULT')
+
   const domainSettings =
     value.domainSettings === undefined && allowMissingDomainSettings
       ? null
@@ -1964,6 +2051,7 @@ function parseSyncData(
     folderTombstones,
     loginTombstones,
     pendingLoginMutation,
+    pendingLoginImport,
     domainSettings
   }
 }
@@ -2019,6 +2107,7 @@ function parseVaultData(value: unknown): VaultData {
       NATIVE_ATTACHMENT_RESTORE_DATA_VERSION,
       MASTER_PASSWORD_CHANGE_DATA_VERSION,
       LOGIN_WIRE_METADATA_DATA_VERSION,
+      PENDING_LOGIN_IMPORT_DATA_VERSION,
       DATA_VERSION
     ].includes(value.version) ||
     !Array.isArray(value.folders) ||
@@ -2136,7 +2225,8 @@ function parseVaultData(value: unknown): VaultData {
           folderIds,
           loginIds,
           dataVersion === CLI_DATA_VERSION,
-          dataVersion < DATA_VERSION,
+          dataVersion < PENDING_LOGIN_MUTATION_DATA_VERSION,
+          dataVersion < PENDING_LOGIN_IMPORT_DATA_VERSION,
           dataVersion < EQUIVALENT_DOMAINS_DATA_VERSION
         )
 
@@ -2634,6 +2724,13 @@ function cloneData(data: VaultData): VaultData {
                   ...data.sync.pendingLoginMutation.expectedRemoteFingerprints
                 ]
               }
+            : null,
+          pendingLoginImport: data.sync.pendingLoginImport
+            ? {
+                phase: data.sync.pendingLoginImport.phase,
+                startedAt: data.sync.pendingLoginImport.startedAt,
+                entries: data.sync.pendingLoginImport.entries.map((entry) => ({ ...entry }))
+              }
             : null
         }
       : null
@@ -2663,6 +2760,10 @@ function recordSyncDeletion(
       sync.pendingLoginMutation.intent = 'hard-delete'
     }
   }
+}
+
+function assertNoPendingLoginImport(sync: PersistedSyncData | null): void {
+  if (sync?.pendingLoginImport) throw new VaultError('SYNC_FAILED')
 }
 
 function toSummary(login: StoredLogin): LoginSummary {
@@ -2919,6 +3020,12 @@ interface BulkRemoteLoginCandidate {
   mutation: BulkRemoteLoginMutation
   remoteId: string
   folderId: string | null
+}
+
+interface LoginImportCandidate {
+  action: Extract<SyncAction, { entity: 'login'; kind: 'push-create' }>
+  remoteFolderId: string | null
+  baseFingerprint: string
 }
 
 function sameLoginContentExceptFolder(left: SyncLogin, right: SyncLogin): boolean {
@@ -4821,6 +4928,7 @@ export class VaultService {
           folderTombstones: [],
           loginTombstones: [],
           pendingLoginMutation: null,
+          pendingLoginImport: null,
           domainSettings: null
         }
         const client = this.createSyncClient(sync)
@@ -4937,7 +5045,8 @@ export class VaultService {
     this.abortNativeAttachmentRestores()
     this.activeAccountBreachOperation?.abort.abort()
     return this.exclusive(async () => {
-      const next = cloneData(this.requireData())
+      const current = this.requireData()
+      const next = cloneData(current)
       const client = this.syncClient
       this.syncClient = null
       this.syncLastError = null
@@ -4951,6 +5060,29 @@ export class VaultService {
       await this.persist(next)
       this.data = next
       return { configured: false, state: 'unconfigured' }
+    })
+  }
+
+  resolvePendingLoginImport(request: {
+    masterPassword: string
+    confirmRetry: true
+  }): Promise<SyncStatus> {
+    return this.exclusive(async () => {
+      if (request.confirmRetry !== true) throw new VaultError('INVALID_INPUT')
+      await this.assertMasterPassword(request.masterPassword)
+      const current = this.requireData()
+      if (!current.sync?.pendingLoginImport) throw new VaultError('INVALID_INPUT')
+      if (current.sync.pendingLoginImport.phase === 'prepared') {
+        throw new VaultError('SYNC_FAILED')
+      }
+      const next = cloneData(current)
+      if (!next.sync?.pendingLoginImport) throw new VaultError('SYNC_FAILED')
+      next.sync.pendingLoginImport.phase = 'retry-approved'
+      next.updatedAt = this.nowIso()
+      await this.persist(next)
+      this.data = next
+      this.syncLastError = null
+      return await this.currentSyncStatus(true)
     })
   }
 
@@ -6555,6 +6687,7 @@ export class VaultService {
     return this.exclusive(async () => {
       await this.assertMasterPassword(masterPassword)
       const current = this.requireData()
+      assertNoPendingLoginImport(current.sync)
       if (current.nativeAttachmentRestore !== null) throw new VaultError('INVALID_INPUT')
       if (
         !preview ||
@@ -7679,6 +7812,7 @@ export class VaultService {
 
   deleteLoginPermanently(request: LoginIdRequest): Promise<void> {
     return this.mutate((data) => {
+      assertNoPendingLoginImport(data.sync)
       assertUuid(request.id)
       const login = this.findLogin(data, request.id)
       if (login.deletedAt === null) throw new VaultError('INVALID_INPUT')
@@ -7689,6 +7823,7 @@ export class VaultService {
 
   deleteLoginsPermanently(request: LoginBatchRequest): Promise<number> {
     return this.mutate((data) => {
+      assertNoPendingLoginImport(data.sync)
       const logins = this.resolveLoginBatch(data, request, (login) => {
         if (login.deletedAt === null) throw new VaultError('INVALID_INPUT')
       })
@@ -7701,6 +7836,7 @@ export class VaultService {
 
   emptyTrash(): Promise<number> {
     return this.mutate((data) => {
+      assertNoPendingLoginImport(data.sync)
       const deleted = data.logins.filter((login) => login.deletedAt !== null)
       for (const login of deleted) recordSyncDeletion(data.sync, 'login', login.id)
       const deletedIds = new Set(deleted.map((login) => login.id))
@@ -7946,7 +8082,15 @@ export class VaultService {
       serverUrl: sync.serverUrl,
       email: sync.email,
       ...(sync.lastSyncAt ? { lastSyncAt: sync.lastSyncAt } : {}),
-      ...(this.syncLastError ? { lastError: this.syncLastError } : {})
+      ...(this.syncLastError ? { lastError: this.syncLastError } : {}),
+      ...(sync.pendingLoginImport?.phase === 'dispatched'
+        ? {
+            pendingImport: {
+              count: sync.pendingLoginImport.entries.length,
+              startedAt: sync.pendingLoginImport.startedAt
+            }
+          }
+        : {})
     }
   }
 
@@ -8603,8 +8747,25 @@ export class VaultService {
       remoteLogins = refreshed[1]
       remoteSends = refreshed[2]
     }
+    const skipBulkImportLocalIds = new Set<string>()
+    if (next.sync?.pendingLoginImport) {
+      const pendingImportPhase = next.sync.pendingLoginImport.phase
+      const unmatched = await this.reconcilePendingLoginImport(
+        next,
+        client,
+        remoteFolders,
+        remoteLogins,
+        signal
+      )
+      if (unmatched.length > 0) {
+        if (pendingImportPhase === 'dispatched') {
+          throw new VaultError('SYNC_FAILED')
+        }
+        for (const localId of unmatched) skipBulkImportLocalIds.add(localId)
+      }
+    }
     const remoteSnapshot = this.remoteSyncSnapshot(remoteFolders, remoteLogins)
-    const syncMetadata = this.syncMetadata(sync)
+    const syncMetadata = this.syncMetadata(next.sync ?? sync)
     for (const upgrade of legacyCustomFieldBaselineUpgrades(
       this.localSyncSnapshot(next),
       remoteSnapshot,
@@ -8643,6 +8804,36 @@ export class VaultService {
     for (let actionIndex = 0; actionIndex < plan.actions.length; actionIndex += 1) {
       const action = plan.actions[actionIndex]!
       if (signal.aborted) throw new BitwardenDirectError('ABORTED')
+      const importCandidate = this.loginImportCandidate(action, completed, skipBulkImportLocalIds)
+      if (importCandidate && this.supportsLoginImport(client)) {
+        const batch: LoginImportCandidate[] = [importCandidate]
+        for (let nextIndex = actionIndex + 1; nextIndex < plan.actions.length; nextIndex += 1) {
+          if (batch.length === MAX_PENDING_LOGIN_IMPORT_ENTRIES) break
+          const candidate = this.loginImportCandidate(
+            plan.actions[nextIndex]!,
+            completed,
+            skipBulkImportLocalIds
+          )
+          if (candidate === null) break
+          batch.push(candidate)
+        }
+        if (batch.length > 1) {
+          const remoteIds = await this.executeLoginImportBatch(next, client, batch, signal)
+          for (const candidate of batch) {
+            const remoteId = remoteIds.get(candidate.action.actionId)
+            if (!remoteId) throw new VaultError('SYNC_FAILED')
+            const result: SyncActionResult = {
+              actionId: candidate.action.actionId,
+              remoteId
+            }
+            results.push(result)
+            completed.set(candidate.action.actionId, result)
+            counts.pushed += 1
+          }
+          actionIndex += batch.length - 1
+          continue
+        }
+      }
       const batchCandidate = this.bulkRemoteLoginCandidate(action, completed)
       if (batchCandidate && this.supportsBulkRemoteLoginMutation(client, batchCandidate.mutation)) {
         const batch: BulkRemoteLoginCandidate[] = [batchCandidate]
@@ -8711,6 +8902,7 @@ export class VaultService {
       folderTombstones: [],
       loginTombstones: [],
       pendingLoginMutation: null,
+      pendingLoginImport: null,
       domainSettings: cloneEquivalentDomainSettings(domainSettings)
     }
     next.updatedAt = syncedAt
@@ -8948,6 +9140,269 @@ export class VaultService {
         baseFingerprint: entry.baseFingerprint
       }))
     }
+  }
+
+  private loginImportCandidate(
+    action: SyncAction,
+    completed: Map<string, SyncActionResult>,
+    skipLocalIds: ReadonlySet<string>
+  ): LoginImportCandidate | null {
+    if (
+      action.entity !== 'login' ||
+      action.kind !== 'push-create' ||
+      action.local.deletedAt !== null ||
+      skipLocalIds.has(action.local.id) ||
+      typeof action.baseFingerprint !== 'string' ||
+      !/^[0-9a-f]{64}$/u.test(action.baseFingerprint)
+    ) {
+      return null
+    }
+    return {
+      action,
+      remoteFolderId: this.resolveFolderReference(action.remoteFolder, completed, 'remoteId'),
+      baseFingerprint: action.baseFingerprint
+    }
+  }
+
+  private supportsLoginImport(client: BitwardenSyncClient): boolean {
+    return (
+      client.prepareLoginImport !== undefined &&
+      client.executePreparedLoginImport !== undefined &&
+      client.reconcileLoginImportMarkers !== undefined &&
+      client.discardPreparedLoginImport !== undefined
+    )
+  }
+
+  private async executeLoginImportBatch(
+    data: VaultData,
+    client: BitwardenSyncClient,
+    batch: readonly LoginImportCandidate[],
+    signal: AbortSignal
+  ): Promise<Map<string, string>> {
+    if (!data.sync || !this.supportsLoginImport(client) || batch.length < 2) {
+      throw new VaultError('SYNC_FAILED')
+    }
+    const preparedValue: unknown = await client.prepareLoginImport!(
+      batch.map((candidate) => ({
+        localId: candidate.action.local.id,
+        draft: this.remoteDraft(candidate.action.local, candidate.remoteFolderId)
+      }))
+    )
+    const expected = new Map(batch.map((candidate) => [candidate.action.local.id, candidate]))
+    const discardToken =
+      isRecord(preparedValue) &&
+      typeof preparedValue.token === 'string' &&
+      preparedValue.token.length > 0 &&
+      preparedValue.token.length <= 256
+        ? preparedValue.token
+        : null
+    if (
+      !isRecord(preparedValue) ||
+      Reflect.ownKeys(preparedValue).length !== 2 ||
+      discardToken === null ||
+      !Array.isArray(preparedValue.entries) ||
+      preparedValue.entries.length !== batch.length ||
+      preparedValue.entries.some(
+        (entry) =>
+          !isRecord(entry) ||
+          Reflect.ownKeys(entry).length !== 3 ||
+          !Object.hasOwn(entry, 'localId') ||
+          !Object.hasOwn(entry, 'marker') ||
+          !Object.hasOwn(entry, 'remoteFolderId')
+      )
+    ) {
+      if (discardToken) {
+        await client.discardPreparedLoginImport!(discardToken).catch(() => undefined)
+      }
+      throw new VaultError('SYNC_FAILED')
+    }
+    const preparedEntries = preparedValue.entries as Array<{
+      localId: string
+      marker: string
+      remoteFolderId: string | null
+    }>
+    if (
+      new Set(preparedEntries.map((entry) => entry.localId)).size !== batch.length ||
+      new Set(preparedEntries.map((entry) => entry.marker)).size !== batch.length ||
+      preparedEntries.some((entry) => {
+        const candidate = expected.get(entry.localId)
+        return (
+          !candidate ||
+          typeof entry.localId !== 'string' ||
+          !UUID_PATTERN.test(entry.localId) ||
+          entry.remoteFolderId !== candidate.remoteFolderId ||
+          typeof entry.marker !== 'string' ||
+          entry.marker.length === 0 ||
+          entry.marker.length > MAX_PENDING_LOGIN_IMPORT_MARKER_LENGTH ||
+          /[\0\r\n]/u.test(entry.marker)
+        )
+      })
+    ) {
+      await client.discardPreparedLoginImport!(discardToken).catch(() => undefined)
+      throw new VaultError('SYNC_FAILED')
+    }
+
+    data.sync.pendingLoginImport = {
+      phase: 'prepared',
+      startedAt: this.nowIso(),
+      entries: preparedEntries.map((entry) => {
+        const candidate = expected.get(entry.localId)!
+        return {
+          localId: entry.localId,
+          marker: entry.marker,
+          remoteFolderId: entry.remoteFolderId,
+          baseFingerprint: candidate.baseFingerprint
+        }
+      })
+    }
+    data.updatedAt = this.nowIso()
+    try {
+      await this.persist(data)
+      this.data = cloneData(data)
+    } catch (error) {
+      await client.discardPreparedLoginImport!(discardToken).catch(() => undefined)
+      throw error
+    }
+
+    if (signal.aborted) {
+      await client.discardPreparedLoginImport!(discardToken).catch(() => undefined)
+      throw new BitwardenDirectError('ABORTED')
+    }
+    data.sync.pendingLoginImport.phase = 'dispatched'
+    data.updatedAt = this.nowIso()
+    try {
+      await this.persist(data)
+      this.data = cloneData(data)
+    } catch (error) {
+      await client.discardPreparedLoginImport!(discardToken).catch(() => undefined)
+      throw error
+    }
+
+    if (signal.aborted) {
+      try {
+        data.sync.pendingLoginImport.phase = 'prepared'
+        data.updatedAt = this.nowIso()
+        await this.persist(data)
+        this.data = cloneData(data)
+      } finally {
+        await client.discardPreparedLoginImport!(discardToken).catch(() => undefined)
+      }
+      throw new BitwardenDirectError('ABORTED')
+    }
+    let mutationError: unknown = null
+    try {
+      await client.executePreparedLoginImport!(discardToken, signal)
+    } catch (error) {
+      mutationError = error
+    }
+    if (signal.aborted) throw new BitwardenDirectError('ABORTED')
+
+    let remoteFolders: BitwardenFolder[]
+    let remoteLogins: BitwardenLoginItem[]
+    try {
+      await client.sync(signal)
+      ;[remoteFolders, remoteLogins] = await Promise.all([
+        client.listFolders(signal),
+        client.listPersonalLogins(signal)
+      ])
+    } catch (error) {
+      if (signal.aborted) throw new BitwardenDirectError('ABORTED')
+      throw mutationError ?? error
+    }
+    const unmatched = await this.reconcilePendingLoginImport(
+      data,
+      client,
+      remoteFolders,
+      remoteLogins,
+      signal
+    )
+    const remoteIds = new Map<string, string>()
+    for (const candidate of batch) {
+      const mapping = data.sync.loginMappings.find(
+        (entry) => entry.localId === candidate.action.local.id
+      )
+      if (mapping) remoteIds.set(candidate.action.actionId, mapping.remoteId)
+    }
+
+    if (unmatched.length > 0) throw mutationError ?? new VaultError('SYNC_FAILED')
+    return remoteIds
+  }
+
+  private async reconcilePendingLoginImport(
+    data: VaultData,
+    client: BitwardenSyncClient,
+    remoteFolders: readonly BitwardenFolder[],
+    remoteLogins: readonly BitwardenLoginItem[],
+    signal: AbortSignal
+  ): Promise<string[]> {
+    const pending = data.sync?.pendingLoginImport
+    if (!data.sync || !pending || !client.reconcileLoginImportMarkers) {
+      if (pending) throw new VaultError('SYNC_FAILED')
+      return []
+    }
+    if (signal.aborted) throw new BitwardenDirectError('ABORTED')
+    const matches = await client.reconcileLoginImportMarkers(
+      pending.entries.map((entry) => entry.marker)
+    )
+    if (signal.aborted) throw new BitwardenDirectError('ABORTED')
+    const pendingByMarker = new Map(pending.entries.map((entry) => [entry.marker, entry]))
+    const remoteById = new Map(remoteLogins.map((login) => [login.id, login]))
+    const remoteFolderNames = new Map(remoteFolders.map((folder) => [folder.id, folder.name]))
+    const remoteSnapshotById = new Map(
+      this.remoteSyncSnapshot([...remoteFolders], [...remoteLogins]).logins.map((login) => [
+        login.id,
+        login
+      ])
+    )
+    const matchedMarkers = new Set<string>()
+    const matchedRemoteIds = new Set<string>()
+    if (remoteById.size !== remoteLogins.length) throw new VaultError('SYNC_FAILED')
+    for (const match of matches) {
+      const entry = pendingByMarker.get(match.marker)
+      if (
+        !entry ||
+        matchedMarkers.has(match.marker) ||
+        matchedRemoteIds.has(match.remoteId) ||
+        !remoteById.has(match.remoteId) ||
+        !remoteSnapshotById.has(match.remoteId) ||
+        data.sync.loginMappings.some(
+          (mapping) => mapping.localId === entry.localId || mapping.remoteId === match.remoteId
+        ) ||
+        data.sync.loginTombstones.some(
+          (tombstone) =>
+            tombstone.localId === entry.localId || tombstone.remoteId === match.remoteId
+        )
+      ) {
+        throw new VaultError('SYNC_FAILED')
+      }
+      const remote = remoteSnapshotById.get(match.remoteId)!
+      const remoteFingerprint = fingerprintLogin(
+        remote,
+        remote.folderId === null
+          ? null
+          : (remoteFolderNames.get(remote.folderId) ?? `missing:${remote.folderId}`)
+      )
+      if (remote.folderId !== entry.remoteFolderId || remoteFingerprint !== entry.baseFingerprint) {
+        throw new VaultError('SYNC_FAILED')
+      }
+      matchedMarkers.add(match.marker)
+      matchedRemoteIds.add(match.remoteId)
+      data.sync.loginMappings.push({
+        localId: entry.localId,
+        remoteId: match.remoteId,
+        baseFingerprint: entry.baseFingerprint
+      })
+    }
+    const unmatchedEntries = pending.entries.filter((entry) => !matchedMarkers.has(entry.marker))
+    const unmatched = unmatchedEntries.map((entry) => entry.localId)
+    data.sync.pendingLoginImport =
+      pending.phase === 'prepared' || unmatchedEntries.length === 0
+        ? null
+        : { ...pending, entries: unmatchedEntries.map((entry) => ({ ...entry })) }
+    data.updatedAt = this.nowIso()
+    await this.persist(data)
+    this.data = cloneData(data)
+    return unmatched
   }
 
   private bulkRemoteLoginCandidate(
