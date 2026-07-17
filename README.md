@@ -22,7 +22,7 @@ BearWarden 是一個以「快速找到、安心使用」為核心的桌面密碼
 - 新增 SSH Key 項目時由主程序安全產生 Ed25519 金鑰，或從剪貼簿匯入 OpenSSH／PKCS#8 的 Ed25519、RSA 與 ECDSA 私鑰（含密碼保護），並正規化為相符的 OpenSSH 私鑰、公鑰與 `SHA256:` 指紋
 - 內建 SSH Agent，可列舉並簽署 Ed25519、RSA SHA-2 與 ECDSA P-256／P-384／P-521 金鑰；支援每次詢問、自動核准或鎖定前記住，以及經驗證的 forwarding host scope
 - 本機安全產生密碼、EFF 長單字密語、隨機使用者名稱、Plus Address 與 Catch-all Email；最近 200 筆結果保存在加密歷史中
-- 匯入 Bitwarden JSON，並匯出可攜、受獨立密碼保護的 Bitwarden JSON 備份
+- 匯入 Bitwarden JSON，並可匯出受獨立密碼保護的 JSON、Bitwarden 相容明文附件 ZIP，或 BearWarden 加密完整備份
 - 支援主密碼重新提示；短效授權只存在主程序，並綁定視窗、項目集合與保管庫世代
 - Electron renderer sandbox、context isolation、具名 IPC 與外部網址驗證
 - 系統鎖定或休眠時自動鎖定密碼庫
@@ -45,6 +45,7 @@ BearWarden 是一個以「快速找到、安心使用」為核心的桌面密碼
 - 附件上傳會在主程序建立獨立金鑰與 authenticated type-2 加密 envelope，再依伺服器指定的 Direct 或 Azure 流程傳送；下載會重新取得短效網址、先驗證 metadata，再於主程序驗證 HMAC／解密，並以 `0600` 暫存檔與原子替換寫入。上傳、下載、刪除與 legacy Fix 支援進度、主動取消及鎖定中止，明文 Buffer 用畢後會清除。
 - 附件以 1 MiB chunk 在主程序串流加解密，支援 Bitwarden 桌面端同級的 500 MiB 明文上限；加密 envelope 只落在權限為 `0600` 的短生命週期暫存檔，驗證、取消或失敗後都會清除。
 - BearWarden `.bwbackup` 會以獨立備份密碼加密個人項目與附件，逐段驗證、支援中斷續傳與原子完成，並可在還原前完整預檢。這是 BearWarden 的完整備份格式，不是 Bitwarden 相容 ZIP。
+- Bitwarden 附件 ZIP 依官方個人保管庫格式串流建立 `data.json` 與附件目錄，輸出本身完全未加密；只應儲存在受信任的加密磁碟，使用後應安全刪除。
 - 受重新提示保護的項目清單不包含使用者名稱、URI 或 TOTP 中繼資料；主密碼驗證後取得的 capability 會在 60 秒後失效。
 - 鎖定時會清除主程序內的金鑰與已解密資料。
 
@@ -66,11 +67,11 @@ Windows 使用 OpenSSH 固定的 `\\.\pipe\openssh-ssh-agent` named pipe。啟�
 
 「鎖定前記住」會分別記住本機請求與經 `session-bind@openssh.com` 驗證的 forwarding 主機；沒有已驗證主機指紋的 forwarding 要求不會被記住。項目啟用主密碼重新提示時，無論選擇哪種 Agent 核准策略，都仍需重新輸入主密碼。
 
-## 匯入與加密備份
+## 匯入、互通匯出與加密備份
 
-在「設定 → 資料可攜性」可匯入未加密或受密碼保護的 Bitwarden JSON，也可建立受獨立密碼保護的可攜 JSON 備份。兩個流程都會先在主程序重新驗證目前的主密碼；備份密碼不會成為 BearWarden 主密碼。
+在「設定 → 資料可攜性」可匯入未加密或受密碼保護的 Bitwarden JSON，也可建立受獨立密碼保護的可攜 JSON、包含附件的 Bitwarden 相容明文 ZIP，或可續傳還原的 BearWarden 加密 `.bwbackup`。所有匯出都會先在主程序重新驗證目前的主密碼；備份密碼不會成為 BearWarden 主密碼，明文 ZIP 則明確不接受備份密碼。
 
-匯入遵循 Bitwarden 的不去重語意：每個資料夾與項目都會取得新的本機 ID，撞名資料夾會加上 `Imported` 後綴。匯出不包含垃圾桶、附件或 Sends；匯入會略過 JSON 中的垃圾桶項目。帳號限制型加密 JSON 綁定原帳號金鑰，無法跨帳號攜帶，因此目前只支援[官方所述的 password-protected encrypted export](https://bitwarden.com/help/encrypted-export/)；其 PBKDF2 與 Argon2id KDF 均可匯入，格式與限制以 [Bitwarden Import Data](https://bitwarden.com/help/import-data/) 為準。
+匯入遵循 Bitwarden 的不去重語意：每個資料夾與項目都會取得新的本機 ID，撞名資料夾會加上 `Imported` 後綴；JSON 匯入會略過垃圾桶項目。JSON 匯出不包含垃圾桶、附件或 Sends，附件 ZIP 也依官方規則排除垃圾桶與 Sends。官方目前只提供附件 ZIP 匯出，沒有能無損批次還原附件的 ZIP 匯入格式，因此 BearWarden 不會用可能有歧義的項目名稱猜測附件歸屬；完整還原請使用 `.bwbackup`。帳號限制型加密 JSON 綁定原帳號金鑰，無法跨帳號攜帶，因此目前只支援[官方所述的 password-protected encrypted export](https://bitwarden.com/help/encrypted-export/)；其 PBKDF2 與 Argon2id KDF 均可匯入，格式與限制以 [Bitwarden Import Data](https://bitwarden.com/help/import-data/) 為準。
 
 ## Bitwarden／Vaultwarden 同步
 
