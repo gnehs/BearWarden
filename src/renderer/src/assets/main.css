@@ -214,7 +214,7 @@
   --sidebar: oklch(0.218 0.008 223.9);
   --sidebar-foreground: oklch(0.987 0.002 197.1);
   --sidebar-primary: oklch(0.696 0.17 162.48);
-  --sidebar-primary-foreground: oklch(0.262 0.051 172.552);
+  --sidebar-primary-foreground: var(--primary-foreground);
   --sidebar-accent: oklch(0.275 0.011 216.9);
   --sidebar-accent-foreground: oklch(0.987 0.002 197.1);
   --sidebar-border: oklch(1 0 0 / 10%);
@@ -2619,6 +2619,10 @@ button svg {
   border-color: var(--border);
   color: var(--muted-foreground);
   background: var(--muted);
+}
+:root[data-theme='dark'] .item-icon.card,
+:root[data-theme='dark'] .detail-icon.card {
+  background: var(--website-icon-background);
 }
 
 /* Let Electron's macOS vibrancy and Windows Mica remain visible behind the app chrome. */
