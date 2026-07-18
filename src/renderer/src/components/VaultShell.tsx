@@ -29,6 +29,7 @@ import {
   CloudCheck,
   CloudCog,
   CloudSync,
+  ChevronUp,
   ContactRound,
   Copy,
   CreditCard,
@@ -42,6 +43,7 @@ import {
   History,
   KeyRound,
   ListFilter,
+  LockKeyhole,
   Menu,
   MoreHorizontal,
   NotebookPen,
@@ -57,6 +59,7 @@ import {
   Star,
   Trash2,
   Upload,
+  UserRound,
   UsersRound,
   Wrench,
   X
@@ -66,6 +69,7 @@ import { toast } from 'sonner'
 import type {
   AppSettings,
   AppSettingsUpdate,
+  AccountSecurityProfile,
   AccountMutationResult,
   AccountStatus,
   AttachmentOperationKind,
@@ -162,6 +166,7 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
@@ -918,6 +923,11 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(initialSyncStatus)
+  const [accountProfileRefreshRevision, setAccountProfileRefreshRevision] = useState(0)
+  const [sidebarAccountProfile, setSidebarAccountProfile] = useState<{
+    owner: string
+    profile: AccountSecurityProfile | null
+  }>({ owner: '', profile: null })
   const SyncSidebarIcon = syncStateMeta[syncStatus.state].icon
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -943,6 +953,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     queryRef.current = bounded
     setQuery(bounded)
   }, [])
+  const sidebarMenuTriggerRef = useRef<HTMLButtonElement>(null)
   const settingsReturnFocusRef = useRef<HTMLElement | null>(null)
   const accountStatusRequestRef = useRef(0)
   const accountMutationRequestRef = useRef(0)
@@ -1133,9 +1144,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     [authorizationToken]
   )
 
-  const invalidateAuthorization = useCallback((id: string): void => {
-    detailCacheGenerationRef.current += 1
-    detailRequestsRef.current.clear()
+  const discardAuthorizationToken = useCallback((id: string): void => {
     authorizationCacheRef.current.delete(id)
     setAuthorizationTokenState((current) => {
       if (!(id in current)) return current
@@ -1146,19 +1155,29 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     const timer = authorizationExpiryTimersRef.current.get(id)
     if (timer !== undefined) window.clearTimeout(timer)
     authorizationExpiryTimersRef.current.delete(id)
-    detailCacheRef.current.delete(id)
-    if (selectedIdRef.current === id) {
-      setPasswordHistoryDialogOpen(false)
-      setSelectedLogin(null)
-      setEditorMode(null)
-      setRevealedSecrets(emptyRevealedSecrets)
-      setRevealedCustomFields(emptyRevealedCustomFields)
-    }
   }, [])
+
+  const invalidateAuthorization = useCallback(
+    (id: string, preservePasswordHistoryDialog = false): void => {
+      detailCacheGenerationRef.current += 1
+      detailRequestsRef.current.clear()
+      discardAuthorizationToken(id)
+      detailCacheRef.current.delete(id)
+      if (selectedIdRef.current === id) {
+        if (!preservePasswordHistoryDialog) setPasswordHistoryDialogOpen(false)
+        setSelectedLogin(null)
+        setEditorMode(null)
+        setRevealedSecrets(emptyRevealedSecrets)
+        setRevealedCustomFields(emptyRevealedCustomFields)
+      }
+    },
+    [discardAuthorizationToken]
+  )
 
   const cacheAuthorization = useCallback(
     (id: string, authorization: LoginAuthorization): void => {
-      invalidateAuthorization(id)
+      // Replacing an authorization token must not dismiss the operation that requested it.
+      discardAuthorizationToken(id)
       authorizationCacheRef.current.set(id, authorization)
       setAuthorizationTokenState((current) => ({
         ...current,
@@ -1171,7 +1190,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       }, delay)
       authorizationExpiryTimersRef.current.set(id, timer)
     },
-    [invalidateAuthorization]
+    [discardAuthorizationToken, invalidateAuthorization]
   )
 
   const requestReprompt = useCallback(
@@ -1209,7 +1228,8 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const withReprompt = useCallback(
     async <T,>(
       ids: readonly string[],
-      operation: (tokenFor: (id: string) => string | undefined) => Promise<T>
+      operation: (tokenFor: (id: string) => string | undefined) => Promise<T>,
+      preservePasswordHistoryDialog = false
     ): Promise<T> => {
       const protectedIds = ids.filter(
         (id) => itemsRef.current.find((item) => item.id === id)?.reprompt === 1
@@ -1221,7 +1241,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         return await operation(tokenFor)
       } catch (error) {
         if (!isRepromptRequired(error) || ids.length === 0) throw error
-        for (const id of ids) invalidateAuthorization(id)
+        for (const id of ids) invalidateAuthorization(id, preservePasswordHistoryDialog)
         const retryIds = ids
         const retryAuthorization = await requestReprompt(retryIds)
         return operation((id) =>
@@ -1466,11 +1486,14 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     const summary = selectedSummary
     if (!summary || summary.passwordHistoryCount === 0) throw new Error('INVALID_INPUT')
     const itemId = summary.id
-    return withReprompt([itemId], (tokenFor) =>
-      window.bearwarden.logins.getPasswordHistory({
-        id: itemId,
-        ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
-      })
+    return withReprompt(
+      [itemId],
+      (tokenFor) =>
+        window.bearwarden.logins.getPasswordHistory({
+          id: itemId,
+          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+        }),
+      true
     )
   }, [selectedSummary, withReprompt])
 
@@ -1659,6 +1682,30 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       unsubscribe()
     }
   }, [])
+
+  const syncAccountIdentity = `${syncStatus.serverUrl ?? ''}\0${syncStatus.email?.toLowerCase() ?? ''}`
+  const visibleSidebarAccountProfile =
+    sidebarAccountProfile.owner === syncAccountIdentity ? sidebarAccountProfile.profile : null
+  const sidebarAccountName =
+    visibleSidebarAccountProfile?.name.trim() ||
+    (syncStatus.configured ? '已連線帳號' : '本機保管庫')
+
+  useEffect(() => {
+    let active = true
+    if (syncStatus.state === 'ready') {
+      void window.bearwarden.accountSecurity.profile().then(
+        (profile) => {
+          if (active) setSidebarAccountProfile({ owner: syncAccountIdentity, profile })
+        },
+        () => {
+          // The footer stays usable when the remote profile is temporarily unavailable.
+        }
+      )
+    }
+    return () => {
+      active = false
+    }
+  }, [accountProfileRefreshRevision, syncAccountIdentity, syncStatus.state])
 
   useEffect(() => {
     let active = true
@@ -2225,10 +2272,17 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     })
   }
 
+  function rememberNavigationReturnFocus(): void {
+    const activeElement =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
+    settingsReturnFocusRef.current = activeElement?.closest('[data-slot="dropdown-menu-content"]')
+      ? sidebarMenuTriggerRef.current
+      : activeElement
+  }
+
   function openSettings(): void {
     requestEditorTransition(() => {
-      settingsReturnFocusRef.current =
-        document.activeElement instanceof HTMLElement ? document.activeElement : null
+      rememberNavigationReturnFocus()
       setSettingsOpen(true)
       setHealthOpen(false)
       setSendsOpen(false)
@@ -2250,8 +2304,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   function openHealth(): void {
     requestEditorTransition(() => {
-      settingsReturnFocusRef.current =
-        document.activeElement instanceof HTMLElement ? document.activeElement : null
+      rememberNavigationReturnFocus()
       setHealthOpen(true)
       setSettingsOpen(false)
       setSendsOpen(false)
@@ -2273,8 +2326,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   function openSends(): void {
     requestEditorTransition(() => {
-      settingsReturnFocusRef.current =
-        document.activeElement instanceof HTMLElement ? document.activeElement : null
+      rememberNavigationReturnFocus()
       setSendsOpen(true)
       setSettingsOpen(false)
       setHealthOpen(false)
@@ -2296,8 +2348,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   function openOrganizations(): void {
     requestEditorTransition(() => {
-      settingsReturnFocusRef.current =
-        document.activeElement instanceof HTMLElement ? document.activeElement : null
+      rememberNavigationReturnFocus()
       setOrganizationsOpen(true)
       setSettingsOpen(false)
       setHealthOpen(false)
@@ -2319,8 +2370,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   function openEmergencyAccess(): void {
     requestEditorTransition(() => {
-      settingsReturnFocusRef.current =
-        document.activeElement instanceof HTMLElement ? document.activeElement : null
+      rememberNavigationReturnFocus()
       setEmergencyAccessOpen(true)
       setSettingsOpen(false)
       setHealthOpen(false)
@@ -3931,67 +3981,104 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             </div>
 
             <footer className="sidebar-footer">
-              <div className="flex min-w-0 flex-col">
-                <Button
-                  variant="ghost"
-                  className={cn('sidebar-settings-control', organizationsOpen && 'active')}
-                  type="button"
-                  onClick={openOrganizations}
-                  aria-current={organizationsOpen ? 'page' : undefined}
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      ref={sidebarMenuTriggerRef}
+                      variant="ghost"
+                      className="sidebar-account-trigger"
+                      type="button"
+                      aria-label={`開啟 ${sidebarAccountName} 選單`}
+                    />
+                  }
                 >
-                  <UsersRound data-icon="inline-start" aria-hidden="true" />
-                  組織
-                </Button>
-                <Button
-                  variant="ghost"
-                  className={cn('sidebar-settings-control', emergencyAccessOpen && 'active')}
-                  type="button"
-                  onClick={openEmergencyAccess}
-                  aria-current={emergencyAccessOpen ? 'page' : undefined}
+                  <span className="sidebar-account-avatar" aria-hidden="true">
+                    <UserRound />
+                  </span>
+                  <span className="sidebar-account-copy">
+                    <strong>{sidebarAccountName}</strong>
+                  </span>
+                  <ChevronUp className="sidebar-account-chevron" aria-hidden="true" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  side="top"
+                  align="start"
+                  sideOffset={8}
+                  className="sidebar-account-menu"
                 >
-                  <ShieldAlert data-icon="inline-start" aria-hidden="true" />
-                  Emergency Access
-                </Button>
-                <Button
-                  variant="ghost"
-                  className={cn('sidebar-settings-control', sendsOpen && 'active')}
-                  type="button"
-                  onClick={openSends}
-                  aria-current={sendsOpen ? 'page' : undefined}
-                >
-                  <SendIcon data-icon="inline-start" aria-hidden="true" />
-                  Sends
-                </Button>
-                <Button
-                  variant="ghost"
-                  className={cn('sidebar-settings-control', healthOpen && 'active')}
-                  type="button"
-                  onClick={openHealth}
-                  aria-current={healthOpen ? 'page' : undefined}
-                >
-                  <ShieldCheck data-icon="inline-start" aria-hidden="true" />
-                  健康報告
-                </Button>
-                <Button
-                  variant="ghost"
-                  className={cn('sidebar-settings-control', settingsOpen && 'active')}
-                  type="button"
-                  onClick={openSettings}
-                  aria-current={settingsOpen ? 'page' : undefined}
-                >
-                  <Settings2 data-icon="inline-start" aria-hidden="true" />
-                  設定
-                </Button>
-              </div>
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel className="sidebar-account-menu-label">
+                      <span className="sidebar-account-avatar" aria-hidden="true">
+                        <UserRound />
+                      </span>
+                      <span>
+                        <strong>{sidebarAccountName}</strong>
+                        <small>{syncStateMeta[syncStatus.state].label}</small>
+                      </span>
+                    </DropdownMenuLabel>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem onClick={() => setGeneratorDialogOpen(true)}>
+                      <Sparkles data-icon="inline-start" />
+                      產生器
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={openOrganizations}>
+                      <UsersRound data-icon="inline-start" />
+                      組織
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={openEmergencyAccess}>
+                      <ShieldAlert data-icon="inline-start" />
+                      Emergency Access
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={openSends}>
+                      <SendIcon data-icon="inline-start" />
+                      Sends
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem onClick={openHealth}>
+                      <ShieldCheck data-icon="inline-start" />
+                      健康報告
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setSyncDialogOpen(true)}>
+                      <SyncSidebarIcon
+                        className={cn('sync-sidebar-control', syncStatus.state)}
+                        data-icon="inline-start"
+                      />
+                      同步
+                      <small className="sidebar-menu-status">
+                        {syncStateMeta[syncStatus.state].label}
+                      </small>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={openSettings}>
+                      <Settings2 data-icon="inline-start" />
+                      設定
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem onClick={() => void lockVault()}>
+                      <LockKeyhole data-icon="inline-start" />
+                      鎖定保管庫
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <TooltipIconButton
                 variant="ghost"
                 size="icon"
-                className={cn('sync-sidebar-control', syncStatus.state)}
+                className="sidebar-sync-trigger"
                 type="button"
-                label={`開啟 Bitwarden 同步：${syncStateMeta[syncStatus.state].label}`}
+                label={`雲端同步：${syncStateMeta[syncStatus.state].label}`}
                 onClick={() => setSyncDialogOpen(true)}
               >
-                <SyncSidebarIcon aria-hidden="true" />
+                <SyncSidebarIcon
+                  className={cn('sync-sidebar-control', syncStatus.state)}
+                  aria-hidden="true"
+                />
               </TooltipIconButton>
             </footer>
           </aside>
@@ -4165,15 +4252,6 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                         </DropdownMenu>
                       </div>
                     )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      type="button"
-                      onClick={() => setGeneratorDialogOpen(true)}
-                    >
-                      <Sparkles data-icon="inline-start" />
-                      產生器
-                    </Button>
                     {scope.kind === 'trash' && trashItems.length > 0 && (
                       <Button
                         variant="outline"
@@ -4975,7 +5053,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             count={selectedSummary.passwordHistoryCount}
             onClose={() => setPasswordHistoryDialogOpen(false)}
             onReveal={revealPasswordHistory}
-            {...(selectedSummary.deletedAt ? {} : { onRestore: restorePasswordHistory })}
+            {...(selectedSummary.deletedAt || selectedSummary.type !== 'login'
+              ? {}
+              : { onRestore: restorePasswordHistory })}
           />
         )}
         {generatorDialogOpen && (
@@ -4998,7 +5078,10 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         {syncDialogOpen && (
           <SyncDialog
             status={syncStatus}
-            onClose={() => setSyncDialogOpen(false)}
+            onClose={() => {
+              setSyncDialogOpen(false)
+              setAccountProfileRefreshRevision((revision) => revision + 1)
+            }}
             onStatusChange={setSyncStatus}
             onSynced={refreshAfterSync}
           />

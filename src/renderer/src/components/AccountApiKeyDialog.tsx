@@ -100,11 +100,13 @@ function AccountApiKeyDialog(): React.JSX.Element {
 
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
-      <DialogTrigger render={<Button variant="outline" size="sm" type="button" />}>
+      <DialogTrigger
+        render={<Button className="w-full" variant="outline" size="sm" type="button" />}
+      >
         <KeyRound data-icon="inline-start" aria-hidden="true" />
         個人 API key
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent showOverlay={false}>
         <DialogHeader>
           <DialogTitle>個人 API key</DialogTitle>
           <DialogDescription>

@@ -102,6 +102,10 @@ const api: BearWardenAPI = {
     prefetch: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginPrefetch, request),
     getPasswordHistory: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.loginGetPasswordHistory, request),
+    revealPasswordHistory: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.loginRevealPasswordHistory, request),
+    copyPasswordHistory: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.loginCopyPasswordHistory, request),
     restorePasswordHistory: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.loginRestorePasswordHistory, request),
     downloadAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentDownload, request),

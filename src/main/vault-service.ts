@@ -46,6 +46,7 @@ import type {
   LoginOpenUriRequest,
   LoginPrefetchRequest,
   PasskeyDeleteRequest,
+  PasswordHistoryEntryRequest,
   PasswordHistoryRestoreRequest,
   LoginMoveRequest,
   LoginMoveManyRequest,
@@ -68,6 +69,7 @@ import type {
   VaultItemFields,
   VaultLoginUri,
   VaultPasswordHistoryEntry,
+  VaultPasswordHistoryView,
   VaultItemType,
   VaultHealthExposedReport,
   VaultHealthAccountBreachReport,
@@ -6567,21 +6569,80 @@ export class VaultService {
     })
   }
 
-  getPasswordHistory(
+  async getPasswordHistory(
     request: LoginIdRequest,
     validateAuthorization?: ItemReadAuthorizationValidator
   ): Promise<VaultPasswordHistoryEntry[]> {
-    return this.exclusive(async () => {
-      assertUuid(request.id)
-      const login = this.findLogin(this.requireData(), request.id)
-      if (
-        (login.reprompt === 1 || login.deletedAt !== null) &&
-        !validateAuthorization?.([login.id], { generation: this.generation })
-      ) {
-        throw new VaultError('REPROMPT_REQUIRED')
-      }
-      return clonePasswordHistory(login.passwordHistory)
-    })
+    const login = this.passwordHistoryLogin(request, validateAuthorization)
+    return clonePasswordHistory(login.passwordHistory)
+  }
+
+  async getPasswordHistoryView(
+    request: LoginIdRequest,
+    validateAuthorization?: ItemReadAuthorizationValidator
+  ): Promise<VaultPasswordHistoryView> {
+    const login = this.passwordHistoryLogin(request, validateAuthorization)
+    return {
+      expectedUpdatedAt: login.updatedAt,
+      entries: login.passwordHistory.map(({ lastUsedDate }) => ({ lastUsedDate }))
+    }
+  }
+
+  async revealPasswordHistory(
+    request: PasswordHistoryEntryRequest,
+    validateAuthorization?: ItemReadAuthorizationValidator
+  ): Promise<string> {
+    return this.passwordHistoryEntry(request, validateAuthorization).password
+  }
+
+  async copyPasswordHistory(
+    request: PasswordHistoryEntryRequest,
+    validateAuthorization?: ItemReadAuthorizationValidator
+  ): Promise<void> {
+    const entry = this.passwordHistoryEntry(request, validateAuthorization)
+    await this.platform.copyText(entry.password)
+  }
+
+  private passwordHistoryLogin(
+    request: LoginIdRequest,
+    validateAuthorization?: ItemReadAuthorizationValidator
+  ): StoredLogin {
+    assertUuid(request.id)
+    // History is cloned synchronously from the last committed snapshot so a background sync
+    // cannot leave the explicit reveal action waiting behind network I/O. Lock starts by
+    // blocking fast reads, and authorization is validated before this turn can yield.
+    const login = this.findLogin(this.requireFastReadData(), request.id)
+    if (
+      (login.reprompt === 1 || login.deletedAt !== null) &&
+      !validateAuthorization?.([login.id], { generation: this.generation })
+    ) {
+      throw new VaultError('REPROMPT_REQUIRED')
+    }
+    return login
+  }
+
+  private passwordHistoryEntry(
+    request: PasswordHistoryEntryRequest,
+    validateAuthorization?: ItemReadAuthorizationValidator
+  ): VaultPasswordHistoryEntry {
+    if (
+      !Number.isSafeInteger(request.index) ||
+      request.index < 0 ||
+      request.index >= MAX_PASSWORD_HISTORY ||
+      typeof request.lastUsedDate !== 'string' ||
+      !Number.isFinite(Date.parse(request.lastUsedDate)) ||
+      typeof request.expectedUpdatedAt !== 'string' ||
+      !Number.isFinite(Date.parse(request.expectedUpdatedAt))
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    const login = this.passwordHistoryLogin(request, validateAuthorization)
+    if (login.updatedAt !== request.expectedUpdatedAt) throw new VaultError('INVALID_INPUT')
+    const entry = login.passwordHistory[request.index]
+    if (!entry || entry.lastUsedDate !== request.lastUsedDate) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    return entry
   }
 
   restorePasswordHistory(request: PasswordHistoryRestoreRequest): Promise<LoginView> {

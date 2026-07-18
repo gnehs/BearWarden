@@ -291,106 +291,115 @@ function AccountDevicesDialog(): React.JSX.Element {
 
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
-      <DialogTrigger render={<Button variant="outline" size="sm" type="button" />}>
+      <DialogTrigger
+        render={<Button className="w-full" variant="outline" size="sm" type="button" />}
+      >
         <Laptop data-icon="inline-start" aria-hidden="true" />
         帳號裝置
       </DialogTrigger>
-      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-lg">
+      <DialogContent
+        className="max-h-[min(42rem,calc(100vh-2rem))] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-lg"
+        showOverlay={false}
+      >
         <DialogHeader>
           <DialogTitle>帳號裝置</DialogTitle>
           <DialogDescription>
             顯示伺服器上的裝置活動與信任狀態，並可取消所有工作階段。不會顯示裝置識別碼或網路資訊。
           </DialogDescription>
         </DialogHeader>
-        {busy && result === null ? (
-          <div className="text-muted-foreground flex items-center gap-2 text-sm" role="status">
-            <Spinner aria-hidden="true" />
-            正在讀取裝置…
-          </div>
-        ) : result?.status === 'unavailable' ? (
-          <Alert>
-            <AlertDescription>目前的伺服器不支援帳號裝置清單。</AlertDescription>
-          </Alert>
-        ) : result?.status === 'available' && result.devices.length === 0 ? (
-          <p className="text-muted-foreground text-sm">伺服器沒有回傳任何帳號裝置。</p>
-        ) : result?.status === 'available' ? (
-          <div className="grid max-h-[min(60vh,32rem)] gap-3 overflow-y-auto pr-1">
-            {result.devices.map((device, index) => (
-              <section
-                key={`${device.name}-${device.createdAt}-${index}`}
-                className="grid gap-3 rounded-lg border p-3"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <h3 className="font-medium">{device.name}</h3>
-                    <p className="text-muted-foreground text-sm">
-                      {deviceTypeNames[device.type] ?? `未知裝置類型（${device.type}）`}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {device.current && <Badge>此裝置</Badge>}
-                    <Badge variant="outline">{device.trusted ? '已信任' : '未信任'}</Badge>
-                    {device.pendingAuthRequest && <Badge variant="secondary">待確認</Badge>}
-                  </div>
+        <div className="scroll-fade-y forced-colors:scroll-fade-none -mx-4 min-h-0 overflow-y-auto px-4">
+          <div className="flex flex-col gap-4 pb-1">
+            {busy && result === null ? (
+              <div className="text-muted-foreground flex items-center gap-2 text-sm" role="status">
+                <Spinner aria-hidden="true" />
+                正在讀取裝置…
+              </div>
+            ) : result?.status === 'unavailable' ? (
+              <Alert>
+                <AlertDescription>目前的伺服器不支援帳號裝置清單。</AlertDescription>
+              </Alert>
+            ) : result?.status === 'available' && result.devices.length === 0 ? (
+              <p className="text-muted-foreground text-sm">伺服器沒有回傳任何帳號裝置。</p>
+            ) : result?.status === 'available' ? (
+              <div className="grid gap-3">
+                {result.devices.map((device, index) => (
+                  <section
+                    key={`${device.name}-${device.createdAt}-${index}`}
+                    className="grid gap-3 rounded-lg border p-3"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <h3 className="font-medium">{device.name}</h3>
+                        <p className="text-muted-foreground text-sm">
+                          {deviceTypeNames[device.type] ?? `未知裝置類型（${device.type}）`}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {device.current && <Badge>此裝置</Badge>}
+                        <Badge variant="outline">{device.trusted ? '已信任' : '未信任'}</Badge>
+                        {device.pendingAuthRequest && <Badge variant="secondary">待確認</Badge>}
+                      </div>
+                    </div>
+                    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+                      <dt className="text-muted-foreground">建立時間</dt>
+                      <dd>{formatDeviceDate(device.createdAt)}</dd>
+                      <dt className="text-muted-foreground">最近活動</dt>
+                      <dd>{formatDeviceDate(device.lastActivityAt)}</dd>
+                      <dt className="text-muted-foreground">目前裝置</dt>
+                      <dd>{device.current ? '是' : '否'}</dd>
+                      <dt className="text-muted-foreground">信任狀態</dt>
+                      <dd>{device.trusted ? '已信任' : '未信任'}</dd>
+                      <dt className="text-muted-foreground">待處理登入要求</dt>
+                      <dd>{device.pendingAuthRequest ? '有' : '無'}</dd>
+                    </dl>
+                  </section>
+                ))}
+              </div>
+            ) : null}
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            {success && (
+              <Alert>
+                <AlertDescription>{success}</AlertDescription>
+              </Alert>
+            )}
+            {deauthorizeOpen ? (
+              <form className="grid gap-4" onSubmit={(event) => void submitDeauthorization(event)}>
+                <DeauthorizeSessionsForm
+                  masterPassword={masterPassword}
+                  confirmation={confirmation}
+                  busy={busy}
+                  error={deauthorizeError}
+                  onMasterPasswordChange={setMasterPassword}
+                  onConfirmationChange={setConfirmation}
+                  onCancel={() => changeDeauthorizeOpen(false)}
+                />
+              </form>
+            ) : (
+              <div className="grid gap-2 rounded-lg border p-3">
+                <div>
+                  <h3 className="font-medium">取消所有工作階段</h3>
+                  <p className="text-muted-foreground text-sm">
+                    強制這個帳號的所有裝置重新登入，不會刪除本機加密 vault。
+                  </p>
                 </div>
-                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-                  <dt className="text-muted-foreground">建立時間</dt>
-                  <dd>{formatDeviceDate(device.createdAt)}</dd>
-                  <dt className="text-muted-foreground">最近活動</dt>
-                  <dd>{formatDeviceDate(device.lastActivityAt)}</dd>
-                  <dt className="text-muted-foreground">目前裝置</dt>
-                  <dd>{device.current ? '是' : '否'}</dd>
-                  <dt className="text-muted-foreground">信任狀態</dt>
-                  <dd>{device.trusted ? '已信任' : '未信任'}</dd>
-                  <dt className="text-muted-foreground">待處理登入要求</dt>
-                  <dd>{device.pendingAuthRequest ? '有' : '無'}</dd>
-                </dl>
-              </section>
-            ))}
+                <Button
+                  className="justify-self-start"
+                  variant="destructive"
+                  type="button"
+                  disabled={busy || Boolean(success)}
+                  onClick={() => changeDeauthorizeOpen(true)}
+                >
+                  <LogOut data-icon="inline-start" aria-hidden="true" />
+                  開始取消工作階段
+                </Button>
+              </div>
+            )}
           </div>
-        ) : null}
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-        {success && (
-          <Alert>
-            <AlertDescription>{success}</AlertDescription>
-          </Alert>
-        )}
-        {deauthorizeOpen ? (
-          <form className="grid gap-4" onSubmit={(event) => void submitDeauthorization(event)}>
-            <DeauthorizeSessionsForm
-              masterPassword={masterPassword}
-              confirmation={confirmation}
-              busy={busy}
-              error={deauthorizeError}
-              onMasterPasswordChange={setMasterPassword}
-              onConfirmationChange={setConfirmation}
-              onCancel={() => changeDeauthorizeOpen(false)}
-            />
-          </form>
-        ) : (
-          <div className="grid gap-2 rounded-lg border p-3">
-            <div>
-              <h3 className="font-medium">取消所有工作階段</h3>
-              <p className="text-muted-foreground text-sm">
-                強制這個帳號的所有裝置重新登入，不會刪除本機加密 vault。
-              </p>
-            </div>
-            <Button
-              className="justify-self-start"
-              variant="destructive"
-              type="button"
-              disabled={busy || Boolean(success)}
-              onClick={() => changeDeauthorizeOpen(true)}
-            >
-              <LogOut data-icon="inline-start" aria-hidden="true" />
-              開始取消工作階段
-            </Button>
-          </div>
-        )}
+        </div>
         <DialogFooter>
           <Button
             variant="secondary"

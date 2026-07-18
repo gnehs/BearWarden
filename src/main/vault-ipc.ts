@@ -62,6 +62,7 @@ import {
   type PasskeyDeleteRequest,
   type PinUnlockEnableRequest,
   type PinUnlockRequest,
+  type PasswordHistoryEntryRequest,
   type PasswordHistoryRestoreRequest,
   type LoginMoveRequest,
   type LoginMoveManyRequest,
@@ -1128,7 +1129,7 @@ function parseId(value: unknown): LoginIdRequest {
   }
 }
 
-function parsePasswordHistoryRestore(value: unknown): PasswordHistoryRestoreRequest {
+function parsePasswordHistoryEntry(value: unknown): PasswordHistoryEntryRequest {
   const record = exactRecord(value, [
     'id',
     'index',
@@ -1160,6 +1161,10 @@ function parsePasswordHistoryRestore(value: unknown): PasswordHistoryRestoreRequ
     ...(authorizationToken ? { authorizationToken } : {})
   }
 }
+
+const parsePasswordHistoryRestore = parsePasswordHistoryEntry as (
+  value: unknown
+) => PasswordHistoryRestoreRequest
 
 function parsePasskeyDelete(value: unknown): PasskeyDeleteRequest {
   const record = exactRecord(value, [
@@ -2593,7 +2598,29 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   )
   registerHandler(IPC_CHANNELS.loginGetPasswordHistory, getMainWindow, (event, input) => {
     const request = parseId(input)
-    return vault.getPasswordHistory(request, (ids, state) =>
+    return vault.getPasswordHistoryView(request, (ids, state) =>
+      authorizations.validateMany(
+        request.authorizationToken,
+        event.sender.id,
+        ids,
+        state.generation
+      )
+    )
+  })
+  registerHandler(IPC_CHANNELS.loginRevealPasswordHistory, getMainWindow, (event, input) => {
+    const request = parsePasswordHistoryEntry(input)
+    return vault.revealPasswordHistory(request, (ids, state) =>
+      authorizations.validateMany(
+        request.authorizationToken,
+        event.sender.id,
+        ids,
+        state.generation
+      )
+    )
+  })
+  registerHandler(IPC_CHANNELS.loginCopyPasswordHistory, getMainWindow, (event, input) => {
+    const request = parsePasswordHistoryEntry(input)
+    return vault.copyPasswordHistory(request, (ids, state) =>
       authorizations.validateMany(
         request.authorizationToken,
         event.sender.id,

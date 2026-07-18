@@ -1,6 +1,22 @@
-import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, FolderInput, History, KeyRound, RotateCcw, X } from 'lucide-react'
-import type { FolderView, VaultPasswordHistoryEntry } from '../../../shared/vault-contract'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  AlertTriangle,
+  Check,
+  Copy,
+  Eye,
+  EyeOff,
+  FolderInput,
+  History,
+  KeyRound,
+  RotateCcw,
+  ShieldCheck,
+  X
+} from 'lucide-react'
+import type {
+  FolderView,
+  PasswordHistoryEntryRequest,
+  VaultPasswordHistoryView
+} from '../../../shared/vault-contract'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,6 +31,15 @@ import {
 } from '@renderer/components/ui/alert-dialog'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle
+} from '@renderer/components/ui/card'
 import {
   Dialog,
   DialogClose,
@@ -35,6 +60,8 @@ import {
   SelectValue
 } from '@renderer/components/ui/select'
 import { Spinner } from '@renderer/components/ui/spinner'
+import { Skeleton } from '@renderer/components/ui/skeleton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 
 interface ModalProps {
   title: string
@@ -438,12 +465,36 @@ export function RepromptDialog({
   )
 }
 
+type PasswordHistoryEntryLocator = Omit<PasswordHistoryEntryRequest, 'id' | 'authorizationToken'>
+
 interface PasswordHistoryDialogProps {
   itemName: string
   count: number
   onClose: () => void
-  onReveal: () => Promise<VaultPasswordHistoryEntry[]>
-  onRestore?: (index: number, lastUsedDate: string) => Promise<void>
+  onLoad: () => Promise<VaultPasswordHistoryView>
+  onReveal: (locator: PasswordHistoryEntryLocator) => Promise<string>
+  onCopy: (locator: PasswordHistoryEntryLocator) => Promise<void>
+  onRestore?: (locator: PasswordHistoryEntryLocator) => Promise<void>
+}
+
+function PasswordHistoryIconButton({
+  label,
+  children,
+  ...props
+}: React.ComponentProps<typeof Button> & {
+  label: string
+  children: React.ReactNode
+}): React.JSX.Element {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={<Button type="button" variant="ghost" size="icon-sm" aria-label={label} {...props} />}
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
 }
 
 export function PasswordHistoryRestoreButton({
@@ -466,135 +517,295 @@ export function PasswordHistoryDialog({
   itemName,
   count,
   onClose,
+  onLoad,
   onReveal,
+  onCopy,
   onRestore
 }: PasswordHistoryDialogProps): React.JSX.Element {
-  const [entries, setEntries] = useState<VaultPasswordHistoryEntry[] | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [history, setHistory] = useState<VaultPasswordHistoryView | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [revealedValues, setRevealedValues] = useState<Record<string, string>>({})
+  const [revealing, setRevealing] = useState<Record<string, boolean>>({})
+  const [copying, setCopying] = useState<Record<string, boolean>>({})
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
+  const [restoringKey, setRestoringKey] = useState<string | null>(null)
   const [error, setError] = useState('')
-  const entriesRef = useRef<VaultPasswordHistoryEntry[]>([])
   const mountedRef = useRef(true)
+  const loadRequestRef = useRef<Promise<VaultPasswordHistoryView> | null>(null)
+  const revealTimersRef = useRef(new Map<string, number>())
+  const copiedTimerRef = useRef<number | null>(null)
 
-  const clearEntries = (): void => {
-    entriesRef.current = []
-    setEntries(null)
+  const clearRevealTimer = useCallback((key: string): void => {
+    const timer = revealTimersRef.current.get(key)
+    if (timer !== undefined) window.clearTimeout(timer)
+    revealTimersRef.current.delete(key)
+  }, [])
+
+  const clearSecrets = useCallback((): void => {
+    for (const timer of revealTimersRef.current.values()) window.clearTimeout(timer)
+    revealTimersRef.current.clear()
+    setRevealedValues({})
+  }, [])
+
+  const loadHistory = useCallback(
+    (retry = false): void => {
+      if (retry) loadRequestRef.current = null
+      setLoading(true)
+      setError('')
+      const request = loadRequestRef.current ?? onLoad()
+      loadRequestRef.current = request
+      void request
+        .then((loaded) => {
+          if (!mountedRef.current) return
+          setHistory(loaded)
+        })
+        .catch(() => {
+          if (!mountedRef.current) return
+          setError('無法讀取密碼歷史，請再試一次。')
+        })
+        .finally(() => {
+          if (mountedRef.current) setLoading(false)
+        })
+    },
+    [onLoad]
+  )
+
+  useEffect(() => {
+    mountedRef.current = true
+    loadHistory()
+    return () => {
+      mountedRef.current = false
+      for (const timer of revealTimersRef.current.values()) window.clearTimeout(timer)
+      revealTimersRef.current.clear()
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
+    }
+  }, [loadHistory])
+
+  const closeDialog = (): void => {
+    clearSecrets()
+    onClose()
   }
 
-  useEffect(
-    () => () => {
-      mountedRef.current = false
-      entriesRef.current = []
-    },
-    []
-  )
+  const locatorFor = (index: number, lastUsedDate: string): PasswordHistoryEntryLocator => ({
+    index,
+    lastUsedDate,
+    expectedUpdatedAt: history!.expectedUpdatedAt
+  })
+
+  const toggleReveal = async (index: number, lastUsedDate: string): Promise<void> => {
+    const key = `${index}:${lastUsedDate}`
+    if (revealedValues[key] !== undefined) {
+      clearRevealTimer(key)
+      setRevealedValues((current) => {
+        const next = { ...current }
+        delete next[key]
+        return next
+      })
+      return
+    }
+    setRevealing((current) => ({ ...current, [key]: true }))
+    setError('')
+    try {
+      const value = await onReveal(locatorFor(index, lastUsedDate))
+      if (!mountedRef.current) return
+      setRevealedValues((current) => ({ ...current, [key]: value }))
+      clearRevealTimer(key)
+      revealTimersRef.current.set(
+        key,
+        window.setTimeout(() => {
+          revealTimersRef.current.delete(key)
+          setRevealedValues((current) => {
+            const next = { ...current }
+            delete next[key]
+            return next
+          })
+        }, 30_000)
+      )
+    } catch {
+      if (mountedRef.current) setError('無法顯示這筆歷史，項目可能已在其他地方變更。')
+    } finally {
+      if (mountedRef.current) {
+        setRevealing((current) => {
+          const next = { ...current }
+          delete next[key]
+          return next
+        })
+      }
+    }
+  }
+
+  const copyEntry = async (index: number, lastUsedDate: string): Promise<void> => {
+    const key = `${index}:${lastUsedDate}`
+    setCopying((current) => ({ ...current, [key]: true }))
+    setError('')
+    try {
+      await onCopy(locatorFor(index, lastUsedDate))
+      if (!mountedRef.current) return
+      setCopiedKey(key)
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
+      copiedTimerRef.current = window.setTimeout(() => {
+        copiedTimerRef.current = null
+        setCopiedKey(null)
+      }, 2_000)
+    } catch {
+      if (mountedRef.current) setError('無法複製這筆歷史，項目可能已在其他地方變更。')
+    } finally {
+      if (mountedRef.current) {
+        setCopying((current) => {
+          const next = { ...current }
+          delete next[key]
+          return next
+        })
+      }
+    }
+  }
 
   return (
     <Modal
       title="密碼歷史"
       description={`「${itemName}」有 ${count} 筆歷史紀錄。`}
-      busy={busy}
-      onClose={() => {
-        clearEntries()
-        onClose()
-      }}
+      busy={restoringKey !== null}
+      onClose={closeDialog}
     >
-      <div className="modal-body">
-        {entries === null ? (
-          <Alert>
-            <AlertTriangle aria-hidden="true" />
-            <AlertDescription>
-              繼續後，舊密碼與已變更的隱藏欄位會以明文顯示在螢幕上。請先確認周遭無人能看見。
-            </AlertDescription>
-          </Alert>
-        ) : (
-          <div aria-live="polite">
-            <div className="move-dialog-icon" aria-hidden="true">
-              <History />
-            </div>
-            <ol>
-              {entries.map((entry, index) => (
-                <li key={`${entry.lastUsedDate}:${index}`}>
-                  <code>{entry.password}</code>
-                  <small>{new Date(entry.lastUsedDate).toLocaleString('zh-TW')}</small>
-                  <PasswordHistoryRestoreButton
-                    busy={busy}
-                    {...(onRestore
-                      ? {
-                          onRestore: async () => {
-                            setBusy(true)
+      <div className="modal-body flex flex-col gap-3">
+        <Alert>
+          <ShieldCheck aria-hidden="true" />
+          <AlertDescription>
+            密碼預設遮蔽；顯示後會在 30 秒自動隱藏，複製內容則依安全設定自動清除。
+          </AlertDescription>
+        </Alert>
+        {loading && (
+          <div className="flex flex-col gap-2" role="status" aria-label="正在載入密碼歷史">
+            {Array.from({ length: Math.min(Math.max(count, 1), 5) }, (_, index) => (
+              <Card key={index} size="sm">
+                <CardHeader>
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-3 w-36" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-9 w-full" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+        {!loading && history && history.entries.length > 0 && (
+          <ol className="flex max-h-[min(50vh,360px)] flex-col gap-2 overflow-y-auto pr-1">
+            {history.entries.map((entry, index) => {
+              const key = `${index}:${entry.lastUsedDate}`
+              const revealedValue = revealedValues[key]
+              const isRevealed = revealedValue !== undefined
+              const rowBusy = Boolean(revealing[key] || copying[key] || restoringKey === key)
+              return (
+                <li key={key}>
+                  <Card size="sm">
+                    <CardHeader>
+                      <CardTitle>歷史密碼 {index + 1}</CardTitle>
+                      <CardDescription>
+                        {new Date(entry.lastUsedDate).toLocaleString('zh-TW')}
+                      </CardDescription>
+                      <CardAction className="flex gap-1">
+                        <PasswordHistoryIconButton
+                          label={isRevealed ? '隱藏這筆歷史密碼' : '顯示這筆歷史密碼'}
+                          aria-pressed={isRevealed}
+                          disabled={rowBusy}
+                          onClick={() => void toggleReveal(index, entry.lastUsedDate)}
+                        >
+                          {revealing[key] ? (
+                            <Spinner aria-hidden="true" />
+                          ) : isRevealed ? (
+                            <EyeOff aria-hidden="true" />
+                          ) : (
+                            <Eye aria-hidden="true" />
+                          )}
+                        </PasswordHistoryIconButton>
+                        <PasswordHistoryIconButton
+                          label={copiedKey === key ? '已複製' : '複製這筆歷史密碼'}
+                          disabled={rowBusy}
+                          onClick={() => void copyEntry(index, entry.lastUsedDate)}
+                        >
+                          {copying[key] ? (
+                            <Spinner aria-hidden="true" />
+                          ) : copiedKey === key ? (
+                            <Check aria-hidden="true" />
+                          ) : (
+                            <Copy aria-hidden="true" />
+                          )}
+                        </PasswordHistoryIconButton>
+                      </CardAction>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="bg-muted/60 min-h-9 rounded-lg px-3 py-2">
+                        {isRevealed ? (
+                          <code className="break-all text-sm select-text">{revealedValue}</code>
+                        ) : (
+                          <>
+                            <code className="masked-value text-sm" aria-hidden="true">
+                              ••••••••••••
+                            </code>
+                            <span className="sr-only">歷史密碼已遮蔽</span>
+                          </>
+                        )}
+                      </div>
+                    </CardContent>
+                    {onRestore && (
+                      <CardFooter className="justify-end">
+                        <PasswordHistoryRestoreButton
+                          busy={rowBusy || restoringKey !== null}
+                          onRestore={async () => {
+                            setRestoringKey(key)
                             setError('')
                             try {
-                              await onRestore(index, entry.lastUsedDate)
+                              await onRestore(locatorFor(index, entry.lastUsedDate))
                               if (!mountedRef.current) return
-                              clearEntries()
+                              clearSecrets()
                               onClose()
                             } catch {
                               if (mountedRef.current) {
                                 setError('無法套用這筆歷史，項目可能已在其他地方變更。')
                               }
                             } finally {
-                              if (mountedRef.current) setBusy(false)
+                              if (mountedRef.current) setRestoringKey(null)
                             }
-                          }
-                        }
-                      : {})}
-                  />
+                          }}
+                        />
+                      </CardFooter>
+                    )}
+                  </Card>
                 </li>
-              ))}
-            </ol>
-            {onRestore ? (
-              <p className="text-muted-foreground mt-3 text-sm">
-                歷史中也可能包含「欄位名稱:
-                舊值」格式的隱藏欄位紀錄；只有確定要作為登入密碼的列才套用。
-              </p>
-            ) : (
-              <p className="text-muted-foreground mt-3 text-sm">
-                垃圾桶項目只能查看歷史；必須先還原項目才能套用舊密碼。
-              </p>
-            )}
+              )
+            })}
+          </ol>
+        )}
+        {!loading && history && history.entries.length === 0 && (
+          <div className="text-muted-foreground flex flex-col items-center gap-2 py-8 text-center text-sm">
+            <History aria-hidden="true" />
+            目前沒有可顯示的密碼歷史。
           </div>
         )}
         {error && (
           <Alert variant="destructive">
+            <AlertTriangle aria-hidden="true" />
             <AlertDescription>{error}</AlertDescription>
+            {!history && !loading && (
+              <Button type="button" variant="outline" size="sm" onClick={() => loadHistory(true)}>
+                重新載入
+              </Button>
+            )}
           </Alert>
+        )}
+        {!loading && history && (
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            {onRestore
+              ? '歷史也可能包含已變更的隱藏欄位；套用前請先顯示並確認內容。'
+              : '垃圾桶項目只能查看或複製歷史；還原項目後才能套用舊密碼。'}
+          </p>
         )}
       </div>
       <DialogFooter className="modal-actions mx-0 mb-0">
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={busy}
-          onClick={() => {
-            clearEntries()
-            onClose()
-          }}
-        >
+        <Button type="button" variant="secondary" disabled={restoringKey !== null} onClick={closeDialog}>
           關閉
         </Button>
-        {entries === null && (
-          <Button
-            type="button"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true)
-              setError('')
-              try {
-                const revealed = await onReveal()
-                if (!mountedRef.current) return
-                entriesRef.current = revealed
-                setEntries(revealed)
-              } catch {
-                if (mountedRef.current) setError('無法讀取密碼歷史，請再試一次。')
-              } finally {
-                if (mountedRef.current) setBusy(false)
-              }
-            }}
-          >
-            {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
-            顯示明文
-          </Button>
-        )}
       </DialogFooter>
     </Modal>
   )

@@ -6004,6 +6004,67 @@ describe('VaultService encrypted local data', () => {
     await locking
   })
 
+  it('reveals detached password history without waiting behind the vault operation queue', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const login = await service.createLogin({ name: 'History fast read', password: 'old-secret' })
+    await service.updateLogin({ id: login.id, password: 'current-secret' })
+
+    let releaseBlocker!: () => void
+    let blockerEntered = false
+    const blocker = service.runAuthorizedOperation(
+      () => true,
+      async (authorize) => {
+        authorize([])
+        blockerEntered = true
+        await new Promise<void>((resolve) => {
+          releaseBlocker = resolve
+        })
+      }
+    )
+    await vi.waitFor(() => expect(blockerEntered).toBe(true))
+
+    const history = await service.getPasswordHistory({ id: login.id })
+    expect(history).toMatchObject([{ password: 'old-secret' }])
+    history[0]!.password = 'renderer-only mutation'
+
+    releaseBlocker()
+    await blocker
+    await expect(service.getPasswordHistory({ id: login.id })).resolves.toMatchObject([
+      { password: 'old-secret' }
+    ])
+  })
+
+  it('blocks password-history fast reads as soon as locking starts', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const login = await service.createLogin({ name: 'History lock target', password: 'old-secret' })
+    await service.updateLogin({ id: login.id, password: 'current-secret' })
+
+    let releaseBlocker!: () => void
+    let blockerEntered = false
+    const blocker = service.runAuthorizedOperation(
+      () => true,
+      async (authorize) => {
+        authorize([])
+        blockerEntered = true
+        await new Promise<void>((resolve) => {
+          releaseBlocker = resolve
+        })
+      }
+    )
+    await vi.waitFor(() => expect(blockerEntered).toBe(true))
+
+    const locking = service.lock()
+    await expect(service.getPasswordHistory({ id: login.id })).rejects.toMatchObject({
+      code: 'LOCKED'
+    })
+
+    releaseBlocker()
+    await blocker
+    await locking
+  })
+
   it('reports active password health without persisting, changing generation, or exposing secrets', async () => {
     const { service, store } = await createHarness()
     await service.setup(MASTER_PASSWORD)

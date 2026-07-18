@@ -33,6 +33,7 @@ import {
   AlertDialogTrigger
 } from '@renderer/components/ui/alert-dialog'
 import { Alert, AlertDescription, AlertTitle } from '@renderer/components/ui/alert'
+import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
 import { Checkbox } from '@renderer/components/ui/checkbox'
 import {
@@ -66,6 +67,7 @@ import {
   SelectValue
 } from '@renderer/components/ui/select'
 import { Spinner } from '@renderer/components/ui/spinner'
+import { Separator } from '@renderer/components/ui/separator'
 import AccountApiKeyDialog from './AccountApiKeyDialog'
 import AccountDevicesDialog from './AccountDevicesDialog'
 import AccountProfileCard from './AccountProfileCard'
@@ -755,7 +757,10 @@ function SyncDialog({
                 />
               )}
               {visibleAccountProfile && (
-                <>
+                <section
+                  className="bg-card overflow-hidden rounded-xl border"
+                  aria-label="帳號管理"
+                >
                   <AccountProfileCard
                     key={currentAccountProfileIdentity}
                     profile={visibleAccountProfile}
@@ -769,34 +774,49 @@ function SyncDialog({
                       )
                     }}
                   />
-                  <Alert className="sync-status-card" role="status">
-                    <ShieldCheck aria-hidden="true" />
-                    <AlertDescription>
-                      Email：{visibleAccountProfile.emailVerified ? '已驗證' : '尚未驗證'} ·
-                      雙重驗證：
-                      {visibleAccountProfile.twoFactorEnabled ? '已啟用' : '尚未啟用'}
-                      {!visibleAccountProfile.emailVerified && (
-                        <Button
-                          className="mt-2"
-                          variant="outline"
-                          size="sm"
-                          type="button"
-                          disabled={accountSecurityBusy}
-                          onClick={() => void resendVerification()}
-                        >
-                          {accountSecurityBusy && (
-                            <Spinner data-icon="inline-start" aria-hidden="true" />
-                          )}
-                          重新寄送驗證信
-                        </Button>
-                      )}
-                    </AlertDescription>
-                  </Alert>
-                </>
+                  <Separator />
+                  <div
+                    className="flex flex-wrap items-center gap-2 px-4 py-3"
+                    role="group"
+                    aria-label="帳號安全狀態"
+                  >
+                    <ShieldCheck className="text-muted-foreground size-4" aria-hidden="true" />
+                    <div className="flex min-w-0 flex-1 flex-wrap gap-2">
+                      <Badge
+                        variant={visibleAccountProfile.emailVerified ? 'secondary' : 'outline'}
+                      >
+                        Email {visibleAccountProfile.emailVerified ? '已驗證' : '尚未驗證'}
+                      </Badge>
+                      <Badge
+                        variant={visibleAccountProfile.twoFactorEnabled ? 'secondary' : 'outline'}
+                      >
+                        雙重驗證
+                        {visibleAccountProfile.twoFactorEnabled ? '已啟用' : '尚未啟用'}
+                      </Badge>
+                    </div>
+                    {!visibleAccountProfile.emailVerified && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        type="button"
+                        disabled={accountSecurityBusy}
+                        onClick={() => void resendVerification()}
+                      >
+                        {accountSecurityBusy && (
+                          <Spinner data-icon="inline-start" aria-hidden="true" />
+                        )}
+                        重新寄送驗證信
+                      </Button>
+                    )}
+                  </div>
+                  <Separator />
+                  <div className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-3">
+                    <AccountDevicesDialog />
+                    <AccountApiKeyDialog />
+                    <AccountTwoFactorDialog />
+                  </div>
+                </section>
               )}
-              {visibleAccountProfile && <AccountDevicesDialog />}
-              {visibleAccountProfile && <AccountApiKeyDialog />}
-              {visibleAccountProfile && <AccountTwoFactorDialog />}
               {accountSecurityError && (
                 <Alert variant="destructive">
                   <AlertDescription>{accountSecurityError}</AlertDescription>

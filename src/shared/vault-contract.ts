@@ -41,6 +41,8 @@ export const IPC_CHANNELS = {
   loginGet: 'login:get',
   loginPrefetch: 'login:prefetch',
   loginGetPasswordHistory: 'login:get-password-history',
+  loginRevealPasswordHistory: 'login:reveal-password-history',
+  loginCopyPasswordHistory: 'login:copy-password-history',
   loginRestorePasswordHistory: 'login:restore-password-history',
   attachmentDownload: 'attachment:download',
   attachmentUpload: 'attachment:upload',
@@ -567,10 +569,16 @@ export interface VaultLoginUri {
   match: VaultUriMatch | null
 }
 
-/** Decrypted password-history entry. Only returned by the narrow, authorized history IPC. */
+/** Decrypted main-process password-history entry. */
 export interface VaultPasswordHistoryEntry {
   password: string
   lastUsedDate: string
+}
+
+/** Renderer-safe history metadata. Password plaintext is deliberately omitted. */
+export interface VaultPasswordHistoryView {
+  expectedUpdatedAt: string
+  entries: Array<{ lastUsedDate: string }>
 }
 
 export type VaultItemFieldInput = Partial<VaultItemFields>
@@ -611,12 +619,14 @@ export interface LoginIdRequest extends LoginAuthorizationRequest {
   id: string
 }
 
-/** Stale-safe locator for applying one main-process password-history entry. */
-export interface PasswordHistoryRestoreRequest extends LoginIdRequest {
+/** Stale-safe locator for one main-process password-history entry. Never accepts plaintext. */
+export interface PasswordHistoryEntryRequest extends LoginIdRequest {
   index: number
   lastUsedDate: string
   expectedUpdatedAt: string
 }
+
+export type PasswordHistoryRestoreRequest = PasswordHistoryEntryRequest
 
 export interface PasskeyDeleteRequest extends LoginIdRequest {
   credentialId: string
@@ -1698,7 +1708,9 @@ export interface BearWardenAPI {
     authorizeMany: (request: LoginAuthorizeManyRequest) => Promise<LoginAuthorization>
     get: (request: LoginIdRequest) => Promise<LoginView>
     prefetch: (request: LoginPrefetchRequest) => Promise<LoginView[]>
-    getPasswordHistory: (request: LoginIdRequest) => Promise<VaultPasswordHistoryEntry[]>
+    getPasswordHistory: (request: LoginIdRequest) => Promise<VaultPasswordHistoryView>
+    revealPasswordHistory: (request: PasswordHistoryEntryRequest) => Promise<string>
+    copyPasswordHistory: (request: PasswordHistoryEntryRequest) => Promise<void>
     restorePasswordHistory: (request: PasswordHistoryRestoreRequest) => Promise<LoginView>
     downloadAttachment: (request: AttachmentDownloadRequest) => Promise<AttachmentDownloadResult>
     uploadAttachment: (request: AttachmentUploadRequest) => Promise<AttachmentUploadResult>

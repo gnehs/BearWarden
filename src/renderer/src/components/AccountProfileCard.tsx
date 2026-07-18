@@ -125,10 +125,7 @@ function AccountProfileCard({
 
   return (
     <Dialog>
-      <section
-        className="bg-card flex items-center gap-3 rounded-xl border p-4"
-        aria-labelledby="account-profile-title"
-      >
+      <section className="flex items-center gap-3 p-4" aria-labelledby="account-profile-title">
         <span
           className="flex size-10 shrink-0 items-center justify-center rounded-full text-white"
           style={{ backgroundColor: current.avatarColor ?? DEFAULT_AVATAR_COLOR }}
@@ -150,7 +147,10 @@ function AccountProfileCard({
         </DialogTrigger>
       </section>
 
-      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-md">
+      <DialogContent
+        className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-md"
+        showOverlay={false}
+      >
         <DialogHeader>
           <DialogTitle>編輯個人資料</DialogTitle>
           <DialogDescription>管理顯示名稱與頭像顏色。</DialogDescription>

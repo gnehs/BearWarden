@@ -604,11 +604,16 @@ function AccountTwoFactorDialog(): React.JSX.Element {
 
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
-      <DialogTrigger render={<Button variant="outline" size="sm" type="button" />}>
+      <DialogTrigger
+        render={<Button className="w-full" variant="outline" size="sm" type="button" />}
+      >
         <ShieldCheck data-icon="inline-start" aria-hidden="true" />
         雙重驗證
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent
+        className="max-h-[min(42rem,calc(100vh-2rem))] overflow-y-auto sm:max-w-lg"
+        showOverlay={false}
+      >
         <DialogHeader>
           <DialogTitle>雙重驗證</DialogTitle>
           <DialogDescription>
