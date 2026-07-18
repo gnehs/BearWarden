@@ -143,25 +143,50 @@ export async function openNoFollow(
   }
 }
 
-export async function syncDirectory(path: string): Promise<void> {
-  const handle = await open(
-    path,
-    constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | (constants.O_NOFOLLOW ?? 0)
-  )
+interface DirectorySyncHandle {
+  sync(): Promise<void>
+  close(): Promise<void>
+}
+
+export interface SyncDirectoryOptions {
+  platform?: NodeJS.Platform
+  openDirectory?: (path: string) => Promise<DirectorySyncHandle>
+}
+
+export async function syncDirectory(
+  path: string,
+  options: SyncDirectoryOptions = {}
+): Promise<void> {
+  let handle: DirectorySyncHandle | undefined
   try {
+    handle = await (
+      options.openDirectory ??
+      ((directory) =>
+        open(
+          directory,
+          constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | (constants.O_NOFOLLOW ?? 0)
+        ))
+    )(path)
     await handle.sync()
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
     // Windows does not expose a portable directory fsync through Node. Ignore only explicit
     // unsupported-operation failures there; I/O and path failures must abort the transaction.
     if (
-      process.platform !== 'win32' ||
+      (options.platform ?? process.platform) !== 'win32' ||
       (code !== 'EINVAL' && code !== 'ENOTSUP' && code !== 'EISDIR' && code !== 'EPERM')
     ) {
       throw error
     }
+    if (!handle) {
+      // An open failure is safe to treat as an unsupported durability hint only after the path
+      // is independently confirmed to still be the intended directory. Missing, replaced, and
+      // inaccessible paths must continue to fail closed.
+      const info = await lstat(path)
+      if (!info.isDirectory() || info.isSymbolicLink()) throw error
+    }
   } finally {
-    await handle.close().catch(() => undefined)
+    await handle?.close().catch(() => undefined)
   }
 }
 

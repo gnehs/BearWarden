@@ -67,4 +67,45 @@ describe('account paths', () => {
     const root = await mkdtemp(join(tmpdir(), 'bearwarden-account-sync-directory-'))
     await expect(syncDirectory(join(root, 'missing'))).rejects.toMatchObject({ code: 'ENOENT' })
   })
+
+  it('treats an unsupported Windows directory-open failure as a durability limitation', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bearwarden-account-sync-windows-'))
+    const unsupported = Object.assign(new Error('directory handles are unsupported'), {
+      code: 'EPERM'
+    })
+
+    await expect(
+      syncDirectory(root, {
+        platform: 'win32',
+        openDirectory: async () => Promise.reject(unsupported)
+      })
+    ).resolves.toBeUndefined()
+  })
+
+  it('does not swallow the same directory-open failure on other platforms', async () => {
+    const denied = Object.assign(new Error('permission denied'), { code: 'EPERM' })
+
+    await expect(
+      syncDirectory('/private/account-data', {
+        platform: 'darwin',
+        openDirectory: async () => Promise.reject(denied)
+      })
+    ).rejects.toBe(denied)
+  })
+
+  it('does not swallow a Windows open failure when the directory path was replaced', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bearwarden-account-sync-replaced-'))
+    const outside = join(root, 'outside')
+    const linked = join(root, 'account')
+    await mkdir(outside)
+    await symlink(outside, linked)
+    const denied = Object.assign(new Error('permission denied'), { code: 'EPERM' })
+
+    await expect(
+      syncDirectory(linked, {
+        platform: 'win32',
+        openDirectory: async () => Promise.reject(denied)
+      })
+    ).rejects.toBe(denied)
+  })
 })
