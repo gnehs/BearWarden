@@ -116,6 +116,11 @@ jobs:
       contents: write
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
       - name: Download installers
         uses: actions/download-artifact@v8
         with:
@@ -131,4 +136,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" artifacts/* \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
+            --notes "$(<.github/release-notes-preamble.md)" \
             --generate-notes
