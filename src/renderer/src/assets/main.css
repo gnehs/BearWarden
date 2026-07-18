@@ -1760,10 +1760,10 @@ button svg {
 }
 
 /* Dialogs and feedback */
-[data-slot='dialog-overlay']:has(+ [data-slot='dialog-content'][data-nested-dialog-open]),
-[data-slot='alert-dialog-overlay']:has(
-  + [data-slot='alert-dialog-content'][data-nested-dialog-open]
-) {
+[data-slot='dialog-portal']:has(> [data-slot='dialog-content'][data-nested-dialog-open])
+  > [data-slot='dialog-overlay'],
+[data-slot='alert-dialog-portal']:has(> [data-slot='alert-dialog-content'][data-nested-dialog-open])
+  > [data-slot='alert-dialog-overlay'] {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }

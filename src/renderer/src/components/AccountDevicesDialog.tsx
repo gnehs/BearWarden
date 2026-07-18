@@ -299,7 +299,7 @@ function AccountDevicesDialog(): React.JSX.Element {
       </DialogTrigger>
       <DialogContent
         className="max-h-[min(42rem,calc(100vh-2rem))] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-lg"
-        showOverlay={false}
+        forceOverlay
       >
         <DialogHeader>
           <DialogTitle>帳號裝置</DialogTitle>

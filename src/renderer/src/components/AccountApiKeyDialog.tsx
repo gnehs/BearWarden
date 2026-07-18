@@ -106,7 +106,7 @@ function AccountApiKeyDialog(): React.JSX.Element {
         <KeyRound data-icon="inline-start" aria-hidden="true" />
         個人 API key
       </DialogTrigger>
-      <DialogContent showOverlay={false}>
+      <DialogContent forceOverlay>
         <DialogHeader>
           <DialogTitle>個人 API key</DialogTitle>
           <DialogDescription>

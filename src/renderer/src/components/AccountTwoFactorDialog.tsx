@@ -612,7 +612,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
       </DialogTrigger>
       <DialogContent
         className="max-h-[min(42rem,calc(100vh-2rem))] overflow-y-auto sm:max-w-lg"
-        showOverlay={false}
+        forceOverlay
       >
         <DialogHeader>
           <DialogTitle>雙重驗證</DialogTitle>

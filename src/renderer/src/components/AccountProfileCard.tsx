@@ -147,10 +147,7 @@ function AccountProfileCard({
         </DialogTrigger>
       </section>
 
-      <DialogContent
-        className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-md"
-        showOverlay={false}
-      >
+      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-md" forceOverlay>
         <DialogHeader>
           <DialogTitle>編輯個人資料</DialogTitle>
           <DialogDescription>管理顯示名稱與頭像顏色。</DialogDescription>
