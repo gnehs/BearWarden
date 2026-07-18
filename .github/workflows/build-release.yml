@@ -128,4 +128,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           sha256sum artifacts/* > artifacts/SHA256SUMS
-          gh release create "$GITHUB_REF_NAME" artifacts/* --verify-tag --generate-notes
+          gh release create "$GITHUB_REF_NAME" artifacts/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --generate-notes
