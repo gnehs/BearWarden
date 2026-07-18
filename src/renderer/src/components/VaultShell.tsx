@@ -692,10 +692,10 @@ const sidebarToneClasses: Record<string, string> = {
 const sidebarLinkClasses = {
   base: 'h-auto text-left text-(--text) hover:bg-(--sidebar-accent) hover:text-(--text)',
   row: 'grid min-h-[38px] grid-cols-[22px_1fr_auto] items-center gap-[7px] rounded-lg border-0 bg-transparent px-[9px] py-1.5',
-  tile: 'grid min-h-[82px] grid-cols-[1fr_auto] grid-rows-[31px_auto] items-center gap-x-2 gap-y-[7px] rounded-[15px] border border-(--sidebar-border)/.5 bg-[color-mix(in_oklch,var(--sidebar-accent)_54%,transparent)] px-3 pt-[11px] pb-2.5 shadow-[inset_0_1px_rgba(255,255,255,.5)] hover:bg-(--sidebar-accent) dark:shadow-[inset_0_1px_rgba(255,255,255,.1)]',
+  tile: 'grid min-h-[82px] grid-cols-[1fr_auto] grid-rows-[31px_auto] items-center gap-x-2 gap-y-[7px] rounded-[15px] outline outline-solid outline-(--sidebar-border)/50 bg-[color-mix(in_oklch,var(--sidebar-accent)_54%,transparent)] px-3 pt-[11px] pb-2.5 shadow-[inset_0_1px_rgba(255,255,255,.5)] hover:bg-(--sidebar-accent) dark:shadow-[inset_0_1px_rgba(255,255,255,.1)]',
   active: {
     row: 'bg-[color-mix(in_oklch,var(--sidebar-primary)_12%,transparent)] text-(--text) shadow-none hover:bg-[color-mix(in_oklch,var(--sidebar-primary)_12%,transparent)]',
-    tile: 'border-transparent bg-(--sidebar-primary) text-(--sidebar-primary-foreground) shadow-[0_5px_14px_color-mix(in_oklch,var(--sidebar-primary)_24%,transparent)] hover:bg-(--sidebar-primary) hover:text-(--sidebar-primary-foreground)'
+    tile: 'outline-transparent bg-(--sidebar-primary) text-(--sidebar-primary-foreground) shadow-[0_5px_14px_color-mix(in_oklch,var(--sidebar-primary)_24%,transparent)] hover:bg-(--sidebar-primary) hover:text-(--sidebar-primary-foreground)'
   }
 } as const
 
@@ -3893,7 +3893,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 <h2 className="hidden" id="categories-title">
                   分類
                 </h2>
-                <nav className="grid grid-cols-2 gap-2 p-0" aria-label="保管庫分類">
+                <nav className="grid grid-cols-2 gap-2 p-0 pt-px" aria-label="保管庫分類">
                   {categoryMeta.map((category) => {
                     const Icon = category.icon
                     return (
