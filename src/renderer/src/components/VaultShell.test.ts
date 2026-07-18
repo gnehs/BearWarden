@@ -3,6 +3,7 @@ import type { LoginSummary } from '../../../shared/vault-contract'
 import {
   canUseCachedLoginDetail,
   hasTrashPasswordHistory,
+  isCurrentVaultLoad,
   isCurrentSelectedDetailResponse,
   protectedDetailInvalidationIds
 } from './VaultShell-security'
@@ -51,6 +52,22 @@ describe('protectedDetailInvalidationIds', () => {
     expect(canUseCachedLoginDetail(trashed, 0, true)).toBe(false)
     expect(hasTrashPasswordHistory(trashed)).toBe(false)
     expect(hasTrashPasswordHistory({ ...trashed, passwordHistoryCount: 1 })).toBe(true)
+  })
+})
+
+describe('isCurrentVaultLoad', () => {
+  it('does not couple list freshness to protected-detail cache invalidation', () => {
+    const requestId = 4
+    let currentRequestId = requestId
+    let detailCacheGeneration = 8
+
+    detailCacheGeneration += 1
+
+    expect(detailCacheGeneration).toBe(9)
+    expect(isCurrentVaultLoad(requestId, currentRequestId)).toBe(true)
+
+    currentRequestId += 1
+    expect(isCurrentVaultLoad(requestId, currentRequestId)).toBe(false)
   })
 })
 

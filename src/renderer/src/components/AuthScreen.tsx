@@ -152,153 +152,171 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
   }
 
   return (
-    <main className="auth-shell">
+    <main className="relative grid min-h-full place-items-center bg-[radial-gradient(circle_at_50%_8%,color-mix(in_oklch,var(--primary)_18%,transparent),transparent_34%),linear-gradient(145deg,var(--muted),var(--background)_55%,var(--accent))] px-6 pt-[72px] pb-[34px]">
       <div className="window-drag-region" aria-hidden="true" />
-      <div className='flex flex-col gap-4 items-center justify-center'>
-      <BrandMark />
-      <section className="auth-panel outline outline-black/5" aria-labelledby="auth-title">
-        {state === 'loading' && (
-          <div className="auth-state" role="status">
-            <Spinner className="size-7" aria-hidden="true" />
-            <h1 id="auth-title">正在開啟安全保管庫</h1>
-            <p>所有資料都會在這部裝置上解密。</p>
-          </div>
-        )}
-
-        {state === 'unavailable' && (
-          <div className="auth-state">
-            <span className="auth-state-icon danger" aria-hidden="true">
-              <ShieldAlert size={27} />
-            </span>
-            <h1 id="auth-title">無法連線至安全服務</h1>
-            <p>BearWarden 沒有載入保管庫服務。你的資料沒有被更動。</p>
-            <Button type="button" onClick={onRetry}>
-              <RotateCcw data-icon="inline-start" aria-hidden="true" />
-              再試一次
-            </Button>
-          </div>
-        )}
-
-        {(state === 'locked' || state === 'uninitialized') && (
-          <form className="auth-form" onSubmit={handleSubmit}>
-            <div className="auth-heading">
-              <div>
-                <h1 id="auth-title">{isSetup ? '建立你的保管庫' : '歡迎回來'}</h1>
-                <p>
-                  {isSetup
-                    ? '設定只有你知道的主密碼；BearWarden 無法替你復原。'
-                    : unlockMethod === 'pin'
-                      ? '輸入這次執行期間設定的 PIN。'
-                      : '輸入主密碼以解鎖儲存在這部裝置上的項目。'}
-                </p>
-              </div>
+      <div className="flex flex-col items-center justify-center gap-4">
+        <BrandMark />
+        <section
+          className="w-full max-w-[440px] rounded-[20px] bg-[color-mix(in_oklch,var(--card)_91%,transparent)] p-7 shadow-[var(--shadow)] outline outline-black/5 backdrop-blur-[22px]"
+          aria-labelledby="auth-title"
+        >
+          {state === 'loading' && (
+            <div className="grid justify-items-start gap-3" role="status">
+              <Spinner className="size-7" aria-hidden="true" />
+              <h1 className="m-0 text-[23px] leading-[1.2] tracking-[-0.025em]" id="auth-title">
+                正在開啟安全保管庫
+              </h1>
+              <p className="text-muted-foreground m-0 leading-[1.6]">
+                所有資料都會在這部裝置上解密。
+              </p>
             </div>
+          )}
 
-            <FieldGroup>
-              {!isSetup && unlockMethod === 'pin' ? (
-                <Field data-invalid={Boolean(error)}>
-                  <FieldLabel htmlFor="vault-pin">PIN</FieldLabel>
-                  <Input
-                    ref={pinRef}
-                    id="vault-pin"
-                    type="password"
-                    name="vault-pin"
-                    autoComplete="off"
-                    value={pin}
-                    onChange={(event) => setPin(event.target.value)}
-                    disabled={submitting}
-                    aria-invalid={Boolean(error)}
-                    aria-describedby={error ? 'auth-error' : undefined}
-                  />
-                </Field>
-              ) : (
-                <Field data-invalid={Boolean(error)}>
-                  <FieldLabel htmlFor="master-password">主密碼</FieldLabel>
-                  <Input
-                    ref={passwordRef}
-                    id="master-password"
-                    type="password"
-                    name="master-password"
-                    autoComplete={isSetup ? 'new-password' : 'current-password'}
-                    value={masterPassword}
-                    onChange={(event) => setMasterPassword(event.target.value)}
-                    disabled={submitting}
-                    aria-invalid={Boolean(error)}
-                    aria-describedby={error ? 'auth-error' : undefined}
-                  />
-                </Field>
-              )}
-
-              {isSetup && (
-                <Field data-invalid={Boolean(error)}>
-                  <FieldLabel htmlFor="master-password-confirmation">再次輸入主密碼</FieldLabel>
-                  <Input
-                    id="master-password-confirmation"
-                    type="password"
-                    name="master-password-confirmation"
-                    autoComplete="new-password"
-                    value={confirmation}
-                    onChange={(event) => setConfirmation(event.target.value)}
-                    disabled={submitting}
-                    aria-invalid={Boolean(error)}
-                    aria-describedby={error ? 'auth-error' : undefined}
-                  />
-                </Field>
-              )}
-            </FieldGroup>
-
-            {error && (
-              <Alert id="auth-error" variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-
-            <Button className="w-full h-10" type="submit" disabled={submitting}>
-              {submitting ? (
-                <Spinner data-icon="inline-start" aria-hidden="true" />
-              ) : (
-                <ArrowRight data-icon="inline-start" aria-hidden="true" />
-              )}
-              {isSetup ? '建立並解鎖' : unlockMethod === 'pin' ? '使用 PIN 解鎖' : '解鎖保管庫'}
-            </Button>
-            {!isSetup && pinStatus.available && (
-              <Button
-                className="w-full h-10"
-                variant="outline"
-                type="button"
-                disabled={submitting}
-                onClick={() => {
-                  setError('')
-                  setMasterPassword('')
-                  setPin('')
-                  setUnlockMethod((current) => (current === 'pin' ? 'master-password' : 'pin'))
-                }}
+          {state === 'unavailable' && (
+            <div className="grid justify-items-start gap-3" role="status">
+              <span
+                className="bg-destructive/10 text-destructive grid size-11 place-items-center rounded-[13px]"
+                aria-hidden="true"
               >
-                <KeyRound data-icon="inline-start" aria-hidden="true" />
-                {unlockMethod === 'pin' ? '改用主密碼' : '使用 PIN 解鎖'}
+                <ShieldAlert size={27} />
+              </span>
+              <h1 className="m-0 text-[23px] leading-[1.2] tracking-[-0.025em]" id="auth-title">
+                無法連線至安全服務
+              </h1>
+              <p className="text-muted-foreground m-0 leading-[1.6]">
+                BearWarden 沒有載入保管庫服務。你的資料沒有被更動。
+              </p>
+              <Button className="mt-2" type="button" onClick={onRetry}>
+                <RotateCcw data-icon="inline-start" aria-hidden="true" />
+                再試一次
               </Button>
-            )}
-            {!isSetup && settings?.touchIdAvailable && settings.touchIdEnabled && (
-              <Button
-                className="w-full h-10"
-                variant="secondary"
-                type="button"
-                disabled={submitting}
-                onClick={() => void unlockWithTouchId()}
-              >
+            </div>
+          )}
+
+          {(state === 'locked' || state === 'uninitialized') && (
+            <form className="grid gap-[18px]" onSubmit={handleSubmit}>
+              <div className="grid grid-cols-[auto_1fr] items-start gap-3.5">
+                <div>
+                  <h1 className="m-0 text-[23px] leading-[1.2] tracking-[-0.025em]" id="auth-title">
+                    {isSetup ? '建立你的保管庫' : '歡迎回來'}
+                  </h1>
+                  <p className="text-muted-foreground mt-[7px] mb-0 leading-[1.6]">
+                    {isSetup
+                      ? '設定只有你知道的主密碼；BearWarden 無法替你復原。'
+                      : unlockMethod === 'pin'
+                        ? '輸入這次執行期間設定的 PIN。'
+                        : '輸入主密碼以解鎖儲存在這部裝置上的項目。'}
+                  </p>
+                </div>
+              </div>
+
+              <FieldGroup>
+                {!isSetup && unlockMethod === 'pin' ? (
+                  <Field data-invalid={Boolean(error)}>
+                    <FieldLabel htmlFor="vault-pin">PIN</FieldLabel>
+                    <Input
+                      ref={pinRef}
+                      id="vault-pin"
+                      type="password"
+                      name="vault-pin"
+                      autoComplete="off"
+                      value={pin}
+                      onChange={(event) => setPin(event.target.value)}
+                      disabled={submitting}
+                      aria-invalid={Boolean(error)}
+                      aria-describedby={error ? 'auth-error' : undefined}
+                    />
+                  </Field>
+                ) : (
+                  <Field data-invalid={Boolean(error)}>
+                    <FieldLabel htmlFor="master-password">主密碼</FieldLabel>
+                    <Input
+                      ref={passwordRef}
+                      id="master-password"
+                      type="password"
+                      name="master-password"
+                      autoComplete={isSetup ? 'new-password' : 'current-password'}
+                      value={masterPassword}
+                      onChange={(event) => setMasterPassword(event.target.value)}
+                      disabled={submitting}
+                      aria-invalid={Boolean(error)}
+                      aria-describedby={error ? 'auth-error' : undefined}
+                    />
+                  </Field>
+                )}
+
+                {isSetup && (
+                  <Field data-invalid={Boolean(error)}>
+                    <FieldLabel htmlFor="master-password-confirmation">再次輸入主密碼</FieldLabel>
+                    <Input
+                      id="master-password-confirmation"
+                      type="password"
+                      name="master-password-confirmation"
+                      autoComplete="new-password"
+                      value={confirmation}
+                      onChange={(event) => setConfirmation(event.target.value)}
+                      disabled={submitting}
+                      aria-invalid={Boolean(error)}
+                      aria-describedby={error ? 'auth-error' : undefined}
+                    />
+                  </Field>
+                )}
+              </FieldGroup>
+
+              {error && (
+                <Alert id="auth-error" variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              <Button className="h-10 w-full" type="submit" disabled={submitting}>
                 {submitting ? (
                   <Spinner data-icon="inline-start" aria-hidden="true" />
                 ) : (
-                  <Fingerprint data-icon="inline-start" aria-hidden="true" />
+                  <ArrowRight data-icon="inline-start" aria-hidden="true" />
                 )}
-                使用 Touch ID 解鎖
+                {isSetup ? '建立並解鎖' : unlockMethod === 'pin' ? '使用 PIN 解鎖' : '解鎖保管庫'}
               </Button>
-            )}
-          </form>
-        )}
+              {!isSetup && pinStatus.available && (
+                <Button
+                  className="h-10 w-full"
+                  variant="outline"
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => {
+                    setError('')
+                    setMasterPassword('')
+                    setPin('')
+                    setUnlockMethod((current) => (current === 'pin' ? 'master-password' : 'pin'))
+                  }}
+                >
+                  <KeyRound data-icon="inline-start" aria-hidden="true" />
+                  {unlockMethod === 'pin' ? '改用主密碼' : '使用 PIN 解鎖'}
+                </Button>
+              )}
+              {!isSetup && settings?.touchIdAvailable && settings.touchIdEnabled && (
+                <Button
+                  className="h-10 w-full"
+                  variant="secondary"
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => void unlockWithTouchId()}
+                >
+                  {submitting ? (
+                    <Spinner data-icon="inline-start" aria-hidden="true" />
+                  ) : (
+                    <Fingerprint data-icon="inline-start" aria-hidden="true" />
+                  )}
+                  使用 Touch ID 解鎖
+                </Button>
+              )}
+            </form>
+          )}
         </section>
       </div>
-      <p className="auth-footnote">你的主密碼和解密後的資料不會離開這部裝置。</p>
+      <p className="text-muted-foreground absolute bottom-[18px] m-0 text-[11px]">
+        你的主密碼和解密後的資料不會離開這部裝置。
+      </p>
     </main>
   )
 }

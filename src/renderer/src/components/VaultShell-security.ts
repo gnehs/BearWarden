@@ -28,6 +28,10 @@ export function protectedDetailInvalidationIds(
   )
 }
 
+export function isCurrentVaultLoad(requestId: number, currentRequestId: number): boolean {
+  return requestId === currentRequestId
+}
+
 export function isCurrentSelectedDetailResponse(input: {
   id: string
   selectedId: string | null

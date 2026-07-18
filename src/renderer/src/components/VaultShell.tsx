@@ -106,6 +106,7 @@ import CredentialGeneratorDialog from './CredentialGeneratorDialog'
 import {
   canUseCachedLoginDetail,
   hasTrashPasswordHistory,
+  isCurrentVaultLoad,
   isCurrentSelectedDetailResponse,
   protectedDetailInvalidationIds
 } from './VaultShell-security'
@@ -890,6 +891,8 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const detailRequestsRef = useRef(new Map<string, Promise<LoginView>>())
   const detailCacheRef = useRef(new Map<string, LoginView>())
   const detailCacheGenerationRef = useRef(0)
+  // A successful list load may invalidate protected details, so list freshness needs its own epoch.
+  const vaultLoadRequestIdRef = useRef(0)
   const itemsRef = useRef<LoginSummary[]>([])
   const authorizationCacheRef = useRef(new Map<string, LoginAuthorization>())
   const authorizationExpiryTimersRef = useRef(new Map<string, number>())
@@ -1165,8 +1168,8 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   )
 
   const loadVault = useCallback(async (): Promise<void> => {
+    const requestId = ++vaultLoadRequestIdRef.current
     clearDetailCache()
-    const generation = detailCacheGenerationRef.current
     try {
       toast.dismiss(vaultErrorToastId)
       const [folderList, activeItems, archivedItems, deletedItems] = await Promise.all([
@@ -1176,7 +1179,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         window.bearwarden.logins.list({ sort: 'name', deleted: true })
       ])
       const loginList = [...activeItems, ...archivedItems, ...deletedItems]
-      if (detailCacheGenerationRef.current !== generation) return
+      if (!isCurrentVaultLoad(requestId, vaultLoadRequestIdRef.current)) return
       invalidateProtectedDetails(loginList)
       setFolders([...folderList].sort((left, right) => left.position - right.position))
       setItems(loginList)
@@ -1192,11 +1195,11 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         current && !loginList.some((item) => item.id === current.id) ? null : current
       )
     } catch (loadError) {
-      if (detailCacheGenerationRef.current === generation) {
+      if (isCurrentVaultLoad(requestId, vaultLoadRequestIdRef.current)) {
         announceError(describeError(loadError))
       }
     } finally {
-      if (detailCacheGenerationRef.current === generation) setLoading(false)
+      if (isCurrentVaultLoad(requestId, vaultLoadRequestIdRef.current)) setLoading(false)
     }
   }, [clearDetailCache, invalidateProtectedDetails])
 
@@ -1402,7 +1405,13 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     queueMicrotask(() => void loadVault())
   }, [loadVault])
 
-  useEffect(() => clearDetailCache, [clearDetailCache])
+  useEffect(
+    () => () => {
+      vaultLoadRequestIdRef.current += 1
+      clearDetailCache()
+    },
+    [clearDetailCache]
+  )
 
   useEffect(() => {
     itemsRef.current = items
@@ -3472,7 +3481,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   if (loading) {
     return (
       <main className="vault-loading" role="status">
-        <BrandMark />
+        <BrandMark className="absolute top-[25px] left-1/2 -translate-x-1/2" />
         <Spinner className="size-6" aria-hidden="true" />
         <p>正在解密你的項目…</p>
       </main>
@@ -3512,7 +3521,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 {sidebarOpen ? <X /> : <Menu />}
               </TooltipIconButton>
             )}
-          <BrandMark />
+          <BrandMark hideMark className="max-[680px]:hidden" />
           {!settingsOpen &&
             !healthOpen &&
             !sendsOpen &&
