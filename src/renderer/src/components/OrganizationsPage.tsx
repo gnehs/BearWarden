@@ -24,6 +24,7 @@ import {
   EmptyTitle
 } from '@renderer/components/ui/empty'
 import { Spinner } from '@renderer/components/ui/spinner'
+import FeatureUnderConstructionNotice from './FeatureUnderConstructionNotice'
 
 function OrganizationsPage(): React.JSX.Element {
   const [organizations, setOrganizations] = useState<OrganizationView[]>([])
@@ -104,6 +105,9 @@ function OrganizationsPage(): React.JSX.Element {
         </div>
       </header>
       <div className="settings-scroll">
+        <FeatureUnderConstructionNotice>
+          目前可唯讀瀏覽已同步的組織與共享項目；建立、編輯、刪除、分享與其他管理操作尚未支援。
+        </FeatureUnderConstructionNotice>
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-16" role="status">
             <Spinner />

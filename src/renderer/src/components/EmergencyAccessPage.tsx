@@ -18,6 +18,7 @@ import {
   EmptyTitle
 } from '@renderer/components/ui/empty'
 import { Spinner } from '@renderer/components/ui/spinner'
+import FeatureUnderConstructionNotice from './FeatureUnderConstructionNotice'
 
 function statusLabel(status: number): string {
   return (
@@ -72,6 +73,10 @@ function EmergencyAccessPage(): React.JSX.Element {
         </div>
       </header>
       <div className="settings-scroll">
+        <FeatureUnderConstructionNotice>
+          目前僅可檢視 Emergency Access
+          的授權關係與狀態；尚不支援邀請、接受、確認、取用或接管授權，以及金鑰輪替。
+        </FeatureUnderConstructionNotice>
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-16" role="status">
             <Spinner />

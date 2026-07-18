@@ -36,6 +36,7 @@ import {
   AlertDialogTitle
 } from '@renderer/components/ui/alert-dialog'
 import { CopyFeedbackIcon } from './CopyFeedbackIcon'
+import FeatureUnderConstructionNotice from './FeatureUnderConstructionNotice'
 
 const emptyDraft: SendCreateRequest = {
   name: '',
@@ -259,6 +260,9 @@ function SendsPage(): React.JSX.Element {
       </header>
 
       <div className="settings-scroll">
+        <FeatureUnderConstructionNotice>
+          文字與檔案 Send 的主要流程已可使用；檔案編輯、進階驗證與完整公開接收流程仍在開發中。
+        </FeatureUnderConstructionNotice>
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-16" role="status">
             <Spinner />
