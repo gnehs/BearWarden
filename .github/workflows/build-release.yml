@@ -73,7 +73,7 @@ jobs:
       - name: Use tag as application version
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
-        run: pnpm version "$GITHUB_REF_NAME" --no-git-tag-version
+        run: pnpm version "$GITHUB_REF_NAME" --no-git-tag-version --allow-same-version
 
       - name: Build application
         run: pnpm run build
