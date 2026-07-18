@@ -34,6 +34,7 @@ function createOptions(): ItemContextMenuOptions {
     item: {
       id: 'item-1',
       hasUsername: true,
+      hasPassword: true,
       uriLabels: ['https://example.test'],
       folderId: 'folder-1',
       archivedAt: null
@@ -45,6 +46,7 @@ function createOptions(): ItemContextMenuOptions {
     callbacks: {
       openInNewWindow: vi.fn(),
       copyUsername: vi.fn(),
+      copyPassword: vi.fn(),
       copyWebsite: vi.fn(),
       moveToFolder: vi.fn(),
       cloneItem: vi.fn(),
@@ -69,6 +71,7 @@ describe('showItemContextMenu', () => {
     const template = buildFromTemplate.mock.calls[0]?.[0] as TemplateEntry[]
     expect(menuEntry(template, 'item-context-open-in-new-window').enabled).toBe(true)
     expect(menuEntry(template, 'item-context-copy-username').enabled).toBe(true)
+    expect(menuEntry(template, 'item-context-copy-password').enabled).toBe(true)
     expect(menuEntry(template, 'item-context-copy-website').enabled).toBe(true)
     expect(menuEntry(template, 'item-context-clone').enabled).toBe(true)
     expect(menuEntry(template, 'item-context-toggle-archive').label).toBe('封存項目')
@@ -77,6 +80,7 @@ describe('showItemContextMenu', () => {
 
     menuEntry(template, 'item-context-open-in-new-window').click?.()
     menuEntry(template, 'item-context-copy-username').click?.()
+    menuEntry(template, 'item-context-copy-password').click?.()
     menuEntry(template, 'item-context-copy-website').click?.()
     menuEntry(template, 'item-context-clone').click?.()
     menuEntry(template, 'item-context-toggle-archive').click?.()
@@ -94,6 +98,7 @@ describe('showItemContextMenu', () => {
 
     expect(options.callbacks.openInNewWindow).toHaveBeenCalledWith('item-1', 0)
     expect(options.callbacks.copyUsername).toHaveBeenCalledWith('item-1')
+    expect(options.callbacks.copyPassword).toHaveBeenCalledWith('item-1')
     expect(options.callbacks.copyWebsite).toHaveBeenCalledWith('item-1', 0)
     expect(options.callbacks.cloneItem).toHaveBeenCalledWith('item-1')
     expect(options.callbacks.toggleArchive).toHaveBeenCalledWith('item-1', false)
@@ -105,7 +110,14 @@ describe('showItemContextMenu', () => {
   it('disables unavailable actions without reading or copying secrets directly', () => {
     buildFromTemplate.mockReturnValue({ popup })
     const options = createOptions()
-    options.item = { id: '', hasUsername: false, uriLabels: [], folderId: null, archivedAt: null }
+    options.item = {
+      id: '',
+      hasUsername: false,
+      hasPassword: false,
+      uriLabels: [],
+      folderId: null,
+      archivedAt: null
+    }
     options.folders = []
     delete options.position
 
@@ -114,6 +126,7 @@ describe('showItemContextMenu', () => {
     const template = buildFromTemplate.mock.calls[0]?.[0] as TemplateEntry[]
     expect(menuEntry(template, 'item-context-open-in-new-window').enabled).toBe(false)
     expect(menuEntry(template, 'item-context-copy-username').enabled).toBe(false)
+    expect(menuEntry(template, 'item-context-copy-password').enabled).toBe(false)
     expect(menuEntry(template, 'item-context-copy-website').enabled).toBe(false)
     expect(menuEntry(template, 'item-context-clone').enabled).toBe(false)
     expect(menuEntry(template, 'item-context-toggle-archive').enabled).toBe(false)
@@ -138,6 +151,17 @@ describe('showItemContextMenu', () => {
     menuEntry(copy.submenu!, 'item-context-copy-uri-1').click?.()
     expect(options.callbacks.openInNewWindow).toHaveBeenCalledWith('item-1', 1)
     expect(options.callbacks.copyWebsite).toHaveBeenCalledWith('item-1', 1)
+  })
+
+  it('disables password copying when the item has no password field', () => {
+    buildFromTemplate.mockReturnValue({ popup })
+    const options = createOptions()
+    options.item.hasPassword = false
+
+    showItemContextMenu(options)
+
+    const template = buildFromTemplate.mock.calls[0]?.[0] as TemplateEntry[]
+    expect(menuEntry(template, 'item-context-copy-password').enabled).toBe(false)
   })
 
   it('reports synchronous and asynchronous action failures', async () => {

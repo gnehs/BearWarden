@@ -2808,6 +2808,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     const itemId = item.id
     const itemName = item.reprompt === 1 ? '這個受保護項目' : item.name
     const hasUsername = item.reprompt === 1 ? item.type === 'login' : Boolean(item.username)
+    const hasPassword = item.type === 'login'
     const uriLabels =
       item.reprompt === 0
         ? item.uris.map((entry, index) => entry.uri || `網站 ${index + 1}`)
@@ -2820,9 +2821,10 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       window,
       item: {
         id: itemId,
-        // Protected native menus retain only generic action structure. They never retain the
-        // username or URI strings; every callback re-enters the atomic authorization boundary.
+        // Protected native menus retain only generic action structure. They never retain
+        // credential values or URI strings; every callback re-enters the authorization boundary.
         hasUsername,
+        hasPassword,
         uriLabels,
         folderId,
         archivedAt
@@ -2845,6 +2847,10 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
         },
         copyUsername: async () => {
           await runAuthorized(event, request, () => vault.copyUsername(request))
+          notifyChanged()
+        },
+        copyPassword: async () => {
+          await runAuthorized(event, request, () => vault.copyPassword(request))
           notifyChanged()
         },
         copyWebsite: async (_id, uriIndex) => {

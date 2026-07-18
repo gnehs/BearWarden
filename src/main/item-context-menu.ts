@@ -3,6 +3,7 @@ import { Menu, type BrowserWindow, type MenuItemConstructorOptions } from 'elect
 export interface ItemContextMenuItem {
   id: string
   hasUsername: boolean
+  hasPassword: boolean
   /** Empty labels intentionally represent protected rows without retaining URI metadata. */
   uriLabels: string[]
   folderId: string | null
@@ -17,6 +18,7 @@ export interface ItemContextMenuFolder {
 export interface ItemContextMenuCallbacks {
   openInNewWindow: (itemId: string, uriIndex: number) => void | Promise<void>
   copyUsername: (itemId: string) => void | Promise<void>
+  copyPassword: (itemId: string) => void | Promise<void>
   copyWebsite: (itemId: string, uriIndex: number) => void | Promise<void>
   moveToFolder: (itemId: string, folderId: string | null) => void | Promise<void>
   cloneItem: (itemId: string) => void | Promise<void>
@@ -132,6 +134,12 @@ export function showItemContextMenu(options: ItemContextMenuOptions): Menu {
       label: '複製使用者名稱',
       enabled: itemEnabled && item.hasUsername,
       click: () => invoke(() => callbacks.copyUsername(item.id), onError)
+    },
+    {
+      id: 'item-context-copy-password',
+      label: '複製密碼',
+      enabled: itemEnabled && item.hasPassword,
+      click: () => invoke(() => callbacks.copyPassword(item.id), onError)
     },
     copyWebsite,
     { type: 'separator' },
