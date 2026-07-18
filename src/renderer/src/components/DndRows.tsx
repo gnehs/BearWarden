@@ -108,7 +108,11 @@ export const ItemRow = memo(function ItemRow({
     <li
       ref={setRowRef}
       data-item-id={item.id}
-      className={cn('item-row', selected && 'selected', isDragging && 'dragging')}
+      className={cn(
+        'item-row grid-cols-[minmax(0,1fr)_28px] px-[13px]',
+        selected && 'selected',
+        isDragging && 'dragging'
+      )}
       style={{ transform: CSS.Translate.toString(transform) }}
       {...attributes}
       {...listeners}
@@ -121,7 +125,7 @@ export const ItemRow = memo(function ItemRow({
     >
       <Button
         variant="ghost"
-        className="item-row-main"
+        className="item-row-main px-0 hover:shadow-[none]"
         type="button"
         onClick={(event) =>
           onSelect(item.id, {
@@ -223,8 +227,8 @@ export function FolderRow({
         <GripVertical aria-hidden="true" />
       </RowIconButton>
       <Button
-        variant="ghost"
-        className="folder-row-main"
+        variant="sidebar"
+        className="folder-row-main hover:bg-transparent hover:shadow-[none] aria-expanded:bg-transparent aria-expanded:shadow-[none]"
         type="button"
         aria-current={selected ? 'page' : undefined}
         onClick={onSelect}

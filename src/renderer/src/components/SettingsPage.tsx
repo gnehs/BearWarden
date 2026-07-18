@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   ClipboardCheck,
   Cloud,
-  Copy,
   DatabaseBackup,
   Download,
   Fingerprint,
@@ -70,6 +69,7 @@ import {
 import { Separator } from '@renderer/components/ui/separator'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Switch } from '@renderer/components/ui/switch'
+import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
 import {
   isWindowsSshAgentEndpoint,
   sshAgentSocketExportCommand,
@@ -79,6 +79,7 @@ import EquivalentDomainsDialog from './EquivalentDomainsDialog'
 import MasterPasswordChangeDialog from './MasterPasswordChangeDialog'
 import AccountSwitcherCard from './AccountSwitcherCard'
 import PersonalVaultPurgeDialog from './PersonalVaultPurgeDialog'
+import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 
 const vaultTimeoutPresetMinutes = [1, 5, 15, 30, 60, 240] as const
 const maxVaultTimeoutMinutes = MAX_VAULT_TIMEOUT_MINUTES
@@ -372,7 +373,7 @@ function SettingsPage({
   onRemoveAccount
 }: SettingsPageProps): React.JSX.Element {
   const [sshAgentStatus, setSshAgentStatus] = useState<SshAgentStatus>(initialSshAgentStatus)
-  const [copySucceeded, setCopySucceeded] = useState(false)
+  const { copiedKey, clearCopied, showCopied } = useCopyFeedback()
   const [pinStatus, setPinStatus] = useState<PinUnlockStatus>({
     available: false,
     remainingAttempts: 0
@@ -486,13 +487,13 @@ function SettingsPage({
     : sshAgentSocketExportCommand(sshAgentEndpoint)
 
   async function copySshAgentCommand(): Promise<void> {
+    clearCopied()
     try {
       if (!sshAgentCommand) return
       await navigator.clipboard.writeText(sshAgentCommand)
-      setCopySucceeded(true)
-      window.setTimeout(() => setCopySucceeded(false), 2_000)
+      showCopied('ssh-agent-command')
     } catch {
-      setCopySucceeded(false)
+      clearCopied()
     }
   }
 
@@ -775,11 +776,18 @@ function SettingsPage({
                             />
                             <InputGroupAddon align="inline-end">
                               <InputGroupButton
-                                aria-label="複製 SSH Agent 設定指令"
+                                aria-label={
+                                  copiedKey === 'ssh-agent-command'
+                                    ? 'SSH Agent 設定指令已複製'
+                                    : '複製 SSH Agent 設定指令'
+                                }
                                 onClick={() => void copySshAgentCommand()}
                               >
-                                <Copy data-icon="inline-start" aria-hidden="true" />
-                                {copySucceeded ? '已複製' : '複製'}
+                                <CopyFeedbackIcon
+                                  copied={copiedKey === 'ssh-agent-command'}
+                                  placement="inline-start"
+                                />
+                                {copiedKey === 'ssh-agent-command' ? '已複製' : '複製'}
                               </InputGroupButton>
                             </InputGroupAddon>
                           </InputGroup>

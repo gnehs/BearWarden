@@ -743,17 +743,17 @@ function SyncDialog({
             <>
               <section className="sync-connection-details" aria-label="同步連線資訊">
                 <div>
-                  <Server aria-hidden="true" />
+                  <Server size={16} aria-hidden="true" />
                   <span>伺服器</span>
                   <strong>{status.serverUrl ?? BITWARDEN_CLOUD_URL}</strong>
                 </div>
                 <div>
-                  <KeyRound aria-hidden="true" />
+                  <KeyRound size={16} aria-hidden="true" />
                   <span>帳號</span>
                   <strong>{status.email ?? '未提供'}</strong>
                 </div>
                 <div>
-                  <RefreshCw aria-hidden="true" />
+                  <RefreshCw size={16} aria-hidden="true" />
                   <span>上次同步</span>
                   <strong>{formatSyncTime(status.lastSyncAt)}</strong>
                 </div>

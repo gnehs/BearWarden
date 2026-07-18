@@ -1,15 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  AlertTriangle,
-  Check,
-  Copy,
-  Eye,
-  EyeOff,
-  FolderInput,
-  History,
-  KeyRound,
-  X
-} from 'lucide-react'
+import { AlertTriangle, Eye, EyeOff, FolderInput, History, KeyRound, X } from 'lucide-react'
 import type {
   FolderView,
   PasswordHistoryEntryRequest,
@@ -59,6 +49,7 @@ import {
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Skeleton } from '@renderer/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
+import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 
 interface ModalProps {
   title: string
@@ -698,10 +689,8 @@ export function PasswordHistoryDialog({
                         >
                           {copying[key] ? (
                             <Spinner aria-hidden="true" />
-                          ) : copiedKey === key ? (
-                            <Check aria-hidden="true" />
                           ) : (
-                            <Copy aria-hidden="true" />
+                            <CopyFeedbackIcon copied={copiedKey === key} />
                           )}
                         </PasswordHistoryIconButton>
                       </CardAction>

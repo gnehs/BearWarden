@@ -21,6 +21,8 @@ import {
 } from '@renderer/components/ui/field'
 import { Input } from '@renderer/components/ui/input'
 import { Spinner } from '@renderer/components/ui/spinner'
+import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
+import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 
 function apiKeyError(error: unknown, rotate: boolean): string {
   if (!(error instanceof Error)) return '個人 API key 操作失敗。'
@@ -40,6 +42,7 @@ function AccountApiKeyDialog(): React.JSX.Element {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const { copiedKey, clearCopied, showCopied } = useCopyFeedback()
 
   function clearSecrets(): void {
     setMasterPassword('')
@@ -52,6 +55,7 @@ function AccountApiKeyDialog(): React.JSX.Element {
     setOpen(next)
     setError('')
     setSuccess('')
+    clearCopied()
     if (!next) clearSecrets()
   }
 
@@ -59,8 +63,10 @@ function AccountApiKeyDialog(): React.JSX.Element {
     setBusy(true)
     setError('')
     setSuccess('')
+    clearCopied()
     try {
       await window.bearwarden.accountSecurity.copyApiClientId()
+      showCopied('client-id')
       setSuccess('Client ID 已複製。')
     } catch (copyError) {
       setError(apiKeyError(copyError, false))
@@ -78,6 +84,7 @@ function AccountApiKeyDialog(): React.JSX.Element {
     setBusy(true)
     setError('')
     setSuccess('')
+    clearCopied()
     try {
       await window.bearwarden.accountSecurity.copyApiKey({
         masterPassword,
@@ -85,6 +92,7 @@ function AccountApiKeyDialog(): React.JSX.Element {
         confirmRotation: rotate && confirmRotation
       })
       setMasterPassword('')
+      showCopied('client-secret')
       setSuccess(
         rotate
           ? '新的 Client Secret 已複製；舊值已失效，剪貼簿最晚 30 秒後清除。'
@@ -114,7 +122,7 @@ function AccountApiKeyDialog(): React.JSX.Element {
           </DialogDescription>
         </DialogHeader>
         <Button variant="outline" type="button" disabled={busy} onClick={() => void copyClientId()}>
-          <Copy data-icon="inline-start" aria-hidden="true" />
+          <CopyFeedbackIcon copied={copiedKey === 'client-id'} placement="inline-start" />
           複製 Client ID
         </Button>
         <form className="grid gap-4" onSubmit={(event) => void submit(event)}>
@@ -185,9 +193,17 @@ function AccountApiKeyDialog(): React.JSX.Element {
               {busy ? (
                 <Spinner data-icon="inline-start" aria-hidden="true" />
               ) : rotate ? (
-                <RotateCw data-icon="inline-start" aria-hidden="true" />
+                <CopyFeedbackIcon
+                  copied={copiedKey === 'client-secret'}
+                  idleIcon={RotateCw}
+                  placement="inline-start"
+                />
               ) : (
-                <Copy data-icon="inline-start" aria-hidden="true" />
+                <CopyFeedbackIcon
+                  copied={copiedKey === 'client-secret'}
+                  idleIcon={Copy}
+                  placement="inline-start"
+                />
               )}
               {rotate ? '輪替並複製新 Secret' : '複製目前 Client Secret'}
             </Button>

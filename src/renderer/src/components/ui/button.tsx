@@ -8,15 +8,18 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/80',
+        default:
+          'bg-primary text-primary-foreground shadow-[var(--control-highlight)] hover:bg-primary/80',
         outline:
-          'border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50',
+          'border-border bg-background shadow-[var(--control-highlight)] hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50',
         secondary:
-          'bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground',
+          'bg-secondary text-secondary-foreground shadow-[var(--control-highlight)] hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground',
         ghost:
-          'hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50',
+          'hover:bg-muted hover:text-foreground hover:shadow-[var(--control-highlight)] aria-expanded:bg-muted aria-expanded:text-foreground aria-expanded:shadow-[var(--control-highlight)] data-popup-open:bg-muted data-popup-open:text-foreground data-popup-open:shadow-[var(--control-highlight)] dark:hover:bg-muted/50',
+        sidebar:
+          'text-sidebar-foreground hover:bg-sidebar-overlay-hover hover:text-sidebar-foreground hover:shadow-[var(--control-highlight)] aria-expanded:bg-sidebar-overlay-active aria-expanded:text-sidebar-foreground aria-expanded:shadow-[var(--control-highlight)] data-popup-open:bg-sidebar-overlay-active data-popup-open:text-sidebar-foreground data-popup-open:shadow-[var(--control-highlight)]',
         destructive:
-          'bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40',
+          'bg-destructive/10 text-destructive shadow-[var(--control-highlight)] hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40',
         link: 'text-primary underline-offset-4 hover:underline'
       },
       size: {

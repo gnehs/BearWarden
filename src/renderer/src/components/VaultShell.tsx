@@ -24,7 +24,6 @@ import {
   Archive,
   ArchiveRestore,
   BadgeCheck,
-  Clipboard,
   Clock3,
   CloudAlert,
   CloudCheck,
@@ -150,10 +149,13 @@ import {
 } from '../lib/vault-search-ui'
 import { vaultHealthRevision } from '../lib/vault-health-ui'
 import { formatVaultDate as formatDate } from '../lib/vault-date'
+import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
 import { ItemHistoryRows } from './ItemHistoryRows'
+import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 import { Button } from '@renderer/components/ui/button'
+import { Badge } from '@renderer/components/ui/badge'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -258,11 +260,13 @@ const itemTypeMeta: Record<VaultItemType, ItemTypeMeta> = {
   sshKey: { label: 'SSH 金鑰', icon: FileKey2 }
 }
 
+type SidebarTone = 'blue' | 'indigo' | 'green' | 'yellow' | 'cyan' | 'red' | 'orange' | 'gray'
+
 const categoryMeta: Array<{
   id: TypeFilter
   label: string
   icon: typeof KeyRound
-  tone: string
+  tone: SidebarTone
 }> = [
   { id: 'all', label: '全部', icon: KeyRound, tone: 'blue' },
   { id: 'login', label: '登入', icon: FileKey2, tone: 'indigo' },
@@ -503,6 +507,14 @@ function matchesCustomFieldSource(
   )
 }
 
+function customFieldCopyFeedbackKey(
+  itemId: string,
+  index: number,
+  field: VaultCustomFieldView
+): string {
+  return JSON.stringify(['custom', itemId, index, field.name, field.type, field.linkedId])
+}
+
 function detailFields(login: LoginView): DetailField[] {
   if (login.type === 'login') {
     return [
@@ -658,27 +670,28 @@ interface SidebarLinkProps {
   count: number
   active: boolean
   variant?: 'row' | 'tile'
-  tone?: string
+  tone?: SidebarTone
   onClick: () => void
 }
 
-const sidebarToneClasses: Record<string, string> = {
-  blue: 'bg-(--sidebar-primary)',
-  indigo: 'bg-(--chart-4)',
-  green: 'bg-(--sidebar-primary)',
-  yellow: 'bg-(--chart-1) text-(--foreground)',
-  cyan: 'bg-(--chart-2)',
-  red: 'bg-(--destructive)',
-  orange: 'bg-(--chart-3)'
+const sidebarToneClasses: Record<SidebarTone, string> = {
+  blue: 'bg-sidebar-primary text-sidebar-primary-foreground',
+  indigo: 'bg-chart-4 text-primary-foreground',
+  green: 'bg-sidebar-primary text-sidebar-primary-foreground',
+  yellow: 'bg-chart-1 text-category-light-foreground',
+  cyan: 'bg-chart-2 text-primary-foreground',
+  red: 'bg-destructive text-destructive-foreground',
+  orange: 'bg-chart-3 text-primary-foreground',
+  gray: 'bg-muted text-foreground'
 }
 
 const sidebarLinkClasses = {
-  base: 'h-auto text-left text-(--text) hover:bg-(--sidebar-accent) hover:text-(--text) border-none',
-  row: 'grid min-h-[38px] grid-cols-[22px_1fr_auto] items-center gap-[7px] rounded-lg border-0 bg-transparent px-[9px] py-1.5',
-  tile: 'grid min-h-[82px] grid-cols-[1fr_auto] grid-rows-[31px_auto] items-center gap-x-2 gap-y-[7px] rounded-[15px] outline outline-solid outline-(--sidebar-border)/50 bg-[color-mix(in_oklch,var(--sidebar-accent)_54%,transparent)] px-3 pt-[11px] pb-2.5 shadow-[inset_0_1px_rgba(255,255,255,.5)] hover:bg-(--sidebar-accent) dark:shadow-[inset_0_1px_color-mix(in_oklch,var(--shadow-color)_18%,transparent)]',
+  base: 'h-auto border-none text-left',
+  row: 'grid min-h-[38px] grid-cols-[22px_1fr_auto] items-center gap-[7px] rounded-lg border-0 bg-transparent px-[9px] py-1.5 shadow-[none] hover:shadow-[none]',
+  tile: 'bg-sidebar-overlay grid min-h-[82px] grid-cols-[1fr_auto] grid-rows-[31px_auto] items-center gap-x-2 gap-y-[7px] rounded-[15px] px-3 pt-[11px] pb-2.5 shadow-[var(--sidebar-tile-highlight)] hover:shadow-[var(--sidebar-tile-highlight)]',
   active: {
-    row: 'bg-[color-mix(in_oklch,var(--sidebar-primary)_12%,transparent)] text-(--text) shadow-none hover:bg-[color-mix(in_oklch,var(--sidebar-primary)_12%,transparent)]',
-    tile: 'outline-transparent bg-(--sidebar-primary) text-(--sidebar-primary-foreground) shadow-[0_5px_14px_color-mix(in_oklch,var(--shadow-color)_24%,transparent)] hover:bg-(--sidebar-primary) hover:text-(--sidebar-primary-foreground)'
+    row: 'bg-sidebar-overlay-active text-sidebar-foreground hover:bg-sidebar-overlay-active hover:text-sidebar-foreground',
+    tile: 'bg-sidebar-primary text-sidebar-primary-foreground shadow-[var(--control-highlight)] hover:bg-sidebar-primary hover:text-sidebar-primary-foreground hover:shadow-[var(--control-highlight)]'
   }
 } as const
 
@@ -695,7 +708,7 @@ function SidebarLink({
 
   return (
     <Button
-      variant="ghost"
+      variant="sidebar"
       className={cn(
         sidebarLinkClasses.base,
         sidebarLinkClasses[variant],
@@ -711,9 +724,9 @@ function SidebarLink({
           'grid place-items-center',
           isTile
             ? [
-                'col-start-1 row-start-1 size-[30px] rounded-full bg-(--chart-3) text-(--sidebar-primary-foreground)',
+                'bg-sidebar-primary text-sidebar-primary-foreground col-start-1 row-start-1 size-[30px] rounded-full',
                 tone && sidebarToneClasses[tone],
-                active && 'bg-(--sidebar-primary-foreground) text-(--sidebar-primary)'
+                active && 'bg-sidebar-primary-foreground text-sidebar-primary'
               ]
             : 'size-[22px]'
         )}
@@ -732,13 +745,13 @@ function SidebarLink({
       </strong>
       <small
         className={cn(
-          'text-muted-foreground',
+          'text-muted-foreground group-hover/button:text-sidebar-foreground',
           isTile
             ? 'col-start-2 row-start-1 self-center justify-self-end text-[11px] font-[650]'
             : 'text-[10px]',
           active &&
             isTile &&
-            'text-[color-mix(in_oklch,var(--sidebar-primary-foreground)_88%,transparent)]'
+            'text-[color-mix(in_oklch,var(--sidebar-primary-foreground)_88%,transparent)] group-hover/button:text-[color-mix(in_oklch,var(--sidebar-primary-foreground)_88%,transparent)]'
         )}
       >
         {count}
@@ -762,8 +775,8 @@ function UnfiledRow({ selected, count, onSelect }: UnfiledRowProps): React.JSX.E
     >
       <span className="folder-static-spacer" aria-hidden="true" />
       <Button
-        variant="ghost"
-        className="folder-row-main"
+        variant="sidebar"
+        className="folder-row-main hover:bg-transparent hover:shadow-[none] aria-expanded:bg-transparent aria-expanded:shadow-[none]"
         type="button"
         aria-current={selected ? 'page' : undefined}
         onClick={onSelect}
@@ -870,6 +883,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedLogin, setSelectedLogin] = useState<LoginView | null>(null)
+  const { copiedKey, clearCopied, showCopied } = useCopyFeedback()
   const selectedSummary = items.find((item) => item.id === selectedId) ?? null
   const [totpCodeState, setTotpCodeState] = useState<{
     itemId: string
@@ -1523,7 +1537,6 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           }),
         true
       )
-      toast.success('歷史密碼已複製，剪貼簿會依安全設定自動清除。')
     },
     [selectedSummary, withReprompt]
   )
@@ -3196,6 +3209,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   async function copyField(field: VaultCopyField, uriIndex?: number): Promise<void> {
     if (!selectedSummary) return
+    clearCopied()
     try {
       const itemId = selectedSummary.id
       await withReprompt([itemId], (tokenFor) =>
@@ -3206,7 +3220,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
         })
       )
-      announce('欄位已複製。')
+      showCopied(`field:${itemId}:${field}:${uriIndex ?? ''}`)
       await refreshItems()
     } catch (copyError) {
       announceError(describeError(copyError))
@@ -3263,6 +3277,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   async function copyCustomField(index: number, field: VaultCustomFieldView): Promise<void> {
     if (!selectedLogin) return
+    clearCopied()
     try {
       const itemId = selectedLogin.id
       await withReprompt([itemId], (tokenFor) =>
@@ -3273,7 +3288,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
         })
       )
-      announce('自訂欄位已複製。')
+      showCopied(customFieldCopyFeedbackKey(itemId, index, field))
       await refreshItems()
     } catch (copyError) {
       announceError(describeError(copyError))
@@ -3448,6 +3463,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   async function copyTotp(): Promise<void> {
     if (!selectedLogin?.hasTotp) return
+    clearCopied()
     try {
       const itemId = selectedLogin.id
       await withReprompt([itemId], (tokenFor) =>
@@ -3456,7 +3472,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
         })
       )
-      announce('驗證碼已複製，剪貼簿會依安全設定自動清除。')
+      showCopied(`totp:${itemId}`)
       await refreshItems()
     } catch (copyError) {
       announceError(describeError(copyError))
@@ -3532,6 +3548,23 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         ? revealedSecrets.values[secretField]
         : undefined
     const hasExtraAction = Boolean(field.copyable) && Boolean(field.openUri)
+    const canCopyFromValue = field.field === 'username' || field.field === 'password'
+    const copyKey = `field:${selectedSummary?.id}:${field.field}:${field.uriIndex ?? ''}`
+    const valueClassName = field.secret
+      ? revealedValue === undefined
+        ? 'masked-value'
+        : 'revealed-value'
+      : undefined
+    const displayValue = field.secret
+      ? revealedValue === undefined
+        ? field.field === 'code'
+          ? '•••'
+          : '••••••••••••'
+        : field.field === 'number'
+          ? formatPaymentCardNumber(revealedValue) || '未設定'
+          : revealedValue || '未設定'
+      : field.value || '未設定'
+    const value = <strong className={valueClassName}>{displayValue}</strong>
     return (
       <div
         className={cn(
@@ -3542,25 +3575,21 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         key={`${field.label}:${field.field}:${field.uriIndex ?? ''}`}
       >
         <span>{field.label}</span>
-        <strong
-          className={
-            field.secret
-              ? revealedValue === undefined
-                ? 'masked-value'
-                : 'revealed-value'
-              : undefined
-          }
-        >
-          {field.secret
-            ? revealedValue === undefined
-              ? field.field === 'code'
-                ? '•••'
-                : '••••••••••••'
-              : field.field === 'number'
-                ? formatPaymentCardNumber(revealedValue) || '未設定'
-                : revealedValue || '未設定'
-            : field.value || '未設定'}
-        </strong>
+        {canCopyFromValue ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="detail-field-copy-value"
+            type="button"
+            aria-label={copiedKey === copyKey ? `${field.label}已複製` : `複製${field.label}`}
+            disabled={field.field === 'username' && !field.value}
+            onClick={() => void copyField(field.field)}
+          >
+            {value}
+          </Button>
+        ) : (
+          value
+        )}
         {field.secret ? (
           <>
             <TooltipIconButton
@@ -3579,10 +3608,10 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
               size="icon"
               className="icon-button"
               type="button"
-              label={`複製${field.label}`}
+              label={copiedKey === copyKey ? `${field.label}已複製` : `複製${field.label}`}
               onClick={() => void copyField(field.field)}
             >
-              <Clipboard />
+              <CopyFeedbackIcon copied={copiedKey === copyKey} />
             </TooltipIconButton>
           </>
         ) : (
@@ -3593,11 +3622,21 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 size="icon"
                 className="icon-button"
                 type="button"
-                label={`複製${field.label}`}
+                label={
+                  copiedKey ===
+                  `field:${selectedSummary?.id}:${field.field}:${field.uriIndex ?? ''}`
+                    ? `${field.label}已複製`
+                    : `複製${field.label}`
+                }
                 disabled={!field.value}
                 onClick={() => void copyField(field.field, field.uriIndex)}
               >
-                <Copy />
+                <CopyFeedbackIcon
+                  copied={
+                    copiedKey ===
+                    `field:${selectedSummary?.id}:${field.field}:${field.uriIndex ?? ''}`
+                  }
+                />
               </TooltipIconButton>
             )}
             {field.openUri && (
@@ -3632,6 +3671,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         : undefined
     const hidden = field.type === 'hidden'
     const label = field.name || '未命名欄位'
+    const copyFeedbackKey = selectedLogin
+      ? customFieldCopyFeedbackKey(selectedLogin.id, index, field)
+      : null
     return (
       <div
         className={cn('detail-field', hidden && 'password-field', hidden && 'multi-action')}
@@ -3667,11 +3709,15 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           size="icon"
           className="icon-button"
           type="button"
-          label={`複製${label}`}
+          label={
+            copyFeedbackKey !== null && copiedKey === copyFeedbackKey
+              ? `${label}已複製`
+              : `複製${label}`
+          }
           disabled={field.type !== 'linked' && !field.value && !hidden}
           onClick={() => void copyCustomField(index, field)}
         >
-          <Copy />
+          <CopyFeedbackIcon copied={copyFeedbackKey !== null && copiedKey === copyFeedbackKey} />
         </TooltipIconButton>
       </div>
     )
@@ -3721,7 +3767,12 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 {sidebarOpen ? <X /> : <Menu />}
               </TooltipIconButton>
             )}
-          <BrandMark hideMark className="max-[680px]:hidden" />
+          <div className="inline-flex items-center gap-2 max-[680px]:hidden">
+            <BrandMark hideMark />
+            <Badge variant="secondary" className="bg-black/5">
+              Beta
+            </Badge>
+          </div>
           {!settingsOpen &&
             !healthOpen &&
             !sendsOpen &&
@@ -3872,7 +3923,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           <aside className={cn('sidebar', sidebarOpen && 'open')} aria-label="保管庫導覽">
             <div className="sidebar-scroll scroll-fade-y forced-colors:scroll-fade-none">
               <section
-                className="folder-section category-section flex-none px-[11px] pb-2"
+                className="folder-section category-section flex-none px-[11px] pb-1"
                 aria-labelledby="categories-title"
               >
                 <h2 className="hidden" id="categories-title">
@@ -3898,7 +3949,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
               </section>
 
               <section
-                className="folder-section flex-none py-[10px] pb-1"
+                className="folder-section flex-none px-[9px] py-1"
                 aria-labelledby="quick-title"
               >
                 <header>
@@ -3936,11 +3987,11 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 </nav>
               </section>
 
-              <section className="folder-section" aria-labelledby="folders-title">
+              <section className="folder-section px-[9px] py-1" aria-labelledby="folders-title">
                 <header>
                   <h2 id="folders-title">資料夾</h2>
                   <TooltipIconButton
-                    variant="ghost"
+                    variant="sidebar"
                     size="icon"
                     className="icon-button subtle"
                     type="button"
@@ -3981,7 +4032,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                   render={
                     <Button
                       ref={sidebarMenuTriggerRef}
-                      variant="ghost"
+                      variant="sidebar"
                       className="sidebar-account-trigger"
                       type="button"
                       aria-label={`開啟 ${sidebarAccountName} 選單`}
@@ -4063,7 +4114,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 </DropdownMenuContent>
               </DropdownMenu>
               <TooltipIconButton
-                variant="ghost"
+                variant="sidebar"
                 size="icon"
                 className="sidebar-sync-trigger"
                 type="button"
@@ -4165,11 +4216,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                           disabled={scope.kind === 'recent'}
                           onValueChange={(value) => setSortMode(value as VaultSortMode)}
                         >
-                          <SelectTrigger
-                            size="sm"
-                            className="border-0 bg-transparent shadow-none"
-                            aria-label="排序方式"
-                          >
+                          <SelectTrigger size="sm" variant="embedded" aria-label="排序方式">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -4240,7 +4287,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                           </Button>
                         ) : scope.kind !== 'trash' && scope.kind !== 'archive' ? (
                           <Button
-                            className="button primary"
+                            className="before:ring-primary-foreground/20 relative h-[38px] gap-2 rounded-[9px] border-0 px-3.5 font-[680] shadow-[var(--subtle-primary-action-shadow)] before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:ring-1 before:ring-inset has-data-[icon=inline-start]:pl-3.5"
                             type="button"
                             onClick={() => openEditor('create')}
                           >
@@ -4253,7 +4300,10 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                   )}
                   {(selectedSummaries.length >= 2 ||
                     (scope.kind === 'trash' && trashItems.length > 0)) && (
-                    <footer className="list-action-bar" aria-label="列表操作">
+                    <footer
+                      className="border-border bg-muted flex min-h-16 flex-none flex-wrap items-center justify-end gap-2 border-t px-5 py-1"
+                      aria-label="列表操作"
+                    >
                       {selectedSummaries.length >= 2 && (
                         <div
                           className={cn(
@@ -4304,7 +4354,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                                 onClick={() => setPendingBulkAction(snapshotBulkAction('delete'))}
                               >
                                 <Trash2 data-icon="inline-start" />
-                                移至垃圾桶
+                                刪除
                               </Button>
                               <div className="ml-auto flex flex-wrap items-center gap-2">
                                 <Button
@@ -4861,11 +4911,15 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                               size="icon"
                               className="icon-button"
                               type="button"
-                              label="複製一次性驗證碼"
+                              label={
+                                copiedKey === `totp:${selectedLogin.id}`
+                                  ? '一次性驗證碼已複製'
+                                  : '複製一次性驗證碼'
+                              }
                               disabled={!totpCode || totpGenerationError !== null}
                               onClick={() => void copyTotp()}
                             >
-                              <Copy />
+                              <CopyFeedbackIcon copied={copiedKey === `totp:${selectedLogin.id}`} />
                             </TooltipIconButton>
                           </div>
                           {!totpGenerationError &&

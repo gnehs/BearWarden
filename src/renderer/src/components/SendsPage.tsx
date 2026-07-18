@@ -1,16 +1,7 @@
-import {
-  ArrowLeft,
-  Copy,
-  Download,
-  FilePlus,
-  FileText,
-  Pencil,
-  Plus,
-  Save,
-  Trash2
-} from 'lucide-react'
+import { ArrowLeft, Download, FilePlus, FileText, Pencil, Plus, Save, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
 import type { SendCreateRequest, SendView } from '../../../shared/vault-contract'
 import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
@@ -44,6 +35,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from '@renderer/components/ui/alert-dialog'
+import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 
 interface SendsPageProps {
   onBack: () => void
@@ -82,6 +74,7 @@ function draftFromSend(send: SendView): SendCreateRequest {
 
 function SendsPage({ onBack }: SendsPageProps): React.JSX.Element {
   const [sends, setSends] = useState<SendView[]>([])
+  const { copiedKey, clearCopied, showCopied } = useCopyFeedback()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [draft, setDraft] = useState<SendCreateRequest>(emptyDraft)
   const [loading, setLoading] = useState(true)
@@ -196,9 +189,10 @@ function SendsPage({ onBack }: SendsPageProps): React.JSX.Element {
   }
 
   async function copyLink(send: SendView): Promise<void> {
+    clearCopied()
     try {
       await window.bearwarden.sends.copyLink({ id: send.id })
-      toast.success('分享連結已複製')
+      showCopied(send.id)
     } catch {
       toast.error('無法複製分享連結')
     }
@@ -318,9 +312,9 @@ function SendsPage({ onBack }: SendsPageProps): React.JSX.Element {
                           size="icon"
                           type="button"
                           onClick={() => void copyLink(send)}
-                          aria-label="複製分享連結"
+                          aria-label={copiedKey === send.id ? '分享連結已複製' : '複製分享連結'}
                         >
-                          <Copy />
+                          <CopyFeedbackIcon copied={copiedKey === send.id} />
                         </Button>
                         {send.type === 'file' && (
                           <Button

@@ -40,6 +40,11 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-overlay: var(--sidebar-overlay);
+  --color-sidebar-overlay-hover: var(--sidebar-overlay-hover);
+  --color-sidebar-overlay-active: var(--sidebar-overlay-active);
+  --color-sidebar-overlay-border: var(--sidebar-overlay-border);
+  --color-category-light-foreground: var(--category-light-foreground);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -51,6 +56,10 @@
 
 :root {
   color-scheme: light;
+  --icon-swap-dur: 250ms;
+  --icon-swap-blur: 2px;
+  --icon-swap-start-scale: 0.25;
+  --icon-swap-ease: ease-in-out;
   --background: oklch(1 0 0);
   --foreground: oklch(0.148 0.004 228.8);
   --card: oklch(1 0 0);
@@ -84,6 +93,12 @@
   --sidebar-accent-foreground: oklch(0.218 0.008 223.9);
   --sidebar-border: oklch(0.925 0.005 214.3);
   --sidebar-ring: oklch(0.723 0.014 214.4);
+  --sidebar-overlay: oklch(0 0 0 / 4%);
+  --sidebar-overlay-hover: oklch(0 0 0 / 7%);
+  --sidebar-overlay-active: oklch(0 0 0 / 11%);
+  --sidebar-overlay-border: oklch(0 0 0 / 8%);
+  --category-light-foreground: oklch(0.218 0.008 223.9);
+  --search-field-background: oklch(1 0 0 / 55%);
   --bg: var(--background);
   --panel: var(--card);
   --panel-muted: var(--muted);
@@ -98,6 +113,11 @@
   --success: var(--primary);
   --focus: var(--ring);
   --shadow-color: oklch(0 0 0);
+  --control-highlight: inset 0 1px rgb(255 255 255 / 50%);
+  --subtle-primary-action-shadow:
+    inset 0 1px rgb(255 255 255 / 24%),
+    0 2px 5px color-mix(in oklch, var(--shadow-color) 18%, transparent);
+  --sidebar-tile-highlight: var(--control-highlight);
   --website-icon-background: oklch(1 0 0);
   --shadow: 0 18px 48px color-mix(in oklch, var(--shadow-color) 14%, transparent);
   --native-window-material: color-mix(in oklch, var(--background) 34%, transparent);
@@ -118,9 +138,54 @@
   text-rendering: optimizeLegibility;
 }
 
+.t-icon-swap {
+  position: relative;
+  display: inline-grid;
+}
+
+.t-icon-swap .t-icon {
+  grid-area: 1 / 1;
+  transition:
+    opacity var(--icon-swap-dur) var(--icon-swap-ease),
+    filter var(--icon-swap-dur) var(--icon-swap-ease),
+    transform var(--icon-swap-dur) var(--icon-swap-ease);
+  will-change: opacity, filter, transform;
+}
+
+[data-slot='input-group-button'] > .t-icon-swap,
+[data-slot='input-group-button'] > .t-icon-swap > .t-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.t-icon-swap[data-state='a'] .t-icon[data-icon='a'],
+.t-icon-swap[data-state='b'] .t-icon[data-icon='b'] {
+  opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
+}
+
+.t-icon-swap[data-state='a'] .t-icon[data-icon='b'],
+.t-icon-swap[data-state='b'] .t-icon[data-icon='a'] {
+  opacity: 0;
+  filter: blur(var(--icon-swap-blur));
+  transform: scale(var(--icon-swap-start-scale));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-icon-swap .t-icon {
+    transition: none !important;
+  }
+}
+
 .dark,
 :root[data-theme='dark'] {
   color-scheme: dark;
+  --control-highlight: inset 0 1px rgb(255 255 255 / 42%);
+  --subtle-primary-action-shadow:
+    inset 0 1px rgb(255 255 255 / 20%),
+    0 2px 5px color-mix(in oklch, var(--shadow-color) 18%, transparent);
+  --sidebar-tile-highlight: none;
   --background: oklch(0.148 0.004 228.8);
   --foreground: oklch(0.987 0.002 197.1);
   --card: oklch(0.218 0.008 223.9);
@@ -153,6 +218,11 @@
   --sidebar-accent-foreground: oklch(0.987 0.002 197.1);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.56 0.021 213.5);
+  --sidebar-overlay: oklch(1 0 0 / 5%);
+  --sidebar-overlay-hover: oklch(1 0 0 / 8%);
+  --sidebar-overlay-active: oklch(1 0 0 / 12%);
+  --sidebar-overlay-border: oklch(1 0 0 / 10%);
+  --search-field-background: oklch(0 0 0 / 22%);
   --native-window-material: color-mix(in oklch, var(--background) 72%, transparent);
   --native-material-shadow:
     0 1px 0 color-mix(in oklch, var(--shadow-color) 18%, transparent) inset,
@@ -272,7 +342,9 @@ button svg {
 .button.primary {
   color: var(--primary-foreground);
   background: var(--primary);
-  box-shadow: 0 2px 5px color-mix(in oklch, var(--shadow-color) 18%, transparent);
+  box-shadow:
+    var(--control-highlight),
+    0 2px 5px color-mix(in oklch, var(--shadow-color) 18%, transparent);
 }
 
 .button.primary:hover:not(:disabled) {
@@ -283,6 +355,7 @@ button svg {
   color: var(--text);
   border-color: var(--border);
   background: var(--secondary);
+  box-shadow: var(--control-highlight);
 }
 
 .button.secondary:hover:not(:disabled) {
@@ -294,10 +367,12 @@ button svg {
 }
 .button.ghost:hover:not(:disabled) {
   background: var(--panel-muted);
+  box-shadow: var(--control-highlight);
 }
 .button.danger {
   color: var(--destructive-foreground);
   background: var(--danger);
+  box-shadow: var(--control-highlight);
 }
 .button.danger:hover:not(:disabled) {
   background: color-mix(in oklch, var(--destructive) 88%, black);
@@ -325,6 +400,7 @@ button svg {
   border-radius: 9px;
   color: var(--muted-foreground);
   background: var(--card);
+  box-shadow: var(--control-highlight);
 }
 
 .icon-button:hover:not(:disabled) {
@@ -334,6 +410,10 @@ button svg {
 .icon-button.subtle {
   border-color: transparent;
   background: transparent;
+  box-shadow: none;
+}
+.icon-button.subtle:hover:not(:disabled) {
+  box-shadow: var(--control-highlight);
 }
 
 /* Authentication */
@@ -515,13 +595,12 @@ button svg {
 .sidebar-nav {
   display: grid;
   gap: 3px;
-  padding: 13px 10px 8px;
+  padding: 4px 10px;
 }
 .folder-section {
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
-  padding: 12px 9px;
 }
 .folder-section.category-section {
   padding-top: 0;
@@ -537,7 +616,7 @@ button svg {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 6px 8px 9px;
+  padding: 0 6px 4px 9px;
 }
 .folder-section h2 {
   margin: 0;
@@ -551,8 +630,9 @@ button svg {
   color: var(--muted-foreground);
 }
 .folder-section .icon-button:hover {
-  color: var(--sidebar-accent-foreground);
-  background: var(--sidebar-accent);
+  color: var(--sidebar-foreground);
+  background: var(--sidebar-overlay-hover);
+  box-shadow: var(--control-highlight);
 }
 .folder-list {
   padding: 0;
@@ -572,15 +652,16 @@ button svg {
 }
 .folder-row:hover,
 .folder-row.selected {
-  color: var(--sidebar-accent-foreground);
-  background: var(--sidebar-accent);
+  color: var(--sidebar-foreground);
+  background: var(--sidebar-overlay-hover);
 }
 .folder-row.selected {
-  background: color-mix(in oklch, var(--sidebar-primary) 16%, transparent);
+  background: var(--sidebar-overlay-active);
+  box-shadow: none;
 }
 .folder-row.drop-target {
-  color: var(--sidebar-accent-foreground);
-  background: color-mix(in oklch, var(--sidebar-primary) 35%, transparent);
+  color: var(--sidebar-foreground);
+  background: var(--sidebar-overlay-active);
   box-shadow: inset 0 0 0 1px var(--sidebar-primary);
 }
 .folder-row.dragging {
@@ -596,6 +677,7 @@ button svg {
   border: 0;
   color: transparent;
   background: transparent;
+  box-shadow: none;
 }
 .folder-row:hover .folder-drag-handle,
 .folder-row:hover .folder-more,
@@ -657,9 +739,11 @@ button svg {
   border-radius: 9px;
   color: var(--sidebar-foreground);
 }
-.sidebar-account-trigger:hover,
+.sidebar-account-trigger:hover {
+  background: var(--sidebar-overlay-hover);
+}
 .sidebar-account-trigger[data-popup-open] {
-  background: var(--sidebar-accent);
+  background: var(--sidebar-overlay-active);
 }
 .sidebar-account-avatar {
   display: grid;
@@ -797,7 +881,7 @@ button svg {
   border: 1px solid var(--border);
   border-radius: 9px;
   color: var(--muted-foreground);
-  background: var(--panel-muted);
+  background: var(--search-field-background);
 }
 .search-field:focus-within {
   border-color: var(--focus);
@@ -882,6 +966,7 @@ button svg {
   border-radius: 9px;
   color: var(--muted-foreground);
   background: var(--card);
+  box-shadow: var(--control-highlight);
 }
 .sort-control select {
   border: 0;
@@ -1175,8 +1260,7 @@ button svg {
 :root[data-theme='dark'] .icon-button:not(.subtle) {
   background: var(--panel);
 }
-:root[data-theme='dark'] .titlebar,
-:root[data-theme='dark'] .search-field {
+:root[data-theme='dark'] .titlebar {
   background: var(--card);
 }
 
@@ -1192,7 +1276,6 @@ button svg {
   position: relative;
   display: grid;
   min-height: 58px;
-  grid-template-columns: minmax(0, 1fr) 32px;
   align-items: center;
   border: 1px solid transparent;
   border-radius: 10px;
@@ -1229,7 +1312,6 @@ button svg {
   grid-template-columns: 36px minmax(0, 1fr);
   gap: 9px;
   align-items: center;
-  padding: 0 4px;
   border: 0;
   background: transparent;
   text-align: left;
@@ -1536,13 +1618,22 @@ button svg {
   color: var(--muted-foreground);
   font-size: 11px;
 }
-.detail-field > strong {
+.detail-field > strong,
+.detail-field-copy-value > strong {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
   font-weight: 590;
+}
+.detail-field-copy-value {
+  width: calc(100% + 8px);
+  min-width: 0;
+  margin-left: -8px;
+  justify-content: flex-start;
+  overflow: hidden;
+  padding-inline: 8px;
 }
 .detail-field > :nth-child(3):last-child {
   grid-column: -2;
@@ -1783,20 +1874,15 @@ button svg {
   color: var(--muted-foreground);
   font-size: 10px;
 }
-.editor-actions,
-.list-action-bar {
+.editor-actions {
   display: flex;
   min-height: 64px;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  padding: 10px 20px;
+  padding: 4px 20px;
   border-top: 1px solid var(--border);
   background: var(--panel-muted);
-}
-.list-action-bar {
-  flex: none;
-  flex-wrap: wrap;
 }
 
 /* Dialogs and feedback */
@@ -2085,7 +2171,7 @@ button svg {
 .sync-connection-details > div {
   display: grid;
   min-width: 0;
-  grid-template-columns: 20px 76px minmax(0, 1fr);
+  grid-template-columns: 16px 76px minmax(0, 1fr);
   gap: 6px;
   align-items: center;
   padding: 10px;
@@ -2283,7 +2369,9 @@ button svg {
   border-color: var(--border);
   border-radius: 10px;
   background: color-mix(in oklch, var(--card) 32%, transparent);
-  box-shadow: 0 1px 2px color-mix(in oklch, var(--shadow-color) 12%, transparent);
+  box-shadow:
+    var(--control-highlight),
+    0 1px 2px color-mix(in oklch, var(--shadow-color) 12%, transparent);
 }
 .workspace {
   grid-template-columns: 260px minmax(0, 1fr);
@@ -2316,11 +2404,11 @@ button svg {
 }
 .folder-row:hover {
   color: var(--text);
-  background: var(--sidebar-accent);
+  background: var(--sidebar-overlay-hover);
 }
 .folder-row.selected {
   color: var(--text);
-  background: color-mix(in oklch, var(--sidebar-primary) 12%, transparent);
+  background: var(--sidebar-overlay-active);
   box-shadow: none;
 }
 .folder-row {
@@ -2335,11 +2423,12 @@ button svg {
 }
 .folder-section .icon-button:hover {
   color: var(--text);
-  background: var(--sidebar-accent);
+  background: var(--sidebar-overlay-hover);
+  box-shadow: var(--control-highlight);
 }
 .folder-row.drop-target {
   color: var(--text);
-  background: color-mix(in oklch, var(--sidebar-primary) 18%, transparent);
+  background: var(--sidebar-overlay-active);
   box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--sidebar-primary) 55%, transparent);
 }
 .sidebar-footer {
@@ -2379,12 +2468,13 @@ button svg {
   padding-left: 6px;
   border: 0;
   background: transparent;
+  box-shadow: none;
 }
 .search-field {
   height: 38px;
   border-color: var(--input);
   border-radius: 11px;
-  background: var(--accent);
+  background: var(--search-field-background);
   box-shadow: inset 0 1px 2px color-mix(in oklch, var(--shadow-color) 3%, transparent);
 }
 .result-summary {
@@ -2416,7 +2506,7 @@ button svg {
   margin: 0 0 14px;
 }
 .item-group > h2 {
-  padding: 7px 4px 6px;
+  padding: 7px 4px 6px 13px;
   margin: 0;
   color: var(--muted-foreground);
   font-size: 11px;
@@ -2429,7 +2519,6 @@ button svg {
 }
 .item-row {
   min-height: 66px;
-  grid-template-columns: minmax(0, 1fr) 32px;
   border: 0;
   border-bottom: 1px solid var(--border);
   border-radius: 0;
@@ -2473,7 +2562,6 @@ button svg {
   height: 65px;
   grid-template-columns: 42px minmax(0, 1fr);
   gap: 11px;
-  padding: 0 9px 0 7px;
 }
 .item-icon {
   width: 40px;
@@ -2585,7 +2673,6 @@ button svg {
 }
 :root[data-theme='dark'] .search-field {
   border-color: var(--input);
-  background: var(--accent);
   box-shadow: inset 0 1px 2px color-mix(in oklch, var(--shadow-color) 18%, transparent);
 }
 :root[data-theme='dark'] .item-row {
@@ -2668,6 +2755,9 @@ body:has(.platform-windows) {
 }
 
 @media (prefers-reduced-transparency: reduce) {
+  .search-field {
+    background: var(--card);
+  }
   body:has(.platform-macos),
   body:has(.platform-windows) {
     background: var(--background);
@@ -2919,7 +3009,8 @@ body:has(.platform-windows) {
   .detail-field > span {
     grid-column: 1 / -1;
   }
-  .detail-field > strong {
+  .detail-field > strong,
+  .detail-field > .detail-field-copy-value {
     grid-column: 1;
   }
   .detail-field:not(.password-field):not(.multi-action) {

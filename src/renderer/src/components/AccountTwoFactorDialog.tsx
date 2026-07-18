@@ -32,6 +32,7 @@ import {
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@renderer/components/ui/field'
 import { Input } from '@renderer/components/ui/input'
 import { Spinner } from '@renderer/components/ui/spinner'
+import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
 import {
   canEnrollWebAuthnKey,
   canRemoveWebAuthnKey,
@@ -43,6 +44,7 @@ import {
   webAuthnActionError,
   webAuthnKeyPresentation
 } from './account-webauthn-ui'
+import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 
 const providerNames: Record<number, string> = {
   0: '驗證器應用程式',
@@ -138,6 +140,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const { copiedKey, clearCopied, showCopied } = useCopyFeedback()
 
   async function load(): Promise<void> {
     setBusy(true)
@@ -179,6 +182,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
     setWebAuthnSuccess('')
     setError('')
     setSuccess('')
+    clearCopied()
     if (next) void load()
   }
 
@@ -266,10 +270,12 @@ function AccountTwoFactorDialog(): React.JSX.Element {
     if (!authenticatorSetup) return
     setBusy(true)
     setError('')
+    clearCopied()
     try {
       await window.bearwarden.accountSecurity.copyAuthenticatorKey({
         sessionId: authenticatorSetup.sessionId
       })
+      showCopied('authenticator-key')
       setSuccess('設定金鑰已複製，剪貼簿最晚 30 秒後清除。')
     } catch {
       setAuthenticatorSetup(null)
@@ -457,9 +463,11 @@ function AccountTwoFactorDialog(): React.JSX.Element {
     setBusy(true)
     setError('')
     setSuccess('')
+    clearCopied()
     try {
       await window.bearwarden.accountSecurity.copyRecoveryCode({ masterPassword })
       setMasterPassword('')
+      showCopied('recovery-code')
       setSuccess('Recovery Code 已複製，剪貼簿最晚 30 秒後清除。')
     } catch (copyError) {
       setMasterPassword('')
@@ -722,10 +730,12 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                       variant="outline"
                       type="button"
                       disabled={busy}
-                      aria-label="複製設定金鑰"
+                      aria-label={
+                        copiedKey === 'authenticator-key' ? '設定金鑰已複製' : '複製設定金鑰'
+                      }
                       onClick={() => void copyAuthenticatorKey()}
                     >
-                      <Copy aria-hidden="true" />
+                      <CopyFeedbackIcon copied={copiedKey === 'authenticator-key'} />
                     </Button>
                   </div>
                   <FieldDescription>金鑰只會在這個短期設定工作階段顯示。</FieldDescription>
@@ -1003,7 +1013,11 @@ function AccountTwoFactorDialog(): React.JSX.Element {
               {busy ? (
                 <Spinner data-icon="inline-start" aria-hidden="true" />
               ) : (
-                <Copy data-icon="inline-start" aria-hidden="true" />
+                <CopyFeedbackIcon
+                  copied={copiedKey === 'recovery-code'}
+                  idleIcon={Copy}
+                  placement="inline-start"
+                />
               )}
               複製 Recovery Code
             </Button>

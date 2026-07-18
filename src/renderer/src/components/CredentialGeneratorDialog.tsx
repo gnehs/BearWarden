@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Clipboard, History, ShieldAlert, Sparkles, Trash2 } from 'lucide-react'
+import { History, ShieldAlert, Sparkles, Trash2 } from 'lucide-react'
 import type {
   CredentialGeneratorRequest,
   CredentialGeneratorResult,
@@ -26,7 +26,9 @@ import { Input } from '@renderer/components/ui/input'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
 import { ToggleGroup, ToggleGroupItem } from '@renderer/components/ui/toggle-group'
+import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
 import { Modal } from './Dialogs'
+import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 
 type GeneratorTab = 'password' | 'username' | 'history'
 type PasswordAlgorithm = 'password' | 'passphrase'
@@ -58,6 +60,12 @@ function historyLocator(entry: GeneratorHistoryEntry, index: number): GeneratorH
     category: entry.category,
     ...(entry.algorithm === undefined ? {} : { algorithm: entry.algorithm })
   }
+}
+
+function copyFeedbackKey(locator: GeneratorHistoryLocator): string {
+  return [locator.category, locator.algorithm ?? '', locator.generationDate, locator.index].join(
+    ':'
+  )
 }
 
 function NumberField({
@@ -160,6 +168,7 @@ export default function CredentialGeneratorDialog({
   const [usernameIncludeNumber, setUsernameIncludeNumber] = useState(false)
   const [email, setEmail] = useState('')
   const [domain, setDomain] = useState('')
+  const { copiedKey, clearCopied, showCopied } = useCopyFeedback()
 
   useEffect(() => {
     mountedRef.current = true
@@ -178,6 +187,7 @@ export default function CredentialGeneratorDialog({
     setDomain('')
     setError('')
     setBusy(false)
+    clearCopied()
   }
 
   async function loadHistory(): Promise<void> {
@@ -259,10 +269,15 @@ export default function CredentialGeneratorDialog({
 
   async function copy(locator: GeneratorHistoryLocator): Promise<void> {
     const generation = ++requestGenerationRef.current
+    const feedbackKey = copyFeedbackKey(locator)
     setBusy(true)
     setError('')
+    clearCopied()
     try {
       await onCopyHistory(locator)
+      if (mountedRef.current && requestGenerationRef.current === generation) {
+        showCopied(feedbackKey)
+      }
     } catch {
       if (mountedRef.current && requestGenerationRef.current === generation) {
         setError('無法複製；這筆歷史可能已變更。')
@@ -605,11 +620,17 @@ export default function CredentialGeneratorDialog({
                             type="button"
                             variant="ghost"
                             size="icon-sm"
-                            aria-label="複製這筆歷史"
+                            aria-label={
+                              copiedKey === copyFeedbackKey(historyLocator(entry, index))
+                                ? '這筆歷史已複製'
+                                : '複製這筆歷史'
+                            }
                             disabled={busy}
                             onClick={() => void copy(historyLocator(entry, index))}
                           >
-                            <Clipboard />
+                            <CopyFeedbackIcon
+                              copied={copiedKey === copyFeedbackKey(historyLocator(entry, index))}
+                            />
                           </Button>
                         </li>
                       ))}
@@ -645,10 +666,18 @@ export default function CredentialGeneratorDialog({
                     type="button"
                     variant="outline"
                     disabled={busy}
+                    aria-label={
+                      copiedKey === copyFeedbackKey(result.historyLocator)
+                        ? '產生結果已複製'
+                        : '複製產生結果'
+                    }
                     onClick={() => void copy(result.historyLocator)}
                   >
-                    <Clipboard data-icon="inline-start" />
-                    複製
+                    <CopyFeedbackIcon
+                      copied={copiedKey === copyFeedbackKey(result.historyLocator)}
+                      placement="inline-start"
+                    />
+                    {copiedKey === copyFeedbackKey(result.historyLocator) ? '已複製' : '複製'}
                   </Button>
                   {onUseCredential &&
                     (!useCategories || useCategories.includes(result.category)) && (
