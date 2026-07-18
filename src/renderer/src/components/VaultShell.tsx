@@ -79,6 +79,7 @@ import type {
   LoginSummary,
   LoginView,
   LoginAuthorization,
+  PasswordHistoryEntryRequest,
   SyncStatus,
   TotpCodeView,
   VaultCopyField,
@@ -1482,7 +1483,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     [withReprompt]
   )
 
-  const revealPasswordHistory = useCallback(async () => {
+  const loadPasswordHistory = useCallback(async () => {
     const summary = selectedSummary
     if (!summary || summary.passwordHistoryCount === 0) throw new Error('INVALID_INPUT')
     const itemId = summary.id
@@ -1497,19 +1498,64 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     )
   }, [selectedSummary, withReprompt])
 
+  const revealPasswordHistory = useCallback(
+    async (
+      locator: Omit<PasswordHistoryEntryRequest, 'id' | 'authorizationToken'>
+    ): Promise<string> => {
+      const summary = selectedSummary
+      if (!summary) throw new Error('INVALID_INPUT')
+      const itemId = summary.id
+      return withReprompt(
+        [itemId],
+        (tokenFor) =>
+          window.bearwarden.logins.revealPasswordHistory({
+            id: itemId,
+            ...locator,
+            ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+          }),
+        true
+      )
+    },
+    [selectedSummary, withReprompt]
+  )
+
+  const copyPasswordHistory = useCallback(
+    async (
+      locator: Omit<PasswordHistoryEntryRequest, 'id' | 'authorizationToken'>
+    ): Promise<void> => {
+      const summary = selectedSummary
+      if (!summary) throw new Error('INVALID_INPUT')
+      const itemId = summary.id
+      await withReprompt(
+        [itemId],
+        (tokenFor) =>
+          window.bearwarden.logins.copyPasswordHistory({
+            id: itemId,
+            ...locator,
+            ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+          }),
+        true
+      )
+      announce('歷史密碼已複製，剪貼簿會依安全設定自動清除。')
+    },
+    [selectedSummary, withReprompt]
+  )
+
   const restorePasswordHistory = useCallback(
-    async (index: number, lastUsedDate: string): Promise<void> => {
-      const login = selectedLogin
-      if (!login || login.deletedAt || login.type !== 'login') throw new Error('INVALID_INPUT')
-      const itemId = login.id
+    async (
+      locator: Omit<PasswordHistoryEntryRequest, 'id' | 'authorizationToken'>
+    ): Promise<void> => {
+      const summary = selectedSummary
+      if (!summary || summary.deletedAt || summary.type !== 'login') {
+        throw new Error('INVALID_INPUT')
+      }
+      const itemId = summary.id
       let operationAuthorizationToken: string | undefined
       const updated = await withReprompt([itemId], (tokenFor) => {
         operationAuthorizationToken = tokenFor(itemId)
         return window.bearwarden.logins.restorePasswordHistory({
           id: itemId,
-          index,
-          lastUsedDate,
-          expectedUpdatedAt: login.updatedAt,
+          ...locator,
           ...(operationAuthorizationToken
             ? { authorizationToken: operationAuthorizationToken }
             : {})
@@ -1524,7 +1570,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       setSelectedLogin(canRetainDetail ? updated : null)
       toast.success('已套用歷史密碼。')
     },
-    [selectedLogin, withReprompt]
+    [selectedSummary, withReprompt]
   )
 
   const refreshItems = useCallback(async (): Promise<void> => {
@@ -5052,7 +5098,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             itemName={selectedSummary.name}
             count={selectedSummary.passwordHistoryCount}
             onClose={() => setPasswordHistoryDialogOpen(false)}
+            onLoad={loadPasswordHistory}
             onReveal={revealPasswordHistory}
+            onCopy={copyPasswordHistory}
             {...(selectedSummary.deletedAt || selectedSummary.type !== 'login'
               ? {}
               : { onRestore: restorePasswordHistory })}

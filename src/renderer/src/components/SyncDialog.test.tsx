@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { PendingImportWarning } from './PendingImportWarning'
 import { buildSyncTwoFactorRequest, WEB_AUTHN_TWO_FACTOR_METHOD } from './sync-two-factor-request'
 import {
+  accountProfileStateForStatus,
   accountProfileIdentity,
   applyAccountProfileIfCurrent,
   SyncFailureAlert,
@@ -43,6 +44,56 @@ describe('SyncDialog error diagnostics', () => {
 })
 
 describe('SyncDialog account profile identity gate', () => {
+  it('keeps the loaded profile mounted while the same account is syncing', () => {
+    const identity = accountProfileIdentity(
+      'https://vault.example.invalid',
+      'profile@example.invalid'
+    )
+    const profile = {
+      name: 'Profile',
+      email: 'profile@example.invalid',
+      avatarColor: null,
+      emailVerified: true,
+      twoFactorEnabled: false
+    }
+    const loadedState = { owner: identity, profile }
+
+    expect(accountProfileStateForStatus(loadedState, identity, 'syncing')).toBe(loadedState)
+    expect(accountProfileStateForStatus(loadedState, identity, 'ready')).toBe(loadedState)
+    expect(accountProfileStateForStatus(loadedState, identity, 'locked')).toEqual({
+      owner: identity,
+      profile: null
+    })
+  })
+
+  it('clears a stale profile when the account identity changes during sync', () => {
+    const oldIdentity = accountProfileIdentity(
+      'https://vault.example.invalid',
+      'old@example.invalid'
+    )
+    const newIdentity = accountProfileIdentity(
+      'https://vault.example.invalid',
+      'new@example.invalid'
+    )
+
+    expect(
+      accountProfileStateForStatus(
+        {
+          owner: oldIdentity,
+          profile: {
+            name: 'Old account',
+            email: 'old@example.invalid',
+            avatarColor: null,
+            emailVerified: true,
+            twoFactorEnabled: false
+          }
+        },
+        newIdentity,
+        'syncing'
+      )
+    ).toEqual({ owner: newIdentity, profile: null })
+  })
+
   it('rejects an old mutation completion after the new account profile has loaded', () => {
     const oldIdentity = accountProfileIdentity(
       'https://vault.example.invalid',

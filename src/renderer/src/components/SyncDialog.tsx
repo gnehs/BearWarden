@@ -100,6 +100,18 @@ interface AccountProfileState {
   profile: AccountSecurityProfile | null
 }
 
+// Keep the current account card mounted while a sync refresh is in flight.
+// eslint-disable-next-line react-refresh/only-export-components
+export function accountProfileStateForStatus(
+  current: AccountProfileState,
+  identity: string,
+  state: SyncStatus['state']
+): AccountProfileState {
+  if (current.owner !== identity) return { owner: identity, profile: null }
+  if (state === 'ready' || state === 'syncing') return current
+  return { owner: identity, profile: null }
+}
+
 // eslint-disable-next-line react-refresh/only-export-components
 export function applyAccountProfileIfCurrent(
   current: AccountProfileState,
@@ -300,7 +312,9 @@ function SyncDialog({
     let active = true
     void Promise.resolve().then(async () => {
       if (!active) return
-      setAccountProfileState({ owner: currentAccountProfileIdentity, profile: null })
+      setAccountProfileState((current) =>
+        accountProfileStateForStatus(current, currentAccountProfileIdentity, status.state)
+      )
       setAccountSecurityError('')
       if (status.state !== 'ready') {
         setAccountSecurityBusy(false)

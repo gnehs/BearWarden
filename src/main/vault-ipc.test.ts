@@ -1651,7 +1651,7 @@ describe('registerVaultIpc reprompt gate', () => {
         requireAttachmentAuthorization(request, validate)
         return 'data:image/png;base64,aWNvbg=='
       }),
-      getPasswordHistory: vi.fn(
+      getPasswordHistoryView: vi.fn(
         async (
           request: { id: string },
           validate?: (ids: readonly string[], state: { generation: number }) => boolean
@@ -1662,9 +1662,29 @@ describe('registerVaultIpc reprompt gate', () => {
           ) {
             throw new VaultError('REPROMPT_REQUIRED')
           }
-          return [{ password: 'old-secret', lastUsedDate: '2026-07-14T00:00:00.000Z' }]
+          return {
+            expectedUpdatedAt: '2026-07-16T00:00:00.000Z',
+            entries: [{ lastUsedDate: '2026-07-14T00:00:00.000Z' }]
+          }
         }
       ),
+      revealPasswordHistory: vi.fn(async (request, validate) => {
+        if (
+          (authorizationState.reprompt === 1 || authorizationState.deleted) &&
+          !validate?.([request.id], authorizationState)
+        ) {
+          throw new VaultError('REPROMPT_REQUIRED')
+        }
+        return 'old-secret'
+      }),
+      copyPasswordHistory: vi.fn(async (request, validate) => {
+        if (
+          (authorizationState.reprompt === 1 || authorizationState.deleted) &&
+          !validate?.([request.id], authorizationState)
+        ) {
+          throw new VaultError('REPROMPT_REQUIRED')
+        }
+      }),
       restorePasswordHistory: vi.fn(async () => ({ id: 'item-a' })),
       downloadAttachment: vi.fn(async (request, _report, validate) => {
         requireAttachmentAuthorization(request, validate)
@@ -3018,7 +3038,10 @@ describe('registerVaultIpc reprompt gate', () => {
     const handler = electronMock.handlers.get(IPC_CHANNELS.loginGetPasswordHistory)!
 
     await expect(handler(event, { id: 'item-a' })).rejects.toThrow('BEARWARDEN:REPROMPT_REQUIRED')
-    expect(vault.getPasswordHistory).toHaveBeenCalledWith({ id: 'item-a' }, expect.any(Function))
+    expect(vault.getPasswordHistoryView).toHaveBeenCalledWith(
+      { id: 'item-a' },
+      expect.any(Function)
+    )
 
     const authorization = (await electronMock.handlers.get(IPC_CHANNELS.loginAuthorize)!(event, {
       id: 'item-a',
@@ -3026,7 +3049,10 @@ describe('registerVaultIpc reprompt gate', () => {
     })) as { token: string }
     await expect(
       handler(event, { id: 'item-a', authorizationToken: authorization.token })
-    ).resolves.toEqual([{ password: 'old-secret', lastUsedDate: '2026-07-14T00:00:00.000Z' }])
+    ).resolves.toEqual({
+      expectedUpdatedAt: '2026-07-16T00:00:00.000Z',
+      entries: [{ lastUsedDate: '2026-07-14T00:00:00.000Z' }]
+    })
   })
 
   it.each([
@@ -3225,16 +3251,23 @@ describe('registerVaultIpc reprompt gate', () => {
     await expect(getHistory(event, { id: 'item-a', future: true })).rejects.toThrow(
       'BEARWARDEN:INVALID_INPUT'
     )
-    vault.getPasswordHistory.mockRejectedValueOnce(new VaultError('INVALID_INPUT'))
+    vault.getPasswordHistoryView.mockRejectedValueOnce(new VaultError('INVALID_INPUT'))
     await expect(getHistory(event, { id: 'item-a' })).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
 
-    const restore = electronMock.handlers.get(IPC_CHANNELS.loginRestorePasswordHistory)!
     const request = {
       id: 'item-a',
       index: 0,
       lastUsedDate: '2026-07-14T00:00:00.000Z',
       expectedUpdatedAt: '2026-07-16T00:00:00.000Z'
     }
+    const reveal = electronMock.handlers.get(IPC_CHANNELS.loginRevealPasswordHistory)!
+    const copy = electronMock.handlers.get(IPC_CHANNELS.loginCopyPasswordHistory)!
+    await expect(reveal(event, request)).resolves.toBe('old-secret')
+    await expect(copy(event, request)).resolves.toBeUndefined()
+    expect(vault.revealPasswordHistory).toHaveBeenCalledWith(request, expect.any(Function))
+    expect(vault.copyPasswordHistory).toHaveBeenCalledWith(request, expect.any(Function))
+
+    const restore = electronMock.handlers.get(IPC_CHANNELS.loginRestorePasswordHistory)!
     await expect(restore(event, request)).resolves.toEqual({ id: 'item-a' })
     expect(vault.restorePasswordHistory).toHaveBeenCalledWith(request)
     for (const invalid of [
@@ -3244,6 +3277,8 @@ describe('registerVaultIpc reprompt gate', () => {
       { ...request, expectedUpdatedAt: 'not-a-date' },
       { ...request, password: 'renderer-secret' }
     ]) {
+      await expect(reveal(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+      await expect(copy(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
       await expect(restore(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
   })

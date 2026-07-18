@@ -139,6 +139,32 @@ describe('preload visible detail prefetch API', () => {
   })
 })
 
+describe('preload password history API', () => {
+  it('forwards only narrow metadata, reveal, copy, and restore requests', async () => {
+    electronMock.invoke.mockClear()
+    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
+    const id = '10000000-0000-4000-8000-000000000001'
+    const locator = {
+      id,
+      index: 0,
+      lastUsedDate: '2026-07-14T00:00:00.000Z',
+      expectedUpdatedAt: '2026-07-16T00:00:00.000Z'
+    }
+
+    await api.logins.getPasswordHistory({ id })
+    await api.logins.revealPasswordHistory(locator)
+    await api.logins.copyPasswordHistory(locator)
+    await api.logins.restorePasswordHistory(locator)
+
+    expect(electronMock.invoke.mock.calls).toEqual([
+      [IPC_CHANNELS.loginGetPasswordHistory, { id }],
+      [IPC_CHANNELS.loginRevealPasswordHistory, locator],
+      [IPC_CHANNELS.loginCopyPasswordHistory, locator],
+      [IPC_CHANNELS.loginRestorePasswordHistory, locator]
+    ])
+  })
+})
+
 describe('preload portability API', () => {
   it('forwards only the passwordless Bitwarden CSV request object', async () => {
     electronMock.invoke.mockClear()
