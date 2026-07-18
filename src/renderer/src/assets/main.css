@@ -2428,6 +2428,9 @@ button svg {
   margin: 0;
   list-style: none;
 }
+.virtualized-item-row-list:has(.item-row-main:focus-visible) {
+  z-index: 1;
+}
 .item-group {
   padding: 0;
   margin: 0 0 14px;
