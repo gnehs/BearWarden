@@ -4856,6 +4856,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                       className="detail-card totp-card gap-0 py-0"
                       role="region"
                       aria-labelledby="totp-title"
+                      aria-busy={!totpCode && totpGenerationError === null}
                     >
                       <CardHeader className="bg-muted rounded-none border-b">
                         <CardTitle id="totp-title">一次性驗證碼</CardTitle>
@@ -4864,21 +4865,26 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                             '密鑰格式不受支援'
                           ) : totpCode ? (
                             <NumberFlow
+                              className="tabular-nums"
                               value={totpCode.remainingSeconds}
                               suffix=" 秒後更新"
                               trend={-1}
                             />
                           ) : (
-                            '產生中…'
+                            <>
+                              <Skeleton className="h-3 w-20" aria-hidden="true" />
+                              <span className="sr-only">產生中…</span>
+                            </>
                           )}
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="contents">
                         <div className="totp-value">
-                          <strong>
-                            {totpCode ? (
-                              /^\d+$/.test(totpCode.code) ? (
+                          {totpCode ? (
+                            <strong>
+                              {/^\d+$/.test(totpCode.code) ? (
                                 <NumberFlow
+                                  className="tabular-nums"
                                   value={Number(totpCode.code)}
                                   format={{
                                     useGrouping: false,
@@ -4888,11 +4894,13 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                                 />
                               ) : (
                                 totpCode.code
-                              )
-                            ) : (
-                              '—'
-                            )}
-                          </strong>
+                              )}
+                            </strong>
+                          ) : totpGenerationError ? (
+                            <strong>—</strong>
+                          ) : (
+                            <Skeleton className="h-8 w-36" aria-hidden="true" />
+                          )}
                           <TooltipIconButton
                             variant="outline"
                             size="icon"
@@ -4905,14 +4913,17 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                             <Copy />
                           </TooltipIconButton>
                         </div>
-                        {!totpGenerationError && totpCode && (
-                          <Progress
-                            key={totpCodeState?.cycle}
-                            aria-label="驗證碼剩餘時間"
-                            max={totpCode.period}
-                            value={totpCode.remainingSeconds}
-                          />
-                        )}
+                        {!totpGenerationError &&
+                          (totpCode ? (
+                            <Progress
+                              key={totpCodeState?.cycle}
+                              aria-label="驗證碼剩餘時間"
+                              max={totpCode.period}
+                              value={totpCode.remainingSeconds}
+                            />
+                          ) : (
+                            <Skeleton className="totp-progress-skeleton h-1" aria-hidden="true" />
+                          ))}
                       </CardContent>
                     </Card>
                   )}

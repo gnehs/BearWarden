@@ -1542,7 +1542,8 @@ button svg {
   font-size: 25px;
   letter-spacing: 0.18em;
 }
-.totp-card [data-slot='progress'] {
+.totp-card [data-slot='progress'],
+.totp-progress-skeleton {
   display: block;
   width: calc(100% - 30px);
   margin: 0 15px 15px;
@@ -1554,6 +1555,9 @@ button svg {
 @media (prefers-reduced-motion: reduce) {
   .totp-card [data-slot='progress-indicator'] {
     transition-duration: 0s;
+  }
+  .totp-card [data-slot='skeleton'] {
+    animation: none;
   }
 }
 .passkey-list {
