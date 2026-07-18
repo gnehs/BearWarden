@@ -1760,6 +1760,14 @@ button svg {
 }
 
 /* Dialogs and feedback */
+[data-slot='dialog-overlay']:has(+ [data-slot='dialog-content'][data-nested-dialog-open]),
+[data-slot='alert-dialog-overlay']:has(
+  + [data-slot='alert-dialog-content'][data-nested-dialog-open]
+) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
 .modal {
   width: min(calc(100% - 32px), 470px);
   max-width: min(calc(100% - 32px), 470px);
