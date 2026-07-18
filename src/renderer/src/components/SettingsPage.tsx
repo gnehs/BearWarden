@@ -84,6 +84,9 @@ const vaultTimeoutPresetMinutes = [1, 5, 15, 30, 60, 240] as const
 const maxVaultTimeoutMinutes = MAX_VAULT_TIMEOUT_MINUTES
 const maxVaultTimeoutHours = Math.floor(maxVaultTimeoutMinutes / 60)
 
+export const contentProtectionDescription =
+  '啟用後，Windows 遠端桌面、螢幕分享與錄影可能看不到 BearWarden 視窗。若只剩工作列圖示，請在本機工作階段關閉此選項。'
+
 // eslint-disable-next-line react-refresh/only-export-components
 export const settingsSections = [
   { id: 'general-settings-title', label: '一般' },
@@ -756,7 +759,7 @@ function SettingsPage({
                       <FieldContent>
                         <FieldLabel htmlFor="content-protection-switch">禁止螢幕截圖</FieldLabel>
                         <FieldDescription id="content-protection-description">
-                          要求系統避免擷取 BearWarden 視窗內容。
+                          {contentProtectionDescription}
                         </FieldDescription>
                       </FieldContent>
                       <Switch

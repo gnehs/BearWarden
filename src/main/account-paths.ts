@@ -99,7 +99,15 @@ export function createAccountPathLayout(userDataDirectory: string): AccountPathL
   }
 }
 
-export async function ensurePrivateDirectory(path: string): Promise<void> {
+export interface EnsurePrivateDirectoryOptions {
+  platform?: NodeJS.Platform
+  setDirectoryMode?: (handle: FileHandle, mode: number) => Promise<void>
+}
+
+export async function ensurePrivateDirectory(
+  path: string,
+  options: EnsurePrivateDirectoryOptions = {}
+): Promise<void> {
   try {
     const info = await lstat(path)
     if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('UNSAFE_DIRECTORY')
@@ -120,7 +128,15 @@ export async function ensurePrivateDirectory(path: string): Promise<void> {
   try {
     const info = await handle.stat()
     if (!info.isDirectory()) throw new Error('UNSAFE_DIRECTORY')
-    await handle.chmod(PRIVATE_DIRECTORY_MODE)
+    // Windows does not implement POSIX directory modes. In particular, Node's fchmod on an
+    // opened directory fails with EPERM and used to abort startup before the main window was
+    // created. Directory privacy on Windows is inherited from the user's app-data ACL.
+    if ((options.platform ?? process.platform) !== 'win32') {
+      await (options.setDirectoryMode ?? ((target, mode) => target.chmod(mode)))(
+        handle,
+        PRIVATE_DIRECTORY_MODE
+      )
+    }
   } finally {
     await handle.close().catch(() => undefined)
   }

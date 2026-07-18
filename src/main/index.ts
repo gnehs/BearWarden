@@ -394,7 +394,9 @@ function createWindow(): BrowserWindow {
     height: 760,
     minHeight: 600,
     minWidth: 800,
-    show: false,
+    // Development must stay visible even when Windows never emits ready-to-show. Production
+    // remains hidden until the renderer is ready to avoid a white startup flash.
+    show: is.dev,
     autoHideMenuBar: process.platform === 'darwin',
     ...(process.platform !== 'darwin' ? { icon } : {}),
     webPreferences: {
@@ -416,13 +418,22 @@ function createWindow(): BrowserWindow {
     trafficLightPosition: { x: 14, y: 20 }
   })
 
-  window.setContentProtection(contentProtectionEnabled)
+  // WDA_EXCLUDEFROMCAPTURE can make a window disappear entirely in captured or virtualized
+  // Windows development sessions. Keep the production protection while leaving dev inspectable.
+  window.setContentProtection(!is.dev && contentProtectionEnabled)
   sshAgentBridge?.attachWindow(window)
   passkeyRendererBridge?.attachWindow(window)
   window.webContents.on('did-start-loading', () => {
     rendererHandlesLockRequests = false
   })
-  window.on('ready-to-show', () => window.show())
+  const showWhenLoaded = (): void => {
+    if (!window.isDestroyed() && !window.isVisible()) window.show()
+  }
+  window.on('ready-to-show', showWhenLoaded)
+  // ready-to-show is not guaranteed to fire on every Windows graphics configuration. The
+  // renderer completing its main-frame load is a safe fallback that prevents a healthy dev
+  // window from remaining permanently hidden behind its taskbar icon.
+  window.webContents.on('did-finish-load', showWhenLoaded)
   window.on('close', requestSystemLock)
   window.on('closed', () => {
     // The connector deliberately has no relationship with the primary renderer. If its owner
@@ -744,7 +755,9 @@ if (hasSingleInstanceLock)
       {
         applyContentProtection: (enabled) => {
           contentProtectionEnabled = enabled
-          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setContentProtection(enabled)
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.setContentProtection(!is.dev && enabled)
+          }
         },
         applyClipboardTimeout: (seconds) => sensitiveClipboard.setClearDelay(seconds),
         applySshAgentSettings: (next) => {

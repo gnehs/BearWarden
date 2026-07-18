@@ -59,6 +59,10 @@ BearWarden 是一個以「快速找到、安心使用」為核心的桌面密碼
 
 Bitwarden 的 Password Manager SDK 目前不是公開穩定 API，因此本專案沒有把 `@bitwarden/sdk-napi`（Secrets Manager SDK）誤用為個人密碼庫資料層。
 
+### Windows 遠端桌面與畫面擷取保護
+
+「設定 → 安全性 → 禁止螢幕截圖」預設為關閉。啟用後，Windows 會把 BearWarden 視窗排除在螢幕擷取之外；使用遠端桌面、螢幕分享或錄影工具時，視窗可能完全不可見，只留下工作列圖示。若發生此情況，請回到本機 Windows 工作階段關閉此選項，再重新連線。開發模式固定停用這項保護，讓 `pnpm dev` 可透過遠端桌面正常除錯。
+
 ## SSH Agent
 
 在「設定 → SSH Agent」啟用後，BearWarden 會依 [Bitwarden SSH Agent 的使用模型](https://bitwarden.com/help/ssh-agent/)讓 OpenSSH 與 Git 使用密碼庫中的 SSH Key。Agent 在密碼庫鎖定時仍可回應；第一次解鎖前會要求開啟 BearWarden，之後可列出已快取的公開身分，但每次實際簽署仍必須解鎖。

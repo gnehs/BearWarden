@@ -50,7 +50,7 @@ export interface AppSettingsRuntime {
 function defaultSettings(): StoredSettings {
   return {
     version: SETTINGS_VERSION,
-    contentProtection: true,
+    contentProtection: false,
     showWebsiteIcons: true,
     startAtLogin: false,
     vaultTimeoutPolicy: { type: 'appInactivity', minutes: 15 },

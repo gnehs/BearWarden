@@ -116,7 +116,7 @@ describe('AppSettingsService', () => {
     const { service, runtime } = createService()
     await service.initialize()
     expect(await service.get()).toMatchObject({
-      contentProtection: true,
+      contentProtection: false,
       showWebsiteIcons: true,
       startAtLogin: false,
       startAtLoginAvailable: false,
@@ -132,7 +132,7 @@ describe('AppSettingsService', () => {
     })
 
     const updated = await service.update({
-      contentProtection: false,
+      contentProtection: true,
       showWebsiteIcons: false,
       vaultTimeoutPolicy: { type: 'onRestart' },
       clearClipboardSeconds: 60,
@@ -142,7 +142,7 @@ describe('AppSettingsService', () => {
       sshAgentPromptBehavior: 'rememberUntilLock'
     })
     expect(updated).toMatchObject({
-      contentProtection: false,
+      contentProtection: true,
       showWebsiteIcons: false,
       vaultTimeoutPolicy: { type: 'onRestart' },
       clearClipboardSeconds: 60,
@@ -151,7 +151,7 @@ describe('AppSettingsService', () => {
       sshAgentEnabled: true,
       sshAgentPromptBehavior: 'rememberUntilLock'
     })
-    expect(runtime.applyContentProtection).toHaveBeenLastCalledWith(false)
+    expect(runtime.applyContentProtection).toHaveBeenLastCalledWith(true)
     expect(runtime.applyClipboardTimeout).toHaveBeenLastCalledWith(60)
     expect(runtime.applySshAgentSettings).toHaveBeenLastCalledWith({
       enabled: true,
@@ -546,13 +546,13 @@ describe('AppSettingsService', () => {
     await service.initialize()
 
     await expect(
-      service.update({ contentProtection: false, clearClipboardSeconds: 120 })
+      service.update({ contentProtection: true, clearClipboardSeconds: 120 })
     ).rejects.toThrow()
     expect(await service.get()).toMatchObject({
-      contentProtection: true,
+      contentProtection: false,
       clearClipboardSeconds: 30
     })
-    expect(runtime.applyContentProtection).toHaveBeenLastCalledWith(true)
+    expect(runtime.applyContentProtection).toHaveBeenLastCalledWith(false)
     expect(runtime.applyClipboardTimeout).toHaveBeenLastCalledWith(30)
     expect(failedWrite).toHaveBeenCalledOnce()
     service.dispose()

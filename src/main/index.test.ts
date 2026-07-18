@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-empty-function -- Minimal Electron and service test doubles. */
 import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { join } from 'node:path'
 
 const harness = vi.hoisted(() => {
   const appListeners = new Map<string, (...args: never[]) => void>()
@@ -512,7 +513,7 @@ describe('main WebAuthn lifecycle wiring', () => {
         '/tmp/bearwarden-index-test/accounts/11111111-1111-4111-8111-111111111111/touch-id.bin'
     })
     expect(harness.twoFactorDirectoryPath).toBe(
-      '/tmp/bearwarden-index-test/cache/2fa-directory-totp-v4.json'
+      join('/tmp/bearwarden-index-test', 'cache', '2fa-directory-totp-v4.json')
     )
     expect(harness.registryStorePath).toBe('/tmp/bearwarden-index-test')
     expect(harness.bootstrapRegistryStore).toBe(harness.registryStore)

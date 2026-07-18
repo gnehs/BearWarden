@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   applyVaultTimeoutCustomFields,
+  contentProtectionDescription,
   settingsSections,
   settingsScrollspySection,
   vaultTimeoutCustomFields,
@@ -8,6 +9,14 @@ import {
   vaultTimeoutItems,
   vaultTimeoutSelectValue
 } from './SettingsPage'
+
+describe('content protection guidance', () => {
+  it('warns that enabling capture protection can hide the window in remote sessions', () => {
+    expect(contentProtectionDescription).toContain('Windows 遠端桌面')
+    expect(contentProtectionDescription).toContain('工作列圖示')
+    expect(contentProtectionDescription).toContain('關閉此選項')
+  })
+})
 
 describe('settings section scrollspy', () => {
   it('keeps navigation and content in the intended information hierarchy', () => {
