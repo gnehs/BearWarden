@@ -8,8 +8,6 @@ import {
   FolderInput,
   History,
   KeyRound,
-  RotateCcw,
-  ShieldCheck,
   X
 } from 'lucide-react'
 import type {
@@ -29,17 +27,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger
 } from '@renderer/components/ui/alert-dialog'
-import { Alert, AlertDescription } from '@renderer/components/ui/alert'
+import { Alert, AlertAction, AlertDescription } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle
-} from '@renderer/components/ui/card'
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@renderer/components/ui/card'
 import {
   Dialog,
   DialogClose,
@@ -50,6 +40,13 @@ import {
   DialogTitle
 } from '@renderer/components/ui/dialog'
 import { Field, FieldLabel } from '@renderer/components/ui/field'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle
+} from '@renderer/components/ui/empty'
 import { Input } from '@renderer/components/ui/input'
 import {
   Select,
@@ -474,7 +471,6 @@ interface PasswordHistoryDialogProps {
   onLoad: () => Promise<VaultPasswordHistoryView>
   onReveal: (locator: PasswordHistoryEntryLocator) => Promise<string>
   onCopy: (locator: PasswordHistoryEntryLocator) => Promise<void>
-  onRestore?: (locator: PasswordHistoryEntryLocator) => Promise<void>
 }
 
 function PasswordHistoryIconButton({
@@ -488,28 +484,14 @@ function PasswordHistoryIconButton({
   return (
     <Tooltip>
       <TooltipTrigger
-        render={<Button type="button" variant="ghost" size="icon-sm" aria-label={label} {...props} />}
+        render={
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={label} {...props} />
+        }
       >
         {children}
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
-  )
-}
-
-export function PasswordHistoryRestoreButton({
-  busy,
-  onRestore
-}: {
-  busy: boolean
-  onRestore?: () => void | Promise<void>
-}): React.JSX.Element | null {
-  if (!onRestore) return null
-  return (
-    <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onRestore}>
-      <RotateCcw data-icon="inline-start" aria-hidden="true" />
-      套用為目前密碼
-    </Button>
   )
 }
 
@@ -519,8 +501,7 @@ export function PasswordHistoryDialog({
   onClose,
   onLoad,
   onReveal,
-  onCopy,
-  onRestore
+  onCopy
 }: PasswordHistoryDialogProps): React.JSX.Element {
   const [history, setHistory] = useState<VaultPasswordHistoryView | null>(null)
   const [loading, setLoading] = useState(true)
@@ -528,7 +509,6 @@ export function PasswordHistoryDialog({
   const [revealing, setRevealing] = useState<Record<string, boolean>>({})
   const [copying, setCopying] = useState<Record<string, boolean>>({})
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
-  const [restoringKey, setRestoringKey] = useState<string | null>(null)
   const [error, setError] = useState('')
   const mountedRef = useRef(true)
   const loadRequestRef = useRef<Promise<VaultPasswordHistoryView> | null>(null)
@@ -572,11 +552,14 @@ export function PasswordHistoryDialog({
 
   useEffect(() => {
     mountedRef.current = true
-    loadHistory()
+    const revealTimers = revealTimersRef.current
+    queueMicrotask(() => {
+      if (mountedRef.current) loadHistory()
+    })
     return () => {
       mountedRef.current = false
-      for (const timer of revealTimersRef.current.values()) window.clearTimeout(timer)
-      revealTimersRef.current.clear()
+      for (const timer of revealTimers.values()) window.clearTimeout(timer)
+      revealTimers.clear()
       if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
     }
   }, [loadHistory])
@@ -664,23 +647,15 @@ export function PasswordHistoryDialog({
     <Modal
       title="密碼歷史"
       description={`「${itemName}」有 ${count} 筆歷史紀錄。`}
-      busy={restoringKey !== null}
       onClose={closeDialog}
     >
       <div className="modal-body flex flex-col gap-3">
-        <Alert>
-          <ShieldCheck aria-hidden="true" />
-          <AlertDescription>
-            密碼預設遮蔽；顯示後會在 30 秒自動隱藏，複製內容則依安全設定自動清除。
-          </AlertDescription>
-        </Alert>
         {loading && (
           <div className="flex flex-col gap-2" role="status" aria-label="正在載入密碼歷史">
             {Array.from({ length: Math.min(Math.max(count, 1), 5) }, (_, index) => (
               <Card key={index} size="sm">
                 <CardHeader>
                   <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-3 w-36" />
                 </CardHeader>
                 <CardContent>
                   <Skeleton className="h-9 w-full" />
@@ -690,20 +665,17 @@ export function PasswordHistoryDialog({
           </div>
         )}
         {!loading && history && history.entries.length > 0 && (
-          <ol className="flex max-h-[min(50vh,360px)] flex-col gap-2 overflow-y-auto pr-1">
+          <ol className="scroll-fade-y forced-colors:scroll-fade-none flex max-h-[min(50vh,360px)] flex-col gap-2 overflow-y-auto p-px pr-1">
             {history.entries.map((entry, index) => {
               const key = `${index}:${entry.lastUsedDate}`
               const revealedValue = revealedValues[key]
               const isRevealed = revealedValue !== undefined
-              const rowBusy = Boolean(revealing[key] || copying[key] || restoringKey === key)
+              const rowBusy = Boolean(revealing[key] || copying[key])
               return (
                 <li key={key}>
                   <Card size="sm">
                     <CardHeader>
-                      <CardTitle>歷史密碼 {index + 1}</CardTitle>
-                      <CardDescription>
-                        {new Date(entry.lastUsedDate).toLocaleString('zh-TW')}
-                      </CardDescription>
+                      <CardTitle>{new Date(entry.lastUsedDate).toLocaleString('zh-TW')}</CardTitle>
                       <CardAction className="flex gap-1">
                         <PasswordHistoryIconButton
                           label={isRevealed ? '隱藏這筆歷史密碼' : '顯示這筆歷史密碼'}
@@ -737,7 +709,7 @@ export function PasswordHistoryDialog({
                     <CardContent>
                       <div className="bg-muted/60 min-h-9 rounded-lg px-3 py-2">
                         {isRevealed ? (
-                          <code className="break-all text-sm select-text">{revealedValue}</code>
+                          <code className="text-sm break-all select-text">{revealedValue}</code>
                         ) : (
                           <>
                             <code className="masked-value text-sm" aria-hidden="true">
@@ -748,29 +720,6 @@ export function PasswordHistoryDialog({
                         )}
                       </div>
                     </CardContent>
-                    {onRestore && (
-                      <CardFooter className="justify-end">
-                        <PasswordHistoryRestoreButton
-                          busy={rowBusy || restoringKey !== null}
-                          onRestore={async () => {
-                            setRestoringKey(key)
-                            setError('')
-                            try {
-                              await onRestore(locatorFor(index, entry.lastUsedDate))
-                              if (!mountedRef.current) return
-                              clearSecrets()
-                              onClose()
-                            } catch {
-                              if (mountedRef.current) {
-                                setError('無法套用這筆歷史，項目可能已在其他地方變更。')
-                              }
-                            } finally {
-                              if (mountedRef.current) setRestoringKey(null)
-                            }
-                          }}
-                        />
-                      </CardFooter>
-                    )}
                   </Card>
                 </li>
               )
@@ -778,32 +727,32 @@ export function PasswordHistoryDialog({
           </ol>
         )}
         {!loading && history && history.entries.length === 0 && (
-          <div className="text-muted-foreground flex flex-col items-center gap-2 py-8 text-center text-sm">
-            <History aria-hidden="true" />
-            目前沒有可顯示的密碼歷史。
-          </div>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <History aria-hidden="true" />
+              </EmptyMedia>
+              <EmptyTitle>沒有密碼歷史</EmptyTitle>
+              <EmptyDescription>目前沒有可顯示的歷史紀錄。</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         )}
         {error && (
           <Alert variant="destructive">
             <AlertTriangle aria-hidden="true" />
             <AlertDescription>{error}</AlertDescription>
             {!history && !loading && (
-              <Button type="button" variant="outline" size="sm" onClick={() => loadHistory(true)}>
-                重新載入
-              </Button>
+              <AlertAction>
+                <Button type="button" variant="outline" size="sm" onClick={() => loadHistory(true)}>
+                  重新載入
+                </Button>
+              </AlertAction>
             )}
           </Alert>
         )}
-        {!loading && history && (
-          <p className="text-muted-foreground text-xs leading-relaxed">
-            {onRestore
-              ? '歷史也可能包含已變更的隱藏欄位；套用前請先顯示並確認內容。'
-              : '垃圾桶項目只能查看或複製歷史；還原項目後才能套用舊密碼。'}
-          </p>
-        )}
       </div>
       <DialogFooter className="modal-actions mx-0 mb-0">
-        <Button type="button" variant="secondary" disabled={restoringKey !== null} onClick={closeDialog}>
+        <Button type="button" variant="secondary" onClick={closeDialog}>
           關閉
         </Button>
       </DialogFooter>

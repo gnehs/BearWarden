@@ -1538,39 +1538,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           }),
         true
       )
-      announce('歷史密碼已複製，剪貼簿會依安全設定自動清除。')
-    },
-    [selectedSummary, withReprompt]
-  )
-
-  const restorePasswordHistory = useCallback(
-    async (
-      locator: Omit<PasswordHistoryEntryRequest, 'id' | 'authorizationToken'>
-    ): Promise<void> => {
-      const summary = selectedSummary
-      if (!summary || summary.deletedAt || summary.type !== 'login') {
-        throw new Error('INVALID_INPUT')
-      }
-      const itemId = summary.id
-      let operationAuthorizationToken: string | undefined
-      const updated = await withReprompt([itemId], (tokenFor) => {
-        operationAuthorizationToken = tokenFor(itemId)
-        return window.bearwarden.logins.restorePasswordHistory({
-          id: itemId,
-          ...locator,
-          ...(operationAuthorizationToken
-            ? { authorizationToken: operationAuthorizationToken }
-            : {})
-        })
-      })
-      const canRetainDetail = updated.reprompt === 0 || operationAuthorizationToken !== undefined
-      if (canRetainDetail) cacheLoginDetail(detailCacheRef.current, updated)
-      else detailCacheRef.current.delete(itemId)
-      setItems((current) =>
-        current.map((item) => (item.id === updated.id ? toLoginSummary(updated) : item))
-      )
-      setSelectedLogin(canRetainDetail ? updated : null)
-      toast.success('已套用歷史密碼。')
+      toast.success('歷史密碼已複製，剪貼簿會依安全設定自動清除。')
     },
     [selectedSummary, withReprompt]
   )
@@ -4485,15 +4453,16 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                           {selectedSummary.passwordHistoryCount} 筆唯讀紀錄
                         </CardDescription>
                       </CardHeader>
-                      <CardContent>
+                      <CardContent className="flex justify-end py-2">
                         <Button
-                          variant="outline"
+                          variant="ghost"
+                          size="sm"
                           type="button"
                           disabled={busy}
                           onClick={() => setPasswordHistoryDialogOpen(true)}
                         >
                           <History data-icon="inline-start" aria-hidden="true" />
-                          查看密碼歷史
+                          查看紀錄
                         </Button>
                       </CardContent>
                     </Card>
@@ -4838,14 +4807,15 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                           {selectedLogin.passwordHistoryCount} 筆紀錄
                         </CardDescription>
                       </CardHeader>
-                      <CardContent>
+                      <CardContent className="flex justify-end py-2">
                         <Button
-                          variant="outline"
+                          variant="ghost"
+                          size="sm"
                           type="button"
                           onClick={() => setPasswordHistoryDialogOpen(true)}
                         >
                           <History data-icon="inline-start" aria-hidden="true" />
-                          查看密碼歷史
+                          查看紀錄
                         </Button>
                       </CardContent>
                     </Card>
@@ -5141,9 +5111,6 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             onLoad={loadPasswordHistory}
             onReveal={revealPasswordHistory}
             onCopy={copyPasswordHistory}
-            {...(selectedSummary.deletedAt || selectedSummary.type !== 'login'
-              ? {}
-              : { onRestore: restorePasswordHistory })}
           />
         )}
         {generatorDialogOpen && (
