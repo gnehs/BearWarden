@@ -43,6 +43,7 @@ import {
   KeyRound,
   ListFilter,
   Menu,
+  MoreHorizontal,
   NotebookPen,
   Paperclip,
   Plus,
@@ -156,6 +157,7 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
 import {
@@ -813,7 +815,6 @@ function DetailPlaceholder({
           )}
         </span>
         <div className="detail-heading">
-          <p className="eyebrow">{itemTypeMeta[item.type].label}</p>
           <h2>{item.name}</h2>
           <span>
             {item.subtitle || (item.type === 'login' ? hostLabel(item.uri) : '安全保管的項目')}
@@ -4327,7 +4328,6 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     )}
                   </span>
                   <div className="detail-heading">
-                    <p className="eyebrow">{itemTypeMeta[selectedLogin.type].label}</p>
                     <h2>{selectedLogin.name}</h2>
                     <span>
                       {selectedLogin.subtitle ||
@@ -4347,45 +4347,65 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                   >
                     <Star fill={selectedLogin.favorite ? 'currentColor' : 'none'} />
                   </TooltipIconButton>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="button secondary compact"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void cloneLogin()}
-                  >
-                    <Copy data-icon="inline-start" />
-                    複製項目
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="button secondary compact"
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      void (selectedLogin.archivedAt ? unarchiveLogin() : archiveLogin())
-                    }
-                  >
-                    {selectedLogin.archivedAt ? (
-                      <ArchiveRestore data-icon="inline-start" />
-                    ) : (
-                      <Archive data-icon="inline-start" />
-                    )}
-                    {selectedLogin.archivedAt ? '取消封存' : '封存項目'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="button secondary compact"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => openEditor('edit')}
-                  >
-                    <Edit3 data-icon="inline-start" />
-                    編輯
-                  </Button>
+                  <DropdownMenu>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <DropdownMenuTrigger
+                            render={
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="icon-button"
+                                type="button"
+                                aria-label="更多操作"
+                                disabled={busy}
+                              />
+                            }
+                          >
+                            <MoreHorizontal aria-hidden="true" />
+                          </DropdownMenuTrigger>
+                        }
+                      />
+                      <TooltipContent>更多操作</TooltipContent>
+                    </Tooltip>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem disabled={busy} onClick={() => void cloneLogin()}>
+                          <Copy data-icon="inline-start" />
+                          複製項目
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={busy}
+                          onClick={() =>
+                            void (selectedLogin.archivedAt ? unarchiveLogin() : archiveLogin())
+                          }
+                        >
+                          {selectedLogin.archivedAt ? (
+                            <ArchiveRestore data-icon="inline-start" />
+                          ) : (
+                            <Archive data-icon="inline-start" />
+                          )}
+                          {selectedLogin.archivedAt ? '取消封存' : '封存項目'}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem disabled={busy} onClick={() => openEditor('edit')}>
+                          <Edit3 data-icon="inline-start" />
+                          編輯
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          disabled={busy}
+                          onClick={() => setDeleteDialogOpen(true)}
+                        >
+                          <Trash2 data-icon="inline-start" />
+                          移至垃圾桶
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </header>
 
                 <div className="detail-scroll">
@@ -4427,15 +4447,13 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                   )}
 
                   <Card
-                    className="detail-card gap-0 py-0"
+                    className="detail-card attachment-card gap-0 py-0"
                     role="region"
                     aria-labelledby="attachments-title"
                   >
                     <CardHeader className="bg-muted rounded-none border-b">
                       <CardTitle id="attachments-title">附件</CardTitle>
-                      <CardDescription>
-                        {selectedLogin.attachments.length} 個檔案；只在主程序讀取與加密
-                      </CardDescription>
+                      <CardDescription>{selectedLogin.attachments.length} 個檔案</CardDescription>
                       <CardAction>
                         <Button
                           variant="outline"
@@ -4571,9 +4589,6 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                               <Paperclip />
                             </EmptyMedia>
                             <EmptyTitle>尚無附件</EmptyTitle>
-                            <EmptyDescription>
-                              上傳的檔案會先在本機加密，再傳送至 Bitwarden。
-                            </EmptyDescription>
                           </EmptyHeader>
                         </Empty>
                       )}
@@ -4704,7 +4719,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                   )}
 
                   <Card
-                    className="detail-card organization-card gap-0 py-0"
+                    className="detail-card organization-card activity-card gap-0 py-0"
                     role="region"
                     aria-labelledby="organization-title"
                   >
@@ -4754,18 +4769,6 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                       <ItemHistoryRows item={selectedLogin} formatDate={formatDate} />
                     </CardContent>
                   </Card>
-
-                  <div className="danger-zone">
-                    <Button
-                      variant="destructive"
-                      className="button ghost danger-text"
-                      type="button"
-                      onClick={() => setDeleteDialogOpen(true)}
-                    >
-                      <Trash2 data-icon="inline-start" />
-                      移至垃圾桶
-                    </Button>
-                  </div>
                 </div>
               </article>
             ) : (
