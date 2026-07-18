@@ -10,6 +10,7 @@ interface ItemDragPreviewProps {
   item: LoginSummary
   count: number
   showWebsiteIcons: boolean
+  destinationDescription?: string | null
 }
 
 interface FolderDragPreviewProps {
@@ -28,14 +29,23 @@ const itemTypeMeta = {
 export function ItemDragPreview({
   item,
   count,
-  showWebsiteIcons
+  showWebsiteIcons,
+  destinationDescription
 }: ItemDragPreviewProps): React.JSX.Element {
   const meta = itemTypeMeta[item.type]
   const ItemIcon = meta.icon
 
   return (
-    <div className={cn('drag-overlay item-drag-preview', count > 1 && 'multiple')} aria-hidden>
-      <span className={cn('item-icon drag-preview-icon', item.type)}>
+    <div
+      className="drag-overlay bg-popover/95 text-foreground grid min-h-14 w-full max-w-[calc(100vw-24px)] grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border px-2.5 py-2 shadow-lg backdrop-blur-md"
+      aria-hidden
+    >
+      <span
+        className={cn(
+          'bg-muted text-primary grid size-9 shrink-0 place-items-center overflow-hidden rounded-lg border',
+          item.type
+        )}
+      >
         {item.type === 'card' ? (
           <PaymentCardBrandMark brand={normalizeBitwardenCardBrand(item.cardBrand)} compact />
         ) : item.type === 'login' ? (
@@ -44,10 +54,11 @@ export function ItemDragPreview({
           <ItemIcon />
         )}
       </span>
-      <span className="drag-preview-copy">
-        <strong>{item.name}</strong>
-        <small>
-          {count > 1 ? `與其他 ${count - 1} 個項目一起移動` : `${meta.label} · 拖曳至資料夾`}
+      <span className="grid min-w-0 gap-0.5">
+        <strong className="truncate text-sm font-semibold">{item.name}</strong>
+        <small className="text-muted-foreground truncate text-xs">
+          {destinationDescription ??
+            (count > 1 ? `與其他 ${count - 1} 個項目一起移動` : `${meta.label} · 拖曳以移動`)}
         </small>
       </span>
       {count > 1 && <Badge variant="secondary">{count}</Badge>}
@@ -57,13 +68,16 @@ export function ItemDragPreview({
 
 export function FolderDragPreview({ folder, count }: FolderDragPreviewProps): React.JSX.Element {
   return (
-    <div className="drag-overlay folder-drag-preview" aria-hidden>
-      <span className="drag-preview-icon folder">
+    <div
+      className="drag-overlay bg-popover/95 text-foreground grid min-h-14 w-64 max-w-[calc(100vw-24px)] grid-cols-[36px_minmax(0,1fr)] items-center gap-2.5 rounded-xl border px-2.5 py-2 shadow-lg backdrop-blur-md"
+      aria-hidden
+    >
+      <span className="bg-accent text-primary grid size-9 place-items-center rounded-lg border">
         <Folder />
       </span>
-      <span className="drag-preview-copy">
-        <strong>{folder.name}</strong>
-        <small>重新排列 · {count} 個項目</small>
+      <span className="grid min-w-0 gap-0.5">
+        <strong className="truncate text-sm font-semibold">{folder.name}</strong>
+        <small className="text-muted-foreground truncate text-xs">重新排列 · {count} 個項目</small>
       </span>
     </div>
   )

@@ -68,15 +68,14 @@ export const ItemRow = memo(function ItemRow({
   showWebsiteIcons,
   readOnly = false
 }: ItemRowProps): React.JSX.Element {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, isDragging } =
-    useDraggable({
-      id: item.id,
-      disabled: readOnly,
-      attributes: {
-        role: 'listitem',
-        roleDescription: '可拖曳項目'
-      }
-    })
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
+    id: item.id,
+    disabled: readOnly,
+    attributes: {
+      role: 'listitem',
+      roleDescription: '可拖曳項目'
+    }
+  })
   const setRowRef = useCombinedRefs(setNodeRef, setActivatorNodeRef)
   const prefetchTimerRef = useRef<number | null>(null)
 
@@ -111,9 +110,8 @@ export const ItemRow = memo(function ItemRow({
       className={cn(
         'item-row grid-cols-[minmax(0,1fr)_28px] px-[13px]',
         selected && 'selected',
-        isDragging && 'dragging'
+        isDragging && 'cursor-grabbing opacity-0'
       )}
-      style={{ transform: CSS.Translate.toString(transform) }}
       {...attributes}
       {...listeners}
       onContextMenu={(event) => {

@@ -1,5 +1,4 @@
 import {
-  closestCenter,
   DndContext,
   DragOverlay,
   KeyboardSensor,
@@ -8,6 +7,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent
 } from '@dnd-kit/core'
 import {
@@ -122,7 +122,12 @@ import {
   isCurrentSelectedDetailResponse,
   protectedDetailInvalidationIds
 } from './VaultShell-security'
-import { quickAccessDropAction, quickAccessDropIds } from './VaultShell-dnd'
+import {
+  itemDropPreviewDescription,
+  precisePointerCollisionDetection,
+  quickAccessDropAction,
+  quickAccessDropIds
+} from './VaultShell-dnd'
 import SyncDialog from './SyncDialog'
 import SettingsPage from './SettingsPage'
 import SendsPage from './SendsPage'
@@ -958,6 +963,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     null
   )
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
+  const [activeDragOverId, setActiveDragOverId] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const queryRef = useRef(query)
   const searchRequestIdRef = useRef(0)
@@ -2039,6 +2045,14 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     : null
   const activeDragItemCount =
     activeDragItem && selectedIds.has(activeDragItem.id) ? selectedIds.size : 1
+  const activeDragDestinationDescription = activeDragItem
+    ? (itemDropPreviewDescription({
+        overId: activeDragOverId,
+        itemState: scope.kind === 'archive' ? 'archive' : 'active',
+        folders,
+        count: activeDragItemCount
+      }) ?? '放開以取消移動')
+    : null
   const selectedDetailFields = useMemo(
     () => (selectedLogin ? detailFields(selectedLogin) : []),
     [selectedLogin]
@@ -3561,10 +3575,16 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     const activeId = String(event.active.id)
     if (itemIds.has(activeId) && !selectedIdsRef.current.has(activeId)) selectLogin(activeId)
     setActiveDragId(activeId)
+    setActiveDragOverId(null)
+  }
+
+  function dragOver(event: DragOverEvent): void {
+    setActiveDragOverId(event.over ? String(event.over.id) : null)
   }
 
   async function endDrag(event: DragEndEvent): Promise<void> {
     setActiveDragId(null)
+    setActiveDragOverId(null)
     if (!event.over) return
     const activeId = String(event.active.id)
     const overId = String(event.over.id)
@@ -3814,9 +3834,13 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={precisePointerCollisionDetection}
       onDragStart={startDrag}
-      onDragCancel={() => setActiveDragId(null)}
+      onDragOver={dragOver}
+      onDragCancel={() => {
+        setActiveDragId(null)
+        setActiveDragOverId(null)
+      }}
       onDragEnd={(event) => void endDrag(event)}
     >
       <main
@@ -5335,6 +5359,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             item={activeDragItem}
             count={activeDragItemCount}
             showWebsiteIcons={settings?.showWebsiteIcons ?? false}
+            destinationDescription={activeDragDestinationDescription}
           />
         ) : activeDragFolder ? (
           <FolderDragPreview
