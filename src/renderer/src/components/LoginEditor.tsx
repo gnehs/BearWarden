@@ -1246,7 +1246,7 @@ function LoginEditor({
         </Button>
       </header>
 
-      <div className="editor-scroll">
+      <div className="editor-scroll scroll-fade-y forced-colors:scroll-fade-none">
         <Tabs
           value={activeTab}
           onValueChange={(value) => setActiveTab(value as EditorTab)}

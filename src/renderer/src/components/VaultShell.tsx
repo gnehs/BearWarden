@@ -3893,7 +3893,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             />
           )}
           <aside className={cn('sidebar', sidebarOpen && 'open')} aria-label="保管庫導覽">
-            <div className="sidebar-scroll">
+            <div className="sidebar-scroll scroll-fade-y forced-colors:scroll-fade-none">
               <section
                 className="folder-section flex-none px-[11px] pt-[13px] pb-2"
                 aria-labelledby="categories-title"
@@ -4417,7 +4417,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     <span>{itemTypeMeta[selectedSummary.type].label}</span>
                   </div>
                 </header>
-                <div className="detail-scroll">
+                <div className="detail-scroll scroll-fade-y forced-colors:scroll-fade-none">
                   <Card className="detail-card organization-card gap-0 py-0">
                     <CardHeader>
                       <CardTitle>這個項目已移至垃圾桶</CardTitle>
@@ -4614,7 +4614,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                   </DropdownMenu>
                 </header>
 
-                <div className="detail-scroll">
+                <div className="detail-scroll scroll-fade-y forced-colors:scroll-fade-none">
                   {selectedDetailFields.length > 0 && (
                     <Card
                       className="detail-card gap-0 py-0"
