@@ -141,6 +141,7 @@ import { groupItemsByDate } from '../lib/item-date-groups'
 import { matchesVaultCategory, type VaultCategoryFilter } from '../lib/vault-category'
 import { formatPaymentCardNumber } from '../lib/payment-card'
 import { normalizeBitwardenCardBrand } from '../lib/payment-card'
+import { shouldShowSyncSetupPrompt } from '../lib/sync-setup-prompt'
 import { normalizeItemSelection, updateItemSelection } from '../lib/item-selection'
 import {
   boundedVaultSearchQuery,
@@ -310,6 +311,8 @@ const detailCacheLimit = 48
 
 interface VaultShellProps {
   onLocked: () => void
+  promptSyncSetup: boolean
+  onSyncSetupPromptHandled: () => void
 }
 
 interface RevealedSecretsState {
@@ -888,7 +891,11 @@ function DetailPlaceholder({
   )
 }
 
-function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
+function VaultShell({
+  onLocked,
+  promptSyncSetup,
+  onSyncSetupPromptHandled
+}: VaultShellProps): React.JSX.Element {
   const [folders, setFolders] = useState<FolderView[]>([])
   const [items, setItems] = useState<LoginSummary[]>([])
   const [scope, setScope] = useState<Scope>({ kind: 'all' })
@@ -943,6 +950,8 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(initialSyncStatus)
+  const [syncStatusLoaded, setSyncStatusLoaded] = useState(false)
+  const showSyncSetupPrompt = shouldShowSyncSetupPrompt(promptSyncSetup, syncStatusLoaded)
   const [accountProfileRefreshRevision, setAccountProfileRefreshRevision] = useState(0)
   const [sidebarAccountProfile, setSidebarAccountProfile] = useState<{
     owner: string
@@ -1701,14 +1710,20 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     let active = true
     void window.bearwarden.sync.status().then(
       (status) => {
-        if (active) setSyncStatus(status)
+        if (active) {
+          setSyncStatus(status)
+          setSyncStatusLoaded(true)
+        }
       },
       () => {
         // A missing sync service should not prevent the local vault from being usable.
       }
     )
     const unsubscribe = window.bearwarden.sync.onChanged((status) => {
-      if (active) setSyncStatus(status)
+      if (active) {
+        setSyncStatus(status)
+        setSyncStatusLoaded(true)
+      }
     })
     return () => {
       active = false
@@ -5280,11 +5295,12 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             onAuthorize={submitReprompt}
           />
         )}
-        {syncDialogOpen && (
+        {(syncDialogOpen || showSyncSetupPrompt) && (
           <SyncDialog
             status={syncStatus}
             onClose={() => {
               setSyncDialogOpen(false)
+              onSyncSetupPromptHandled()
               setAccountProfileRefreshRevision((revision) => revision + 1)
             }}
             onStatusChange={setSyncStatus}

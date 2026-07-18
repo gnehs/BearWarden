@@ -2647,6 +2647,9 @@ body:has(.platform-windows) {
 :root .platform-macos .titlebar {
   padding-left: 94px;
 }
+:root .platform-windows .titlebar {
+  padding-left: 14px;
+}
 :root .platform-macos .workspace,
 :root .platform-windows .workspace {
   gap: 8px;
@@ -2933,6 +2936,9 @@ body:has(.platform-windows) {
   }
   :root .platform-macos .titlebar {
     padding: 0 9px 0 82px;
+  }
+  :root .platform-windows .titlebar {
+    padding-inline: 9px;
   }
   .list-header {
     padding-inline: 11px;

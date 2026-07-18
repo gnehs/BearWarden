@@ -574,7 +574,7 @@ function SyncDialog({
                   : connect
               }
             >
-              <FieldGroup className="mx-[18px]">
+              <FieldGroup className="mx-[18px] w-auto">
                 {!configured && (
                   <>
                     <Field className="field">
@@ -653,7 +653,7 @@ function SyncDialog({
                 {showAdvanced ? '隱藏進階選項' : '顯示雙重驗證'}
               </Button>
               {showAdvanced && (
-                <FieldGroup className="sync-advanced-fields">
+                <FieldGroup className="sync-advanced-fields w-auto">
                   <Field>
                     <FieldLabel htmlFor="two-factor-method">雙重驗證方式（選填）</FieldLabel>
                     <Select

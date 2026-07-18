@@ -10,7 +10,7 @@ import { Spinner } from '@renderer/components/ui/spinner'
 
 interface AuthScreenProps {
   state: 'loading' | 'unavailable' | 'uninitialized' | 'locked'
-  onAuthenticated: () => void
+  onAuthenticated: (source: 'setup' | 'unlock') => void
   onRetry: () => void
 }
 
@@ -89,7 +89,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
       setSubmitting(true)
       try {
         const status = await window.bearwarden.vault.unlockPin(request)
-        if (status.state === 'unlocked') onAuthenticated()
+        if (status.state === 'unlocked') onAuthenticated('unlock')
       } catch (submitError) {
         const nextStatus = await window.bearwarden.vault
           .pinStatus()
@@ -129,7 +129,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
         : await window.bearwarden.vault.unlock({ masterPassword })
       setMasterPassword('')
       setConfirmation('')
-      if (status.state === 'unlocked') onAuthenticated()
+      if (status.state === 'unlocked') onAuthenticated(isSetup ? 'setup' : 'unlock')
     } catch (submitError) {
       setError(describeError(submitError))
       passwordRef.current?.select()
@@ -143,7 +143,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
     setSubmitting(true)
     try {
       const status = await window.bearwarden.settings.unlockTouchId()
-      if (status.state === 'unlocked') onAuthenticated()
+      if (status.state === 'unlocked') onAuthenticated('unlock')
     } catch (touchIdError) {
       setError(describeError(touchIdError))
     } finally {

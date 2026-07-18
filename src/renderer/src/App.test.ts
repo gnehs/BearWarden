@@ -6,6 +6,20 @@ vi.mock('./components/SshAgentApprovalDialog', () => ({ default: () => null }))
 vi.mock('./components/VaultShell', () => ({ default: () => null }))
 
 import { nextVaultActivityTimestamp } from './App'
+import { shouldPromptSyncSetup, shouldShowSyncSetupPrompt } from './lib/sync-setup-prompt'
+
+describe('new vault sync invitation', () => {
+  it('prompts only after creating a new local vault', () => {
+    expect(shouldPromptSyncSetup('setup')).toBe(true)
+    expect(shouldPromptSyncSetup('unlock')).toBe(false)
+  })
+
+  it('waits until the sync service has returned a status', () => {
+    expect(shouldShowSyncSetupPrompt(true, false)).toBe(false)
+    expect(shouldShowSyncSetupPrompt(true, true)).toBe(true)
+    expect(shouldShowSyncSetupPrompt(false, true)).toBe(false)
+  })
+})
 
 describe('vault activity reporting', () => {
   it('throttles ordinary activity for ten seconds', () => {

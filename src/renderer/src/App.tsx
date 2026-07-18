@@ -9,6 +9,7 @@ import PasskeyApprovalDialog from './components/PasskeyApprovalDialog'
 import SshAgentApprovalDialog from './components/SshAgentApprovalDialog'
 import VaultShell from './components/VaultShell'
 import { shouldDenyPasskeyApproval } from './lib/passkey-approval-ui'
+import { shouldPromptSyncSetup } from './lib/sync-setup-prompt'
 import { applyThemePreference } from './lib/theme'
 
 type AppState = VaultState | 'loading' | 'unavailable'
@@ -39,6 +40,7 @@ function denyPasskeyApproval(request: PasskeyApprovalPrompt): void {
 function App(): React.JSX.Element {
   const [state, setState] = useState<AppState>('loading')
   const [retryKey, setRetryKey] = useState(0)
+  const [syncSetupPromptPending, setSyncSetupPromptPending] = useState(false)
   const [sshAgentApproval, setSshAgentApproval] = useState<SshAgentApprovalPrompt | null>(null)
   const [passkeyApproval, setPasskeyApproval] = useState<PasskeyApprovalPrompt | null>(null)
   const lastActivityAt = useRef(0)
@@ -84,6 +86,7 @@ function App(): React.JSX.Element {
       passkeyApprovalRef.current = null
       setSshAgentApproval(null)
       setPasskeyApproval(null)
+      setSyncSetupPromptPending(false)
       if (pendingSshAgentApproval) denySshAgentApproval(pendingSshAgentApproval)
       if (pendingPasskeyApproval) denyPasskeyApproval(pendingPasskeyApproval)
       updateState('locked')
@@ -186,7 +189,11 @@ function App(): React.JSX.Element {
   if (state === 'unlocked') {
     return (
       <>
-        <VaultShell onLocked={() => updateState('locked')} />
+        <VaultShell
+          onLocked={() => updateState('locked')}
+          promptSyncSetup={syncSetupPromptPending}
+          onSyncSetupPromptHandled={() => setSyncSetupPromptPending(false)}
+        />
         {sshAgentApproval && (
           <SshAgentApprovalDialog
             request={sshAgentApproval}
@@ -217,7 +224,10 @@ function App(): React.JSX.Element {
   return (
     <AuthScreen
       state={state}
-      onAuthenticated={() => updateState('unlocked')}
+      onAuthenticated={(source) => {
+        setSyncSetupPromptPending(shouldPromptSyncSetup(source))
+        updateState('unlocked')
+      }}
       onRetry={() => {
         updateState('loading')
         setRetryKey((key) => key + 1)
