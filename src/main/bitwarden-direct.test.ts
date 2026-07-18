@@ -27,6 +27,8 @@ import {
 import {
   addAggregateRemoteRows,
   BitwardenDirectClient,
+  type BitwardenDirectErrorCode,
+  type BitwardenSyncInvalidResponseStage,
   type BitwardenTwoFactor
 } from './bitwarden-direct'
 import type { AccountWebAuthnAssertion } from './account-webauthn-codec'
@@ -201,7 +203,7 @@ async function encryptedSync(
                 rpName: encryptBitwardenString('Example', itemKey),
                 userDisplayName: encryptBitwardenString('Test User', itemKey),
                 discoverable: encryptBitwardenString('true', itemKey),
-                creationDate: '2026-07-13T00:00:00.000Z'
+                creationDate: '2026-07-13T00:00:00.654321Z'
               }
             ],
             uris: [
@@ -246,7 +248,8 @@ async function encryptedSync(
           passwordHistory: [
             {
               password: encryptBitwardenString('old-login-secret', itemKey),
-              lastUsedDate: '2026-01-02T00:00:00.000Z'
+              // Vaultwarden f21a3ada serializes this field with microsecond precision.
+              lastUsedDate: '2026-01-02T00:00:00.123456Z'
             }
           ],
           attachments: [
@@ -864,7 +867,11 @@ async function attachmentMutationHarness(
   }
 }
 
-async function expectInvalidSync(sync: JsonObject): Promise<void> {
+async function expectInvalidSync(
+  sync: unknown,
+  code: BitwardenDirectErrorCode = 'INVALID_RESPONSE',
+  stage?: BitwardenSyncInvalidResponseStage
+): Promise<void> {
   const http = new BitwardenHttpClient({
     server: 'https://vault.example.invalid',
     fetch: async (url) => {
@@ -888,7 +895,10 @@ async function expectInvalidSync(sync: JsonObject): Promise<void> {
     httpClient: http
   })
   await client.login({ email: EMAIL, password: PASSWORD })
-  await expect(client.sync()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  await expect(client.sync()).rejects.toMatchObject({
+    code,
+    ...(stage ? { syncInvalidResponseStage: stage } : {})
+  })
   await expect(client.listPersonalLogins()).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
 }
 
@@ -3357,6 +3367,31 @@ describe('BitwardenDirectClient', () => {
     )
   })
 
+  it('reports only the coarse section of an incompatible sync response', async () => {
+    await expectInvalidSync([], 'INVALID_RESPONSE', 'response')
+
+    const account = await encryptedSync()
+    account.profile = null
+    await expectInvalidSync(account, 'INVALID_RESPONSE', 'account')
+
+    for (const [stage, mutate] of [
+      ['folder', (sync: JsonObject) => (sync.folders = {})],
+      [
+        'organization',
+        (sync: JsonObject) => {
+          const profile = sync.profile as JsonObject
+          profile.organizations = {}
+        }
+      ],
+      ['collection', (sync: JsonObject) => (sync.collections = {})],
+      ['send', (sync: JsonObject) => (sync.sends = {})]
+    ] as const) {
+      const sync = await encryptedSync()
+      mutate(sync)
+      await expectInvalidSync(sync, 'INVALID_RESPONSE', stage)
+    }
+  })
+
   it('rejects more than 1,000 legacy passkeys on one item', async () => {
     const sync = await encryptedSync()
     const cipher = (sync.ciphers as JsonObject[])[0]!
@@ -3364,11 +3399,19 @@ describe('BitwardenDirectClient', () => {
     const passkey = (login.fido2Credentials as JsonObject[])[0]!
     login.fido2Credentials = Array.from({ length: 1_001 }, () => passkey)
 
-    await expectInvalidSync(sync)
+    await expectInvalidSync(sync, 'INVALID_RESPONSE', 'cipher')
   })
 
   it('rejects more than 1,000 V2 blob passkeys on one item', async () => {
     await expectInvalidSync(await encryptedV2Sync({ passkeyCount: 1_001 }))
+  })
+
+  it('identifies Vaultwarden SSH rows whose required type payload is null', async () => {
+    const sync = await encryptedSync({ allTypes: true })
+    const sshKey = (sync.ciphers as JsonObject[]).find((cipher) => cipher.type === 5)!
+    sshKey.sshKey = null
+
+    await expectInvalidSync(sync, 'INVALID_SSH_KEY')
   })
 
   it('rejects more than 1,000 attachments on one cipher', async () => {
@@ -3924,8 +3967,8 @@ describe('BitwardenDirectClient', () => {
     await expectInvalidSync(await encryptedSync({ passkeyCredentialId: 'x'.repeat(4_097) }))
   })
 
-  it('rejects a non-canonical passkey creation date', async () => {
-    await expectInvalidSync(await encryptedV2Sync({ passkeyCreationDate: '2026-07-13T00:00:00Z' }))
+  it('rejects an invalid passkey calendar date', async () => {
+    await expectInvalidSync(await encryptedV2Sync({ passkeyCreationDate: '2026-02-30T00:00:00Z' }))
   })
 
   it.each([
@@ -4043,7 +4086,13 @@ describe('BitwardenDirectClient', () => {
         passwordRevisionDate: '2026-07-13T00:00:00.000Z',
         autofillOnPageLoad: false,
         totp: 'otpauth://totp/example.invalid?secret=JBSWY3DPEHPK3PXP',
-        passkeys: [expect.objectContaining({ rpId: 'example.invalid', discoverable: true })],
+        passkeys: [
+          expect.objectContaining({
+            rpId: 'example.invalid',
+            discoverable: true,
+            creationDate: '2026-07-13T00:00:00.654Z'
+          })
+        ],
         customFields: [
           { name: 'member-id', value: 'legacy-member-42', type: 'text', linkedId: null },
           { name: 'recovery-code', value: 'legacy-hidden-code', type: 'hidden', linkedId: null },
@@ -4051,7 +4100,7 @@ describe('BitwardenDirectClient', () => {
           { name: 'alternate-username', value: '', type: 'linked', linkedId: 100 }
         ],
         passwordHistory: [
-          { password: 'old-login-secret', lastUsedDate: '2026-01-02T00:00:00.000Z' }
+          { password: 'old-login-secret', lastUsedDate: '2026-01-02T00:00:00.123Z' }
         ],
         attachments: [
           {

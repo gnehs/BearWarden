@@ -176,6 +176,9 @@ export type VaultErrorCode =
   | 'SYNC_AUTH_REQUIRED'
   | 'SYNC_NEW_DEVICE_REQUIRED'
   | 'SYNC_UNSUPPORTED_ACCOUNT'
+  | 'SYNC_NETWORK'
+  | 'SYNC_INVALID_RESPONSE'
+  | 'SYNC_INVALID_SSH_KEY'
   | 'SYNC_FAILED'
   | 'SYNC_CONFLICT'
   | 'ATTACHMENT_FAILED'
@@ -939,13 +942,31 @@ export type VaultHealthAccountBreachReport =
 
 export type SyncState = 'unconfigured' | 'locked' | 'ready' | 'syncing' | 'error'
 
+export type SyncErrorCode =
+  | 'SYNC_AUTH_REQUIRED'
+  | 'SYNC_NEW_DEVICE_REQUIRED'
+  | 'SYNC_UNSUPPORTED_ACCOUNT'
+  | 'SYNC_NETWORK'
+  | 'SYNC_INVALID_RESPONSE'
+  | 'SYNC_INVALID_SSH_KEY'
+  | 'SYNC_CONFLICT'
+  | 'SYNC_FAILED'
+
+export type SyncInvalidResponseStage =
+  'response' | 'account' | 'organization' | 'folder' | 'cipher' | 'collection' | 'send' | 'snapshot'
+
 export interface SyncStatus {
   configured: boolean
   state: SyncState
   serverUrl?: string
   email?: string
   lastSyncAt?: string
-  lastError?: string
+  /** Renderer-safe failure category. Raw connector and server details never cross IPC. */
+  lastError?: SyncErrorCode
+  /** Time of the latest failed attempt in the current application session. */
+  lastErrorAt?: string
+  /** Coarse, renderer-safe location for an incompatible sync snapshot. */
+  lastErrorDetail?: SyncInvalidResponseStage
   pendingImport?: {
     count: number
     startedAt: string

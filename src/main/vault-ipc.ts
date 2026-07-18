@@ -2974,9 +2974,18 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     return status
   })
   registerHandler(IPC_CHANNELS.syncNow, getMainWindow, async () => {
-    const result = await vault.syncNow()
-    options.afterSyncChanged?.(result)
-    return result
+    try {
+      const result = await vault.syncNow()
+      options.afterSyncChanged?.(result)
+      return result
+    } catch (error) {
+      try {
+        options.afterSyncChanged?.(await vault.syncStatus())
+      } catch {
+        // Never replace the original sync error with an auxiliary status refresh failure.
+      }
+      throw error
+    }
   })
   registerHandler(IPC_CHANNELS.syncResolvePendingImport, getMainWindow, async (_event, input) => {
     const request = parseSyncResolvePendingImport(input)

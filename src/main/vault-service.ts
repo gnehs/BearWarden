@@ -3273,7 +3273,10 @@ export class VaultService {
   private readonly emailTwoFactorSetupSessions = new Map<string, EmailTwoFactorSetupSession>()
   private syncInProgress = false
   private sessionDeauthorizationInProgress = false
-  private syncLastError: string | null = null
+  private syncLastError: import('../shared/vault-contract').SyncErrorCode | null = null
+  private syncLastErrorAt: string | null = null
+  private syncLastErrorDetail: import('../shared/vault-contract').SyncInvalidResponseStage | null =
+    null
   private activeAttachmentOperation: {
     operationId: string
     abort: AbortController
@@ -8582,7 +8585,7 @@ export class VaultService {
       const status = await client.status()
       return this.baseSyncStatus(data.sync, status.status === 'unlocked' ? 'ready' : 'locked')
     } catch {
-      this.syncLastError = 'SYNC_FAILED'
+      this.recordSyncError('SYNC_FAILED')
       return this.baseSyncStatus(data.sync, 'error')
     }
   }
@@ -8595,6 +8598,10 @@ export class VaultService {
       email: sync.email,
       ...(sync.lastSyncAt ? { lastSyncAt: sync.lastSyncAt } : {}),
       ...(this.syncLastError ? { lastError: this.syncLastError } : {}),
+      ...(this.syncLastError && this.syncLastErrorAt ? { lastErrorAt: this.syncLastErrorAt } : {}),
+      ...(this.syncLastError === 'SYNC_INVALID_RESPONSE' && this.syncLastErrorDetail
+        ? { lastErrorDetail: this.syncLastErrorDetail }
+        : {}),
       ...(sync.pendingLoginImport?.phase === 'dispatched'
         ? {
             pendingImport: {
@@ -9090,22 +9097,63 @@ export class VaultService {
   }
 
   private mapSyncError(error: unknown): VaultError {
-    if (error instanceof VaultError) return error
-    this.syncLastError = 'SYNC_FAILED'
+    if (error instanceof VaultError) {
+      if (
+        error.code === 'SYNC_AUTH_REQUIRED' ||
+        error.code === 'SYNC_NEW_DEVICE_REQUIRED' ||
+        error.code === 'SYNC_UNSUPPORTED_ACCOUNT' ||
+        error.code === 'SYNC_NETWORK' ||
+        error.code === 'SYNC_INVALID_RESPONSE' ||
+        error.code === 'SYNC_INVALID_SSH_KEY' ||
+        error.code === 'SYNC_CONFLICT' ||
+        error.code === 'SYNC_FAILED'
+      ) {
+        this.recordSyncError(error.code)
+      }
+      return error
+    }
     if (error instanceof BitwardenDirectError) {
       if (error.code === 'AUTH_REQUIRED' || error.code === 'TWO_FACTOR_REQUIRED') {
+        this.recordSyncError('SYNC_AUTH_REQUIRED')
         return new VaultError('SYNC_AUTH_REQUIRED')
       }
       if (error.code === 'NEW_DEVICE_REQUIRED') {
+        this.recordSyncError('SYNC_NEW_DEVICE_REQUIRED')
         return new VaultError('SYNC_NEW_DEVICE_REQUIRED')
+      }
+      if (error.code === 'NETWORK') {
+        this.recordSyncError('SYNC_NETWORK')
+        return new VaultError('SYNC_NETWORK')
+      }
+      if (error.code === 'INVALID_RESPONSE') {
+        this.recordSyncError('SYNC_INVALID_RESPONSE', error.syncInvalidResponseStage)
+        return new VaultError('SYNC_INVALID_RESPONSE')
+      }
+      if (error.code === 'INVALID_SSH_KEY') {
+        this.recordSyncError('SYNC_INVALID_SSH_KEY')
+        return new VaultError('SYNC_INVALID_SSH_KEY')
+      }
+      if (error.code === 'CONFLICT') {
+        this.recordSyncError('SYNC_CONFLICT')
+        return new VaultError('SYNC_CONFLICT')
       }
       if (error.code === 'ABORTED') return new VaultError('LOCKED')
       if (error.code === 'UNSUPPORTED_ACCOUNT_ENCRYPTION') {
-        this.syncLastError = 'SYNC_UNSUPPORTED_ACCOUNT'
+        this.recordSyncError('SYNC_UNSUPPORTED_ACCOUNT')
         return new VaultError('SYNC_UNSUPPORTED_ACCOUNT')
       }
     }
+    this.recordSyncError('SYNC_FAILED')
     return new VaultError('SYNC_FAILED')
+  }
+
+  private recordSyncError(
+    code: import('../shared/vault-contract').SyncErrorCode,
+    detail?: import('../shared/vault-contract').SyncInvalidResponseStage
+  ): void {
+    this.syncLastError = code
+    this.syncLastErrorAt = this.nowIso()
+    this.syncLastErrorDetail = code === 'SYNC_INVALID_RESPONSE' ? (detail ?? null) : null
   }
 
   private mapAttachmentError(error: unknown, operation?: { canceledByUser: boolean }): VaultError {

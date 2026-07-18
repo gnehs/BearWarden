@@ -1522,7 +1522,7 @@ describe('VaultService encrypted local data', () => {
     expect(requestAccountWebAuthnAssertion).not.toHaveBeenCalled()
   })
 
-  it('maps connector cancellation and timeout details to the stable generic sync error', async () => {
+  it('maps connector cancellation and timeout details to a stable safe response error', async () => {
     const challenge = createAccountWebAuthnChallenge(7)
     const rawConnectorDetail = 'remote connector timeout: credential-secret-detail'
     const requestAccountWebAuthnAssertion = vi.fn<VaultAccountWebAuthnAssertionRequester>(
@@ -1555,7 +1555,10 @@ describe('VaultService encrypted local data', () => {
     } catch (error) {
       publicError = error
     }
-    expect(publicError).toMatchObject({ code: 'SYNC_FAILED', message: 'SYNC_FAILED' })
+    expect(publicError).toMatchObject({
+      code: 'SYNC_INVALID_RESPONSE',
+      message: 'SYNC_INVALID_RESPONSE'
+    })
     expect(String(publicError)).not.toContain(rawConnectorDetail)
     expect(JSON.stringify(await service.syncStatus())).not.toContain(rawConnectorDetail)
     expect(JSON.stringify(service)).not.toContain(challenge.challenge)
@@ -1816,6 +1819,74 @@ describe('VaultService encrypted local data', () => {
       configured: true,
       state: 'ready'
     })
+  })
+
+  it.each([
+    ['NETWORK', 'SYNC_NETWORK'],
+    ['INVALID_RESPONSE', 'SYNC_INVALID_RESPONSE'],
+    ['INVALID_SSH_KEY', 'SYNC_INVALID_SSH_KEY'],
+    ['CONFLICT', 'SYNC_CONFLICT']
+  ] as const)('publishes the safe %s sync failure category', async (directCode, publicCode) => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    fake!.sync = async () => {
+      throw new BitwardenDirectError(
+        directCode,
+        undefined,
+        directCode === 'INVALID_RESPONSE' ? 'cipher' : undefined
+      )
+    }
+
+    await expect(service.syncNow()).rejects.toMatchObject({ code: publicCode })
+    const status = await service.syncStatus()
+    expect(status).toMatchObject({
+      configured: true,
+      state: 'error',
+      lastError: publicCode,
+      lastErrorAt: expect.any(String)
+    })
+    if (directCode === 'INVALID_RESPONSE') {
+      expect(status).toMatchObject({ lastErrorDetail: 'cipher' })
+    } else {
+      expect(status).not.toHaveProperty('lastErrorDetail')
+    }
+    expect(Number.isFinite(Date.parse(status.lastErrorAt!))).toBe(true)
+  })
+
+  it('records internal sync failures without exposing their raw message', async () => {
+    const rawDetail = 'database path and credential-secret-detail'
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    fake!.sync = async () => {
+      throw new Error(rawDetail)
+    }
+
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    const serialized = JSON.stringify(await service.syncStatus())
+    expect(serialized).toContain('SYNC_FAILED')
+    expect(serialized).not.toContain(rawDetail)
   })
 
   it('persists organization collections and shared items without entering personal sync merge', async () => {
@@ -5354,7 +5425,7 @@ describe('VaultService encrypted local data', () => {
     mutate(fake!.remoteLogins[0]!)
     const write = vi.spyOn(store, 'write')
 
-    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_INVALID_RESPONSE' })
     expect(write).not.toHaveBeenCalled()
 
     await service.lock()

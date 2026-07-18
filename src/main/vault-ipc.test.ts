@@ -66,6 +66,45 @@ describe('registerVaultIpc lifecycle', () => {
   })
 })
 
+describe('registerVaultIpc sync failure lifecycle', () => {
+  it('publishes the failure status without replacing the original sync error', async () => {
+    const mainFrame = { url: 'app://bearwarden/index.html' }
+    const webContents = {
+      id: 102,
+      mainFrame,
+      getURL: () => mainFrame.url,
+      send: vi.fn(),
+      isDestroyed: () => false
+    }
+    const syncNow = vi.fn(async () => {
+      throw new VaultError('SYNC_NETWORK')
+    })
+    const errorStatus = {
+      configured: true,
+      state: 'error' as const,
+      lastError: 'SYNC_NETWORK' as const,
+      lastErrorAt: '2026-07-18T02:03:04.000Z'
+    }
+    const syncStatus = vi.fn(async () => errorStatus)
+    const afterSyncChanged = vi.fn()
+    registerVaultIpc({
+      vault: { syncNow, syncStatus } as unknown as VaultService,
+      portability: {} as Parameters<typeof registerVaultIpc>[0]['portability'],
+      settings: {} as AppSettingsService,
+      sshKeyImportSessions: new SshKeyImportSessionStore({ readClipboard: () => '' }),
+      getMainWindow: () => ({ isDestroyed: () => false, webContents }) as never,
+      afterSyncChanged
+    })
+
+    const event = { sender: webContents, senderFrame: mainFrame }
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.syncNow)!(event, undefined)
+    ).rejects.toThrow('BEARWARDEN:SYNC_NETWORK')
+    expect(syncStatus).toHaveBeenCalledOnce()
+    expect(afterSyncChanged).toHaveBeenCalledWith(errorStatus)
+  })
+})
+
 describe('registerVaultIpc personal vault purge boundary', () => {
   function purgeHarness(
     purgePersonalVault: ReturnType<typeof vi.fn> = vi.fn(async (request: unknown) => {

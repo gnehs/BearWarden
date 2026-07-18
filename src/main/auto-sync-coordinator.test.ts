@@ -149,7 +149,7 @@ describe('AutoSyncCoordinator', () => {
     const errorStatus: SyncStatus = {
       configured: true,
       state: 'error',
-      lastError: 'Test sync failed'
+      lastError: 'SYNC_FAILED'
     }
     syncStatus.mockResolvedValueOnce(READY_STATUS).mockResolvedValueOnce(errorStatus)
     syncNow.mockRejectedValueOnce(new Error('Test sync failed'))
@@ -182,14 +182,20 @@ describe('AutoSyncCoordinator', () => {
   })
 
   it('backs off transient failures with capped jitter and resets after recovery', async () => {
-    const { coordinator, syncStatus, syncNow } = createHarness(250, {
+    const { coordinator, syncStatus, syncNow, onSyncChanged } = createHarness(250, {
       safetyMinDelayMs: 10_000,
       safetyMaxDelayMs: 10_000,
       retryBaseDelayMs: 1_000,
       retryMaxDelayMs: 2_000,
       random: () => 1
     })
-    const errorStatus: SyncStatus = { configured: true, state: 'error', lastError: 'offline' }
+    const errorStatus: SyncStatus = {
+      configured: true,
+      state: 'error',
+      lastError: 'SYNC_INVALID_RESPONSE',
+      lastErrorAt: '2026-07-18T02:03:04.000Z',
+      lastErrorDetail: 'response'
+    }
     syncNow
       .mockRejectedValueOnce(new Error('offline'))
       .mockRejectedValueOnce(new Error('offline'))
@@ -214,6 +220,15 @@ describe('AutoSyncCoordinator', () => {
     expect(syncNow).toHaveBeenCalledTimes(2)
     await vi.advanceTimersByTimeAsync(1)
     expect(syncNow).toHaveBeenCalledTimes(3)
+    expect(
+      onSyncChanged.mock.calls
+        .map(([status]) => status)
+        .filter((status) => status.state === 'syncing')
+        .every(
+          (status) =>
+            !('lastError' in status) && !('lastErrorAt' in status) && !('lastErrorDetail' in status)
+        )
+    ).toBe(true)
 
     // A successful online sync resets to the normal safety cadence instead of retrying again.
     await vi.advanceTimersByTimeAsync(9_999)
@@ -231,7 +246,7 @@ describe('AutoSyncCoordinator', () => {
       random: () => 1
     })
 
-    coordinator.updateStatus({ configured: true, state: 'error', lastError: 'offline' })
+    coordinator.updateStatus({ configured: true, state: 'error', lastError: 'SYNC_NETWORK' })
     await vi.advanceTimersByTimeAsync(500)
     coordinator.updateStatus(READY_STATUS)
 
@@ -273,7 +288,7 @@ describe('AutoSyncCoordinator', () => {
 
     coordinator.updateStatus(READY_STATUS)
     await vi.advanceTimersByTimeAsync(1_000)
-    coordinator.updateStatus({ configured: true, state: 'error', lastError: 'offline' })
+    coordinator.updateStatus({ configured: true, state: 'error', lastError: 'SYNC_NETWORK' })
 
     await vi.advanceTimersByTimeAsync(1_999)
     expect(syncNow).not.toHaveBeenCalled()
@@ -314,7 +329,11 @@ describe('AutoSyncCoordinator', () => {
     inverted.coordinator.updateStatus(READY_STATUS)
     expect(delays.at(-1)).toBe(2_000)
     inverted.coordinator.cancel()
-    inverted.coordinator.updateStatus({ configured: true, state: 'error', lastError: 'offline' })
+    inverted.coordinator.updateStatus({
+      configured: true,
+      state: 'error',
+      lastError: 'SYNC_NETWORK'
+    })
     expect(delays.at(-1)).toBe(1_000)
 
     const negativeRandom = createHarness(250, {
@@ -333,7 +352,7 @@ describe('AutoSyncCoordinator', () => {
     syncStatus.mockResolvedValue({
       configured: true,
       state: 'error',
-      lastError: 'Previous transient failure'
+      lastError: 'SYNC_NETWORK'
     })
 
     coordinator.request()

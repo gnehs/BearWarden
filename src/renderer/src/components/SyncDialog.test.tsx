@@ -5,8 +5,42 @@ import { buildSyncTwoFactorRequest, WEB_AUTHN_TWO_FACTOR_METHOD } from './sync-t
 import {
   accountProfileIdentity,
   applyAccountProfileIfCurrent,
+  SyncFailureAlert,
+  syncErrorPresentation,
+  syncInvalidResponseStageLabel,
   shouldAcceptAccountProfile
 } from './SyncDialog'
+
+describe('SyncDialog error diagnostics', () => {
+  it('renders a safe reason and stable error code for automatic sync failures', () => {
+    const markup = renderToStaticMarkup(<SyncFailureAlert code="SYNC_NETWORK" />)
+
+    expect(markup).toContain('無法連線到同步伺服器')
+    expect(markup).toContain('錯誤代碼：SYNC_NETWORK')
+  })
+
+  it('shows only a coarse incompatible snapshot section', () => {
+    const markup = renderToStaticMarkup(
+      <SyncFailureAlert code="SYNC_INVALID_RESPONSE" detail="cipher" />
+    )
+
+    expect(markup).toContain('問題區段：保管庫項目資料')
+    expect(markup).not.toMatch(/uuid|credential|ciphertext/i)
+    expect(syncInvalidResponseStageLabel('organization')).toBe('組織金鑰與成員資料')
+  })
+
+  it('maps every public error category without accepting raw connector details', () => {
+    expect(syncErrorPresentation('SYNC_INVALID_RESPONSE')).toEqual({
+      title: '伺服器回應不相容',
+      description: '伺服器回傳的資料無法安全處理。請確認 Bitwarden 或 Vaultwarden 版本與相容性。'
+    })
+    expect(syncErrorPresentation('SYNC_INVALID_SSH_KEY')).toEqual({
+      title: '伺服器包含不完整的 SSH Key',
+      description:
+        'Vaultwarden 回傳了一筆缺少必要金鑰欄位的 SSH Key。請先使用官方 Web Vault 修復或刪除該項目，再重新同步。'
+    })
+  })
+})
 
 describe('SyncDialog account profile identity gate', () => {
   it('rejects an old mutation completion after the new account profile has loaded', () => {

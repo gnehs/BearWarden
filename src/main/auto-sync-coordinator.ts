@@ -205,6 +205,8 @@ export class AutoSyncCoordinator {
       this.eligibleForFallback = true
       const syncingStatus: SyncStatus = { ...status, state: 'syncing' }
       delete syncingStatus.lastError
+      delete syncingStatus.lastErrorAt
+      delete syncingStatus.lastErrorDetail
       this.notifySyncChanged(syncingStatus)
       const result = await this.options.vault.syncNow()
       if (this.disposed || runEpoch !== this.epoch) return

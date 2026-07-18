@@ -13,7 +13,13 @@ import {
   X
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { AccountSecurityProfile, SyncResult, SyncStatus } from '../../../shared/vault-contract'
+import type {
+  AccountSecurityProfile,
+  SyncErrorCode,
+  SyncInvalidResponseStage,
+  SyncResult,
+  SyncStatus
+} from '../../../shared/vault-contract'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,7 +32,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger
 } from '@renderer/components/ui/alert-dialog'
-import { Alert, AlertDescription } from '@renderer/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
 import { Checkbox } from '@renderer/components/ui/checkbox'
 import {
@@ -125,11 +131,116 @@ function describeSyncError(error: unknown): string {
   if (error.message.includes('AUTH_REQUIRED')) return 'Bitwarden 保管庫需要重新登入或解鎖。'
   if (error.message.includes('UNSUPPORTED_ACCOUNT'))
     return '此帳號使用尚未支援的新版帳號加密或登入方式；為避免資料損毀，BearWarden 不會進行任何遠端寫入。'
+  if (error.message.includes('SYNC_NETWORK'))
+    return '無法連線到同步伺服器。請檢查網路、伺服器網址與 TLS 憑證後再試。'
+  if (error.message.includes('SYNC_INVALID_RESPONSE'))
+    return '伺服器回傳了 BearWarden 無法安全處理的資料。請確認伺服器版本與相容性。'
+  if (error.message.includes('SYNC_INVALID_SSH_KEY'))
+    return '伺服器包含一筆不完整的 SSH Key。請先使用 Bitwarden 或 Vaultwarden 修復或刪除該項目。'
+  if (error.message.includes('SYNC_CONFLICT'))
+    return '遠端資料已變更，這次同步未套用。請重新同步以取得最新版本。'
   if (error.message.includes('LOCKED')) return '保管庫已鎖定，請輸入主密碼後再試。'
   if (error.message.includes('INVALID_MASTER_PASSWORD')) return '主密碼不正確。'
   if (error.message.includes('TWO_FACTOR')) return '雙重驗證無效、已過期或已取消，請重新嘗試。'
   if (error.message.includes('INVALID_URL')) return '請輸入有效的 HTTPS 伺服器網址。'
   return '同步未完成，請檢查連線與登入資訊後再試。'
+}
+
+export interface SyncErrorPresentation {
+  title: string
+  description: string
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function syncInvalidResponseStageLabel(stage: SyncInvalidResponseStage): string {
+  switch (stage) {
+    case 'response':
+      return '伺服器同步回應'
+    case 'account':
+      return '帳號與加密資訊'
+    case 'organization':
+      return '組織金鑰與成員資料'
+    case 'folder':
+      return '資料夾資料'
+    case 'cipher':
+      return '保管庫項目資料'
+    case 'collection':
+      return '組織集合關聯'
+    case 'send':
+      return 'Send 資料'
+    case 'snapshot':
+      return '同步狀態提交'
+  }
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function syncErrorPresentation(code: SyncErrorCode): SyncErrorPresentation {
+  switch (code) {
+    case 'SYNC_AUTH_REQUIRED':
+      return {
+        title: '登入已失效',
+        description: '請重新輸入主密碼；如果伺服器要求，也請完成雙重驗證。'
+      }
+    case 'SYNC_NEW_DEVICE_REQUIRED':
+      return {
+        title: '需要新裝置驗證碼',
+        description: '請從 Bitwarden 寄送的郵件取得驗證碼，並在進階選項中輸入。'
+      }
+    case 'SYNC_UNSUPPORTED_ACCOUNT':
+      return {
+        title: '不支援此帳號的加密方式',
+        description: '為避免資料損毀，BearWarden 已停止遠端寫入。請更新應用程式後再試。'
+      }
+    case 'SYNC_NETWORK':
+      return {
+        title: '無法連線到同步伺服器',
+        description: '請檢查網路、伺服器網址與 TLS 憑證，並確認伺服器目前可連線。'
+      }
+    case 'SYNC_INVALID_RESPONSE':
+      return {
+        title: '伺服器回應不相容',
+        description: '伺服器回傳的資料無法安全處理。請確認 Bitwarden 或 Vaultwarden 版本與相容性。'
+      }
+    case 'SYNC_INVALID_SSH_KEY':
+      return {
+        title: '伺服器包含不完整的 SSH Key',
+        description:
+          'Vaultwarden 回傳了一筆缺少必要金鑰欄位的 SSH Key。請先使用官方 Web Vault 修復或刪除該項目，再重新同步。'
+      }
+    case 'SYNC_CONFLICT':
+      return {
+        title: '遠端資料已變更',
+        description: '這次變更未套用。請再次同步以取得最新版本後重試。'
+      }
+    case 'SYNC_FAILED':
+      return {
+        title: '同步程序未完成',
+        description: '請再試一次；如果問題持續發生，請記下下方錯誤代碼以便診斷。'
+      }
+  }
+}
+
+export function SyncFailureAlert({
+  code,
+  detail
+}: {
+  code: SyncErrorCode
+  detail?: SyncInvalidResponseStage
+}): React.JSX.Element {
+  const presentation = syncErrorPresentation(code)
+  return (
+    <Alert variant="destructive">
+      <CircleAlert aria-hidden="true" />
+      <AlertTitle>{presentation.title}</AlertTitle>
+      <AlertDescription className="flex flex-col gap-1">
+        <span>{presentation.description}</span>
+        {code === 'SYNC_INVALID_RESPONSE' && detail && (
+          <small>問題區段：{syncInvalidResponseStageLabel(detail)}</small>
+        )}
+        <small>錯誤代碼：{code}</small>
+      </AlertDescription>
+    </Alert>
+  )
 }
 
 function formatSyncTime(value?: string): string {
@@ -173,7 +284,11 @@ function SyncDialog({
   const [accountSecurityBusy, setAccountSecurityBusy] = useState(false)
 
   const configured = status.configured
-  const requiresCredentials = !configured || status.state === 'locked'
+  const requiresCredentials =
+    !configured ||
+    status.state === 'locked' ||
+    status.lastError === 'SYNC_AUTH_REQUIRED' ||
+    status.lastError === 'SYNC_NEW_DEVICE_REQUIRED'
   const isSyncing = busy || status.state === 'syncing'
   const currentAccountProfileIdentity = accountProfileIdentity(status.serverUrl, status.email)
   const visibleAccountProfile =
@@ -416,7 +531,9 @@ function SyncDialog({
               </strong>
               <small>
                 {status.lastError
-                  ? '上次同步發生問題。'
+                  ? status.lastErrorAt
+                    ? `同步失敗：${formatSyncTime(status.lastErrorAt)}`
+                    : '上次同步發生問題。'
                   : status.lastSyncAt
                     ? `上次同步：${formatSyncTime(status.lastSyncAt)}`
                     : '主密碼與驗證碼只用於本次操作，不會儲存在此裝置。'}
@@ -424,6 +541,10 @@ function SyncDialog({
             </div>
             {isSyncing && <Spinner aria-label="同步中" />}
           </Alert>
+
+          {status.lastError && (
+            <SyncFailureAlert code={status.lastError} detail={status.lastErrorDetail} />
+          )}
 
           {requiresCredentials ? (
             <form
