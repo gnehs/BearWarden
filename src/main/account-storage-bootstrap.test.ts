@@ -54,22 +54,17 @@ describe('account storage bootstrap', () => {
     })
   })
 
-  it('uses the intact legacy paths when committed account data is corrupt', async () => {
+  it('does not roll a committed account back after its vault changes', async () => {
     const fixture = await legacyFixture()
     const storage = await bootstrapAccountStorage(fixture.root, { createUuid: uuidGenerator() })
     expect(storage.mode).toBe('account')
     if (storage.mode !== 'account') return
-    await writeFile(storage.paths.vaultPath, 'tampered')
+    await writeFile(storage.paths.vaultPath, 'legitimate post-migration write')
 
     await expect(bootstrapAccountStorage(fixture.root)).resolves.toMatchObject({
-      mode: 'legacy-fallback',
-      activeAccountId: null,
-      fallbackReason: 'target-corrupt',
-      paths: {
-        vaultPath: join(fixture.root, 'vault', 'vault.json'),
-        settingsPath: join(fixture.root, 'settings.json'),
-        touchIdPath: join(fixture.root, 'vault', 'touch-id.bin')
-      }
+      mode: 'account',
+      activeAccountId: storage.activeAccountId,
+      paths: { vaultPath: storage.paths.vaultPath }
     })
     expect(await readFile(join(fixture.root, 'vault', 'vault.json'))).toEqual(fixture.vault)
   })

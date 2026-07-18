@@ -110,16 +110,20 @@ describe('legacy account storage migration', () => {
     expect(recovered.kind).toBe('account')
   })
 
-  it('falls back to legacy when a committed target is missing or corrupt', async () => {
-    const corruptFixture = await legacyFixture()
-    const corrupt = await migrateLegacyAccountStorage(corruptFixture.root, {
+  it('keeps a committed mutable target authoritative and falls back only when it is missing', async () => {
+    const updatedFixture = await legacyFixture()
+    const updated = await migrateLegacyAccountStorage(updatedFixture.root, {
       createUuid: uuidGenerator()
     })
-    expect(corrupt.kind).toBe('account')
-    if (corrupt.kind !== 'account') return
-    await writeFile(corrupt.accountPaths.vaultPath, Buffer.from('tampered'))
-    const corruptRecovery = await migrateLegacyAccountStorage(corruptFixture.root)
-    expect(corruptRecovery).toMatchObject({ kind: 'legacy-fallback', reason: 'target-corrupt' })
+    expect(updated.kind).toBe('account')
+    if (updated.kind !== 'account') return
+    await writeFile(updated.accountPaths.vaultPath, Buffer.from('legitimate post-migration write'))
+    const updatedRecovery = await migrateLegacyAccountStorage(updatedFixture.root)
+    expect(updatedRecovery).toMatchObject({
+      kind: 'account',
+      accountId: updated.accountId,
+      accountPaths: updated.accountPaths
+    })
 
     const missingFixture = await legacyFixture()
     const missing = await migrateLegacyAccountStorage(missingFixture.root, {

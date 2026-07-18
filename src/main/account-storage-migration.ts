@@ -456,6 +456,7 @@ export async function migrateLegacyAccountStorage(
 
   if (registry) {
     const accountPaths = layout.account(registry.activeAccountId)
+    const migrationAlreadyCommitted = journal?.phase === 'committed'
     const accountDirectoryExists = await directoryExistsNoSymlink(accountPaths.accountDirectory)
     const vaultDirectoryExists = await directoryExistsNoSymlink(accountPaths.vaultDirectory)
     if (!accountDirectoryExists || !vaultDirectoryExists) {
@@ -463,7 +464,16 @@ export async function migrateLegacyAccountStorage(
         ? legacyFallback(layout, 'target-missing')
         : { kind: 'storage-unavailable', reason: 'target-missing' }
     }
-    if (!journal || journal.accountId !== registry.activeAccountId || !journal.files) {
+    // Once both the registry and migration journal are committed, the account-scoped vault is
+    // live mutable state. Its migration fingerprint only proves that the original copy was
+    // correct; comparing it on later launches would mistake every legitimate vault write for
+    // corruption and roll the app back to the stale legacy vault.
+    if (
+      !journal ||
+      migrationAlreadyCommitted ||
+      journal.accountId !== registry.activeAccountId ||
+      !journal.files
+    ) {
       if (await fileExistsNoSymlink(accountPaths.vaultPath)) {
         return { kind: 'account', accountId: registry.activeAccountId, accountPaths, registry }
       }

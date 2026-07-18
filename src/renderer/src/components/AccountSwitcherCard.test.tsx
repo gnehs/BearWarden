@@ -1,5 +1,7 @@
+import { renderToStaticMarkup } from 'react-dom/server'
 import type { AccountStatusEntry } from '../../../shared/vault-contract'
 import { describe, expect, it, vi } from 'vitest'
+import AccountSwitcherCard from './AccountSwitcherCard'
 import {
   accountConfirmationContent,
   accountMoveButtonDisabled,
@@ -27,6 +29,28 @@ function account(overrides: Partial<AccountStatusEntry> = {}): AccountStatusEntr
 }
 
 describe('AccountSwitcherCard presentation helpers', () => {
+  it('shows a failed load without also claiming that it is still loading', () => {
+    const markup = renderToStaticMarkup(
+      <AccountSwitcherCard
+        accountStatus={null}
+        busy={false}
+        busyLabel=""
+        error="無法讀取本機帳號清單，請稍後再試。"
+        onRequestAdd={(proceed) => proceed()}
+        onRequestSwitch={(proceed) => proceed()}
+        onRequestRemove={(proceed) => proceed()}
+        onAdd={vi.fn(async () => undefined)}
+        onSwitch={vi.fn(async () => undefined)}
+        onReorder={vi.fn(async () => undefined)}
+        onRemove={vi.fn(async () => undefined)}
+      />
+    )
+
+    expect(markup).toContain('無法讀取本機帳號清單')
+    expect(markup).not.toContain('正在讀取本機帳號')
+    expect(markup).not.toContain('請稍候')
+  })
+
   it('builds slot-only account presentation with active state, limit, and actions', () => {
     const firstId = '11111111-1111-4111-8111-111111111111'
     const secondId = '22222222-2222-4222-8222-222222222222'

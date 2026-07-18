@@ -110,29 +110,29 @@ function AccountSwitcherCard({
         </CardHeader>
         <CardContent>
           <FieldGroup>
-            {accountStatus === null ? (
-              <Field>
-                <FieldContent>
-                  <FieldTitle>正在讀取本機帳號</FieldTitle>
-                  <FieldDescription aria-live="polite">請稍候。</FieldDescription>
-                </FieldContent>
-              </Field>
-            ) : (
-              accounts.map((account, index) => (
-                <AccountRow
-                  key={account.id}
-                  account={account}
-                  accounts={accounts}
-                  index={index}
-                  revision={accountStatus.revision}
-                  busy={busy}
-                  onRequestSwitch={onRequestSwitch}
-                  onRequestRemove={onRequestRemove}
-                  onReorder={onReorder}
-                  onConfirm={(action) => setConfirmationAction(action)}
-                />
-              ))
-            )}
+            {accountStatus === null
+              ? !error && (
+                  <Field>
+                    <FieldContent>
+                      <FieldTitle>正在讀取本機帳號</FieldTitle>
+                      <FieldDescription aria-live="polite">請稍候。</FieldDescription>
+                    </FieldContent>
+                  </Field>
+                )
+              : accounts.map((account, index) => (
+                  <AccountRow
+                    key={account.id}
+                    account={account}
+                    accounts={accounts}
+                    index={index}
+                    revision={accountStatus.revision}
+                    busy={busy}
+                    onRequestSwitch={onRequestSwitch}
+                    onRequestRemove={onRequestRemove}
+                    onReorder={onReorder}
+                    onConfirm={(action) => setConfirmationAction(action)}
+                  />
+                ))}
             {busy && (
               <Field>
                 <FieldContent>
