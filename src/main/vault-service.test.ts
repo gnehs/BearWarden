@@ -6065,6 +6065,80 @@ describe('VaultService encrypted local data', () => {
     await locking
   })
 
+  it('lists history metadata and reveals or copies only one stale-safe entry', async () => {
+    const { copyText, service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const login = await service.createLogin({ name: 'Narrow history', password: 'old-secret' })
+    const updated = await service.updateLogin({ id: login.id, password: 'current-secret' })
+
+    const history = await service.getPasswordHistoryView({ id: login.id })
+    expect(history).toEqual({
+      expectedUpdatedAt: updated.updatedAt,
+      entries: [{ lastUsedDate: expect.any(String) }]
+    })
+    expect(JSON.stringify(history)).not.toContain('old-secret')
+
+    const request = {
+      id: login.id,
+      index: 0,
+      lastUsedDate: history.entries[0]!.lastUsedDate,
+      expectedUpdatedAt: history.expectedUpdatedAt
+    }
+    await expect(service.revealPasswordHistory(request)).resolves.toBe('old-secret')
+    const write = vi.spyOn(store, 'write')
+    await expect(service.copyPasswordHistory(request)).resolves.toBeUndefined()
+    expect(copyText).toHaveBeenLastCalledWith('old-secret')
+    expect(write).not.toHaveBeenCalled()
+
+    for (const invalid of [
+      { ...request, index: 1 },
+      { ...request, lastUsedDate: '2026-01-01T00:00:00.000Z' },
+      { ...request, expectedUpdatedAt: '2026-01-01T00:00:00.000Z' }
+    ]) {
+      await expect(service.revealPasswordHistory(invalid)).rejects.toMatchObject({
+        code: 'INVALID_INPUT'
+      })
+      await expect(service.copyPasswordHistory(invalid)).rejects.toMatchObject({
+        code: 'INVALID_INPUT'
+      })
+    }
+    expect(copyText).toHaveBeenCalledOnce()
+  })
+
+  it('requires authorization before revealing or copying protected and deleted history', async () => {
+    const { copyText, service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const login = await service.createLogin({
+      name: 'Protected history',
+      password: 'old-secret',
+      reprompt: 1
+    })
+    const updated = await service.updateLogin({ id: login.id, password: 'current-secret' })
+    const history = await service.getPasswordHistoryView({ id: login.id }, () => true)
+    const request = {
+      id: login.id,
+      index: 0,
+      lastUsedDate: history.entries[0]!.lastUsedDate,
+      expectedUpdatedAt: updated.updatedAt
+    }
+
+    await expect(service.revealPasswordHistory(request, () => false)).rejects.toMatchObject({
+      code: 'REPROMPT_REQUIRED'
+    })
+    await expect(service.revealPasswordHistory(request, () => true)).resolves.toBe('old-secret')
+    await service.deleteLogin({ id: login.id })
+    const deletedHistory = await service.getPasswordHistoryView({ id: login.id }, () => true)
+    const deletedRequest = {
+      ...request,
+      expectedUpdatedAt: deletedHistory.expectedUpdatedAt
+    }
+    await expect(service.copyPasswordHistory(deletedRequest, () => false)).rejects.toMatchObject({
+      code: 'REPROMPT_REQUIRED'
+    })
+    await expect(service.copyPasswordHistory(deletedRequest, () => true)).resolves.toBeUndefined()
+    expect(copyText).toHaveBeenLastCalledWith('old-secret')
+  })
+
   it('reports active password health without persisting, changing generation, or exposing secrets', async () => {
     const { service, store } = await createHarness()
     await service.setup(MASTER_PASSWORD)

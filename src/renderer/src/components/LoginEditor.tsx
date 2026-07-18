@@ -110,6 +110,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 import { Textarea } from './ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import CredentialGeneratorDialog from './CredentialGeneratorDialog'
+import { editorHeaderContent } from './login-editor-ui'
 import {
   applyImportedSshKey,
   applyGeneratedSshKey,
@@ -1216,7 +1217,7 @@ function LoginEditor({
     setPasskeyDeleteTarget(null)
   }
 
-  const editorTitle = login ? `編輯${typeLabel(draft.type)}` : `新增 ${typeLabel(draft.type)}`
+  const headerContent = editorHeaderContent(typeLabel(draft.type), login?.name ?? null)
   const detectedCardBrand = detectPaymentCardBrand(draft.number)
   const folderSelectItems = [
     { value: '', label: '未分類' },
@@ -1227,12 +1228,16 @@ function LoginEditor({
     <form className="editor" onSubmit={submit} aria-labelledby="editor-title">
       <header className="detail-header editor-header">
         <div>
-          <p className="eyebrow">{editorTitle}</p>
-          <h2 id="editor-title">{login?.name || `新的 ${typeLabel(draft.type)}項目`}</h2>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">{typeLabel(draft.type)}</Badge>
-            {dirty && <Badge variant="outline">未儲存</Badge>}
-          </div>
+          <p className="eyebrow">{headerContent.eyebrow}</p>
+          <h2 id="editor-title">{headerContent.heading}</h2>
+          {(login || dirty) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {headerContent.typeBadge && (
+                <Badge variant="secondary">{headerContent.typeBadge}</Badge>
+              )}
+              {dirty && <Badge variant="outline">未儲存</Badge>}
+            </div>
+          )}
         </div>
         <Button
           variant="ghost"
