@@ -154,9 +154,9 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
   return (
     <main className="auth-shell">
       <div className="window-drag-region" aria-hidden="true" />
-      <section className="auth-panel" aria-labelledby="auth-title">
-        <BrandMark />
-
+      <div className='flex flex-col gap-4 items-center justify-center'>
+      <BrandMark />
+      <section className="auth-panel outline outline-black/5" aria-labelledby="auth-title">
         {state === 'loading' && (
           <div className="auth-state" role="status">
             <Spinner className="size-7" aria-hidden="true" />
@@ -182,9 +182,6 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
         {(state === 'locked' || state === 'uninitialized') && (
           <form className="auth-form" onSubmit={handleSubmit}>
             <div className="auth-heading">
-              <span className="auth-state-icon" aria-hidden="true">
-                <KeyRound size={25} />
-              </span>
               <div>
                 <h1 id="auth-title">{isSetup ? '建立你的保管庫' : '歡迎回來'}</h1>
                 <p>
@@ -256,7 +253,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
               </Alert>
             )}
 
-            <Button className="w-full" type="submit" disabled={submitting}>
+            <Button className="w-full h-10" type="submit" disabled={submitting}>
               {submitting ? (
                 <Spinner data-icon="inline-start" aria-hidden="true" />
               ) : (
@@ -266,7 +263,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
             </Button>
             {!isSetup && pinStatus.available && (
               <Button
-                className="w-full"
+                className="w-full h-10"
                 variant="outline"
                 type="button"
                 disabled={submitting}
@@ -283,7 +280,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
             )}
             {!isSetup && settings?.touchIdAvailable && settings.touchIdEnabled && (
               <Button
-                className="w-full"
+                className="w-full h-10"
                 variant="secondary"
                 type="button"
                 disabled={submitting}
@@ -299,7 +296,8 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
             )}
           </form>
         )}
-      </section>
+        </section>
+      </div>
       <p className="auth-footnote">你的主密碼和解密後的資料不會離開這部裝置。</p>
     </main>
   )

@@ -399,7 +399,6 @@ button svg {
 .auth-panel {
   width: min(100%, 440px);
   padding: 28px;
-  border: 1px solid var(--border);
   border-radius: 20px;
   background: color-mix(in oklch, var(--card) 91%, transparent);
   box-shadow: var(--shadow);
