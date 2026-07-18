@@ -69,7 +69,7 @@ export class AutoSyncCoordinator {
     this.queueRequest(false)
   }
 
-  /** Foreground, resume, and unlock boundaries should not wait for the debounce window. */
+  /** Local mutations should sync as soon as the current operation boundary allows. */
   requestImmediate(): void {
     this.queueRequest(true)
   }
