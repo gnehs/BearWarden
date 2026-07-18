@@ -16,6 +16,14 @@ BearWarden 是一個以「快速找到、安心使用」為核心的桌面密碼
 
 > 截圖為開發中的 Beta 版本，介面與功能可能持續調整。
 
+## 安裝
+
+### macOS（Homebrew）
+
+```bash
+brew install --cask gnehs/tap/bearwarden
+```
+
 ## 已實作範圍
 
 - 以主密碼建立、解鎖與鎖定本機密碼庫
