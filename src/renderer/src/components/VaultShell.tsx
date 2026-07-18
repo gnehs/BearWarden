@@ -142,6 +142,7 @@ import {
   filterVaultSearchMatches,
   isCurrentVaultSearchResponse,
   MAX_VAULT_SEARCH_QUERY_LENGTH,
+  matchesVaultSearchNavigation,
   normalizedVaultSearchQuery,
   VAULT_SEARCH_DEBOUNCE_MS,
   vaultSearchListRequests,
@@ -1929,23 +1930,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   const scopedItems = useMemo(() => {
     const matchedItems = filterVaultSearchMatches(items, query, searchMatches)
-    const scoped = matchedItems.filter((item) => {
-      if (scope.kind === 'trash') {
-        if (!item.deletedAt) return false
-      } else if (scope.kind === 'archive') {
-        if (item.deletedAt || !item.archivedAt) return false
-      } else if (item.deletedAt) {
-        return false
-      } else if (item.archivedAt) {
-        return false
-      }
-      if (scope.kind === 'favorites' && !item.favorite) return false
-      if (scope.kind === 'recent' && !item.lastUsedAt) return false
-      if (scope.kind === 'folder' && item.folderId !== scope.folderId) return false
-      if (scope.kind === 'unfiled' && item.folderId !== null) return false
-      if (!matchesVaultCategory(item, typeFilter)) return false
-      return true
-    })
+    const scoped = matchedItems.filter((item) =>
+      matchesVaultSearchNavigation(item, query, scope, typeFilter)
+    )
     return sortItems(scoped, scope.kind === 'recent' ? 'recent' : sortMode)
   }, [items, query, scope, searchMatches, sortMode, typeFilter])
   const scopedItemIds = useMemo(() => scopedItems.map((item) => item.id), [scopedItems])
@@ -3845,7 +3832,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             <CommandList className="vault-command-list">
               <CommandEmpty>找不到符合的保管庫項目</CommandEmpty>
               {scopedItems.length > 0 && (
-                <CommandGroup heading={`${scopeTitle} · ${scopedItems.length} 個項目`}>
+                <CommandGroup
+                  heading={`${normalizedVaultSearchQuery(query) ? '搜尋結果' : scopeTitle} · ${scopedItems.length} 個項目`}
+                >
                   {scopedItems.map((item) => {
                     const ItemIcon = itemTypeMeta[item.type].icon
                     return (

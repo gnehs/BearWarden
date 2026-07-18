@@ -5,10 +5,11 @@ import {
   filterVaultSearchMatches,
   isCurrentVaultSearchResponse,
   MAX_VAULT_SEARCH_QUERY_LENGTH,
+  matchesVaultSearchNavigation,
   vaultSearchListRequests
 } from './vault-search-ui'
 
-function summary(id: string): LoginSummary {
+function summary(id: string, overrides: Partial<LoginSummary> = {}): LoginSummary {
   return {
     id,
     type: 'login',
@@ -28,7 +29,8 @@ function summary(id: string): LoginSummary {
     updatedAt: '2026-07-16T00:00:00.000Z',
     deletedAt: null,
     archivedAt: null,
-    reprompt: 0
+    reprompt: 0,
+    ...overrides
   }
 }
 
@@ -83,5 +85,47 @@ describe('vault search renderer policy', () => {
       { sort: 'name', archived: true, query: 'github' },
       { sort: 'name', deleted: true, query: 'github' }
     ])
+  })
+
+  it('does not restrict active header search results to the current navigation filter', () => {
+    const item = summary('card', {
+      type: 'card',
+      folderId: 'other-folder',
+      favorite: false,
+      lastUsedAt: null
+    })
+
+    expect(
+      matchesVaultSearchNavigation(
+        item,
+        ' card ',
+        { kind: 'folder', folderId: 'selected' },
+        'login'
+      )
+    ).toBe(true)
+    expect(matchesVaultSearchNavigation(item, 'card', { kind: 'favorites' }, 'totp')).toBe(true)
+    expect(matchesVaultSearchNavigation(item, 'card', { kind: 'recent' }, 'passkey')).toBe(true)
+  })
+
+  it('keeps lifecycle boundaries while searching globally across categories', () => {
+    const active = summary('active')
+    const archived = summary('archived', { archivedAt: '2026-07-17T00:00:00.000Z' })
+    const deleted = summary('deleted', { deletedAt: '2026-07-17T00:00:00.000Z' })
+
+    expect(matchesVaultSearchNavigation(active, 'vault', { kind: 'all' }, 'card')).toBe(true)
+    expect(matchesVaultSearchNavigation(archived, 'vault', { kind: 'all' }, 'all')).toBe(false)
+    expect(matchesVaultSearchNavigation(deleted, 'vault', { kind: 'all' }, 'all')).toBe(false)
+    expect(matchesVaultSearchNavigation(archived, 'vault', { kind: 'archive' }, 'card')).toBe(true)
+    expect(matchesVaultSearchNavigation(deleted, 'vault', { kind: 'trash' }, 'card')).toBe(true)
+  })
+
+  it('preserves navigation filtering for empty and whitespace-only searches', () => {
+    const card = summary('card', { type: 'card', folderId: 'other-folder' })
+
+    expect(
+      matchesVaultSearchNavigation(card, '', { kind: 'folder', folderId: 'selected' }, 'all')
+    ).toBe(false)
+    expect(matchesVaultSearchNavigation(card, '   ', { kind: 'all' }, 'login')).toBe(false)
+    expect(matchesVaultSearchNavigation(card, '   ', { kind: 'all' }, 'card')).toBe(true)
   })
 })
