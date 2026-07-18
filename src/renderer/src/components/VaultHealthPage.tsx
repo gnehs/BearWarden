@@ -1,7 +1,7 @@
 import {
   AlertTriangle,
-  ArrowLeft,
   CheckCircle2,
+  ChevronRight,
   ExternalLink,
   KeyRound,
   MailSearch,
@@ -12,7 +12,7 @@ import {
   WifiOff,
   X
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import type {
   InactiveTwoFactorFinding,
@@ -121,7 +121,6 @@ export async function openInactiveTwoFactorDocumentation(
 
 interface VaultHealthPageProps {
   revision: string
-  onBack: () => void
   onOpenItem: (id: string) => void
 }
 
@@ -151,7 +150,7 @@ function HealthEmpty({
         ? ['沒有弱密碼', '目前分析到的登入項目都高於弱密碼門檻。']
         : ['沒有不安全網站', '有效的個人登入項目都沒有使用 http:// URI。']
   return (
-    <Empty className="min-h-56">
+    <Empty className="min-h-56 xl:col-span-2">
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <CheckCircle2 />
@@ -163,6 +162,60 @@ function HealthEmpty({
   )
 }
 
+function HealthFindingCard({
+  title,
+  description,
+  status,
+  onOpen
+}: {
+  title: string
+  description: string
+  status: ReactNode
+  onOpen: () => void
+}): React.JSX.Element {
+  return (
+    <Card size="sm">
+      <CardHeader className="gap-2 has-data-[slot=card-action]:grid-cols-1 sm:has-data-[slot=card-action]:grid-cols-[1fr_auto]">
+        <CardTitle className="truncate">{title}</CardTitle>
+        <CardDescription className="truncate">{description}</CardDescription>
+        <CardAction className="col-start-1 row-start-3 flex items-center gap-1 justify-self-start sm:col-start-2 sm:row-span-2 sm:row-start-1 sm:justify-self-end">
+          {status}
+          <Button
+            variant="ghost"
+            size="sm"
+            type="button"
+            aria-label={`查看${title}`}
+            onClick={onOpen}
+          >
+            查看
+            <ChevronRight data-icon="inline-end" />
+          </Button>
+        </CardAction>
+      </CardHeader>
+    </Card>
+  )
+}
+
+function HealthResultsHeader({
+  title,
+  description,
+  count
+}: {
+  title: string
+  description: string
+  count: number
+}): React.JSX.Element {
+  return (
+    <div className="flex items-start justify-between gap-4 py-2 xl:col-span-2">
+      <div>
+        <h2 className="text-base font-medium">{title}</h2>
+        <p className="text-muted-foreground mt-1 text-sm">{description}</p>
+      </div>
+      <Badge variant={count ? 'destructive' : 'secondary'}>{count} 項</Badge>
+    </div>
+  )
+}
+
 function ReusedFindingCard({
   finding,
   onOpenItem
@@ -171,24 +224,12 @@ function ReusedFindingCard({
   onOpenItem: (id: string) => void
 }): React.JSX.Element {
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle>{finding.name}</CardTitle>
-        <CardDescription>{finding.subtitle || '登入項目'}</CardDescription>
-        <CardAction className="flex items-center gap-2">
-          <Badge variant="destructive">重複 {finding.reuseCount} 次</Badge>
-          <Button
-            variant="outline"
-            size="sm"
-            type="button"
-            aria-label={`查看${finding.name}`}
-            onClick={() => onOpenItem(finding.id)}
-          >
-            查看
-          </Button>
-        </CardAction>
-      </CardHeader>
-    </Card>
+    <HealthFindingCard
+      title={finding.name}
+      description={finding.subtitle || '登入項目'}
+      status={<Badge variant="destructive">重複 {finding.reuseCount} 次</Badge>}
+      onOpen={() => onOpenItem(finding.id)}
+    />
   )
 }
 
@@ -200,26 +241,16 @@ function WeakFindingCard({
   onOpenItem: (id: string) => void
 }): React.JSX.Element {
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle>{finding.name}</CardTitle>
-        <CardDescription>{finding.subtitle || '登入項目'}</CardDescription>
-        <CardAction className="flex items-center gap-2">
-          <Badge variant={finding.score <= 1 ? 'destructive' : 'outline'}>
-            {weakPasswordLabel(finding.score)}
-          </Badge>
-          <Button
-            variant="outline"
-            size="sm"
-            type="button"
-            aria-label={`查看${finding.name}`}
-            onClick={() => onOpenItem(finding.id)}
-          >
-            查看
-          </Button>
-        </CardAction>
-      </CardHeader>
-    </Card>
+    <HealthFindingCard
+      title={finding.name}
+      description={finding.subtitle || '登入項目'}
+      status={
+        <Badge variant={finding.score <= 1 ? 'destructive' : 'outline'}>
+          {weakPasswordLabel(finding.score)}
+        </Badge>
+      }
+      onOpen={() => onOpenItem(finding.id)}
+    />
   )
 }
 
@@ -231,24 +262,12 @@ function UnsecuredWebsiteFindingCard({
   onOpenItem: (id: string) => void
 }): React.JSX.Element {
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle>{finding.name}</CardTitle>
-        <CardDescription>至少一個 URI 明確使用 http://</CardDescription>
-        <CardAction className="flex items-center gap-2">
-          <Badge variant="destructive">未加密連線</Badge>
-          <Button
-            variant="outline"
-            size="sm"
-            type="button"
-            aria-label={`查看${finding.name}`}
-            onClick={() => onOpenItem(finding.id)}
-          >
-            查看
-          </Button>
-        </CardAction>
-      </CardHeader>
-    </Card>
+    <HealthFindingCard
+      title={finding.name}
+      description="至少一個 URI 明確使用 http://"
+      status={<Badge variant="destructive">未加密連線</Badge>}
+      onOpen={() => onOpenItem(finding.id)}
+    />
   )
 }
 
@@ -462,24 +481,14 @@ function ExposedFindingCard({
   onOpenItem: (id: string) => void
 }): React.JSX.Element {
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle>{finding.name}</CardTitle>
-        <CardDescription>{finding.subtitle || '登入項目'}</CardDescription>
-        <CardAction className="flex items-center gap-2">
-          <Badge variant="destructive">已知外洩紀錄 {finding.exposedCount.toLocaleString()}</Badge>
-          <Button
-            variant="outline"
-            size="sm"
-            type="button"
-            aria-label={`查看${finding.name}`}
-            onClick={() => onOpenItem(finding.id)}
-          >
-            查看
-          </Button>
-        </CardAction>
-      </CardHeader>
-    </Card>
+    <HealthFindingCard
+      title={finding.name}
+      description={finding.subtitle || '登入項目'}
+      status={
+        <Badge variant="destructive">已知外洩紀錄 {finding.exposedCount.toLocaleString()}</Badge>
+      }
+      onOpen={() => onOpenItem(finding.id)}
+    />
   )
 }
 
@@ -903,7 +912,6 @@ function AccountBreachPanel({
 
 export default function VaultHealthPage({
   revision,
-  onBack,
   onOpenItem
 }: VaultHealthPageProps): React.JSX.Element {
   const [tab, setTab] = useState<HealthTab>('reused')
@@ -1115,26 +1123,20 @@ export default function VaultHealthPage({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col" aria-labelledby="health-title">
-      <header className="settings-header">
-        <div className="settings-header-inner">
-          <Button variant="outline" type="button" onClick={onBack}>
-            <ArrowLeft data-icon="inline-start" />
-            返回保管庫
-          </Button>
-          <div className="settings-header-content">
-            <div className="settings-title-group">
-              <span className="settings-title-icon" aria-hidden="true">
-                <ShieldCheck />
-              </span>
-              <div>
-                <p className="eyebrow">Vault Health</p>
-                <h1 id="health-title">保管庫健康報告</h1>
-                <p className="settings-subtitle">
-                  找出重複、容易猜中、出現在已知外洩紀錄的密碼、未加密網站
-                  URI，以及可啟用雙因素驗證的服務。
-                </p>
-              </div>
-            </div>
+      <header className="bg-card/80 border-b px-4 py-5 backdrop-blur-sm md:px-6">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 sm:flex-row sm:items-center">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <span
+              className="bg-primary/10 text-primary grid size-11 shrink-0 place-items-center rounded-xl"
+              aria-hidden="true"
+            >
+              <ShieldCheck />
+            </span>
+            <h1 id="health-title" className="min-w-0 text-2xl font-semibold tracking-tight">
+              保管庫健康報告
+            </h1>
+          </div>
+          <div className="sm:self-center">
             <Button
               variant="outline"
               type="button"
@@ -1153,7 +1155,7 @@ export default function VaultHealthPage({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
           {failed && (
             <Alert variant="destructive">
               <AlertTriangle />
@@ -1170,145 +1172,130 @@ export default function VaultHealthPage({
           {!report && loading ? (
             <HealthLoading />
           ) : report ? (
-            <>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>已分析</CardTitle>
-                    <CardDescription>具有密碼且未受重新提示保護的有效登入項目</CardDescription>
-                    <CardAction>
-                      <Badge variant="secondary">{report.totals.analyzedCount}</Badge>
-                    </CardAction>
-                  </CardHeader>
-                  <CardContent>分析只在本機主程序記憶體內進行。</CardContent>
-                </Card>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>重複密碼</CardTitle>
-                    <CardDescription>與至少另一個登入項目使用完全相同的密碼</CardDescription>
-                    <CardAction>
-                      <Badge
-                        variant={report.totals.reusedPasswordCount ? 'destructive' : 'secondary'}
-                      >
-                        {report.totals.reusedPasswordCount}
-                      </Badge>
-                    </CardAction>
-                  </CardHeader>
-                  <CardContent>每個受影響的登入項目都會列在報告中。</CardContent>
-                </Card>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>弱密碼</CardTitle>
-                    <CardDescription>zxcvbn 評分為 0、1 或 2 的登入密碼</CardDescription>
-                    <CardAction>
-                      <Badge
-                        variant={report.totals.weakPasswordCount ? 'destructive' : 'secondary'}
-                      >
-                        {report.totals.weakPasswordCount}
-                      </Badge>
-                    </CardAction>
-                  </CardHeader>
-                  <CardContent>評分會納入登入使用者名稱中的可辨識字詞。</CardContent>
-                </Card>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>不安全網站</CardTitle>
-                    <CardDescription>至少一個 URI 以 http:// 開頭的個人登入項目</CardDescription>
-                    <CardAction>
-                      <Badge
-                        variant={report.totals.unsecuredWebsiteCount ? 'destructive' : 'secondary'}
-                      >
-                        {report.totals.unsecuredWebsiteCount}
-                      </Badge>
-                    </CardAction>
-                  </CardHeader>
-                  <CardContent>URI 僅在本機比對，完整網址與查詢參數不會傳到畫面。</CardContent>
-                </Card>
-              </div>
+            <Tabs
+              value={tab}
+              orientation="vertical"
+              className="grid gap-5 lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start"
+              onValueChange={(value) => setTab(value as HealthTab)}
+            >
+              <Card size="sm" className="lg:sticky lg:top-0">
+                <CardHeader>
+                  <CardTitle id="health-checks-title">檢查項目</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TabsList
+                    variant="line"
+                    className="w-full items-stretch gap-1 p-0"
+                    aria-labelledby="health-checks-title"
+                  >
+                    <TabsTrigger
+                      value="reused"
+                      className="min-h-9 px-2 group-data-vertical/tabs:justify-between"
+                    >
+                      重複密碼
+                      <Badge variant="secondary">{report.totals.reusedPasswordCount}</Badge>
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="weak"
+                      className="min-h-9 px-2 group-data-vertical/tabs:justify-between"
+                    >
+                      弱密碼
+                      <Badge variant="secondary">{report.totals.weakPasswordCount}</Badge>
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="unsecured"
+                      className="min-h-9 px-2 group-data-vertical/tabs:justify-between"
+                    >
+                      不安全網站
+                      <Badge variant="secondary">{report.totals.unsecuredWebsiteCount}</Badge>
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="inactive-two-factor"
+                      className="min-h-9 px-2 group-data-vertical/tabs:justify-between"
+                    >
+                      未啟用雙因素驗證
+                      {visibleInactiveTwoFactorState.status === 'loading' ? (
+                        <Spinner />
+                      ) : visibleInactiveTwoFactorState.status === 'success' ? (
+                        <Badge
+                          variant={
+                            visibleInactiveTwoFactorState.report.findings.length
+                              ? 'destructive'
+                              : 'secondary'
+                          }
+                        >
+                          {visibleInactiveTwoFactorState.report.findings.length}
+                        </Badge>
+                      ) : visibleInactiveTwoFactorState.status === 'failed' ? (
+                        <Badge variant="outline">未知</Badge>
+                      ) : null}
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="exposed"
+                      className="min-h-9 px-2 group-data-vertical/tabs:justify-between"
+                    >
+                      外洩密碼
+                      {visibleExposedState.status === 'loading' ? (
+                        <Spinner />
+                      ) : visibleExposedState.status === 'success' ? (
+                        <Badge
+                          variant={
+                            visibleExposedState.report.totals.exposedPasswordCount
+                              ? 'destructive'
+                              : 'secondary'
+                          }
+                        >
+                          {visibleExposedState.report.totals.exposedPasswordCount}
+                        </Badge>
+                      ) : visibleExposedState.status === 'failed' ? (
+                        <Badge variant="outline">未知</Badge>
+                      ) : null}
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="account"
+                      className="min-h-9 px-2 group-data-vertical/tabs:justify-between"
+                    >
+                      帳號外洩
+                      {visibleAccountBreachState.status === 'loading' ? (
+                        <Spinner />
+                      ) : visibleAccountBreachState.status === 'success' ? (
+                        <Badge
+                          variant={
+                            visibleAccountBreachState.report.breaches.length
+                              ? 'destructive'
+                              : 'secondary'
+                          }
+                        >
+                          {visibleAccountBreachState.report.breaches.length}
+                        </Badge>
+                      ) : visibleAccountBreachState.status === 'unavailable' ? (
+                        <Badge variant="outline">未設定</Badge>
+                      ) : visibleAccountBreachState.status === 'failed' ? (
+                        <Badge variant="outline">未知</Badge>
+                      ) : null}
+                    </TabsTrigger>
+                  </TabsList>
+                </CardContent>
+              </Card>
 
-              {report.totals.protectedSkippedCount > 0 && (
-                <Alert>
-                  <ShieldCheck />
-                  <AlertTitle>受保護項目未分析</AlertTitle>
-                  <AlertDescription>
-                    {report.totals.protectedSkippedCount}{' '}
-                    個啟用主密碼重新提示的登入項目已略過，避免健康標籤洩漏受保護內容的特徵。
-                  </AlertDescription>
-                </Alert>
-              )}
+              <div className="flex min-w-0 flex-col gap-5">
+                {report.totals.protectedSkippedCount > 0 && (
+                  <Alert>
+                    <ShieldCheck />
+                    <AlertTitle>受保護項目未分析</AlertTitle>
+                    <AlertDescription>
+                      {report.totals.protectedSkippedCount}{' '}
+                      個啟用主密碼重新提示的登入項目已略過，避免健康標籤洩漏受保護內容的特徵。
+                    </AlertDescription>
+                  </Alert>
+                )}
 
-              <Tabs value={tab} onValueChange={(value) => setTab(value as HealthTab)}>
-                <TabsList className="h-auto w-full flex-wrap sm:w-fit">
-                  <TabsTrigger value="reused">
-                    重複密碼
-                    <Badge variant="secondary">{report.totals.reusedPasswordCount}</Badge>
-                  </TabsTrigger>
-                  <TabsTrigger value="weak">
-                    弱密碼
-                    <Badge variant="secondary">{report.totals.weakPasswordCount}</Badge>
-                  </TabsTrigger>
-                  <TabsTrigger value="unsecured">
-                    不安全網站
-                    <Badge variant="secondary">{report.totals.unsecuredWebsiteCount}</Badge>
-                  </TabsTrigger>
-                  <TabsTrigger value="inactive-two-factor">
-                    未啟用雙因素驗證
-                    {visibleInactiveTwoFactorState.status === 'loading' ? (
-                      <Spinner />
-                    ) : visibleInactiveTwoFactorState.status === 'success' ? (
-                      <Badge
-                        variant={
-                          visibleInactiveTwoFactorState.report.findings.length
-                            ? 'destructive'
-                            : 'secondary'
-                        }
-                      >
-                        {visibleInactiveTwoFactorState.report.findings.length}
-                      </Badge>
-                    ) : visibleInactiveTwoFactorState.status === 'failed' ? (
-                      <Badge variant="outline">未知</Badge>
-                    ) : null}
-                  </TabsTrigger>
-                  <TabsTrigger value="exposed">
-                    外洩密碼
-                    {visibleExposedState.status === 'loading' ? (
-                      <Spinner />
-                    ) : visibleExposedState.status === 'success' ? (
-                      <Badge
-                        variant={
-                          visibleExposedState.report.totals.exposedPasswordCount
-                            ? 'destructive'
-                            : 'secondary'
-                        }
-                      >
-                        {visibleExposedState.report.totals.exposedPasswordCount}
-                      </Badge>
-                    ) : visibleExposedState.status === 'failed' ? (
-                      <Badge variant="outline">未知</Badge>
-                    ) : null}
-                  </TabsTrigger>
-                  <TabsTrigger value="account">
-                    帳號外洩
-                    {visibleAccountBreachState.status === 'loading' ? (
-                      <Spinner />
-                    ) : visibleAccountBreachState.status === 'success' ? (
-                      <Badge
-                        variant={
-                          visibleAccountBreachState.report.breaches.length
-                            ? 'destructive'
-                            : 'secondary'
-                        }
-                      >
-                        {visibleAccountBreachState.report.breaches.length}
-                      </Badge>
-                    ) : visibleAccountBreachState.status === 'unavailable' ? (
-                      <Badge variant="outline">未設定</Badge>
-                    ) : visibleAccountBreachState.status === 'failed' ? (
-                      <Badge variant="outline">未知</Badge>
-                    ) : null}
-                  </TabsTrigger>
-                </TabsList>
-                <TabsContent value="reused" className="flex flex-col gap-3 pt-3">
+                <TabsContent value="reused" className="grid gap-3 xl:grid-cols-2">
+                  <HealthResultsHeader
+                    title="重複使用的登入項目"
+                    description="優先替共用次數較多的項目建立獨立密碼。"
+                    count={report.totals.reusedPasswordCount}
+                  />
                   {report.reusedPasswords.length ? (
                     report.reusedPasswords.map((finding) => (
                       <ReusedFindingCard
@@ -1321,7 +1308,12 @@ export default function VaultHealthPage({
                     <HealthEmpty kind="reused" />
                   )}
                 </TabsContent>
-                <TabsContent value="weak" className="flex flex-col gap-3 pt-3">
+                <TabsContent value="weak" className="grid gap-3 xl:grid-cols-2">
+                  <HealthResultsHeader
+                    title="容易猜中的密碼"
+                    description="建議改用由密碼產生器建立的長密碼。"
+                    count={report.totals.weakPasswordCount}
+                  />
                   {report.weakPasswords.length ? (
                     report.weakPasswords.map((finding) => (
                       <WeakFindingCard key={finding.id} finding={finding} onOpenItem={onOpenItem} />
@@ -1330,7 +1322,12 @@ export default function VaultHealthPage({
                     <HealthEmpty kind="weak" />
                   )}
                 </TabsContent>
-                <TabsContent value="unsecured" className="flex flex-col gap-3 pt-3">
+                <TabsContent value="unsecured" className="grid gap-3 xl:grid-cols-2">
+                  <HealthResultsHeader
+                    title="未加密連線"
+                    description="確認服務是否提供 HTTPS，並更新儲存的網站位址。"
+                    count={report.totals.unsecuredWebsiteCount}
+                  />
                   {report.unsecuredWebsites.length ? (
                     report.unsecuredWebsites.map((finding) => (
                       <UnsecuredWebsiteFindingCard
@@ -1343,14 +1340,14 @@ export default function VaultHealthPage({
                     <HealthEmpty kind="unsecured" />
                   )}
                 </TabsContent>
-                <TabsContent value="inactive-two-factor" className="pt-3">
+                <TabsContent value="inactive-two-factor">
                   <InactiveTwoFactorPanel
                     state={visibleInactiveTwoFactorState}
                     onStart={() => void startInactiveTwoFactorCheck()}
                     onOpenItem={onOpenItem}
                   />
                 </TabsContent>
-                <TabsContent value="exposed" className="pt-3">
+                <TabsContent value="exposed">
                   <ExposedPasswordPanel
                     state={visibleExposedState}
                     onStart={() => void startExposedPasswordCheck()}
@@ -1358,7 +1355,7 @@ export default function VaultHealthPage({
                     onOpenItem={onOpenItem}
                   />
                 </TabsContent>
-                <TabsContent value="account" className="pt-3">
+                <TabsContent value="account">
                   <AccountBreachPanel
                     email={accountBreachEmail}
                     invalid={accountBreachEmailInvalid}
@@ -1371,8 +1368,8 @@ export default function VaultHealthPage({
                     onCancel={cancelAccountBreachRequest}
                   />
                 </TabsContent>
-              </Tabs>
-            </>
+              </div>
+            </Tabs>
           ) : null}
         </div>
       </div>

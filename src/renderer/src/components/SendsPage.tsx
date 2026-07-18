@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, FilePlus, FileText, Pencil, Plus, Save, Trash2 } from 'lucide-react'
+import { Download, FilePlus, FileText, Pencil, Plus, Save, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
@@ -37,10 +37,6 @@ import {
 } from '@renderer/components/ui/alert-dialog'
 import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 
-interface SendsPageProps {
-  onBack: () => void
-}
-
 const emptyDraft: SendCreateRequest = {
   name: '',
   notes: null,
@@ -72,7 +68,7 @@ function draftFromSend(send: SendView): SendCreateRequest {
   }
 }
 
-function SendsPage({ onBack }: SendsPageProps): React.JSX.Element {
+function SendsPage(): React.JSX.Element {
   const [sends, setSends] = useState<SendView[]>([])
   const { copiedKey, clearCopied, showCopied } = useCopyFeedback()
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -235,34 +231,29 @@ function SendsPage({ onBack }: SendsPageProps): React.JSX.Element {
     <div className="settings-page">
       <header className="settings-header">
         <div className="settings-header-inner">
-          <Button
-            variant="ghost"
-            size="icon"
-            type="button"
-            onClick={onBack}
-            aria-label="返回保管庫"
-          >
-            <ArrowLeft />
-          </Button>
-          <div className="settings-title-group">
-            <p className="eyebrow">Bitwarden Send</p>
-            <h1 id="sends-title">Sends</h1>
-            <p className="settings-subtitle">文字與檔案 Send 都會先在主程序解密 metadata。</p>
-          </div>
-          <div className="ml-auto flex gap-2">
-            <Button
-              variant="outline"
-              type="button"
-              onClick={() => void createFile()}
-              disabled={busy}
-            >
-              <FilePlus data-icon="inline-start" />
-              建立檔案 Send
-            </Button>
-            <Button type="button" onClick={startCreate} disabled={busy}>
-              <Plus data-icon="inline-start" />
-              新增文字 Send
-            </Button>
+          <div className="settings-header-content">
+            <div className="settings-title-group">
+              <div>
+                <p className="eyebrow">Bitwarden Send</p>
+                <h1 id="sends-title">Sends</h1>
+                <p className="settings-subtitle">文字與檔案 Send 都會先在主程序解密 metadata。</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => void createFile()}
+                disabled={busy}
+              >
+                <FilePlus data-icon="inline-start" />
+                建立檔案 Send
+              </Button>
+              <Button type="button" onClick={startCreate} disabled={busy}>
+                <Plus data-icon="inline-start" />
+                新增文字 Send
+              </Button>
+            </div>
           </div>
         </div>
       </header>

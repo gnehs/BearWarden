@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { History, ShieldAlert, Sparkles, Trash2 } from 'lucide-react'
+import { History, RefreshCw, ShieldAlert, Sparkles, Trash2 } from 'lucide-react'
 import type {
   CredentialGeneratorRequest,
   CredentialGeneratorResult,
@@ -9,6 +9,14 @@ import type {
 } from '../../../shared/vault-contract'
 import { Alert, AlertDescription, AlertTitle } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle
+} from '@renderer/components/ui/card'
 import { Checkbox } from '@renderer/components/ui/checkbox'
 import { DialogClose, DialogFooter } from '@renderer/components/ui/dialog'
 import {
@@ -23,6 +31,12 @@ import {
   FieldTitle
 } from '@renderer/components/ui/field'
 import { Input } from '@renderer/components/ui/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput
+} from '@renderer/components/ui/input-group'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
 import { ToggleGroup, ToggleGroupItem } from '@renderer/components/ui/toggle-group'
@@ -169,6 +183,18 @@ export default function CredentialGeneratorDialog({
   const [email, setEmail] = useState('')
   const [domain, setDomain] = useState('')
   const { copiedKey, clearCopied, showCopied } = useCopyFeedback()
+  const canUseResult = Boolean(
+    result && onUseCredential && (!useCategories || useCategories.includes(result.category))
+  )
+
+  const generateLabel =
+    tab === 'password'
+      ? passwordAlgorithm === 'password'
+        ? '密碼'
+        : '密語'
+      : usernameAlgorithm === 'username'
+        ? '使用者名稱'
+        : 'Email'
 
   useEffect(() => {
     mountedRef.current = true
@@ -254,6 +280,7 @@ export default function CredentialGeneratorDialog({
     setBusy(true)
     setError('')
     setResult(null)
+    clearCopied()
     try {
       const generated = await onGenerate(request)
       if (!mountedRef.current || requestGenerationRef.current !== generation) return
@@ -318,15 +345,92 @@ export default function CredentialGeneratorDialog({
     >
       {() => (
         <>
-          <div className="modal-body max-h-[65vh] overflow-y-auto">
-            <Tabs value={tab} onValueChange={(value) => changeTab(value as GeneratorTab)}>
-              <TabsList className="w-full">
+          <div className="modal-body max-h-[65vh] overflow-hidden">
+            <Tabs
+              className="min-h-0 overflow-hidden"
+              value={tab}
+              onValueChange={(value) => changeTab(value as GeneratorTab)}
+            >
+              <TabsList className="w-full shrink-0">
                 <TabsTrigger value="password">密碼</TabsTrigger>
                 <TabsTrigger value="username">使用者名稱</TabsTrigger>
                 <TabsTrigger value="history">歷史</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="password">
+              {tab !== 'history' && (
+                <Card className="shrink-0">
+                  <CardHeader>
+                    <CardTitle>產生結果</CardTitle>
+                    <CardDescription>
+                      {result
+                        ? '已加入這台裝置的加密歷史。'
+                        : `調整下方設定，再按「產生${generateLabel}」。`}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <InputGroup>
+                      <InputGroupInput
+                        id="generator-result"
+                        className="font-mono"
+                        value={result?.credential ?? ''}
+                        placeholder={busy ? '正在安全產生…' : '結果會顯示在這裡'}
+                        readOnly
+                        autoComplete="off"
+                        aria-label="產生結果"
+                      />
+                      <InputGroupAddon align="inline-end">
+                        <InputGroupButton
+                          size="icon-xs"
+                          disabled={busy || !result}
+                          aria-label={
+                            result && copiedKey === copyFeedbackKey(result.historyLocator)
+                              ? '產生結果已複製'
+                              : '複製產生結果'
+                          }
+                          onClick={() => {
+                            if (result) void copy(result.historyLocator)
+                          }}
+                        >
+                          <CopyFeedbackIcon
+                            copied={Boolean(
+                              result && copiedKey === copyFeedbackKey(result.historyLocator)
+                            )}
+                          />
+                        </InputGroupButton>
+                      </InputGroupAddon>
+                    </InputGroup>
+                    <div className="sr-only" role="status" aria-live="polite">
+                      {result ? '已產生新結果' : busy ? '正在產生' : ''}
+                    </div>
+                  </CardContent>
+                  <CardFooter className="justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant={canUseResult ? 'outline' : 'default'}
+                      disabled={busy}
+                      onClick={() => void generate()}
+                    >
+                      {busy ? (
+                        <Spinner data-icon="inline-start" />
+                      ) : result ? (
+                        <RefreshCw data-icon="inline-start" />
+                      ) : (
+                        <Sparkles data-icon="inline-start" />
+                      )}
+                      {result ? `重新產生${generateLabel}` : `產生${generateLabel}`}
+                    </Button>
+                    {canUseResult && result && onUseCredential && (
+                      <Button type="button" disabled={busy} onClick={() => onUseCredential(result)}>
+                        使用這個值
+                      </Button>
+                    )}
+                  </CardFooter>
+                </Card>
+              )}
+
+              {error && <FieldError>{error}</FieldError>}
+
+              <TabsContent value="password" className="min-h-0 overflow-y-auto">
                 <FieldGroup>
                   <FieldSet>
                     <FieldLegend variant="label">類型</FieldLegend>
@@ -491,7 +595,7 @@ export default function CredentialGeneratorDialog({
                 </FieldGroup>
               </TabsContent>
 
-              <TabsContent value="username">
+              <TabsContent value="username" className="min-h-0 overflow-y-auto">
                 <FieldGroup>
                   <FieldSet>
                     <FieldLegend variant="label">類型</FieldLegend>
@@ -551,6 +655,7 @@ export default function CredentialGeneratorDialog({
                         value={email}
                         maxLength={320}
                         disabled={busy}
+                        aria-invalid={Boolean(error)}
                         onChange={(event) => setEmail(event.target.value)}
                       />
                       <FieldDescription>
@@ -566,6 +671,7 @@ export default function CredentialGeneratorDialog({
                         value={domain}
                         maxLength={253}
                         disabled={busy}
+                        aria-invalid={Boolean(error)}
                         onChange={(event) => setDomain(event.target.value)}
                       />
                       <FieldDescription>
@@ -583,7 +689,7 @@ export default function CredentialGeneratorDialog({
                 </FieldGroup>
               </TabsContent>
 
-              <TabsContent value="history">
+              <TabsContent value="history" className="min-h-0 overflow-y-auto">
                 <FieldGroup>
                   <Alert>
                     <ShieldAlert />
@@ -650,61 +756,11 @@ export default function CredentialGeneratorDialog({
                 </FieldGroup>
               </TabsContent>
             </Tabs>
-
-            {result && tab !== 'history' && (
-              <Field>
-                <FieldLabel htmlFor="generator-result">產生結果</FieldLabel>
-                <Input
-                  id="generator-result"
-                  className="font-mono"
-                  value={result.credential}
-                  readOnly
-                  autoComplete="off"
-                />
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={busy}
-                    aria-label={
-                      copiedKey === copyFeedbackKey(result.historyLocator)
-                        ? '產生結果已複製'
-                        : '複製產生結果'
-                    }
-                    onClick={() => void copy(result.historyLocator)}
-                  >
-                    <CopyFeedbackIcon
-                      copied={copiedKey === copyFeedbackKey(result.historyLocator)}
-                      placement="inline-start"
-                    />
-                    {copiedKey === copyFeedbackKey(result.historyLocator) ? '已複製' : '複製'}
-                  </Button>
-                  {onUseCredential &&
-                    (!useCategories || useCategories.includes(result.category)) && (
-                      <Button type="button" disabled={busy} onClick={() => onUseCredential(result)}>
-                        使用這個值
-                      </Button>
-                    )}
-                </div>
-              </Field>
-            )}
-
-            {error && <FieldError>{error}</FieldError>}
           </div>
           <DialogFooter className="modal-actions mx-0 mb-0">
             <DialogClose render={<Button variant="secondary" type="button" disabled={busy} />}>
               關閉
             </DialogClose>
-            {tab !== 'history' && (
-              <Button type="button" disabled={busy} onClick={() => void generate()}>
-                {busy ? (
-                  <Spinner data-icon="inline-start" />
-                ) : (
-                  <Sparkles data-icon="inline-start" />
-                )}
-                產生
-              </Button>
-            )}
           </DialogFooter>
         </>
       )}

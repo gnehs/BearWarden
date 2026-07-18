@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
-  ArrowLeft,
   ClipboardCheck,
   Cloud,
   DatabaseBackup,
@@ -296,7 +295,6 @@ interface SettingsPageProps {
   settingsBusy: boolean
   syncStatus: SyncStatus
   touchIdPassword: string
-  onBack: () => void
   onUpdate: (update: AppSettingsUpdate) => Promise<void>
   onTouchIdPasswordChange: (value: string) => void
   onEnableTouchId: () => Promise<void>
@@ -351,7 +349,6 @@ function SettingsPage({
   settingsBusy,
   syncStatus,
   touchIdPassword,
-  onBack,
   onUpdate,
   onTouchIdPasswordChange,
   onEnableTouchId,
@@ -501,10 +498,6 @@ function SettingsPage({
     <div className="settings-page" aria-labelledby="settings-title">
       <header className="settings-header">
         <div className="settings-header-inner">
-          <Button variant="outline" size="sm" type="button" autoFocus onClick={onBack}>
-            <ArrowLeft data-icon="inline-start" aria-hidden="true" />
-            返回保管庫
-          </Button>
           <div className="settings-header-content">
             <div className="settings-title-group">
               <span className="settings-title-icon" aria-hidden="true">

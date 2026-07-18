@@ -1,9 +1,8 @@
-import { ArrowLeft, Clock3, ShieldAlert, UserRound } from 'lucide-react'
+import { Clock3, ShieldAlert, UserRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import type { EmergencyAccessView } from '../../../shared/vault-contract'
 import { Badge } from '@renderer/components/ui/badge'
-import { Button } from '@renderer/components/ui/button'
 import {
   Card,
   CardContent,
@@ -19,10 +18,6 @@ import {
   EmptyTitle
 } from '@renderer/components/ui/empty'
 import { Spinner } from '@renderer/components/ui/spinner'
-
-interface EmergencyAccessPageProps {
-  onBack: () => void
-}
 
 function statusLabel(status: number): string {
   return (
@@ -42,7 +37,7 @@ function typeLabel(type: number): string {
   return type === 0 ? '檢視' : type === 1 ? '接管' : `類型 ${type}`
 }
 
-function EmergencyAccessPage({ onBack }: EmergencyAccessPageProps): React.JSX.Element {
+function EmergencyAccessPage(): React.JSX.Element {
   const [entries, setEntries] = useState<EmergencyAccessView[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -69,15 +64,6 @@ function EmergencyAccessPage({ onBack }: EmergencyAccessPageProps): React.JSX.El
     <div className="settings-page">
       <header className="settings-header">
         <div className="settings-header-inner">
-          <Button
-            variant="ghost"
-            size="icon"
-            type="button"
-            onClick={onBack}
-            aria-label="返回保管庫"
-          >
-            <ArrowLeft />
-          </Button>
           <div className="settings-title-group">
             <p className="eyebrow">Bitwarden Emergency Access</p>
             <h1 id="emergency-access-title">Emergency Access</h1>

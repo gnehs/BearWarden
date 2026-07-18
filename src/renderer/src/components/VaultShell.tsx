@@ -174,6 +174,7 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
 import {
@@ -3723,6 +3724,18 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     )
   }
 
+  const closeAuxiliaryPage = healthOpen
+    ? closeHealth
+    : organizationsOpen
+      ? closeOrganizations
+      : emergencyAccessOpen
+        ? closeEmergencyAccess
+        : sendsOpen
+          ? closeSends
+          : settingsOpen
+            ? closeSettings
+            : null
+
   if (loading) {
     return (
       <main className="vault-loading" role="status">
@@ -3767,6 +3780,12 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 {sidebarOpen ? <X /> : <Menu />}
               </TooltipIconButton>
             )}
+          {closeAuxiliaryPage && (
+            <Button variant="outline" size="sm" type="button" onClick={closeAuxiliaryPage}>
+              <ArrowLeft data-icon="inline-start" />
+              保管庫
+            </Button>
+          )}
           <div className="inline-flex items-center gap-2 max-[680px]:hidden">
             <BrandMark hideMark />
             <Badge variant="secondary" className="bg-black/5">
@@ -4109,6 +4128,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     <DropdownMenuItem onClick={() => void lockVault()}>
                       <LockKeyhole data-icon="inline-start" />
                       鎖定保管庫
+                      <DropdownMenuShortcut>
+                        <Kbd>{commandLabel} L</Kbd>
+                      </DropdownMenuShortcut>
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
                 </DropdownMenuContent>
@@ -4147,24 +4169,19 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
               }
             >
               {healthOpen ? (
-                <VaultHealthPage
-                  revision={healthRevision}
-                  onBack={closeHealth}
-                  onOpenItem={openHealthItem}
-                />
+                <VaultHealthPage revision={healthRevision} onOpenItem={openHealthItem} />
               ) : organizationsOpen ? (
-                <OrganizationsPage onBack={closeOrganizations} />
+                <OrganizationsPage />
               ) : emergencyAccessOpen ? (
-                <EmergencyAccessPage onBack={closeEmergencyAccess} />
+                <EmergencyAccessPage />
               ) : sendsOpen ? (
-                <SendsPage onBack={closeSends} />
+                <SendsPage />
               ) : settingsOpen ? (
                 <SettingsPage
                   settings={settings}
                   settingsBusy={settingsBusy}
                   syncStatus={syncStatus}
                   touchIdPassword={touchIdPassword}
-                  onBack={closeSettings}
                   onUpdate={updateSettings}
                   onTouchIdPasswordChange={setTouchIdPassword}
                   onEnableTouchId={enableTouchId}

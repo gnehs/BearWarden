@@ -1,4 +1,4 @@
-import { ArrowLeft, FolderOpen, LockKeyhole, UsersRound } from 'lucide-react'
+import { FolderOpen, LockKeyhole, UsersRound } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import type {
@@ -25,11 +25,7 @@ import {
 } from '@renderer/components/ui/empty'
 import { Spinner } from '@renderer/components/ui/spinner'
 
-interface OrganizationsPageProps {
-  onBack: () => void
-}
-
-function OrganizationsPage({ onBack }: OrganizationsPageProps): React.JSX.Element {
+function OrganizationsPage(): React.JSX.Element {
   const [organizations, setOrganizations] = useState<OrganizationView[]>([])
   const [collections, setCollections] = useState<CollectionView[]>([])
   const [items, setItems] = useState<SharedLoginSummary[]>([])
@@ -100,15 +96,6 @@ function OrganizationsPage({ onBack }: OrganizationsPageProps): React.JSX.Elemen
     <div className="settings-page">
       <header className="settings-header">
         <div className="settings-header-inner">
-          <Button
-            variant="ghost"
-            size="icon"
-            type="button"
-            onClick={onBack}
-            aria-label="返回保管庫"
-          >
-            <ArrowLeft />
-          </Button>
           <div className="settings-title-group">
             <p className="eyebrow">Bitwarden Organizations</p>
             <h1 id="organizations-title">組織項目</h1>

@@ -1005,7 +1005,7 @@ button svg {
 .settings-header-inner {
   display: grid;
   width: min(100%, 910px);
-  grid-template-columns: 162px minmax(0, 720px);
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   align-items: center;
   justify-content: center;
