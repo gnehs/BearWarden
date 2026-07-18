@@ -1484,8 +1484,7 @@ button svg {
   border-bottom: 1px solid var(--border);
   background: var(--panel-muted);
 }
-.detail-card [data-slot='card-title'],
-.form-section h3 {
+.detail-card [data-slot='card-title'] {
   margin: 0;
   color: var(--muted-foreground);
   font-size: 10px;
@@ -1684,7 +1683,7 @@ button svg {
   color: var(--muted-foreground);
   font-size: 11px;
 }
-.editor-header > div {
+.editor-heading {
   min-width: 0;
   flex: 1;
 }
@@ -1692,20 +1691,6 @@ button svg {
   display: grid;
   align-content: start;
   gap: 14px;
-}
-.form-section {
-  display: grid;
-  width: min(100%, 720px);
-  gap: 13px;
-  padding: 15px;
-  margin: 0 auto;
-  border: 1px solid var(--border);
-  border-radius: 13px;
-  background: var(--card);
-}
-.form-section h3 {
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border);
 }
 .input-with-action {
   position: relative;
@@ -2513,7 +2498,8 @@ button svg {
   letter-spacing: 0;
   text-transform: none;
 }
-.detail-scroll {
+.detail-scroll,
+.editor-scroll {
   padding-top: 20px;
 }
 .detail-card {

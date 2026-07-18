@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowDown,
   ArrowUp,
   CheckSquare2,
   ClipboardPaste,
+  ContactRound,
+  CreditCard,
   Eye,
   EyeOff,
   FileKey2,
@@ -11,6 +13,7 @@ import {
   KeyRound,
   Link2,
   ListPlus,
+  NotebookPen,
   Plus,
   RefreshCw,
   Save,
@@ -32,6 +35,7 @@ import type {
   VaultUriMatch
 } from '../../../shared/vault-contract'
 import { VAULT_LINKED_FIELD_IDS_BY_TYPE } from '../../../shared/vault-contract'
+import { cn } from '../lib/utils'
 import {
   detectPaymentCardBrand,
   formatPaymentCardNumber,
@@ -200,6 +204,14 @@ const itemTypes: Array<{ value: VaultItemType; label: string; description: strin
   { value: 'sshKey', label: 'SSH 金鑰', description: '私鑰、公鑰與指紋' }
 ]
 
+const itemTypeIcons: Record<VaultItemType, typeof KeyRound> = {
+  login: KeyRound,
+  card: CreditCard,
+  identity: ContactRound,
+  secureNote: NotebookPen,
+  sshKey: FileKey2
+}
+
 const itemTypeSelectItems = itemTypes.map((item) => ({
   value: item.value,
   label: `${item.label}：${item.description}`
@@ -331,6 +343,30 @@ interface LoginEditorProps {
 
 function typeLabel(type: VaultItemType): string {
   return itemTypes.find((item) => item.value === type)?.label ?? '項目'
+}
+
+function EditorFormSection({
+  title,
+  titleId,
+  children
+}: {
+  title: string
+  titleId: string
+  children: ReactNode
+}): React.JSX.Element {
+  return (
+    <Card className="detail-card form-section gap-0 py-0" role="region" aria-labelledby={titleId}>
+      <CardHeader className="bg-muted rounded-none border-b">
+        <CardTitle id={titleId}>{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="py-4">
+        <FieldSet>
+          <FieldLegend className="sr-only">{title}</FieldLegend>
+          {children}
+        </FieldSet>
+      </CardContent>
+    </Card>
+  )
 }
 
 function LoginEditor({
@@ -1218,6 +1254,7 @@ function LoginEditor({
   }
 
   const headerContent = editorHeaderContent(typeLabel(draft.type), login?.name ?? null)
+  const ItemTypeIcon = itemTypeIcons[draft.type]
   const detectedCardBrand = detectPaymentCardBrand(draft.number)
   const folderSelectItems = [
     { value: '', label: '未分類' },
@@ -1227,7 +1264,10 @@ function LoginEditor({
   return (
     <form className="editor" onSubmit={submit} aria-labelledby="editor-title">
       <header className="detail-header editor-header">
-        <div>
+        <span className={cn('detail-icon', draft.type)} aria-hidden="true">
+          <ItemTypeIcon />
+        </span>
+        <div className="detail-heading editor-heading">
           <p className="eyebrow">{headerContent.eyebrow}</p>
           <h2 id="editor-title">{headerContent.heading}</h2>
           {(login || dirty) && (
@@ -1284,9 +1324,8 @@ function LoginEditor({
           )}
 
           <TabsContent value="details" className="pt-4">
-            <FieldSet className="form-section" aria-labelledby="item-section-title">
-              <FieldLegend id="item-section-title">{typeLabel(draft.type)}資料</FieldLegend>
-              <FieldGroup>
+            <EditorFormSection title={`${typeLabel(draft.type)}資料`} titleId="item-section-title">
+              <FieldGroup className="gap-4">
                 {!login && (
                   <Field>
                     <FieldLabel htmlFor="editor-type">類型</FieldLabel>
@@ -1852,13 +1891,12 @@ function LoginEditor({
                   </>
                 )}
               </FieldGroup>
-            </FieldSet>
+            </EditorFormSection>
           </TabsContent>
 
           <TabsContent value="organize" className="flex flex-col gap-4 pt-4">
-            <FieldSet className="form-section" aria-labelledby="organization-section-title">
-              <FieldLegend id="organization-section-title">整理</FieldLegend>
-              <FieldGroup>
+            <EditorFormSection title="整理" titleId="organization-section-title">
+              <FieldGroup className="gap-4">
                 <Field>
                   <FieldLabel htmlFor="editor-folder">資料夾</FieldLabel>
                   <Select
@@ -1918,12 +1956,11 @@ function LoginEditor({
                   </FieldContent>
                 </Field>
               </FieldGroup>
-            </FieldSet>
+            </EditorFormSection>
 
             {draft.type !== 'secureNote' && (
-              <FieldSet className="form-section" aria-labelledby="notes-section-title">
-                <FieldLegend id="notes-section-title">備註</FieldLegend>
-                <FieldGroup>
+              <EditorFormSection title="備註" titleId="notes-section-title">
+                <FieldGroup className="gap-4">
                   <Field>
                     <FieldLabel className="sr-only" htmlFor="editor-notes">
                       備註
@@ -1938,7 +1975,7 @@ function LoginEditor({
                     />
                   </Field>
                 </FieldGroup>
-              </FieldSet>
+              </EditorFormSection>
             )}
           </TabsContent>
 
