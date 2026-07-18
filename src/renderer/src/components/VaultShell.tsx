@@ -16,6 +16,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy
 } from '@dnd-kit/sortable'
+import NumberFlow from '@number-flow/react'
 import {
   AlertTriangle,
   ArrowLeft,
@@ -888,6 +889,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [totpCodeState, setTotpCodeState] = useState<{
     itemId: string
     code: TotpCodeView
+    cycle: number
   } | null>(null)
   const [totpGenerationErrorState, setTotpGenerationErrorState] =
     useState<TotpGenerationErrorState | null>(null)
@@ -1851,7 +1853,11 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         .then(
           (nextCode) => {
             if (!active) return
-            setTotpCodeState({ itemId: login.id, code: nextCode })
+            setTotpCodeState({
+              itemId: login.id,
+              code: nextCode,
+              cycle: Math.floor(Date.now() / (nextCode.period * 1_000))
+            })
             setTotpGenerationErrorState(null)
           },
           (totpError) => {
@@ -4854,16 +4860,39 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                       <CardHeader className="bg-muted rounded-none border-b">
                         <CardTitle id="totp-title">一次性驗證碼</CardTitle>
                         <CardDescription>
-                          {totpGenerationError === 'unsupported'
-                            ? '密鑰格式不受支援'
-                            : totpCode
-                              ? `${totpCode.remainingSeconds} 秒後更新`
-                              : '產生中…'}
+                          {totpGenerationError === 'unsupported' ? (
+                            '密鑰格式不受支援'
+                          ) : totpCode ? (
+                            <NumberFlow
+                              value={totpCode.remainingSeconds}
+                              suffix=" 秒後更新"
+                              trend={-1}
+                            />
+                          ) : (
+                            '產生中…'
+                          )}
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="contents">
                         <div className="totp-value">
-                          <strong>{totpCode?.code ?? '—'}</strong>
+                          <strong>
+                            {totpCode ? (
+                              /^\d+$/.test(totpCode.code) ? (
+                                <NumberFlow
+                                  value={Number(totpCode.code)}
+                                  format={{
+                                    useGrouping: false,
+                                    minimumIntegerDigits: totpCode.code.length
+                                  }}
+                                  trend={0}
+                                />
+                              ) : (
+                                totpCode.code
+                              )
+                            ) : (
+                              '—'
+                            )}
+                          </strong>
                           <TooltipIconButton
                             variant="outline"
                             size="icon"
@@ -4876,11 +4905,12 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                             <Copy />
                           </TooltipIconButton>
                         </div>
-                        {!totpGenerationError && (
+                        {!totpGenerationError && totpCode && (
                           <Progress
+                            key={totpCodeState?.cycle}
                             aria-label="驗證碼剩餘時間"
-                            max={totpCode?.period ?? 30}
-                            value={totpCode?.remainingSeconds ?? 0}
+                            max={totpCode.period}
+                            value={totpCode.remainingSeconds}
                           />
                         )}
                       </CardContent>

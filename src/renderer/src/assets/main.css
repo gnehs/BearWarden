@@ -1544,6 +1544,15 @@ button svg {
   width: calc(100% - 30px);
   margin: 0 15px 15px;
 }
+.totp-card [data-slot='progress-indicator'] {
+  transition-duration: 1s;
+  transition-timing-function: linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  .totp-card [data-slot='progress-indicator'] {
+    transition-duration: 0s;
+  }
+}
 .passkey-list {
   display: grid;
 }
