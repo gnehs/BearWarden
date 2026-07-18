@@ -47,7 +47,7 @@ export function PendingImportWarning({
         </p>
         <p>開始時間：{formatStartedAt(startedAt)}</p>
         <p>輸入主密碼並明確確認後，下一次同步會再次送出未確認的項目，伺服器上可能出現重複項目。</p>
-        <p>若不想承擔重複風險，可中斷連線；本機保管庫資料會保留。</p>
+        <p>若不想承擔重複風險，可中斷連線；本機密碼庫資料會保留。</p>
         <FieldGroup>
           <Field data-disabled={busy || undefined}>
             <FieldLabel htmlFor="pending-import-master-password">主密碼</FieldLabel>

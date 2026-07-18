@@ -10,7 +10,7 @@ export function installApplicationMenu(options: ApplicationMenuOptions): Menu {
     options.isMac ? { role: 'appMenu' } : { role: 'fileMenu' },
     {
       id: 'vault-menu',
-      label: '保管庫',
+      label: '密碼庫',
       submenu: [
         {
           id: 'vault-menu-lock',

@@ -45,6 +45,7 @@ import {
   type FolderDeleteRequest,
   type FolderReorderRequest,
   type FolderUpdateRequest,
+  type GeneratedCredentialCopyRequest,
   type GeneratorHistoryLocator,
   type LoginCreateRequest,
   type LoginAuthorizeRequest,
@@ -959,6 +960,13 @@ function parseGeneratorHistoryLocator(value: unknown): GeneratorHistoryLocator {
     category: record.category,
     ...(record.algorithm === undefined ? {} : { algorithm: record.algorithm })
   }
+}
+
+function parseGeneratedCredentialCopyRequest(value: unknown): GeneratedCredentialCopyRequest {
+  const record = exactRecord(value, ['token'])
+  const token = requiredString(record, 'token')
+  if (!UUID_PATTERN.test(token)) throw new VaultError('INVALID_INPUT')
+  return { token }
 }
 
 function isRecord(value: unknown): value is RecordValue {
@@ -2826,7 +2834,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
           type: 'error',
           title: '操作失敗',
           message: '無法完成這個動作',
-          detail: '請稍後再試；你的保管庫資料沒有因這次失敗而被移除。'
+          detail: '請稍後再試；你的密碼庫資料沒有因這次失敗而被移除。'
         })
       },
       ...(request.x === undefined ? {} : { position: { x: request.x, y: request.y! } }),
@@ -2914,6 +2922,9 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   })
   registerHandler(IPC_CHANNELS.generatorGenerate, getMainWindow, (_event, input) =>
     vault.generateCredential(parseGeneratorRequest(input))
+  )
+  registerHandler(IPC_CHANNELS.generatorGeneratedCopy, getMainWindow, (_event, input) =>
+    vault.copyGeneratedCredential(parseGeneratedCredentialCopyRequest(input))
   )
   registerHandler(IPC_CHANNELS.generatorHistoryList, getMainWindow, (_event, input) => {
     parseNoInput(input)

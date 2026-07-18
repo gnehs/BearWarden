@@ -219,7 +219,7 @@ export default function PasskeyApprovalDialog({
         setError(
           approved
             ? '無法完成驗證或核准此通行密鑰要求。請確認主密碼後再試。'
-            : '無法拒絕此通行密鑰要求。請等候它過期，或重新鎖定保管庫。'
+            : '無法拒絕此通行密鑰要求。請等候它過期，或重新鎖定密碼庫。'
         )
       }
     } finally {

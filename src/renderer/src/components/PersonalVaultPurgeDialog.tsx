@@ -30,7 +30,7 @@ import { Spinner } from '@renderer/components/ui/spinner'
 type PendingPurge = NonNullable<SyncStatus['pendingPurge']>
 
 function personalVaultPurgeActionLabel(pending: boolean): string {
-  return pending ? '再次清除剩餘項目' : '永久清除個人保管庫'
+  return pending ? '再次清除剩餘項目' : '永久清除個人密碼庫'
 }
 
 interface PersonalVaultPurgeExecutionOptions {
@@ -261,7 +261,7 @@ function PersonalVaultPurgeDialog({
         }
       >
         <Trash2 data-icon="inline-start" aria-hidden="true" />
-        {visiblePending ? '處理未完成的清除' : '清除個人保管庫'}
+        {visiblePending ? '處理未完成的清除' : '清除個人密碼庫'}
       </AlertDialogTrigger>
       <AlertDialogContent>
         <form className="grid gap-4" onSubmit={(event) => void submit(event)}>
@@ -269,7 +269,7 @@ function PersonalVaultPurgeDialog({
             <AlertDialogMedia>
               <TriangleAlert aria-hidden="true" />
             </AlertDialogMedia>
-            <AlertDialogTitle>永久清除個人保管庫？</AlertDialogTitle>
+            <AlertDialogTitle>永久清除個人密碼庫？</AlertDialogTitle>
             <AlertDialogDescription>
               這只清除目前同步帳號的個人資料，不會刪除共享組織項目。
             </AlertDialogDescription>

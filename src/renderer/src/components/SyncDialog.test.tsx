@@ -25,7 +25,7 @@ describe('SyncDialog error diagnostics', () => {
       <SyncFailureAlert code="SYNC_INVALID_RESPONSE" detail="cipher" />
     )
 
-    expect(markup).toContain('問題區段：保管庫項目資料')
+    expect(markup).toContain('問題區段：密碼庫項目資料')
     expect(markup).not.toMatch(/uuid|credential|ciphertext/i)
     expect(syncInvalidResponseStageLabel('organization')).toBe('組織金鑰與成員資料')
   })
@@ -186,7 +186,7 @@ describe('SyncDialog pending import resolution', () => {
     expect(markup).toContain('這 3 筆項目')
     expect(markup).toContain('不會自動重送')
     expect(markup).toContain('可能出現重複項目')
-    expect(markup).toContain('本機保管庫資料會保留')
+    expect(markup).toContain('本機密碼庫資料會保留')
     expect(markup).toContain('我了解風險，允許重新傳送')
     expect(markup).toContain('type="password"')
     expect(markup).toContain('maxLength="1024"')

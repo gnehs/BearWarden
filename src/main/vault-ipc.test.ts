@@ -1882,14 +1882,10 @@ describe('registerVaultIpc reprompt gate', () => {
         category: 'password',
         generationDate: 1,
         algorithm: 'password',
-        historyLocator: {
-          index: 0,
-          generationDate: 1,
-          category: 'password',
-          algorithm: 'password'
-        },
+        copyToken: '00000000-0000-4000-8000-000000000001',
         request
       })),
+      copyGeneratedCredential: vi.fn(async () => undefined),
       generateSshKey: vi.fn(async () => ({
         privateKey: 'private-key',
         publicKey: 'ssh-ed25519 public-key',
@@ -3435,9 +3431,14 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('keeps generator history IPC narrow and rejects stale-shaped copy locators', async () => {
     const { event, vault } = harness()
+    const copyGenerated = electronMock.handlers.get(IPC_CHANNELS.generatorGeneratedCopy)!
     const history = electronMock.handlers.get(IPC_CHANNELS.generatorHistoryList)!
     const clear = electronMock.handlers.get(IPC_CHANNELS.generatorHistoryClear)!
     const copy = electronMock.handlers.get(IPC_CHANNELS.generatorHistoryCopy)!
+    await copyGenerated(event, { token: '00000000-0000-4000-8000-000000000001' })
+    expect(vault.copyGeneratedCredential).toHaveBeenCalledWith({
+      token: '00000000-0000-4000-8000-000000000001'
+    })
     await expect(history(event, undefined)).resolves.toEqual([])
     await expect(clear(event, undefined)).resolves.toBeUndefined()
     await copy(event, {
@@ -3464,6 +3465,14 @@ describe('registerVaultIpc reprompt gate', () => {
       { index: 0, generationDate: 1, category: 'password', algorithm: 'future' }
     ]) {
       await expect(copy(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    for (const invalid of [
+      undefined,
+      {},
+      { token: 'not-a-token' },
+      { token: '00000000-0000-4000-8000-000000000001', credential: 'renderer-secret' }
+    ]) {
+      await expect(copyGenerated(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
     await expect(history(event, {})).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     await expect(clear(event, {})).rejects.toThrow('BEARWARDEN:INVALID_INPUT')

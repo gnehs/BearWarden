@@ -103,7 +103,7 @@ export default function SshAgentApprovalDialog({
         setError(
           approved
             ? '無法核准此簽署要求。請確認主密碼後再試。'
-            : '無法拒絕此簽署要求。請等候它過期或重新鎖定保管庫。'
+            : '無法拒絕此簽署要求。請等候它過期或重新鎖定密碼庫。'
         )
       }
     } finally {

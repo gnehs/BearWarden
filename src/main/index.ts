@@ -671,7 +671,7 @@ if (hasSingleInstanceLock)
             ? '匯出 Bitwarden 明文附件 ZIP'
             : csv
               ? '匯出 Bitwarden 明文 CSV'
-              : '匯出加密保管庫',
+              : '匯出加密密碼庫',
           defaultPath: defaultName,
           buttonLabel: '匯出',
           filters: [

@@ -545,7 +545,7 @@ function SettingsPage({
                     id="security-settings-title"
                     icon={ShieldCheck}
                     title="安全性"
-                    description="決定保管庫何時鎖定，以及視窗內容如何受到保護。"
+                    description="決定密碼庫何時鎖定，以及視窗內容如何受到保護。"
                   />
                   <CardAction>
                     <Badge variant="secondary">此裝置</Badge>
@@ -573,7 +573,7 @@ function SettingsPage({
                       <FieldContent>
                         <FieldLabel htmlFor="screen-lock-switch">螢幕鎖定時自動鎖定</FieldLabel>
                         <FieldDescription id="screen-lock-description">
-                          離開電腦並鎖定螢幕時，立即鎖定保管庫。
+                          離開電腦並鎖定螢幕時，立即鎖定密碼庫。
                         </FieldDescription>
                       </FieldContent>
                       <Switch
@@ -589,7 +589,7 @@ function SettingsPage({
                       <FieldContent>
                         <FieldLabel htmlFor="suspend-lock-switch">電腦休眠時自動鎖定</FieldLabel>
                         <FieldDescription id="suspend-lock-description">
-                          電腦進入休眠狀態時，立即鎖定保管庫。
+                          電腦進入休眠狀態時，立即鎖定密碼庫。
                         </FieldDescription>
                       </FieldContent>
                       <Switch
@@ -605,7 +605,7 @@ function SettingsPage({
                       <FieldContent>
                         <FieldLabel htmlFor="vault-timeout-select">閒置自動鎖定</FieldLabel>
                         <FieldDescription id="vault-timeout-description">
-                          一段時間沒有操作後自動鎖定；關閉 App 時一律鎖定保管庫。
+                          一段時間沒有操作後自動鎖定；關閉 App 時一律鎖定密碼庫。
                         </FieldDescription>
                       </FieldContent>
                       <Select
@@ -680,7 +680,7 @@ function SettingsPage({
                     id="ssh-agent-settings-title"
                     icon={KeyRound}
                     title="SSH Agent"
-                    description="讓終端機與 Git 經由本機 socket 使用保管庫中的 SSH 金鑰。"
+                    description="讓終端機與 Git 經由本機 socket 使用密碼庫中的 SSH 金鑰。"
                   />
                   <CardAction>
                     <Badge variant={sshAgentStatusPresentationValue.variant}>
@@ -890,7 +890,7 @@ function SettingsPage({
                     id="general-settings-title"
                     icon={Palette}
                     title="一般"
-                    description="調整保管庫的外觀與預設排列方式。"
+                    description="調整密碼庫的外觀與預設排列方式。"
                   />
                 </CardHeader>
                 <CardContent className="settings-card-content">
@@ -980,7 +980,7 @@ function SettingsPage({
                     id="pin-settings-title"
                     icon={LockKeyholeOpen}
                     title="PIN 解鎖"
-                    description="使用短期 PIN 解鎖本機保管庫。"
+                    description="使用短期 PIN 解鎖本機密碼庫。"
                   />
                   <CardAction>
                     <Badge variant={pinStatus.available ? 'default' : 'secondary'}>
@@ -1117,7 +1117,7 @@ function SettingsPage({
                           <Fingerprint />
                         </EmptyMedia>
                         <EmptyTitle>這台裝置無法使用 Touch ID</EmptyTitle>
-                        <EmptyDescription>你仍可使用主密碼解鎖保管庫。</EmptyDescription>
+                        <EmptyDescription>你仍可使用主密碼解鎖密碼庫。</EmptyDescription>
                       </EmptyHeader>
                     </Empty>
                   </CardContent>
@@ -1189,7 +1189,7 @@ function SettingsPage({
                     id="sync-settings-title"
                     icon={Cloud}
                     title="同步與帳號"
-                    description="連接 Bitwarden 或 Vaultwarden 以同步保管庫。"
+                    description="連接 Bitwarden 或 Vaultwarden 以同步密碼庫。"
                   />
                   <CardAction>
                     <Badge

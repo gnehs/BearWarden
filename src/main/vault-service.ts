@@ -34,6 +34,7 @@ import type {
   FolderView,
   GeneratorCredentialAlgorithm,
   GeneratorCredentialCategory,
+  GeneratedCredentialCopyRequest,
   GeneratorHistoryEntry,
   GeneratorHistoryLocator,
   LoginCreateRequest,
@@ -259,6 +260,8 @@ const MAX_ATTACHMENT_ID_LENGTH = 256
 const MAX_ATTACHMENT_FILE_NAME_LENGTH = 255
 const MAX_ATTACHMENT_SIZE_NAME_LENGTH = 64
 const MAX_GENERATOR_HISTORY = 200
+const GENERATED_CREDENTIAL_TOKEN_TTL_MS = 5 * 60_000
+const MAX_PENDING_GENERATED_CREDENTIALS = 128
 const MAX_GENERATED_CREDENTIAL_LENGTH = 512
 const MAX_SENDS = 10_000
 const MAX_REMOTE_ENTITIES = 100_000
@@ -3219,6 +3222,11 @@ interface ActiveAccountBreachOperation {
   readonly promise: Promise<VaultHealthAccountBreachReport>
 }
 
+interface PendingGeneratedCredential {
+  readonly entry: GeneratorHistoryEntry & { algorithm: GeneratorCredentialAlgorithm }
+  readonly expiresAt: number
+}
+
 interface AuthenticatorSetupSession {
   readonly generation: number
   readonly client: BitwardenSyncClient
@@ -3294,6 +3302,7 @@ export class VaultService {
   private readonly nativeAttachmentRestoreAborts = new Set<AbortController>()
   private readonly authenticatorSetupSessions = new Map<string, AuthenticatorSetupSession>()
   private readonly emailTwoFactorSetupSessions = new Map<string, EmailTwoFactorSetupSession>()
+  private readonly pendingGeneratedCredentials = new Map<string, PendingGeneratedCredential>()
   private syncInProgress = false
   private sessionDeauthorizationInProgress = false
   private syncLastError: import('../shared/vault-contract').SyncErrorCode | null = null
@@ -3791,6 +3800,7 @@ export class VaultService {
     this.key = null
     this.salt = null
     this.data = null
+    this.pendingGeneratedCredentials.clear()
     this.websiteIconCache.clear()
     this.websiteIconRequests.clear()
   }
@@ -7675,7 +7685,7 @@ export class VaultService {
 
   generateCredential(request: CredentialGeneratorRequest): Promise<CredentialGeneratorResult> {
     return this.exclusive(async () => {
-      const current = this.requireData()
+      this.requireData()
       let credential: string
       const algorithm = request.algorithm
       if (algorithm === 'password') {
@@ -7707,35 +7717,51 @@ export class VaultService {
         generationDate,
         algorithm
       }
-      const existingIndex = current.generatorHistory.findIndex(
-        (entry) => entry.credential === credential
-      )
-      if (existingIndex >= 0) {
-        const existing = current.generatorHistory[existingIndex]!
-        return {
-          ...generated,
-          historyLocator: {
-            index: existingIndex,
-            generationDate: existing.generationDate,
-            category: existing.category,
-            ...(existing.algorithm === undefined ? {} : { algorithm: existing.algorithm })
-          }
-        }
+      this.removeExpiredGeneratedCredentials()
+      while (this.pendingGeneratedCredentials.size >= MAX_PENDING_GENERATED_CREDENTIALS) {
+        const oldestToken = this.pendingGeneratedCredentials.keys().next().value
+        if (oldestToken === undefined) break
+        this.pendingGeneratedCredentials.delete(oldestToken)
       }
-
-      const next = cloneData(current)
-      next.generatorHistory.unshift(generated)
-      next.generatorHistory.splice(MAX_GENERATOR_HISTORY)
-      next.updatedAt = new Date(generationDate).toISOString()
-      const generation = this.generation
-      await this.persist(next)
-      if (generation !== this.generation) throw new VaultError('LOCKED')
-      this.data = next
-      return {
-        ...generated,
-        historyLocator: { index: 0, generationDate, category, algorithm }
-      }
+      const copyToken = this.createId()
+      this.pendingGeneratedCredentials.set(copyToken, {
+        entry: generated,
+        expiresAt: this.now().getTime() + GENERATED_CREDENTIAL_TOKEN_TTL_MS
+      })
+      return { ...generated, copyToken }
     })
+  }
+
+  copyGeneratedCredential(request: GeneratedCredentialCopyRequest): Promise<void> {
+    return this.exclusive(async () => {
+      assertUuid(request.token)
+      this.requireData()
+      this.removeExpiredGeneratedCredentials()
+      const pending = this.pendingGeneratedCredentials.get(request.token)
+      if (!pending) throw new VaultError('INVALID_INPUT')
+
+      const current = this.requireData()
+      if (
+        !current.generatorHistory.some((entry) => entry.credential === pending.entry.credential)
+      ) {
+        const next = cloneData(current)
+        next.generatorHistory.unshift({ ...pending.entry })
+        next.generatorHistory.splice(MAX_GENERATOR_HISTORY)
+        next.updatedAt = this.nowIso()
+        const generation = this.generation
+        await this.persist(next)
+        if (generation !== this.generation) throw new VaultError('LOCKED')
+        this.data = next
+      }
+      await this.platform.copyText(pending.entry.credential)
+    })
+  }
+
+  private removeExpiredGeneratedCredentials(): void {
+    const now = this.now().getTime()
+    for (const [token, pending] of this.pendingGeneratedCredentials) {
+      if (pending.expiresAt <= now) this.pendingGeneratedCredentials.delete(token)
+    }
   }
 
   generateSshKey(): Promise<SshKeyMaterial> {

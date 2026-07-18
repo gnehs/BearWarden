@@ -54,7 +54,7 @@ function stateGuidance(state: MasterPasswordChangeState): {
   if (state === 'completed') {
     return {
       title: '主密碼已變更',
-      description: '遠端帳號與本機加密保管庫已完成更新。請使用新主密碼重新連線。'
+      description: '遠端帳號與本機加密密碼庫已完成更新。請使用新主密碼重新連線。'
     }
   }
   if (state === 'remote-not-changed') {
@@ -239,7 +239,7 @@ function MasterPasswordChangeDialog({
           <DialogHeader>
             <DialogTitle>變更主密碼</DialogTitle>
             <DialogDescription>
-              更新 Vaultwarden／Bitwarden 帳號密碼與本機保管庫解鎖密碼。
+              更新 Vaultwarden／Bitwarden 帳號密碼與本機密碼庫解鎖密碼。
             </DialogDescription>
           </DialogHeader>
 
@@ -274,7 +274,7 @@ function MasterPasswordChangeDialog({
                   <AlertTitle>完成已由遠端確認的本機變更</AlertTitle>
                   <AlertDescription>
                     遠端主密碼已確認變更。請輸入變更前的舊主密碼與當時設定的新主密碼，讓 BearWarden
-                    完成本機保管庫重新加密；交易紀錄會阻止再次送出遠端變更。
+                    完成本機密碼庫重新加密；交易紀錄會阻止再次送出遠端變更。
                   </AlertDescription>
                 </Alert>
               )}
@@ -425,8 +425,8 @@ function MasterPasswordChangeDialog({
               {verifyingRemote
                 ? '這會使用你輸入的舊、新主密碼確認遠端結果並完成本機恢復，不會重新送出變更。'
                 : resumingLocal
-                  ? '遠端變更已經確認。這只會完成本機保管庫重新加密；交易紀錄會阻止遠端變更被重送。'
-                  : '這會更新遠端帳號密碼與本機加密保管庫。帳號加密金鑰不會輪替；完成後必須重新連線。'}
+                  ? '遠端變更已經確認。這只會完成本機密碼庫重新加密；交易紀錄會阻止遠端變更被重送。'
+                  : '這會更新遠端帳號密碼與本機加密密碼庫。帳號加密金鑰不會輪替；完成後必須重新連線。'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

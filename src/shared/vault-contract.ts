@@ -83,6 +83,7 @@ export const IPC_CHANNELS = {
   itemRevealCustomField: 'item:reveal-custom-field',
   itemCopyCustomField: 'item:copy-custom-field',
   generatorGenerate: 'generator:generate',
+  generatorGeneratedCopy: 'generator:generated-copy',
   generatorHistoryList: 'generator:history-list',
   generatorHistoryClear: 'generator:history-clear',
   generatorHistoryCopy: 'generator:history-copy',
@@ -1435,9 +1436,14 @@ export interface GeneratorHistoryLocator {
   algorithm?: GeneratorCredentialAlgorithm
 }
 
+/** Opaque handle for copying one short-lived, main-process-staged generated credential. */
+export interface GeneratedCredentialCopyRequest {
+  token: string
+}
+
 export interface CredentialGeneratorResult extends GeneratorHistoryEntry {
   algorithm: GeneratorCredentialAlgorithm
-  historyLocator: GeneratorHistoryLocator
+  copyToken: string
 }
 
 /** Main-process-only SSH key material. This type must never cross the preload bridge. */
@@ -1764,6 +1770,7 @@ export interface BearWardenAPI {
   }
   generator: {
     generate: (request: CredentialGeneratorRequest) => Promise<CredentialGeneratorResult>
+    copyGenerated: (request: GeneratedCredentialCopyRequest) => Promise<void>
     history: () => Promise<GeneratorHistoryEntry[]>
     clearHistory: () => Promise<void>
     copyHistory: (request: GeneratorHistoryLocator) => Promise<void>

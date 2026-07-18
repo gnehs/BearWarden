@@ -126,7 +126,7 @@ export function equivalentDomainErrorMessage(error: unknown): string {
   if (error.message.includes('SYNC_AUTH_REQUIRED')) {
     return 'Bitwarden 帳號需要重新登入或解鎖。'
   }
-  if (error.message.includes('LOCKED')) return '保管庫已鎖定。重新解鎖後再試。'
+  if (error.message.includes('LOCKED')) return '密碼庫已鎖定。重新解鎖後再試。'
   if (error.message.includes('INVALID_INPUT')) {
     return '請檢查網域格式；每一列可用逗號或換行分隔。'
   }

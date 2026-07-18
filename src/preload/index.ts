@@ -171,6 +171,7 @@ const api: BearWardenAPI = {
   },
   generator: {
     generate: (request) => ipcRenderer.invoke(IPC_CHANNELS.generatorGenerate, request),
+    copyGenerated: (request) => ipcRenderer.invoke(IPC_CHANNELS.generatorGeneratedCopy, request),
     history: () => ipcRenderer.invoke(IPC_CHANNELS.generatorHistoryList),
     clearHistory: () => ipcRenderer.invoke(IPC_CHANNELS.generatorHistoryClear),
     copyHistory: (request) => ipcRenderer.invoke(IPC_CHANNELS.generatorHistoryCopy, request)

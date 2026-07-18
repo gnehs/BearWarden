@@ -131,7 +131,7 @@ function HealthLoading(): React.JSX.Element {
         <EmptyMedia variant="icon">
           <Spinner />
         </EmptyMedia>
-        <EmptyTitle>正在本機分析保管庫</EmptyTitle>
+        <EmptyTitle>正在本機分析密碼庫</EmptyTitle>
         <EmptyDescription>密碼只會留在主程序，不會傳到畫面程序或外部服務。</EmptyDescription>
       </EmptyHeader>
     </Empty>
@@ -320,7 +320,7 @@ function InactiveTwoFactorPrivacyNotice(): React.JSX.Element {
       <AlertTitle>只在你要求時下載服務清單</AlertTitle>
       <AlertDescription>
         按下檢查後，主程序只會下載 2fa.directory 的靜態 TOTP
-        服務清單並在本機比對；保管庫網域、URI、密碼與 TOTP 都不會上傳。
+        服務清單並在本機比對；密碼庫網域、URI、密碼與 TOTP 都不會上傳。
       </AlertDescription>
     </Alert>
   )
@@ -356,7 +356,7 @@ function InactiveTwoFactorLoading(): React.JSX.Element {
           <Spinner />
         </EmptyMedia>
         <EmptyTitle>正在載入 2fa.directory 服務清單</EmptyTitle>
-        <EmptyDescription>主程序正在本機比對服務網域，不會上傳任何保管庫資料。</EmptyDescription>
+        <EmptyDescription>主程序正在本機比對服務網域，不會上傳任何密碼庫資料。</EmptyDescription>
       </EmptyHeader>
     </Empty>
   )
@@ -1133,7 +1133,7 @@ export default function VaultHealthPage({
               <ShieldCheck />
             </span>
             <h1 id="health-title" className="min-w-0 text-2xl font-semibold tracking-tight">
-              保管庫健康報告
+              密碼庫健康報告
             </h1>
           </div>
           <div className="sm:self-center">
@@ -1160,7 +1160,7 @@ export default function VaultHealthPage({
             <Alert variant="destructive">
               <AlertTriangle />
               <AlertTitle>無法產生健康報告</AlertTitle>
-              <AlertDescription>請確認保管庫仍為解鎖狀態，再重新分析。</AlertDescription>
+              <AlertDescription>請確認密碼庫仍為解鎖狀態，再重新分析。</AlertDescription>
               <AlertAction>
                 <Button variant="outline" size="sm" type="button" onClick={() => void loadReport()}>
                   重試

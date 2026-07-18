@@ -64,7 +64,7 @@ export function accountConfirmationContent(action: AccountConfirmationAction): {
     return {
       title: `移除${localAccountLabel(action.slot)}？`,
       description:
-        '這會永久刪除這台裝置上的加密保管庫、設定與 Touch ID 資料，且無法復原；不會刪除 Bitwarden 或 Vaultwarden 伺服器上的帳號與資料。',
+        '這會永久刪除這台裝置上的加密密碼庫、設定與 Touch ID 資料，且無法復原；不會刪除 Bitwarden 或 Vaultwarden 伺服器上的帳號與資料。',
       actionLabel: '永久移除本機資料',
       destructive: true
     }
@@ -72,7 +72,7 @@ export function accountConfirmationContent(action: AccountConfirmationAction): {
   const target = action.kind === 'add' ? '新增本機帳號' : `切換至${localAccountLabel(action.slot)}`
   return {
     title: `${target}？`,
-    description: '這會先鎖定保管庫，然後安全地重新啟動 BearWarden。未儲存的變更不會保留。',
+    description: '這會先鎖定密碼庫，然後安全地重新啟動 BearWarden。未儲存的變更不會保留。',
     actionLabel: '鎖定並重新啟動',
     destructive: false
   }

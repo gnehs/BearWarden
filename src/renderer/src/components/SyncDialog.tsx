@@ -142,7 +142,7 @@ function describeSyncError(error: unknown): string {
   if (/(?:CANCEL|ABORT)/i.test(error.message)) return '操作已取消。'
   if (error.message.includes('NEW_DEVICE_REQUIRED'))
     return '伺服器要求新裝置驗證碼。請從 Bitwarden 寄送的郵件取得驗證碼後，在進階選項輸入。'
-  if (error.message.includes('AUTH_REQUIRED')) return 'Bitwarden 保管庫需要重新登入或解鎖。'
+  if (error.message.includes('AUTH_REQUIRED')) return 'Bitwarden 密碼庫需要重新登入或解鎖。'
   if (error.message.includes('UNSUPPORTED_ACCOUNT'))
     return '此帳號使用尚未支援的新版帳號加密或登入方式；為避免資料損毀，BearWarden 不會進行任何遠端寫入。'
   if (error.message.includes('SYNC_NETWORK'))
@@ -153,7 +153,7 @@ function describeSyncError(error: unknown): string {
     return '伺服器包含一筆不完整的 SSH Key。請先使用 Bitwarden 或 Vaultwarden 修復或刪除該項目。'
   if (error.message.includes('SYNC_CONFLICT'))
     return '遠端資料已變更，這次同步未套用。請重新同步以取得最新版本。'
-  if (error.message.includes('LOCKED')) return '保管庫已鎖定，請輸入主密碼後再試。'
+  if (error.message.includes('LOCKED')) return '密碼庫已鎖定，請輸入主密碼後再試。'
   if (error.message.includes('INVALID_MASTER_PASSWORD')) return '主密碼不正確。'
   if (error.message.includes('TWO_FACTOR')) return '雙重驗證無效、已過期或已取消，請重新嘗試。'
   if (error.message.includes('INVALID_URL')) return '請輸入有效的 HTTPS 伺服器網址。'
@@ -177,7 +177,7 @@ export function syncInvalidResponseStageLabel(stage: SyncInvalidResponseStage): 
     case 'folder':
       return '資料夾資料'
     case 'cipher':
-      return '保管庫項目資料'
+      return '密碼庫項目資料'
     case 'collection':
       return '組織集合關聯'
     case 'send':
@@ -511,7 +511,7 @@ function SyncDialog({
             <DialogTitle>Bitwarden 同步</DialogTitle>
             <DialogDescription>
               {configured
-                ? '直接連線並加密同步你的保管庫。'
+                ? '直接連線並加密同步你的密碼庫。'
                 : '連線 Bitwarden 雲端或你的 Vaultwarden 伺服器。'}
             </DialogDescription>
           </div>
@@ -538,9 +538,9 @@ function SyncDialog({
                 {isSyncing
                   ? '正在同步…'
                   : status.state === 'ready'
-                    ? '已連線，保管庫已解鎖'
+                    ? '已連線，密碼庫已解鎖'
                     : status.state === 'locked'
-                      ? '已連線，保管庫已鎖定'
+                      ? '已連線，密碼庫已鎖定'
                       : status.state === 'error'
                         ? '需要處理同步問題'
                         : '尚未設定同步'}
@@ -867,7 +867,7 @@ function SyncDialog({
                       </AlertDialogMedia>
                       <AlertDialogTitle>中斷同步連線？</AlertDialogTitle>
                       <AlertDialogDescription>
-                        這不會刪除本機保管庫，但之後不會再和 Bitwarden 同步。
+                        這不會刪除本機密碼庫，但之後不會再和 Bitwarden 同步。
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

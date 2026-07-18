@@ -191,7 +191,7 @@ function VaultPortabilityDialog({
         if (!result.canceled) setPreview(result)
       } else {
         if (!masterPassword) {
-          setError('請輸入目前的主密碼，確認要還原到這個保管庫。')
+          setError('請輸入目前的主密碼，確認要還原到這個密碼庫。')
           return
         }
         const result = await window.bearwarden.portability.startNativeRestore({
@@ -281,15 +281,15 @@ function VaultPortabilityDialog({
       description={
         exporting
           ? plaintextZip
-            ? '建立可由 Bitwarden 相容工具解壓使用的個人保管庫與附件明文副本。'
+            ? '建立可由 Bitwarden 相容工具解壓使用的個人密碼庫與附件明文副本。'
             : plaintextCsv
               ? '建立可重新匯入 Bitwarden 的登入與安全筆記明文副本。'
               : '建立受密碼保護的可攜備份。'
           : nativeImport
             ? '從 BearWarden 完整備份還原項目與附件，可在中斷後安全續傳。'
             : keepassImport
-              ? '將 KeePass 2 匯出的明文 XML Entry 加入目前的保管庫。既有項目不會被覆蓋。'
-              : '將 Bitwarden JSON、Bitwarden CSV 或 Chrome／Chromium 密碼 CSV 加入目前的保管庫。既有項目不會被覆蓋。'
+              ? '將 KeePass 2 匯出的明文 XML Entry 加入目前的密碼庫。既有項目不會被覆蓋。'
+              : '將 Bitwarden JSON、Bitwarden CSV 或 Chrome／Chromium 密碼 CSV 加入目前的密碼庫。既有項目不會被覆蓋。'
       }
       busy={busy && !(nativeImport && preview && !completed)}
       onClose={() => void closeSafely()}
@@ -375,7 +375,7 @@ function VaultPortabilityDialog({
               </AlertTitle>
               <AlertDescription>
                 {plaintextZip ? (
-                  '只應儲存在受信任的加密磁碟，使用後請安全刪除。格式對齊 Bitwarden 個人保管庫 ZIP 匯出；官方目前不支援把附件 ZIP 批次匯入，因此 BearWarden 不宣稱可用它無損還原附件。垃圾桶與 Sends 不包含在內。'
+                  '只應儲存在受信任的加密磁碟，使用後請安全刪除。格式對齊 Bitwarden 個人密碼庫 ZIP 匯出；官方目前不支援把附件 ZIP 批次匯入，因此 BearWarden 不宣稱可用它無損還原附件。垃圾桶與 Sends 不包含在內。'
                 ) : plaintextCsv ? (
                   <VaultCsvExportWarning />
                 ) : keepassImport ? (
@@ -469,7 +469,7 @@ function VaultPortabilityDialog({
                     <FieldDescription>
                       {nativeImport
                         ? '預覽後需要新的本機擁有者驗證，才會開始同步與還原。'
-                        : '只會送到本機主程序確認保管庫擁有者。'}
+                        : '只會送到本機主程序確認密碼庫擁有者。'}
                     </FieldDescription>
                   </Field>
                 )}

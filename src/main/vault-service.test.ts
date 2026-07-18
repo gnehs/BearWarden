@@ -11,7 +11,12 @@ import {
   type BitwardenSendItem,
   type BitwardenSyncClient
 } from './bitwarden-direct'
-import type { CustomFieldRequest, LoginView, VaultItemFields } from '../shared/vault-contract'
+import type {
+  CredentialGeneratorResult,
+  CustomFieldRequest,
+  LoginView,
+  VaultItemFields
+} from '../shared/vault-contract'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import {
   VaultService,
@@ -4315,7 +4320,8 @@ describe('VaultService encrypted local data', () => {
       email: 'sync@example.invalid',
       masterPassword: 'remote master password'
     })
-    await service.generateCredential({ algorithm: 'username', options: {} })
+    const generated = await service.generateCredential({ algorithm: 'username', options: {} })
+    await service.copyGeneratedCredential({ token: generated.copyToken })
     await service.createFolder({ name: 'Local purge folder' })
     const archived = await service.createLogin({ name: 'Archived purge item' })
     await service.archiveLogin({ id: archived.id })
@@ -9518,15 +9524,20 @@ describe('VaultService encrypted local data', () => {
     const { copyText, filePath, service, store } = await createHarness({ randomInt: () => 0 })
     await service.setup(MASTER_PASSWORD)
 
-    const password = await service.generateCredential({ algorithm: 'password', options: {} })
-    await service.copyGeneratorHistory(password.historyLocator)
-    expect(copyText).toHaveBeenLastCalledWith(password.credential)
-
     const write = vi.spyOn(store, 'write')
+    const password = await service.generateCredential({ algorithm: 'password', options: {} })
+    await expect(service.generatorHistory()).resolves.toEqual([])
+    expect(write).not.toHaveBeenCalled()
+    await service.copyGeneratedCredential({ token: password.copyToken })
+    expect(copyText).toHaveBeenLastCalledWith(password.credential)
+    expect(write).toHaveBeenCalledTimes(1)
+
     const duplicate = await service.generateCredential({ algorithm: 'password', options: {} })
     expect(duplicate.credential).toBe(password.credential)
-    expect(duplicate.historyLocator).toEqual(password.historyLocator)
-    expect(write).not.toHaveBeenCalled()
+    expect(duplicate.copyToken).not.toBe(password.copyToken)
+    await service.copyGeneratedCredential({ token: duplicate.copyToken })
+    await service.copyGeneratedCredential({ token: password.copyToken })
+    expect(write).toHaveBeenCalledTimes(1)
 
     const passphrase = await service.generateCredential({ algorithm: 'passphrase', options: {} })
     const username = await service.generateCredential({
@@ -9545,6 +9556,9 @@ describe('VaultService encrypted local data', () => {
     expect(username.credential).toBe('Abacus0000')
     expect(subaddress.credential).toBe('bear+aaaaaaaa@example.invalid')
     expect(catchall.credential).toBe('aaaaaaaa@example.invalid')
+    for (const result of [passphrase, username, subaddress, catchall]) {
+      await service.copyGeneratedCredential({ token: result.copyToken })
+    }
 
     const history = await service.generatorHistory()
     expect(history.map((entry) => entry.algorithm)).toEqual([
@@ -9554,9 +9568,6 @@ describe('VaultService encrypted local data', () => {
       'passphrase',
       'password'
     ])
-    await expect(service.copyGeneratorHistory(password.historyLocator)).rejects.toMatchObject({
-      code: 'INVALID_INPUT'
-    })
     await expect(
       service.copyGeneratorHistory({
         index: 4,
@@ -9576,6 +9587,48 @@ describe('VaultService encrypted local data', () => {
     expect(await service.generatorHistory()).toEqual(history)
     await service.clearGeneratorHistory()
     await expect(service.generatorHistory()).resolves.toEqual([])
+  })
+
+  it('expires and bounds pending generated-copy tokens and clears them on lock or dispose', async () => {
+    let now = Date.parse('2026-07-14T00:00:00.000Z')
+    let tokenIndex = 0
+    const { service } = await createHarness({
+      createId: () => `00000000-0000-4000-8000-${String((tokenIndex += 1)).padStart(12, '0')}`,
+      now: () => new Date(now),
+      randomInt: () => 0
+    })
+    await service.setup(MASTER_PASSWORD)
+
+    const expired = await service.generateCredential({ algorithm: 'password', options: {} })
+    now += 5 * 60_000
+    await expect(
+      service.copyGeneratedCredential({ token: expired.copyToken })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+
+    const generated: CredentialGeneratorResult[] = []
+    for (let index = 0; index < 129; index += 1) {
+      generated.push(await service.generateCredential({ algorithm: 'password', options: {} }))
+    }
+    await expect(
+      service.copyGeneratedCredential({ token: generated[0]!.copyToken })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.copyGeneratedCredential({ token: generated.at(-1)!.copyToken })
+    ).resolves.toBeUndefined()
+
+    const locked = await service.generateCredential({ algorithm: 'password', options: {} })
+    await service.lock()
+    await service.unlock(MASTER_PASSWORD)
+    await expect(
+      service.copyGeneratedCredential({ token: locked.copyToken })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+
+    const disposed = await service.generateCredential({ algorithm: 'password', options: {} })
+    service.dispose()
+    await service.unlock(MASTER_PASSWORD)
+    await expect(
+      service.copyGeneratedCredential({ token: disposed.copyToken })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
   })
 
   it('generates transient SSH key material only while unlocked without recording history', async () => {
@@ -9632,7 +9685,11 @@ describe('VaultService encrypted local data', () => {
       { randomInt: () => 0 }
     )
     await reopened.unlock(MASTER_PASSWORD)
-    await reopened.generateCredential({ algorithm: 'catchall', domain: 'example.invalid' })
+    const generated = await reopened.generateCredential({
+      algorithm: 'catchall',
+      domain: 'example.invalid'
+    })
+    await reopened.copyGeneratedCredential({ token: generated.copyToken })
     const history = await reopened.generatorHistory()
     expect(history).toHaveLength(200)
     expect(history[0]).toMatchObject({

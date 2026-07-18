@@ -207,7 +207,7 @@ export function VirtualizedItemList({
         'item-list virtualized-item-list scroll-fade-y forced-colors:scroll-fade-none',
         className
       )}
-      aria-label={`${scopeTitle}保管庫項目`}
+      aria-label={`${scopeTitle}密碼庫項目`}
     >
       <div
         className="virtualized-item-list-content"

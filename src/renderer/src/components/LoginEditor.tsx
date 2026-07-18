@@ -2394,10 +2394,11 @@ function LoginEditor({
         <CredentialGeneratorDialog
           initialTab={generatorTarget}
           onClose={() => setGeneratorTarget(null)}
-          onGenerate={(request) => window.bearwarden.generator.generate(request)}
-          onListHistory={() => window.bearwarden.generator.history()}
-          onCopyHistory={(locator) => window.bearwarden.generator.copyHistory(locator)}
-          onClearHistory={() => window.bearwarden.generator.clearHistory()}
+          onGenerate={window.bearwarden.generator.generate}
+          onCopyGenerated={(token) => window.bearwarden.generator.copyGenerated({ token })}
+          onListHistory={window.bearwarden.generator.history}
+          onCopyHistory={window.bearwarden.generator.copyHistory}
+          onClearHistory={window.bearwarden.generator.clearHistory}
           useCategories={generatorTarget === 'password' ? ['password'] : ['username', 'email']}
           onUseCredential={(generated) => {
             if (generatorTarget === 'password' && generated.category === 'password') {

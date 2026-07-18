@@ -88,7 +88,7 @@ describe('AccountSwitcherCard presentation helpers', () => {
       { kind: 'switch' as const, accountId: account().id, slot: account().slot }
     ]) {
       const confirmation = accountConfirmationContent(action)
-      expect(confirmation.description).toContain('鎖定保管庫')
+      expect(confirmation.description).toContain('鎖定密碼庫')
       expect(confirmation.description).toContain('重新啟動')
       expect(confirmation.destructive).toBe(false)
     }

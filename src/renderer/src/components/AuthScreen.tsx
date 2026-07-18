@@ -21,7 +21,7 @@ function describeError(error: unknown): string {
   if (error.message.includes('PIN_DISABLED')) return 'PIN 解鎖已停用，請改用主密碼。'
   if (error.message.includes('RATE_LIMITED')) return '嘗試次數過多，請稍後再試。'
   if (error.message.includes('INVALID_INPUT')) return '請檢查輸入內容。'
-  return '目前無法開啟保管庫，請稍後再試。'
+  return '目前無法開啟密碼庫，請稍後再試。'
 }
 
 function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React.JSX.Element {
@@ -164,7 +164,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
             <div className="grid justify-items-start gap-3" role="status">
               <Spinner className="size-7" aria-hidden="true" />
               <h1 className="m-0 text-[23px] leading-[1.2] tracking-[-0.025em]" id="auth-title">
-                正在開啟安全保管庫
+                正在開啟安全密碼庫
               </h1>
               <p className="text-muted-foreground m-0 leading-[1.6]">
                 所有資料都會在這部裝置上解密。
@@ -184,7 +184,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                 無法連線至安全服務
               </h1>
               <p className="text-muted-foreground m-0 leading-[1.6]">
-                BearWarden 沒有載入保管庫服務。你的資料沒有被更動。
+                BearWarden 沒有載入密碼庫服務。你的資料沒有被更動。
               </p>
               <Button className="mt-2" type="button" onClick={onRetry}>
                 <RotateCcw data-icon="inline-start" aria-hidden="true" />
@@ -198,7 +198,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
               <div className="grid grid-cols-[auto_1fr] items-start gap-3.5">
                 <div>
                   <h1 className="m-0 text-[23px] leading-[1.2] tracking-[-0.025em]" id="auth-title">
-                    {isSetup ? '建立你的保管庫' : '歡迎回來'}
+                    {isSetup ? '建立你的密碼庫' : '歡迎回來'}
                   </h1>
                   <p className="text-muted-foreground mt-[7px] mb-0 leading-[1.6]">
                     {isSetup
@@ -275,7 +275,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                 ) : (
                   <ArrowRight data-icon="inline-start" aria-hidden="true" />
                 )}
-                {isSetup ? '建立並解鎖' : unlockMethod === 'pin' ? '使用 PIN 解鎖' : '解鎖保管庫'}
+                {isSetup ? '建立並解鎖' : unlockMethod === 'pin' ? '使用 PIN 解鎖' : '解鎖密碼庫'}
               </Button>
               {!isSetup && pinStatus.available && (
                 <Button

@@ -122,6 +122,7 @@ import {
   isCurrentSelectedDetailResponse,
   protectedDetailInvalidationIds
 } from './VaultShell-security'
+import { quickAccessDropAction, quickAccessDropIds } from './VaultShell-dnd'
 import SyncDialog from './SyncDialog'
 import SettingsPage from './SettingsPage'
 import SendsPage from './SendsPage'
@@ -419,7 +420,7 @@ function TooltipIconButton({
 function describeError(error: unknown): string {
   if (!(error instanceof Error)) return '發生未知錯誤。'
   const messages: Record<string, string> = {
-    LOCKED: '保管庫已鎖定，請重新解鎖。',
+    LOCKED: '密碼庫已鎖定，請重新解鎖。',
     NOT_FOUND: '找不到指定的項目。',
     INVALID_INPUT: '輸入內容無效，請檢查後再試。',
     DUPLICATE_NAME: '名稱已被使用，請換一個名稱。',
@@ -672,6 +673,7 @@ interface SidebarLinkProps {
   active: boolean
   variant?: 'row' | 'tile'
   tone?: SidebarTone
+  dropTargetId?: string
   onClick: () => void
 }
 
@@ -703,17 +705,25 @@ function SidebarLink({
   active,
   variant = 'row',
   tone,
+  dropTargetId,
   onClick
 }: SidebarLinkProps): React.JSX.Element {
   const isTile = variant === 'tile'
+  const { setNodeRef, isOver } = useDroppable({
+    id: dropTargetId ?? `sidebar-link:${label}`,
+    disabled: dropTargetId === undefined
+  })
 
   return (
     <Button
+      ref={dropTargetId ? setNodeRef : undefined}
       variant="sidebar"
       className={cn(
         sidebarLinkClasses.base,
         sidebarLinkClasses[variant],
-        active && sidebarLinkClasses.active[variant]
+        active && sidebarLinkClasses.active[variant],
+        isOver &&
+          'bg-sidebar-overlay-active text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-overlay-active hover:text-sidebar-foreground ring-2'
       )}
       type="button"
       aria-current={active ? 'page' : undefined}
@@ -1703,7 +1713,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     sidebarAccountProfile.owner === syncAccountIdentity ? sidebarAccountProfile.profile : null
   const sidebarAccountName =
     visibleSidebarAccountProfile?.name.trim() ||
-    (syncStatus.configured ? '已連線帳號' : '本機保管庫')
+    (syncStatus.configured ? '已連線帳號' : '本機密碼庫')
 
   useEffect(() => {
     let active = true
@@ -2105,7 +2115,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     try {
       const status = await window.bearwarden.vault.lock()
       if (status.state === 'locked') onLocked()
-      else announceError('保管庫尚未鎖定，請再試一次。')
+      else announceError('密碼庫尚未鎖定，請再試一次。')
     } catch (lockError) {
       announceError(describeError(lockError))
     }
@@ -2655,8 +2665,8 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   async function performBulkAction(snapshot: BulkActionSnapshot): Promise<boolean> {
     if (busy) return false
-    if (snapshot.ids.length < 2) {
-      announceError('請至少選取 2 個項目再執行批次操作。')
+    if (snapshot.ids.length === 0) {
+      announceError('請先選取要處理的項目。')
       return false
     }
     if (snapshot.ids.length > MAX_LOGIN_BATCH_IDS) {
@@ -2795,6 +2805,55 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       for (const item of previous) mergeCachedSummary(detailCacheRef.current, item)
       setItems((current) => current.map((item) => previousById.get(item.id) ?? item))
       announceError(describeError(moveError))
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function addLoginsToFavorites(snapshot: MoveSnapshot): Promise<boolean> {
+    if (busy) return false
+    const previous = revalidateBulkSelection(snapshot.ids, snapshot.state)
+    if (!previous) {
+      announceError('選取的項目已變更，未執行任何操作。請重新選取後再試。')
+      return false
+    }
+    const itemsToUpdate = previous.filter((item) => !item.favorite)
+    if (itemsToUpdate.length === 0) return true
+    if (itemsToUpdate.length > MAX_LOGIN_BATCH_IDS) {
+      announceError(`一次最多可處理 ${MAX_LOGIN_BATCH_IDS} 個項目。`)
+      return false
+    }
+
+    const ids = itemsToUpdate.map((item) => item.id)
+    setBusy(true)
+    try {
+      const updated = await withReprompt(ids, (tokenFor) =>
+        Promise.all(
+          ids.map((id) =>
+            window.bearwarden.logins.setFavorite({
+              id,
+              favorite: true,
+              ...(tokenFor(id) ? { authorizationToken: tokenFor(id) } : {})
+            })
+          )
+        )
+      )
+      const updatedById = new Map(updated.map((item) => [item.id, item]))
+      for (const item of updated) mergeCachedSummary(detailCacheRef.current, item)
+      setItems((current) => current.map((item) => updatedById.get(item.id) ?? item))
+      setSelectedLogin((current) => {
+        if (!current) return current
+        const summary = updatedById.get(current.id)
+        return summary ? mergeLoginSummary(current, summary) : current
+      })
+      announce(
+        updated.length > 1 ? `已將 ${updated.length} 個項目加入常用項目。` : '已加入常用項目。'
+      )
+      return true
+    } catch (favoriteError) {
+      await refreshItems().catch(() => undefined)
+      announceError(describeError(favoriteError))
       return false
     } finally {
       setBusy(false)
@@ -3517,7 +3576,13 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         ids: draggedIds,
         state: scope.kind === 'archive' ? 'archive' : 'active'
       }
-      if (overId === 'folder:none') await moveLogins(snapshot, null)
+      const quickAction = quickAccessDropAction(overId, snapshot.state)
+      if (quickAction === 'favorites') await addLoginsToFavorites(snapshot)
+      else if (quickAction === 'archive') {
+        await performBulkAction({ action: 'archive', ...snapshot })
+      } else if (quickAction === 'trash') {
+        setPendingBulkAction({ action: 'delete', ...snapshot })
+      } else if (overId === 'folder:none') await moveLogins(snapshot, null)
       else if (folderIds.has(overId)) await moveLogins(snapshot, overId)
       return
     }
@@ -3783,7 +3848,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           {closeAuxiliaryPage && (
             <Button variant="outline" size="sm" type="button" onClick={closeAuxiliaryPage}>
               <ArrowLeft data-icon="inline-start" />
-              保管庫
+              密碼庫
             </Button>
           )}
           <div className="inline-flex items-center gap-2 max-[680px]:hidden">
@@ -3802,13 +3867,13 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                   variant="ghost"
                   className="titlebar-search-trigger"
                   type="button"
-                  aria-label={query ? `搜尋保管庫項目，目前為 ${query}` : '搜尋保管庫項目'}
+                  aria-label={query ? `搜尋密碼庫項目，目前為 ${query}` : '搜尋密碼庫項目'}
                   aria-haspopup="dialog"
                   aria-expanded={searchOpen}
                   onClick={() => setSearchOpen(true)}
                 >
                   <span className={cn('truncate', !query && 'text-muted-foreground')}>
-                    {query || '搜尋保管庫；以 > 開始進階搜尋'}
+                    {query || '搜尋密碼庫；以 > 開始進階搜尋'}
                   </span>
                 </Button>
                 <InputGroupAddon align="inline-start">
@@ -3865,13 +3930,13 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         <CommandDialog
           open={searchOpen}
           onOpenChange={setSearchOpen}
-          title="搜尋保管庫"
+          title="搜尋密碼庫"
           description="搜尋名稱、摘要、網站與內容；以 > 開始可指定欄位的進階搜尋。"
         >
-          <Command className="vault-command" label="搜尋保管庫項目" loop shouldFilter={false}>
+          <Command className="vault-command" label="搜尋密碼庫項目" loop shouldFilter={false}>
             <CommandInput
               ref={searchRef}
-              placeholder="搜尋保管庫；例如 >name:github"
+              placeholder="搜尋密碼庫；例如 >name:github"
               maxLength={MAX_VAULT_SEARCH_QUERY_LENGTH}
               value={query}
               onValueChange={updateQuery}
@@ -3897,7 +3962,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
               }
             />
             <CommandList className="vault-command-list">
-              <CommandEmpty>找不到符合的保管庫項目</CommandEmpty>
+              <CommandEmpty>找不到符合的密碼庫項目</CommandEmpty>
               {scopedItems.length > 0 && (
                 <CommandGroup
                   heading={`${normalizedVaultSearchQuery(query) ? '搜尋結果' : scopeTitle} · ${scopedItems.length} 個項目`}
@@ -3939,7 +4004,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
               'settings-mode'
           )}
         >
-          <aside className={cn('sidebar', sidebarOpen && 'open')} aria-label="保管庫導覽">
+          <aside className={cn('sidebar', sidebarOpen && 'open')} aria-label="密碼庫導覽">
             <div className="sidebar-scroll scroll-fade-y forced-colors:scroll-fade-none">
               <section
                 className="folder-section category-section flex-none px-[11px] pb-1"
@@ -3948,7 +4013,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 <h2 className="hidden" id="categories-title">
                   分類
                 </h2>
-                <nav className="grid grid-cols-2 gap-2 p-0 pt-px" aria-label="保管庫分類">
+                <nav className="grid grid-cols-2 gap-2 p-0 pt-px" aria-label="密碼庫分類">
                   {categoryMeta.map((category) => {
                     const Icon = category.icon
                     return (
@@ -3980,6 +4045,11 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     label="常用項目"
                     count={activeItems.filter((item) => item.favorite).length}
                     active={scope.kind === 'favorites'}
+                    dropTargetId={
+                      scope.kind === 'archive' || scope.kind === 'trash'
+                        ? undefined
+                        : quickAccessDropIds.favorites
+                    }
                     onClick={() => selectScope({ kind: 'favorites' })}
                   />
                   <SidebarLink
@@ -3994,6 +4064,11 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     label="封存"
                     count={archivedItems.length}
                     active={scope.kind === 'archive'}
+                    dropTargetId={
+                      scope.kind === 'archive' || scope.kind === 'trash'
+                        ? undefined
+                        : quickAccessDropIds.archive
+                    }
                     onClick={() => selectScope({ kind: 'archive' })}
                   />
                   <SidebarLink
@@ -4001,6 +4076,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     label="垃圾桶"
                     count={trashItems.length}
                     active={scope.kind === 'trash'}
+                    dropTargetId={scope.kind === 'trash' ? undefined : quickAccessDropIds.trash}
                     onClick={() => selectScope({ kind: 'trash' })}
                   />
                 </nav>
@@ -4117,7 +4193,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                   <DropdownMenuGroup>
                     <DropdownMenuItem onClick={() => void lockVault()}>
                       <LockKeyhole data-icon="inline-start" />
-                      鎖定保管庫
+                      鎖定密碼庫
                       <DropdownMenuShortcut>
                         <Kbd>{commandLabel} L</Kbd>
                       </DropdownMenuShortcut>
@@ -4272,7 +4348,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                             ? '找不到符合的項目'
                             : scope.kind === 'trash'
                               ? '垃圾桶是空的'
-                              : '這裡還沒有保管庫項目'}
+                              : '這裡還沒有密碼庫項目'}
                         </EmptyTitle>
                         <EmptyDescription>
                           {query
@@ -5163,10 +5239,11 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         {generatorDialogOpen && (
           <CredentialGeneratorDialog
             onClose={() => setGeneratorDialogOpen(false)}
-            onGenerate={(request) => window.bearwarden.generator.generate(request)}
-            onListHistory={() => window.bearwarden.generator.history()}
-            onCopyHistory={(locator) => window.bearwarden.generator.copyHistory(locator)}
-            onClearHistory={() => window.bearwarden.generator.clearHistory()}
+            onGenerate={window.bearwarden.generator.generate}
+            onCopyGenerated={(token) => window.bearwarden.generator.copyGenerated({ token })}
+            onListHistory={window.bearwarden.generator.history}
+            onCopyHistory={window.bearwarden.generator.copyHistory}
+            onClearHistory={window.bearwarden.generator.clearHistory}
           />
         )}
         {repromptPrompt && (

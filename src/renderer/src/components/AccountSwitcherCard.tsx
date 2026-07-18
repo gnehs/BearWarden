@@ -101,7 +101,7 @@ function AccountSwitcherCard({
           <CardTitle id="local-accounts-settings-title" role="heading" aria-level={2}>
             本機帳號
           </CardTitle>
-          <CardDescription>新增、排序、切換或移除這台裝置上的保管庫帳號。</CardDescription>
+          <CardDescription>新增、排序、切換或移除這台裝置上的密碼庫帳號。</CardDescription>
           <CardAction>
             <Badge variant="secondary">
               {accounts.length} / {MAX_LOCAL_ACCOUNTS}
