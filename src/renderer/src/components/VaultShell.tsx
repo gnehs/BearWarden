@@ -269,7 +269,7 @@ const categoryMeta: Array<{
   { id: 'login', label: '登入', icon: FileKey2, tone: 'indigo' },
   { id: 'passkey', label: '通行密鑰', icon: Fingerprint, tone: 'green' },
   { id: 'totp', label: '驗證碼', icon: BadgeCheck, tone: 'yellow' },
-  { id: 'card', label: '支付卡', icon: CreditCard, tone: 'cyan' },
+  { id: 'card', label: '卡片', icon: CreditCard, tone: 'cyan' },
   { id: 'identity', label: '身分', icon: ContactRound, tone: 'red' },
   { id: 'secureNote', label: '備註', icon: NotebookPen, tone: 'orange' },
   { id: 'sshKey', label: 'SSH 金鑰', icon: FileKey2, tone: 'gray' }
