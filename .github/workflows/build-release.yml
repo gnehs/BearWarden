@@ -75,10 +75,24 @@ jobs:
         shell: bash
         run: pnpm version "$GITHUB_REF_NAME" --no-git-tag-version
 
+      - name: Build application
+        run: pnpm run build
+        env:
+          NODE_OPTIONS: --require=./.github/scripts/electron-vite-stdout.cjs
+
       - name: Build installer
+        if: matrix.target != 'linux'
+        run: pnpm exec electron-builder --${{ matrix.target }} ${{ matrix.architecture }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          NODE_OPTIONS: --require=./.github/scripts/electron-vite-stdout.cjs
+
+      - name: Build Linux installers sequentially
+        if: matrix.target == 'linux'
         run: |
-          pnpm run build
-          pnpm exec electron-builder --${{ matrix.target }} ${{ matrix.architecture }} --publish never
+          pnpm exec electron-builder --linux AppImage ${{ matrix.architecture }} --publish never
+          pnpm exec electron-builder --linux snap ${{ matrix.architecture }} --publish never
+          pnpm exec electron-builder --linux deb ${{ matrix.architecture }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
           NODE_OPTIONS: --require=./.github/scripts/electron-vite-stdout.cjs

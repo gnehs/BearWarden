@@ -21,3 +21,9 @@ allowBuilds:
   electron-winstaller: true
   esbuild: true
   ssh2: false
+
+minimumReleaseAgeExclude:
+  - app-builder-lib@26.15.7
+  - dmg-builder@26.15.7
+  - electron-builder-squirrel-windows@26.15.7
+  - electron-builder@26.15.7
