@@ -2334,7 +2334,11 @@ button svg {
   border-radius: 0;
 }
 .item-row:hover {
+  border-radius: var(--radius-lg);
   background: var(--accent);
+}
+.virtualized-item-row-list:has(+ .virtualized-item-row-list > .item-row.selected) > .item-row {
+  border-bottom-color: transparent;
 }
 .item-row.selected {
   border-bottom-color: transparent;
