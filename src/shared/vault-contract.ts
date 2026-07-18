@@ -39,6 +39,7 @@ export const IPC_CHANNELS = {
   loginAuthorize: 'login:authorize',
   loginAuthorizeMany: 'login:authorize-many',
   loginGet: 'login:get',
+  loginPrefetch: 'login:prefetch',
   loginGetPasswordHistory: 'login:get-password-history',
   loginRestorePasswordHistory: 'login:restore-password-history',
   attachmentDownload: 'attachment:download',
@@ -712,10 +713,16 @@ export interface LoginMoveRequest extends LoginIdRequest {
 
 export const MAX_LOGIN_BATCH_IDS = 500
 export const MAX_LOGIN_MOVE_MANY_IDS = MAX_LOGIN_BATCH_IDS
+export const MAX_LOGIN_PREFETCH_IDS = 48
 
 export interface LoginBatchRequest {
   ids: string[]
   authorizationToken?: string
+}
+
+/** Active, non-reprompt item details requested only to warm the renderer's bounded cache. */
+export interface LoginPrefetchRequest {
+  ids: string[]
 }
 
 export interface LoginMoveManyRequest {
@@ -1690,6 +1697,7 @@ export interface BearWardenAPI {
     authorize: (request: LoginAuthorizeRequest) => Promise<LoginAuthorization>
     authorizeMany: (request: LoginAuthorizeManyRequest) => Promise<LoginAuthorization>
     get: (request: LoginIdRequest) => Promise<LoginView>
+    prefetch: (request: LoginPrefetchRequest) => Promise<LoginView[]>
     getPasswordHistory: (request: LoginIdRequest) => Promise<VaultPasswordHistoryEntry[]>
     restorePasswordHistory: (request: PasswordHistoryRestoreRequest) => Promise<LoginView>
     downloadAttachment: (request: AttachmentDownloadRequest) => Promise<AttachmentDownloadResult>

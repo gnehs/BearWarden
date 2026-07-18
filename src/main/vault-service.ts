@@ -44,6 +44,7 @@ import type {
   LoginIdRequest,
   LoginListRequest,
   LoginOpenUriRequest,
+  LoginPrefetchRequest,
   PasskeyDeleteRequest,
   PasswordHistoryRestoreRequest,
   LoginMoveRequest,
@@ -97,6 +98,7 @@ import {
   MAX_LOGIN_BATCH_IDS,
   MAX_LOGIN_AUTHORIZE_MANY_IDS,
   MAX_LOGIN_MOVE_MANY_IDS,
+  MAX_LOGIN_PREFETCH_IDS,
   MAX_LOGIN_SEARCH_QUERY_LENGTH,
   MAX_ACCOUNT_PROFILE_NAME_BYTES,
   ACCOUNT_SESSION_DEAUTHORIZATION_CONFIRMATION,
@@ -3166,7 +3168,7 @@ type AttachmentAuthorizationValidator = (
   state: { generation: number }
 ) => boolean
 
-type PasswordHistoryAuthorizationValidator = (
+type ItemReadAuthorizationValidator = (
   ids: readonly string[],
   state: { generation: number }
 ) => boolean
@@ -3258,6 +3260,8 @@ export class VaultService {
   private key: Buffer | null = null
   private salt: Buffer | null = null
   private data: VaultData | null = null
+  /** Blocks lock-free committed-snapshot reads before unlock and as soon as lock starts. */
+  private fastReadsBlocked = true
   private pinUnlockCapability: PinUnlockCapability | null = null
   private pinLifecycleEpoch = 0
   private generation = 0
@@ -3368,6 +3372,7 @@ export class VaultService {
       this.key = material.key
       this.salt = material.salt
       this.data = initialData
+      this.fastReadsBlocked = false
       return { state: 'unlocked' }
     })
   }
@@ -3387,6 +3392,7 @@ export class VaultService {
         this.key = unlocked.key
         this.salt = unlocked.salt
         await this.recoverNativeAttachmentRestoreAfterUnlock(requiresMigration)
+        this.fastReadsBlocked = false
         return { state: 'unlocked' }
       } catch (error) {
         unlocked.key.fill(0)
@@ -3689,6 +3695,7 @@ export class VaultService {
         this.salt = unlocked.salt
         unlocked = null
         await this.recoverNativeAttachmentRestoreAfterUnlock(requiresMigration)
+        this.fastReadsBlocked = false
         return { state: 'unlocked' }
       } catch (error) {
         if (error instanceof PinUnlockError) {
@@ -3718,6 +3725,7 @@ export class VaultService {
   }
 
   lock(): Promise<VaultStatus> {
+    this.fastReadsBlocked = true
     this.generation += 1
     this.syncAbort?.abort()
     this.abortNotificationTokenLeases()
@@ -3744,6 +3752,7 @@ export class VaultService {
   }
 
   private clearUnlockedRuntimeState(): void {
+    this.fastReadsBlocked = true
     this.syncAbort?.abort()
     this.abortNotificationTokenLeases()
     this.abortAccountSecurityRequests()
@@ -6533,9 +6542,34 @@ export class VaultService {
     })
   }
 
+  /**
+   * Hydrates one viewport from a synchronous committed snapshot. Protected and inactive items
+   * are omitted so speculative reads never cross a reprompt boundary.
+   */
+  async prefetchLogins(request: LoginPrefetchRequest): Promise<LoginView[]> {
+    if (
+      !Array.isArray(request.ids) ||
+      request.ids.length === 0 ||
+      request.ids.length > MAX_LOGIN_PREFETCH_IDS ||
+      new Set(request.ids).size !== request.ids.length
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    request.ids.forEach(assertUuid)
+    // Writers clone, persist, then atomically replace this.data. This synchronous projection can
+    // therefore read the last committed snapshot without waiting behind network-bound sync work.
+    const loginsById = new Map(this.requireFastReadData().logins.map((login) => [login.id, login]))
+    return request.ids.flatMap((id) => {
+      const login = loginsById.get(id)
+      return login && login.deletedAt === null && login.archivedAt === null && login.reprompt === 0
+        ? [toView(login)]
+        : []
+    })
+  }
+
   getPasswordHistory(
     request: LoginIdRequest,
-    validateAuthorization?: PasswordHistoryAuthorizationValidator
+    validateAuthorization?: ItemReadAuthorizationValidator
   ): Promise<VaultPasswordHistoryEntry[]> {
     return this.exclusive(async () => {
       assertUuid(request.id)
@@ -8537,16 +8571,25 @@ export class VaultService {
     })
   }
 
-  async getWebsiteIcon(request: LoginIdRequest): Promise<string | null> {
-    const iconUrl = await this.exclusive(async () => {
+  async getWebsiteIcon(
+    request: LoginIdRequest,
+    validateAuthorization?: ItemReadAuthorizationValidator
+  ): Promise<string | null> {
+    const iconUrl = (() => {
       assertUuid(request.id)
-      const data = this.requireData()
+      const data = this.requireFastReadData()
       const login = this.findLogin(data, request.id)
       this.assertActiveLogin(login)
+      if (
+        login.reprompt === 1 &&
+        !validateAuthorization?.([login.id], { generation: this.generation })
+      ) {
+        throw new VaultError('REPROMPT_REQUIRED')
+      }
       if (login.type !== 'login' || !login.uri || !data.sync) return null
       const hostname = parseWebsiteHostname(login.uri)
       return hostname ? resolveWebsiteIconUrl(data.sync.serverUrl, hostname) : null
-    })
+    })()
     if (!iconUrl) return null
 
     const cacheKey = iconUrl.toString()
@@ -10818,6 +10861,11 @@ export class VaultService {
   private requireData(): VaultData {
     if (!this.data || !this.key || !this.salt) throw new VaultError('LOCKED')
     return this.data
+  }
+
+  private requireFastReadData(): VaultData {
+    if (this.fastReadsBlocked) throw new VaultError('LOCKED')
+    return this.requireData()
   }
 
   private async currentStatus(): Promise<VaultStatus> {

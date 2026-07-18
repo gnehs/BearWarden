@@ -86,7 +86,11 @@ import type {
   VaultSecretField,
   VaultAttachmentView
 } from '../../../shared/vault-contract'
-import { MAX_LOGIN_BATCH_IDS, MAX_LOGIN_MOVE_MANY_IDS } from '../../../shared/vault-contract'
+import {
+  MAX_LOGIN_BATCH_IDS,
+  MAX_LOGIN_MOVE_MANY_IDS,
+  MAX_LOGIN_PREFETCH_IDS
+} from '../../../shared/vault-contract'
 import bearCutUrl from '../assets/bear-cut.svg'
 import BrandMark from './BrandMark'
 import {
@@ -107,6 +111,7 @@ import CredentialGeneratorDialog from './CredentialGeneratorDialog'
 import {
   canUseCachedLoginDetail,
   hasTrashPasswordHistory,
+  isCurrentPrefetchedDetailResponse,
   isCurrentVaultLoad,
   isCurrentSelectedDetailResponse,
   protectedDetailInvalidationIds
@@ -949,6 +954,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const selectedIdsRef = useRef<ReadonlySet<string>>(new Set())
   const selectionAnchorIdRef = useRef<string | null>(null)
   const detailRequestsRef = useRef(new Map<string, Promise<LoginView>>())
+  const detailPrefetchRequestsRef = useRef(new Map<string, Promise<LoginView | undefined>>())
+  const detailPrefetchQueueRef = useRef(new Set<string>())
+  const detailPrefetchScheduledRef = useRef(false)
   const detailCacheRef = useRef(new Map<string, LoginView>())
   const detailCacheGenerationRef = useRef(0)
   // A successful list load may invalidate protected details, so list freshness needs its own epoch.
@@ -1068,6 +1076,8 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const clearDetailCache = useCallback((): void => {
     detailCacheGenerationRef.current += 1
     detailRequestsRef.current.clear()
+    detailPrefetchRequestsRef.current.clear()
+    detailPrefetchQueueRef.current.clear()
     detailCacheRef.current.clear()
   }, [])
 
@@ -1280,29 +1290,52 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       const pending = detailRequestsRef.current.get(id)
       if (pending) return pending
 
-      let requestGeneration = detailCacheGenerationRef.current
-      const promise = withReprompt([id], (tokenFor) => {
-        requestGeneration = detailCacheGenerationRef.current
-        return window.bearwarden.logins.get({
-          id,
-          ...(tokenFor(id) ? { authorizationToken: tokenFor(id) } : {})
-        })
-      }).then((login) => {
-        if (
-          !isCurrentSelectedDetailResponse({
+      const startSelectedRequest = (): Promise<LoginView> => {
+        let requestGeneration = detailCacheGenerationRef.current
+        return withReprompt([id], (tokenFor) => {
+          requestGeneration = detailCacheGenerationRef.current
+          return window.bearwarden.logins.get({
             id,
-            selectedId: selectedIdRef.current,
-            requestGeneration,
-            currentGeneration: detailCacheGenerationRef.current,
-            reprompt: login.reprompt,
-            authorizationToken: authorizationToken(id)
+            ...(tokenFor(id) ? { authorizationToken: tokenFor(id) } : {})
           })
-        ) {
-          throw new Error('DETAIL_REQUEST_INVALIDATED')
-        }
-        cacheLoginDetail(detailCacheRef.current, login)
-        return login
-      })
+        }).then((login) => {
+          if (
+            !isCurrentSelectedDetailResponse({
+              id,
+              selectedId: selectedIdRef.current,
+              requestGeneration,
+              currentGeneration: detailCacheGenerationRef.current,
+              reprompt: login.reprompt,
+              authorizationToken: authorizationToken(id)
+            })
+          ) {
+            throw new Error('DETAIL_REQUEST_INVALIDATED')
+          }
+          cacheLoginDetail(detailCacheRef.current, login)
+          return login
+        })
+      }
+
+      const pendingPrefetch = detailPrefetchRequestsRef.current.get(id)
+      const promise = pendingPrefetch
+        ? pendingPrefetch.then((prefetched) => {
+            const currentSummary = itemsRef.current.find((item) => item.id === id)
+            const currentCached = detailCacheRef.current.get(id) ?? prefetched
+            if (
+              currentCached &&
+              canUseCachedLoginDetail(
+                currentSummary,
+                currentCached.reprompt,
+                Boolean(authorizationToken(id))
+              )
+            ) {
+              cacheLoginDetail(detailCacheRef.current, currentCached)
+              return currentCached
+            }
+            if (selectedIdRef.current !== id) throw new Error('DETAIL_REQUEST_INVALIDATED')
+            return startSelectedRequest()
+          })
+        : startSelectedRequest()
       detailRequestsRef.current.set(id, promise)
       void promise
         .catch(() => undefined)
@@ -1315,9 +1348,72 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   )
 
   const prefetchLoginDetail = useCallback((id: string): void => {
-    // Details are selection-bound secrets. Avoid speculative IPC so a stale hover request can
-    // never outlive capability expiry or a remote reprompt change.
-    void id
+    const summary = itemsRef.current.find((item) => item.id === id)
+    // Never speculatively cross the authorization boundary or hydrate inactive items.
+    if (
+      !summary ||
+      summary.reprompt !== 0 ||
+      summary.deletedAt !== null ||
+      summary.archivedAt !== null ||
+      detailCacheRef.current.has(id) ||
+      detailRequestsRef.current.has(id) ||
+      detailPrefetchRequestsRef.current.has(id)
+    ) {
+      return
+    }
+
+    detailPrefetchQueueRef.current.add(id)
+    if (detailPrefetchScheduledRef.current) return
+    detailPrefetchScheduledRef.current = true
+    queueMicrotask(() => {
+      detailPrefetchScheduledRef.current = false
+      const queuedIds = [...detailPrefetchQueueRef.current]
+      detailPrefetchQueueRef.current.clear()
+      const eligibleIds = queuedIds.filter((queuedId) => {
+        const queuedSummary = itemsRef.current.find((item) => item.id === queuedId)
+        return Boolean(
+          queuedSummary &&
+          queuedSummary.reprompt === 0 &&
+          queuedSummary.deletedAt === null &&
+          queuedSummary.archivedAt === null &&
+          !detailCacheRef.current.has(queuedId) &&
+          !detailRequestsRef.current.has(queuedId) &&
+          !detailPrefetchRequestsRef.current.has(queuedId)
+        )
+      })
+
+      for (let offset = 0; offset < eligibleIds.length; offset += MAX_LOGIN_PREFETCH_IDS) {
+        const ids = eligibleIds.slice(offset, offset + MAX_LOGIN_PREFETCH_IDS)
+        const requestGeneration = detailCacheGenerationRef.current
+        const batchPromise = window.bearwarden.logins.prefetch({ ids })
+        for (const queuedId of ids) {
+          const itemPromise = batchPromise
+            .then((logins) => {
+              const login = logins.find((candidate) => candidate.id === queuedId)
+              if (
+                !login ||
+                !isCurrentPrefetchedDetailResponse({
+                  requestGeneration,
+                  currentGeneration: detailCacheGenerationRef.current,
+                  response: login,
+                  summary: itemsRef.current.find((item) => item.id === queuedId)
+                })
+              ) {
+                return undefined
+              }
+              cacheLoginDetail(detailCacheRef.current, login)
+              return login
+            })
+            .catch(() => undefined)
+            .finally(() => {
+              if (detailPrefetchRequestsRef.current.get(queuedId) === itemPromise) {
+                detailPrefetchRequestsRef.current.delete(queuedId)
+              }
+            })
+          detailPrefetchRequestsRef.current.set(queuedId, itemPromise)
+        }
+      }
+    })
   }, [])
 
   const activateLogin = useCallback(

@@ -99,6 +99,7 @@ const api: BearWardenAPI = {
     authorize: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginAuthorize, request),
     authorizeMany: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginAuthorizeMany, request),
     get: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginGet, request),
+    prefetch: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginPrefetch, request),
     getPasswordHistory: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.loginGetPasswordHistory, request),
     restorePasswordHistory: (request) =>

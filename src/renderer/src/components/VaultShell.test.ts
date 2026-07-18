@@ -3,6 +3,7 @@ import type { LoginSummary } from '../../../shared/vault-contract'
 import {
   canUseCachedLoginDetail,
   hasTrashPasswordHistory,
+  isCurrentPrefetchedDetailResponse,
   isCurrentVaultLoad,
   isCurrentSelectedDetailResponse,
   protectedDetailInvalidationIds
@@ -118,5 +119,51 @@ describe('isCurrentSelectedDetailResponse', () => {
     resolve({ reprompt: 1 })
 
     await expect(guarded).resolves.toBe(false)
+  })
+})
+
+describe('isCurrentPrefetchedDetailResponse', () => {
+  it('accepts only an unchanged, active, unprotected item', () => {
+    expect(
+      isCurrentPrefetchedDetailResponse({
+        requestGeneration: 4,
+        currentGeneration: 4,
+        response: summary('visible', 0),
+        summary: summary('visible', 0)
+      })
+    ).toBe(true)
+
+    expect(
+      isCurrentPrefetchedDetailResponse({
+        requestGeneration: 4,
+        currentGeneration: 5,
+        response: summary('stale', 0),
+        summary: summary('stale', 0)
+      })
+    ).toBe(false)
+    expect(
+      isCurrentPrefetchedDetailResponse({
+        requestGeneration: 4,
+        currentGeneration: 4,
+        response: summary('protected', 1),
+        summary: summary('protected', 1)
+      })
+    ).toBe(false)
+    expect(
+      isCurrentPrefetchedDetailResponse({
+        requestGeneration: 4,
+        currentGeneration: 4,
+        response: summary('archived', 0),
+        summary: { ...summary('archived', 0), archivedAt: '2026-07-18T00:00:00.000Z' }
+      })
+    ).toBe(false)
+    expect(
+      isCurrentPrefetchedDetailResponse({
+        requestGeneration: 4,
+        currentGeneration: 4,
+        response: { ...summary('changed', 0), updatedAt: '2026-07-18T00:00:01.000Z' },
+        summary: summary('changed', 0)
+      })
+    ).toBe(false)
   })
 })

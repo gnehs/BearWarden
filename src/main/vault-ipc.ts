@@ -8,6 +8,7 @@ import {
   MAX_VAULT_TIMEOUT_MINUTES,
   MAX_LOGIN_BATCH_IDS,
   MAX_LOGIN_MOVE_MANY_IDS,
+  MAX_LOGIN_PREFETCH_IDS,
   MAX_LOGIN_AUTHORIZE_MANY_IDS,
   MAX_LOGIN_SEARCH_QUERY_LENGTH,
   MAX_ACCOUNT_BREACH_EMAIL_LENGTH,
@@ -57,6 +58,7 @@ import {
   type LoginListRequest,
   type SharedLoginListRequest,
   type LoginOpenUriRequest,
+  type LoginPrefetchRequest,
   type PasskeyDeleteRequest,
   type PinUnlockEnableRequest,
   type PinUnlockRequest,
@@ -1628,6 +1630,21 @@ function parseLoginBatch(value: unknown): LoginBatchRequest {
   }
 }
 
+function parseLoginPrefetch(value: unknown): LoginPrefetchRequest {
+  const record = exactRecord(value, ['ids'])
+  if (!Array.isArray(record.ids)) throw new VaultError('INVALID_INPUT')
+  const ids = record.ids
+  if (
+    ids.length === 0 ||
+    ids.length > MAX_LOGIN_PREFETCH_IDS ||
+    ids.some((id) => typeof id !== 'string' || !UUID_PATTERN.test(id)) ||
+    new Set(ids).size !== ids.length
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return { ids: [...ids] as string[] }
+}
+
 function parseLoginMoveMany(value: unknown): LoginMoveManyRequest {
   const record = exactRecord(value, [
     'ids',
@@ -2571,6 +2588,9 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     const request = parseId(input)
     return runAuthorized(event, request, () => vault.getLogin(request))
   })
+  registerHandler(IPC_CHANNELS.loginPrefetch, getMainWindow, (_event, input) =>
+    vault.prefetchLogins(parseLoginPrefetch(input))
+  )
   registerHandler(IPC_CHANNELS.loginGetPasswordHistory, getMainWindow, (event, input) => {
     const request = parseId(input)
     return vault.getPasswordHistory(request, (ids, state) =>
@@ -2823,7 +2843,14 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   registerHandler(IPC_CHANNELS.loginWebsiteIcon, getMainWindow, async (event, input) => {
     const request = parseId(input)
     if (!settings.websiteIconsEnabled()) return null
-    return runAuthorized(event, request, () => vault.getWebsiteIcon(request))
+    return vault.getWebsiteIcon(request, (ids, state) =>
+      authorizations.validateMany(
+        request.authorizationToken,
+        event.sender.id,
+        ids,
+        state.generation
+      )
+    )
   })
   registerHandler(IPC_CHANNELS.itemRevealSecret, getMainWindow, (event, input) => {
     const request = parseItemField(input)

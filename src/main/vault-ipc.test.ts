@@ -1646,6 +1646,11 @@ describe('registerVaultIpc reprompt gate', () => {
       }),
       authorizeLogins: vi.fn(async () => 3),
       getLogin: vi.fn(async () => ({ id: 'item-a' })),
+      prefetchLogins: vi.fn(async () => []),
+      getWebsiteIcon: vi.fn(async (request, validate) => {
+        requireAttachmentAuthorization(request, validate)
+        return 'data:image/png;base64,aWNvbg=='
+      }),
       getPasswordHistory: vi.fn(
         async (
           request: { id: string },
@@ -1926,7 +1931,7 @@ describe('registerVaultIpc reprompt gate', () => {
     registerVaultIpc({
       vault: vault as unknown as VaultService,
       portability: portability as unknown as Parameters<typeof registerVaultIpc>[0]['portability'],
-      settings: {} as AppSettingsService,
+      settings: { websiteIconsEnabled: () => true } as AppSettingsService,
       sshKeyImportSessions: new SshKeyImportSessionStore({ readClipboard: () => '' }),
       getMainWindow: () =>
         ({ isDestroyed: () => false, webContents }) as unknown as ReturnType<
@@ -2966,6 +2971,45 @@ describe('registerVaultIpc reprompt gate', () => {
       'BEARWARDEN:REPROMPT_REQUIRED'
     )
     expect(vault[method]).not.toHaveBeenCalled()
+  })
+
+  it('accepts only narrow visible-detail prefetch batches', async () => {
+    const { event, vault } = harness()
+    const handler = electronMock.handlers.get(IPC_CHANNELS.loginPrefetch)!
+    const ids = ['10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000002']
+
+    await expect(handler(event, { ids })).resolves.toEqual([])
+    expect(vault.prefetchLogins).toHaveBeenCalledWith({ ids })
+    for (const invalid of [
+      { ids: [] },
+      { ids: [ids[0], ids[0]] },
+      { ids, authorizationToken: 'not-allowed' },
+      { ids: ['not-a-uuid'] }
+    ]) {
+      await expect(handler(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    const tooManyIds = Array.from(
+      { length: 49 },
+      (_, index) => `10000000-0000-4000-8000-${String(index).padStart(12, '0')}`
+    )
+    await expect(handler(event, { ids: tooManyIds })).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+  })
+
+  it('validates website-icon authorization inside the short service preflight', async () => {
+    const { event, vault } = harness()
+    const handler = electronMock.handlers.get(IPC_CHANNELS.loginWebsiteIcon)!
+
+    await expect(handler(event, { id: 'item-a' })).rejects.toThrow('BEARWARDEN:REPROMPT_REQUIRED')
+    expect(vault.getWebsiteIcon).toHaveBeenCalledWith({ id: 'item-a' }, expect.any(Function))
+    expect(vault.runAuthorizedOperation).not.toHaveBeenCalled()
+
+    const authorization = (await electronMock.handlers.get(IPC_CHANNELS.loginAuthorize)!(event, {
+      id: 'item-a',
+      masterPassword: 'correct horse battery staple'
+    })) as { token: string }
+    await expect(
+      handler(event, { id: 'item-a', authorizationToken: authorization.token })
+    ).resolves.toBe('data:image/png;base64,aWNvbg==')
   })
 
   it('lets the service enforce deleted-history authorization inside the atomic read', async () => {

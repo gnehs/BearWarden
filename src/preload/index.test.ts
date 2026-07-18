@@ -127,6 +127,18 @@ describe('preload pending import API', () => {
   })
 })
 
+describe('preload visible detail prefetch API', () => {
+  it('forwards one bounded data-only request through its dedicated channel', async () => {
+    electronMock.invoke.mockClear()
+    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
+    const request = { ids: ['10000000-0000-4000-8000-000000000001'] }
+
+    await api.logins.prefetch(request)
+
+    expect(electronMock.invoke).toHaveBeenCalledWith(IPC_CHANNELS.loginPrefetch, request)
+  })
+})
+
 describe('preload portability API', () => {
   it('forwards only the passwordless Bitwarden CSV request object', async () => {
     electronMock.invoke.mockClear()

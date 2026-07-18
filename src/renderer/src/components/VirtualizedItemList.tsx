@@ -2,6 +2,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { LoginSummary } from '../../../shared/vault-contract'
 import { cn } from '@renderer/lib/utils'
+import { visibleVirtualIndexes } from '@renderer/lib/virtualized-range'
 import { ItemRow, type ItemSelectionModifiers } from './DndRows'
 
 const GROUP_HEADER_HEIGHT = 31
@@ -90,24 +91,29 @@ export function VirtualizedItemList({
     useFlushSync: false
   })
   const virtualItems = virtualizer.getVirtualItems()
-  const firstVirtualIndex = virtualItems[0]?.index ?? -1
-  const lastVirtualIndex = virtualItems[virtualItems.length - 1]?.index ?? -1
+  const scrollOffset = virtualizer.scrollOffset ?? 0
+  const viewportSize = virtualizer.scrollRect?.height ?? 0
+  const visibleIndexes = visibleVirtualIndexes(virtualItems, scrollOffset, viewportSize)
+  const visibleRangeKey = visibleIndexes.join(':')
 
   useEffect(() => {
-    if (!onPrefetch || firstVirtualIndex < 0) {
+    if (!onPrefetch || visibleIndexes.length === 0) {
       previousVisibleItemIdsRef.current = new Set()
       return
     }
 
     const visibleItemIds = new Set<string>()
-    for (let index = firstVirtualIndex; index <= lastVirtualIndex; index += 1) {
+    for (const index of visibleIndexes) {
       const row = rows[index]
       if (row?.type !== 'item') continue
       visibleItemIds.add(row.item.id)
       if (!previousVisibleItemIdsRef.current.has(row.item.id)) onPrefetch(row.item.id)
     }
     previousVisibleItemIdsRef.current = visibleItemIds
-  }, [firstVirtualIndex, lastVirtualIndex, onPrefetch, rows])
+    // visibleRangeKey tracks the primitive indexes without depending on the virtualizer's mutable
+    // array identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onPrefetch, rows, visibleRangeKey])
 
   return (
     <div

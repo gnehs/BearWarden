@@ -5934,6 +5934,76 @@ describe('VaultService encrypted local data', () => {
     expect(await service.listLogins()).toEqual([])
   })
 
+  it('prefetches one detached visible batch without waiting behind the vault operation queue', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const first = await service.createLogin({ name: 'First', username: 'alpha' })
+    const second = await service.createLogin({ name: 'Second', username: 'beta' })
+    const protectedItem = await service.createLogin({ name: 'Protected', reprompt: 1 })
+    const archived = await service.archiveLogin(
+      await service.createLogin({ name: 'Archived', username: 'old' })
+    )
+
+    let releaseBlocker!: () => void
+    let blockerEntered = false
+    const blocker = service.runAuthorizedOperation(
+      () => true,
+      async (authorize) => {
+        authorize([])
+        blockerEntered = true
+        await new Promise<void>((resolve) => {
+          releaseBlocker = resolve
+        })
+      }
+    )
+    await vi.waitFor(() => expect(blockerEntered).toBe(true))
+
+    const prefetched = await service.prefetchLogins({
+      ids: [second.id, protectedItem.id, archived.id, first.id]
+    })
+    expect(prefetched.map((login) => login.id)).toEqual([second.id, first.id])
+    expect(prefetched[0]).not.toHaveProperty('password')
+    prefetched[0]!.name = 'renderer-only mutation'
+
+    releaseBlocker()
+    await blocker
+    await expect(service.getLogin({ id: second.id })).resolves.toMatchObject({ name: 'Second' })
+  })
+
+  it('rejects malformed prefetch batches and blocks fast reads as soon as locking starts', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const login = await service.createLogin({ name: 'Fast read lock target' })
+
+    await expect(service.prefetchLogins({ ids: [] })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+    await expect(service.prefetchLogins({ ids: [login.id, login.id] })).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+
+    let releaseBlocker!: () => void
+    let blockerEntered = false
+    const blocker = service.runAuthorizedOperation(
+      () => true,
+      async (authorize) => {
+        authorize([])
+        blockerEntered = true
+        await new Promise<void>((resolve) => {
+          releaseBlocker = resolve
+        })
+      }
+    )
+    await vi.waitFor(() => expect(blockerEntered).toBe(true))
+    const locking = service.lock()
+    await expect(service.prefetchLogins({ ids: [login.id] })).rejects.toMatchObject({
+      code: 'LOCKED'
+    })
+    releaseBlocker()
+    await blocker
+    await locking
+  })
+
   it('reports active password health without persisting, changing generation, or exposing secrets', async () => {
     const { service, store } = await createHarness()
     await service.setup(MASTER_PASSWORD)
