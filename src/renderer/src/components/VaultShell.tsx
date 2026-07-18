@@ -4392,6 +4392,17 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                           <Edit3 data-icon="inline-start" />
                           編輯
                         </DropdownMenuItem>
+                        {selectedLogin.attachments.length === 0 && (
+                          <DropdownMenuItem
+                            disabled={
+                              busy || attachmentOperation !== null || syncStatus.state !== 'ready'
+                            }
+                            onClick={() => void uploadAttachment()}
+                          >
+                            <Upload data-icon="inline-start" />
+                            上傳附件
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuGroup>
                       <DropdownMenuSeparator />
                       <DropdownMenuGroup>
@@ -4446,154 +4457,148 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     </Card>
                   )}
 
-                  <Card
-                    className="detail-card attachment-card gap-0 py-0"
-                    role="region"
-                    aria-labelledby="attachments-title"
-                  >
-                    <CardHeader className="bg-muted rounded-none border-b">
-                      <CardTitle id="attachments-title">附件</CardTitle>
-                      <CardDescription>{selectedLogin.attachments.length} 個檔案</CardDescription>
-                      <CardAction>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          type="button"
-                          disabled={
-                            busy || attachmentOperation !== null || syncStatus.state !== 'ready'
-                          }
-                          onClick={() => void uploadAttachment()}
-                        >
-                          {attachmentOperation?.kind === 'upload' ? (
-                            <Spinner data-icon="inline-start" />
-                          ) : (
-                            <Upload data-icon="inline-start" />
-                          )}
-                          上傳附件
-                        </Button>
-                      </CardAction>
-                    </CardHeader>
-                    <CardContent className="flex flex-col gap-4">
-                      {attachmentOperation?.itemId === selectedLogin.id && (
-                        <section className="flex flex-col gap-3" aria-live="polite">
-                          <Progress value={attachmentProgressPercent(attachmentOperation)}>
-                            <ProgressLabel>
-                              {attachmentStageLabel(attachmentOperation)}
-                              {attachmentOperation.fileName
-                                ? `：${attachmentOperation.fileName}`
-                                : ''}
-                            </ProgressLabel>
-                            <ProgressValue>
-                              {() =>
-                                attachmentProgressPercent(attachmentOperation) === null
-                                  ? '處理中'
-                                  : `${attachmentProgressPercent(attachmentOperation)}%`
-                              }
-                            </ProgressValue>
-                          </Progress>
+                  {(selectedLogin.attachments.length > 0 ||
+                    attachmentOperation?.itemId === selectedLogin.id) && (
+                    <Card
+                      className="detail-card attachment-card gap-0 py-0"
+                      role="region"
+                      aria-labelledby="attachments-title"
+                    >
+                      <CardHeader className="bg-muted rounded-none border-b">
+                        <CardTitle id="attachments-title">附件</CardTitle>
+                        <CardDescription>{selectedLogin.attachments.length} 個檔案</CardDescription>
+                        <CardAction>
                           <Button
-                            className="self-end"
                             variant="outline"
                             size="sm"
                             type="button"
-                            disabled={attachmentOperation.canceling}
-                            onClick={() => void cancelAttachmentOperation()}
+                            disabled={
+                              busy || attachmentOperation !== null || syncStatus.state !== 'ready'
+                            }
+                            onClick={() => void uploadAttachment()}
                           >
-                            {attachmentOperation.canceling ? (
+                            {attachmentOperation?.kind === 'upload' ? (
                               <Spinner data-icon="inline-start" />
                             ) : (
-                              <X data-icon="inline-start" />
+                              <Upload data-icon="inline-start" />
                             )}
-                            {attachmentOperation.canceling ? '正在取消' : '取消'}
+                            上傳附件
                           </Button>
-                        </section>
-                      )}
-                      {selectedLogin.attachments.length > 0 ? (
-                        <div className="passkey-list -mx-(--card-spacing) -mb-(--card-spacing)">
-                          {selectedLogin.attachments.map((attachment) => (
-                            <article key={attachment.id} className="passkey-item attachment-item">
-                              <span className="passkey-icon" aria-hidden="true">
-                                <Paperclip size={17} />
-                              </span>
-                              <div>
-                                <strong>{attachment.fileName}</strong>
-                                <span>
-                                  {attachment.sizeName}
-                                  {attachment.legacy ? ' · 舊式未驗證加密' : ''}
+                        </CardAction>
+                      </CardHeader>
+                      <CardContent className="flex flex-col gap-4">
+                        {attachmentOperation?.itemId === selectedLogin.id && (
+                          <section className="flex flex-col gap-3" aria-live="polite">
+                            <Progress value={attachmentProgressPercent(attachmentOperation)}>
+                              <ProgressLabel>
+                                {attachmentStageLabel(attachmentOperation)}
+                                {attachmentOperation.fileName
+                                  ? `：${attachmentOperation.fileName}`
+                                  : ''}
+                              </ProgressLabel>
+                              <ProgressValue>
+                                {() =>
+                                  attachmentProgressPercent(attachmentOperation) === null
+                                    ? '處理中'
+                                    : `${attachmentProgressPercent(attachmentOperation)}%`
+                                }
+                              </ProgressValue>
+                            </Progress>
+                            <Button
+                              className="self-end"
+                              variant="outline"
+                              size="sm"
+                              type="button"
+                              disabled={attachmentOperation.canceling}
+                              onClick={() => void cancelAttachmentOperation()}
+                            >
+                              {attachmentOperation.canceling ? (
+                                <Spinner data-icon="inline-start" />
+                              ) : (
+                                <X data-icon="inline-start" />
+                              )}
+                              {attachmentOperation.canceling ? '正在取消' : '取消'}
+                            </Button>
+                          </section>
+                        )}
+                        {selectedLogin.attachments.length > 0 && (
+                          <div className="passkey-list -mx-(--card-spacing) -mb-(--card-spacing)">
+                            {selectedLogin.attachments.map((attachment) => (
+                              <article key={attachment.id} className="passkey-item attachment-item">
+                                <span className="passkey-icon" aria-hidden="true">
+                                  <Paperclip size={17} />
                                 </span>
-                              </div>
-                              <section
-                                className="flex flex-wrap items-center justify-end gap-1"
-                                aria-label={`${attachment.fileName} 的附件操作`}
-                              >
-                                {attachment.legacy && (
-                                  <Button
+                                <div>
+                                  <strong>{attachment.fileName}</strong>
+                                  <span>
+                                    {attachment.sizeName}
+                                    {attachment.legacy ? ' · 舊式未驗證加密' : ''}
+                                  </span>
+                                </div>
+                                <section
+                                  className="flex flex-wrap items-center justify-end gap-1"
+                                  aria-label={`${attachment.fileName} 的附件操作`}
+                                >
+                                  {attachment.legacy && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      type="button"
+                                      disabled={
+                                        busy ||
+                                        attachmentOperation !== null ||
+                                        syncStatus.state !== 'ready'
+                                      }
+                                      onClick={() => void fixLegacyAttachment(attachment.id)}
+                                    >
+                                      <Wrench data-icon="inline-start" />
+                                      修復
+                                    </Button>
+                                  )}
+                                  <TooltipIconButton
                                     variant="outline"
-                                    size="sm"
+                                    size="icon"
+                                    className="icon-button"
                                     type="button"
+                                    label={`下載 ${attachment.fileName}`}
                                     disabled={
                                       busy ||
                                       attachmentOperation !== null ||
                                       syncStatus.state !== 'ready'
                                     }
-                                    onClick={() => void fixLegacyAttachment(attachment.id)}
+                                    onClick={() => void downloadAttachment(attachment.id)}
                                   >
-                                    <Wrench data-icon="inline-start" />
-                                    修復
-                                  </Button>
-                                )}
-                                <TooltipIconButton
-                                  variant="outline"
-                                  size="icon"
-                                  className="icon-button"
-                                  type="button"
-                                  label={`下載 ${attachment.fileName}`}
-                                  disabled={
-                                    busy ||
-                                    attachmentOperation !== null ||
-                                    syncStatus.state !== 'ready'
-                                  }
-                                  onClick={() => void downloadAttachment(attachment.id)}
-                                >
-                                  <Download data-icon="inline-start" />
-                                </TooltipIconButton>
-                                <TooltipIconButton
-                                  variant="destructive"
-                                  size="icon"
-                                  className="icon-button"
-                                  type="button"
-                                  label={`刪除 ${attachment.fileName}`}
-                                  disabled={
-                                    busy ||
-                                    attachmentOperation !== null ||
-                                    syncStatus.state !== 'ready'
-                                  }
-                                  onClick={() =>
-                                    setAttachmentDeleteTarget({
-                                      itemId: selectedLogin.id,
-                                      attachmentId: attachment.id,
-                                      fileName: attachment.fileName
-                                    })
-                                  }
-                                >
-                                  <Trash2 data-icon="inline-start" />
-                                </TooltipIconButton>
-                              </section>
-                            </article>
-                          ))}
-                        </div>
-                      ) : (
-                        <Empty className="py-4">
-                          <EmptyHeader>
-                            <EmptyMedia variant="icon">
-                              <Paperclip />
-                            </EmptyMedia>
-                            <EmptyTitle>尚無附件</EmptyTitle>
-                          </EmptyHeader>
-                        </Empty>
-                      )}
-                    </CardContent>
-                  </Card>
+                                    <Download data-icon="inline-start" />
+                                  </TooltipIconButton>
+                                  <TooltipIconButton
+                                    variant="destructive"
+                                    size="icon"
+                                    className="icon-button"
+                                    type="button"
+                                    label={`刪除 ${attachment.fileName}`}
+                                    disabled={
+                                      busy ||
+                                      attachmentOperation !== null ||
+                                      syncStatus.state !== 'ready'
+                                    }
+                                    onClick={() =>
+                                      setAttachmentDeleteTarget({
+                                        itemId: selectedLogin.id,
+                                        attachmentId: attachment.id,
+                                        fileName: attachment.fileName
+                                      })
+                                    }
+                                  >
+                                    <Trash2 data-icon="inline-start" />
+                                  </TooltipIconButton>
+                                </section>
+                              </article>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
 
                   {selectedLogin.passwordHistoryCount > 0 && (
                     <Card
