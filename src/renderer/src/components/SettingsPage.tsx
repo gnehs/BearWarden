@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   ClipboardCheck,
@@ -83,6 +83,51 @@ import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 const vaultTimeoutPresetMinutes = [1, 5, 15, 30, 60, 240] as const
 const maxVaultTimeoutMinutes = MAX_VAULT_TIMEOUT_MINUTES
 const maxVaultTimeoutHours = Math.floor(maxVaultTimeoutMinutes / 60)
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const settingsSections = [
+  { id: 'general-settings-title', label: '一般' },
+  { id: 'security-settings-title', label: '安全性' },
+  { id: 'pin-settings-title', label: 'PIN 解鎖' },
+  { id: 'touch-id-settings-title', label: 'Touch ID' },
+  { id: 'privacy-settings-title', label: '隱私與剪貼簿' },
+  { id: 'local-accounts-settings-title', label: '本機帳號' },
+  { id: 'sync-settings-title', label: '同步與帳號' },
+  { id: 'ssh-agent-settings-title', label: 'SSH Agent' },
+  { id: 'portability-settings-title', label: '資料可攜性' }
+] as const
+
+type SettingsSectionId = (typeof settingsSections)[number]['id']
+
+interface SettingsSectionVisibility {
+  id: SettingsSectionId
+  top: number
+  isIntersecting: boolean
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function settingsScrollspySection(
+  sections: readonly SettingsSectionVisibility[],
+  rootTop: number,
+  fallback: SettingsSectionId,
+  reachedEnd = false
+): SettingsSectionId {
+  if (reachedEnd && sections.length > 0) return sections[sections.length - 1].id
+
+  const visibleSections = sections.filter((section) => section.isIntersecting)
+  if (visibleSections.length === 0) return fallback
+
+  const startedSections = visibleSections.filter((section) => section.top <= rootTop + 1)
+  if (startedSections.length > 0) {
+    return startedSections.reduce((nearest, section) =>
+      section.top > nearest.top ? section : nearest
+    ).id
+  }
+
+  return visibleSections.reduce((nearest, section) =>
+    section.top < nearest.top ? section : nearest
+  ).id
+}
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const vaultTimeoutItems = [
@@ -381,6 +426,70 @@ function SettingsPage({
   const [pinBusy, setPinBusy] = useState(false)
   const [pinFeedback, setPinFeedback] = useState('')
   const [customTimeoutSelected, setCustomTimeoutSelected] = useState(false)
+  const settingsScrollRef = useRef<HTMLDivElement>(null)
+  const [activeSettingsSection, setActiveSettingsSection] = useState<SettingsSectionId>(
+    settingsSections[0].id
+  )
+  const settingsReady = settings !== null
+
+  useEffect(() => {
+    if (!settingsReady) return
+    const root = settingsScrollRef.current
+    if (!root) return
+
+    const sections = settingsSections.flatMap(({ id }) => {
+      const element = root.querySelector<HTMLElement>(`[aria-labelledby="${id}"]`)
+      return element ? [{ id, element }] : []
+    })
+    if (sections.length === 0) return
+
+    const entriesByElement = new Map<Element, IntersectionObserverEntry>()
+    let updateFrame = 0
+
+    const updateActiveSection = (): void => {
+      updateFrame = 0
+      const rootTop = root.getBoundingClientRect().top
+      const canScroll = root.scrollHeight > root.clientHeight + 1
+      const reachedEnd = canScroll && root.scrollTop + root.clientHeight >= root.scrollHeight - 1
+      setActiveSettingsSection((current) =>
+        settingsScrollspySection(
+          sections.map(({ id, element }) => {
+            const entry = entriesByElement.get(element)
+            return {
+              id,
+              top: element.getBoundingClientRect().top,
+              isIntersecting: entry?.isIntersecting ?? false
+            }
+          }),
+          rootTop,
+          current,
+          reachedEnd
+        )
+      )
+    }
+
+    const scheduleActiveSectionUpdate = (): void => {
+      if (updateFrame === 0) updateFrame = window.requestAnimationFrame(updateActiveSection)
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => entriesByElement.set(entry.target, entry))
+        scheduleActiveSectionUpdate()
+      },
+      { root, threshold: 0 }
+    )
+
+    sections.forEach(({ element }) => observer.observe(element))
+    root.addEventListener('scroll', scheduleActiveSectionUpdate, { passive: true })
+    scheduleActiveSectionUpdate()
+
+    return () => {
+      observer.disconnect()
+      root.removeEventListener('scroll', scheduleActiveSectionUpdate)
+      if (updateFrame !== 0) window.cancelAnimationFrame(updateFrame)
+    }
+  }, [settingsReady])
 
   useEffect(() => {
     let active = true
@@ -519,7 +628,7 @@ function SettingsPage({
         </div>
       </header>
 
-      <div className="settings-scroll">
+      <div ref={settingsScrollRef} className="settings-scroll">
         {!settings ? (
           <div className="detail-loading" role="status">
             <Spinner /> 正在讀取設定…
@@ -528,17 +637,107 @@ function SettingsPage({
           <div className="settings-layout">
             <nav className="settings-nav" aria-label="設定章節">
               <p>設定章節</p>
-              <a href="#security-settings-title">安全性</a>
-              <a href="#ssh-agent-settings-title">SSH Agent</a>
-              <a href="#privacy-settings-title">隱私與剪貼簿</a>
-              <a href="#general-settings-title">一般</a>
-              <a href="#pin-settings-title">PIN 解鎖</a>
-              <a href="#touch-id-settings-title">Touch ID</a>
-              <a href="#local-accounts-settings-title">本機帳號</a>
-              <a href="#sync-settings-title">同步與帳號</a>
-              <a href="#portability-settings-title">資料可攜性</a>
+              {settingsSections.map(({ id, label }) => (
+                <a
+                  key={id}
+                  href={`#${id}`}
+                  aria-current={activeSettingsSection === id ? 'location' : undefined}
+                >
+                  {label}
+                </a>
+              ))}
             </nav>
             <div className="settings-main">
+              <Card className="settings-card" aria-labelledby="general-settings-title">
+                <CardHeader>
+                  <SettingsCardHeading
+                    id="general-settings-title"
+                    icon={Palette}
+                    title="一般"
+                    description="調整密碼庫的外觀與預設排列方式。"
+                  />
+                </CardHeader>
+                <CardContent className="settings-card-content">
+                  <FieldGroup className="gap-0">
+                    <Field className="settings-row settings-row-stacked">
+                      <FieldLabel htmlFor="theme-select">主題</FieldLabel>
+                      <Select
+                        items={themeItems}
+                        value={settings.theme}
+                        disabled={settingsBusy}
+                        onValueChange={(value) =>
+                          void onUpdate({ theme: value as AppSettings['theme'] })
+                        }
+                      >
+                        <SelectTrigger id="theme-select">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {themeItems.map((item) => (
+                              <SelectItem key={item.value} value={item.value}>
+                                {item.label}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Separator />
+                    <Field className="settings-row settings-row-stacked">
+                      <FieldLabel htmlFor="default-sort-select">預設排序</FieldLabel>
+                      <Select
+                        items={defaultSortItems}
+                        value={settings.defaultSort}
+                        disabled={settingsBusy}
+                        onValueChange={(value) =>
+                          void onUpdate({ defaultSort: value as AppSettings['defaultSort'] })
+                        }
+                      >
+                        <SelectTrigger id="default-sort-select">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {defaultSortItems.map((item) => (
+                              <SelectItem key={item.value} value={item.value}>
+                                {item.label}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Separator />
+                    <Field
+                      className="settings-row"
+                      orientation="horizontal"
+                      data-disabled={!settings.startAtLoginAvailable}
+                    >
+                      <FieldContent>
+                        <FieldLabel htmlFor="start-at-login-switch">
+                          登入時啟動 BearWarden
+                        </FieldLabel>
+                        <FieldDescription id="start-at-login-description">
+                          {settings.startAtLoginAvailable
+                            ? settings.startAtLoginNeedsApproval
+                              ? '已登錄，但仍需在 macOS「系統設定」的「登入項目」中允許。'
+                              : '登入這台電腦後，自動啟動 BearWarden。'
+                            : '僅 macOS 與 Windows 的安裝版支援自動啟動。'}
+                        </FieldDescription>
+                      </FieldContent>
+                      <Switch
+                        id="start-at-login-switch"
+                        checked={settings.startAtLogin}
+                        disabled={settingsBusy || !settings.startAtLoginAvailable}
+                        aria-describedby="start-at-login-description"
+                        onCheckedChange={(checked) => void onUpdate({ startAtLogin: checked })}
+                      />
+                    </Field>
+                  </FieldGroup>
+                </CardContent>
+              </Card>
+
               <Card className="settings-card" aria-labelledby="security-settings-title">
                 <CardHeader>
                   <SettingsCardHeading
@@ -670,306 +869,6 @@ function SettingsPage({
                         />
                       </>
                     )}
-                  </FieldGroup>
-                </CardContent>
-              </Card>
-
-              <Card className="settings-card" aria-labelledby="ssh-agent-settings-title">
-                <CardHeader>
-                  <SettingsCardHeading
-                    id="ssh-agent-settings-title"
-                    icon={KeyRound}
-                    title="SSH Agent"
-                    description="讓終端機與 Git 經由本機 socket 使用密碼庫中的 SSH 金鑰。"
-                  />
-                  <CardAction>
-                    <Badge variant={sshAgentStatusPresentationValue.variant}>
-                      {sshAgentStatusPresentationValue.label}
-                    </Badge>
-                  </CardAction>
-                </CardHeader>
-                <CardContent className="settings-card-content">
-                  <FieldGroup className="gap-0">
-                    <Field className="settings-row" orientation="horizontal">
-                      <FieldContent>
-                        <FieldLabel htmlFor="ssh-agent-switch">啟用 SSH Agent</FieldLabel>
-                        <FieldDescription id="ssh-agent-description">
-                          BearWarden 只會提供未封存、未刪除的 SSH 金鑰；每次簽署依下方規則核准。
-                        </FieldDescription>
-                      </FieldContent>
-                      <Switch
-                        id="ssh-agent-switch"
-                        checked={settings.sshAgentEnabled}
-                        disabled={settingsBusy}
-                        aria-describedby="ssh-agent-description"
-                        onCheckedChange={(checked) => void onUpdate({ sshAgentEnabled: checked })}
-                      />
-                    </Field>
-                    <Separator />
-                    <Field
-                      className="settings-row settings-row-select"
-                      orientation="horizontal"
-                      data-disabled={!settings.sshAgentEnabled}
-                    >
-                      <FieldContent>
-                        <FieldLabel htmlFor="ssh-agent-prompt-select">簽署核准方式</FieldLabel>
-                        <FieldDescription id="ssh-agent-prompt-description">
-                          「鎖定前記住」會區分本機請求；透過 forwarding
-                          的請求還必須對應已驗證的遠端主機指紋。鎖定後會清除。
-                        </FieldDescription>
-                      </FieldContent>
-                      <Select
-                        items={sshAgentPromptItems}
-                        value={settings.sshAgentPromptBehavior}
-                        disabled={settingsBusy || !settings.sshAgentEnabled}
-                        onValueChange={(value) =>
-                          void onUpdate({
-                            sshAgentPromptBehavior: value as SshAgentPromptBehavior
-                          })
-                        }
-                      >
-                        <SelectTrigger
-                          id="ssh-agent-prompt-select"
-                          aria-describedby="ssh-agent-prompt-description"
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {sshAgentPromptItems.map((item) => (
-                              <SelectItem key={item.value} value={item.value}>
-                                {item.label}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Separator />
-                    <Field className="settings-row settings-row-stacked">
-                      <FieldLabel htmlFor="ssh-agent-command">終端機設定</FieldLabel>
-                      {usesWindowsNamedPipe ? (
-                        <FieldDescription>
-                          BearWarden 使用固定的 <code>\\.\pipe\openssh-ssh-agent</code> named
-                          pipe。請先停用系統的 OpenSSH Authentication Agent，避免兩個 agent
-                          爭用同一個 pipe。
-                        </FieldDescription>
-                      ) : sshAgentCommand ? (
-                        <>
-                          <FieldDescription>
-                            在終端機環境中設定 <code>SSH_AUTH_SOCK</code>，讓 SSH 與 Git 使用
-                            BearWarden 的本機 socket。
-                          </FieldDescription>
-                          <InputGroup>
-                            <InputGroupInput
-                              id="ssh-agent-command"
-                              value={sshAgentCommand}
-                              readOnly
-                              aria-label="SSH Agent 終端機設定指令"
-                            />
-                            <InputGroupAddon align="inline-end">
-                              <InputGroupButton
-                                aria-label={
-                                  copiedKey === 'ssh-agent-command'
-                                    ? 'SSH Agent 設定指令已複製'
-                                    : '複製 SSH Agent 設定指令'
-                                }
-                                onClick={() => void copySshAgentCommand()}
-                              >
-                                <CopyFeedbackIcon
-                                  copied={copiedKey === 'ssh-agent-command'}
-                                  placement="inline-start"
-                                />
-                                {copiedKey === 'ssh-agent-command' ? '已複製' : '複製'}
-                              </InputGroupButton>
-                            </InputGroupAddon>
-                          </InputGroup>
-                        </>
-                      ) : (
-                        <FieldDescription>
-                          Agent endpoint 含有無法安全放入 shell
-                          指令的控制字元，因此未提供複製指令。請在修正
-                          <code>BEARWARDEN_SSH_AUTH_SOCK</code> 後重新啟用 Agent。
-                        </FieldDescription>
-                      )}
-                    </Field>
-                    {sshAgentStatus.state === 'error' && (
-                      <>
-                        <Separator />
-                        <Field className="settings-row settings-row-stacked">
-                          <FieldLabel>Agent 無法啟動</FieldLabel>
-                          <FieldDescription>
-                            {sshAgentStatus.lastError === 'SOCKET_IN_USE' ||
-                            sshAgentStatus.lastError === 'PIPE_IN_USE'
-                              ? '既有 SSH Agent 正在使用相同 endpoint。請停止該 Agent 後重新啟用 BearWarden SSH Agent。'
-                              : 'BearWarden 無法安全地建立 SSH Agent endpoint。請確認家目錄權限與 socket 路徑後再試。'}
-                          </FieldDescription>
-                        </Field>
-                      </>
-                    )}
-                  </FieldGroup>
-                </CardContent>
-                <CardFooter>
-                  <p className="settings-card-note">
-                    {sshAgentStatus.identityCount} 把可用 SSH
-                    金鑰。私鑰與實際簽署資料不會傳到畫面程序。
-                  </p>
-                </CardFooter>
-              </Card>
-
-              <Card className="settings-card" aria-labelledby="privacy-settings-title">
-                <CardHeader>
-                  <SettingsCardHeading
-                    id="privacy-settings-title"
-                    icon={ClipboardCheck}
-                    title="隱私與剪貼簿"
-                    description="降低敏感資料留在螢幕或剪貼簿中的時間。"
-                  />
-                </CardHeader>
-                <CardContent className="settings-card-content">
-                  <FieldGroup className="gap-0">
-                    <Field className="settings-row settings-row-select" orientation="horizontal">
-                      <FieldContent>
-                        <FieldLabel htmlFor="clipboard-clear-select">清除剪貼簿</FieldLabel>
-                        <FieldDescription id="clipboard-clear-description">
-                          只清除由 BearWarden 寫入且尚未被你覆蓋的內容。
-                        </FieldDescription>
-                      </FieldContent>
-                      <Select
-                        items={clipboardClearItems}
-                        value={settings.clearClipboardSeconds}
-                        disabled={settingsBusy}
-                        onValueChange={(value) =>
-                          void onUpdate({
-                            clearClipboardSeconds: value as AppSettings['clearClipboardSeconds']
-                          })
-                        }
-                      >
-                        <SelectTrigger
-                          id="clipboard-clear-select"
-                          aria-describedby="clipboard-clear-description"
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {clipboardClearItems.map((item) => (
-                              <SelectItem key={item.value} value={item.value}>
-                                {item.label}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Separator />
-                    <Field className="settings-row" orientation="horizontal">
-                      <FieldContent>
-                        <FieldLabel htmlFor="website-icons-switch">顯示網站圖示</FieldLabel>
-                        <FieldDescription id="website-icons-description">
-                          透過已設定的 Bitwarden／Vaultwarden 圖示服務載入；停用後使用本機縮寫。
-                        </FieldDescription>
-                      </FieldContent>
-                      <Switch
-                        id="website-icons-switch"
-                        checked={settings.showWebsiteIcons}
-                        disabled={settingsBusy}
-                        aria-describedby="website-icons-description"
-                        onCheckedChange={(checked) => void onUpdate({ showWebsiteIcons: checked })}
-                      />
-                    </Field>
-                  </FieldGroup>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="settings-aside">
-              <Card className="settings-card" aria-labelledby="general-settings-title">
-                <CardHeader>
-                  <SettingsCardHeading
-                    id="general-settings-title"
-                    icon={Palette}
-                    title="一般"
-                    description="調整密碼庫的外觀與預設排列方式。"
-                  />
-                </CardHeader>
-                <CardContent className="settings-card-content">
-                  <FieldGroup className="gap-0">
-                    <Field className="settings-row settings-row-stacked">
-                      <FieldLabel htmlFor="theme-select">主題</FieldLabel>
-                      <Select
-                        items={themeItems}
-                        value={settings.theme}
-                        disabled={settingsBusy}
-                        onValueChange={(value) =>
-                          void onUpdate({ theme: value as AppSettings['theme'] })
-                        }
-                      >
-                        <SelectTrigger id="theme-select">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {themeItems.map((item) => (
-                              <SelectItem key={item.value} value={item.value}>
-                                {item.label}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Separator />
-                    <Field className="settings-row settings-row-stacked">
-                      <FieldLabel htmlFor="default-sort-select">預設排序</FieldLabel>
-                      <Select
-                        items={defaultSortItems}
-                        value={settings.defaultSort}
-                        disabled={settingsBusy}
-                        onValueChange={(value) =>
-                          void onUpdate({ defaultSort: value as AppSettings['defaultSort'] })
-                        }
-                      >
-                        <SelectTrigger id="default-sort-select">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {defaultSortItems.map((item) => (
-                              <SelectItem key={item.value} value={item.value}>
-                                {item.label}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Separator />
-                    <Field
-                      className="settings-row"
-                      orientation="horizontal"
-                      data-disabled={!settings.startAtLoginAvailable}
-                    >
-                      <FieldContent>
-                        <FieldLabel htmlFor="start-at-login-switch">
-                          登入時啟動 BearWarden
-                        </FieldLabel>
-                        <FieldDescription id="start-at-login-description">
-                          {settings.startAtLoginAvailable
-                            ? settings.startAtLoginNeedsApproval
-                              ? '已登錄，但仍需在 macOS「系統設定」的「登入項目」中允許。'
-                              : '登入這台電腦後，自動啟動 BearWarden。'
-                            : '僅 macOS 與 Windows 的安裝版支援自動啟動。'}
-                        </FieldDescription>
-                      </FieldContent>
-                      <Switch
-                        id="start-at-login-switch"
-                        checked={settings.startAtLogin}
-                        disabled={settingsBusy || !settings.startAtLoginAvailable}
-                        aria-describedby="start-at-login-description"
-                        onCheckedChange={(checked) => void onUpdate({ startAtLogin: checked })}
-                      />
-                    </Field>
                   </FieldGroup>
                 </CardContent>
               </Card>
@@ -1169,6 +1068,73 @@ function SettingsPage({
                 )}
               </Card>
 
+              <Card className="settings-card" aria-labelledby="privacy-settings-title">
+                <CardHeader>
+                  <SettingsCardHeading
+                    id="privacy-settings-title"
+                    icon={ClipboardCheck}
+                    title="隱私與剪貼簿"
+                    description="降低敏感資料留在螢幕或剪貼簿中的時間。"
+                  />
+                </CardHeader>
+                <CardContent className="settings-card-content">
+                  <FieldGroup className="gap-0">
+                    <Field className="settings-row settings-row-select" orientation="horizontal">
+                      <FieldContent>
+                        <FieldLabel htmlFor="clipboard-clear-select">清除剪貼簿</FieldLabel>
+                        <FieldDescription id="clipboard-clear-description">
+                          只清除由 BearWarden 寫入且尚未被你覆蓋的內容。
+                        </FieldDescription>
+                      </FieldContent>
+                      <Select
+                        items={clipboardClearItems}
+                        value={settings.clearClipboardSeconds}
+                        disabled={settingsBusy}
+                        onValueChange={(value) =>
+                          void onUpdate({
+                            clearClipboardSeconds: value as AppSettings['clearClipboardSeconds']
+                          })
+                        }
+                      >
+                        <SelectTrigger
+                          id="clipboard-clear-select"
+                          aria-describedby="clipboard-clear-description"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {clipboardClearItems.map((item) => (
+                              <SelectItem key={item.value} value={item.value}>
+                                {item.label}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Separator />
+                    <Field className="settings-row" orientation="horizontal">
+                      <FieldContent>
+                        <FieldLabel htmlFor="website-icons-switch">顯示網站圖示</FieldLabel>
+                        <FieldDescription id="website-icons-description">
+                          透過已設定的 Bitwarden／Vaultwarden 圖示服務載入；停用後使用本機縮寫。
+                        </FieldDescription>
+                      </FieldContent>
+                      <Switch
+                        id="website-icons-switch"
+                        checked={settings.showWebsiteIcons}
+                        disabled={settingsBusy}
+                        aria-describedby="website-icons-description"
+                        onCheckedChange={(checked) => void onUpdate({ showWebsiteIcons: checked })}
+                      />
+                    </Field>
+                  </FieldGroup>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="settings-aside">
               <AccountSwitcherCard
                 accountStatus={accountStatus}
                 busy={accountBusy}
@@ -1205,7 +1171,7 @@ function SettingsPage({
                     </Badge>
                   </CardAction>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="pb-(--card-spacing)">
                   <div className="settings-account-summary">
                     <span className="settings-account-icon" aria-hidden="true">
                       <Cloud />
@@ -1234,6 +1200,149 @@ function SettingsPage({
                 </CardFooter>
               </Card>
 
+              <Card className="settings-card" aria-labelledby="ssh-agent-settings-title">
+                <CardHeader>
+                  <SettingsCardHeading
+                    id="ssh-agent-settings-title"
+                    icon={KeyRound}
+                    title="SSH Agent"
+                    description="讓終端機與 Git 經由本機 socket 使用密碼庫中的 SSH 金鑰。"
+                  />
+                  <CardAction>
+                    <Badge variant={sshAgentStatusPresentationValue.variant}>
+                      {sshAgentStatusPresentationValue.label}
+                    </Badge>
+                  </CardAction>
+                </CardHeader>
+                <CardContent className="settings-card-content">
+                  <FieldGroup className="gap-0">
+                    <Field className="settings-row" orientation="horizontal">
+                      <FieldContent>
+                        <FieldLabel htmlFor="ssh-agent-switch">啟用 SSH Agent</FieldLabel>
+                        <FieldDescription id="ssh-agent-description">
+                          BearWarden 只會提供未封存、未刪除的 SSH 金鑰；每次簽署依下方規則核准。
+                        </FieldDescription>
+                      </FieldContent>
+                      <Switch
+                        id="ssh-agent-switch"
+                        checked={settings.sshAgentEnabled}
+                        disabled={settingsBusy}
+                        aria-describedby="ssh-agent-description"
+                        onCheckedChange={(checked) => void onUpdate({ sshAgentEnabled: checked })}
+                      />
+                    </Field>
+                    <Separator />
+                    <Field
+                      className="settings-row settings-row-select"
+                      orientation="horizontal"
+                      data-disabled={!settings.sshAgentEnabled}
+                    >
+                      <FieldContent>
+                        <FieldLabel htmlFor="ssh-agent-prompt-select">簽署核准方式</FieldLabel>
+                        <FieldDescription id="ssh-agent-prompt-description">
+                          「鎖定前記住」會區分本機請求；透過 forwarding
+                          的請求還必須對應已驗證的遠端主機指紋。鎖定後會清除。
+                        </FieldDescription>
+                      </FieldContent>
+                      <Select
+                        items={sshAgentPromptItems}
+                        value={settings.sshAgentPromptBehavior}
+                        disabled={settingsBusy || !settings.sshAgentEnabled}
+                        onValueChange={(value) =>
+                          void onUpdate({
+                            sshAgentPromptBehavior: value as SshAgentPromptBehavior
+                          })
+                        }
+                      >
+                        <SelectTrigger
+                          id="ssh-agent-prompt-select"
+                          aria-describedby="ssh-agent-prompt-description"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {sshAgentPromptItems.map((item) => (
+                              <SelectItem key={item.value} value={item.value}>
+                                {item.label}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Separator />
+                    <Field className="settings-row settings-row-stacked">
+                      <FieldLabel htmlFor="ssh-agent-command">終端機設定</FieldLabel>
+                      {usesWindowsNamedPipe ? (
+                        <FieldDescription>
+                          BearWarden 使用固定的 <code>\\.\pipe\openssh-ssh-agent</code> named
+                          pipe。請先停用系統的 OpenSSH Authentication Agent，避免兩個 agent
+                          爭用同一個 pipe。
+                        </FieldDescription>
+                      ) : sshAgentCommand ? (
+                        <>
+                          <FieldDescription>
+                            在終端機環境中設定 <code>SSH_AUTH_SOCK</code>，讓 SSH 與 Git 使用
+                            BearWarden 的本機 socket。
+                          </FieldDescription>
+                          <InputGroup>
+                            <InputGroupInput
+                              id="ssh-agent-command"
+                              value={sshAgentCommand}
+                              readOnly
+                              aria-label="SSH Agent 終端機設定指令"
+                            />
+                            <InputGroupAddon align="inline-end">
+                              <InputGroupButton
+                                aria-label={
+                                  copiedKey === 'ssh-agent-command'
+                                    ? 'SSH Agent 設定指令已複製'
+                                    : '複製 SSH Agent 設定指令'
+                                }
+                                onClick={() => void copySshAgentCommand()}
+                              >
+                                <CopyFeedbackIcon
+                                  copied={copiedKey === 'ssh-agent-command'}
+                                  placement="inline-start"
+                                />
+                                {copiedKey === 'ssh-agent-command' ? '已複製' : '複製'}
+                              </InputGroupButton>
+                            </InputGroupAddon>
+                          </InputGroup>
+                        </>
+                      ) : (
+                        <FieldDescription>
+                          Agent endpoint 含有無法安全放入 shell
+                          指令的控制字元，因此未提供複製指令。請在修正
+                          <code>BEARWARDEN_SSH_AUTH_SOCK</code> 後重新啟用 Agent。
+                        </FieldDescription>
+                      )}
+                    </Field>
+                    {sshAgentStatus.state === 'error' && (
+                      <>
+                        <Separator />
+                        <Field className="settings-row settings-row-stacked">
+                          <FieldLabel>Agent 無法啟動</FieldLabel>
+                          <FieldDescription>
+                            {sshAgentStatus.lastError === 'SOCKET_IN_USE' ||
+                            sshAgentStatus.lastError === 'PIPE_IN_USE'
+                              ? '既有 SSH Agent 正在使用相同 endpoint。請停止該 Agent 後重新啟用 BearWarden SSH Agent。'
+                              : 'BearWarden 無法安全地建立 SSH Agent endpoint。請確認家目錄權限與 socket 路徑後再試。'}
+                          </FieldDescription>
+                        </Field>
+                      </>
+                    )}
+                  </FieldGroup>
+                </CardContent>
+                <CardFooter>
+                  <p className="settings-card-note">
+                    {sshAgentStatus.identityCount} 把可用 SSH
+                    金鑰。私鑰與實際簽署資料不會傳到畫面程序。
+                  </p>
+                </CardFooter>
+              </Card>
+
               <Card className="settings-card" aria-labelledby="portability-settings-title">
                 <CardHeader>
                   <SettingsCardHeading
@@ -1243,7 +1352,7 @@ function SettingsPage({
                     description="匯入 Bitwarden JSON，或建立密碼保護的可攜備份。"
                   />
                 </CardHeader>
-                <CardContent>
+                <CardContent className="pb-(--card-spacing)">
                   <p className="settings-card-note">
                     檔案內容與路徑只會由本機主程序處理，不會傳回畫面程序。
                   </p>

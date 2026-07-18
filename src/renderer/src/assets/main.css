@@ -1122,7 +1122,8 @@ button svg {
   text-decoration: none;
 }
 .settings-nav a:hover,
-.settings-nav a:focus-visible {
+.settings-nav a:focus-visible,
+.settings-nav a[aria-current='location'] {
   color: var(--foreground);
   background: var(--accent);
 }
@@ -1134,6 +1135,7 @@ button svg {
   gap: 0;
   padding-block: 0;
   margin: 0;
+  border: 1px solid var(--border);
   box-shadow: 0 1px 2px color-mix(in oklch, var(--shadow-color) 4%, transparent);
 }
 .settings-card > [data-slot='card-header'] {

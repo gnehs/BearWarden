@@ -108,7 +108,7 @@ function AccountSwitcherCard({
             </Badge>
           </CardAction>
         </CardHeader>
-        <CardContent>
+        <CardContent className="py-(--card-spacing)">
           <FieldGroup>
             {accountStatus === null
               ? !error && (
