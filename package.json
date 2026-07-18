@@ -30,6 +30,7 @@
   "dependencies": {
     "@base-ui/react": "^1.6.0",
     "@electron-toolkit/utils": "^4.0.0",
+    "@fontsource/inter": "^5.2.8",
     "@microsoft/signalr": "10.0.0",
     "@microsoft/signalr-protocol-msgpack": "10.0.0",
     "@noble/ciphers": "^2.2.0",
