@@ -80,6 +80,7 @@ let sshAgentLifecycleEpoch = 0
 let shutdownPending: Promise<void> | null = null
 let shutdownComplete = false
 let servicesDisposed = false
+const SHUTDOWN_GRACE_PERIOD_MS = 3_000
 const sshAgentRuntime = {
   applySettings(settings: { enabled: boolean; promptBehavior: SshAgentPromptBehavior }): void {
     sshAgentEnabled = settings.enabled
@@ -942,6 +943,32 @@ function disposeServices(): void {
   settings?.dispose()
 }
 
+async function waitForShutdownTasks(tasks: Array<() => void | Promise<unknown>>): Promise<void> {
+  let deadline: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      Promise.allSettled(tasks.map((task) => Promise.resolve().then(task))).then(() => undefined),
+      new Promise<void>((resolve) => {
+        deadline = setTimeout(resolve, SHUTDOWN_GRACE_PERIOD_MS)
+      })
+    ])
+  } finally {
+    if (deadline) clearTimeout(deadline)
+  }
+}
+
+function finishShutdown(): void {
+  try {
+    sshAgentBridge?.dispose()
+    disposeServices()
+  } catch {
+    // Teardown is best-effort once the deadline has elapsed; never trap the process in before-quit.
+  } finally {
+    shutdownComplete = true
+    app.quit()
+  }
+}
+
 app.on('before-quit', (event) => {
   if (shutdownComplete) {
     disposeServices()
@@ -950,24 +977,29 @@ app.on('before-quit', (event) => {
   event.preventDefault()
   if (shutdownPending) return
 
-  sshAgentEnabled = false
-  sshAgentLifecycleEpoch += 1
-  cancelAccountWebAuthnCeremony()
-  passkeyCeremonyService?.onLocked()
-  passkeyRendererBridge?.cancelAll()
-  sshAgentBridge?.cancelAll()
-  sshAgentCoordinator?.reset()
-  repromptAuthorizations?.clear()
-  shutdownPending = Promise.all([
-    (sshAgentServer?.stop() ?? Promise.resolve()).catch(() => undefined),
-    (serverNotifications?.dispose() ?? Promise.resolve()).catch(() => undefined),
-    (portability?.disposeNativeRestoreSession() ?? Promise.resolve()).catch(() => undefined)
-  ]).then(() => {
-    sshAgentBridge?.dispose()
-    disposeServices()
-    shutdownComplete = true
-    app.quit()
-  })
+  try {
+    sshAgentEnabled = false
+    sshAgentLifecycleEpoch += 1
+    cancelAccountWebAuthnCeremony()
+    passkeyCeremonyService?.onLocked()
+    passkeyRendererBridge?.cancelAll()
+    sshAgentBridge?.cancelAll()
+    sshAgentCoordinator?.reset()
+    repromptAuthorizations?.clear()
+  } catch {
+    // Continue into the bounded shutdown even if a best-effort cancellation hook fails.
+  }
+  const agentServer = sshAgentServer
+  const notifications = serverNotifications
+  const restoreService = portability
+  sshAgentServer = null
+  serverNotifications = null
+  portability = null
+  shutdownPending = waitForShutdownTasks([
+    () => agentServer?.stop(),
+    () => notifications?.dispose(),
+    () => restoreService?.disposeNativeRestoreSession()
+  ]).then(finishShutdown, finishShutdown)
 })
 
 app.on('window-all-closed', () => {

@@ -288,6 +288,36 @@ describe('BitwardenNotificationCoordinator', () => {
     await coordinator.dispose()
   })
 
+  it('bounds disposal while SignalR start and stop remain pending during connection', async () => {
+    vi.useFakeTimers()
+    const { coordinator, connections } = harness(info(), (connection) => {
+      connection.start.mockImplementation(async () => {
+        connection.state = HubConnectionState.Connecting
+        await new Promise<void>(() => undefined)
+      })
+      connection.stop.mockImplementation(async () => {
+        await new Promise<void>(() => undefined)
+      })
+    })
+
+    await coordinator.refresh()
+    const connection = connections[0]!
+    await vi.advanceTimersByTimeAsync(0)
+    expect(connection.state).toBe(HubConnectionState.Connecting)
+
+    let disposed = false
+    const disposal = coordinator.dispose().then(() => {
+      disposed = true
+    })
+    expect(connection.stop).toHaveBeenCalledOnce()
+
+    await vi.advanceTimersByTimeAsync(999)
+    expect(disposed).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    await expect(disposal).resolves.toBeUndefined()
+    expect(disposed).toBe(true)
+  })
+
   it('accepts HTTP only for loopback notification fixtures', async () => {
     const loopback = harness(info({ notificationsUrl: 'http://127.0.0.1:8080/bw/notifications' }))
     await expect(loopback.coordinator.refresh()).resolves.toBeUndefined()

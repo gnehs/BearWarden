@@ -9,6 +9,7 @@ import { MessagePackHubProtocol } from '@microsoft/signalr-protocol-msgpack'
 
 const MIN_RECONNECT_DELAY_MS = 2 * 60 * 1_000
 const MAX_RECONNECT_DELAY_MS = 5 * 60 * 1_000
+const STOP_CONNECTION_TIMEOUT_MS = 1_000
 const MAX_ACCESS_TOKEN_LENGTH = 64 * 1_024
 const MAX_NOTIFICATION_PAYLOAD_LENGTH = 1024 * 1_024
 const MAX_URL_LENGTH = 2_048
@@ -369,7 +370,27 @@ export class BitwardenNotificationCoordinator {
     this.clearReconnectTimer()
     const connection = this.connection
     this.connection = null
-    if (connection) await connection.stop().catch(() => undefined)
+    if (!connection) return
+
+    // SignalR waits for an in-flight start() before stop() can settle. Its WebSocket transport has
+    // no connection deadline, so a socket stuck in Connecting must not become an application-exit
+    // barrier. Still ask SignalR to stop first, then bound how long teardown waits for it.
+    let timeout: ReturnType<typeof setTimeout> | null = null
+    const deadline = new Promise<void>((resolve) => {
+      timeout = this.timerApi.setTimeout(resolve, STOP_CONNECTION_TIMEOUT_MS)
+      timeout.unref?.()
+    })
+    let stopping: Promise<void>
+    try {
+      stopping = connection.stop().catch(() => undefined)
+    } catch {
+      stopping = Promise.resolve()
+    }
+    try {
+      await Promise.race([stopping, deadline])
+    } finally {
+      if (timeout) this.timerApi.clearTimeout(timeout)
+    }
   }
 
   private clearReconnectTimer(): void {

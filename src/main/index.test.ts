@@ -37,6 +37,8 @@ const harness = vi.hoisted(() => {
     lifecycleEvents.push('notifications.stop')
     return Promise.resolve()
   })
+  const disposeServerNotifications = vi.fn(() => Promise.resolve())
+  const stopSshAgentServer = vi.fn(() => Promise.resolve())
   const disposeNativeRestoreSession = vi.fn(() => {
     lifecycleEvents.push('portability.dispose')
     return Promise.resolve()
@@ -240,6 +242,8 @@ const harness = vi.hoisted(() => {
     vaultTimeoutResume,
     lockedWhileFocused,
     stopServerNotifications,
+    disposeServerNotifications,
+    stopSshAgentServer,
     disposeNativeRestoreSession,
     vaultLock,
     lifecycleEvents,
@@ -309,7 +313,7 @@ vi.mock('./bitwarden-notifications', () => ({
       return harness.stopServerNotifications()
     }
     dispose(): Promise<void> {
-      return Promise.resolve()
+      return harness.disposeServerNotifications()
     }
   }
 }))
@@ -446,7 +450,7 @@ vi.mock('./ssh-agent-renderer-bridge', () => ({
 vi.mock('./ssh-agent-server', () => ({
   SshAgentServer: class {
     stop(): Promise<void> {
-      return Promise.resolve()
+      return harness.stopSshAgentServer()
     }
   }
 }))
@@ -632,7 +636,7 @@ describe('main WebAuthn lifecycle wiring', () => {
     expect(harness.vaultTimeoutResume).toHaveBeenCalledOnce()
   })
 
-  it('keeps the account connector main-only and cancels it at every teardown boundary', async () => {
+  it('keeps the account connector main-only and bounds application teardown', async () => {
     harness.controller.cancel.mockClear()
     harness.registrationController.cancel.mockClear()
     const request = harness.vaultOptions!.requestAccountWebAuthnAssertion as (
@@ -661,10 +665,45 @@ describe('main WebAuthn lifecycle wiring', () => {
     expect(harness.controller.cancel).toHaveBeenCalledTimes(5)
     expect(harness.registrationController.cancel).toHaveBeenCalledTimes(5)
 
+    vi.useFakeTimers()
+    harness.appQuit.mockClear()
+    harness.stopSshAgentServer.mockClear()
+    harness.disposeServerNotifications.mockClear()
+    harness.disposeNativeRestoreSession.mockClear()
+    harness.stopSshAgentServer.mockImplementationOnce(() => new Promise<void>(() => undefined))
+    harness.disposeServerNotifications.mockImplementationOnce(() => {
+      throw new Error('notification teardown failed')
+    })
+
     const quitEvent = { preventDefault: vi.fn() }
-    harness.appListeners.get('before-quit')!(quitEvent as never)
+    const beforeQuit = harness.appListeners.get('before-quit')!
+    beforeQuit(quitEvent as never)
+    expect(quitEvent.preventDefault).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(harness.stopSshAgentServer).toHaveBeenCalledOnce()
+    expect(harness.disposeServerNotifications).toHaveBeenCalledOnce()
+    expect(harness.disposeNativeRestoreSession).toHaveBeenCalledOnce()
+
+    const repeatedQuitEvent = { preventDefault: vi.fn() }
+    beforeQuit(repeatedQuitEvent as never)
+    expect(repeatedQuitEvent.preventDefault).toHaveBeenCalledOnce()
+    expect(harness.stopSshAgentServer).toHaveBeenCalledOnce()
+    expect(harness.disposeServerNotifications).toHaveBeenCalledOnce()
+    expect(harness.disposeNativeRestoreSession).toHaveBeenCalledOnce()
+    expect(harness.appQuit).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(2_999)
+    expect(harness.appQuit).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
     await vi.waitFor(() => expect(harness.controller.dispose).toHaveBeenCalledOnce())
     expect(harness.registrationController.dispose).toHaveBeenCalledOnce()
+    expect(harness.appQuit).toHaveBeenCalledOnce()
+
+    const finalQuitEvent = { preventDefault: vi.fn() }
+    beforeQuit(finalQuitEvent as never)
+    expect(finalQuitEvent.preventDefault).not.toHaveBeenCalled()
+    expect(harness.appQuit).toHaveBeenCalledOnce()
+    vi.useRealTimers()
   })
 
   it('reserves immediate sync for local mutations and keeps lifecycle triggers in the background cadence', async () => {
