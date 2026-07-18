@@ -1,10 +1,10 @@
 import type { SyncResult, SyncStatus } from '../shared/vault-contract'
 
-const DEFAULT_AUTO_SYNC_DELAY_MS = 250
-const DEFAULT_SAFETY_MIN_DELAY_MS = 5 * 60 * 1_000
-const DEFAULT_SAFETY_MAX_DELAY_MS = 15 * 60 * 1_000
-const DEFAULT_RETRY_BASE_DELAY_MS = 60 * 1_000
-const DEFAULT_RETRY_MAX_DELAY_MS = 15 * 60 * 1_000
+const DEFAULT_AUTO_SYNC_DELAY_MS = 10 * 60 * 1_000
+const DEFAULT_SAFETY_MIN_DELAY_MS = 10 * 60 * 1_000
+const DEFAULT_SAFETY_MAX_DELAY_MS = 10 * 60 * 1_000
+const DEFAULT_RETRY_BASE_DELAY_MS = 10 * 60 * 1_000
+const DEFAULT_RETRY_MAX_DELAY_MS = 10 * 60 * 1_000
 
 type Timer = ReturnType<typeof setTimeout>
 type TimerKind = 'request' | 'safety' | 'retry'
@@ -64,7 +64,7 @@ export class AutoSyncCoordinator {
     this.cancelTimeout = options.clearTimeout ?? clearTimeout
   }
 
-  /** Coalesces invalidations and local mutations for the normal 250 ms window. */
+  /** Coalesces background invalidations into the periodic ten-minute cadence. */
   request(): void {
     this.queueRequest(false)
   }
@@ -115,6 +115,11 @@ export class AutoSyncCoordinator {
 
   private queueRequest(immediate: boolean): void {
     if (this.disposed) return
+
+    // A remote invalidation must not restart or accelerate an already scheduled background poll.
+    // Local mutations use requestImmediate() and intentionally preempt this timer.
+    if (!immediate && (this.timerKind === 'safety' || this.timerKind === 'retry')) return
+
     this.requested = true
     this.requestIsImmediate ||= immediate
 

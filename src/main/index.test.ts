@@ -666,7 +666,7 @@ describe('main WebAuthn lifecycle wiring', () => {
     expect(harness.registrationController.dispose).toHaveBeenCalledOnce()
   })
 
-  it('keeps invalidations debounced while foreground, resume, and unlock boundaries sync immediately', async () => {
+  it('reserves immediate sync for local mutations and keeps lifecycle triggers in the background cadence', async () => {
     harness.autoSyncRequest.mockClear()
     harness.autoSyncRequestImmediate.mockClear()
     harness.autoSyncUpdateStatus.mockClear()
@@ -676,10 +676,14 @@ describe('main WebAuthn lifecycle wiring', () => {
     expect(harness.autoSyncRequestImmediate).not.toHaveBeenCalled()
 
     harness.powerMonitorListeners.get('resume')!()
-    harness.appListeners.get('browser-window-focus')!()
     harness.appListeners.get('activate')!()
     await (harness.vaultIpcOptions!.afterPinUnlock as () => Promise<void>)()
-    expect(harness.autoSyncRequestImmediate).toHaveBeenCalledTimes(4)
+    expect(harness.autoSyncRequest).toHaveBeenCalledTimes(4)
+    expect(harness.autoSyncRequestImmediate).not.toHaveBeenCalled()
+    expect(harness.appListeners.has('browser-window-focus')).toBe(false)
+
+    ;(harness.vaultIpcOptions!.afterMutation as () => void)()
+    expect(harness.autoSyncRequestImmediate).toHaveBeenCalledOnce()
 
     const ready: import('../shared/vault-contract').SyncStatus = {
       configured: true,

@@ -84,7 +84,7 @@ describe('AutoSyncCoordinator', () => {
     expect(syncNow).toHaveBeenCalledTimes(1)
   })
 
-  it('runs foreground and unlock requests immediately without changing invalidation debounce', async () => {
+  it('runs explicit local mutation requests immediately without accelerating background requests', async () => {
     const { coordinator, syncNow } = createHarness()
 
     coordinator.requestImmediate()
@@ -92,10 +92,8 @@ describe('AutoSyncCoordinator', () => {
     expect(syncNow).toHaveBeenCalledOnce()
 
     coordinator.request()
-    await vi.advanceTimersByTimeAsync(249)
+    await vi.advanceTimersByTimeAsync(250)
     expect(syncNow).toHaveBeenCalledOnce()
-    await vi.advanceTimersByTimeAsync(1)
-    expect(syncNow).toHaveBeenCalledTimes(2)
   })
 
   it('reports syncing and the result, then announces the changed vault when ready', async () => {
@@ -178,6 +176,29 @@ describe('AutoSyncCoordinator', () => {
     expect(syncNow).toHaveBeenCalledOnce()
 
     await vi.advanceTimersByTimeAsync(1_500)
+    expect(syncNow).toHaveBeenCalledTimes(2)
+  })
+
+  it('uses a fixed ten-minute cadence for production background sync', async () => {
+    const syncStatus = vi.fn<AutoSyncVault['syncStatus']>().mockResolvedValue(READY_STATUS)
+    const syncNow = vi.fn<AutoSyncVault['syncNow']>().mockResolvedValue(SYNC_RESULT)
+    const coordinator = new AutoSyncCoordinator({
+      vault: { syncStatus, syncNow },
+      onSyncChanged: vi.fn(),
+      onVaultChanged: vi.fn()
+    })
+
+    coordinator.updateStatus(READY_STATUS)
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1_000 - 1)
+    expect(syncNow).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(syncNow).toHaveBeenCalledOnce()
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1_000)
+    coordinator.request()
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1_000 - 1)
+    expect(syncNow).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(1)
     expect(syncNow).toHaveBeenCalledTimes(2)
   })
 
@@ -313,10 +334,10 @@ describe('AutoSyncCoordinator', () => {
     })
 
     invalid.coordinator.request()
-    expect(delays.at(-1)).toBe(250)
+    expect(delays.at(-1)).toBe(10 * 60 * 1_000)
     invalid.coordinator.cancel()
     invalid.coordinator.updateStatus(READY_STATUS)
-    expect(delays.at(-1)).toBe(5 * 60 * 1_000)
+    expect(delays.at(-1)).toBe(10 * 60 * 1_000)
 
     const inverted = createHarness(250, {
       safetyMinDelayMs: 2_000,

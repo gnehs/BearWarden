@@ -675,10 +675,10 @@ const sidebarToneClasses: Record<string, string> = {
 const sidebarLinkClasses = {
   base: 'h-auto text-left text-(--text) hover:bg-(--sidebar-accent) hover:text-(--text) border-none',
   row: 'grid min-h-[38px] grid-cols-[22px_1fr_auto] items-center gap-[7px] rounded-lg border-0 bg-transparent px-[9px] py-1.5',
-  tile: 'grid min-h-[82px] grid-cols-[1fr_auto] grid-rows-[31px_auto] items-center gap-x-2 gap-y-[7px] rounded-[15px] outline outline-solid outline-(--sidebar-border)/50 bg-[color-mix(in_oklch,var(--sidebar-accent)_54%,transparent)] px-3 pt-[11px] pb-2.5 shadow-[inset_0_1px_rgba(255,255,255,.5)] hover:bg-(--sidebar-accent) dark:shadow-[inset_0_1px_rgba(255,255,255,.1)]',
+  tile: 'grid min-h-[82px] grid-cols-[1fr_auto] grid-rows-[31px_auto] items-center gap-x-2 gap-y-[7px] rounded-[15px] outline outline-solid outline-(--sidebar-border)/50 bg-[color-mix(in_oklch,var(--sidebar-accent)_54%,transparent)] px-3 pt-[11px] pb-2.5 shadow-[inset_0_1px_rgba(255,255,255,.5)] hover:bg-(--sidebar-accent) dark:shadow-[inset_0_1px_color-mix(in_oklch,var(--shadow-color)_18%,transparent)]',
   active: {
     row: 'bg-[color-mix(in_oklch,var(--sidebar-primary)_12%,transparent)] text-(--text) shadow-none hover:bg-[color-mix(in_oklch,var(--sidebar-primary)_12%,transparent)]',
-    tile: 'outline-transparent bg-(--sidebar-primary) text-(--sidebar-primary-foreground) shadow-[0_5px_14px_color-mix(in_oklch,var(--sidebar-primary)_24%,transparent)] hover:bg-(--sidebar-primary) hover:text-(--sidebar-primary-foreground)'
+    tile: 'outline-transparent bg-(--sidebar-primary) text-(--sidebar-primary-foreground) shadow-[0_5px_14px_color-mix(in_oklch,var(--shadow-color)_24%,transparent)] hover:bg-(--sidebar-primary) hover:text-(--sidebar-primary-foreground)'
   }
 } as const
 
@@ -4255,7 +4255,10 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     <footer className="list-action-bar" aria-label="列表操作">
                       {selectedSummaries.length >= 2 && (
                         <div
-                          className="flex flex-wrap items-center gap-2"
+                          className={cn(
+                            'flex flex-wrap items-center gap-2',
+                            scope.kind !== 'trash' && 'flex-1'
+                          )}
                           role="toolbar"
                           aria-label="已選取項目的批次操作"
                           aria-busy={busy}
@@ -4263,87 +4266,79 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                           <span className="sr-only" aria-live="polite">
                             已選取 {selectedSummaries.length} 個項目
                           </span>
-                          {scope.kind !== 'trash' && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              type="button"
-                              disabled={busy}
-                              onClick={openMoveDialogForSelection}
-                            >
-                              <FolderOpen data-icon="inline-start" />
-                              移動
-                            </Button>
+                          {scope.kind === 'trash' ? (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  void performBulkAction(snapshotBulkAction('restore'))
+                                }
+                              >
+                                <RotateCcw data-icon="inline-start" />
+                                還原
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  setPendingBulkAction(snapshotBulkAction('deletePermanently'))
+                                }
+                              >
+                                <Trash2 data-icon="inline-start" />
+                                永久刪除
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                type="button"
+                                disabled={busy}
+                                onClick={() => setPendingBulkAction(snapshotBulkAction('delete'))}
+                              >
+                                <Trash2 data-icon="inline-start" />
+                                移至垃圾桶
+                              </Button>
+                              <div className="ml-auto flex flex-wrap items-center gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={openMoveDialogForSelection}
+                                >
+                                  <FolderOpen data-icon="inline-start" />
+                                  移動
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() =>
+                                    void performBulkAction(
+                                      snapshotBulkAction(
+                                        scope.kind === 'archive' ? 'unarchive' : 'archive'
+                                      )
+                                    )
+                                  }
+                                >
+                                  {scope.kind === 'archive' ? (
+                                    <ArchiveRestore data-icon="inline-start" />
+                                  ) : (
+                                    <Archive data-icon="inline-start" />
+                                  )}
+                                  {scope.kind === 'archive' ? '取消封存' : '封存'}
+                                </Button>
+                              </div>
+                            </>
                           )}
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              render={
-                                <Button variant="outline" size="sm" type="button" disabled={busy} />
-                              }
-                            >
-                              {busy ? (
-                                <Spinner data-icon="inline-start" aria-hidden="true" />
-                              ) : (
-                                <Menu data-icon="inline-start" />
-                              )}
-                              批次操作
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuGroup>
-                                {scope.kind === 'trash' ? (
-                                  <>
-                                    <DropdownMenuItem
-                                      onClick={() =>
-                                        void performBulkAction(snapshotBulkAction('restore'))
-                                      }
-                                    >
-                                      <RotateCcw data-icon="inline-start" />
-                                      還原
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      variant="destructive"
-                                      onClick={() =>
-                                        setPendingBulkAction(
-                                          snapshotBulkAction('deletePermanently')
-                                        )
-                                      }
-                                    >
-                                      <Trash2 data-icon="inline-start" />
-                                      永久刪除
-                                    </DropdownMenuItem>
-                                  </>
-                                ) : (
-                                  <>
-                                    <DropdownMenuItem
-                                      onClick={() =>
-                                        void performBulkAction(
-                                          snapshotBulkAction(
-                                            scope.kind === 'archive' ? 'unarchive' : 'archive'
-                                          )
-                                        )
-                                      }
-                                    >
-                                      {scope.kind === 'archive' ? (
-                                        <ArchiveRestore data-icon="inline-start" />
-                                      ) : (
-                                        <Archive data-icon="inline-start" />
-                                      )}
-                                      {scope.kind === 'archive' ? '取消封存' : '封存'}
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      variant="destructive"
-                                      onClick={() =>
-                                        setPendingBulkAction(snapshotBulkAction('delete'))
-                                      }
-                                    >
-                                      <Trash2 data-icon="inline-start" />
-                                      移至垃圾桶
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                              </DropdownMenuGroup>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
                         </div>
                       )}
                       {scope.kind === 'trash' && trashItems.length > 0 && (

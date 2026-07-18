@@ -308,7 +308,6 @@ async function unlockSyncWithLocalPassword(masterPassword: string): Promise<void
   const status = await vault.unlockSyncWithLocalPassword(masterPassword)
   passkeyCeremonyService?.onVaultMutation()
   handleSyncChanged(status)
-  if (status.state === 'ready' || status.state === 'error') autoSync?.requestImmediate()
 }
 
 async function beforeVaultLock(): Promise<void> {
@@ -809,7 +808,7 @@ if (hasSingleInstanceLock)
       rendererBridge: passkeyRendererBridge,
       settings,
       onVaultMutation: () => {
-        autoSync?.request()
+        autoSync?.requestImmediate()
         notifyVaultChanged()
       }
     })
@@ -845,7 +844,7 @@ if (hasSingleInstanceLock)
         scheduleSshAgentLifecycle()
       },
       afterPinUnlock: async () => {
-        autoSync?.requestImmediate()
+        autoSync?.request()
         await refreshSshAgentAfterUnlock().catch(() => undefined)
         scheduleSshAgentLifecycle()
       },
@@ -856,7 +855,7 @@ if (hasSingleInstanceLock)
       },
       afterMutation: () => {
         passkeyCeremonyService?.onVaultMutation()
-        autoSync?.request()
+        autoSync?.requestImmediate()
         refreshSshAgentAfterVaultChange()
       },
       beforeSyncReconfigure: async () => {
@@ -888,7 +887,7 @@ if (hasSingleInstanceLock)
     powerMonitor.on('resume', () => {
       vaultTimeoutCoordinator?.resume()
       refreshServerNotifications()
-      autoSync?.requestImmediate()
+      autoSync?.request()
     })
 
     mainWindow = createWindow()
@@ -899,9 +898,8 @@ if (hasSingleInstanceLock)
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow()
-      autoSync?.requestImmediate()
+      autoSync?.request()
     })
-    app.on('browser-window-focus', () => autoSync?.requestImmediate())
   })
 
 function disposeServices(): void {

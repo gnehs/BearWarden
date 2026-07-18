@@ -97,13 +97,15 @@
   --danger-soft: color-mix(in oklch, var(--destructive) 10%, var(--background));
   --success: var(--primary);
   --focus: var(--ring);
-  --shadow: 0 18px 48px oklch(0.148 0.004 228.8 / 14%);
+  --shadow-color: oklch(0 0 0);
+  --website-icon-background: oklch(1 0 0);
+  --shadow: 0 18px 48px color-mix(in oklch, var(--shadow-color) 14%, transparent);
   --native-window-material: color-mix(in oklch, var(--background) 34%, transparent);
   --native-panel-material: color-mix(in oklch, var(--card) 88%, transparent);
   --native-material-border: color-mix(in oklch, var(--foreground) 9%, transparent);
   --native-material-shadow:
     0 1px 0 color-mix(in oklch, white 58%, transparent) inset,
-    0 10px 30px color-mix(in oklch, var(--foreground) 7%, transparent);
+    0 10px 30px color-mix(in oklch, var(--shadow-color) 7%, transparent);
   font-family:
     'Inter',
     ui-sans-serif,
@@ -153,8 +155,8 @@
   --sidebar-ring: oklch(0.56 0.021 213.5);
   --native-window-material: color-mix(in oklch, var(--background) 72%, transparent);
   --native-material-shadow:
-    0 1px 0 color-mix(in oklch, white 9%, transparent) inset,
-    0 10px 30px color-mix(in oklch, black 18%, transparent);
+    0 1px 0 color-mix(in oklch, var(--shadow-color) 18%, transparent) inset,
+    0 10px 30px color-mix(in oklch, var(--shadow-color) 28%, transparent);
 }
 
 @layer base {
@@ -270,7 +272,7 @@ button svg {
 .button.primary {
   color: var(--primary-foreground);
   background: var(--primary);
-  box-shadow: 0 2px 5px color-mix(in oklch, var(--primary) 18%, transparent);
+  box-shadow: 0 2px 5px color-mix(in oklch, var(--shadow-color) 18%, transparent);
 }
 
 .button.primary:hover:not(:disabled) {
@@ -366,12 +368,12 @@ button svg {
   border-radius: 9px;
   color: var(--text);
   background: var(--background);
-  box-shadow: inset 0 1px 2px color-mix(in oklch, var(--foreground) 4%, transparent);
+  box-shadow: inset 0 1px 2px color-mix(in oklch, var(--shadow-color) 4%, transparent);
 }
 .field > [data-slot='input-group'] {
   min-height: 40px;
   background: var(--background);
-  box-shadow: inset 0 1px 2px color-mix(in oklch, var(--foreground) 4%, transparent);
+  box-shadow: inset 0 1px 2px color-mix(in oklch, var(--shadow-color) 4%, transparent);
 }
 .field > textarea {
   resize: vertical;
@@ -1050,7 +1052,7 @@ button svg {
   gap: 0;
   padding-block: 0;
   margin: 0;
-  box-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 4%, transparent);
+  box-shadow: 0 1px 2px color-mix(in oklch, var(--shadow-color) 4%, transparent);
 }
 .settings-card > [data-slot='card-header'] {
   align-items: center;
@@ -1170,7 +1172,7 @@ button svg {
 :root[data-theme='dark'] .field > [data-slot='input-group'],
 :root[data-theme='dark'] .sort-control,
 :root[data-theme='dark'] .button.secondary,
-:root[data-theme='dark'] .icon-button {
+:root[data-theme='dark'] .icon-button:not(.subtle) {
   background: var(--panel);
 }
 :root[data-theme='dark'] .titlebar,
@@ -1244,7 +1246,9 @@ button svg {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  padding: 3px;
+  background: var(--website-icon-background);
+  object-fit: contain;
 }
 .website-icon-fallback {
   font-size: 0.95em;
@@ -1472,7 +1476,7 @@ button svg {
   border: 1px solid var(--border);
   border-radius: 13px;
   background: var(--card);
-  box-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 3%, transparent);
+  box-shadow: 0 1px 2px color-mix(in oklch, var(--shadow-color) 3%, transparent);
   overflow: hidden;
 }
 .detail-card > [data-slot='card-header'] {
@@ -2120,8 +2124,8 @@ button svg {
   color: var(--popover-foreground) !important;
   background: color-mix(in oklch, var(--popover) 92%, transparent) !important;
   box-shadow:
-    0 1px 0 color-mix(in oklch, var(--foreground) 5%, transparent) inset,
-    0 12px 36px color-mix(in oklch, var(--foreground) 16%, transparent) !important;
+    0 1px 0 color-mix(in oklch, var(--shadow-color) 5%, transparent) inset,
+    0 12px 36px color-mix(in oklch, var(--shadow-color) 20%, transparent) !important;
   backdrop-filter: blur(18px) saturate(1.25);
 }
 .cn-toast-content {
@@ -2205,8 +2209,8 @@ button svg {
   color: var(--text);
   background: color-mix(in oklch, var(--popover) 94%, transparent);
   box-shadow:
-    0 16px 36px color-mix(in oklch, var(--foreground) 18%, transparent),
-    0 2px 8px color-mix(in oklch, var(--foreground) 8%, transparent);
+    0 16px 36px color-mix(in oklch, var(--shadow-color) 22%, transparent),
+    0 2px 8px color-mix(in oklch, var(--shadow-color) 10%, transparent);
   pointer-events: none;
   backdrop-filter: saturate(150%) blur(18px);
 }
@@ -2216,7 +2220,7 @@ button svg {
     4px 4px 0 var(--border),
     8px 8px 0 -1px var(--card),
     8px 8px 0 var(--border),
-    0 18px 38px color-mix(in oklch, var(--foreground) 18%, transparent);
+    0 18px 38px color-mix(in oklch, var(--shadow-color) 22%, transparent);
 }
 .folder-drag-preview {
   width: min(260px, 72vw);
@@ -2263,7 +2267,7 @@ button svg {
   gap: 12px;
   border-bottom-color: var(--border);
   background: color-mix(in oklch, var(--card) 86%, transparent);
-  box-shadow: 0 1px color-mix(in oklch, var(--card-foreground) 5%, transparent) inset;
+  box-shadow: 0 1px color-mix(in oklch, var(--shadow-color) 5%, transparent) inset;
   backdrop-filter: saturate(180%) blur(24px);
 }
 .security-state {
@@ -2272,8 +2276,8 @@ button svg {
 .titlebar-add-button {
   border-color: var(--border);
   border-radius: 10px;
-  background: color-mix(in oklch, var(--card) 72%, transparent);
-  box-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 5%, transparent);
+  background: color-mix(in oklch, var(--card) 32%, transparent);
+  box-shadow: 0 1px 2px color-mix(in oklch, var(--shadow-color) 12%, transparent);
 }
 .workspace {
   grid-template-columns: 260px minmax(0, 1fr);
@@ -2375,7 +2379,7 @@ button svg {
   border-color: var(--input);
   border-radius: 11px;
   background: var(--accent);
-  box-shadow: inset 0 1px 2px color-mix(in oklch, var(--foreground) 3%, transparent);
+  box-shadow: inset 0 1px 2px color-mix(in oklch, var(--shadow-color) 3%, transparent);
 }
 .result-summary {
   min-height: 28px;
@@ -2436,7 +2440,20 @@ button svg {
   border-radius: 11px;
   color: var(--primary-foreground);
   background: var(--primary);
-  box-shadow: 0 4px 13px color-mix(in oklch, var(--primary) 18%, transparent);
+  box-shadow: 0 4px 13px color-mix(in oklch, var(--shadow-color) 18%, transparent);
+}
+.virtualized-item-row-list:has(> .item-row.selected)
+  + .virtualized-item-row-list
+  > .item-row.selected {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.virtualized-item-row-list:has(> .item-row.selected):has(
+    + .virtualized-item-row-list > .item-row.selected
+  )
+  > .item-row.selected {
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
 }
 .item-row.selected .item-row-main {
   color: var(--primary-foreground);
@@ -2511,7 +2528,7 @@ button svg {
   border-color: var(--border);
   border-radius: 14px;
   background: color-mix(in oklch, var(--card) 94%, transparent);
-  box-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 3%, transparent);
+  box-shadow: 0 1px 2px color-mix(in oklch, var(--shadow-color) 3%, transparent);
 }
 .detail-empty > span {
   width: 78px;
@@ -2563,7 +2580,7 @@ button svg {
 :root[data-theme='dark'] .search-field {
   border-color: var(--input);
   background: var(--accent);
-  box-shadow: inset 0 1px 2px color-mix(in oklch, var(--foreground) 14%, transparent);
+  box-shadow: inset 0 1px 2px color-mix(in oklch, var(--shadow-color) 18%, transparent);
 }
 :root[data-theme='dark'] .item-row {
   border-bottom-color: var(--border);
@@ -2740,7 +2757,7 @@ body:has(.platform-windows) {
   }
   .sidebar.open {
     transform: translateX(0);
-    box-shadow: 14px 0 40px color-mix(in oklch, var(--foreground) 26%, transparent);
+    box-shadow: 14px 0 40px color-mix(in oklch, var(--shadow-color) 30%, transparent);
   }
   :root .platform-macos .sidebar,
   :root .platform-windows .sidebar {
