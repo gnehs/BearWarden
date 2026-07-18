@@ -1,8 +1,16 @@
-import { CheckCircle2, Palette, UserRound } from 'lucide-react'
+import { CheckCircle2, Palette, Pencil, UserRound } from 'lucide-react'
 import { useRef, useState } from 'react'
 import type { AccountSecurityProfile } from '../../../shared/vault-contract'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from '@renderer/components/ui/dialog'
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@renderer/components/ui/field'
 import { Input } from '@renderer/components/ui/input'
 import { Spinner } from '@renderer/components/ui/spinner'
@@ -116,131 +124,147 @@ function AccountProfileCard({
   }
 
   return (
-    <section className="bg-card rounded-xl border p-4" aria-labelledby="account-profile-title">
-      <div className="mb-4 flex items-center gap-3">
+    <Dialog>
+      <section
+        className="bg-card flex items-center gap-3 rounded-xl border p-4"
+        aria-labelledby="account-profile-title"
+      >
         <span
-          className="flex size-10 items-center justify-center rounded-full text-white"
+          className="flex size-10 shrink-0 items-center justify-center rounded-full text-white"
           style={{ backgroundColor: current.avatarColor ?? DEFAULT_AVATAR_COLOR }}
           aria-hidden="true"
         >
           <UserRound className="size-5" />
         </span>
-        <div>
+        <div className="min-w-0 flex-1">
           <h3 id="account-profile-title" className="font-medium">
             個人資料
           </h3>
-          <p className="text-muted-foreground text-sm">管理顯示名稱與頭像顏色。</p>
+          <p className="text-muted-foreground truncate text-sm">{current.name || current.email}</p>
         </div>
-      </div>
-
-      <FieldGroup>
-        <Field>
-          <FieldLabel htmlFor="account-profile-email">電子郵件</FieldLabel>
-          <Input id="account-profile-email" type="email" value={current.email} readOnly />
-          <FieldDescription>電子郵件無法在此變更。</FieldDescription>
-        </Field>
-
-        <form onSubmit={(event) => void saveName(event)}>
-          <Field>
-            <FieldLabel htmlFor="account-profile-name">顯示名稱</FieldLabel>
-            <Input
-              id="account-profile-name"
-              value={name}
-              onChange={(event) => {
-                setName(event.target.value)
-                setNameError('')
-                setNameSuccess('')
-              }}
-              disabled={profileBusy}
-              aria-describedby="account-profile-name-help"
-            />
-            <FieldDescription id="account-profile-name-help">
-              可留空，最多 50 個 UTF-8 位元組。
-            </FieldDescription>
-            {nameError && (
-              <Alert variant="destructive">
-                <AlertDescription>{nameError}</AlertDescription>
-              </Alert>
-            )}
-            {nameSuccess && (
-              <Alert role="status">
-                <CheckCircle2 aria-hidden="true" />
-                <AlertDescription>{nameSuccess}</AlertDescription>
-              </Alert>
-            )}
-            <Button type="submit" size="sm" disabled={profileBusy || name === current.name}>
-              {nameBusy && <Spinner data-icon="inline-start" aria-hidden="true" />}
-              儲存顯示名稱
-            </Button>
-          </Field>
-        </form>
-
-        <form
-          onSubmit={(event) => {
-            event.preventDefault()
-            void saveAvatar()
-          }}
+        <DialogTrigger
+          render={<Button type="button" variant="outline" size="sm" aria-label="編輯個人資料" />}
         >
+          <Pencil data-icon="inline-start" aria-hidden="true" />
+          編輯
+        </DialogTrigger>
+      </section>
+
+      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>編輯個人資料</DialogTitle>
+          <DialogDescription>管理顯示名稱與頭像顏色。</DialogDescription>
+        </DialogHeader>
+
+        <FieldGroup>
           <Field>
-            <FieldLabel htmlFor="account-profile-avatar">頭像顏色</FieldLabel>
-            <div className="flex items-center gap-3">
+            <FieldLabel htmlFor="account-profile-email">電子郵件</FieldLabel>
+            <Input id="account-profile-email" type="email" value={current.email} readOnly />
+            <FieldDescription>電子郵件無法在此變更。</FieldDescription>
+          </Field>
+
+          <form onSubmit={(event) => void saveName(event)}>
+            <Field>
+              <FieldLabel htmlFor="account-profile-name">顯示名稱</FieldLabel>
               <Input
-                id="account-profile-avatar"
-                className="h-10 w-16 p-1"
-                type="color"
-                value={avatarColor}
+                id="account-profile-name"
+                value={name}
                 onChange={(event) => {
-                  setAvatarColor(event.target.value.toUpperCase())
-                  setAvatarError('')
-                  setAvatarSuccess('')
+                  setName(event.target.value)
+                  setNameError('')
+                  setNameSuccess('')
                 }}
                 disabled={profileBusy}
-                aria-label="選擇頭像顏色"
+                aria-describedby="account-profile-name-help"
               />
-              <code className="text-sm">{avatarColor.toUpperCase()}</code>
-            </div>
-            <FieldDescription>
-              {current.avatarColor
-                ? `目前顏色：${current.avatarColor}`
-                : '目前使用伺服器預設顏色。'}
-            </FieldDescription>
-            {avatarError && (
-              <Alert variant="destructive">
-                <AlertDescription>{avatarError}</AlertDescription>
-              </Alert>
-            )}
-            {avatarSuccess && (
-              <Alert role="status">
-                <CheckCircle2 aria-hidden="true" />
-                <AlertDescription>{avatarSuccess}</AlertDescription>
-              </Alert>
-            )}
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="submit"
-                size="sm"
-                disabled={
-                  profileBusy || avatarColor.toUpperCase() === current.avatarColor?.toUpperCase()
-                }
-              >
-                {avatarBusy && <Spinner data-icon="inline-start" aria-hidden="true" />}
-                <Palette data-icon="inline-start" aria-hidden="true" />
-                儲存頭像顏色
+              <FieldDescription id="account-profile-name-help">
+                可留空，最多 50 個 UTF-8 位元組。
+              </FieldDescription>
+              {nameError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{nameError}</AlertDescription>
+                </Alert>
+              )}
+              {nameSuccess && (
+                <Alert role="status">
+                  <CheckCircle2 aria-hidden="true" />
+                  <AlertDescription>{nameSuccess}</AlertDescription>
+                </Alert>
+              )}
+              <Button type="submit" size="sm" disabled={profileBusy || name === current.name}>
+                {nameBusy && <Spinner data-icon="inline-start" aria-hidden="true" />}
+                儲存顯示名稱
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={profileBusy || current.avatarColor === null}
-                onClick={() => void saveAvatar(null)}
-              >
-                清除自訂顏色
-              </Button>
-            </div>
-          </Field>
-        </form>
-      </FieldGroup>
-    </section>
+            </Field>
+          </form>
+
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              void saveAvatar()
+            }}
+          >
+            <Field>
+              <FieldLabel htmlFor="account-profile-avatar">頭像顏色</FieldLabel>
+              <div className="flex items-center gap-3">
+                <Input
+                  id="account-profile-avatar"
+                  className="h-10 w-16 p-1"
+                  type="color"
+                  value={avatarColor}
+                  onChange={(event) => {
+                    setAvatarColor(event.target.value.toUpperCase())
+                    setAvatarError('')
+                    setAvatarSuccess('')
+                  }}
+                  disabled={profileBusy}
+                  aria-label="選擇頭像顏色"
+                />
+                <code className="text-sm">{avatarColor.toUpperCase()}</code>
+              </div>
+              <FieldDescription>
+                {current.avatarColor
+                  ? `目前顏色：${current.avatarColor}`
+                  : '目前使用伺服器預設顏色。'}
+              </FieldDescription>
+              {avatarError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{avatarError}</AlertDescription>
+                </Alert>
+              )}
+              {avatarSuccess && (
+                <Alert role="status">
+                  <CheckCircle2 aria-hidden="true" />
+                  <AlertDescription>{avatarSuccess}</AlertDescription>
+                </Alert>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={
+                    profileBusy || avatarColor.toUpperCase() === current.avatarColor?.toUpperCase()
+                  }
+                >
+                  {avatarBusy && <Spinner data-icon="inline-start" aria-hidden="true" />}
+                  <Palette data-icon="inline-start" aria-hidden="true" />
+                  儲存頭像顏色
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={profileBusy || current.avatarColor === null}
+                  onClick={() => void saveAvatar(null)}
+                >
+                  清除自訂顏色
+                </Button>
+              </div>
+            </Field>
+          </form>
+        </FieldGroup>
+      </DialogContent>
+    </Dialog>
   )
 }
 

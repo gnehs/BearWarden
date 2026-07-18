@@ -28,7 +28,7 @@ describe('AccountProfileCard input boundary', () => {
     expect(isAvatarColor('#123ABC\n')).toBe(false)
   })
 
-  it('shows the current profile, readonly email, and independent actions', () => {
+  it('shows a compact profile summary that opens the editor dialog', () => {
     const markup = renderToStaticMarkup(
       <AccountProfileCard
         onProfileChange={() => undefined}
@@ -42,12 +42,11 @@ describe('AccountProfileCard input boundary', () => {
       />
     )
 
-    expect(markup).toContain('value="Example User"')
-    expect(markup).toContain('value="profile@example.invalid"')
-    expect(markup).toContain('readOnly')
-    expect(markup).toContain('儲存顯示名稱')
-    expect(markup).toContain('儲存頭像顏色')
-    expect(markup).toContain('清除自訂顏色')
-    expect(markup).toContain('type="color"')
+    expect(markup).toContain('個人資料')
+    expect(markup).toContain('Example User')
+    expect(markup).toContain('編輯')
+    expect(markup).not.toContain('value="profile@example.invalid"')
+    expect(markup).not.toContain('儲存顯示名稱')
+    expect(markup).not.toContain('儲存頭像顏色')
   })
 })
