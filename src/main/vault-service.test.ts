@@ -4220,7 +4220,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const verified = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(verified.data).toMatchObject({
-      version: 22,
+      version: 23,
       sync: { pendingLoginImport: null }
     })
     verified.key.fill(0)
@@ -8252,7 +8252,7 @@ describe('VaultService encrypted local data', () => {
   })
 
   it('tracks actual copy/open use but not reveal, without changing content updatedAt', async () => {
-    const { service, copyText, openExternal } = await createHarness()
+    const { service, filePath, copyText, openExternal } = await createHarness()
     await service.setup(MASTER_PASSWORD)
     const alpha = await service.createLogin({
       name: 'Alpha',
@@ -8269,13 +8269,19 @@ describe('VaultService encrypted local data', () => {
 
     expect((await service.listLogins()).map((login) => login.name)).toEqual(['Alpha', 'Zeta'])
     expect(await service.revealPassword({ id: zeta.id })).toBe('zeta-secret')
-    expect((await service.getLogin({ id: zeta.id })).lastUsedAt).toBeNull()
+    expect(await service.getLogin({ id: zeta.id })).toMatchObject({
+      usageCount: 0,
+      lastUsedAt: null
+    })
 
     const originalUpdatedAt = (await service.getLogin({ id: zeta.id })).updatedAt
     await service.copyPassword({ id: zeta.id })
     expect(copyText).toHaveBeenCalledWith('zeta-secret')
     expect((await service.listLogins())[0]?.id).toBe(zeta.id)
-    expect((await service.getLogin({ id: zeta.id })).updatedAt).toBe(originalUpdatedAt)
+    expect(await service.getLogin({ id: zeta.id })).toMatchObject({
+      usageCount: 1,
+      updatedAt: originalUpdatedAt
+    })
 
     const alphaUpdatedAt = (await service.getLogin({ id: alpha.id })).updatedAt
     await service.copyUsername({ id: alpha.id })
@@ -8284,7 +8290,24 @@ describe('VaultService encrypted local data', () => {
     await service.openLoginUri({ id: alpha.id })
     expect(openExternal).toHaveBeenCalledWith('https://alpha.example/')
     expect((await service.listLogins())[0]?.id).toBe(alpha.id)
-    expect((await service.getLogin({ id: alpha.id })).updatedAt).toBe(alphaUpdatedAt)
+    expect(await service.getLogin({ id: alpha.id })).toMatchObject({
+      usageCount: 2,
+      updatedAt: alphaUpdatedAt
+    })
+    expect((await service.listLogins({ sort: 'frequency' })).map((login) => login.id)).toEqual([
+      alpha.id,
+      zeta.id
+    ])
+
+    await service.lock()
+    const reopened = new VaultService(new EncryptedVaultStore(filePath), {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await reopened.unlock(MASTER_PASSWORD)
+    expect(
+      (await reopened.listLogins({ sort: 'frequency' })).map((login) => login.usageCount)
+    ).toEqual([2, 1])
   })
 
   it('searches only inside the requested scope without indexing protected item secrets', async () => {
@@ -8536,7 +8559,10 @@ describe('VaultService encrypted local data', () => {
       code: 'INVALID_URL'
     })
     expect(openExternal).not.toHaveBeenCalled()
-    expect((await service.getLogin({ id: login.id })).lastUsedAt).toBeNull()
+    expect(await service.getLogin({ id: login.id })).toMatchObject({
+      usageCount: 0,
+      lastUsedAt: null
+    })
   })
 
   it('stores all five item types without exposing sensitive fields in list or detail responses', async () => {
@@ -9482,7 +9508,7 @@ describe('VaultService encrypted local data', () => {
       expect(await service.revealPassword({ id: migrated.id })).toBe('legacy-secret')
       await service.lock()
       const unlocked = await store.unlock(MASTER_PASSWORD)
-      expect((unlocked.data as { version: number }).version).toBe(22)
+      expect((unlocked.data as { version: number }).version).toBe(23)
       unlocked.key.fill(0)
       unlocked.salt.fill(0)
     }
@@ -9641,12 +9667,69 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 22,
+      version: 23,
       logins: [{ passwordRevisionDate: null, autofillOnPageLoad: null }]
     })
     migrated.key.fill(0)
     migrated.salt.fill(0)
   })
+
+  it('migrates V22 logins to a zero local usage count', async () => {
+    const { filePath, service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const login = await service.createLogin({ name: 'Pre-frequency login' })
+    await service.lock()
+
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as {
+      version: number
+      logins: Array<Record<string, unknown>>
+    }
+    data.version = 22
+    delete data.logins[0]!.usageCount
+    await store.write(data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopenedStore = new EncryptedVaultStore<unknown>(filePath)
+    const reopened = new VaultService(reopenedStore, { copyText: vi.fn(), openExternal: vi.fn() })
+    await reopened.unlock(MASTER_PASSWORD)
+    await expect(reopened.getLogin({ id: login.id })).resolves.toMatchObject({ usageCount: 0 })
+    await reopened.lock()
+
+    const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
+    expect(migrated.data).toMatchObject({
+      version: 23,
+      logins: [expect.objectContaining({ usageCount: 0 })]
+    })
+    migrated.key.fill(0)
+    migrated.salt.fill(0)
+  })
+
+  it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects invalid current usage count %s',
+    async (usageCount) => {
+      const { filePath, service, store } = await createHarness()
+      await service.setup(MASTER_PASSWORD)
+      await service.createLogin({ name: 'Corrupt usage count' })
+      await service.lock()
+
+      const unlocked = await store.unlock(MASTER_PASSWORD)
+      const data = unlocked.data as { logins: Array<Record<string, unknown>> }
+      data.logins[0]!.usageCount = usageCount
+      await store.write(data, unlocked.key, unlocked.salt)
+      unlocked.key.fill(0)
+      unlocked.salt.fill(0)
+
+      const reopened = new VaultService(new EncryptedVaultStore(filePath), {
+        copyText: vi.fn(),
+        openExternal: vi.fn()
+      })
+      await expect(reopened.unlock(MASTER_PASSWORD)).rejects.toMatchObject({
+        code: 'CORRUPT_VAULT'
+      })
+    }
+  )
 
   it('migrates V20 sync data to an explicit empty pending import journal', async () => {
     const { filePath, service, store } = await createHarness({
@@ -9680,7 +9763,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 22,
+      version: 23,
       sync: { pendingLoginImport: null }
     })
     migrated.key.fill(0)
@@ -9715,7 +9798,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 22,
+      version: 23,
       sync: { pendingPersonalVaultPurge: null }
     })
     migrated.key.fill(0)
@@ -9879,7 +9962,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 22,
+      version: 23,
       generatorHistory: [],
       sends: [],
       nativeAttachmentRestore: null
@@ -9917,7 +10000,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 22,
+      version: 23,
       logins: [expect.objectContaining({ attachments: [] })],
       sends: []
     })
@@ -9956,7 +10039,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 22,
+      version: 23,
       sync: { domainSettings: null }
     })
     migrated.key.fill(0)

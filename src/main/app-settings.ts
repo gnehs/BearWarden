@@ -147,7 +147,9 @@ function parseSettings(value: unknown): { settings: StoredSettings; needsMigrati
       clearClipboardSeconds !== 30 &&
       clearClipboardSeconds !== 60 &&
       clearClipboardSeconds !== 120) ||
-    (value.defaultSort !== 'recent' && value.defaultSort !== 'name') ||
+    (value.defaultSort !== 'recent' &&
+      value.defaultSort !== 'name' &&
+      value.defaultSort !== 'frequency') ||
     (value.theme !== 'system' && value.theme !== 'light' && value.theme !== 'dark') ||
     (value.version >= 3 && typeof value.sshAgentEnabled !== 'boolean') ||
     (value.version >= 3 &&

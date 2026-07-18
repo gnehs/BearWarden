@@ -743,6 +743,20 @@ describe('registerVaultIpc settings validation', () => {
     expect(settings.update).toHaveBeenCalledTimes(1)
   })
 
+  it('accepts frequency as a default sort and rejects unknown values', async () => {
+    const { event, settings } = settingsHarness()
+    const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!
+
+    await expect(update(event, { defaultSort: 'frequency' })).resolves.toEqual({
+      defaultSort: 'frequency'
+    })
+    expect(settings.update).toHaveBeenCalledWith({ defaultSort: 'frequency' })
+    await expect(update(event, { defaultSort: 'popular' })).rejects.toThrow(
+      'BEARWARDEN:INVALID_INPUT'
+    )
+    expect(settings.update).toHaveBeenCalledTimes(1)
+  })
+
   it('accepts only exact, data-only vault timeout policies', async () => {
     const { event, settings } = settingsHarness()
     const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!
@@ -2428,15 +2442,18 @@ describe('registerVaultIpc reprompt gate', () => {
     const maximumQuery = 'x'.repeat(1_024)
     await expect(list(event, { query: maximumQuery })).resolves.toEqual([])
     expect(vault.listLogins).toHaveBeenLastCalledWith({ query: maximumQuery })
+    await expect(list(event, { sort: 'frequency' })).resolves.toEqual([])
+    expect(vault.listLogins).toHaveBeenLastCalledWith({ sort: 'frequency' })
 
     for (const invalid of [
       { query: 'x'.repeat(1_025) },
       { query: 7 },
+      { sort: 'popular' },
       { query: 'example', unknown: true }
     ]) {
       await expect(list(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
-    expect(vault.listLogins).toHaveBeenCalledTimes(2)
+    expect(vault.listLogins).toHaveBeenCalledTimes(3)
   })
 
   it('exposes vault health through an exact empty request without a reprompt capability', async () => {

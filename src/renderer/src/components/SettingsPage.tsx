@@ -259,6 +259,7 @@ const clipboardClearItems = [
 
 const defaultSortItems = [
   { label: '最近使用', value: 'recent' },
+  { label: '使用頻率', value: 'frequency' },
   { label: '依名稱', value: 'name' }
 ] as const
 

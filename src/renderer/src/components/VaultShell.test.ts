@@ -24,6 +24,7 @@ function summary(id: string, reprompt: 0 | 1): LoginSummary {
     attachmentCount: 0,
     folderId: null,
     favorite: false,
+    usageCount: 0,
     lastUsedAt: null,
     createdAt: '2026-07-16T00:00:00.000Z',
     updatedAt: '2026-07-16T00:00:00.000Z',

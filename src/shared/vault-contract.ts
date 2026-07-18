@@ -749,7 +749,7 @@ export interface LoginEmptyTrashRequest {
   authorizationToken?: string
 }
 
-export type LoginSort = 'recent' | 'name'
+export type LoginSort = 'recent' | 'name' | 'frequency'
 
 export const MAX_LOGIN_SEARCH_QUERY_LENGTH = 1_024
 
@@ -847,6 +847,8 @@ export interface LoginSummary {
   attachmentCount: number
   folderId: string | null
   favorite: boolean
+  /** Local successful copy/open count; never sent to the remote Bitwarden service. */
+  usageCount: number
   lastUsedAt: string | null
   createdAt: string
   updatedAt: string

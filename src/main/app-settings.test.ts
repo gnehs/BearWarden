@@ -136,6 +136,7 @@ describe('AppSettingsService', () => {
       showWebsiteIcons: false,
       vaultTimeoutPolicy: { type: 'onRestart' },
       clearClipboardSeconds: 60,
+      defaultSort: 'frequency',
       theme: 'dark',
       sshAgentEnabled: true,
       sshAgentPromptBehavior: 'rememberUntilLock'
@@ -145,6 +146,7 @@ describe('AppSettingsService', () => {
       showWebsiteIcons: false,
       vaultTimeoutPolicy: { type: 'onRestart' },
       clearClipboardSeconds: 60,
+      defaultSort: 'frequency',
       theme: 'dark',
       sshAgentEnabled: true,
       sshAgentPromptBehavior: 'rememberUntilLock'
@@ -158,6 +160,7 @@ describe('AppSettingsService', () => {
     expect(JSON.parse(await readFile(join(directory, 'settings.json'), 'utf8'))).toMatchObject({
       version: 6,
       startAtLogin: false,
+      defaultSort: 'frequency',
       sshAgentEnabled: true,
       sshAgentPromptBehavior: 'rememberUntilLock'
     })

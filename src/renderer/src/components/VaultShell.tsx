@@ -215,6 +215,7 @@ import { Spinner } from '@renderer/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { cn } from '@renderer/lib/utils'
 import { applyThemePreference } from '@renderer/lib/theme'
+import { sortVaultItems, type VaultSortMode } from '@renderer/lib/vault-sort'
 import {
   accountMutationError,
   isCurrentAccountRefresh,
@@ -231,8 +232,6 @@ type Scope =
   | { kind: 'unfiled' }
   | { kind: 'archive' }
   | { kind: 'trash' }
-
-type SortMode = 'title' | 'recent' | 'modified'
 
 type TypeFilter = VaultCategoryFilter
 
@@ -288,6 +287,7 @@ const syncStateMeta = {
 const sortItemsOptions = [
   { label: '依名稱', value: 'title' },
   { label: '最近使用', value: 'recent' },
+  { label: '使用頻率', value: 'frequency' },
   { label: '最近修改', value: 'modified' }
 ] as const
 
@@ -442,25 +442,6 @@ function announceError(message: string): void {
   })
 }
 
-function compareNullableDate(left: string | null, right: string | null): number {
-  if (left === right) return 0
-  if (left === null) return 1
-  if (right === null) return -1
-  return Date.parse(right) - Date.parse(left)
-}
-
-function sortItems(items: LoginSummary[], mode: SortMode): LoginSummary[] {
-  const collator = new Intl.Collator('zh-Hant', { numeric: true, sensitivity: 'base' })
-  return [...items].sort((left, right) => {
-    let result = 0
-    if (mode === 'recent') result = compareNullableDate(left.lastUsedAt, right.lastUsedAt)
-    if (mode === 'modified') result = Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
-    if (result !== 0) return result
-    const nameResult = collator.compare(left.name, right.name)
-    return nameResult || left.id.localeCompare(right.id)
-  })
-}
-
 function hostLabel(uri: string | null): string {
   if (!uri) return '未設定網站'
   try {
@@ -612,6 +593,7 @@ function mergeLoginSummary(login: LoginView, summary: LoginSummary): LoginView {
     name: summary.name,
     folderId: summary.folderId,
     favorite: summary.favorite,
+    usageCount: summary.usageCount,
     lastUsedAt: summary.lastUsedAt,
     createdAt: summary.createdAt,
     updatedAt: summary.updatedAt,
@@ -660,6 +642,7 @@ function toLoginSummary(login: LoginView): LoginSummary {
     attachmentCount: login.attachmentCount,
     folderId: login.folderId,
     favorite: login.favorite,
+    usageCount: login.usageCount,
     lastUsedAt: login.lastUsedAt,
     createdAt: login.createdAt,
     updatedAt: login.updatedAt,
@@ -690,7 +673,7 @@ const sidebarToneClasses: Record<string, string> = {
 }
 
 const sidebarLinkClasses = {
-  base: 'h-auto text-left text-(--text) hover:bg-(--sidebar-accent) hover:text-(--text)',
+  base: 'h-auto text-left text-(--text) hover:bg-(--sidebar-accent) hover:text-(--text) border-none',
   row: 'grid min-h-[38px] grid-cols-[22px_1fr_auto] items-center gap-[7px] rounded-lg border-0 bg-transparent px-[9px] py-1.5',
   tile: 'grid min-h-[82px] grid-cols-[1fr_auto] grid-rows-[31px_auto] items-center gap-x-2 gap-y-[7px] rounded-[15px] outline outline-solid outline-(--sidebar-border)/50 bg-[color-mix(in_oklch,var(--sidebar-accent)_54%,transparent)] px-3 pt-[11px] pb-2.5 shadow-[inset_0_1px_rgba(255,255,255,.5)] hover:bg-(--sidebar-accent) dark:shadow-[inset_0_1px_rgba(255,255,255,.1)]',
   active: {
@@ -879,7 +862,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   const [folders, setFolders] = useState<FolderView[]>([])
   const [items, setItems] = useState<LoginSummary[]>([])
   const [scope, setScope] = useState<Scope>({ kind: 'all' })
-  const [sortMode, setSortMode] = useState<SortMode>('title')
+  const [sortMode, setSortMode] = useState<VaultSortMode>('title')
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [query, setQuery] = useState('')
   const [searchMatches, setSearchMatches] = useState<VaultSearchMatches | null>(null)
@@ -1731,7 +1714,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       (nextSettings) => {
         if (!active) return
         setSettings(nextSettings)
-        setSortMode(nextSettings.defaultSort === 'recent' ? 'recent' : 'title')
+        setSortMode(nextSettings.defaultSort === 'name' ? 'title' : nextSettings.defaultSort)
       },
       () => {
         // Settings must not prevent access to a successfully unlocked local vault.
@@ -1934,7 +1917,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     const scoped = matchedItems.filter((item) =>
       matchesVaultSearchNavigation(item, query, scope, typeFilter)
     )
-    return sortItems(scoped, scope.kind === 'recent' ? 'recent' : sortMode)
+    return sortVaultItems(scoped, scope.kind === 'recent' ? 'recent' : sortMode)
   }, [items, query, scope, searchMatches, sortMode, typeFilter])
   const scopedItemIds = useMemo(() => scopedItems.map((item) => item.id), [scopedItems])
 
@@ -2038,7 +2021,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   )
   const itemGroups = useMemo(() => {
     const effectiveSort = scope.kind === 'recent' ? 'recent' : sortMode
-    if (effectiveSort === 'title') {
+    if (effectiveSort === 'title' || effectiveSort === 'frequency') {
       return [{ key: 'name', label: null, items: scopedItems }]
     }
     return groupItemsByDate(
@@ -2437,7 +2420,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     try {
       const next = await window.bearwarden.settings.update(update)
       setSettings(next)
-      if (update.defaultSort) setSortMode(update.defaultSort === 'recent' ? 'recent' : 'title')
+      if (update.defaultSort) {
+        setSortMode(update.defaultSort === 'name' ? 'title' : update.defaultSort)
+      }
       announce('設定已儲存。')
     } catch (settingsError) {
       announceError(describeError(settingsError))
@@ -4172,9 +4157,105 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                       </small>
                     </div>
                     <div className="list-header-actions">
+                      <div className="sort-control">
+                        <ListFilter size={16} aria-hidden="true" />
+                        <Select
+                          items={sortItemsOptions}
+                          value={sortMode}
+                          disabled={scope.kind === 'recent'}
+                          onValueChange={(value) => setSortMode(value as VaultSortMode)}
+                        >
+                          <SelectTrigger
+                            size="sm"
+                            className="border-0 bg-transparent shadow-none"
+                            aria-label="排序方式"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {sortItemsOptions.map((item) => (
+                                <SelectItem key={item.value} value={item.value}>
+                                  {item.label}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </header>
+                  {query && (
+                    <div className="result-summary" role="status">
+                      <span>搜尋「{query}」</span>
+                      <span>{scopedItems.length} 筆結果</span>
+                    </div>
+                  )}
+
+                  {scopedItems.length ? (
+                    <VirtualizedItemList
+                      groups={itemGroups}
+                      scopeTitle={scopeTitle}
+                      selectedIds={selectedIds}
+                      onPrefetch={scope.kind === 'trash' ? undefined : prefetchLoginDetail}
+                      onSelect={selectItems}
+                      onFavorite={toggleFavorite}
+                      onContextMenu={showLoginContextMenu}
+                      showWebsiteIcons={
+                        scope.kind !== 'trash' && (settings?.showWebsiteIcons ?? false)
+                      }
+                      readOnly={scope.kind === 'trash'}
+                    />
+                  ) : (
+                    <Empty className="empty-state">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                          {query ? <Search /> : scope.kind === 'trash' ? <Trash2 /> : <KeyRound />}
+                        </EmptyMedia>
+                        <EmptyTitle>
+                          {query
+                            ? '找不到符合的項目'
+                            : scope.kind === 'trash'
+                              ? '垃圾桶是空的'
+                              : '這裡還沒有保管庫項目'}
+                        </EmptyTitle>
+                        <EmptyDescription>
+                          {query
+                            ? '試試較短的關鍵字，或切換到所有項目。'
+                            : scope.kind === 'trash'
+                              ? '刪除的項目會留在這裡，直到你還原、永久刪除，或伺服器依保留政策清除。'
+                              : '新增第一筆資料，BearWarden 會安全地替你保管。'}
+                        </EmptyDescription>
+                      </EmptyHeader>
+                      <EmptyContent>
+                        {query ? (
+                          <Button
+                            variant="outline"
+                            className="button secondary"
+                            type="button"
+                            onClick={() => updateQuery('')}
+                          >
+                            清除搜尋
+                          </Button>
+                        ) : scope.kind !== 'trash' && scope.kind !== 'archive' ? (
+                          <Button
+                            className="button primary"
+                            type="button"
+                            onClick={() => openEditor('create')}
+                          >
+                            <Plus data-icon="inline-start" />
+                            新增項目
+                          </Button>
+                        ) : null}
+                      </EmptyContent>
+                    </Empty>
+                  )}
+                  {(selectedSummaries.length >= 2 ||
+                    (scope.kind === 'trash' && trashItems.length > 0)) && (
+                    <footer className="list-action-bar" aria-label="列表操作">
                       {selectedSummaries.length >= 2 && (
                         <div
-                          className="flex items-center gap-2"
+                          className="flex flex-wrap items-center gap-2"
                           role="toolbar"
                           aria-label="已選取項目的批次操作"
                           aria-busy={busy}
@@ -4270,104 +4351,14 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                           variant="outline"
                           size="sm"
                           type="button"
+                          disabled={busy}
                           onClick={() => setEmptyTrashDialogOpen(true)}
                         >
                           <Trash2 data-icon="inline-start" />
                           清空垃圾桶
                         </Button>
                       )}
-                      <div className="sort-control">
-                        <ListFilter size={16} aria-hidden="true" />
-                        <Select
-                          items={sortItemsOptions}
-                          value={sortMode}
-                          disabled={scope.kind === 'recent'}
-                          onValueChange={(value) => setSortMode(value as SortMode)}
-                        >
-                          <SelectTrigger
-                            size="sm"
-                            className="border-0 bg-transparent shadow-none"
-                            aria-label="排序方式"
-                          >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              {sortItemsOptions.map((item) => (
-                                <SelectItem key={item.value} value={item.value}>
-                                  {item.label}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </header>
-                  {query && (
-                    <div className="result-summary" role="status">
-                      <span>搜尋「{query}」</span>
-                      <span>{scopedItems.length} 筆結果</span>
-                    </div>
-                  )}
-
-                  {scopedItems.length ? (
-                    <VirtualizedItemList
-                      groups={itemGroups}
-                      scopeTitle={scopeTitle}
-                      selectedIds={selectedIds}
-                      onPrefetch={scope.kind === 'trash' ? undefined : prefetchLoginDetail}
-                      onSelect={selectItems}
-                      onFavorite={toggleFavorite}
-                      onContextMenu={showLoginContextMenu}
-                      showWebsiteIcons={
-                        scope.kind !== 'trash' && (settings?.showWebsiteIcons ?? false)
-                      }
-                      readOnly={scope.kind === 'trash'}
-                    />
-                  ) : (
-                    <Empty className="empty-state">
-                      <EmptyHeader>
-                        <EmptyMedia variant="icon">
-                          {query ? <Search /> : scope.kind === 'trash' ? <Trash2 /> : <KeyRound />}
-                        </EmptyMedia>
-                        <EmptyTitle>
-                          {query
-                            ? '找不到符合的項目'
-                            : scope.kind === 'trash'
-                              ? '垃圾桶是空的'
-                              : '這裡還沒有保管庫項目'}
-                        </EmptyTitle>
-                        <EmptyDescription>
-                          {query
-                            ? '試試較短的關鍵字，或切換到所有項目。'
-                            : scope.kind === 'trash'
-                              ? '刪除的項目會留在這裡，直到你還原、永久刪除，或伺服器依保留政策清除。'
-                              : '新增第一筆資料，BearWarden 會安全地替你保管。'}
-                        </EmptyDescription>
-                      </EmptyHeader>
-                      <EmptyContent>
-                        {query ? (
-                          <Button
-                            variant="outline"
-                            className="button secondary"
-                            type="button"
-                            onClick={() => updateQuery('')}
-                          >
-                            清除搜尋
-                          </Button>
-                        ) : scope.kind !== 'trash' && scope.kind !== 'archive' ? (
-                          <Button
-                            className="button primary"
-                            type="button"
-                            onClick={() => openEditor('create')}
-                          >
-                            <Plus data-icon="inline-start" />
-                            新增項目
-                          </Button>
-                        ) : null}
-                      </EmptyContent>
-                    </Empty>
+                    </footer>
                   )}
                 </>
               )}

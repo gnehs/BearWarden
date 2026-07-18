@@ -402,7 +402,11 @@ function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
     result.clearClipboardSeconds = value
   }
   if (record.defaultSort !== undefined) {
-    if (record.defaultSort !== 'recent' && record.defaultSort !== 'name') {
+    if (
+      record.defaultSort !== 'recent' &&
+      record.defaultSort !== 'name' &&
+      record.defaultSort !== 'frequency'
+    ) {
       throw new VaultError('INVALID_INPUT')
     }
     result.defaultSort = record.defaultSort
@@ -1693,7 +1697,12 @@ function parseEmptyTrash(value: unknown): LoginEmptyTrashRequest {
 
 function parseLoginList(value: unknown): LoginListRequest {
   const record = exactRecord(value ?? {}, ['sort', 'query', 'folderId', 'deleted', 'archived'])
-  if (record.sort !== undefined && record.sort !== 'recent' && record.sort !== 'name') {
+  if (
+    record.sort !== undefined &&
+    record.sort !== 'recent' &&
+    record.sort !== 'name' &&
+    record.sort !== 'frequency'
+  ) {
     throw new VaultError('INVALID_INPUT')
   }
   if (
@@ -1744,7 +1753,11 @@ function parseSharedLoginList(value: unknown): SharedLoginListRequest {
     result.query = candidate.query
   }
   if (candidate.sort !== undefined) {
-    if (candidate.sort !== 'recent' && candidate.sort !== 'name') {
+    if (
+      candidate.sort !== 'recent' &&
+      candidate.sort !== 'name' &&
+      candidate.sort !== 'frequency'
+    ) {
       throw new VaultError('INVALID_INPUT')
     }
     result.sort = candidate.sort

@@ -1773,7 +1773,8 @@ button svg {
   color: var(--muted-foreground);
   font-size: 10px;
 }
-.editor-actions {
+.editor-actions,
+.list-action-bar {
   display: flex;
   min-height: 64px;
   align-items: center;
@@ -1782,6 +1783,10 @@ button svg {
   padding: 10px 20px;
   border-top: 1px solid var(--border);
   background: var(--panel-muted);
+}
+.list-action-bar {
+  flex: none;
+  flex-wrap: wrap;
 }
 
 /* Dialogs and feedback */

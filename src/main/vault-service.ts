@@ -235,7 +235,8 @@ const MASTER_PASSWORD_CHANGE_DATA_VERSION = 19
 const LOGIN_WIRE_METADATA_DATA_VERSION = 20
 const PENDING_LOGIN_IMPORT_DATA_VERSION = 21
 const PERSONAL_VAULT_PURGE_DATA_VERSION = 22
-const DATA_VERSION = 22
+const USAGE_COUNT_DATA_VERSION = 23
+const DATA_VERSION = 23
 const MIN_MASTER_PASSWORD_LENGTH = 12
 const MAX_MASTER_PASSWORD_LENGTH = 1024
 const MAX_NAME_LENGTH = 256
@@ -1230,7 +1231,8 @@ function parseStoredLogin(
   allowMissingUris = false,
   allowMissingPasswordHistory = false,
   allowMissingAttachments = false,
-  allowMissingLoginWireMetadata = false
+  allowMissingLoginWireMetadata = false,
+  allowMissingUsageCount = false
 ): StoredLogin {
   if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
   if (
@@ -1264,6 +1266,10 @@ function parseStoredLogin(
   } else {
     assertIsoDate(lastUsedAt)
     parsedLastUsedAt = lastUsedAt
+  }
+  const usageCount = allowMissingUsageCount && value.usageCount === undefined ? 0 : value.usageCount
+  if (typeof usageCount !== 'number' || !Number.isSafeInteger(usageCount) || usageCount < 0) {
+    throw new VaultError('CORRUPT_VAULT')
   }
   assertIsoDate(value.createdAt)
   assertIsoDate(value.updatedAt)
@@ -1342,6 +1348,7 @@ function parseStoredLogin(
     notes: parseNullableString(value.notes, MAX_NOTES_LENGTH),
     folderId: parsedFolderId,
     favorite: value.favorite,
+    usageCount,
     lastUsedAt: parsedLastUsedAt,
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
@@ -1549,7 +1556,8 @@ function parseStoredCollection(value: unknown): CollectionView {
 
 function parseStoredSharedLogin(
   value: unknown,
-  allowMissingLoginWireMetadata = false
+  allowMissingLoginWireMetadata = false,
+  allowMissingUsageCount = false
 ): StoredSharedLogin {
   if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
   const login = parseStoredLogin(
@@ -1563,7 +1571,8 @@ function parseStoredSharedLogin(
     false,
     false,
     false,
-    allowMissingLoginWireMetadata
+    allowMissingLoginWireMetadata,
+    allowMissingUsageCount
   )
   const {
     organizationId,
@@ -2166,6 +2175,7 @@ function parseVaultData(value: unknown): VaultData {
       LOGIN_WIRE_METADATA_DATA_VERSION,
       PENDING_LOGIN_IMPORT_DATA_VERSION,
       PERSONAL_VAULT_PURGE_DATA_VERSION,
+      USAGE_COUNT_DATA_VERSION,
       DATA_VERSION
     ].includes(value.version) ||
     !Array.isArray(value.folders) ||
@@ -2190,7 +2200,8 @@ function parseVaultData(value: unknown): VaultData {
       dataVersion < MULTIPLE_URIS_DATA_VERSION,
       dataVersion < PASSWORD_HISTORY_DATA_VERSION,
       dataVersion < ATTACHMENTS_DATA_VERSION,
-      dataVersion < LOGIN_WIRE_METADATA_DATA_VERSION
+      dataVersion < LOGIN_WIRE_METADATA_DATA_VERSION,
+      dataVersion < USAGE_COUNT_DATA_VERSION
     )
   )
   const folderIds = new Set(folders.map((folder) => folder.id))
@@ -2254,7 +2265,11 @@ function parseVaultData(value: unknown): VaultData {
             throw new VaultError('CORRUPT_VAULT')
           }
           const parsed = value.sharedLogins.map((login) =>
-            parseStoredSharedLogin(login, dataVersion < LOGIN_WIRE_METADATA_DATA_VERSION)
+            parseStoredSharedLogin(
+              login,
+              dataVersion < LOGIN_WIRE_METADATA_DATA_VERSION,
+              dataVersion < USAGE_COUNT_DATA_VERSION
+            )
           )
           if (
             new Set(parsed.map((login) => login.id)).size !== parsed.length ||
@@ -2854,6 +2869,7 @@ function toSummary(login: StoredLogin): LoginSummary {
       attachmentCount: login.attachments.length,
       folderId: login.folderId,
       favorite: login.deletedAt === null ? login.favorite : false,
+      usageCount: login.deletedAt === null ? login.usageCount : 0,
       lastUsedAt: login.deletedAt === null ? login.lastUsedAt : null,
       createdAt: login.createdAt,
       updatedAt: login.updatedAt,
@@ -2893,6 +2909,7 @@ function toSummary(login: StoredLogin): LoginSummary {
     attachmentCount: login.attachments.length,
     folderId: login.folderId,
     favorite: login.favorite,
+    usageCount: login.usageCount,
     lastUsedAt: login.lastUsedAt,
     createdAt: login.createdAt,
     updatedAt: login.updatedAt,
@@ -6394,7 +6411,9 @@ export class VaultService {
     return this.exclusive(async () => {
       const data = this.requireData()
       const sort = request.sort ?? 'recent'
-      if (sort !== 'recent' && sort !== 'name') throw new VaultError('INVALID_INPUT')
+      if (sort !== 'recent' && sort !== 'name' && sort !== 'frequency') {
+        throw new VaultError('INVALID_INPUT')
+      }
       if (
         request.query !== undefined &&
         (typeof request.query !== 'string' || request.query.length > MAX_LOGIN_SEARCH_QUERY_LENGTH)
@@ -6435,7 +6454,10 @@ export class VaultService {
               return scoped.filter((login) => matchingIds.has(login.id))
             })()
       return filtered.map(toSummary).sort((left, right) => {
-        if (sort === 'recent') {
+        if (sort === 'frequency' && left.usageCount !== right.usageCount) {
+          return right.usageCount - left.usageCount
+        }
+        if (sort === 'recent' || sort === 'frequency') {
           if (left.lastUsedAt && right.lastUsedAt && left.lastUsedAt !== right.lastUsedAt) {
             return right.lastUsedAt.localeCompare(left.lastUsedAt)
           }
@@ -6470,7 +6492,12 @@ export class VaultService {
   listSharedLogins(request: SharedLoginListRequest = {}): Promise<SharedLoginSummary[]> {
     return this.exclusive(async () => {
       const data = this.requireData()
-      if (request.sort !== undefined && request.sort !== 'recent' && request.sort !== 'name') {
+      if (
+        request.sort !== undefined &&
+        request.sort !== 'recent' &&
+        request.sort !== 'name' &&
+        request.sort !== 'frequency'
+      ) {
         throw new VaultError('INVALID_INPUT')
       }
       if (
@@ -6500,13 +6527,14 @@ export class VaultService {
               )
               return scoped.filter((login) => matchingIds.has(login.id))
             })()
-      return filtered
-        .map(toSharedSummary)
-        .sort((left, right) =>
-          request.sort === 'name'
-            ? compareText(left.name, right.name) || left.id.localeCompare(right.id)
-            : right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id)
-        )
+      return filtered.map(toSharedSummary).sort((left, right) => {
+        if (request.sort === 'frequency' && left.usageCount !== right.usageCount) {
+          return right.usageCount - left.usageCount
+        }
+        return request.sort === 'name' || request.sort === 'frequency'
+          ? compareText(left.name, right.name) || left.id.localeCompare(right.id)
+          : right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id)
+      })
     })
   }
 
@@ -7943,6 +7971,7 @@ export class VaultService {
         notes: normalizeNullableString(request.notes, MAX_NOTES_LENGTH),
         folderId,
         favorite: request.favorite ?? false,
+        usageCount: 0,
         lastUsedAt: null,
         createdAt: now,
         updatedAt: now,
@@ -7976,6 +8005,7 @@ export class VaultService {
         notes: source.notes,
         folderId: source.folderId,
         favorite: source.favorite,
+        usageCount: 0,
         lastUsedAt: null,
         createdAt: now,
         updatedAt: now,
@@ -10713,6 +10743,7 @@ export class VaultService {
       notes: normalizeNullableString(source.notes, MAX_NOTES_LENGTH),
       folderId,
       favorite: source.favorite,
+      usageCount: 0,
       lastUsedAt: source.lastUsedAt ?? null,
       createdAt,
       updatedAt,
@@ -10742,6 +10773,7 @@ export class VaultService {
       notes: normalizeNullableString(normalized.notes, MAX_NOTES_LENGTH),
       folderId: null,
       favorite: normalized.favorite,
+      usageCount: 0,
       lastUsedAt: null,
       createdAt: normalized.createdAt ?? this.nowIso(),
       updatedAt: normalized.updatedAt ?? this.nowIso(),
@@ -10890,6 +10922,7 @@ export class VaultService {
       const next = cloneData(current)
       const usedLogin = this.findLogin(next, request.id)
       const now = this.nowIso()
+      usedLogin.usageCount = Math.min(Number.MAX_SAFE_INTEGER, usedLogin.usageCount + 1)
       usedLogin.lastUsedAt = now
       next.updatedAt = now
       await this.persist(next)
