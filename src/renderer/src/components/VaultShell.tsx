@@ -156,6 +156,7 @@ import {
 import { vaultHealthRevision } from '../lib/vault-health-ui'
 import { formatVaultDate as formatDate } from '../lib/vault-date'
 import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
+import { resolveTotpRefreshTarget } from './totp-refresh-target'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
 import { ItemHistoryRows } from './ItemHistoryRows'
@@ -915,6 +916,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
       ? totpGenerationErrorState.kind
       : null
   const [editorMode, setEditorMode] = useState<'create' | 'edit' | null>(null)
+  const totpRefreshTarget = resolveTotpRefreshTarget(selectedLogin, selectedId, editorMode !== null)
   const [editorSessionId, setEditorSessionId] = useState(0)
   const [editorDirty, setEditorDirty] = useState(false)
   const [discardEditorDialogOpen, setDiscardEditorDialogOpen] = useState(false)
@@ -1810,13 +1812,14 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
 
   useEffect(() => {
     let active = true
-    const login = selectedLogin
+    const itemId = totpRefreshTarget?.itemId
+    const sourceRevision = totpRefreshTarget?.sourceRevision
     queueMicrotask(() => {
       if (!active) return
       setTotpCodeState(null)
       setTotpGenerationErrorState(null)
     })
-    if (!login?.hasTotp || login.deletedAt || login.id !== selectedId || editorMode) {
+    if (!itemId || !sourceRevision) {
       return () => {
         active = false
       }
@@ -1827,17 +1830,17 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
     const refresh = (): void => {
       if (stopped || refreshing) return
       refreshing = true
-      const token = authorizationToken(login.id)
+      const token = authorizationToken(itemId)
       window.bearwarden.logins
         .getTotp({
-          id: login.id,
+          id: itemId,
           ...(token ? { authorizationToken: token } : {})
         })
         .then(
           (nextCode) => {
             if (!active) return
             setTotpCodeState({
-              itemId: login.id,
+              itemId,
               code: nextCode,
               cycle: Math.floor(Date.now() / (nextCode.period * 1_000))
             })
@@ -1849,7 +1852,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
               stopped = true
               window.clearInterval(timer)
               setTotpCodeState(null)
-              invalidateAuthorization(login.id)
+              invalidateAuthorization(itemId)
               clearItemSelection()
               announceError('授權已過期，請重新選取項目並驗證主密碼')
               return
@@ -1857,7 +1860,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             stopped = true
             window.clearInterval(timer)
             setTotpCodeState(null)
-            setTotpGenerationErrorState({ itemId: login.id, kind: 'unsupported' })
+            setTotpGenerationErrorState({ itemId, kind: 'unsupported' })
           }
         )
         .finally(() => {
@@ -1873,10 +1876,9 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
   }, [
     authorizationToken,
     clearItemSelection,
-    editorMode,
     invalidateAuthorization,
-    selectedId,
-    selectedLogin
+    totpRefreshTarget?.itemId,
+    totpRefreshTarget?.sourceRevision
   ])
 
   useEffect(() => {
