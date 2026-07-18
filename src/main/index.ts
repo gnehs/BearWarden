@@ -479,7 +479,7 @@ function createWindow(): BrowserWindow {
 if (hasSingleInstanceLock)
   app.whenReady().then(async () => {
     electronApp.setAppUserModelId('com.bearwarden.app')
-    if (process.platform === 'darwin') app.dock?.setIcon(icon)
+    if (process.platform === 'darwin' && !app.isPackaged) app.dock?.setIcon(icon)
     session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
       callback(false)
     })

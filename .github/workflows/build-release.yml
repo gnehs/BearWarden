@@ -23,13 +23,13 @@ jobs:
       matrix:
         include:
           - platform: macOS (Apple Silicon)
-            os: macos-15
+            os: macos-26
             target: mac
             architecture: --arm64
             artifact_name: bearwarden-macos-arm64
             artifact_path: dist/*.dmg
           - platform: macOS (Intel)
-            os: macos-15-intel
+            os: macos-26-intel
             target: mac
             architecture: --x64
             artifact_name: bearwarden-macos-x64
