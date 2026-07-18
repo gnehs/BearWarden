@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { History, RefreshCw, ShieldAlert, Trash2 } from 'lucide-react'
 import type {
   CredentialGeneratorRequest,
@@ -9,7 +9,6 @@ import type {
 } from '../../../shared/vault-contract'
 import { Alert, AlertDescription, AlertTitle } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@renderer/components/ui/card'
 import { Checkbox } from '@renderer/components/ui/checkbox'
 import { DialogClose, DialogFooter } from '@renderer/components/ui/dialog'
 import {
@@ -61,31 +60,6 @@ const historyAlgorithmLabels: Record<NonNullable<GeneratorHistoryEntry['algorith
 }
 
 const generatedCopyFeedbackKey = 'generated'
-
-function initialGeneratorRequest(
-  initialTab: Exclude<GeneratorTab, 'history'>
-): CredentialGeneratorRequest {
-  return initialTab === 'password'
-    ? {
-        algorithm: 'password',
-        options: {
-          length: 14,
-          uppercase: true,
-          lowercase: true,
-          numbers: true,
-          special: false,
-          minUppercase: 1,
-          minLowercase: 1,
-          minNumber: 1,
-          minSpecial: 0,
-          avoidAmbiguous: false
-        }
-      }
-    : {
-        algorithm: 'username',
-        options: { capitalize: false, includeNumber: false }
-      }
-}
 
 function historyLocator(entry: GeneratorHistoryEntry, index: number): GeneratorHistoryLocator {
   return {
@@ -217,6 +191,64 @@ export default function CredentialGeneratorDialog({
         ? '使用者名稱'
         : 'Email'
 
+  const generatorRequest = useMemo<CredentialGeneratorRequest | null>(() => {
+    if (tab === 'history') return null
+    if (tab === 'password') {
+      return passwordAlgorithm === 'password'
+        ? {
+            algorithm: 'password',
+            options: {
+              length,
+              uppercase,
+              lowercase,
+              numbers,
+              special,
+              minUppercase: uppercase ? minUppercase : 0,
+              minLowercase: lowercase ? minLowercase : 0,
+              minNumber: numbers ? minNumber : 0,
+              minSpecial: special ? minSpecial : 0,
+              avoidAmbiguous
+            }
+          }
+        : {
+            algorithm: 'passphrase',
+            options: { wordCount, separator, capitalize, includeNumber }
+          }
+    }
+    if (usernameAlgorithm === 'username') {
+      return {
+        algorithm: 'username',
+        options: { capitalize: usernameCapitalize, includeNumber: usernameIncludeNumber }
+      }
+    }
+    if (usernameAlgorithm === 'subaddress') {
+      return email.length > 0 ? { algorithm: 'subaddress', email } : null
+    }
+    return domain.length > 0 ? { algorithm: 'catchall', domain } : null
+  }, [
+    avoidAmbiguous,
+    capitalize,
+    domain,
+    email,
+    includeNumber,
+    length,
+    lowercase,
+    minLowercase,
+    minNumber,
+    minSpecial,
+    minUppercase,
+    numbers,
+    passwordAlgorithm,
+    separator,
+    special,
+    tab,
+    uppercase,
+    usernameAlgorithm,
+    usernameCapitalize,
+    usernameIncludeNumber,
+    wordCount
+  ])
+
   useEffect(() => {
     mountedRef.current = true
     return () => {
@@ -226,31 +258,44 @@ export default function CredentialGeneratorDialog({
   }, [])
 
   useEffect(() => {
+    if (!generatorRequest) return
     let ignore = false
     const generation = ++requestGenerationRef.current
+    const delay =
+      generatorRequest.algorithm === 'subaddress' || generatorRequest.algorithm === 'catchall'
+        ? 250
+        : 0
 
-    void onGenerate(initialGeneratorRequest(initialTab))
-      .then((generated) => {
-        if (!ignore && mountedRef.current && requestGenerationRef.current === generation) {
-          setResult(generated)
-        }
-      })
-      .catch(() => {
-        if (!ignore && mountedRef.current && requestGenerationRef.current === generation) {
-          setError('設定無法產生有效的值，請檢查長度、最少字元與 Email／網域。')
-        }
-      })
-      .finally(() => {
-        if (!ignore && mountedRef.current && requestGenerationRef.current === generation) {
-          setBusy(false)
-        }
-      })
+    const timer = window.setTimeout(() => {
+      if (ignore || !mountedRef.current || requestGenerationRef.current !== generation) return
+      setBusy(true)
+      setError('')
+      setResult(null)
+      clearCopied()
+      void onGenerate(generatorRequest)
+        .then((generated) => {
+          if (!ignore && mountedRef.current && requestGenerationRef.current === generation) {
+            setResult(generated)
+          }
+        })
+        .catch(() => {
+          if (!ignore && mountedRef.current && requestGenerationRef.current === generation) {
+            setError('設定無法產生有效的值，請檢查長度、最少字元與 Email／網域。')
+          }
+        })
+        .finally(() => {
+          if (!ignore && mountedRef.current && requestGenerationRef.current === generation) {
+            setBusy(false)
+          }
+        })
+    }, delay)
 
     return () => {
       ignore = true
+      window.clearTimeout(timer)
       if (requestGenerationRef.current === generation) requestGenerationRef.current += 1
     }
-  }, [initialTab, onGenerate])
+  }, [clearCopied, generatorRequest, onGenerate, tab])
 
   function invalidatePlaintext(): void {
     requestGenerationRef.current += 1
@@ -293,51 +338,24 @@ export default function CredentialGeneratorDialog({
     if (nextTab === tab) return
     invalidatePlaintext()
     setTab(nextTab)
-    if (nextTab === 'history') void loadHistory()
+    if (nextTab === 'history') {
+      void loadHistory()
+    }
   }
 
   async function generate(): Promise<void> {
-    const generation = ++requestGenerationRef.current
-    let request: CredentialGeneratorRequest
-    if (tab === 'password') {
-      request =
-        passwordAlgorithm === 'password'
-          ? {
-              algorithm: 'password',
-              options: {
-                length,
-                uppercase,
-                lowercase,
-                numbers,
-                special,
-                minUppercase: uppercase ? minUppercase : 0,
-                minLowercase: lowercase ? minLowercase : 0,
-                minNumber: numbers ? minNumber : 0,
-                minSpecial: special ? minSpecial : 0,
-                avoidAmbiguous
-              }
-            }
-          : {
-              algorithm: 'passphrase',
-              options: { wordCount, separator, capitalize, includeNumber }
-            }
-    } else if (usernameAlgorithm === 'username') {
-      request = {
-        algorithm: 'username',
-        options: { capitalize: usernameCapitalize, includeNumber: usernameIncludeNumber }
-      }
-    } else if (usernameAlgorithm === 'subaddress') {
-      request = { algorithm: 'subaddress', email }
-    } else {
-      request = { algorithm: 'catchall', domain }
+    if (!generatorRequest) {
+      setError('設定無法產生有效的值，請檢查長度、最少字元與 Email／網域。')
+      return
     }
+    const generation = ++requestGenerationRef.current
 
     setBusy(true)
     setError('')
     setResult(null)
     clearCopied()
     try {
-      const generated = await onGenerate(request)
+      const generated = await onGenerate(generatorRequest)
       if (!mountedRef.current || requestGenerationRef.current !== generation) return
       setResult(generated)
     } catch {
@@ -431,82 +449,75 @@ export default function CredentialGeneratorDialog({
               </TabsList>
 
               {tab !== 'history' && (
-                <Card className="shrink-0">
-                  <CardHeader className="sr-only">
-                    <CardTitle>產生結果</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <InputGroup>
-                      <InputGroupInput
-                        id="generator-result"
-                        className="font-mono"
-                        value={result?.credential ?? ''}
-                        placeholder={busy ? '正在安全產生…' : '結果會顯示在這裡'}
-                        readOnly
-                        autoComplete="off"
-                        aria-label="產生結果"
-                        onCopy={(event) => {
+                <div className="flex shrink-0 flex-col gap-3">
+                  <InputGroup>
+                    <InputGroupInput
+                      id="generator-result"
+                      className="font-mono"
+                      value={result?.credential ?? ''}
+                      placeholder={busy ? '正在安全產生…' : '結果會顯示在這裡'}
+                      readOnly
+                      autoComplete="off"
+                      aria-label="產生結果"
+                      onCopy={(event) => {
+                        event.preventDefault()
+                        if (result && !busy) void copyGenerated(result.copyToken)
+                      }}
+                      onKeyDown={(event) => {
+                        if (
+                          !event.nativeEvent.isComposing &&
+                          (event.metaKey || event.ctrlKey) &&
+                          event.key.toLowerCase() === 'c'
+                        ) {
                           event.preventDefault()
                           if (result && !busy) void copyGenerated(result.copyToken)
+                        }
+                      }}
+                    />
+                    <InputGroupAddon align="inline-end" className="flex gap-1">
+                      <InputGroupButton
+                        size="icon-xs"
+                        disabled={busy}
+                        aria-label={result ? `重新產生${generateLabel}` : `產生${generateLabel}`}
+                        onClick={() => void generate()}
+                      >
+                        {busy ? <Spinner /> : <RefreshCw />}
+                      </InputGroupButton>
+                      <InputGroupButton
+                        size="xs"
+                        disabled={busy || !result}
+                        aria-label={
+                          copiedKey === generatedCopyFeedbackKey ? '產生結果已複製' : '複製產生結果'
+                        }
+                        onClick={() => {
+                          if (result) void copyGenerated(result.copyToken)
                         }}
-                        onKeyDown={(event) => {
-                          if (
-                            !event.nativeEvent.isComposing &&
-                            (event.metaKey || event.ctrlKey) &&
-                            event.key.toLowerCase() === 'c'
-                          ) {
-                            event.preventDefault()
-                            if (result && !busy) void copyGenerated(result.copyToken)
-                          }
-                        }}
-                      />
-                      <InputGroupAddon align="inline-end" className="flex gap-1">
-                        <InputGroupButton
-                          size="icon-xs"
-                          disabled={busy}
-                          aria-label={result ? `重新產生${generateLabel}` : `產生${generateLabel}`}
-                          onClick={() => void generate()}
-                        >
-                          {busy ? <Spinner /> : <RefreshCw />}
-                        </InputGroupButton>
-                        <InputGroupButton
-                          size="xs"
-                          disabled={busy || !result}
-                          aria-label={
-                            copiedKey === generatedCopyFeedbackKey
-                              ? '產生結果已複製'
-                              : '複製產生結果'
-                          }
-                          onClick={() => {
-                            if (result) void copyGenerated(result.copyToken)
-                          }}
-                        >
-                          <CopyFeedbackIcon
-                            copied={copiedKey === generatedCopyFeedbackKey}
-                            placement="inline-start"
-                          />
-                          {copiedKey === generatedCopyFeedbackKey ? '已複製' : '複製'}
-                        </InputGroupButton>
-                      </InputGroupAddon>
-                    </InputGroup>
-                    <div className="sr-only" role="status" aria-live="polite">
-                      {result && copiedKey === generatedCopyFeedbackKey
-                        ? '產生結果已複製'
-                        : result
-                          ? '已產生新結果'
-                          : busy
-                            ? '正在產生'
-                            : ''}
-                    </div>
-                  </CardContent>
+                      >
+                        <CopyFeedbackIcon
+                          copied={copiedKey === generatedCopyFeedbackKey}
+                          placement="inline-start"
+                        />
+                        {copiedKey === generatedCopyFeedbackKey ? '已複製' : '複製'}
+                      </InputGroupButton>
+                    </InputGroupAddon>
+                  </InputGroup>
+                  <div className="sr-only" role="status" aria-live="polite">
+                    {result && copiedKey === generatedCopyFeedbackKey
+                      ? '產生結果已複製'
+                      : result
+                        ? '已產生新結果'
+                        : busy
+                          ? '正在產生'
+                          : ''}
+                  </div>
                   {canUseResult && result && onUseCredential && (
-                    <CardFooter className="justify-end">
+                    <div className="flex justify-end">
                       <Button type="button" disabled={busy} onClick={() => onUseCredential(result)}>
                         使用這個值
                       </Button>
-                    </CardFooter>
+                    </div>
                   )}
-                </Card>
+                </div>
               )}
 
               {error && (
@@ -515,8 +526,8 @@ export default function CredentialGeneratorDialog({
                 </Alert>
               )}
 
-              <TabsContent value="password" className="min-h-0 overflow-y-auto">
-                <FieldGroup>
+              <TabsContent value="password" className="min-h-0 overflow-hidden">
+                <FieldGroup className="scroll-fade-y forced-colors:scroll-fade-none h-full overflow-y-auto p-px">
                   <FieldSet>
                     <FieldLegend variant="label">類型</FieldLegend>
                     <ToggleGroup
@@ -679,8 +690,8 @@ export default function CredentialGeneratorDialog({
                 </FieldGroup>
               </TabsContent>
 
-              <TabsContent value="username" className="min-h-0 overflow-y-auto">
-                <FieldGroup>
+              <TabsContent value="username" className="min-h-0 overflow-hidden">
+                <FieldGroup className="scroll-fade-y forced-colors:scroll-fade-none h-full overflow-y-auto p-px">
                   <FieldSet>
                     <FieldLegend variant="label">類型</FieldLegend>
                     <ToggleGroup
@@ -692,8 +703,6 @@ export default function CredentialGeneratorDialog({
                         const value = values[0] as UsernameAlgorithm | undefined
                         if (value) {
                           changeSetting(setUsernameAlgorithm, value)
-                          setEmail('')
-                          setDomain('')
                         }
                       }}
                     >
@@ -776,8 +785,8 @@ export default function CredentialGeneratorDialog({
                 </FieldGroup>
               </TabsContent>
 
-              <TabsContent value="history" className="min-h-0 overflow-y-auto">
-                <FieldGroup>
+              <TabsContent value="history" className="min-h-0 overflow-hidden">
+                <FieldGroup className="scroll-fade-y forced-colors:scroll-fade-none h-full overflow-y-auto p-px">
                   <Alert>
                     <ShieldAlert />
                     <AlertTitle>歷史會以明文顯示</AlertTitle>

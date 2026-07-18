@@ -1919,6 +1919,9 @@ button svg {
   padding: 18px 18px 14px;
   border-bottom: 1px solid var(--border);
 }
+.modal-header:not(:has([data-slot='dialog-description'])) {
+  align-items: center;
+}
 .modal-header [data-slot='dialog-title'] {
   margin: 0;
   font-size: 17px;
