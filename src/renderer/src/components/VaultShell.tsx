@@ -292,6 +292,7 @@ const sortItemsOptions = [
 ] as const
 
 const isMac = navigator.userAgent.includes('Mac')
+const isWindows = navigator.userAgent.includes('Windows')
 const commandLabel = isMac ? '⌘' : 'Ctrl'
 const detailCacheLimit = 48
 
@@ -691,7 +692,7 @@ const sidebarToneClasses: Record<string, string> = {
 const sidebarLinkClasses = {
   base: 'h-auto text-left text-(--text) hover:bg-(--sidebar-accent) hover:text-(--text)',
   row: 'grid min-h-[38px] grid-cols-[22px_1fr_auto] items-center gap-[7px] rounded-lg border-0 bg-transparent px-[9px] py-1.5',
-  tile: 'grid min-h-[82px] grid-cols-[1fr_auto] grid-rows-[31px_auto] items-center gap-x-2 gap-y-[7px] rounded-[15px] border border-(--sidebar-border)/.5 bg-[color-mix(in_oklch,var(--sidebar-accent)_76%,transparent)] px-3 pt-[11px] pb-2.5 shadow-[inset_0_1px_rgba(255,255,255,.5)] hover:bg-(--sidebar-accent) dark:shadow-[inset_0_1px_rgba(255,255,255,.1)]',
+  tile: 'grid min-h-[82px] grid-cols-[1fr_auto] grid-rows-[31px_auto] items-center gap-x-2 gap-y-[7px] rounded-[15px] border border-(--sidebar-border)/.5 bg-[color-mix(in_oklch,var(--sidebar-accent)_54%,transparent)] px-3 pt-[11px] pb-2.5 shadow-[inset_0_1px_rgba(255,255,255,.5)] hover:bg-(--sidebar-accent) dark:shadow-[inset_0_1px_rgba(255,255,255,.1)]',
   active: {
     row: 'bg-[color-mix(in_oklch,var(--sidebar-primary)_12%,transparent)] text-(--text) shadow-none hover:bg-[color-mix(in_oklch,var(--sidebar-primary)_12%,transparent)]',
     tile: 'border-transparent bg-(--sidebar-primary) text-(--sidebar-primary-foreground) shadow-[0_5px_14px_color-mix(in_oklch,var(--sidebar-primary)_24%,transparent)] hover:bg-(--sidebar-primary) hover:text-(--sidebar-primary-foreground)'
@@ -3713,6 +3714,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
         className={cn(
           'app-shell',
           isMac && 'platform-macos',
+          isWindows && 'platform-windows',
           (selectedId || editorMode) && 'has-detail'
         )}
       >
@@ -3795,6 +3797,16 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             )}
         </header>
 
+        <Button
+          variant="ghost"
+          className={cn('sidebar-scrim', sidebarOpen && 'open')}
+          type="button"
+          aria-label="關閉側邊欄"
+          aria-hidden={!sidebarOpen}
+          tabIndex={sidebarOpen ? 0 : -1}
+          onClick={() => setSidebarOpen(false)}
+        />
+
         <CommandDialog
           open={searchOpen}
           onOpenChange={setSearchOpen}
@@ -3872,26 +3884,15 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
               'settings-mode'
           )}
         >
-          {sidebarOpen && (
-            <Button
-              variant="ghost"
-              className="sidebar-scrim"
-              type="button"
-              aria-label="關閉側邊欄"
-              onClick={() => setSidebarOpen(false)}
-            />
-          )}
           <aside className={cn('sidebar', sidebarOpen && 'open')} aria-label="保管庫導覽">
             <div className="sidebar-scroll scroll-fade-y forced-colors:scroll-fade-none">
               <section
-                className="folder-section flex-none px-[11px] pt-[13px] pb-2"
+                className="folder-section category-section flex-none px-[11px] pb-2"
                 aria-labelledby="categories-title"
               >
-                <header>
-                  <h2 className="hidden" id="categories-title">
-                    分類
-                  </h2>
-                </header>
+                <h2 className="hidden" id="categories-title">
+                  分類
+                </h2>
                 <nav className="grid grid-cols-2 gap-2 p-0" aria-label="保管庫分類">
                   {categoryMeta.map((category) => {
                     const Icon = category.icon
@@ -4092,921 +4093,930 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
             </footer>
           </aside>
 
-          <section
-            className="list-pane"
-            aria-labelledby={
-              healthOpen
-                ? 'health-title'
-                : organizationsOpen
-                  ? 'organizations-title'
-                  : emergencyAccessOpen
-                    ? 'emergency-access-title'
-                    : sendsOpen
-                      ? 'sends-title'
-                      : settingsOpen
-                        ? 'settings-title'
-                        : 'list-title'
-            }
-          >
-            {healthOpen ? (
-              <VaultHealthPage
-                revision={healthRevision}
-                onBack={closeHealth}
-                onOpenItem={openHealthItem}
-              />
-            ) : organizationsOpen ? (
-              <OrganizationsPage onBack={closeOrganizations} />
-            ) : emergencyAccessOpen ? (
-              <EmergencyAccessPage onBack={closeEmergencyAccess} />
-            ) : sendsOpen ? (
-              <SendsPage onBack={closeSends} />
-            ) : settingsOpen ? (
-              <SettingsPage
-                settings={settings}
-                settingsBusy={settingsBusy}
-                syncStatus={syncStatus}
-                touchIdPassword={touchIdPassword}
-                onBack={closeSettings}
-                onUpdate={updateSettings}
-                onTouchIdPasswordChange={setTouchIdPassword}
-                onEnableTouchId={enableTouchId}
-                onDisableTouchId={disableTouchId}
-                onOpenSync={() => setSyncDialogOpen(true)}
-                onVaultPurged={async () => {
-                  await Promise.allSettled([
-                    loadVault(),
-                    window.bearwarden.sync.status().then(setSyncStatus)
-                  ])
-                }}
-                onExportVault={() => setPortabilityDialogMode('export')}
-                onImportVault={() => setPortabilityDialogMode('import')}
-                accountStatus={accountStatus}
-                accountBusy={accountBusy}
-                accountBusyLabel={accountBusyLabel}
-                accountError={accountError}
-                onRequestAccountAdd={(proceed) =>
-                  requestAccountAction(requestEditorTransition, proceed)
-                }
-                onRequestAccountSwitch={(proceed) =>
-                  requestAccountAction(requestEditorTransition, proceed)
-                }
-                onRequestAccountRemove={(proceed) =>
-                  requestAccountAction(requestEditorTransition, proceed)
-                }
-                onAddAccount={addLocalAccount}
-                onSwitchAccount={switchLocalAccount}
-                onReorderAccounts={reorderLocalAccounts}
-                onRemoveAccount={removeLocalAccount}
-              />
-            ) : (
-              <>
-                <header className="list-header">
-                  <div className="list-heading">
-                    <h1 id="list-title">{scopeTitle}</h1>
-                    <small>
-                      {selectedIds.size > 1
-                        ? `已選取 ${selectedIds.size} 個 · 共 ${scopedItems.length} 個項目`
-                        : `${scopedItems.length} 個項目`}
-                    </small>
-                  </div>
-                  <div className="list-header-actions">
-                    {selectedSummaries.length >= 2 && (
-                      <div
-                        className="flex items-center gap-2"
-                        role="toolbar"
-                        aria-label="已選取項目的批次操作"
-                        aria-busy={busy}
-                      >
-                        <span className="sr-only" aria-live="polite">
-                          已選取 {selectedSummaries.length} 個項目
-                        </span>
-                        {scope.kind !== 'trash' && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            type="button"
-                            disabled={busy}
-                            onClick={openMoveDialogForSelection}
-                          >
-                            <FolderOpen data-icon="inline-start" />
-                            移動
-                          </Button>
-                        )}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger
-                            render={
-                              <Button variant="outline" size="sm" type="button" disabled={busy} />
-                            }
-                          >
-                            {busy ? (
-                              <Spinner data-icon="inline-start" aria-hidden="true" />
-                            ) : (
-                              <Menu data-icon="inline-start" />
-                            )}
-                            批次操作
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuGroup>
-                              {scope.kind === 'trash' ? (
-                                <>
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      void performBulkAction(snapshotBulkAction('restore'))
-                                    }
-                                  >
-                                    <RotateCcw data-icon="inline-start" />
-                                    還原
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    variant="destructive"
-                                    onClick={() =>
-                                      setPendingBulkAction(snapshotBulkAction('deletePermanently'))
-                                    }
-                                  >
-                                    <Trash2 data-icon="inline-start" />
-                                    永久刪除
-                                  </DropdownMenuItem>
-                                </>
-                              ) : (
-                                <>
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      void performBulkAction(
-                                        snapshotBulkAction(
-                                          scope.kind === 'archive' ? 'unarchive' : 'archive'
-                                        )
-                                      )
-                                    }
-                                  >
-                                    {scope.kind === 'archive' ? (
-                                      <ArchiveRestore data-icon="inline-start" />
-                                    ) : (
-                                      <Archive data-icon="inline-start" />
-                                    )}
-                                    {scope.kind === 'archive' ? '取消封存' : '封存'}
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    variant="destructive"
-                                    onClick={() =>
-                                      setPendingBulkAction(snapshotBulkAction('delete'))
-                                    }
-                                  >
-                                    <Trash2 data-icon="inline-start" />
-                                    移至垃圾桶
-                                  </DropdownMenuItem>
-                                </>
-                              )}
-                            </DropdownMenuGroup>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    )}
-                    {scope.kind === 'trash' && trashItems.length > 0 && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        type="button"
-                        onClick={() => setEmptyTrashDialogOpen(true)}
-                      >
-                        <Trash2 data-icon="inline-start" />
-                        清空垃圾桶
-                      </Button>
-                    )}
-                    <div className="sort-control">
-                      <ListFilter size={16} aria-hidden="true" />
-                      <Select
-                        items={sortItemsOptions}
-                        value={sortMode}
-                        disabled={scope.kind === 'recent'}
-                        onValueChange={(value) => setSortMode(value as SortMode)}
-                      >
-                        <SelectTrigger
-                          size="sm"
-                          className="border-0 bg-transparent shadow-none"
-                          aria-label="排序方式"
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {sortItemsOptions.map((item) => (
-                              <SelectItem key={item.value} value={item.value}>
-                                {item.label}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
+          <div className="content-panes">
+            <section
+              className="list-pane"
+              aria-labelledby={
+                healthOpen
+                  ? 'health-title'
+                  : organizationsOpen
+                    ? 'organizations-title'
+                    : emergencyAccessOpen
+                      ? 'emergency-access-title'
+                      : sendsOpen
+                        ? 'sends-title'
+                        : settingsOpen
+                          ? 'settings-title'
+                          : 'list-title'
+              }
+            >
+              {healthOpen ? (
+                <VaultHealthPage
+                  revision={healthRevision}
+                  onBack={closeHealth}
+                  onOpenItem={openHealthItem}
+                />
+              ) : organizationsOpen ? (
+                <OrganizationsPage onBack={closeOrganizations} />
+              ) : emergencyAccessOpen ? (
+                <EmergencyAccessPage onBack={closeEmergencyAccess} />
+              ) : sendsOpen ? (
+                <SendsPage onBack={closeSends} />
+              ) : settingsOpen ? (
+                <SettingsPage
+                  settings={settings}
+                  settingsBusy={settingsBusy}
+                  syncStatus={syncStatus}
+                  touchIdPassword={touchIdPassword}
+                  onBack={closeSettings}
+                  onUpdate={updateSettings}
+                  onTouchIdPasswordChange={setTouchIdPassword}
+                  onEnableTouchId={enableTouchId}
+                  onDisableTouchId={disableTouchId}
+                  onOpenSync={() => setSyncDialogOpen(true)}
+                  onVaultPurged={async () => {
+                    await Promise.allSettled([
+                      loadVault(),
+                      window.bearwarden.sync.status().then(setSyncStatus)
+                    ])
+                  }}
+                  onExportVault={() => setPortabilityDialogMode('export')}
+                  onImportVault={() => setPortabilityDialogMode('import')}
+                  accountStatus={accountStatus}
+                  accountBusy={accountBusy}
+                  accountBusyLabel={accountBusyLabel}
+                  accountError={accountError}
+                  onRequestAccountAdd={(proceed) =>
+                    requestAccountAction(requestEditorTransition, proceed)
+                  }
+                  onRequestAccountSwitch={(proceed) =>
+                    requestAccountAction(requestEditorTransition, proceed)
+                  }
+                  onRequestAccountRemove={(proceed) =>
+                    requestAccountAction(requestEditorTransition, proceed)
+                  }
+                  onAddAccount={addLocalAccount}
+                  onSwitchAccount={switchLocalAccount}
+                  onReorderAccounts={reorderLocalAccounts}
+                  onRemoveAccount={removeLocalAccount}
+                />
+              ) : (
+                <>
+                  <header className="list-header">
+                    <div className="list-heading">
+                      <h1 id="list-title">{scopeTitle}</h1>
+                      <small>
+                        {selectedIds.size > 1
+                          ? `已選取 ${selectedIds.size} 個 · 共 ${scopedItems.length} 個項目`
+                          : `${scopedItems.length} 個項目`}
+                      </small>
                     </div>
-                  </div>
-                </header>
-                {query && (
-                  <div className="result-summary" role="status">
-                    <span>搜尋「{query}」</span>
-                    <span>{scopedItems.length} 筆結果</span>
-                  </div>
-                )}
-
-                {scopedItems.length ? (
-                  <VirtualizedItemList
-                    groups={itemGroups}
-                    scopeTitle={scopeTitle}
-                    selectedIds={selectedIds}
-                    onPrefetch={scope.kind === 'trash' ? undefined : prefetchLoginDetail}
-                    onSelect={selectItems}
-                    onFavorite={toggleFavorite}
-                    onContextMenu={showLoginContextMenu}
-                    showWebsiteIcons={
-                      scope.kind !== 'trash' && (settings?.showWebsiteIcons ?? false)
-                    }
-                    readOnly={scope.kind === 'trash'}
-                  />
-                ) : (
-                  <Empty className="empty-state">
-                    <EmptyHeader>
-                      <EmptyMedia variant="icon">
-                        {query ? <Search /> : scope.kind === 'trash' ? <Trash2 /> : <KeyRound />}
-                      </EmptyMedia>
-                      <EmptyTitle>
-                        {query
-                          ? '找不到符合的項目'
-                          : scope.kind === 'trash'
-                            ? '垃圾桶是空的'
-                            : '這裡還沒有保管庫項目'}
-                      </EmptyTitle>
-                      <EmptyDescription>
-                        {query
-                          ? '試試較短的關鍵字，或切換到所有項目。'
-                          : scope.kind === 'trash'
-                            ? '刪除的項目會留在這裡，直到你還原、永久刪除，或伺服器依保留政策清除。'
-                            : '新增第一筆資料，BearWarden 會安全地替你保管。'}
-                      </EmptyDescription>
-                    </EmptyHeader>
-                    <EmptyContent>
-                      {query ? (
-                        <Button
-                          variant="outline"
-                          className="button secondary"
-                          type="button"
-                          onClick={() => updateQuery('')}
+                    <div className="list-header-actions">
+                      {selectedSummaries.length >= 2 && (
+                        <div
+                          className="flex items-center gap-2"
+                          role="toolbar"
+                          aria-label="已選取項目的批次操作"
+                          aria-busy={busy}
                         >
-                          清除搜尋
-                        </Button>
-                      ) : scope.kind !== 'trash' && scope.kind !== 'archive' ? (
-                        <Button
-                          className="button primary"
-                          type="button"
-                          onClick={() => openEditor('create')}
-                        >
-                          <Plus data-icon="inline-start" />
-                          新增項目
-                        </Button>
-                      ) : null}
-                    </EmptyContent>
-                  </Empty>
-                )}
-              </>
-            )}
-          </section>
-
-          <section className="detail-pane" aria-label="項目詳細資料">
-            {editorMode ? (
-              <LoginEditor
-                key={`${editorSessionId}:${editorMode}:${selectedLogin?.id ?? 'new'}`}
-                login={editorMode === 'edit' ? (selectedLogin ?? undefined) : undefined}
-                folders={folders}
-                busy={busy}
-                authorizationToken={
-                  selectedLogin ? authorizationTokenState[selectedLogin.id] : undefined
-                }
-                onCancel={() => requestEditorTransition(() => setEditorMode(null))}
-                onDirtyChange={handleEditorDirtyChange}
-                onDeletePasskey={deletePasskey}
-                onSave={saveLogin}
-              />
-            ) : selectedSummary?.deletedAt ? (
-              <article className="detail-content">
-                <header className="detail-header">
-                  <TooltipIconButton
-                    variant="outline"
-                    size="icon"
-                    className="icon-button detail-back"
-                    type="button"
-                    label="返回垃圾桶"
-                    onClick={clearItemSelection}
-                  >
-                    <ArrowLeft />
-                  </TooltipIconButton>
-                  <span className="detail-icon" aria-hidden="true">
-                    <Trash2 />
-                  </span>
-                  <div className="detail-heading">
-                    <p className="eyebrow">垃圾桶</p>
-                    <h2>{selectedSummary.name}</h2>
-                    <span>{itemTypeMeta[selectedSummary.type].label}</span>
-                  </div>
-                </header>
-                <div className="detail-scroll scroll-fade-y forced-colors:scroll-fade-none">
-                  <Card className="detail-card organization-card gap-0 py-0">
-                    <CardHeader>
-                      <CardTitle>這個項目已移至垃圾桶</CardTitle>
-                      <CardDescription>
-                        為了保護已刪除的敏感資料，請先還原項目再查看或編輯目前內容。
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <dl>
-                        <div>
-                          <dt>刪除時間</dt>
-                          <dd>{formatDate(selectedSummary.deletedAt)}</dd>
-                        </div>
-                        <div>
-                          <dt>原資料夾</dt>
-                          <dd>
-                            {folders.find((folder) => folder.id === selectedSummary.folderId)
-                              ?.name ?? '未分類'}
-                          </dd>
-                        </div>
-                      </dl>
-                    </CardContent>
-                  </Card>
-                  {hasTrashPasswordHistory(selectedSummary) && (
-                    <Card
-                      className="detail-card gap-0 py-0"
-                      role="region"
-                      aria-labelledby="trash-password-history-title"
-                    >
-                      <CardHeader className="bg-muted rounded-none border-b">
-                        <CardTitle id="trash-password-history-title">密碼歷史</CardTitle>
-                        <CardDescription>
-                          {selectedSummary.passwordHistoryCount} 筆唯讀紀錄
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="flex justify-end py-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          type="button"
-                          disabled={busy}
-                          onClick={() => setPasswordHistoryDialogOpen(true)}
-                        >
-                          <History data-icon="inline-start" aria-hidden="true" />
-                          查看紀錄
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  )}
-                  <div className="danger-zone flex flex-wrap gap-2">
-                    <Button type="button" disabled={busy} onClick={() => void restoreLogin()}>
-                      <RotateCcw data-icon="inline-start" />
-                      還原項目
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      type="button"
-                      disabled={busy}
-                      onClick={() => setDeleteDialogOpen(true)}
-                    >
-                      <Trash2 data-icon="inline-start" />
-                      永久刪除
-                    </Button>
-                  </div>
-                </div>
-              </article>
-            ) : selectedId && selectedSummary && selectedLogin?.id !== selectedId ? (
-              <DetailPlaceholder
-                item={selectedSummary}
-                showWebsiteIcons={settings?.showWebsiteIcons ?? false}
-                onBack={clearItemSelection}
-              />
-            ) : selectedLogin && selectedLogin.id === selectedId ? (
-              <article className="detail-content">
-                <header className="detail-header">
-                  <TooltipIconButton
-                    variant="outline"
-                    size="icon"
-                    className="icon-button detail-back"
-                    type="button"
-                    label="返回項目列表"
-                    onClick={clearItemSelection}
-                  >
-                    <ArrowLeft />
-                  </TooltipIconButton>
-                  <span className={cn('detail-icon', selectedLogin.type)} aria-hidden="true">
-                    {selectedLogin.type === 'login' ? (
-                      <WebsiteIcon
-                        id={selectedLogin.id}
-                        uri={selectedLogin.uri}
-                        enabled={settings?.showWebsiteIcons ?? false}
-                      />
-                    ) : selectedLogin.type === 'card' ? (
-                      <PaymentCardBrandMark
-                        brand={normalizeBitwardenCardBrand(selectedLogin.brand)}
-                        compact
-                      />
-                    ) : (
-                      (() => {
-                        const TypeIcon = itemTypeMeta[selectedLogin.type].icon
-                        return <TypeIcon size={23} />
-                      })()
-                    )}
-                  </span>
-                  <div className="detail-heading">
-                    <h2>{selectedLogin.name}</h2>
-                    <span>
-                      {selectedLogin.subtitle ||
-                        (selectedLogin.type === 'login'
-                          ? hostLabel(selectedLogin.uri)
-                          : '安全保管的項目')}
-                    </span>
-                  </div>
-                  <TooltipIconButton
-                    variant="outline"
-                    size="icon"
-                    className={cn('icon-button', selectedLogin.favorite && 'favorite-active')}
-                    type="button"
-                    label={selectedLogin.favorite ? '從常用項目移除' : '加入常用項目'}
-                    aria-pressed={selectedLogin.favorite}
-                    onClick={() => void toggleFavorite(selectedLogin)}
-                  >
-                    <Star fill={selectedLogin.favorite ? 'currentColor' : 'none'} />
-                  </TooltipIconButton>
-                  <DropdownMenu>
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <DropdownMenuTrigger
-                            render={
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="icon-button"
-                                type="button"
-                                aria-label="更多操作"
-                                disabled={busy}
-                              />
-                            }
-                          >
-                            <MoreHorizontal aria-hidden="true" />
-                          </DropdownMenuTrigger>
-                        }
-                      />
-                      <TooltipContent>更多操作</TooltipContent>
-                    </Tooltip>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuGroup>
-                        <DropdownMenuItem disabled={busy} onClick={() => void cloneLogin()}>
-                          <Copy data-icon="inline-start" />
-                          複製項目
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          disabled={busy}
-                          onClick={() =>
-                            void (selectedLogin.archivedAt ? unarchiveLogin() : archiveLogin())
-                          }
-                        >
-                          {selectedLogin.archivedAt ? (
-                            <ArchiveRestore data-icon="inline-start" />
-                          ) : (
-                            <Archive data-icon="inline-start" />
-                          )}
-                          {selectedLogin.archivedAt ? '取消封存' : '封存項目'}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem disabled={busy} onClick={() => openEditor('edit')}>
-                          <Edit3 data-icon="inline-start" />
-                          編輯
-                        </DropdownMenuItem>
-                        {selectedLogin.attachments.length === 0 && (
-                          <DropdownMenuItem
-                            disabled={
-                              busy || attachmentOperation !== null || syncStatus.state !== 'ready'
-                            }
-                            onClick={() => void uploadAttachment()}
-                          >
-                            <Upload data-icon="inline-start" />
-                            上傳附件
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuGroup>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuGroup>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          disabled={busy}
-                          onClick={() => setDeleteDialogOpen(true)}
-                        >
-                          <Trash2 data-icon="inline-start" />
-                          移至垃圾桶
-                        </DropdownMenuItem>
-                      </DropdownMenuGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </header>
-
-                <div className="detail-scroll scroll-fade-y forced-colors:scroll-fade-none">
-                  {selectedDetailFields.length > 0 && (
-                    <Card
-                      className="detail-card gap-0 py-0"
-                      role="region"
-                      aria-labelledby="credentials-title"
-                    >
-                      <CardHeader className="bg-muted rounded-none border-b">
-                        <CardTitle id="credentials-title">
-                          {itemTypeMeta[selectedLogin.type].label}資料
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="contents">
-                        {selectedDetailFields
-                          .filter((field) => field.secret || Boolean(field.value))
-                          .map(renderDetailField)}
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {selectedLogin.customFields.length > 0 && (
-                    <Card
-                      className="detail-card gap-0 py-0"
-                      role="region"
-                      aria-labelledby="custom-fields-title"
-                    >
-                      <CardHeader className="bg-muted rounded-none border-b">
-                        <CardTitle id="custom-fields-title">自訂欄位</CardTitle>
-                        <CardDescription>
-                          {selectedLogin.customFields.length} 個欄位
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="contents">
-                        {selectedLogin.customFields.map(renderCustomField)}
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {(selectedLogin.attachments.length > 0 ||
-                    attachmentOperation?.itemId === selectedLogin.id) && (
-                    <Card
-                      className="detail-card attachment-card gap-0 py-0"
-                      role="region"
-                      aria-labelledby="attachments-title"
-                    >
-                      <CardHeader className="bg-muted rounded-none border-b">
-                        <CardTitle id="attachments-title">附件</CardTitle>
-                        <CardDescription>{selectedLogin.attachments.length} 個檔案</CardDescription>
-                        <CardAction>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            type="button"
-                            disabled={
-                              busy || attachmentOperation !== null || syncStatus.state !== 'ready'
-                            }
-                            onClick={() => void uploadAttachment()}
-                          >
-                            {attachmentOperation?.kind === 'upload' ? (
-                              <Spinner data-icon="inline-start" />
-                            ) : (
-                              <Upload data-icon="inline-start" />
-                            )}
-                            上傳附件
-                          </Button>
-                        </CardAction>
-                      </CardHeader>
-                      <CardContent className="flex flex-col gap-4">
-                        {attachmentOperation?.itemId === selectedLogin.id && (
-                          <section className="flex flex-col gap-3" aria-live="polite">
-                            <Progress value={attachmentProgressPercent(attachmentOperation)}>
-                              <ProgressLabel>
-                                {attachmentStageLabel(attachmentOperation)}
-                                {attachmentOperation.fileName
-                                  ? `：${attachmentOperation.fileName}`
-                                  : ''}
-                              </ProgressLabel>
-                              <ProgressValue>
-                                {() =>
-                                  attachmentProgressPercent(attachmentOperation) === null
-                                    ? '處理中'
-                                    : `${attachmentProgressPercent(attachmentOperation)}%`
-                                }
-                              </ProgressValue>
-                            </Progress>
+                          <span className="sr-only" aria-live="polite">
+                            已選取 {selectedSummaries.length} 個項目
+                          </span>
+                          {scope.kind !== 'trash' && (
                             <Button
-                              className="self-end"
                               variant="outline"
                               size="sm"
                               type="button"
-                              disabled={attachmentOperation.canceling}
-                              onClick={() => void cancelAttachmentOperation()}
+                              disabled={busy}
+                              onClick={openMoveDialogForSelection}
                             >
-                              {attachmentOperation.canceling ? (
+                              <FolderOpen data-icon="inline-start" />
+                              移動
+                            </Button>
+                          )}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger
+                              render={
+                                <Button variant="outline" size="sm" type="button" disabled={busy} />
+                              }
+                            >
+                              {busy ? (
+                                <Spinner data-icon="inline-start" aria-hidden="true" />
+                              ) : (
+                                <Menu data-icon="inline-start" />
+                              )}
+                              批次操作
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuGroup>
+                                {scope.kind === 'trash' ? (
+                                  <>
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        void performBulkAction(snapshotBulkAction('restore'))
+                                      }
+                                    >
+                                      <RotateCcw data-icon="inline-start" />
+                                      還原
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      variant="destructive"
+                                      onClick={() =>
+                                        setPendingBulkAction(
+                                          snapshotBulkAction('deletePermanently')
+                                        )
+                                      }
+                                    >
+                                      <Trash2 data-icon="inline-start" />
+                                      永久刪除
+                                    </DropdownMenuItem>
+                                  </>
+                                ) : (
+                                  <>
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        void performBulkAction(
+                                          snapshotBulkAction(
+                                            scope.kind === 'archive' ? 'unarchive' : 'archive'
+                                          )
+                                        )
+                                      }
+                                    >
+                                      {scope.kind === 'archive' ? (
+                                        <ArchiveRestore data-icon="inline-start" />
+                                      ) : (
+                                        <Archive data-icon="inline-start" />
+                                      )}
+                                      {scope.kind === 'archive' ? '取消封存' : '封存'}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      variant="destructive"
+                                      onClick={() =>
+                                        setPendingBulkAction(snapshotBulkAction('delete'))
+                                      }
+                                    >
+                                      <Trash2 data-icon="inline-start" />
+                                      移至垃圾桶
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                              </DropdownMenuGroup>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      )}
+                      {scope.kind === 'trash' && trashItems.length > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          onClick={() => setEmptyTrashDialogOpen(true)}
+                        >
+                          <Trash2 data-icon="inline-start" />
+                          清空垃圾桶
+                        </Button>
+                      )}
+                      <div className="sort-control">
+                        <ListFilter size={16} aria-hidden="true" />
+                        <Select
+                          items={sortItemsOptions}
+                          value={sortMode}
+                          disabled={scope.kind === 'recent'}
+                          onValueChange={(value) => setSortMode(value as SortMode)}
+                        >
+                          <SelectTrigger
+                            size="sm"
+                            className="border-0 bg-transparent shadow-none"
+                            aria-label="排序方式"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {sortItemsOptions.map((item) => (
+                                <SelectItem key={item.value} value={item.value}>
+                                  {item.label}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </header>
+                  {query && (
+                    <div className="result-summary" role="status">
+                      <span>搜尋「{query}」</span>
+                      <span>{scopedItems.length} 筆結果</span>
+                    </div>
+                  )}
+
+                  {scopedItems.length ? (
+                    <VirtualizedItemList
+                      groups={itemGroups}
+                      scopeTitle={scopeTitle}
+                      selectedIds={selectedIds}
+                      onPrefetch={scope.kind === 'trash' ? undefined : prefetchLoginDetail}
+                      onSelect={selectItems}
+                      onFavorite={toggleFavorite}
+                      onContextMenu={showLoginContextMenu}
+                      showWebsiteIcons={
+                        scope.kind !== 'trash' && (settings?.showWebsiteIcons ?? false)
+                      }
+                      readOnly={scope.kind === 'trash'}
+                    />
+                  ) : (
+                    <Empty className="empty-state">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                          {query ? <Search /> : scope.kind === 'trash' ? <Trash2 /> : <KeyRound />}
+                        </EmptyMedia>
+                        <EmptyTitle>
+                          {query
+                            ? '找不到符合的項目'
+                            : scope.kind === 'trash'
+                              ? '垃圾桶是空的'
+                              : '這裡還沒有保管庫項目'}
+                        </EmptyTitle>
+                        <EmptyDescription>
+                          {query
+                            ? '試試較短的關鍵字，或切換到所有項目。'
+                            : scope.kind === 'trash'
+                              ? '刪除的項目會留在這裡，直到你還原、永久刪除，或伺服器依保留政策清除。'
+                              : '新增第一筆資料，BearWarden 會安全地替你保管。'}
+                        </EmptyDescription>
+                      </EmptyHeader>
+                      <EmptyContent>
+                        {query ? (
+                          <Button
+                            variant="outline"
+                            className="button secondary"
+                            type="button"
+                            onClick={() => updateQuery('')}
+                          >
+                            清除搜尋
+                          </Button>
+                        ) : scope.kind !== 'trash' && scope.kind !== 'archive' ? (
+                          <Button
+                            className="button primary"
+                            type="button"
+                            onClick={() => openEditor('create')}
+                          >
+                            <Plus data-icon="inline-start" />
+                            新增項目
+                          </Button>
+                        ) : null}
+                      </EmptyContent>
+                    </Empty>
+                  )}
+                </>
+              )}
+            </section>
+
+            <section className="detail-pane" aria-label="項目詳細資料">
+              {editorMode ? (
+                <LoginEditor
+                  key={`${editorSessionId}:${editorMode}:${selectedLogin?.id ?? 'new'}`}
+                  login={editorMode === 'edit' ? (selectedLogin ?? undefined) : undefined}
+                  folders={folders}
+                  busy={busy}
+                  authorizationToken={
+                    selectedLogin ? authorizationTokenState[selectedLogin.id] : undefined
+                  }
+                  onCancel={() => requestEditorTransition(() => setEditorMode(null))}
+                  onDirtyChange={handleEditorDirtyChange}
+                  onDeletePasskey={deletePasskey}
+                  onSave={saveLogin}
+                />
+              ) : selectedSummary?.deletedAt ? (
+                <article className="detail-content">
+                  <header className="detail-header">
+                    <TooltipIconButton
+                      variant="outline"
+                      size="icon"
+                      className="icon-button detail-back"
+                      type="button"
+                      label="返回垃圾桶"
+                      onClick={clearItemSelection}
+                    >
+                      <ArrowLeft />
+                    </TooltipIconButton>
+                    <span className="detail-icon" aria-hidden="true">
+                      <Trash2 />
+                    </span>
+                    <div className="detail-heading">
+                      <p className="eyebrow">垃圾桶</p>
+                      <h2>{selectedSummary.name}</h2>
+                      <span>{itemTypeMeta[selectedSummary.type].label}</span>
+                    </div>
+                  </header>
+                  <div className="detail-scroll scroll-fade-y forced-colors:scroll-fade-none">
+                    <Card className="detail-card organization-card gap-0 py-0">
+                      <CardHeader>
+                        <CardTitle>這個項目已移至垃圾桶</CardTitle>
+                        <CardDescription>
+                          為了保護已刪除的敏感資料，請先還原項目再查看或編輯目前內容。
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <dl>
+                          <div>
+                            <dt>刪除時間</dt>
+                            <dd>{formatDate(selectedSummary.deletedAt)}</dd>
+                          </div>
+                          <div>
+                            <dt>原資料夾</dt>
+                            <dd>
+                              {folders.find((folder) => folder.id === selectedSummary.folderId)
+                                ?.name ?? '未分類'}
+                            </dd>
+                          </div>
+                        </dl>
+                      </CardContent>
+                    </Card>
+                    {hasTrashPasswordHistory(selectedSummary) && (
+                      <Card
+                        className="detail-card gap-0 py-0"
+                        role="region"
+                        aria-labelledby="trash-password-history-title"
+                      >
+                        <CardHeader className="bg-muted rounded-none border-b">
+                          <CardTitle id="trash-password-history-title">密碼歷史</CardTitle>
+                          <CardDescription>
+                            {selectedSummary.passwordHistoryCount} 筆唯讀紀錄
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="flex justify-end py-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => setPasswordHistoryDialogOpen(true)}
+                          >
+                            <History data-icon="inline-start" aria-hidden="true" />
+                            查看紀錄
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    )}
+                    <div className="danger-zone flex flex-wrap gap-2">
+                      <Button type="button" disabled={busy} onClick={() => void restoreLogin()}>
+                        <RotateCcw data-icon="inline-start" />
+                        還原項目
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setDeleteDialogOpen(true)}
+                      >
+                        <Trash2 data-icon="inline-start" />
+                        永久刪除
+                      </Button>
+                    </div>
+                  </div>
+                </article>
+              ) : selectedId && selectedSummary && selectedLogin?.id !== selectedId ? (
+                <DetailPlaceholder
+                  item={selectedSummary}
+                  showWebsiteIcons={settings?.showWebsiteIcons ?? false}
+                  onBack={clearItemSelection}
+                />
+              ) : selectedLogin && selectedLogin.id === selectedId ? (
+                <article className="detail-content">
+                  <header className="detail-header">
+                    <TooltipIconButton
+                      variant="outline"
+                      size="icon"
+                      className="icon-button detail-back"
+                      type="button"
+                      label="返回項目列表"
+                      onClick={clearItemSelection}
+                    >
+                      <ArrowLeft />
+                    </TooltipIconButton>
+                    <span className={cn('detail-icon', selectedLogin.type)} aria-hidden="true">
+                      {selectedLogin.type === 'login' ? (
+                        <WebsiteIcon
+                          id={selectedLogin.id}
+                          uri={selectedLogin.uri}
+                          enabled={settings?.showWebsiteIcons ?? false}
+                        />
+                      ) : selectedLogin.type === 'card' ? (
+                        <PaymentCardBrandMark
+                          brand={normalizeBitwardenCardBrand(selectedLogin.brand)}
+                          compact
+                        />
+                      ) : (
+                        (() => {
+                          const TypeIcon = itemTypeMeta[selectedLogin.type].icon
+                          return <TypeIcon size={23} />
+                        })()
+                      )}
+                    </span>
+                    <div className="detail-heading">
+                      <h2>{selectedLogin.name}</h2>
+                      <span>
+                        {selectedLogin.subtitle ||
+                          (selectedLogin.type === 'login'
+                            ? hostLabel(selectedLogin.uri)
+                            : '安全保管的項目')}
+                      </span>
+                    </div>
+                    <TooltipIconButton
+                      variant="outline"
+                      size="icon"
+                      className={cn('icon-button', selectedLogin.favorite && 'favorite-active')}
+                      type="button"
+                      label={selectedLogin.favorite ? '從常用項目移除' : '加入常用項目'}
+                      aria-pressed={selectedLogin.favorite}
+                      onClick={() => void toggleFavorite(selectedLogin)}
+                    >
+                      <Star fill={selectedLogin.favorite ? 'currentColor' : 'none'} />
+                    </TooltipIconButton>
+                    <DropdownMenu>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <DropdownMenuTrigger
+                              render={
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="icon-button"
+                                  type="button"
+                                  aria-label="更多操作"
+                                  disabled={busy}
+                                />
+                              }
+                            >
+                              <MoreHorizontal aria-hidden="true" />
+                            </DropdownMenuTrigger>
+                          }
+                        />
+                        <TooltipContent>更多操作</TooltipContent>
+                      </Tooltip>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem disabled={busy} onClick={() => void cloneLogin()}>
+                            <Copy data-icon="inline-start" />
+                            複製項目
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={busy}
+                            onClick={() =>
+                              void (selectedLogin.archivedAt ? unarchiveLogin() : archiveLogin())
+                            }
+                          >
+                            {selectedLogin.archivedAt ? (
+                              <ArchiveRestore data-icon="inline-start" />
+                            ) : (
+                              <Archive data-icon="inline-start" />
+                            )}
+                            {selectedLogin.archivedAt ? '取消封存' : '封存項目'}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem disabled={busy} onClick={() => openEditor('edit')}>
+                            <Edit3 data-icon="inline-start" />
+                            編輯
+                          </DropdownMenuItem>
+                          {selectedLogin.attachments.length === 0 && (
+                            <DropdownMenuItem
+                              disabled={
+                                busy || attachmentOperation !== null || syncStatus.state !== 'ready'
+                              }
+                              onClick={() => void uploadAttachment()}
+                            >
+                              <Upload data-icon="inline-start" />
+                              上傳附件
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuGroup>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            disabled={busy}
+                            onClick={() => setDeleteDialogOpen(true)}
+                          >
+                            <Trash2 data-icon="inline-start" />
+                            移至垃圾桶
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </header>
+
+                  <div className="detail-scroll scroll-fade-y forced-colors:scroll-fade-none">
+                    {selectedDetailFields.length > 0 && (
+                      <Card
+                        className="detail-card gap-0 py-0"
+                        role="region"
+                        aria-labelledby="credentials-title"
+                      >
+                        <CardHeader className="bg-muted rounded-none border-b">
+                          <CardTitle id="credentials-title">
+                            {itemTypeMeta[selectedLogin.type].label}資料
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="contents">
+                          {selectedDetailFields
+                            .filter((field) => field.secret || Boolean(field.value))
+                            .map(renderDetailField)}
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {selectedLogin.customFields.length > 0 && (
+                      <Card
+                        className="detail-card gap-0 py-0"
+                        role="region"
+                        aria-labelledby="custom-fields-title"
+                      >
+                        <CardHeader className="bg-muted rounded-none border-b">
+                          <CardTitle id="custom-fields-title">自訂欄位</CardTitle>
+                          <CardDescription>
+                            {selectedLogin.customFields.length} 個欄位
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="contents">
+                          {selectedLogin.customFields.map(renderCustomField)}
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {(selectedLogin.attachments.length > 0 ||
+                      attachmentOperation?.itemId === selectedLogin.id) && (
+                      <Card
+                        className="detail-card attachment-card gap-0 py-0"
+                        role="region"
+                        aria-labelledby="attachments-title"
+                      >
+                        <CardHeader className="bg-muted rounded-none border-b">
+                          <CardTitle id="attachments-title">附件</CardTitle>
+                          <CardDescription>
+                            {selectedLogin.attachments.length} 個檔案
+                          </CardDescription>
+                          <CardAction>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              type="button"
+                              disabled={
+                                busy || attachmentOperation !== null || syncStatus.state !== 'ready'
+                              }
+                              onClick={() => void uploadAttachment()}
+                            >
+                              {attachmentOperation?.kind === 'upload' ? (
                                 <Spinner data-icon="inline-start" />
                               ) : (
-                                <X data-icon="inline-start" />
+                                <Upload data-icon="inline-start" />
                               )}
-                              {attachmentOperation.canceling ? '正在取消' : '取消'}
+                              上傳附件
                             </Button>
-                          </section>
-                        )}
-                        {selectedLogin.attachments.length > 0 && (
-                          <div className="passkey-list -mx-(--card-spacing) -mb-(--card-spacing)">
-                            {selectedLogin.attachments.map((attachment) => (
-                              <article key={attachment.id} className="passkey-item attachment-item">
-                                <span className="passkey-icon" aria-hidden="true">
-                                  <Paperclip size={17} />
-                                </span>
-                                <div>
-                                  <strong>{attachment.fileName}</strong>
-                                  <span>
-                                    {attachment.sizeName}
-                                    {attachment.legacy ? ' · 舊式未驗證加密' : ''}
-                                  </span>
-                                </div>
-                                <section
-                                  className="flex flex-wrap items-center justify-end gap-1"
-                                  aria-label={`${attachment.fileName} 的附件操作`}
+                          </CardAction>
+                        </CardHeader>
+                        <CardContent className="flex flex-col gap-4">
+                          {attachmentOperation?.itemId === selectedLogin.id && (
+                            <section className="flex flex-col gap-3" aria-live="polite">
+                              <Progress value={attachmentProgressPercent(attachmentOperation)}>
+                                <ProgressLabel>
+                                  {attachmentStageLabel(attachmentOperation)}
+                                  {attachmentOperation.fileName
+                                    ? `：${attachmentOperation.fileName}`
+                                    : ''}
+                                </ProgressLabel>
+                                <ProgressValue>
+                                  {() =>
+                                    attachmentProgressPercent(attachmentOperation) === null
+                                      ? '處理中'
+                                      : `${attachmentProgressPercent(attachmentOperation)}%`
+                                  }
+                                </ProgressValue>
+                              </Progress>
+                              <Button
+                                className="self-end"
+                                variant="outline"
+                                size="sm"
+                                type="button"
+                                disabled={attachmentOperation.canceling}
+                                onClick={() => void cancelAttachmentOperation()}
+                              >
+                                {attachmentOperation.canceling ? (
+                                  <Spinner data-icon="inline-start" />
+                                ) : (
+                                  <X data-icon="inline-start" />
+                                )}
+                                {attachmentOperation.canceling ? '正在取消' : '取消'}
+                              </Button>
+                            </section>
+                          )}
+                          {selectedLogin.attachments.length > 0 && (
+                            <div className="passkey-list -mx-(--card-spacing) -mb-(--card-spacing)">
+                              {selectedLogin.attachments.map((attachment) => (
+                                <article
+                                  key={attachment.id}
+                                  className="passkey-item attachment-item"
                                 >
-                                  {attachment.legacy && (
-                                    <Button
+                                  <span className="passkey-icon" aria-hidden="true">
+                                    <Paperclip size={17} />
+                                  </span>
+                                  <div>
+                                    <strong>{attachment.fileName}</strong>
+                                    <span>
+                                      {attachment.sizeName}
+                                      {attachment.legacy ? ' · 舊式未驗證加密' : ''}
+                                    </span>
+                                  </div>
+                                  <section
+                                    className="flex flex-wrap items-center justify-end gap-1"
+                                    aria-label={`${attachment.fileName} 的附件操作`}
+                                  >
+                                    {attachment.legacy && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        type="button"
+                                        disabled={
+                                          busy ||
+                                          attachmentOperation !== null ||
+                                          syncStatus.state !== 'ready'
+                                        }
+                                        onClick={() => void fixLegacyAttachment(attachment.id)}
+                                      >
+                                        <Wrench data-icon="inline-start" />
+                                        修復
+                                      </Button>
+                                    )}
+                                    <TooltipIconButton
                                       variant="outline"
-                                      size="sm"
+                                      size="icon"
+                                      className="icon-button"
                                       type="button"
+                                      label={`下載 ${attachment.fileName}`}
                                       disabled={
                                         busy ||
                                         attachmentOperation !== null ||
                                         syncStatus.state !== 'ready'
                                       }
-                                      onClick={() => void fixLegacyAttachment(attachment.id)}
+                                      onClick={() => void downloadAttachment(attachment.id)}
                                     >
-                                      <Wrench data-icon="inline-start" />
-                                      修復
-                                    </Button>
-                                  )}
-                                  <TooltipIconButton
-                                    variant="outline"
-                                    size="icon"
-                                    className="icon-button"
-                                    type="button"
-                                    label={`下載 ${attachment.fileName}`}
-                                    disabled={
-                                      busy ||
-                                      attachmentOperation !== null ||
-                                      syncStatus.state !== 'ready'
-                                    }
-                                    onClick={() => void downloadAttachment(attachment.id)}
-                                  >
-                                    <Download data-icon="inline-start" />
-                                  </TooltipIconButton>
-                                  <TooltipIconButton
-                                    variant="destructive"
-                                    size="icon"
-                                    className="icon-button"
-                                    type="button"
-                                    label={`刪除 ${attachment.fileName}`}
-                                    disabled={
-                                      busy ||
-                                      attachmentOperation !== null ||
-                                      syncStatus.state !== 'ready'
-                                    }
-                                    onClick={() =>
-                                      setAttachmentDeleteTarget({
-                                        itemId: selectedLogin.id,
-                                        attachmentId: attachment.id,
-                                        fileName: attachment.fileName
-                                      })
-                                    }
-                                  >
-                                    <Trash2 data-icon="inline-start" />
-                                  </TooltipIconButton>
-                                </section>
+                                      <Download data-icon="inline-start" />
+                                    </TooltipIconButton>
+                                    <TooltipIconButton
+                                      variant="destructive"
+                                      size="icon"
+                                      className="icon-button"
+                                      type="button"
+                                      label={`刪除 ${attachment.fileName}`}
+                                      disabled={
+                                        busy ||
+                                        attachmentOperation !== null ||
+                                        syncStatus.state !== 'ready'
+                                      }
+                                      onClick={() =>
+                                        setAttachmentDeleteTarget({
+                                          itemId: selectedLogin.id,
+                                          attachmentId: attachment.id,
+                                          fileName: attachment.fileName
+                                        })
+                                      }
+                                    >
+                                      <Trash2 data-icon="inline-start" />
+                                    </TooltipIconButton>
+                                  </section>
+                                </article>
+                              ))}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {selectedLogin.passwordHistoryCount > 0 && (
+                      <Card
+                        className="detail-card gap-0 py-0"
+                        role="region"
+                        aria-labelledby="password-history-title"
+                      >
+                        <CardHeader className="bg-muted rounded-none border-b">
+                          <CardTitle id="password-history-title">密碼歷史</CardTitle>
+                          <CardDescription>
+                            {selectedLogin.passwordHistoryCount} 筆紀錄
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="flex justify-end py-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            type="button"
+                            onClick={() => setPasswordHistoryDialogOpen(true)}
+                          >
+                            <History data-icon="inline-start" aria-hidden="true" />
+                            查看紀錄
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {selectedLogin.type === 'login' && selectedLogin.hasTotp && (
+                      <Card
+                        className="detail-card totp-card gap-0 py-0"
+                        role="region"
+                        aria-labelledby="totp-title"
+                        aria-busy={!totpCode && totpGenerationError === null}
+                      >
+                        <CardHeader className="bg-muted rounded-none border-b">
+                          <CardTitle id="totp-title">一次性驗證碼</CardTitle>
+                          <CardDescription>
+                            {totpGenerationError === 'unsupported' ? (
+                              '密鑰格式不受支援'
+                            ) : totpCode ? (
+                              <NumberFlow
+                                className="tabular-nums"
+                                value={totpCode.remainingSeconds}
+                                suffix=" 秒後更新"
+                                trend={-1}
+                              />
+                            ) : (
+                              <>
+                                <Skeleton className="h-3 w-20" aria-hidden="true" />
+                                <span className="sr-only">產生中…</span>
+                              </>
+                            )}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="contents">
+                          <div className="totp-value">
+                            {totpCode ? (
+                              <strong>
+                                {/^\d+$/.test(totpCode.code) ? (
+                                  <NumberFlow
+                                    className="tabular-nums"
+                                    value={Number(totpCode.code)}
+                                    format={{
+                                      useGrouping: false,
+                                      minimumIntegerDigits: totpCode.code.length
+                                    }}
+                                    trend={0}
+                                  />
+                                ) : (
+                                  totpCode.code
+                                )}
+                              </strong>
+                            ) : totpGenerationError ? (
+                              <strong>—</strong>
+                            ) : (
+                              <Skeleton className="h-8 w-36" aria-hidden="true" />
+                            )}
+                            <TooltipIconButton
+                              variant="outline"
+                              size="icon"
+                              className="icon-button"
+                              type="button"
+                              label="複製一次性驗證碼"
+                              disabled={!totpCode || totpGenerationError !== null}
+                              onClick={() => void copyTotp()}
+                            >
+                              <Copy />
+                            </TooltipIconButton>
+                          </div>
+                          {!totpGenerationError &&
+                            (totpCode ? (
+                              <Progress
+                                key={totpCodeState?.cycle}
+                                aria-label="驗證碼剩餘時間"
+                                max={totpCode.period}
+                                value={totpCode.remainingSeconds}
+                              />
+                            ) : (
+                              <Skeleton className="totp-progress-skeleton h-1" aria-hidden="true" />
+                            ))}
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {selectedLogin.type === 'login' && selectedLogin.passkeys.length > 0 && (
+                      <Card
+                        className="detail-card passkey-card gap-0 py-0"
+                        role="region"
+                        aria-labelledby="passkeys-title"
+                      >
+                        <CardHeader className="bg-muted rounded-none border-b">
+                          <CardTitle id="passkeys-title">通行密鑰</CardTitle>
+                          <CardDescription>{selectedLogin.passkeys.length} 組</CardDescription>
+                        </CardHeader>
+                        <CardContent className="contents">
+                          <div className="passkey-list">
+                            {selectedLogin.passkeys.map((passkey) => (
+                              <article key={passkey.credentialId} className="passkey-item">
+                                <span className="passkey-icon" aria-hidden="true">
+                                  <KeyRound size={17} />
+                                </span>
+                                <div>
+                                  <strong>{passkey.rpName || passkey.rpId}</strong>
+                                  <span>
+                                    {passkey.userDisplayName || passkey.userName || '未命名使用者'}
+                                  </span>
+                                  <small>
+                                    {passkey.rpId} · {formatDate(passkey.creationDate)}
+                                    {passkey.discoverable ? ' · 可探索' : ''}
+                                  </small>
+                                </div>
                               </article>
                             ))}
                           </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  )}
+                          <p className="passkey-note">
+                            可從編輯項目安全刪除通行密鑰；私鑰材料不會傳到顯示程序。
+                          </p>
+                        </CardContent>
+                      </Card>
+                    )}
 
-                  {selectedLogin.passwordHistoryCount > 0 && (
+                    {(selectedLogin.type === 'secureNote' || selectedLogin.notes) && (
+                      <Card
+                        className="detail-card notes-card gap-0 py-0"
+                        role="region"
+                        aria-labelledby="notes-title"
+                      >
+                        <CardHeader className="bg-muted rounded-none border-b">
+                          <CardTitle id="notes-title">
+                            {selectedLogin.type === 'secureNote' ? '安全備註' : '備註'}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="contents">
+                          <p className={cn(!selectedLogin.notes?.trim() && 'empty-note')}>
+                            {selectedLogin.notes?.trim() ? selectedLogin.notes : '尚未加入內容'}
+                          </p>
+                        </CardContent>
+                      </Card>
+                    )}
+
                     <Card
-                      className="detail-card gap-0 py-0"
+                      className="detail-card organization-card activity-card gap-0 py-0"
                       role="region"
-                      aria-labelledby="password-history-title"
+                      aria-labelledby="organization-title"
                     >
                       <CardHeader className="bg-muted rounded-none border-b">
-                        <CardTitle id="password-history-title">密碼歷史</CardTitle>
-                        <CardDescription>
-                          {selectedLogin.passwordHistoryCount} 筆紀錄
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="flex justify-end py-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          type="button"
-                          onClick={() => setPasswordHistoryDialogOpen(true)}
-                        >
-                          <History data-icon="inline-start" aria-hidden="true" />
-                          查看紀錄
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {selectedLogin.type === 'login' && selectedLogin.hasTotp && (
-                    <Card
-                      className="detail-card totp-card gap-0 py-0"
-                      role="region"
-                      aria-labelledby="totp-title"
-                      aria-busy={!totpCode && totpGenerationError === null}
-                    >
-                      <CardHeader className="bg-muted rounded-none border-b">
-                        <CardTitle id="totp-title">一次性驗證碼</CardTitle>
-                        <CardDescription>
-                          {totpGenerationError === 'unsupported' ? (
-                            '密鑰格式不受支援'
-                          ) : totpCode ? (
-                            <NumberFlow
-                              className="tabular-nums"
-                              value={totpCode.remainingSeconds}
-                              suffix=" 秒後更新"
-                              trend={-1}
-                            />
-                          ) : (
-                            <>
-                              <Skeleton className="h-3 w-20" aria-hidden="true" />
-                              <span className="sr-only">產生中…</span>
-                            </>
-                          )}
-                        </CardDescription>
+                        <CardTitle id="organization-title">整理與活動</CardTitle>
                       </CardHeader>
                       <CardContent className="contents">
-                        <div className="totp-value">
-                          {totpCode ? (
-                            <strong>
-                              {/^\d+$/.test(totpCode.code) ? (
-                                <NumberFlow
-                                  className="tabular-nums"
-                                  value={Number(totpCode.code)}
-                                  format={{
-                                    useGrouping: false,
-                                    minimumIntegerDigits: totpCode.code.length
-                                  }}
-                                  trend={0}
-                                />
-                              ) : (
-                                totpCode.code
-                              )}
-                            </strong>
-                          ) : totpGenerationError ? (
-                            <strong>—</strong>
-                          ) : (
-                            <Skeleton className="h-8 w-36" aria-hidden="true" />
-                          )}
-                          <TooltipIconButton
-                            variant="outline"
-                            size="icon"
-                            className="icon-button"
-                            type="button"
-                            label="複製一次性驗證碼"
-                            disabled={!totpCode || totpGenerationError !== null}
-                            onClick={() => void copyTotp()}
-                          >
-                            <Copy />
-                          </TooltipIconButton>
-                        </div>
-                        {!totpGenerationError &&
-                          (totpCode ? (
-                            <Progress
-                              key={totpCodeState?.cycle}
-                              aria-label="驗證碼剩餘時間"
-                              max={totpCode.period}
-                              value={totpCode.remainingSeconds}
-                            />
-                          ) : (
-                            <Skeleton className="totp-progress-skeleton h-1" aria-hidden="true" />
-                          ))}
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {selectedLogin.type === 'login' && selectedLogin.passkeys.length > 0 && (
-                    <Card
-                      className="detail-card passkey-card gap-0 py-0"
-                      role="region"
-                      aria-labelledby="passkeys-title"
-                    >
-                      <CardHeader className="bg-muted rounded-none border-b">
-                        <CardTitle id="passkeys-title">通行密鑰</CardTitle>
-                        <CardDescription>{selectedLogin.passkeys.length} 組</CardDescription>
-                      </CardHeader>
-                      <CardContent className="contents">
-                        <div className="passkey-list">
-                          {selectedLogin.passkeys.map((passkey) => (
-                            <article key={passkey.credentialId} className="passkey-item">
-                              <span className="passkey-icon" aria-hidden="true">
-                                <KeyRound size={17} />
+                        <dl>
+                          <div>
+                            <dt>資料夾</dt>
+                            <dd className="flex items-center gap-2">
+                              <span className="min-w-0 flex-1 truncate">
+                                {folders.find((folder) => folder.id === selectedLogin.folderId)
+                                  ?.name ?? '未分類'}
                               </span>
-                              <div>
-                                <strong>{passkey.rpName || passkey.rpId}</strong>
-                                <span>
-                                  {passkey.userDisplayName || passkey.userName || '未命名使用者'}
-                                </span>
-                                <small>
-                                  {passkey.rpId} · {formatDate(passkey.creationDate)}
-                                  {passkey.discoverable ? ' · 可探索' : ''}
-                                </small>
-                              </div>
-                            </article>
-                          ))}
-                        </div>
-                        <p className="passkey-note">
-                          可從編輯項目安全刪除通行密鑰；私鑰材料不會傳到顯示程序。
-                        </p>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className="-my-1.5 ml-auto"
+                                type="button"
+                                aria-label="移動至資料夾"
+                                disabled={busy}
+                                onClick={openMoveDialogForSelection}
+                              >
+                                <Pencil aria-hidden="true" />
+                              </Button>
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>最近使用</dt>
+                            <dd>{formatDate(selectedLogin.lastUsedAt)}</dd>
+                          </div>
+                        </dl>
                       </CardContent>
                     </Card>
-                  )}
 
-                  {(selectedLogin.type === 'secureNote' || selectedLogin.notes) && (
                     <Card
-                      className="detail-card notes-card gap-0 py-0"
+                      className="detail-card organization-card gap-0 py-0"
                       role="region"
-                      aria-labelledby="notes-title"
+                      aria-labelledby="history-title"
                     >
                       <CardHeader className="bg-muted rounded-none border-b">
-                        <CardTitle id="notes-title">
-                          {selectedLogin.type === 'secureNote' ? '安全備註' : '備註'}
-                        </CardTitle>
+                        <CardTitle id="history-title">項目歷史記錄</CardTitle>
                       </CardHeader>
                       <CardContent className="contents">
-                        <p className={cn(!selectedLogin.notes?.trim() && 'empty-note')}>
-                          {selectedLogin.notes?.trim() ? selectedLogin.notes : '尚未加入內容'}
-                        </p>
+                        <ItemHistoryRows item={selectedLogin} formatDate={formatDate} />
                       </CardContent>
                     </Card>
-                  )}
-
-                  <Card
-                    className="detail-card organization-card activity-card gap-0 py-0"
-                    role="region"
-                    aria-labelledby="organization-title"
-                  >
-                    <CardHeader className="bg-muted rounded-none border-b">
-                      <CardTitle id="organization-title">整理與活動</CardTitle>
-                    </CardHeader>
-                    <CardContent className="contents">
-                      <dl>
-                        <div>
-                          <dt>資料夾</dt>
-                          <dd className="flex items-center gap-2">
-                            <span className="min-w-0 flex-1 truncate">
-                              {folders.find((folder) => folder.id === selectedLogin.folderId)
-                                ?.name ?? '未分類'}
-                            </span>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="-my-1.5 ml-auto"
-                              type="button"
-                              aria-label="移動至資料夾"
-                              disabled={busy}
-                              onClick={openMoveDialogForSelection}
-                            >
-                              <Pencil aria-hidden="true" />
-                            </Button>
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>最近使用</dt>
-                          <dd>{formatDate(selectedLogin.lastUsedAt)}</dd>
-                        </div>
-                      </dl>
-                    </CardContent>
-                  </Card>
-
-                  <Card
-                    className="detail-card organization-card gap-0 py-0"
-                    role="region"
-                    aria-labelledby="history-title"
-                  >
-                    <CardHeader className="bg-muted rounded-none border-b">
-                      <CardTitle id="history-title">項目歷史記錄</CardTitle>
-                    </CardHeader>
-                    <CardContent className="contents">
-                      <ItemHistoryRows item={selectedLogin} formatDate={formatDate} />
-                    </CardContent>
-                  </Card>
-                </div>
-              </article>
-            ) : (
-              <Empty className="detail-empty">
-                <EmptyHeader>
-                  <EmptyMedia className="mb-4 h-16 w-[78px]" aria-hidden="true">
-                    <img className="size-16 object-contain" src={bearCutUrl} alt="" />
-                  </EmptyMedia>
-                  <EmptyTitle>未選取項目</EmptyTitle>
-                  <EmptyDescription>選取項目以查看並管理安全資料。</EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            )}
-          </section>
+                  </div>
+                </article>
+              ) : (
+                <Empty className="detail-empty">
+                  <EmptyHeader>
+                    <EmptyMedia aria-hidden="true">
+                      <img className="size-48 object-contain" src={bearCutUrl} alt="" />
+                    </EmptyMedia>
+                    <EmptyTitle>未選取項目</EmptyTitle>
+                    <EmptyDescription>選取項目以查看並管理安全資料。</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              )}
+            </section>
+          </div>
         </div>
 
         {folderDialog && (

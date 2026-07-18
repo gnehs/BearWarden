@@ -98,6 +98,12 @@
   --success: var(--primary);
   --focus: var(--ring);
   --shadow: 0 18px 48px oklch(0.148 0.004 228.8 / 14%);
+  --native-window-material: color-mix(in oklch, var(--background) 34%, transparent);
+  --native-panel-material: color-mix(in oklch, var(--card) 88%, transparent);
+  --native-material-border: color-mix(in oklch, var(--foreground) 9%, transparent);
+  --native-material-shadow:
+    0 1px 0 color-mix(in oklch, white 58%, transparent) inset,
+    0 10px 30px color-mix(in oklch, var(--foreground) 7%, transparent);
   font-family:
     'Inter',
     ui-sans-serif,
@@ -145,6 +151,10 @@
   --sidebar-accent-foreground: oklch(0.987 0.002 197.1);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.56 0.021 213.5);
+  --native-window-material: color-mix(in oklch, var(--background) 72%, transparent);
+  --native-material-shadow:
+    0 1px 0 color-mix(in oklch, white 9%, transparent) inset,
+    0 10px 30px color-mix(in oklch, black 18%, transparent);
 }
 
 @layer base {
@@ -449,10 +459,21 @@ button svg {
   min-width: 0;
   min-height: 0;
   flex: 1;
-  grid-template-columns: 248px minmax(300px, 360px) minmax(420px, 1fr);
+  grid-template-columns: 248px minmax(0, 1fr);
   overflow: hidden;
 }
+.content-panes {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: minmax(300px, 360px) minmax(420px, 1fr);
+  overflow: hidden;
+  background: var(--panel);
+}
 .workspace.settings-mode {
+  grid-template-columns: minmax(0, 1fr);
+}
+.workspace.settings-mode .content-panes {
   grid-template-columns: minmax(0, 1fr);
 }
 .workspace.settings-mode .sidebar {
@@ -499,6 +520,9 @@ button svg {
   flex: 0 0 auto;
   flex-direction: column;
   padding: 12px 9px;
+}
+.folder-section.category-section {
+  padding-top: 0;
 }
 .type-section {
   flex: 0 0 auto;
@@ -614,8 +638,9 @@ button svg {
   gap: 4px;
   align-items: center;
   padding: 7px 9px 9px;
-  border-top: 1px solid var(--sidebar-border);
+  border-top: 0;
   color: var(--muted-foreground);
+  background: transparent;
   font-size: 10px;
 }
 .sidebar-account-trigger {
@@ -731,7 +756,7 @@ button svg {
 .detail-pane {
   min-width: 0;
   min-height: 0;
-  background: var(--panel);
+  background: transparent;
 }
 .list-pane {
   display: flex;
@@ -2261,7 +2286,10 @@ button svg {
   box-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 .workspace {
-  grid-template-columns: 260px minmax(340px, 390px) minmax(420px, 1fr);
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+.content-panes {
+  grid-template-columns: minmax(340px, 390px) minmax(420px, 1fr);
 }
 .workspace.settings-mode {
   grid-template-columns: minmax(0, 1fr);
@@ -2315,9 +2343,9 @@ button svg {
   box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--sidebar-primary) 55%, transparent);
 }
 .sidebar-footer {
-  border-top-color: var(--sidebar-border);
+  border-top: 0;
   color: var(--muted-foreground);
-  background: color-mix(in oklch, var(--sidebar) 82%, transparent);
+  background: transparent;
 }
 .list-header {
   min-height: 82px;
@@ -2344,7 +2372,7 @@ button svg {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: color-mix(in oklch, var(--card) 78%, transparent);
-  box-shadow: 0 5px 18px color-mix(in oklch, var(--foreground) 7%, transparent);
+  box-shadow: none;
 }
 .list-header-actions .sort-control {
   height: 32px;
@@ -2464,7 +2492,7 @@ button svg {
   opacity: 1;
 }
 .detail-pane {
-  background: var(--background);
+  background: transparent;
 }
 .detail-header {
   min-height: 88px;
@@ -2527,15 +2555,15 @@ button svg {
   background: var(--sidebar);
 }
 :root[data-theme='dark'] .sidebar-footer {
-  border-top-color: var(--sidebar-border);
-  background: color-mix(in oklch, var(--sidebar) 82%, transparent);
+  border-top: 0;
+  background: transparent;
 }
 :root[data-theme='dark'] .list-header-actions {
   border-color: var(--border);
   background: color-mix(in oklch, var(--card) 70%, transparent);
 }
 :root[data-theme='dark'] .detail-pane {
-  background: var(--background);
+  background: transparent;
 }
 :root[data-theme='dark'] .detail-card {
   border-color: var(--border);
@@ -2559,9 +2587,93 @@ button svg {
   background: var(--muted);
 }
 
+/* Let Electron's macOS vibrancy and Windows Mica remain visible behind the app chrome. */
+body:has(.platform-macos),
+body:has(.platform-windows) {
+  background: var(--native-window-material);
+}
+:root .platform-macos,
+:root .platform-windows {
+  background: transparent;
+}
+:root .platform-macos .titlebar,
+:root .platform-windows .titlebar {
+  border-bottom-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+:root .platform-macos .titlebar {
+  padding-left: 94px;
+}
+:root .platform-macos .workspace,
+:root .platform-windows .workspace {
+  gap: 8px;
+  padding: 0 8px 8px 0;
+}
+:root .platform-macos .workspace.settings-mode,
+:root .platform-windows .workspace.settings-mode {
+  padding-left: 8px;
+}
+:root .platform-macos .sidebar,
+:root .platform-windows .sidebar {
+  margin-bottom: -8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+:root .platform-macos .content-panes,
+:root .platform-windows .content-panes {
+  overflow: hidden;
+  border: 1px solid var(--native-material-border);
+  border-radius: 16px;
+  background: var(--native-panel-material);
+  box-shadow: var(--native-material-shadow);
+  -webkit-backdrop-filter: saturate(145%) blur(24px);
+  backdrop-filter: saturate(145%) blur(24px);
+}
+:root .platform-macos .list-pane,
+:root .platform-windows .list-pane {
+  border-right-color: var(--native-material-border);
+}
+:root .platform-macos .list-pane,
+:root .platform-macos .detail-pane,
+:root .platform-windows .list-pane,
+:root .platform-windows .detail-pane {
+  background: transparent;
+}
+:root .platform-macos .detail-header,
+:root .platform-windows .detail-header {
+  background: color-mix(in oklch, var(--card) 68%, transparent);
+  -webkit-backdrop-filter: saturate(135%) blur(18px);
+  backdrop-filter: saturate(135%) blur(18px);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  body:has(.platform-macos),
+  body:has(.platform-windows) {
+    background: var(--background);
+  }
+  :root .platform-macos .content-panes,
+  :root .platform-windows .content-panes,
+  :root .platform-macos .detail-header,
+  :root .platform-windows .detail-header {
+    background: var(--card);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
 @media (max-width: 1050px) {
   .workspace {
-    grid-template-columns: 220px minmax(290px, 330px) minmax(380px, 1fr);
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+  .content-panes {
+    grid-template-columns: minmax(290px, 330px) minmax(380px, 1fr);
   }
   .titlebar {
     padding-left: 70px;
@@ -2572,8 +2684,8 @@ button svg {
   .titlebar {
     padding-left: 14px;
   }
-  .platform-macos .titlebar {
-    padding-left: 70px;
+  :root .platform-macos .titlebar {
+    padding-left: 82px;
   }
   .titlebar-menu {
     display: grid;
@@ -2589,7 +2701,14 @@ button svg {
     display: none;
   }
   .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .content-panes {
     grid-template-columns: minmax(300px, 350px) minmax(360px, 1fr);
+  }
+  :root .platform-macos .workspace,
+  :root .platform-windows .workspace {
+    padding-left: 8px;
   }
   .workspace.settings-mode {
     grid-template-columns: minmax(0, 1fr);
@@ -2619,18 +2738,38 @@ button svg {
   }
   .sidebar {
     position: absolute;
+    z-index: 31;
     inset: 0 auto 0 0;
     width: 248px;
     transform: translateX(-100%);
     transition: transform 180ms ease;
   }
+  .sidebar-scroll {
+    padding-top: 8px;
+  }
   .sidebar.open {
     transform: translateX(0);
     box-shadow: 14px 0 40px color-mix(in oklch, var(--foreground) 26%, transparent);
   }
+  :root .platform-macos .sidebar,
+  :root .platform-windows .sidebar {
+    inset: 0 auto 8px 8px;
+    margin-bottom: 0;
+    transform: translateX(calc(-100% - 8px));
+    border: 1px solid var(--native-material-border);
+    border-radius: 16px;
+    background: var(--sidebar);
+    box-shadow: var(--native-material-shadow);
+    -webkit-backdrop-filter: saturate(165%) blur(28px);
+    backdrop-filter: saturate(165%) blur(28px);
+  }
+  :root .platform-macos .sidebar.open,
+  :root .platform-windows .sidebar.open {
+    transform: translateX(0);
+  }
   .sidebar-scrim {
-    position: absolute;
-    z-index: 10;
+    position: fixed;
+    z-index: 30;
     inset: 0;
     display: block;
     width: 100%;
@@ -2638,6 +2777,26 @@ button svg {
     padding: 0;
     border: 0;
     background: color-mix(in oklch, var(--foreground) 34%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 180ms ease;
+  }
+  .sidebar-scrim.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .sidebar-scrim:hover,
+  .sidebar-scrim:active {
+    background: color-mix(in oklch, var(--foreground) 34%, transparent);
+  }
+}
+
+@media (max-width: 880px) and (prefers-reduced-transparency: reduce) {
+  :root .platform-macos .sidebar,
+  :root .platform-windows .sidebar {
+    background: var(--sidebar);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 
@@ -2673,6 +2832,11 @@ button svg {
   }
   .workspace {
     display: block;
+  }
+  .content-panes {
+    display: block;
+    width: 100%;
+    height: 100%;
   }
   .list-pane,
   .detail-pane {
@@ -2724,8 +2888,8 @@ button svg {
     gap: 8px;
     padding-inline: 9px;
   }
-  .platform-macos .titlebar {
-    padding: 0 9px 0 70px;
+  :root .platform-macos .titlebar {
+    padding: 0 9px 0 82px;
   }
   .list-header {
     padding-inline: 11px;

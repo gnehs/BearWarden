@@ -414,7 +414,7 @@ function createWindow(): BrowserWindow {
     vibrancy: 'fullscreen-ui',
     backgroundMaterial: 'mica',
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 10, y: 20 }
+    trafficLightPosition: { x: 14, y: 20 }
   })
 
   window.setContentProtection(contentProtectionEnabled)
