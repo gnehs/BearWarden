@@ -663,6 +663,26 @@ interface SidebarLinkProps {
   onClick: () => void
 }
 
+const sidebarToneClasses: Record<string, string> = {
+  blue: 'bg-(--sidebar-primary)',
+  indigo: 'bg-(--chart-4)',
+  green: 'bg-(--sidebar-primary)',
+  yellow: 'bg-(--chart-1) text-(--foreground)',
+  cyan: 'bg-(--chart-2)',
+  red: 'bg-(--destructive)',
+  orange: 'bg-(--chart-3)'
+}
+
+const sidebarLinkClasses = {
+  base: 'h-auto text-left text-(--text) hover:bg-(--sidebar-accent) hover:text-(--text)',
+  row: 'grid min-h-[38px] grid-cols-[22px_1fr_auto] items-center gap-[7px] rounded-lg border-0 bg-transparent px-[9px] py-1.5',
+  tile: 'grid min-h-[82px] grid-cols-[1fr_auto] grid-rows-[31px_auto] items-center gap-x-2 gap-y-[7px] rounded-[15px] border border-(--sidebar-border)/.5 bg-[color-mix(in_oklch,var(--sidebar-accent)_76%,transparent)] px-3 pt-[11px] pb-2.5 shadow-[inset_0_1px_rgba(255,255,255,.5)] hover:bg-(--sidebar-accent) dark:shadow-[inset_0_1px_rgba(255,255,255,.1)]',
+  active: {
+    row: 'bg-[color-mix(in_oklch,var(--sidebar-primary)_12%,transparent)] text-(--text) shadow-none hover:bg-[color-mix(in_oklch,var(--sidebar-primary)_12%,transparent)]',
+    tile: 'border-transparent bg-(--sidebar-primary) text-(--sidebar-primary-foreground) shadow-[0_5px_14px_color-mix(in_oklch,var(--sidebar-primary)_24%,transparent)] hover:bg-(--sidebar-primary) hover:text-(--sidebar-primary-foreground)'
+  }
+} as const
+
 function SidebarLink({
   icon,
   label,
@@ -672,19 +692,58 @@ function SidebarLink({
   tone,
   onClick
 }: SidebarLinkProps): React.JSX.Element {
+  const isTile = variant === 'tile'
+
   return (
     <Button
       variant="ghost"
-      className={cn('sidebar-link', variant, tone && `tone-${tone}`, active && 'active')}
+      className={cn(
+        sidebarLinkClasses.base,
+        sidebarLinkClasses[variant],
+        active && sidebarLinkClasses.active[variant]
+      )}
       type="button"
       aria-current={active ? 'page' : undefined}
+      data-sidebar-active={active ? '' : undefined}
       onClick={onClick}
     >
-      <span className="sidebar-link-icon" aria-hidden="true">
+      <span
+        className={cn(
+          'grid place-items-center',
+          isTile
+            ? [
+                'col-start-1 row-start-1 size-[30px] rounded-full bg-(--chart-3) text-(--sidebar-primary-foreground)',
+                tone && sidebarToneClasses[tone],
+                active && 'bg-(--sidebar-primary-foreground) text-(--sidebar-primary)'
+              ]
+            : 'size-[22px]'
+        )}
+        aria-hidden="true"
+      >
         {icon}
       </span>
-      <strong>{label}</strong>
-      <small>{count}</small>
+      <strong
+        className={cn(
+          isTile
+            ? 'col-span-2 row-start-2 self-end text-[13px] leading-[1.15] font-[720]'
+            : 'text-xs font-[610]'
+        )}
+      >
+        {label}
+      </strong>
+      <small
+        className={cn(
+          'text-muted-foreground',
+          isTile
+            ? 'col-start-2 row-start-1 self-center justify-self-end text-[11px] font-[650]'
+            : 'text-[10px]',
+          active &&
+            isTile &&
+            'text-[color-mix(in_oklch,var(--sidebar-primary-foreground)_88%,transparent)]'
+        )}
+      >
+        {count}
+      </small>
     </Button>
   )
 }
@@ -3669,13 +3728,15 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
           <aside className={cn('sidebar', sidebarOpen && 'open')} aria-label="保管庫導覽">
             <div className="sidebar-scroll">
               <section
-                className="folder-section category-section"
+                className="folder-section flex-none px-[11px] pt-[13px] pb-2"
                 aria-labelledby="categories-title"
               >
                 <header>
-                  <h2 id="categories-title">分類</h2>
+                  <h2 className="hidden" id="categories-title">
+                    分類
+                  </h2>
                 </header>
-                <nav className="sidebar-nav sidebar-category-grid" aria-label="保管庫分類">
+                <nav className="grid grid-cols-2 gap-2 p-0" aria-label="保管庫分類">
                   {categoryMeta.map((category) => {
                     const Icon = category.icon
                     return (
@@ -3694,7 +3755,10 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                 </nav>
               </section>
 
-              <section className="folder-section quick-section" aria-labelledby="quick-title">
+              <section
+                className="folder-section flex-none py-[10px] pb-1"
+                aria-labelledby="quick-title"
+              >
                 <header>
                   <h2 id="quick-title">快速取用</h2>
                 </header>
