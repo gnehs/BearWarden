@@ -1202,9 +1202,15 @@ button svg {
 .item-row:hover {
   background: var(--panel-muted);
 }
-.item-row:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: -2px;
+.item-row:has(.item-row-main:focus-visible) {
+  border-radius: var(--radius-lg);
+  outline: 3px solid color-mix(in srgb, var(--focus), transparent 28%);
+  outline-offset: 2px;
+}
+.item-row-main:focus-visible {
+  border-color: transparent;
+  outline: none;
+  box-shadow: none;
 }
 .item-row.selected {
   border-color: var(--primary);
