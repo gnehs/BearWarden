@@ -396,7 +396,7 @@ function createWindow(): BrowserWindow {
     minWidth: 800,
     show: false,
     autoHideMenuBar: process.platform === 'darwin',
-    ...(process.platform === 'linux' ? { icon } : {}),
+    ...(process.platform !== 'darwin' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
@@ -468,6 +468,7 @@ function createWindow(): BrowserWindow {
 if (hasSingleInstanceLock)
   app.whenReady().then(async () => {
     electronApp.setAppUserModelId('com.bearwarden.app')
+    if (process.platform === 'darwin') app.dock?.setIcon(icon)
     session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
       callback(false)
     })
