@@ -4108,16 +4108,6 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                       <ShieldCheck data-icon="inline-start" />
                       健康報告
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setSyncDialogOpen(true)}>
-                      <SyncSidebarIcon
-                        className={cn('sync-sidebar-control', syncStatus.state)}
-                        data-icon="inline-start"
-                      />
-                      同步
-                      <small className="sidebar-menu-status">
-                        {syncStateMeta[syncStatus.state].label}
-                      </small>
-                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={openSettings}>
                       <Settings2 data-icon="inline-start" />
                       設定
