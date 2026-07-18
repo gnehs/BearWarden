@@ -1,9 +1,25 @@
 import { describe, expect, it } from 'vitest'
 import {
+  adjacentItemIndex,
   normalizeItemSelection,
   updateItemSelection,
   type ItemSelectionState
 } from './item-selection'
+
+describe('adjacentItemIndex', () => {
+  it('moves to the adjacent item without wrapping at either edge', () => {
+    expect(adjacentItemIndex(3, 1, 'previous')).toBe(0)
+    expect(adjacentItemIndex(3, 1, 'next')).toBe(2)
+    expect(adjacentItemIndex(3, 0, 'previous')).toBe(0)
+    expect(adjacentItemIndex(3, 2, 'next')).toBe(2)
+  })
+
+  it('uses the direction edge when the active index is unavailable', () => {
+    expect(adjacentItemIndex(3, -1, 'next')).toBe(0)
+    expect(adjacentItemIndex(3, 3, 'previous')).toBe(2)
+    expect(adjacentItemIndex(0, -1, 'next')).toBeNull()
+  })
+})
 
 const orderedIds = ['a', 'b', 'c', 'd', 'e']
 

@@ -4,6 +4,19 @@ export interface ItemSelectionState {
   activeId: string | null
 }
 
+export function adjacentItemIndex(
+  itemCount: number,
+  activeIndex: number,
+  direction: 'previous' | 'next'
+): number | null {
+  if (itemCount <= 0) return null
+  if (activeIndex < 0 || activeIndex >= itemCount)
+    return direction === 'previous' ? itemCount - 1 : 0
+
+  const offset = direction === 'previous' ? -1 : 1
+  return Math.max(0, Math.min(itemCount - 1, activeIndex + offset))
+}
+
 export interface NormalizeItemSelectionInput {
   selectedIds: ReadonlySet<string>
   anchorId: string | null

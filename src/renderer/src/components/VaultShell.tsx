@@ -4196,6 +4196,7 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                     <VirtualizedItemList
                       groups={itemGroups}
                       scopeTitle={scopeTitle}
+                      activeId={editorMode ? null : selectedId}
                       selectedIds={selectedIds}
                       onPrefetch={scope.kind === 'trash' ? undefined : prefetchLoginDetail}
                       onSelect={selectItems}

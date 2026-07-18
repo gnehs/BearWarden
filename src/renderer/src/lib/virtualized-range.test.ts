@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { visibleVirtualIndexes } from './virtualized-range'
+import { virtualRowScrollOffsets, visibleVirtualIndexes } from './virtualized-range'
 
 describe('visibleVirtualIndexes', () => {
   const rows = [
@@ -19,5 +19,15 @@ describe('visibleVirtualIndexes', () => {
 
   it('waits until the viewport has a measured size', () => {
     expect(visibleVirtualIndexes(rows, 0, 0)).toEqual([])
+  })
+})
+
+describe('virtualRowScrollOffsets', () => {
+  it('places an item one item-row below the viewport top', () => {
+    expect(virtualRowScrollOffsets([66, 66, 66, 66], 66)).toEqual([0, 0, 66, 132])
+  })
+
+  it('accounts for group headers and clamps near the start', () => {
+    expect(virtualRowScrollOffsets([31, 66, 66], 66)).toEqual([0, 0, 31])
   })
 })
