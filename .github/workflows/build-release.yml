@@ -22,11 +22,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macOS
+          - platform: macOS (Apple Silicon)
             os: macos-15
             target: mac
-            architecture: --universal
-            artifact_name: bearwarden-macos
+            architecture: --arm64
+            artifact_name: bearwarden-macos-arm64
+            artifact_path: |
+              dist/*.dmg
+              dist/*.zip
+          - platform: macOS (Intel)
+            os: macos-15-intel
+            target: mac
+            architecture: --x64
+            artifact_name: bearwarden-macos-x64
             artifact_path: |
               dist/*.dmg
               dist/*.zip
