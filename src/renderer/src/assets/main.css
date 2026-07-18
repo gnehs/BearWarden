@@ -1472,8 +1472,7 @@ button svg {
   font-size: 10px;
   line-height: 1.4;
 }
-.detail-card.attachment-card [data-slot='card-title'],
-.detail-card.activity-card [data-slot='card-title'] {
+.detail-card.attachment-card [data-slot='card-title'] {
   color: var(--foreground);
   font-size: 14px;
   font-weight: 650;

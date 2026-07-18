@@ -48,6 +48,7 @@ import {
   MoreHorizontal,
   NotebookPen,
   Paperclip,
+  Pencil,
   Plus,
   RotateCcw,
   Settings2,
@@ -290,7 +291,6 @@ const sortItemsOptions = [
 
 const isMac = navigator.userAgent.includes('Mac')
 const commandLabel = isMac ? '⌘' : 'Ctrl'
-const moveShortcutLabel = isMac ? '⇧⌘M' : 'Ctrl+Shift+M'
 const detailCacheLimit = 48
 
 interface VaultShellProps {
@@ -4962,15 +4962,14 @@ function VaultShell({ onLocked }: VaultShellProps): React.JSX.Element {
                             </span>
                             <Button
                               variant="ghost"
-                              size="sm"
-                              className="ml-auto"
+                              size="icon-sm"
+                              className="-my-1.5 ml-auto"
                               type="button"
                               aria-label="移動至資料夾"
                               disabled={busy}
                               onClick={openMoveDialogForSelection}
                             >
-                              變更
-                              <Kbd data-icon="inline-end">{moveShortcutLabel}</Kbd>
+                              <Pencil aria-hidden="true" />
                             </Button>
                           </dd>
                         </div>
