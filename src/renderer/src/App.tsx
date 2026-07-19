@@ -1,3 +1,4 @@
+import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import type {
   PasskeyApprovalPrompt,
@@ -38,6 +39,8 @@ function denyPasskeyApproval(request: PasskeyApprovalPrompt): void {
 }
 
 function App(): React.JSX.Element {
+  const navigate = useNavigate()
+  const pathname = useRouterState({ select: (routerState) => routerState.location.pathname })
   const [state, setState] = useState<AppState>('loading')
   const [retryKey, setRetryKey] = useState(0)
   const [syncSetupPromptPending, setSyncSetupPromptPending] = useState(false)
@@ -52,6 +55,12 @@ function App(): React.JSX.Element {
     stateRef.current = nextState
     setState(nextState)
   }
+
+  useEffect(() => {
+    if (state === 'loading') return
+    const target = state === 'unlocked' ? '/vault' : '/unlock'
+    if (pathname !== target) void navigate({ to: target, replace: true })
+  }, [navigate, pathname, state])
 
   useEffect(() => {
     let active = true
