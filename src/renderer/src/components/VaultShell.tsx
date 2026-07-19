@@ -454,7 +454,13 @@ function DetailCard({
   return (
     <Card
       className={cn(
-        'border-border dark:bg-card [&>[data-slot=card-header]]:border-border [&>[data-slot=card-header]]:bg-muted [&_[data-slot=card-title]]:text-muted-foreground mx-auto mb-3.5 w-full max-w-[720px] gap-0 overflow-hidden rounded-[14px] bg-[color-mix(in_oklch,var(--card)_94%,transparent)] py-0 shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_3%,transparent)] [&_[data-slot=card-description]]:ml-auto [&_[data-slot=card-description]]:text-[10px] [&_[data-slot=card-description]]:leading-[1.4] [&_[data-slot=card-title]]:m-0 [&_[data-slot=card-title]]:text-[10px] [&_[data-slot=card-title]]:leading-[1.4] [&_[data-slot=card-title]]:font-[780] [&_[data-slot=card-title]]:tracking-[0.06em] [&_[data-slot=card-title]]:uppercase [&>[data-slot=card-header]]:flex [&>[data-slot=card-header]]:min-h-[33px] [&>[data-slot=card-header]]:items-center [&>[data-slot=card-header]]:gap-2 [&>[data-slot=card-header]]:border-b [&>[data-slot=card-header]]:px-3.5 [&>[data-slot=card-header]]:pt-[11px] [&>[data-slot=card-header]]:pb-2',
+        'border-border dark:bg-card mx-auto mb-3.5 w-full max-w-[720px] gap-0 overflow-hidden rounded-md bg-[color-mix(in_oklch,var(--card)_94%,transparent)] py-0 shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_3%,transparent)]',
+        // header
+        '[&>[data-slot=card-header]]:border-border [&>[data-slot=card-header]]:bg-muted [&>[data-slot=card-header]]:flex [&>[data-slot=card-header]]:items-center [&>[data-slot=card-header]]:gap-2 [&>[data-slot=card-header]]:border-b [&>[data-slot=card-header]]:px-3.5 [&>[data-slot=card-header]]:py-2.5',
+        // title
+        '[&_[data-slot=card-title]]:text-muted-foreground [&_[data-slot=card-title]]:m-0 [&_[data-slot=card-title]]:text-[10px] [&_[data-slot=card-title]]:leading-[1.4] [&_[data-slot=card-title]]:font-medium [&_[data-slot=card-title]]:uppercase',
+        // description
+        '[&_[data-slot=card-description]]:ml-auto [&_[data-slot=card-description]]:text-[10px] [&_[data-slot=card-description]]:leading-[1.4]',
         variant === 'attachment' &&
           '[&_[data-slot=card-description]]:text-xs [&_[data-slot=card-description]]:leading-normal [&_[data-slot=card-title]]:text-sm [&_[data-slot=card-title]]:font-[650] [&_[data-slot=card-title]]:tracking-normal [&_[data-slot=card-title]]:normal-case',
         variant === 'placeholder' && '[&_[data-slot=skeleton]]:opacity-72',
@@ -469,7 +475,7 @@ function DetailHeader({ className, ...props }: React.ComponentProps<'header'>): 
   return (
     <header
       className={cn(
-        'border-border [@media(prefers-reduced-transparency:reduce)]:[.platform-macos_&]:bg-card [@media(prefers-reduced-transparency:reduce)]:[.platform-windows_&]:bg-card flex min-h-[88px] items-center gap-3 border-b bg-[color-mix(in_oklch,var(--card)_82%,transparent)] px-[22px] py-[15px] [backdrop-filter:blur(18px)] [-webkit-backdrop-filter:blur(18px)] max-[680px]:px-3 max-[680px]:py-[11px] [.platform-macos_&]:bg-[color-mix(in_oklch,var(--card)_68%,transparent)] [.platform-macos_&]:[backdrop-filter:saturate(135%)_blur(18px)] [.platform-macos_&]:[-webkit-backdrop-filter:saturate(135%)_blur(18px)] [.platform-windows_&]:bg-[color-mix(in_oklch,var(--card)_68%,transparent)] [.platform-windows_&]:[backdrop-filter:saturate(135%)_blur(18px)] [.platform-windows_&]:[-webkit-backdrop-filter:saturate(135%)_blur(18px)] [@media(prefers-reduced-transparency:reduce)]:[.platform-macos_&]:[backdrop-filter:none] [@media(prefers-reduced-transparency:reduce)]:[.platform-macos_&]:[-webkit-backdrop-filter:none] [@media(prefers-reduced-transparency:reduce)]:[.platform-windows_&]:[backdrop-filter:none] [@media(prefers-reduced-transparency:reduce)]:[.platform-windows_&]:[-webkit-backdrop-filter:none]',
+        'border-border bg-card flex items-center gap-3 border-b px-[22px] py-[15px] max-[680px]:px-3 max-[680px]:py-[11px]',
         className
       )}
       {...props}
