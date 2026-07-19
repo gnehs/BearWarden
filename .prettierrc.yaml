@@ -2,5 +2,9 @@ singleQuote: true
 semi: false
 printWidth: 100
 trailingComma: none
+tailwindFunctions:
+  - cn
+  - clax
+  - cva
 plugins:
   - prettier-plugin-tailwindcss

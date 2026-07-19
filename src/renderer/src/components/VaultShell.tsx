@@ -488,7 +488,7 @@ const folderSectionClassName =
 
 function detailIconClassName(type?: VaultItemType): string {
   return cn(
-    'grid size-12 flex-none place-items-center rounded-lg outline outline-foreground/5 bg-muted text-primary shadow-[var(--control-highlight)] max-[430px]:hidden dark:border-border dark:bg-muted dark:text-muted-foreground forced-colors:[forced-color-adjust:none]',
+    'outline-foreground/5 bg-muted text-primary dark:border-border dark:bg-muted dark:text-muted-foreground grid size-12 flex-none place-items-center rounded-lg shadow-[var(--control-highlight)] outline max-[430px]:hidden forced-colors:[forced-color-adjust:none]',
     type === 'login' && 'overflow-hidden',
     type === 'card' && 'bg-muted text-chart-4 dark:bg-website-icon-background',
     type === 'identity' && 'bg-accent text-primary',

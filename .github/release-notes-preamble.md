@@ -9,6 +9,7 @@
 > 在適用法律允許的最大範圍內，開發者與貢獻者不對因使用或無法使用本軟體所造成的任何資料遺失、帳號遭盜用、財務損失或其他直接或間接損害負責。
 
 macOS 安裝方式：
+
 ```bash
 brew install --cask gnehs/tap/bearwarden
 ```
@@ -24,6 +25,7 @@ brew install --cask gnehs/tap/bearwarden
 > To the fullest extent permitted by applicable law, the developers and contributors are not liable for any data loss, account compromise, financial loss, or other direct or indirect damages arising from the use of, or inability to use, this software.
 
 Installation on macOS:
+
 ```bash
 brew install --cask gnehs/tap/bearwarden
 ```
