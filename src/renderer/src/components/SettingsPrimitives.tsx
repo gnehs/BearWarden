@@ -10,7 +10,7 @@ function SettingsCard({
   return (
     <Card
       className={cn(
-        'border-border gap-0 border py-0 shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_4%,transparent)] [&_[data-slot=card-description]]:mt-0.5 [&_[data-slot=card-description]]:text-xs [&_[data-slot=card-description]]:leading-[1.5] [&_[data-slot=card-footer]]:justify-end [&_[data-slot=card-title]]:scroll-mt-[18px] [&_[data-slot=card-title]]:text-sm [&_[data-slot=card-title]]:font-[680] [&>[data-slot=card-header]]:items-center [&>[data-slot=card-header]]:px-[18px] [&>[data-slot=card-header]]:pt-[17px] [&>[data-slot=card-header]]:pb-[15px]',
+        'outline-border gap-0 py-0 shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_4%,transparent)] outline [&_[data-slot=card-description]]:mt-0.5 [&_[data-slot=card-description]]:text-xs [&_[data-slot=card-description]]:leading-[1.5] [&_[data-slot=card-footer]]:justify-end [&_[data-slot=card-title]]:scroll-mt-[18px] [&_[data-slot=card-title]]:text-sm [&_[data-slot=card-title]]:font-[680] [&>[data-slot=card-header]]:items-center [&>[data-slot=card-header]]:px-[18px] [&>[data-slot=card-header]]:pt-[17px] [&>[data-slot=card-header]]:pb-[15px]',
         className
       )}
       {...props}
