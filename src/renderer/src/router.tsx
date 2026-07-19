@@ -52,12 +52,12 @@ const indexRoute = createRoute({
 
 export const unlockRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/unlock'
+  path: 'unlock'
 })
 
 export const vaultRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/vault',
+  path: 'vault',
   validateSearch: (search: Record<string, unknown>): VaultSearch => {
     const scope = oneOf(search.scope, vaultScopes)
     const folder = optionalString(search.folder)
@@ -78,17 +78,26 @@ export const vaultRoute = createRoute({
   }
 })
 
-// The concrete child paths are registered below and inferred by createRouter.
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function vaultChild(path: string) {
-  return createRoute({ getParentRoute: () => vaultRoute, path })
-}
-
-const settingsRoute = vaultChild('/settings')
-const healthRoute = vaultChild('/health')
-const sendsRoute = vaultChild('/sends')
-const organizationsRoute = vaultChild('/organizations')
-const emergencyAccessRoute = vaultChild('/emergency-access')
+const settingsRoute = createRoute({
+  getParentRoute: () => vaultRoute,
+  path: 'settings'
+})
+const healthRoute = createRoute({
+  getParentRoute: () => vaultRoute,
+  path: 'health'
+})
+const sendsRoute = createRoute({
+  getParentRoute: () => vaultRoute,
+  path: 'sends'
+})
+const organizationsRoute = createRoute({
+  getParentRoute: () => vaultRoute,
+  path: 'organizations'
+})
+const emergencyAccessRoute = createRoute({
+  getParentRoute: () => vaultRoute,
+  path: 'emergency-access'
+})
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
