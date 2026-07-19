@@ -1,7 +1,6 @@
 import { ContactRound, CreditCard, FileKey2, Folder, Globe2, NotebookPen } from 'lucide-react'
 import type { FolderView, LoginSummary } from '../../../shared/vault-contract'
 import { Badge } from '@renderer/components/ui/badge'
-import { cn } from '@renderer/lib/utils'
 import { normalizeBitwardenCardBrand } from '../lib/payment-card'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
@@ -37,15 +36,10 @@ export function ItemDragPreview({
 
   return (
     <div
-      className="drag-overlay bg-popover/95 text-foreground grid min-h-14 w-full max-w-[calc(100vw-24px)] grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border px-2.5 py-2 shadow-lg backdrop-blur-md"
+      className="bg-popover/95 text-foreground grid min-h-14 w-full max-w-[calc(100vw-24px)] grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border px-2.5 py-2 shadow-lg backdrop-blur-md forced-colors:outline-2 forced-colors:outline-[CanvasText]"
       aria-hidden
     >
-      <span
-        className={cn(
-          'bg-muted text-primary grid size-9 shrink-0 place-items-center overflow-hidden rounded-lg border',
-          item.type
-        )}
-      >
+      <span className="bg-muted text-primary grid size-9 shrink-0 place-items-center overflow-hidden rounded-lg border">
         {item.type === 'card' ? (
           <PaymentCardBrandMark brand={normalizeBitwardenCardBrand(item.cardBrand)} compact />
         ) : item.type === 'login' ? (
@@ -69,7 +63,7 @@ export function ItemDragPreview({
 export function FolderDragPreview({ folder, count }: FolderDragPreviewProps): React.JSX.Element {
   return (
     <div
-      className="drag-overlay bg-popover/95 text-foreground grid min-h-14 w-64 max-w-[calc(100vw-24px)] grid-cols-[36px_minmax(0,1fr)] items-center gap-2.5 rounded-xl border px-2.5 py-2 shadow-lg backdrop-blur-md"
+      className="bg-popover/95 text-foreground grid min-h-14 w-64 max-w-[calc(100vw-24px)] grid-cols-[36px_minmax(0,1fr)] items-center gap-2.5 rounded-xl border px-2.5 py-2 shadow-lg backdrop-blur-md forced-colors:outline-2 forced-colors:outline-[CanvasText]"
       aria-hidden
     >
       <span className="bg-accent text-primary grid size-9 place-items-center rounded-lg border">

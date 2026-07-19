@@ -9,7 +9,7 @@ describe('motion-enabled UI primitives', () => {
   it('keeps the checkbox check path mounted for draw transitions', () => {
     const markup = renderToStaticMarkup(<Checkbox aria-label="測試勾選" checked={false} />)
 
-    expect(markup).toContain('t-check')
+    expect(markup).toContain('data-slot="checkbox"')
     expect(markup).toContain('--check-len:23')
     expect(markup).toContain('<svg')
   })
@@ -29,10 +29,9 @@ describe('motion-enabled UI primitives', () => {
       <Switch aria-label="測試開關" checked onCheckedChange={vi.fn()} />
     )
 
-    expect(markup).toContain('t-toggle')
+    expect(markup).toContain('data-slot="switch"')
     expect(markup).toContain('data-on="true"')
-    expect(markup).toContain('t-toggle-thumb')
-    expect(markup).not.toContain('is-init')
+    expect(markup).toContain('data-slot="switch-thumb"')
   })
 
   it('enables sliding hooks only for opted-in horizontal tabs', () => {
@@ -53,9 +52,7 @@ describe('motion-enabled UI primitives', () => {
       </Tabs>
     )
 
-    expect(horizontal).toContain('t-tabs')
-    expect(horizontal).toContain('t-tab')
-    expect(vertical).not.toContain('t-tabs')
-    expect(vertical).not.toContain('t-tab')
+    expect(horizontal).toContain('data-slot="tabs-indicator"')
+    expect(vertical).not.toContain('data-slot="tabs-indicator"')
   })
 })

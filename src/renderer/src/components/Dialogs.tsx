@@ -20,15 +20,7 @@ import {
 import { Alert, AlertAction, AlertDescription } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@renderer/components/ui/card'
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from '@renderer/components/ui/dialog'
+import { Dialog, DialogClose, DialogDescription, DialogTitle } from '@renderer/components/ui/dialog'
 import { Field, FieldLabel } from '@renderer/components/ui/field'
 import {
   Empty,
@@ -50,6 +42,7 @@ import { Spinner } from '@renderer/components/ui/spinner'
 import { Skeleton } from '@renderer/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { CopyFeedbackIcon } from './CopyFeedbackIcon'
+import { ModalActionGroup, ModalBody, ModalContent, ModalFooter, ModalHeader } from './ModalLayout'
 
 interface ModalProps {
   title: string
@@ -78,11 +71,15 @@ export function Modal({
         if (!nextOpen) onClose()
       }}
     >
-      <DialogContent className="modal modal-card" showCloseButton={false}>
-        <DialogHeader className="modal-header">
+      <ModalContent showCloseButton={false}>
+        <ModalHeader hasDescription={Boolean(description)}>
           <div>
-            <DialogTitle>{title}</DialogTitle>
-            {description && <DialogDescription>{description}</DialogDescription>}
+            <DialogTitle className="m-0 text-[17px]">{title}</DialogTitle>
+            {description && (
+              <DialogDescription className="mt-[5px] mb-0 text-[11px] leading-[1.5]">
+                {description}
+              </DialogDescription>
+            )}
           </div>
           <DialogClose
             render={
@@ -97,9 +94,9 @@ export function Modal({
           >
             <X aria-hidden="true" />
           </DialogClose>
-        </DialogHeader>
+        </ModalHeader>
         {typeof children === 'function' ? children(() => setOpen(false)) : children}
-      </DialogContent>
+      </ModalContent>
     </Dialog>
   )
 }
@@ -149,7 +146,7 @@ export function FolderDialog({
       onClose={onClose}
     >
       <form onSubmit={submit}>
-        <div className="modal-body">
+        <ModalBody>
           <Field data-invalid={Boolean(error)}>
             <FieldLabel htmlFor="folder-name">名稱</FieldLabel>
             <Input
@@ -168,8 +165,8 @@ export function FolderDialog({
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
-        </div>
-        <DialogFooter className="modal-actions split mx-0 mb-0">
+        </ModalBody>
+        <ModalFooter split>
           <div>
             {folder && onDelete && (
               <AlertDialog
@@ -207,7 +204,7 @@ export function FolderDialog({
               </AlertDialog>
             )}
           </div>
-          <div className="action-group">
+          <ModalActionGroup>
             <DialogClose render={<Button variant="secondary" type="button" disabled={busy} />}>
               取消
             </DialogClose>
@@ -215,8 +212,8 @@ export function FolderDialog({
               {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
               儲存
             </Button>
-          </div>
-        </DialogFooter>
+          </ModalActionGroup>
+        </ModalFooter>
       </form>
     </Modal>
   )
@@ -274,11 +271,14 @@ export function MoveDialog({
             }
           }}
         >
-          <div className="modal-body move-dialog-body">
-            <span className="move-dialog-icon" aria-hidden="true">
+          <ModalBody className="grid-cols-[auto_minmax(0,1fr)] items-end">
+            <span
+              className="text-primary grid size-[42px] place-items-center rounded-[11px] bg-[var(--accent-soft)]"
+              aria-hidden="true"
+            >
               <FolderInput />
             </span>
-            <Field className="grow">
+            <Field className="min-w-0">
               <FieldLabel htmlFor="move-folder">資料夾</FieldLabel>
               <Select
                 items={folderItems}
@@ -300,8 +300,8 @@ export function MoveDialog({
                 </SelectContent>
               </Select>
             </Field>
-          </div>
-          <DialogFooter className="modal-actions mx-0 mb-0">
+          </ModalBody>
+          <ModalFooter>
             <DialogClose render={<Button variant="secondary" type="button" disabled={busy} />}>
               取消
             </DialogClose>
@@ -309,7 +309,7 @@ export function MoveDialog({
               {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
               移動
             </Button>
-          </DialogFooter>
+          </ModalFooter>
         </form>
       )}
     </Modal>
@@ -416,11 +416,14 @@ export function RepromptDialog({
           }
         }}
       >
-        <div className="modal-body">
-          <span className="move-dialog-icon" aria-hidden="true">
+        <ModalBody>
+          <span
+            className="text-primary grid size-[42px] place-items-center rounded-[11px] bg-[var(--accent-soft)]"
+            aria-hidden="true"
+          >
             <KeyRound />
           </span>
-          <Field className="grow" data-invalid={Boolean(error)}>
+          <Field className="min-w-0" data-invalid={Boolean(error)}>
             <FieldLabel htmlFor="reprompt-master-password">主密碼</FieldLabel>
             <Input
               ref={passwordRef}
@@ -438,8 +441,8 @@ export function RepromptDialog({
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
-        </div>
-        <DialogFooter className="modal-actions mx-0 mb-0">
+        </ModalBody>
+        <ModalFooter>
           <Button type="button" variant="secondary" disabled={busy} onClick={onCancel}>
             取消
           </Button>
@@ -447,7 +450,7 @@ export function RepromptDialog({
             {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
             驗證
           </Button>
-        </DialogFooter>
+        </ModalFooter>
       </form>
     </Modal>
   )
@@ -563,16 +566,15 @@ export function PasswordHistoryDialog({
     if (!transition || !skeleton) return
 
     if (loading) {
-      transition.classList.add('is-resetting')
-      transition.classList.remove('is-revealed')
-      skeleton.classList.remove('is-pulsing')
+      transition.dataset.revealState = 'resetting'
+      skeleton.dataset.pulsing = 'false'
       void skeleton.offsetWidth
-      transition.classList.remove('is-resetting')
-      skeleton.classList.add('is-pulsing')
+      transition.dataset.revealState = 'loading'
+      skeleton.dataset.pulsing = 'true'
       return
     }
 
-    transition.classList.add('is-revealed')
+    transition.dataset.revealState = 'revealed'
   }, [loading])
 
   const closeDialog = (): void => {
@@ -663,17 +665,20 @@ export function PasswordHistoryDialog({
       description={`「${itemName}」有 ${count} 筆歷史紀錄。`}
       onClose={closeDialog}
     >
-      <div className="modal-body flex flex-col gap-3">
+      <ModalBody className="flex flex-col gap-3">
         <div
           ref={historyTransitionRef}
-          className="t-skel"
+          className="data-[reveal-state=revealed]:[&>[data-slot=password-history-content]]:blur-0 relative data-[reveal-state=resetting]:[&>_*]:!transition-none data-[reveal-state=revealed]:[&>[data-slot=password-history-content]]:opacity-100 data-[reveal-state=revealed]:[&>[data-slot=password-history-skeleton]]:opacity-0 data-[reveal-state=revealed]:[&>[data-slot=password-history-skeleton]]:blur-[var(--reveal-blur)]"
           data-state={loading ? 'loading' : 'loaded'}
+          data-reveal-state="loading"
           aria-busy={loading}
           style={{ height: `min(50vh, ${historySlotHeight}px)` }}
         >
           <div
             ref={historySkeletonRef}
-            className="t-skel-skeleton is-pulsing flex flex-col gap-2 overflow-hidden"
+            data-slot="password-history-skeleton"
+            className="blur-0 absolute inset-0 z-1 flex flex-col gap-2 overflow-hidden opacity-100 transition-[opacity,filter] duration-[var(--reveal-dur)] ease-[var(--reveal-ease)] motion-reduce:!transition-none data-[pulsing=true]:[&>*]:animate-[pulse_var(--pulse-dur)_ease-in-out_var(--pulse-count)] motion-reduce:data-[pulsing=true]:[&>*]:!animate-none"
+            data-pulsing="true"
             role="status"
             aria-label="正在載入密碼歷史"
             aria-hidden={!loading}
@@ -690,7 +695,8 @@ export function PasswordHistoryDialog({
             ))}
           </div>
           <div
-            className="t-skel-content flex min-h-0 flex-col gap-3"
+            data-slot="password-history-content"
+            className="absolute inset-0 z-2 flex min-h-0 flex-col gap-3 opacity-0 blur-[var(--reveal-blur)] transition-[opacity,filter] duration-[var(--reveal-dur)] ease-[var(--reveal-ease)] motion-reduce:!transition-none"
             aria-hidden={loading}
             inert={loading}
           >
@@ -742,7 +748,7 @@ export function PasswordHistoryDialog({
                               <code className="text-sm break-all select-text">{revealedValue}</code>
                             ) : (
                               <>
-                                <code className="masked-value text-sm" aria-hidden="true">
+                                <code className="text-sm" aria-hidden="true">
                                   ••••••••••••
                                 </code>
                                 <span className="sr-only">歷史密碼已遮蔽</span>
@@ -787,12 +793,12 @@ export function PasswordHistoryDialog({
             )}
           </div>
         </div>
-      </div>
-      <DialogFooter className="modal-actions mx-0 mb-0">
+      </ModalBody>
+      <ModalFooter>
         <Button type="button" variant="secondary" onClick={closeDialog}>
           關閉
         </Button>
-      </DialogFooter>
+      </ModalFooter>
     </Modal>
   )
 }

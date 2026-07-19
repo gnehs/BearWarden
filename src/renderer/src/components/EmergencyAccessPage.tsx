@@ -18,6 +18,7 @@ import {
   EmptyTitle
 } from '@renderer/components/ui/empty'
 import { Spinner } from '@renderer/components/ui/spinner'
+import AuxiliaryPageLayout from './AuxiliaryPageLayout'
 import FeatureUnderConstructionNotice from './FeatureUnderConstructionNotice'
 
 function statusLabel(status: number): string {
@@ -62,66 +63,58 @@ function EmergencyAccessPage(): React.JSX.Element {
   }, [])
 
   return (
-    <div className="settings-page">
-      <header className="settings-header">
-        <div className="settings-header-inner">
-          <div className="settings-title-group">
-            <p className="eyebrow">Bitwarden Emergency Access</p>
-            <h1 id="emergency-access-title">Emergency Access</h1>
-            <p className="settings-subtitle">目前提供唯讀狀態；邀請、確認、檢視與接管尚未開放。</p>
-          </div>
+    <AuxiliaryPageLayout
+      eyebrow="Bitwarden Emergency Access"
+      title="Emergency Access"
+      titleId="emergency-access-title"
+      subtitle="目前提供唯讀狀態；邀請、確認、檢視與接管尚未開放。"
+    >
+      <FeatureUnderConstructionNotice>
+        目前僅可檢視 Emergency Access
+        的授權關係與狀態；尚不支援邀請、接受、確認、取用或接管授權，以及金鑰輪替。
+      </FeatureUnderConstructionNotice>
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 py-16" role="status">
+          <Spinner />
+          載入 Emergency Access…
         </div>
-      </header>
-      <div className="settings-scroll">
-        <FeatureUnderConstructionNotice>
-          目前僅可檢視 Emergency Access
-          的授權關係與狀態；尚不支援邀請、接受、確認、取用或接管授權，以及金鑰輪替。
-        </FeatureUnderConstructionNotice>
-        {loading ? (
-          <div className="flex items-center justify-center gap-2 py-16" role="status">
-            <Spinner />
-            載入 Emergency Access…
-          </div>
-        ) : entries.length === 0 ? (
-          <Empty>
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <ShieldAlert />
-              </EmptyMedia>
-              <EmptyTitle>尚未設定 Emergency Access</EmptyTitle>
-              <EmptyDescription>伺服器沒有回傳授權聯絡人或授權來源。</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        ) : (
-          <div className="grid gap-3">
-            {entries.map((entry) => (
-              <Card key={`${entry.role}:${entry.id}`}>
-                <CardHeader className="flex-row items-start justify-between gap-4">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <UserRound className="size-4" aria-hidden="true" />
-                      {entry.name}
-                    </CardTitle>
-                    <CardDescription>{entry.email}</CardDescription>
-                  </div>
-                  <Badge variant="outline">
-                    {entry.role === 'trusted' ? '我授權' : '授權給我'}
-                  </Badge>
-                </CardHeader>
-                <CardContent className="text-muted-foreground flex flex-wrap gap-2 text-sm">
-                  <span>{typeLabel(entry.type)}</span>
-                  <span>{statusLabel(entry.status)}</span>
-                  <span className="inline-flex items-center gap-1">
-                    <Clock3 className="size-3.5" aria-hidden="true" />
-                    等待 {entry.waitTimeDays} 天
-                  </span>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+      ) : entries.length === 0 ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <ShieldAlert />
+            </EmptyMedia>
+            <EmptyTitle>尚未設定 Emergency Access</EmptyTitle>
+            <EmptyDescription>伺服器沒有回傳授權聯絡人或授權來源。</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <div className="grid gap-3">
+          {entries.map((entry) => (
+            <Card key={`${entry.role}:${entry.id}`}>
+              <CardHeader className="flex-row items-start justify-between gap-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <UserRound className="size-4" aria-hidden="true" />
+                    {entry.name}
+                  </CardTitle>
+                  <CardDescription>{entry.email}</CardDescription>
+                </div>
+                <Badge variant="outline">{entry.role === 'trusted' ? '我授權' : '授權給我'}</Badge>
+              </CardHeader>
+              <CardContent className="text-muted-foreground flex flex-wrap gap-2 text-sm">
+                <span>{typeLabel(entry.type)}</span>
+                <span>{statusLabel(entry.status)}</span>
+                <span className="inline-flex items-center gap-1">
+                  <Clock3 className="size-3.5" aria-hidden="true" />
+                  等待 {entry.waitTimeDays} 天
+                </span>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </AuxiliaryPageLayout>
   )
 }
 

@@ -107,9 +107,13 @@ export const ItemRow = memo(function ItemRow({
     <li
       ref={setRowRef}
       data-item-id={item.id}
+      data-item-row=""
+      data-selected={selected ? 'true' : 'false'}
       className={cn(
-        'item-row grid-cols-[minmax(0,1fr)_28px] px-[13px]',
-        selected && 'selected',
+        'group/item border-border has-[[data-item-row-main]:focus-visible]:outline-ring/72 relative grid min-h-[66px] cursor-grab touch-none grid-cols-[minmax(0,1fr)_28px] rounded-none border-0 border-b px-[13px] has-[[data-item-row-main]:focus-visible]:rounded-lg has-[[data-item-row-main]:focus-visible]:outline-[3px] has-[[data-item-row-main]:focus-visible]:outline-offset-2',
+        !selected && 'hover:bg-accent hover:rounded-lg',
+        selected &&
+          'bg-primary text-primary-foreground rounded-[11px] border-b-transparent shadow-[0_4px_13px_color-mix(in_oklch,var(--shadow-color)_18%,transparent)] has-[[data-item-row-main]:focus-visible]:rounded-[11px] forced-colors:outline-2 forced-colors:outline-offset-[-2px] forced-colors:outline-[Highlight]',
         isDragging && 'cursor-grabbing opacity-0'
       )}
       {...attributes}
@@ -123,7 +127,8 @@ export const ItemRow = memo(function ItemRow({
     >
       <Button
         variant="ghost"
-        className="item-row-main px-0 hover:shadow-[none]"
+        className="grid h-[65px] min-w-0 grid-cols-[42px_minmax(0,1fr)] items-center gap-[11px] border-0 bg-transparent px-0 text-left hover:shadow-none focus-visible:border-transparent focus-visible:shadow-none focus-visible:outline-none"
+        data-item-row-main=""
         type="button"
         onClick={(event) =>
           onSelect(item.id, {
@@ -148,7 +153,18 @@ export const ItemRow = memo(function ItemRow({
         }}
         aria-pressed={selected}
       >
-        <span className={cn('item-icon', item.type)} aria-hidden="true">
+        <span
+          className={cn(
+            'border-border bg-muted text-muted-foreground grid size-10 place-items-center rounded-[10px] border forced-colors:[forced-color-adjust:none]',
+            item.type === 'login' && 'overflow-hidden',
+            item.type === 'card' &&
+              'text-chart-4 [[data-theme=dark]_&]:bg-[var(--website-icon-background)]',
+            item.type === 'identity' && 'bg-accent text-primary',
+            item.type === 'secureNote' && 'text-chart-3',
+            item.type === 'sshKey' && 'bg-accent text-chart-2'
+          )}
+          aria-hidden="true"
+        >
           {item.type === 'card' ? (
             <PaymentCardBrandMark brand={normalizeBitwardenCardBrand(item.cardBrand)} compact />
           ) : item.type === 'login' && !readOnly ? (
@@ -157,13 +173,21 @@ export const ItemRow = memo(function ItemRow({
             <ItemIcon />
           )}
         </span>
-        <span className="item-copy">
+        <span className="grid min-w-0 gap-1">
           <strong
-            className={cn('text-foreground transition-colors duration-150', selected && 'text-primary-foreground')}
+            className={cn(
+              'text-foreground flex min-w-0 items-center gap-[5px] truncate text-[13px] font-[690] transition-colors duration-150',
+              selected && 'text-primary-foreground'
+            )}
           >
             {item.name}
           </strong>
-          <small>
+          <small
+            className={cn(
+              'text-muted-foreground truncate text-[11px]',
+              selected && 'text-primary-foreground/82'
+            )}
+          >
             {readOnly
               ? '已刪除的項目'
               : item.subtitle || item.username || item.uri || '尚未設定摘要'}
@@ -175,10 +199,11 @@ export const ItemRow = memo(function ItemRow({
           variant="ghost"
           size="icon-sm"
           className={cn(
-            'icon-button subtle favorite-button',
+            'size-7 min-w-7 cursor-pointer opacity-0 transition-opacity duration-150 group-hover/item:opacity-100 focus-visible:opacity-100',
             selected &&
-              'hover:bg-primary-foreground/10 hover:text-primary-foreground active:bg-primary-foreground/10 active:text-primary-foreground active:shadow-none focus-visible:bg-primary-foreground/10 focus-visible:text-primary-foreground hover:shadow-none',
-            item.favorite && 'active'
+              'text-primary-foreground/82 hover:bg-primary-foreground/10 hover:text-primary-foreground active:bg-primary-foreground/10 active:text-primary-foreground focus-visible:bg-primary-foreground/10 focus-visible:text-primary-foreground opacity-100 hover:shadow-none active:shadow-none',
+            item.favorite && !selected && 'text-chart-4 opacity-100',
+            item.favorite && selected && 'opacity-100'
           )}
           type="button"
           label={item.favorite ? `將 ${item.name} 從常用項目移除` : `將 ${item.name} 加入常用項目`}
@@ -215,17 +240,19 @@ export function FolderRow({
     <li
       ref={setNodeRef}
       className={cn(
-        'folder-row',
-        selected && 'selected',
-        isDragging && 'dragging',
-        isOver && 'drop-target'
+        'group/folder text-foreground grid min-h-9 grid-cols-[22px_minmax(0,1fr)_25px] items-center rounded-lg',
+        !selected && !isOver && 'hover:bg-sidebar-overlay-hover',
+        selected && 'bg-sidebar-overlay-active shadow-none',
+        isDragging && 'opacity-35',
+        isOver &&
+          'bg-sidebar-overlay-active shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--sidebar-primary)_55%,transparent)] forced-colors:outline-2 forced-colors:outline-offset-[-2px] forced-colors:outline-[Highlight]'
       )}
       style={{ transform: CSS.Transform.toString(transform), transition }}
     >
       <RowIconButton
         variant="ghost"
         size="icon-sm"
-        className="folder-drag-handle"
+        className="group-hover/folder:text-muted-foreground focus-visible:text-muted-foreground grid h-[30px] w-6 place-items-center border-0 bg-transparent p-0 text-transparent shadow-none hover:bg-transparent hover:shadow-none"
         type="button"
         label={`重新排列 ${folder.name}`}
         {...attributes}
@@ -235,7 +262,7 @@ export function FolderRow({
       </RowIconButton>
       <Button
         variant="sidebar"
-        className="folder-row-main hover:bg-transparent hover:shadow-[none] aria-expanded:bg-transparent aria-expanded:shadow-[none]"
+        className="[&>small]:text-muted-foreground grid h-[34px] min-w-0 grid-cols-[21px_minmax(0,1fr)_auto] items-center gap-1 border-0 bg-transparent p-0 text-left text-inherit hover:bg-transparent hover:shadow-none aria-expanded:bg-transparent aria-expanded:shadow-none [&>small]:min-w-[3ch] [&>small]:pr-1 [&>small]:text-right [&>small]:text-[10px] [&>small]:tabular-nums [&>span]:truncate [&>span]:text-xs"
         type="button"
         aria-current={selected ? 'page' : undefined}
         onClick={onSelect}
@@ -247,7 +274,7 @@ export function FolderRow({
       <RowIconButton
         variant="ghost"
         size="icon-sm"
-        className="folder-more"
+        className="group-hover/folder:text-muted-foreground focus-visible:text-muted-foreground grid h-[30px] w-6 place-items-center border-0 bg-transparent p-0 text-transparent shadow-none hover:bg-transparent hover:shadow-none"
         type="button"
         label={`編輯資料夾 ${folder.name}`}
         onClick={onEdit}

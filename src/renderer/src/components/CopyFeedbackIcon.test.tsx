@@ -7,7 +7,7 @@ describe('CopyFeedbackIcon', () => {
   it('renders both icons and selects the copy state before success', () => {
     const markup = renderToStaticMarkup(<CopyFeedbackIcon copied={false} />)
 
-    expect(markup).toContain('class="t-icon-swap"')
+    expect(markup).toContain('data-slot="copy-feedback-icon"')
     expect(markup).toContain('data-state="a"')
     expect(markup).toContain('data-icon="a"')
     expect(markup).toContain('data-icon="b"')

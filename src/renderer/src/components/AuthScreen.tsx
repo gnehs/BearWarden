@@ -169,9 +169,12 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
 
   return (
     <main className="relative grid min-h-full place-items-center bg-[radial-gradient(circle_at_50%_8%,color-mix(in_oklch,var(--primary)_18%,transparent),transparent_34%),linear-gradient(145deg,var(--muted),var(--background)_55%,var(--accent))] px-6 pt-[72px] pb-[34px]">
-      <div className="window-drag-region" aria-hidden="true" />
+      <div
+        className="pointer-events-auto absolute inset-x-0 top-0 h-[52px] [-webkit-app-region:drag]"
+        aria-hidden="true"
+      />
       {usesWindowControlsOverlay && (
-        <div className="auth-application-menu">
+        <div className="absolute top-0 left-[env(titlebar-area-x,0px)] z-20 flex h-[env(titlebar-area-height,54px)] w-[env(titlebar-area-width,100%)] items-center px-3.5">
           <ApplicationTitlebarMenu />
         </div>
       )}

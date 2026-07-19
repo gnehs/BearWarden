@@ -418,13 +418,82 @@ interface TooltipIconButtonProps extends React.ComponentProps<typeof Button> {
 function TooltipIconButton({
   label,
   children,
+  className,
   ...props
 }: TooltipIconButtonProps): React.JSX.Element {
   return (
     <Tooltip>
-      <TooltipTrigger render={<Button aria-label={label} {...props} />}>{children}</TooltipTrigger>
+      <TooltipTrigger
+        render={
+          <Button
+            aria-label={label}
+            className={cn(
+              'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-[34px] min-w-[34px] rounded-[9px] shadow-(--control-highlight) transition-[background,color,border-color,transform] duration-[130ms] [-webkit-app-region:no-drag]',
+              className
+            )}
+            {...props}
+          />
+        }
+      >
+        {children}
+      </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
+  )
+}
+
+interface DetailCardProps extends React.ComponentProps<typeof Card> {
+  variant?: 'default' | 'attachment' | 'placeholder'
+}
+
+function DetailCard({
+  className,
+  variant = 'default',
+  ...props
+}: DetailCardProps): React.JSX.Element {
+  return (
+    <Card
+      className={cn(
+        'border-border dark:bg-card [&>[data-slot=card-header]]:border-border [&>[data-slot=card-header]]:bg-muted [&_[data-slot=card-title]]:text-muted-foreground mx-auto mb-3.5 w-full max-w-[720px] gap-0 overflow-hidden rounded-[14px] bg-[color-mix(in_oklch,var(--card)_94%,transparent)] py-0 shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_3%,transparent)] [&_[data-slot=card-description]]:ml-auto [&_[data-slot=card-description]]:text-[10px] [&_[data-slot=card-description]]:leading-[1.4] [&_[data-slot=card-title]]:m-0 [&_[data-slot=card-title]]:text-[10px] [&_[data-slot=card-title]]:leading-[1.4] [&_[data-slot=card-title]]:font-[780] [&_[data-slot=card-title]]:tracking-[0.06em] [&_[data-slot=card-title]]:uppercase [&>[data-slot=card-header]]:flex [&>[data-slot=card-header]]:min-h-[33px] [&>[data-slot=card-header]]:items-center [&>[data-slot=card-header]]:gap-2 [&>[data-slot=card-header]]:border-b [&>[data-slot=card-header]]:px-3.5 [&>[data-slot=card-header]]:pt-[11px] [&>[data-slot=card-header]]:pb-2',
+        variant === 'attachment' &&
+          '[&_[data-slot=card-description]]:text-xs [&_[data-slot=card-description]]:leading-normal [&_[data-slot=card-title]]:text-sm [&_[data-slot=card-title]]:font-[650] [&_[data-slot=card-title]]:tracking-normal [&_[data-slot=card-title]]:normal-case',
+        variant === 'placeholder' && '[&_[data-slot=skeleton]]:opacity-72',
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function DetailHeader({ className, ...props }: React.ComponentProps<'header'>): React.JSX.Element {
+  return (
+    <header
+      className={cn(
+        'border-border [@media(prefers-reduced-transparency:reduce)]:[.platform-macos_&]:bg-card [@media(prefers-reduced-transparency:reduce)]:[.platform-windows_&]:bg-card flex min-h-[88px] items-center gap-3 border-b bg-[color-mix(in_oklch,var(--card)_82%,transparent)] px-[22px] py-[15px] [backdrop-filter:blur(18px)] [-webkit-backdrop-filter:blur(18px)] max-[680px]:px-3 max-[680px]:py-[11px] [.platform-macos_&]:bg-[color-mix(in_oklch,var(--card)_68%,transparent)] [.platform-macos_&]:[backdrop-filter:saturate(135%)_blur(18px)] [.platform-macos_&]:[-webkit-backdrop-filter:saturate(135%)_blur(18px)] [.platform-windows_&]:bg-[color-mix(in_oklch,var(--card)_68%,transparent)] [.platform-windows_&]:[backdrop-filter:saturate(135%)_blur(18px)] [.platform-windows_&]:[-webkit-backdrop-filter:saturate(135%)_blur(18px)] [@media(prefers-reduced-transparency:reduce)]:[.platform-macos_&]:[backdrop-filter:none] [@media(prefers-reduced-transparency:reduce)]:[.platform-macos_&]:[-webkit-backdrop-filter:none] [@media(prefers-reduced-transparency:reduce)]:[.platform-windows_&]:[backdrop-filter:none] [@media(prefers-reduced-transparency:reduce)]:[.platform-windows_&]:[-webkit-backdrop-filter:none]',
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+const detailFieldClassName =
+  'grid min-h-[59px] grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)_repeat(2,34px)] items-center gap-2 border-b border-border py-[9px] pr-3 pl-[15px] last:border-b-0 [&>span]:text-[11px] [&>span]:text-muted-foreground [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-[590] [&>:nth-child(3):last-child]:col-start-[-2] max-[430px]:grid-cols-[1fr_auto_auto] max-[430px]:gap-1.5 max-[430px]:[&>span]:col-span-full max-[430px]:[&>strong]:col-start-1 max-[430px]:[&>[data-field-copy-value]]:col-start-1'
+
+const titlebarClassName =
+  'relative z-20 flex h-[54px] min-h-[54px] select-none items-center gap-3 border-b border-border bg-[color-mix(in_oklch,var(--card)_86%,transparent)] py-0 pr-3.5 pl-[78px] shadow-[inset_0_1px_color-mix(in_oklch,var(--shadow-color)_5%,transparent)] [-webkit-app-region:drag] [-webkit-backdrop-filter:saturate(180%)_blur(24px)] [backdrop-filter:saturate(180%)_blur(24px)] max-[1050px]:pl-[70px] max-[880px]:pl-3.5 max-[680px]:h-[52px] max-[680px]:min-h-[52px] max-[430px]:gap-2 max-[430px]:px-[9px] [.platform-macos_&]:border-b-transparent [.platform-macos_&]:bg-transparent [.platform-macos_&]:pl-[94px] [.platform-macos_&]:shadow-none [.platform-macos_&]:[-webkit-backdrop-filter:none] [.platform-macos_&]:[backdrop-filter:none] max-[880px]:[.platform-macos_&]:pl-[82px] max-[430px]:[.platform-macos_&]:py-0 max-[430px]:[.platform-macos_&]:pr-[9px] max-[430px]:[.platform-macos_&]:pl-[82px] [.platform-windows_&]:border-b-transparent [.platform-windows_&]:bg-transparent [.platform-windows_&]:pl-3.5 [.platform-windows_&]:shadow-none [.platform-windows_&]:[-webkit-backdrop-filter:none] [.platform-windows_&]:[backdrop-filter:none] max-[430px]:[.platform-windows_&]:px-[9px] [.platform-window-controls-overlay_&]:h-[env(titlebar-area-height,54px)] [.platform-window-controls-overlay_&]:min-h-[env(titlebar-area-height,54px)] [.platform-window-controls-overlay_&]:pr-[calc(14px+100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw))] [.platform-window-controls-overlay_&]:pl-[calc(14px+env(titlebar-area-x,0px))] max-[430px]:[.platform-window-controls-overlay_&]:pr-[calc(9px+100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw))] max-[430px]:[.platform-window-controls-overlay_&]:pl-[calc(9px+env(titlebar-area-x,0px))]'
+
+const folderSectionClassName =
+  'flex flex-none flex-col [&>header]:flex [&>header]:items-center [&>header]:justify-between [&>header]:pt-0 [&>header]:pr-1.5 [&>header]:pb-1 [&>header]:pl-[9px] [&_h2]:m-0 [&_h2]:text-[10px] [&_h2]:font-[760] [&_h2]:tracking-[0.11em] [&_h2]:text-muted-foreground [&_h2]:uppercase'
+
+function detailIconClassName(type?: VaultItemType): string {
+  return cn(
+    'grid size-12 flex-none place-items-center rounded-xl border border-border bg-muted text-primary max-[430px]:hidden dark:border-border dark:bg-muted dark:text-muted-foreground forced-colors:[forced-color-adjust:none]',
+    type === 'login' && 'overflow-hidden',
+    type === 'card' && 'bg-muted text-chart-4 dark:bg-website-icon-background',
+    type === 'identity' && 'bg-accent text-primary',
+    type === 'secureNote' && 'bg-muted text-chart-3',
+    type === 'sshKey' && 'bg-accent text-chart-2'
   )
 }
 
@@ -701,8 +770,8 @@ const sidebarToneClasses: Record<SidebarTone, string> = {
 
 const sidebarLinkClasses = {
   base: 'h-auto border-none text-left',
-  row: 'grid min-h-[38px] grid-cols-[22px_1fr_auto] items-center gap-[7px] rounded-lg border-0 bg-transparent px-[9px] py-1.5 shadow-[none] hover:shadow-[none]',
-  tile: 'bg-sidebar-overlay grid min-h-[82px] grid-cols-[1fr_auto] grid-rows-[31px_auto] items-center gap-x-2 gap-y-[7px] rounded-[15px] px-3 pt-[11px] pb-2.5 shadow-[var(--sidebar-tile-highlight)] hover:shadow-[var(--sidebar-tile-highlight)]',
+  row: 'grid min-h-[38px] grid-cols-[22px_1fr_auto] items-center gap-2 rounded-lg border-0 bg-transparent px-[9px] py-1.5 shadow-[none] hover:shadow-[none]',
+  tile: 'bg-sidebar-overlay grid min-h-[72px] grid-cols-[1fr_auto] grid-rows-[31px_auto] items-center gap-2 rounded-[15px] px-3 pt-[11px] pb-2.5 shadow-[var(--sidebar-tile-highlight)] hover:shadow-[var(--sidebar-tile-highlight)]',
   active: {
     row: 'bg-sidebar-overlay-active text-sidebar-foreground hover:bg-sidebar-overlay-active hover:text-sidebar-foreground',
     tile: 'bg-sidebar-primary text-sidebar-primary-foreground shadow-[var(--control-highlight)] hover:bg-sidebar-primary hover:text-sidebar-primary-foreground hover:shadow-[var(--control-highlight)]'
@@ -793,12 +862,17 @@ function UnfiledRow({ selected, count, onSelect }: UnfiledRowProps): React.JSX.E
   return (
     <li
       ref={setNodeRef}
-      className={cn('folder-row static', selected && 'selected', isOver && 'drop-target')}
+      className={cn(
+        'text-foreground hover:bg-sidebar-overlay-hover static grid min-h-9 grid-cols-[22px_minmax(0,1fr)_25px] items-center rounded-lg',
+        selected && 'bg-sidebar-overlay-active shadow-none',
+        isOver &&
+          'bg-sidebar-overlay-active text-foreground shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--sidebar-primary)_55%,transparent)] forced-colors:outline-2 forced-colors:-outline-offset-2 forced-colors:outline-[Highlight]'
+      )}
     >
-      <span className="folder-static-spacer" aria-hidden="true" />
+      <span className="w-[22px]" aria-hidden="true" />
       <Button
         variant="sidebar"
-        className="folder-row-main hover:bg-transparent hover:shadow-[none] aria-expanded:bg-transparent aria-expanded:shadow-[none]"
+        className="[&>small]:text-muted-foreground grid h-[34px] min-w-0 grid-cols-[21px_minmax(0,1fr)_auto] items-center gap-1 border-0 bg-transparent p-0 text-left text-inherit shadow-none hover:bg-transparent hover:shadow-none aria-expanded:bg-transparent aria-expanded:shadow-none [&>small]:min-w-[3ch] [&>small]:pr-1 [&>small]:text-right [&>small]:text-[10px] [&>small]:tabular-nums [&>span]:truncate [&>span]:text-xs"
         type="button"
         aria-current={selected ? 'page' : undefined}
         onClick={onSelect}
@@ -825,19 +899,23 @@ function DetailPlaceholder({
   const TypeIcon = itemTypeMeta[item.type].icon
 
   return (
-    <article className="detail-content detail-placeholder" aria-busy="true">
-      <header className="detail-header">
+    <article
+      className="flex size-full min-h-0 min-w-0 flex-col motion-reduce:[&_[data-slot=skeleton]]:animate-none"
+      aria-busy="true"
+    >
+      <DetailHeader>
         <TooltipIconButton
           variant="outline"
           size="icon"
-          className="icon-button detail-back"
+          className="hidden max-[680px]:grid"
+          data-detail-back=""
           type="button"
           label="返回項目列表"
           onClick={onBack}
         >
           <ArrowLeft />
         </TooltipIconButton>
-        <span className={cn('detail-icon', item.type)} aria-hidden="true">
+        <span className={detailIconClassName(item.type)} data-detail-icon="" aria-hidden="true">
           {item.type === 'login' ? (
             <WebsiteIcon id={item.id} uri={item.uri} enabled={showWebsiteIcons} />
           ) : item.type === 'card' ? (
@@ -846,48 +924,54 @@ function DetailPlaceholder({
             <TypeIcon size={23} />
           )}
         </span>
-        <div className="detail-heading">
+        <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-xl [&>h2]:tracking-[-0.025em] [&>span]:mt-[3px] [&>span]:block [&>span]:truncate [&>span]:text-[10px]">
           <h2>{item.name}</h2>
           <span>
             {item.subtitle || (item.type === 'login' ? hostLabel(item.uri) : '安全保管的項目')}
           </span>
         </div>
-        <Skeleton className="detail-placeholder-icon" aria-hidden="true" />
-        <Skeleton className="detail-placeholder-button" aria-hidden="true" />
+        <Skeleton className="size-[34px] flex-none rounded-[9px]" aria-hidden="true" />
+        <Skeleton
+          className="h-8 w-[68px] flex-none rounded-lg max-[680px]:w-[34px]"
+          aria-hidden="true"
+        />
         <span className="sr-only" role="status">
           正在載入項目詳細資料…
         </span>
-      </header>
+      </DetailHeader>
 
-      <div className="detail-scroll" aria-hidden="true">
-        <Card className="detail-card detail-placeholder-card gap-0 py-0">
+      <div
+        className="min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] overflow-auto px-5 pt-5 pb-10 max-[680px]:px-3 max-[680px]:pt-[13px] max-[680px]:pb-7"
+        aria-hidden="true"
+      >
+        <DetailCard variant="placeholder">
           <CardHeader className="bg-muted rounded-none border-b">
             <Skeleton className="h-3 w-20" />
           </CardHeader>
           <CardContent className="contents">
             {[0, 1, 2].map((row) => (
-              <div className="detail-field" key={row}>
+              <div className={detailFieldClassName} key={row}>
                 <Skeleton className="h-3 w-16" />
                 <Skeleton className={cn('h-4', row === 1 ? 'w-2/3' : 'w-1/2')} />
                 <Skeleton className="size-8" />
               </div>
             ))}
           </CardContent>
-        </Card>
-        <Card className="detail-card detail-placeholder-card gap-0 py-0">
+        </DetailCard>
+        <DetailCard variant="placeholder">
           <CardHeader className="bg-muted rounded-none border-b">
             <Skeleton className="h-3 w-24" />
           </CardHeader>
           <CardContent className="contents">
             {[0, 1].map((row) => (
-              <div className="detail-field" key={row}>
+              <div className={detailFieldClassName} key={row}>
                 <Skeleton className="h-3 w-14" />
                 <Skeleton className="h-4 w-1/3" />
                 <span />
               </div>
             ))}
           </CardContent>
-        </Card>
+        </DetailCard>
       </div>
     </article>
   )
@@ -1904,21 +1988,22 @@ function VaultShell({
     const region = totpRevealRegionRef.current
     if (!region) return
 
-    const loaders = Array.from(region.querySelectorAll<HTMLElement>('.t-skel'))
+    const loaders = Array.from(region.querySelectorAll<HTMLElement>('[data-slot="totp-reveal"]'))
     if (totpRevealReady) {
-      for (const loader of loaders) loader.classList.add('is-revealed')
+      for (const loader of loaders) loader.dataset.revealState = 'revealed'
       return
     }
 
     for (const loader of loaders) {
-      loader.classList.add('is-resetting')
-      loader.classList.remove('is-revealed')
-      loader.querySelector('.t-skel-skeleton')?.classList.remove('is-pulsing')
+      loader.dataset.revealState = 'resetting'
+      const skeleton = loader.querySelector<HTMLElement>('[data-slot="totp-reveal-skeleton"]')
+      if (skeleton) skeleton.dataset.pulsing = 'false'
     }
     void region.offsetWidth
     for (const loader of loaders) {
-      loader.classList.remove('is-resetting')
-      loader.querySelector('.t-skel-skeleton')?.classList.add('is-pulsing')
+      loader.dataset.revealState = 'loading'
+      const skeleton = loader.querySelector<HTMLElement>('[data-slot="totp-reveal-skeleton"]')
+      if (skeleton) skeleton.dataset.pulsing = 'true'
     }
   }, [totpRefreshTarget?.itemId, totpRefreshTarget?.sourceRevision, totpRevealReady])
 
@@ -2038,7 +2123,9 @@ function VaultShell({
     if (selectedId && selectedLogin?.id === selectedId) {
       if (compactDetailFocusIdRef.current !== selectedId) {
         compactDetailFocusIdRef.current = selectedId
-        queueMicrotask(() => document.querySelector<HTMLButtonElement>('.detail-back')?.focus())
+        queueMicrotask(() =>
+          document.querySelector<HTMLButtonElement>('[data-detail-back]')?.focus()
+        )
       }
       return
     }
@@ -2050,7 +2137,7 @@ function VaultShell({
         const row = Array.from(document.querySelectorAll<HTMLElement>('[data-item-id]')).find(
           (candidate) => candidate.dataset.itemId === returnId
         )
-        row?.querySelector<HTMLButtonElement>('.item-row-main')?.focus()
+        row?.querySelector<HTMLButtonElement>('[data-item-row-main]')?.focus()
       })
     }
   }, [selectedId, selectedLogin])
@@ -2233,7 +2320,7 @@ function VaultShell({
       }
       if (key === 's' && editorMode && !busy) {
         event.preventDefault()
-        document.querySelector<HTMLFormElement>('form.editor')?.requestSubmit()
+        document.querySelector<HTMLFormElement>('form[data-vault-editor]')?.requestSubmit()
       }
       if (key === 'm' && event.shiftKey && selectedSummary && !selectedSummary.deletedAt) {
         event.preventDefault()
@@ -3607,7 +3694,7 @@ function VaultShell({
           ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
         })
       )
-      announce('已在預設瀏覽器開啟網站。')
+      announce('已開啟網站。')
       await refreshItems()
     } catch (openError) {
       announceError(describeError(openError))
@@ -3681,8 +3768,8 @@ function VaultShell({
     const copyKey = `field:${selectedSummary?.id}:${field.field}:${field.uriIndex ?? ''}`
     const valueClassName = field.secret
       ? revealedValue === undefined
-        ? 'masked-value'
-        : 'revealed-value'
+        ? 'tracking-[0.13em]'
+        : 'font-mono select-text'
       : undefined
     const displayValue = field.secret
       ? revealedValue === undefined
@@ -3697,9 +3784,8 @@ function VaultShell({
     return (
       <div
         className={cn(
-          'detail-field',
-          field.secret && 'password-field',
-          hasExtraAction && 'multi-action'
+          detailFieldClassName,
+          !field.secret && !hasExtraAction && 'max-[430px]:grid-cols-[1fr_auto]'
         )}
         key={`${field.label}:${field.field}:${field.uriIndex ?? ''}`}
       >
@@ -3708,7 +3794,8 @@ function VaultShell({
           <Button
             variant="ghost"
             size="sm"
-            className="detail-field-copy-value"
+            className="-ml-2 w-[calc(100%+8px)] min-w-0 justify-start overflow-hidden px-2 [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-[590]"
+            data-field-copy-value=""
             type="button"
             aria-label={copiedKey === copyKey ? `${field.label}已複製` : `複製${field.label}`}
             disabled={field.field === 'username' && !field.value}
@@ -3724,7 +3811,6 @@ function VaultShell({
             <TooltipIconButton
               variant="outline"
               size="icon"
-              className="icon-button"
               type="button"
               label={revealedValue === undefined ? `顯示${field.label}` : `隱藏${field.label}`}
               aria-pressed={revealedValue !== undefined}
@@ -3735,7 +3821,6 @@ function VaultShell({
             <TooltipIconButton
               variant="outline"
               size="icon"
-              className="icon-button"
               type="button"
               label={copiedKey === copyKey ? `${field.label}已複製` : `複製${field.label}`}
               onClick={() => void copyField(field.field)}
@@ -3749,7 +3834,6 @@ function VaultShell({
               <TooltipIconButton
                 variant="outline"
                 size="icon"
-                className="icon-button"
                 type="button"
                 label={
                   copiedKey ===
@@ -3772,9 +3856,8 @@ function VaultShell({
               <TooltipIconButton
                 variant="outline"
                 size="icon"
-                className="icon-button"
                 type="button"
-                label="在預設瀏覽器開啟網站"
+                label="開啟網站"
                 disabled={!field.value}
                 onClick={() => void openWebsite(field.uriIndex)}
               >
@@ -3805,14 +3888,14 @@ function VaultShell({
       : null
     return (
       <div
-        className={cn('detail-field', hidden && 'password-field', hidden && 'multi-action')}
+        className={cn(detailFieldClassName, !hidden && 'max-[430px]:grid-cols-[1fr_auto]')}
         key={`${index}:${field.name}:${field.type}`}
       >
         <span>{label}</span>
         <strong
-          className={
-            hidden ? (revealedValue === undefined ? 'masked-value' : 'revealed-value') : undefined
-          }
+          className={cn(
+            hidden && (revealedValue === undefined ? 'tracking-[0.13em]' : 'font-mono select-text')
+          )}
         >
           {hidden
             ? revealedValue === undefined
@@ -3824,7 +3907,6 @@ function VaultShell({
           <TooltipIconButton
             variant="outline"
             size="icon"
-            className="icon-button"
             type="button"
             label={revealedValue === undefined ? `顯示${label}` : `隱藏${label}`}
             aria-pressed={revealedValue !== undefined}
@@ -3836,7 +3918,6 @@ function VaultShell({
         <TooltipIconButton
           variant="outline"
           size="icon"
-          className="icon-button"
           type="button"
           label={
             copyFeedbackKey !== null && copiedKey === copyFeedbackKey
@@ -3863,11 +3944,15 @@ function VaultShell({
           : settingsOpen
             ? closeSettings
             : null
+  const auxiliaryPageOpen = closeAuxiliaryPage !== null
 
   if (loading) {
     if (isMac) {
       return (
-        <main className="vault-loading" role="status">
+        <main
+          className="bg-background text-muted-foreground flex size-full items-center justify-center gap-3.5"
+          role="status"
+        >
           <BrandMark className="absolute top-[25px] left-1/2 -translate-x-1/2" />
           <Spinner className="size-6" aria-hidden="true" />
           <p>正在解密你的項目…</p>
@@ -3877,13 +3962,19 @@ function VaultShell({
 
     return (
       <main
-        className={cn('app-shell', usesWindowControlsOverlay && 'platform-window-controls-overlay')}
+        className={cn(
+          'bg-background flex size-full min-w-0 flex-col',
+          usesWindowControlsOverlay && 'platform-window-controls-overlay'
+        )}
       >
-        <header className="titlebar">
+        <header className={titlebarClassName}>
           <ApplicationTitlebarMenu />
-          <div className="titlebar-drag" aria-hidden="true" />
+          <div className="flex-1 self-stretch" aria-hidden="true" />
         </header>
-        <div className="vault-loading" role="status">
+        <div
+          className="bg-background text-muted-foreground flex size-full items-center justify-center gap-3.5"
+          role="status"
+        >
           <Spinner className="size-6" aria-hidden="true" />
           <p>正在解密你的項目…</p>
         </div>
@@ -3905,14 +3996,15 @@ function VaultShell({
     >
       <main
         className={cn(
-          'app-shell',
+          'bg-background flex size-full min-w-0 flex-col',
           isMac && 'platform-macos',
           isWindows && 'platform-windows',
-          usesWindowControlsOverlay && 'platform-window-controls-overlay',
-          (selectedId || editorMode) && 'has-detail'
+          (isMac || isWindows) && 'bg-transparent',
+          usesWindowControlsOverlay && 'platform-window-controls-overlay'
         )}
+        data-has-detail={selectedId || editorMode ? 'true' : 'false'}
       >
-        <header className="titlebar">
+        <header className={titlebarClassName}>
           <ApplicationTitlebarMenu onLockVault={lockVault} />
           {!settingsOpen &&
             !healthOpen &&
@@ -3922,19 +4014,25 @@ function VaultShell({
               <TooltipIconButton
                 variant="outline"
                 size="icon"
-                className="icon-button titlebar-menu"
+                className="hidden max-[880px]:grid"
                 type="button"
                 label={sidebarOpen ? '關閉側邊欄' : '開啟側邊欄'}
                 aria-expanded={sidebarOpen}
                 onClick={() => setSidebarOpen((open) => !open)}
               >
                 <span
-                  className="t-icon-swap"
+                  className="group/icon-swap relative inline-grid"
                   data-state={sidebarOpen ? 'b' : 'a'}
                   aria-hidden="true"
                 >
-                  <Menu className="t-icon" data-icon="a" />
-                  <X className="t-icon" data-icon="b" />
+                  <Menu
+                    className="col-start-1 row-start-1 scale-(--icon-swap-start-scale) opacity-0 blur-(--icon-swap-blur) transition-[opacity,filter,transform] duration-(--icon-swap-dur) ease-(--icon-swap-ease) will-change-[opacity,filter,transform] group-data-[state=a]/icon-swap:scale-100 group-data-[state=a]/icon-swap:opacity-100 group-data-[state=a]/icon-swap:blur-none motion-reduce:transition-none"
+                    data-icon="a"
+                  />
+                  <X
+                    className="col-start-1 row-start-1 scale-(--icon-swap-start-scale) opacity-0 blur-(--icon-swap-blur) transition-[opacity,filter,transform] duration-(--icon-swap-dur) ease-(--icon-swap-ease) will-change-[opacity,filter,transform] group-data-[state=b]/icon-swap:scale-100 group-data-[state=b]/icon-swap:opacity-100 group-data-[state=b]/icon-swap:blur-none motion-reduce:transition-none"
+                    data-icon="b"
+                  />
                 </span>
               </TooltipIconButton>
             )}
@@ -3947,7 +4045,7 @@ function VaultShell({
           {isMac && (
             <div className="inline-flex items-center gap-2 max-[680px]:hidden">
               <BrandMark hideMark />
-              <Badge variant="secondary" className="bg-black/5">
+              <Badge variant="secondary" className="bg-black/5 shadow-(--control-highlight)">
                 Beta
               </Badge>
             </div>
@@ -3957,10 +4055,10 @@ function VaultShell({
             !sendsOpen &&
             !organizationsOpen &&
             !emergencyAccessOpen && (
-              <InputGroup className="search-field titlebar-search">
+              <InputGroup className="border-input text-muted-foreground [@media(prefers-reduced-transparency:reduce)]:bg-card absolute left-1/2 h-[38px] w-[clamp(300px,44vw,560px)] min-w-0 -translate-x-1/2 gap-[7px] rounded-[11px] bg-(--search-field-background) py-0 pr-2 pl-2.5 shadow-[inset_0_1px_2px_color-mix(in_oklch,var(--shadow-color)_3%,transparent)] [-webkit-app-region:no-drag] focus-within:border-(--focus) focus-within:shadow-[0_0_0_2px_color-mix(in_srgb,var(--focus),transparent_78%)] max-[880px]:static max-[880px]:max-w-none max-[880px]:flex-1 max-[880px]:translate-x-0 dark:shadow-[inset_0_1px_2px_color-mix(in_oklch,var(--shadow-color)_18%,transparent)] [&_*]:[-webkit-app-region:no-drag] max-[680px]:[&_kbd]:hidden">
                 <Button
                   variant="ghost"
-                  className="titlebar-search-trigger"
+                  className="text-foreground h-full min-w-0 flex-1 justify-start bg-transparent p-0 text-xs font-normal shadow-none hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 focus-visible:outline-none aria-expanded:bg-transparent [&>span]:w-full [&>span]:min-w-0 [&>span]:text-left"
                   type="button"
                   aria-label={query ? `搜尋密碼庫項目，目前為 ${query}` : '搜尋密碼庫項目'}
                   aria-haspopup="dialog"
@@ -3991,7 +4089,10 @@ function VaultShell({
                 </InputGroupAddon>
               </InputGroup>
             )}
-          <div className="titlebar-drag" aria-hidden="true" />
+          <div
+            className={cn('flex-1 self-stretch', !auxiliaryPageOpen && 'max-[880px]:hidden')}
+            aria-hidden="true"
+          />
           {!settingsOpen &&
             !healthOpen &&
             !sendsOpen &&
@@ -4002,7 +4103,7 @@ function VaultShell({
               <TooltipIconButton
                 variant="outline"
                 size="icon"
-                className="icon-button titlebar-add-button"
+                className="border-border text-foreground rounded-[10px] bg-[color-mix(in_oklch,var(--card)_32%,transparent)] shadow-[var(--control-highlight),0_1px_2px_color-mix(in_oklch,var(--shadow-color)_12%,transparent)]"
                 type="button"
                 label="新增項目"
                 onClick={() => openEditor('create')}
@@ -4014,7 +4115,10 @@ function VaultShell({
 
         <Button
           variant="ghost"
-          className={cn('sidebar-scrim', sidebarOpen && 'open')}
+          className={cn(
+            'hidden max-[880px]:pointer-events-none max-[880px]:fixed max-[880px]:inset-0 max-[880px]:z-30 max-[880px]:block max-[880px]:size-full max-[880px]:rounded-none max-[880px]:border-0 max-[880px]:bg-[color-mix(in_oklch,var(--foreground)_34%,transparent)] max-[880px]:p-0 max-[880px]:opacity-0 max-[880px]:shadow-none max-[880px]:transition-opacity max-[880px]:duration-180 max-[880px]:hover:bg-[color-mix(in_oklch,var(--foreground)_34%,transparent)] max-[880px]:active:bg-[color-mix(in_oklch,var(--foreground)_34%,transparent)]',
+            sidebarOpen && 'max-[880px]:pointer-events-auto max-[880px]:opacity-100'
+          )}
           type="button"
           aria-label="關閉側邊欄"
           aria-hidden={!sidebarOpen}
@@ -4028,7 +4132,12 @@ function VaultShell({
           title="搜尋密碼庫"
           description="搜尋名稱、摘要、網站與內容；以 > 開始可指定欄位的進階搜尋。"
         >
-          <Command className="vault-command" label="搜尋密碼庫項目" loop shouldFilter={false}>
+          <Command
+            className="max-h-[min(480px,70vh)] [&_[data-slot=command-input-wrapper]]:px-2 [&_[data-slot=command-input-wrapper]]:pt-2 [&_[data-slot=command-input-wrapper]]:pb-0"
+            label="搜尋密碼庫項目"
+            loop
+            shouldFilter={false}
+          >
             <CommandInput
               ref={searchRef}
               placeholder="搜尋密碼庫；例如 >name:github"
@@ -4056,7 +4165,7 @@ function VaultShell({
                 ) : undefined
               }
             />
-            <CommandList className="vault-command-list">
+            <CommandList className="max-h-[min(420px,calc(70vh-54px))] p-1.5">
               <CommandEmpty>找不到符合的密碼庫項目</CommandEmpty>
               {scopedItems.length > 0 && (
                 <CommandGroup
@@ -4073,16 +4182,21 @@ function VaultShell({
                           setSearchOpen(false)
                         }}
                       >
-                        <span className="command-result-icon" aria-hidden="true">
+                        <span
+                          className="bg-muted text-muted-foreground grid size-[30px] flex-none place-items-center rounded-lg"
+                          aria-hidden="true"
+                        >
                           <ItemIcon />
                         </span>
-                        <span className="command-result-copy">
+                        <span className="min-w-0 flex-1">
                           <strong className="block truncate">{item.name}</strong>
-                          <small className="block truncate">
+                          <small className="text-muted-foreground block truncate text-[10px]">
                             {item.subtitle || item.username || item.uri || '尚未設定摘要'}
                           </small>
                         </span>
-                        <span className="command-result-type">{itemTypeMeta[item.type].label}</span>
+                        <span className="text-muted-foreground flex-none text-[10px]">
+                          {itemTypeMeta[item.type].label}
+                        </span>
                       </CommandItem>
                     )
                   })}
@@ -4094,15 +4208,28 @@ function VaultShell({
 
         <div
           className={cn(
-            'workspace',
-            (settingsOpen || healthOpen || sendsOpen || organizationsOpen || emergencyAccessOpen) &&
-              'settings-mode'
+            'relative grid min-h-0 min-w-0 flex-1 grid-cols-[260px_minmax(0,1fr)] overflow-hidden max-[1050px]:grid-cols-[220px_minmax(0,1fr)] max-[880px]:grid-cols-[minmax(0,1fr)] max-[680px]:block',
+            (isMac || isWindows) && 'gap-2 pr-2 pb-2 max-[880px]:pl-2',
+            auxiliaryPageOpen &&
+              'grid-cols-[minmax(0,1fr)] [&>[data-vault-pane-group]]:grid-cols-[minmax(0,1fr)] [&>[data-vault-pane-group]>[data-vault-detail-pane]]:hidden [&>[data-vault-pane-group]>[data-vault-list-pane]]:border-r-0 [&>[data-vault-sidebar]]:hidden',
+            auxiliaryPageOpen && (isMac || isWindows) && 'pl-2'
           )}
         >
-          <aside className={cn('sidebar', sidebarOpen && 'open')} aria-label="密碼庫導覽">
-            <div className="sidebar-scroll scroll-fade-y forced-colors:scroll-fade-none">
+          <aside
+            className={cn(
+              'border-sidebar-border bg-sidebar text-foreground z-11 flex min-h-0 min-w-0 flex-col overflow-hidden border-r bg-[linear-gradient(color-mix(in_oklch,var(--sidebar-foreground)_3%,transparent),transparent)] [backdrop-filter:saturate(165%)_blur(28px)] [-webkit-backdrop-filter:saturate(165%)_blur(28px)] max-[880px]:absolute max-[880px]:inset-y-0 max-[880px]:left-0 max-[880px]:z-31 max-[880px]:w-[248px] max-[880px]:-translate-x-full max-[880px]:transition-transform max-[880px]:duration-180 max-[880px]:ease-out',
+              (isMac || isWindows) &&
+                'max-[880px]:bg-sidebar mb-[-8px] border-0 bg-transparent bg-none shadow-none [backdrop-filter:none] [-webkit-backdrop-filter:none] max-[880px]:[inset:0_auto_8px_8px] max-[880px]:mb-0 max-[880px]:translate-x-[calc(-100%-8px)] max-[880px]:rounded-2xl max-[880px]:border max-[880px]:border-(--native-material-border) max-[880px]:shadow-(--native-material-shadow) max-[880px]:[backdrop-filter:saturate(165%)_blur(28px)] max-[880px]:[-webkit-backdrop-filter:saturate(165%)_blur(28px)] [@media(max-width:880px)_and_(prefers-reduced-transparency:reduce)]:[backdrop-filter:none] [@media(max-width:880px)_and_(prefers-reduced-transparency:reduce)]:[-webkit-backdrop-filter:none]',
+              sidebarOpen &&
+                'max-[880px]:translate-x-0 max-[880px]:shadow-[14px_0_40px_color-mix(in_oklch,var(--shadow-color)_30%,transparent)]',
+              sidebarOpen && (isMac || isWindows) && 'max-[880px]:shadow-(--native-material-shadow)'
+            )}
+            data-vault-sidebar=""
+            aria-label="密碼庫導覽"
+          >
+            <div className="scroll-fade-y forced-colors:scroll-fade-none min-h-0 flex-1 [scrollbar-color:color-mix(in_oklch,var(--muted-foreground)_25%,transparent)_transparent] overflow-y-auto overscroll-contain max-[880px]:pt-2">
               <section
-                className="folder-section category-section flex-none px-[11px] pb-1"
+                className={cn(folderSectionClassName, 'px-[11px] pb-1')}
                 aria-labelledby="categories-title"
               >
                 <h2 className="hidden" id="categories-title">
@@ -4128,13 +4255,13 @@ function VaultShell({
               </section>
 
               <section
-                className="folder-section flex-none px-[9px] py-1"
+                className={cn(folderSectionClassName, 'px-[9px] py-1')}
                 aria-labelledby="quick-title"
               >
                 <header>
                   <h2 id="quick-title">快速取用</h2>
                 </header>
-                <nav className="sidebar-nav" aria-label="快速取用">
+                <nav className="grid gap-[3px] px-2.5 py-1" aria-label="快速取用">
                   <SidebarLink
                     icon={<Star size={16} />}
                     label="常用項目"
@@ -4177,13 +4304,16 @@ function VaultShell({
                 </nav>
               </section>
 
-              <section className="folder-section px-[9px] py-1" aria-labelledby="folders-title">
+              <section
+                className={cn(folderSectionClassName, 'px-[9px] py-1')}
+                aria-labelledby="folders-title"
+              >
                 <header>
                   <h2 id="folders-title">資料夾</h2>
                   <TooltipIconButton
                     variant="sidebar"
                     size="icon"
-                    className="icon-button subtle"
+                    className="hover:bg-sidebar-overlay-hover hover:text-foreground border-transparent bg-transparent shadow-none hover:shadow-(--control-highlight) dark:bg-transparent"
                     type="button"
                     label="新增資料夾"
                     onClick={() => setFolderDialog('new')}
@@ -4191,7 +4321,7 @@ function VaultShell({
                     <Plus aria-hidden="true" />
                   </TooltipIconButton>
                 </header>
-                <ul className="folder-list">
+                <ul className="m-0 [scrollbar-color:var(--sidebar-ring)_transparent] list-none overflow-visible p-0">
                   <UnfiledRow
                     selected={scope.kind === 'unfiled'}
                     count={folderCounts.get(null) ?? 0}
@@ -4216,41 +4346,53 @@ function VaultShell({
               </section>
             </div>
 
-            <footer className="sidebar-footer">
+            <footer className="text-muted-foreground grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 border-t-0 bg-transparent px-[9px] pt-[7px] pb-[9px] text-[10px]">
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
                     <Button
                       ref={sidebarMenuTriggerRef}
                       variant="sidebar"
-                      className="sidebar-account-trigger"
+                      className="text-sidebar-foreground hover:bg-sidebar-overlay-hover data-popup-open:bg-sidebar-overlay-active h-auto min-h-9 w-full justify-start gap-[7px] rounded-[9px] px-1.5 py-1"
                       type="button"
                       aria-label={`開啟 ${sidebarAccountName} 選單`}
                     />
                   }
                 >
-                  <span className="sidebar-account-avatar" aria-hidden="true">
+                  <span
+                    className="text-muted-foreground grid size-5 flex-none place-items-center [&>svg]:size-[18px]"
+                    aria-hidden="true"
+                  >
                     <UserRound />
                   </span>
-                  <span className="sidebar-account-copy">
-                    <strong>{sidebarAccountName}</strong>
+                  <span className="block min-w-0 flex-1 text-left">
+                    <strong className="text-sidebar-foreground block truncate text-xs font-bold">
+                      {sidebarAccountName}
+                    </strong>
                   </span>
-                  <ChevronUp className="sidebar-account-chevron" aria-hidden="true" />
+                  <ChevronUp className="text-muted-foreground ml-auto" aria-hidden="true" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   side="top"
                   align="start"
                   sideOffset={8}
-                  className="sidebar-account-menu"
+                  className="min-w-[220px] p-[5px] [&_[data-slot=dropdown-menu-item]]:min-h-[34px] [&_[data-slot=dropdown-menu-item]]:gap-2 [&_[data-slot=dropdown-menu-item]]:px-[9px]"
                 >
                   <DropdownMenuGroup>
-                    <DropdownMenuLabel className="sidebar-account-menu-label">
-                      <span className="sidebar-account-avatar" aria-hidden="true">
+                    <DropdownMenuLabel className="flex items-center gap-[7px] p-[7px]">
+                      <span
+                        className="text-muted-foreground grid size-5 flex-none place-items-center [&>svg]:size-[18px]"
+                        aria-hidden="true"
+                      >
                         <UserRound />
                       </span>
-                      <span>
-                        <strong>{sidebarAccountName}</strong>
-                        <small>{syncStateMeta[syncStatus.state].label}</small>
+                      <span className="grid min-w-0 gap-px">
+                        <strong className="text-sidebar-foreground block truncate text-xs font-bold">
+                          {sidebarAccountName}
+                        </strong>
+                        <small className="text-muted-foreground block truncate text-[10px] font-medium">
+                          {syncStateMeta[syncStatus.state].label}
+                        </small>
                       </span>
                     </DropdownMenuLabel>
                   </DropdownMenuGroup>
@@ -4299,22 +4441,42 @@ function VaultShell({
               <TooltipIconButton
                 variant="sidebar"
                 size="icon"
-                className="sidebar-sync-trigger"
+                className="size-[34px] rounded-[9px]"
                 type="button"
                 label={`雲端同步：${syncStateMeta[syncStatus.state].label}`}
                 onClick={() => setSyncDialogOpen(true)}
               >
                 <SyncSidebarIcon
-                  className={cn('sync-sidebar-control', syncStatus.state)}
+                  className={cn(
+                    'text-muted-foreground',
+                    syncStatus.state === 'ready' && 'text-sidebar-status-success',
+                    (syncStatus.state === 'locked' || syncStatus.state === 'unconfigured') &&
+                      'text-chart-4',
+                    syncStatus.state === 'error' && 'text-destructive',
+                    syncStatus.state === 'syncing' &&
+                      'text-ring animate-[sync-pulse_1.1s_ease-in-out_infinite]'
+                  )}
                   aria-hidden="true"
                 />
               </TooltipIconButton>
             </footer>
           </aside>
 
-          <div className="content-panes">
+          <div
+            className={cn(
+              'bg-card grid min-h-0 min-w-0 grid-cols-[minmax(340px,390px)_minmax(420px,1fr)] overflow-hidden max-[1050px]:grid-cols-[minmax(290px,330px)_minmax(380px,1fr)] max-[880px]:grid-cols-[minmax(300px,350px)_minmax(360px,1fr)] max-[680px]:block max-[680px]:size-full',
+              (isMac || isWindows) &&
+                '[@media(prefers-reduced-transparency:reduce)]:bg-card rounded-2xl border border-(--native-material-border) bg-(--native-panel-material) shadow-(--native-material-shadow) [backdrop-filter:saturate(145%)_blur(24px)] [-webkit-backdrop-filter:saturate(145%)_blur(24px)] [@media(prefers-reduced-transparency:reduce)]:[backdrop-filter:none] [@media(prefers-reduced-transparency:reduce)]:[-webkit-backdrop-filter:none]',
+              auxiliaryPageOpen && 'grid-cols-[minmax(0,1fr)]'
+            )}
+            data-vault-pane-group=""
+          >
             <section
-              className="list-pane"
+              className={cn(
+                'border-border flex min-h-0 min-w-0 flex-col border-r bg-transparent max-[680px]:size-full [[data-has-detail=true]_&]:max-[680px]:hidden',
+                (isMac || isWindows) && 'border-r-(--native-material-border)'
+              )}
+              data-vault-list-pane=""
               aria-labelledby={
                 healthOpen
                   ? 'health-title'
@@ -4376,17 +4538,22 @@ function VaultShell({
                 />
               ) : (
                 <>
-                  <header className="list-header">
-                    <div className="list-heading">
-                      <h1 id="list-title">{scopeTitle}</h1>
-                      <small>
+                  <header className="flex min-h-[82px] items-center justify-between gap-3 px-[18px] pt-[15px] pb-[11px] max-[430px]:px-[11px]">
+                    <div className="grid gap-0.5">
+                      <h1
+                        className="m-0 text-[21px] leading-[1.2] font-[760] tracking-[-0.025em]"
+                        id="list-title"
+                      >
+                        {scopeTitle}
+                      </h1>
+                      <small className="text-muted-foreground text-[11px]">
                         {selectedIds.size > 1
                           ? `已選取 ${selectedIds.size} 個 · 共 ${scopedItems.length} 個項目`
                           : `${scopedItems.length} 個項目`}
                       </small>
                     </div>
-                    <div className="list-header-actions">
-                      <div className="sort-control">
+                    <div className="border-border flex items-center gap-[7px] rounded-[14px] border bg-[color-mix(in_oklch,var(--card)_78%,transparent)] p-1 shadow-none dark:bg-[color-mix(in_oklch,var(--card)_70%,transparent)]">
+                      <div className="text-muted-foreground flex h-8 items-center gap-1 border-0 bg-transparent py-0 pr-1 pl-1.5 shadow-none">
                         <ListFilter size={16} aria-hidden="true" />
                         <Select
                           items={sortItemsOptions}
@@ -4411,7 +4578,10 @@ function VaultShell({
                     </div>
                   </header>
                   {query && (
-                    <div className="result-summary" role="status">
+                    <div
+                      className="text-muted-foreground flex min-h-7 items-center justify-between gap-2.5 px-[19px] pt-0 pb-[7px] text-[10px]"
+                      role="status"
+                    >
                       <span>搜尋「{query}」</span>
                       <span>{scopedItems.length} 筆結果</span>
                     </div>
@@ -4433,19 +4603,22 @@ function VaultShell({
                       readOnly={scope.kind === 'trash'}
                     />
                   ) : (
-                    <Empty className="empty-state">
+                    <Empty className="min-h-0 flex-1 gap-0 p-7">
                       <EmptyHeader>
-                        <EmptyMedia variant="icon">
+                        <EmptyMedia
+                          variant="icon"
+                          className="text-primary mb-[13px] size-[52px] rounded-2xl bg-(--accent-soft)"
+                        >
                           {query ? <Search /> : scope.kind === 'trash' ? <Trash2 /> : <KeyRound />}
                         </EmptyMedia>
-                        <EmptyTitle>
+                        <EmptyTitle className="m-0 text-[15px]">
                           {query
                             ? '找不到符合的項目'
                             : scope.kind === 'trash'
                               ? '垃圾桶是空的'
                               : '這裡還沒有密碼庫項目'}
                         </EmptyTitle>
-                        <EmptyDescription>
+                        <EmptyDescription className="text-muted-foreground mt-[7px] mb-4 max-w-[290px] text-[11px] leading-[1.55]">
                           {query
                             ? '試試較短的關鍵字，或切換到所有項目。'
                             : scope.kind === 'trash'
@@ -4455,12 +4628,7 @@ function VaultShell({
                       </EmptyHeader>
                       <EmptyContent>
                         {query ? (
-                          <Button
-                            variant="outline"
-                            className="button secondary"
-                            type="button"
-                            onClick={() => updateQuery('')}
-                          >
+                          <Button variant="outline" type="button" onClick={() => updateQuery('')}>
                             清除搜尋
                           </Button>
                         ) : scope.kind !== 'trash' && scope.kind !== 'archive' ? (
@@ -4588,7 +4756,11 @@ function VaultShell({
               )}
             </section>
 
-            <section className="detail-pane" aria-label="項目詳細資料">
+            <section
+              className="relative flex min-h-0 min-w-0 overflow-hidden bg-transparent max-[680px]:hidden max-[680px]:size-full [[data-has-detail=true]_&]:max-[680px]:flex"
+              data-vault-detail-pane=""
+              aria-label="項目詳細資料"
+            >
               {editorMode ? (
                 <LoginEditor
                   key={`${editorSessionId}:${editorMode}:${selectedLogin?.id ?? 'new'}`}
@@ -4604,29 +4776,32 @@ function VaultShell({
                   onSave={saveLogin}
                 />
               ) : selectedSummary?.deletedAt ? (
-                <article className="detail-content">
-                  <header className="detail-header">
+                <article className="flex size-full min-h-0 min-w-0 flex-col">
+                  <DetailHeader>
                     <TooltipIconButton
                       variant="outline"
                       size="icon"
-                      className="icon-button detail-back"
+                      className="hidden max-[680px]:grid"
+                      data-detail-back=""
                       type="button"
                       label="返回垃圾桶"
                       onClick={clearItemSelection}
                     >
                       <ArrowLeft />
                     </TooltipIconButton>
-                    <span className="detail-icon" aria-hidden="true">
+                    <span className={detailIconClassName()} aria-hidden="true">
                       <Trash2 />
                     </span>
-                    <div className="detail-heading">
-                      <p className="eyebrow">垃圾桶</p>
+                    <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-xl [&>h2]:tracking-[-0.025em] [&>span]:mt-[3px] [&>span]:block [&>span]:truncate [&>span]:text-[10px]">
+                      <p className="text-primary m-0 mb-[3px] text-[9px] font-extrabold tracking-[0.11em] uppercase">
+                        垃圾桶
+                      </p>
                       <h2>{selectedSummary.name}</h2>
                       <span>{itemTypeMeta[selectedSummary.type].label}</span>
                     </div>
-                  </header>
-                  <div className="detail-scroll scroll-fade-y forced-colors:scroll-fade-none">
-                    <Card className="detail-card organization-card gap-0 py-0">
+                  </DetailHeader>
+                  <div className="scroll-fade-y forced-colors:scroll-fade-none min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] overflow-auto px-5 pt-5 pb-10 max-[680px]:px-3 max-[680px]:pt-[13px] max-[680px]:pb-7">
+                    <DetailCard>
                       <CardHeader>
                         <CardTitle>這個項目已移至垃圾桶</CardTitle>
                         <CardDescription>
@@ -4634,27 +4809,25 @@ function VaultShell({
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
-                        <dl>
-                          <div>
-                            <dt>刪除時間</dt>
-                            <dd>{formatDate(selectedSummary.deletedAt)}</dd>
+                        <dl className="m-0 px-[15px] py-1">
+                          <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_1fr] border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:gap-1">
+                            <dt className="text-muted-foreground text-[11px]">刪除時間</dt>
+                            <dd className="m-0 text-[11px]">
+                              {formatDate(selectedSummary.deletedAt)}
+                            </dd>
                           </div>
-                          <div>
-                            <dt>原資料夾</dt>
-                            <dd>
+                          <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_1fr] border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:gap-1">
+                            <dt className="text-muted-foreground text-[11px]">原資料夾</dt>
+                            <dd className="m-0 text-[11px]">
                               {folders.find((folder) => folder.id === selectedSummary.folderId)
                                 ?.name ?? '未分類'}
                             </dd>
                           </div>
                         </dl>
                       </CardContent>
-                    </Card>
+                    </DetailCard>
                     {hasTrashPasswordHistory(selectedSummary) && (
-                      <Card
-                        className="detail-card gap-0 py-0"
-                        role="region"
-                        aria-labelledby="trash-password-history-title"
-                      >
+                      <DetailCard role="region" aria-labelledby="trash-password-history-title">
                         <CardHeader className="bg-muted rounded-none border-b">
                           <CardTitle id="trash-password-history-title">密碼歷史</CardTitle>
                           <CardDescription>
@@ -4673,9 +4846,9 @@ function VaultShell({
                             查看紀錄
                           </Button>
                         </CardContent>
-                      </Card>
+                      </DetailCard>
                     )}
-                    <div className="danger-zone flex flex-wrap gap-2">
+                    <div className="mx-auto flex max-w-[720px] flex-wrap justify-end gap-2">
                       <Button type="button" disabled={busy} onClick={() => void restoreLogin()}>
                         <RotateCcw data-icon="inline-start" />
                         還原項目
@@ -4699,19 +4872,24 @@ function VaultShell({
                   onBack={clearItemSelection}
                 />
               ) : selectedLogin && selectedLogin.id === selectedId ? (
-                <article className="detail-content">
-                  <header className="detail-header">
+                <article className="flex size-full min-h-0 min-w-0 flex-col">
+                  <DetailHeader>
                     <TooltipIconButton
                       variant="outline"
                       size="icon"
-                      className="icon-button detail-back"
+                      className="hidden max-[680px]:grid"
+                      data-detail-back=""
                       type="button"
                       label="返回項目列表"
                       onClick={clearItemSelection}
                     >
                       <ArrowLeft />
                     </TooltipIconButton>
-                    <span className={cn('detail-icon', selectedLogin.type)} aria-hidden="true">
+                    <span
+                      className={detailIconClassName(selectedLogin.type)}
+                      data-detail-icon=""
+                      aria-hidden="true"
+                    >
                       {selectedLogin.type === 'login' ? (
                         <WebsiteIcon
                           id={selectedLogin.id}
@@ -4730,7 +4908,7 @@ function VaultShell({
                         })()
                       )}
                     </span>
-                    <div className="detail-heading">
+                    <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-xl [&>h2]:tracking-[-0.025em] [&>span]:mt-[3px] [&>span]:block [&>span]:truncate [&>span]:text-[10px]">
                       <h2>{selectedLogin.name}</h2>
                       <span>
                         {selectedLogin.subtitle ||
@@ -4742,7 +4920,7 @@ function VaultShell({
                     <TooltipIconButton
                       variant="outline"
                       size="icon"
-                      className={cn('icon-button', selectedLogin.favorite && 'favorite-active')}
+                      className={cn(selectedLogin.favorite && 'text-chart-4')}
                       type="button"
                       label={selectedLogin.favorite ? '從常用項目移除' : '加入常用項目'}
                       aria-pressed={selectedLogin.favorite}
@@ -4759,7 +4937,7 @@ function VaultShell({
                                 <Button
                                   variant="outline"
                                   size="icon"
-                                  className="icon-button"
+                                  className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-[34px] min-w-[34px] rounded-[9px] shadow-(--control-highlight)"
                                   type="button"
                                   aria-label="更多操作"
                                   disabled={busy}
@@ -4820,15 +4998,11 @@ function VaultShell({
                         </DropdownMenuGroup>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                  </header>
+                  </DetailHeader>
 
-                  <div className="detail-scroll scroll-fade-y forced-colors:scroll-fade-none">
+                  <div className="scroll-fade-y forced-colors:scroll-fade-none min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] overflow-auto px-5 pt-5 pb-10 max-[680px]:px-3 max-[680px]:pt-[13px] max-[680px]:pb-7">
                     {selectedDetailFields.length > 0 && (
-                      <Card
-                        className="detail-card gap-0 py-0"
-                        role="region"
-                        aria-labelledby="credentials-title"
-                      >
+                      <DetailCard role="region" aria-labelledby="credentials-title">
                         <CardHeader className="bg-muted rounded-none border-b">
                           <CardTitle id="credentials-title">
                             {itemTypeMeta[selectedLogin.type].label}資料
@@ -4839,15 +5013,11 @@ function VaultShell({
                             .filter((field) => field.secret || Boolean(field.value))
                             .map(renderDetailField)}
                         </CardContent>
-                      </Card>
+                      </DetailCard>
                     )}
 
                     {selectedLogin.customFields.length > 0 && (
-                      <Card
-                        className="detail-card gap-0 py-0"
-                        role="region"
-                        aria-labelledby="custom-fields-title"
-                      >
+                      <DetailCard role="region" aria-labelledby="custom-fields-title">
                         <CardHeader className="bg-muted rounded-none border-b">
                           <CardTitle id="custom-fields-title">自訂欄位</CardTitle>
                           <CardDescription>
@@ -4857,13 +5027,13 @@ function VaultShell({
                         <CardContent className="contents">
                           {selectedLogin.customFields.map(renderCustomField)}
                         </CardContent>
-                      </Card>
+                      </DetailCard>
                     )}
 
                     {(selectedLogin.attachments.length > 0 ||
                       attachmentOperation?.itemId === selectedLogin.id) && (
-                      <Card
-                        className="detail-card attachment-card gap-0 py-0"
+                      <DetailCard
+                        variant="attachment"
                         role="region"
                         aria-labelledby="attachments-title"
                       >
@@ -4927,13 +5097,16 @@ function VaultShell({
                             </section>
                           )}
                           {selectedLogin.attachments.length > 0 && (
-                            <div className="passkey-list -mx-(--card-spacing) -mb-(--card-spacing)">
+                            <div className="-mx-(--card-spacing) -mb-(--card-spacing) grid">
                               {selectedLogin.attachments.map((attachment) => (
                                 <article
                                   key={attachment.id}
-                                  className="passkey-item attachment-item"
+                                  className="border-border [&_small]:text-muted-foreground grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-2.5 border-b px-[15px] py-3 [&_small]:truncate [&_small]:text-[10px] [&_span]:truncate [&_span]:text-[11px] [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[3px]"
                                 >
-                                  <span className="passkey-icon" aria-hidden="true">
+                                  <span
+                                    className="text-primary grid size-8 place-items-center rounded-[9px] bg-(--accent-soft)"
+                                    aria-hidden="true"
+                                  >
                                     <Paperclip size={17} />
                                   </span>
                                   <div>
@@ -4966,7 +5139,6 @@ function VaultShell({
                                     <TooltipIconButton
                                       variant="outline"
                                       size="icon"
-                                      className="icon-button"
                                       type="button"
                                       label={`下載 ${attachment.fileName}`}
                                       disabled={
@@ -4981,7 +5153,6 @@ function VaultShell({
                                     <TooltipIconButton
                                       variant="destructive"
                                       size="icon"
-                                      className="icon-button"
                                       type="button"
                                       label={`刪除 ${attachment.fileName}`}
                                       disabled={
@@ -5005,15 +5176,11 @@ function VaultShell({
                             </div>
                           )}
                         </CardContent>
-                      </Card>
+                      </DetailCard>
                     )}
 
                     {selectedLogin.passwordHistoryCount > 0 && (
-                      <Card
-                        className="detail-card gap-0 py-0"
-                        role="region"
-                        aria-labelledby="password-history-title"
-                      >
+                      <DetailCard role="region" aria-labelledby="password-history-title">
                         <CardHeader className="bg-muted rounded-none border-b">
                           <CardTitle id="password-history-title">密碼歷史</CardTitle>
                           <CardDescription>
@@ -5031,13 +5198,12 @@ function VaultShell({
                             查看紀錄
                           </Button>
                         </CardContent>
-                      </Card>
+                      </DetailCard>
                     )}
 
                     {selectedLogin.type === 'login' && selectedLogin.hasTotp && (
-                      <Card
+                      <DetailCard
                         ref={totpRevealRegionRef}
-                        className="detail-card totp-card gap-0 py-0"
                         role="region"
                         aria-labelledby="totp-title"
                         aria-busy={!totpCode && totpGenerationError === null}
@@ -5050,12 +5216,20 @@ function VaultShell({
                           {!totpRevealReady && <span className="sr-only">產生中…</span>}
                         </CardHeader>
                         <CardContent className="contents">
-                          <div className="totp-value">
-                            <div className="t-skel h-8 min-w-0">
-                              <div className="t-skel-skeleton is-pulsing flex items-center">
+                          <div className="grid grid-cols-[minmax(0,1fr)_34px] items-center gap-2 px-[15px] pt-3.5 pb-2 [&_strong]:font-mono [&_strong]:text-[25px] [&_strong]:tracking-[0.18em]">
+                            <div
+                              className="group/totp-reveal relative h-8 min-w-0"
+                              data-slot="totp-reveal"
+                              data-reveal-state="loading"
+                            >
+                              <div
+                                className="absolute inset-0 z-1 flex items-center opacity-100 blur-none transition-[opacity,filter] duration-(--reveal-dur) ease-(--reveal-ease) group-data-[reveal-state=resetting]/totp-reveal:!transition-none group-data-[reveal-state=revealed]/totp-reveal:opacity-0 group-data-[reveal-state=revealed]/totp-reveal:blur-(--reveal-blur) motion-reduce:transition-none data-[pulsing=true]:[&>*]:animate-[t-skel-pulse_var(--pulse-dur)_ease-in-out_var(--pulse-count)] motion-reduce:data-[pulsing=true]:[&>*]:animate-none"
+                                data-slot="totp-reveal-skeleton"
+                                data-pulsing="true"
+                              >
                                 <Skeleton className="h-8 w-36" aria-hidden="true" />
                               </div>
-                              <div className="t-skel-content flex items-center">
+                              <div className="absolute inset-0 z-2 flex items-center opacity-0 blur-(--reveal-blur) transition-[opacity,filter] duration-(--reveal-dur) ease-(--reveal-ease) group-data-[reveal-state=resetting]/totp-reveal:!transition-none group-data-[reveal-state=revealed]/totp-reveal:opacity-100 group-data-[reveal-state=revealed]/totp-reveal:blur-none motion-reduce:transition-none">
                                 {totpCode ? (
                                   <strong>
                                     {/^\d+$/.test(totpCode.code) ? (
@@ -5080,7 +5254,6 @@ function VaultShell({
                             <TooltipIconButton
                               variant="outline"
                               size="icon"
-                              className="icon-button"
                               type="button"
                               label={
                                 copiedKey === `totp:${selectedLogin.id}`
@@ -5094,17 +5267,26 @@ function VaultShell({
                             </TooltipIconButton>
                           </div>
                           {!totpGenerationError && (
-                            <div className="t-skel h-[19px]">
-                              <div className="t-skel-skeleton is-pulsing">
+                            <div
+                              className="group/totp-reveal relative h-[19px]"
+                              data-slot="totp-reveal"
+                              data-reveal-state="loading"
+                            >
+                              <div
+                                className="absolute inset-0 z-1 opacity-100 blur-none transition-[opacity,filter] duration-(--reveal-dur) ease-(--reveal-ease) group-data-[reveal-state=resetting]/totp-reveal:!transition-none group-data-[reveal-state=revealed]/totp-reveal:opacity-0 group-data-[reveal-state=revealed]/totp-reveal:blur-(--reveal-blur) motion-reduce:transition-none data-[pulsing=true]:[&>*]:animate-[t-skel-pulse_var(--pulse-dur)_ease-in-out_var(--pulse-count)] motion-reduce:data-[pulsing=true]:[&>*]:animate-none"
+                                data-slot="totp-reveal-skeleton"
+                                data-pulsing="true"
+                              >
                                 <Skeleton
-                                  className="totp-progress-skeleton h-1"
+                                  className="mx-[15px] mb-[15px] block h-1 w-[calc(100%-30px)] motion-reduce:animate-none"
                                   aria-hidden="true"
                                 />
                               </div>
-                              <div className="t-skel-content">
+                              <div className="absolute inset-0 z-2 opacity-0 blur-(--reveal-blur) transition-[opacity,filter] duration-(--reveal-dur) ease-(--reveal-ease) group-data-[reveal-state=resetting]/totp-reveal:!transition-none group-data-[reveal-state=revealed]/totp-reveal:opacity-100 group-data-[reveal-state=revealed]/totp-reveal:blur-none motion-reduce:transition-none">
                                 {totpCode && (
                                   <Progress
                                     key={totpCodeState?.cycle}
+                                    className="mx-[15px] mb-[15px] block w-[calc(100%-30px)] [&_[data-slot=progress-indicator]]:duration-[1s] [&_[data-slot=progress-indicator]]:ease-linear motion-reduce:[&_[data-slot=progress-indicator]]:duration-0"
                                     aria-label="驗證碼剩餘時間"
                                     max={totpCode.period}
                                     value={totpCode.remainingSeconds}
@@ -5114,24 +5296,26 @@ function VaultShell({
                             </div>
                           )}
                         </CardContent>
-                      </Card>
+                      </DetailCard>
                     )}
 
                     {selectedLogin.type === 'login' && selectedLogin.passkeys.length > 0 && (
-                      <Card
-                        className="detail-card passkey-card gap-0 py-0"
-                        role="region"
-                        aria-labelledby="passkeys-title"
-                      >
+                      <DetailCard role="region" aria-labelledby="passkeys-title">
                         <CardHeader className="bg-muted rounded-none border-b">
                           <CardTitle id="passkeys-title">通行密鑰</CardTitle>
                           <CardDescription>{selectedLogin.passkeys.length} 組</CardDescription>
                         </CardHeader>
                         <CardContent className="contents">
-                          <div className="passkey-list">
+                          <div className="grid">
                             {selectedLogin.passkeys.map((passkey) => (
-                              <article key={passkey.credentialId} className="passkey-item">
-                                <span className="passkey-icon" aria-hidden="true">
+                              <article
+                                key={passkey.credentialId}
+                                className="border-border [&_small]:text-muted-foreground grid grid-cols-[34px_minmax(0,1fr)] items-start gap-2.5 border-b px-[15px] py-3 [&_small]:truncate [&_small]:text-[10px] [&_span]:truncate [&_span]:text-[11px] [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[3px]"
+                              >
+                                <span
+                                  className="text-primary grid size-8 place-items-center rounded-[9px] bg-(--accent-soft)"
+                                  aria-hidden="true"
+                                >
                                   <KeyRound size={17} />
                                 </span>
                                 <div>
@@ -5147,45 +5331,42 @@ function VaultShell({
                               </article>
                             ))}
                           </div>
-                          <p className="passkey-note">
+                          <p className="text-muted-foreground m-0 px-[15px] pt-2.5 pb-[13px] text-[10px] leading-normal">
                             可從編輯項目安全刪除通行密鑰；私鑰材料不會傳到顯示程序。
                           </p>
                         </CardContent>
-                      </Card>
+                      </DetailCard>
                     )}
 
                     {(selectedLogin.type === 'secureNote' || selectedLogin.notes) && (
-                      <Card
-                        className="detail-card notes-card gap-0 py-0"
-                        role="region"
-                        aria-labelledby="notes-title"
-                      >
+                      <DetailCard role="region" aria-labelledby="notes-title">
                         <CardHeader className="bg-muted rounded-none border-b">
                           <CardTitle id="notes-title">
                             {selectedLogin.type === 'secureNote' ? '安全備註' : '備註'}
                           </CardTitle>
                         </CardHeader>
                         <CardContent className="contents">
-                          <p className={cn(!selectedLogin.notes?.trim() && 'empty-note')}>
+                          <p
+                            className={cn(
+                              'm-0 px-[15px] pt-3.5 pb-[17px] text-xs leading-[1.65] whitespace-pre-wrap',
+                              !selectedLogin.notes?.trim() && 'text-muted-foreground'
+                            )}
+                          >
                             {selectedLogin.notes?.trim() ? selectedLogin.notes : '尚未加入內容'}
                           </p>
                         </CardContent>
-                      </Card>
+                      </DetailCard>
                     )}
 
-                    <Card
-                      className="detail-card organization-card activity-card gap-0 py-0"
-                      role="region"
-                      aria-labelledby="organization-title"
-                    >
+                    <DetailCard role="region" aria-labelledby="organization-title">
                       <CardHeader className="bg-muted rounded-none border-b">
                         <CardTitle id="organization-title">整理與活動</CardTitle>
                       </CardHeader>
                       <CardContent className="contents">
-                        <dl>
-                          <div>
-                            <dt>資料夾</dt>
-                            <dd className="flex items-center gap-2">
+                        <dl className="m-0 px-[15px] py-1">
+                          <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
+                            <dt className="text-muted-foreground text-[11px] leading-4">資料夾</dt>
+                            <dd className="m-0 flex min-w-0 items-center gap-2 text-xs leading-4">
                               <span className="min-w-0 flex-1 truncate">
                                 {folders.find((folder) => folder.id === selectedLogin.folderId)
                                   ?.name ?? '未分類'}
@@ -5203,36 +5384,43 @@ function VaultShell({
                               </Button>
                             </dd>
                           </div>
-                          <div>
-                            <dt>最近使用</dt>
-                            <dd>{formatDate(selectedLogin.lastUsedAt)}</dd>
+                          <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
+                            <dt className="text-muted-foreground text-[11px] leading-4">
+                              最近使用
+                            </dt>
+                            <dd className="m-0 min-w-0 text-xs leading-4">
+                              {formatDate(selectedLogin.lastUsedAt)}
+                            </dd>
                           </div>
                         </dl>
                       </CardContent>
-                    </Card>
+                    </DetailCard>
 
-                    <Card
-                      className="detail-card organization-card gap-0 py-0"
-                      role="region"
-                      aria-labelledby="history-title"
-                    >
+                    <DetailCard role="region" aria-labelledby="history-title">
                       <CardHeader className="bg-muted rounded-none border-b">
                         <CardTitle id="history-title">項目歷史記錄</CardTitle>
                       </CardHeader>
                       <CardContent className="contents">
                         <ItemHistoryRows item={selectedLogin} formatDate={formatDate} />
                       </CardContent>
-                    </Card>
+                    </DetailCard>
                   </div>
                 </article>
               ) : (
-                <Empty className="detail-empty">
+                <Empty className="min-h-0 flex-1 gap-0 p-7">
                   <EmptyHeader>
-                    <EmptyMedia aria-hidden="true">
-                      <img className="size-48 object-contain" src={bearCutUrl} alt="" />
+                    <EmptyMedia
+                      className="text-muted-foreground mb-4 h-16 w-[78px] bg-transparent"
+                      aria-hidden="true"
+                    >
+                      <img className="size-16 object-contain" src={bearCutUrl} alt="" />
                     </EmptyMedia>
-                    <EmptyTitle>未選取項目</EmptyTitle>
-                    <EmptyDescription>選取項目以查看並管理安全資料。</EmptyDescription>
+                    <EmptyTitle className="text-foreground m-0 text-xl font-[720]">
+                      未選取項目
+                    </EmptyTitle>
+                    <EmptyDescription className="text-muted-foreground mt-[7px] mb-4 max-w-[290px] text-xs leading-[1.55]">
+                      選取項目以查看並管理安全資料。
+                    </EmptyDescription>
                   </EmptyHeader>
                 </Empty>
               )}

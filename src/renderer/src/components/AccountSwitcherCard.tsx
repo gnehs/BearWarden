@@ -15,7 +15,6 @@ import {
 import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
 import {
-  Card,
   CardAction,
   CardContent,
   CardDescription,
@@ -42,6 +41,7 @@ import {
   moveAccountIds,
   type AccountConfirmationAction
 } from './account-switcher-ui'
+import { SettingsCard } from './SettingsPrimitives'
 
 interface AccountSwitcherCardProps {
   accountStatus: AccountStatus | null
@@ -96,7 +96,7 @@ function AccountSwitcherCard({
 
   return (
     <>
-      <Card className="settings-card" aria-labelledby="local-accounts-settings-title">
+      <SettingsCard aria-labelledby="local-accounts-settings-title">
         <CardHeader>
           <CardTitle id="local-accounts-settings-title" role="heading" aria-level={2}>
             本機帳號
@@ -170,7 +170,7 @@ function AccountSwitcherCard({
             新增本機帳號
           </Button>
         </CardFooter>
-      </Card>
+      </SettingsCard>
 
       <AlertDialog
         open={confirmationAction !== null}

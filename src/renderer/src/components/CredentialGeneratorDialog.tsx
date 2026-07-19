@@ -10,7 +10,7 @@ import type {
 import { Alert, AlertDescription, AlertTitle } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
 import { Checkbox } from '@renderer/components/ui/checkbox'
-import { DialogClose, DialogFooter } from '@renderer/components/ui/dialog'
+import { DialogClose } from '@renderer/components/ui/dialog'
 import {
   Field,
   FieldContent,
@@ -33,6 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/u
 import { ToggleGroup, ToggleGroupItem } from '@renderer/components/ui/toggle-group'
 import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
 import { Modal } from './Dialogs'
+import { ModalBody, ModalFooter } from './ModalLayout'
 import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 
 type GeneratorTab = 'password' | 'username' | 'history'
@@ -436,7 +437,7 @@ export default function CredentialGeneratorDialog({
     >
       {() => (
         <>
-          <div className="modal-body h-[min(65vh,calc(100vh-11rem))] overflow-hidden">
+          <ModalBody className="h-[min(65vh,calc(100vh-11rem))] overflow-hidden">
             <Tabs
               className="min-h-0 overflow-hidden p-px"
               value={tab}
@@ -852,12 +853,12 @@ export default function CredentialGeneratorDialog({
                 </FieldGroup>
               </TabsContent>
             </Tabs>
-          </div>
-          <DialogFooter className="modal-actions mx-0 mb-0">
+          </ModalBody>
+          <ModalFooter>
             <DialogClose render={<Button variant="secondary" type="button" disabled={busy} />}>
               關閉
             </DialogClose>
-          </DialogFooter>
+          </ModalFooter>
         </>
       )}
     </Modal>

@@ -35,9 +35,9 @@ describe('LoginEditor design language', () => {
       })
     )
 
-    expect(markup).toContain('class="detail-icon login"')
-    expect(markup).toContain('class="detail-heading editor-heading"')
-    expect(markup).toContain('detail-card form-section gap-0 py-0')
+    expect(markup).toContain('aria-labelledby="editor-title"')
+    expect(markup).toContain('id="editor-title">登入</h2>')
+    expect(markup).toContain('data-slot="card"')
     expect(markup).toContain('data-slot="card-header"')
     expect(markup).toContain('aria-labelledby="item-section-title"')
   })

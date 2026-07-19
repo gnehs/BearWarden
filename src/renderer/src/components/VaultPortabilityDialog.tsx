@@ -10,10 +10,10 @@ import type {
   VaultImportResult
 } from '../../../shared/vault-contract'
 import { Modal } from './Dialogs'
+import { ModalBody, ModalFooter } from './ModalLayout'
 import { Alert, AlertDescription, AlertTitle } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@renderer/components/ui/card'
-import { DialogFooter } from '@renderer/components/ui/dialog'
 import {
   Field,
   FieldDescription,
@@ -296,7 +296,7 @@ function VaultPortabilityDialog({
     >
       {(close) => (
         <form onSubmit={(event) => void submit(event, close)}>
-          <div className="modal-body flex flex-col gap-4">
+          <ModalBody className="flex flex-col gap-4">
             {!preview && (
               <Field data-disabled={busy || undefined}>
                 <FieldLabel htmlFor="portability-format">備份格式</FieldLabel>
@@ -527,9 +527,9 @@ function VaultPortabilityDialog({
                 </AlertDescription>
               </Alert>
             )}
-          </div>
+          </ModalBody>
 
-          <DialogFooter className="modal-actions mx-0 mb-0">
+          <ModalFooter>
             <Button
               variant="secondary"
               type="button"
@@ -574,7 +574,7 @@ function VaultPortabilityDialog({
                     : '選擇並匯入檔案'}
               </Button>
             )}
-          </DialogFooter>
+          </ModalFooter>
         </form>
       )}
     </Modal>

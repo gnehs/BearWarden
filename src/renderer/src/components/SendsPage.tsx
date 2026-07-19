@@ -35,6 +35,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from '@renderer/components/ui/alert-dialog'
+import AuxiliaryPageLayout, { AuxiliaryPageContent } from './AuxiliaryPageLayout'
 import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 import FeatureUnderConstructionNotice from './FeatureUnderConstructionNotice'
 
@@ -229,215 +230,201 @@ function SendsPage(): React.JSX.Element {
   }
 
   return (
-    <div className="settings-page">
-      <header className="settings-header">
-        <div className="settings-header-inner">
-          <div className="settings-header-content">
-            <div className="settings-title-group">
-              <div>
-                <p className="eyebrow">Bitwarden Send</p>
-                <h1 id="sends-title">Sends</h1>
-                <p className="settings-subtitle">文字與檔案 Send 都會先在主程序解密 metadata。</p>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                type="button"
-                onClick={() => void createFile()}
-                disabled={busy}
-              >
-                <FilePlus data-icon="inline-start" />
-                建立檔案 Send
-              </Button>
-              <Button type="button" onClick={startCreate} disabled={busy}>
-                <Plus data-icon="inline-start" />
-                新增文字 Send
-              </Button>
-            </div>
-          </div>
+    <AuxiliaryPageLayout
+      eyebrow="Bitwarden Send"
+      title="Sends"
+      titleId="sends-title"
+      subtitle="文字與檔案 Send 都會先在主程序解密 metadata。"
+      headerActions={
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" type="button" onClick={() => void createFile()} disabled={busy}>
+            <FilePlus data-icon="inline-start" />
+            建立檔案 Send
+          </Button>
+          <Button type="button" onClick={startCreate} disabled={busy}>
+            <Plus data-icon="inline-start" />
+            新增文字 Send
+          </Button>
         </div>
-      </header>
-
-      <div className="settings-scroll">
-        <FeatureUnderConstructionNotice>
-          文字與檔案 Send 的主要流程已可使用；檔案編輯、進階驗證與完整公開接收流程仍在開發中。
-        </FeatureUnderConstructionNotice>
-        {loading ? (
-          <div className="flex items-center justify-center gap-2 py-16" role="status">
-            <Spinner />
-            載入 Sends…
-          </div>
-        ) : (
-          <div className="settings-layout">
-            <main className="settings-main flex flex-col gap-4">
-              {sends.length === 0 ? (
-                <Empty>
-                  <EmptyHeader>
-                    <EmptyTitle>還沒有 Send</EmptyTitle>
-                    <EmptyDescription>建立文字 Send，安全地分享一次性內容。</EmptyDescription>
-                  </EmptyHeader>
-                  <EmptyContent>
-                    <Button type="button" onClick={startCreate}>
-                      <Plus data-icon="inline-start" />
-                      建立第一個 Send
-                    </Button>
-                  </EmptyContent>
-                </Empty>
-              ) : (
-                sends.map((send) => (
-                  <Card
-                    key={send.id}
-                    className={selectedId === send.id ? 'border-primary' : undefined}
-                  >
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        {send.type === 'file' && <FileText aria-hidden="true" />}
-                        {send.name}
-                        {send.disabled && <Badge variant="outline">已停用</Badge>}
-                      </CardTitle>
-                      <CardDescription>
-                        {send.accessCount} 次存取
-                        {send.maxAccessCount ? `／上限 ${send.maxAccessCount}` : ''}
-                        {send.passwordProtected ? ' · 需要密碼' : ' · 無密碼'}
-                      </CardDescription>
-                      <CardAction className="flex gap-1">
+      }
+    >
+      <FeatureUnderConstructionNotice>
+        文字與檔案 Send 的主要流程已可使用；檔案編輯、進階驗證與完整公開接收流程仍在開發中。
+      </FeatureUnderConstructionNotice>
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 py-16" role="status">
+          <Spinner />
+          載入 Sends…
+        </div>
+      ) : (
+        <AuxiliaryPageContent>
+          <main className="col-start-2 flex min-w-0 flex-col gap-4 max-[880px]:col-start-1">
+            {sends.length === 0 ? (
+              <Empty>
+                <EmptyHeader>
+                  <EmptyTitle>還沒有 Send</EmptyTitle>
+                  <EmptyDescription>建立文字 Send，安全地分享一次性內容。</EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <Button type="button" onClick={startCreate}>
+                    <Plus data-icon="inline-start" />
+                    建立第一個 Send
+                  </Button>
+                </EmptyContent>
+              </Empty>
+            ) : (
+              sends.map((send) => (
+                <Card
+                  key={send.id}
+                  className={selectedId === send.id ? 'border-primary' : undefined}
+                >
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      {send.type === 'file' && <FileText aria-hidden="true" />}
+                      {send.name}
+                      {send.disabled && <Badge variant="outline">已停用</Badge>}
+                    </CardTitle>
+                    <CardDescription>
+                      {send.accessCount} 次存取
+                      {send.maxAccessCount ? `／上限 ${send.maxAccessCount}` : ''}
+                      {send.passwordProtected ? ' · 需要密碼' : ' · 無密碼'}
+                    </CardDescription>
+                    <CardAction className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        type="button"
+                        onClick={() => void copyLink(send)}
+                        aria-label={copiedKey === send.id ? '分享連結已複製' : '複製分享連結'}
+                      >
+                        <CopyFeedbackIcon copied={copiedKey === send.id} />
+                      </Button>
+                      {send.type === 'file' && (
                         <Button
                           variant="ghost"
                           size="icon"
                           type="button"
-                          onClick={() => void copyLink(send)}
-                          aria-label={copiedKey === send.id ? '分享連結已複製' : '複製分享連結'}
-                        >
-                          <CopyFeedbackIcon copied={copiedKey === send.id} />
-                        </Button>
-                        {send.type === 'file' && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            type="button"
-                            onClick={() => void downloadFile(send)}
-                            aria-label="下載檔案 Send"
-                            disabled={busy}
-                          >
-                            <Download />
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          type="button"
-                          onClick={() => startEdit(send)}
-                          aria-label="編輯 Send"
-                          disabled={send.type === 'file'}
-                        >
-                          <Pencil />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          type="button"
-                          onClick={() => setDeleteTarget(send)}
-                          aria-label="刪除 Send"
-                        >
-                          <Trash2 />
-                        </Button>
-                      </CardAction>
-                    </CardHeader>
-                    <CardContent>
-                      {send.type === 'file' && send.file ? (
-                        <div className="text-muted-foreground flex items-center gap-2 text-sm">
-                          <FileText aria-hidden="true" />
-                          <span className="truncate">{send.file.fileName}</span>
-                          <span className="shrink-0">
-                            {send.file.sizeName ?? `${send.file.size} bytes`}
-                          </span>
-                        </div>
-                      ) : (
-                        <p className="text-muted-foreground line-clamp-3 text-sm whitespace-pre-wrap">
-                          {send.text}
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))
-              )}
-            </main>
-
-            <aside className="settings-aside">
-              <Card>
-                <CardHeader>
-                  <CardTitle>{selected ? '編輯 Send' : '新增 Send'}</CardTitle>
-                  <CardDescription>內容在主程序加密後才會送往伺服器。</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <FieldGroup>
-                    <Field>
-                      <FieldLabel htmlFor="send-name">名稱</FieldLabel>
-                      <Input
-                        id="send-name"
-                        value={draft.name}
-                        onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="send-text">內容</FieldLabel>
-                      <Textarea
-                        id="send-text"
-                        rows={8}
-                        value={draft.text}
-                        onChange={(event) => setDraft({ ...draft, text: event.target.value })}
-                      />
-                      <FieldDescription>文字內容不會加入分享連結。</FieldDescription>
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="send-password">
-                        存取密碼（{selected ? '留空維持現有密碼' : '選填'}）
-                      </FieldLabel>
-                      <Input
-                        id="send-password"
-                        type="password"
-                        value={draft.password ?? ''}
-                        onChange={(event) =>
-                          setDraft({
-                            ...draft,
-                            password:
-                              event.target.value.length > 0
-                                ? event.target.value
-                                : selected
-                                  ? undefined
-                                  : null
-                          })
-                        }
-                        autoComplete="new-password"
-                      />
-                      {selected?.passwordProtected && (
-                        <Button
-                          variant="outline"
-                          type="button"
-                          onClick={() => void removePassword()}
+                          onClick={() => void downloadFile(send)}
+                          aria-label="下載檔案 Send"
                           disabled={busy}
                         >
-                          移除現有密碼
+                          <Download />
                         </Button>
                       )}
-                    </Field>
-                  </FieldGroup>
-                </CardContent>
-                <CardFooter className="flex gap-2">
-                  <Button type="button" onClick={() => void save()} disabled={busy}>
-                    <Save data-icon="inline-start" />
-                    {busy ? '儲存中…' : '儲存'}
-                  </Button>
-                  <Button variant="outline" type="button" onClick={startCreate} disabled={busy}>
-                    清除
-                  </Button>
-                </CardFooter>
-              </Card>
-            </aside>
-          </div>
-        )}
-      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        type="button"
+                        onClick={() => startEdit(send)}
+                        aria-label="編輯 Send"
+                        disabled={send.type === 'file'}
+                      >
+                        <Pencil />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        type="button"
+                        onClick={() => setDeleteTarget(send)}
+                        aria-label="刪除 Send"
+                      >
+                        <Trash2 />
+                      </Button>
+                    </CardAction>
+                  </CardHeader>
+                  <CardContent>
+                    {send.type === 'file' && send.file ? (
+                      <div className="text-muted-foreground flex items-center gap-2 text-sm">
+                        <FileText aria-hidden="true" />
+                        <span className="truncate">{send.file.fileName}</span>
+                        <span className="shrink-0">
+                          {send.file.sizeName ?? `${send.file.size} bytes`}
+                        </span>
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground line-clamp-3 text-sm whitespace-pre-wrap">
+                        {send.text}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </main>
+
+          <aside className="col-start-2 flex min-w-0 flex-col gap-[18px] max-[880px]:col-start-1">
+            <Card>
+              <CardHeader>
+                <CardTitle>{selected ? '編輯 Send' : '新增 Send'}</CardTitle>
+                <CardDescription>內容在主程序加密後才會送往伺服器。</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="send-name">名稱</FieldLabel>
+                    <Input
+                      id="send-name"
+                      value={draft.name}
+                      onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="send-text">內容</FieldLabel>
+                    <Textarea
+                      id="send-text"
+                      rows={8}
+                      value={draft.text}
+                      onChange={(event) => setDraft({ ...draft, text: event.target.value })}
+                    />
+                    <FieldDescription>文字內容不會加入分享連結。</FieldDescription>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="send-password">
+                      存取密碼（{selected ? '留空維持現有密碼' : '選填'}）
+                    </FieldLabel>
+                    <Input
+                      id="send-password"
+                      type="password"
+                      value={draft.password ?? ''}
+                      onChange={(event) =>
+                        setDraft({
+                          ...draft,
+                          password:
+                            event.target.value.length > 0
+                              ? event.target.value
+                              : selected
+                                ? undefined
+                                : null
+                        })
+                      }
+                      autoComplete="new-password"
+                    />
+                    {selected?.passwordProtected && (
+                      <Button
+                        variant="outline"
+                        type="button"
+                        onClick={() => void removePassword()}
+                        disabled={busy}
+                      >
+                        移除現有密碼
+                      </Button>
+                    )}
+                  </Field>
+                </FieldGroup>
+              </CardContent>
+              <CardFooter className="flex gap-2">
+                <Button type="button" onClick={() => void save()} disabled={busy}>
+                  <Save data-icon="inline-start" />
+                  {busy ? '儲存中…' : '儲存'}
+                </Button>
+                <Button variant="outline" type="button" onClick={startCreate} disabled={busy}>
+                  清除
+                </Button>
+              </CardFooter>
+            </Card>
+          </aside>
+        </AuxiliaryPageContent>
+      )}
       <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
@@ -467,7 +454,7 @@ function SendsPage(): React.JSX.Element {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </AuxiliaryPageLayout>
   )
 }
 

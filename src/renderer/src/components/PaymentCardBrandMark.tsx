@@ -25,7 +25,7 @@ function PaymentCardBrandMark({
   if (brand === 'unknown') {
     return (
       <span
-        className={cn('payment-brand-mark unknown', compact && 'compact')}
+        className="relative inline-flex min-h-5 min-w-7 items-center justify-center leading-none"
         role="img"
         aria-label="其他發卡組織"
       >
@@ -37,7 +37,10 @@ function PaymentCardBrandMark({
 
   return (
     <span
-      className={cn('payment-brand-mark', brand, compact && 'compact')}
+      className={cn(
+        'relative inline-flex h-7 w-[58px] min-w-[58px] items-center justify-center leading-none [&>svg]:block [&>svg]:size-full [[data-detail-icon]_>_&]:max-w-[calc(100%-8px)] [[data-detail-icon]_>_&]:min-w-[0px]',
+        compact && 'h-[18px] w-[29px] min-w-[29px]'
+      )}
       role="img"
       aria-label={label}
     >

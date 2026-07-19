@@ -37,14 +37,7 @@ import { Alert, AlertDescription, AlertTitle } from '@renderer/components/ui/ale
 import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
 import { Checkbox } from '@renderer/components/ui/checkbox'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from '@renderer/components/ui/dialog'
+import { Dialog, DialogTitle } from '@renderer/components/ui/dialog'
 import {
   Field,
   FieldContent,
@@ -69,10 +62,12 @@ import {
 } from '@renderer/components/ui/select'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Separator } from '@renderer/components/ui/separator'
+import { cn } from '@renderer/lib/utils'
 import AccountApiKeyDialog from './AccountApiKeyDialog'
 import AccountDevicesDialog from './AccountDevicesDialog'
 import AccountProfileCard from './AccountProfileCard'
 import AccountTwoFactorDialog from './AccountTwoFactorDialog'
+import { ModalActionGroup, ModalBody, ModalContent, ModalFooter, ModalHeader } from './ModalLayout'
 import { PendingImportWarning } from './PendingImportWarning'
 import {
   buildSyncTwoFactorRequest,
@@ -500,21 +495,22 @@ function SyncDialog({
         if (!open) close()
       }}
     >
-      <DialogContent className="modal modal-card sync-dialog" showCloseButton={false}>
-        <DialogHeader className="modal-header sync-dialog-header">
+      <ModalContent
+        className="grid w-[min(calc(100%-32px),530px)] max-w-[min(calc(100%-32px),530px)] grid-rows-[auto_minmax(0,1fr)]"
+        showCloseButton={false}
+      >
+        <ModalHeader className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start">
           <span
-            className={`sync-dialog-icon ${status.state === 'error' ? 'error' : ''}`}
+            className={cn(
+              'text-primary grid size-[42px] place-items-center rounded-xl bg-[var(--accent-soft)]',
+              status.state === 'error' && 'bg-[var(--danger-soft)] text-[var(--danger)]'
+            )}
             aria-hidden="true"
           >
             {status.state === 'error' ? <CircleAlert /> : <Cloud />}
           </span>
           <div>
-            <DialogTitle>Bitwarden 同步</DialogTitle>
-            <DialogDescription>
-              {configured
-                ? '直接連線並加密同步你的密碼庫。'
-                : '連線 Bitwarden 雲端或你的 Vaultwarden 伺服器。'}
-            </DialogDescription>
+            <DialogTitle className="m-0 text-[17px]">同步</DialogTitle>
           </div>
           <Button
             variant="ghost"
@@ -526,12 +522,27 @@ function SyncDialog({
           >
             <X aria-hidden="true" />
           </Button>
-        </DialogHeader>
+        </ModalHeader>
 
-        <div className="modal-body sync-dialog-body">
-          <Alert className="sync-status-card" role="status" aria-live="polite">
+        <ModalBody className="min-h-0 gap-[14px] overflow-y-auto overscroll-contain px-[18px] pt-4 pb-0">
+          <Alert
+            className="[&_small]:text-muted-foreground grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-[10px] bg-[var(--panel-muted)] p-[10px_11px] [&_small]:text-[10px] [&_small]:leading-[1.4] [&_strong]:text-[12px] [&>div]:grid [&>div]:gap-[3px]"
+            role="status"
+            aria-live="polite"
+          >
             <span
-              className={`sync-status-indicator ${isSyncing ? 'syncing' : status.state}`}
+              className={cn(
+                'size-2 rounded-full bg-[var(--subtle)]',
+                isSyncing
+                  ? 'animate-[pulse_1.1s_ease-in-out_infinite] bg-[var(--focus)]'
+                  : status.state === 'ready'
+                    ? 'bg-[var(--success)] shadow-[0_0_0_3px_color-mix(in_srgb,var(--success),transparent_80%)]'
+                    : status.state === 'locked' || status.state === 'unconfigured'
+                      ? 'bg-[var(--gold)]'
+                      : status.state === 'error'
+                        ? 'bg-[var(--danger)]'
+                        : undefined
+              )}
               aria-hidden="true"
             />
             <div>
@@ -565,7 +576,7 @@ function SyncDialog({
 
           {requiresCredentials ? (
             <form
-              className="sync-form"
+              className="mx-[-18px] grid gap-[13px]"
               onSubmit={
                 configured
                   ? (event) => {
@@ -578,7 +589,7 @@ function SyncDialog({
               <FieldGroup className="mx-[18px] w-auto">
                 {!configured && (
                   <>
-                    <Field className="field">
+                    <Field className="grid gap-[7px]">
                       <FieldLabel htmlFor="server-url">伺服器網址</FieldLabel>
                       <Input
                         id="server-url"
@@ -596,7 +607,7 @@ function SyncDialog({
                         Bitwarden 雲端請使用 bitwarden.com；Vaultwarden 請使用 HTTPS 網址。
                       </FieldDescription>
                     </Field>
-                    <Field className="field">
+                    <Field className="grid gap-[7px]">
                       <FieldLabel htmlFor="sync-email">電子郵件</FieldLabel>
                       <Input
                         id="sync-email"
@@ -611,12 +622,15 @@ function SyncDialog({
                   </>
                 )}
                 {configured && (
-                  <Alert className="sync-account" role="status">
+                  <Alert
+                    className="text-primary m-0 flex items-center gap-[7px] rounded-[9px] border-0 bg-[color-mix(in_oklch,var(--primary)_10%,var(--background))] px-2.5 py-[9px] text-[11px] [&_[data-slot=alert-description]]:text-[11px]"
+                    role="status"
+                  >
                     <ShieldCheck aria-hidden="true" />
                     <AlertDescription>{status.email ?? '已設定的帳號'}</AlertDescription>
                   </Alert>
                 )}
-                <Field className="field">
+                <Field className="grid gap-[7px]">
                   <FieldLabel htmlFor="sync-master-password">主密碼</FieldLabel>
                   <InputGroup>
                     <InputGroupInput
@@ -643,9 +657,12 @@ function SyncDialog({
                   </InputGroup>
                 </Field>
               </FieldGroup>
-              <div className="t-acc mx-[18px]" data-open={showAdvanced ? 'true' : 'false'}>
+              <div
+                className="[&[data-open=true]_[data-slot=sync-accordion-panel-inner]]:blur-0 mx-[18px] [&[data-open=true]_[data-slot=sync-accordion-chevron]]:scale-y-[-1] [&[data-open=true]_[data-slot=sync-accordion-panel-inner]]:opacity-100 [&[data-open=true]_[data-slot=sync-accordion-panel-inner]]:duration-[var(--acc-expand)] [&[data-open=true]_[data-slot=sync-accordion-panel]]:grid-rows-[1fr] [&[data-open=true]_[data-slot=sync-accordion-panel]]:duration-[var(--acc-expand)]"
+                data-open={showAdvanced ? 'true' : 'false'}
+              >
                 <Button
-                  className="sync-advanced-toggle t-acc-head gap-1"
+                  className="gap-1 justify-self-start border-0 bg-transparent px-0 py-[3px] text-[11px] font-[680] text-[var(--accent-hover)] underline underline-offset-3"
                   variant="ghost"
                   type="button"
                   aria-expanded={showAdvanced}
@@ -653,13 +670,25 @@ function SyncDialog({
                   disabled={busy}
                 >
                   {showAdvanced ? '隱藏進階選項' : '顯示雙重驗證'}
-                  <span className="t-acc-chevron" aria-hidden="true">
+                  <span
+                    data-slot="sync-accordion-chevron"
+                    className="inline-flex origin-center scale-y-100 transition-transform duration-[var(--acc-chevron)] ease-[var(--acc-ease)] motion-reduce:!transition-none [&_path]:[vector-effect:non-scaling-stroke]"
+                    aria-hidden="true"
+                  >
                     <ChevronDown />
                   </span>
                 </Button>
-                <div className="t-acc-panel" aria-hidden={!showAdvanced}>
-                  <div className="t-acc-panel-inner pt-3" inert={!showAdvanced}>
-                    <FieldGroup className="sync-advanced-fields w-auto">
+                <div
+                  data-slot="sync-accordion-panel"
+                  className="grid grid-rows-[0fr] transition-[grid-template-rows] duration-[var(--acc-collapse)] ease-[var(--acc-ease)] motion-reduce:!transition-none"
+                  aria-hidden={!showAdvanced}
+                >
+                  <div
+                    data-slot="sync-accordion-panel-inner"
+                    className="overflow-hidden pt-3 opacity-0 blur-[2px] transition-[opacity,filter] duration-[var(--acc-collapse)] ease-[var(--acc-ease)] motion-reduce:!transition-none"
+                    inert={!showAdvanced}
+                  >
+                    <FieldGroup className="grid w-auto gap-3 rounded-[10px] border bg-[var(--panel-muted)] p-3">
                       <Field>
                         <FieldLabel htmlFor="two-factor-method">雙重驗證方式（選填）</FieldLabel>
                         <Select
@@ -729,17 +758,23 @@ function SyncDialog({
                 </div>
               </div>
               {error && (
-                <Alert className="form-error" variant="destructive">
+                <Alert
+                  className="mx-[18px] mt-[-4px] rounded-lg bg-[var(--danger-soft)] px-[11px] py-[9px] text-[12px] leading-[1.45]"
+                  variant="destructive"
+                >
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
               {success && (
-                <Alert className="sync-success" role="status">
+                <Alert
+                  className="text-primary m-0 mx-[18px] flex items-start gap-[7px] rounded-lg border-0 bg-[color-mix(in_oklch,var(--primary)_10%,var(--background))] px-2.5 py-[9px] text-[11px] leading-[1.45] [&_[data-slot=alert-description]]:text-[11px]"
+                  role="status"
+                >
                   <CheckCircle2 aria-hidden="true" />
                   <AlertDescription>{success}</AlertDescription>
                 </Alert>
               )}
-              <DialogFooter className="modal-actions sync-form-actions mx-0 mb-0">
+              <ModalFooter className="mt-px">
                 <Button variant="secondary" type="button" onClick={close} disabled={busy}>
                   取消
                 </Button>
@@ -747,11 +782,14 @@ function SyncDialog({
                   {isSyncing && <Spinner data-icon="inline-start" aria-hidden="true" />}
                   {configured ? '解鎖並同步' : '連線並同步'}
                 </Button>
-              </DialogFooter>
+              </ModalFooter>
             </form>
           ) : (
             <>
-              <section className="sync-connection-details" aria-label="同步連線資訊">
+              <section
+                className="[&_svg]:text-primary [&_span]:text-muted-foreground grid gap-px overflow-hidden rounded-[10px] border [&_strong]:truncate [&_strong]:text-right [&_strong]:font-semibold [&>div]:grid [&>div]:min-w-0 [&>div]:grid-cols-[16px_76px_minmax(0,1fr)] [&>div]:items-center [&>div]:gap-[6px] [&>div]:border-b [&>div]:p-2.5 [&>div]:text-[11px] [&>div:last-child]:border-b-0"
+                aria-label="同步連線資訊"
+              >
                 <div>
                   <Server size={16} aria-hidden="true" />
                   <span>伺服器</span>
@@ -847,17 +885,23 @@ function SyncDialog({
                 </Alert>
               )}
               {error && (
-                <Alert className="form-error" variant="destructive">
+                <Alert
+                  className="mt-[-4px] rounded-lg bg-[var(--danger-soft)] px-[11px] py-[9px] text-[12px] leading-[1.45]"
+                  variant="destructive"
+                >
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
               {success && (
-                <Alert className="sync-success" role="status">
+                <Alert
+                  className="text-primary m-0 flex items-start gap-[7px] rounded-lg border-0 bg-[color-mix(in_oklch,var(--primary)_10%,var(--background))] px-2.5 py-[9px] text-[11px] leading-[1.45] [&_[data-slot=alert-description]]:text-[11px]"
+                  role="status"
+                >
                   <CheckCircle2 aria-hidden="true" />
                   <AlertDescription>{success}</AlertDescription>
                 </Alert>
               )}
-              <DialogFooter className="modal-actions split -mx-[18px] mb-0">
+              <ModalFooter split className="-mx-[18px]">
                 <AlertDialog
                   open={confirmingDisconnect}
                   onOpenChange={(open) => {
@@ -894,7 +938,7 @@ function SyncDialog({
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
-                <div className="action-group">
+                <ModalActionGroup>
                   <Button variant="secondary" type="button" onClick={close} disabled={isSyncing}>
                     關閉
                   </Button>
@@ -902,12 +946,12 @@ function SyncDialog({
                     {isSyncing && <Spinner data-icon="inline-start" aria-hidden="true" />}
                     立即同步
                   </Button>
-                </div>
-              </DialogFooter>
+                </ModalActionGroup>
+              </ModalFooter>
             </>
           )}
-        </div>
-      </DialogContent>
+        </ModalBody>
+      </ModalContent>
     </Dialog>
   )
 }

@@ -163,7 +163,7 @@ export function VirtualizedItemList({
           const row = Array.from(document.querySelectorAll<HTMLElement>('[data-item-id]')).find(
             (candidate) => candidate.dataset.itemId === target.id
           )
-          row?.querySelector<HTMLButtonElement>('.item-row-main')?.focus()
+          row?.querySelector<HTMLButtonElement>('[data-item-row-main]')?.focus()
         })
       }
     }
@@ -204,15 +204,12 @@ export function VirtualizedItemList({
     <div
       ref={scrollElementRef}
       className={cn(
-        'item-list virtualized-item-list scroll-fade-y forced-colors:scroll-fade-none',
+        'scroll-fade-y forced-colors:scroll-fade-none relative m-0 min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] list-none overflow-auto px-4 pb-6',
         className
       )}
       aria-label={`${scopeTitle}密碼庫項目`}
     >
-      <div
-        className="virtualized-item-list-content"
-        style={{ position: 'relative', height: virtualizer.getTotalSize() }}
-      >
+      <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
         {virtualItems.map((virtualRow) => {
           const row = rows[virtualRow.index]
           if (!row) return null
@@ -230,7 +227,7 @@ export function VirtualizedItemList({
             return (
               <div
                 key={virtualRow.key}
-                className="item-group virtualized-item-group-header"
+                className="[&>h2]:text-muted-foreground m-0 overflow-hidden p-0 [&>h2]:m-0 [&>h2]:px-[13px] [&>h2]:pt-[7px] [&>h2]:pb-[6px] [&>h2]:text-[11px] [&>h2]:font-[720]"
                 style={position}
               >
                 <h2 id={`group-${row.groupKey}`}>{row.label}</h2>
@@ -241,9 +238,10 @@ export function VirtualizedItemList({
           return (
             <ul
               key={virtualRow.key}
-              className="virtualized-item-row-list"
+              className="m-0 list-none p-0 [&:has(+_[data-item-row-list]_>_[data-item-row][data-selected=true])_>_[data-item-row]]:border-b-transparent [&:has(>_[data-item-row][data-selected=true])+_[data-item-row-list]_>_[data-item-row][data-selected=true]]:rounded-t-none [&:has(>_[data-item-row][data-selected=true]):has(+_[data-item-row-list]_>_[data-item-row][data-selected=true])_>_[data-item-row][data-selected=true]]:rounded-b-none [&:has([data-item-row-main]:focus-visible)]:z-1"
+              data-item-row-list=""
               aria-label={`${row.groupLabel ?? scopeTitle}項目`}
-              style={{ ...position, padding: 0, margin: 0, listStyle: 'none' }}
+              style={position}
             >
               <ItemRow
                 item={row.item}

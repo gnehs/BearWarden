@@ -38,7 +38,7 @@ describe('ItemDragPreview', () => {
     expect(markup).toContain('w-full')
     expect(markup).toContain('max-w-[calc(100vw-24px)]')
     expect(markup).toContain('安全備註 · 拖曳以移動')
-    expect(markup).not.toContain('item-icon')
+    expect(markup).toContain('aria-hidden="true"')
   })
 
   it('shows the current drop action when a destination is active', () => {

@@ -196,6 +196,10 @@ const paymentCardBrandSelectItems: Array<{ value: PaymentCardBrandOption; label:
   { value: 'unknown', label: '其他' }
 ]
 
+const fieldGridClassName = 'grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-[13px]'
+const checkFieldClassName =
+  'flex items-start gap-2.5 rounded-[9px] border bg-muted p-2.5 [&_[data-slot=checkbox]]:size-[17px] [&_[data-slot=checkbox]]:accent-[var(--primary)] [&_[data-slot=field-content]]:grid [&_[data-slot=field-content]]:gap-[3px] [&_[data-slot=field-content]_[data-slot=field-label]]:text-xs [&_[data-slot=field-description]]:text-[10px]'
+
 const itemTypes: Array<{ value: VaultItemType; label: string; description: string }> = [
   { value: 'login', label: '登入', description: '帳號、密碼與網站' },
   { value: 'card', label: '卡片', description: '付款卡與安全碼' },
@@ -355,9 +359,18 @@ function EditorFormSection({
   children: ReactNode
 }): React.JSX.Element {
   return (
-    <Card className="detail-card form-section gap-0 py-0" role="region" aria-labelledby={titleId}>
-      <CardHeader className="bg-muted rounded-none border-b">
-        <CardTitle id={titleId}>{title}</CardTitle>
+    <Card
+      className="[[data-theme=dark]_&]:bg-card mx-auto mb-3.5 w-full max-w-[720px] gap-0 overflow-hidden rounded-[14px] border bg-[color-mix(in_oklch,var(--card)_94%,transparent)] py-0 shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_3%,transparent)]"
+      role="region"
+      aria-labelledby={titleId}
+    >
+      <CardHeader className="bg-muted min-h-[33px] gap-2 rounded-none border-b px-3.5 pt-2.75 pb-2">
+        <CardTitle
+          className="m-0 text-[10px] leading-[1.4] font-[780] tracking-[0.06em] uppercase"
+          id={titleId}
+        >
+          {title}
+        </CardTitle>
       </CardHeader>
       <CardContent className="py-4">
         <FieldSet>
@@ -1104,7 +1117,7 @@ function LoginEditor({
           {options?.multiline ? (
             <InputGroupTextarea
               id={`editor-${field}`}
-              className={visible ? undefined : 'masked-textarea'}
+              className={visible ? undefined : '[-webkit-text-security:disc]'}
               rows={6}
               value={value}
               onChange={(event) => changeValue(event.target.value)}
@@ -1262,14 +1275,35 @@ function LoginEditor({
   ]
 
   return (
-    <form className="editor" onSubmit={submit} aria-labelledby="editor-title">
-      <header className="detail-header editor-header">
-        <span className={cn('detail-icon', draft.type)} aria-hidden="true">
+    <form
+      className="flex size-full min-h-0 min-w-0 flex-col"
+      data-vault-editor=""
+      onSubmit={submit}
+      aria-labelledby="editor-title"
+    >
+      <header className="[@media(prefers-reduced-transparency:reduce)]:bg-card flex min-h-[88px] items-center gap-3 border-b bg-[color-mix(in_oklch,var(--card)_82%,transparent)] px-[22px] py-[15px] backdrop-blur-[18px] max-[680px]:px-3 max-[680px]:py-[11px] [.platform-macos_&]:bg-[color-mix(in_oklch,var(--card)_68%,transparent)] [.platform-macos_&]:backdrop-blur-[18px] [.platform-macos_&]:backdrop-saturate-[1.35] [.platform-windows_&]:bg-[color-mix(in_oklch,var(--card)_68%,transparent)] [.platform-windows_&]:backdrop-blur-[18px] [.platform-windows_&]:backdrop-saturate-[1.35] [@media(prefers-reduced-transparency:reduce)]:backdrop-blur-none [[data-theme=dark]_&]:bg-[color-mix(in_oklch,var(--card)_88%,transparent)]">
+        <span
+          className={cn(
+            'border-border bg-muted text-primary [[data-theme=dark]_&]:text-muted-foreground grid size-12 shrink-0 place-items-center rounded-xl border max-[430px]:hidden forced-colors:[forced-color-adjust:none]',
+            draft.type === 'login' && 'overflow-hidden',
+            draft.type === 'card' &&
+              'text-chart-4 [[data-theme=dark]_&]:bg-[var(--website-icon-background)]',
+            draft.type === 'identity' && 'bg-accent text-primary',
+            draft.type === 'secureNote' && 'text-chart-3',
+            draft.type === 'sshKey' && 'bg-accent text-chart-2'
+          )}
+          data-detail-icon=""
+          aria-hidden="true"
+        >
           <ItemTypeIcon />
         </span>
-        <div className="detail-heading editor-heading">
-          <p className="eyebrow">{headerContent.eyebrow}</p>
-          <h2 id="editor-title">{headerContent.heading}</h2>
+        <div className="min-w-0 flex-1">
+          <p className="text-muted-foreground tracking-normal normal-case">
+            {headerContent.eyebrow}
+          </p>
+          <h2 className="m-0 truncate text-xl tracking-[-0.025em]" id="editor-title">
+            {headerContent.heading}
+          </h2>
           {(login || dirty) && (
             <div className="flex flex-wrap items-center gap-2">
               {headerContent.typeBadge && (
@@ -1291,7 +1325,7 @@ function LoginEditor({
         </Button>
       </header>
 
-      <div className="editor-scroll scroll-fade-y forced-colors:scroll-fade-none">
+      <div className="scroll-fade-y forced-colors:scroll-fade-none grid min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] content-start gap-3.5 overflow-auto px-5 pt-5 pb-10 max-[680px]:px-3 max-[680px]:pt-[13px] max-[680px]:pb-7">
         <Tabs
           value={activeTab}
           onValueChange={(value) => setActiveTab(value as EditorTab)}
@@ -1514,13 +1548,16 @@ function LoginEditor({
                         <FieldDescription>
                           刪除會立即同步，不會把私鑰載入編輯畫面；其他尚未儲存的欄位會保留。
                         </FieldDescription>
-                        <div className="passkey-list overflow-hidden rounded-md border">
+                        <div className="grid overflow-hidden rounded-md border">
                           {login.passkeys.map((passkey, index) => (
                             <article
                               key={`${passkey.credentialId}:${index}`}
-                              className="passkey-item attachment-item last:border-b-0"
+                              className="border-border [&_small]:text-muted-foreground grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-2.5 border-b px-[15px] py-3 last:border-b-0 [&_small]:truncate [&_small]:text-[10px] [&_span]:truncate [&_span]:text-[11px] [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[3px]"
                             >
-                              <span className="passkey-icon" aria-hidden="true">
+                              <span
+                                className="text-primary grid size-8 place-items-center rounded-[9px] bg-(--accent-soft)"
+                                aria-hidden="true"
+                              >
                                 <KeyRound size={17} />
                               </span>
                               <div>
@@ -1614,11 +1651,11 @@ function LoginEditor({
                       }
                     })}
                     {cardBrandAutoDetected && detectedCardBrand !== 'unknown' && (
-                      <FieldDescription className={`card-brand-hint ${detectedCardBrand}`}>
+                      <FieldDescription className="-mt-[5px] mb-0 justify-self-start rounded-full border bg-[var(--accent-soft)] px-[9px] py-[5px] text-[10px] font-bold text-[var(--accent-hover)]">
                         卡號已辨識為 {paymentCardBrandLabels[detectedCardBrand]}
                       </FieldDescription>
                     )}
-                    <FieldGroup className="field-grid">
+                    <FieldGroup className={fieldGridClassName}>
                       <Field>
                         <FieldLabel htmlFor="editor-exp-month">到期月</FieldLabel>
                         <Input
@@ -1646,7 +1683,7 @@ function LoginEditor({
 
                 {draft.type === 'identity' && (
                   <>
-                    <FieldGroup className="field-grid">
+                    <FieldGroup className={fieldGridClassName}>
                       <TextField
                         id="editor-honorific"
                         label="稱謂"
@@ -1662,7 +1699,7 @@ function LoginEditor({
                         disabled={busy}
                       />
                     </FieldGroup>
-                    <FieldGroup className="field-grid">
+                    <FieldGroup className={fieldGridClassName}>
                       <TextField
                         id="editor-first-name"
                         label="名字"
@@ -1706,7 +1743,7 @@ function LoginEditor({
                       onChange={(value) => update('address3', value)}
                       disabled={busy}
                     />
-                    <FieldGroup className="field-grid">
+                    <FieldGroup className={fieldGridClassName}>
                       <TextField
                         id="editor-city"
                         label="城市"
@@ -1736,7 +1773,7 @@ function LoginEditor({
                       onChange={(value) => update('country', value)}
                       disabled={busy}
                     />
-                    <FieldGroup className="field-grid">
+                    <FieldGroup className={fieldGridClassName}>
                       <TextField
                         id="editor-email"
                         label="電子郵件"
@@ -1921,7 +1958,7 @@ function LoginEditor({
                   </Select>
                 </Field>
                 <Field
-                  className="check-field"
+                  className={checkFieldClassName}
                   orientation="horizontal"
                   data-disabled={busy || undefined}
                 >
@@ -1939,7 +1976,7 @@ function LoginEditor({
                   </FieldContent>
                 </Field>
                 <Field
-                  className="check-field"
+                  className={checkFieldClassName}
                   orientation="horizontal"
                   data-disabled={busy || undefined}
                 >
@@ -2098,7 +2135,7 @@ function LoginEditor({
                       </CardHeader>
                       <CardContent>
                         <FieldGroup>
-                          <FieldGroup className="field-grid">
+                          <FieldGroup className={fieldGridClassName}>
                             <Field>
                               <FieldLabel htmlFor={customFieldNameId}>名稱</FieldLabel>
                               <Input
@@ -2208,7 +2245,7 @@ function LoginEditor({
 
                           {customField.type === 'boolean' && (
                             <Field
-                              className="check-field"
+                              className={checkFieldClassName}
                               orientation="horizontal"
                               data-disabled={customFieldBusy || undefined}
                             >
@@ -2278,7 +2315,7 @@ function LoginEditor({
         </Tabs>
       </div>
 
-      <footer className="editor-actions">
+      <footer className="bg-muted flex min-h-16 items-center justify-end gap-2 border-t px-5 py-1">
         <Button variant="secondary" type="button" onClick={requestCancel} disabled={busy}>
           取消
         </Button>

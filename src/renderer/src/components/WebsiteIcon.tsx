@@ -39,11 +39,20 @@ function WebsiteIcon({ id, uri, enabled }: WebsiteIconProps): React.JSX.Element 
 
   const dataUrl = enabled && loaded?.key === requestKey ? loaded.dataUrl : null
   if (dataUrl) {
-    return <img className="website-icon-image" src={dataUrl} alt="" draggable={false} />
+    return (
+      <img
+        className="block size-full bg-[var(--website-icon-background)] object-contain p-[3px]"
+        src={dataUrl}
+        alt=""
+        draggable={false}
+      />
+    )
   }
   if (label) {
     return (
-      <span className="website-icon-fallback">{label.slice(0, 1).toLocaleUpperCase('en-US')}</span>
+      <span className="text-[0.95em] font-[850] uppercase">
+        {label.slice(0, 1).toLocaleUpperCase('en-US')}
+      </span>
     )
   }
   return <Globe2 size="1em" />
