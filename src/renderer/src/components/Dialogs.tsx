@@ -505,6 +505,8 @@ export function PasswordHistoryDialog({
   const loadRequestRef = useRef<Promise<VaultPasswordHistoryView> | null>(null)
   const revealTimersRef = useRef(new Map<string, number>())
   const copiedTimerRef = useRef<number | null>(null)
+  const historyTransitionRef = useRef<HTMLDivElement>(null)
+  const historySkeletonRef = useRef<HTMLDivElement>(null)
 
   const clearRevealTimer = useCallback((key: string): void => {
     const timer = revealTimersRef.current.get(key)
@@ -554,6 +556,24 @@ export function PasswordHistoryDialog({
       if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
     }
   }, [loadHistory])
+
+  useEffect(() => {
+    const transition = historyTransitionRef.current
+    const skeleton = historySkeletonRef.current
+    if (!transition || !skeleton) return
+
+    if (loading) {
+      transition.classList.add('is-resetting')
+      transition.classList.remove('is-revealed')
+      skeleton.classList.remove('is-pulsing')
+      void skeleton.offsetWidth
+      transition.classList.remove('is-resetting')
+      skeleton.classList.add('is-pulsing')
+      return
+    }
+
+    transition.classList.add('is-revealed')
+  }, [loading])
 
   const closeDialog = (): void => {
     clearSecrets()
@@ -634,6 +654,9 @@ export function PasswordHistoryDialog({
     }
   }
 
+  const skeletonRowCount = Math.min(Math.max(count, 1), 5)
+  const historySlotHeight = Math.min(Math.max(skeletonRowCount * 88, 176), 360)
+
   return (
     <Modal
       title="密碼歷史"
@@ -641,9 +664,21 @@ export function PasswordHistoryDialog({
       onClose={closeDialog}
     >
       <div className="modal-body flex flex-col gap-3">
-        {loading && (
-          <div className="flex flex-col gap-2" role="status" aria-label="正在載入密碼歷史">
-            {Array.from({ length: Math.min(Math.max(count, 1), 5) }, (_, index) => (
+        <div
+          ref={historyTransitionRef}
+          className="t-skel"
+          data-state={loading ? 'loading' : 'loaded'}
+          aria-busy={loading}
+          style={{ height: `min(50vh, ${historySlotHeight}px)` }}
+        >
+          <div
+            ref={historySkeletonRef}
+            className="t-skel-skeleton is-pulsing flex flex-col gap-2 overflow-hidden"
+            role="status"
+            aria-label="正在載入密碼歷史"
+            aria-hidden={!loading}
+          >
+            {Array.from({ length: skeletonRowCount }, (_, index) => (
               <Card key={index} size="sm">
                 <CardHeader>
                   <Skeleton className="h-4 w-24" />
@@ -654,91 +689,104 @@ export function PasswordHistoryDialog({
               </Card>
             ))}
           </div>
-        )}
-        {!loading && history && history.entries.length > 0 && (
-          <ol className="scroll-fade-y forced-colors:scroll-fade-none flex max-h-[min(50vh,360px)] flex-col gap-2 overflow-y-auto p-px pr-1">
-            {history.entries.map((entry, index) => {
-              const key = `${index}:${entry.lastUsedDate}`
-              const revealedValue = revealedValues[key]
-              const isRevealed = revealedValue !== undefined
-              const rowBusy = Boolean(revealing[key] || copying[key])
-              return (
-                <li key={key}>
-                  <Card size="sm">
-                    <CardHeader>
-                      <CardTitle>{new Date(entry.lastUsedDate).toLocaleString('zh-TW')}</CardTitle>
-                      <CardAction className="flex gap-1">
-                        <PasswordHistoryIconButton
-                          label={isRevealed ? '隱藏這筆歷史密碼' : '顯示這筆歷史密碼'}
-                          aria-pressed={isRevealed}
-                          disabled={rowBusy}
-                          onClick={() => void toggleReveal(index, entry.lastUsedDate)}
-                        >
-                          {revealing[key] ? (
-                            <Spinner aria-hidden="true" />
-                          ) : isRevealed ? (
-                            <EyeOff aria-hidden="true" />
-                          ) : (
-                            <Eye aria-hidden="true" />
-                          )}
-                        </PasswordHistoryIconButton>
-                        <PasswordHistoryIconButton
-                          label={copiedKey === key ? '已複製' : '複製這筆歷史密碼'}
-                          disabled={rowBusy}
-                          onClick={() => void copyEntry(index, entry.lastUsedDate)}
-                        >
-                          {copying[key] ? (
-                            <Spinner aria-hidden="true" />
-                          ) : (
-                            <CopyFeedbackIcon copied={copiedKey === key} />
-                          )}
-                        </PasswordHistoryIconButton>
-                      </CardAction>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="bg-muted/60 min-h-9 rounded-lg px-3 py-2">
-                        {isRevealed ? (
-                          <code className="text-sm break-all select-text">{revealedValue}</code>
-                        ) : (
-                          <>
-                            <code className="masked-value text-sm" aria-hidden="true">
-                              ••••••••••••
-                            </code>
-                            <span className="sr-only">歷史密碼已遮蔽</span>
-                          </>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </li>
-              )
-            })}
-          </ol>
-        )}
-        {!loading && history && history.entries.length === 0 && (
-          <Empty>
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <History aria-hidden="true" />
-              </EmptyMedia>
-              <EmptyTitle>沒有密碼歷史</EmptyTitle>
-              <EmptyDescription>目前沒有可顯示的歷史紀錄。</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        )}
-        {error && (
-          <Alert variant="destructive">
-            <AlertTriangle aria-hidden="true" />
-            <AlertDescription>{error}</AlertDescription>
-            {!history && !loading && (
-              <AlertAction>
-                <Button type="button" variant="outline" size="sm" onClick={() => loadHistory(true)}>
-                  重新載入
-                </Button>
-              </AlertAction>
+          <div
+            className="t-skel-content flex min-h-0 flex-col gap-3"
+            aria-hidden={loading}
+            inert={loading}
+          >
+            {history && history.entries.length > 0 && (
+              <ol className="scroll-fade-y forced-colors:scroll-fade-none flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-px pr-1">
+                {history.entries.map((entry, index) => {
+                  const key = `${index}:${entry.lastUsedDate}`
+                  const revealedValue = revealedValues[key]
+                  const isRevealed = revealedValue !== undefined
+                  const rowBusy = Boolean(revealing[key] || copying[key])
+                  return (
+                    <li key={key}>
+                      <Card size="sm">
+                        <CardHeader>
+                          <CardTitle>
+                            {new Date(entry.lastUsedDate).toLocaleString('zh-TW')}
+                          </CardTitle>
+                          <CardAction className="flex gap-1">
+                            <PasswordHistoryIconButton
+                              label={isRevealed ? '隱藏這筆歷史密碼' : '顯示這筆歷史密碼'}
+                              aria-pressed={isRevealed}
+                              disabled={rowBusy}
+                              onClick={() => void toggleReveal(index, entry.lastUsedDate)}
+                            >
+                              {revealing[key] ? (
+                                <Spinner aria-hidden="true" />
+                              ) : isRevealed ? (
+                                <EyeOff aria-hidden="true" />
+                              ) : (
+                                <Eye aria-hidden="true" />
+                              )}
+                            </PasswordHistoryIconButton>
+                            <PasswordHistoryIconButton
+                              label={copiedKey === key ? '已複製' : '複製這筆歷史密碼'}
+                              disabled={rowBusy}
+                              onClick={() => void copyEntry(index, entry.lastUsedDate)}
+                            >
+                              {copying[key] ? (
+                                <Spinner aria-hidden="true" />
+                              ) : (
+                                <CopyFeedbackIcon copied={copiedKey === key} />
+                              )}
+                            </PasswordHistoryIconButton>
+                          </CardAction>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="bg-muted/60 min-h-9 rounded-lg px-3 py-2">
+                            {isRevealed ? (
+                              <code className="text-sm break-all select-text">{revealedValue}</code>
+                            ) : (
+                              <>
+                                <code className="masked-value text-sm" aria-hidden="true">
+                                  ••••••••••••
+                                </code>
+                                <span className="sr-only">歷史密碼已遮蔽</span>
+                              </>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </li>
+                  )
+                })}
+              </ol>
             )}
-          </Alert>
-        )}
+            {history && history.entries.length === 0 && (
+              <Empty className="h-full">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <History aria-hidden="true" />
+                  </EmptyMedia>
+                  <EmptyTitle>沒有密碼歷史</EmptyTitle>
+                  <EmptyDescription>目前沒有可顯示的歷史紀錄。</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            )}
+            {error && (
+              <Alert className={history ? undefined : 'my-auto'} variant="destructive">
+                <AlertTriangle aria-hidden="true" />
+                <AlertDescription>{error}</AlertDescription>
+                {!history && (
+                  <AlertAction>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => loadHistory(true)}
+                    >
+                      重新載入
+                    </Button>
+                  </AlertAction>
+                )}
+              </Alert>
+            )}
+          </div>
+        </div>
       </div>
       <DialogFooter className="modal-actions mx-0 mb-0">
         <Button type="button" variant="secondary" onClick={closeDialog}>

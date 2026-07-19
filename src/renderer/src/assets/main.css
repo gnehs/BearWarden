@@ -60,6 +60,33 @@
   --icon-swap-blur: 2px;
   --icon-swap-start-scale: 0.25;
   --icon-swap-ease: ease-in-out;
+  --pulse-dur: 1000ms;
+  --pulse-count: 1;
+  --pulse-min: 0.5;
+  --reveal-dur: 400ms;
+  --reveal-blur: 2px;
+  --reveal-ease: ease-in-out;
+  --tabs-dur: 250ms;
+  --tabs-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --tabs-text-muted: var(--muted-foreground);
+  --tabs-text-active: var(--foreground);
+  --tabs-bar-bg: var(--muted);
+  --tabs-pill-bg: var(--background);
+  --acc-expand: 250ms;
+  --acc-collapse: 250ms;
+  --acc-chevron: 250ms;
+  --acc-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --check-box: 150ms;
+  --check-draw: 350ms;
+  --check-delay: 0ms;
+  --check-uncheck: 150ms;
+  --check-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --toggle-dur: 350ms;
+  --toggle-travel: 14.66px;
+  --toggle-ov1: 1px;
+  --toggle-ov2: 0px;
+  --toggle-track: 0ms;
+  --toggle-ease: cubic-bezier(0.34, 1.35, 0.64, 1);
   --background: oklch(1 0 0);
   --foreground: oklch(0.148 0.004 228.8);
   --card: oklch(1 0 0);
@@ -173,9 +200,241 @@
   transform: scale(var(--icon-swap-start-scale));
 }
 
+/* Base UI keeps the existing Tailwind layout and writes the
+   active tab geometry; the transitions.dev hooks only own motion. */
+.t-tabs {
+  position: relative;
+}
+.t-tab {
+  position: relative;
+  z-index: 1;
+  transition: color var(--tabs-dur) var(--tabs-ease);
+}
+
+/* Base UI's Indicator writes the active tab geometry to CSS
+   variables, avoiding duplicate resize measurement code. */
+.t-tabs-pill {
+  position: absolute;
+  top: 3px;
+  left: 0;
+  z-index: 0;
+  width: var(--active-tab-width, 0px);
+  height: calc(100% - 6px);
+  border-radius: var(--radius-md);
+  pointer-events: none;
+  background: var(--tabs-pill-bg);
+  transform: translateX(var(--active-tab-left, 0px));
+  transition:
+    transform var(--tabs-dur) var(--tabs-ease),
+    width var(--tabs-dur) var(--tabs-ease);
+  will-change: transform, width;
+}
+
+.t-tabs[data-variant='line'] {
+  background: transparent;
+}
+.t-tabs[data-variant='line'] .t-tabs-pill {
+  top: auto;
+  bottom: 0;
+  height: 2px;
+  border-radius: 0;
+  background: var(--foreground);
+}
+
+/* The wrap stacks two layers on the same coordinates. The
+   skeleton owns the cold pulse + the fade-out side of the
+   reveal; the content owns the fade-in side. They share the
+   same duration / ease so the swap reads as one motion. */
+.t-skel {
+  position: relative;
+}
+.t-skel-skeleton,
+.t-skel-content {
+  position: absolute;
+  inset: 0;
+}
+
+.t-skel-skeleton {
+  z-index: 1;
+  opacity: 1;
+  filter: blur(0);
+  transition:
+    opacity var(--reveal-dur) var(--reveal-ease),
+    filter var(--reveal-dur) var(--reveal-ease);
+}
+.t-skel-content {
+  z-index: 2;
+  opacity: 0;
+  filter: blur(var(--reveal-blur));
+  transition:
+    opacity var(--reveal-dur) var(--reveal-ease),
+    filter var(--reveal-dur) var(--reveal-ease);
+}
+.t-skel.is-revealed .t-skel-skeleton {
+  opacity: 0;
+  filter: blur(var(--reveal-blur));
+}
+.t-skel.is-revealed .t-skel-content {
+  opacity: 1;
+  filter: blur(0);
+}
+/* Snap-back when replaying: kill transitions so the reverse
+   (revealed → skeleton) is instant. Drop `.is-resetting`
+   after a forced reflow and the next reveal animates again. */
+.t-skel.is-resetting .t-skel-skeleton,
+.t-skel.is-resetting .t-skel-content {
+  transition: none !important;
+}
+
+/* Pulse: place the animation on the bar/avatar children, not
+   on the skeleton itself, so the skeleton's opacity / filter
+   stay free for the cross-fade transition above. */
+.t-skel-skeleton.is-pulsing > * {
+  animation: t-skel-pulse var(--pulse-dur) ease-in-out var(--pulse-count);
+}
+@keyframes t-skel-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: var(--pulse-min);
+  }
+}
+
+/* grid-template-rows 0fr → 1fr gives a clean height animation
+   with no JS measurement; the inner element clips overflow. */
+.t-acc-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--acc-collapse) var(--acc-ease);
+}
+.t-acc[data-open='true'] .t-acc-panel {
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--acc-expand) var(--acc-ease);
+}
+.t-acc-panel-inner {
+  overflow: hidden;
+  opacity: 0;
+  filter: blur(2px);
+  transition:
+    opacity var(--acc-collapse) var(--acc-ease),
+    filter var(--acc-collapse) var(--acc-ease);
+}
+.t-acc[data-open='true'] .t-acc-panel-inner {
+  opacity: 1;
+  filter: blur(0);
+  transition:
+    opacity var(--acc-expand) var(--acc-ease),
+    filter var(--acc-expand) var(--acc-ease);
+}
+/* Flip the chevron vertically to turn the "v" into a "^".
+   scaleY(-1) about the centre passes through a flat line at
+   the midpoint (same look as a `d:` path morph) but animates
+   in every browser, unlike CSS `d:` morphing (Chromium only).
+   The chevron path is symmetric about the 16x16 viewBox
+   centre, so the flip lands exactly on the "^"; non-scaling
+   -stroke keeps the stroke width constant through the flip. */
+.t-acc-chevron {
+  display: inline-flex;
+  transform: scaleY(1);
+  transform-origin: center;
+  transition: transform var(--acc-chevron) var(--acc-ease);
+}
+.t-acc-chevron path {
+  vector-effect: non-scaling-stroke;
+}
+.t-acc[data-open='true'] .t-acc-chevron {
+  transform: scaleY(-1);
+}
+
+.t-check {
+  transition:
+    background var(--check-box) var(--check-ease),
+    box-shadow var(--check-box) var(--check-ease);
+}
+.t-check svg path {
+  stroke-dasharray: var(--check-len, 15);
+  stroke-dashoffset: var(--check-len, 15);
+  transition: stroke-dashoffset var(--check-uncheck) var(--check-ease);
+}
+.t-check[aria-checked='true'] svg path,
+.t-check[aria-checked='mixed'] svg path {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset var(--check-draw) var(--check-ease) var(--check-delay);
+}
+
+.t-toggle {
+  transition: background var(--toggle-track) var(--toggle-ease);
+}
+.t-toggle-thumb {
+  translate: 0 0;
+  will-change: translate;
+}
+.t-toggle[data-on='true'] .t-toggle-thumb {
+  translate: var(--toggle-travel) 0;
+}
+.t-toggle.is-init[data-on='true'] .t-toggle-thumb {
+  animation: t-toggle-on var(--toggle-dur) var(--toggle-ease) both;
+}
+.t-toggle.is-init[data-on='false'] .t-toggle-thumb {
+  animation: t-toggle-off var(--toggle-dur) var(--toggle-ease) both;
+}
+@keyframes t-toggle-on {
+  0% {
+    translate: 0 0;
+  }
+  55% {
+    translate: calc(var(--toggle-travel) + var(--toggle-ov1)) 0;
+  }
+  80% {
+    translate: calc(var(--toggle-travel) - var(--toggle-ov2)) 0;
+  }
+  100% {
+    translate: var(--toggle-travel) 0;
+  }
+}
+@keyframes t-toggle-off {
+  0% {
+    translate: var(--toggle-travel) 0;
+  }
+  55% {
+    translate: calc(0px - var(--toggle-ov1)) 0;
+  }
+  80% {
+    translate: var(--toggle-ov2) 0;
+  }
+  100% {
+    translate: 0 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .t-icon-swap .t-icon {
     transition: none !important;
+  }
+  .t-tabs-pill,
+  .t-tab {
+    transition: none !important;
+  }
+  .t-skel-skeleton,
+  .t-skel-content {
+    transition: none !important;
+  }
+  .t-skel-skeleton.is-pulsing > * {
+    animation: none !important;
+  }
+  .t-acc-panel,
+  .t-acc-panel-inner,
+  .t-acc-chevron {
+    transition: none !important;
+  }
+  .t-check,
+  .t-check svg path {
+    transition: none !important;
+  }
+  .t-toggle-thumb {
+    animation: none !important;
   }
 }
 

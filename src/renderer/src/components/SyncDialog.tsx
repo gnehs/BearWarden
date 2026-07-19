@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   CircleAlert,
+  ChevronDown,
   Cloud,
   Eye,
   EyeOff,
@@ -642,82 +643,91 @@ function SyncDialog({
                   </InputGroup>
                 </Field>
               </FieldGroup>
-              <Button
-                className="sync-advanced-toggle"
-                variant="ghost"
-                type="button"
-                aria-expanded={showAdvanced}
-                onClick={() => setShowAdvanced((open) => !open)}
-                disabled={busy}
-              >
-                {showAdvanced ? '隱藏進階選項' : '顯示雙重驗證'}
-              </Button>
-              {showAdvanced && (
-                <FieldGroup className="sync-advanced-fields w-auto">
-                  <Field>
-                    <FieldLabel htmlFor="two-factor-method">雙重驗證方式（選填）</FieldLabel>
-                    <Select
-                      items={twoFactorMethods}
-                      value={twoFactorMethod}
-                      onValueChange={(value) =>
-                        setTwoFactorMethod(value as SyncTwoFactorFormMethod)
-                      }
-                      disabled={busy}
-                    >
-                      <SelectTrigger id="two-factor-method" className="w-full">
-                        <SelectValue placeholder="選擇驗證方式" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          {twoFactorMethods.map((method) => (
-                            <SelectItem key={method.value} value={method.value}>
-                              {method.label}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  {twoFactorMethod === WEB_AUTHN_TWO_FACTOR_METHOD ? (
-                    <Field orientation="horizontal" data-disabled={busy || undefined}>
-                      <Checkbox
-                        id="webauthn-remember"
-                        checked={webAuthnRemember}
-                        onCheckedChange={setWebAuthnRemember}
-                        disabled={busy}
-                      />
-                      <FieldContent>
-                        <FieldLabel htmlFor="webauthn-remember">記住這台裝置</FieldLabel>
-                        <FieldDescription>讓伺服器在這台裝置上暫時略過雙重驗證。</FieldDescription>
-                      </FieldContent>
-                    </Field>
-                  ) : (
-                    <Field>
-                      <FieldLabel htmlFor="two-factor-code">雙重驗證碼（選填）</FieldLabel>
-                      <Input
-                        id="two-factor-code"
-                        autoComplete="one-time-code"
-                        autoCapitalize="none"
-                        value={twoFactorCode}
-                        onChange={(event) => setTwoFactorCode(event.target.value)}
-                        disabled={busy}
-                      />
-                    </Field>
-                  )}
-                  <Field>
-                    <FieldLabel htmlFor="new-device-otp">新裝置驗證碼（選填）</FieldLabel>
-                    <Input
-                      id="new-device-otp"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      value={newDeviceOtp}
-                      onChange={(event) => setNewDeviceOtp(event.target.value)}
-                      disabled={busy}
-                    />
-                    <FieldDescription>僅在 Bitwarden 要求驗證新裝置時使用。</FieldDescription>
-                  </Field>
-                </FieldGroup>
-              )}
+              <div className="t-acc mx-[18px]" data-open={showAdvanced ? 'true' : 'false'}>
+                <Button
+                  className="sync-advanced-toggle t-acc-head gap-1"
+                  variant="ghost"
+                  type="button"
+                  aria-expanded={showAdvanced}
+                  onClick={() => setShowAdvanced((open) => !open)}
+                  disabled={busy}
+                >
+                  {showAdvanced ? '隱藏進階選項' : '顯示雙重驗證'}
+                  <span className="t-acc-chevron" aria-hidden="true">
+                    <ChevronDown />
+                  </span>
+                </Button>
+                <div className="t-acc-panel" aria-hidden={!showAdvanced}>
+                  <div className="t-acc-panel-inner pt-3" inert={!showAdvanced}>
+                    <FieldGroup className="sync-advanced-fields w-auto">
+                      <Field>
+                        <FieldLabel htmlFor="two-factor-method">雙重驗證方式（選填）</FieldLabel>
+                        <Select
+                          items={twoFactorMethods}
+                          value={twoFactorMethod}
+                          onValueChange={(value) =>
+                            setTwoFactorMethod(value as SyncTwoFactorFormMethod)
+                          }
+                          disabled={busy}
+                        >
+                          <SelectTrigger id="two-factor-method" className="w-full">
+                            <SelectValue placeholder="選擇驗證方式" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {twoFactorMethods.map((method) => (
+                                <SelectItem key={method.value} value={method.value}>
+                                  {method.label}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      {twoFactorMethod === WEB_AUTHN_TWO_FACTOR_METHOD ? (
+                        <Field orientation="horizontal" data-disabled={busy || undefined}>
+                          <Checkbox
+                            id="webauthn-remember"
+                            checked={webAuthnRemember}
+                            onCheckedChange={setWebAuthnRemember}
+                            disabled={busy}
+                          />
+                          <FieldContent>
+                            <FieldLabel htmlFor="webauthn-remember">記住這台裝置</FieldLabel>
+                            <FieldDescription>
+                              讓伺服器在這台裝置上暫時略過雙重驗證。
+                            </FieldDescription>
+                          </FieldContent>
+                        </Field>
+                      ) : (
+                        <Field>
+                          <FieldLabel htmlFor="two-factor-code">雙重驗證碼（選填）</FieldLabel>
+                          <Input
+                            id="two-factor-code"
+                            autoComplete="one-time-code"
+                            autoCapitalize="none"
+                            value={twoFactorCode}
+                            onChange={(event) => setTwoFactorCode(event.target.value)}
+                            disabled={busy}
+                          />
+                        </Field>
+                      )}
+                      <Field>
+                        <FieldLabel htmlFor="new-device-otp">新裝置驗證碼（選填）</FieldLabel>
+                        <Input
+                          id="new-device-otp"
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          value={newDeviceOtp}
+                          onChange={(event) => setNewDeviceOtp(event.target.value)}
+                          disabled={busy}
+                        />
+                        <FieldDescription>僅在 Bitwarden 要求驗證新裝置時使用。</FieldDescription>
+                      </Field>
+                    </FieldGroup>
+                  </div>
+                </div>
+              </div>
               {error && (
                 <Alert className="form-error" variant="destructive">
                   <AlertDescription>{error}</AlertDescription>

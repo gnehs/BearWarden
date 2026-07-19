@@ -442,7 +442,7 @@ export default function CredentialGeneratorDialog({
               value={tab}
               onValueChange={(value) => changeTab(value as GeneratorTab)}
             >
-              <TabsList className="w-full shrink-0">
+              <TabsList sliding className="w-full shrink-0">
                 <TabsTrigger value="password">密碼</TabsTrigger>
                 <TabsTrigger value="username">使用者名稱</TabsTrigger>
                 <TabsTrigger value="history">歷史</TabsTrigger>

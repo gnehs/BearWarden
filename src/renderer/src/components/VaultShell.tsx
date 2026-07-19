@@ -65,7 +65,7 @@ import {
   Wrench,
   X
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import type {
   AppSettings,
@@ -922,6 +922,7 @@ function VaultShell({
     selectedLogin && totpGenerationErrorState?.itemId === selectedLogin.id
       ? totpGenerationErrorState.kind
       : null
+  const totpRevealReady = totpCode !== null || totpGenerationError !== null
   const [editorMode, setEditorMode] = useState<'create' | 'edit' | null>(null)
   const totpRefreshTarget = resolveTotpRefreshTarget(selectedLogin, selectedId, editorMode !== null)
   const [editorSessionId, setEditorSessionId] = useState(0)
@@ -984,6 +985,7 @@ function VaultShell({
     setQuery(bounded)
   }, [])
   const sidebarMenuTriggerRef = useRef<HTMLButtonElement>(null)
+  const totpRevealRegionRef = useRef<HTMLDivElement>(null)
   const settingsReturnFocusRef = useRef<HTMLElement | null>(null)
   const accountStatusRequestRef = useRef(0)
   const accountMutationRequestRef = useRef(0)
@@ -1895,6 +1897,28 @@ function VaultShell({
     totpRefreshTarget?.itemId,
     totpRefreshTarget?.sourceRevision
   ])
+
+  useLayoutEffect(() => {
+    const region = totpRevealRegionRef.current
+    if (!region) return
+
+    const loaders = Array.from(region.querySelectorAll<HTMLElement>('.t-skel'))
+    if (totpRevealReady) {
+      for (const loader of loaders) loader.classList.add('is-revealed')
+      return
+    }
+
+    for (const loader of loaders) {
+      loader.classList.add('is-resetting')
+      loader.classList.remove('is-revealed')
+      loader.querySelector('.t-skel-skeleton')?.classList.remove('is-pulsing')
+    }
+    void region.offsetWidth
+    for (const loader of loaders) {
+      loader.classList.remove('is-resetting')
+      loader.querySelector('.t-skel-skeleton')?.classList.add('is-pulsing')
+    }
+  }, [totpRefreshTarget?.itemId, totpRefreshTarget?.sourceRevision, totpRevealReady])
 
   useEffect(() => {
     if (Object.keys(revealedSecrets.values).length === 0) return
@@ -3883,7 +3907,14 @@ function VaultShell({
                 aria-expanded={sidebarOpen}
                 onClick={() => setSidebarOpen((open) => !open)}
               >
-                {sidebarOpen ? <X /> : <Menu />}
+                <span
+                  className="t-icon-swap"
+                  data-state={sidebarOpen ? 'b' : 'a'}
+                  aria-hidden="true"
+                >
+                  <Menu className="t-icon" data-icon="a" />
+                  <X className="t-icon" data-icon="b" />
+                </span>
               </TooltipIconButton>
             )}
           {closeAuxiliaryPage && (
@@ -4982,6 +5013,7 @@ function VaultShell({
 
                     {selectedLogin.type === 'login' && selectedLogin.hasTotp && (
                       <Card
+                        ref={totpRevealRegionRef}
                         className="detail-card totp-card gap-0 py-0"
                         role="region"
                         aria-labelledby="totp-title"
@@ -4990,46 +5022,57 @@ function VaultShell({
                         <CardHeader className="bg-muted rounded-none border-b">
                           <CardTitle id="totp-title">一次性驗證碼</CardTitle>
                           <CardDescription>
-                            {totpGenerationError === 'unsupported' ? (
-                              '密鑰格式不受支援'
-                            ) : totpCode ? (
-                              <NumberFlow
-                                className="tabular-nums"
-                                value={totpCode.remainingSeconds}
-                                suffix=" 秒後更新"
-                                trend={-1}
-                              />
-                            ) : (
-                              <>
+                            <span className="t-skel block h-5">
+                              <span
+                                className="t-skel-skeleton is-pulsing flex items-center"
+                                aria-hidden="true"
+                              >
                                 <Skeleton className="h-3 w-20" aria-hidden="true" />
-                                <span className="sr-only">產生中…</span>
-                              </>
-                            )}
+                              </span>
+                              <span className="t-skel-content flex items-center">
+                                {totpGenerationError === 'unsupported' ? (
+                                  '密鑰格式不受支援'
+                                ) : totpCode ? (
+                                  <NumberFlow
+                                    className="tabular-nums"
+                                    value={totpCode.remainingSeconds}
+                                    suffix=" 秒後更新"
+                                    trend={-1}
+                                  />
+                                ) : null}
+                              </span>
+                            </span>
+                            {!totpRevealReady && <span className="sr-only">產生中…</span>}
                           </CardDescription>
                         </CardHeader>
                         <CardContent className="contents">
                           <div className="totp-value">
-                            {totpCode ? (
-                              <strong>
-                                {/^\d+$/.test(totpCode.code) ? (
-                                  <NumberFlow
-                                    className="tabular-nums"
-                                    value={Number(totpCode.code)}
-                                    format={{
-                                      useGrouping: false,
-                                      minimumIntegerDigits: totpCode.code.length
-                                    }}
-                                    trend={0}
-                                  />
-                                ) : (
-                                  totpCode.code
-                                )}
-                              </strong>
-                            ) : totpGenerationError ? (
-                              <strong>—</strong>
-                            ) : (
-                              <Skeleton className="h-8 w-36" aria-hidden="true" />
-                            )}
+                            <div className="t-skel h-8 min-w-0">
+                              <div className="t-skel-skeleton is-pulsing flex items-center">
+                                <Skeleton className="h-8 w-36" aria-hidden="true" />
+                              </div>
+                              <div className="t-skel-content flex items-center">
+                                {totpCode ? (
+                                  <strong>
+                                    {/^\d+$/.test(totpCode.code) ? (
+                                      <NumberFlow
+                                        className="tabular-nums"
+                                        value={Number(totpCode.code)}
+                                        format={{
+                                          useGrouping: false,
+                                          minimumIntegerDigits: totpCode.code.length
+                                        }}
+                                        trend={0}
+                                      />
+                                    ) : (
+                                      totpCode.code
+                                    )}
+                                  </strong>
+                                ) : totpGenerationError ? (
+                                  <strong>—</strong>
+                                ) : null}
+                              </div>
+                            </div>
                             <TooltipIconButton
                               variant="outline"
                               size="icon"
@@ -5046,17 +5089,26 @@ function VaultShell({
                               <CopyFeedbackIcon copied={copiedKey === `totp:${selectedLogin.id}`} />
                             </TooltipIconButton>
                           </div>
-                          {!totpGenerationError &&
-                            (totpCode ? (
-                              <Progress
-                                key={totpCodeState?.cycle}
-                                aria-label="驗證碼剩餘時間"
-                                max={totpCode.period}
-                                value={totpCode.remainingSeconds}
-                              />
-                            ) : (
-                              <Skeleton className="totp-progress-skeleton h-1" aria-hidden="true" />
-                            ))}
+                          {!totpGenerationError && (
+                            <div className="t-skel h-[19px]">
+                              <div className="t-skel-skeleton is-pulsing">
+                                <Skeleton
+                                  className="totp-progress-skeleton h-1"
+                                  aria-hidden="true"
+                                />
+                              </div>
+                              <div className="t-skel-content">
+                                {totpCode && (
+                                  <Progress
+                                    key={totpCodeState?.cycle}
+                                    aria-label="驗證碼剩餘時間"
+                                    max={totpCode.period}
+                                    value={totpCode.remainingSeconds}
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </CardContent>
                       </Card>
                     )}

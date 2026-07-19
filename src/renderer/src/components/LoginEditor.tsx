@@ -1299,6 +1299,7 @@ function LoginEditor({
         >
           <TabsList
             variant="line"
+            sliding
             aria-label="編輯器區段"
             className="w-full justify-start overflow-x-auto"
           >
