@@ -49,24 +49,40 @@ jobs:
       - name: Lint
         id: lint
         continue-on-error: true
-        run: pnpm lint > router-ci.log 2>&1
+        run: pnpm lint > router-lint.log 2>&1
 
       - name: Upload lint diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: router-ci-log
-          path: router-ci.log
+          name: router-lint-log
+          path: router-lint.log
           if-no-files-found: ignore
 
       - name: Report lint failure
         if: steps.lint.outcome == 'failure'
         run: |
-          cat router-ci.log
+          cat router-lint.log
           exit 1
 
       - name: Typecheck
-        run: pnpm typecheck
+        id: typecheck
+        continue-on-error: true
+        run: pnpm typecheck > router-typecheck.log 2>&1
+
+      - name: Upload typecheck diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: router-typecheck-log
+          path: router-typecheck.log
+          if-no-files-found: ignore
+
+      - name: Report typecheck failure
+        if: steps.typecheck.outcome == 'failure'
+        run: |
+          cat router-typecheck.log
+          exit 1
 
       - name: Test
         run: pnpm test
