@@ -420,6 +420,13 @@ vi.mock('./vault-service', () => ({
     status(): Promise<{ state: 'uninitialized' | 'locked' | 'unlocked' }> {
       return Promise.resolve({ state: harness.vaultState })
     }
+    unlockSyncWithLocalPassword(): Promise<import('../shared/vault-contract').SyncStatus> {
+      return Promise.resolve({
+        configured: true,
+        state: 'ready',
+        serverUrl: 'https://vault.example.invalid'
+      })
+    }
     dispose(): void {}
   }
 }))
@@ -709,7 +716,7 @@ describe('main WebAuthn lifecycle wiring', () => {
     vi.useRealTimers()
   })
 
-  it('reserves immediate sync for local mutations and keeps lifecycle triggers in the background cadence', async () => {
+  it('keeps server invalidations on the background cadence and syncs lifecycle boundaries immediately', async () => {
     harness.autoSyncRequest.mockClear()
     harness.autoSyncRequestImmediate.mockClear()
     harness.autoSyncUpdateStatus.mockClear()
@@ -721,12 +728,15 @@ describe('main WebAuthn lifecycle wiring', () => {
     harness.powerMonitorListeners.get('resume')!()
     harness.appListeners.get('activate')!()
     await (harness.vaultIpcOptions!.afterPinUnlock as () => Promise<void>)()
-    expect(harness.autoSyncRequest).toHaveBeenCalledTimes(4)
-    expect(harness.autoSyncRequestImmediate).not.toHaveBeenCalled()
+    await (harness.vaultIpcOptions!.afterUnlock as (masterPassword: string) => Promise<void>)(
+      'test-master-password'
+    )
+    expect(harness.autoSyncRequest).toHaveBeenCalledOnce()
+    expect(harness.autoSyncRequestImmediate).toHaveBeenCalledTimes(4)
     expect(harness.appListeners.has('browser-window-focus')).toBe(false)
 
     ;(harness.vaultIpcOptions!.afterMutation as () => void)()
-    expect(harness.autoSyncRequestImmediate).toHaveBeenCalledOnce()
+    expect(harness.autoSyncRequestImmediate).toHaveBeenCalledTimes(5)
 
     const ready: import('../shared/vault-contract').SyncStatus = {
       configured: true,

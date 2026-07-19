@@ -69,7 +69,7 @@ export class AutoSyncCoordinator {
     this.queueRequest(false)
   }
 
-  /** Local mutations should sync as soon as the current operation boundary allows. */
+  /** Local mutations and explicit lifecycle boundaries should sync without waiting for polling. */
   requestImmediate(): void {
     this.queueRequest(true)
   }

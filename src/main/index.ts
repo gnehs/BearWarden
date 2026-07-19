@@ -311,6 +311,8 @@ async function unlockSyncWithLocalPassword(masterPassword: string): Promise<void
   const status = await vault.unlockSyncWithLocalPassword(masterPassword)
   passkeyCeremonyService?.onVaultMutation()
   handleSyncChanged(status)
+  // Opening the vault is the first safe point at which startup can pull remote changes.
+  if (status.state === 'ready' || status.state === 'error') autoSync?.requestImmediate()
 }
 
 async function beforeVaultLock(): Promise<void> {
@@ -860,7 +862,7 @@ if (hasSingleInstanceLock)
         scheduleSshAgentLifecycle()
       },
       afterPinUnlock: async () => {
-        autoSync?.request()
+        autoSync?.requestImmediate()
         await refreshSshAgentAfterUnlock().catch(() => undefined)
         scheduleSshAgentLifecycle()
       },
@@ -906,7 +908,7 @@ if (hasSingleInstanceLock)
     powerMonitor.on('resume', () => {
       vaultTimeoutCoordinator?.resume()
       refreshServerNotifications()
-      autoSync?.request()
+      autoSync?.requestImmediate()
     })
 
     mainWindow = createWindow()
@@ -918,7 +920,7 @@ if (hasSingleInstanceLock)
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow()
-      autoSync?.request()
+      autoSync?.requestImmediate()
     })
   })
 
