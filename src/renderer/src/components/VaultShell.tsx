@@ -4220,10 +4220,13 @@ function VaultShell({
 
         <div
           className={cn(
-            'relative grid min-h-0 min-w-0 flex-1 grid-cols-[260px_minmax(0,1fr)] overflow-hidden max-[1050px]:grid-cols-[220px_minmax(0,1fr)] max-[880px]:grid-cols-[minmax(0,1fr)] max-[680px]:block',
+            'relative grid min-h-0 min-w-0 flex-1 overflow-hidden max-[680px]:block',
+
+            auxiliaryPageOpen
+              ? 'grid-cols-[minmax(0,1fr)] [&>[data-vault-pane-group]>[data-vault-detail-pane]]:hidden [&>[data-vault-pane-group]>[data-vault-list-pane]]:border-r-0 [&>[data-vault-sidebar]]:hidden'
+              : 'grid-cols-[260px_minmax(0,1fr)] max-[1050px]:grid-cols-[220px_minmax(0,1fr)] max-[880px]:grid-cols-[minmax(0,1fr)]',
+
             (isMac || isWindows) && 'gap-2 pr-2 pb-2 max-[880px]:pl-2',
-            auxiliaryPageOpen &&
-              'grid-cols-[minmax(0,1fr)] [&>[data-vault-pane-group]]:grid-cols-[minmax(0,1fr)] [&>[data-vault-pane-group]>[data-vault-detail-pane]]:hidden [&>[data-vault-pane-group]>[data-vault-list-pane]]:border-r-0 [&>[data-vault-sidebar]]:hidden',
             auxiliaryPageOpen && (isMac || isWindows) && 'pl-2'
           )}
         >
@@ -4476,10 +4479,14 @@ function VaultShell({
 
           <div
             className={cn(
-              'bg-card grid min-h-0 min-w-0 grid-cols-[minmax(340px,390px)_minmax(420px,1fr)] overflow-hidden max-[1050px]:grid-cols-[minmax(290px,330px)_minmax(380px,1fr)] max-[880px]:grid-cols-[minmax(300px,350px)_minmax(360px,1fr)] max-[680px]:block max-[680px]:size-full',
+              'bg-card grid min-h-0 min-w-0 overflow-hidden max-[680px]:block max-[680px]:size-full',
+
+              auxiliaryPageOpen
+                ? 'grid-cols-[minmax(0,1fr)]'
+                : 'grid-cols-[minmax(340px,390px)_minmax(0,1fr)] max-[1050px]:grid-cols-[minmax(290px,330px)_minmax(0,1fr)] max-[880px]:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]',
+
               (isMac || isWindows) &&
-                '[@media(prefers-reduced-transparency:reduce)]:bg-card rounded-2xl border border-(--native-material-border) bg-(--native-panel-material) shadow-(--native-material-shadow) [backdrop-filter:saturate(145%)_blur(24px)] [-webkit-backdrop-filter:saturate(145%)_blur(24px)] [@media(prefers-reduced-transparency:reduce)]:[backdrop-filter:none] [@media(prefers-reduced-transparency:reduce)]:[-webkit-backdrop-filter:none]',
-              auxiliaryPageOpen && 'grid-cols-[minmax(0,1fr)]'
+                '[@media(prefers-reduced-transparency:reduce)]:bg-card rounded-2xl border border-(--native-material-border) bg-(--native-panel-material) shadow-(--native-material-shadow) [backdrop-filter:saturate(145%)_blur(24px)] [-webkit-backdrop-filter:saturate(145%)_blur(24px)] [@media(prefers-reduced-transparency:reduce)]:[backdrop-filter:none] [@media(prefers-reduced-transparency:reduce)]:[-webkit-backdrop-filter:none]'
             )}
             data-vault-pane-group=""
           >
