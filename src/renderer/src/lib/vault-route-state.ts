@@ -101,11 +101,8 @@ export function useVaultRouteState(): VaultRouteState {
       const next = resolveValue(value, scope)
       updateSearch((current) => ({
         ...current,
-        scope: next.kind,
-        folder: next.kind === 'folder' ? next.folderId : undefined,
-        category: next.kind === 'all' ? current.category : undefined,
-        item: undefined,
-        editor: undefined
+        scope: next.kind === 'all' ? undefined : next.kind,
+        folder: next.kind === 'folder' ? next.folderId : undefined
       }))
     },
     typeFilter,
@@ -113,38 +110,23 @@ export function useVaultRouteState(): VaultRouteState {
       const next = resolveValue(value, typeFilter)
       updateSearch((current) => ({
         ...current,
-        scope: 'all',
-        folder: undefined,
-        category: next === 'all' ? undefined : next,
-        item: undefined,
-        editor: undefined
+        category: next === 'all' ? undefined : next
       }))
     },
     query,
     setQuery: (value) => {
       const next = resolveValue(value, query)
-      updateSearch(
-        (current) => ({ ...current, q: next || undefined, item: undefined, editor: undefined }),
-        true
-      )
+      updateSearch((current) => ({ ...current, q: next || undefined }), true)
     },
     selectedId,
     setSelectedId: (value) => {
       const next = resolveValue(value, selectedId)
-      updateSearch((current) => ({
-        ...current,
-        item: next || undefined,
-        editor: next ? current.editor : undefined
-      }))
+      updateSearch((current) => ({ ...current, item: next || undefined }))
     },
     editorMode,
     setEditorMode: (value) => {
       const next = resolveValue(value, editorMode)
-      updateSearch((current) => ({
-        ...current,
-        editor: next || undefined,
-        item: next === 'create' ? undefined : current.item
-      }))
+      updateSearch((current) => ({ ...current, editor: next || undefined }))
     },
     sortMode,
     setSortMode: (value) => {
