@@ -336,6 +336,12 @@ vi.mock('./app-settings', () => ({
     dispose(): void {}
   }
 }))
+vi.mock('./app-updater', () => ({
+  AppUpdaterController: class {
+    attachWindow(): void {}
+    dispose(): void {}
+  }
+}))
 vi.mock('./vault-timeout-coordinator', () => ({
   VaultTimeoutCoordinator: class {
     constructor(barrier: Record<string, unknown>, options: Record<string, unknown>) {

@@ -143,7 +143,11 @@ export const IPC_CHANNELS = {
   sendRemovePassword: 'send:remove-password',
   sendDelete: 'send:delete',
   sendCopyLink: 'send:copy-link',
-  applicationMenuExecute: 'application-menu:execute'
+  applicationMenuExecute: 'application-menu:execute',
+  appUpdateCheck: 'app-update:check',
+  appUpdateDownload: 'app-update:download',
+  appUpdateInstall: 'app-update:install',
+  appUpdateOpenReleasePage: 'app-update:open-release-page'
 } as const
 
 export const IPC_EVENTS = {
@@ -156,7 +160,8 @@ export const IPC_EVENTS = {
   nativeRestoreProgress: 'vault:native-restore-progress',
   passkeyApprovalRequested: 'passkey:approval-requested',
   sshAgentApprovalRequested: 'ssh-agent:approval-requested',
-  sshAgentStatusChanged: 'ssh-agent:status-changed'
+  sshAgentStatusChanged: 'ssh-agent:status-changed',
+  appUpdateStateChanged: 'app-update:state-changed'
 } as const
 
 export const IPC_ERROR_PREFIX = 'BEARWARDEN:'
@@ -1652,6 +1657,20 @@ export interface TouchIdEnableRequest {
   masterPassword: string
 }
 
+export type AppUpdateStatus =
+  'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error' | 'disabled'
+
+/** Renderer-safe update metadata. Provider URLs, file paths, and raw errors stay in main. */
+export interface AppUpdateState {
+  readonly status: AppUpdateStatus
+  readonly currentVersion: string
+  readonly availableVersion: string | null
+  /** Download completion percentage in the inclusive 0-100 range. */
+  readonly progress: number | null
+  /** False on platforms where this build cannot safely install an update automatically. */
+  readonly canAutoInstall: boolean
+}
+
 export interface BearWardenAPI {
   vault: {
     status: () => Promise<VaultStatus>
@@ -1876,5 +1895,12 @@ export interface BearWardenAPI {
   }
   applicationMenu: {
     execute: (command: ApplicationMenuCommand) => Promise<void>
+  }
+  updater: {
+    check: () => Promise<AppUpdateState>
+    download: () => Promise<AppUpdateState>
+    install: () => Promise<void>
+    openReleasePage: () => Promise<void>
+    onStateChanged: (listener: (state: AppUpdateState) => void) => () => void
   }
 }

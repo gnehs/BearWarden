@@ -22,6 +22,7 @@ import { BitwardenDirectClient } from './bitwarden-direct'
 import { AutoSyncCoordinator } from './auto-sync-coordinator'
 import { BitwardenNotificationCoordinator } from './bitwarden-notifications'
 import { AppSettingsService } from './app-settings'
+import { AppUpdaterController } from './app-updater'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import { FocusTouchIdUnlockController } from './focus-touch-id-unlock'
 import { installApplicationMenu } from './application-menu'
@@ -57,6 +58,7 @@ let mainWindow: BrowserWindow | null = null
 let vault: VaultService | null = null
 let portability: VaultPortabilityService | null = null
 let settings: AppSettingsService | null = null
+let appUpdater: AppUpdaterController | null = null
 let vaultTimeoutCoordinator: VaultTimeoutCoordinator | null = null
 let autoSync: AutoSyncCoordinator | null = null
 let serverNotifications: BitwardenNotificationCoordinator | null = null
@@ -468,6 +470,7 @@ function createWindow(): BrowserWindow {
     notifyUnlocked: notifyVaultUnlocked
   })
   focusTouchIdUnlockControllers.set(window, focusTouchIdUnlock)
+  appUpdater?.attachWindow(window)
   window.on('focus', () => void focusTouchIdUnlock.focus())
   window.on('blur', () => focusTouchIdUnlock.blur())
 
@@ -911,6 +914,7 @@ if (hasSingleInstanceLock)
       autoSync?.requestImmediate()
     })
 
+    appUpdater = new AppUpdaterController()
     mainWindow = createWindow()
     installApplicationMenu({
       isMac: process.platform === 'darwin',
@@ -948,6 +952,8 @@ function disposeServices(): void {
   vaultTimeoutCoordinator = null
   vault?.dispose()
   settings?.dispose()
+  appUpdater?.dispose()
+  appUpdater = null
 }
 
 async function waitForShutdownTasks(tasks: Array<() => void | Promise<unknown>>): Promise<void> {

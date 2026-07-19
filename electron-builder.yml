@@ -22,9 +22,9 @@ mac:
   icon: resources/icon.icon
   target:
     - dmg
+    - zip
   artifactName: ${name}-${version}-${arch}.${ext}
   entitlementsInherit: build/entitlements.mac.plist
-  notarize: false
 dmg:
   artifactName: ${name}-${version}-${arch}.${ext}
 linux:
@@ -38,5 +38,6 @@ appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
 publish:
-  provider: generic
-  url: https://example.com/auto-updates
+  provider: github
+  owner: gnehs
+  repo: BearWarden

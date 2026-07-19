@@ -4,6 +4,8 @@ const electronMock = vi.hoisted(() => {
   let exposed: unknown
   return {
     invoke: vi.fn(async () => undefined),
+    on: vi.fn(),
+    removeListener: vi.fn(),
     exposeInMainWorld: vi.fn((_name: string, value: unknown) => {
       exposed = value
     }),
@@ -16,8 +18,8 @@ vi.mock('electron', () => ({
   ipcRenderer: {
     invoke: electronMock.invoke,
     send: vi.fn(),
-    on: vi.fn(),
-    removeListener: vi.fn()
+    on: electronMock.on,
+    removeListener: electronMock.removeListener
   }
 }))
 
@@ -207,6 +209,57 @@ describe('preload application menu API', () => {
     expect(electronMock.invoke).toHaveBeenCalledWith(
       IPC_CHANNELS.applicationMenuExecute,
       'toggle-full-screen'
+    )
+  })
+})
+
+describe('preload updater API', () => {
+  it('exposes only narrow commands and a removable renderer-safe state listener', async () => {
+    electronMock.invoke.mockClear()
+    electronMock.on.mockClear()
+    electronMock.removeListener.mockClear()
+    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
+    const listener = vi.fn()
+
+    expect(Object.keys(api.updater)).toEqual([
+      'check',
+      'download',
+      'install',
+      'openReleasePage',
+      'onStateChanged'
+    ])
+    await api.updater.check()
+    await api.updater.download()
+    await api.updater.install()
+    await api.updater.openReleasePage()
+    const unsubscribe = api.updater.onStateChanged(listener)
+
+    expect(electronMock.invoke.mock.calls).toEqual([
+      [IPC_CHANNELS.appUpdateCheck],
+      [IPC_CHANNELS.appUpdateDownload],
+      [IPC_CHANNELS.appUpdateInstall],
+      [IPC_CHANNELS.appUpdateOpenReleasePage]
+    ])
+    expect(electronMock.on).toHaveBeenCalledWith('app-update:state-changed', expect.any(Function))
+
+    const wrappedListener = electronMock.on.mock.calls[0]?.[1] as (
+      event: unknown,
+      state: unknown
+    ) => void
+    const state = {
+      status: 'downloading',
+      currentVersion: '0.1.1',
+      availableVersion: '0.2.0',
+      progress: 42,
+      canAutoInstall: true
+    }
+    wrappedListener({}, state)
+    expect(listener).toHaveBeenCalledWith(state)
+
+    unsubscribe()
+    expect(electronMock.removeListener).toHaveBeenCalledWith(
+      'app-update:state-changed',
+      wrappedListener
     )
   })
 })

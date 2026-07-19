@@ -294,6 +294,20 @@ const api: BearWardenAPI = {
   },
   applicationMenu: {
     execute: (command) => ipcRenderer.invoke(IPC_CHANNELS.applicationMenuExecute, command)
+  },
+  updater: {
+    check: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateCheck),
+    download: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateDownload),
+    install: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateInstall),
+    openReleasePage: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateOpenReleasePage),
+    onStateChanged: (listener) => {
+      const wrappedListener = (
+        _event: IpcRendererEvent,
+        state: Parameters<typeof listener>[0]
+      ): void => listener(state)
+      ipcRenderer.on(IPC_EVENTS.appUpdateStateChanged, wrappedListener)
+      return () => ipcRenderer.removeListener(IPC_EVENTS.appUpdateStateChanged, wrappedListener)
+    }
   }
 }
 
