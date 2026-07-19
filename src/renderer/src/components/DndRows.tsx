@@ -158,7 +158,11 @@ export const ItemRow = memo(function ItemRow({
           )}
         </span>
         <span className="item-copy">
-          <strong>{item.name}</strong>
+          <strong
+            className={cn('text-foreground transition-colors duration-150', selected && 'text-primary-foreground')}
+          >
+            {item.name}
+          </strong>
           <small>
             {readOnly
               ? '已刪除的項目'
@@ -170,7 +174,12 @@ export const ItemRow = memo(function ItemRow({
         <RowIconButton
           variant="ghost"
           size="icon-sm"
-          className={cn('icon-button subtle favorite-button', item.favorite && 'active')}
+          className={cn(
+            'icon-button subtle favorite-button',
+            selected &&
+              'hover:bg-primary-foreground/10 hover:text-primary-foreground active:bg-primary-foreground/10 active:text-primary-foreground active:shadow-none focus-visible:bg-primary-foreground/10 focus-visible:text-primary-foreground hover:shadow-none',
+            item.favorite && 'active'
+          )}
           type="button"
           label={item.favorite ? `將 ${item.name} 從常用項目移除` : `將 ${item.name} 加入常用項目`}
           aria-pressed={item.favorite}
