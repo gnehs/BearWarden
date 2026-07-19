@@ -110,10 +110,10 @@ export const ItemRow = memo(function ItemRow({
       data-item-row=""
       data-selected={selected ? 'true' : 'false'}
       className={cn(
-        'group/item border-border has-[[data-item-row-main]:focus-visible]:outline-ring/72 relative grid min-h-[66px] cursor-grab touch-none grid-cols-[minmax(0,1fr)_28px] rounded-none border-0 border-b px-[13px] has-[[data-item-row-main]:focus-visible]:rounded-lg has-[[data-item-row-main]:focus-visible]:outline-[3px] has-[[data-item-row-main]:focus-visible]:outline-offset-2',
-        !selected && 'hover:bg-accent hover:rounded-lg',
+        'group/item border-border has-[[data-item-row-main]:focus-visible]:outline-ring/72 relative grid cursor-grab touch-none grid-cols-[minmax(0,1fr)_28px] items-center rounded-none border-0 border-b pr-3 has-[[data-item-row-main]:focus-visible]:rounded-lg has-[[data-item-row-main]:focus-visible]:outline-[3px] has-[[data-item-row-main]:focus-visible]:outline-offset-2',
+        !selected && 'active:bg-accent/85 hover:bg-accent/50 hover:rounded-lg',
         selected &&
-          'bg-primary text-primary-foreground rounded-[11px] border-b-transparent shadow-[0_4px_13px_color-mix(in_oklch,var(--shadow-color)_18%,transparent)] has-[[data-item-row-main]:focus-visible]:rounded-[11px] forced-colors:outline-2 forced-colors:outline-offset-[-2px] forced-colors:outline-[Highlight]',
+          'active:bg-primary active:text-primary-foreground bg-primary text-primary-foreground hover:bg-primary rounded-[11px] border-b-transparent shadow-[0_4px_13px_color-mix(in_oklch,var(--shadow-color)_18%,transparent)] hover:rounded-[11px] has-[[data-item-row-main]:focus-visible]:rounded-[11px] forced-colors:outline-2 forced-colors:outline-offset-[-2px] forced-colors:outline-[Highlight]',
         isDragging && 'cursor-grabbing opacity-0'
       )}
       {...attributes}
@@ -125,11 +125,11 @@ export const ItemRow = memo(function ItemRow({
         onContextMenu(item.id, { x: Math.round(event.clientX), y: Math.round(event.clientY) })
       }}
     >
-      <Button
-        variant="ghost"
-        className="grid h-[65px] min-w-0 grid-cols-[42px_minmax(0,1fr)] items-center gap-[11px] border-0 bg-transparent px-0 text-left hover:shadow-none focus-visible:border-transparent focus-visible:shadow-none focus-visible:outline-none"
+      <button
+        className="grid h-[65px] min-w-0 grid-cols-[42px_minmax(0,1fr)] items-center gap-3 px-3 text-left focus-within:outline-none"
         data-item-row-main=""
         type="button"
+        tabIndex={-1}
         onClick={(event) =>
           onSelect(item.id, {
             toggle: event.metaKey || event.ctrlKey,
@@ -155,7 +155,7 @@ export const ItemRow = memo(function ItemRow({
       >
         <span
           className={cn(
-            'border-border bg-muted text-muted-foreground grid size-10 place-items-center rounded-[10px] border forced-colors:[forced-color-adjust:none]',
+            'bg-muted text-muted-foreground outline-foreground/5 grid size-10 place-items-center rounded-md shadow-[var(--control-highlight)] outline forced-colors:[forced-color-adjust:none]',
             item.type === 'login' && 'overflow-hidden',
             item.type === 'card' &&
               'text-chart-4 [[data-theme=dark]_&]:bg-[var(--website-icon-background)]',
@@ -176,7 +176,7 @@ export const ItemRow = memo(function ItemRow({
         <span className="grid min-w-0 gap-1">
           <strong
             className={cn(
-              'text-foreground flex min-w-0 items-center gap-[5px] truncate text-[13px] font-[690] transition-colors duration-150',
+              'text-foreground flex min-w-0 items-center gap-[5px] truncate text-[13px] font-medium',
               selected && 'text-primary-foreground'
             )}
           >
@@ -193,13 +193,13 @@ export const ItemRow = memo(function ItemRow({
               : item.subtitle || item.username || item.uri || '尚未設定摘要'}
           </small>
         </span>
-      </Button>
+      </button>
       {!readOnly && (
         <RowIconButton
           variant="ghost"
           size="icon-sm"
           className={cn(
-            'size-7 min-w-7 cursor-pointer opacity-0 transition-opacity duration-150 group-hover/item:opacity-100 focus-visible:opacity-100',
+            'text-muted-foreground hover:text-foreground size-7 min-w-7 cursor-pointer self-center opacity-0 transition-opacity duration-150 group-hover/item:opacity-100 hover:bg-transparent focus-visible:opacity-100',
             selected &&
               'text-primary-foreground/82 hover:bg-primary-foreground/10 hover:text-primary-foreground active:bg-primary-foreground/10 active:text-primary-foreground focus-visible:bg-primary-foreground/10 focus-visible:text-primary-foreground opacity-100 hover:shadow-none active:shadow-none',
             item.favorite && !selected && 'text-chart-4 opacity-100',

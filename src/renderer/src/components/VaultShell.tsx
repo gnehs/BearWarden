@@ -488,7 +488,7 @@ const folderSectionClassName =
 
 function detailIconClassName(type?: VaultItemType): string {
   return cn(
-    'grid size-12 flex-none place-items-center rounded-xl border border-border bg-muted text-primary max-[430px]:hidden dark:border-border dark:bg-muted dark:text-muted-foreground forced-colors:[forced-color-adjust:none]',
+    'grid size-12 flex-none place-items-center rounded-lg outline outline-foreground/5 bg-muted text-primary shadow-[var(--control-highlight)] max-[430px]:hidden dark:border-border dark:bg-muted dark:text-muted-foreground forced-colors:[forced-color-adjust:none]',
     type === 'login' && 'overflow-hidden',
     type === 'card' && 'bg-muted text-chart-4 dark:bg-website-icon-background',
     type === 'identity' && 'bg-accent text-primary',
@@ -4183,7 +4183,7 @@ function VaultShell({
                         }}
                       >
                         <span
-                          className="bg-muted text-muted-foreground grid size-[30px] flex-none place-items-center rounded-lg"
+                          className="bg-foreground/5 text-muted-foreground grid size-[30px] flex-none place-items-center rounded"
                           aria-hidden="true"
                         >
                           <ItemIcon />

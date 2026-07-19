@@ -41,7 +41,7 @@ function WebsiteIcon({ id, uri, enabled }: WebsiteIconProps): React.JSX.Element 
   if (dataUrl) {
     return (
       <img
-        className="block size-full bg-[var(--website-icon-background)] object-contain p-[3px]"
+        className="block size-full bg-[var(--website-icon-background)] object-contain"
         src={dataUrl}
         alt=""
         draggable={false}
