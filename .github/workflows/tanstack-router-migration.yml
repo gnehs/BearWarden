@@ -1,0 +1,72 @@
+name: TanStack Router migration
+
+on:
+  push:
+    branches:
+      - feat/tanstack-router
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tanstack-router-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/tanstack-router
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.13.1
+          cache: pnpm
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Apply route-state codemod
+        run: |
+          if grep -q "useVaultRouteState" src/renderer/src/components/VaultShell.tsx; then
+            echo "VaultShell migration already applied"
+          else
+            node .github/scripts/migrate-vault-router.mjs
+          fi
+
+      - name: Update lockfile
+        run: pnpm install --lockfile-only
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Format changed source
+        run: pnpm exec prettier --write src/renderer/src/App.tsx src/renderer/src/router.tsx src/renderer/src/lib/vault-route-state.ts src/renderer/src/components/VaultShell.tsx
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Commit migration output
+        run: |
+          if git diff --quiet; then
+            echo "No generated changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json pnpm-lock.yaml src/renderer/src/App.tsx src/renderer/src/router.tsx src/renderer/src/lib/vault-route-state.ts src/renderer/src/components/VaultShell.tsx
+          git commit -m "feat: route vault navigation through TanStack Router"
+          git push origin HEAD:feat/tanstack-router
