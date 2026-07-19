@@ -292,7 +292,7 @@ export class SshAgentRendererBridge {
   private detachWindow(): void {
     const window = this.attachedWindow
     this.attachedWindow = null
-    if (!window || window.webContents.isDestroyed()) return
+    if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return
     window.webContents.removeListener('did-start-loading', this.handleRendererReset)
     window.webContents.removeListener('render-process-gone', this.handleRendererReset)
     window.webContents.removeListener('destroyed', this.handleRendererReset)

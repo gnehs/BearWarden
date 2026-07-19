@@ -222,4 +222,16 @@ describe('SshAgentRendererBridge', () => {
       name: 'AbortError'
     })
   })
+
+  it('disposes safely after the attached window has already been destroyed', () => {
+    const { bridge, window } = harness()
+    window.isDestroyed = () => true
+    Object.defineProperty(window, 'webContents', {
+      get: () => {
+        throw new TypeError('Object has been destroyed')
+      }
+    })
+
+    expect(() => bridge.dispose()).not.toThrow()
+  })
 })

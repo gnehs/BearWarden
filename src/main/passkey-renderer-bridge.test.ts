@@ -492,6 +492,18 @@ describe('PasskeyRendererBridge', () => {
     expect(electronMock.removeHandler).toHaveBeenCalledWith(IPC_CHANNELS.passkeyRespondApproval)
   })
 
+  it('disposes safely after the attached window has already been destroyed', () => {
+    const { bridge, window } = harness()
+    window.isDestroyed = () => true
+    Object.defineProperty(window, 'webContents', {
+      get: () => {
+        throw new TypeError('Object has been destroyed')
+      }
+    })
+
+    expect(() => bridge.dispose()).not.toThrow()
+  })
+
   it('drops a password proof if the request is aborted while verification is in flight', async () => {
     const { bridge, trustedEvent, verifyMasterPassword } = harness()
     let resolvePassword!: (generation: number) => void
