@@ -5044,29 +5044,10 @@ function VaultShell({
                       >
                         <CardHeader className="bg-muted rounded-none border-b">
                           <CardTitle id="totp-title">一次性驗證碼</CardTitle>
-                          <CardDescription>
-                            <span className="t-skel block h-5">
-                              <span
-                                className="t-skel-skeleton is-pulsing flex items-center"
-                                aria-hidden="true"
-                              >
-                                <Skeleton className="h-3 w-20" aria-hidden="true" />
-                              </span>
-                              <span className="t-skel-content flex items-center">
-                                {totpGenerationError === 'unsupported' ? (
-                                  '密鑰格式不受支援'
-                                ) : totpCode ? (
-                                  <NumberFlow
-                                    className="tabular-nums"
-                                    value={totpCode.remainingSeconds}
-                                    suffix=" 秒後更新"
-                                    trend={-1}
-                                  />
-                                ) : null}
-                              </span>
-                            </span>
-                            {!totpRevealReady && <span className="sr-only">產生中…</span>}
-                          </CardDescription>
+                          {totpGenerationError === 'unsupported' && (
+                            <CardDescription>密鑰格式不受支援</CardDescription>
+                          )}
+                          {!totpRevealReady && <span className="sr-only">產生中…</span>}
                         </CardHeader>
                         <CardContent className="contents">
                           <div className="totp-value">
