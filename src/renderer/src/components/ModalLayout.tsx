@@ -2,8 +2,47 @@ import type * as React from 'react'
 import { DialogContent, DialogFooter, DialogHeader } from '@renderer/components/ui/dialog'
 import { cn } from '@renderer/lib/utils'
 
+const passwordHistoryDialogStyles = `
+  [data-slot='dialog-content']:has([data-slot='password-history-content']) [aria-busy] {
+    height: auto !important;
+  }
+
+  [data-slot='dialog-content']:has([data-slot='password-history-content'])
+    [aria-busy][data-state='loading']
+    [data-slot='password-history-skeleton'] {
+    position: static;
+  }
+
+  [data-slot='dialog-content']:has([data-slot='password-history-content'])
+    [aria-busy][data-state='loading']
+    [data-slot='password-history-content'] {
+    display: none;
+  }
+
+  [data-slot='dialog-content']:has([data-slot='password-history-content'])
+    [aria-busy][data-state='loaded']
+    [data-slot='password-history-skeleton'] {
+    display: none;
+  }
+
+  [data-slot='dialog-content']:has([data-slot='password-history-content'])
+    [aria-busy][data-state='loaded']
+    [data-slot='password-history-content'] {
+    position: static;
+    opacity: 1;
+    filter: none;
+  }
+
+  [data-slot='dialog-content']:has([data-slot='password-history-content'])
+    [data-slot='password-history-content'] > ol {
+    flex: none;
+    max-height: min(50vh, 360px);
+  }
+`
+
 export function ModalContent({
   className,
+  children,
   ...props
 }: React.ComponentProps<typeof DialogContent>): React.JSX.Element {
   return (
@@ -13,7 +52,10 @@ export function ModalContent({
         className
       )}
       {...props}
-    />
+    >
+      <style>{passwordHistoryDialogStyles}</style>
+      {children}
+    </DialogContent>
   )
 }
 
