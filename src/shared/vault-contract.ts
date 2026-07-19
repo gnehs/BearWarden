@@ -142,7 +142,8 @@ export const IPC_CHANNELS = {
   sendUpdate: 'send:update',
   sendRemovePassword: 'send:remove-password',
   sendDelete: 'send:delete',
-  sendCopyLink: 'send:copy-link'
+  sendCopyLink: 'send:copy-link',
+  applicationMenuExecute: 'application-menu:execute'
 } as const
 
 export const IPC_EVENTS = {
@@ -209,6 +210,19 @@ export type VaultErrorCode =
   | 'INTERNAL_ERROR'
 
 export type VaultState = 'uninitialized' | 'locked' | 'unlocked'
+
+export type ApplicationMenuCommand =
+  | 'close-window'
+  | 'undo'
+  | 'redo'
+  | 'cut'
+  | 'copy'
+  | 'paste'
+  | 'delete'
+  | 'select-all'
+  | 'toggle-full-screen'
+  | 'minimize-window'
+  | 'toggle-maximize-window'
 
 export interface VaultStatus {
   state: VaultState
@@ -1859,5 +1873,8 @@ export interface BearWardenAPI {
     disableTouchId: () => Promise<AppSettings>
     unlockTouchId: () => Promise<VaultStatus>
     activity: () => Promise<void>
+  }
+  applicationMenu: {
+    execute: (command: ApplicationMenuCommand) => Promise<void>
   }
 }

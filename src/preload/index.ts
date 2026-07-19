@@ -291,6 +291,9 @@ const api: BearWardenAPI = {
     disableTouchId: () => ipcRenderer.invoke(IPC_CHANNELS.settingsDisableTouchId),
     unlockTouchId: () => ipcRenderer.invoke(IPC_CHANNELS.settingsUnlockTouchId),
     activity: () => ipcRenderer.invoke(IPC_CHANNELS.settingsActivity)
+  },
+  applicationMenu: {
+    execute: (command) => ipcRenderer.invoke(IPC_CHANNELS.applicationMenuExecute, command)
   }
 }
 

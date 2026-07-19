@@ -2,12 +2,16 @@ import { useEffect, useRef, useState } from 'react'
 import { ArrowRight, Fingerprint, KeyRound, RotateCcw, ShieldAlert } from 'lucide-react'
 import type { AppSettings, PinUnlockStatus } from '../../../shared/vault-contract'
 import BrandMark from './BrandMark'
+import ApplicationTitlebarMenu from './ApplicationTitlebarMenu'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
 import { Field, FieldGroup, FieldLabel } from '@renderer/components/ui/field'
 import { Input } from '@renderer/components/ui/input'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { touchIdUnlockFallback } from './auth-screen-ui'
+import { shouldUseApplicationTitlebarMenu } from '../lib/application-titlebar-menu'
+
+const usesWindowControlsOverlay = shouldUseApplicationTitlebarMenu(navigator.userAgent)
 
 interface AuthScreenProps {
   state: 'loading' | 'unavailable' | 'uninitialized' | 'locked'
@@ -166,6 +170,11 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
   return (
     <main className="relative grid min-h-full place-items-center bg-[radial-gradient(circle_at_50%_8%,color-mix(in_oklch,var(--primary)_18%,transparent),transparent_34%),linear-gradient(145deg,var(--muted),var(--background)_55%,var(--accent))] px-6 pt-[72px] pb-[34px]">
       <div className="window-drag-region" aria-hidden="true" />
+      {usesWindowControlsOverlay && (
+        <div className="auth-application-menu">
+          <ApplicationTitlebarMenu />
+        </div>
+      )}
       <div className="flex flex-col items-center justify-center gap-4">
         <BrandMark />
         <section

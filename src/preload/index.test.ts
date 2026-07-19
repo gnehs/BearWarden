@@ -195,3 +195,18 @@ describe('preload personal vault purge API', () => {
     expect(electronMock.invoke).toHaveBeenCalledWith(IPC_CHANNELS.syncPurgePersonalVault, request)
   })
 })
+
+describe('preload application menu API', () => {
+  it('forwards only a typed application-menu command', async () => {
+    electronMock.invoke.mockClear()
+    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
+
+    await api.applicationMenu.execute('toggle-full-screen')
+
+    expect(Object.keys(api.applicationMenu)).toEqual(['execute'])
+    expect(electronMock.invoke).toHaveBeenCalledWith(
+      IPC_CHANNELS.applicationMenuExecute,
+      'toggle-full-screen'
+    )
+  })
+})

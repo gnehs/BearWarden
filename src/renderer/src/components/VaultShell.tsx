@@ -99,6 +99,7 @@ import {
 } from '../../../shared/vault-contract'
 import bearCutUrl from '../assets/bear-cut.svg'
 import BrandMark from './BrandMark'
+import ApplicationTitlebarMenu from './ApplicationTitlebarMenu'
 import {
   DeleteLoginDialog,
   FolderDialog,
@@ -306,6 +307,7 @@ const sortItemsOptions = [
 
 const isMac = navigator.userAgent.includes('Mac')
 const isWindows = navigator.userAgent.includes('Windows')
+const usesWindowControlsOverlay = !isMac
 const commandLabel = isMac ? '⌘' : 'Ctrl'
 const detailCacheLimit = 48
 
@@ -3863,11 +3865,28 @@ function VaultShell({
             : null
 
   if (loading) {
+    if (isMac) {
+      return (
+        <main className="vault-loading" role="status">
+          <BrandMark className="absolute top-[25px] left-1/2 -translate-x-1/2" />
+          <Spinner className="size-6" aria-hidden="true" />
+          <p>正在解密你的項目…</p>
+        </main>
+      )
+    }
+
     return (
-      <main className="vault-loading" role="status">
-        <BrandMark className="absolute top-[25px] left-1/2 -translate-x-1/2" />
-        <Spinner className="size-6" aria-hidden="true" />
-        <p>正在解密你的項目…</p>
+      <main
+        className={cn('app-shell', usesWindowControlsOverlay && 'platform-window-controls-overlay')}
+      >
+        <header className="titlebar">
+          <ApplicationTitlebarMenu />
+          <div className="titlebar-drag" aria-hidden="true" />
+        </header>
+        <div className="vault-loading" role="status">
+          <Spinner className="size-6" aria-hidden="true" />
+          <p>正在解密你的項目…</p>
+        </div>
       </main>
     )
   }
@@ -3889,10 +3908,12 @@ function VaultShell({
           'app-shell',
           isMac && 'platform-macos',
           isWindows && 'platform-windows',
+          usesWindowControlsOverlay && 'platform-window-controls-overlay',
           (selectedId || editorMode) && 'has-detail'
         )}
       >
         <header className="titlebar">
+          <ApplicationTitlebarMenu onLockVault={lockVault} />
           {!settingsOpen &&
             !healthOpen &&
             !sendsOpen &&
@@ -3923,12 +3944,14 @@ function VaultShell({
               密碼庫
             </Button>
           )}
-          <div className="inline-flex items-center gap-2 max-[680px]:hidden">
-            <BrandMark hideMark />
-            <Badge variant="secondary" className="bg-black/5">
-              Beta
-            </Badge>
-          </div>
+          {isMac && (
+            <div className="inline-flex items-center gap-2 max-[680px]:hidden">
+              <BrandMark hideMark />
+              <Badge variant="secondary" className="bg-black/5">
+                Beta
+              </Badge>
+            </div>
+          )}
           {!settingsOpen &&
             !healthOpen &&
             !sendsOpen &&

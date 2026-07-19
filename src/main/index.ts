@@ -25,6 +25,8 @@ import { AppSettingsService } from './app-settings'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import { FocusTouchIdUnlockController } from './focus-touch-id-unlock'
 import { installApplicationMenu } from './application-menu'
+import { registerApplicationMenuIpc } from './application-menu-ipc'
+import { windowChromeOptions } from './window-chrome'
 import { registerVaultIpc, RepromptAuthorizationStore } from './vault-ipc'
 import { VaultService } from './vault-service'
 import { VaultAttachmentFileService } from './vault-attachment-files'
@@ -390,6 +392,7 @@ function requestMenuLock(): void {
 }
 
 function createWindow(): BrowserWindow {
+  const isMac = process.platform === 'darwin'
   const window = new BrowserWindow({
     width: 1100,
     height: 760,
@@ -398,8 +401,8 @@ function createWindow(): BrowserWindow {
     // Development must stay visible even when Windows never emits ready-to-show. Production
     // remains hidden until the renderer is ready to avoid a white startup flash.
     show: is.dev,
-    autoHideMenuBar: process.platform === 'darwin',
-    ...(process.platform !== 'darwin' ? { icon } : {}),
+    autoHideMenuBar: isMac,
+    ...(!isMac ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
@@ -413,11 +416,9 @@ function createWindow(): BrowserWindow {
       navigateOnDragDrop: false,
       spellcheck: false
     },
-    vibrancy: 'fullscreen-ui',
-    backgroundMaterial: 'mica',
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 14, y: 20 }
+    ...windowChromeOptions(process.platform)
   })
+  if (!isMac) window.setMenuBarVisibility(false)
 
   // WDA_EXCLUDEFROMCAPTURE can make a window disappear entirely in captured or virtualized
   // Windows development sessions. Keep the production protection while leaving dev inspectable.
@@ -884,6 +885,9 @@ if (hasSingleInstanceLock)
         refreshSshAgentAfterVaultChange()
       }
     })
+    registerApplicationMenuIpc({
+      getMainWindow: () => mainWindow
+    })
     ipcMain.on(IPC_CHANNELS.vaultLockRequestReady, (event, ready: unknown) => {
       const window = mainWindow
       if (!window || event.sender !== window.webContents || typeof ready !== 'boolean') return
@@ -910,6 +914,7 @@ if (hasSingleInstanceLock)
       isMac: process.platform === 'darwin',
       onLockVault: requestMenuLock
     })
+    if (process.platform !== 'darwin') mainWindow.setMenuBarVisibility(false)
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow()

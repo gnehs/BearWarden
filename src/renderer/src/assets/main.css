@@ -684,6 +684,17 @@ button svg {
   inset: 0 0 auto;
   height: 52px;
 }
+.auth-application-menu {
+  position: absolute;
+  top: 0;
+  left: env(titlebar-area-x, 0px);
+  z-index: 20;
+  display: flex;
+  width: env(titlebar-area-width, 100%);
+  height: env(titlebar-area-height, 54px);
+  align-items: center;
+  padding-inline: 14px;
+}
 
 .field {
   display: grid;
@@ -3235,6 +3246,20 @@ body:has(.platform-windows) {
   }
   .action-group {
     justify-content: flex-end;
+  }
+}
+
+:root .platform-window-controls-overlay .titlebar {
+  height: env(titlebar-area-height, 54px);
+  min-height: env(titlebar-area-height, 54px);
+  padding-left: calc(14px + env(titlebar-area-x, 0px));
+  padding-right: calc(14px + 100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
+}
+
+@media (max-width: 430px) {
+  :root .platform-window-controls-overlay .titlebar {
+    padding-left: calc(9px + env(titlebar-area-x, 0px));
+    padding-right: calc(9px + 100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
   }
 }
 

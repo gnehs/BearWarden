@@ -104,6 +104,7 @@ const harness = vi.hoisted(() => {
     }
 
     setContentProtection(): void {}
+    setMenuBarVisibility(): void {}
     isDestroyed(): boolean {
       return false
     }
@@ -400,6 +401,8 @@ vi.mock('./focus-touch-id-unlock', () => ({
   }
 }))
 vi.mock('./application-menu', () => ({ installApplicationMenu: vi.fn() }))
+vi.mock('./application-menu-ipc', () => ({ registerApplicationMenuIpc: vi.fn() }))
+vi.mock('./window-chrome', () => ({ windowChromeOptions: vi.fn(() => ({})) }))
 vi.mock('./vault-ipc', () => ({
   RepromptAuthorizationStore: class {
     clear(): void {}
