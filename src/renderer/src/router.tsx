@@ -78,6 +78,8 @@ export const vaultRoute = createRoute({
   }
 })
 
+// The concrete child paths are registered below and inferred by createRouter.
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function vaultChild(path: string) {
   return createRoute({ getParentRoute: () => vaultRoute, path })
 }
