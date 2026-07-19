@@ -85,7 +85,26 @@ jobs:
 
       - name: Build installer
         if: matrix.target != 'linux'
-        run: pnpm exec electron-builder --${{ matrix.target }} ${{ matrix.architecture }} --publish never
+        run: |
+          if [ -z "${CSC_LINK:-}" ]; then
+            unset CSC_LINK
+          fi
+          if [ -z "${CSC_KEY_PASSWORD:-}" ]; then
+            unset CSC_KEY_PASSWORD
+          fi
+          if [ -z "${APPLE_API_KEY:-}" ]; then
+            unset APPLE_API_KEY
+          fi
+          if [ -z "${APPLE_API_KEY_ID:-}" ]; then
+            unset APPLE_API_KEY_ID
+          fi
+          if [ -z "${APPLE_API_ISSUER:-}" ]; then
+            unset APPLE_API_ISSUER
+          fi
+          if [ -z "${APPLE_TEAM_ID:-}" ]; then
+            unset APPLE_TEAM_ID
+          fi
+          pnpm exec electron-builder --${{ matrix.target }} ${{ matrix.architecture }} --publish never
         env:
           CSC_LINK: ${{ matrix.target == 'mac' && secrets.MAC_CSC_LINK || matrix.target == 'win' && secrets.WIN_CSC_LINK || '' }}
           CSC_KEY_PASSWORD: ${{ matrix.target == 'mac' && secrets.MAC_CSC_KEY_PASSWORD || matrix.target == 'win' && secrets.WIN_CSC_KEY_PASSWORD || '' }}
