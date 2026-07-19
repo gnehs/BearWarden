@@ -1,9 +1,6 @@
 name: TanStack Router migration
 
 on:
-  push:
-    branches:
-      - feat/tanstack-router
   pull_request:
     branches:
       - main
@@ -12,8 +9,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: tanstack-router-migration
-  cancel-in-progress: false
+  group: tanstack-router-migration-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   migrate-and-verify:
@@ -62,7 +59,6 @@ jobs:
         run: pnpm build
 
       - name: Commit migration output
-        if: github.event_name == 'push'
         run: |
           if git diff --quiet; then
             echo "No generated changes"
