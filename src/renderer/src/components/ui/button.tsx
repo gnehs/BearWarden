@@ -9,17 +9,17 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          'bg-primary text-primary-foreground hover:bg-primary/80 shadow-[var(--control-highlight)]',
+          'bg-primary text-primary-foreground hover:bg-primary/80 shadow-(--control-highlight)',
         outline:
-          'outline-outline bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:outline-input dark:bg-input/30 dark:hover:bg-input/50 shadow-[var(--control-highlight)]',
+          'outline-outline bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:outline-input dark:bg-input/30 dark:hover:bg-input/50 shadow-(--control-highlight)',
         secondary:
-          'bg-secondary text-secondary-foreground aria-expanded:bg-secondary aria-expanded:text-secondary-foreground shadow-[var(--control-highlight)] hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)]',
+          'bg-secondary text-secondary-foreground aria-expanded:bg-secondary aria-expanded:text-secondary-foreground shadow-(--control-highlight) hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)]',
         ghost:
-          'hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground data-popup-open:bg-muted data-popup-open:text-foreground dark:hover:bg-muted/50 hover:shadow-[var(--control-highlight)] aria-expanded:shadow-[var(--control-highlight)] data-popup-open:shadow-[var(--control-highlight)]',
+          'hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground data-popup-open:bg-muted data-popup-open:text-foreground dark:hover:bg-muted/50 hover:shadow-(--control-highlight) aria-expanded:shadow-(--control-highlight) data-popup-open:shadow-(--control-highlight)',
         sidebar:
-          'text-sidebar-foreground hover:bg-sidebar-overlay-hover hover:text-sidebar-foreground aria-expanded:bg-sidebar-overlay-active aria-expanded:text-sidebar-foreground data-popup-open:bg-sidebar-overlay-active data-popup-open:text-sidebar-foreground hover:shadow-[var(--control-highlight)] aria-expanded:shadow-[var(--control-highlight)] data-popup-open:shadow-[var(--control-highlight)]',
+          'text-sidebar-foreground hover:bg-sidebar-overlay-hover hover:text-sidebar-foreground aria-expanded:bg-sidebar-overlay-active aria-expanded:text-sidebar-foreground data-popup-open:bg-sidebar-overlay-active data-popup-open:text-sidebar-foreground hover:shadow-(--control-highlight) aria-expanded:shadow-(--control-highlight) data-popup-open:shadow-(--control-highlight)',
         destructive:
-          'bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:outline-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40 shadow-[var(--control-highlight)]',
+          'bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:outline-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40 shadow-(--control-highlight)',
         link: 'text-primary underline-offset-4 hover:underline'
       },
       size: {

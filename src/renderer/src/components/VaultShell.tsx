@@ -494,7 +494,7 @@ const folderSectionClassName =
 
 function detailIconClassName(type?: VaultItemType): string {
   return cn(
-    'outline-foreground/5 bg-muted text-primary dark:border-border dark:bg-muted dark:text-muted-foreground grid size-12 flex-none place-items-center rounded-lg shadow-[var(--control-highlight)] outline max-[430px]:hidden forced-colors:[forced-color-adjust:none]',
+    'outline-foreground/5 bg-muted text-primary dark:border-border dark:bg-muted dark:text-muted-foreground grid size-12 flex-none place-items-center rounded-lg shadow-(--control-highlight) outline max-[430px]:hidden forced-colors:[forced-color-adjust:none]',
     type === 'login' && 'overflow-hidden',
     type === 'card' && 'bg-muted text-chart-4 dark:bg-website-icon-background',
     type === 'identity' && 'bg-accent text-primary',
@@ -780,7 +780,7 @@ const sidebarLinkClasses = {
   tile: 'bg-sidebar-overlay grid min-h-[72px] grid-cols-[1fr_auto] grid-rows-[31px_auto] items-center gap-2 rounded-[15px] px-3 pt-[11px] pb-2.5 shadow-[var(--sidebar-tile-highlight)] hover:shadow-[var(--sidebar-tile-highlight)]',
   active: {
     row: 'bg-sidebar-overlay-active text-sidebar-foreground hover:bg-sidebar-overlay-active hover:text-sidebar-foreground',
-    tile: 'bg-sidebar-primary text-sidebar-primary-foreground shadow-[var(--control-highlight)] hover:bg-sidebar-primary hover:text-sidebar-primary-foreground hover:shadow-[var(--control-highlight)]'
+    tile: 'bg-sidebar-primary text-sidebar-primary-foreground shadow-(--control-highlight) hover:bg-sidebar-primary hover:text-sidebar-primary-foreground hover:shadow-(--control-highlight)'
   }
 } as const
 
@@ -4061,7 +4061,13 @@ function VaultShell({
             !sendsOpen &&
             !organizationsOpen &&
             !emergencyAccessOpen && (
-              <InputGroup className="border-input text-muted-foreground [@media(prefers-reduced-transparency:reduce)]:bg-card absolute left-1/2 h-[38px] w-[clamp(300px,44vw,560px)] min-w-0 -translate-x-1/2 gap-[7px] rounded-[11px] bg-(--search-field-background) py-0 pr-2 pl-2.5 shadow-[inset_0_1px_2px_color-mix(in_oklch,var(--shadow-color)_3%,transparent)] [-webkit-app-region:no-drag] focus-within:border-(--focus) focus-within:shadow-[0_0_0_2px_color-mix(in_srgb,var(--focus),transparent_78%)] max-[880px]:static max-[880px]:max-w-none max-[880px]:flex-1 max-[880px]:translate-x-0 dark:shadow-[inset_0_1px_2px_color-mix(in_oklch,var(--shadow-color)_18%,transparent)] [&_*]:[-webkit-app-region:no-drag] max-[680px]:[&_kbd]:hidden">
+              <InputGroup
+                className={cn(
+                  'text-muted-foreground [@media(prefers-reduced-transparency:reduce)]:bg-card bg-card/50 absolute left-1/2 h-[38px] w-[clamp(300px,44vw,560px)] min-w-0 -translate-x-1/2 gap-[7px] rounded-[11px] border-0 py-0 pr-2 pl-2.5 focus-within:border-(--focus) max-[880px]:static max-[880px]:max-w-none max-[880px]:flex-1 max-[880px]:translate-x-0 max-[680px]:[&_kbd]:hidden',
+                  'shadow-(--control-highlight)',
+                  '[-webkit-app-region:no-drag] **:[-webkit-app-region:no-drag]'
+                )}
+              >
                 <Button
                   variant="ghost"
                   className="text-foreground h-full min-w-0 flex-1 justify-start bg-transparent p-0 text-xs font-normal shadow-none hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 focus-visible:outline-none aria-expanded:bg-transparent [&>span]:w-full [&>span]:min-w-0 [&>span]:text-left"
@@ -4072,7 +4078,7 @@ function VaultShell({
                   onClick={() => setSearchOpen(true)}
                 >
                   <span className={cn('truncate', !query && 'text-muted-foreground')}>
-                    {query || '搜尋密碼庫；以 > 開始進階搜尋'}
+                    {query || '搜尋密碼庫'}
                   </span>
                 </Button>
                 <InputGroupAddon align="inline-start">

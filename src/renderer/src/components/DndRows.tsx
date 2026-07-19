@@ -155,7 +155,7 @@ export const ItemRow = memo(function ItemRow({
       >
         <span
           className={cn(
-            'bg-muted text-muted-foreground outline-foreground/5 grid size-10 place-items-center rounded-md shadow-[var(--control-highlight)] outline forced-colors:[forced-color-adjust:none]',
+            'bg-muted text-muted-foreground outline-foreground/5 grid size-10 place-items-center rounded-md shadow-(--control-highlight) outline forced-colors:[forced-color-adjust:none]',
             item.type === 'login' && 'overflow-hidden',
             item.type === 'card' &&
               'text-chart-4 [[data-theme=dark]_&]:bg-[var(--website-icon-background)]',
