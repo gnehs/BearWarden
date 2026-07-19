@@ -50,7 +50,7 @@ interface PasskeyApprovalDialogProps {
 }
 
 const verificationMethodLabels: Record<PasskeyApprovalUiVerificationMethod, string> = {
-  'touch-id': 'Touch ID',
+  'touch-id': '生物辨識',
   'master-password': '主密碼'
 }
 

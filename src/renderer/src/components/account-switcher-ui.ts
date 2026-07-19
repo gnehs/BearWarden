@@ -64,7 +64,7 @@ export function accountConfirmationContent(action: AccountConfirmationAction): {
     return {
       title: `移除${localAccountLabel(action.slot)}？`,
       description:
-        '這會永久刪除這台裝置上的加密密碼庫、設定與 Touch ID 資料，且無法復原；不會刪除 Bitwarden 或 Vaultwarden 伺服器上的帳號與資料。',
+        '這會永久刪除這台裝置上的加密密碼庫、設定與生物辨識資料，且無法復原；不會刪除 Bitwarden 或 Vaultwarden 伺服器上的帳號與資料。',
       actionLabel: '永久移除本機資料',
       destructive: true
     }

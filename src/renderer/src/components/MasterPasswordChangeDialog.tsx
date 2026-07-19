@@ -253,7 +253,7 @@ function MasterPasswordChangeDialog({
                 <ShieldAlert aria-hidden="true" />
                 <AlertTitle>不會輪替帳號加密金鑰</AlertTitle>
                 <AlertDescription>
-                  此操作只變更主密碼與保護方式，不會建立新的帳號加密金鑰。完成後 Touch ID
+                  此操作只變更主密碼與保護方式，不會建立新的帳號加密金鑰。完成後生物辨識
                   會停用，且必須使用新主密碼重新連線。
                 </AlertDescription>
               </Alert>

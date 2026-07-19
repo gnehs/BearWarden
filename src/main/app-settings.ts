@@ -367,7 +367,7 @@ export class AppSettingsService {
     }
     const verified = await this.vaultStore.unlock(masterPassword)
     try {
-      await systemPreferences.promptTouchID('啟用 Touch ID 解鎖 BearWarden')
+      await systemPreferences.promptTouchID('啟用生物辨識解鎖 BearWarden')
       const encrypted = await safeStorage.encryptStringAsync(masterPassword)
       try {
         await atomicWrite(this.touchIdPath, encrypted)
@@ -436,7 +436,7 @@ export class AppSettingsService {
     let encrypted: Buffer | undefined
     let masterPassword: string | undefined
     try {
-      await systemPreferences.promptTouchID('使用 Touch ID 解鎖 BearWarden')
+      await systemPreferences.promptTouchID('使用生物辨識解鎖 BearWarden')
       this.assertCurrent(operationEpoch)
       encrypted = await readFile(this.touchIdPath)
       this.assertCurrent(operationEpoch)

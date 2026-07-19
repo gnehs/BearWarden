@@ -328,7 +328,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                   ) : (
                     <Fingerprint data-icon="inline-start" aria-hidden="true" />
                   )}
-                  使用 Touch ID 解鎖
+                  使用生物辨識解鎖
                 </Button>
               )}
             </form>

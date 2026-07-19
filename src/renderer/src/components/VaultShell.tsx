@@ -2514,7 +2514,7 @@ function VaultShell({
 
   async function enableTouchId(): Promise<void> {
     if (!touchIdPassword) {
-      announceError('請先輸入主密碼以啟用 Touch ID。')
+      announceError('請先輸入主密碼以啟用生物辨識。')
       return
     }
     setSettingsBusy(true)
@@ -2524,7 +2524,7 @@ function VaultShell({
       })
       setSettings(next)
       setTouchIdPassword('')
-      announce('Touch ID 已啟用。')
+      announce('生物辨識已啟用。')
     } catch (touchIdError) {
       announceError(describeError(touchIdError))
     } finally {
@@ -2537,7 +2537,7 @@ function VaultShell({
     try {
       const next = await window.bearwarden.settings.disableTouchId()
       setSettings(next)
-      announce('Touch ID 已停用。')
+      announce('生物辨識已停用。')
     } catch (touchIdError) {
       announceError(describeError(touchIdError))
     } finally {

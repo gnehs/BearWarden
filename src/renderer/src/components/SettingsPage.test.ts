@@ -24,7 +24,7 @@ describe('settings section scrollspy', () => {
       '一般',
       '安全性',
       'PIN 解鎖',
-      'Touch ID',
+      '生物辨識',
       '隱私與剪貼簿',
       '本機帳號',
       '同步與帳號',

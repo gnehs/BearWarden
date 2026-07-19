@@ -92,7 +92,7 @@ export const settingsSections = [
   { id: 'general-settings-title', label: '一般' },
   { id: 'security-settings-title', label: '安全性' },
   { id: 'pin-settings-title', label: 'PIN 解鎖' },
-  { id: 'touch-id-settings-title', label: 'Touch ID' },
+  { id: 'touch-id-settings-title', label: '生物辨識' },
   { id: 'privacy-settings-title', label: '隱私與剪貼簿' },
   { id: 'local-accounts-settings-title', label: '本機帳號' },
   { id: 'sync-settings-title', label: '同步與帳號' },
@@ -998,8 +998,8 @@ function SettingsPage({
                   <SettingsCardHeading
                     id="touch-id-settings-title"
                     icon={Fingerprint}
-                    title="Touch ID"
-                    description="使用這台裝置安全儲存的主密碼快速解鎖。"
+                    title="生物辨識"
+                    description="使用這台裝置的生物辨識快速解鎖；目前支援 macOS Touch ID。"
                   />
                   <CardAction>
                     <Badge variant={settings.touchIdEnabled ? 'default' : 'secondary'}>
@@ -1018,15 +1018,17 @@ function SettingsPage({
                         <EmptyMedia variant="icon">
                           <Fingerprint />
                         </EmptyMedia>
-                        <EmptyTitle>這台裝置無法使用 Touch ID</EmptyTitle>
-                        <EmptyDescription>你仍可使用主密碼解鎖密碼庫。</EmptyDescription>
+                        <EmptyTitle>這台裝置無法使用生物辨識</EmptyTitle>
+                        <EmptyDescription>
+                          目前僅支援 macOS Touch ID；你仍可使用主密碼解鎖密碼庫。
+                        </EmptyDescription>
                       </EmptyHeader>
                     </Empty>
                   </CardContent>
                 ) : settings.touchIdEnabled ? (
                   <>
                     <CardContent>
-                      <p className="settings-card-note">下次鎖定後即可直接使用 Touch ID 解鎖。</p>
+                      <p className="settings-card-note">下次鎖定後即可直接使用生物辨識解鎖。</p>
                     </CardContent>
                     <CardFooter>
                       <Button
@@ -1036,7 +1038,7 @@ function SettingsPage({
                         disabled={settingsBusy}
                         onClick={() => void onDisableTouchId()}
                       >
-                        停用 Touch ID
+                        停用生物辨識
                       </Button>
                     </CardFooter>
                   </>
@@ -1064,7 +1066,7 @@ function SettingsPage({
                         onClick={() => void onEnableTouchId()}
                       >
                         <LockKeyhole data-icon="inline-start" aria-hidden="true" />
-                        啟用 Touch ID
+                        啟用生物辨識
                       </Button>
                     </CardFooter>
                   </>
