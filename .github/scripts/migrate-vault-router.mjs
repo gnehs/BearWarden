@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/explicit-function-return-type */
 import { readFile, writeFile } from 'node:fs/promises'
 
 async function replaceOnce(path, source, search, replacement, label) {
@@ -80,7 +81,7 @@ vault = await replaceOnce(
 vault = await replaceOnce(
   vaultPath,
   vault,
-  "  const [selectedId, setSelectedId] = useState<string | null>(null)\n",
+  '  const [selectedId, setSelectedId] = useState<string | null>(null)\n',
   '',
   'selectedId state'
 )
@@ -116,7 +117,7 @@ let app = await readFile(appPath, 'utf8')
 app = await replaceOnce(
   appPath,
   app,
-  "    if (pathname !== target) void navigate({ to: target, replace: true })\n",
+  '    if (pathname !== target) void navigate({ to: target, replace: true })\n',
   "    if (state === 'unlocked' ? !pathname.startsWith('/vault') : pathname !== target) {\n      void navigate({ to: target, replace: true })\n    }\n",
   'nested vault route guard'
 )
