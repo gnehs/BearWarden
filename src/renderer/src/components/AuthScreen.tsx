@@ -7,6 +7,7 @@ import { Button } from '@renderer/components/ui/button'
 import { Field, FieldGroup, FieldLabel } from '@renderer/components/ui/field'
 import { Input } from '@renderer/components/ui/input'
 import { Spinner } from '@renderer/components/ui/spinner'
+import { touchIdUnlockFallback } from './auth-screen-ui'
 
 interface AuthScreenProps {
   state: 'loading' | 'unavailable' | 'uninitialized' | 'locked'
@@ -38,14 +39,21 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const passwordRef = useRef<HTMLInputElement>(null)
   const pinRef = useRef<HTMLInputElement>(null)
+  const focusPasswordAfterTouchIdRef = useRef(false)
   const isSetup = state === 'uninitialized'
 
   useEffect(() => {
-    if (state === 'locked' || state === 'uninitialized') {
+    if (!submitting && (state === 'locked' || state === 'uninitialized')) {
       if (unlockMethod === 'pin') pinRef.current?.focus()
-      else passwordRef.current?.focus()
+      else {
+        passwordRef.current?.focus()
+        if (focusPasswordAfterTouchIdRef.current) {
+          passwordRef.current?.select()
+          focusPasswordAfterTouchIdRef.current = false
+        }
+      }
     }
-  }, [state, unlockMethod])
+  }, [state, submitting, unlockMethod])
 
   useEffect(() => {
     let active = true
@@ -145,7 +153,11 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
       const status = await window.bearwarden.settings.unlockTouchId()
       if (status.state === 'unlocked') onAuthenticated('unlock')
     } catch (touchIdError) {
-      setError(describeError(touchIdError))
+      const fallback = touchIdUnlockFallback(touchIdError)
+      focusPasswordAfterTouchIdRef.current = true
+      setPin('')
+      setUnlockMethod(fallback.unlockMethod)
+      setError(fallback.error)
     } finally {
       setSubmitting(false)
     }
