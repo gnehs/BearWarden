@@ -47,7 +47,23 @@ jobs:
         run: pnpm exec prettier --write src/renderer/src/App.tsx src/renderer/src/router.tsx src/renderer/src/lib/vault-route-state.ts src/renderer/src/components/VaultShell.tsx
 
       - name: Lint
-        run: pnpm lint
+        id: lint
+        continue-on-error: true
+        run: pnpm lint > router-ci.log 2>&1
+
+      - name: Upload lint diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: router-ci-log
+          path: router-ci.log
+          if-no-files-found: ignore
+
+      - name: Report lint failure
+        if: steps.lint.outcome == 'failure'
+        run: |
+          cat router-ci.log
+          exit 1
 
       - name: Typecheck
         run: pnpm typecheck
