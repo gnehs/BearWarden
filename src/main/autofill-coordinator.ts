@@ -24,7 +24,6 @@ interface AutofillVault {
 }
 
 interface AutofillPlatform {
-  permission(prompt?: boolean): Promise<boolean>
   context(): Promise<MacOSBrowserContext>
   fill(
     context: MacOSBrowserContext,
@@ -106,10 +105,6 @@ export class AutofillCoordinator {
     try {
       context = await this.options.platform.context()
     } catch (error) {
-      if (error instanceof MacOSAutofillError && error.code === 'ACCESSIBILITY_PERMISSION_DENIED') {
-        // The shortcut is an explicit user gesture, so this is the only place allowed to prompt.
-        await this.options.platform.permission(true).catch(() => false)
-      }
       if (epoch === this.triggerEpoch) this.publishError(error)
       return
     }

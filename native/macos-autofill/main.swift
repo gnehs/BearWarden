@@ -234,6 +234,64 @@ private func hasValidSigningRequirement(bundleIdentifier: String) -> Bool {
     ) == errSecSuccess && requirement != nil
 }
 
+private func canonicalFileURL(_ url: URL) -> URL {
+    url.standardizedFileURL.resolvingSymlinksInPath()
+}
+
+private func isTrustedParentLaunch(
+    helperBundleURL: URL,
+    parentExecutableURL: URL,
+    parentBundleIdentifier: String?
+) -> Bool {
+    let helperBundleURL = canonicalFileURL(helperBundleURL)
+    let parentExecutableURL = canonicalFileURL(parentExecutableURL)
+    let helperContainer = helperBundleURL.deletingLastPathComponent()
+
+    if helperContainer.lastPathComponent == "Helpers" {
+        let contentsDirectory = helperContainer.deletingLastPathComponent()
+        guard contentsDirectory.lastPathComponent == "Contents" else { return false }
+        let outerApplication = contentsDirectory.deletingLastPathComponent()
+        guard outerApplication.pathExtension == "app",
+              parentBundleIdentifier == "com.bearwarden.app" else { return false }
+        let expectedExecutable = canonicalFileURL(
+            outerApplication.appendingPathComponent("Contents/MacOS/BearWarden")
+        )
+        return parentExecutableURL == expectedExecutable
+    }
+
+    // Development builds stage the helper at <project>/resources/bin and launch it from the
+    // project's Electron runtime. This path is never used by a packaged BearWarden app.
+    let resourcesBin = helperContainer
+    let resourcesDirectory = resourcesBin.deletingLastPathComponent()
+    guard resourcesBin.lastPathComponent == "bin",
+          resourcesDirectory.lastPathComponent == "resources",
+          parentBundleIdentifier == "com.github.Electron" else { return false }
+    let projectDirectory = resourcesDirectory.deletingLastPathComponent()
+    let nodeModulesPrefix = canonicalFileURL(
+        projectDirectory.appendingPathComponent("node_modules", isDirectory: true)
+    ).path + "/"
+    return parentExecutableURL.path.hasPrefix(nodeModulesPrefix)
+        && parentExecutableURL.path.hasSuffix("/Electron.app/Contents/MacOS/Electron")
+}
+
+private func requireTrustedParentLaunch() throws {
+    let parentPID = getppid()
+    guard parentPID > 1,
+          let parent = NSRunningApplication(processIdentifier: parentPID),
+          let parentExecutableURL = parent.executableURL,
+          isTrustedParentLaunch(
+              helperBundleURL: Bundle.main.bundleURL,
+              parentExecutableURL: parentExecutableURL,
+              parentBundleIdentifier: parent.bundleIdentifier
+          ) else {
+        throw CommandFailure(
+            code: .internalError,
+            message: "The autofill helper was not launched by BearWarden.",
+            exitCode: .permissionDenied
+        )
+    }
+}
+
 private enum AX {
     static func value(_ element: AXUIElement, _ attribute: String) -> AnyObject? {
         var rawValue: CFTypeRef?
@@ -1108,6 +1166,10 @@ private func fillCommand() throws -> FillOutput {
 }
 
 private func selfTestCommand() -> SelfTestOutput {
+    let packagedHelperURL = URL(fileURLWithPath: "/Applications/BearWarden.app/Contents/Helpers/BearWarden Autofill Helper.app")
+    let packagedParentURL = URL(fileURLWithPath: "/Applications/BearWarden.app/Contents/MacOS/BearWarden")
+    let developmentHelperURL = URL(fileURLWithPath: "/repo/resources/bin/BearWarden Autofill Helper.app")
+    let developmentParentURL = URL(fileURLWithPath: "/repo/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron")
     let checks = [
         normalizedWebURL("example.com/login") == "https://example.com/login",
         normalizedWebURL("https://example.com/a?b=c#fragment") == "https://example.com/a",
@@ -1145,6 +1207,31 @@ private func selfTestCommand() -> SelfTestOutput {
         !addressFieldHintsIndicateBrowserChrome(["Email address"], browser: .arc),
         !addressFieldHintsIndicateBrowserChrome(["returnUrl"], browser: .arc),
         addressFieldHintsIndicateBrowserChrome(["Address and Search Bar"], browser: .arc),
+        isTrustedParentLaunch(
+            helperBundleURL: packagedHelperURL,
+            parentExecutableURL: packagedParentURL,
+            parentBundleIdentifier: "com.bearwarden.app"
+        ),
+        !isTrustedParentLaunch(
+            helperBundleURL: packagedHelperURL,
+            parentExecutableURL: URL(fileURLWithPath: "/tmp/BearWarden"),
+            parentBundleIdentifier: "com.bearwarden.app"
+        ),
+        !isTrustedParentLaunch(
+            helperBundleURL: packagedHelperURL,
+            parentExecutableURL: packagedParentURL,
+            parentBundleIdentifier: "com.example.Attacker"
+        ),
+        isTrustedParentLaunch(
+            helperBundleURL: developmentHelperURL,
+            parentExecutableURL: developmentParentURL,
+            parentBundleIdentifier: "com.github.Electron"
+        ),
+        !isTrustedParentLaunch(
+            helperBundleURL: developmentHelperURL,
+            parentExecutableURL: URL(fileURLWithPath: "/tmp/Electron.app/Contents/MacOS/Electron"),
+            parentBundleIdentifier: "com.github.Electron"
+        ),
     ]
     return SelfTestOutput(ok: checks.allSatisfy { $0 }, tests: checks.count)
 }
@@ -1176,6 +1263,10 @@ private enum MacOSAutofillHelper {
                     message: "Expected one of: context, diagnose, fill, permission, self-test.",
                     exitCode: .invalidArguments
                 )
+            }
+
+            if command != "self-test" {
+                try requireTrustedParentLaunch()
             }
 
             switch command {

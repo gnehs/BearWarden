@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'node:child_process'
 import { access } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { app } from 'electron'
 import type { AutofillCredentials } from './autofill'
 
@@ -53,10 +53,19 @@ interface HelperErrorBody {
   readonly error?: { readonly code?: string }
 }
 
+export function resolveMacOSAutofillHelperPath(
+  packaged: boolean,
+  resourcesPath: string,
+  appPath: string
+): string {
+  const bundleRoot = packaged
+    ? join(dirname(resourcesPath), 'Helpers', 'BearWarden Autofill Helper.app')
+    : join(appPath, 'resources', 'bin', 'BearWarden Autofill Helper.app')
+  return join(bundleRoot, 'Contents', 'MacOS', 'bearwarden-macos-autofill')
+}
+
 function helperPath(): string {
-  return app.isPackaged
-    ? join(process.resourcesPath, 'bin', 'bearwarden-macos-autofill')
-    : join(app.getAppPath(), 'resources', 'bin', 'bearwarden-macos-autofill')
+  return resolveMacOSAutofillHelperPath(app.isPackaged, process.resourcesPath, app.getAppPath())
 }
 
 function record(value: unknown): Record<string, unknown> | null {

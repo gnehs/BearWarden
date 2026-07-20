@@ -43,7 +43,6 @@ function harness(result = discovery()) {
   const hidePicker = vi.fn()
   const fill = vi.fn(async () => undefined)
   const captureContext = vi.fn(async () => context)
-  const permission = vi.fn(async () => true)
   const performAutofill = vi.fn(async (_request, validate, consume) => {
     if (!validate([], { generation: 7 })) {
       // Ordinary items do not require the validator. The fake mirrors that distinction.
@@ -56,7 +55,6 @@ function harness(result = discovery()) {
       performAutofill
     },
     platform: {
-      permission,
       context: captureContext,
       fill
     },
@@ -73,8 +71,7 @@ function harness(result = discovery()) {
     hidePicker,
     fill,
     performAutofill,
-    captureContext,
-    permission
+    captureContext
   }
 }
 
@@ -139,13 +136,12 @@ describe('AutofillCoordinator', () => {
     expect(JSON.stringify(publish.mock.calls)).not.toContain('secret-password')
   })
 
-  it('prompts for Accessibility only after the explicit shortcut trigger', async () => {
-    const { coordinator, publish, captureContext, permission } = harness()
+  it('reports denied Accessibility without repeatedly prompting from the shortcut', async () => {
+    const { coordinator, publish, captureContext } = harness()
     captureContext.mockRejectedValueOnce(new MacOSAutofillError('ACCESSIBILITY_PERMISSION_DENIED'))
 
     await coordinator.trigger()
 
-    expect(permission).toHaveBeenCalledWith(true)
     expect(publish).toHaveBeenLastCalledWith(
       expect.objectContaining({ error: 'ACCESSIBILITY_PERMISSION_DENIED' })
     )

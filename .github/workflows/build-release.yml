@@ -87,7 +87,11 @@ jobs:
         if: matrix.target == 'mac'
         run: |
           pnpm run build:native:mac
-          ./resources/bin/bearwarden-macos-autofill self-test
+          helper_app='resources/bin/BearWarden Autofill Helper.app'
+          test "$(plutil -extract CFBundleIdentifier raw "$helper_app/Contents/Info.plist")" = 'com.bearwarden.app.autofill-helper'
+          plutil -lint "$helper_app/Contents/Info.plist"
+          codesign --verify --strict --verbose=2 "$helper_app"
+          "$helper_app/Contents/MacOS/bearwarden-macos-autofill" self-test
 
       - name: Build unsigned macOS installers
         if: matrix.target == 'mac'

@@ -9,6 +9,7 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!resources/bin/**'
 asarUnpack:
   - resources/**
 win:
@@ -20,9 +21,9 @@ nsis:
   createDesktopShortcut: always
 mac:
   icon: resources/icon.icon
-  extraResources:
-    - from: resources/bin/bearwarden-macos-autofill
-      to: bin/bearwarden-macos-autofill
+  extraFiles:
+    - from: resources/bin/BearWarden Autofill Helper.app
+      to: Helpers/BearWarden Autofill Helper.app
   target:
     - dmg
     - zip

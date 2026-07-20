@@ -29,10 +29,16 @@ Build from the repository root:
 
 ```sh
 ./scripts/build-macos-autofill-helper.sh
-./resources/bin/bearwarden-macos-autofill self-test
+'./resources/bin/BearWarden Autofill Helper.app/Contents/MacOS/bearwarden-macos-autofill' self-test
 ```
 
-An optional first build-script argument overrides the output path.
+An optional first build-script argument overrides the output app-bundle path. The helper is built
+as `BearWarden Autofill Helper.app` with the stable bundle identifier
+`com.bearwarden.app.autofill-helper`. Packaged builds place it at
+`BearWarden.app/Contents/Helpers/` so macOS can attribute Accessibility consent to proper nested
+code instead of an anonymous executable in `Contents/Resources`.
+The legacy raw-helper Accessibility grant does not transfer to the new bundle, so the first bundle
+release requires granting Accessibility once to the newly identified helper.
 Set `BEARWARDEN_REQUIRE_SIGNED_AUTOFILL=1` in a signed release pipeline so the build fails
 closed unless `CODESIGN_IDENTITY` names a real distribution identity.
 The default binary is universal (`arm64` and `x86_64`). Set
@@ -44,6 +50,9 @@ thin binary. Set `CODESIGN_IDENTITY` to a distribution identity when required.
 - The helper must be signed consistently with the parent app for a stable macOS
   Accessibility consent identity. The build script only applies an ad-hoc
   signature for local development; distribution signing should replace it.
+- Before using Accessibility, packaged helpers verify that their direct parent is the declared
+  executable of the containing `com.bearwarden.app`; development helpers accept only the Electron
+  runtime inside the same project. Direct invocation by unrelated local processes fails closed.
 - Accessibility is a powerful user-granted permission. The helper restricts
   reads and writes to explicitly allowlisted browser bundle IDs with their expected vendor
   code-signing identity, but cannot provide

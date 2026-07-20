@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { MacOSAutofillError, parseMacOSBrowserContext } from './macos-autofill-adapter'
+import {
+  MacOSAutofillError,
+  parseMacOSBrowserContext,
+  resolveMacOSAutofillHelperPath
+} from './macos-autofill-adapter'
 
 function context(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
@@ -39,6 +43,22 @@ describe('macOS AutoFill context parser', () => {
   it('rejects malformed optional role metadata', () => {
     expect(() => parseMacOSBrowserContext(context({ subrole: 7 }))).toThrowError(
       new MacOSAutofillError('INVALID_HELPER_RESPONSE')
+    )
+  })
+})
+
+describe('macOS AutoFill helper path', () => {
+  it('uses the standard nested helper location in a packaged app', () => {
+    expect(
+      resolveMacOSAutofillHelperPath(true, '/Applications/BearWarden.app/Contents/Resources', '')
+    ).toBe(
+      '/Applications/BearWarden.app/Contents/Helpers/BearWarden Autofill Helper.app/Contents/MacOS/bearwarden-macos-autofill'
+    )
+  })
+
+  it('uses the generated helper bundle during development', () => {
+    expect(resolveMacOSAutofillHelperPath(false, '', '/repo')).toBe(
+      '/repo/resources/bin/BearWarden Autofill Helper.app/Contents/MacOS/bearwarden-macos-autofill'
     )
   })
 })
