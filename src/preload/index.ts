@@ -296,10 +296,12 @@ const api: BearWardenAPI = {
     execute: (command) => ipcRenderer.invoke(IPC_CHANNELS.applicationMenuExecute, command)
   },
   updater: {
+    state: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateState),
     check: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateCheck),
     download: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateDownload),
     install: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateInstall),
     openReleasePage: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateOpenReleasePage),
+    openRepositoryPage: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateOpenRepositoryPage),
     onStateChanged: (listener) => {
       const wrappedListener = (
         _event: IpcRendererEvent,

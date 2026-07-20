@@ -10,6 +10,7 @@ interface AuxiliaryPageLayoutProps {
   headerActions?: ReactNode
   headerIcon?: ReactNode
   scrollRef?: RefObject<HTMLDivElement | null>
+  scrollClassName?: string
 }
 
 interface AuxiliaryPageContentProps {
@@ -41,7 +42,8 @@ function AuxiliaryPageLayout({
   children,
   headerActions,
   headerIcon,
-  scrollRef
+  scrollRef,
+  scrollClassName
 }: AuxiliaryPageLayoutProps): React.JSX.Element {
   return (
     <div className="flex min-h-0 flex-1 flex-col" aria-labelledby={titleId}>
@@ -73,7 +75,10 @@ function AuxiliaryPageLayout({
       </header>
       <div
         ref={scrollRef}
-        className="min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] overflow-auto bg-[color-mix(in_oklch,var(--muted)_34%,var(--background))] p-[clamp(18px,3vw,32px)] max-[680px]:px-3 max-[680px]:pt-3.5 max-[680px]:pb-6"
+        className={cn(
+          'min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] overflow-auto bg-[color-mix(in_oklch,var(--muted)_34%,var(--background))] p-[clamp(18px,3vw,32px)] max-[680px]:px-3 max-[680px]:pt-3.5 max-[680px]:pb-6',
+          scrollClassName
+        )}
       >
         {children}
       </div>

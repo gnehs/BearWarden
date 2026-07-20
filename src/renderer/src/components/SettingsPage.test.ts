@@ -2,8 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   applyVaultTimeoutCustomFields,
   contentProtectionDescription,
-  settingsSections,
-  settingsScrollspySection,
+  settingsCategories,
   vaultTimeoutCustomFields,
   vaultTimeoutCustomValidationMessage,
   vaultTimeoutItems,
@@ -18,70 +17,16 @@ describe('content protection guidance', () => {
   })
 })
 
-describe('settings section scrollspy', () => {
-  it('keeps navigation and content in the intended information hierarchy', () => {
-    expect(settingsSections.map(({ label }) => label)).toEqual([
+describe('settings category navigation', () => {
+  it('groups related settings into focused pages', () => {
+    expect(settingsCategories.map(({ label }) => label)).toEqual([
       '一般',
-      '安全性',
-      'PIN 解鎖',
-      '生物辨識',
-      '隱私與剪貼簿',
-      '本機帳號',
-      '同步與帳號',
-      'SSH Agent',
-      '資料可攜性'
+      '安全與解鎖',
+      '隱私',
+      '帳號與同步',
+      '工具與資料',
+      '關於'
     ])
-  })
-
-  it('keeps the last section that has crossed the top edge active', () => {
-    expect(
-      settingsScrollspySection(
-        [
-          { id: 'security-settings-title', top: -400, isIntersecting: true },
-          { id: 'ssh-agent-settings-title', top: 96, isIntersecting: true },
-          { id: 'privacy-settings-title', top: 480, isIntersecting: true }
-        ],
-        80,
-        'security-settings-title'
-      )
-    ).toBe('security-settings-title')
-  })
-
-  it('activates the first visible section when none has crossed the top edge', () => {
-    expect(
-      settingsScrollspySection(
-        [
-          { id: 'security-settings-title', top: 108, isIntersecting: true },
-          { id: 'ssh-agent-settings-title', top: 420, isIntersecting: true }
-        ],
-        80,
-        'portability-settings-title'
-      )
-    ).toBe('security-settings-title')
-  })
-
-  it('preserves the current section while no card intersects the scroll viewport', () => {
-    expect(
-      settingsScrollspySection(
-        [{ id: 'security-settings-title', top: -400, isIntersecting: false }],
-        80,
-        'sync-settings-title'
-      )
-    ).toBe('sync-settings-title')
-  })
-
-  it('activates the last section at the bottom even when earlier cards remain visible', () => {
-    expect(
-      settingsScrollspySection(
-        [
-          { id: 'sync-settings-title', top: -40, isIntersecting: true },
-          { id: 'portability-settings-title', top: 260, isIntersecting: true }
-        ],
-        80,
-        'sync-settings-title',
-        true
-      )
-    ).toBe('portability-settings-title')
   })
 })
 

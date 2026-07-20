@@ -10,7 +10,7 @@ function SettingsCard({
   return (
     <Card
       className={cn(
-        'outline-border gap-0 py-0 shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_4%,transparent)] outline [&_[data-slot=card-description]]:mt-0.5 [&_[data-slot=card-description]]:text-xs [&_[data-slot=card-description]]:leading-[1.5] [&_[data-slot=card-footer]]:justify-end [&_[data-slot=card-title]]:scroll-mt-[18px] [&_[data-slot=card-title]]:text-sm [&_[data-slot=card-title]]:font-[680] [&>[data-slot=card-header]]:items-center [&>[data-slot=card-header]]:px-[18px] [&>[data-slot=card-header]]:pt-[17px] [&>[data-slot=card-header]]:pb-[15px]',
+        'outline-border gap-0 rounded-2xl py-0 shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_4%,transparent)] outline [&_[data-slot=card-description]]:mt-0.5 [&_[data-slot=card-description]]:text-xs [&_[data-slot=card-description]]:leading-[1.5] [&_[data-slot=card-footer]]:justify-end [&_[data-slot=card-title]]:scroll-mt-5 [&_[data-slot=card-title]]:text-sm [&_[data-slot=card-title]]:font-[680] [&>[data-slot=card-header]]:items-center [&>[data-slot=card-header]]:px-5 [&>[data-slot=card-header]]:py-5',
         className
       )}
       {...props}
@@ -25,7 +25,7 @@ function SettingsCardContent({
   return (
     <CardContent
       className={cn(
-        'px-0 [&>[data-slot=separator]]:mx-[18px] [&>[data-slot=separator]]:w-auto',
+        'px-0 [&>[data-slot=separator]]:mx-5 [&>[data-slot=separator]]:w-auto',
         className
       )}
       {...props}
@@ -34,7 +34,7 @@ function SettingsCardContent({
 }
 
 const settingsRowClassName =
-  'min-h-[70px] gap-6 px-[18px] py-[13px] [&_[data-slot=field-label]]:text-[13px] [&_[data-slot=field-label]]:font-[630] [&_[data-slot=field-description]]:max-w-[58ch] [&_[data-slot=field-description]]:text-xs [&_[data-slot=field-description]]:leading-[1.5] [&>[data-slot=switch]]:shrink-0 [&>[data-slot=select-trigger]]:shrink-0 max-[680px]:flex-col max-[680px]:items-stretch max-[680px]:gap-2.5'
+  'min-h-16 gap-5 px-5 py-3.5 [&_[data-slot=field-label]]:text-[13px] [&_[data-slot=field-label]]:font-[630] [&_[data-slot=field-description]]:max-w-[64ch] [&_[data-slot=field-description]]:text-xs [&_[data-slot=field-description]]:leading-[1.5] [&>[data-slot=switch]]:shrink-0 [&>[data-slot=select-trigger]]:shrink-0 max-[680px]:flex-col max-[680px]:items-stretch max-[680px]:gap-3 max-[680px]:[&>[data-slot=switch]]:self-start'
 
 type SettingsRowProps = React.ComponentProps<typeof Field>
 type SettingsRowVariantProps = Omit<SettingsRowProps, 'orientation'>
@@ -53,7 +53,7 @@ function SettingsSelectRow({ className, ...props }: SettingsRowVariantProps): Re
   return (
     <SettingsRow
       className={cn(
-        '[&>[data-slot=select-trigger]]:w-[150px] max-[680px]:[&>[data-slot=select-trigger]]:w-full',
+        '[&>[data-slot=select-trigger]]:w-[184px] max-[680px]:[&>[data-slot=select-trigger]]:w-full',
         className
       )}
       orientation="horizontal"
@@ -65,7 +65,10 @@ function SettingsSelectRow({ className, ...props }: SettingsRowVariantProps): Re
 function SettingsStackedRow({ className, ...props }: SettingsRowVariantProps): React.JSX.Element {
   return (
     <SettingsRow
-      className={cn('items-stretch gap-2 [&>[data-slot=select-trigger]]:w-full', className)}
+      className={cn(
+        'items-stretch gap-2.5 [&>[data-slot=select-trigger]]:w-full [&>[data-slot=select-trigger]]:max-w-[240px] max-[680px]:[&>[data-slot=select-trigger]]:max-w-none',
+        className
+      )}
       orientation="vertical"
       {...props}
     />

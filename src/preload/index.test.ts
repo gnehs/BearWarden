@@ -222,23 +222,29 @@ describe('preload updater API', () => {
     const listener = vi.fn()
 
     expect(Object.keys(api.updater)).toEqual([
+      'state',
       'check',
       'download',
       'install',
       'openReleasePage',
+      'openRepositoryPage',
       'onStateChanged'
     ])
+    await api.updater.state()
     await api.updater.check()
     await api.updater.download()
     await api.updater.install()
     await api.updater.openReleasePage()
+    await api.updater.openRepositoryPage()
     const unsubscribe = api.updater.onStateChanged(listener)
 
     expect(electronMock.invoke.mock.calls).toEqual([
+      [IPC_CHANNELS.appUpdateState],
       [IPC_CHANNELS.appUpdateCheck],
       [IPC_CHANNELS.appUpdateDownload],
       [IPC_CHANNELS.appUpdateInstall],
-      [IPC_CHANNELS.appUpdateOpenReleasePage]
+      [IPC_CHANNELS.appUpdateOpenReleasePage],
+      [IPC_CHANNELS.appUpdateOpenRepositoryPage]
     ])
     expect(electronMock.on).toHaveBeenCalledWith('app-update:state-changed', expect.any(Function))
 

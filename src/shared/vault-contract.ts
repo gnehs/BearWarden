@@ -147,7 +147,9 @@ export const IPC_CHANNELS = {
   appUpdateCheck: 'app-update:check',
   appUpdateDownload: 'app-update:download',
   appUpdateInstall: 'app-update:install',
-  appUpdateOpenReleasePage: 'app-update:open-release-page'
+  appUpdateOpenReleasePage: 'app-update:open-release-page',
+  appUpdateOpenRepositoryPage: 'app-update:open-repository-page',
+  appUpdateState: 'app-update:state'
 } as const
 
 export const IPC_EVENTS = {
@@ -1900,10 +1902,12 @@ export interface BearWardenAPI {
     execute: (command: ApplicationMenuCommand) => Promise<void>
   }
   updater: {
+    state: () => Promise<AppUpdateState>
     check: () => Promise<AppUpdateState>
     download: () => Promise<AppUpdateState>
     install: () => Promise<void>
     openReleasePage: () => Promise<void>
+    openRepositoryPage: () => Promise<void>
     onStateChanged: (listener: (state: AppUpdateState) => void) => () => void
   }
 }

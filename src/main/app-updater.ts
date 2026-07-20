@@ -14,6 +14,7 @@ import {
 
 // electron-updater is CommonJS. Its documented TypeScript ESM interop uses a default import.
 const { autoUpdater } = electronUpdater
+const REPOSITORY_PAGE_URL = 'https://github.com/gnehs/BearWarden'
 const RELEASE_PAGE_URL = 'https://github.com/gnehs/BearWarden/releases/latest'
 
 export interface AppUpdaterControllerOptions {
@@ -93,6 +94,10 @@ export class AppUpdaterController {
     ipcMain.handle(IPC_CHANNELS.appUpdateOpenReleasePage, (event) =>
       this.handleOpenReleasePage(event)
     )
+    ipcMain.handle(IPC_CHANNELS.appUpdateOpenRepositoryPage, (event) =>
+      this.handleOpenRepositoryPage(event)
+    )
+    ipcMain.handle(IPC_CHANNELS.appUpdateState, (event) => this.handleState(event))
   }
 
   get state(): AppUpdateState {
@@ -149,6 +154,14 @@ export class AppUpdaterController {
     }
   }
 
+  async openRepositoryPage(): Promise<void> {
+    try {
+      await this.openExternal(REPOSITORY_PAGE_URL)
+    } catch {
+      throw new Error('Unable to open repository page')
+    }
+  }
+
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
@@ -157,6 +170,8 @@ export class AppUpdaterController {
     ipcMain.removeHandler(IPC_CHANNELS.appUpdateDownload)
     ipcMain.removeHandler(IPC_CHANNELS.appUpdateInstall)
     ipcMain.removeHandler(IPC_CHANNELS.appUpdateOpenReleasePage)
+    ipcMain.removeHandler(IPC_CHANNELS.appUpdateOpenRepositoryPage)
+    ipcMain.removeHandler(IPC_CHANNELS.appUpdateState)
 
     if (!this.enabled) return
     this.updater.removeListener('checking-for-update', this.onCheckingForUpdate)
@@ -192,6 +207,16 @@ export class AppUpdaterController {
   private handleOpenReleasePage(event: IpcMainInvokeEvent): Promise<void> {
     this.assertAttachedRenderer(event)
     return this.openReleasePage()
+  }
+
+  private handleOpenRepositoryPage(event: IpcMainInvokeEvent): Promise<void> {
+    this.assertAttachedRenderer(event)
+    return this.openRepositoryPage()
+  }
+
+  private handleState(event: IpcMainInvokeEvent): AppUpdateState {
+    this.assertAttachedRenderer(event)
+    return this.state
   }
 
   private setState(

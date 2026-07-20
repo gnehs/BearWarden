@@ -225,7 +225,7 @@ describe('AppUpdaterController', () => {
     expect(JSON.stringify(window.webContents.send.mock.calls)).not.toContain('token=private')
 
     controller.dispose()
-    expect(harness.removeHandler).toHaveBeenCalledTimes(4)
+    expect(harness.removeHandler).toHaveBeenCalledTimes(6)
     expect(harness.updater.removeListener).toHaveBeenCalledTimes(6)
   })
 
@@ -244,6 +244,7 @@ describe('AppUpdaterController', () => {
     const download = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateDownload)
     const install = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateInstall)
     const openReleasePage = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateOpenReleasePage)
+    const openRepositoryPage = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateOpenRepositoryPage)
 
     await check?.({ sender })
     expect(harness.updater.checkForUpdates).toHaveBeenCalledOnce()
@@ -263,6 +264,8 @@ describe('AppUpdaterController', () => {
 
     await openReleasePage?.({ sender })
     expect(openExternal).toHaveBeenCalledWith('https://github.com/gnehs/BearWarden/releases/latest')
+    await openRepositoryPage?.({ sender })
+    expect(openExternal).toHaveBeenCalledWith('https://github.com/gnehs/BearWarden')
   })
 
   it('keeps non-AppImage Linux packages on the manual release flow', () => {
