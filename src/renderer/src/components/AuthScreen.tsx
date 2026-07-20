@@ -3,15 +3,19 @@ import { ArrowRight, Fingerprint, KeyRound, RotateCcw, ShieldAlert } from 'lucid
 import type { AppSettings, PinUnlockStatus } from '../../../shared/vault-contract'
 import BrandMark from './BrandMark'
 import ApplicationTitlebarMenu from './ApplicationTitlebarMenu'
+import AuthGodRaysBackground from './AuthGodRaysBackground'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
 import { Field, FieldGroup, FieldLabel } from '@renderer/components/ui/field'
 import { Input } from '@renderer/components/ui/input'
 import { Spinner } from '@renderer/components/ui/spinner'
+import { cn } from '@renderer/lib/utils'
 import { describeError, touchIdUnlockFallback } from './auth-screen-ui'
 import { shouldUseApplicationTitlebarMenu } from '../lib/application-titlebar-menu'
 
 const usesWindowControlsOverlay = shouldUseApplicationTitlebarMenu(navigator.userAgent)
+const isMac = navigator.userAgent.includes('Mac')
+const isWindows = navigator.userAgent.includes('Windows')
 
 interface AuthScreenProps {
   state: 'loading' | 'unavailable' | 'uninitialized' | 'locked'
@@ -163,9 +167,17 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
   }
 
   return (
-    <main className="relative grid min-h-full place-items-center bg-[radial-gradient(circle_at_50%_8%,color-mix(in_oklch,var(--primary)_18%,transparent),transparent_34%),linear-gradient(145deg,var(--muted),var(--background)_55%,var(--accent))] px-6 pt-[72px] pb-[34px]">
+    <main
+      className={cn(
+        'bg-background relative flex min-h-full flex-col items-center overflow-y-auto px-6',
+        isMac && 'platform-macos',
+        isWindows && 'platform-windows',
+        (isMac || isWindows) && 'bg-transparent'
+      )}
+    >
+      <AuthGodRaysBackground />
       <div
-        className="pointer-events-auto absolute inset-x-0 top-0 h-[52px] [-webkit-app-region:drag]"
+        className="pointer-events-auto absolute inset-x-0 top-0 z-10 h-[52px] [-webkit-app-region:drag]"
         aria-hidden="true"
       />
       {usesWindowControlsOverlay && (
@@ -173,10 +185,10 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
           <ApplicationTitlebarMenu />
         </div>
       )}
-      <div className="flex flex-col items-center justify-center gap-4">
-        <BrandMark />
+      <div className="relative z-10 mt-[20vh] mb-8 flex w-full max-w-[440px] shrink-0 flex-col items-center gap-4">
+        <BrandMark stacked />
         <section
-          className="w-full max-w-[440px] rounded-[20px] bg-[color-mix(in_oklch,var(--card)_91%,transparent)] p-7 shadow-[var(--shadow)] outline outline-black/5 backdrop-blur-[22px]"
+          className="w-full max-w-[440px] rounded-[20px] bg-[color-mix(in_oklch,var(--card)_84%,transparent)] p-7 shadow-[var(--shadow)] outline outline-[color-mix(in_oklch,var(--foreground)_8%,transparent)] backdrop-blur-[28px]"
           aria-labelledby="auth-title"
         >
           {state === 'loading' && (
@@ -333,7 +345,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
           )}
         </section>
       </div>
-      <p className="text-muted-foreground absolute bottom-[18px] m-0 text-[11px]">
+      <p className="text-muted-foreground relative z-10 m-0 mt-auto mb-[18px] shrink-0 text-[11px]">
         你的主密碼和解密後的資料不會離開這部裝置。
       </p>
     </main>
