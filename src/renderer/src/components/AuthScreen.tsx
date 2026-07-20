@@ -8,7 +8,7 @@ import { Button } from '@renderer/components/ui/button'
 import { Field, FieldGroup, FieldLabel } from '@renderer/components/ui/field'
 import { Input } from '@renderer/components/ui/input'
 import { Spinner } from '@renderer/components/ui/spinner'
-import { touchIdUnlockFallback } from './auth-screen-ui'
+import { describeError, touchIdUnlockFallback } from './auth-screen-ui'
 import { shouldUseApplicationTitlebarMenu } from '../lib/application-titlebar-menu'
 
 const usesWindowControlsOverlay = shouldUseApplicationTitlebarMenu(navigator.userAgent)
@@ -17,16 +17,6 @@ interface AuthScreenProps {
   state: 'loading' | 'unavailable' | 'uninitialized' | 'locked'
   onAuthenticated: (source: 'setup' | 'unlock') => void
   onRetry: () => void
-}
-
-function describeError(error: unknown): string {
-  if (!(error instanceof Error)) return '發生未知錯誤，請稍後再試。'
-  if (error.message.includes('INVALID_MASTER_PASSWORD')) return '主密碼不正確。'
-  if (error.message.includes('INVALID_PIN')) return 'PIN 不正確。'
-  if (error.message.includes('PIN_DISABLED')) return 'PIN 解鎖已停用，請改用主密碼。'
-  if (error.message.includes('RATE_LIMITED')) return '嘗試次數過多，請稍後再試。'
-  if (error.message.includes('INVALID_INPUT')) return '請檢查輸入內容。'
-  return '目前無法開啟密碼庫，請稍後再試。'
 }
 
 function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React.JSX.Element {
@@ -109,10 +99,15 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
         setPinStatus(nextStatus)
         if (!nextStatus.available) setUnlockMethod('master-password')
         const base = describeError(submitError)
+        // A concurrent lock invalidates the attempt without consuming PIN retries.
+        const invalidatedByLock =
+          submitError instanceof Error && submitError.message.includes('LOCKED')
         setError(
-          nextStatus.available
+          nextStatus.available && !invalidatedByLock
             ? `${base} 還可嘗試 ${nextStatus.remainingAttempts} 次。`
-            : 'PIN 解鎖已失效，請輸入主密碼。'
+            : nextStatus.available
+              ? base
+              : 'PIN 解鎖已失效，請輸入主密碼。'
         )
       } finally {
         request.pin = ''
