@@ -1421,7 +1421,9 @@ function parseStoredSend(value: unknown): StoredSend {
     (notes !== null && typeof notes !== 'string') ||
     (typeof notes === 'string' && notes.length > MAX_NOTES_LENGTH) ||
     (type === 'text' && (typeof text !== 'string' || text.length > MAX_SEND_TEXT_LENGTH)) ||
-    (type === 'file' && text !== null && text !== undefined) ||
+    // A file Send has no text payload (vaultwarden sends null). The app normalizes it to ''
+    // end to end, so the stored form accepts both spellings and stays stable across rewrites.
+    (type === 'file' && text !== null && text !== undefined && text !== '') ||
     (type === 'file' && !isRecord(file)) ||
     typeof hidden !== 'boolean' ||
     (maxAccessCount !== null &&
@@ -2152,6 +2154,42 @@ function parseMasterPasswordChangeJournal(value: unknown): MasterPasswordChangeJ
   return { phase, startedAt, updatedAt, accountFingerprint }
 }
 
+/**
+ * Tags one parseVaultData section so main-process diagnostics can identify the rejected portion
+ * of the vault without exposing its contents.
+ */
+function taggedVaultSection<T>(section: string, parse: () => T): T {
+  try {
+    return parse()
+  } catch (error) {
+    if (
+      error instanceof VaultError &&
+      error.code === 'CORRUPT_VAULT' &&
+      error.message === error.code
+    ) {
+      throw new VaultError('CORRUPT_VAULT', `CORRUPT_VAULT:parse-data:${section}`)
+    }
+    throw error
+  }
+}
+
+/** Tags one rejected stored item with its array index and opaque id for diagnosis. */
+function taggedVaultItem<T>(section: string, index: number, value: unknown, parse: () => T): T {
+  try {
+    return parse()
+  } catch (error) {
+    if (
+      error instanceof VaultError &&
+      error.code === 'CORRUPT_VAULT' &&
+      error.message === error.code
+    ) {
+      const id = isRecord(value) && typeof value.id === 'string' ? `:${value.id}` : ''
+      throw new VaultError('CORRUPT_VAULT', `CORRUPT_VAULT:parse-data:${section}:${index}${id}`)
+    }
+    throw error
+  }
+}
+
 function parseVaultData(value: unknown): VaultData {
   if (
     !isRecord(value) ||
@@ -2180,31 +2218,36 @@ function parseVaultData(value: unknown): VaultData {
       PERSONAL_VAULT_PURGE_DATA_VERSION,
       USAGE_COUNT_DATA_VERSION,
       DATA_VERSION
-    ].includes(value.version) ||
-    !Array.isArray(value.folders) ||
-    !Array.isArray(value.logins)
+    ].includes(value.version)
   ) {
-    throw new VaultError('CORRUPT_VAULT')
+    throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:parse-data:version')
+  }
+  if (!Array.isArray(value.folders) || !Array.isArray(value.logins)) {
+    throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:parse-data:header')
   }
   const dataVersion = value.version
   assertIsoDate(value.createdAt)
   assertIsoDate(value.updatedAt)
 
-  const folders = value.folders.map(parseFolder)
-  const logins = value.logins.map((login) =>
-    parseStoredLogin(
-      login,
-      dataVersion < ITEM_TYPES_DATA_VERSION,
-      dataVersion < PASSKEYS_DATA_VERSION,
-      dataVersion < CUSTOM_FIELDS_DATA_VERSION,
-      dataVersion < TRASH_DATA_VERSION,
-      dataVersion < ARCHIVE_DATA_VERSION,
-      dataVersion < REPROMPT_DATA_VERSION,
-      dataVersion < MULTIPLE_URIS_DATA_VERSION,
-      dataVersion < PASSWORD_HISTORY_DATA_VERSION,
-      dataVersion < ATTACHMENTS_DATA_VERSION,
-      dataVersion < LOGIN_WIRE_METADATA_DATA_VERSION,
-      dataVersion < USAGE_COUNT_DATA_VERSION
+  const folders = value.folders.map((folder, index) =>
+    taggedVaultItem('folders', index, folder, () => parseFolder(folder))
+  )
+  const logins = value.logins.map((login, index) =>
+    taggedVaultItem('logins', index, login, () =>
+      parseStoredLogin(
+        login,
+        dataVersion < ITEM_TYPES_DATA_VERSION,
+        dataVersion < PASSKEYS_DATA_VERSION,
+        dataVersion < CUSTOM_FIELDS_DATA_VERSION,
+        dataVersion < TRASH_DATA_VERSION,
+        dataVersion < ARCHIVE_DATA_VERSION,
+        dataVersion < REPROMPT_DATA_VERSION,
+        dataVersion < MULTIPLE_URIS_DATA_VERSION,
+        dataVersion < PASSWORD_HISTORY_DATA_VERSION,
+        dataVersion < ATTACHMENTS_DATA_VERSION,
+        dataVersion < LOGIN_WIRE_METADATA_DATA_VERSION,
+        dataVersion < USAGE_COUNT_DATA_VERSION
+      )
     )
   )
   const folderIds = new Set(folders.map((folder) => folder.id))
@@ -2214,97 +2257,142 @@ function parseVaultData(value: unknown): VaultData {
   if (
     folderIds.size !== folders.length ||
     folderPositions.size !== folders.length ||
-    folders.some((folder) => folder.position >= folders.length) ||
-    loginIds.size !== logins.length
+    folders.some((folder) => folder.position >= folders.length)
   ) {
-    throw new VaultError('CORRUPT_VAULT')
+    throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:parse-data:folders:duplicate-or-position')
+  }
+  if (loginIds.size !== logins.length) {
+    throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:parse-data:logins:duplicate-id')
   }
   if (logins.some((login) => login.folderId !== null && !folderIds.has(login.folderId))) {
-    throw new VaultError('CORRUPT_VAULT')
+    throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:parse-data:logins:unknown-folder')
   }
 
   const organizations =
     dataVersion < ORGANIZATIONS_DATA_VERSION
       ? []
-      : (() => {
+      : taggedVaultSection('organizations', () => {
           if (
             !Array.isArray(value.organizations) ||
             value.organizations.length > MAX_REMOTE_ENTITIES
           ) {
             throw new VaultError('CORRUPT_VAULT')
           }
-          const parsed = value.organizations.map(parseStoredOrganization)
+          const parsed = value.organizations.map((organization, index) =>
+            taggedVaultItem('organizations', index, organization, () =>
+              parseStoredOrganization(organization)
+            )
+          )
           if (new Set(parsed.map((organization) => organization.id)).size !== parsed.length) {
-            throw new VaultError('CORRUPT_VAULT')
+            throw new VaultError(
+              'CORRUPT_VAULT',
+              'CORRUPT_VAULT:parse-data:organizations:duplicate-id'
+            )
           }
           return parsed
-        })()
+        })
   const organizationIds = new Set(organizations.map((organization) => organization.id))
   const collections =
     dataVersion < ORGANIZATIONS_DATA_VERSION
       ? []
-      : (() => {
+      : taggedVaultSection('collections', () => {
           if (!Array.isArray(value.collections) || value.collections.length > MAX_REMOTE_ENTITIES) {
             throw new VaultError('CORRUPT_VAULT')
           }
-          const parsed = value.collections.map(parseStoredCollection)
-          if (
-            new Set(parsed.map((collection) => collection.id)).size !== parsed.length ||
-            parsed.some((collection) => !organizationIds.has(collection.organizationId))
-          ) {
-            throw new VaultError('CORRUPT_VAULT')
+          const parsed = value.collections.map((collection, index) =>
+            taggedVaultItem('collections', index, collection, () =>
+              parseStoredCollection(collection)
+            )
+          )
+          if (new Set(parsed.map((collection) => collection.id)).size !== parsed.length) {
+            throw new VaultError(
+              'CORRUPT_VAULT',
+              'CORRUPT_VAULT:parse-data:collections:duplicate-id'
+            )
+          }
+          if (parsed.some((collection) => !organizationIds.has(collection.organizationId))) {
+            throw new VaultError(
+              'CORRUPT_VAULT',
+              'CORRUPT_VAULT:parse-data:collections:unknown-organization'
+            )
           }
           return parsed
-        })()
+        })
   const collectionIds = new Set(collections.map((collection) => collection.id))
   const sharedLogins =
     dataVersion < ORGANIZATIONS_DATA_VERSION
       ? []
-      : (() => {
+      : taggedVaultSection('shared-logins', () => {
           if (
             !Array.isArray(value.sharedLogins) ||
             value.sharedLogins.length > MAX_REMOTE_ENTITIES
           ) {
             throw new VaultError('CORRUPT_VAULT')
           }
-          const parsed = value.sharedLogins.map((login) =>
-            parseStoredSharedLogin(
-              login,
-              dataVersion < LOGIN_WIRE_METADATA_DATA_VERSION,
-              dataVersion < USAGE_COUNT_DATA_VERSION
+          const parsed = value.sharedLogins.map((login, index) =>
+            taggedVaultItem('shared-logins', index, login, () =>
+              parseStoredSharedLogin(
+                login,
+                dataVersion < LOGIN_WIRE_METADATA_DATA_VERSION,
+                dataVersion < USAGE_COUNT_DATA_VERSION
+              )
             )
           )
+          if (new Set(parsed.map((login) => login.id)).size !== parsed.length) {
+            throw new VaultError(
+              'CORRUPT_VAULT',
+              'CORRUPT_VAULT:parse-data:shared-logins:duplicate-id'
+            )
+          }
+          if (parsed.some((login) => loginIds.has(login.id))) {
+            throw new VaultError(
+              'CORRUPT_VAULT',
+              'CORRUPT_VAULT:parse-data:shared-logins:id-collision'
+            )
+          }
+          if (parsed.some((login) => !organizationIds.has(login.organizationId))) {
+            throw new VaultError(
+              'CORRUPT_VAULT',
+              'CORRUPT_VAULT:parse-data:shared-logins:unknown-organization'
+            )
+          }
+          if (parsed.some((login) => login.collectionIds.some((id) => !collectionIds.has(id)))) {
+            throw new VaultError(
+              'CORRUPT_VAULT',
+              'CORRUPT_VAULT:parse-data:shared-logins:unknown-collection'
+            )
+          }
           if (
-            new Set(parsed.map((login) => login.id)).size !== parsed.length ||
-            parsed.some(
-              (login) =>
-                loginIds.has(login.id) ||
-                !organizationIds.has(login.organizationId) ||
-                login.collectionIds.some((id) => !collectionIds.has(id)) ||
-                login.collectionIds.some(
-                  (id) =>
-                    collections.find((collection) => collection.id === id)?.organizationId !==
-                    login.organizationId
-                )
+            parsed.some((login) =>
+              login.collectionIds.some(
+                (id) =>
+                  collections.find((collection) => collection.id === id)?.organizationId !==
+                  login.organizationId
+              )
             )
           ) {
-            throw new VaultError('CORRUPT_VAULT')
+            throw new VaultError(
+              'CORRUPT_VAULT',
+              'CORRUPT_VAULT:parse-data:shared-logins:collection-organization-mismatch'
+            )
           }
           return parsed
-        })()
+        })
 
   const sync =
     dataVersion === LEGACY_DATA_VERSION
       ? null
-      : parseSyncData(
-          value.sync,
-          folderIds,
-          loginIds,
-          dataVersion === CLI_DATA_VERSION,
-          dataVersion < PENDING_LOGIN_MUTATION_DATA_VERSION,
-          dataVersion < PENDING_LOGIN_IMPORT_DATA_VERSION,
-          dataVersion < PERSONAL_VAULT_PURGE_DATA_VERSION,
-          dataVersion < EQUIVALENT_DOMAINS_DATA_VERSION
+      : taggedVaultSection('sync', () =>
+          parseSyncData(
+            value.sync,
+            folderIds,
+            loginIds,
+            dataVersion === CLI_DATA_VERSION,
+            dataVersion < PENDING_LOGIN_MUTATION_DATA_VERSION,
+            dataVersion < PENDING_LOGIN_IMPORT_DATA_VERSION,
+            dataVersion < PERSONAL_VAULT_PURGE_DATA_VERSION,
+            dataVersion < EQUIVALENT_DOMAINS_DATA_VERSION
+          )
         )
 
   let nativeAttachmentRestore: NativeAttachmentRestoreJournal | null = null
@@ -2315,22 +2403,24 @@ function parseVaultData(value: unknown): VaultData {
           ? null
           : parseNativeAttachmentRestoreJournal(value.nativeAttachmentRestore)
     } catch {
-      throw new VaultError('CORRUPT_VAULT')
+      throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:parse-data:native-attachment-restore')
     }
   }
 
   const masterPasswordChange =
     dataVersion < MASTER_PASSWORD_CHANGE_DATA_VERSION
       ? null
-      : value.masterPasswordChange === null
-        ? null
-        : parseMasterPasswordChangeJournal(value.masterPasswordChange)
+      : taggedVaultSection('master-password-change', () =>
+          value.masterPasswordChange === null
+            ? null
+            : parseMasterPasswordChangeJournal(value.masterPasswordChange)
+        )
 
   if (
     sync?.pendingPersonalVaultPurge &&
     (nativeAttachmentRestore !== null || masterPasswordChange !== null)
   ) {
-    throw new VaultError('CORRUPT_VAULT')
+    throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:parse-data:purge-journal-conflict')
   }
 
   return {
@@ -2345,23 +2435,47 @@ function parseVaultData(value: unknown): VaultData {
     sends:
       dataVersion < SENDS_DATA_VERSION
         ? []
-        : (() => {
+        : taggedVaultSection('sends', () => {
             if (!Array.isArray(value.sends) || value.sends.length > MAX_SENDS) {
               throw new VaultError('CORRUPT_VAULT')
             }
-            const sends = value.sends.map(parseStoredSend)
+            const sends = value.sends.map((send, index) =>
+              taggedVaultItem('sends', index, send, () => parseStoredSend(send))
+            )
             if (new Set(sends.map((send) => send.id)).size !== sends.length) {
-              throw new VaultError('CORRUPT_VAULT')
+              throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:parse-data:sends:duplicate-id')
             }
             return sends
-          })(),
+          }),
     generatorHistory:
       dataVersion < GENERATOR_HISTORY_DATA_VERSION
         ? []
-        : parseGeneratorHistory(value.generatorHistory),
+        : taggedVaultSection('generator-history', () =>
+            parseGeneratorHistory(value.generatorHistory)
+          ),
     sync,
     nativeAttachmentRestore,
     masterPasswordChange
+  }
+}
+
+/**
+ * Tags schema-validation failures of decrypted content so IPC diagnostics can distinguish a
+ * structurally damaged envelope from plaintext that fails validation. Finer stage tags applied
+ * inside the store are preserved.
+ */
+function parseVaultDataTagged(value: unknown): VaultData {
+  try {
+    return parseVaultData(value)
+  } catch (error) {
+    if (
+      error instanceof VaultError &&
+      error.code === 'CORRUPT_VAULT' &&
+      error.message === error.code
+    ) {
+      throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:parse-data')
+    }
+    throw error
   }
 }
 
@@ -3416,7 +3530,7 @@ export class VaultService {
       try {
         if (generation !== this.generation) throw new VaultError('LOCKED')
         const requiresMigration = isRecord(unlocked.data) && unlocked.data.version !== DATA_VERSION
-        this.data = parseVaultData(unlocked.data)
+        this.data = parseVaultDataTagged(unlocked.data)
         this.key = unlocked.key
         this.salt = unlocked.salt
         await this.recoverNativeAttachmentRestoreAfterUnlock(requiresMigration)
@@ -3718,7 +3832,7 @@ export class VaultService {
           throw new VaultError('LOCKED')
         }
         const requiresMigration = isRecord(unlocked.data) && unlocked.data.version !== DATA_VERSION
-        this.data = parseVaultData(unlocked.data)
+        this.data = parseVaultDataTagged(unlocked.data)
         this.key = unlocked.key
         this.salt = unlocked.salt
         unlocked = null
@@ -8877,7 +8991,9 @@ export class VaultService {
 
   private masterPasswordChangeAccountFingerprint(sync: PersistedSyncData): string {
     const profileId = sync.state.profileId
-    if (!profileId || !UUID_PATTERN.test(profileId)) throw new VaultError('CORRUPT_VAULT')
+    if (!profileId || !UUID_PATTERN.test(profileId)) {
+      throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:sync-profile-id')
+    }
     const canonicalAccount = JSON.stringify({
       provider: sync.provider,
       serverUrl: resolveBitwardenUrls(sync.serverUrl).apiUrl,
@@ -8893,7 +9009,7 @@ export class VaultService {
       !data.sync ||
       journal.accountFingerprint !== this.masterPasswordChangeAccountFingerprint(data.sync)
     ) {
-      throw new VaultError('CORRUPT_VAULT')
+      throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:password-change-account')
     }
   }
 
@@ -9919,6 +10035,11 @@ export class VaultService {
         passkeys: validateRemotePasskeys(login.passkeys),
         passwordHistory: clonePasswordHistory(login.passwordHistory),
         uri: uriAlias(login.uris),
+        // Wire metadata is login-only upstream (vaultwarden nests it under the login object).
+        // Null it for other item types here, mirroring the upload path, so a quirky server
+        // cannot persist a combination the vault schema rejects at the next unlock.
+        passwordRevisionDate: login.type === 'login' ? login.passwordRevisionDate : null,
+        autofillOnPageLoad: login.type === 'login' ? login.autofillOnPageLoad : null,
         createdAt: validRemoteDate(login.creationDate),
         updatedAt: validRemoteDate(login.revisionDate),
         deletedAt: validRemoteDeletedDate(login.deletedAt),
@@ -10975,6 +11096,9 @@ export class VaultService {
 
   private async persist(data: VaultData): Promise<void> {
     if (!this.key || !this.salt) throw new VaultError('LOCKED')
+    // Never persist data the read path would reject: a write-time bug must fail the current
+    // operation loudly instead of locking the user out of the vault at the next unlock.
+    parseVaultData(data)
     await this.store.write(data, this.key, this.salt)
   }
 

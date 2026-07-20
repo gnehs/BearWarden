@@ -2139,6 +2139,90 @@ describe('VaultService encrypted local data', () => {
     expect(Array.from(saved).every((byte) => byte === 0)).toBe(true)
   })
 
+  it('reopens the vault after persisting a file Send', async () => {
+    const { filePath, service } = await createHarness({
+      createSyncClient: (sync) => {
+        const fake = createSyncFake(sync.state)
+        const remote: BitwardenSendItem = {
+          id: '50000000-0000-4000-8000-000000000009',
+          accessId: 'UAAAAAAAQABAAAAAAAAAAQ',
+          type: 'file',
+          name: 'Stored File Send',
+          notes: null,
+          text: '',
+          file: {
+            id: '0123456789abcdef0123456789abcdef',
+            fileName: 'report.txt',
+            size: 77,
+            sizeName: '77 B'
+          },
+          hidden: false,
+          maxAccessCount: null,
+          accessCount: 0,
+          revisionDate: '2026-07-16T00:00:00.000Z',
+          expirationDate: null,
+          deletionDate: '2026-07-30T00:00:00.000Z',
+          disabled: false,
+          hideEmail: true,
+          authType: 2,
+          passwordProtected: false
+        }
+        fake.listSends = async () => [{ ...remote, file: { ...remote.file! } }]
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await expect(service.listSends()).resolves.toHaveLength(1)
+    await service.lock()
+
+    // A file Send is stored with an empty text payload; the vault must stay openable.
+    const reopened = new VaultService(
+      new EncryptedVaultStore<unknown>(filePath),
+      { copyText: vi.fn(), openExternal: vi.fn() },
+      { createSyncClient: (sync) => createSyncFake(sync.state) }
+    )
+    await expect(reopened.unlock(MASTER_PASSWORD)).resolves.toEqual({ state: 'unlocked' })
+    await expect(reopened.listSends()).resolves.toEqual([
+      expect.objectContaining({ id: '50000000-0000-4000-8000-000000000009', type: 'file' })
+    ])
+  })
+
+  it('reopens the vault after syncing a non-login item created from a login-like remote shape', async () => {
+    const { filePath, service } = await createHarness({
+      createSyncClient: (sync) => {
+        const fake = createSyncFake(sync.state)
+        const card = structuredClone(fake.remoteLogins[0]!)
+        card.id = '90000000-0000-4000-8000-000000000020'
+        card.type = 'card'
+        card.uris = []
+        card.uri = null
+        fake.remoteLogins.push(card)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.lock()
+
+    const reopened = new VaultService(
+      new EncryptedVaultStore<unknown>(filePath),
+      { copyText: vi.fn(), openExternal: vi.fn() },
+      { createSyncClient: (sync) => createSyncFake(sync.state) }
+    )
+    await expect(reopened.unlock(MASTER_PASSWORD)).resolves.toEqual({ state: 'unlocked' })
+    const card = (await reopened.listLogins()).find((item) => item.type === 'card')
+    expect(card).toMatchObject({ type: 'card', name: 'Remote login' })
+  })
+
   it('leases encrypted notification credentials and preserves mappings across remote logout', async () => {
     const { filePath, service } = await createHarness({
       createSyncClient: (sync) => createSyncFake(sync.state)

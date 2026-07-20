@@ -94,14 +94,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function decodeBase64(value: unknown, expectedLength?: number): Buffer {
+function decodeBase64(value: unknown, expectedLength?: number, stage?: string): Buffer {
   if (
     typeof value !== 'string' ||
     value.length === 0 ||
     value.length > MAX_VAULT_BYTES * 2 ||
     !/^[A-Za-z0-9+/]+={0,2}$/.test(value)
   ) {
-    throw new VaultError('CORRUPT_VAULT')
+    throw new VaultError('CORRUPT_VAULT', `CORRUPT_VAULT:base64${stage ? `:${stage}` : ''}`)
   }
 
   const decoded = Buffer.from(value, 'base64')
@@ -110,7 +110,7 @@ function decodeBase64(value: unknown, expectedLength?: number): Buffer {
     (expectedLength && decoded.length !== expectedLength)
   ) {
     decoded.fill(0)
-    throw new VaultError('CORRUPT_VAULT')
+    throw new VaultError('CORRUPT_VAULT', `CORRUPT_VAULT:base64${stage ? `:${stage}` : ''}`)
   }
 
   return decoded
@@ -118,7 +118,7 @@ function decodeBase64(value: unknown, expectedLength?: number): Buffer {
 
 function parseEnvelope(value: unknown): VaultEnvelopeV1 {
   if (!isRecord(value) || !isRecord(value.kdf) || !isRecord(value.cipher)) {
-    throw new VaultError('CORRUPT_VAULT')
+    throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:envelope-schema')
   }
 
   if (
@@ -135,7 +135,7 @@ function parseEnvelope(value: unknown): VaultEnvelopeV1 {
     typeof value.cipher.authTag !== 'string' ||
     typeof value.ciphertext !== 'string'
   ) {
-    throw new VaultError('CORRUPT_VAULT')
+    throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:envelope-schema')
   }
 
   return value as unknown as VaultEnvelopeV1
@@ -231,20 +231,21 @@ export class EncryptedVaultStore<T> {
     try {
       const fileStats = await stat(this.filePath)
       if (!fileStats.isFile() || fileStats.size <= 0 || fileStats.size > MAX_VAULT_BYTES) {
-        throw new VaultError('CORRUPT_VAULT')
+        throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:stat')
       }
 
       fileContents = await readFile(this.filePath)
       let envelope: VaultEnvelopeV1
       try {
         envelope = parseEnvelope(JSON.parse(fileContents.toString('utf8')))
-      } catch {
-        throw new VaultError('CORRUPT_VAULT')
+      } catch (parseError) {
+        if (parseError instanceof VaultError) throw parseError
+        throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:envelope-json')
       }
-      salt = decodeBase64(envelope.kdf.salt, SALT_LENGTH)
-      iv = decodeBase64(envelope.cipher.iv, IV_LENGTH)
-      authTag = decodeBase64(envelope.cipher.authTag, AUTH_TAG_LENGTH)
-      ciphertext = decodeBase64(envelope.ciphertext)
+      salt = decodeBase64(envelope.kdf.salt, SALT_LENGTH, 'salt')
+      iv = decodeBase64(envelope.cipher.iv, IV_LENGTH, 'iv')
+      authTag = decodeBase64(envelope.cipher.authTag, AUTH_TAG_LENGTH, 'auth-tag')
+      ciphertext = decodeBase64(envelope.ciphertext, undefined, 'ciphertext')
       key = await deriveKey(masterPassword, salt)
 
       const decipher = createDecipheriv('aes-256-gcm', key, iv, {
@@ -260,7 +261,7 @@ export class EncryptedVaultStore<T> {
         try {
           data = JSON.parse(plaintext.toString('utf8')) as T
         } catch {
-          throw new VaultError('CORRUPT_VAULT')
+          throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:plaintext-json')
         }
         return {
           data,
@@ -319,23 +320,24 @@ export class EncryptedVaultStore<T> {
       operationExpectedSalt = Buffer.from(expectedSalt)
       const fileStats = await stat(this.filePath)
       if (!fileStats.isFile() || fileStats.size <= 0 || fileStats.size > MAX_VAULT_BYTES) {
-        throw new VaultError('CORRUPT_VAULT')
+        throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:stat')
       }
 
       fileContents = await readFile(this.filePath)
       let envelope: VaultEnvelopeV1
       try {
         envelope = parseEnvelope(JSON.parse(fileContents.toString('utf8')))
-      } catch {
-        throw new VaultError('CORRUPT_VAULT')
+      } catch (parseError) {
+        if (parseError instanceof VaultError) throw parseError
+        throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:envelope-json')
       }
-      envelopeSalt = decodeBase64(envelope.kdf.salt, SALT_LENGTH)
+      envelopeSalt = decodeBase64(envelope.kdf.salt, SALT_LENGTH, 'salt')
       if (!timingSafeEqual(envelopeSalt, operationExpectedSalt)) {
-        throw new VaultError('CORRUPT_VAULT')
+        throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:salt-mismatch')
       }
-      iv = decodeBase64(envelope.cipher.iv, IV_LENGTH)
-      authTag = decodeBase64(envelope.cipher.authTag, AUTH_TAG_LENGTH)
-      ciphertext = decodeBase64(envelope.ciphertext)
+      iv = decodeBase64(envelope.cipher.iv, IV_LENGTH, 'iv')
+      authTag = decodeBase64(envelope.cipher.authTag, AUTH_TAG_LENGTH, 'auth-tag')
+      ciphertext = decodeBase64(envelope.ciphertext, undefined, 'ciphertext')
 
       const decipher = createDecipheriv('aes-256-gcm', operationKey, iv, {
         authTagLength: AUTH_TAG_LENGTH
@@ -350,7 +352,7 @@ export class EncryptedVaultStore<T> {
         try {
           data = JSON.parse(plaintext.toString('utf8')) as T
         } catch {
-          throw new VaultError('CORRUPT_VAULT')
+          throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:plaintext-json')
         }
         return {
           data,
@@ -365,7 +367,7 @@ export class EncryptedVaultStore<T> {
         throw new VaultError('NOT_INITIALIZED')
       }
       if (error instanceof VaultError) throw error
-      throw new VaultError('CORRUPT_VAULT')
+      throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:decrypt')
     } finally {
       operationKey?.fill(0)
       operationExpectedSalt?.fill(0)
@@ -416,18 +418,19 @@ export class EncryptedVaultStore<T> {
     try {
       const fileStats = await stat(this.filePath)
       if (!fileStats.isFile() || fileStats.size <= 0 || fileStats.size > MAX_VAULT_BYTES) {
-        throw new VaultError('CORRUPT_VAULT')
+        throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:write-stat')
       }
       currentContents = await readFile(this.filePath)
       let envelope: VaultEnvelopeV1
       try {
         envelope = parseEnvelope(JSON.parse(currentContents.toString('utf8')))
-      } catch {
-        throw new VaultError('CORRUPT_VAULT')
+      } catch (parseError) {
+        if (parseError instanceof VaultError) throw parseError
+        throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:write-envelope-json')
       }
-      envelopeSalt = decodeBase64(envelope.kdf.salt, SALT_LENGTH)
+      envelopeSalt = decodeBase64(envelope.kdf.salt, SALT_LENGTH, 'salt')
       if (salt.length !== SALT_LENGTH || !timingSafeEqual(envelopeSalt, salt)) {
-        throw new VaultError('CORRUPT_VAULT')
+        throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:write-salt-mismatch')
       }
       await this.writeUnserialized(data, key, salt, currentContents)
     } finally {
@@ -586,7 +589,7 @@ export class EncryptedVaultStore<T> {
             currentContents.length !== expectedCurrentContents.length ||
             !timingSafeEqual(currentContents, expectedCurrentContents)
           ) {
-            throw new VaultError('CORRUPT_VAULT')
+            throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:content-changed')
           }
         } finally {
           currentContents.fill(0)

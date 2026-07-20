@@ -7,7 +7,12 @@ import {
 export class VaultError extends Error {
   readonly code: VaultErrorCode
 
-  constructor(code: VaultErrorCode, message = code) {
+  /**
+   * `message` may carry a static diagnostic stage label (for example
+   * `CORRUPT_VAULT:parse-data`). It must never contain paths, secrets, or vault content; IPC
+   * strips it before reaching the renderer and only logs it in the main process.
+   */
+  constructor(code: VaultErrorCode, message: string = code) {
     super(message)
     this.name = 'VaultError'
     this.code = code

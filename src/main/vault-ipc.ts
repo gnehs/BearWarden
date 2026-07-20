@@ -2141,7 +2141,13 @@ function registerTrustedHandler<T>(
     try {
       return await handler(event, input)
     } catch (error) {
-      if (isVaultError(error)) throw publicError(error.code)
+      if (isVaultError(error)) {
+        // Stage-tagged failures carry a static diagnostic label in their message (never paths,
+        // secrets, or vault content). Surface it in the main-process log so intermittent faults
+        // like CORRUPT_VAULT can be traced to their exact throw site.
+        if (error.message !== error.code) console.error(`[vault-ipc] ${channel}: ${error.message}`)
+        throw publicError(error.code)
+      }
       throw publicError('INTERNAL_ERROR')
     }
   })
