@@ -355,6 +355,7 @@ function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
     'clearClipboardSeconds',
     'defaultSort',
     'theme',
+    'autofillEnabled',
     'sshAgentEnabled',
     'sshAgentPromptBehavior'
   ])
@@ -418,6 +419,10 @@ function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
       throw new VaultError('INVALID_INPUT')
     }
     result.theme = record.theme
+  }
+  if (record.autofillEnabled !== undefined) {
+    if (typeof record.autofillEnabled !== 'boolean') throw new VaultError('INVALID_INPUT')
+    result.autofillEnabled = record.autofillEnabled
   }
   if (record.sshAgentEnabled !== undefined) {
     if (typeof record.sshAgentEnabled !== 'boolean') throw new VaultError('INVALID_INPUT')

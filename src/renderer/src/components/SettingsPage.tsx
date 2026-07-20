@@ -6,6 +6,7 @@ import {
   Download,
   Fingerprint,
   Info,
+  Keyboard,
   KeyRound,
   LockKeyhole,
   LockKeyholeOpen,
@@ -18,6 +19,7 @@ import type {
   AccountStatus,
   AppSettings,
   AppSettingsUpdate,
+  AutofillFeatureStatus,
   PinUnlockStatus,
   SshAgentPromptBehavior,
   SshAgentStatus,
@@ -74,6 +76,7 @@ import PersonalVaultPurgeDialog from './PersonalVaultPurgeDialog'
 import AuxiliaryPageLayout, { AuxiliaryPageContent } from './AuxiliaryPageLayout'
 import AboutPage from './AboutPage'
 import { CopyFeedbackIcon } from './CopyFeedbackIcon'
+import AutofillShortcut from './AutofillShortcut'
 import {
   SettingsCard,
   SettingsCardContent,
@@ -92,12 +95,25 @@ export const contentProtectionDescription =
   '啟用後，Windows 遠端桌面、螢幕分享與錄影可能看不到 BearWarden 視窗。若只剩工作列圖示，請在本機工作階段關閉此選項。'
 
 // eslint-disable-next-line react-refresh/only-export-components
+export function autofillStatusPresentation(
+  enabled: boolean,
+  status: AutofillFeatureStatus | null
+): { label: string; variant: 'default' | 'secondary' | 'destructive' } {
+  if (!status) return { label: '檢查中', variant: 'secondary' }
+  if (!status.available) return { label: '僅 macOS', variant: 'secondary' }
+  if (!enabled) return { label: '未啟用', variant: 'secondary' }
+  if (!status.shortcutRegistered) return { label: '快捷鍵衝突', variant: 'destructive' }
+  if (!status.accessibilityTrusted) return { label: '需要權限', variant: 'destructive' }
+  return { label: '可使用', variant: 'default' }
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
 export const settingsCategories = [
   { id: 'general', label: '一般', description: '外觀與預設行為', icon: Palette },
   { id: 'security', label: '安全與解鎖', description: '鎖定與解鎖方式', icon: ShieldCheck },
   { id: 'privacy', label: '隱私', description: '剪貼簿與網站圖示', icon: ClipboardCheck },
   { id: 'accounts', label: '帳號與同步', description: '本機帳號與雲端連線', icon: Cloud },
-  { id: 'tools', label: '工具與資料', description: 'SSH Agent 與備份', icon: KeyRound },
+  { id: 'tools', label: '工具與資料', description: '自動填入、SSH Agent 與備份', icon: KeyRound },
   { id: 'about', label: '關於', description: '版本與更新資訊', icon: Info }
 ] as const
 
@@ -185,7 +201,7 @@ export function vaultTimeoutCustomValidationMessage(hours: string, minutes: stri
 export function applyVaultTimeoutCustomFields(
   hours: string,
   minutes: string,
-  onUpdate: (update: AppSettingsUpdate) => Promise<void>
+  onUpdate: (update: AppSettingsUpdate) => Promise<unknown>
 ): string | null {
   const validationMessage = vaultTimeoutCustomValidationMessage(hours, minutes)
   if (validationMessage) return validationMessage
@@ -198,7 +214,7 @@ export function applyVaultTimeoutCustomFields(
 interface VaultTimeoutCustomFieldsProps {
   policy: VaultTimeoutPolicy
   disabled: boolean
-  onUpdate: (update: AppSettingsUpdate) => Promise<void>
+  onUpdate: (update: AppSettingsUpdate) => Promise<unknown>
 }
 
 function VaultTimeoutCustomFields({
@@ -314,7 +330,7 @@ interface SettingsPageProps {
   settingsBusy: boolean
   syncStatus: SyncStatus
   touchIdPassword: string
-  onUpdate: (update: AppSettingsUpdate) => Promise<void>
+  onUpdate: (update: AppSettingsUpdate) => Promise<boolean | void>
   onTouchIdPasswordChange: (value: string) => void
   onEnableTouchId: () => Promise<void>
   onDisableTouchId: () => Promise<void>
@@ -361,6 +377,11 @@ function SettingsPage({
   onRemoveAccount
 }: SettingsPageProps): React.JSX.Element {
   const [sshAgentStatus, setSshAgentStatus] = useState<SshAgentStatus>(initialSshAgentStatus)
+  const [autofillStatus, setAutofillStatus] = useState<AutofillFeatureStatus | null>(null)
+  const [autofillPermissionBusy, setAutofillPermissionBusy] = useState(false)
+  const [autofillOperationBusy, setAutofillOperationBusy] = useState(false)
+  const [autofillFeedback, setAutofillFeedback] = useState('')
+  const autofillStatusEpochRef = useRef(0)
   const { copiedKey, clearCopied, showCopied } = useCopyFeedback()
   const [pinStatus, setPinStatus] = useState<PinUnlockStatus>({
     available: false,
@@ -399,6 +420,28 @@ function SettingsPage({
     return () => {
       active = false
       unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    const refresh = (): void => {
+      const epoch = ++autofillStatusEpochRef.current
+      void window.bearwarden.autofill.status().then(
+        (status) => {
+          if (active && epoch === autofillStatusEpochRef.current) setAutofillStatus(status)
+        },
+        () => {
+          if (active) setAutofillFeedback('無法讀取自動填入狀態。')
+        }
+      )
+    }
+    refresh()
+    window.addEventListener('focus', refresh)
+    return () => {
+      active = false
+      autofillStatusEpochRef.current += 1
+      window.removeEventListener('focus', refresh)
     }
   }, [])
 
@@ -472,6 +515,10 @@ function SettingsPage({
     settings?.sshAgentEnabled ?? false,
     sshAgentStatus
   )
+  const autofillStatusPresentationValue = autofillStatusPresentation(
+    settings?.autofillEnabled ?? false,
+    autofillStatus
+  )
   const sshAgentEndpoint = sshAgentStatus.endpoint
   const usesWindowsNamedPipe = isWindowsSshAgentEndpoint(sshAgentEndpoint)
   const sshAgentCommand = usesWindowsNamedPipe
@@ -486,6 +533,67 @@ function SettingsPage({
       showCopied('ssh-agent-command')
     } catch {
       clearCopied()
+    }
+  }
+
+  async function refreshAutofillStatus(): Promise<void> {
+    const epoch = ++autofillStatusEpochRef.current
+    try {
+      const status = await window.bearwarden.autofill.status()
+      if (epoch !== autofillStatusEpochRef.current) return
+      setAutofillStatus(status)
+      setAutofillFeedback('已重新檢查輔助使用與快捷鍵狀態。')
+    } catch {
+      if (epoch !== autofillStatusEpochRef.current) return
+      setAutofillFeedback('無法讀取自動填入狀態。')
+    }
+  }
+
+  async function updateAutofillEnabled(enabled: boolean): Promise<void> {
+    if (autofillOperationBusy) return
+    setAutofillOperationBusy(true)
+    setAutofillFeedback('')
+    try {
+      const saved = await onUpdate({ autofillEnabled: enabled })
+      if (saved === false) {
+        setAutofillFeedback('自動填入設定未能儲存，快捷鍵狀態沒有變更。')
+        return
+      }
+      const epoch = ++autofillStatusEpochRef.current
+      const status = await window.bearwarden.autofill.status()
+      if (epoch !== autofillStatusEpochRef.current) return
+      setAutofillStatus(status)
+      if (enabled && !status.shortcutRegistered) {
+        setAutofillFeedback('全域自動填入快捷鍵已被其他程式使用；請先停用另一個程式的相同快捷鍵。')
+      }
+    } catch {
+      setAutofillFeedback('無法更新自動填入設定。')
+    } finally {
+      setAutofillOperationBusy(false)
+    }
+  }
+
+  async function requestAutofillAccessibility(): Promise<void> {
+    if (autofillOperationBusy) return
+    setAutofillOperationBusy(true)
+    setAutofillPermissionBusy(true)
+    setAutofillFeedback('')
+    const epoch = ++autofillStatusEpochRef.current
+    try {
+      const status = await window.bearwarden.autofill.requestAccessibility()
+      if (epoch !== autofillStatusEpochRef.current) return
+      setAutofillStatus(status)
+      setAutofillFeedback(
+        status.accessibilityTrusted
+          ? '輔助使用權限已開啟，可以使用跨瀏覽器自動填入。'
+          : '請在「系統設定 → 隱私權與安全性 → 輔助使用」允許 BearWarden，再回來重新檢查。'
+      )
+    } catch {
+      if (epoch !== autofillStatusEpochRef.current) return
+      setAutofillFeedback('無法要求輔助使用權限，請改由系統設定手動開啟。')
+    } finally {
+      setAutofillPermissionBusy(false)
+      setAutofillOperationBusy(false)
     }
   }
 
@@ -1109,6 +1217,109 @@ function SettingsPage({
               </SettingsCard>
             </SettingsCategoryContent>
             <SettingsCategoryContent value="tools">
+              <SettingsCard aria-labelledby="autofill-settings-title">
+                <CardHeader>
+                  <SettingsCardHeading
+                    id="autofill-settings-title"
+                    icon={Keyboard}
+                    title="跨瀏覽器自動填入"
+                    description={
+                      <>
+                        在支援的瀏覽器中按 <AutofillShortcut />
+                        ，依目前網站匹配並填入登入資料。
+                      </>
+                    }
+                  />
+                  <CardAction>
+                    <Badge variant={autofillStatusPresentationValue.variant}>
+                      {autofillStatusPresentationValue.label}
+                    </Badge>
+                  </CardAction>
+                </CardHeader>
+                <SettingsCardContent flush>
+                  <FieldGroup className="gap-0">
+                    <SettingsRow data-disabled={autofillStatus?.available === false}>
+                      <FieldContent>
+                        <FieldLabel htmlFor="autofill-switch">
+                          啟用 <AutofillShortcut /> 自動填入
+                        </FieldLabel>
+                        <FieldDescription id="autofill-description">
+                          只在你按下快捷鍵時讀取前景瀏覽器的網址與表單；多筆匹配會顯示迷你選擇器。
+                        </FieldDescription>
+                      </FieldContent>
+                      <Switch
+                        id="autofill-switch"
+                        checked={settings.autofillEnabled}
+                        disabled={
+                          settingsBusy || autofillOperationBusy || !autofillStatus?.available
+                        }
+                        aria-describedby="autofill-description"
+                        onCheckedChange={(checked) => void updateAutofillEnabled(checked)}
+                      />
+                    </SettingsRow>
+                    {settings.autofillEnabled && autofillStatus?.available && (
+                      <>
+                        <Separator />
+                        <SettingsStackedRow>
+                          <FieldLabel>輔助使用權限</FieldLabel>
+                          <FieldDescription>
+                            {autofillStatus.accessibilityTrusted
+                              ? '已允許 BearWarden 控制目前瀏覽器，可執行自動填入。'
+                              : 'macOS 需要你在「系統設定 → 隱私權與安全性 → 輔助使用」允許 BearWarden；若清單顯示自動填入輔助程式，也請一併允許。若曾拒絕，系統可能不會再次顯示提示。'}
+                          </FieldDescription>
+                          <div className="flex flex-wrap gap-2">
+                            {!autofillStatus.accessibilityTrusted && (
+                              <Button
+                                variant="default"
+                                size="sm"
+                                type="button"
+                                disabled={autofillPermissionBusy || autofillOperationBusy}
+                                onClick={() => void requestAutofillAccessibility()}
+                              >
+                                {autofillPermissionBusy ? <Spinner /> : null}
+                                要求輔助使用權限
+                              </Button>
+                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              type="button"
+                              disabled={autofillPermissionBusy || autofillOperationBusy}
+                              onClick={() => void refreshAutofillStatus()}
+                            >
+                              重新檢查
+                            </Button>
+                          </div>
+                        </SettingsStackedRow>
+                        {!autofillStatus.shortcutRegistered && (
+                          <>
+                            <Separator />
+                            <SettingsStackedRow>
+                              <FieldLabel>
+                                <AutofillShortcut /> 無法註冊
+                              </FieldLabel>
+                              <FieldDescription>
+                                這個快捷鍵已被其他程式使用（例如
+                                1Password）。請先停用另一個程式的相同快捷鍵，再重新檢查。
+                              </FieldDescription>
+                            </SettingsStackedRow>
+                          </>
+                        )}
+                        {autofillFeedback && (
+                          <>
+                            <Separator />
+                            <SettingsStackedRow>
+                              <FieldLabel>設定狀態</FieldLabel>
+                              <FieldDescription role="status">{autofillFeedback}</FieldDescription>
+                            </SettingsStackedRow>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </FieldGroup>
+                </SettingsCardContent>
+              </SettingsCard>
+
               <SettingsCard aria-labelledby="ssh-agent-settings-title">
                 <CardHeader>
                   <SettingsCardHeading

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   applyVaultTimeoutCustomFields,
+  autofillStatusPresentation,
   contentProtectionDescription,
   settingsCategories,
   vaultTimeoutCustomFields,
@@ -8,6 +9,27 @@ import {
   vaultTimeoutItems,
   vaultTimeoutSelectValue
 } from './SettingsPage'
+
+describe('AutoFill setup status', () => {
+  const base = {
+    available: true,
+    enabled: true,
+    shortcutRegistered: true,
+    accessibilityTrusted: true
+  } as const
+
+  it('distinguishes unsupported, disabled, shortcut conflict, permission, and ready states', () => {
+    expect(autofillStatusPresentation(false, { ...base, available: false }).label).toBe('僅 macOS')
+    expect(autofillStatusPresentation(false, base).label).toBe('未啟用')
+    expect(autofillStatusPresentation(true, { ...base, shortcutRegistered: false }).label).toBe(
+      '快捷鍵衝突'
+    )
+    expect(autofillStatusPresentation(true, { ...base, accessibilityTrusted: false }).label).toBe(
+      '需要權限'
+    )
+    expect(autofillStatusPresentation(true, base).label).toBe('可使用')
+  })
+})
 
 describe('content protection guidance', () => {
   it('warns that enabling capture protection can hide the window in remote sessions', () => {

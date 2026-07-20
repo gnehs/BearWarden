@@ -730,6 +730,19 @@ describe('registerVaultIpc settings validation', () => {
     expect(settings.update).toHaveBeenCalledTimes(1)
   })
 
+  it('accepts only a boolean AutoFill opt-in preference', async () => {
+    const { event, settings } = settingsHarness()
+    const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!
+
+    await expect(update(event, { autofillEnabled: true })).resolves.toEqual({
+      autofillEnabled: true
+    })
+    expect(settings.update).toHaveBeenCalledWith({ autofillEnabled: true })
+    await expect(update(event, { autofillEnabled: 'true' })).rejects.toThrow(
+      'BEARWARDEN:INVALID_INPUT'
+    )
+  })
+
   it('whitelists and validates the start-at-login preference', async () => {
     const { event, settings } = settingsHarness()
     const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!

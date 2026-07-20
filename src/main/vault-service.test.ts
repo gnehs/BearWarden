@@ -749,6 +749,102 @@ afterEach(async () => {
 })
 
 describe('VaultService encrypted local data', () => {
+  it('discovers AutoFill matches without exposing secrets and revalidates before native fill', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const login = await service.createLogin({
+      name: 'Example login',
+      username: 'safe-user',
+      password: 'never-render-this-secret',
+      uris: [{ uri: 'https://example.test/login', match: 0 }]
+    })
+    await service.createLogin({
+      name: 'Unrelated',
+      username: 'other-user',
+      password: 'other-secret',
+      uris: [{ uri: 'https://unrelated.test', match: 0 }]
+    })
+
+    const discovery = await service.discoverAutofillCandidates(
+      'https://accounts.example.test/session?temporary=token#fragment'
+    )
+
+    expect(discovery.candidates).toEqual([
+      {
+        id: login.id,
+        name: 'Example login',
+        username: 'safe-user',
+        hostname: 'accounts.example.test',
+        reprompt: 0,
+        updatedAt: login.updatedAt
+      }
+    ])
+    expect(JSON.stringify(discovery)).not.toContain('never-render-this-secret')
+    expect(JSON.stringify(discovery)).not.toContain('other-secret')
+
+    const consume = vi.fn(async () => undefined)
+    await service.performAutofill(
+      {
+        itemId: login.id,
+        targetUrl: discovery.targetUrl,
+        expectedGeneration: discovery.generation,
+        expectedUpdatedAt: login.updatedAt
+      },
+      () => false,
+      consume
+    )
+    expect(consume).toHaveBeenCalledWith({
+      username: 'safe-user',
+      password: 'never-render-this-secret'
+    })
+
+    await expect(
+      service.performAutofill(
+        {
+          itemId: login.id,
+          targetUrl: 'https://phishing.test',
+          expectedGeneration: discovery.generation,
+          expectedUpdatedAt: login.updatedAt
+        },
+        () => true,
+        vi.fn()
+      )
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+  })
+
+  it('redacts protected AutoFill usernames and requires the existing reprompt authorization', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const login = await service.createLogin({
+      name: 'Protected login',
+      username: 'protected-user',
+      password: 'protected-secret',
+      reprompt: 1,
+      uris: [{ uri: 'https://protected.example.test', match: 1 }]
+    })
+    const discovery = await service.discoverAutofillCandidates(
+      'https://protected.example.test/form'
+    )
+    expect(discovery.candidates[0]).toMatchObject({ username: '', reprompt: 1 })
+    const consume = vi.fn(async () => undefined)
+    const request = {
+      itemId: login.id,
+      targetUrl: discovery.targetUrl,
+      expectedGeneration: discovery.generation,
+      expectedUpdatedAt: login.updatedAt
+    }
+
+    await expect(service.performAutofill(request, () => false, consume)).rejects.toMatchObject({
+      code: 'REPROMPT_REQUIRED'
+    })
+    expect(consume).not.toHaveBeenCalled()
+    await service.performAutofill(request, () => true, consume)
+    expect(consume).toHaveBeenCalledWith({
+      username: 'protected-user',
+      password: 'protected-secret'
+    })
+  })
+
   it('changes remote then local master password, invalidates PIN, and clears sync session', async () => {
     let client!: ReturnType<typeof createSyncFake>
     const { service } = await createHarness({

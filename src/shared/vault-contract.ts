@@ -75,6 +75,12 @@ export const IPC_CHANNELS = {
   passkeyDelete: 'passkey:delete',
   passkeyVerifyApproval: 'passkey:verify-approval',
   passkeyRespondApproval: 'passkey:respond-approval',
+  autofillCurrent: 'autofill:current',
+  autofillSelect: 'autofill:select',
+  autofillCancel: 'autofill:cancel',
+  autofillOpenMain: 'autofill:open-main',
+  autofillStatus: 'autofill:status',
+  autofillRequestAccessibility: 'autofill:request-accessibility',
   loginContextMenu: 'login:context-menu',
   loginWebsiteIcon: 'login:website-icon',
   itemRevealEditorSecrets: 'item:reveal-editor-secrets',
@@ -164,6 +170,7 @@ export const IPC_EVENTS = {
   attachmentProgress: 'attachment:progress',
   nativeRestoreProgress: 'vault:native-restore-progress',
   passkeyApprovalRequested: 'passkey:approval-requested',
+  autofillPromptChanged: 'autofill:prompt-changed',
   sshAgentApprovalRequested: 'ssh-agent:approval-requested',
   sshAgentStatusChanged: 'ssh-agent:status-changed',
   appUpdateStateChanged: 'app-update:state-changed'
@@ -1636,6 +1643,59 @@ export interface PasskeyApprovalVerificationRequest {
   masterPassword: string
 }
 
+export type AutofillPromptErrorCode =
+  | 'NO_MATCHES'
+  | 'LOCKED'
+  | 'REPROMPT_REQUIRED'
+  | 'ACCESSIBILITY_PERMISSION_DENIED'
+  | 'UNSUPPORTED_APPLICATION'
+  | 'URL_UNAVAILABLE'
+  | 'FOCUSED_WINDOW_UNAVAILABLE'
+  | 'FOCUSED_ELEMENT_UNAVAILABLE'
+  | 'FOCUSED_FIELD_NOT_EDITABLE'
+  | 'FOCUSED_FIELD_OUTSIDE_WEB_CONTENT'
+  | 'ADDRESS_FIELD_FOCUSED'
+  | 'TARGET_NOT_FOUND'
+  | 'CONTEXT_CHANGED'
+  | 'FILL_FAILED'
+  | 'UNAVAILABLE'
+
+export interface AutofillChoice {
+  readonly id: string
+  readonly name: string
+  /** Empty for protected items until the main app performs item reprompt. */
+  readonly username: string
+  readonly hostname: string
+  readonly reprompt: VaultReprompt
+}
+
+/** Renderer-safe state for the isolated quick-access window. */
+export interface AutofillPrompt {
+  readonly requestId: string
+  readonly browser: string
+  readonly hostname: string
+  readonly status: 'ready' | 'filling' | 'error'
+  readonly choices: readonly AutofillChoice[]
+  readonly error?: AutofillPromptErrorCode
+}
+
+export interface AutofillSelectionRequest {
+  readonly requestId: string
+  readonly itemId: string
+}
+
+export interface AutofillPromptRequest {
+  readonly requestId: string
+}
+
+/** Renderer-safe macOS AutoFill state. Browser context and credentials stay in main. */
+export interface AutofillFeatureStatus {
+  readonly available: boolean
+  readonly enabled: boolean
+  readonly shortcutRegistered: boolean
+  readonly accessibilityTrusted: boolean
+}
+
 /** Upper bound keeps storage, IPC, and timer calculations within safe limits. */
 export const MAX_VAULT_TIMEOUT_MINUTES = 525_600
 
@@ -1663,6 +1723,8 @@ export interface AppSettings {
   clearClipboardSeconds: 0 | 15 | 30 | 60 | 120
   defaultSort: LoginSort
   theme: AppTheme
+  /** Enables the macOS Ctrl+\\ cross-browser AutoFill shortcut. */
+  autofillEnabled: boolean
   /** Whether BearWarden exposes SSH keys through the local SSH agent socket. */
   sshAgentEnabled: boolean
   /** Controls whether individual SSH signing requests require user approval. */
@@ -1825,6 +1887,15 @@ export interface BearWardenAPI {
     verifyApproval: (request: PasskeyApprovalVerificationRequest) => Promise<void>
     respondApproval: (response: PasskeyApprovalResponse) => Promise<void>
     onApprovalRequested: (listener: (request: PasskeyApprovalPrompt) => void) => () => void
+  }
+  autofill: {
+    status: () => Promise<AutofillFeatureStatus>
+    requestAccessibility: () => Promise<AutofillFeatureStatus>
+    current: () => Promise<AutofillPrompt | null>
+    select: (request: AutofillSelectionRequest) => Promise<void>
+    cancel: (request: AutofillPromptRequest) => Promise<void>
+    openMain: (request: AutofillPromptRequest) => Promise<void>
+    onPromptChanged: (listener: (prompt: AutofillPrompt | null) => void) => () => void
   }
   generator: {
     generate: (request: CredentialGeneratorRequest) => Promise<CredentialGeneratorResult>

@@ -2,6 +2,7 @@ node_modules
 .pnpm-store/
 dist
 out
+resources/bin/
 .DS_Store
 .eslintcache
 *.tsbuildinfo

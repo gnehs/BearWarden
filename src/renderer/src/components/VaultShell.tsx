@@ -2747,7 +2747,7 @@ function VaultShell({
     pending?.reject(new Error('REPROMPT_REQUIRED'))
   }
 
-  async function updateSettings(update: AppSettingsUpdate): Promise<void> {
+  async function updateSettings(update: AppSettingsUpdate): Promise<boolean> {
     setSettingsBusy(true)
     try {
       const next = await window.bearwarden.settings.update(update)
@@ -2756,8 +2756,10 @@ function VaultShell({
         setSortMode(update.defaultSort === 'name' ? 'title' : update.defaultSort)
       }
       announce('設定已儲存。')
+      return true
     } catch (settingsError) {
       announceError(describeError(settingsError))
+      return false
     } finally {
       setSettingsBusy(false)
     }

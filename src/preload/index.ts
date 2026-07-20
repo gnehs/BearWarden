@@ -169,6 +169,22 @@ const api: BearWardenAPI = {
       return () => ipcRenderer.removeListener(IPC_EVENTS.passkeyApprovalRequested, wrappedListener)
     }
   },
+  autofill: {
+    status: () => ipcRenderer.invoke(IPC_CHANNELS.autofillStatus),
+    requestAccessibility: () => ipcRenderer.invoke(IPC_CHANNELS.autofillRequestAccessibility),
+    current: () => ipcRenderer.invoke(IPC_CHANNELS.autofillCurrent),
+    select: (request) => ipcRenderer.invoke(IPC_CHANNELS.autofillSelect, request),
+    cancel: (request) => ipcRenderer.invoke(IPC_CHANNELS.autofillCancel, request),
+    openMain: (request) => ipcRenderer.invoke(IPC_CHANNELS.autofillOpenMain, request),
+    onPromptChanged: (listener) => {
+      const wrappedListener = (
+        _event: IpcRendererEvent,
+        prompt: Parameters<typeof listener>[0]
+      ): void => listener(prompt)
+      ipcRenderer.on(IPC_EVENTS.autofillPromptChanged, wrappedListener)
+      return () => ipcRenderer.removeListener(IPC_EVENTS.autofillPromptChanged, wrappedListener)
+    }
+  },
   generator: {
     generate: (request) => ipcRenderer.invoke(IPC_CHANNELS.generatorGenerate, request),
     copyGenerated: (request) => ipcRenderer.invoke(IPC_CHANNELS.generatorGeneratedCopy, request),

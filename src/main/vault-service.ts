@@ -173,6 +173,12 @@ import {
   resolveWebsiteIconUrl
 } from './website-icon'
 import { createUriMatchBudget, loginUrisMatch } from './uri-matcher'
+import type {
+  AutofillAuthorizationValidator,
+  AutofillCredentialConsumer,
+  AutofillDiscoveryResult,
+  AutofillExecutionRequest
+} from './autofill'
 import { validatePasskeyOrigin } from './passkey-origin-validation'
 import type { AccountWebAuthnAssertion } from './account-webauthn-codec'
 import type { AccountWebAuthnAttestation } from './account-webauthn-registration-codec'
@@ -5210,6 +5216,137 @@ export class VaultService {
       login.passkeys.splice(matchingIndexes[0]!, 1)
       login.updatedAt = now
       return toView(login)
+    })
+  }
+
+  /**
+   * Discovers URL matches without exposing passwords. The URL is validated and matching stays in
+   * main so a compromised renderer cannot ask for a broad vault search disguised as AutoFill.
+   */
+  discoverAutofillCandidates(targetUrl: string): Promise<AutofillDiscoveryResult> {
+    return this.exclusive(async () => {
+      let canonicalUrl: string
+      try {
+        const parsed = new URL(targetUrl)
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+          throw new VaultError('INVALID_INPUT')
+        }
+        parsed.username = ''
+        parsed.password = ''
+        canonicalUrl = parsed.toString()
+      } catch (error) {
+        if (error instanceof VaultError) throw error
+        throw new VaultError('INVALID_INPUT')
+      }
+      if (canonicalUrl.length > MAX_URI_LENGTH) throw new VaultError('INVALID_INPUT')
+
+      const data = this.requireData()
+      const hostname = new URL(canonicalUrl).hostname
+      const matchBudget = createUriMatchBudget()
+      const usageCounts = new Map(data.logins.map((login) => [login.id, login.usageCount]))
+      const candidates = data.logins.flatMap((login) => {
+        if (
+          login.type !== 'login' ||
+          login.deletedAt !== null ||
+          login.archivedAt !== null ||
+          !loginUrisMatch(
+            login.uris,
+            canonicalUrl,
+            data.sync?.domainSettings ?? null,
+            0,
+            matchBudget
+          )
+        ) {
+          return []
+        }
+        return [
+          {
+            id: login.id,
+            name: login.name,
+            // Preserve the existing reprompt privacy rule used by vault summaries.
+            username: login.reprompt === 1 ? '' : login.username,
+            hostname,
+            reprompt: login.reprompt,
+            updatedAt: login.updatedAt
+          }
+        ]
+      })
+      candidates.sort((left, right) => {
+        const usageDifference = (usageCounts.get(right.id) ?? 0) - (usageCounts.get(left.id) ?? 0)
+        return usageDifference || compareText(left.name, right.name)
+      })
+      return { generation: this.generation, targetUrl: canonicalUrl, candidates }
+    })
+  }
+
+  /**
+   * Atomically revalidates the URL match and revision, authorizes reprompt, consumes credentials
+   * inside main, and records usage only after the native fill succeeds.
+   */
+  performAutofill(
+    request: AutofillExecutionRequest,
+    validateAuthorization: AutofillAuthorizationValidator,
+    consume: AutofillCredentialConsumer
+  ): Promise<void> {
+    return this.runAuthorizedOperation(validateAuthorization, async (authorize) => {
+      if (
+        !Number.isSafeInteger(request.expectedGeneration) ||
+        request.expectedGeneration < 0 ||
+        request.expectedGeneration !== this.generation
+      ) {
+        throw new VaultError('LOCKED')
+      }
+      assertUuid(request.itemId)
+      if (typeof request.expectedUpdatedAt !== 'string') throw new VaultError('INVALID_INPUT')
+
+      let canonicalUrl: string
+      try {
+        const parsed = new URL(request.targetUrl)
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+          throw new VaultError('INVALID_INPUT')
+        }
+        parsed.username = ''
+        parsed.password = ''
+        canonicalUrl = parsed.toString()
+      } catch (error) {
+        if (error instanceof VaultError) throw error
+        throw new VaultError('INVALID_INPUT')
+      }
+      if (canonicalUrl.length > MAX_URI_LENGTH) throw new VaultError('INVALID_INPUT')
+
+      const current = this.requireData()
+      assertNoPendingPersonalVaultPurge(current.sync)
+      const login = this.findLogin(current, request.itemId)
+      this.assertActiveLogin(login)
+      if (
+        login.type !== 'login' ||
+        login.archivedAt !== null ||
+        login.updatedAt !== request.expectedUpdatedAt ||
+        !loginUrisMatch(
+          login.uris,
+          canonicalUrl,
+          current.sync?.domainSettings ?? null,
+          0,
+          createUriMatchBudget()
+        )
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+
+      authorize([login.id])
+      const generation = this.generation
+      await consume({ username: login.username, password: login.password })
+      if (generation !== this.generation) throw new VaultError('LOCKED')
+
+      const next = cloneData(current)
+      const usedLogin = this.findLogin(next, login.id)
+      const now = this.nowIso()
+      usedLogin.usageCount = Math.min(Number.MAX_SAFE_INTEGER, usedLogin.usageCount + 1)
+      usedLogin.lastUsedAt = now
+      next.updatedAt = now
+      await this.persist(next)
+      if (generation !== this.generation) throw new VaultError('LOCKED')
+      this.data = next
     })
   }
 

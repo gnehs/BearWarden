@@ -30,6 +30,22 @@ beforeAll(async () => {
   await import('./index')
 })
 
+describe('preload AutoFill settings API', () => {
+  it('exposes narrow status and explicit permission-request calls', async () => {
+    electronMock.invoke.mockClear()
+    const api = electronMock.exposed() as BearWardenAPI
+
+    await api.autofill.status()
+    await api.autofill.requestAccessibility()
+
+    expect(electronMock.invoke.mock.calls).toEqual([
+      [IPC_CHANNELS.autofillStatus],
+      [IPC_CHANNELS.autofillRequestAccessibility]
+    ])
+    electronMock.invoke.mockClear()
+  })
+})
+
 describe('preload account API', () => {
   it('exposes the typed namespace with only narrow account IPC payloads', async () => {
     const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI

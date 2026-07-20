@@ -26,6 +26,7 @@ type TestMock = ReturnType<typeof vi.fn>
 interface TestRuntime {
   applyContentProtection: TestMock
   applyClipboardTimeout: TestMock
+  applyAutofillEnabled: TestMock
   applySshAgentSettings: TestMock
   getStartAtLoginStatus: TestMock
   setStartAtLogin: TestMock
@@ -80,6 +81,7 @@ describe('AppSettingsService', () => {
     const runtime = {
       applyContentProtection: vi.fn(),
       applyClipboardTimeout: vi.fn(),
+      applyAutofillEnabled: vi.fn(),
       applySshAgentSettings: vi.fn(),
       getStartAtLoginStatus: vi.fn(() => ({
         available: false,
@@ -127,6 +129,7 @@ describe('AppSettingsService', () => {
       clearClipboardSeconds: 30,
       defaultSort: 'recent',
       theme: 'system',
+      autofillEnabled: false,
       sshAgentEnabled: false,
       sshAgentPromptBehavior: 'always'
     })
@@ -138,6 +141,7 @@ describe('AppSettingsService', () => {
       clearClipboardSeconds: 60,
       defaultSort: 'frequency',
       theme: 'dark',
+      autofillEnabled: true,
       sshAgentEnabled: true,
       sshAgentPromptBehavior: 'rememberUntilLock'
     })
@@ -148,17 +152,19 @@ describe('AppSettingsService', () => {
       clearClipboardSeconds: 60,
       defaultSort: 'frequency',
       theme: 'dark',
+      autofillEnabled: true,
       sshAgentEnabled: true,
       sshAgentPromptBehavior: 'rememberUntilLock'
     })
     expect(runtime.applyContentProtection).toHaveBeenLastCalledWith(true)
     expect(runtime.applyClipboardTimeout).toHaveBeenLastCalledWith(60)
+    expect(runtime.applyAutofillEnabled).toHaveBeenLastCalledWith(true)
     expect(runtime.applySshAgentSettings).toHaveBeenLastCalledWith({
       enabled: true,
       promptBehavior: 'rememberUntilLock'
     })
     expect(JSON.parse(await readFile(join(directory, 'settings.json'), 'utf8'))).toMatchObject({
-      version: 6,
+      version: 7,
       startAtLogin: false,
       defaultSort: 'frequency',
       sshAgentEnabled: true,
@@ -193,7 +199,10 @@ describe('AppSettingsService', () => {
       sshAgentPromptBehavior: 'always',
       vaultTimeoutPolicy: { type: 'appInactivity', minutes: 15 }
     })
-    expect(JSON.parse(await readFile(settingsPath, 'utf8'))).toMatchObject({ version: 6 })
+    expect(JSON.parse(await readFile(settingsPath, 'utf8'))).toMatchObject({
+      version: 7,
+      autofillEnabled: false
+    })
     service.dispose()
   })
 
@@ -269,7 +278,7 @@ describe('AppSettingsService', () => {
     [30, { type: 'appInactivity', minutes: 30 }],
     [60, { type: 'appInactivity', minutes: 60 }]
   ] as const)(
-    'migrates the version 4 timeout value %i to the v6 discriminated policy',
+    'migrates the version 4 timeout value %i to the v7 discriminated policy',
     async (autoLockMinutes, expectedPolicy) => {
       const settingsPath = join(directory, 'settings.json')
       await writeFile(
@@ -296,14 +305,18 @@ describe('AppSettingsService', () => {
         vaultTimeoutPolicy: expectedPolicy
       })
       const migrated = JSON.parse(await readFile(settingsPath, 'utf8'))
-      expect(migrated).toMatchObject({ version: 6, vaultTimeoutPolicy: expectedPolicy })
+      expect(migrated).toMatchObject({
+        version: 7,
+        autofillEnabled: false,
+        vaultTimeoutPolicy: expectedPolicy
+      })
       expect(migrated).not.toHaveProperty('autoLockMinutes')
       service.dispose()
     }
   )
 
   it.each([{ type: 'onRestart' }, { type: 'appInactivity', minutes: 240 }] as const)(
-    'migrates a valid version 5 policy to version 6: $type',
+    'migrates a valid version 5 policy to version 7: $type',
     async (vaultTimeoutPolicy) => {
       const settingsPath = join(directory, 'settings.json')
       await writeFile(
@@ -327,26 +340,38 @@ describe('AppSettingsService', () => {
       await service.initialize()
 
       await expect(service.get()).resolves.toMatchObject({ vaultTimeoutPolicy })
-      await expect(readFile(settingsPath, 'utf8')).resolves.toContain('"version":6')
+      await expect(readFile(settingsPath, 'utf8')).resolves.toContain('"version":7')
       service.dispose()
     }
   )
 
-  it('round-trips the version 6 system-idle policy', async () => {
+  it('migrates the version 6 system-idle policy without losing it', async () => {
     const settingsPath = join(directory, 'settings.json')
-    const first = createService(settingsPath)
-    await first.service.initialize()
-    await expect(
-      first.service.update({ vaultTimeoutPolicy: { type: 'systemIdle' } })
-    ).resolves.toMatchObject({ vaultTimeoutPolicy: { type: 'systemIdle' } })
-    first.service.dispose()
-
-    const reopened = createService(settingsPath)
-    await reopened.service.initialize()
-    await expect(reopened.service.get()).resolves.toMatchObject({
-      vaultTimeoutPolicy: { type: 'systemIdle' }
+    await writeFile(
+      settingsPath,
+      JSON.stringify({
+        version: 6,
+        contentProtection: true,
+        showWebsiteIcons: true,
+        startAtLogin: false,
+        vaultTimeoutPolicy: { type: 'systemIdle' },
+        lockOnScreenLock: true,
+        lockOnSuspend: true,
+        clearClipboardSeconds: 30,
+        defaultSort: 'recent',
+        theme: 'system',
+        sshAgentEnabled: false,
+        sshAgentPromptBehavior: 'always'
+      })
+    )
+    const { service } = createService(settingsPath)
+    await service.initialize()
+    await expect(service.get()).resolves.toMatchObject({
+      vaultTimeoutPolicy: { type: 'systemIdle' },
+      autofillEnabled: false
     })
-    reopened.service.dispose()
+    expect(JSON.parse(await readFile(settingsPath, 'utf8'))).toMatchObject({ version: 7 })
+    service.dispose()
   })
 
   it('preserves legacy settings bytes and blocks ordinary updates when copy-on-write migration fails', async () => {
@@ -385,7 +410,7 @@ describe('AppSettingsService', () => {
       vaultTimeoutPolicy: { type: 'appInactivity', minutes: 15 }
     })
     await expect(readFile(settingsPath, 'utf8')).resolves.toMatchObject(
-      expect.stringContaining('"version":6')
+      expect.stringContaining('"version":7')
     )
     retry.service.dispose()
   })
@@ -411,7 +436,7 @@ describe('AppSettingsService', () => {
     })
     expect(runtime.setStartAtLogin).toHaveBeenCalledWith(true)
     expect(JSON.parse(await readFile(join(directory, 'settings.json'), 'utf8'))).toMatchObject({
-      version: 6,
+      version: 7,
       startAtLogin: true
     })
     service.dispose()
@@ -501,7 +526,7 @@ describe('AppSettingsService', () => {
   })
 
   it.each([
-    '{"version":7,"unknown":"future"}',
+    '{"version":8,"unknown":"future"}',
     '{"version":5,"contentProtection":true,"showWebsiteIcons":true,"startAtLogin":false,"vaultTimeoutPolicy":{"type":"systemIdle"},"lockOnScreenLock":true,"lockOnSuspend":true,"clearClipboardSeconds":30,"defaultSort":"recent","theme":"system","sshAgentEnabled":false,"sshAgentPromptBehavior":"always"}',
     '{"version":5,"contentProtection":true,"showWebsiteIcons":true,"startAtLogin":false,"vaultTimeoutPolicy":{"type":"appInactivity","minutes":0},"lockOnScreenLock":true,"lockOnSuspend":true,"clearClipboardSeconds":30,"defaultSort":"recent","theme":"system","sshAgentEnabled":false,"sshAgentPromptBehavior":"always"}',
     '{"version":5,"contentProtection":true,"showWebsiteIcons":true,"startAtLogin":false,"vaultTimeoutPolicy":{"type":"onRestart","minutes":15},"lockOnScreenLock":true,"lockOnSuspend":true,"clearClipboardSeconds":30,"defaultSort":"recent","theme":"system","sshAgentEnabled":false,"sshAgentPromptBehavior":"always"}',

@@ -84,7 +84,7 @@ Phase 1 的純函式拆分，以及 Phase 2 的 `VaultGeneratorService`、`Vault
 
 此階段先做安全可行性閘門。現有 authenticator、create/get ceremony、操作級 UV、項目選擇與 provider-neutral ingress 已完成，但尚無可信的外部網站 transport。
 
-- [ ] 比較簽署瀏覽器擴充套件＋Native Messaging 與作業系統 credential provider，選定可驗證 caller 身分及來源的 transport。
+- [x] 比較簽署瀏覽器擴充套件＋Native Messaging 與作業系統 credential provider；macOS 選定 AuthenticationServices Credential Provider appex，威脅模型與分階段方案見 `docs/macos-credential-provider.md`。
 - [ ] 完成獨立威脅模型：偽造 caller、origin／RP ID 混淆、replay、renderer compromise、跨帳號／跨 vault generation、provider crash 與鎖庫競態。
 - [ ] transport 必須重用現有 URI matcher、等效網域、exact origin／RP ID、request digest、單次 capability 與 UV／reprompt gate。
 - [ ] challenge、credential ID、user handle、私鑰、assertion 與 capability 不得進一般 renderer。

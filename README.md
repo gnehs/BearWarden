@@ -37,6 +37,7 @@ brew install --cask gnehs/tap/bearwarden
 - 資料夾的新增、重新命名、排序與刪除
 - 拖放登入項目到資料夾，以及鍵盤可操作的移動選單
 - 全域搜尋、收藏、使用頻率、最近使用與最近修改排序
+- macOS 實驗性 `Ctrl+\\` 跨瀏覽器自動填入：以使用者授權的 Accessibility 讀取 Safari、Chrome、Edge、Arc、Brave、Vivaldi、Opera 或 Firefox 目前網址，單筆直接填入、多筆顯示鍵盤可操作的快速選擇器；填入前會重驗瀏覽器簽章、網址、欄位位置與密碼欄語意，無固定官方簽章的 Chromium 社群 build 不在支援範圍
 - 密碼預設遮蔽、明確揭露、複製及開啟網站
 - 產生 Bitwarden 相容的一次性驗證碼，支援 Base32、`otpauth://` 自訂演算法／位數／週期與 Steam Guard；無效或未來格式仍可原樣同步
 - 新增 SSH Key 項目時由主程序安全產生 Ed25519 金鑰，或從剪貼簿匯入 OpenSSH／PKCS#8 的 Ed25519、RSA 與 ECDSA 私鑰（含密碼保護），並正規化為相符的 OpenSSH 私鑰、公鑰與 `SHA256:` 指紋

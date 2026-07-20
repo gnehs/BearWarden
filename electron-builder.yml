@@ -20,6 +20,9 @@ nsis:
   createDesktopShortcut: always
 mac:
   icon: resources/icon.icon
+  extraResources:
+    - from: resources/bin/bearwarden-macos-autofill
+      to: bin/bearwarden-macos-autofill
   target:
     - dmg
     - zip

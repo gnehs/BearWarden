@@ -18,13 +18,14 @@
     "test:watch": "vitest",
     "prestart": "install-electron --no",
     "start": "node --require=./.github/scripts/electron-vite-stdout.cjs ./node_modules/electron-vite/bin/electron-vite.js preview",
-    "predev": "install-electron --no",
+    "build:native:mac": "./scripts/build-macos-autofill-helper.sh",
+    "predev": "install-electron --no && pnpm run build:native:mac",
     "dev": "node --require=./.github/scripts/electron-vite-stdout.cjs ./node_modules/electron-vite/bin/electron-vite.js dev",
     "build": "pnpm run typecheck && node --require=./.github/scripts/electron-vite-stdout.cjs ./node_modules/electron-vite/bin/electron-vite.js build",
     "postinstall": "install-electron --no",
-    "build:unpack": "pnpm run build && electron-builder --dir",
+    "build:unpack": "pnpm run build:native:mac && pnpm run build && electron-builder --dir",
     "build:win": "pnpm run build && electron-builder --win",
-    "build:mac": "pnpm run build && electron-builder --mac",
+    "build:mac": "pnpm run build:native:mac && pnpm run build && electron-builder --mac",
     "build:linux": "pnpm run build && electron-builder --linux"
   },
   "dependencies": {

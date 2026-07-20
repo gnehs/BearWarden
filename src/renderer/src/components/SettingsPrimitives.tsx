@@ -84,7 +84,7 @@ interface SettingsCardHeadingProps {
   id: string
   icon: LucideIcon
   title: string
-  description: string
+  description: React.ReactNode
 }
 
 function SettingsCardHeading({

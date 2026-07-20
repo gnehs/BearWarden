@@ -4,6 +4,16 @@ import { join } from 'node:path'
 
 const harness = vi.hoisted(() => {
   const appListeners = new Map<string, (...args: never[]) => void>()
+  let userDataPath = '/tmp/bearwarden-index-test'
+  const appLifecycleOrder: string[] = []
+  const appSetPath = vi.fn((name: string, path: string) => {
+    appLifecycleOrder.push(`setPath:${name}`)
+    if (name === 'userData') userDataPath = path
+  })
+  const requestSingleInstanceLock = vi.fn(() => {
+    appLifecycleOrder.push('requestSingleInstanceLock')
+    return true
+  })
   const powerMonitorListeners = new Map<string, (...args: never[]) => void>()
   const windows: FakeWindow[] = []
   let vaultOptions: Record<string, unknown> | null = null
@@ -123,7 +133,7 @@ const harness = vi.hoisted(() => {
     }
     restore(): void {}
     show(): void {}
-    focus(): void {}
+    focus = vi.fn()
     flashFrame(): void {}
     loadFile = vi.fn(async () => undefined)
   }
@@ -283,13 +293,19 @@ const harness = vi.hoisted(() => {
     vaultLock,
     lifecycleEvents,
     appQuit,
-    appRelaunch
+    appRelaunch,
+    appSetPath,
+    requestSingleInstanceLock,
+    appLifecycleOrder,
+    get userDataPath(): string {
+      return userDataPath
+    }
   }
 })
 
 vi.mock('electron', () => ({
   app: {
-    requestSingleInstanceLock: () => true,
+    requestSingleInstanceLock: harness.requestSingleInstanceLock,
     quit: harness.appQuit,
     relaunch: harness.appRelaunch,
     enableSandbox: vi.fn(),
@@ -297,16 +313,18 @@ vi.mock('electron', () => ({
     on: (event: string, listener: (...args: never[]) => void) =>
       harness.appListeners.set(event, listener),
     isActive: () => true,
-    getPath: () => '/tmp/bearwarden-index-test',
+    getPath: () => harness.userDataPath,
     getVersion: () => 'test',
     isPackaged: false,
+    setPath: harness.appSetPath,
     setAboutPanelOptions: vi.fn()
   },
   BrowserWindow: harness.FakeWindow,
   Notification: harness.FakeNotification,
   clipboard: { readText: () => '' },
   dialog: {},
-  ipcMain: { on: vi.fn() },
+  globalShortcut: { register: vi.fn(() => true), unregister: vi.fn() },
+  ipcMain: { on: vi.fn(), handle: vi.fn() },
   powerMonitor: {
     getSystemIdleTime: () => harness.systemIdleTime,
     on: (event: string, listener: (...args: never[]) => void) =>
@@ -317,6 +335,10 @@ vi.mock('electron', () => ({
       setPermissionRequestHandler: vi.fn(),
       setPermissionCheckHandler: vi.fn()
     }
+  },
+  screen: {
+    getCursorScreenPoint: () => ({ x: 0, y: 0 }),
+    getDisplayNearestPoint: () => ({ workArea: { x: 0, y: 0, width: 1200, height: 800 } })
   },
   shell: { openExternal: vi.fn() }
 }))
@@ -336,6 +358,23 @@ vi.mock('./auto-sync-coordinator', () => ({
     updateStatus = harness.autoSyncUpdateStatus
   }
 }))
+vi.mock('./autofill-coordinator', () => ({
+  AutofillCoordinator: class {
+    cancel(): void {}
+    dispose(): void {}
+    current(): null {
+      return null
+    }
+    select(): Promise<void> {
+      return Promise.resolve()
+    }
+    openMain(): void {}
+    trigger(): Promise<void> {
+      return Promise.resolve()
+    }
+  }
+}))
+vi.mock('./macos-autofill-adapter', () => ({ MacOSAutofillAdapter: class {} }))
 vi.mock('./bitwarden-notifications', () => ({
   BitwardenNotificationCoordinator: class {
     constructor(options: Record<string, unknown>) {
@@ -417,18 +456,15 @@ vi.mock('./account-removal-journal', () => ({
   }
 }))
 vi.mock('./account-storage-bootstrap', () => ({
-  bootstrapAccountStorage: vi.fn(async (_root: string, options: { registryStore: unknown }) => {
+  bootstrapAccountStorage: vi.fn(async (root: string, options: { registryStore: unknown }) => {
     harness.setBootstrapRegistryStore(options.registryStore)
     return {
       mode: 'account',
       activeAccountId: '11111111-1111-4111-8111-111111111111',
       paths: {
-        vaultPath:
-          '/tmp/bearwarden-index-test/accounts/11111111-1111-4111-8111-111111111111/vault/vault.json',
-        settingsPath:
-          '/tmp/bearwarden-index-test/accounts/11111111-1111-4111-8111-111111111111/account-settings.json',
-        touchIdPath:
-          '/tmp/bearwarden-index-test/accounts/11111111-1111-4111-8111-111111111111/touch-id.bin'
+        vaultPath: `${root}/accounts/11111111-1111-4111-8111-111111111111/vault/vault.json`,
+        settingsPath: `${root}/accounts/11111111-1111-4111-8111-111111111111/account-settings.json`,
+        touchIdPath: `${root}/accounts/11111111-1111-4111-8111-111111111111/touch-id.bin`
       }
     }
   })
@@ -560,22 +596,26 @@ beforeAll(async () => {
 
 describe('main WebAuthn lifecycle wiring', () => {
   it('wires vault secrets to the active storage while keeping the 2FA cache global', () => {
+    const developmentRoot = '/tmp/bearwarden-index-test-development'
+    expect(harness.appSetPath).toHaveBeenCalledWith('userData', developmentRoot)
+    expect(harness.appLifecycleOrder.slice(0, 2)).toEqual([
+      'setPath:userData',
+      'requestSingleInstanceLock'
+    ])
     expect(harness.storePath).toBe(
-      '/tmp/bearwarden-index-test/accounts/11111111-1111-4111-8111-111111111111/vault/vault.json'
+      `${developmentRoot}/accounts/11111111-1111-4111-8111-111111111111/vault/vault.json`
     )
     expect(harness.storeOptions).toMatchObject({ afterAtomicCommit: expect.any(Function) })
     expect(harness.settingsPaths).toEqual({
-      settingsPath:
-        '/tmp/bearwarden-index-test/accounts/11111111-1111-4111-8111-111111111111/account-settings.json',
-      touchIdPath:
-        '/tmp/bearwarden-index-test/accounts/11111111-1111-4111-8111-111111111111/touch-id.bin'
+      settingsPath: `${developmentRoot}/accounts/11111111-1111-4111-8111-111111111111/account-settings.json`,
+      touchIdPath: `${developmentRoot}/accounts/11111111-1111-4111-8111-111111111111/touch-id.bin`
     })
     expect(harness.twoFactorDirectoryPath).toBe(
-      join('/tmp/bearwarden-index-test', 'cache', '2fa-directory-totp-v4.json')
+      join(developmentRoot, 'cache', '2fa-directory-totp-v4.json')
     )
-    expect(harness.registryStorePath).toBe('/tmp/bearwarden-index-test')
+    expect(harness.registryStorePath).toBe(developmentRoot)
     expect(harness.bootstrapRegistryStore).toBe(harness.registryStore)
-    expect(harness.accountSwitchRoot).toBe('/tmp/bearwarden-index-test')
+    expect(harness.accountSwitchRoot).toBe(developmentRoot)
     expect(harness.accountSwitchOptions?.registryStore).toBe(harness.registryStore)
     expect(harness.accountSwitchOptions?.removalJournal).toBeDefined()
     expect(harness.accountSwitchOptions?.initialCleanupPending).toBe(false)
@@ -836,5 +876,16 @@ describe('main WebAuthn lifecycle wiring', () => {
     }
     ;(harness.vaultIpcOptions!.afterSyncChanged as (status: typeof ready) => void)(ready)
     expect(harness.autoSyncUpdateStatus).toHaveBeenCalledWith(ready)
+  })
+
+  it('recreates and focuses the main window when a second instance arrives after close', () => {
+    const previousWindow = harness.windows.at(-1)!
+    previousWindow.emit('closed')
+    const previousCount = harness.windows.length
+
+    harness.appListeners.get('second-instance')!()
+
+    expect(harness.windows).toHaveLength(previousCount + 1)
+    expect(harness.windows.at(-1)!.focus).toHaveBeenCalledOnce()
   })
 })

@@ -4,9 +4,11 @@ import {
   BrowserWindow,
   clipboard,
   dialog,
+  globalShortcut,
   ipcMain,
   Notification,
   powerMonitor,
+  screen,
   session,
   shell
 } from 'electron'
@@ -14,6 +16,7 @@ import { electronApp, is } from '@electron-toolkit/utils'
 import {
   IPC_CHANNELS,
   IPC_EVENTS,
+  type AutofillFeatureStatus,
   type SshAgentPromptBehavior,
   type SshAgentStatus,
   type SshAgentStatusErrorCode,
@@ -52,13 +55,31 @@ import { AccountSwitchService } from './account-switch-service'
 import { AccountRemovalJournal } from './account-removal-journal'
 import { clearPendingInitializationMarker } from './account-storage-initialization-marker'
 import { VaultTimeoutCoordinator } from './vault-timeout-coordinator'
+import { AutofillCoordinator } from './autofill-coordinator'
+import { MacOSAutofillAdapter } from './macos-autofill-adapter'
+import { prepareDevelopmentUserData } from './development-user-data'
 import icon from '../../resources/icon.png?asset'
+
+if (!app.isPackaged) {
+  // Keep development vaults, Chromium state, and the single-instance lock isolated from an
+  // installed BearWarden. Electron requires an overridden userData directory to exist first.
+  const developmentUserData = `${app.getPath('userData')}-development`
+  prepareDevelopmentUserData(developmentUserData)
+  app.setPath('userData', developmentUserData)
+  // Never copy the old path automatically: it may contain a real packaged vault.
+  console.warn(
+    '[BearWarden dev] Using isolated development data. Existing non-development data was not migrated.'
+  )
+}
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
 if (!hasSingleInstanceLock) app.quit()
+else app.on('second-instance', () => showOrCreateMainWindow())
 app.enableSandbox()
 
 let mainWindow: BrowserWindow | null = null
+let mainInitializationComplete = false
+let pendingMainWindowRequest = false
 let vault: VaultService | null = null
 let portability: VaultPortabilityService | null = null
 let settings: AppSettingsService | null = null
@@ -74,6 +95,11 @@ let passkeyCeremonyService: PasskeyCeremonyService | null = null
 let passkeyRendererBridge: PasskeyRendererBridge | null = null
 let accountWebAuthnController: AccountWebAuthnWindowController | null = null
 let accountWebAuthnRegistrationController: AccountWebAuthnRegistrationWindowController | null = null
+let autofillCoordinator: AutofillCoordinator | null = null
+let autofillAdapter: MacOSAutofillAdapter | null = null
+let autofillWindow: BrowserWindow | null = null
+let autofillEnabled = false
+let autofillShortcutRegistered = false
 let repromptAuthorizations: RepromptAuthorizationStore | null = null
 let twoFactorDirectory: TwoFactorDirectoryCache | null = null
 let contentProtectionEnabled = true
@@ -100,6 +126,39 @@ const sshAgentRuntime = {
     }
     publishSshAgentStatus()
     scheduleSshAgentLifecycle()
+  }
+}
+
+function applyAutofillEnabled(enabled: boolean): void {
+  autofillEnabled = process.platform === 'darwin' && enabled
+  if (!autofillEnabled) {
+    autofillCoordinator?.cancel()
+    globalShortcut.unregister('Control+\\')
+    autofillShortcutRegistered = false
+    return
+  }
+  if (autofillShortcutRegistered) return
+  autofillShortcutRegistered = globalShortcut.register('Control+\\', () => {
+    void autofillCoordinator?.trigger()
+  })
+}
+
+async function getAutofillFeatureStatus(prompt = false): Promise<AutofillFeatureStatus> {
+  const available = process.platform === 'darwin'
+  // A conflicting app may release Ctrl+\\ after BearWarden starts; status refresh doubles as a
+  // safe retry so the user does not have to toggle the feature off and on again.
+  if (available && autofillEnabled && !autofillShortcutRegistered) {
+    applyAutofillEnabled(true)
+  }
+  let accessibilityTrusted = false
+  if (available && autofillAdapter) {
+    accessibilityTrusted = await autofillAdapter.permission(prompt).catch(() => false)
+  }
+  return {
+    available,
+    enabled: available && autofillEnabled,
+    shortcutRegistered: available && autofillShortcutRegistered,
+    accessibilityTrusted
   }
 }
 
@@ -200,6 +259,15 @@ function focusMainWindow(): void {
   window.focus()
 }
 
+function showOrCreateMainWindow(): void {
+  if (!mainInitializationComplete) {
+    pendingMainWindowRequest = true
+    return
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) mainWindow = createWindow()
+  focusMainWindow()
+}
+
 async function refreshSshAgentAfterUnlock(): Promise<void> {
   const coordinator = sshAgentCoordinator
   if (!coordinator) return
@@ -227,6 +295,80 @@ function refreshSshAgentAfterVaultChange(): void {
 function cancelAccountWebAuthnCeremony(): void {
   accountWebAuthnController?.cancel()
   accountWebAuthnRegistrationController?.cancel()
+}
+
+function hideAutofillWindow(): void {
+  const window = autofillWindow
+  if (window && !window.isDestroyed()) window.hide()
+}
+
+function showAutofillWindow(): void {
+  const window = getOrCreateAutofillWindow()
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+  const { x, y, width } = display.workArea
+  const [windowWidth] = window.getSize()
+  window.setPosition(Math.round(x + (width - windowWidth) / 2), y + 72, false)
+  window.show()
+  window.focus()
+}
+
+function getOrCreateAutofillWindow(): BrowserWindow {
+  const existing = autofillWindow
+  if (existing && !existing.isDestroyed()) return existing
+  const window = new BrowserWindow({
+    width: 620,
+    height: 430,
+    minWidth: 520,
+    minHeight: 320,
+    maxWidth: 720,
+    maxHeight: 560,
+    show: false,
+    frame: false,
+    transparent: true,
+    resizable: true,
+    maximizable: false,
+    minimizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    hasShadow: true,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      nodeIntegrationInWorker: false,
+      nodeIntegrationInSubFrames: false,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      webviewTag: false,
+      navigateOnDragDrop: false,
+      spellcheck: false
+    }
+  })
+  window.setAlwaysOnTop(true, 'floating')
+  window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  window.setContentProtection(!is.dev && contentProtectionEnabled)
+  window.webContents.on('will-navigate', (event) => event.preventDefault())
+  window.webContents.on('will-attach-webview', (event) => event.preventDefault())
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  window.on('blur', () => {
+    if (autofillCoordinator?.current()?.status !== 'filling') autofillCoordinator?.cancel()
+  })
+  window.on('closed', () => {
+    if (autofillWindow === window) autofillWindow = null
+  })
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    const url = new URL(process.env['ELECTRON_RENDERER_URL'])
+    url.searchParams.set('mode', 'autofill')
+    void window.loadURL(url.toString())
+  } else {
+    void window.loadFile(join(__dirname, '../renderer/index.html'), {
+      query: { mode: 'autofill' }
+    })
+  }
+  autofillWindow = window
+  return window
 }
 
 const sensitiveClipboard = new SensitiveClipboard(clipboard)
@@ -344,6 +486,7 @@ async function unlockSyncWithLocalPassword(masterPassword: string): Promise<void
 async function beforeVaultLock(): Promise<void> {
   vaultLockGeneration += 1
   vaultTimeoutCoordinator?.cancel()
+  autofillCoordinator?.cancel()
   cancelAccountWebAuthnCeremony()
   passkeyCeremonyService?.onLocked()
   passkeyRendererBridge?.cancelAll()
@@ -792,6 +935,7 @@ if (hasSingleInstanceLock)
           }
         },
         applyClipboardTimeout: (seconds) => sensitiveClipboard.setClearDelay(seconds),
+        applyAutofillEnabled,
         applySshAgentSettings: (next) => {
           sshAgentRuntime.applySettings(next)
         },
@@ -857,6 +1001,96 @@ if (hasSingleInstanceLock)
         autoSync?.requestImmediate()
         notifyVaultChanged()
       }
+    })
+
+    if (process.platform === 'darwin') {
+      const adapter = new MacOSAutofillAdapter()
+      autofillAdapter = adapter
+      autofillCoordinator = new AutofillCoordinator({
+        vault,
+        platform: adapter,
+        publish: (prompt) => {
+          const window = autofillWindow
+          if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return
+          window.webContents.send(IPC_EVENTS.autofillPromptChanged, prompt)
+        },
+        showPicker: showAutofillWindow,
+        hidePicker: hideAutofillWindow,
+        openMain: () => focusMainWindow()
+      })
+      const trustedAutofillSender = (event: Electron.IpcMainInvokeEvent): boolean => {
+        const window = autofillWindow
+        return Boolean(
+          window &&
+          !window.isDestroyed() &&
+          event.sender === window.webContents &&
+          event.senderFrame === window.webContents.mainFrame
+        )
+      }
+      ipcMain.handle(IPC_CHANNELS.autofillCurrent, (event) => {
+        if (!trustedAutofillSender(event)) return null
+        return autofillCoordinator?.current() ?? null
+      })
+      ipcMain.handle(IPC_CHANNELS.autofillSelect, async (event, input: unknown) => {
+        if (!trustedAutofillSender(event) || !input || typeof input !== 'object') return
+        const value = input as Record<string, unknown>
+        if (
+          Object.keys(value).length !== 2 ||
+          typeof value.requestId !== 'string' ||
+          typeof value.itemId !== 'string'
+        ) {
+          return
+        }
+        await autofillCoordinator?.select({ requestId: value.requestId, itemId: value.itemId })
+      })
+      ipcMain.handle(IPC_CHANNELS.autofillCancel, (event, input: unknown) => {
+        if (!trustedAutofillSender(event) || !input || typeof input !== 'object') return
+        const value = input as Record<string, unknown>
+        if (Object.keys(value).length !== 1 || typeof value.requestId !== 'string') return
+        autofillCoordinator?.cancel(value.requestId)
+      })
+      ipcMain.handle(IPC_CHANNELS.autofillOpenMain, (event, input: unknown) => {
+        if (!trustedAutofillSender(event) || !input || typeof input !== 'object') return
+        const value = input as Record<string, unknown>
+        if (Object.keys(value).length !== 1 || typeof value.requestId !== 'string') return
+        autofillCoordinator?.openMain(value.requestId)
+      })
+    }
+
+    const trustedAutofillSettingsSender = (event: Electron.IpcMainInvokeEvent): boolean => {
+      const window = mainWindow
+      return Boolean(
+        window &&
+        !window.isDestroyed() &&
+        event.sender === window.webContents &&
+        event.senderFrame === window.webContents.mainFrame
+      )
+    }
+    const trustedAutofillPermissionSender = (event: Electron.IpcMainInvokeEvent): boolean => {
+      const window = mainWindow
+      return Boolean(
+        trustedAutofillSettingsSender(event) &&
+        window?.isVisible() &&
+        window.isFocused() &&
+        app.isActive()
+      )
+    }
+    const unavailableAutofillStatus: AutofillFeatureStatus = {
+      available: false,
+      enabled: false,
+      shortcutRegistered: false,
+      accessibilityTrusted: false
+    }
+    ipcMain.handle(IPC_CHANNELS.autofillStatus, (event) =>
+      trustedAutofillSettingsSender(event)
+        ? getAutofillFeatureStatus(false)
+        : unavailableAutofillStatus
+    )
+    ipcMain.handle(IPC_CHANNELS.autofillRequestAccessibility, (event) => {
+      if (!trustedAutofillPermissionSender(event) || !autofillEnabled) {
+        return unavailableAutofillStatus
+      }
+      return getAutofillFeatureStatus(true)
     })
 
     sshKeyImportSessions = new SshKeyImportSessionStore({
@@ -941,6 +1175,11 @@ if (hasSingleInstanceLock)
 
     appUpdater = new AppUpdaterController()
     mainWindow = createWindow()
+    mainInitializationComplete = true
+    if (pendingMainWindowRequest) {
+      pendingMainWindowRequest = false
+      focusMainWindow()
+    }
     installApplicationMenu({
       isMac: process.platform === 'darwin',
       onLockVault: requestMenuLock
@@ -948,7 +1187,7 @@ if (hasSingleInstanceLock)
     if (process.platform !== 'darwin') mainWindow.setMenuBarVisibility(false)
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow()
+      showOrCreateMainWindow()
       autoSync?.requestImmediate()
     })
   })
@@ -957,6 +1196,15 @@ function disposeServices(): void {
   if (servicesDisposed) return
   servicesDisposed = true
   sensitiveClipboard.clearIfOwned()
+  globalShortcut.unregister('Control+\\')
+  autofillShortcutRegistered = false
+  autofillEnabled = false
+  autofillCoordinator?.dispose()
+  autofillCoordinator = null
+  autofillAdapter = null
+  const quickWindow = autofillWindow
+  autofillWindow = null
+  if (quickWindow && !quickWindow.isDestroyed()) quickWindow.destroy()
   sshKeyImportSessions?.clearAll()
   void serverNotifications?.dispose().catch(() => undefined)
   serverNotifications = null
@@ -1019,6 +1267,7 @@ app.on('before-quit', (event) => {
     sshAgentEnabled = false
     sshAgentLifecycleEpoch += 1
     cancelAccountWebAuthnCeremony()
+    autofillCoordinator?.cancel()
     passkeyCeremonyService?.onLocked()
     passkeyRendererBridge?.cancelAll()
     sshAgentBridge?.cancelAll()
