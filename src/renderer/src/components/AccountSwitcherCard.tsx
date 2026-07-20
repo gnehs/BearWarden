@@ -16,7 +16,6 @@ import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
 import {
   CardAction,
-  CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
@@ -41,7 +40,7 @@ import {
   moveAccountIds,
   type AccountConfirmationAction
 } from './account-switcher-ui'
-import { SettingsCard } from './SettingsPrimitives'
+import { SettingsCard, SettingsCardContent } from './SettingsPrimitives'
 
 interface AccountSwitcherCardProps {
   accountStatus: AccountStatus | null
@@ -108,7 +107,7 @@ function AccountSwitcherCard({
             </Badge>
           </CardAction>
         </CardHeader>
-        <CardContent className="py-(--card-spacing)">
+        <SettingsCardContent>
           <FieldGroup>
             {accountStatus === null
               ? !error && (
@@ -157,7 +156,7 @@ function AccountSwitcherCard({
               </Alert>
             )}
           </FieldGroup>
-        </CardContent>
+        </SettingsCardContent>
         <CardFooter>
           <Button
             ref={addAccountButtonRef}

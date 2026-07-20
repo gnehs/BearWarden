@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import type { LucideIcon } from 'lucide-react'
 import {
   ClipboardCheck,
   Cloud,
@@ -28,14 +27,7 @@ import type {
 import { MAX_VAULT_TIMEOUT_MINUTES } from '../../../shared/vault-contract'
 import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
-import {
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle
-} from '@renderer/components/ui/card'
+import { CardAction, CardFooter, CardHeader } from '@renderer/components/ui/card'
 import {
   Empty,
   EmptyDescription,
@@ -68,7 +60,7 @@ import {
 import { Separator } from '@renderer/components/ui/separator'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Switch } from '@renderer/components/ui/switch'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
+import { Tabs, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
 import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
 import {
   isWindowsSshAgentEndpoint,
@@ -85,6 +77,8 @@ import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 import {
   SettingsCard,
   SettingsCardContent,
+  SettingsCardHeading,
+  SettingsCategoryContent,
   SettingsRow,
   SettingsSelectRow,
   SettingsStackedRow
@@ -341,37 +335,6 @@ interface SettingsPageProps {
   onRemoveAccount: (accountId: string) => Promise<void>
 }
 
-interface SettingsCardHeadingProps {
-  id: string
-  icon: LucideIcon
-  title: string
-  description: string
-}
-
-function SettingsCardHeading({
-  id,
-  icon: Icon,
-  title,
-  description
-}: SettingsCardHeadingProps): React.JSX.Element {
-  return (
-    <div className="flex min-w-0 items-center gap-[11px]">
-      <span
-        className="text-primary grid size-9 shrink-0 place-items-center rounded-[11px] bg-[var(--accent-soft)] [&>svg]:size-[17px]"
-        aria-hidden="true"
-      >
-        <Icon />
-      </span>
-      <div className="min-w-0">
-        <CardTitle id={id} role="heading" aria-level={2}>
-          {title}
-        </CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </div>
-    </div>
-  )
-}
-
 function SettingsPage({
   settings,
   settingsBusy,
@@ -534,7 +497,7 @@ function SettingsPage({
       subtitle="調整這台裝置上的安全性、外觀與同步方式。"
       headerIcon={<Settings2 />}
       scrollRef={settingsScrollRef}
-      scrollClassName="scroll-fade-y forced-colors:scroll-fade-none"
+      scrollClassName="scroll-fade scroll-fade-4 forced-colors:scroll-fade-none"
       headerActions={
         settingsBusy ? (
           <span
@@ -558,7 +521,7 @@ function SettingsPage({
         <AuxiliaryPageContent className="max-w-[760px] !grid-cols-[minmax(0,1fr)] gap-0">
           <Tabs
             value={activeSettingsCategory}
-            className="min-w-0 gap-5"
+            className="min-w-0 gap-4"
             onValueChange={(value) => {
               if (typeof value !== 'string') return
               setActiveSettingsCategory(value as SettingsCategoryId)
@@ -569,14 +532,14 @@ function SettingsPage({
               variant="line"
               sliding
               aria-label="設定分類"
-              className="scroll-fade-x w-full justify-start gap-1 overflow-x-auto px-1"
+              className="scroll-fade-x scroll-fade-4 forced-colors:scroll-fade-none w-full justify-start gap-1 overflow-x-auto px-1 group-data-horizontal/tabs:h-10"
             >
               {settingsCategories.map(({ id, label, description, icon: Icon }) => (
                 <TabsTrigger
                   key={id}
                   value={id}
                   title={description}
-                  className="h-10 min-w-max gap-2 px-3"
+                  className="min-w-max gap-2 px-3"
                 >
                   <Icon aria-hidden="true" />
                   {label}
@@ -584,7 +547,7 @@ function SettingsPage({
               ))}
             </TabsList>
 
-            <TabsContent value="general" className="grid min-w-0 gap-4 pt-1">
+            <SettingsCategoryContent value="general">
               <SettingsCard aria-labelledby="general-settings-title">
                 <CardHeader>
                   <SettingsCardHeading
@@ -594,7 +557,7 @@ function SettingsPage({
                     description="調整密碼庫的外觀與預設排列方式。"
                   />
                 </CardHeader>
-                <SettingsCardContent>
+                <SettingsCardContent flush>
                   <FieldGroup className="gap-0">
                     <SettingsStackedRow>
                       <FieldLabel htmlFor="theme-select">主題</FieldLabel>
@@ -670,8 +633,8 @@ function SettingsPage({
                   </FieldGroup>
                 </SettingsCardContent>
               </SettingsCard>
-            </TabsContent>
-            <TabsContent value="security" className="grid min-w-0 gap-4 pt-1">
+            </SettingsCategoryContent>
+            <SettingsCategoryContent value="security">
               <SettingsCard aria-labelledby="security-settings-title">
                 <CardHeader>
                   <SettingsCardHeading
@@ -684,7 +647,7 @@ function SettingsPage({
                     <Badge variant="secondary">此裝置</Badge>
                   </CardAction>
                 </CardHeader>
-                <SettingsCardContent>
+                <SettingsCardContent flush>
                   <FieldGroup className="gap-0">
                     <SettingsRow>
                       <FieldContent>
@@ -823,18 +786,20 @@ function SettingsPage({
                 </CardHeader>
                 {pinStatus.available ? (
                   <>
-                    <CardContent className="grid gap-2">
+                    <SettingsCardContent className="grid gap-2">
                       <p className="text-muted-foreground m-0 text-xs leading-[1.6]">
                         PIN
                         加密憑證只保留在記憶體中；重新啟動、登出、斷開或切換帳號後，必須使用主密碼。
                       </p>
-                      <p className="text-muted-foreground text-sm">
+                      <p className="text-muted-foreground m-0 text-xs leading-[1.5]">
                         PIN 連續錯誤 5 次會自動停用。目前可嘗試 {pinStatus.remainingAttempts} 次。
                       </p>
                       {pinFeedback && (
-                        <p className="text-muted-foreground text-sm">{pinFeedback}</p>
+                        <p className="text-muted-foreground m-0 text-xs leading-[1.5]">
+                          {pinFeedback}
+                        </p>
                       )}
-                    </CardContent>
+                    </SettingsCardContent>
                     <CardFooter>
                       <Button
                         variant="outline"
@@ -849,7 +814,7 @@ function SettingsPage({
                   </>
                 ) : (
                   <>
-                    <CardContent className="grid gap-4">
+                    <SettingsCardContent className="grid gap-4">
                       <p className="text-muted-foreground m-0 text-xs leading-[1.6]">
                         PIN 與加密憑證不會寫入磁碟。普通鎖定後可用
                         PIN，但程式重新啟動時一定需要主密碼。
@@ -896,9 +861,11 @@ function SettingsPage({
                         </Field>
                       </FieldGroup>
                       {pinFeedback && (
-                        <p className="text-muted-foreground text-sm">{pinFeedback}</p>
+                        <p className="text-muted-foreground m-0 text-xs leading-[1.5]">
+                          {pinFeedback}
+                        </p>
                       )}
-                    </CardContent>
+                    </SettingsCardContent>
                     <CardFooter>
                       <Button
                         size="sm"
@@ -943,7 +910,7 @@ function SettingsPage({
                   </CardAction>
                 </CardHeader>
                 {!settings.touchIdAvailable ? (
-                  <CardContent>
+                  <SettingsCardContent>
                     <Empty className="min-h-40 p-4">
                       <EmptyHeader>
                         <EmptyMedia variant="icon">
@@ -955,14 +922,14 @@ function SettingsPage({
                         </EmptyDescription>
                       </EmptyHeader>
                     </Empty>
-                  </CardContent>
+                  </SettingsCardContent>
                 ) : settings.touchIdEnabled ? (
                   <>
-                    <CardContent>
+                    <SettingsCardContent>
                       <p className="text-muted-foreground m-0 text-xs leading-[1.6]">
                         下次鎖定後即可直接使用生物辨識解鎖。
                       </p>
-                    </CardContent>
+                    </SettingsCardContent>
                     <CardFooter>
                       <Button
                         variant="outline"
@@ -977,7 +944,7 @@ function SettingsPage({
                   </>
                 ) : (
                   <>
-                    <CardContent>
+                    <SettingsCardContent>
                       <Field>
                         <FieldLabel htmlFor="touch-id-password">確認主密碼</FieldLabel>
                         <Input
@@ -990,7 +957,7 @@ function SettingsPage({
                         />
                         <FieldDescription>主密碼只會送到本機程序進行驗證。</FieldDescription>
                       </Field>
-                    </CardContent>
+                    </SettingsCardContent>
                     <CardFooter>
                       <Button
                         size="sm"
@@ -1005,8 +972,8 @@ function SettingsPage({
                   </>
                 )}
               </SettingsCard>
-            </TabsContent>
-            <TabsContent value="privacy" className="grid min-w-0 gap-4 pt-1">
+            </SettingsCategoryContent>
+            <SettingsCategoryContent value="privacy">
               <SettingsCard aria-labelledby="privacy-settings-title">
                 <CardHeader>
                   <SettingsCardHeading
@@ -1016,7 +983,7 @@ function SettingsPage({
                     description="降低敏感資料留在螢幕或剪貼簿中的時間。"
                   />
                 </CardHeader>
-                <SettingsCardContent>
+                <SettingsCardContent flush>
                   <FieldGroup className="gap-0">
                     <SettingsSelectRow>
                       <FieldContent>
@@ -1071,8 +1038,8 @@ function SettingsPage({
                   </FieldGroup>
                 </SettingsCardContent>
               </SettingsCard>
-            </TabsContent>
-            <TabsContent value="accounts" className="grid min-w-0 gap-4 pt-1">
+            </SettingsCategoryContent>
+            <SettingsCategoryContent value="accounts">
               <AccountSwitcherCard
                 accountStatus={accountStatus}
                 busy={accountBusy}
@@ -1109,7 +1076,7 @@ function SettingsPage({
                     </Badge>
                   </CardAction>
                 </CardHeader>
-                <CardContent className="pb-(--card-spacing)">
+                <SettingsCardContent>
                   <div className="flex min-w-0 items-center gap-2.5">
                     <span
                       className="text-primary grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-[var(--accent-soft)] [&>svg]:size-[17px]"
@@ -1124,7 +1091,7 @@ function SettingsPage({
                       </small>
                     </div>
                   </div>
-                </CardContent>
+                </SettingsCardContent>
                 <CardFooter className="gap-2">
                   {syncStatus.configured && <EquivalentDomainsDialog />}
                   {syncStatus.configured && <MasterPasswordChangeDialog onReconnect={onOpenSync} />}
@@ -1140,8 +1107,8 @@ function SettingsPage({
                   </Button>
                 </CardFooter>
               </SettingsCard>
-            </TabsContent>
-            <TabsContent value="tools" className="grid min-w-0 gap-4 pt-1">
+            </SettingsCategoryContent>
+            <SettingsCategoryContent value="tools">
               <SettingsCard aria-labelledby="ssh-agent-settings-title">
                 <CardHeader>
                   <SettingsCardHeading
@@ -1156,7 +1123,7 @@ function SettingsPage({
                     </Badge>
                   </CardAction>
                 </CardHeader>
-                <SettingsCardContent>
+                <SettingsCardContent flush>
                   <FieldGroup className="gap-0">
                     <SettingsRow>
                       <FieldContent>
@@ -1290,11 +1257,11 @@ function SettingsPage({
                     description="匯入 Bitwarden JSON，或建立密碼保護的可攜備份。"
                   />
                 </CardHeader>
-                <CardContent className="pb-(--card-spacing)">
+                <SettingsCardContent>
                   <p className="text-muted-foreground m-0 text-xs leading-[1.6]">
                     檔案內容與路徑只會由本機主程序處理，不會傳回畫面程序。
                   </p>
-                </CardContent>
+                </SettingsCardContent>
                 <CardFooter className="gap-2">
                   <Button variant="outline" size="sm" type="button" onClick={onImportVault}>
                     <Upload data-icon="inline-start" aria-hidden="true" />
@@ -1306,10 +1273,10 @@ function SettingsPage({
                   </Button>
                 </CardFooter>
               </SettingsCard>
-            </TabsContent>
-            <TabsContent value="about" className="grid min-w-0 gap-4 pt-1">
+            </SettingsCategoryContent>
+            <SettingsCategoryContent value="about">
               <AboutPage onOpenRepository={() => window.bearwarden.updater.openRepositoryPage()} />
-            </TabsContent>
+            </SettingsCategoryContent>
           </Tabs>
         </AuxiliaryPageContent>
       )}

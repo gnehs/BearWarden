@@ -4,7 +4,6 @@ import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
 import {
   CardAction,
-  CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
@@ -14,7 +13,7 @@ import { Progress, ProgressLabel, ProgressValue } from '@renderer/components/ui/
 import { Separator } from '@renderer/components/ui/separator'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { ExternalLink, GitFork, Info, RefreshCw } from 'lucide-react'
-import { SettingsCard } from './SettingsPrimitives'
+import { SettingsCard, SettingsCardContent, SettingsCardHeading } from './SettingsPrimitives'
 
 const initialUpdateState: AppUpdateState = {
   status: 'idle',
@@ -113,30 +112,22 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
   const progress = Math.min(100, Math.max(0, updateState.progress ?? 0))
 
   return (
-    <div className="grid min-w-0 gap-4 pt-1">
+    <>
       <SettingsCard aria-labelledby="about-settings-title">
         <CardHeader>
-          <div className="flex min-w-0 items-center gap-3">
-            <span
-              className="text-primary grid size-9 shrink-0 place-items-center rounded-[11px] bg-[var(--accent-soft)] [&>svg]:size-[17px]"
-              aria-hidden="true"
-            >
-              <Info />
-            </span>
-            <div className="min-w-0">
-              <CardTitle id="about-settings-title" role="heading" aria-level={2}>
-                關於 BearWarden
-              </CardTitle>
-              <CardDescription>查看目前版本、更新狀態與專案資訊。</CardDescription>
-            </div>
-          </div>
+          <SettingsCardHeading
+            id="about-settings-title"
+            icon={Info}
+            title="關於 BearWarden"
+            description="查看目前版本、更新狀態與專案資訊。"
+          />
           <CardAction>
             <Badge variant={updateState.status === 'available' ? 'default' : 'secondary'}>
               {statusLabel}
             </Badge>
           </CardAction>
         </CardHeader>
-        <CardContent className="grid gap-4">
+        <SettingsCardContent className="grid gap-4">
           <div className="flex items-center justify-between gap-4">
             <div className="grid gap-0.5">
               <strong className="text-xs">目前版本</strong>
@@ -211,7 +202,7 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
               {actionError}
             </p>
           )}
-        </CardContent>
+        </SettingsCardContent>
       </SettingsCard>
 
       <SettingsCard aria-labelledby="about-project-title">
@@ -221,11 +212,11 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
           </CardTitle>
           <CardDescription>BearWarden 是一個以本機優先為核心的桌面密碼管理器。</CardDescription>
         </CardHeader>
-        <CardContent>
+        <SettingsCardContent>
           <p className="text-muted-foreground m-0 text-xs leading-[1.6]">
             查看原始碼、回報問題，或取得最新發行版本。
           </p>
-        </CardContent>
+        </SettingsCardContent>
         <CardFooter className="gap-2">
           <Button
             variant="outline"
@@ -249,6 +240,6 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
           </Button>
         </CardFooter>
       </SettingsCard>
-    </div>
+    </>
   )
 }

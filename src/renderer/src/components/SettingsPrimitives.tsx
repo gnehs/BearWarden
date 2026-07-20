@@ -1,7 +1,9 @@
 import * as React from 'react'
-import { Card, CardContent } from '@renderer/components/ui/card'
+import { Card, CardContent, CardDescription, CardTitle } from '@renderer/components/ui/card'
 import { Field } from '@renderer/components/ui/field'
+import { TabsContent } from '@renderer/components/ui/tabs'
 import { cn } from '@renderer/lib/utils'
+import type { LucideIcon } from 'lucide-react'
 
 function SettingsCard({
   className,
@@ -10,7 +12,7 @@ function SettingsCard({
   return (
     <Card
       className={cn(
-        'outline-border gap-0 rounded-2xl py-0 shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_4%,transparent)] outline [&_[data-slot=card-description]]:mt-0.5 [&_[data-slot=card-description]]:text-xs [&_[data-slot=card-description]]:leading-[1.5] [&_[data-slot=card-footer]]:justify-end [&_[data-slot=card-title]]:scroll-mt-5 [&_[data-slot=card-title]]:text-sm [&_[data-slot=card-title]]:font-[680] [&>[data-slot=card-header]]:items-center [&>[data-slot=card-header]]:px-5 [&>[data-slot=card-header]]:py-5',
+        'outline-border gap-0 rounded-2xl py-0 shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_4%,transparent)] outline [--card-spacing:--spacing(5)] [&_[data-slot=card-description]]:mt-0.5 [&_[data-slot=card-description]]:text-xs [&_[data-slot=card-description]]:leading-[1.5] [&_[data-slot=card-footer]]:justify-end [&_[data-slot=card-title]]:scroll-mt-5 [&_[data-slot=card-title]]:text-sm [&_[data-slot=card-title]]:font-semibold [&_[data-slot=field-description]]:max-w-[64ch] [&_[data-slot=field-description]]:text-xs [&_[data-slot=field-description]]:leading-[1.5] [&_[data-slot=field-label]]:text-[13px] [&_[data-slot=field-label]]:font-semibold [&>[data-slot=card-header]]:items-center [&>[data-slot=card-header]]:py-(--card-spacing)',
         className
       )}
       {...props}
@@ -19,13 +21,16 @@ function SettingsCard({
 }
 
 function SettingsCardContent({
+  flush = false,
   className,
   ...props
-}: React.ComponentProps<typeof CardContent>): React.JSX.Element {
+}: React.ComponentProps<typeof CardContent> & { flush?: boolean }): React.JSX.Element {
   return (
     <CardContent
       className={cn(
-        'px-0 [&>[data-slot=separator]]:mx-5 [&>[data-slot=separator]]:w-auto',
+        !flush && 'pb-(--card-spacing)',
+        flush &&
+          'px-0 [&>[data-slot=separator]]:mx-(--card-spacing) [&>[data-slot=separator]]:w-auto',
         className
       )}
       {...props}
@@ -34,7 +39,7 @@ function SettingsCardContent({
 }
 
 const settingsRowClassName =
-  'min-h-16 gap-5 px-5 py-3.5 [&_[data-slot=field-label]]:text-[13px] [&_[data-slot=field-label]]:font-[630] [&_[data-slot=field-description]]:max-w-[64ch] [&_[data-slot=field-description]]:text-xs [&_[data-slot=field-description]]:leading-[1.5] [&>[data-slot=switch]]:shrink-0 [&>[data-slot=select-trigger]]:shrink-0 max-[680px]:flex-col max-[680px]:items-stretch max-[680px]:gap-3 max-[680px]:[&>[data-slot=switch]]:self-start'
+  'min-h-16 gap-5 px-(--card-spacing) py-3.5 [&>[data-slot=switch]]:shrink-0 [&>[data-slot=select-trigger]]:shrink-0 max-[680px]:flex-col max-[680px]:items-stretch max-[680px]:gap-3 max-[680px]:[&>[data-slot=switch]]:self-start'
 
 type SettingsRowProps = React.ComponentProps<typeof Field>
 type SettingsRowVariantProps = Omit<SettingsRowProps, 'orientation'>
@@ -75,4 +80,50 @@ function SettingsStackedRow({ className, ...props }: SettingsRowVariantProps): R
   )
 }
 
-export { SettingsCard, SettingsCardContent, SettingsRow, SettingsSelectRow, SettingsStackedRow }
+interface SettingsCardHeadingProps {
+  id: string
+  icon: LucideIcon
+  title: string
+  description: string
+}
+
+function SettingsCardHeading({
+  id,
+  icon: Icon,
+  title,
+  description
+}: SettingsCardHeadingProps): React.JSX.Element {
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <span
+        className="text-primary grid size-9 shrink-0 place-items-center rounded-[11px] bg-[var(--accent-soft)] [&>svg]:size-[17px]"
+        aria-hidden="true"
+      >
+        <Icon />
+      </span>
+      <div className="min-w-0">
+        <CardTitle id={id} role="heading" aria-level={2}>
+          {title}
+        </CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </div>
+    </div>
+  )
+}
+
+function SettingsCategoryContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof TabsContent>): React.JSX.Element {
+  return <TabsContent className={cn('grid min-w-0 gap-4', className)} {...props} />
+}
+
+export {
+  SettingsCard,
+  SettingsCardContent,
+  SettingsCardHeading,
+  SettingsCategoryContent,
+  SettingsRow,
+  SettingsSelectRow,
+  SettingsStackedRow
+}
