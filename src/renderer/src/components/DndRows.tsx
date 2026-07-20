@@ -1,6 +1,7 @@
 import { useDndContext, useDraggable } from '@dnd-kit/core'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS, useCombinedRefs } from '@dnd-kit/utilities'
+import NumberFlow from '@number-flow/react'
 import { memo, useEffect, useRef } from 'react'
 import {
   ContactRound,
@@ -107,7 +108,8 @@ export const ItemRow = memo(function ItemRow({
 
   const meta = itemTypeMeta[item.type]
   const ItemIcon = meta.icon
-  const shouldShowTotpCode = showTotpCode && item.type === 'login' && Boolean(item.hasTotp)
+  const shouldShowTotpCode =
+    showTotpCode && !readOnly && item.type === 'login' && Boolean(item.hasTotp)
   const totpCode = shouldShowTotpCode ? totpCodes?.get(item.id) : undefined
   const hasTotpResult = shouldShowTotpCode && totpCodes?.has(item.id)
 
@@ -134,8 +136,14 @@ export const ItemRow = memo(function ItemRow({
       }}
     >
       <button
-        className="grid h-[65px] min-w-0 grid-cols-[42px_minmax(0,1fr)] items-center gap-3 px-3 text-left focus-within:outline-none"
+        className={cn(
+          'grid h-[65px] min-w-0 items-center gap-3 px-3 text-left focus-visible:outline-none',
+          shouldShowTotpCode
+            ? 'grid-cols-[42px_minmax(0,1fr)_auto]'
+            : 'grid-cols-[42px_minmax(0,1fr)]'
+        )}
         data-item-row-main=""
+        data-slot="item-row-main"
         type="button"
         tabIndex={-1}
         onClick={(event) =>
@@ -181,7 +189,7 @@ export const ItemRow = memo(function ItemRow({
             <ItemIcon />
           )}
         </span>
-        <span className="grid min-w-0 gap-1">
+        <span className={cn('min-w-0', shouldShowTotpCode ? 'flex items-center' : 'grid gap-1')}>
           <strong
             className={cn(
               'text-foreground flex min-w-0 items-center gap-[5px] truncate text-[13px] font-medium',
@@ -190,32 +198,60 @@ export const ItemRow = memo(function ItemRow({
           >
             {item.name}
           </strong>
-          <small
-            className={cn(
-              'text-muted-foreground truncate text-[11px]',
-              selected && 'text-primary-foreground/82'
-            )}
-          >
-            {shouldShowTotpCode ? (
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="truncate font-mono tracking-[0.12em]">
-                  {totpCode?.code ?? (hasTotpResult ? '—' : '產生中…')}
-                </span>
-                {totpCode && (
-                  <span className="flex-none text-[10px] tracking-normal tabular-nums opacity-75">
-                    {totpCode.remainingSeconds}s
-                  </span>
-                )}
-              </span>
-            ) : readOnly ? (
-              '已刪除的項目'
-            ) : (
-              item.subtitle || item.username || item.uri || '尚未設定摘要'
-            )}
-          </small>
+          {!shouldShowTotpCode && (
+            <small
+              className={cn(
+                'text-muted-foreground truncate text-[11px]',
+                selected && 'text-primary-foreground/82'
+              )}
+            >
+              {readOnly
+                ? '已刪除的項目'
+                : item.subtitle || item.username || item.uri || '尚未設定摘要'}
+            </small>
+          )}
         </span>
+        {shouldShowTotpCode && (
+          <span
+            className={cn(
+              'grid min-w-[84px] justify-items-end gap-1 self-start pt-2 text-right',
+              selected ? 'text-primary-foreground' : 'text-foreground'
+            )}
+            aria-label={
+              totpCode
+                ? `驗證碼 ${totpCode.code}，剩餘 ${totpCode.remainingSeconds} 秒`
+                : hasTotpResult
+                  ? '驗證碼無法產生'
+                  : '驗證碼產生中'
+            }
+          >
+            <span
+              className={cn(
+                'text-muted-foreground text-[10px] leading-none tabular-nums',
+                selected && 'text-primary-foreground/75'
+              )}
+            >
+              {totpCode ? `${totpCode.remainingSeconds}s` : ' '}
+            </span>
+            <strong className="font-mono text-[20px] leading-none tracking-[0.12em]">
+              {totpCode && /^\d+$/.test(totpCode.code) ? (
+                <NumberFlow
+                  className="tabular-nums"
+                  value={Number(totpCode.code)}
+                  format={{
+                    useGrouping: false,
+                    minimumIntegerDigits: totpCode.code.length
+                  }}
+                  trend={0}
+                />
+              ) : (
+                (totpCode?.code ?? (hasTotpResult ? '—' : '…'))
+              )}
+            </strong>
+          </span>
+        )}
       </button>
-      {!readOnly && (
+      {!readOnly && !showTotpCode && (
         <RowIconButton
           variant="ghost"
           size="icon-sm"
