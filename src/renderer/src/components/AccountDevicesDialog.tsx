@@ -1,5 +1,7 @@
 import { Laptop, LogOut, RefreshCw, TriangleAlert } from 'lucide-react'
 import { useRef, useState, type FormEvent, type MutableRefObject } from 'react'
+import { t } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import {
   ACCOUNT_SESSION_DEAUTHORIZATION_CONFIRMATION,
   type AccountDevicesResult,
@@ -62,15 +64,15 @@ export async function executeDeauthorizeSessions({
 // eslint-disable-next-line react-refresh/only-export-components
 export function deauthorizeSessionsError(error: unknown): string {
   if (error instanceof Error && error.message.includes('INVALID_MASTER_PASSWORD')) {
-    return '主密碼驗證失敗；若要再試，請重新輸入主密碼與確認文字。'
+    return t`Master password verification failed. Enter your master password and confirmation text again to retry.`
   }
   if (error instanceof Error && error.message.includes('SESSION_DEAUTHORIZATION_UNKNOWN')) {
-    return '連線在取消過程中中斷，結果無法判定。可能已成功；請先重新登入或確認其他裝置狀態，不要直接重試。'
+    return t`The connection was interrupted during deauthorization, so the result is unknown. It may have succeeded; sign in again or check your other devices before retrying.`
   }
   if (error instanceof Error && error.message.includes('SYNC_AUTH_REQUIRED')) {
-    return '目前登入已失效，請先重新登入。'
+    return t`Your current session has expired. Please sign in again.`
   }
-  return '無法確認是否已取消所有工作階段。請先確認登入與其他裝置狀態，不要直接重試。'
+  return t`Unable to confirm whether all sessions were deauthorized. Check your sign-in status and other devices before retrying.`
 }
 
 interface DeauthorizeSessionsFormProps {
@@ -98,15 +100,22 @@ export function DeauthorizeSessionsForm({
     <div className="border-destructive/40 grid gap-4 rounded-lg border p-4">
       <Alert variant="destructive">
         <TriangleAlert aria-hidden="true" />
-        <AlertTitle>這會取消所有工作階段</AlertTitle>
+        <AlertTitle>
+          <Trans>This will deauthorize all sessions</Trans>
+        </AlertTitle>
         <AlertDescription>
-          包含目前裝置。所有裝置都必須重新登入，並在已啟用時再次完成雙重驗證。其他裝置可能最長約一小時才失效。
-          BearWarden 會保留這台電腦上的本機加密 vault，但在重新登入前不會再同步。
+          <Trans>
+            This includes the current device. Every device must sign in again and complete two-step
+            login if enabled. Other devices may remain active for up to an hour. BearWarden keeps
+            this computer’s local encrypted vault, but it will not sync until you sign in again.
+          </Trans>
         </AlertDescription>
       </Alert>
       <FieldGroup>
         <Field>
-          <FieldLabel htmlFor="deauthorize-sessions-master-password">主密碼</FieldLabel>
+          <FieldLabel htmlFor="deauthorize-sessions-master-password">
+            <Trans>Master password</Trans>
+          </FieldLabel>
           <Input
             id="deauthorize-sessions-master-password"
             type="password"
@@ -117,11 +126,15 @@ export function DeauthorizeSessionsForm({
             autoFocus
             onChange={(event) => onMasterPasswordChange(event.target.value)}
           />
-          <FieldDescription>每次嘗試都必須重新輸入，只用於這一次伺服器驗證。</FieldDescription>
+          <FieldDescription>
+            <Trans>
+              Enter it again for every attempt. It is used only for this server verification.
+            </Trans>
+          </FieldDescription>
         </Field>
         <Field>
           <FieldLabel htmlFor="deauthorize-sessions-confirmation">
-            輸入「{DEAUTHORIZE_SESSIONS_CONFIRMATION}」確認
+            <Trans>Enter “{DEAUTHORIZE_SESSIONS_CONFIRMATION}” to confirm</Trans>
           </FieldLabel>
           <Input
             id="deauthorize-sessions-confirmation"
@@ -133,7 +146,11 @@ export function DeauthorizeSessionsForm({
             spellCheck={false}
             onChange={(event) => onConfirmationChange(event.target.value)}
           />
-          <FieldDescription>必須完全符合，不會自動修正空白或字元。</FieldDescription>
+          <FieldDescription>
+            <Trans>
+              It must match exactly. Spaces and characters will not be corrected automatically.
+            </Trans>
+          </FieldDescription>
         </Field>
       </FieldGroup>
       {error && (
@@ -143,7 +160,7 @@ export function DeauthorizeSessionsForm({
       )}
       <div className="flex flex-wrap justify-end gap-2">
         <Button variant="secondary" type="button" disabled={busy} onClick={onCancel}>
-          取消
+          <Trans>Cancel</Trans>
         </Button>
         <Button
           variant="destructive"
@@ -155,54 +172,86 @@ export function DeauthorizeSessionsForm({
           ) : (
             <LogOut data-icon="inline-start" aria-hidden="true" />
           )}
-          取消所有工作階段
+          <Trans>Deauthorize all sessions</Trans>
         </Button>
       </div>
     </div>
   )
 }
 
-const deviceTypeNames: Record<number, string> = {
-  0: 'Android',
-  1: 'iPhone / iPad',
-  2: 'Chrome 擴充功能',
-  3: 'Firefox 擴充功能',
-  4: 'Opera 擴充功能',
-  5: 'Edge 擴充功能',
-  6: 'Windows 桌面版',
-  7: 'macOS 桌面版',
-  8: 'Linux 桌面版',
-  9: 'Chrome 網頁版',
-  10: 'Firefox 網頁版',
-  11: 'Opera 網頁版',
-  12: 'Edge 網頁版',
-  13: 'Internet Explorer 網頁版',
-  14: '未知瀏覽器',
-  15: 'Android（Amazon）',
-  16: 'Windows UWP',
-  17: 'Safari 網頁版',
-  18: 'Vivaldi 網頁版',
-  19: 'Vivaldi 擴充功能',
-  20: 'Safari 擴充功能',
-  21: 'SDK',
-  22: '伺服器',
-  23: 'Windows CLI',
-  24: 'macOS CLI',
-  25: 'Linux CLI',
-  26: 'DuckDuckGo 網頁版'
+function deviceTypeName(type: number): string {
+  switch (type) {
+    case 0:
+      return t`Android`
+    case 1:
+      return t`iPhone / iPad`
+    case 2:
+      return t`Chrome extension`
+    case 3:
+      return t`Firefox extension`
+    case 4:
+      return t`Opera extension`
+    case 5:
+      return t`Edge extension`
+    case 6:
+      return t`Windows desktop app`
+    case 7:
+      return t`macOS desktop app`
+    case 8:
+      return t`Linux desktop app`
+    case 9:
+      return t`Chrome web app`
+    case 10:
+      return t`Firefox web app`
+    case 11:
+      return t`Opera web app`
+    case 12:
+      return t`Edge web app`
+    case 13:
+      return t`Internet Explorer web app`
+    case 14:
+      return t`Unknown browser`
+    case 15:
+      return t`Android (Amazon)`
+    case 16:
+      return t`Windows UWP`
+    case 17:
+      return t`Safari web app`
+    case 18:
+      return t`Vivaldi web app`
+    case 19:
+      return t`Vivaldi extension`
+    case 20:
+      return t`Safari extension`
+    case 21:
+      return t`SDK`
+    case 22:
+      return t`Server`
+    case 23:
+      return t`Windows CLI`
+    case 24:
+      return t`macOS CLI`
+    case 25:
+      return t`Linux CLI`
+    case 26:
+      return t`DuckDuckGo web app`
+    default:
+      return t`Unknown device type (${type})`
+  }
 }
 
-function formatDeviceDate(value: string | null): string {
-  if (value === null) return '沒有紀錄'
+function formatDeviceDate(value: string | null, locale: string): string {
+  if (value === null) return t`No record`
   const date = new Date(value)
-  if (!Number.isFinite(date.getTime())) return '日期不可用'
-  return new Intl.DateTimeFormat('zh-TW', {
+  if (!Number.isFinite(date.getTime())) return t`Date unavailable`
+  return new Intl.DateTimeFormat(locale, {
     dateStyle: 'medium',
     timeStyle: 'short'
   }).format(date)
 }
 
 function AccountDevicesDialog(): React.JSX.Element {
+  const { i18n, t: translate } = useLingui()
   const [open, setOpen] = useState(false)
   const [result, setResult] = useState<AccountDevicesResult | null>(null)
   const [busy, setBusy] = useState(false)
@@ -235,7 +284,7 @@ function AccountDevicesDialog(): React.JSX.Element {
       setPendingApprovals(approvals)
     } catch {
       setResult(null)
-      setError('無法讀取帳號裝置，請稍後再試。')
+      setError(translate`Unable to load account devices. Please try again later.`)
     } finally {
       setBusy(false)
     }
@@ -291,7 +340,9 @@ function AccountDevicesDialog(): React.JSX.Element {
       if (!acquired) return
       setDeauthorizeOpen(false)
       setResult(null)
-      setSuccess('已送出取消要求。目前裝置也必須重新登入才能繼續同步。')
+      setSuccess(
+        translate`The deauthorization request was sent. This device must also sign in again before it can continue syncing.`
+      )
     } catch (deauthorizeFailure) {
       if (!acquired) return
       setDeauthorizeError(deauthorizeSessionsError(deauthorizeFailure))
@@ -308,16 +359,21 @@ function AccountDevicesDialog(): React.JSX.Element {
           render={<Button className="w-full" variant="outline" size="sm" type="button" />}
         >
           <Laptop data-icon="inline-start" aria-hidden="true" />
-          帳號裝置
+          <Trans>Account devices</Trans>
         </DialogTrigger>
         <DialogContent
           className="max-h-[min(42rem,calc(100vh-2rem))] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-lg"
           forceOverlay
         >
           <DialogHeader>
-            <DialogTitle>帳號裝置</DialogTitle>
+            <DialogTitle>
+              <Trans>Account devices</Trans>
+            </DialogTitle>
             <DialogDescription>
-              顯示伺服器上的裝置活動與信任狀態，並可取消所有工作階段。不會顯示裝置識別碼或網路資訊。
+              <Trans>
+                View device activity and trusted status on the server, and deauthorize all sessions.
+                Device identifiers and network information are not shown.
+              </Trans>
             </DialogDescription>
           </DialogHeader>
           <div className="scroll-fade-y forced-colors:scroll-fade-none -mx-4 min-h-0 overflow-y-auto px-4">
@@ -325,9 +381,14 @@ function AccountDevicesDialog(): React.JSX.Element {
               {pendingApprovals.length > 0 && (
                 <section className="grid gap-3 rounded-lg border p-3">
                   <div>
-                    <h3 className="font-medium">待處理登入要求</h3>
+                    <h3 className="font-medium">
+                      <Trans>Pending sign-in requests</Trans>
+                    </h3>
                     <p className="text-muted-foreground text-sm">
-                      僅允許你本人剛在另一部裝置發出的要求，並先核對驗證詞組。
+                      <Trans>
+                        Only approve a request you just made on another device, after verifying the
+                        verification phrase.
+                      </Trans>
                     </p>
                   </div>
                   {pendingApprovals.map((approval) => (
@@ -336,9 +397,11 @@ function AccountDevicesDialog(): React.JSX.Element {
                       className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2"
                     >
                       <div className="text-sm">
-                        <p className="font-medium">{approval.requestDeviceType || '未知裝置'}</p>
+                        <p className="font-medium">
+                          {approval.requestDeviceType || translate`Unknown device`}
+                        </p>
                         <p className="text-muted-foreground">
-                          {formatDeviceDate(approval.createdAt)}
+                          {formatDeviceDate(approval.createdAt, i18n.locale)}
                         </p>
                       </div>
                       <Button
@@ -351,7 +414,7 @@ function AccountDevicesDialog(): React.JSX.Element {
                           setSelectedApproval(approval)
                         }}
                       >
-                        檢視要求
+                        <Trans>Review request</Trans>
                       </Button>
                     </div>
                   ))}
@@ -363,14 +426,18 @@ function AccountDevicesDialog(): React.JSX.Element {
                   role="status"
                 >
                   <Spinner aria-hidden="true" />
-                  正在讀取裝置…
+                  <Trans>Loading devices…</Trans>
                 </div>
               ) : result?.status === 'unavailable' ? (
                 <Alert>
-                  <AlertDescription>目前的伺服器不支援帳號裝置清單。</AlertDescription>
+                  <AlertDescription>
+                    <Trans>The current server does not support account device lists.</Trans>
+                  </AlertDescription>
                 </Alert>
               ) : result?.status === 'available' && result.devices.length === 0 ? (
-                <p className="text-muted-foreground text-sm">伺服器沒有回傳任何帳號裝置。</p>
+                <p className="text-muted-foreground text-sm">
+                  <Trans>The server did not return any account devices.</Trans>
+                </p>
               ) : result?.status === 'available' ? (
                 <div className="grid gap-3">
                   {result.devices.map((device, index) => (
@@ -382,26 +449,50 @@ function AccountDevicesDialog(): React.JSX.Element {
                         <div>
                           <h3 className="font-medium">{device.name}</h3>
                           <p className="text-muted-foreground text-sm">
-                            {deviceTypeNames[device.type] ?? `未知裝置類型（${device.type}）`}
+                            {deviceTypeName(device.type)}
                           </p>
                         </div>
                         <div className="flex flex-wrap gap-1">
-                          {device.current && <Badge>此裝置</Badge>}
-                          <Badge variant="outline">{device.trusted ? '已信任' : '未信任'}</Badge>
-                          {device.pendingAuthRequest && <Badge variant="secondary">待確認</Badge>}
+                          {device.current && (
+                            <Badge>
+                              <Trans>This device</Trans>
+                            </Badge>
+                          )}
+                          <Badge variant="outline">
+                            {device.trusted ? <Trans>Trusted</Trans> : <Trans>Not trusted</Trans>}
+                          </Badge>
+                          {device.pendingAuthRequest && (
+                            <Badge variant="secondary">
+                              <Trans>Pending confirmation</Trans>
+                            </Badge>
+                          )}
                         </div>
                       </div>
                       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-                        <dt className="text-muted-foreground">建立時間</dt>
-                        <dd>{formatDeviceDate(device.createdAt)}</dd>
-                        <dt className="text-muted-foreground">最近活動</dt>
-                        <dd>{formatDeviceDate(device.lastActivityAt)}</dd>
-                        <dt className="text-muted-foreground">目前裝置</dt>
-                        <dd>{device.current ? '是' : '否'}</dd>
-                        <dt className="text-muted-foreground">信任狀態</dt>
-                        <dd>{device.trusted ? '已信任' : '未信任'}</dd>
-                        <dt className="text-muted-foreground">待處理登入要求</dt>
-                        <dd>{device.pendingAuthRequest ? '有' : '無'}</dd>
+                        <dt className="text-muted-foreground">
+                          <Trans>Created</Trans>
+                        </dt>
+                        <dd>{formatDeviceDate(device.createdAt, i18n.locale)}</dd>
+                        <dt className="text-muted-foreground">
+                          <Trans>Last activity</Trans>
+                        </dt>
+                        <dd>{formatDeviceDate(device.lastActivityAt, i18n.locale)}</dd>
+                        <dt className="text-muted-foreground">
+                          <Trans>Current device</Trans>
+                        </dt>
+                        <dd>{device.current ? <Trans>Yes</Trans> : <Trans>No</Trans>}</dd>
+                        <dt className="text-muted-foreground">
+                          <Trans>Trust status</Trans>
+                        </dt>
+                        <dd>
+                          {device.trusted ? <Trans>Trusted</Trans> : <Trans>Not trusted</Trans>}
+                        </dd>
+                        <dt className="text-muted-foreground">
+                          <Trans>Pending sign-in request</Trans>
+                        </dt>
+                        <dd>
+                          {device.pendingAuthRequest ? <Trans>Yes</Trans> : <Trans>No</Trans>}
+                        </dd>
                       </dl>
                     </section>
                   ))}
@@ -435,9 +526,14 @@ function AccountDevicesDialog(): React.JSX.Element {
               ) : (
                 <div className="grid gap-2 rounded-lg border p-3">
                   <div>
-                    <h3 className="font-medium">取消所有工作階段</h3>
+                    <h3 className="font-medium">
+                      <Trans>Deauthorize all sessions</Trans>
+                    </h3>
                     <p className="text-muted-foreground text-sm">
-                      強制這個帳號的所有裝置重新登入，不會刪除本機加密 vault。
+                      <Trans>
+                        Force every device for this account to sign in again without deleting the
+                        local encrypted vault.
+                      </Trans>
                     </p>
                   </div>
                   <Button
@@ -448,7 +544,7 @@ function AccountDevicesDialog(): React.JSX.Element {
                     onClick={() => changeDeauthorizeOpen(true)}
                   >
                     <LogOut data-icon="inline-start" aria-hidden="true" />
-                    開始取消工作階段
+                    <Trans>Start deauthorization</Trans>
                   </Button>
                 </div>
               )}
@@ -461,7 +557,7 @@ function AccountDevicesDialog(): React.JSX.Element {
               disabled={busy}
               onClick={() => changeOpen(false)}
             >
-              關閉
+              <Trans>Close</Trans>
             </Button>
             {!deauthorizeOpen && (
               <Button
@@ -475,7 +571,7 @@ function AccountDevicesDialog(): React.JSX.Element {
                 ) : (
                   <RefreshCw data-icon="inline-start" aria-hidden="true" />
                 )}
-                重新整理
+                <Trans>Refresh</Trans>
               </Button>
             )}
           </DialogFooter>

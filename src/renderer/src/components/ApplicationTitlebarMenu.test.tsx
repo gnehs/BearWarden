@@ -15,9 +15,9 @@ describe('ApplicationTitlebarMenu', () => {
 
     expect(markup).toContain('aria-label="應用程式選單"')
     expect(markup).toContain('檔案')
-    expect(markup).toContain('密碼庫')
+    expect(markup).toContain('保管庫')
     expect(markup).toContain('編輯')
-    expect(markup).toContain('顯示方式')
+    expect(markup).toContain('檢視')
     expect(markup).toContain('視窗')
   })
 })

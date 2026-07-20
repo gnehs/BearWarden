@@ -1,11 +1,15 @@
+import { msg } from '@lingui/core/macro'
 import { toast } from 'sonner'
 import type { AppUpdateState } from '../../../shared/vault-contract'
+import { i18n } from '../i18n'
 
 const updateToastId = 'app-update'
 
 function runUpdateAction(action: () => Promise<unknown>): void {
   void action().catch(() => {
-    toast.error('無法執行更新操作，請稍後再試。', { id: updateToastId })
+    toast.error(i18n._(msg`Unable to perform the update action. Please try again later.`), {
+      id: updateToastId
+    })
   })
 }
 
@@ -14,14 +18,16 @@ export function presentAppUpdateState(state: AppUpdateState, showError = false):
 
   switch (state.status) {
     case 'available':
-      toast.info(`BearWarden${version} 可供更新`, {
+      toast.info(i18n._(msg`BearWarden${version} update available`), {
         id: updateToastId,
         duration: Infinity,
         description: state.canAutoInstall
-          ? '下載完成後，你可以選擇何時重新啟動並安裝。'
-          : '這個安裝格式目前需從 GitHub Releases 手動下載。',
+          ? i18n._(msg`When the download is complete, you can choose when to restart and install.`)
+          : i18n._(
+              msg`This installation format must currently be downloaded manually from GitHub Releases.`
+            ),
         action: {
-          label: state.canAutoInstall ? '下載更新' : '前往下載',
+          label: state.canAutoInstall ? i18n._(msg`Download update`) : i18n._(msg`Go to download`),
           onClick: () =>
             runUpdateAction(
               state.canAutoInstall
@@ -33,7 +39,7 @@ export function presentAppUpdateState(state: AppUpdateState, showError = false):
       break
     case 'downloading': {
       const progress = Math.round(state.progress ?? 0)
-      toast.loading(`正在下載 BearWarden${version}`, {
+      toast.loading(i18n._(msg`Downloading BearWarden${version}`), {
         id: updateToastId,
         duration: Infinity,
         description: `${progress}%`
@@ -41,21 +47,21 @@ export function presentAppUpdateState(state: AppUpdateState, showError = false):
       break
     }
     case 'downloaded':
-      toast.success(`BearWarden${version} 已準備好`, {
+      toast.success(i18n._(msg`BearWarden${version} is ready`), {
         id: updateToastId,
         duration: Infinity,
-        description: '重新啟動後會安裝新版。',
+        description: i18n._(msg`The new version will be installed after restarting.`),
         action: {
-          label: '重新啟動並安裝',
+          label: i18n._(msg`Restart and install`),
           onClick: () => runUpdateAction(() => window.bearwarden.updater.install())
         }
       })
       break
     case 'error':
       if (showError) {
-        toast.error('無法下載更新', {
+        toast.error(i18n._(msg`Unable to download update`), {
           id: updateToastId,
-          description: '請確認網路連線後稍後再試。'
+          description: i18n._(msg`Check your network connection and try again later.`)
         })
       }
       break

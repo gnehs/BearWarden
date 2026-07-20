@@ -1,9 +1,11 @@
+import { msg } from '@lingui/core/macro'
 import type {
   VaultExportRequest,
   VaultExportResult,
   VaultImportRequest,
   VaultImportResult
 } from '../../../shared/vault-contract'
+import { i18n } from '../i18n'
 
 export function createVaultImportRequest(
   masterPassword: string,
@@ -32,50 +34,68 @@ export async function executeVaultExport(
 }
 
 export function formatVaultExportResult(result: VaultExportResult): string {
+  const listSeparator = i18n._(msg`, `)
   const skipped = result.skippedTrashItems
-    ? `，已略過垃圾桶中的 ${result.skippedTrashItems} 個項目`
+    ? i18n._(msg`, skipped ${result.skippedTrashItems} items in the trash`)
     : ''
   const attachments =
-    result.attachmentCount === undefined ? '' : `、${result.attachmentCount} 個附件`
+    result.attachmentCount === undefined ? '' : i18n._(msg`, ${result.attachmentCount} attachments`)
   const unsupported = result.skippedUnsupportedItems
-    ? `；CSV 另略過 ${result.skippedUnsupportedItems} 個不支援項目（卡片 ${result.skippedCards ?? 0}、身分 ${result.skippedIdentities ?? 0}、SSH 金鑰 ${result.skippedSshKeys ?? 0}）`
+    ? i18n._(
+        msg`; CSV also skipped ${result.skippedUnsupportedItems} unsupported items (${result.skippedCards ?? 0} cards, ${result.skippedIdentities ?? 0} identities, and ${result.skippedSshKeys ?? 0} SSH keys)`
+      )
     : ''
   const passkeys = result.skippedPasskeys
-    ? `，以及 ${result.skippedPasskeys} 個無法由 CSV 表示的 Passkey`
+    ? i18n._(msg`, and ${result.skippedPasskeys} passkeys that CSV cannot represent`)
     : ''
   const losses = [
-    result.skippedAttachments ? `${result.skippedAttachments} 個附件` : '',
+    result.skippedAttachments ? i18n._(msg`${result.skippedAttachments} attachments`) : '',
     result.skippedPasswordHistoryEntries
-      ? `${result.skippedPasswordHistoryEntries} 筆密碼歷史`
+      ? i18n._(msg`${result.skippedPasswordHistoryEntries} password history entries`)
       : '',
-    result.simplifiedUriMatches ? `${result.simplifiedUriMatches} 個 URI 比對規則` : '',
+    result.simplifiedUriMatches ? i18n._(msg`${result.simplifiedUriMatches} URI match rules`) : '',
     result.skippedPasswordRevisionDates
-      ? `${result.skippedPasswordRevisionDates} 筆密碼更新時間`
+      ? i18n._(msg`${result.skippedPasswordRevisionDates} password revision dates`)
       : '',
-    result.skippedAutofillSettings ? `${result.skippedAutofillSettings} 筆自動填入設定` : '',
+    result.skippedAutofillSettings
+      ? i18n._(msg`${result.skippedAutofillSettings} autofill settings`)
+      : '',
     result.simplifiedCustomFieldTypes
-      ? `${result.simplifiedCustomFieldTypes} 個被簡化為文字的自訂欄位型別`
+      ? i18n._(msg`${result.simplifiedCustomFieldTypes} custom field types simplified to text`)
       : ''
   ].filter(Boolean)
   const riskyFields = result.riskyCustomFields
-    ? `；另有 ${result.riskyCustomFields} 個自訂欄位無法保證原結構（空名稱 ${result.emptyCustomFieldNames ?? 0}、名稱或值含換行 ${result.multilineCustomFields ?? 0}、值含「: 」 ${result.colonValueCustomFields ?? 0}）`
+    ? i18n._(
+        msg`; ${result.riskyCustomFields} custom fields may not retain their original structure (${result.emptyCustomFieldNames ?? 0} with empty names, ${result.multilineCustomFields ?? 0} with newlines in names or values, and ${result.colonValueCustomFields ?? 0} with ": " in values)`
+      )
     : ''
-  const lossSummary = losses.length > 0 ? `；CSV 未包含或簡化：${losses.join('、')}` : ''
+  const lossSummary =
+    losses.length > 0 ? i18n._(msg`; CSV omitted or simplified: ${losses.join(listSeparator)}`) : ''
   const durability = result.durabilityWarning
-    ? '；檔案已發布到選定位置，但無法確認目錄 metadata 已持久化。請先檢查檔案是否完整，再決定是否重試'
+    ? i18n._(
+        msg`; the file was published to the selected location, but directory metadata persistence could not be confirmed. Check that the file is complete before deciding whether to retry`
+      )
     : ''
-  return `匯出檔已儲存，共 ${result.exportedItems} 個項目、${result.exportedFolders} 個資料夾${attachments}${skipped}${unsupported}${passkeys}${lossSummary}${riskyFields}${durability}。`
+  return i18n._(
+    msg`Export file saved: ${result.exportedItems} items and ${result.exportedFolders} folders${attachments}${skipped}${unsupported}${passkeys}${lossSummary}${riskyFields}${durability}.`
+  )
 }
 
 export function formatVaultImportResult(result: VaultImportResult): string {
+  const listSeparator = i18n._(msg`, `)
   const skipped = result.skippedTrashItems
-    ? `，已略過 ${result.skippedTrashItems} 個垃圾桶項目`
+    ? i18n._(msg`, skipped ${result.skippedTrashItems} items in the trash`)
     : ''
   const losses = [
-    result.skippedTemplateEntries ? `${result.skippedTemplateEntries} 個範本項目` : '',
-    result.skippedAttachments ? `${result.skippedAttachments} 個附件` : '',
-    result.skippedHistoryEntries ? `${result.skippedHistoryEntries} 筆歷史版本` : ''
+    result.skippedTemplateEntries
+      ? i18n._(msg`${result.skippedTemplateEntries} template items`)
+      : '',
+    result.skippedAttachments ? i18n._(msg`${result.skippedAttachments} attachments`) : '',
+    result.skippedHistoryEntries ? i18n._(msg`${result.skippedHistoryEntries} history entries`) : ''
   ].filter(Boolean)
-  const lossSummary = losses.length > 0 ? `；KeePass 未匯入：${losses.join('、')}` : ''
-  return `匯入完成，共新增 ${result.importedItems} 個項目、${result.importedFolders} 個資料夾${skipped}${lossSummary}。`
+  const lossSummary =
+    losses.length > 0 ? i18n._(msg`; KeePass did not import: ${losses.join(listSeparator)}`) : ''
+  return i18n._(
+    msg`Import complete: ${result.importedItems} items and ${result.importedFolders} folders added${skipped}${lossSummary}.`
+  )
 }

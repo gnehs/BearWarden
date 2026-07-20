@@ -63,7 +63,7 @@ describe('equivalent domain UI boundary', () => {
   it('rejects oversized entries and maps actionable service errors', () => {
     expect(() => parseEquivalentDomainDraft(['x'.repeat(1025)])).toThrow('INVALID_INPUT')
     expect(equivalentDomainErrorMessage(new Error('BEARWARDEN:SYNC_CONFLICT'))).toContain(
-      '其他裝置'
+      '另一台裝置'
     )
     expect(equivalentDomainErrorMessage(new Error('BEARWARDEN:SYNC_AUTH_REQUIRED'))).toContain(
       '重新登入'

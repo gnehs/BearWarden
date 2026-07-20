@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useLingui } from '@lingui/react/macro'
 import { AlertTriangle, Check, GitBranch, KeyRound, ShieldAlert } from 'lucide-react'
 import type {
   SshAgentApprovalPrompt,
@@ -18,11 +19,7 @@ import {
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@renderer/components/ui/field'
 import { Input } from '@renderer/components/ui/input'
 import { Spinner } from '@renderer/components/ui/spinner'
-import {
-  canApproveSshAgentApproval,
-  formatSshAgentExpiry,
-  sshAgentSigningPurpose
-} from '@renderer/lib/ssh-agent-ui'
+import { canApproveSshAgentApproval } from '@renderer/lib/ssh-agent-ui'
 
 export type SshAgentApprovalView = SshAgentApprovalPrompt
 
@@ -41,6 +38,8 @@ export default function SshAgentApprovalDialog({
   onRespond,
   onSettled
 }: SshAgentApprovalDialogProps): React.JSX.Element {
+  const { i18n, t } = useLingui()
+  const [renderedAt] = useState(() => Date.now())
   const [masterPassword, setMasterPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -49,7 +48,36 @@ export default function SshAgentApprovalDialog({
   const processingRef = useRef(false)
   const mountedRef = useRef(true)
   const onSettledRef = useRef(onSettled)
-  const purpose = sshAgentSigningPurpose(request.namespace)
+  const purpose = (() => {
+    switch (request.namespace) {
+      case 'git':
+        return {
+          label: t`Git signing`,
+          detail: t`This app wants to use the SSH key to sign Git content.`
+        }
+      case 'file':
+        return {
+          label: t`File signing`,
+          detail: t`This app wants to use the SSH key to sign file content.`
+        }
+      case 'unsupported':
+        return {
+          label: t`Unknown SSHSIG`,
+          detail: t`The signing purpose isn't in an SSHSIG namespace that BearWarden recognizes.`
+        }
+      default:
+        return {
+          label: t`SSH authentication`,
+          detail: t`This app wants to use the SSH key for authentication or signing.`
+        }
+    }
+  })()
+  const remainingSeconds = Math.max(0, Math.ceil((request.expiresAt - renderedAt) / 1_000))
+  const formattedRemainingSeconds = new Intl.NumberFormat(i18n.locale).format(remainingSeconds)
+  const expiryMessage =
+    remainingSeconds > 0
+      ? t`This request expires in about ${formattedRemainingSeconds} seconds.`
+      : t`This request has expired.`
 
   useEffect(() => {
     onSettledRef.current = onSettled
@@ -75,8 +103,8 @@ export default function SshAgentApprovalDialog({
     if (approved && !canApproveSshAgentApproval(request, masterPassword)) {
       setError(
         expired
-          ? '此簽署要求已過期，請重新執行原本的 SSH 操作。'
-          : '請輸入主密碼以核准這把受保護的 SSH 金鑰。'
+          ? t`This signing request has expired. Run the original SSH operation again.`
+          : t`Enter your master password to approve this protected SSH key.`
       )
       return
     }
@@ -102,8 +130,8 @@ export default function SshAgentApprovalDialog({
       if (mountedRef.current) {
         setError(
           approved
-            ? '無法核准此簽署要求。請確認主密碼後再試。'
-            : '無法拒絕此簽署要求。請等候它過期或重新鎖定密碼庫。'
+            ? t`Couldn't approve this signing request. Check your master password and try again.`
+            : t`Couldn't deny this signing request. Wait for it to expire or lock the vault again.`
         )
       }
     } finally {
@@ -121,29 +149,29 @@ export default function SshAgentApprovalDialog({
     >
       <DialogContent className="max-w-lg" showCloseButton={false}>
         <DialogHeader>
-          <DialogTitle>核准 SSH 金鑰簽署？</DialogTitle>
+          <DialogTitle>{t`Approve SSH key signing?`}</DialogTitle>
           <DialogDescription>
-            BearWarden 只會在你核准後使用指定的 SSH 金鑰；私鑰與待簽內容不會離開主程序。
+            {t`BearWarden uses the selected SSH key only after you approve; the private key and content to sign never leave the main process.`}
           </DialogDescription>
         </DialogHeader>
 
         <FieldGroup>
           <Field>
-            <FieldLabel>金鑰</FieldLabel>
+            <FieldLabel>{t`Key`}</FieldLabel>
             <FieldDescription>{request.itemName}</FieldDescription>
             <Badge variant="outline">{request.fingerprint}</Badge>
           </Field>
           <Field>
-            <FieldLabel>用途</FieldLabel>
+            <FieldLabel>{t`Purpose`}</FieldLabel>
             <FieldDescription>{purpose.detail}</FieldDescription>
             <Badge variant="secondary">
-              {purpose.label === 'Git 簽署' ? <GitBranch /> : <KeyRound />}
+              {request.namespace === 'git' ? <GitBranch /> : <KeyRound />}
               {purpose.label}
             </Badge>
           </Field>
           {request.processName && (
             <Field>
-              <FieldLabel>提出要求的程式</FieldLabel>
+              <FieldLabel>{t`Requesting app`}</FieldLabel>
               <FieldDescription>{request.processName}</FieldDescription>
             </Field>
           )}
@@ -152,11 +180,11 @@ export default function SshAgentApprovalDialog({
         {request.forwarded && (
           <Alert variant="destructive">
             <ShieldAlert aria-hidden="true" />
-            <AlertTitle>此要求來自 SSH Agent Forwarding</AlertTitle>
+            <AlertTitle>{t`This request came through SSH agent forwarding`}</AlertTitle>
             <AlertDescription>
               {request.hostFingerprint
-                ? `已驗證遠端主機指紋：${request.hostFingerprint}`
-                : '遠端主機尚未提供可驗證的主機指紋；只在你信任的 SSH 連線中核准。'}
+                ? t`Verified remote host fingerprint: ${request.hostFingerprint}`
+                : t`The remote host hasn't provided a verifiable host fingerprint. Approve only on an SSH connection you trust.`}
             </AlertDescription>
           </Alert>
         )}
@@ -164,7 +192,7 @@ export default function SshAgentApprovalDialog({
         {request.requiresReprompt && (
           <FieldGroup>
             <Field data-invalid={Boolean(error)}>
-              <FieldLabel htmlFor="ssh-agent-master-password">確認主密碼</FieldLabel>
+              <FieldLabel htmlFor="ssh-agent-master-password">{t`Confirm master password`}</FieldLabel>
               <Input
                 id="ssh-agent-master-password"
                 type="password"
@@ -175,7 +203,7 @@ export default function SshAgentApprovalDialog({
                 onChange={(event) => setMasterPassword(event.target.value)}
               />
               <FieldDescription>
-                主密碼只會送到本機主程序驗證，核准後會取得一次性能力權杖。
+                {t`Your master password is sent only to the local main process for verification. Approval grants a one-time capability token.`}
               </FieldDescription>
             </Field>
           </FieldGroup>
@@ -183,8 +211,8 @@ export default function SshAgentApprovalDialog({
 
         <Alert>
           <AlertTriangle aria-hidden="true" />
-          <AlertTitle>{formatSshAgentExpiry(request.expiresAt)}</AlertTitle>
-          <AlertDescription>不確定要求來源時，請選擇拒絕。</AlertDescription>
+          <AlertTitle>{expiryMessage}</AlertTitle>
+          <AlertDescription>{t`If you aren't sure where this request came from, deny it.`}</AlertDescription>
         </Alert>
         {error && (
           <Alert variant="destructive">
@@ -199,7 +227,7 @@ export default function SshAgentApprovalDialog({
             disabled={busy}
             onClick={() => void settle(false)}
           >
-            拒絕
+            {t`Deny`}
           </Button>
           <Button
             type="button"
@@ -211,7 +239,7 @@ export default function SshAgentApprovalDialog({
             ) : (
               <Check data-icon="inline-start" aria-hidden="true" />
             )}
-            核准簽署
+            {t`Approve signing`}
           </Button>
         </DialogFooter>
       </DialogContent>

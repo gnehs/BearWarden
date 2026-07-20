@@ -1,9 +1,11 @@
+import { msg } from '@lingui/core/macro'
 import type {
   LoginSummary,
   VaultHealthAccountBreachReport,
   VaultHealthExposedReport,
   VaultHealthWeakFinding
 } from '../../../shared/vault-contract'
+import { i18n } from '../i18n'
 
 const MAX_EXPOSED_FINDINGS = 50_000
 const MAX_ACCOUNT_BREACH_FINDINGS = 10_000
@@ -38,7 +40,7 @@ export type AccountBreachCheckState =
   | { status: 'failed'; revision: string; requestId: number; email: string }
 
 export function weakPasswordLabel(score: VaultHealthWeakFinding['score']): string {
-  return score <= 1 ? '非常弱' : '弱'
+  return score <= 1 ? i18n._(msg`Very weak`) : i18n._(msg`Weak`)
 }
 
 export function vaultHealthRevision(items: readonly LoginSummary[]): string {

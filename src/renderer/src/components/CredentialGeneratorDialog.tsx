@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { History, RefreshCw, ShieldAlert, Trash2 } from 'lucide-react'
+import { Trans, useLingui } from '@lingui/react/macro'
 import type {
   CredentialGeneratorRequest,
   CredentialGeneratorResult,
@@ -50,14 +51,6 @@ interface CredentialGeneratorDialogProps {
   onClearHistory: () => Promise<void>
   onUseCredential?: (result: CredentialGeneratorResult) => void
   useCategories?: readonly GeneratorCredentialCategory[]
-}
-
-const historyAlgorithmLabels: Record<NonNullable<GeneratorHistoryEntry['algorithm']>, string> = {
-  password: '密碼',
-  passphrase: '密語',
-  username: '隨機單字',
-  subaddress: 'Plus Address',
-  catchall: 'Catch-all'
 }
 
 const generatedCopyFeedbackKey = 'generated'
@@ -150,6 +143,7 @@ export default function CredentialGeneratorDialog({
   onUseCredential,
   useCategories
 }: CredentialGeneratorDialogProps): React.JSX.Element {
+  const { i18n, t } = useLingui()
   const mountedRef = useRef(true)
   const requestGenerationRef = useRef(0)
   const [tab, setTab] = useState<GeneratorTab>(initialTab)
@@ -182,15 +176,27 @@ export default function CredentialGeneratorDialog({
   const canUseResult = Boolean(
     result && onUseCredential && (!useCategories || useCategories.includes(result.category))
   )
+  const historyAlgorithmLabels: Record<NonNullable<GeneratorHistoryEntry['algorithm']>, string> = {
+    password: t`Password`,
+    passphrase: t`Passphrase`,
+    username: t`Random word`,
+    subaddress: t`Plus Address`,
+    catchall: t`Catch-all`
+  }
+  const historyCategoryLabels: Record<GeneratorCredentialCategory, string> = {
+    password: t`Password`,
+    username: t`Username`,
+    email: t`Email`
+  }
 
   const generateLabel =
     tab === 'password'
       ? passwordAlgorithm === 'password'
-        ? '密碼'
-        : '密語'
+        ? t`Password`
+        : t`Passphrase`
       : usernameAlgorithm === 'username'
-        ? '使用者名稱'
-        : 'Email'
+        ? t`Username`
+        : t`Email`
 
   const generatorRequest = useMemo<CredentialGeneratorRequest | null>(() => {
     if (tab === 'history') return null
@@ -281,7 +287,9 @@ export default function CredentialGeneratorDialog({
         })
         .catch(() => {
           if (!ignore && mountedRef.current && requestGenerationRef.current === generation) {
-            setError('設定無法產生有效的值，請檢查長度、最少字元與 Email／網域。')
+            setError(
+              t`The settings cannot generate a valid value. Check the length, minimum characters, and email or domain.`
+            )
           }
         })
         .finally(() => {
@@ -296,7 +304,7 @@ export default function CredentialGeneratorDialog({
       window.clearTimeout(timer)
       if (requestGenerationRef.current === generation) requestGenerationRef.current += 1
     }
-  }, [clearCopied, generatorRequest, onGenerate, tab])
+  }, [clearCopied, generatorRequest, onGenerate, t, tab])
 
   function invalidatePlaintext(): void {
     requestGenerationRef.current += 1
@@ -328,7 +336,7 @@ export default function CredentialGeneratorDialog({
       setHistoryLoaded(true)
     } catch {
       if (mountedRef.current && requestGenerationRef.current === generation) {
-        setError('無法讀取產生器歷史。')
+        setError(t`Unable to read generator history.`)
       }
     } finally {
       if (mountedRef.current && requestGenerationRef.current === generation) setBusy(false)
@@ -346,7 +354,9 @@ export default function CredentialGeneratorDialog({
 
   async function generate(): Promise<void> {
     if (!generatorRequest) {
-      setError('設定無法產生有效的值，請檢查長度、最少字元與 Email／網域。')
+      setError(
+        t`The settings cannot generate a valid value. Check the length, minimum characters, and email or domain.`
+      )
       return
     }
     const generation = ++requestGenerationRef.current
@@ -361,7 +371,9 @@ export default function CredentialGeneratorDialog({
       setResult(generated)
     } catch {
       if (mountedRef.current && requestGenerationRef.current === generation) {
-        setError('設定無法產生有效的值，請檢查長度、最少字元與 Email／網域。')
+        setError(
+          t`The settings cannot generate a valid value. Check the length, minimum characters, and email or domain.`
+        )
       }
     } finally {
       if (mountedRef.current && requestGenerationRef.current === generation) setBusy(false)
@@ -380,7 +392,7 @@ export default function CredentialGeneratorDialog({
       }
     } catch {
       if (mountedRef.current && requestGenerationRef.current === generation) {
-        setError('無法複製產生結果，請重新產生後再試。')
+        setError(t`Unable to copy the generated result. Generate it again and try once more.`)
       }
     } finally {
       if (mountedRef.current && requestGenerationRef.current === generation) setBusy(false)
@@ -400,7 +412,7 @@ export default function CredentialGeneratorDialog({
       }
     } catch {
       if (mountedRef.current && requestGenerationRef.current === generation) {
-        setError('無法複製；這筆歷史可能已變更。')
+        setError(t`Unable to copy. This history entry may have changed.`)
       }
     } finally {
       if (mountedRef.current && requestGenerationRef.current === generation) setBusy(false)
@@ -419,7 +431,7 @@ export default function CredentialGeneratorDialog({
       setResult(null)
     } catch {
       if (mountedRef.current && requestGenerationRef.current === generation) {
-        setError('無法清除產生器歷史。')
+        setError(t`Unable to clear generator history.`)
       }
     } finally {
       if (mountedRef.current && requestGenerationRef.current === generation) setBusy(false)
@@ -428,7 +440,7 @@ export default function CredentialGeneratorDialog({
 
   return (
     <Modal
-      title="產生器"
+      title={t`Generator`}
       busy={busy}
       onClose={() => {
         invalidatePlaintext()
@@ -444,9 +456,15 @@ export default function CredentialGeneratorDialog({
               onValueChange={(value) => changeTab(value as GeneratorTab)}
             >
               <TabsList sliding className="w-full shrink-0">
-                <TabsTrigger value="password">密碼</TabsTrigger>
-                <TabsTrigger value="username">使用者名稱</TabsTrigger>
-                <TabsTrigger value="history">歷史</TabsTrigger>
+                <TabsTrigger value="password">
+                  <Trans>Password</Trans>
+                </TabsTrigger>
+                <TabsTrigger value="username">
+                  <Trans>Username</Trans>
+                </TabsTrigger>
+                <TabsTrigger value="history">
+                  <Trans>History</Trans>
+                </TabsTrigger>
               </TabsList>
 
               {tab !== 'history' && (
@@ -456,10 +474,10 @@ export default function CredentialGeneratorDialog({
                       id="generator-result"
                       className="font-mono"
                       value={result?.credential ?? ''}
-                      placeholder={busy ? '正在安全產生…' : '結果會顯示在這裡'}
+                      placeholder={busy ? t`Generating securely…` : t`The result will appear here`}
                       readOnly
                       autoComplete="off"
-                      aria-label="產生結果"
+                      aria-label={t`Generated result`}
                       onCopy={(event) => {
                         event.preventDefault()
                         if (result && !busy) void copyGenerated(result.copyToken)
@@ -479,7 +497,9 @@ export default function CredentialGeneratorDialog({
                       <InputGroupButton
                         size="icon-xs"
                         disabled={busy}
-                        aria-label={result ? `重新產生${generateLabel}` : `產生${generateLabel}`}
+                        aria-label={
+                          result ? t`Regenerate ${generateLabel}` : t`Generate ${generateLabel}`
+                        }
                         onClick={() => void generate()}
                       >
                         {busy ? <Spinner /> : <RefreshCw />}
@@ -488,7 +508,9 @@ export default function CredentialGeneratorDialog({
                         size="xs"
                         disabled={busy || !result}
                         aria-label={
-                          copiedKey === generatedCopyFeedbackKey ? '產生結果已複製' : '複製產生結果'
+                          copiedKey === generatedCopyFeedbackKey
+                            ? t`Generated result copied`
+                            : t`Copy generated result`
                         }
                         onClick={() => {
                           if (result) void copyGenerated(result.copyToken)
@@ -498,23 +520,27 @@ export default function CredentialGeneratorDialog({
                           copied={copiedKey === generatedCopyFeedbackKey}
                           placement="inline-start"
                         />
-                        {copiedKey === generatedCopyFeedbackKey ? '已複製' : '複製'}
+                        {copiedKey === generatedCopyFeedbackKey ? (
+                          <Trans>Copied</Trans>
+                        ) : (
+                          <Trans>Copy</Trans>
+                        )}
                       </InputGroupButton>
                     </InputGroupAddon>
                   </InputGroup>
                   <div className="sr-only" role="status" aria-live="polite">
                     {result && copiedKey === generatedCopyFeedbackKey
-                      ? '產生結果已複製'
+                      ? t`Generated result copied`
                       : result
-                        ? '已產生新結果'
+                        ? t`New result generated`
                         : busy
-                          ? '正在產生'
+                          ? t`Generating`
                           : ''}
                   </div>
                   {canUseResult && result && onUseCredential && (
                     <div className="flex justify-end">
                       <Button type="button" disabled={busy} onClick={() => onUseCredential(result)}>
-                        使用這個值
+                        <Trans>Use this value</Trans>
                       </Button>
                     </div>
                   )}
@@ -530,7 +556,9 @@ export default function CredentialGeneratorDialog({
               <TabsContent value="password" className="min-h-0 overflow-hidden">
                 <FieldGroup className="scroll-fade-y forced-colors:scroll-fade-none h-full overflow-y-auto p-px">
                   <FieldSet>
-                    <FieldLegend variant="label">類型</FieldLegend>
+                    <FieldLegend variant="label">
+                      <Trans>Type</Trans>
+                    </FieldLegend>
                     <ToggleGroup
                       value={[passwordAlgorithm]}
                       variant="outline"
@@ -544,10 +572,10 @@ export default function CredentialGeneratorDialog({
                       }}
                     >
                       <ToggleGroupItem value="password" className="flex-1">
-                        密碼
+                        <Trans>Password</Trans>
                       </ToggleGroupItem>
                       <ToggleGroupItem value="passphrase" className="flex-1">
-                        密語
+                        <Trans>Passphrase</Trans>
                       </ToggleGroupItem>
                     </ToggleGroup>
                   </FieldSet>
@@ -556,7 +584,7 @@ export default function CredentialGeneratorDialog({
                     <>
                       <NumberField
                         id="generator-length"
-                        label="長度"
+                        label={t`Length`}
                         value={length}
                         min={5}
                         max={128}
@@ -564,40 +592,42 @@ export default function CredentialGeneratorDialog({
                         onChange={(value) => changeSetting(setLength, value)}
                       />
                       <FieldSet>
-                        <FieldLegend variant="label">字元類型</FieldLegend>
+                        <FieldLegend variant="label">
+                          <Trans>Character types</Trans>
+                        </FieldLegend>
                         <FieldGroup data-slot="checkbox-group">
                           <CheckboxField
                             id="generator-upper"
-                            title="大寫字母"
+                            title={t`Uppercase letters`}
                             checked={uppercase}
                             disabled={busy}
                             onCheckedChange={(value) => changeSetting(setUppercase, value)}
                           />
                           <CheckboxField
                             id="generator-lower"
-                            title="小寫字母"
+                            title={t`Lowercase letters`}
                             checked={lowercase}
                             disabled={busy}
                             onCheckedChange={(value) => changeSetting(setLowercase, value)}
                           />
                           <CheckboxField
                             id="generator-number"
-                            title="數字"
+                            title={t`Numbers`}
                             checked={numbers}
                             disabled={busy}
                             onCheckedChange={(value) => changeSetting(setNumbers, value)}
                           />
                           <CheckboxField
                             id="generator-special"
-                            title="特殊字元 !@#$%^&*"
+                            title={t`Special characters !@#$%^&*`}
                             checked={special}
                             disabled={busy}
                             onCheckedChange={(value) => changeSetting(setSpecial, value)}
                           />
                           <CheckboxField
                             id="generator-ambiguous"
-                            title="避免易混淆字元"
-                            description="排除 0、O、1、l、I"
+                            title={t`Avoid ambiguous characters`}
+                            description={t`Excludes 0, O, 1, l, and I`}
                             checked={avoidAmbiguous}
                             disabled={busy}
                             onCheckedChange={(value) => changeSetting(setAvoidAmbiguous, value)}
@@ -607,7 +637,7 @@ export default function CredentialGeneratorDialog({
                       <div className="grid grid-cols-2 gap-3">
                         <NumberField
                           id="generator-min-upper"
-                          label="最少大寫"
+                          label={t`Minimum uppercase`}
                           value={minUppercase}
                           min={0}
                           max={128}
@@ -616,7 +646,7 @@ export default function CredentialGeneratorDialog({
                         />
                         <NumberField
                           id="generator-min-lower"
-                          label="最少小寫"
+                          label={t`Minimum lowercase`}
                           value={minLowercase}
                           min={0}
                           max={128}
@@ -625,7 +655,7 @@ export default function CredentialGeneratorDialog({
                         />
                         <NumberField
                           id="generator-min-number"
-                          label="最少數字"
+                          label={t`Minimum numbers`}
                           value={minNumber}
                           min={0}
                           max={9}
@@ -634,7 +664,7 @@ export default function CredentialGeneratorDialog({
                         />
                         <NumberField
                           id="generator-min-special"
-                          label="最少特殊字元"
+                          label={t`Minimum special characters`}
                           value={minSpecial}
                           min={0}
                           max={9}
@@ -647,7 +677,7 @@ export default function CredentialGeneratorDialog({
                     <>
                       <NumberField
                         id="generator-word-count"
-                        label="單字數"
+                        label={t`Word count`}
                         value={wordCount}
                         min={3}
                         max={20}
@@ -655,7 +685,9 @@ export default function CredentialGeneratorDialog({
                         onChange={(value) => changeSetting(setWordCount, value)}
                       />
                       <Field>
-                        <FieldLabel htmlFor="generator-separator">分隔字元</FieldLabel>
+                        <FieldLabel htmlFor="generator-separator">
+                          <Trans>Separator</Trans>
+                        </FieldLabel>
                         <Input
                           id="generator-separator"
                           value={separator}
@@ -664,22 +696,26 @@ export default function CredentialGeneratorDialog({
                           onChange={(event) => changeSetting(setSeparator, event.target.value)}
                         />
                         <FieldDescription>
-                          Bitwarden 相容設定只允許一個 UTF-16 字元。
+                          <Trans>
+                            Bitwarden-compatible settings allow only one UTF-16 character.
+                          </Trans>
                         </FieldDescription>
                       </Field>
                       <FieldSet>
-                        <FieldLegend variant="label">格式</FieldLegend>
+                        <FieldLegend variant="label">
+                          <Trans>Format</Trans>
+                        </FieldLegend>
                         <FieldGroup data-slot="checkbox-group">
                           <CheckboxField
                             id="generator-capitalize"
-                            title="每個單字首字母大寫"
+                            title={t`Capitalize each word`}
                             checked={capitalize}
                             disabled={busy}
                             onCheckedChange={(value) => changeSetting(setCapitalize, value)}
                           />
                           <CheckboxField
                             id="generator-include-number"
-                            title="加入一個數字"
+                            title={t`Include one number`}
                             checked={includeNumber}
                             disabled={busy}
                             onCheckedChange={(value) => changeSetting(setIncludeNumber, value)}
@@ -694,7 +730,9 @@ export default function CredentialGeneratorDialog({
               <TabsContent value="username" className="min-h-0 overflow-hidden">
                 <FieldGroup className="scroll-fade-y forced-colors:scroll-fade-none h-full overflow-y-auto p-px">
                   <FieldSet>
-                    <FieldLegend variant="label">類型</FieldLegend>
+                    <FieldLegend variant="label">
+                      <Trans>Type</Trans>
+                    </FieldLegend>
                     <ToggleGroup
                       value={[usernameAlgorithm]}
                       variant="outline"
@@ -708,30 +746,32 @@ export default function CredentialGeneratorDialog({
                       }}
                     >
                       <ToggleGroupItem value="username" className="flex-1">
-                        單字
+                        <Trans>Words</Trans>
                       </ToggleGroupItem>
                       <ToggleGroupItem value="subaddress" className="flex-1">
-                        Plus
+                        <Trans>Plus</Trans>
                       </ToggleGroupItem>
                       <ToggleGroupItem value="catchall" className="flex-1">
-                        Catch-all
+                        <Trans>Catch-all</Trans>
                       </ToggleGroupItem>
                     </ToggleGroup>
                   </FieldSet>
                   {usernameAlgorithm === 'username' ? (
                     <FieldSet>
-                      <FieldLegend variant="label">格式</FieldLegend>
+                      <FieldLegend variant="label">
+                        <Trans>Format</Trans>
+                      </FieldLegend>
                       <FieldGroup data-slot="checkbox-group">
                         <CheckboxField
                           id="generator-username-capitalize"
-                          title="首字母大寫"
+                          title={t`Capitalize`}
                           checked={usernameCapitalize}
                           disabled={busy}
                           onCheckedChange={(value) => changeSetting(setUsernameCapitalize, value)}
                         />
                         <CheckboxField
                           id="generator-username-number"
-                          title="加入四位數字"
+                          title={t`Include four digits`}
                           checked={usernameIncludeNumber}
                           disabled={busy}
                           onCheckedChange={(value) =>
@@ -742,7 +782,9 @@ export default function CredentialGeneratorDialog({
                     </FieldSet>
                   ) : usernameAlgorithm === 'subaddress' ? (
                     <Field data-invalid={Boolean(error) || undefined}>
-                      <FieldLabel htmlFor="generator-email">Email</FieldLabel>
+                      <FieldLabel htmlFor="generator-email">
+                        <Trans>Email</Trans>
+                      </FieldLabel>
                       <Input
                         id="generator-email"
                         type="email"
@@ -755,12 +797,14 @@ export default function CredentialGeneratorDialog({
                         onChange={(event) => changeSetting(setEmail, event.target.value)}
                       />
                       <FieldDescription>
-                        例如 name@example.com；只在這次產生期間使用。
+                        <Trans>For example, name@example.com. Used only for this generation.</Trans>
                       </FieldDescription>
                     </Field>
                   ) : (
                     <Field data-invalid={Boolean(error) || undefined}>
-                      <FieldLabel htmlFor="generator-domain">Catch-all 網域</FieldLabel>
+                      <FieldLabel htmlFor="generator-domain">
+                        <Trans>Catch-all domain</Trans>
+                      </FieldLabel>
                       <Input
                         id="generator-domain"
                         autoComplete="off"
@@ -772,15 +816,23 @@ export default function CredentialGeneratorDialog({
                         onChange={(event) => changeSetting(setDomain, event.target.value)}
                       />
                       <FieldDescription>
-                        例如 example.com；不會連線到第三方轉寄服務。
+                        <Trans>
+                          For example, example.com. No connection is made to a third-party
+                          forwarding service.
+                        </Trans>
                       </FieldDescription>
                     </Field>
                   )}
                   <Alert>
                     <ShieldAlert />
-                    <AlertTitle>本機產生器</AlertTitle>
+                    <AlertTitle>
+                      <Trans>Local generator</Trans>
+                    </AlertTitle>
                     <AlertDescription>
-                      目前不提供需要 API 憑證的第三方 Email 轉寄整合。
+                      <Trans>
+                        Third-party email forwarding integrations that require API credentials are
+                        not available.
+                      </Trans>
                     </AlertDescription>
                   </Alert>
                 </FieldGroup>
@@ -790,20 +842,27 @@ export default function CredentialGeneratorDialog({
                 <FieldGroup className="scroll-fade-y forced-colors:scroll-fade-none h-full overflow-y-auto p-px">
                   <Alert>
                     <ShieldAlert />
-                    <AlertTitle>歷史會以明文顯示</AlertTitle>
+                    <AlertTitle>
+                      <Trans>History is shown in plaintext</Trans>
+                    </AlertTitle>
                     <AlertDescription>
-                      這些值只存在這台裝置的加密密碼庫；關閉或離開本頁會清除畫面中的明文。
+                      <Trans>
+                        These values exist only in this device’s encrypted vault. Closing or leaving
+                        this page clears plaintext from the screen.
+                      </Trans>
                     </AlertDescription>
                   </Alert>
                   {!historyLoaded && !busy ? (
                     <Button type="button" variant="outline" onClick={() => void loadHistory()}>
                       <History data-icon="inline-start" />
-                      顯示歷史
+                      <Trans>Show history</Trans>
                     </Button>
                   ) : history.length === 0 ? (
-                    <FieldDescription>尚無產生紀錄。</FieldDescription>
+                    <FieldDescription>
+                      <Trans>No generated entries yet.</Trans>
+                    </FieldDescription>
                   ) : (
-                    <ul className="flex flex-col gap-2" aria-label="產生器歷史">
+                    <ul className="flex flex-col gap-2" aria-label={t`Generator history`}>
                       {history.map((entry, index) => (
                         <li
                           key={`${entry.generationDate}:${index}`}
@@ -814,9 +873,9 @@ export default function CredentialGeneratorDialog({
                             <div className="text-muted-foreground text-xs">
                               {entry.algorithm
                                 ? historyAlgorithmLabels[entry.algorithm]
-                                : entry.category}
+                                : historyCategoryLabels[entry.category]}
                               {' · '}
-                              {new Date(entry.generationDate).toLocaleString('zh-TW')}
+                              {new Date(entry.generationDate).toLocaleString(i18n.locale)}
                             </div>
                           </div>
                           <Button
@@ -825,8 +884,8 @@ export default function CredentialGeneratorDialog({
                             size="icon-sm"
                             aria-label={
                               copiedKey === copyFeedbackKey(historyLocator(entry, index))
-                                ? '這筆歷史已複製'
-                                : '複製這筆歷史'
+                                ? t`This history entry is copied`
+                                : t`Copy this history entry`
                             }
                             disabled={busy}
                             onClick={() => void copyHistory(historyLocator(entry, index))}
@@ -847,7 +906,7 @@ export default function CredentialGeneratorDialog({
                       onClick={() => void clearHistory()}
                     >
                       <Trash2 data-icon="inline-start" />
-                      清除歷史
+                      <Trans>Clear history</Trans>
                     </Button>
                   )}
                 </FieldGroup>
@@ -856,7 +915,7 @@ export default function CredentialGeneratorDialog({
           </ModalBody>
           <ModalFooter>
             <DialogClose render={<Button variant="secondary" type="button" disabled={busy} />}>
-              關閉
+              <Trans>Close</Trans>
             </DialogClose>
           </ModalFooter>
         </>

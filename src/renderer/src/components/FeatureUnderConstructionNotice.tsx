@@ -1,4 +1,5 @@
 import { Construction } from 'lucide-react'
+import { useLingui } from '@lingui/react/macro'
 import { Alert, AlertDescription, AlertTitle } from '@renderer/components/ui/alert'
 import { AuxiliaryPageContent } from './AuxiliaryPageLayout'
 
@@ -9,11 +10,13 @@ interface FeatureUnderConstructionNoticeProps {
 function FeatureUnderConstructionNotice({
   children
 }: FeatureUnderConstructionNoticeProps): React.JSX.Element {
+  const { t } = useLingui()
+
   return (
     <AuxiliaryPageContent className="mb-4">
       <Alert className="col-span-full">
         <Construction aria-hidden="true" />
-        <AlertTitle>施工中</AlertTitle>
+        <AlertTitle>{t`Under construction`}</AlertTitle>
         <AlertDescription>{children}</AlertDescription>
       </Alert>
     </AuxiliaryPageContent>

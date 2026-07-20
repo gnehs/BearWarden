@@ -13,6 +13,8 @@ import {
   Unplug,
   X
 } from 'lucide-react'
+import { plural, t } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useEffect, useState } from 'react'
 import type {
   AccountSecurityProfile,
@@ -119,13 +121,6 @@ export function applyAccountProfileIfCurrent(
     : current
 }
 
-const twoFactorMethods: { label: string; value: SyncTwoFactorFormMethod }[] = [
-  { label: '驗證器應用程式', value: '0' },
-  { label: '電子郵件', value: '1' },
-  { label: 'YubiKey OTP', value: '3' },
-  { label: '安全金鑰', value: WEB_AUTHN_TWO_FACTOR_METHOD }
-]
-
 interface SyncDialogProps {
   status: SyncStatus
   onClose: () => void
@@ -134,26 +129,29 @@ interface SyncDialogProps {
 }
 
 function describeSyncError(error: unknown): string {
-  if (!(error instanceof Error)) return '同步未完成，請稍後再試。'
-  if (/(?:CANCEL|ABORT)/i.test(error.message)) return '操作已取消。'
+  if (!(error instanceof Error)) return t`Sync did not complete. Please try again later.`
+  if (/(?:CANCEL|ABORT)/i.test(error.message)) return t`The operation was canceled.`
   if (error.message.includes('NEW_DEVICE_REQUIRED'))
-    return '伺服器要求新裝置驗證碼。請從 Bitwarden 寄送的郵件取得驗證碼後，在進階選項輸入。'
-  if (error.message.includes('AUTH_REQUIRED')) return 'Bitwarden 密碼庫需要重新登入或解鎖。'
+    return t`The server requires a new device verification code. Get the code from the email sent by Bitwarden, then enter it under advanced options.`
+  if (error.message.includes('AUTH_REQUIRED'))
+    return t`The Bitwarden vault must be signed in to or unlocked again.`
   if (error.message.includes('UNSUPPORTED_ACCOUNT'))
-    return '此帳號使用尚未支援的新版帳號加密或登入方式；為避免資料損毀，BearWarden 不會進行任何遠端寫入。'
+    return t`This account uses a newer account encryption or sign-in method that is not yet supported. To prevent data loss, BearWarden will not write any changes to the server.`
   if (error.message.includes('SYNC_NETWORK'))
-    return '無法連線到同步伺服器。請檢查網路、伺服器網址與 TLS 憑證後再試。'
+    return t`Could not connect to the sync server. Check your network, server URL, and TLS certificate, then try again.`
   if (error.message.includes('SYNC_INVALID_RESPONSE'))
-    return '伺服器回傳了 BearWarden 無法安全處理的資料。請確認伺服器版本與相容性。'
+    return t`The server returned data that BearWarden cannot process safely. Check the server version and compatibility.`
   if (error.message.includes('SYNC_INVALID_SSH_KEY'))
-    return '伺服器包含一筆不完整的 SSH Key。請先使用 Bitwarden 或 Vaultwarden 修復或刪除該項目。'
+    return t`The server contains an incomplete SSH key. Repair or delete it in Bitwarden or Vaultwarden first.`
   if (error.message.includes('SYNC_CONFLICT'))
-    return '遠端資料已變更，這次同步未套用。請重新同步以取得最新版本。'
-  if (error.message.includes('LOCKED')) return '密碼庫已鎖定，請輸入主密碼後再試。'
-  if (error.message.includes('INVALID_MASTER_PASSWORD')) return '主密碼不正確。'
-  if (error.message.includes('TWO_FACTOR')) return '雙重驗證無效、已過期或已取消，請重新嘗試。'
-  if (error.message.includes('INVALID_URL')) return '請輸入有效的 HTTPS 伺服器網址。'
-  return '同步未完成，請檢查連線與登入資訊後再試。'
+    return t`The server data changed, so this sync was not applied. Sync again to get the latest version.`
+  if (error.message.includes('LOCKED'))
+    return t`The vault is locked. Enter your master password and try again.`
+  if (error.message.includes('INVALID_MASTER_PASSWORD')) return t`The master password is incorrect.`
+  if (error.message.includes('TWO_FACTOR'))
+    return t`Two-step verification was invalid, expired, or canceled. Please try again.`
+  if (error.message.includes('INVALID_URL')) return t`Enter a valid HTTPS server URL.`
+  return t`Sync did not complete. Check your connection and sign-in information, then try again.`
 }
 
 export interface SyncErrorPresentation {
@@ -165,21 +163,21 @@ export interface SyncErrorPresentation {
 export function syncInvalidResponseStageLabel(stage: SyncInvalidResponseStage): string {
   switch (stage) {
     case 'response':
-      return '伺服器同步回應'
+      return t`Server sync response`
     case 'account':
-      return '帳號與加密資訊'
+      return t`Account and encryption information`
     case 'organization':
-      return '組織金鑰與成員資料'
+      return t`Organization keys and member data`
     case 'folder':
-      return '資料夾資料'
+      return t`Folder data`
     case 'cipher':
-      return '密碼庫項目資料'
+      return t`Vault item data`
     case 'collection':
-      return '組織集合關聯'
+      return t`Organization collection relationships`
     case 'send':
-      return 'Send 資料'
+      return t`Send data`
     case 'snapshot':
-      return '同步狀態提交'
+      return t`Sync state commit`
   }
 }
 
@@ -188,44 +186,43 @@ export function syncErrorPresentation(code: SyncErrorCode): SyncErrorPresentatio
   switch (code) {
     case 'SYNC_AUTH_REQUIRED':
       return {
-        title: '登入已失效',
-        description: '請重新輸入主密碼；如果伺服器要求，也請完成雙重驗證。'
+        title: t`Your sign-in has expired`,
+        description: t`Enter your master password again and complete two-step verification if the server requests it.`
       }
     case 'SYNC_NEW_DEVICE_REQUIRED':
       return {
-        title: '需要新裝置驗證碼',
-        description: '請從 Bitwarden 寄送的郵件取得驗證碼，並在進階選項中輸入。'
+        title: t`New device verification code required`,
+        description: t`Get the verification code from the email sent by Bitwarden and enter it under advanced options.`
       }
     case 'SYNC_UNSUPPORTED_ACCOUNT':
       return {
-        title: '不支援此帳號的加密方式',
-        description: '為避免資料損毀，BearWarden 已停止遠端寫入。請更新應用程式後再試。'
+        title: t`This account's encryption method is not supported`,
+        description: t`To prevent data loss, BearWarden stopped writing changes to the server. Update the app and try again.`
       }
     case 'SYNC_NETWORK':
       return {
-        title: '無法連線到同步伺服器',
-        description: '請檢查網路、伺服器網址與 TLS 憑證，並確認伺服器目前可連線。'
+        title: t`Could not connect to the sync server`,
+        description: t`Check your network, server URL, and TLS certificate, and make sure the server is reachable.`
       }
     case 'SYNC_INVALID_RESPONSE':
       return {
-        title: '伺服器回應不相容',
-        description: '伺服器回傳的資料無法安全處理。請確認 Bitwarden 或 Vaultwarden 版本與相容性。'
+        title: t`The server response is incompatible`,
+        description: t`The data returned by the server cannot be processed safely. Check the Bitwarden or Vaultwarden version and compatibility.`
       }
     case 'SYNC_INVALID_SSH_KEY':
       return {
-        title: '伺服器包含不完整的 SSH Key',
-        description:
-          'Vaultwarden 回傳了一筆缺少必要金鑰欄位的 SSH Key。請先使用官方 Web Vault 修復或刪除該項目，再重新同步。'
+        title: t`The server contains an incomplete SSH key`,
+        description: t`Vaultwarden returned an SSH key that is missing required key fields. Repair or delete it in the official web vault, then sync again.`
       }
     case 'SYNC_CONFLICT':
       return {
-        title: '遠端資料已變更',
-        description: '這次變更未套用。請再次同步以取得最新版本後重試。'
+        title: t`The server data has changed`,
+        description: t`This change was not applied. Sync again to get the latest version, then retry.`
       }
     case 'SYNC_FAILED':
       return {
-        title: '同步程序未完成',
-        description: '請再試一次；如果問題持續發生，請記下下方錯誤代碼以便診斷。'
+        title: t`Sync did not complete`,
+        description: t`Try again. If the problem persists, note the error code below for troubleshooting.`
       }
   }
 }
@@ -238,32 +235,38 @@ export function SyncFailureAlert({
   detail?: SyncInvalidResponseStage
 }): React.JSX.Element {
   const presentation = syncErrorPresentation(code)
+  const detailLabel = detail ? syncInvalidResponseStageLabel(detail) : null
+  const problemSection = detailLabel ? t`Problem section: ${detailLabel}` : null
+  const errorCode = t`Error code: ${code}`
   return (
     <Alert variant="destructive">
       <CircleAlert aria-hidden="true" />
       <AlertTitle>{presentation.title}</AlertTitle>
       <AlertDescription className="flex flex-col gap-1">
         <span>{presentation.description}</span>
-        {code === 'SYNC_INVALID_RESPONSE' && detail && (
-          <small>問題區段：{syncInvalidResponseStageLabel(detail)}</small>
-        )}
-        <small>錯誤代碼：{code}</small>
+        {code === 'SYNC_INVALID_RESPONSE' && problemSection && <small>{problemSection}</small>}
+        <small>{errorCode}</small>
       </AlertDescription>
     </Alert>
   )
 }
 
-function formatSyncTime(value?: string): string {
-  if (!value) return '尚未同步'
+function formatSyncTime(locale: string, value?: string): string {
+  if (!value) return t`Never synced`
   const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '尚未同步'
-  return new Intl.DateTimeFormat('zh-TW', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+  if (Number.isNaN(date.getTime())) return t`Never synced`
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
 }
 
 function syncSummary(result: SyncResult): string {
   const { pulled, pushed, deleted, conflicts } = result
-  const fragments = [`取得 ${pulled}`, `上傳 ${pushed}`, `刪除 ${deleted}`]
-  if (conflicts) fragments.push(`衝突 ${conflicts}`)
+  const fragments = [
+    t({ message: plural(pulled, { one: 'Pulled # item', other: 'Pulled # items' }) }),
+    t({ message: plural(pushed, { one: 'Pushed # item', other: 'Pushed # items' }) }),
+    t({ message: plural(deleted, { one: 'Deleted # item', other: 'Deleted # items' }) })
+  ]
+  if (conflicts)
+    fragments.push(t({ message: plural(conflicts, { one: '# conflict', other: '# conflicts' }) }))
   return fragments.join(' · ')
 }
 
@@ -273,6 +276,7 @@ function SyncDialog({
   onStatusChange,
   onSynced
 }: SyncDialogProps): React.JSX.Element {
+  const { i18n, t } = useLingui()
   const [serverUrl, setServerUrl] = useState(status.serverUrl ?? BITWARDEN_CLOUD_URL)
   const [email, setEmail] = useState(status.email ?? '')
   const [masterPassword, setMasterPassword] = useState('')
@@ -292,6 +296,12 @@ function SyncDialog({
   })
   const [accountSecurityError, setAccountSecurityError] = useState('')
   const [accountSecurityBusy, setAccountSecurityBusy] = useState(false)
+  const twoFactorMethods: { label: string; value: SyncTwoFactorFormMethod }[] = [
+    { label: t`Authenticator app`, value: '0' },
+    { label: t`Email`, value: '1' },
+    { label: t`YubiKey OTP`, value: '3' },
+    { label: t`Security key`, value: WEB_AUTHN_TWO_FACTOR_METHOD }
+  ]
 
   const configured = status.configured
   const requiresCredentials =
@@ -325,7 +335,7 @@ function SyncDialog({
           )
         }
       } catch {
-        if (active) setAccountSecurityError('無法讀取帳號安全狀態。')
+        if (active) setAccountSecurityError(t`Could not load the account security status.`)
       } finally {
         if (active) setAccountSecurityBusy(false)
       }
@@ -333,16 +343,20 @@ function SyncDialog({
     return () => {
       active = false
     }
-  }, [currentAccountProfileIdentity, status.state])
+  }, [currentAccountProfileIdentity, status.state, t])
 
   async function resendVerification(): Promise<void> {
     setAccountSecurityBusy(true)
     setAccountSecurityError('')
     try {
       await window.bearwarden.accountSecurity.resendVerification()
-      setSuccess('驗證信寄送要求已送出；若伺服器已設定郵件服務，請至信箱完成驗證。')
+      setSuccess(
+        t`The verification email request was sent. If email is configured on the server, check your inbox to complete verification.`
+      )
     } catch {
-      setAccountSecurityError('無法寄送驗證信；請確認 Vaultwarden 已設定郵件服務。')
+      setAccountSecurityError(
+        t`Could not send the verification email. Make sure email is configured in Vaultwarden.`
+      )
     } finally {
       setAccountSecurityBusy(false)
     }
@@ -373,22 +387,25 @@ function SyncDialog({
     }
   }
 
-  async function refreshAfterSuccess(result: SyncResult, message: string): Promise<void> {
+  async function refreshAfterSuccess(
+    result: SyncResult,
+    formatMessage: (summary: string) => string
+  ): Promise<void> {
     onStatusChange(result)
     clearSecrets()
     await onSynced()
-    setSuccess(`${message} ${syncSummary(result)}。`)
+    setSuccess(formatMessage(syncSummary(result)))
   }
 
   async function connect(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     const normalizedUrl = validateServerUrl()
     if (!normalizedUrl) {
-      setError('請輸入有效的 HTTPS 伺服器網址。')
+      setError(t`Enter a valid HTTPS server URL.`)
       return
     }
     if (!email.trim() || !masterPassword) {
-      setError('請輸入電子郵件與主密碼。')
+      setError(t`Enter your email and master password.`)
       return
     }
     setBusy(true)
@@ -402,7 +419,7 @@ function SyncDialog({
         ...(newDeviceOtp.trim() ? { newDeviceOtp: newDeviceOtp.trim() } : {}),
         ...buildSyncTwoFactorRequest({ twoFactorMethod, twoFactorCode, webAuthnRemember })
       })
-      await refreshAfterSuccess(result, '已連線並完成同步。')
+      await refreshAfterSuccess(result, (summary) => t`Connected and synced. ${summary}.`)
     } catch (connectError) {
       setError(describeSyncError(connectError))
     } finally {
@@ -412,7 +429,7 @@ function SyncDialog({
 
   async function unlock(): Promise<void> {
     if (!masterPassword) {
-      setError('請輸入主密碼。')
+      setError(t`Enter your master password.`)
       return
     }
     setBusy(true)
@@ -427,7 +444,7 @@ function SyncDialog({
       onStatusChange(nextStatus)
       clearSecrets()
       const result = await window.bearwarden.sync.now()
-      await refreshAfterSuccess(result, '已解鎖並完成同步。')
+      await refreshAfterSuccess(result, (summary) => t`Unlocked and synced. ${summary}.`)
     } catch (unlockError) {
       setError(describeSyncError(unlockError))
     } finally {
@@ -441,7 +458,7 @@ function SyncDialog({
     setSuccess('')
     try {
       const result = await window.bearwarden.sync.now()
-      await refreshAfterSuccess(result, '同步完成。')
+      await refreshAfterSuccess(result, (summary) => t`Sync complete. ${summary}.`)
     } catch (syncError) {
       setError(describeSyncError(syncError))
     } finally {
@@ -451,7 +468,7 @@ function SyncDialog({
 
   async function resolvePendingImport(): Promise<void> {
     if (!masterPassword) {
-      setError('請輸入主密碼。')
+      setError(t`Enter your master password.`)
       return
     }
     setBusy(true)
@@ -464,7 +481,7 @@ function SyncDialog({
       })
       onStatusChange(nextStatus)
       clearSecrets()
-      setSuccess('已允許重新傳送。按「立即同步」開始重試。')
+      setSuccess(t`Resending is now allowed. Select “Sync now” to retry.`)
     } catch (resolveError) {
       setError(describeSyncError(resolveError))
     } finally {
@@ -480,13 +497,16 @@ function SyncDialog({
       onStatusChange(nextStatus)
       clearSecrets()
       setConfirmingDisconnect(false)
-      setSuccess('已中斷 Bitwarden 同步連線。')
+      setSuccess(t`Disconnected from Bitwarden sync.`)
     } catch (disconnectError) {
       setError(describeSyncError(disconnectError))
     } finally {
       setBusy(false)
     }
   }
+
+  const lastErrorTime = formatSyncTime(i18n.locale, status.lastErrorAt)
+  const lastSyncTime = formatSyncTime(i18n.locale, status.lastSyncAt)
 
   return (
     <Dialog
@@ -510,13 +530,15 @@ function SyncDialog({
             {status.state === 'error' ? <CircleAlert /> : <Cloud />}
           </span>
           <div>
-            <DialogTitle className="m-0 text-[17px]">同步</DialogTitle>
+            <DialogTitle className="m-0 text-[17px]">
+              <Trans>Sync</Trans>
+            </DialogTitle>
           </div>
           <Button
             variant="ghost"
             size="icon-sm"
             type="button"
-            aria-label="關閉"
+            aria-label={t`Close`}
             onClick={close}
             disabled={busy}
           >
@@ -548,26 +570,26 @@ function SyncDialog({
             <div>
               <strong>
                 {isSyncing
-                  ? '正在同步…'
+                  ? t`Syncing…`
                   : status.state === 'ready'
-                    ? '已連線，密碼庫已解鎖'
+                    ? t`Connected, vault unlocked`
                     : status.state === 'locked'
-                      ? '已連線，密碼庫已鎖定'
+                      ? t`Connected, vault locked`
                       : status.state === 'error'
-                        ? '需要處理同步問題'
-                        : '尚未設定同步'}
+                        ? t`A sync issue needs attention`
+                        : t`Sync is not configured`}
               </strong>
               <small>
                 {status.lastError
                   ? status.lastErrorAt
-                    ? `同步失敗：${formatSyncTime(status.lastErrorAt)}`
-                    : '上次同步發生問題。'
+                    ? t`Sync failed: ${lastErrorTime}`
+                    : t`The last sync encountered a problem.`
                   : status.lastSyncAt
-                    ? `上次同步：${formatSyncTime(status.lastSyncAt)}`
-                    : '主密碼與驗證碼只用於本次操作，不會儲存在此裝置。'}
+                    ? t`Last synced: ${lastSyncTime}`
+                    : t`Your master password and verification codes are used only for this operation and are not stored on this device.`}
               </small>
             </div>
-            {isSyncing && <Spinner aria-label="同步中" />}
+            {isSyncing && <Spinner aria-label={t`Syncing`} />}
           </Alert>
 
           {status.lastError && (
@@ -590,7 +612,9 @@ function SyncDialog({
                 {!configured && (
                   <>
                     <Field className="grid gap-[7px]">
-                      <FieldLabel htmlFor="server-url">伺服器網址</FieldLabel>
+                      <FieldLabel htmlFor="server-url">
+                        <Trans>Server URL</Trans>
+                      </FieldLabel>
                       <Input
                         id="server-url"
                         autoFocus
@@ -604,11 +628,15 @@ function SyncDialog({
                         required
                       />
                       <FieldDescription>
-                        Bitwarden 雲端請使用 bitwarden.com；Vaultwarden 請使用 HTTPS 網址。
+                        <Trans>
+                          Use bitwarden.com for Bitwarden Cloud. For Vaultwarden, use an HTTPS URL.
+                        </Trans>
                       </FieldDescription>
                     </Field>
                     <Field className="grid gap-[7px]">
-                      <FieldLabel htmlFor="sync-email">電子郵件</FieldLabel>
+                      <FieldLabel htmlFor="sync-email">
+                        <Trans>Email</Trans>
+                      </FieldLabel>
                       <Input
                         id="sync-email"
                         type="email"
@@ -627,11 +655,13 @@ function SyncDialog({
                     role="status"
                   >
                     <ShieldCheck aria-hidden="true" />
-                    <AlertDescription>{status.email ?? '已設定的帳號'}</AlertDescription>
+                    <AlertDescription>{status.email ?? t`Configured account`}</AlertDescription>
                   </Alert>
                 )}
                 <Field className="grid gap-[7px]">
-                  <FieldLabel htmlFor="sync-master-password">主密碼</FieldLabel>
+                  <FieldLabel htmlFor="sync-master-password">
+                    <Trans>Master password</Trans>
+                  </FieldLabel>
                   <InputGroup>
                     <InputGroupInput
                       id="sync-master-password"
@@ -646,7 +676,9 @@ function SyncDialog({
                     <InputGroupAddon align="inline-end">
                       <InputGroupButton
                         size="icon-xs"
-                        aria-label={showPassword ? '隱藏主密碼' : '顯示主密碼'}
+                        aria-label={
+                          showPassword ? t`Hide master password` : t`Show master password`
+                        }
                         aria-pressed={showPassword}
                         onClick={() => setShowPassword((visible) => !visible)}
                         disabled={busy}
@@ -669,7 +701,7 @@ function SyncDialog({
                   onClick={() => setShowAdvanced((open) => !open)}
                   disabled={busy}
                 >
-                  {showAdvanced ? '隱藏進階選項' : '顯示雙重驗證'}
+                  {showAdvanced ? t`Hide advanced options` : t`Show two-step verification`}
                   <span
                     data-slot="sync-accordion-chevron"
                     className="inline-flex origin-center scale-y-100 transition-transform duration-[var(--acc-chevron)] ease-[var(--acc-ease)] motion-reduce:!transition-none [&_path]:[vector-effect:non-scaling-stroke]"
@@ -690,7 +722,9 @@ function SyncDialog({
                   >
                     <FieldGroup className="grid w-auto gap-3 rounded-[10px] border bg-[var(--panel-muted)] p-3">
                       <Field>
-                        <FieldLabel htmlFor="two-factor-method">雙重驗證方式（選填）</FieldLabel>
+                        <FieldLabel htmlFor="two-factor-method">
+                          <Trans>Two-step verification method (optional)</Trans>
+                        </FieldLabel>
                         <Select
                           items={twoFactorMethods}
                           value={twoFactorMethod}
@@ -700,7 +734,7 @@ function SyncDialog({
                           disabled={busy}
                         >
                           <SelectTrigger id="two-factor-method" className="w-full">
-                            <SelectValue placeholder="選擇驗證方式" />
+                            <SelectValue placeholder={t`Select a verification method`} />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectGroup>
@@ -722,15 +756,22 @@ function SyncDialog({
                             disabled={busy}
                           />
                           <FieldContent>
-                            <FieldLabel htmlFor="webauthn-remember">記住這台裝置</FieldLabel>
+                            <FieldLabel htmlFor="webauthn-remember">
+                              <Trans>Remember this device</Trans>
+                            </FieldLabel>
                             <FieldDescription>
-                              讓伺服器在這台裝置上暫時略過雙重驗證。
+                              <Trans>
+                                Let the server temporarily skip two-step verification on this
+                                device.
+                              </Trans>
                             </FieldDescription>
                           </FieldContent>
                         </Field>
                       ) : (
                         <Field>
-                          <FieldLabel htmlFor="two-factor-code">雙重驗證碼（選填）</FieldLabel>
+                          <FieldLabel htmlFor="two-factor-code">
+                            <Trans>Two-step verification code (optional)</Trans>
+                          </FieldLabel>
                           <Input
                             id="two-factor-code"
                             autoComplete="one-time-code"
@@ -742,7 +783,9 @@ function SyncDialog({
                         </Field>
                       )}
                       <Field>
-                        <FieldLabel htmlFor="new-device-otp">新裝置驗證碼（選填）</FieldLabel>
+                        <FieldLabel htmlFor="new-device-otp">
+                          <Trans>New device verification code (optional)</Trans>
+                        </FieldLabel>
                         <Input
                           id="new-device-otp"
                           inputMode="numeric"
@@ -751,7 +794,9 @@ function SyncDialog({
                           onChange={(event) => setNewDeviceOtp(event.target.value)}
                           disabled={busy}
                         />
-                        <FieldDescription>僅在 Bitwarden 要求驗證新裝置時使用。</FieldDescription>
+                        <FieldDescription>
+                          <Trans>Use only when Bitwarden asks you to verify a new device.</Trans>
+                        </FieldDescription>
                       </Field>
                     </FieldGroup>
                   </div>
@@ -776,11 +821,11 @@ function SyncDialog({
               )}
               <ModalFooter className="mt-px">
                 <Button variant="secondary" type="button" onClick={close} disabled={busy}>
-                  取消
+                  <Trans>Cancel</Trans>
                 </Button>
                 <Button type="submit" disabled={isSyncing}>
                   {isSyncing && <Spinner data-icon="inline-start" aria-hidden="true" />}
-                  {configured ? '解鎖並同步' : '連線並同步'}
+                  {configured ? t`Unlock and sync` : t`Connect and sync`}
                 </Button>
               </ModalFooter>
             </form>
@@ -788,22 +833,28 @@ function SyncDialog({
             <>
               <section
                 className="[&_svg]:text-primary [&_span]:text-muted-foreground grid gap-px overflow-hidden rounded-[10px] border [&_strong]:truncate [&_strong]:text-right [&_strong]:font-semibold [&>div]:grid [&>div]:min-w-0 [&>div]:grid-cols-[16px_76px_minmax(0,1fr)] [&>div]:items-center [&>div]:gap-[6px] [&>div]:border-b [&>div]:p-2.5 [&>div]:text-[11px] [&>div:last-child]:border-b-0"
-                aria-label="同步連線資訊"
+                aria-label={t`Sync connection information`}
               >
                 <div>
                   <Server size={16} aria-hidden="true" />
-                  <span>伺服器</span>
+                  <span>
+                    <Trans>Server</Trans>
+                  </span>
                   <strong>{status.serverUrl ?? BITWARDEN_CLOUD_URL}</strong>
                 </div>
                 <div>
                   <KeyRound size={16} aria-hidden="true" />
-                  <span>帳號</span>
-                  <strong>{status.email ?? '未提供'}</strong>
+                  <span>
+                    <Trans>Account</Trans>
+                  </span>
+                  <strong>{status.email ?? t`Not provided`}</strong>
                 </div>
                 <div>
                   <RefreshCw size={16} aria-hidden="true" />
-                  <span>上次同步</span>
-                  <strong>{formatSyncTime(status.lastSyncAt)}</strong>
+                  <span>
+                    <Trans>Last sync</Trans>
+                  </span>
+                  <strong>{lastSyncTime}</strong>
                 </div>
               </section>
               {status.pendingImport && (
@@ -821,7 +872,7 @@ function SyncDialog({
               {visibleAccountProfile && (
                 <section
                   className="bg-card overflow-hidden rounded-xl border"
-                  aria-label="帳號管理"
+                  aria-label={t`Account management`}
                 >
                   <AccountProfileCard
                     key={currentAccountProfileIdentity}
@@ -840,20 +891,23 @@ function SyncDialog({
                   <div
                     className="flex flex-wrap items-center gap-2 px-4 py-3"
                     role="group"
-                    aria-label="帳號安全狀態"
+                    aria-label={t`Account security status`}
                   >
                     <ShieldCheck className="text-muted-foreground size-4" aria-hidden="true" />
                     <div className="flex min-w-0 flex-1 flex-wrap gap-2">
                       <Badge
                         variant={visibleAccountProfile.emailVerified ? 'secondary' : 'outline'}
                       >
-                        Email {visibleAccountProfile.emailVerified ? '已驗證' : '尚未驗證'}
+                        {visibleAccountProfile.emailVerified
+                          ? t`Email verified`
+                          : t`Email not verified`}
                       </Badge>
                       <Badge
                         variant={visibleAccountProfile.twoFactorEnabled ? 'secondary' : 'outline'}
                       >
-                        雙重驗證
-                        {visibleAccountProfile.twoFactorEnabled ? '已啟用' : '尚未啟用'}
+                        {visibleAccountProfile.twoFactorEnabled
+                          ? t`Two-step verification enabled`
+                          : t`Two-step verification not enabled`}
                       </Badge>
                     </div>
                     {!visibleAccountProfile.emailVerified && (
@@ -867,7 +921,7 @@ function SyncDialog({
                         {accountSecurityBusy && (
                           <Spinner data-icon="inline-start" aria-hidden="true" />
                         )}
-                        重新寄送驗證信
+                        <Trans>Resend verification email</Trans>
                       </Button>
                     )}
                   </div>
@@ -912,20 +966,27 @@ function SyncDialog({
                     render={<Button variant="ghost" type="button" disabled={isSyncing} />}
                   >
                     <Unplug data-icon="inline-start" aria-hidden="true" />
-                    中斷連線
+                    <Trans>Disconnect</Trans>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
                       <AlertDialogMedia>
                         <AlertTriangle aria-hidden="true" />
                       </AlertDialogMedia>
-                      <AlertDialogTitle>中斷同步連線？</AlertDialogTitle>
+                      <AlertDialogTitle>
+                        <Trans>Disconnect sync?</Trans>
+                      </AlertDialogTitle>
                       <AlertDialogDescription>
-                        這不會刪除本機密碼庫，但之後不會再和 Bitwarden 同步。
+                        <Trans>
+                          This will not delete your local vault, but it will no longer sync with
+                          Bitwarden.
+                        </Trans>
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel disabled={busy}>返回</AlertDialogCancel>
+                      <AlertDialogCancel disabled={busy}>
+                        <Trans>Go back</Trans>
+                      </AlertDialogCancel>
                       <AlertDialogAction
                         variant="destructive"
                         type="button"
@@ -933,18 +994,18 @@ function SyncDialog({
                         onClick={() => void disconnect()}
                       >
                         {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
-                        中斷連線
+                        <Trans>Disconnect</Trans>
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
                 <ModalActionGroup>
                   <Button variant="secondary" type="button" onClick={close} disabled={isSyncing}>
-                    關閉
+                    <Trans>Close</Trans>
                   </Button>
                   <Button type="button" onClick={() => void syncNow()} disabled={isSyncing}>
                     {isSyncing && <Spinner data-icon="inline-start" aria-hidden="true" />}
-                    立即同步
+                    <Trans>Sync now</Trans>
                   </Button>
                 </ModalActionGroup>
               </ModalFooter>

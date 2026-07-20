@@ -1,3 +1,5 @@
+import { i18n } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
 import type {
   AccountTwoFactorProvider,
   AccountWebAuthnKeyView
@@ -68,15 +70,19 @@ export function isWebAuthnMutationOutcomeUnknown(error: unknown): boolean {
 
 export function webAuthnActionError(error: unknown, action: AccountWebAuthnAction): string {
   if (error instanceof Error && error.message.includes('INVALID_MASTER_PASSWORD')) {
-    return '主密碼驗證失敗；若要再試，請重新輸入主密碼。'
+    return i18n._(
+      msg`Master password verification failed. Enter your master password again to retry.`
+    )
   }
   if (isWebAuthnMutationOutcomeUnknown(error)) {
-    return `${webAuthnActionLabel(action)}結果不明；已重新整理狀態。請先確認目前金鑰，勿直接重試。`
+    return i18n._(
+      msg`The ${webAuthnActionLabel(action)} result is unknown. The status has been refreshed. Verify your current keys before retrying.`
+    )
   }
   if (error instanceof Error && error.message.includes('SYNC_AUTH_REQUIRED')) {
-    return '同步登入已失效，請先重新登入。'
+    return i18n._(msg`Your sync session has expired. Sign in again first.`)
   }
-  return `無法${webAuthnActionLabel(action)}安全金鑰，請稍後再試。`
+  return i18n._(msg`Unable to ${webAuthnActionLabel(action)} the security key. Try again later.`)
 }
 
 function safeWebAuthnKeyName(value: string): string {
@@ -87,16 +93,16 @@ function safeWebAuthnKeyName(value: string): string {
     })
     .join('')
     .trim()
-  return name.length > 0 ? name.slice(0, 256) : '未命名的安全金鑰'
+  return name.length > 0 ? name.slice(0, 256) : i18n._(msg`Unnamed security key`)
 }
 
 function webAuthnActionLabel(action: AccountWebAuthnAction): string {
   switch (action) {
     case 'list':
-      return '讀取'
+      return i18n._(msg`load`)
     case 'enroll':
-      return '新增'
+      return i18n._(msg`add`)
     case 'remove':
-      return '移除'
+      return i18n._(msg`remove`)
   }
 }

@@ -1,4 +1,5 @@
 import { ContactRound, CreditCard, FileKey2, Globe2, NotebookPen } from 'lucide-react'
+import { useLingui } from '@lingui/react/macro'
 import type { LoginSummary } from '../../../shared/vault-contract'
 import { Badge } from '@renderer/components/ui/badge'
 import { cn } from '@renderer/lib/utils'
@@ -14,11 +15,11 @@ interface ItemDragPreviewProps {
 }
 
 const itemTypeMeta = {
-  login: { label: '登入', icon: Globe2 },
-  card: { label: '卡片', icon: CreditCard },
-  identity: { label: '身分資料', icon: ContactRound },
-  secureNote: { label: '安全備註', icon: NotebookPen },
-  sshKey: { label: 'SSH 金鑰', icon: FileKey2 }
+  login: { icon: Globe2 },
+  card: { icon: CreditCard },
+  identity: { icon: ContactRound },
+  secureNote: { icon: NotebookPen },
+  sshKey: { icon: FileKey2 }
 } as const
 
 export function ItemDragPreview({
@@ -27,8 +28,16 @@ export function ItemDragPreview({
   showWebsiteIcons,
   destinationDescription
 }: ItemDragPreviewProps): React.JSX.Element {
+  const { t } = useLingui()
   const meta = itemTypeMeta[item.type]
   const ItemIcon = meta.icon
+  const itemTypeLabel = {
+    login: t`Login`,
+    card: t`Card`,
+    identity: t`Identity`,
+    secureNote: t`Secure note`,
+    sshKey: t`SSH key`
+  }[item.type]
   const stackDepth = Math.min(Math.max(count - 1, 0), 2)
 
   return (
@@ -62,7 +71,9 @@ export function ItemDragPreview({
           <strong className="truncate text-sm font-semibold">{item.name}</strong>
           <small className="text-muted-foreground truncate text-xs">
             {destinationDescription ??
-              (count > 1 ? `與其他 ${count - 1} 個項目一起移動` : `${meta.label} · 拖曳以移動`)}
+              (count > 1
+                ? t`Moving with ${count - 1} other items`
+                : t`${itemTypeLabel} · Drag to move`)}
           </small>
         </span>
         {count > 1 && <Badge variant="secondary">{count}</Badge>}

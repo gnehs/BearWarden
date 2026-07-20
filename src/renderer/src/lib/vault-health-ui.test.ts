@@ -95,8 +95,8 @@ function accountBreachReport(
 
 describe('vault health renderer policy', () => {
   it('uses the official weak report labels', () => {
-    expect(weakPasswordLabel(0)).toBe('非常弱')
-    expect(weakPasswordLabel(1)).toBe('非常弱')
+    expect(weakPasswordLabel(0)).toBe('極弱')
+    expect(weakPasswordLabel(1)).toBe('極弱')
     expect(weakPasswordLabel(2)).toBe('弱')
   })
 

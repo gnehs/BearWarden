@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useLingui } from '@lingui/react/macro'
 import { Toaster as Sonner, type ToasterProps } from 'sonner'
 import {
   CircleCheckIcon,
@@ -20,7 +21,7 @@ const Toaster = ({
   theme: themeProp,
   className,
   closeButton = true,
-  containerAriaLabel = '通知',
+  containerAriaLabel,
   duration = 3_500,
   gap = 10,
   icons,
@@ -31,6 +32,7 @@ const Toaster = ({
   visibleToasts = 4,
   ...props
 }: ToasterProps) => {
+  const { t } = useLingui()
   const [theme, setTheme] = useState<ToasterProps['theme']>(currentTheme)
 
   useEffect(() => {
@@ -47,7 +49,7 @@ const Toaster = ({
       theme={themeProp ?? theme}
       className={cn('toaster group', className)}
       closeButton={closeButton}
-      containerAriaLabel={containerAriaLabel}
+      containerAriaLabel={containerAriaLabel ?? t`Notifications`}
       duration={duration}
       gap={gap}
       mobileOffset={mobileOffset}
@@ -72,7 +74,7 @@ const Toaster = ({
         } as React.CSSProperties
       }
       toastOptions={{
-        closeButtonAriaLabel: '關閉通知',
+        closeButtonAriaLabel: toastOptions?.closeButtonAriaLabel ?? t`Close notification`,
         ...toastOptions,
         classNames: {
           toast:

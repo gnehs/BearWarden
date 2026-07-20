@@ -1,3 +1,5 @@
+import { i18n } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
 import type { SendView } from '../../../shared/vault-contract'
 
 export interface SendStatus {
@@ -34,33 +36,34 @@ export function sendStatuses(
   const statuses: SendStatus[] = []
 
   if (send.passwordProtected || send.authType === 'password') {
-    statuses.push({ key: 'password', label: '需要密碼' })
+    statuses.push({ key: 'password', label: i18n._(msg`Password required`) })
   }
   if (usesEmailVerification(send)) {
-    statuses.push({ key: 'email-verification', label: 'Email 驗證' })
+    statuses.push({ key: 'email-verification', label: i18n._(msg`Email verification`) })
   }
-  if (send.disabled) statuses.push({ key: 'disabled', label: '已停用' })
+  if (send.disabled) statuses.push({ key: 'disabled', label: i18n._(msg`Disabled`) })
   if (hasElapsed(send.expirationDate, now)) {
-    statuses.push({ key: 'expired', label: '已過期' })
+    statuses.push({ key: 'expired', label: i18n._(msg`Expired`) })
   }
   if (send.maxAccessCount !== null && send.accessCount >= send.maxAccessCount) {
-    statuses.push({ key: 'max-access-reached', label: '已達存取上限' })
+    statuses.push({ key: 'max-access-reached', label: i18n._(msg`Maximum access count reached`) })
   }
   if (hasElapsed(send.deletionDate, now)) {
-    statuses.push({ key: 'pending-deletion', label: '待刪除' })
+    statuses.push({ key: 'pending-deletion', label: i18n._(msg`Pending deletion`) })
   }
   if (send.type === 'text' && send.hidden) {
-    statuses.push({ key: 'hidden-text', label: '預設隱藏文字' })
+    statuses.push({ key: 'hidden-text', label: i18n._(msg`Text hidden by default`) })
   }
-  if (send.hideEmail) statuses.push({ key: 'hidden-email', label: '隱藏寄件者 Email' })
+  if (send.hideEmail)
+    statuses.push({ key: 'hidden-email', label: i18n._(msg`Sender email hidden`) })
 
   return statuses
 }
 
-export function formatSendDate(value: string | null, locale = 'zh-TW'): string {
-  if (!value) return '未設定'
+export function formatSendDate(value: string | null, locale = i18n.locale || 'en'): string {
+  if (!value) return i18n._(msg`Not set`)
   const date = new Date(value)
-  if (!Number.isFinite(date.getTime())) return '日期格式無效'
+  if (!Number.isFinite(date.getTime())) return i18n._(msg`Invalid date format`)
   return new Intl.DateTimeFormat(locale, {
     year: 'numeric',
     month: '2-digit',
@@ -88,5 +91,5 @@ export function maxAccessCountValidationMessage(value: number | null | undefined
   if (value === null || value === undefined) return null
   return Number.isSafeInteger(value) && value > 0 && value <= 2_147_483_647
     ? null
-    : '最大存取次數必須是 1 到 2,147,483,647 之間的整數'
+    : i18n._(msg`Maximum access count must be an integer between 1 and 2,147,483,647`)
 }

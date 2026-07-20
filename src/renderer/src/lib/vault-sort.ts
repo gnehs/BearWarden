@@ -1,4 +1,5 @@
 import type { LoginSummary } from '../../../shared/vault-contract'
+import { i18n } from '../i18n'
 
 export type VaultSortMode = 'title' | 'recent' | 'frequency' | 'modified'
 
@@ -10,7 +11,10 @@ function compareNullableDate(left: string | null, right: string | null): number 
 }
 
 export function sortVaultItems(items: LoginSummary[], mode: VaultSortMode): LoginSummary[] {
-  const collator = new Intl.Collator('zh-Hant', { numeric: true, sensitivity: 'base' })
+  const collator = new Intl.Collator(i18n.locale || 'en', {
+    numeric: true,
+    sensitivity: 'base'
+  })
   return [...items].sort((left, right) => {
     let result = 0
     if (mode === 'frequency') {

@@ -1,4 +1,5 @@
 import type { LoginView } from '../../../shared/vault-contract'
+import { useLingui } from '@lingui/react/macro'
 import { Button } from '@renderer/components/ui/button'
 import { History } from 'lucide-react'
 import { formatVaultDate } from '../lib/vault-date'
@@ -31,23 +32,27 @@ export function ItemHistoryRows({
   onViewPasswordHistory,
   busy = false
 }: ItemHistoryRowsProps): React.JSX.Element {
+  const { t } = useLingui()
+
   return (
     <dl className="m-0 px-[15px] py-1">
-      <HistoryRow label="最後編輯紀錄">{formatDate(item.updatedAt)}</HistoryRow>
-      <HistoryRow label="建立於">{formatDate(item.createdAt)}</HistoryRow>
+      <HistoryRow label={t`Last edited`}>{formatDate(item.updatedAt)}</HistoryRow>
+      <HistoryRow label={t`Created`}>{formatDate(item.createdAt)}</HistoryRow>
       {item.passwordUpdatedAt !== null && (
-        <HistoryRow label="密碼最後更新">{formatDate(item.passwordUpdatedAt)}</HistoryRow>
+        <HistoryRow label={t`Password last updated`}>
+          {formatDate(item.passwordUpdatedAt)}
+        </HistoryRow>
       )}
       {item.passwordHistoryCount > 0 && onViewPasswordHistory && (
-        <HistoryRow label="密碼歷史">
+        <HistoryRow label={t`Password history`}>
           <div className="flex min-w-0 items-center gap-2">
-            <span className="min-w-0 flex-1 truncate">{item.passwordHistoryCount} 筆紀錄</span>
+            <span className="min-w-0 flex-1 truncate">{t`${item.passwordHistoryCount} records`}</span>
             <Button
               variant="ghost"
               size="icon-sm"
               className="-my-1.5 ml-auto"
               type="button"
-              aria-label="查看密碼歷史"
+              aria-label={t`View password history`}
               disabled={busy}
               onClick={onViewPasswordHistory}
             >

@@ -1,8 +1,10 @@
+import { msg } from '@lingui/core/macro'
 import type {
   SshAgentApprovalPrompt,
   SshAgentStatus,
   VaultState
 } from '../../../shared/vault-contract'
+import { i18n } from '../i18n'
 
 const DEFAULT_UNIX_SOCKET = '$HOME/.bearwarden-ssh-agent.sock'
 
@@ -27,33 +29,49 @@ export function sshAgentSigningPurpose(namespace: SshAgentApprovalPrompt['namesp
 } {
   switch (namespace) {
     case 'git':
-      return { label: 'Git 簽署', detail: '此程式要求使用 SSH 金鑰簽署 Git 內容。' }
+      return {
+        label: i18n._(msg`Git signing`),
+        detail: i18n._(msg`This application is requesting an SSH key to sign Git content.`)
+      }
     case 'file':
-      return { label: '檔案簽署', detail: '此程式要求使用 SSH 金鑰簽署檔案內容。' }
+      return {
+        label: i18n._(msg`File signing`),
+        detail: i18n._(msg`This application is requesting an SSH key to sign file content.`)
+      }
     case 'unsupported':
       return {
-        label: '未知 SSHSIG',
-        detail: '簽署用途不在 BearWarden 可辨識的 SSHSIG 命名空間內。'
+        label: i18n._(msg`Unknown SSHSIG`),
+        detail: i18n._(
+          msg`The signing purpose is not in an SSHSIG namespace recognized by BearWarden.`
+        )
       }
     default:
-      return { label: 'SSH 驗證', detail: '此程式要求使用 SSH 金鑰進行驗證或簽署。' }
+      return {
+        label: i18n._(msg`SSH authentication`),
+        detail: i18n._(
+          msg`This application is requesting an SSH key for authentication or signing.`
+        )
+      }
   }
 }
 
 export function formatSshAgentExpiry(expiresAt: number, now = Date.now()): string {
   const remainingSeconds = Math.max(0, Math.ceil((expiresAt - now) / 1_000))
-  return remainingSeconds > 0 ? `此要求將在約 ${remainingSeconds} 秒後過期。` : '此要求已過期。'
+  return remainingSeconds > 0
+    ? i18n._(msg`This request expires in about ${remainingSeconds} seconds.`)
+    : i18n._(msg`This request has expired.`)
 }
 
 export function sshAgentStatusPresentation(
   enabled: boolean,
   status: Pick<SshAgentStatus, 'state'>
 ): { label: string; variant: 'default' | 'secondary' | 'destructive' } {
-  if (!enabled) return { label: '未啟用', variant: 'secondary' }
-  if (status.state === 'ready') return { label: '已就緒', variant: 'default' }
-  if (status.state === 'starting') return { label: '正在啟動', variant: 'secondary' }
-  if (status.state === 'error') return { label: '需要處理', variant: 'destructive' }
-  return { label: '已停止', variant: 'secondary' }
+  if (!enabled) return { label: i18n._(msg`Disabled`), variant: 'secondary' }
+  if (status.state === 'ready') return { label: i18n._(msg`Ready`), variant: 'default' }
+  if (status.state === 'starting') return { label: i18n._(msg`Starting`), variant: 'secondary' }
+  if (status.state === 'error')
+    return { label: i18n._(msg`Action required`), variant: 'destructive' }
+  return { label: i18n._(msg`Stopped`), variant: 'secondary' }
 }
 
 /** Safely prepares a shell assignment for a path supplied by the main process. */

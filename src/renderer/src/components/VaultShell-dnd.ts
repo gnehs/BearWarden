@@ -1,4 +1,6 @@
 import { closestCenter, pointerWithin, type CollisionDetection } from '@dnd-kit/core'
+import { i18n } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
 
 export const quickAccessDropIds = {
   favorites: 'quick-access:favorites',
@@ -42,16 +44,23 @@ export function itemDropPreviewDescription({
   count
 }: ItemDropPreviewDescriptionOptions): string | null {
   if (!overId) return null
-  const countLabel = count > 1 ? `${count} 個項目` : null
   const quickAction = quickAccessDropAction(overId, itemState)
   if (quickAction === 'favorites') {
-    return countLabel ? `新增 ${countLabel}到常用項目` : '新增到常用項目'
+    return count > 1 ? i18n._(msg`Add ${count} items to Favorites`) : i18n._(msg`Add to Favorites`)
   }
-  if (quickAction === 'archive') return countLabel ? `將 ${countLabel}移至封存` : '移至封存'
-  if (quickAction === 'trash') return countLabel ? `將 ${countLabel}移至垃圾桶` : '移至垃圾桶'
+  if (quickAction === 'archive') {
+    return count > 1 ? i18n._(msg`Move ${count} items to Archive`) : i18n._(msg`Move to Archive`)
+  }
+  if (quickAction === 'trash') {
+    return count > 1 ? i18n._(msg`Move ${count} items to Trash`) : i18n._(msg`Move to Trash`)
+  }
 
   const destination =
-    overId === 'folder:none' ? '未分類' : folders.find((folder) => folder.id === overId)?.name
+    overId === 'folder:none'
+      ? i18n._(msg`Uncategorized`)
+      : folders.find((folder) => folder.id === overId)?.name
   if (!destination) return null
-  return countLabel ? `移動 ${countLabel}到「${destination}」` : `移動到「${destination}」`
+  return count > 1
+    ? i18n._(msg`Move ${count} items to “${destination}”`)
+    : i18n._(msg`Move to “${destination}”`)
 }

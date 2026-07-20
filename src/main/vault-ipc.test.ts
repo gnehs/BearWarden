@@ -2680,7 +2680,7 @@ describe('registerVaultIpc reprompt gate', () => {
     })
     const input = {
       masterPassword: 'remote master password',
-      confirmation: '取消所有工作階段',
+      confirmation: 'deauthorize all sessions',
       confirm: true
     }
 
@@ -2691,7 +2691,7 @@ describe('registerVaultIpc reprompt gate', () => {
     expect(input).toEqual({ masterPassword: '', confirmation: '', confirm: true })
     expect(afterSyncChanged).toHaveBeenCalledWith({ configured: true, state: 'locked' })
 
-    const accessor = { confirmation: '取消所有工作階段', confirm: true }
+    const accessor = { confirmation: 'deauthorize all sessions', confirm: true }
     Object.defineProperty(accessor, 'masterPassword', {
       enumerable: true,
       get: () => {
@@ -2702,13 +2702,22 @@ describe('registerVaultIpc reprompt gate', () => {
       undefined,
       null,
       {},
-      { masterPassword: '', confirmation: '取消所有工作階段', confirm: true },
-      { masterPassword: 'x'.repeat(16_385), confirmation: '取消所有工作階段', confirm: true },
+      { masterPassword: '', confirmation: 'deauthorize all sessions', confirm: true },
+      {
+        masterPassword: 'x'.repeat(16_385),
+        confirmation: 'deauthorize all sessions',
+        confirm: true
+      },
       { masterPassword: 'secret', confirmation: '錯誤', confirm: true },
-      { masterPassword: 'secret', confirmation: '取消所有工作階段', confirm: false },
-      { masterPassword: 'secret', confirmation: '取消所有工作階段', confirm: true, extra: true },
+      { masterPassword: 'secret', confirmation: 'deauthorize all sessions', confirm: false },
+      {
+        masterPassword: 'secret',
+        confirmation: 'deauthorize all sessions',
+        confirm: true,
+        extra: true
+      },
       Object.assign(
-        { masterPassword: 'secret', confirmation: '取消所有工作階段', confirm: true },
+        { masterPassword: 'secret', confirmation: 'deauthorize all sessions', confirm: true },
         { [Symbol('extra')]: true }
       ),
       accessor
@@ -2728,7 +2737,7 @@ describe('registerVaultIpc reprompt gate', () => {
     )
     const input = {
       masterPassword: 'remote master password',
-      confirmation: '取消所有工作階段',
+      confirmation: 'deauthorize all sessions',
       confirm: true
     }
 

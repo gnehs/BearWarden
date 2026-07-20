@@ -74,7 +74,7 @@ describe('showItemContextMenu', () => {
     expect(menuEntry(template, 'item-context-copy-password').enabled).toBe(true)
     expect(menuEntry(template, 'item-context-copy-website').enabled).toBe(true)
     expect(menuEntry(template, 'item-context-clone').enabled).toBe(true)
-    expect(menuEntry(template, 'item-context-toggle-archive').label).toBe('封存項目')
+    expect(menuEntry(template, 'item-context-toggle-archive').label).toBe('Archive Item')
     expect(menuEntry(template, 'item-context-delete').enabled).toBe(true)
     expect(popup).toHaveBeenCalledWith({ window: options.window, x: 24, y: 48 })
 
@@ -145,8 +145,8 @@ describe('showItemContextMenu', () => {
     const template = buildFromTemplate.mock.calls[0]?.[0] as TemplateEntry[]
     const open = menuEntry(template, 'item-context-open-in-new-window')
     const copy = menuEntry(template, 'item-context-copy-website')
-    expect(open.submenu?.map((entry) => entry.label)).toEqual(['網站 1', '網站 2'])
-    expect(copy.submenu?.map((entry) => entry.label)).toEqual(['網站 1', '網站 2'])
+    expect(open.submenu?.map((entry) => entry.label)).toEqual(['Website 1', 'Website 2'])
+    expect(copy.submenu?.map((entry) => entry.label)).toEqual(['Website 1', 'Website 2'])
     menuEntry(open.submenu!, 'item-context-open-uri-1').click?.()
     menuEntry(copy.submenu!, 'item-context-copy-uri-1').click?.()
     expect(options.callbacks.openInNewWindow).toHaveBeenCalledWith('item-1', 1)

@@ -1,5 +1,7 @@
 import { Copy, KeyRound, RotateCw } from 'lucide-react'
 import { useState } from 'react'
+import { t } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
 import { Checkbox } from '@renderer/components/ui/checkbox'
@@ -25,16 +27,21 @@ import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
 import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 
 function apiKeyError(error: unknown, rotate: boolean): string {
-  if (!(error instanceof Error)) return '個人 API key 操作失敗。'
-  if (error.message.includes('INVALID_MASTER_PASSWORD')) return '主密碼驗證失敗。'
+  if (!(error instanceof Error)) return t`Personal API key operation failed.`
+  if (error.message.includes('INVALID_MASTER_PASSWORD'))
+    return t`Master password verification failed.`
   if (error.message.includes('API_KEY_ROTATION_UNKNOWN')) {
-    return '連線在輪替期間中斷，結果無法判定。請不要再次輪替；重新輸入主密碼並選擇「複製目前 Client Secret」確認目前值。'
+    return t`The connection was interrupted during rotation, so the result is unknown. Do not rotate again; re-enter your master password and select “Copy current Client Secret” to verify the current value.`
   }
-  if (error.message.includes('SYNC_AUTH_REQUIRED')) return '同步登入已失效，請先重新登入。'
-  return rotate ? '無法輪替個人 API key；既有 Client Secret 可能仍有效。' : '無法取得個人 API key。'
+  if (error.message.includes('SYNC_AUTH_REQUIRED'))
+    return t`Your sync session has expired. Please sign in again.`
+  return rotate
+    ? t`Unable to rotate your personal API key. The existing Client Secret may still be valid.`
+    : t`Unable to retrieve your personal API key.`
 }
 
 function AccountApiKeyDialog(): React.JSX.Element {
+  const { t: translate } = useLingui()
   const [open, setOpen] = useState(false)
   const [masterPassword, setMasterPassword] = useState('')
   const [rotate, setRotate] = useState(false)
@@ -67,7 +74,7 @@ function AccountApiKeyDialog(): React.JSX.Element {
     try {
       await window.bearwarden.accountSecurity.copyApiClientId()
       showCopied('client-id')
-      setSuccess('Client ID 已複製。')
+      setSuccess(translate`Client ID copied.`)
     } catch (copyError) {
       setError(apiKeyError(copyError, false))
     } finally {
@@ -78,7 +85,11 @@ function AccountApiKeyDialog(): React.JSX.Element {
   async function submit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     if (!masterPassword || (rotate && !confirmRotation)) {
-      setError(rotate ? '請輸入主密碼並確認輪替影響。' : '請輸入主密碼。')
+      setError(
+        rotate
+          ? translate`Enter your master password and confirm the impact of rotating your API key.`
+          : translate`Enter your master password.`
+      )
       return
     }
     setBusy(true)
@@ -95,8 +106,8 @@ function AccountApiKeyDialog(): React.JSX.Element {
       showCopied('client-secret')
       setSuccess(
         rotate
-          ? '新的 Client Secret 已複製；舊值已失效，剪貼簿最晚 30 秒後清除。'
-          : '目前 Client Secret 已複製，剪貼簿最晚 30 秒後清除。'
+          ? translate`Your new Client Secret was copied. The old value is no longer valid, and the clipboard will be cleared within 30 seconds.`
+          : translate`Your current Client Secret was copied, and the clipboard will be cleared within 30 seconds.`
       )
     } catch (copyError) {
       setMasterPassword('')
@@ -112,22 +123,29 @@ function AccountApiKeyDialog(): React.JSX.Element {
         render={<Button className="w-full" variant="outline" size="sm" type="button" />}
       >
         <KeyRound data-icon="inline-start" aria-hidden="true" />
-        個人 API key
+        <Trans>Personal API key</Trans>
       </DialogTrigger>
       <DialogContent forceOverlay>
         <DialogHeader>
-          <DialogTitle>個人 API key</DialogTitle>
+          <DialogTitle>
+            <Trans>Personal API key</Trans>
+          </DialogTitle>
           <DialogDescription>
-            用於 Bitwarden CLI 的 client credentials。Client Secret 不會保存於 BearWarden。
+            <Trans>
+              Used for Bitwarden CLI client credentials. BearWarden does not store your Client
+              Secret.
+            </Trans>
           </DialogDescription>
         </DialogHeader>
         <Button variant="outline" type="button" disabled={busy} onClick={() => void copyClientId()}>
           <CopyFeedbackIcon copied={copiedKey === 'client-id'} placement="inline-start" />
-          複製 Client ID
+          <Trans>Copy Client ID</Trans>
         </Button>
         <form className="grid gap-4" onSubmit={(event) => void submit(event)}>
           <Field>
-            <FieldLabel htmlFor="api-key-master-password">主密碼</FieldLabel>
+            <FieldLabel htmlFor="api-key-master-password">
+              <Trans>Master password</Trans>
+            </FieldLabel>
             <Input
               id="api-key-master-password"
               type="password"
@@ -136,7 +154,11 @@ function AccountApiKeyDialog(): React.JSX.Element {
               disabled={busy}
               onChange={(event) => setMasterPassword(event.target.value)}
             />
-            <FieldDescription>只在主程序產生一次性 server proof，不會保存。</FieldDescription>
+            <FieldDescription>
+              <Trans>
+                Used only by the main process to create a one-time server proof. It is not stored.
+              </Trans>
+            </FieldDescription>
           </Field>
           <Field orientation="horizontal" data-disabled={busy || undefined}>
             <Checkbox
@@ -150,9 +172,15 @@ function AccountApiKeyDialog(): React.JSX.Element {
             />
             <FieldContent>
               <FieldLabel htmlFor="api-key-rotate">
-                <FieldTitle>輪替 API key</FieldTitle>
+                <FieldTitle>
+                  <Trans>Rotate API key</Trans>
+                </FieldTitle>
               </FieldLabel>
-              <FieldDescription>建立新 Client Secret，舊值會立即失效。</FieldDescription>
+              <FieldDescription>
+                <Trans>
+                  Create a new Client Secret. The old value becomes invalid immediately.
+                </Trans>
+              </FieldDescription>
             </FieldContent>
           </Field>
           {rotate && (
@@ -165,7 +193,9 @@ function AccountApiKeyDialog(): React.JSX.Element {
               />
               <FieldContent>
                 <FieldLabel htmlFor="api-key-confirm-rotation">
-                  <FieldTitle>我了解現有 CLI session 可能需要重新登入</FieldTitle>
+                  <FieldTitle>
+                    <Trans>I understand that existing CLI sessions may need to sign in again</Trans>
+                  </FieldTitle>
                 </FieldLabel>
               </FieldContent>
             </Field>
@@ -187,7 +217,7 @@ function AccountApiKeyDialog(): React.JSX.Element {
               disabled={busy}
               onClick={() => changeOpen(false)}
             >
-              關閉
+              <Trans>Close</Trans>
             </Button>
             <Button type="submit" variant={rotate ? 'destructive' : 'default'} disabled={busy}>
               {busy ? (
@@ -205,7 +235,11 @@ function AccountApiKeyDialog(): React.JSX.Element {
                   placement="inline-start"
                 />
               )}
-              {rotate ? '輪替並複製新 Secret' : '複製目前 Client Secret'}
+              {rotate ? (
+                <Trans>Rotate and copy new Secret</Trans>
+              ) : (
+                <Trans>Copy current Client Secret</Trans>
+              )}
             </Button>
           </DialogFooter>
         </form>

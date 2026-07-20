@@ -7091,7 +7091,7 @@ describe('VaultService encrypted local data', () => {
     const before = await service.listLogins()
     const request = {
       masterPassword: 'remote master password',
-      confirmation: '取消所有工作階段' as const,
+      confirmation: 'deauthorize all sessions' as const,
       confirm: true as const
     }
 
@@ -7134,7 +7134,7 @@ describe('VaultService encrypted local data', () => {
     })
     const request = {
       masterPassword: 'remote master password',
-      confirmation: '取消所有工作階段' as const,
+      confirmation: 'deauthorize all sessions' as const,
       confirm: true as const
     }
 
@@ -7166,7 +7166,7 @@ describe('VaultService encrypted local data', () => {
     )
     const request = {
       masterPassword: 'wrong remote password',
-      confirmation: '取消所有工作階段' as const,
+      confirmation: 'deauthorize all sessions' as const,
       confirm: true as const
     }
 
@@ -7197,7 +7197,7 @@ describe('VaultService encrypted local data', () => {
     await expect(
       service.deauthorizeAllSessions({
         masterPassword: 'remote master password',
-        confirmation: '取消所有工作階段',
+        confirmation: 'deauthorize all sessions',
         confirm: true
       })
     ).rejects.toMatchObject({ code: 'SYNC_FAILED' })
@@ -7230,7 +7230,7 @@ describe('VaultService encrypted local data', () => {
 
     const pending = harness.service.deauthorizeAllSessions({
       masterPassword: 'remote master password',
-      confirmation: '取消所有工作階段',
+      confirmation: 'deauthorize all sessions',
       confirm: true
     })
     await vi.waitFor(() => expect(release).toBeTypeOf('function'))
@@ -7304,7 +7304,7 @@ describe('VaultService encrypted local data', () => {
     await expect(
       harness.service.deauthorizeAllSessions({
         masterPassword: 'remote master password',
-        confirmation: '取消所有工作階段',
+        confirmation: 'deauthorize all sessions',
         confirm: true
       })
     ).rejects.toMatchObject({ code: 'SYNC_FAILED' })

@@ -39,17 +39,17 @@ describe('Organizations UI labels', () => {
   it('maps Bitwarden organization roles and membership states with safe fallbacks', () => {
     expect(organizationRoleLabel(0)).toBe('擁有者')
     expect(organizationRoleLabel(4)).toBe('自訂角色')
-    expect(organizationRoleLabel(9)).toBe('未知角色（9）')
+    expect(organizationRoleLabel(9)).toBe('未知的角色 (9)')
     expect(organizationStatusLabel(organization)).toBe('已確認')
     expect(organizationStatusLabel({ ...organization, enabled: false })).toBe('已停用')
-    expect(organizationStatusLabel({ ...organization, status: 9 })).toBe('未知狀態（9）')
+    expect(organizationStatusLabel({ ...organization, status: 9 })).toBe('未知的狀態 (9)')
   })
 
   it.each([
-    [{ manage: true }, '管理 Collection'],
-    [{ readOnly: true, hidePasswords: true }, '檢視項目、隱藏密碼'],
+    [{ manage: true }, '管理集合'],
+    [{ readOnly: true, hidePasswords: true }, '檢視項目，隱藏密碼'],
     [{ readOnly: true, hidePasswords: false }, '檢視項目'],
-    [{ readOnly: false, hidePasswords: true }, '編輯項目、隱藏密碼'],
+    [{ readOnly: false, hidePasswords: true }, '編輯項目並隱藏密碼'],
     [{ readOnly: false, hidePasswords: false }, '編輯項目']
   ] as const)('describes Collection permissions for %o', (overrides, label) => {
     expect(collectionPermissionLabel({ ...collection, manage: false, ...overrides })).toBe(label)
@@ -57,19 +57,22 @@ describe('Organizations UI labels', () => {
 
   it('shows whether Collection access is explicitly assigned', () => {
     expect(collectionAssignmentLabel(collection)).toBe('直接指派')
-    expect(collectionAssignmentLabel({ ...collection, assigned: false })).toBe('非直接指派')
+    expect(collectionAssignmentLabel({ ...collection, assigned: false })).toBe('未直接指派')
   })
 
-  it('describes item capabilities without claiming BearWarden displays passwords', () => {
+  it('describes item capabilities without exposing item content', () => {
+    const secretContent = 'must-not-be-rendered'
     const item = {
       edit: false,
       viewPassword: true,
       delete: false,
-      restore: true
-    } as SharedLoginSummary
+      restore: true,
+      password: secretContent
+    } as unknown as SharedLoginSummary
 
-    expect(sharedItemPermissionLabels(item)).toEqual(['唯讀', '一般檢視', '不可刪除', '可還原'])
-    expect(sharedItemPermissionLabels(item).join('')).not.toContain('可查看密碼')
+    const labels = sharedItemPermissionLabels(item)
+    expect(labels).toEqual(['唯讀', '可檢視密碼', '無法刪除', '可還原'])
+    expect(labels.join('')).not.toContain(secretContent)
   })
 })
 

@@ -1,4 +1,6 @@
 import { CalendarDays, Clock3, RefreshCw, ShieldAlert } from 'lucide-react'
+import { plural } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import type { EmergencyAccessView } from '../../../shared/vault-contract'
@@ -22,14 +24,7 @@ import {
 import { Spinner } from '@renderer/components/ui/spinner'
 import AuxiliaryPageLayout from './AuxiliaryPageLayout'
 import FeatureUnderConstructionNotice from './FeatureUnderConstructionNotice'
-import {
-  emergencyAccessCreationLabel,
-  emergencyAccessDisplayName,
-  emergencyAccessInitial,
-  emergencyAccessStatusLabel,
-  emergencyAccessTypeLabel,
-  safeEmergencyAccessAvatarColor
-} from './emergency-access-ui'
+import { emergencyAccessDisplayName, safeEmergencyAccessAvatarColor } from './emergency-access-ui'
 
 interface EmergencyAccessContentProps {
   entries: EmergencyAccessView[]
@@ -44,11 +39,12 @@ export function EmergencyAccessContent({
   failed,
   onRetry
 }: EmergencyAccessContentProps): React.JSX.Element {
+  const { i18n, t } = useLingui()
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-16" role="status">
         <Spinner />
-        載入 Emergency Access…
+        <Trans>Loading Emergency Access…</Trans>
       </div>
     )
   }
@@ -60,12 +56,16 @@ export function EmergencyAccessContent({
           <EmptyMedia variant="icon">
             <ShieldAlert />
           </EmptyMedia>
-          <EmptyTitle>無法載入 Emergency Access</EmptyTitle>
-          <EmptyDescription>請檢查網路連線與伺服器狀態後再試一次。</EmptyDescription>
+          <EmptyTitle>
+            <Trans>Could not load Emergency Access</Trans>
+          </EmptyTitle>
+          <EmptyDescription>
+            <Trans>Check the network connection and server status, then try again.</Trans>
+          </EmptyDescription>
         </EmptyHeader>
         <Button variant="outline" onClick={onRetry}>
           <RefreshCw data-icon="inline-start" aria-hidden="true" />
-          重試
+          <Trans>Try again</Trans>
         </Button>
       </Empty>
     )
@@ -78,8 +78,12 @@ export function EmergencyAccessContent({
           <EmptyMedia variant="icon">
             <ShieldAlert />
           </EmptyMedia>
-          <EmptyTitle>尚未設定 Emergency Access</EmptyTitle>
-          <EmptyDescription>伺服器沒有回傳授權聯絡人或授權來源。</EmptyDescription>
+          <EmptyTitle>
+            <Trans>Emergency Access is not configured</Trans>
+          </EmptyTitle>
+          <EmptyDescription>
+            <Trans>The server did not return any trusted contacts or grantors.</Trans>
+          </EmptyDescription>
         </EmptyHeader>
       </Empty>
     )
@@ -89,8 +93,19 @@ export function EmergencyAccessContent({
     <div className="grid gap-3">
       {entries.map((entry) => {
         const displayName = emergencyAccessDisplayName(entry)
-        const creationLabel = emergencyAccessCreationLabel(entry.creationDate)
+        const initial = Array.from(displayName)[0]?.toLocaleUpperCase(i18n.locale) ?? '?'
+        const creationDate = entry.creationDate ? new Date(entry.creationDate) : null
+        const creationLabel =
+          creationDate && Number.isFinite(creationDate.getTime())
+            ? new Intl.DateTimeFormat(i18n.locale, {
+                dateStyle: 'medium',
+                timeStyle: 'short'
+              }).format(creationDate)
+            : null
         const avatarColor = safeEmergencyAccessAvatarColor(entry.avatarColor)
+        const waitTimeLabel = t({
+          message: plural(entry.waitTimeDays, { one: 'Wait # day', other: 'Wait # days' })
+        })
         return (
           <Card key={`${entry.role}:${entry.id}`}>
             <CardHeader className="flex-row items-start justify-between gap-4">
@@ -103,7 +118,7 @@ export function EmergencyAccessContent({
                   style={{ backgroundColor: avatarColor }}
                   aria-hidden="true"
                 >
-                  {emergencyAccessInitial(entry)}
+                  {initial}
                 </span>
                 <div className="min-w-0">
                   <CardTitle className="truncate">{displayName}</CardTitle>
@@ -112,19 +127,47 @@ export function EmergencyAccessContent({
                   ) : null}
                 </div>
               </div>
-              <Badge variant="outline">{entry.role === 'trusted' ? '我授權' : '授權給我'}</Badge>
+              <Badge variant="outline">
+                {entry.role === 'trusted' ? (
+                  <Trans>Granted by me</Trans>
+                ) : (
+                  <Trans>Granted to me</Trans>
+                )}
+              </Badge>
             </CardHeader>
             <CardContent className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-2 text-sm">
-              <span>權限：{emergencyAccessTypeLabel(entry.type)}</span>
-              <span>狀態：{emergencyAccessStatusLabel(entry.status)}</span>
+              <span>
+                <Trans>Permission:</Trans>{' '}
+                {entry.type === 0 ? (
+                  <Trans>View</Trans>
+                ) : entry.type === 1 ? (
+                  <Trans>Takeover</Trans>
+                ) : (
+                  <Trans>Unknown type ({entry.type})</Trans>
+                )}
+              </span>
+              <span>
+                <Trans>Status:</Trans>{' '}
+                {entry.status === 0 ? (
+                  <Trans>Invited</Trans>
+                ) : entry.status === 1 ? (
+                  <Trans>Invitation accepted</Trans>
+                ) : entry.status === 2 ? (
+                  <Trans>Confirmed</Trans>
+                ) : entry.status === 3 ? (
+                  <Trans>Access requested</Trans>
+                ) : (
+                  <Trans>Access approved</Trans>
+                )}
+              </span>
               <span className="inline-flex items-center gap-1">
                 <Clock3 className="size-3.5" aria-hidden="true" />
-                等待 {entry.waitTimeDays} 天
+                {waitTimeLabel}
               </span>
               {creationLabel ? (
                 <span className="inline-flex items-center gap-1">
                   <CalendarDays className="size-3.5" aria-hidden="true" />
-                  建立於 {creationLabel}
+                  <Trans>Created {creationLabel}</Trans>
                 </span>
               ) : null}
             </CardContent>
@@ -136,6 +179,7 @@ export function EmergencyAccessContent({
 }
 
 function EmergencyAccessPage(): React.JSX.Element {
+  const { t } = useLingui()
   const [entries, setEntries] = useState<EmergencyAccessView[]>([])
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
@@ -154,13 +198,13 @@ function EmergencyAccessPage(): React.JSX.Element {
         if (!active) return
         setFailed(true)
         setLoading(false)
-        toast.error('無法載入 Emergency Access')
+        toast.error(t`Could not load Emergency Access`)
       }
     )
     return () => {
       active = false
     }
-  }, [loadAttempt])
+  }, [loadAttempt, t])
 
   function retry(): void {
     setFailed(false)
@@ -170,13 +214,15 @@ function EmergencyAccessPage(): React.JSX.Element {
 
   return (
     <AuxiliaryPageLayout
-      title="Emergency Access"
+      title={t`Emergency Access`}
       titleId="emergency-access-title"
-      subtitle="目前提供唯讀狀態；邀請、確認、檢視與接管尚未開放。"
+      subtitle={t`Currently read-only. Inviting, confirming, viewing, and taking over are not available yet.`}
     >
       <FeatureUnderConstructionNotice>
-        目前僅可檢視 Emergency Access
-        的授權關係與狀態；尚不支援邀請、接受、確認、取用或接管授權，以及金鑰輪替。
+        <Trans>
+          Currently you can only view Emergency Access grants and statuses. Inviting, accepting,
+          confirming, accessing, taking over grants, and key rotation are not supported yet.
+        </Trans>
       </FeatureUnderConstructionNotice>
       <EmergencyAccessContent entries={entries} loading={loading} failed={failed} onRetry={retry} />
     </AuxiliaryPageLayout>

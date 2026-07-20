@@ -314,6 +314,7 @@ vi.mock('electron', () => ({
       harness.appListeners.set(event, listener),
     isActive: () => true,
     getPath: () => harness.userDataPath,
+    getLocale: () => 'zh-TW',
     getVersion: () => 'test',
     isPackaged: false,
     setPath: harness.appSetPath,

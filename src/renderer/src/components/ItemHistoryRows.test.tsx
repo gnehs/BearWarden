@@ -19,7 +19,7 @@ describe('ItemHistoryRows', () => {
       />
     )
 
-    expect(markup).toContain('密碼最後更新')
+    expect(markup).toContain('密碼上次更新時間')
     expect(markup).toContain('formatted:2026-07-17T00:30:00.000Z')
   })
 
@@ -28,9 +28,9 @@ describe('ItemHistoryRows', () => {
       <ItemHistoryRows item={baseItem} formatDate={(value) => String(value)} />
     )
 
-    expect(markup).not.toContain('密碼最後更新')
-    expect(markup).toContain('最後編輯紀錄')
-    expect(markup).toContain('建立於')
+    expect(markup).not.toContain('密碼上次更新時間')
+    expect(markup).toContain('上次編輯')
+    expect(markup).toContain('已建立')
   })
 
   it('renders the existing unknown-date label for invalid revision metadata', () => {
@@ -38,7 +38,7 @@ describe('ItemHistoryRows', () => {
       <ItemHistoryRows item={{ ...baseItem, passwordUpdatedAt: 'not-a-date' }} />
     )
 
-    expect(markup).toContain('密碼最後更新')
+    expect(markup).toContain('密碼上次更新時間')
     expect(markup).toContain('未知')
   })
 
@@ -50,9 +50,9 @@ describe('ItemHistoryRows', () => {
       />
     )
 
-    expect(markup).toContain('密碼歷史')
-    expect(markup).toContain('3 筆紀錄')
-    expect(markup).toContain('查看密碼歷史')
+    expect(markup).toContain('密碼歷程')
+    expect(markup).toContain('3 筆記錄')
+    expect(markup).toContain('檢視密碼歷程')
   })
 
   it('hides the password history row when there is no history', () => {
@@ -60,6 +60,6 @@ describe('ItemHistoryRows', () => {
       <ItemHistoryRows item={baseItem} onViewPasswordHistory={() => undefined} />
     )
 
-    expect(markup).not.toContain('密碼歷史')
+    expect(markup).not.toContain('密碼歷程')
   })
 })

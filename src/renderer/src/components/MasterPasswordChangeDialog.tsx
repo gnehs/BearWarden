@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { KeyRound, ShieldAlert, TriangleAlert } from 'lucide-react'
+import { Trans, useLingui } from '@lingui/react/macro'
 import type {
   MasterPasswordChangeState,
   MasterPasswordChangeStatus
@@ -47,40 +48,6 @@ interface MasterPasswordChangeDialogProps {
   onReconnect: () => void
 }
 
-function stateGuidance(state: MasterPasswordChangeState): {
-  title: string
-  description: string
-} | null {
-  if (state === 'completed') {
-    return {
-      title: '主密碼已變更',
-      description: '遠端帳號與本機加密密碼庫已完成更新。請使用新主密碼重新連線。'
-    }
-  }
-  if (state === 'remote-not-changed') {
-    return {
-      title: '伺服器確認主密碼尚未變更',
-      description:
-        '先前的不確定操作沒有改變遠端帳號。這不是重新嘗試；若要開始新的變更，請先明確確認並重新連線。'
-    }
-  }
-  if (state === 'needs-reconnect') {
-    return {
-      title: '必須重新連線後才能確認',
-      description:
-        'BearWarden 無法在目前連線中安全判斷遠端結果。為避免重複變更，現在不會送出任何新操作。'
-    }
-  }
-  if (state === 'indeterminate') {
-    return {
-      title: '遠端結果仍無法判定',
-      description:
-        '請停止操作並重新連線。確認帳號可使用哪一組主密碼登入前，不要再次送出主密碼變更。'
-    }
-  }
-  return null
-}
-
 function operationForState(
   state: MasterPasswordChangeState | undefined
 ): 'change' | 'verify-remote' | 'resume-local' | 'blocked' {
@@ -93,6 +60,7 @@ function operationForState(
 function MasterPasswordChangeDialog({
   onReconnect
 }: MasterPasswordChangeDialogProps): React.JSX.Element {
+  const { t } = useLingui()
   const requestId = useRef(0)
   const [open, setOpen] = useState(false)
   const [status, setStatus] = useState<MasterPasswordChangeStatus | null>(null)
@@ -105,6 +73,37 @@ function MasterPasswordChangeDialog({
   const [confirmPassword, setConfirmPassword] = useState('')
   const [hint, setHint] = useState('')
   const [error, setError] = useState('')
+
+  function stateGuidance(state: MasterPasswordChangeState): {
+    title: string
+    description: string
+  } | null {
+    if (state === 'completed') {
+      return {
+        title: t`Master password changed`,
+        description: t`Your remote account and local encrypted vault have been updated. Reconnect using your new master password.`
+      }
+    }
+    if (state === 'remote-not-changed') {
+      return {
+        title: t`Server confirms master password was not changed`,
+        description: t`The previous uncertain operation did not change your remote account. This is not a retry; to start a new change, explicitly acknowledge it and reconnect first.`
+      }
+    }
+    if (state === 'needs-reconnect') {
+      return {
+        title: t`Reconnect required before confirmation`,
+        description: t`BearWarden can't safely determine the remote outcome on the current connection. No new action will be submitted now to prevent duplicate changes.`
+      }
+    }
+    if (state === 'indeterminate') {
+      return {
+        title: t`Remote outcome remains indeterminate`,
+        description: t`Stop and reconnect. Do not submit another master-password change until you confirm which master password lets you sign in.`
+      }
+    }
+    return null
+  }
 
   const scrub = useCallback((): void => {
     setCurrentPassword('')
@@ -123,12 +122,14 @@ function MasterPasswordChangeDialog({
     } catch {
       if (activeRequest === requestId.current) {
         setStatus({ state: 'indeterminate', requiresReconnect: true })
-        setError('無法安全讀取主密碼變更狀態。請重新連線後再檢查。')
+        setError(
+          t`Unable to safely read the master-password change status. Reconnect and check again.`
+        )
       }
     } finally {
       if (activeRequest === requestId.current) setLoading(false)
     }
-  }, [])
+  }, [t])
 
   function changeOpen(nextOpen: boolean): void {
     if (busy) return
@@ -158,23 +159,27 @@ function MasterPasswordChangeDialog({
       normalizedCurrent.length < MIN_PASSWORD_LENGTH ||
       normalizedCurrent.length > MAX_PASSWORD_LENGTH
     ) {
-      setError('目前的主密碼必須是 12 到 1024 個字元。')
+      setError(
+        t`Your current master password must be ${MIN_PASSWORD_LENGTH} to ${MAX_PASSWORD_LENGTH} characters.`
+      )
       return false
     }
     if (normalizedNew.length < MIN_PASSWORD_LENGTH || normalizedNew.length > MAX_PASSWORD_LENGTH) {
-      setError('新主密碼必須是 12 到 1024 個字元。')
+      setError(
+        t`Your new master password must be ${MIN_PASSWORD_LENGTH} to ${MAX_PASSWORD_LENGTH} characters.`
+      )
       return false
     }
     if (normalizedCurrent === normalizedNew) {
-      setError('新主密碼必須和目前的主密碼不同。')
+      setError(t`Your new master password must be different from your current master password.`)
       return false
     }
     if (normalizedConfirmation !== normalizedNew) {
-      setError('兩次輸入的新主密碼不一致。')
+      setError(t`The new master passwords do not match.`)
       return false
     }
     if (hint.normalize('NFC').length > MAX_HINT_LENGTH) {
-      setError('主密碼提示最多 50 個字元。')
+      setError(t`Your master-password hint can be at most ${MAX_HINT_LENGTH} characters.`)
       return false
     }
     setError('')
@@ -208,8 +213,8 @@ function MasterPasswordChangeDialog({
     } catch (submitError) {
       setError(
         submitError instanceof Error && submitError.message.includes('INVALID_MASTER_PASSWORD')
-          ? '目前的主密碼驗證失敗。'
-          : '無法安全完成主密碼變更。請重新開啟此畫面檢查交易狀態。'
+          ? t`Your current master password could not be verified.`
+          : t`Unable to safely complete the master-password change. Reopen this screen to check the transaction status.`
       )
     } finally {
       request.currentPassword = ''
@@ -233,37 +238,53 @@ function MasterPasswordChangeDialog({
       <Dialog open={open} onOpenChange={changeOpen}>
         <DialogTrigger render={<Button variant="outline" size="sm" type="button" />}>
           <KeyRound data-icon="inline-start" aria-hidden="true" />
-          變更主密碼
+          <Trans>Change master password</Trans>
         </DialogTrigger>
         <DialogContent className="sm:max-w-lg" showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>變更主密碼</DialogTitle>
+            <DialogTitle>
+              <Trans>Change master password</Trans>
+            </DialogTitle>
             <DialogDescription>
-              更新 Vaultwarden／Bitwarden 帳號密碼與本機密碼庫解鎖密碼。
+              <Trans>
+                Update your Vaultwarden or Bitwarden account password and local vault unlock
+                password.
+              </Trans>
             </DialogDescription>
           </DialogHeader>
 
           {loading ? (
             <div className="flex items-center gap-2 py-6 text-sm" role="status">
-              <Spinner /> 正在確認先前的變更狀態…
+              <Spinner /> <Trans>Checking the status of the previous change…</Trans>
             </div>
           ) : (
             <div className="flex flex-col gap-4">
               <Alert>
                 <ShieldAlert aria-hidden="true" />
-                <AlertTitle>不會輪替帳號加密金鑰</AlertTitle>
+                <AlertTitle>
+                  <Trans>Your account encryption key will not be rotated</Trans>
+                </AlertTitle>
                 <AlertDescription>
-                  此操作只變更主密碼與保護方式，不會建立新的帳號加密金鑰。完成後生物辨識
-                  會停用，且必須使用新主密碼重新連線。
+                  <Trans>
+                    This only changes your master password and its protection. It does not create a
+                    new account encryption key. After it is complete, biometrics will be disabled
+                    and you must reconnect using your new master password.
+                  </Trans>
                 </AlertDescription>
               </Alert>
 
               {verifyingRemote && (
                 <Alert>
                   <TriangleAlert aria-hidden="true" />
-                  <AlertTitle>確認遠端結果並恢復既有變更</AlertTitle>
+                  <AlertTitle>
+                    <Trans>Confirm the remote outcome and recover the existing change</Trans>
+                  </AlertTitle>
                   <AlertDescription>
-                    請輸入原本的舊主密碼與當時設定的新主密碼。這只會確認遠端狀態並完成本機恢復，不會重新送出主密碼變更。
+                    <Trans>
+                      Enter the original master password and the new password you set. This only
+                      confirms the remote state and completes local recovery; it does not resubmit
+                      the master-password change.
+                    </Trans>
                   </AlertDescription>
                 </Alert>
               )}
@@ -271,10 +292,16 @@ function MasterPasswordChangeDialog({
               {resumingLocal && (
                 <Alert>
                   <TriangleAlert aria-hidden="true" />
-                  <AlertTitle>完成已由遠端確認的本機變更</AlertTitle>
+                  <AlertTitle>
+                    <Trans>Complete the locally pending change confirmed by the server</Trans>
+                  </AlertTitle>
                   <AlertDescription>
-                    遠端主密碼已確認變更。請輸入變更前的舊主密碼與當時設定的新主密碼，讓 BearWarden
-                    完成本機密碼庫重新加密；交易紀錄會阻止再次送出遠端變更。
+                    <Trans>
+                      The remote master password has been confirmed as changed. Enter the original
+                      master password and the new password you set so BearWarden can re-encrypt your
+                      local vault; the transaction record prevents the remote change from being sent
+                      again.
+                    </Trans>
                   </AlertDescription>
                 </Alert>
               )}
@@ -296,10 +323,16 @@ function MasterPasswordChangeDialog({
                   />
                   <FieldContent>
                     <FieldLabel htmlFor="master-password-remote-not-changed-ack">
-                      我了解先前操作未變更遠端主密碼
+                      <Trans>
+                        I understand the previous operation did not change the remote master
+                        password
+                      </Trans>
                     </FieldLabel>
                     <FieldDescription>
-                      確認後會前往重新連線；重新連線完成後，才能開始一筆全新的主密碼變更。
+                      <Trans>
+                        After you acknowledge this, reconnect. You can start a new master-password
+                        change only after reconnecting.
+                      </Trans>
                     </FieldDescription>
                   </FieldContent>
                 </Field>
@@ -310,7 +343,7 @@ function MasterPasswordChangeDialog({
                   <FieldGroup>
                     <Field data-invalid={Boolean(error)}>
                       <FieldLabel htmlFor="master-password-current">
-                        {recovery ? '變更前的舊主密碼' : '目前的主密碼'}
+                        {recovery ? t`Original master password` : t`Current master password`}
                       </FieldLabel>
                       <Input
                         id="master-password-current"
@@ -327,7 +360,7 @@ function MasterPasswordChangeDialog({
                     </Field>
                     <Field data-invalid={Boolean(error)}>
                       <FieldLabel htmlFor="master-password-new">
-                        {recovery ? '當時設定的新主密碼' : '新主密碼'}
+                        {recovery ? t`New master password you set` : t`New master password`}
                       </FieldLabel>
                       <Input
                         id="master-password-new"
@@ -341,11 +374,13 @@ function MasterPasswordChangeDialog({
                         onChange={(event) => setNewPassword(event.target.value)}
                       />
                       <FieldDescription>
-                        至少 12 個字元；請妥善保存，BearWarden 無法復原。
+                        {t`At least ${MIN_PASSWORD_LENGTH} characters. Keep it safe: BearWarden cannot recover it.`}
                       </FieldDescription>
                     </Field>
                     <Field data-invalid={Boolean(error)}>
-                      <FieldLabel htmlFor="master-password-confirm">再次輸入新主密碼</FieldLabel>
+                      <FieldLabel htmlFor="master-password-confirm">
+                        <Trans>Confirm new master password</Trans>
+                      </FieldLabel>
                       <Input
                         id="master-password-confirm"
                         type="password"
@@ -360,7 +395,9 @@ function MasterPasswordChangeDialog({
                     </Field>
                     {!recovery && (
                       <Field data-invalid={hint.normalize('NFC').length > MAX_HINT_LENGTH}>
-                        <FieldLabel htmlFor="master-password-hint">主密碼提示（選填）</FieldLabel>
+                        <FieldLabel htmlFor="master-password-hint">
+                          <Trans>Master-password hint (optional)</Trans>
+                        </FieldLabel>
                         <Input
                           id="master-password-hint"
                           value={hint}
@@ -369,17 +406,19 @@ function MasterPasswordChangeDialog({
                           aria-invalid={hint.normalize('NFC').length > MAX_HINT_LENGTH}
                           onChange={(event) => setHint(event.target.value)}
                         />
-                        <FieldDescription>最多 50 個字元；請勿直接填入主密碼。</FieldDescription>
+                        <FieldDescription>
+                          {t`At most ${MAX_HINT_LENGTH} characters. Do not enter your master password directly.`}
+                        </FieldDescription>
                       </Field>
                     )}
                     {error && <FieldError>{error}</FieldError>}
                     <Button type="submit" disabled={busy}>
                       {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
                       {verifyingRemote
-                        ? '確認遠端結果'
+                        ? t`Confirm remote outcome`
                         : resumingLocal
-                          ? '完成本機變更'
-                          : '檢查並繼續'}
+                          ? t`Complete local change`
+                          : t`Check and continue`}
                     </Button>
                   </FieldGroup>
                 </form>
@@ -391,7 +430,7 @@ function MasterPasswordChangeDialog({
 
           <DialogFooter>
             <DialogClose render={<Button variant="outline" type="button" disabled={busy} />}>
-              關閉
+              <Trans>Close</Trans>
             </DialogClose>
             {status?.requiresReconnect && (
               <Button
@@ -401,7 +440,7 @@ function MasterPasswordChangeDialog({
                 }
                 onClick={reconnect}
               >
-                前往重新連線
+                <Trans>Reconnect</Trans>
               </Button>
             )}
           </DialogFooter>
@@ -416,23 +455,29 @@ function MasterPasswordChangeDialog({
             </AlertDialogMedia>
             <AlertDialogTitle>
               {verifyingRemote
-                ? '確認遠端主密碼結果？'
+                ? t`Confirm the remote master-password outcome?`
                 : resumingLocal
-                  ? '完成已確認的本機主密碼變更？'
-                  : '確定要變更主密碼？'}
+                  ? t`Complete the confirmed local master-password change?`
+                  : t`Change your master password?`}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {verifyingRemote
-                ? '這會使用你輸入的舊、新主密碼確認遠端結果並完成本機恢復，不會重新送出變更。'
+                ? t`This uses the original and new master passwords you entered to confirm the remote outcome and complete local recovery. It does not resubmit the change.`
                 : resumingLocal
-                  ? '遠端變更已經確認。這只會完成本機密碼庫重新加密；交易紀錄會阻止遠端變更被重送。'
-                  : '這會更新遠端帳號密碼與本機加密密碼庫。帳號加密金鑰不會輪替；完成後必須重新連線。'}
+                  ? t`The remote change has already been confirmed. This only completes local vault re-encryption; the transaction record prevents the remote change from being resent.`
+                  : t`This updates your remote account password and local encrypted vault. Your account encryption key will not be rotated; you must reconnect when it is complete.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>返回檢查</AlertDialogCancel>
+            <AlertDialogCancel disabled={busy}>
+              <Trans>Back to review</Trans>
+            </AlertDialogCancel>
             <AlertDialogAction disabled={busy} onClick={() => void submitConfirmed()}>
-              {verifyingRemote ? '確認遠端結果' : resumingLocal ? '完成本機變更' : '變更主密碼'}
+              {verifyingRemote
+                ? t`Confirm remote outcome`
+                : resumingLocal
+                  ? t`Complete local change`
+                  : t`Change master password`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

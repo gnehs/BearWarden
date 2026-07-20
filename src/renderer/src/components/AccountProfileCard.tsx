@@ -1,6 +1,7 @@
 import { CheckCircle2, Palette, Pencil, UserRound } from 'lucide-react'
 import { useRef, useState } from 'react'
 import type { AccountSecurityProfile } from '../../../shared/vault-contract'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -27,6 +28,7 @@ function AccountProfileCard({
   profile,
   onProfileChange
 }: AccountProfileCardProps): React.JSX.Element {
+  const { t } = useLingui()
   const [current, setCurrent] = useState(profile)
   const [name, setName] = useState(profile.name)
   const [avatarColor, setAvatarColor] = useState(profile.avatarColor ?? DEFAULT_AVATAR_COLOR)
@@ -75,13 +77,13 @@ function AccountProfileCard({
       setCurrent(updated)
       onProfileChange(updated)
       setName(updated.name)
-      setNameSuccess('顯示名稱已儲存。')
+      setNameSuccess(t`Display name saved.`)
     } catch {
       const refreshed = await refreshAfterFailure('name')
       setNameError(
         refreshed
-          ? '無法儲存顯示名稱；已重新載入伺服器上的目前值。'
-          : '無法儲存顯示名稱，也無法重新載入伺服器上的目前值。請稍後再試。'
+          ? t`Unable to save the display name; the current server value has been reloaded.`
+          : t`Unable to save the display name, and the current server value could not be reloaded. Please try again later.`
       )
     } finally {
       mutationInFlight.current = false
@@ -92,7 +94,7 @@ function AccountProfileCard({
   async function saveAvatar(nextColor: string | null = avatarColor): Promise<void> {
     if (mutationInFlight.current) return
     if (nextColor !== null && !isAvatarColor(nextColor)) {
-      setAvatarError('請選擇有效的六位十六進位顏色。')
+      setAvatarError(t`Please choose a valid six-digit hexadecimal color.`)
       setAvatarSuccess('')
       return
     }
@@ -109,13 +111,15 @@ function AccountProfileCard({
       setCurrent(updated)
       onProfileChange(updated)
       setAvatarColor(updated.avatarColor ?? DEFAULT_AVATAR_COLOR)
-      setAvatarSuccess(nextColor === null ? '自訂頭像顏色已清除。' : '頭像顏色已儲存。')
+      setAvatarSuccess(
+        nextColor === null ? t`Custom avatar color cleared.` : t`Avatar color saved.`
+      )
     } catch {
       const refreshed = await refreshAfterFailure('avatar')
       setAvatarError(
         refreshed
-          ? '無法儲存頭像顏色；已重新載入伺服器上的目前值。'
-          : '無法儲存頭像顏色，也無法重新載入伺服器上的目前值。請稍後再試。'
+          ? t`Unable to save the avatar color; the current server value has been reloaded.`
+          : t`Unable to save the avatar color, and the current server value could not be reloaded. Please try again later.`
       )
     } finally {
       mutationInFlight.current = false
@@ -135,34 +139,44 @@ function AccountProfileCard({
         </span>
         <div className="min-w-0 flex-1">
           <h3 id="account-profile-title" className="font-medium">
-            個人資料
+            <Trans>Profile</Trans>
           </h3>
           <p className="text-muted-foreground truncate text-sm">{current.name || current.email}</p>
         </div>
         <DialogTrigger
-          render={<Button type="button" variant="outline" size="sm" aria-label="編輯個人資料" />}
+          render={<Button type="button" variant="outline" size="sm" aria-label={t`Edit profile`} />}
         >
           <Pencil data-icon="inline-start" aria-hidden="true" />
-          編輯
+          <Trans>Edit</Trans>
         </DialogTrigger>
       </section>
 
       <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-md" forceOverlay>
         <DialogHeader>
-          <DialogTitle>編輯個人資料</DialogTitle>
-          <DialogDescription>管理顯示名稱與頭像顏色。</DialogDescription>
+          <DialogTitle>
+            <Trans>Edit profile</Trans>
+          </DialogTitle>
+          <DialogDescription>
+            <Trans>Manage your display name and avatar color.</Trans>
+          </DialogDescription>
         </DialogHeader>
 
         <FieldGroup>
           <Field>
-            <FieldLabel htmlFor="account-profile-email">電子郵件</FieldLabel>
+            <FieldLabel htmlFor="account-profile-email">
+              <Trans>Email</Trans>
+            </FieldLabel>
             <Input id="account-profile-email" type="email" value={current.email} readOnly />
-            <FieldDescription>電子郵件無法在此變更。</FieldDescription>
+            <FieldDescription>
+              <Trans>Email cannot be changed here.</Trans>
+            </FieldDescription>
           </Field>
 
           <form onSubmit={(event) => void saveName(event)}>
             <Field>
-              <FieldLabel htmlFor="account-profile-name">顯示名稱</FieldLabel>
+              <FieldLabel htmlFor="account-profile-name">
+                <Trans>Display name</Trans>
+              </FieldLabel>
               <Input
                 id="account-profile-name"
                 value={name}
@@ -175,7 +189,7 @@ function AccountProfileCard({
                 aria-describedby="account-profile-name-help"
               />
               <FieldDescription id="account-profile-name-help">
-                可留空，最多 50 個 UTF-8 位元組。
+                <Trans>Optional; maximum 50 UTF-8 bytes.</Trans>
               </FieldDescription>
               {nameError && (
                 <Alert variant="destructive">
@@ -190,7 +204,7 @@ function AccountProfileCard({
               )}
               <Button type="submit" size="sm" disabled={profileBusy || name === current.name}>
                 {nameBusy && <Spinner data-icon="inline-start" aria-hidden="true" />}
-                儲存顯示名稱
+                <Trans>Save display name</Trans>
               </Button>
             </Field>
           </form>
@@ -202,7 +216,9 @@ function AccountProfileCard({
             }}
           >
             <Field>
-              <FieldLabel htmlFor="account-profile-avatar">頭像顏色</FieldLabel>
+              <FieldLabel htmlFor="account-profile-avatar">
+                <Trans>Avatar color</Trans>
+              </FieldLabel>
               <div className="flex items-center gap-3">
                 <Input
                   id="account-profile-avatar"
@@ -215,14 +231,14 @@ function AccountProfileCard({
                     setAvatarSuccess('')
                   }}
                   disabled={profileBusy}
-                  aria-label="選擇頭像顏色"
+                  aria-label={t`Select avatar color`}
                 />
                 <code className="text-sm">{avatarColor.toUpperCase()}</code>
               </div>
               <FieldDescription>
                 {current.avatarColor
-                  ? `目前顏色：${current.avatarColor}`
-                  : '目前使用伺服器預設顏色。'}
+                  ? t`Current color: ${current.avatarColor}`
+                  : t`The server default color is currently being used.`}
               </FieldDescription>
               {avatarError && (
                 <Alert variant="destructive">
@@ -245,7 +261,7 @@ function AccountProfileCard({
                 >
                   {avatarBusy && <Spinner data-icon="inline-start" aria-hidden="true" />}
                   <Palette data-icon="inline-start" aria-hidden="true" />
-                  儲存頭像顏色
+                  <Trans>Save avatar color</Trans>
                 </Button>
                 <Button
                   type="button"
@@ -254,7 +270,7 @@ function AccountProfileCard({
                   disabled={profileBusy || current.avatarColor === null}
                   onClick={() => void saveAvatar(null)}
                 >
-                  清除自訂顏色
+                  <Trans>Clear custom color</Trans>
                 </Button>
               </div>
             </Field>

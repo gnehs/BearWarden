@@ -1,5 +1,6 @@
 import { Copy, KeyRound, Plus, ShieldCheck, ShieldOff, Trash2, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
+import { Trans, useLingui } from '@lingui/react/macro'
 import type {
   AccountAuthenticatorSetup,
   AccountEmailTwoFactorSetup,
@@ -46,18 +47,6 @@ import {
 } from './account-webauthn-ui'
 import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 
-const providerNames: Record<number, string> = {
-  0: '驗證器應用程式',
-  1: 'Email',
-  2: 'Duo',
-  3: 'YubiKey OTP',
-  4: 'U2F',
-  5: '記住此裝置',
-  6: '組織 Duo',
-  7: 'FIDO2 WebAuthn',
-  8: 'Recovery Code'
-}
-
 interface AccountWebAuthnKeyListProps {
   keys: readonly AccountWebAuthnKeyView[]
   busy: boolean
@@ -74,15 +63,23 @@ export function AccountWebAuthnKeyList({
   return (
     <FieldGroup>
       <Field>
-        <FieldLabel>已註冊的安全金鑰</FieldLabel>
+        <FieldLabel>
+          <Trans>Registered security keys</Trans>
+        </FieldLabel>
         {keyViews.length === 0 ? (
-          <FieldDescription>尚未註冊安全金鑰。您可以新增第一把金鑰。</FieldDescription>
+          <FieldDescription>
+            <Trans>No security keys are registered yet. You can add your first key.</Trans>
+          </FieldDescription>
         ) : (
           <div className="flex flex-col gap-2">
             {keyViews.map((key) => (
               <div key={key.id} className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline">{key.name}</Badge>
-                {key.migrated && <Badge variant="secondary">已移轉</Badge>}
+                {key.migrated && (
+                  <Badge variant="secondary">
+                    <Trans>Migrated</Trans>
+                  </Badge>
+                )}
                 {canRemoveWebAuthnKey(busy, keyViews.length) && (
                   <Button
                     type="button"
@@ -92,7 +89,7 @@ export function AccountWebAuthnKeyList({
                     onClick={() => onRemove(key)}
                   >
                     <Trash2 data-icon="inline-start" aria-hidden="true" />
-                    移除
+                    <Trans>Remove</Trans>
                   </Button>
                 )}
               </div>
@@ -100,7 +97,9 @@ export function AccountWebAuthnKeyList({
           </div>
         )}
         {keyViews.length === 1 && (
-          <FieldDescription>至少保留一把安全金鑰；此處不提供移除最後一把金鑰。</FieldDescription>
+          <FieldDescription>
+            <Trans>Keep at least one security key. The last key cannot be removed here.</Trans>
+          </FieldDescription>
         )}
       </Field>
     </FieldGroup>
@@ -108,6 +107,18 @@ export function AccountWebAuthnKeyList({
 }
 
 function AccountTwoFactorDialog(): React.JSX.Element {
+  const { t } = useLingui()
+  const providerNames: Record<number, string> = {
+    0: t`Authenticator app`,
+    1: t`Email`,
+    2: t`Duo`,
+    3: t`YubiKey OTP`,
+    4: t`U2F`,
+    5: t`Remember this device`,
+    6: t`Organization Duo`,
+    7: t`FIDO2 WebAuthn`,
+    8: t`Recovery code`
+  }
   const [open, setOpen] = useState(false)
   const [providers, setProviders] = useState<AccountTwoFactorProvider[]>([])
   const [masterPassword, setMasterPassword] = useState('')
@@ -141,6 +152,8 @@ function AccountTwoFactorDialog(): React.JSX.Element {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const { copiedKey, clearCopied, showCopied } = useCopyFeedback()
+  const disableTargetName =
+    disableTarget === null ? t`two-factor authentication` : providerNames[disableTarget]
 
   async function load(): Promise<void> {
     setBusy(true)
@@ -148,7 +161,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
     try {
       setProviders(await window.bearwarden.accountSecurity.twoFactorStatus())
     } catch {
-      setError('無法讀取雙重驗證狀態。')
+      setError(t`Unable to read the two-factor authentication status.`)
     } finally {
       setBusy(false)
     }
@@ -200,7 +213,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
   async function disableProvider(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     if (disableTarget === null || !disablePassword) {
-      setDisableError('請輸入主密碼。')
+      setDisableError(t`Enter your master password.`)
       return
     }
     const type = disableTarget
@@ -213,7 +226,8 @@ function AccountTwoFactorDialog(): React.JSX.Element {
     try {
       await window.bearwarden.accountSecurity.disableTwoFactorProvider(request)
       setDisableTarget(null)
-      setSuccess(`${providerNames[type]}已停用。`)
+      const providerName = providerNames[type]
+      setSuccess(t`${providerName} has been disabled.`)
       await load()
     } catch (disableFailure) {
       if (
@@ -222,16 +236,20 @@ function AccountTwoFactorDialog(): React.JSX.Element {
       ) {
         setDisableTarget(null)
         await load()
+        const providerName = providerNames[type]
         setError(
-          `${providerNames[type]}的停用結果不明；已重新整理狀態。請先確認目前狀態，勿直接重試。`
+          t`The result of disabling ${providerName} is unknown. The status has been refreshed. Check the current status before retrying.`
         )
       } else if (
         disableFailure instanceof Error &&
         disableFailure.message.includes('INVALID_MASTER_PASSWORD')
       ) {
-        setDisableError('主密碼驗證失敗；若要再試，請重新輸入主密碼。')
+        setDisableError(
+          t`Master password verification failed. Enter your master password again to retry.`
+        )
       } else {
-        setDisableError(`無法停用${providerNames[type]}，請稍後再試。`)
+        const providerName = providerNames[type]
+        setDisableError(t`Unable to disable ${providerName}. Try again later.`)
       }
     } finally {
       request.masterPassword = ''
@@ -242,7 +260,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
   async function beginAuthenticatorSetup(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     if (!authenticatorPassword) {
-      setError('請輸入主密碼。')
+      setError(t`Enter your master password.`)
       return
     }
     setBusy(true)
@@ -258,8 +276,8 @@ function AccountTwoFactorDialog(): React.JSX.Element {
       setAuthenticatorPassword('')
       setError(
         setupError instanceof Error && setupError.message.includes('INVALID_MASTER_PASSWORD')
-          ? '主密碼驗證失敗。'
-          : '無法開始設定驗證器。'
+          ? t`Master password verification failed.`
+          : t`Unable to start authenticator setup.`
       )
     } finally {
       setBusy(false)
@@ -276,10 +294,10 @@ function AccountTwoFactorDialog(): React.JSX.Element {
         sessionId: authenticatorSetup.sessionId
       })
       showCopied('authenticator-key')
-      setSuccess('設定金鑰已複製，剪貼簿最晚 30 秒後清除。')
+      setSuccess(t`The setup key has been copied. The clipboard will be cleared within 30 seconds.`)
     } catch {
       setAuthenticatorSetup(null)
-      setError('設定工作階段已失效，請重新開始。')
+      setError(t`The setup session has expired. Start again.`)
     } finally {
       setBusy(false)
     }
@@ -290,11 +308,11 @@ function AccountTwoFactorDialog(): React.JSX.Element {
   ): Promise<void> {
     event.preventDefault()
     if (!authenticatorSetup || !/^\d{6}$/.test(authenticatorToken)) {
-      setError('請輸入驗證器顯示的 6 位數驗證碼。')
+      setError(t`Enter the 6-digit verification code shown by your authenticator.`)
       return
     }
     if (authenticatorSetup.requiresMasterPassword && !completionPassword) {
-      setError('此伺服器要求再次輸入主密碼。')
+      setError(t`This server requires your master password again.`)
       return
     }
     setBusy(true)
@@ -309,7 +327,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
       setAuthenticatorSetup(null)
       setAuthenticatorToken('')
       setCompletionPassword('')
-      setSuccess('驗證器應用程式已啟用。')
+      setSuccess(t`The authenticator app has been enabled.`)
       await load()
     } catch (setupError) {
       setAuthenticatorSetup(null)
@@ -320,14 +338,16 @@ function AccountTwoFactorDialog(): React.JSX.Element {
         setupError.message.includes('TWO_FACTOR_MUTATION_UNKNOWN')
       ) {
         await load()
-        setError('伺服器回應中斷，啟用結果不明；已重新整理狀態，請勿直接重試。')
+        setError(
+          t`The server response was interrupted, so the activation result is unknown. The status has been refreshed. Do not retry immediately.`
+        )
       } else if (
         setupError instanceof Error &&
         setupError.message.includes('INVALID_MASTER_PASSWORD')
       ) {
-        setError('主密碼驗證失敗，請重新開始設定。')
+        setError(t`Master password verification failed. Restart setup.`)
       } else {
-        setError('無法啟用驗證器，請重新開始設定。')
+        setError(t`Unable to enable the authenticator. Restart setup.`)
       }
     } finally {
       setBusy(false)
@@ -346,7 +366,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
   async function beginEmailSetup(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     if (!emailSetupPassword) {
-      setError('請輸入主密碼。')
+      setError(t`Enter your master password.`)
       return
     }
     setBusy(true)
@@ -362,8 +382,8 @@ function AccountTwoFactorDialog(): React.JSX.Element {
       setEmailSetupPassword('')
       setError(
         setupError instanceof Error && setupError.message.includes('INVALID_MASTER_PASSWORD')
-          ? '主密碼驗證失敗。'
-          : '無法開始設定 Email 雙重驗證。'
+          ? t`Master password verification failed.`
+          : t`Unable to start email two-factor authentication setup.`
       )
     } finally {
       setBusy(false)
@@ -373,11 +393,11 @@ function AccountTwoFactorDialog(): React.JSX.Element {
   async function sendEmailSetupCode(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     if (!emailSetup || !/^[^\s@]+@[^\s@]+$/.test(emailAddress)) {
-      setError('請輸入有效的 Email 地址。')
+      setError(t`Enter a valid email address.`)
       return
     }
     if (emailSetup.requiresMasterPassword && !emailSendPassword) {
-      setError('此伺服器要求再次輸入主密碼。')
+      setError(t`This server requires your master password again.`)
       return
     }
     setBusy(true)
@@ -391,21 +411,23 @@ function AccountTwoFactorDialog(): React.JSX.Element {
       })
       setEmailSendPassword('')
       setEmailCodeSent(true)
-      setSuccess('驗證碼已寄出。')
+      setSuccess(t`The verification code has been sent.`)
     } catch (setupError) {
       const outcomeUnknown =
         setupError instanceof Error && setupError.message.includes('TWO_FACTOR_MUTATION_UNKNOWN')
       resetEmailSetup()
       if (outcomeUnknown) {
         await load()
-        setError('寄送結果不明；已重新整理狀態，請勿直接重送。')
+        setError(
+          t`The send result is unknown. The status has been refreshed. Do not resend immediately.`
+        )
       } else if (
         setupError instanceof Error &&
         setupError.message.includes('INVALID_MASTER_PASSWORD')
       ) {
-        setError('主密碼驗證失敗，請重新開始設定。')
+        setError(t`Master password verification failed. Restart setup.`)
       } else {
-        setError('無法寄出驗證碼，請重新開始設定。')
+        setError(t`Unable to send the verification code. Restart setup.`)
       }
     } finally {
       setBusy(false)
@@ -415,11 +437,11 @@ function AccountTwoFactorDialog(): React.JSX.Element {
   async function completeEmailSetup(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     if (!emailSetup || !emailCodeSent || !/^\d{1,50}$/.test(emailToken)) {
-      setError('請輸入 Email 中的數字驗證碼。')
+      setError(t`Enter the numeric verification code from the email.`)
       return
     }
     if (emailSetup.requiresMasterPassword && !emailCompletionPassword) {
-      setError('此伺服器要求再次輸入主密碼。')
+      setError(t`This server requires your master password again.`)
       return
     }
     setBusy(true)
@@ -432,7 +454,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
         ...(emailSetup.requiresMasterPassword ? { masterPassword: emailCompletionPassword } : {})
       })
       resetEmailSetup()
-      setSuccess('Email 雙重驗證已啟用。')
+      setSuccess(t`Email two-factor authentication has been enabled.`)
       await load()
     } catch (setupError) {
       const outcomeUnknown =
@@ -440,14 +462,16 @@ function AccountTwoFactorDialog(): React.JSX.Element {
       resetEmailSetup()
       if (outcomeUnknown) {
         await load()
-        setError('啟用結果不明；已重新整理狀態，請勿直接重試。')
+        setError(
+          t`The activation result is unknown. The status has been refreshed. Do not retry immediately.`
+        )
       } else if (
         setupError instanceof Error &&
         setupError.message.includes('INVALID_MASTER_PASSWORD')
       ) {
-        setError('主密碼驗證失敗，請重新開始設定。')
+        setError(t`Master password verification failed. Restart setup.`)
       } else {
-        setError('無法啟用 Email 雙重驗證，請重新開始設定。')
+        setError(t`Unable to enable email two-factor authentication. Restart setup.`)
       }
     } finally {
       setBusy(false)
@@ -457,7 +481,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
   async function copyRecoveryCode(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     if (!masterPassword) {
-      setError('請輸入主密碼。')
+      setError(t`Enter your master password.`)
       return
     }
     setBusy(true)
@@ -468,13 +492,15 @@ function AccountTwoFactorDialog(): React.JSX.Element {
       await window.bearwarden.accountSecurity.copyRecoveryCode({ masterPassword })
       setMasterPassword('')
       showCopied('recovery-code')
-      setSuccess('Recovery Code 已複製，剪貼簿最晚 30 秒後清除。')
+      setSuccess(
+        t`The recovery code has been copied. The clipboard will be cleared within 30 seconds.`
+      )
     } catch (copyError) {
       setMasterPassword('')
       setError(
         copyError instanceof Error && copyError.message.includes('INVALID_MASTER_PASSWORD')
-          ? '主密碼驗證失敗。'
-          : '無法取得 Recovery Code。'
+          ? t`Master password verification failed.`
+          : t`Unable to retrieve the recovery code.`
       )
     } finally {
       setBusy(false)
@@ -485,7 +511,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
     event.preventDefault()
     if (busy) return
     if (!webAuthnListPassword) {
-      setWebAuthnError('請輸入主密碼。')
+      setWebAuthnError(t`Enter your master password.`)
       return
     }
     const request = { masterPassword: webAuthnListPassword }
@@ -516,7 +542,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
     event.preventDefault()
     if (busy || webAuthnKeys === null) return
     if (!canEnrollWebAuthnKey(busy, webAuthnName, webAuthnEnrollmentPassword)) {
-      setWebAuthnError('請輸入安全金鑰名稱與主密碼。')
+      setWebAuthnError(t`Enter a security key name and your master password.`)
       return
     }
     const request = {
@@ -533,7 +559,9 @@ function AccountTwoFactorDialog(): React.JSX.Element {
       await window.bearwarden.accountSecurity.enrollWebAuthnKey(request)
       enrollmentCompleted = true
       await refreshWebAuthnSecurity(request.masterPassword)
-      setWebAuthnSuccess('安全金鑰已新增，已重新整理雙重驗證與金鑰清單。')
+      setWebAuthnSuccess(
+        t`The security key has been added. The two-factor authentication status and key list have been refreshed.`
+      )
     } catch (enrollmentFailure) {
       if (isWebAuthnMutationOutcomeUnknown(enrollmentFailure) || enrollmentCompleted) {
         setWebAuthnKeys(null)
@@ -545,7 +573,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
       }
       setWebAuthnError(
         enrollmentCompleted
-          ? '安全金鑰可能已新增，但無法重新整理清單。請重新輸入主密碼確認，勿直接重試。'
+          ? t`The security key may have been added, but the list could not be refreshed. Enter your master password again to check before retrying.`
           : webAuthnActionError(enrollmentFailure, 'enroll')
       )
     } finally {
@@ -588,7 +616,9 @@ function AccountTwoFactorDialog(): React.JSX.Element {
       removalCompleted = true
       await refreshWebAuthnSecurity(request.masterPassword)
       setWebAuthnRemovalTarget(null)
-      setWebAuthnSuccess('安全金鑰已移除，已重新整理雙重驗證與金鑰清單。')
+      setWebAuthnSuccess(
+        t`The security key has been removed. The two-factor authentication status and key list have been refreshed.`
+      )
     } catch (removalFailure) {
       if (isWebAuthnMutationOutcomeUnknown(removalFailure) || removalCompleted) {
         setWebAuthnRemovalTarget(null)
@@ -601,7 +631,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
       }
       setWebAuthnError(
         removalCompleted
-          ? '安全金鑰可能已移除，但無法重新整理清單。請重新輸入主密碼確認，勿直接重試。'
+          ? t`The security key may have been removed, but the list could not be refreshed. Enter your master password again to check before retrying.`
           : webAuthnActionError(removalFailure, 'remove')
       )
     } finally {
@@ -616,29 +646,37 @@ function AccountTwoFactorDialog(): React.JSX.Element {
         render={<Button className="w-full" variant="outline" size="sm" type="button" />}
       >
         <ShieldCheck data-icon="inline-start" aria-hidden="true" />
-        雙重驗證
+        <Trans>Two-factor authentication</Trans>
       </DialogTrigger>
       <DialogContent
         className="max-h-[min(42rem,calc(100vh-2rem))] overflow-y-auto sm:max-w-lg"
         forceOverlay
       >
         <DialogHeader>
-          <DialogTitle>雙重驗證</DialogTitle>
+          <DialogTitle>
+            <Trans>Two-factor authentication</Trans>
+          </DialogTitle>
           <DialogDescription>
-            檢視伺服器目前啟用的 provider，並安全複製 Recovery Code。
+            <Trans>
+              Review the authentication providers currently enabled on the server and securely copy
+              your recovery code.
+            </Trans>
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-wrap gap-2" aria-label="已啟用的雙重驗證方式">
+        <div
+          className="flex flex-wrap gap-2"
+          aria-label={t`Enabled two-factor authentication methods`}
+        >
           {providers.filter((provider) => provider.enabled).length > 0 ? (
             providers
               .filter((provider) => provider.enabled)
               .map((provider) => {
                 const canDisable = isDisableablePersonalProvider(provider.type)
+                const providerType = provider.type
+                const providerName = providerNames[providerType] ?? t`Provider ${providerType}`
                 return (
                   <div key={provider.type} className="flex items-center gap-1">
-                    <Badge variant="outline">
-                      {providerNames[provider.type] ?? `Provider ${provider.type}`}
-                    </Badge>
+                    <Badge variant="outline">{providerName}</Badge>
                     {canDisable && (
                       <Button
                         type="button"
@@ -650,45 +688,58 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                         }
                       >
                         <ShieldOff data-icon="inline-start" aria-hidden="true" />
-                        停用
+                        <Trans>Disable</Trans>
                       </Button>
                     )}
                   </div>
                 )
               })
           ) : (
-            <span className="text-muted-foreground text-sm">尚未啟用雙重驗證方式。</span>
+            <span className="text-muted-foreground text-sm">
+              <Trans>No two-factor authentication methods are enabled.</Trans>
+            </span>
           )}
         </div>
         {hiddenProviderEscapeTargets(providers).length > 0 && (
           <div className="grid gap-2 border-t pt-4">
             <p className="text-muted-foreground text-sm">
-              若伺服器的 Duo 或 YubiKey 整合已失效，provider
-              可能不會出現在狀態清單，但仍會阻擋登入。可用下方逃生門以新的主密碼要求伺服器移除註冊。
+              <Trans>
+                If the server’s Duo or YubiKey integration has stopped working, the provider may not
+                appear in the status list but may still block sign-in. Use the options below with a
+                fresh master password to ask the server to remove the enrollment.
+              </Trans>
             </p>
             <div className="flex flex-wrap gap-2">
-              {hiddenProviderEscapeTargets(providers).map((type) => (
-                <Button
-                  key={type}
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => changeDisableTarget(type)}
-                >
-                  <ShieldOff data-icon="inline-start" aria-hidden="true" />
-                  強制停用{providerNames[type]}
-                </Button>
-              ))}
+              {hiddenProviderEscapeTargets(providers).map((type) => {
+                const providerName = providerNames[type]
+                return (
+                  <Button
+                    key={type}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => changeDisableTarget(type)}
+                  >
+                    <ShieldOff data-icon="inline-start" aria-hidden="true" />
+                    <Trans>Force disable {providerName}</Trans>
+                  </Button>
+                )
+              })}
             </div>
           </div>
         )}
         {!providers.some((provider) => provider.type === 0 && provider.enabled) && (
           <div className="grid gap-4 border-t pt-4">
             <div>
-              <h3 className="text-sm font-medium">設定驗證器應用程式</h3>
+              <h3 className="text-sm font-medium">
+                <Trans>Set up an authenticator app</Trans>
+              </h3>
               <p className="text-muted-foreground text-sm">
-                使用 1Password、Bitwarden、Google Authenticator 等相容應用程式加入下方金鑰。
+                <Trans>
+                  Add the key below to a compatible app such as 1Password, Bitwarden, or Google
+                  Authenticator.
+                </Trans>
               </p>
             </div>
             {!authenticatorSetup ? (
@@ -697,7 +748,9 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                 onSubmit={(event) => void beginAuthenticatorSetup(event)}
               >
                 <Field>
-                  <FieldLabel htmlFor="authenticator-setup-master-password">主密碼</FieldLabel>
+                  <FieldLabel htmlFor="authenticator-setup-master-password">
+                    <Trans>Master password</Trans>
+                  </FieldLabel>
                   <Input
                     id="authenticator-setup-master-password"
                     type="password"
@@ -708,7 +761,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                   />
                 </Field>
                 <Button type="submit" disabled={busy}>
-                  開始設定
+                  <Trans>Start setup</Trans>
                 </Button>
               </form>
             ) : (
@@ -717,7 +770,9 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                 onSubmit={(event) => void completeAuthenticatorSetup(event)}
               >
                 <Field>
-                  <FieldLabel htmlFor="authenticator-setup-key">手動設定金鑰</FieldLabel>
+                  <FieldLabel htmlFor="authenticator-setup-key">
+                    <Trans>Manual setup key</Trans>
+                  </FieldLabel>
                   <div className="flex gap-2">
                     <Input
                       id="authenticator-setup-key"
@@ -731,17 +786,21 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                       type="button"
                       disabled={busy}
                       aria-label={
-                        copiedKey === 'authenticator-key' ? '設定金鑰已複製' : '複製設定金鑰'
+                        copiedKey === 'authenticator-key' ? t`Setup key copied` : t`Copy setup key`
                       }
                       onClick={() => void copyAuthenticatorKey()}
                     >
                       <CopyFeedbackIcon copied={copiedKey === 'authenticator-key'} />
                     </Button>
                   </div>
-                  <FieldDescription>金鑰只會在這個短期設定工作階段顯示。</FieldDescription>
+                  <FieldDescription>
+                    <Trans>The key is shown only during this short-lived setup session.</Trans>
+                  </FieldDescription>
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="authenticator-token">6 位數驗證碼</FieldLabel>
+                  <FieldLabel htmlFor="authenticator-token">
+                    <Trans>6-digit verification code</Trans>
+                  </FieldLabel>
                   <Input
                     id="authenticator-token"
                     inputMode="numeric"
@@ -757,7 +816,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                 {authenticatorSetup.requiresMasterPassword && (
                   <Field>
                     <FieldLabel htmlFor="authenticator-completion-password">
-                      再次輸入主密碼
+                      <Trans>Enter master password again</Trans>
                     </FieldLabel>
                     <Input
                       id="authenticator-completion-password"
@@ -767,11 +826,15 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                       disabled={busy}
                       onChange={(event) => setCompletionPassword(event.target.value)}
                     />
-                    <FieldDescription>Vaultwarden 會在啟用時重新驗證主密碼。</FieldDescription>
+                    <FieldDescription>
+                      <Trans>
+                        Vaultwarden verifies your master password again during activation.
+                      </Trans>
+                    </FieldDescription>
                   </Field>
                 )}
                 <Button type="submit" disabled={busy || authenticatorToken.length !== 6}>
-                  啟用驗證器
+                  <Trans>Enable authenticator</Trans>
                 </Button>
               </form>
             )}
@@ -780,15 +843,22 @@ function AccountTwoFactorDialog(): React.JSX.Element {
         {!providers.some((provider) => provider.type === 1 && provider.enabled) && (
           <div className="grid gap-4 border-t pt-4">
             <div>
-              <h3 className="text-sm font-medium">設定 Email 雙重驗證</h3>
+              <h3 className="text-sm font-medium">
+                <Trans>Set up email two-factor authentication</Trans>
+              </h3>
               <p className="text-muted-foreground text-sm">
-                驗證碼會寄到指定地址。Email 地址只保留在這次短期設定流程中。
+                <Trans>
+                  The verification code will be sent to the specified address. The email address is
+                  retained only during this short-lived setup flow.
+                </Trans>
               </p>
             </div>
             {!emailSetup ? (
               <form className="grid gap-4" onSubmit={(event) => void beginEmailSetup(event)}>
                 <Field>
-                  <FieldLabel htmlFor="email-2fa-setup-password">主密碼</FieldLabel>
+                  <FieldLabel htmlFor="email-2fa-setup-password">
+                    <Trans>Master password</Trans>
+                  </FieldLabel>
                   <Input
                     id="email-2fa-setup-password"
                     type="password"
@@ -799,13 +869,15 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                   />
                 </Field>
                 <Button type="submit" disabled={busy}>
-                  開始設定
+                  <Trans>Start setup</Trans>
                 </Button>
               </form>
             ) : !emailCodeSent ? (
               <form className="grid gap-4" onSubmit={(event) => void sendEmailSetupCode(event)}>
                 <Field>
-                  <FieldLabel htmlFor="email-2fa-address">接收驗證碼的 Email</FieldLabel>
+                  <FieldLabel htmlFor="email-2fa-address">
+                    <Trans>Email address for verification codes</Trans>
+                  </FieldLabel>
                   <Input
                     id="email-2fa-address"
                     type="email"
@@ -818,7 +890,9 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                 </Field>
                 {emailSetup.requiresMasterPassword && (
                   <Field>
-                    <FieldLabel htmlFor="email-2fa-send-password">再次輸入主密碼</FieldLabel>
+                    <FieldLabel htmlFor="email-2fa-send-password">
+                      <Trans>Enter master password again</Trans>
+                    </FieldLabel>
                     <Input
                       id="email-2fa-send-password"
                       type="password"
@@ -827,17 +901,21 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                       disabled={busy}
                       onChange={(event) => setEmailSendPassword(event.target.value)}
                     />
-                    <FieldDescription>Vaultwarden 會在寄送前重新驗證主密碼。</FieldDescription>
+                    <FieldDescription>
+                      <Trans>Vaultwarden verifies your master password again before sending.</Trans>
+                    </FieldDescription>
                   </Field>
                 )}
                 <Button type="submit" disabled={busy || emailAddress.length === 0}>
-                  寄送驗證碼
+                  <Trans>Send verification code</Trans>
                 </Button>
               </form>
             ) : (
               <form className="grid gap-4" onSubmit={(event) => void completeEmailSetup(event)}>
                 <Field>
-                  <FieldLabel htmlFor="email-2fa-token">Email 驗證碼</FieldLabel>
+                  <FieldLabel htmlFor="email-2fa-token">
+                    <Trans>Email verification code</Trans>
+                  </FieldLabel>
                   <Input
                     id="email-2fa-token"
                     inputMode="numeric"
@@ -849,11 +927,15 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                       setEmailToken(event.target.value.replace(/\D/g, '').slice(0, 50))
                     }
                   />
-                  <FieldDescription>驗證碼已寄至 {emailAddress}。</FieldDescription>
+                  <FieldDescription>
+                    <Trans>The verification code was sent to {emailAddress}.</Trans>
+                  </FieldDescription>
                 </Field>
                 {emailSetup.requiresMasterPassword && (
                   <Field>
-                    <FieldLabel htmlFor="email-2fa-completion-password">再次輸入主密碼</FieldLabel>
+                    <FieldLabel htmlFor="email-2fa-completion-password">
+                      <Trans>Enter master password again</Trans>
+                    </FieldLabel>
                     <Input
                       id="email-2fa-completion-password"
                       type="password"
@@ -862,11 +944,15 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                       disabled={busy}
                       onChange={(event) => setEmailCompletionPassword(event.target.value)}
                     />
-                    <FieldDescription>Vaultwarden 會在啟用時再次驗證主密碼。</FieldDescription>
+                    <FieldDescription>
+                      <Trans>
+                        Vaultwarden verifies your master password again during activation.
+                      </Trans>
+                    </FieldDescription>
                   </Field>
                 )}
                 <Button type="submit" disabled={busy || emailToken.length === 0}>
-                  啟用 Email 雙重驗證
+                  <Trans>Enable email two-factor authentication</Trans>
                 </Button>
               </form>
             )}
@@ -874,15 +960,23 @@ function AccountTwoFactorDialog(): React.JSX.Element {
         )}
         <div className="flex flex-col gap-4 border-t pt-4">
           <div className="flex flex-col gap-1">
-            <h3 className="text-sm font-medium">管理 FIDO2 安全金鑰</h3>
+            <h3 className="text-sm font-medium">
+              <Trans>Manage FIDO2 security keys</Trans>
+            </h3>
             <p className="text-muted-foreground text-sm">
-              新增時會開啟系統提示；依金鑰設定，您可能需要觸碰金鑰或輸入 PIN。
+              <Trans>
+                Adding a key opens a system prompt. Depending on the key, you may need to touch it
+                or enter a PIN.
+              </Trans>
             </p>
           </div>
           <Alert>
             <KeyRound aria-hidden="true" />
             <AlertDescription>
-              請先安全保存 Recovery Code。安全金鑰遺失時，Recovery Code 可協助您重新取得帳號存取權。
+              <Trans>
+                Store your recovery code securely first. It can help you regain access to your
+                account if you lose your security key.
+              </Trans>
             </AlertDescription>
           </Alert>
           {webAuthnKeys === null ? (
@@ -892,7 +986,9 @@ function AccountTwoFactorDialog(): React.JSX.Element {
             >
               <FieldGroup>
                 <Field>
-                  <FieldLabel htmlFor="webauthn-list-master-password">主密碼</FieldLabel>
+                  <FieldLabel htmlFor="webauthn-list-master-password">
+                    <Trans>Master password</Trans>
+                  </FieldLabel>
                   <Input
                     id="webauthn-list-master-password"
                     type="password"
@@ -901,12 +997,16 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                     disabled={busy}
                     onChange={(event) => setWebAuthnListPassword(event.target.value)}
                   />
-                  <FieldDescription>驗證後才會讀取帳號目前註冊的安全金鑰。</FieldDescription>
+                  <FieldDescription>
+                    <Trans>
+                      Your account’s registered security keys are read only after verification.
+                    </Trans>
+                  </FieldDescription>
                 </Field>
               </FieldGroup>
               <Button type="submit" disabled={busy || webAuthnListPassword.length === 0}>
                 {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
-                驗證並讀取安全金鑰
+                <Trans>Verify and read security keys</Trans>
               </Button>
             </form>
           ) : (
@@ -922,7 +1022,9 @@ function AccountTwoFactorDialog(): React.JSX.Element {
               >
                 <FieldGroup>
                   <Field>
-                    <FieldLabel htmlFor="webauthn-key-name">安全金鑰名稱</FieldLabel>
+                    <FieldLabel htmlFor="webauthn-key-name">
+                      <Trans>Security key name</Trans>
+                    </FieldLabel>
                     <Input
                       id="webauthn-key-name"
                       autoComplete="off"
@@ -932,11 +1034,16 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                       onChange={(event) => setWebAuthnName(event.target.value)}
                     />
                     <FieldDescription>
-                      例如「辦公室 USB 安全金鑰」。名稱只用於辨識這把金鑰。
+                      <Trans>
+                        For example, “Office USB security key.” The name is used only to identify
+                        this key.
+                      </Trans>
                     </FieldDescription>
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="webauthn-enrollment-master-password">主密碼</FieldLabel>
+                    <FieldLabel htmlFor="webauthn-enrollment-master-password">
+                      <Trans>Master password</Trans>
+                    </FieldLabel>
                     <Input
                       id="webauthn-enrollment-master-password"
                       type="password"
@@ -946,7 +1053,10 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                       onChange={(event) => setWebAuthnEnrollmentPassword(event.target.value)}
                     />
                     <FieldDescription>
-                      主密碼只會用於這次新增請求，送出後立即清空。
+                      <Trans>
+                        Your master password is used only for this add request and is cleared
+                        immediately after submission.
+                      </Trans>
                     </FieldDescription>
                   </Field>
                 </FieldGroup>
@@ -959,7 +1069,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                   ) : (
                     <Plus data-icon="inline-start" aria-hidden="true" />
                   )}
-                  新增安全金鑰
+                  <Trans>Add security key</Trans>
                 </Button>
               </form>
             </div>
@@ -977,7 +1087,9 @@ function AccountTwoFactorDialog(): React.JSX.Element {
         </div>
         <form className="grid gap-4" onSubmit={(event) => void copyRecoveryCode(event)}>
           <Field>
-            <FieldLabel htmlFor="recovery-code-master-password">主密碼</FieldLabel>
+            <FieldLabel htmlFor="recovery-code-master-password">
+              <Trans>Master password</Trans>
+            </FieldLabel>
             <Input
               id="recovery-code-master-password"
               type="password"
@@ -987,7 +1099,9 @@ function AccountTwoFactorDialog(): React.JSX.Element {
               onChange={(event) => setMasterPassword(event.target.value)}
             />
             <FieldDescription>
-              Recovery Code 不會回傳 renderer 或保存於 BearWarden。
+              <Trans>
+                The recovery code is never returned to the renderer or stored by BearWarden.
+              </Trans>
             </FieldDescription>
           </Field>
           {error && (
@@ -1007,7 +1121,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
               disabled={busy}
               onClick={() => changeOpen(false)}
             >
-              關閉
+              <Trans>Close</Trans>
             </Button>
             <Button type="submit" disabled={busy || providers.length === 0}>
               {busy ? (
@@ -1019,7 +1133,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                   placement="inline-start"
                 />
               )}
-              複製 Recovery Code
+              <Trans>Copy recovery code</Trans>
             </Button>
           </DialogFooter>
         </form>
@@ -1036,19 +1150,25 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                   <TriangleAlert aria-hidden="true" />
                 </AlertDialogMedia>
                 <AlertDialogTitle>
-                  停用{disableTarget === null ? '雙重驗證' : providerNames[disableTarget]}？
+                  <Trans>Disable {disableTargetName}?</Trans>
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  這會從伺服器移除這個雙重驗證方式。請輸入主密碼確認；主密碼只用於這一次請求。
+                  <Trans>
+                    This removes the two-factor authentication method from the server. Enter your
+                    master password to confirm; it is used only for this request.
+                  </Trans>
                 </AlertDialogDescription>
               </AlertDialogHeader>
               {disableTarget !== null &&
                 isLastVisiblePersonalTwoFactorMethod(providers, disableTarget) && (
                   <Alert variant="destructive">
                     <AlertDescription>
-                      這是目前最後一個可用的個人雙重驗證方式。停用後帳號將不再要求 Recovery Code
-                      或其他雙重驗證；若組織政策強制
-                      2FA，伺服器也可能撤銷組織成員資格。你仍可繼續停用。
+                      <Trans>
+                        This is your last available personal two-factor authentication method. After
+                        disabling it, your account will no longer require a recovery code or another
+                        two-factor method. If your organization requires 2FA, the server may also
+                        revoke your organization membership. You can still continue.
+                      </Trans>
                     </AlertDescription>
                   </Alert>
                 )}
@@ -1059,13 +1179,19 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                 ) && (
                   <Alert variant="destructive">
                     <AlertDescription>
-                      伺服器目前無法顯示這個 provider
-                      的真實狀態。強制停用可能移除仍在使用的登入方式；若它是最後一個方式，帳號將不再受雙重驗證保護。
+                      <Trans>
+                        The server cannot currently report this provider’s actual status. Forcing it
+                        off may remove a sign-in method that is still in use. If it is the last
+                        method, your account will no longer be protected by two-factor
+                        authentication.
+                      </Trans>
                     </AlertDescription>
                   </Alert>
                 )}
               <Field>
-                <FieldLabel htmlFor="disable-2fa-master-password">主密碼</FieldLabel>
+                <FieldLabel htmlFor="disable-2fa-master-password">
+                  <Trans>Master password</Trans>
+                </FieldLabel>
                 <Input
                   id="disable-2fa-master-password"
                   type="password"
@@ -1075,7 +1201,11 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                   autoFocus
                   onChange={(event) => setDisablePassword(event.target.value)}
                 />
-                <FieldDescription>每次停用都必須重新輸入，不會沿用先前的驗證。</FieldDescription>
+                <FieldDescription>
+                  <Trans>
+                    Enter it again for every disable request; previous verification is never reused.
+                  </Trans>
+                </FieldDescription>
               </Field>
               {disableError && (
                 <Alert variant="destructive">
@@ -1083,14 +1213,16 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                 </Alert>
               )}
               <AlertDialogFooter>
-                <AlertDialogCancel disabled={busy}>返回</AlertDialogCancel>
+                <AlertDialogCancel disabled={busy}>
+                  <Trans>Back</Trans>
+                </AlertDialogCancel>
                 <AlertDialogAction
                   type="submit"
                   variant="destructive"
                   disabled={busy || disablePassword.length === 0}
                 >
                   {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
-                  確認停用{disableTarget === null ? '' : providerNames[disableTarget]}
+                  <Trans>Confirm disabling {disableTargetName}</Trans>
                 </AlertDialogAction>
               </AlertDialogFooter>
             </form>
@@ -1111,14 +1243,22 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                 <AlertDialogMedia>
                   <TriangleAlert aria-hidden="true" />
                 </AlertDialogMedia>
-                <AlertDialogTitle>移除這把安全金鑰？</AlertDialogTitle>
+                <AlertDialogTitle>
+                  <Trans>Remove this security key?</Trans>
+                </AlertDialogTitle>
                 <AlertDialogDescription>
-                  移除後將無法用這把安全金鑰登入。請輸入新的主密碼確認；不會沿用任何先前的驗證。
+                  <Trans>
+                    You will no longer be able to sign in with this security key after removing it.
+                    Enter your master password again to confirm; previous verification is never
+                    reused.
+                  </Trans>
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <FieldGroup>
                 <Field>
-                  <FieldLabel htmlFor="webauthn-removal-master-password">主密碼</FieldLabel>
+                  <FieldLabel htmlFor="webauthn-removal-master-password">
+                    <Trans>Master password</Trans>
+                  </FieldLabel>
                   <Input
                     id="webauthn-removal-master-password"
                     type="password"
@@ -1128,11 +1268,15 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                     autoFocus
                     onChange={(event) => setWebAuthnRemovalPassword(event.target.value)}
                   />
-                  <FieldDescription>每次移除都必須重新輸入主密碼。</FieldDescription>
+                  <FieldDescription>
+                    <Trans>Enter your master password again for every removal.</Trans>
+                  </FieldDescription>
                 </Field>
               </FieldGroup>
               <AlertDialogFooter>
-                <AlertDialogCancel disabled={busy}>返回</AlertDialogCancel>
+                <AlertDialogCancel disabled={busy}>
+                  <Trans>Back</Trans>
+                </AlertDialogCancel>
                 <AlertDialogAction
                   type="submit"
                   variant="destructive"
@@ -1143,7 +1287,7 @@ function AccountTwoFactorDialog(): React.JSX.Element {
                   }
                 >
                   {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
-                  確認移除安全金鑰
+                  <Trans>Confirm removing security key</Trans>
                 </AlertDialogAction>
               </AlertDialogFooter>
             </form>

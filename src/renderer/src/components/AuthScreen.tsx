@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { plural } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { ArrowRight, Fingerprint, KeyRound, RotateCcw, ShieldAlert } from 'lucide-react'
 import type { AppSettings, PinUnlockStatus } from '../../../shared/vault-contract'
 import BrandMark from './BrandMark'
@@ -10,7 +12,6 @@ import { Field, FieldGroup, FieldLabel } from '@renderer/components/ui/field'
 import { Input } from '@renderer/components/ui/input'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { cn } from '@renderer/lib/utils'
-import { describeError, touchIdUnlockFallback } from './auth-screen-ui'
 import { shouldUseApplicationTitlebarMenu } from '../lib/application-titlebar-menu'
 
 const usesWindowControlsOverlay = shouldUseApplicationTitlebarMenu(navigator.userAgent)
@@ -24,6 +25,7 @@ interface AuthScreenProps {
 }
 
 function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React.JSX.Element {
+  const { t } = useLingui()
   const [masterPassword, setMasterPassword] = useState('')
   const [pin, setPin] = useState('')
   const [unlockMethod, setUnlockMethod] = useState<'master-password' | 'pin'>('master-password')
@@ -39,6 +41,25 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
   const pinRef = useRef<HTMLInputElement>(null)
   const focusPasswordAfterTouchIdRef = useRef(false)
   const isSetup = state === 'uninitialized'
+
+  function describeError(error: unknown): string {
+    if (!(error instanceof Error)) return t`An unknown error occurred. Please try again later.`
+    if (error.message.includes('INVALID_MASTER_PASSWORD'))
+      return t`The master password is incorrect.`
+    if (error.message.includes('INVALID_PIN')) return t`The PIN is incorrect.`
+    if (error.message.includes('PIN_DISABLED'))
+      return t`PIN unlock is disabled. Enter your master password instead.`
+    if (error.message.includes('RATE_LIMITED')) return t`Too many attempts. Please try again later.`
+    if (error.message.includes('INVALID_INPUT')) return t`Check your input and try again.`
+    if (error.message.includes('LOCKED')) return t`The vault is locked. Please try again.`
+    if (error.message.includes('CORRUPT_VAULT')) {
+      return t`The vault data could not be read. Try again; if this continues, the vault file may be corrupted.`
+    }
+    if (error.message.includes('NOT_INITIALIZED')) {
+      return t`The vault file could not be found. Check that it has not been moved or deleted.`
+    }
+    return t`The vault cannot be opened right now. Please try again later.`
+  }
 
   useEffect(() => {
     if (!submitting && (state === 'locked' || state === 'uninitialized')) {
@@ -87,7 +108,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
 
     if (!isSetup && unlockMethod === 'pin') {
       if (pin.normalize('NFC').length < 4) {
-        setError('PIN 至少需要 4 個字元。')
+        setError(t`The PIN must contain at least 4 characters.`)
         return
       }
       const request = { pin }
@@ -108,10 +129,15 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
           submitError instanceof Error && submitError.message.includes('LOCKED')
         setError(
           nextStatus.available && !invalidatedByLock
-            ? `${base} 還可嘗試 ${nextStatus.remainingAttempts} 次。`
+            ? t({
+                message: plural(nextStatus.remainingAttempts, {
+                  one: `${base} You have # attempt remaining.`,
+                  other: `${base} You have # attempts remaining.`
+                })
+              })
             : nextStatus.available
               ? base
-              : 'PIN 解鎖已失效，請輸入主密碼。'
+              : t`PIN unlock is no longer available. Enter your master password.`
         )
       } finally {
         request.pin = ''
@@ -121,15 +147,15 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
     }
 
     if (!masterPassword) {
-      setError('請輸入主密碼。')
+      setError(t`Enter your master password.`)
       return
     }
     if (isSetup && masterPassword.length < 12) {
-      setError('主密碼至少需要 12 個字元。')
+      setError(t`The master password must contain at least 12 characters.`)
       return
     }
     if (isSetup && masterPassword !== confirmation) {
-      setError('兩次輸入的主密碼不一致。')
+      setError(t`The master passwords do not match.`)
       return
     }
 
@@ -156,11 +182,14 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
       const status = await window.bearwarden.settings.unlockTouchId()
       if (status.state === 'unlocked') onAuthenticated('unlock')
     } catch (touchIdError) {
-      const fallback = touchIdUnlockFallback(touchIdError)
       focusPasswordAfterTouchIdRef.current = true
       setPin('')
-      setUnlockMethod(fallback.unlockMethod)
-      setError(fallback.error)
+      setUnlockMethod('master-password')
+      setError(
+        touchIdError instanceof Error && touchIdError.message.includes('TOUCH_ID_UNAVAILABLE')
+          ? t`Biometric unlock is unavailable right now. Enter your master password.`
+          : t`The vault could not be unlocked with biometrics. Enter your master password.`
+      )
     } finally {
       setSubmitting(false)
     }
@@ -195,10 +224,10 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
             <div className="grid justify-items-start gap-3" role="status">
               <Spinner className="size-7" aria-hidden="true" />
               <h1 className="m-0 text-[23px] leading-[1.2] tracking-[-0.025em]" id="auth-title">
-                正在開啟安全密碼庫
+                <Trans>Opening secure vault</Trans>
               </h1>
               <p className="text-muted-foreground m-0 leading-[1.6]">
-                所有資料都會在這部裝置上解密。
+                <Trans>All data is decrypted on this device.</Trans>
               </p>
             </div>
           )}
@@ -212,14 +241,16 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                 <ShieldAlert size={27} />
               </span>
               <h1 className="m-0 text-[23px] leading-[1.2] tracking-[-0.025em]" id="auth-title">
-                無法連線至安全服務
+                <Trans>Unable to connect to the security service</Trans>
               </h1>
               <p className="text-muted-foreground m-0 leading-[1.6]">
-                BearWarden 沒有載入密碼庫服務。你的資料沒有被更動。
+                <Trans>
+                  BearWarden could not load the vault service. Your data has not been changed.
+                </Trans>
               </p>
               <Button className="mt-2" type="button" onClick={onRetry}>
                 <RotateCcw data-icon="inline-start" aria-hidden="true" />
-                再試一次
+                <Trans>Try again</Trans>
               </Button>
             </div>
           )}
@@ -229,14 +260,14 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
               <div className="grid grid-cols-[auto_1fr] items-start gap-3.5">
                 <div>
                   <h1 className="m-0 text-[23px] leading-[1.2] tracking-[-0.025em]" id="auth-title">
-                    {isSetup ? '建立你的密碼庫' : '歡迎回來'}
+                    {isSetup ? t`Create your vault` : t`Welcome back`}
                   </h1>
                   <p className="text-muted-foreground mt-[7px] mb-0 leading-[1.6]">
                     {isSetup
-                      ? '設定只有你知道的主密碼；BearWarden 無法替你復原。'
+                      ? t`Set a master password that only you know. BearWarden cannot recover it for you.`
                       : unlockMethod === 'pin'
-                        ? '輸入這次執行期間設定的 PIN。'
-                        : '輸入主密碼以解鎖儲存在這部裝置上的項目。'}
+                        ? t`Enter the PIN set for this session.`
+                        : t`Enter your master password to unlock items stored on this device.`}
                   </p>
                 </div>
               </div>
@@ -244,7 +275,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
               <FieldGroup>
                 {!isSetup && unlockMethod === 'pin' ? (
                   <Field data-invalid={Boolean(error)}>
-                    <FieldLabel htmlFor="vault-pin">PIN</FieldLabel>
+                    <FieldLabel htmlFor="vault-pin">{t`PIN`}</FieldLabel>
                     <Input
                       ref={pinRef}
                       id="vault-pin"
@@ -260,7 +291,9 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                   </Field>
                 ) : (
                   <Field data-invalid={Boolean(error)}>
-                    <FieldLabel htmlFor="master-password">主密碼</FieldLabel>
+                    <FieldLabel htmlFor="master-password">
+                      <Trans>Master password</Trans>
+                    </FieldLabel>
                     <Input
                       ref={passwordRef}
                       id="master-password"
@@ -278,7 +311,9 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
 
                 {isSetup && (
                   <Field data-invalid={Boolean(error)}>
-                    <FieldLabel htmlFor="master-password-confirmation">再次輸入主密碼</FieldLabel>
+                    <FieldLabel htmlFor="master-password-confirmation">
+                      <Trans>Confirm master password</Trans>
+                    </FieldLabel>
                     <Input
                       id="master-password-confirmation"
                       type="password"
@@ -306,7 +341,11 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                 ) : (
                   <ArrowRight data-icon="inline-start" aria-hidden="true" />
                 )}
-                {isSetup ? '建立並解鎖' : unlockMethod === 'pin' ? '使用 PIN 解鎖' : '解鎖密碼庫'}
+                {isSetup
+                  ? t`Create and unlock`
+                  : unlockMethod === 'pin'
+                    ? t`Unlock with PIN`
+                    : t`Unlock vault`}
               </Button>
               {!isSetup && pinStatus.available && (
                 <Button
@@ -322,7 +361,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                   }}
                 >
                   <KeyRound data-icon="inline-start" aria-hidden="true" />
-                  {unlockMethod === 'pin' ? '改用主密碼' : '使用 PIN 解鎖'}
+                  {unlockMethod === 'pin' ? t`Use master password` : t`Unlock with PIN`}
                 </Button>
               )}
               {!isSetup && settings?.touchIdAvailable && settings.touchIdEnabled && (
@@ -338,7 +377,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                   ) : (
                     <Fingerprint data-icon="inline-start" aria-hidden="true" />
                   )}
-                  使用生物辨識解鎖
+                  <Trans>Unlock with biometrics</Trans>
                 </Button>
               )}
             </form>
@@ -346,7 +385,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
         </section>
       </div>
       <p className="text-muted-foreground relative z-10 m-0 mt-auto mb-[18px] shrink-0 text-[11px]">
-        你的主密碼和解密後的資料不會離開這部裝置。
+        <Trans>Your master password and decrypted data never leave this device.</Trans>
       </p>
     </main>
   )

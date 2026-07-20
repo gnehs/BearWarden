@@ -10,6 +10,7 @@ import type {
   VaultTimeoutPolicy
 } from '../shared/vault-contract'
 import type { EncryptedVaultStore } from './encrypted-vault-store'
+import { translateMain } from './i18n'
 import { VaultError } from './vault-errors'
 import type { VaultTimeoutCoordinator } from './vault-timeout-coordinator'
 
@@ -374,7 +375,7 @@ export class AppSettingsService {
     }
     const verified = await this.vaultStore.unlock(masterPassword)
     try {
-      await systemPreferences.promptTouchID('啟用生物辨識解鎖 BearWarden')
+      await systemPreferences.promptTouchID(translateMain('touchId.enableUnlock'))
       const encrypted = await safeStorage.encryptStringAsync(masterPassword)
       try {
         await atomicWrite(this.touchIdPath, encrypted)
@@ -421,8 +422,8 @@ export class AppSettingsService {
     try {
       await systemPreferences.promptTouchID(
         operation === 'createPasskey'
-          ? '建立新的 BearWarden 通行密鑰'
-          : '使用 BearWarden 通行密鑰登入'
+          ? translateMain('touchId.createPasskey')
+          : translateMain('touchId.usePasskey')
       )
     } catch {
       throw new VaultError('TOUCH_ID_FAILED')
@@ -443,7 +444,7 @@ export class AppSettingsService {
     let encrypted: Buffer | undefined
     let masterPassword: string | undefined
     try {
-      await systemPreferences.promptTouchID('使用生物辨識解鎖 BearWarden')
+      await systemPreferences.promptTouchID(translateMain('touchId.unlock'))
       this.assertCurrent(operationEpoch)
       encrypted = await readFile(this.touchIdPath)
       this.assertCurrent(operationEpoch)

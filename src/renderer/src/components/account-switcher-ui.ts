@@ -1,3 +1,5 @@
+import { i18n } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
 import type { AccountMutationResult, AccountStatusEntry } from '../../../shared/vault-contract'
 
 export const MAX_LOCAL_ACCOUNTS = 5
@@ -35,7 +37,7 @@ export function isCurrentAccountRefresh(
 }
 
 export function localAccountLabel(slot: number): string {
-  return `帳號 ${slot}`
+  return i18n._(msg`Account ${slot}`)
 }
 
 export function localAccountCode(accountId: string): string {
@@ -47,9 +49,14 @@ export function localAccountPresentation(account: AccountStatusEntry): {
   description: string
   active: boolean
 } {
+  const code = localAccountCode(account.id)
   return {
     label: localAccountLabel(account.slot),
-    description: `${account.active ? '目前使用中的本機帳號' : '可切換至這個本機帳號'} · 本機代碼 ${localAccountCode(account.id)}`,
+    description: i18n._(
+      account.active
+        ? msg`Current local account · Local code ${code}`
+        : msg`Switch to this local account · Local code ${code}`
+    ),
     active: account.active
   }
 }
@@ -62,44 +69,54 @@ export function accountConfirmationContent(action: AccountConfirmationAction): {
 } {
   if (action.kind === 'remove') {
     return {
-      title: `移除${localAccountLabel(action.slot)}？`,
-      description:
-        '這會永久刪除這台裝置上的加密密碼庫、設定與生物辨識資料，且無法復原；不會刪除 Bitwarden 或 Vaultwarden 伺服器上的帳號與資料。',
-      actionLabel: '永久移除本機資料',
+      title: i18n._(msg`Remove ${localAccountLabel(action.slot)}?`),
+      description: i18n._(
+        msg`This permanently deletes the encrypted vault, settings, and biometric data on this device and cannot be undone. It does not delete your account or data on the Bitwarden or Vaultwarden server.`
+      ),
+      actionLabel: i18n._(msg`Permanently remove local data`),
       destructive: true
     }
   }
-  const target = action.kind === 'add' ? '新增本機帳號' : `切換至${localAccountLabel(action.slot)}`
   return {
-    title: `${target}？`,
-    description: '這會先鎖定密碼庫，然後安全地重新啟動 BearWarden。未儲存的變更不會保留。',
-    actionLabel: '鎖定並重新啟動',
+    title:
+      action.kind === 'add'
+        ? i18n._(msg`Add a local account?`)
+        : i18n._(msg`Switch to ${localAccountLabel(action.slot)}?`),
+    description: i18n._(
+      msg`This locks the vault, then safely restarts BearWarden. Unsaved changes will not be kept.`
+    ),
+    actionLabel: i18n._(msg`Lock and restart`),
     destructive: false
   }
 }
 
 export function accountMutationError(error: unknown): string {
   const message = error instanceof Error ? error.message : ''
-  if (message.includes('ACCOUNT_LIMIT_REACHED')) return '本機帳號已達上限，最多可保留 5 個。'
+  if (message.includes('ACCOUNT_LIMIT_REACHED'))
+    return i18n._(msg`The local account limit has been reached. You can keep up to 5 accounts.`)
   if (message.includes('ACCOUNT_NOT_FOUND') || message.includes('NOT_FOUND')) {
-    return '找不到指定的本機帳號，請重新整理後再試。'
+    return i18n._(msg`The requested local account was not found. Refresh and try again.`)
   }
   if (message.includes('ACCOUNT_ACTIVE_REMOVAL_FORBIDDEN')) {
-    return '目前使用中的帳號不能移除，請先切換到另一個帳號。'
+    return i18n._(msg`The current account cannot be removed. Switch to another account first.`)
   }
   if (message.includes('ACCOUNT_STALE_STATE')) {
-    return '本機帳號清單已變更，請重新整理後再試。'
+    return i18n._(msg`The local account list has changed. Refresh and try again.`)
   }
   if (message.includes('ACCOUNT_SWITCH_UNAVAILABLE') || message.includes('SWITCH_UNAVAILABLE')) {
-    return '本機帳號管理目前不可用，請稍後再試。'
+    return i18n._(msg`Local account management is currently unavailable. Try again later.`)
   }
   if (message.includes('ACCOUNT_SWITCH_IN_PROGRESS') || message.includes('IN_PROGRESS')) {
-    return '已有本機帳號切換正在處理，請等待 BearWarden 重新啟動。'
+    return i18n._(
+      msg`A local account switch is already in progress. Wait for BearWarden to restart.`
+    )
   }
   if (message.includes('ACCOUNT_SWITCH_RESULT_UNKNOWN') || message.includes('RESULT_UNKNOWN')) {
-    return '帳號操作結果無法確認。請重新啟動 BearWarden 後確認目前狀態。'
+    return i18n._(
+      msg`The account operation result could not be confirmed. Restart BearWarden and verify the current status.`
+    )
   }
-  return '無法完成本機帳號操作，請稍後再試。'
+  return i18n._(msg`The local account operation could not be completed. Try again later.`)
 }
 
 export function accountSwitchButtonDisabled(account: AccountStatusEntry, busy: boolean): boolean {

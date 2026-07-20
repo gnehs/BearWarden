@@ -1,14 +1,50 @@
-import {
-  Children,
-  isValidElement,
-  type ElementType,
-  type ReactElement,
-  type ReactNode
-} from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { CommandItem } from '@renderer/components/ui/command'
 import AutofillPicker, { type AutofillPickerProps } from './AutofillPicker'
+
+const renderedHandlers = vi.hoisted(() => ({
+  onSelect: undefined as (() => void) | undefined,
+  onKeyDown: undefined as ((event: { key: string; preventDefault: () => void }) => void) | undefined
+}))
+
+vi.mock('react/jsx-runtime', async (importOriginal) => {
+  const runtime = await importOriginal<typeof import('react/jsx-runtime')>()
+
+  function capture(factory: typeof runtime.jsx): typeof runtime.jsx {
+    return ((type, componentProps, key) => {
+      const props = componentProps as Record<string, unknown>
+      if (type === 'section' && props['data-request-id'] === 'request-1') {
+        renderedHandlers.onKeyDown = props.onKeyDown as typeof renderedHandlers.onKeyDown
+      }
+      if (props.className === 'min-h-12' && typeof props.onSelect === 'function') {
+        renderedHandlers.onSelect = props.onSelect as typeof renderedHandlers.onSelect
+      }
+      return factory(type, componentProps, key)
+    }) as typeof runtime.jsx
+  }
+
+  return {
+    ...runtime,
+    jsx: capture(runtime.jsx),
+    jsxs: capture(runtime.jsxs)
+  }
+})
+
+vi.mock('react/jsx-dev-runtime', async (importOriginal) => {
+  const runtime = await importOriginal<typeof import('react/jsx-dev-runtime')>()
+  const jsxDEV: typeof runtime.jsxDEV = ((type, componentProps, ...rest) => {
+    const props = componentProps as Record<string, unknown>
+    if (type === 'section' && props['data-request-id'] === 'request-1') {
+      renderedHandlers.onKeyDown = props.onKeyDown as typeof renderedHandlers.onKeyDown
+    }
+    if (props.className === 'min-h-12' && typeof props.onSelect === 'function') {
+      renderedHandlers.onSelect = props.onSelect as typeof renderedHandlers.onSelect
+    }
+    return runtime.jsxDEV(type, componentProps, ...rest)
+  }) as typeof runtime.jsxDEV
+
+  return { ...runtime, jsxDEV }
+})
 
 function props(overrides: Partial<AutofillPickerProps> = {}): AutofillPickerProps {
   return {
@@ -29,21 +65,6 @@ function props(overrides: Partial<AutofillPickerProps> = {}): AutofillPickerProp
   }
 }
 
-function findElement(
-  node: ReactNode,
-  type: ElementType
-): ReactElement<{ onSelect?: () => void }> | null {
-  if (!isValidElement(node)) return null
-  if (node.type === type) return node as ReactElement<{ onSelect?: () => void }>
-
-  const { children } = node.props as { children?: ReactNode }
-  for (const child of Children.toArray(children)) {
-    const match = findElement(child, type)
-    if (match) return match
-  }
-  return null
-}
-
 describe('AutofillPicker', () => {
   it('renders searchable safe metadata without exposing a URI path or secret', () => {
     const markup = renderToStaticMarkup(<AutofillPicker {...props()} />)
@@ -51,8 +72,8 @@ describe('AutofillPicker', () => {
     expect(markup).toContain('Example Admin')
     expect(markup).toContain('admin@example.test')
     expect(markup).toContain('accounts.example.test')
-    expect(markup).toContain('需重新驗證')
-    expect(markup).toContain('搜尋名稱、帳號或網站')
+    expect(markup).toContain('需要重新驗證身分')
+    expect(markup).toContain('依名稱、使用者名稱或網站搜尋…')
     expect(markup).not.toContain('/login')
     expect(markup).not.toContain('must-not-leak')
   })
@@ -61,7 +82,7 @@ describe('AutofillPicker', () => {
     const locked = renderToStaticMarkup(<AutofillPicker {...props({ locked: true })} />)
     const denied = renderToStaticMarkup(<AutofillPicker {...props({ permission: 'denied' })} />)
 
-    expect(locked).toContain('密碼庫已鎖定')
+    expect(locked).toContain('保管庫已鎖定')
     expect(locked).toContain('開啟 BearWarden')
     expect(denied).toContain('需要輔助使用權限')
     expect(denied).not.toContain('Example Admin')
@@ -81,7 +102,7 @@ describe('AutofillPicker', () => {
   it('renders an accessible loading state and keyboard hints', () => {
     const markup = renderToStaticMarkup(<AutofillPicker {...props({ loading: true })} />)
 
-    expect(markup).toContain('正在尋找可自動填入的登入項目')
+    expect(markup).toContain('正在尋找可自動填寫的登入資訊')
     expect(markup).toContain('Esc')
     expect(markup).toContain('↵')
     expect(markup).not.toContain('Example Admin')
@@ -91,13 +112,16 @@ describe('AutofillPicker', () => {
     const onSelect = vi.fn()
     const onCancel = vi.fn()
     const preventDefault = vi.fn()
-    const tree = AutofillPicker(props({ onSelect, onCancel }))
-    const section = tree as ReactElement<{
-      onKeyDown: (event: { key: string; preventDefault: () => void }) => void
-    }>
+    renderedHandlers.onSelect = undefined
+    renderedHandlers.onKeyDown = undefined
 
-    findElement(tree, CommandItem)?.props.onSelect?.()
-    section.props.onKeyDown({ key: 'Escape', preventDefault })
+    renderToStaticMarkup(<AutofillPicker {...props({ onSelect, onCancel })} />)
+
+    const renderedOnSelect = renderedHandlers.onSelect as (() => void) | undefined
+    const renderedOnKeyDown = renderedHandlers.onKeyDown as
+      ((event: { key: string; preventDefault: () => void }) => void) | undefined
+    renderedOnSelect?.()
+    renderedOnKeyDown?.({ key: 'Escape', preventDefault })
 
     expect(onSelect).toHaveBeenCalledWith('login-1')
     expect(onCancel).toHaveBeenCalledOnce()

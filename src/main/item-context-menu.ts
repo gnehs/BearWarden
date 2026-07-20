@@ -1,4 +1,5 @@
 import { Menu, type BrowserWindow, type MenuItemConstructorOptions } from 'electron'
+import { translateMain } from './i18n'
 
 export interface ItemContextMenuItem {
   id: string
@@ -50,7 +51,7 @@ function canUseItem(item: ItemContextMenuItem): boolean {
 }
 
 function uriMenuLabel(label: string, index: number): string {
-  return label.trim() || `網站 ${index + 1}`
+  return label.trim() || `${translateMain('itemContext.website')} ${index + 1}`
 }
 
 function folderMenu(
@@ -64,7 +65,7 @@ function folderMenu(
   const submenu: MenuItemConstructorOptions[] = [
     {
       id: 'item-context-move-unfiled',
-      label: '未分類',
+      label: translateMain('itemContext.unfiled'),
       enabled: unfiledEnabled,
       click: () => invoke(() => callbacks.moveToFolder(item.id, null), onError)
     },
@@ -80,7 +81,7 @@ function folderMenu(
 
   return {
     id: 'item-context-move',
-    label: '移至資料夾',
+    label: translateMain('itemContext.moveToFolder'),
     enabled,
     submenu
   }
@@ -94,13 +95,13 @@ export function showItemContextMenu(options: ItemContextMenuOptions): Menu {
     item.uriLabels.length <= 1
       ? {
           id: 'item-context-open-in-new-window',
-          label: '在瀏覽器打開',
+          label: translateMain('itemContext.openInBrowser'),
           enabled: itemEnabled && hasUris,
           click: () => invoke(() => callbacks.openInNewWindow(item.id, 0), onError)
         }
       : {
           id: 'item-context-open-in-new-window',
-          label: '在瀏覽器打開',
+          label: translateMain('itemContext.openInBrowser'),
           enabled: itemEnabled,
           submenu: item.uriLabels.map((label, index) => ({
             id: `item-context-open-uri-${index}`,
@@ -112,13 +113,13 @@ export function showItemContextMenu(options: ItemContextMenuOptions): Menu {
     item.uriLabels.length <= 1
       ? {
           id: 'item-context-copy-website',
-          label: '複製網站',
+          label: translateMain('itemContext.copyWebsite'),
           enabled: itemEnabled && hasUris,
           click: () => invoke(() => callbacks.copyWebsite(item.id, 0), onError)
         }
       : {
           id: 'item-context-copy-website',
-          label: '複製網站',
+          label: translateMain('itemContext.copyWebsite'),
           enabled: itemEnabled,
           submenu: item.uriLabels.map((label, index) => ({
             id: `item-context-copy-uri-${index}`,
@@ -131,13 +132,13 @@ export function showItemContextMenu(options: ItemContextMenuOptions): Menu {
     { type: 'separator' },
     {
       id: 'item-context-copy-username',
-      label: '複製使用者名稱',
+      label: translateMain('itemContext.copyUsername'),
       enabled: itemEnabled && item.hasUsername,
       click: () => invoke(() => callbacks.copyUsername(item.id), onError)
     },
     {
       id: 'item-context-copy-password',
-      label: '複製密碼',
+      label: translateMain('itemContext.copyPassword'),
       enabled: itemEnabled && item.hasPassword,
       click: () => invoke(() => callbacks.copyPassword(item.id), onError)
     },
@@ -145,13 +146,15 @@ export function showItemContextMenu(options: ItemContextMenuOptions): Menu {
     { type: 'separator' },
     {
       id: 'item-context-clone',
-      label: '複製項目',
+      label: translateMain('itemContext.duplicateItem'),
       enabled: itemEnabled,
       click: () => invoke(() => callbacks.cloneItem(item.id), onError)
     },
     {
       id: 'item-context-toggle-archive',
-      label: item.archivedAt ? '取消封存' : '封存項目',
+      label: item.archivedAt
+        ? translateMain('itemContext.unarchive')
+        : translateMain('itemContext.archiveItem'),
       enabled: itemEnabled,
       click: () => invoke(() => callbacks.toggleArchive(item.id, item.archivedAt !== null), onError)
     },
@@ -160,7 +163,7 @@ export function showItemContextMenu(options: ItemContextMenuOptions): Menu {
     { type: 'separator' },
     {
       id: 'item-context-delete',
-      label: '刪除項目',
+      label: translateMain('itemContext.deleteItem'),
       enabled: itemEnabled,
       click: () => invoke(() => callbacks.deleteItem(item.id), onError)
     }

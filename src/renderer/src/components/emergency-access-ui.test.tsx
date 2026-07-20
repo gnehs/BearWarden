@@ -32,7 +32,7 @@ describe('Emergency Access UI', () => {
   it('uses the official status labels and only accepts safe avatar colors', () => {
     expect(
       [0, 1, 2, 3, 4].map((status) => emergencyAccessStatusLabel(status as EmergencyAccessStatus))
-    ).toEqual(['已邀請', '已接受邀請', '已確認', '已提出存取要求', '已核准存取'])
+    ).toEqual(['已受邀', '已接受邀請', '已確認', '已請求存取', '已核准存取'])
     expect(safeEmergencyAccessAvatarColor('#12abEF')).toBe('#12abEF')
     expect(safeEmergencyAccessAvatarColor('url(example.invalid)')).toBeUndefined()
     expect(emergencyAccessCreationLabel(null)).toBeNull()
@@ -43,9 +43,9 @@ describe('Emergency Access UI', () => {
       <EmergencyAccessContent entries={[]} loading={false} failed onRetry={vi.fn()} />
     )
 
-    expect(markup).toContain('無法載入 Emergency Access')
-    expect(markup).toContain('重試')
-    expect(markup).not.toContain('尚未設定 Emergency Access')
+    expect(markup).toContain('無法載入緊急存取')
+    expect(markup).toContain('再試一次')
+    expect(markup).not.toContain('尚未設定緊急存取')
   })
 
   it('renders available access metadata and tolerates missing optional metadata', () => {
@@ -54,9 +54,9 @@ describe('Emergency Access UI', () => {
     )
 
     expect(markup).toContain('trusted@example.invalid')
-    expect(markup).toContain('權限：檢視')
-    expect(markup).toContain('狀態：已提出存取要求')
+    expect(markup).toMatch(/權限：\s*檢視/)
+    expect(markup).toMatch(/狀態：\s*已請求存取/)
     expect(markup).toContain('等待 7 天')
-    expect(markup).not.toContain('建立於')
+    expect(markup).not.toContain('已建立')
   })
 })

@@ -1,4 +1,5 @@
 import { cn } from '@renderer/lib/utils'
+import { useLingui } from '@lingui/react/macro'
 
 interface TotpCountdownIndicatorProps {
   remainingSeconds: number | null
@@ -11,6 +12,7 @@ export default function TotpCountdownIndicator({
   period,
   className
 }: TotpCountdownIndicatorProps): React.JSX.Element {
+  const { t } = useLingui()
   const value = remainingSeconds === null ? null : Math.min(period, Math.max(0, remainingSeconds))
   const percentage = value === null || period <= 0 ? 0 : (value / period) * 100
 
@@ -22,11 +24,13 @@ export default function TotpCountdownIndicator({
       )}
       data-slot="totp-countdown-indicator"
       role="progressbar"
-      aria-label="驗證碼剩餘時間"
+      aria-label={t`Authentication code time remaining`}
       aria-valuemin={0}
       aria-valuemax={period}
       aria-valuenow={value ?? undefined}
-      aria-valuetext={value === null ? '正在取得驗證碼' : `剩餘 ${value} 秒`}
+      aria-valuetext={
+        value === null ? t`Fetching authentication code` : t`${value} seconds remaining`
+      }
     >
       <svg className="size-full -rotate-90" viewBox="0 0 100 100" aria-hidden="true">
         <circle className="stroke-muted fill-none" cx="50" cy="50" r="40" strokeWidth="18" />

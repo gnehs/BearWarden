@@ -70,7 +70,7 @@ function renderLoginEditor(login?: LoginView): string {
 describe('editorHeaderContent', () => {
   it('新增時只顯示一次項目類型', () => {
     expect(editorHeaderContent('安全備註', null)).toEqual({
-      eyebrow: '新增項目',
+      eyebrow: '新項目',
       heading: '安全備註',
       typeBadge: null
     })
@@ -78,7 +78,7 @@ describe('editorHeaderContent', () => {
 
   it('編輯時保留項目名稱與類型資訊', () => {
     expect(editorHeaderContent('安全備註', '離線復原程序')).toEqual({
-      eyebrow: '編輯安全備註',
+      eyebrow: '編輯 安全備註',
       heading: '離線復原程序',
       typeBadge: '安全備註'
     })
@@ -127,7 +127,7 @@ describe('LoginEditor design language', () => {
       expect(uriMatchExample(option.value, uri)).toContain(uri)
       expect(uriMatchExample(option.value, uri)).toMatch(/[○△]/)
     }
-    expect(uriMatchExample('1', '   ')).toBe('輸入網址後顯示匹配範例')
+    expect(uriMatchExample('1', '   ')).toBe('輸入 URL 以顯示相符範例')
   })
 
   it('網站 URI 的匹配範例會以淡色輔助文字出現在 SSR 標記', () => {

@@ -1,5 +1,6 @@
 import { BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron'
 import type { ApplicationMenuCommand } from '../shared/vault-contract'
+import { translateMain } from './i18n'
 
 export interface ApplicationMenuOptions {
   isMac: boolean
@@ -52,11 +53,11 @@ export function installApplicationMenu(options: ApplicationMenuOptions): Menu {
     options.isMac ? { role: 'appMenu' } : { role: 'fileMenu' },
     {
       id: 'vault-menu',
-      label: '密碼庫',
+      label: translateMain('applicationMenu.vault'),
       submenu: [
         {
           id: 'vault-menu-lock',
-          label: '鎖定',
+          label: translateMain('applicationMenu.lock'),
           accelerator: 'CommandOrControl+L',
           click: options.onLockVault
         }
@@ -64,7 +65,7 @@ export function installApplicationMenu(options: ApplicationMenuOptions): Menu {
     },
     { role: 'editMenu' },
     {
-      label: '顯示方式',
+      label: translateMain('applicationMenu.view'),
       submenu: [{ role: 'togglefullscreen' }]
     },
     { role: 'windowMenu' }

@@ -675,11 +675,11 @@ describe('AppSettingsService', () => {
 
     expect(systemPreferences.promptTouchID).toHaveBeenNthCalledWith(
       1,
-      '建立新的 BearWarden 通行密鑰'
+      'Create a new BearWarden passkey'
     )
     expect(systemPreferences.promptTouchID).toHaveBeenNthCalledWith(
       2,
-      '使用 BearWarden 通行密鑰登入'
+      'Sign in with a BearWarden passkey'
     )
     expect(safeStorage.decryptStringAsync).not.toHaveBeenCalled()
     expect(store.unlock).not.toHaveBeenCalled()

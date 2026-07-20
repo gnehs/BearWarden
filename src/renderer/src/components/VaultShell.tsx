@@ -18,6 +18,8 @@ import {
   verticalListSortingStrategy
 } from '@dnd-kit/sortable'
 import NumberFlow from '@number-flow/react'
+import { plural } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import {
   AlertTriangle,
   ArrowLeft,
@@ -163,7 +165,6 @@ import {
   type VaultSearchMatches
 } from '../lib/vault-search-ui'
 import { vaultHealthRevision } from '../lib/vault-health-ui'
-import { formatVaultDate as formatDate } from '../lib/vault-date'
 import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
 import { resolveTotpRefreshTarget } from './totp-refresh-target'
 import TotpCountdownIndicator from './TotpCountdownIndicator'
@@ -271,48 +272,40 @@ interface DetailField {
   uriIndex?: number
 }
 
-const itemTypeMeta: Record<VaultItemType, ItemTypeMeta> = {
-  login: { label: '登入', icon: KeyRound },
-  card: { label: '卡片', icon: CreditCard },
-  identity: { label: '身分資料', icon: ContactRound },
-  secureNote: { label: '安全備註', icon: NotebookPen },
-  sshKey: { label: 'SSH 金鑰', icon: FileKey2 }
+const itemTypeIcons: Record<VaultItemType, typeof KeyRound> = {
+  login: KeyRound,
+  card: CreditCard,
+  identity: ContactRound,
+  secureNote: NotebookPen,
+  sshKey: FileKey2
 }
 
 type SidebarTone = 'blue' | 'indigo' | 'green' | 'yellow' | 'cyan' | 'red' | 'orange' | 'gray'
 
-const categoryMeta: Array<{
+const categoryDefinitions: Array<{
   id: TypeFilter
-  label: string
   icon: typeof KeyRound
   tone: SidebarTone
 }> = [
-  { id: 'all', label: '全部', icon: KeyRound, tone: 'blue' },
-  { id: 'login', label: '登入', icon: FileKey2, tone: 'indigo' },
-  { id: 'passkey', label: '通行密鑰', icon: Fingerprint, tone: 'green' },
-  { id: 'totp', label: '驗證碼', icon: BadgeCheck, tone: 'yellow' },
-  { id: 'card', label: '卡片', icon: CreditCard, tone: 'cyan' },
-  { id: 'identity', label: '身分', icon: ContactRound, tone: 'red' },
-  { id: 'secureNote', label: '備註', icon: NotebookPen, tone: 'orange' },
-  { id: 'sshKey', label: 'SSH 金鑰', icon: FileKey2, tone: 'gray' }
+  { id: 'all', icon: KeyRound, tone: 'blue' },
+  { id: 'login', icon: FileKey2, tone: 'indigo' },
+  { id: 'passkey', icon: Fingerprint, tone: 'green' },
+  { id: 'totp', icon: BadgeCheck, tone: 'yellow' },
+  { id: 'card', icon: CreditCard, tone: 'cyan' },
+  { id: 'identity', icon: ContactRound, tone: 'red' },
+  { id: 'secureNote', icon: NotebookPen, tone: 'orange' },
+  { id: 'sshKey', icon: FileKey2, tone: 'gray' }
 ]
 
 const initialSyncStatus: SyncStatus = { configured: false, state: 'unconfigured' }
 
-const syncStateMeta = {
-  unconfigured: { label: '尚未設定', icon: CloudCog },
-  locked: { label: '需要解鎖', icon: CloudAlert },
-  ready: { label: '已連線', icon: CloudCheck },
-  syncing: { label: '同步中…', icon: CloudSync },
-  error: { label: '需要處理問題', icon: CloudAlert }
-} satisfies Record<SyncStatus['state'], { label: string; icon: typeof CloudCheck }>
-
-const sortItemsOptions = [
-  { label: '依名稱', value: 'title' },
-  { label: '最近使用', value: 'recent' },
-  { label: '使用頻率', value: 'frequency' },
-  { label: '最近修改', value: 'modified' }
-] as const
+const syncStateIcons = {
+  unconfigured: CloudCog,
+  locked: CloudAlert,
+  ready: CloudCheck,
+  syncing: CloudSync,
+  error: CloudAlert
+} satisfies Record<SyncStatus['state'], typeof CloudCheck>
 
 const isMac = navigator.userAgent.includes('Mac')
 const isWindows = navigator.userAgent.includes('Windows')
@@ -393,28 +386,11 @@ const initialAttachmentStages: Record<AttachmentOperationKind, AttachmentOperati
   'fix-legacy': 'downloading'
 }
 
-const attachmentStageLabels: Record<AttachmentOperationStage, string> = {
-  'choosing-file': '等待選擇檔案',
-  'reading-file': '正在安全讀取檔案',
-  encrypting: '正在本機加密',
-  downloading: '正在下載附件',
-  uploading: '正在上傳加密附件',
-  deleting: '正在刪除附件',
-  syncing: '正在同步附件清單'
-}
-
 function attachmentProgressPercent(progress: AttachmentProgressEvent): number | null {
   if (progress.totalBytes === null || progress.totalBytes <= 0) return null
   return Math.round(
     Math.min(100, Math.max(0, (progress.completedBytes / progress.totalBytes) * 100))
   )
-}
-
-function attachmentStageLabel(progress: AttachmentProgressEvent): string {
-  if (progress.stage === 'choosing-file' && progress.kind === 'download') {
-    return '等待選擇儲存位置'
-  }
-  return attachmentStageLabels[progress.stage]
 }
 
 function isAttachmentCanceled(error: unknown): boolean {
@@ -516,22 +492,15 @@ function detailIconClassName(type?: VaultItemType): string {
   )
 }
 
-function describeError(error: unknown): string {
-  if (!(error instanceof Error)) return '發生未知錯誤。'
-  const messages: Record<string, string> = {
-    LOCKED: '密碼庫已鎖定，請重新解鎖。',
-    NOT_FOUND: '找不到指定的項目。',
-    INVALID_INPUT: '輸入內容無效，請檢查後再試。',
-    DUPLICATE_NAME: '名稱已被使用，請換一個名稱。',
-    INVALID_URL: '網站網址格式不正確。',
-    ATTACHMENT_FAILED: '附件操作失敗；伺服器內容可能已變更，請同步後再試。',
-    ATTACHMENT_TOO_LARGE: '附件太大，無法在安全的記憶體上限內完成加密。',
-    ATTACHMENT_STORAGE_LIMIT: 'Bitwarden 附件儲存空間不足，請釋出空間後再試。',
-    ATTACHMENT_REJECTED: '此伺服器或帳號目前不允許新增這個附件。',
-    ATTACHMENT_CANCELED: '附件操作已取消。'
-  }
+function describeError(
+  error: unknown,
+  messages: Record<string, string>,
+  unknownError: string,
+  fallbackError: string
+): string {
+  if (!(error instanceof Error)) return unknownError
   const code = Object.keys(messages).find((key) => error.message.includes(key))
-  return code ? messages[code] : '操作未完成，請重新整理後確認目前狀態。'
+  return code ? messages[code] : fallbackError
 }
 
 function isRepromptRequired(error: unknown): boolean {
@@ -547,8 +516,8 @@ function announceError(message: string): void {
   })
 }
 
-function hostLabel(uri: string | null): string {
-  if (!uri) return '未設定網站'
+function hostLabel(uri: string | null, unsetLabel: string): string {
+  if (!uri) return unsetLabel
   try {
     return new URL(uri).hostname
   } catch {
@@ -556,43 +525,27 @@ function hostLabel(uri: string | null): string {
   }
 }
 
-const linkedFieldLabels: Record<number, string> = {
-  100: '使用者名稱',
-  101: '密碼',
-  300: '持卡人',
-  301: '到期月份',
-  302: '到期年份',
-  303: '安全碼',
-  304: '品牌',
-  305: '卡號',
-  400: '稱謂',
-  401: '中間名',
-  402: '地址 1',
-  403: '地址 2',
-  404: '地址 3',
-  405: '城市',
-  406: '州／省',
-  407: '郵遞區號',
-  408: '國家',
-  409: '公司',
-  410: '電子郵件',
-  411: '電話',
-  412: '身分證／社會安全號',
-  413: '使用者名稱',
-  414: '護照號碼',
-  415: '駕照號碼',
-  416: '名字',
-  417: '姓氏',
-  418: '完整姓名'
-}
-
-function customFieldDisplayValue(field: VaultCustomFieldView): string {
-  if (field.type === 'boolean')
-    return field.value?.toLocaleLowerCase('en-US') === 'true' ? '是' : '否'
-  if (field.type === 'linked') {
-    return `連結至${field.linkedId === null ? '項目欄位' : (linkedFieldLabels[field.linkedId] ?? '項目欄位')}`
+function customFieldDisplayValue(
+  field: VaultCustomFieldView,
+  labels: {
+    yes: string
+    no: string
+    linkedTo: (label: string) => string
+    itemField: string
+    linkedFields: Record<number, string>
+    unset: string
   }
-  return field.value || '未設定'
+): string {
+  if (field.type === 'boolean')
+    return field.value?.toLowerCase() === 'true' ? labels.yes : labels.no
+  if (field.type === 'linked') {
+    return labels.linkedTo(
+      field.linkedId === null
+        ? labels.itemField
+        : (labels.linkedFields[field.linkedId] ?? labels.itemField)
+    )
+  }
+  return field.value || labels.unset
 }
 
 function matchesCustomFieldSource(
@@ -616,14 +569,14 @@ function customFieldCopyFeedbackKey(
   return JSON.stringify(['custom', itemId, index, field.name, field.type, field.linkedId])
 }
 
-function detailFields(login: LoginView): DetailField[] {
+function detailFields(login: LoginView, labels: Record<string, string>): DetailField[] {
   if (login.type === 'login') {
     return [
-      { field: 'username', label: '使用者名稱', value: login.username, copyable: true },
-      { field: 'password', label: '密碼', secret: true },
+      { field: 'username', label: labels.username!, value: login.username, copyable: true },
+      { field: 'password', label: labels.password!, secret: true },
       ...login.uris.map((entry, uriIndex) => ({
         field: 'uri' as const,
-        label: uriIndex === 0 ? '網站' : `網站 ${uriIndex + 1}`,
+        label: uriIndex === 0 ? labels.website! : `${labels.website} ${uriIndex + 1}`,
         value: entry.uri,
         copyable: true,
         openUri: true,
@@ -633,18 +586,18 @@ function detailFields(login: LoginView): DetailField[] {
   }
   if (login.type === 'card') {
     return [
-      { field: 'number', label: '卡號', secret: true },
-      { field: 'code', label: '安全碼', secret: true },
+      { field: 'number', label: labels.cardNumber!, secret: true },
+      { field: 'code', label: labels.securityCode!, secret: true },
       {
         field: 'cardholderName',
-        label: '持卡人',
+        label: labels.cardholder!,
         value: login.cardholderName,
         copyable: true
       },
-      { field: 'brand', label: '品牌', value: login.brand, copyable: true },
+      { field: 'brand', label: labels.brand!, value: login.brand, copyable: true },
       {
         field: 'cardExpiration',
-        label: '到期日',
+        label: labels.expirationDate!,
         value: [login.expMonth, login.expYear].filter(Boolean).join(' / '),
         copyable: true
       }
@@ -654,23 +607,23 @@ function detailFields(login: LoginView): DetailField[] {
     return [
       {
         field: 'username',
-        label: '姓名',
+        label: labels.name!,
         value: [login.title, login.firstName, login.middleName, login.lastName]
           .filter(Boolean)
           .join(' ')
       },
-      { field: 'username', label: '公司', value: login.company },
-      { field: 'email', label: '電子郵件', value: login.email, copyable: true },
-      { field: 'phone', label: '電話', value: login.phone, copyable: true },
+      { field: 'username', label: labels.company!, value: login.company },
+      { field: 'email', label: labels.email!, value: login.email, copyable: true },
+      { field: 'phone', label: labels.phone!, value: login.phone, copyable: true },
       {
         field: 'identityUsername',
-        label: '使用者名稱',
+        label: labels.username!,
         value: login.identityUsername,
         copyable: true
       },
       {
         field: 'username',
-        label: '地址',
+        label: labels.address!,
         value: [
           login.address1,
           login.address2,
@@ -683,16 +636,21 @@ function detailFields(login: LoginView): DetailField[] {
           .filter(Boolean)
           .join('，')
       },
-      { field: 'ssn', label: '身分證／社會安全號', secret: true },
-      { field: 'passportNumber', label: '護照號碼', secret: true },
-      { field: 'licenseNumber', label: '駕照號碼', secret: true }
+      { field: 'ssn', label: labels.ssn!, secret: true },
+      { field: 'passportNumber', label: labels.passportNumber!, secret: true },
+      { field: 'licenseNumber', label: labels.licenseNumber!, secret: true }
     ]
   }
   if (login.type === 'sshKey') {
     return [
-      { field: 'privateKey', label: '私鑰', secret: true },
-      { field: 'publicKey', label: '公鑰', value: login.publicKey, copyable: true },
-      { field: 'fingerprint', label: '金鑰指紋', value: login.fingerprint, copyable: true }
+      { field: 'privateKey', label: labels.privateKey!, secret: true },
+      { field: 'publicKey', label: labels.publicKey!, value: login.publicKey, copyable: true },
+      {
+        field: 'fingerprint',
+        label: labels.keyFingerprint!,
+        value: login.fingerprint,
+        copyable: true
+      }
     ]
   }
   return []
@@ -883,6 +841,7 @@ interface UnfiledRowProps {
 }
 
 function UnfiledRow({ selected, count, onSelect }: UnfiledRowProps): React.JSX.Element {
+  const { t } = useLingui()
   const { setNodeRef, isOver } = useDroppable({ id: 'folder:none' })
   return (
     <li
@@ -903,8 +862,10 @@ function UnfiledRow({ selected, count, onSelect }: UnfiledRowProps): React.JSX.E
         onClick={onSelect}
       >
         <FolderOpen size={16} aria-hidden="true" />
-        <span>未分類</span>
-        <small aria-label={`${count} 個項目`}>{count}</small>
+        <span>
+          <Trans>Unfiled</Trans>
+        </span>
+        <small aria-label={t`${count} items`}>{count}</small>
       </Button>
     </li>
   )
@@ -921,7 +882,8 @@ function DetailPlaceholder({
   showWebsiteIcons,
   onBack
 }: DetailPlaceholderProps): React.JSX.Element {
-  const TypeIcon = itemTypeMeta[item.type].icon
+  const { t } = useLingui()
+  const TypeIcon = itemTypeIcons[item.type]
 
   return (
     <article
@@ -935,7 +897,7 @@ function DetailPlaceholder({
           className="hidden max-[680px]:grid"
           data-detail-back=""
           type="button"
-          label="返回項目列表"
+          label={t`Back to item list`}
           onClick={onBack}
         >
           <ArrowLeft />
@@ -952,7 +914,10 @@ function DetailPlaceholder({
         <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-xl [&>h2]:tracking-[-0.025em] [&>span]:mt-[3px] [&>span]:block [&>span]:truncate [&>span]:text-[10px]">
           <h2>{item.name}</h2>
           <span>
-            {item.subtitle || (item.type === 'login' ? hostLabel(item.uri) : '安全保管的項目')}
+            {item.subtitle ||
+              (item.type === 'login'
+                ? hostLabel(item.uri, t`Website not set`)
+                : t`Securely stored item`)}
           </span>
         </div>
         <Skeleton className="size-[34px] flex-none rounded-[9px]" aria-hidden="true" />
@@ -961,7 +926,7 @@ function DetailPlaceholder({
           aria-hidden="true"
         />
         <span className="sr-only" role="status">
-          正在載入項目詳細資料…
+          <Trans>Loading item details…</Trans>
         </span>
       </DetailHeader>
 
@@ -1007,6 +972,163 @@ function VaultShell({
   promptSyncSetup,
   onSyncSetupPromptHandled
 }: VaultShellProps): React.JSX.Element {
+  const { i18n, t } = useLingui()
+  const itemTypeMeta = useMemo<Record<VaultItemType, ItemTypeMeta>>(
+    () => ({
+      login: { label: t`Login`, icon: KeyRound },
+      card: { label: t`Card`, icon: CreditCard },
+      identity: { label: t`Identity`, icon: ContactRound },
+      secureNote: { label: t`Secure note`, icon: NotebookPen },
+      sshKey: { label: t`SSH key`, icon: FileKey2 }
+    }),
+    [t]
+  )
+  const categoryMeta = useMemo(
+    () =>
+      categoryDefinitions.map((category) => ({
+        ...category,
+        label:
+          category.id === 'all'
+            ? t`All`
+            : category.id === 'login'
+              ? t`Logins`
+              : category.id === 'passkey'
+                ? t`Passkeys`
+                : category.id === 'totp'
+                  ? t`Verification codes`
+                  : category.id === 'card'
+                    ? t`Cards`
+                    : category.id === 'identity'
+                      ? t`Identities`
+                      : category.id === 'secureNote'
+                        ? t`Notes`
+                        : t`SSH keys`
+      })),
+    [t]
+  )
+  const syncStateMeta = {
+    unconfigured: { label: t`Not configured`, icon: syncStateIcons.unconfigured },
+    locked: { label: t`Unlock required`, icon: syncStateIcons.locked },
+    ready: { label: t`Connected`, icon: syncStateIcons.ready },
+    syncing: { label: t`Syncing…`, icon: syncStateIcons.syncing },
+    error: { label: t`Needs attention`, icon: syncStateIcons.error }
+  } satisfies Record<SyncStatus['state'], { label: string; icon: typeof CloudCheck }>
+  const sortItemsOptions = [
+    { label: t`Name`, value: 'title' },
+    { label: t`Recently used`, value: 'recent' },
+    { label: t`Most used`, value: 'frequency' },
+    { label: t`Recently modified`, value: 'modified' }
+  ] as const
+  const detailFieldLabels = useMemo<Record<string, string>>(
+    () => ({
+      username: t`Username`,
+      password: t`Password`,
+      website: t`Website`,
+      cardNumber: t`Card number`,
+      securityCode: t`Security code`,
+      cardholder: t`Cardholder`,
+      brand: t`Brand`,
+      expirationDate: t`Expiration date`,
+      name: t`Name`,
+      company: t`Company`,
+      email: t`Email`,
+      phone: t`Phone`,
+      address: t`Address`,
+      ssn: t`ID / Social Security number`,
+      passportNumber: t`Passport number`,
+      licenseNumber: t`Driver's license number`,
+      privateKey: t`Private key`,
+      publicKey: t`Public key`,
+      keyFingerprint: t`Key fingerprint`
+    }),
+    [t]
+  )
+  const linkedFieldLabels: Record<number, string> = {
+    100: t`Username`,
+    101: t`Password`,
+    300: t`Cardholder`,
+    301: t`Expiration month`,
+    302: t`Expiration year`,
+    303: t`Security code`,
+    304: t`Brand`,
+    305: t`Card number`,
+    400: t`Title`,
+    401: t`Middle name`,
+    402: t`Address 1`,
+    403: t`Address 2`,
+    404: t`Address 3`,
+    405: t`City`,
+    406: t`State / Province`,
+    407: t`Postal code`,
+    408: t`Country`,
+    409: t`Company`,
+    410: t`Email`,
+    411: t`Phone`,
+    412: t`ID / Social Security number`,
+    413: t`Username`,
+    414: t`Passport number`,
+    415: t`Driver's license number`,
+    416: t`First name`,
+    417: t`Last name`,
+    418: t`Full name`
+  }
+  const customFieldLabels = {
+    yes: t`Yes`,
+    no: t`No`,
+    linkedTo: (label: string): string => t`Linked to ${label}`,
+    itemField: t`Item field`,
+    linkedFields: linkedFieldLabels,
+    unset: t`Not set`
+  }
+  const getAttachmentStageLabel = (progress: AttachmentProgressEvent): string => {
+    if (progress.stage === 'choosing-file' && progress.kind === 'download') {
+      return t`Waiting for a save location`
+    }
+    const labels: Record<AttachmentOperationStage, string> = {
+      'choosing-file': t`Waiting for a file`,
+      'reading-file': t`Safely reading the file`,
+      encrypting: t`Encrypting locally`,
+      downloading: t`Downloading attachment`,
+      uploading: t`Uploading encrypted attachment`,
+      deleting: t`Deleting attachment`,
+      syncing: t`Syncing attachment list`
+    }
+    return labels[progress.stage]
+  }
+  const errorMessages = useMemo<Record<string, string>>(
+    () => ({
+      LOCKED: t`The vault is locked. Unlock it and try again.`,
+      NOT_FOUND: t`The requested item could not be found.`,
+      INVALID_INPUT: t`The input is invalid. Check it and try again.`,
+      DUPLICATE_NAME: t`That name is already in use. Choose another name.`,
+      INVALID_URL: t`The website URL is invalid.`,
+      ATTACHMENT_FAILED: t`The attachment operation failed. The server content may have changed; sync and try again.`,
+      ATTACHMENT_TOO_LARGE: t`The attachment is too large to encrypt within the safe memory limit.`,
+      ATTACHMENT_STORAGE_LIMIT: t`There is not enough Bitwarden attachment storage. Free some space and try again.`,
+      ATTACHMENT_REJECTED: t`This server or account does not currently allow this attachment to be added.`,
+      ATTACHMENT_CANCELED: t`The attachment operation was canceled.`
+    }),
+    [t]
+  )
+  const describeVaultError = useCallback(
+    (error: unknown): string =>
+      describeError(
+        error,
+        errorMessages,
+        t`An unknown error occurred.`,
+        t`The operation did not finish. Refresh and confirm the current state.`
+      ),
+    [errorMessages, t]
+  )
+  const formatDate = (value: string | null): string => {
+    if (!value) return t`Never used`
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return t`Unknown`
+    return new Intl.DateTimeFormat(i18n.locale, {
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    }).format(date)
+  }
   const {
     settingsOpen,
     setSettingsOpen,
@@ -1167,7 +1289,7 @@ function VaultShell({
       setAttachmentDeleteTarget(null)
       return operationId
     },
-    []
+    [setAttachmentDeleteTarget]
   )
 
   const finishAttachmentOperation = useCallback((operationId: string): void => {
@@ -1186,7 +1308,7 @@ function VaultShell({
         .cancelAttachment({ operationId: operation.operationId })
         .catch(() => undefined)
     }
-  }, [])
+  }, [setAttachmentDeleteTarget])
 
   const isCurrentAttachmentOperation = useCallback(
     (operationId: string, itemId: string): boolean => {
@@ -1201,14 +1323,17 @@ function VaultShell({
     []
   )
 
-  const requestEditorTransition = useCallback((action: () => void): void => {
-    if (editorTransitionApprovedRef.current || !editorDirtyRef.current) {
-      action()
-      return
-    }
-    pendingEditorActionRef.current = action
-    setDiscardEditorDialogOpen(true)
-  }, [])
+  const requestEditorTransition = useCallback(
+    (action: () => void): void => {
+      if (editorTransitionApprovedRef.current || !editorDirtyRef.current) {
+        action()
+        return
+      }
+      pendingEditorActionRef.current = action
+      setDiscardEditorDialogOpen(true)
+    },
+    [setDiscardEditorDialogOpen]
+  )
 
   const confirmEditorDiscard = useCallback((): void => {
     const action = pendingEditorActionRef.current
@@ -1221,7 +1346,7 @@ function VaultShell({
     } finally {
       editorTransitionApprovedRef.current = false
     }
-  }, [])
+  }, [setDiscardEditorDialogOpen])
 
   const openEditor = useCallback(
     (mode: 'create' | 'edit'): void => {
@@ -1245,7 +1370,7 @@ function VaultShell({
     setSelectedId(null)
     setSelectedLogin(null)
     setPasswordHistoryDialogOpen(false)
-  }, [updateSelectedIds])
+  }, [setPasswordHistoryDialogOpen, updateSelectedIds])
 
   const clearDetailCache = useCallback((): void => {
     detailCacheGenerationRef.current += 1
@@ -1255,34 +1380,37 @@ function VaultShell({
     detailCacheRef.current.clear()
   }, [])
 
-  const authorizationToken = useCallback((id: string): string | undefined => {
-    const authorization = authorizationCacheRef.current.get(id)
-    if (!authorization) return undefined
-    if (authorization.expiresAt <= Date.now()) {
-      detailCacheGenerationRef.current += 1
-      detailRequestsRef.current.clear()
-      authorizationCacheRef.current.delete(id)
-      detailCacheRef.current.delete(id)
-      const timer = authorizationExpiryTimersRef.current.get(id)
-      if (timer !== undefined) window.clearTimeout(timer)
-      authorizationExpiryTimersRef.current.delete(id)
-      setAuthorizationTokenState((current) => {
-        const next = { ...current }
-        delete next[id]
-        return next
-      })
-      if (selectedIdRef.current === id) {
-        setPasswordHistoryDialogOpen(false)
-        setSelectedLogin(null)
-        setEditorMode(null)
-        setTotpCodeState(null)
-        setRevealedSecrets(emptyRevealedSecrets)
-        setRevealedCustomFields(emptyRevealedCustomFields)
+  const authorizationToken = useCallback(
+    (id: string): string | undefined => {
+      const authorization = authorizationCacheRef.current.get(id)
+      if (!authorization) return undefined
+      if (authorization.expiresAt <= Date.now()) {
+        detailCacheGenerationRef.current += 1
+        detailRequestsRef.current.clear()
+        authorizationCacheRef.current.delete(id)
+        detailCacheRef.current.delete(id)
+        const timer = authorizationExpiryTimersRef.current.get(id)
+        if (timer !== undefined) window.clearTimeout(timer)
+        authorizationExpiryTimersRef.current.delete(id)
+        setAuthorizationTokenState((current) => {
+          const next = { ...current }
+          delete next[id]
+          return next
+        })
+        if (selectedIdRef.current === id) {
+          setPasswordHistoryDialogOpen(false)
+          setSelectedLogin(null)
+          setEditorMode(null)
+          setTotpCodeState(null)
+          setRevealedSecrets(emptyRevealedSecrets)
+          setRevealedCustomFields(emptyRevealedCustomFields)
+        }
+        return undefined
       }
-      return undefined
-    }
-    return authorization.token
-  }, [])
+      return authorization.token
+    },
+    [setPasswordHistoryDialogOpen]
+  )
 
   const invalidateProtectedDetails = useCallback(
     (summaries: readonly LoginSummary[]): void => {
@@ -1304,7 +1432,7 @@ function VaultShell({
         setRevealedCustomFields(emptyRevealedCustomFields)
       }
     },
-    [authorizationToken]
+    [authorizationToken, setPasswordHistoryDialogOpen]
   )
 
   const discardAuthorizationToken = useCallback((id: string): void => {
@@ -1334,7 +1462,7 @@ function VaultShell({
         setRevealedCustomFields(emptyRevealedCustomFields)
       }
     },
-    [discardAuthorizationToken]
+    [discardAuthorizationToken, setPasswordHistoryDialogOpen]
   )
 
   const cacheAuthorization = useCallback(
@@ -1380,12 +1508,17 @@ function VaultShell({
       setRepromptPrompt({
         itemName:
           normalizedIds.length === 1
-            ? (item?.name ?? '這個項目')
-            : `${normalizedIds.length} 個受保護項目`
+            ? (item?.name ?? t`This item`)
+            : t({
+                message: plural(normalizedIds.length, {
+                  one: '# protected item',
+                  other: '# protected items'
+                })
+              })
       })
       return promise
     },
-    [authorizationToken]
+    [authorizationToken, t]
   )
 
   const withReprompt = useCallback(
@@ -1449,12 +1582,12 @@ function VaultShell({
       )
     } catch (loadError) {
       if (isCurrentVaultLoad(requestId, vaultLoadRequestIdRef.current)) {
-        announceError(describeError(loadError))
+        announceError(describeVaultError(loadError))
       }
     } finally {
       if (isCurrentVaultLoad(requestId, vaultLoadRequestIdRef.current)) setLoading(false)
     }
-  }, [clearDetailCache, invalidateProtectedDetails])
+  }, [clearDetailCache, describeVaultError, invalidateProtectedDetails])
 
   const loadLoginDetail = useCallback(
     (id: string): Promise<LoginView> => {
@@ -1618,7 +1751,7 @@ function VaultShell({
         setEditorMode(null)
       })
     },
-    [authorizationToken, requestEditorTransition]
+    [authorizationToken, requestEditorTransition, setPasswordHistoryDialogOpen]
   )
 
   const selectLogin = useCallback(
@@ -1640,9 +1773,9 @@ function VaultShell({
           ...position,
           ...(tokenFor(id) ? { authorizationToken: tokenFor(id) } : {})
         })
-      ).catch((menuError) => announceError(describeError(menuError)))
+      ).catch((menuError) => announceError(describeVaultError(menuError)))
     },
-    [withReprompt]
+    [describeVaultError, withReprompt]
   )
 
   const loadPasswordHistory = useCallback(async () => {
@@ -1877,7 +2010,7 @@ function VaultShell({
     sidebarAccountProfile.owner === syncAccountIdentity ? sidebarAccountProfile.profile : null
   const sidebarAccountName =
     visibleSidebarAccountProfile?.name.trim() ||
-    (syncStatus.configured ? '已連線帳號' : '本機密碼庫')
+    (syncStatus.configured ? t`Connected account` : t`Local vault`)
 
   useEffect(() => {
     let active = true
@@ -1958,13 +2091,13 @@ function VaultShell({
       })
       .catch((detailError) => {
         if (!active) return
-        announceError(describeError(detailError))
+        announceError(describeVaultError(detailError))
         clearItemSelection()
       })
     return () => {
       active = false
     }
-  }, [clearItemSelection, items, loadLoginDetail, selectedId])
+  }, [clearItemSelection, describeVaultError, items, loadLoginDetail, selectedId])
 
   useEffect(() => {
     let active = true
@@ -2010,7 +2143,9 @@ function VaultShell({
               setTotpCodeState(null)
               invalidateAuthorization(itemId)
               clearItemSelection()
-              announceError('授權已過期，請重新選取項目並驗證主密碼')
+              announceError(
+                t`Authorization expired. Select the item again and verify your master password.`
+              )
               return
             }
             stopped = true
@@ -2033,6 +2168,7 @@ function VaultShell({
     authorizationToken,
     clearItemSelection,
     invalidateAuthorization,
+    t,
     totpRefreshTarget?.itemId,
     totpRefreshTarget?.sourceRevision
   ])
@@ -2106,13 +2242,13 @@ function VaultShell({
             return
           }
           setSearchMatches({ query: searchQuery, ids: new Set() })
-          announceError(describeError(searchError))
+          announceError(describeVaultError(searchError))
         }
       )
     }, VAULT_SEARCH_DEBOUNCE_MS)
 
     return () => window.clearTimeout(timeout)
-  }, [items, query])
+  }, [describeVaultError, items, query])
 
   const scopedItems = useMemo(() => {
     const matchedItems = filterVaultSearchMatches(items, query, searchMatches)
@@ -2224,7 +2360,7 @@ function VaultShell({
         totpListStateRef.current = next
         setTotpListState(next)
       } catch (error) {
-        if (active) announceError(describeError(error))
+        if (active) announceError(describeVaultError(error))
       } finally {
         refreshing = false
       }
@@ -2263,7 +2399,14 @@ function VaultShell({
       active = false
       window.clearInterval(timer)
     }
-  }, [authorizationToken, requestReprompt, totpListItemIds, totpListRevision, typeFilter])
+  }, [
+    authorizationToken,
+    describeVaultError,
+    requestReprompt,
+    totpListItemIds,
+    totpListRevision,
+    typeFilter
+  ])
 
   const selectItems = useCallback(
     (id: string, modifiers: ItemSelectionModifiers): void => {
@@ -2352,7 +2495,7 @@ function VaultShell({
     const ids = [...selectedIdsRef.current]
     if (ids.length === 0) return
     setMoveSnapshot({ ids, state: scope.kind === 'archive' ? 'archive' : 'active' })
-  }, [busy, scope.kind])
+  }, [busy, scope.kind, setMoveSnapshot])
   const activeDragItem = activeDragId
     ? (items.find((item) => item.id === activeDragId) ?? null)
     : null
@@ -2364,11 +2507,11 @@ function VaultShell({
         itemState: scope.kind === 'archive' ? 'archive' : 'active',
         folders,
         count: activeDragItemCount
-      }) ?? '放開以取消移動')
+      }) ?? t`Release to cancel moving`)
     : null
   const selectedDetailFields = useMemo(
-    () => (selectedLogin ? detailFields(selectedLogin) : []),
-    [selectedLogin]
+    () => (selectedLogin ? detailFields(selectedLogin, detailFieldLabels) : []),
+    [detailFieldLabels, selectedLogin]
   )
   const itemGroups = useMemo(() => {
     const effectiveSort = scope.kind === 'recent' ? 'recent' : sortMode
@@ -2411,22 +2554,22 @@ function VaultShell({
       )
     }
     return counts
-  }, [activeItems])
+  }, [activeItems, categoryMeta])
   const healthRevision = useMemo(() => vaultHealthRevision(items), [items])
 
   const scopeTitle = useMemo(() => {
-    if (scope.kind === 'favorites') return '常用項目'
-    if (scope.kind === 'recent') return '最近使用'
-    if (scope.kind === 'unfiled') return '未分類'
-    if (scope.kind === 'archive') return '封存'
-    if (scope.kind === 'trash') return '垃圾桶'
+    if (scope.kind === 'favorites') return t`Favorites`
+    if (scope.kind === 'recent') return t`Recently used`
+    if (scope.kind === 'unfiled') return t`Unfiled`
+    if (scope.kind === 'archive') return t`Archive`
+    if (scope.kind === 'trash') return t`Trash`
     if (scope.kind === 'folder')
-      return folders.find((folder) => folder.id === scope.folderId)?.name ?? '資料夾'
-    if (typeFilter === 'totp') return '驗證碼'
-    if (typeFilter === 'passkey') return '通行密鑰'
+      return folders.find((folder) => folder.id === scope.folderId)?.name ?? t`Folder`
+    if (typeFilter === 'totp') return t`Verification codes`
+    if (typeFilter === 'passkey') return t`Passkeys`
     if (typeFilter !== 'all') return itemTypeMeta[typeFilter].label
-    return '所有項目'
-  }, [folders, scope, typeFilter])
+    return t`All items`
+  }, [folders, itemTypeMeta, scope, t, typeFilter])
 
   const announce = useCallback((message: string): void => {
     toast.success(message)
@@ -2442,11 +2585,11 @@ function VaultShell({
     try {
       const status = await window.bearwarden.vault.lock()
       if (status.state === 'locked') onLocked()
-      else announceError('密碼庫尚未鎖定，請再試一次。')
+      else announceError(t`The vault is not locked yet. Try again.`)
     } catch (lockError) {
-      announceError(describeError(lockError))
+      announceError(describeVaultError(lockError))
     }
-  }, [cancelAndClearAttachmentOperation, clearDetailCache, onLocked])
+  }, [cancelAndClearAttachmentOperation, clearDetailCache, describeVaultError, onLocked, t])
 
   const lockVault = useCallback(async (): Promise<void> => {
     if (editorDirtyRef.current) {
@@ -2572,7 +2715,7 @@ function VaultShell({
         },
         () => {
           if (active && requestId === accountStatusRequestRef.current) {
-            setAccountError('無法讀取本機帳號清單，請稍後再試。')
+            setAccountError(t`The local account list could not be loaded. Try again later.`)
           }
         }
       )
@@ -2581,7 +2724,7 @@ function VaultShell({
       active = false
       queueMicrotask(() => setTouchIdPassword(''))
     }
-  }, [settingsOpen])
+  }, [settingsOpen, t])
 
   function selectScope(nextScope: Scope): void {
     requestEditorTransition(() => {
@@ -2755,10 +2898,10 @@ function VaultShell({
       if (update.defaultSort) {
         setSortMode(update.defaultSort === 'name' ? 'title' : update.defaultSort)
       }
-      announce('設定已儲存。')
+      announce(t`Settings saved.`)
       return true
     } catch (settingsError) {
-      announceError(describeError(settingsError))
+      announceError(describeVaultError(settingsError))
       return false
     } finally {
       setSettingsBusy(false)
@@ -2767,7 +2910,7 @@ function VaultShell({
 
   async function enableTouchId(): Promise<void> {
     if (!touchIdPassword) {
-      announceError('請先輸入主密碼以啟用生物辨識。')
+      announceError(t`Enter your master password before enabling biometrics.`)
       return
     }
     setSettingsBusy(true)
@@ -2777,9 +2920,9 @@ function VaultShell({
       })
       setSettings(next)
       setTouchIdPassword('')
-      announce('生物辨識已啟用。')
+      announce(t`Biometrics enabled.`)
     } catch (touchIdError) {
-      announceError(describeError(touchIdError))
+      announceError(describeVaultError(touchIdError))
     } finally {
       setSettingsBusy(false)
     }
@@ -2790,9 +2933,9 @@ function VaultShell({
     try {
       const next = await window.bearwarden.settings.disableTouchId()
       setSettings(next)
-      announce('生物辨識已停用。')
+      announce(t`Biometrics disabled.`)
     } catch (touchIdError) {
-      announceError(describeError(touchIdError))
+      announceError(describeVaultError(touchIdError))
     } finally {
       setSettingsBusy(false)
     }
@@ -2808,10 +2951,10 @@ function VaultShell({
     setAccountBusy(true)
     setAccountBusyLabel(
       operation === 'add' || operation === 'switch'
-        ? '正在安全切換並重新啟動'
+        ? t`Securely switching accounts and restarting`
         : operation === 'remove'
-          ? '正在安全移除本機帳號'
-          : '正在更新本機帳號順序'
+          ? t`Securely removing local account`
+          : t`Updating local account order`
     )
     setAccountError('')
     try {
@@ -2826,11 +2969,11 @@ function VaultShell({
         if (operation === 'remove') {
           announce(
             result.kind === 'updated' && result.cleanupPending
-              ? '本機帳號已移除；剩餘的加密本機資料會在下次啟動時再次安全清理。'
-              : '本機帳號與這台裝置上的資料已移除。'
+              ? t`The local account was removed. Remaining encrypted local data will be securely cleaned up on the next launch.`
+              : t`The local account and its data on this device were removed.`
           )
         } else if (operation === 'reorder' && result.kind === 'updated') {
-          announce('本機帳號順序已更新。')
+          announce(t`Local account order updated.`)
         }
       }
     } catch (accountMutationFailure) {
@@ -2844,7 +2987,7 @@ function VaultShell({
         const statusRequestId = ++accountStatusRequestRef.current
         accountStaleRefreshPendingRef.current = true
         setAccountBusy(true)
-        setAccountBusyLabel('正在重新讀取本機帳號')
+        setAccountBusyLabel(t`Reloading local accounts`)
         void window.bearwarden.accounts.status().then(
           (status) => {
             if (
@@ -2873,7 +3016,9 @@ function VaultShell({
             )
               return
             accountStaleRefreshPendingRef.current = false
-            setAccountError(`${message} 無法重新讀取清單，請關閉設定後再試。`)
+            setAccountError(
+              t`${message} The list could not be reloaded. Close Settings and try again.`
+            )
             accountMutationGateRef.current.leave()
             setAccountBusy(false)
             setAccountBusyLabel('')
@@ -2932,12 +3077,12 @@ function VaultShell({
         setSelectedLogin((current) =>
           current?.id === updated.id ? mergeLoginSummary(current, updated) : current
         )
-        announce(updated.favorite ? '已加入常用項目。' : '已從常用項目移除。')
+        announce(updated.favorite ? t`Added to favorites.` : t`Removed from favorites.`)
       } catch (favoriteError) {
-        announceError(describeError(favoriteError))
+        announceError(describeVaultError(favoriteError))
       }
     },
-    [announce, withReprompt]
+    [announce, describeVaultError, t, withReprompt]
   )
 
   function revalidateBulkSelection(
@@ -2976,15 +3121,17 @@ function VaultShell({
   async function performBulkAction(snapshot: BulkActionSnapshot): Promise<boolean> {
     if (busy) return false
     if (snapshot.ids.length === 0) {
-      announceError('請先選取要處理的項目。')
+      announceError(t`Select at least one item first.`)
       return false
     }
     if (snapshot.ids.length > MAX_LOGIN_BATCH_IDS) {
-      announceError(`一次最多可處理 ${MAX_LOGIN_BATCH_IDS} 個項目。`)
+      announceError(t`You can process up to ${MAX_LOGIN_BATCH_IDS} items at a time.`)
       return false
     }
     if (!revalidateBulkSelection(snapshot.ids, snapshot.state)) {
-      announceError('選取的項目已變更，未執行任何操作。請重新選取後再試。')
+      announceError(
+        t`The selection changed, so no action was taken. Select the items again and retry.`
+      )
       return false
     }
 
@@ -3020,7 +3167,7 @@ function VaultShell({
               : await window.bearwarden.logins.deletePermanentlyMany(request)
         })
       } catch (bulkError) {
-        announceError(describeError(bulkError))
+        announceError(describeVaultError(bulkError))
         return false
       }
 
@@ -3043,18 +3190,18 @@ function VaultShell({
       }
       const message =
         snapshot.action === 'archive'
-          ? `已封存 ${affectedCount} 個項目。`
+          ? t`Archived ${affectedCount} items.`
           : snapshot.action === 'unarchive'
-            ? `已取消封存 ${affectedCount} 個項目。`
+            ? t`Unarchived ${affectedCount} items.`
             : snapshot.action === 'delete'
-              ? `已將 ${affectedCount} 個項目移至垃圾桶。`
+              ? t`Moved ${affectedCount} items to Trash.`
               : snapshot.action === 'restore'
-                ? `已還原 ${affectedCount} 個項目。`
-                : `已永久刪除 ${affectedCount} 個項目。`
+                ? t`Restored ${affectedCount} items.`
+                : t`Permanently deleted ${affectedCount} items.`
       try {
         await refreshItems()
       } catch {
-        toast.warning(`${message.slice(0, -1)}，但清單重新整理失敗，請稍後重試。`)
+        toast.warning(t`${message} The list could not be refreshed. Try again later.`)
         return true
       }
       announce(message)
@@ -3067,7 +3214,9 @@ function VaultShell({
   async function moveLogins(snapshot: MoveSnapshot, folderId: string | null): Promise<boolean> {
     const previous = revalidateBulkSelection(snapshot.ids, snapshot.state)
     if (!previous) {
-      announceError('選取的項目已變更，未執行任何操作。請重新選取後再試。')
+      announceError(
+        t`The selection changed, so no action was taken. Select the items again and retry.`
+      )
       return false
     }
     const movable = previous.filter((item) => item.folderId !== folderId)
@@ -3075,7 +3224,7 @@ function VaultShell({
       return true
     }
     if (movable.length > MAX_LOGIN_MOVE_MANY_IDS) {
-      announceError(`一次最多可移動 ${MAX_LOGIN_MOVE_MANY_IDS} 個項目。`)
+      announceError(t`You can move up to ${MAX_LOGIN_MOVE_MANY_IDS} items at a time.`)
       return false
     }
     const movableIds = new Set(movable.map((item) => item.id))
@@ -3103,18 +3252,18 @@ function VaultShell({
         const summary = updatedById.get(current.id)
         return summary ? mergeLoginSummary(current, summary) : current
       })
-      const destination = folders.find((folder) => folder.id === folderId)?.name ?? '未分類'
+      const destination = folders.find((folder) => folder.id === folderId)?.name ?? t`Unfiled`
       announce(
         updated.length > 1
-          ? `已將 ${updated.length} 個項目移至「${destination}」。`
-          : `已移至「${destination}」。`
+          ? t`Moved ${updated.length} items to “${destination}”.`
+          : t`Moved to “${destination}”.`
       )
       return true
     } catch (moveError) {
       const previousById = new Map(previous.map((item) => [item.id, item]))
       for (const item of previous) mergeCachedSummary(detailCacheRef.current, item)
       setItems((current) => current.map((item) => previousById.get(item.id) ?? item))
-      announceError(describeError(moveError))
+      announceError(describeVaultError(moveError))
       return false
     } finally {
       setBusy(false)
@@ -3125,13 +3274,15 @@ function VaultShell({
     if (busy) return false
     const previous = revalidateBulkSelection(snapshot.ids, snapshot.state)
     if (!previous) {
-      announceError('選取的項目已變更，未執行任何操作。請重新選取後再試。')
+      announceError(
+        t`The selection changed, so no action was taken. Select the items again and retry.`
+      )
       return false
     }
     const itemsToUpdate = previous.filter((item) => !item.favorite)
     if (itemsToUpdate.length === 0) return true
     if (itemsToUpdate.length > MAX_LOGIN_BATCH_IDS) {
-      announceError(`一次最多可處理 ${MAX_LOGIN_BATCH_IDS} 個項目。`)
+      announceError(t`You can process up to ${MAX_LOGIN_BATCH_IDS} items at a time.`)
       return false
     }
 
@@ -3158,12 +3309,12 @@ function VaultShell({
         return summary ? mergeLoginSummary(current, summary) : current
       })
       announce(
-        updated.length > 1 ? `已將 ${updated.length} 個項目加入常用項目。` : '已加入常用項目。'
+        updated.length > 1 ? t`Added ${updated.length} items to favorites.` : t`Added to favorites.`
       )
       return true
     } catch (favoriteError) {
       await refreshItems().catch(() => undefined)
-      announceError(describeError(favoriteError))
+      announceError(describeVaultError(favoriteError))
       return false
     } finally {
       setBusy(false)
@@ -3176,17 +3327,17 @@ function VaultShell({
       if (folderDialog === 'new') {
         const created = await window.bearwarden.folders.create({ name })
         setFolders((current) => [...current, created].sort((a, b) => a.position - b.position))
-        announce(`已建立資料夾「${created.name}」。`)
+        announce(t`Created folder “${created.name}”.`)
       } else if (folderDialog) {
         const updated = await window.bearwarden.folders.update({ id: folderDialog.id, name })
         setFolders((current) =>
           current.map((folder) => (folder.id === updated.id ? updated : folder))
         )
-        announce(`已重新命名為「${updated.name}」。`)
+        announce(t`Renamed to “${updated.name}”.`)
       }
       setFolderDialog(null)
     } catch (folderError) {
-      announceError(describeError(folderError))
+      announceError(describeVaultError(folderError))
     } finally {
       setBusy(false)
     }
@@ -3220,10 +3371,10 @@ function VaultShell({
       )
       if (scope.kind === 'folder' && scope.folderId === folderDialog.id)
         setScope({ kind: 'unfiled' })
-      announce(`已刪除資料夾「${folderDialog.name}」，其中項目已移至未分類。`)
+      announce(t`Deleted folder “${folderDialog.name}”. Its items were moved to Unfiled.`)
       setFolderDialog(null)
     } catch (folderError) {
-      announceError(describeError(folderError))
+      announceError(describeVaultError(folderError))
     } finally {
       setBusy(false)
     }
@@ -3297,7 +3448,7 @@ function VaultShell({
         selectedIdRef.current = created.id
         setSelectedId(created.id)
         setSelectedLogin(created.reprompt === 0 ? created : null)
-        announce(`已建立「${created.name}」。`)
+        announce(t`Created “${created.name}”.`)
       } else if (selectedLogin) {
         const itemId = selectedLogin.id
         const updated = await withReprompt([itemId], (tokenFor) => {
@@ -3327,7 +3478,7 @@ function VaultShell({
           current.map((item) => (item.id === updated.id ? toLoginSummary(updated) : item))
         )
         setSelectedLogin(updated.reprompt === 0 || authorizationToken(itemId) ? updated : null)
-        announce(`已儲存「${updated.name}」。`)
+        announce(t`Saved “${updated.name}”.`)
       }
       setRevealedCustomFields(emptyRevealedCustomFields)
       editorDirtyRef.current = false
@@ -3335,7 +3486,7 @@ function VaultShell({
       setEditorMode(null)
       return true
     } catch (saveError) {
-      announceError(describeError(saveError))
+      announceError(describeVaultError(saveError))
       return false
     } finally {
       setBusy(false)
@@ -3372,10 +3523,10 @@ function VaultShell({
         current.map((item) => (item.id === updated.id ? toLoginSummary(updated) : item))
       )
       setSelectedLogin(canRetainDetail ? updated : null)
-      announce('已刪除通行密鑰。')
+      announce(t`Passkey deleted.`)
       return updated
     } catch (deleteError) {
-      announceError(describeError(deleteError))
+      announceError(describeVaultError(deleteError))
       return null
     } finally {
       setBusy(false)
@@ -3403,9 +3554,9 @@ function VaultShell({
       setSelectedLogin(cloned.reprompt === 0 ? cloned : null)
       setRevealedSecrets(emptyRevealedSecrets)
       setRevealedCustomFields(emptyRevealedCustomFields)
-      announce(`已建立「${cloned.name}」。`)
+      announce(t`Created “${cloned.name}”.`)
     } catch (cloneError) {
-      announceError(describeError(cloneError))
+      announceError(describeVaultError(cloneError))
     } finally {
       setBusy(false)
     }
@@ -3430,9 +3581,9 @@ function VaultShell({
       selectedIdRef.current = archived.id
       setSelectedId(archived.id)
       setSelectedLogin(archived)
-      announce(`已封存「${archived.name}」。`)
+      announce(t`Archived “${archived.name}”.`)
     } catch (archiveError) {
-      announceError(describeError(archiveError))
+      announceError(describeVaultError(archiveError))
     } finally {
       setBusy(false)
     }
@@ -3457,9 +3608,9 @@ function VaultShell({
       selectedIdRef.current = restored.id
       setSelectedId(restored.id)
       setSelectedLogin(restored)
-      announce(`已取消封存「${restored.name}」。`)
+      announce(t`Unarchived “${restored.name}”.`)
     } catch (unarchiveError) {
-      announceError(describeError(unarchiveError))
+      announceError(describeVaultError(unarchiveError))
     } finally {
       setBusy(false)
     }
@@ -3483,9 +3634,9 @@ function VaultShell({
       await refreshItems()
       clearItemSelection()
       setDeleteDialogOpen(false)
-      announce(selectedSummary.deletedAt ? '項目已永久刪除。' : '項目已移至垃圾桶。')
+      announce(selectedSummary.deletedAt ? t`Item permanently deleted.` : t`Item moved to Trash.`)
     } catch (deleteError) {
-      announceError(describeError(deleteError))
+      announceError(describeVaultError(deleteError))
     } finally {
       setBusy(false)
     }
@@ -3510,9 +3661,9 @@ function VaultShell({
       selectedIdRef.current = restored.id
       setSelectedId(restored.id)
       setSelectedLogin(restored)
-      announce(`已還原「${restored.name}」。`)
+      announce(t`Restored “${restored.name}”.`)
     } catch (restoreError) {
-      announceError(describeError(restoreError))
+      announceError(describeVaultError(restoreError))
     } finally {
       setBusy(false)
     }
@@ -3533,9 +3684,16 @@ function VaultShell({
       await refreshItems()
       clearItemSelection()
       setEmptyTrashDialogOpen(false)
-      announce(count === 1 ? '已永久刪除 1 個項目。' : `已永久刪除 ${count} 個項目。`)
+      announce(
+        t({
+          message: plural(count, {
+            one: 'Permanently deleted # item.',
+            other: 'Permanently deleted # items.'
+          })
+        })
+      )
     } catch (emptyError) {
-      announceError(describeError(emptyError))
+      announceError(describeVaultError(emptyError))
     } finally {
       setBusy(false)
     }
@@ -3584,11 +3742,12 @@ function VaultShell({
         }
       }))
       if (!options.quiet) {
-        announce(`${field === 'privateKey' ? '私鑰' : '敏感資料'}已顯示，將在 30 秒後自動隱藏。`)
+        const revealedLabel = field === 'privateKey' ? t`Private key` : t`Sensitive data`
+        announce(t`${revealedLabel} is visible and will be hidden automatically in 30 seconds.`)
       }
       return value
     } catch (revealError) {
-      announceError(describeError(revealError))
+      announceError(describeVaultError(revealError))
       return undefined
     }
   }
@@ -3638,7 +3797,7 @@ function VaultShell({
       showCopied(`field:${itemId}:${field}:${uriIndex ?? ''}`)
       await refreshItems()
     } catch (copyError) {
-      announceError(describeError(copyError))
+      announceError(describeVaultError(copyError))
     }
   }
 
@@ -3684,9 +3843,9 @@ function VaultShell({
           [index]: { value, source, expectedUpdatedAt }
         }
       }))
-      announce('隱藏欄位已顯示，將在 30 秒後自動隱藏。')
+      announce(t`The hidden field is visible and will be hidden automatically in 30 seconds.`)
     } catch (revealError) {
-      announceError(describeError(revealError))
+      announceError(describeVaultError(revealError))
     }
   }
 
@@ -3706,7 +3865,7 @@ function VaultShell({
       showCopied(customFieldCopyFeedbackKey(itemId, index, field))
       await refreshItems()
     } catch (copyError) {
-      announceError(describeError(copyError))
+      announceError(describeVaultError(copyError))
     }
   }
 
@@ -3725,11 +3884,13 @@ function VaultShell({
         })
       )
       if (!result.canceled && selectedIdRef.current === itemId) {
-        announce(`已下載「${result.fileName}」。`)
+        announce(t`Downloaded “${result.fileName}”.`)
       }
       if (!result.canceled) {
         await refreshItems().catch(() =>
-          announceError('附件已下載，但無法重新整理清單；請稍後再同步。')
+          announceError(
+            t`The attachment was downloaded, but the list could not be refreshed. Sync again later.`
+          )
         )
       }
     } catch (downloadError) {
@@ -3737,7 +3898,7 @@ function VaultShell({
         isCurrentAttachmentOperation(operationId, itemId) &&
         !isAttachmentCanceled(downloadError)
       ) {
-        announceError(describeError(downloadError))
+        announceError(describeVaultError(downloadError))
       }
     } finally {
       finishAttachmentOperation(operationId)
@@ -3765,15 +3926,17 @@ function VaultShell({
             : [...attachments, result.attachment!]
         )
         if (selectedIdRef.current === itemId) {
-          announce(`已上傳「${result.attachment.fileName}」。`)
+          announce(t`Uploaded “${result.attachment.fileName}”.`)
         }
         await refreshItems().catch(() =>
-          announceError('附件已上傳，但無法重新整理清單；請稍後再同步。')
+          announceError(
+            t`The attachment was uploaded, but the list could not be refreshed. Sync again later.`
+          )
         )
       }
     } catch (uploadError) {
       if (isCurrentAttachmentOperation(operationId, itemId) && !isAttachmentCanceled(uploadError)) {
-        announceError(describeError(uploadError))
+        announceError(describeVaultError(uploadError))
       }
     } finally {
       finishAttachmentOperation(operationId)
@@ -3797,16 +3960,18 @@ function VaultShell({
       updateSelectedAttachments(target.itemId, (attachments) =>
         attachments.filter((entry) => entry.id !== result.attachmentId)
       )
-      if (selectedIdRef.current === target.itemId) announce(`已刪除「${target.fileName}」。`)
+      if (selectedIdRef.current === target.itemId) announce(t`Deleted “${target.fileName}”.`)
       await refreshItems().catch(() =>
-        announceError('附件已刪除，但無法重新整理清單；請稍後再同步。')
+        announceError(
+          t`The attachment was deleted, but the list could not be refreshed. Sync again later.`
+        )
       )
     } catch (deleteError) {
       if (
         isCurrentAttachmentOperation(operationId, target.itemId) &&
         !isAttachmentCanceled(deleteError)
       ) {
-        announceError(describeError(deleteError))
+        announceError(describeVaultError(deleteError))
       }
     } finally {
       finishAttachmentOperation(operationId)
@@ -3835,13 +4000,15 @@ function VaultShell({
           index === replacementIndex ? result.attachment : entry
         )
       })
-      if (selectedIdRef.current === itemId) announce(`已修復「${attachment.fileName}」。`)
+      if (selectedIdRef.current === itemId) announce(t`Repaired “${attachment.fileName}”.`)
       await refreshItems().catch(() =>
-        announceError('附件已修復，但無法重新整理清單；請稍後再同步。')
+        announceError(
+          t`The attachment was repaired, but the list could not be refreshed. Sync again later.`
+        )
       )
     } catch (fixError) {
       if (isCurrentAttachmentOperation(operationId, itemId) && !isAttachmentCanceled(fixError)) {
-        announceError(describeError(fixError))
+        announceError(describeVaultError(fixError))
       }
     } finally {
       finishAttachmentOperation(operationId)
@@ -3871,7 +4038,7 @@ function VaultShell({
         const current = { ...attachmentOperationRef.current, canceling: false }
         attachmentOperationRef.current = current
         setAttachmentOperation(current)
-        announceError(describeError(cancelError))
+        announceError(describeVaultError(cancelError))
       }
     }
   }
@@ -3890,7 +4057,7 @@ function VaultShell({
       showCopied(`totp:${itemId}`)
       await refreshItems()
     } catch (copyError) {
-      announceError(describeError(copyError))
+      announceError(describeVaultError(copyError))
     }
   }
 
@@ -3905,10 +4072,10 @@ function VaultShell({
           ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
         })
       )
-      announce('已開啟網站。')
+      announce(t`Website opened.`)
       await refreshItems()
     } catch (openError) {
-      announceError(describeError(openError))
+      announceError(describeVaultError(openError))
     }
   }
 
@@ -3987,10 +4154,10 @@ function VaultShell({
     try {
       const saved = await window.bearwarden.folders.reorder({ orderedIds })
       setFolders([...saved].sort((left, right) => left.position - right.position))
-      announce('資料夾順序已更新。')
+      announce(t`Folder order updated.`)
     } catch (reorderError) {
       setFolders(previousFolders)
-      announceError(describeError(reorderError))
+      announceError(describeVaultError(reorderError))
     }
   }
 
@@ -4019,7 +4186,7 @@ function VaultShell({
         revealedValue ? (
           <ColoredPassword value={revealedValue} className="text-xs font-[590]" />
         ) : (
-          '未設定'
+          t`Not set`
         )
       ) : field.secret ? (
         revealedValue === undefined ? (
@@ -4029,12 +4196,12 @@ function VaultShell({
             '••••••••••••'
           )
         ) : field.field === 'number' ? (
-          formatPaymentCardNumber(revealedValue) || '未設定'
+          formatPaymentCardNumber(revealedValue) || t`Not set`
         ) : (
-          revealedValue || '未設定'
+          revealedValue || t`Not set`
         )
       ) : (
-        field.value || '未設定'
+        field.value || t`Not set`
       )
     const value = <strong className={valueClassName}>{displayValue}</strong>
     const passwordHoverHandlers = isPasswordField
@@ -4066,7 +4233,7 @@ function VaultShell({
             className="-ml-2 w-[calc(100%+8px)] min-w-0 justify-start overflow-hidden px-2 [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-[590]"
             data-field-copy-value=""
             type="button"
-            aria-label={copiedKey === copyKey ? `${field.label}已複製` : `複製${field.label}`}
+            aria-label={copiedKey === copyKey ? t`${field.label} copied` : t`Copy ${field.label}`}
             disabled={!field.secret && !field.value}
             onClick={() => void copyField(field.field, field.uriIndex)}
             {...passwordHoverHandlers}
@@ -4083,7 +4250,7 @@ function VaultShell({
                 variant="outline"
                 size="icon"
                 type="button"
-                label="放大顯示密碼"
+                label={t`Show password in large type`}
                 onClick={() => void openPasswordZoom()}
               >
                 <ZoomIn />
@@ -4093,7 +4260,9 @@ function VaultShell({
                 variant="outline"
                 size="icon"
                 type="button"
-                label={revealedValue === undefined ? `顯示${field.label}` : `隱藏${field.label}`}
+                label={
+                  revealedValue === undefined ? t`Show ${field.label}` : t`Hide ${field.label}`
+                }
                 aria-pressed={revealedValue !== undefined}
                 onClick={() => void revealSecret(secretField)}
               >
@@ -4104,7 +4273,7 @@ function VaultShell({
               variant="outline"
               size="icon"
               type="button"
-              label={copiedKey === copyKey ? `${field.label}已複製` : `複製${field.label}`}
+              label={copiedKey === copyKey ? t`${field.label} copied` : t`Copy ${field.label}`}
               onClick={() => void copyField(field.field)}
             >
               <CopyFeedbackIcon copied={copiedKey === copyKey} />
@@ -4120,8 +4289,8 @@ function VaultShell({
                 label={
                   copiedKey ===
                   `field:${selectedSummary?.id}:${field.field}:${field.uriIndex ?? ''}`
-                    ? `${field.label}已複製`
-                    : `複製${field.label}`
+                    ? t`${field.label} copied`
+                    : t`Copy ${field.label}`
                 }
                 disabled={!field.value}
                 onClick={() => void copyField(field.field, field.uriIndex)}
@@ -4139,7 +4308,7 @@ function VaultShell({
                 variant="outline"
                 size="icon"
                 type="button"
-                label="開啟網站"
+                label={t`Open website`}
                 disabled={!field.value}
                 onClick={() => void openWebsite(field.uriIndex)}
               >
@@ -4164,7 +4333,7 @@ function VaultShell({
         ? revealedEntry.value
         : undefined
     const hidden = field.type === 'hidden'
-    const label = field.name || '未命名欄位'
+    const label = field.name || t`Unnamed field`
     const copyFeedbackKey = selectedLogin
       ? customFieldCopyFeedbackKey(selectedLogin.id, index, field)
       : null
@@ -4182,15 +4351,15 @@ function VaultShell({
           {hidden
             ? revealedValue === undefined
               ? '••••••••••••'
-              : revealedValue || '未設定'
-            : customFieldDisplayValue(field)}
+              : revealedValue || t`Not set`
+            : customFieldDisplayValue(field, customFieldLabels)}
         </strong>
         {hidden && (
           <TooltipIconButton
             variant="outline"
             size="icon"
             type="button"
-            label={revealedValue === undefined ? `顯示${label}` : `隱藏${label}`}
+            label={revealedValue === undefined ? t`Show ${label}` : t`Hide ${label}`}
             aria-pressed={revealedValue !== undefined}
             onClick={() => void revealCustomField(index, field)}
           >
@@ -4203,8 +4372,8 @@ function VaultShell({
           type="button"
           label={
             copyFeedbackKey !== null && copiedKey === copyFeedbackKey
-              ? `${label}已複製`
-              : `複製${label}`
+              ? t`${label} copied`
+              : t`Copy ${label}`
           }
           disabled={field.type !== 'linked' && !field.value && !hidden}
           onClick={() => void copyCustomField(index, field)}
@@ -4237,7 +4406,9 @@ function VaultShell({
         >
           <BrandMark className="absolute top-[25px] left-1/2 -translate-x-1/2" />
           <Spinner className="size-6" aria-hidden="true" />
-          <p>正在解密你的項目…</p>
+          <p>
+            <Trans>Decrypting your items…</Trans>
+          </p>
         </main>
       )
     }
@@ -4258,7 +4429,9 @@ function VaultShell({
           role="status"
         >
           <Spinner className="size-6" aria-hidden="true" />
-          <p>正在解密你的項目…</p>
+          <p>
+            <Trans>Decrypting your items…</Trans>
+          </p>
         </div>
       </main>
     )
@@ -4295,7 +4468,7 @@ function VaultShell({
                 size="icon"
                 className="hidden max-[880px]:grid"
                 type="button"
-                label={sidebarOpen ? '關閉側邊欄' : '開啟側邊欄'}
+                label={sidebarOpen ? t`Close sidebar` : t`Open sidebar`}
                 aria-expanded={sidebarOpen}
                 onClick={() => setSidebarOpen((open) => !open)}
               >
@@ -4318,14 +4491,14 @@ function VaultShell({
           {closeAuxiliaryPage && (
             <Button variant="outline" size="sm" type="button" onClick={closeAuxiliaryPage}>
               <ArrowLeft data-icon="inline-start" />
-              密碼庫
+              <Trans>Vault</Trans>
             </Button>
           )}
           {isMac && (
             <div className="inline-flex items-center gap-2 max-[680px]:hidden">
               <BrandMark hideMark />
               <Badge variant="secondary" className="bg-black/5 shadow-(--control-highlight)">
-                Beta
+                <Trans>Beta</Trans>
               </Badge>
             </div>
           )}
@@ -4345,13 +4518,15 @@ function VaultShell({
                   variant="ghost"
                   className="text-foreground hover:text-foreground h-full min-w-0 flex-1 justify-start bg-transparent p-0 text-xs font-normal shadow-none hover:bg-transparent hover:shadow-none focus-visible:border-transparent focus-visible:ring-0 focus-visible:outline-none aria-expanded:bg-transparent [&>span]:w-full [&>span]:min-w-0 [&>span]:text-left"
                   type="button"
-                  aria-label={query ? `搜尋密碼庫項目，目前為 ${query}` : '搜尋密碼庫項目'}
+                  aria-label={
+                    query ? t`Search vault items, currently ${query}` : t`Search vault items`
+                  }
                   aria-haspopup="dialog"
                   aria-expanded={searchOpen}
                   onClick={() => setSearchOpen(true)}
                 >
                   <span className={cn('truncate', !query && 'text-muted-foreground')}>
-                    {query || '搜尋密碼庫'}
+                    {query || t`Search vault`}
                   </span>
                 </Button>
                 <InputGroupAddon align="inline-start">
@@ -4362,7 +4537,7 @@ function VaultShell({
                     <InputGroupButton
                       size="icon-xs"
                       type="button"
-                      aria-label="清除搜尋"
+                      aria-label={t`Clear search`}
                       onClick={() => updateQuery('')}
                     >
                       <X />
@@ -4390,7 +4565,7 @@ function VaultShell({
                 size="icon"
                 className="border-border text-foreground rounded-[10px] bg-[color-mix(in_oklch,var(--card)_32%,transparent)] shadow-[var(--control-highlight),0_1px_2px_color-mix(in_oklch,var(--shadow-color)_12%,transparent)]"
                 type="button"
-                label="新增項目"
+                label={t`Add item`}
                 onClick={() => openEditor('create')}
               >
                 <Plus aria-hidden="true" />
@@ -4405,7 +4580,7 @@ function VaultShell({
             sidebarOpen && 'max-[880px]:pointer-events-auto max-[880px]:opacity-100'
           )}
           type="button"
-          aria-label="關閉側邊欄"
+          aria-label={t`Close sidebar`}
           aria-hidden={!sidebarOpen}
           tabIndex={sidebarOpen ? 0 : -1}
           onClick={() => setSidebarOpen(false)}
@@ -4414,18 +4589,18 @@ function VaultShell({
         <CommandDialog
           open={searchOpen}
           onOpenChange={setSearchOpen}
-          title="搜尋密碼庫"
-          description="搜尋名稱、摘要、網站與內容；以 > 開始可指定欄位的進階搜尋。"
+          title={t`Search vault`}
+          description={t`Search names, summaries, websites, and content. Start with > for advanced field-specific search.`}
         >
           <Command
             className="max-h-[min(480px,70vh)] [&_[data-slot=command-input-wrapper]]:px-2 [&_[data-slot=command-input-wrapper]]:pt-2 [&_[data-slot=command-input-wrapper]]:pb-0"
-            label="搜尋密碼庫項目"
+            label={t`Search vault items`}
             loop
             shouldFilter={false}
           >
             <CommandInput
               ref={searchRef}
-              placeholder="搜尋密碼庫；例如 >name:github"
+              placeholder={t`Search vault; for example, >name:github`}
               maxLength={MAX_VAULT_SEARCH_QUERY_LENGTH}
               value={query}
               onValueChange={updateQuery}
@@ -4435,7 +4610,7 @@ function VaultShell({
                     <InputGroupButton
                       size="icon-xs"
                       type="button"
-                      aria-label="清除搜尋"
+                      aria-label={t`Clear search`}
                       onClick={() => {
                         updateQuery('')
                         window.requestAnimationFrame(() => searchRef.current?.focus())
@@ -4451,10 +4626,16 @@ function VaultShell({
               }
             />
             <CommandList className="scroll-fade-y forced-colors:scroll-fade-none max-h-[min(420px,calc(70vh-54px))] p-1.5">
-              <CommandEmpty>找不到符合的密碼庫項目</CommandEmpty>
+              <CommandEmpty>
+                <Trans>No matching vault items</Trans>
+              </CommandEmpty>
               {scopedItems.length > 0 && (
                 <CommandGroup
-                  heading={`${normalizedVaultSearchQuery(query) ? '搜尋結果' : scopeTitle} · ${scopedItems.length} 個項目`}
+                  heading={
+                    normalizedVaultSearchQuery(query)
+                      ? t`Search results · ${scopedItems.length} items`
+                      : t`${scopeTitle} · ${scopedItems.length} items`
+                  }
                 >
                   {scopedItems.map((item) => {
                     const ItemIcon = itemTypeMeta[item.type].icon
@@ -4492,7 +4673,7 @@ function VaultShell({
                         <span className="min-w-0 flex-1">
                           <strong className="block truncate">{item.name}</strong>
                           <small className="text-muted-foreground block truncate text-[10px]">
-                            {item.subtitle || item.username || item.uri || '尚未設定摘要'}
+                            {item.subtitle || item.username || item.uri || t`No summary`}
                           </small>
                         </span>
                         <span className="text-muted-foreground flex-none text-[10px]">
@@ -4529,7 +4710,7 @@ function VaultShell({
               sidebarOpen && (isMac || isWindows) && 'max-[880px]:shadow-(--native-material-shadow)'
             )}
             data-vault-sidebar=""
-            aria-label="密碼庫導覽"
+            aria-label={t`Vault navigation`}
           >
             <div className="scroll-fade-y forced-colors:scroll-fade-none min-h-0 flex-1 [scrollbar-color:color-mix(in_oklch,var(--muted-foreground)_25%,transparent)_transparent] overflow-y-auto overscroll-contain max-[880px]:pt-2">
               <section
@@ -4537,9 +4718,9 @@ function VaultShell({
                 aria-labelledby="categories-title"
               >
                 <h2 className="hidden" id="categories-title">
-                  分類
+                  <Trans>Categories</Trans>
                 </h2>
-                <nav className="grid grid-cols-2 gap-2 p-0 pt-px" aria-label="密碼庫分類">
+                <nav className="grid grid-cols-2 gap-2 p-0 pt-px" aria-label={t`Vault categories`}>
                   {categoryMeta.map((category) => {
                     const Icon = category.icon
                     return (
@@ -4563,12 +4744,14 @@ function VaultShell({
                 aria-labelledby="quick-title"
               >
                 <header>
-                  <h2 id="quick-title">快速取用</h2>
+                  <h2 id="quick-title">
+                    <Trans>Quick access</Trans>
+                  </h2>
                 </header>
-                <nav className="grid gap-[3px] px-2.5 py-1" aria-label="快速取用">
+                <nav className="grid gap-[3px] px-2.5 py-1" aria-label={t`Quick access`}>
                   <SidebarLink
                     icon={<Star size={16} />}
-                    label="常用項目"
+                    label={t`Favorites`}
                     count={activeItems.filter((item) => item.favorite).length}
                     active={scope.kind === 'favorites'}
                     dropTargetId={
@@ -4580,14 +4763,14 @@ function VaultShell({
                   />
                   <SidebarLink
                     icon={<Clock3 size={16} />}
-                    label="最近使用"
+                    label={t`Recently used`}
                     count={activeItems.filter((item) => item.lastUsedAt).length}
                     active={scope.kind === 'recent'}
                     onClick={() => selectScope({ kind: 'recent' })}
                   />
                   <SidebarLink
                     icon={<Archive size={16} />}
-                    label="封存"
+                    label={t`Archive`}
                     count={archivedItems.length}
                     active={scope.kind === 'archive'}
                     dropTargetId={
@@ -4599,7 +4782,7 @@ function VaultShell({
                   />
                   <SidebarLink
                     icon={<Trash2 size={16} />}
-                    label="垃圾桶"
+                    label={t`Trash`}
                     count={trashItems.length}
                     active={scope.kind === 'trash'}
                     dropTargetId={scope.kind === 'trash' ? undefined : quickAccessDropIds.trash}
@@ -4613,13 +4796,15 @@ function VaultShell({
                 aria-labelledby="folders-title"
               >
                 <header>
-                  <h2 id="folders-title">資料夾</h2>
+                  <h2 id="folders-title">
+                    <Trans>Folders</Trans>
+                  </h2>
                   <TooltipIconButton
                     variant="sidebar"
                     size="icon"
                     className="hover:bg-sidebar-overlay-hover hover:text-foreground border-transparent bg-transparent shadow-none hover:shadow-(--control-highlight) dark:bg-transparent"
                     type="button"
-                    label="新增資料夾"
+                    label={t`Add folder`}
                     onClick={() => setFolderDialog('new')}
                   >
                     <Plus aria-hidden="true" />
@@ -4659,7 +4844,7 @@ function VaultShell({
                       variant="sidebar"
                       className="text-sidebar-foreground hover:bg-sidebar-overlay-hover data-popup-open:bg-sidebar-overlay-active h-auto min-h-9 w-full justify-start gap-[7px] rounded-[9px] px-1.5 py-1"
                       type="button"
-                      aria-label={`開啟 ${sidebarAccountName} 選單`}
+                      aria-label={t`Open ${sidebarAccountName} menu`}
                     />
                   }
                 >
@@ -4704,37 +4889,37 @@ function VaultShell({
                   <DropdownMenuGroup>
                     <DropdownMenuItem onClick={() => setGeneratorDialogOpen(true)}>
                       <Sparkles data-icon="inline-start" />
-                      產生器
+                      <Trans>Generator</Trans>
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={openOrganizations}>
                       <UsersRound data-icon="inline-start" />
-                      組織
+                      <Trans>Organizations</Trans>
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={openEmergencyAccess}>
                       <ShieldAlert data-icon="inline-start" />
-                      Emergency Access
+                      <Trans>Emergency Access</Trans>
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={openSends}>
                       <SendIcon data-icon="inline-start" />
-                      Sends
+                      <Trans>Sends</Trans>
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
                     <DropdownMenuItem onClick={openHealth}>
                       <ShieldCheck data-icon="inline-start" />
-                      健康報告
+                      <Trans>Health report</Trans>
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={openSettings}>
                       <Settings2 data-icon="inline-start" />
-                      設定
+                      <Trans>Settings</Trans>
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
                     <DropdownMenuItem onClick={() => void lockVault()}>
                       <LockKeyhole data-icon="inline-start" />
-                      鎖定密碼庫
+                      <Trans>Lock vault</Trans>
                       <DropdownMenuShortcut>
                         <Kbd>{commandLabel} L</Kbd>
                       </DropdownMenuShortcut>
@@ -4747,7 +4932,7 @@ function VaultShell({
                 size="icon"
                 className="hover:bg-sidebar-overlay-hover hover:text-foreground size-[34px] rounded-[9px] border-transparent bg-transparent shadow-none hover:shadow-(--control-highlight) dark:bg-transparent"
                 type="button"
-                label={`雲端同步：${syncStateMeta[syncStatus.state].label}`}
+                label={t`Cloud sync: ${syncStateMeta[syncStatus.state].label}`}
                 onClick={() => setSyncDialogOpen(true)}
               >
                 <SyncSidebarIcon
@@ -4856,8 +5041,8 @@ function VaultShell({
                       </h1>
                       <small className="text-muted-foreground text-[11px]">
                         {selectedIds.size > 1
-                          ? `已選取 ${selectedIds.size} 個 · 共 ${scopedItems.length} 個項目`
-                          : `${scopedItems.length} 個項目`}
+                          ? t`${selectedIds.size} selected · ${scopedItems.length} items total`
+                          : t`${scopedItems.length} items`}
                       </small>
                     </div>
                     <div className="border-border flex items-center gap-[7px] rounded-[14px] border bg-[color-mix(in_oklch,var(--card)_78%,transparent)] p-1 shadow-none dark:bg-[color-mix(in_oklch,var(--card)_70%,transparent)]">
@@ -4869,7 +5054,7 @@ function VaultShell({
                           disabled={scope.kind === 'recent'}
                           onValueChange={(value) => setSortMode(value as VaultSortMode)}
                         >
-                          <SelectTrigger size="sm" variant="embedded" aria-label="排序方式">
+                          <SelectTrigger size="sm" variant="embedded" aria-label={t`Sort order`}>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -4890,8 +5075,12 @@ function VaultShell({
                       className="text-muted-foreground flex min-h-7 items-center justify-between gap-2.5 px-[19px] pt-0 pb-[7px] text-[10px]"
                       role="status"
                     >
-                      <span>搜尋「{query}」</span>
-                      <span>{scopedItems.length} 筆結果</span>
+                      <span>
+                        <Trans>Search “{query}”</Trans>
+                      </span>
+                      <span>
+                        <Trans>{scopedItems.length} results</Trans>
+                      </span>
                     </div>
                   )}
 
@@ -4924,23 +5113,23 @@ function VaultShell({
                         </EmptyMedia>
                         <EmptyTitle className="m-0 text-[15px]">
                           {query
-                            ? '找不到符合的項目'
+                            ? t`No matching items`
                             : scope.kind === 'trash'
-                              ? '垃圾桶是空的'
-                              : '這裡還沒有密碼庫項目'}
+                              ? t`Trash is empty`
+                              : t`There are no vault items here yet`}
                         </EmptyTitle>
                         <EmptyDescription className="text-muted-foreground mt-[7px] mb-4 max-w-[290px] text-[11px] leading-[1.55]">
                           {query
-                            ? '試試較短的關鍵字，或切換到所有項目。'
+                            ? t`Try a shorter search term or switch to All items.`
                             : scope.kind === 'trash'
-                              ? '刪除的項目會留在這裡，直到你還原、永久刪除，或伺服器依保留政策清除。'
-                              : '新增第一筆資料，BearWarden 會安全地替你保管。'}
+                              ? t`Deleted items remain here until you restore or permanently delete them, or the server removes them according to its retention policy.`
+                              : t`Add your first item and BearWarden will keep it safe.`}
                         </EmptyDescription>
                       </EmptyHeader>
                       <EmptyContent>
                         {query ? (
                           <Button variant="outline" type="button" onClick={() => updateQuery('')}>
-                            清除搜尋
+                            <Trans>Clear search</Trans>
                           </Button>
                         ) : scope.kind !== 'trash' && scope.kind !== 'archive' ? (
                           <Button
@@ -4949,7 +5138,7 @@ function VaultShell({
                             onClick={() => openEditor('create')}
                           >
                             <Plus data-icon="inline-start" />
-                            新增項目
+                            <Trans>Add item</Trans>
                           </Button>
                         ) : null}
                       </EmptyContent>
@@ -4973,7 +5162,7 @@ function VaultShell({
                     (scope.kind === 'trash' && trashItems.length > 0)) && (
                     <footer
                       className="border-border bg-muted flex min-h-16 flex-none flex-wrap items-center justify-end gap-2 border-t px-5 py-1"
-                      aria-label="列表操作"
+                      aria-label={t`List actions`}
                     >
                       {selectedSummaries.length >= 2 && (
                         <div
@@ -4982,11 +5171,11 @@ function VaultShell({
                             scope.kind !== 'trash' && 'flex-1'
                           )}
                           role="toolbar"
-                          aria-label="已選取項目的批次操作"
+                          aria-label={t`Bulk actions for selected items`}
                           aria-busy={busy}
                         >
                           <span className="sr-only" aria-live="polite">
-                            已選取 {selectedSummaries.length} 個項目
+                            <Trans>{selectedSummaries.length} items selected</Trans>
                           </span>
                           {scope.kind === 'trash' ? (
                             <>
@@ -5000,7 +5189,7 @@ function VaultShell({
                                 }
                               >
                                 <RotateCcw data-icon="inline-start" />
-                                還原
+                                <Trans>Restore</Trans>
                               </Button>
                               <Button
                                 variant="destructive"
@@ -5012,7 +5201,7 @@ function VaultShell({
                                 }
                               >
                                 <Trash2 data-icon="inline-start" />
-                                永久刪除
+                                <Trans>Delete permanently</Trans>
                               </Button>
                             </>
                           ) : (
@@ -5025,7 +5214,7 @@ function VaultShell({
                                 onClick={() => setPendingBulkAction(snapshotBulkAction('delete'))}
                               >
                                 <Trash2 data-icon="inline-start" />
-                                刪除
+                                <Trans>Delete</Trans>
                               </Button>
                               <div className="ml-auto flex flex-wrap items-center gap-2">
                                 <Button
@@ -5036,7 +5225,7 @@ function VaultShell({
                                   onClick={openMoveDialogForSelection}
                                 >
                                   <FolderOpen data-icon="inline-start" />
-                                  移動
+                                  <Trans>Move</Trans>
                                 </Button>
                                 <Button
                                   variant="outline"
@@ -5056,7 +5245,7 @@ function VaultShell({
                                   ) : (
                                     <Archive data-icon="inline-start" />
                                   )}
-                                  {scope.kind === 'archive' ? '取消封存' : '封存'}
+                                  {scope.kind === 'archive' ? t`Unarchive` : t`Archive`}
                                 </Button>
                               </div>
                             </>
@@ -5072,7 +5261,7 @@ function VaultShell({
                           onClick={() => setEmptyTrashDialogOpen(true)}
                         >
                           <Trash2 data-icon="inline-start" />
-                          清空垃圾桶
+                          <Trans>Empty Trash</Trans>
                         </Button>
                       )}
                     </footer>
@@ -5084,7 +5273,7 @@ function VaultShell({
             <section
               className="relative flex min-h-0 min-w-0 overflow-hidden bg-transparent max-[680px]:hidden max-[680px]:size-full [[data-has-detail=true]_&]:max-[680px]:flex"
               data-vault-detail-pane=""
-              aria-label="項目詳細資料"
+              aria-label={t`Item details`}
             >
               {editorMode ? (
                 <LoginEditor
@@ -5109,7 +5298,7 @@ function VaultShell({
                       className="hidden max-[680px]:grid"
                       data-detail-back=""
                       type="button"
-                      label="返回垃圾桶"
+                      label={t`Back to Trash`}
                       onClick={clearItemSelection}
                     >
                       <ArrowLeft />
@@ -5119,7 +5308,7 @@ function VaultShell({
                     </span>
                     <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-xl [&>h2]:tracking-[-0.025em] [&>span]:mt-[3px] [&>span]:block [&>span]:truncate [&>span]:text-[10px]">
                       <p className="text-primary m-0 mb-[3px] text-[9px] font-extrabold tracking-[0.11em] uppercase">
-                        垃圾桶
+                        <Trans>Trash</Trans>
                       </p>
                       <h2>{selectedSummary.name}</h2>
                       <span>{itemTypeMeta[selectedSummary.type].label}</span>
@@ -5128,24 +5317,33 @@ function VaultShell({
                   <div className="scroll-fade-y forced-colors:scroll-fade-none min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] overflow-auto px-5 pt-5 pb-10 max-[680px]:px-3 max-[680px]:pt-[13px] max-[680px]:pb-7">
                     <DetailCard>
                       <CardHeader>
-                        <CardTitle>這個項目已移至垃圾桶</CardTitle>
+                        <CardTitle>
+                          <Trans>This item is in Trash</Trans>
+                        </CardTitle>
                         <CardDescription>
-                          為了保護已刪除的敏感資料，請先還原項目再查看或編輯目前內容。
+                          <Trans>
+                            To protect deleted sensitive data, restore the item before viewing or
+                            editing its contents.
+                          </Trans>
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
                         <dl className="m-0 px-[15px] py-1">
                           <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_1fr] border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:gap-1">
-                            <dt className="text-muted-foreground text-[11px]">刪除時間</dt>
+                            <dt className="text-muted-foreground text-[11px]">
+                              <Trans>Deleted</Trans>
+                            </dt>
                             <dd className="m-0 text-[11px]">
                               {formatDate(selectedSummary.deletedAt)}
                             </dd>
                           </div>
                           <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_1fr] border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:gap-1">
-                            <dt className="text-muted-foreground text-[11px]">原資料夾</dt>
+                            <dt className="text-muted-foreground text-[11px]">
+                              <Trans>Original folder</Trans>
+                            </dt>
                             <dd className="m-0 text-[11px]">
                               {folders.find((folder) => folder.id === selectedSummary.folderId)
-                                ?.name ?? '未分類'}
+                                ?.name ?? t`Unfiled`}
                             </dd>
                           </div>
                         </dl>
@@ -5154,24 +5352,28 @@ function VaultShell({
                     {hasTrashPasswordHistory(selectedSummary) && (
                       <DetailCard role="region" aria-labelledby="trash-password-history-title">
                         <CardHeader className="bg-muted rounded-none border-b">
-                          <CardTitle id="trash-password-history-title">項目歷史記錄</CardTitle>
+                          <CardTitle id="trash-password-history-title">
+                            <Trans>Item history</Trans>
+                          </CardTitle>
                         </CardHeader>
                         <CardContent className="contents">
                           <dl className="m-0 px-[15px] py-1">
                             <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
                               <dt className="text-muted-foreground text-[11px] leading-4">
-                                密碼歷史
+                                <Trans>Password history</Trans>
                               </dt>
                               <dd className="m-0 flex min-w-0 items-center gap-2 text-xs leading-4">
                                 <span className="min-w-0 flex-1 truncate">
-                                  {selectedSummary.passwordHistoryCount} 筆唯讀紀錄
+                                  <Trans>
+                                    {selectedSummary.passwordHistoryCount} read-only records
+                                  </Trans>
                                 </span>
                                 <Button
                                   variant="ghost"
                                   size="icon-sm"
                                   className="-my-1.5 ml-auto"
                                   type="button"
-                                  aria-label="查看密碼歷史"
+                                  aria-label={t`View password history`}
                                   disabled={busy}
                                   onClick={() => setPasswordHistoryDialogOpen(true)}
                                 >
@@ -5186,7 +5388,7 @@ function VaultShell({
                     <div className="mx-auto flex max-w-[720px] flex-wrap justify-end gap-2">
                       <Button type="button" disabled={busy} onClick={() => void restoreLogin()}>
                         <RotateCcw data-icon="inline-start" />
-                        還原項目
+                        <Trans>Restore item</Trans>
                       </Button>
                       <Button
                         variant="destructive"
@@ -5195,7 +5397,7 @@ function VaultShell({
                         onClick={() => setDeleteDialogOpen(true)}
                       >
                         <Trash2 data-icon="inline-start" />
-                        永久刪除
+                        <Trans>Delete permanently</Trans>
                       </Button>
                     </div>
                   </div>
@@ -5215,7 +5417,7 @@ function VaultShell({
                       className="hidden max-[680px]:grid"
                       data-detail-back=""
                       type="button"
-                      label="返回項目列表"
+                      label={t`Back to item list`}
                       onClick={clearItemSelection}
                     >
                       <ArrowLeft />
@@ -5248,8 +5450,8 @@ function VaultShell({
                       <span>
                         {selectedLogin.subtitle ||
                           (selectedLogin.type === 'login'
-                            ? hostLabel(selectedLogin.uri)
-                            : '安全保管的項目')}
+                            ? hostLabel(selectedLogin.uri, t`Website not set`)
+                            : t`Securely stored item`)}
                       </span>
                     </div>
                     <TooltipIconButton
@@ -5257,7 +5459,9 @@ function VaultShell({
                       size="icon"
                       className={cn(selectedLogin.favorite && 'text-chart-4')}
                       type="button"
-                      label={selectedLogin.favorite ? '從常用項目移除' : '加入常用項目'}
+                      label={
+                        selectedLogin.favorite ? t`Remove from favorites` : t`Add to favorites`
+                      }
                       aria-pressed={selectedLogin.favorite}
                       onClick={() => void toggleFavorite(selectedLogin)}
                     >
@@ -5274,7 +5478,7 @@ function VaultShell({
                                   size="icon"
                                   className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-[34px] min-w-[34px] rounded-[9px] shadow-(--control-highlight)"
                                   type="button"
-                                  aria-label="更多操作"
+                                  aria-label={t`More actions`}
                                   disabled={busy}
                                 />
                               }
@@ -5283,13 +5487,15 @@ function VaultShell({
                             </DropdownMenuTrigger>
                           }
                         />
-                        <TooltipContent>更多操作</TooltipContent>
+                        <TooltipContent>
+                          <Trans>More actions</Trans>
+                        </TooltipContent>
                       </Tooltip>
                       <DropdownMenuContent align="end">
                         <DropdownMenuGroup>
                           <DropdownMenuItem disabled={busy} onClick={() => void cloneLogin()}>
                             <Copy data-icon="inline-start" />
-                            複製項目
+                            <Trans>Duplicate item</Trans>
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             disabled={busy}
@@ -5302,11 +5508,11 @@ function VaultShell({
                             ) : (
                               <Archive data-icon="inline-start" />
                             )}
-                            {selectedLogin.archivedAt ? '取消封存' : '封存項目'}
+                            {selectedLogin.archivedAt ? t`Unarchive` : t`Archive item`}
                           </DropdownMenuItem>
                           <DropdownMenuItem disabled={busy} onClick={() => openEditor('edit')}>
                             <Edit3 data-icon="inline-start" />
-                            編輯
+                            <Trans>Edit</Trans>
                           </DropdownMenuItem>
                           {selectedLogin.attachments.length === 0 && (
                             <DropdownMenuItem
@@ -5316,7 +5522,7 @@ function VaultShell({
                               onClick={() => void uploadAttachment()}
                             >
                               <Upload data-icon="inline-start" />
-                              上傳附件
+                              <Trans>Upload attachment</Trans>
                             </DropdownMenuItem>
                           )}
                         </DropdownMenuGroup>
@@ -5328,7 +5534,7 @@ function VaultShell({
                             onClick={() => setDeleteDialogOpen(true)}
                           >
                             <Trash2 data-icon="inline-start" />
-                            移至垃圾桶
+                            <Trans>Move to Trash</Trans>
                           </DropdownMenuItem>
                         </DropdownMenuGroup>
                       </DropdownMenuContent>
@@ -5340,7 +5546,7 @@ function VaultShell({
                       <DetailCard role="region" aria-labelledby="credentials-title">
                         <CardHeader className="bg-muted rounded-none border-b">
                           <CardTitle id="credentials-title">
-                            {itemTypeMeta[selectedLogin.type].label}資料
+                            {t`${itemTypeMeta[selectedLogin.type].label} details`}
                           </CardTitle>
                         </CardHeader>
                         <CardContent className="contents">
@@ -5354,9 +5560,11 @@ function VaultShell({
                     {selectedLogin.customFields.length > 0 && (
                       <DetailCard role="region" aria-labelledby="custom-fields-title">
                         <CardHeader className="bg-muted rounded-none border-b">
-                          <CardTitle id="custom-fields-title">自訂欄位</CardTitle>
+                          <CardTitle id="custom-fields-title">
+                            <Trans>Custom fields</Trans>
+                          </CardTitle>
                           <CardDescription>
-                            {selectedLogin.customFields.length} 個欄位
+                            <Trans>{selectedLogin.customFields.length} fields</Trans>
                           </CardDescription>
                         </CardHeader>
                         <CardContent className="contents">
@@ -5373,9 +5581,11 @@ function VaultShell({
                         aria-labelledby="attachments-title"
                       >
                         <CardHeader className="bg-muted rounded-none border-b">
-                          <CardTitle id="attachments-title">附件</CardTitle>
+                          <CardTitle id="attachments-title">
+                            <Trans>Attachments</Trans>
+                          </CardTitle>
                           <CardDescription>
-                            {selectedLogin.attachments.length} 個檔案
+                            <Trans>{selectedLogin.attachments.length} files</Trans>
                           </CardDescription>
                           <CardAction>
                             <Button
@@ -5392,7 +5602,7 @@ function VaultShell({
                               ) : (
                                 <Upload data-icon="inline-start" />
                               )}
-                              上傳附件
+                              <Trans>Upload attachment</Trans>
                             </Button>
                           </CardAction>
                         </CardHeader>
@@ -5401,7 +5611,7 @@ function VaultShell({
                             <section className="flex flex-col gap-3" aria-live="polite">
                               <Progress value={attachmentProgressPercent(attachmentOperation)}>
                                 <ProgressLabel>
-                                  {attachmentStageLabel(attachmentOperation)}
+                                  {getAttachmentStageLabel(attachmentOperation)}
                                   {attachmentOperation.fileName
                                     ? `：${attachmentOperation.fileName}`
                                     : ''}
@@ -5409,7 +5619,7 @@ function VaultShell({
                                 <ProgressValue>
                                   {() =>
                                     attachmentProgressPercent(attachmentOperation) === null
-                                      ? '處理中'
+                                      ? t`Processing`
                                       : `${attachmentProgressPercent(attachmentOperation)}%`
                                   }
                                 </ProgressValue>
@@ -5427,7 +5637,7 @@ function VaultShell({
                                 ) : (
                                   <X data-icon="inline-start" />
                                 )}
-                                {attachmentOperation.canceling ? '正在取消' : '取消'}
+                                {attachmentOperation.canceling ? t`Canceling` : t`Cancel`}
                               </Button>
                             </section>
                           )}
@@ -5448,12 +5658,14 @@ function VaultShell({
                                     <strong>{attachment.fileName}</strong>
                                     <span>
                                       {attachment.sizeName}
-                                      {attachment.legacy ? ' · 舊式未驗證加密' : ''}
+                                      {attachment.legacy
+                                        ? t` · Legacy unauthenticated encryption`
+                                        : ''}
                                     </span>
                                   </div>
                                   <section
                                     className="flex flex-wrap items-center justify-end gap-1"
-                                    aria-label={`${attachment.fileName} 的附件操作`}
+                                    aria-label={t`Attachment actions for ${attachment.fileName}`}
                                   >
                                     {attachment.legacy && (
                                       <Button
@@ -5468,14 +5680,14 @@ function VaultShell({
                                         onClick={() => void fixLegacyAttachment(attachment.id)}
                                       >
                                         <Wrench data-icon="inline-start" />
-                                        修復
+                                        <Trans>Repair</Trans>
                                       </Button>
                                     )}
                                     <TooltipIconButton
                                       variant="outline"
                                       size="icon"
                                       type="button"
-                                      label={`下載 ${attachment.fileName}`}
+                                      label={t`Download ${attachment.fileName}`}
                                       disabled={
                                         busy ||
                                         attachmentOperation !== null ||
@@ -5489,7 +5701,7 @@ function VaultShell({
                                       variant="destructive"
                                       size="icon"
                                       type="button"
-                                      label={`刪除 ${attachment.fileName}`}
+                                      label={t`Delete ${attachment.fileName}`}
                                       disabled={
                                         busy ||
                                         attachmentOperation !== null ||
@@ -5521,11 +5733,19 @@ function VaultShell({
                         aria-busy={!totpRevealReady}
                       >
                         <CardHeader className="bg-muted rounded-none border-b">
-                          <CardTitle id="totp-title">一次性驗證碼</CardTitle>
+                          <CardTitle id="totp-title">
+                            <Trans>One-time verification code</Trans>
+                          </CardTitle>
                           {totpGenerationError === 'unsupported' && (
-                            <CardDescription>密鑰格式不受支援</CardDescription>
+                            <CardDescription>
+                              <Trans>Unsupported key format</Trans>
+                            </CardDescription>
                           )}
-                          {!totpRevealReady && <span className="sr-only">產生中…</span>}
+                          {!totpRevealReady && (
+                            <span className="sr-only">
+                              <Trans>Generating…</Trans>
+                            </span>
+                          )}
                         </CardHeader>
                         <CardContent className="contents">
                           <div className="grid grid-cols-[minmax(0,1fr)_34px] items-center gap-2 px-[15px] pt-3.5 pb-3 [&_strong]:font-mono [&_strong]:text-[25px] [&_strong]:tracking-[0.18em]">
@@ -5558,8 +5778,8 @@ function VaultShell({
                               type="button"
                               label={
                                 copiedKey === `totp:${selectedLogin.id}`
-                                  ? '一次性驗證碼已複製'
-                                  : '複製一次性驗證碼'
+                                  ? t`One-time verification code copied`
+                                  : t`Copy one-time verification code`
                               }
                               disabled={!totpCode || totpGenerationError !== null}
                               onClick={() => void copyTotp()}
@@ -5573,7 +5793,7 @@ function VaultShell({
                                 <Progress
                                   key={totpCodeState?.cycle}
                                   className="mx-[15px] mb-[15px] block w-[calc(100%-30px)] [&_[data-slot=progress-indicator]]:duration-[1s] [&_[data-slot=progress-indicator]]:ease-linear motion-reduce:[&_[data-slot=progress-indicator]]:duration-0"
-                                  aria-label="驗證碼剩餘時間"
+                                  aria-label={t`Verification code time remaining`}
                                   max={totpCode.period}
                                   value={totpCode.remainingSeconds}
                                 />
@@ -5592,8 +5812,12 @@ function VaultShell({
                     {selectedLogin.type === 'login' && selectedLogin.passkeys.length > 0 && (
                       <DetailCard role="region" aria-labelledby="passkeys-title">
                         <CardHeader className="bg-muted rounded-none border-b">
-                          <CardTitle id="passkeys-title">通行密鑰</CardTitle>
-                          <CardDescription>{selectedLogin.passkeys.length} 組</CardDescription>
+                          <CardTitle id="passkeys-title">
+                            <Trans>Passkeys</Trans>
+                          </CardTitle>
+                          <CardDescription>
+                            <Trans>{selectedLogin.passkeys.length} passkeys</Trans>
+                          </CardDescription>
                         </CardHeader>
                         <CardContent className="contents">
                           <div className="grid">
@@ -5611,18 +5835,21 @@ function VaultShell({
                                 <div>
                                   <strong>{passkey.rpName || passkey.rpId}</strong>
                                   <span>
-                                    {passkey.userDisplayName || passkey.userName || '未命名使用者'}
+                                    {passkey.userDisplayName || passkey.userName || t`Unnamed user`}
                                   </span>
                                   <small>
                                     {passkey.rpId} · {formatDate(passkey.creationDate)}
-                                    {passkey.discoverable ? ' · 可探索' : ''}
+                                    {passkey.discoverable ? t` · Discoverable` : ''}
                                   </small>
                                 </div>
                               </article>
                             ))}
                           </div>
                           <p className="text-muted-foreground m-0 px-[15px] pt-2.5 pb-[13px] text-[10px] leading-normal">
-                            可從編輯項目安全刪除通行密鑰；私鑰材料不會傳到顯示程序。
+                            <Trans>
+                              You can safely delete passkeys while editing the item. Private key
+                              material is never sent to the renderer.
+                            </Trans>
                           </p>
                         </CardContent>
                       </DetailCard>
@@ -5632,7 +5859,7 @@ function VaultShell({
                       <DetailCard role="region" aria-labelledby="notes-title">
                         <CardHeader className="bg-muted rounded-none border-b">
                           <CardTitle id="notes-title">
-                            {selectedLogin.type === 'secureNote' ? '安全備註' : '備註'}
+                            {selectedLogin.type === 'secureNote' ? t`Secure note` : t`Notes`}
                           </CardTitle>
                         </CardHeader>
                         <CardContent className="contents">
@@ -5642,7 +5869,7 @@ function VaultShell({
                               !selectedLogin.notes?.trim() && 'text-muted-foreground'
                             )}
                           >
-                            {selectedLogin.notes?.trim() ? selectedLogin.notes : '尚未加入內容'}
+                            {selectedLogin.notes?.trim() ? selectedLogin.notes : t`No content yet`}
                           </p>
                         </CardContent>
                       </DetailCard>
@@ -5650,23 +5877,27 @@ function VaultShell({
 
                     <DetailCard role="region" aria-labelledby="organization-title">
                       <CardHeader className="bg-muted rounded-none border-b">
-                        <CardTitle id="organization-title">整理與活動</CardTitle>
+                        <CardTitle id="organization-title">
+                          <Trans>Organization and activity</Trans>
+                        </CardTitle>
                       </CardHeader>
                       <CardContent className="contents">
                         <dl className="m-0 px-[15px] py-1">
                           <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
-                            <dt className="text-muted-foreground text-[11px] leading-4">資料夾</dt>
+                            <dt className="text-muted-foreground text-[11px] leading-4">
+                              <Trans>Folder</Trans>
+                            </dt>
                             <dd className="m-0 flex min-w-0 items-center gap-2 text-xs leading-4">
                               <span className="min-w-0 flex-1 truncate">
                                 {folders.find((folder) => folder.id === selectedLogin.folderId)
-                                  ?.name ?? '未分類'}
+                                  ?.name ?? t`Unfiled`}
                               </span>
                               <Button
                                 variant="ghost"
                                 size="icon-sm"
                                 className="-my-1.5 ml-auto"
                                 type="button"
-                                aria-label="移動至資料夾"
+                                aria-label={t`Move to folder`}
                                 disabled={busy}
                                 onClick={openMoveDialogForSelection}
                               >
@@ -5676,7 +5907,7 @@ function VaultShell({
                           </div>
                           <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
                             <dt className="text-muted-foreground text-[11px] leading-4">
-                              最近使用
+                              <Trans>Recently used</Trans>
                             </dt>
                             <dd className="m-0 min-w-0 text-xs leading-4">
                               {formatDate(selectedLogin.lastUsedAt)}
@@ -5688,7 +5919,9 @@ function VaultShell({
 
                     <DetailCard role="region" aria-labelledby="history-title">
                       <CardHeader className="bg-muted rounded-none border-b">
-                        <CardTitle id="history-title">項目歷史記錄</CardTitle>
+                        <CardTitle id="history-title">
+                          <Trans>Item history</Trans>
+                        </CardTitle>
                       </CardHeader>
                       <CardContent className="contents">
                         <ItemHistoryRows
@@ -5711,10 +5944,10 @@ function VaultShell({
                       <img className="size-16 object-contain" src={bearCutUrl} alt="" />
                     </EmptyMedia>
                     <EmptyTitle className="text-foreground m-0 text-xl font-[720]">
-                      未選取項目
+                      <Trans>No item selected</Trans>
                     </EmptyTitle>
                     <EmptyDescription className="text-muted-foreground mt-[7px] mb-4 max-w-[290px] text-xs leading-[1.55]">
-                      選取項目以查看並管理安全資料。
+                      <Trans>Select an item to view and manage its secure data.</Trans>
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>
@@ -5734,7 +5967,7 @@ function VaultShell({
         )}
         {moveSnapshot && (
           <MoveDialog
-            itemName={moveSummaries[0]?.name ?? '選取的項目'}
+            itemName={moveSummaries[0]?.name ?? t`Selected items`}
             itemCount={moveSnapshot.ids.length}
             currentFolderId={moveFolderId}
             folders={folders}
@@ -5754,7 +5987,7 @@ function VaultShell({
         )}
         {emptyTrashDialogOpen && trashItems.length > 0 && (
           <DeleteLoginDialog
-            itemName={`垃圾桶中的 ${trashItems.length} 個項目`}
+            itemName={t`${trashItems.length} items in Trash`}
             busy={busy}
             permanent
             onClose={() => setEmptyTrashDialogOpen(false)}
@@ -5777,17 +6010,19 @@ function VaultShell({
                   </AlertDialogMedia>
                   <AlertDialogTitle>
                     {pendingBulkAction.action === 'deletePermanently'
-                      ? `永久刪除 ${pendingBulkAction.ids.length} 個項目？`
-                      : `將 ${pendingBulkAction.ids.length} 個項目移至垃圾桶？`}
+                      ? t`Permanently delete ${pendingBulkAction.ids.length} items?`
+                      : t`Move ${pendingBulkAction.ids.length} items to Trash?`}
                   </AlertDialogTitle>
                   <AlertDialogDescription>
                     {pendingBulkAction.action === 'deletePermanently'
-                      ? '這個動作無法復原。BearWarden 不會保留可復原的明文副本。'
-                      : '項目會保留在加密的垃圾桶中，之後仍可還原。'}
+                      ? t`This action cannot be undone. BearWarden does not keep a recoverable plaintext copy.`
+                      : t`Items remain encrypted in Trash and can be restored later.`}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
+                  <AlertDialogCancel disabled={busy}>
+                    <Trans>Cancel</Trans>
+                  </AlertDialogCancel>
                   <AlertDialogAction
                     variant="destructive"
                     type="button"
@@ -5800,7 +6035,9 @@ function VaultShell({
                     }}
                   >
                     {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
-                    {pendingBulkAction.action === 'deletePermanently' ? '永久刪除' : '移至垃圾桶'}
+                    {pendingBulkAction.action === 'deletePermanently'
+                      ? t`Delete permanently`
+                      : t`Move to Trash`}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -5818,8 +6055,8 @@ function VaultShell({
         )}
         {passwordZoomValue !== null && (
           <Modal
-            title="密碼"
-            description="符號、數字與英文以不同顏色標示，方便辨認。"
+            title={t`Password`}
+            description={t`Symbols, numbers, and letters use different colors to make them easier to distinguish.`}
             onClose={closePasswordZoom}
           >
             <ModalBody>
@@ -5887,21 +6124,27 @@ function VaultShell({
         >
           <AlertDialogContent size="sm">
             <AlertDialogHeader>
-              <AlertDialogTitle>刪除附件？</AlertDialogTitle>
+              <AlertDialogTitle>
+                <Trans>Delete attachment?</Trans>
+              </AlertDialogTitle>
               <AlertDialogDescription>
-                「{attachmentDeleteTarget?.fileName ?? '這個附件'}」會從 Bitwarden
-                永久刪除，且無法復原。
+                <Trans>
+                  “{attachmentDeleteTarget?.fileName ?? t`This attachment`}” will be permanently
+                  deleted from Bitwarden and cannot be recovered.
+                </Trans>
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel type="button">保留附件</AlertDialogCancel>
+              <AlertDialogCancel type="button">
+                <Trans>Keep attachment</Trans>
+              </AlertDialogCancel>
               <AlertDialogAction
                 type="button"
                 variant="destructive"
                 onClick={() => void deleteSelectedAttachment()}
               >
                 <Trash2 data-icon="inline-start" />
-                刪除附件
+                <Trans>Delete attachment</Trans>
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -5915,18 +6158,24 @@ function VaultShell({
         >
           <AlertDialogContent size="sm">
             <AlertDialogHeader>
-              <AlertDialogTitle>捨棄尚未儲存的變更？</AlertDialogTitle>
-              <AlertDialogDescription>這些變更尚未儲存。捨棄後將無法復原。</AlertDialogDescription>
+              <AlertDialogTitle>
+                <Trans>Discard unsaved changes?</Trans>
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                <Trans>These changes have not been saved. Discarding them cannot be undone.</Trans>
+              </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel type="button">繼續編輯</AlertDialogCancel>
+              <AlertDialogCancel type="button">
+                <Trans>Continue editing</Trans>
+              </AlertDialogCancel>
               <AlertDialogAction
                 type="button"
                 variant="destructive"
                 onClick={confirmEditorDiscard}
                 disabled={busy}
               >
-                捨棄變更
+                <Trans>Discard changes</Trans>
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

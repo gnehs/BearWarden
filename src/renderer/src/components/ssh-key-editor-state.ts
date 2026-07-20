@@ -1,3 +1,5 @@
+import { i18n } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
 import type {
   LoginCreateRequest,
   LoginUpdateRequest,
@@ -92,17 +94,20 @@ export function sshKeyImportErrorMessage(
   code: Extract<SshKeyImportResult, { status: 'error' }>['code']
 ): string {
   const messages = {
-    EmptyClipboard: '剪貼簿是空的，請先複製 SSH 私鑰後再試。',
-    ClipboardTooLarge: '剪貼簿內容過大，無法安全匯入 SSH 私鑰。',
-    ParsingError: '無法解析剪貼簿中的 SSH 私鑰格式，請確認內容完整。',
-    UnsupportedKeyType: '此 SSH 私鑰類型目前不支援，請改用支援的金鑰格式。',
-    WrongPassword: '私鑰密碼錯誤，請重新輸入。',
-    InvalidPassphrase: '請輸入有效的私鑰密碼。',
-    SessionUnavailable: 'SSH 私鑰匯入工作階段已失效，請重新從剪貼簿匯入。',
-    SessionLimitReached: '目前進行中的 SSH 私鑰匯入工作階段過多，請稍後再試。'
-  } satisfies Record<Extract<SshKeyImportResult, { status: 'error' }>['code'], string>
+    EmptyClipboard: msg`The clipboard is empty. Copy an SSH private key and try again.`,
+    ClipboardTooLarge: msg`The clipboard contents are too large to safely import as an SSH private key.`,
+    ParsingError: msg`The SSH private key in the clipboard could not be parsed. Verify that its contents are complete.`,
+    UnsupportedKeyType: msg`This SSH private key type is not supported. Use a supported key format.`,
+    WrongPassword: msg`The private key passphrase is incorrect. Enter it again.`,
+    InvalidPassphrase: msg`Enter a valid private key passphrase.`,
+    SessionUnavailable: msg`The SSH private key import session has expired. Import it from the clipboard again.`,
+    SessionLimitReached: msg`Too many SSH private key import sessions are in progress. Try again later.`
+  } satisfies Record<
+    Extract<SshKeyImportResult, { status: 'error' }>['code'],
+    ReturnType<typeof msg>
+  >
 
-  return messages[code]
+  return i18n._(messages[code])
 }
 
 export function sshKeyImportResultAction(result: SshKeyImportResult): SshKeyImportResultAction {

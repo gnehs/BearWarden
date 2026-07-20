@@ -58,13 +58,13 @@ describe('AccountSwitcherCard presentation helpers', () => {
     const inactive = localAccountPresentation(account({ id: secondId, slot: 2 }))
 
     expect(active).toEqual({
-      label: '帳號 1',
-      description: '目前使用中的本機帳號 · 本機代碼 11111111',
+      label: '帳戶 1',
+      description: '目前本機帳戶 · 本機代碼 11111111',
       active: true
     })
     expect(inactive).toEqual({
-      label: '帳號 2',
-      description: '可切換至這個本機帳號 · 本機代碼 22222222',
+      label: '帳戶 2',
+      description: '切換至此本機帳戶 · 本機代碼 22222222',
       active: false
     })
     expect(JSON.stringify([active, inactive])).not.toContain(firstId)
@@ -74,7 +74,7 @@ describe('AccountSwitcherCard presentation helpers', () => {
 
   it('labels accounts by local slot without exposing opaque account identifiers', () => {
     const opaqueId = account().id
-    expect(localAccountLabel(account().slot)).toBe('帳號 2')
+    expect(localAccountLabel(account().slot)).toBe('帳戶 2')
     expect(localAccountLabel(account().slot)).not.toContain(opaqueId)
     expect(localAccountCode(opaqueId)).toBe('11111111')
   })
@@ -112,7 +112,7 @@ describe('AccountSwitcherCard presentation helpers', () => {
       { kind: 'switch' as const, accountId: account().id, slot: account().slot }
     ]) {
       const confirmation = accountConfirmationContent(action)
-      expect(confirmation.description).toContain('鎖定密碼庫')
+      expect(confirmation.description).toContain('鎖定保管庫')
       expect(confirmation.description).toContain('重新啟動')
       expect(confirmation.destructive).toBe(false)
     }
@@ -125,10 +125,10 @@ describe('AccountSwitcherCard presentation helpers', () => {
       slot: account().slot
     })
 
-    expect(confirmation.title).toBe('移除帳號 2？')
+    expect(confirmation.title).toBe('要移除 帳戶 2 嗎？')
     expect(confirmation.actionLabel).toBe('永久移除本機資料')
     expect(confirmation.description).toContain('無法復原')
-    expect(confirmation.description).toContain('不會刪除 Bitwarden 或 Vaultwarden 伺服器')
+    expect(confirmation.description).toContain('Bitwarden 或 Vaultwarden 伺服器上的帳戶或資料')
     expect(confirmation.destructive).toBe(true)
     expect(JSON.stringify(confirmation)).not.toContain(account().id)
   })
@@ -160,13 +160,13 @@ describe('AccountSwitcherCard presentation helpers', () => {
   })
 
   it.each([
-    ['ACCOUNT_LIMIT_REACHED', '本機帳號已達上限'],
-    ['ACCOUNT_NOT_FOUND', '找不到指定的本機帳號'],
-    ['ACCOUNT_ACTIVE_REMOVAL_FORBIDDEN', '目前使用中的帳號不能移除'],
-    ['ACCOUNT_STALE_STATE', '本機帳號清單已變更'],
-    ['ACCOUNT_SWITCH_UNAVAILABLE', '本機帳號管理目前不可用'],
-    ['ACCOUNT_SWITCH_IN_PROGRESS', '已有本機帳號切換正在處理'],
-    ['ACCOUNT_SWITCH_RESULT_UNKNOWN', '帳號操作結果無法確認']
+    ['ACCOUNT_LIMIT_REACHED', '本機帳戶數量上限'],
+    ['ACCOUNT_NOT_FOUND', '要求的本機帳戶'],
+    ['ACCOUNT_ACTIVE_REMOVAL_FORBIDDEN', '移除目前帳戶'],
+    ['ACCOUNT_STALE_STATE', '本機帳戶清單已變更'],
+    ['ACCOUNT_SWITCH_UNAVAILABLE', '本機帳戶管理目前無法使用'],
+    ['ACCOUNT_SWITCH_IN_PROGRESS', '本機帳戶切換已在進行中'],
+    ['ACCOUNT_SWITCH_RESULT_UNKNOWN', '無法確認帳戶操作結果']
   ])('maps %s to a safe renderer message', (code, expected) => {
     const message = accountMutationError(new Error(`BEARWARDEN:${code}: internal detail`))
     expect(message).toContain(expected)

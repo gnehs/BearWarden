@@ -74,7 +74,7 @@ describe('account WebAuthn key renderer policy', () => {
     expect(webAuthnActionError(internalDetail, 'remove')).toContain('結果不明')
     expect(webAuthnActionError(internalDetail, 'remove')).not.toContain('server response body')
     expect(webAuthnActionError(new Error('INVALID_MASTER_PASSWORD: internal'), 'enroll')).toBe(
-      '主密碼驗證失敗；若要再試，請重新輸入主密碼。'
+      '主密碼驗證失敗。請再次輸入主密碼以重試。'
     )
   })
 

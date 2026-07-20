@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useLingui } from '@lingui/react/macro'
 import { AlertTriangle, Check, Fingerprint, KeyRound, ShieldAlert, X } from 'lucide-react'
 import type {
   PasskeyApprovalPrompt,
@@ -30,7 +31,6 @@ import { Spinner } from '@renderer/components/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@renderer/components/ui/toggle-group'
 import {
   canApprovePasskeyApproval,
-  formatPasskeyApprovalExpiry,
   initialPasskeyApprovalChoice,
   initialPasskeyApprovalVerificationMethod,
   isPasskeyApprovalExpired,
@@ -49,28 +49,6 @@ interface PasskeyApprovalDialogProps {
   onSettled: () => void
 }
 
-const verificationMethodLabels: Record<PasskeyApprovalUiVerificationMethod, string> = {
-  'touch-id': '生物辨識',
-  'master-password': '主密碼'
-}
-
-function ceremonyPresentation(kind: PasskeyApprovalPrompt['kind']): {
-  label: string
-  detail: string
-} {
-  return kind === 'create'
-    ? { label: '建立通行密鑰', detail: '此網站要求為帳號建立新的通行密鑰。' }
-    : { label: '使用通行密鑰登入', detail: '此網站要求使用已儲存的通行密鑰登入。' }
-}
-
-function registrationUserPresentation(request: PasskeyApprovalPrompt): string | undefined {
-  if (request.kind !== 'create') return undefined
-  if (request.userDisplayName && request.userName) {
-    return `${request.userDisplayName}（${request.userName}）`
-  }
-  return request.userDisplayName ?? request.userName
-}
-
 /**
  * A controlled, fail-closed prompt. The renderer sends consent and method selection only; it
  * never manufactures a user-verified signal or keeps a password after a verification attempt.
@@ -81,6 +59,8 @@ export default function PasskeyApprovalDialog({
   onRespond,
   onSettled
 }: PasskeyApprovalDialogProps): React.JSX.Element {
+  const { i18n, t } = useLingui()
+  const [renderedAt] = useState(() => Date.now())
   const [selectedChoiceId, setSelectedChoiceId] = useState<string | undefined>(() =>
     initialPasskeyApprovalChoice(request)
   )
@@ -97,8 +77,24 @@ export default function PasskeyApprovalDialog({
   const settledRef = useRef(false)
   const passwordRef = useRef('')
   const onSettledRef = useRef(onSettled)
-  const ceremony = ceremonyPresentation(request.kind)
-  const registrationUser = registrationUserPresentation(request)
+  const ceremony =
+    request.kind === 'create'
+      ? {
+          label: t`Create a passkey`,
+          detail: t`This website wants to create a new passkey for your account.`
+        }
+      : {
+          label: t`Sign in with a passkey`,
+          detail: t`This website wants to use a saved passkey to sign in.`
+        }
+  const registrationUser =
+    request.kind === 'create' && request.userDisplayName && request.userName
+      ? t`${request.userDisplayName} (${request.userName})`
+      : (request.userDisplayName ?? request.userName)
+  const verificationMethodLabels: Record<PasskeyApprovalUiVerificationMethod, string> = {
+    'touch-id': t`Biometric authentication`,
+    'master-password': t`Master password`
+  }
   const requiresPassword = requiresPasskeyApprovalPasswordVerification(
     request,
     selectedChoiceId,
@@ -117,9 +113,15 @@ export default function PasskeyApprovalDialog({
             method === 'touch-id' || method === 'master-password'
         )
   const choiceItems = [
-    { label: '選擇通行密鑰', value: null },
+    { label: t`Choose a passkey`, value: null },
     ...request.choices.map((choice) => ({ label: choice.label, value: choice.id }))
   ]
+  const remainingSeconds = Math.max(0, Math.ceil((request.expiresAt - renderedAt) / 1_000))
+  const formattedRemainingSeconds = new Intl.NumberFormat(i18n.locale).format(remainingSeconds)
+  const expiryMessage =
+    remainingSeconds > 0
+      ? t`This request expires in about ${formattedRemainingSeconds} seconds.`
+      : t`This request has expired.`
 
   function clearPassword(): void {
     passwordRef.current = ''
@@ -172,10 +174,10 @@ export default function PasskeyApprovalDialog({
     ) {
       setError(
         request.choices.length === 0
-          ? '此要求沒有可核准的通行密鑰。請拒絕要求並重新開始。'
+          ? t`This request has no passkey that can be approved. Deny it and start again.`
           : requiresPassword
-            ? '請輸入主密碼以繼續。'
-            : '請選擇通行密鑰與可用的驗證方式。'
+            ? t`Enter your master password to continue.`
+            : t`Choose a passkey and an available verification method.`
       )
       return
     }
@@ -218,8 +220,8 @@ export default function PasskeyApprovalDialog({
       if (mountedRef.current) {
         setError(
           approved
-            ? '無法完成驗證或核准此通行密鑰要求。請確認主密碼後再試。'
-            : '無法拒絕此通行密鑰要求。請等候它過期，或重新鎖定密碼庫。'
+            ? t`Couldn't complete verification or approve this passkey request. Check your master password and try again.`
+            : t`Couldn't deny this passkey request. Wait for it to expire or lock the vault again.`
         )
       }
     } finally {
@@ -239,26 +241,26 @@ export default function PasskeyApprovalDialog({
     >
       <DialogContent className="max-w-lg" showCloseButton={false}>
         <DialogHeader>
-          <DialogTitle>核准通行密鑰要求？</DialogTitle>
+          <DialogTitle>{t`Approve passkey request?`}</DialogTitle>
           <DialogDescription>
-            BearWarden 只會將核准結果交給本機主程序，不會將通行密鑰私密資料交給網站。
+            {t`BearWarden sends only the approval result to the local main process and never shares private passkey data with the website.`}
           </DialogDescription>
         </DialogHeader>
 
         <FieldGroup>
           <Field>
-            <FieldLabel>網站</FieldLabel>
+            <FieldLabel>{t`Website`}</FieldLabel>
             <FieldDescription>{request.rpName}</FieldDescription>
             <Badge variant="outline">{request.rpId}</Badge>
           </Field>
           <Field>
-            <FieldLabel>動作</FieldLabel>
+            <FieldLabel>{t`Action`}</FieldLabel>
             <FieldDescription>{ceremony.detail}</FieldDescription>
             <Badge variant="secondary">{ceremony.label}</Badge>
           </Field>
           {registrationUser && (
             <Field>
-              <FieldLabel>註冊使用者</FieldLabel>
+              <FieldLabel>{t`Registration user`}</FieldLabel>
               <FieldDescription>{registrationUser}</FieldDescription>
             </Field>
           )}
@@ -266,9 +268,10 @@ export default function PasskeyApprovalDialog({
 
         {request.choices.length === 1 && (
           <Field>
-            <FieldLabel>通行密鑰</FieldLabel>
+            <FieldLabel>{t`Passkey`}</FieldLabel>
             <FieldDescription>
-              {request.choices[0]?.detail ?? '已自動選擇唯一可用的通行密鑰。'}
+              {request.choices[0]?.detail ??
+                t`The only available passkey was selected automatically.`}
             </FieldDescription>
             <Badge variant="outline">{request.choices[0]?.label}</Badge>
           </Field>
@@ -276,7 +279,7 @@ export default function PasskeyApprovalDialog({
 
         {request.choices.length >= 2 && request.choices.length <= 7 && (
           <Field>
-            <FieldLabel>選擇通行密鑰</FieldLabel>
+            <FieldLabel>{t`Choose a passkey`}</FieldLabel>
             <ToggleGroup
               multiple={false}
               value={selectedChoiceId === undefined ? [] : [selectedChoiceId]}
@@ -287,7 +290,7 @@ export default function PasskeyApprovalDialog({
               }}
               disabled={busy || expired}
               spacing={2}
-              aria-label="選擇通行密鑰"
+              aria-label={t`Choose a passkey`}
             >
               {request.choices.map((choice) => (
                 <ToggleGroupItem key={choice.id} value={choice.id} className="flex-1">
@@ -297,7 +300,7 @@ export default function PasskeyApprovalDialog({
             </ToggleGroup>
             <FieldDescription>
               {selectedChoiceId === undefined
-                ? '請選擇一個通行密鑰。'
+                ? t`Choose a passkey.`
                 : request.choices.find((choice) => choice.id === selectedChoiceId)?.detail}
             </FieldDescription>
           </Field>
@@ -305,7 +308,7 @@ export default function PasskeyApprovalDialog({
 
         {request.choices.length > 7 && (
           <Field>
-            <FieldLabel htmlFor="passkey-choice">選擇通行密鑰</FieldLabel>
+            <FieldLabel htmlFor="passkey-choice">{t`Choose a passkey`}</FieldLabel>
             <Select
               items={choiceItems}
               value={selectedChoiceId ?? null}
@@ -338,14 +341,14 @@ export default function PasskeyApprovalDialog({
         {request.choices.length === 0 && (
           <Alert variant="destructive">
             <ShieldAlert aria-hidden="true" />
-            <AlertTitle>沒有可用的通行密鑰</AlertTitle>
-            <AlertDescription>此要求無法安全地核准。請拒絕並重新開始操作。</AlertDescription>
+            <AlertTitle>{t`No passkey is available`}</AlertTitle>
+            <AlertDescription>{t`This request can't be approved safely. Deny it and start the operation again.`}</AlertDescription>
           </Alert>
         )}
 
         {request.userVerification !== 'discouraged' && (
           <Field>
-            <FieldLabel>使用者驗證</FieldLabel>
+            <FieldLabel>{t`User verification`}</FieldLabel>
             {selectableMethods.length > 1 ? (
               <ToggleGroup
                 multiple={false}
@@ -357,7 +360,7 @@ export default function PasskeyApprovalDialog({
                 }}
                 disabled={busy || expired}
                 spacing={2}
-                aria-label="選擇使用者驗證方式"
+                aria-label={t`Choose a user verification method`}
               >
                 {selectableMethods.map((method) => (
                   <ToggleGroupItem key={method} value={method} className="flex-1">
@@ -381,14 +384,14 @@ export default function PasskeyApprovalDialog({
               </Badge>
             ) : (
               <Alert variant="destructive">
-                <AlertTitle>沒有可用的驗證方式</AlertTitle>
-                <AlertDescription>此網站要求使用者驗證，但本機目前無法提供。</AlertDescription>
+                <AlertTitle>{t`No verification method is available`}</AlertTitle>
+                <AlertDescription>{t`This website requires user verification, but this device can't provide it right now.`}</AlertDescription>
               </Alert>
             )}
             <FieldDescription>
               {request.userVerification === 'required'
-                ? '網站要求完成使用者驗證。'
-                : '網站偏好完成使用者驗證。'}
+                ? t`This website requires user verification.`
+                : t`This website prefers user verification.`}
             </FieldDescription>
           </Field>
         )}
@@ -396,14 +399,14 @@ export default function PasskeyApprovalDialog({
         {selectedPasskeyApprovalChoiceRequiresReprompt(request, selectedChoiceId) && (
           <Alert>
             <ShieldAlert aria-hidden="true" />
-            <AlertTitle>此通行密鑰受保護</AlertTitle>
-            <AlertDescription>核准前需要重新確認主密碼。</AlertDescription>
+            <AlertTitle>{t`This passkey is protected`}</AlertTitle>
+            <AlertDescription>{t`Confirm your master password before approving.`}</AlertDescription>
           </Alert>
         )}
 
         {requiresPassword && (
           <Field data-invalid={Boolean(error)}>
-            <FieldLabel htmlFor="passkey-approval-master-password">確認主密碼</FieldLabel>
+            <FieldLabel htmlFor="passkey-approval-master-password">{t`Confirm master password`}</FieldLabel>
             <Input
               id="passkey-approval-master-password"
               type="password"
@@ -418,15 +421,15 @@ export default function PasskeyApprovalDialog({
               }}
             />
             <FieldDescription>
-              主密碼只會直接送到本機主程序驗證，完成後會立即清除。
+              {t`Your master password is sent directly to the local main process for verification and cleared immediately afterward.`}
             </FieldDescription>
           </Field>
         )}
 
         <Alert variant={expired ? 'destructive' : 'default'}>
           <AlertTriangle aria-hidden="true" />
-          <AlertTitle>{formatPasskeyApprovalExpiry(request.expiresAt)}</AlertTitle>
-          <AlertDescription>不確定要求來源時，請選擇拒絕。</AlertDescription>
+          <AlertTitle>{expiryMessage}</AlertTitle>
+          <AlertDescription>{t`If you aren't sure where this request came from, deny it.`}</AlertDescription>
         </Alert>
 
         {error && (
@@ -443,7 +446,7 @@ export default function PasskeyApprovalDialog({
             onClick={() => void settle(false)}
           >
             <X data-icon="inline-start" aria-hidden="true" />
-            拒絕
+            {t`Deny`}
           </Button>
           <Button type="button" disabled={busy || !canApprove} onClick={() => void settle(true)}>
             {busy ? (
@@ -451,7 +454,7 @@ export default function PasskeyApprovalDialog({
             ) : (
               <Check data-icon="inline-start" aria-hidden="true" />
             )}
-            核准
+            {t`Approve`}
           </Button>
         </DialogFooter>
       </DialogContent>

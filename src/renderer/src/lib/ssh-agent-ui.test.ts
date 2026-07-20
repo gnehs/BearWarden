@@ -27,11 +27,11 @@ describe('SSH Agent renderer policy', () => {
 
   it('renders lifecycle states with a conservative status badge', () => {
     expect(sshAgentStatusPresentation(false, { state: 'ready' })).toEqual({
-      label: '未啟用',
+      label: '已停用',
       variant: 'secondary'
     })
     expect(sshAgentStatusPresentation(true, { state: 'ready' })).toEqual({
-      label: '已就緒',
+      label: '就緒',
       variant: 'default'
     })
     expect(sshAgentStatusPresentation(true, { state: 'error' })).toEqual({

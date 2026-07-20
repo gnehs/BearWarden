@@ -37,7 +37,7 @@ describe('itemDropPreviewDescription', () => {
         folders,
         count: 1
       })
-    ).toBe('新增到常用項目')
+    ).toBe('加入我的最愛')
     expect(
       itemDropPreviewDescription({
         overId: quickAccessDropIds.archive,
@@ -64,7 +64,7 @@ describe('itemDropPreviewDescription', () => {
         folders,
         count: 1
       })
-    ).toBe('移動到「工作」')
+    ).toBe('移至「工作」')
     expect(
       itemDropPreviewDescription({
         overId: 'folder:none',
@@ -72,7 +72,7 @@ describe('itemDropPreviewDescription', () => {
         folders,
         count: 2
       })
-    ).toBe('移動 2 個項目到「未分類」')
+    ).toBe('將 2 個項目移至「未分類」')
   })
 
   it('returns no destination text outside a valid drop target', () => {

@@ -3,6 +3,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS, useCombinedRefs } from '@dnd-kit/utilities'
 import NumberFlow from '@number-flow/react'
 import { memo, useEffect, useRef } from 'react'
+import { useLingui } from '@lingui/react/macro'
 import {
   ContactRound,
   CreditCard,
@@ -55,11 +56,11 @@ export interface ItemSelectionModifiers {
 }
 
 const itemTypeMeta = {
-  login: { label: '登入', icon: Globe2 },
-  card: { label: '卡片', icon: CreditCard },
-  identity: { label: '身分資料', icon: ContactRound },
-  secureNote: { label: '安全備註', icon: NotebookPen },
-  sshKey: { label: 'SSH 金鑰', icon: FileKey2 }
+  login: { icon: Globe2 },
+  card: { icon: CreditCard },
+  identity: { icon: ContactRound },
+  secureNote: { icon: NotebookPen },
+  sshKey: { icon: FileKey2 }
 } as const
 
 export const ItemRow = memo(function ItemRow({
@@ -74,12 +75,13 @@ export const ItemRow = memo(function ItemRow({
   totpCodes,
   readOnly = false
 }: ItemRowProps): React.JSX.Element {
+  const { t } = useLingui()
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
     id: item.id,
     disabled: readOnly,
     attributes: {
       role: 'listitem',
-      roleDescription: '可拖曳項目'
+      roleDescription: t`Draggable item`
     }
   })
   const setRowRef = useCombinedRefs(setNodeRef, setActivatorNodeRef)
@@ -206,8 +208,8 @@ export const ItemRow = memo(function ItemRow({
             )}
           >
             {readOnly
-              ? '已刪除的項目'
-              : item.subtitle || item.username || item.uri || '尚未設定摘要'}
+              ? t`Deleted item`
+              : item.subtitle || item.username || item.uri || t`No summary set`}
           </small>
         </span>
         {shouldShowTotpCode && (
@@ -218,10 +220,10 @@ export const ItemRow = memo(function ItemRow({
             )}
             aria-label={
               totpCode
-                ? `驗證碼 ${totpCode.code}，剩餘 ${totpCode.remainingSeconds} 秒`
+                ? t`Authentication code ${totpCode.code}, ${totpCode.remainingSeconds} seconds remaining`
                 : hasTotpResult
-                  ? '驗證碼無法產生'
-                  : '驗證碼產生中'
+                  ? t`Unable to generate authentication code`
+                  : t`Generating authentication code`
             }
           >
             <strong className="font-mono text-[20px] leading-none tracking-[0.12em]">
@@ -254,7 +256,9 @@ export const ItemRow = memo(function ItemRow({
             item.favorite && selected && 'opacity-100'
           )}
           type="button"
-          label={item.favorite ? `將 ${item.name} 從常用項目移除` : `將 ${item.name} 加入常用項目`}
+          label={
+            item.favorite ? t`Remove ${item.name} from favorites` : t`Add ${item.name} to favorites`
+          }
           aria-pressed={item.favorite}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={() => onFavorite(item)}
@@ -281,6 +285,7 @@ export function FolderRow({
   onSelect,
   onEdit
 }: FolderRowProps): React.JSX.Element {
+  const { t } = useLingui()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } =
     useSortable({ id: folder.id })
 
@@ -304,7 +309,7 @@ export function FolderRow({
         size="icon-sm"
         className="group-hover/folder:text-muted-foreground focus-visible:text-muted-foreground grid h-[30px] w-6 place-items-center border-0 bg-transparent p-0 text-transparent shadow-none hover:bg-transparent hover:shadow-none"
         type="button"
-        label={`重新排列 ${folder.name}`}
+        label={t`Reorder ${folder.name}`}
         {...attributes}
         {...listeners}
       >
@@ -319,14 +324,14 @@ export function FolderRow({
       >
         <Folder aria-hidden="true" />
         <span>{folder.name}</span>
-        <small aria-label={`${count} 個項目`}>{count}</small>
+        <small aria-label={t`${count} items`}>{count}</small>
       </Button>
       <RowIconButton
         variant="ghost"
         size="icon-sm"
         className="group-hover/folder:text-muted-foreground focus-visible:text-muted-foreground grid h-[30px] w-6 place-items-center border-0 bg-transparent p-0 text-transparent shadow-none hover:bg-transparent hover:shadow-none"
         type="button"
-        label={`編輯資料夾 ${folder.name}`}
+        label={t`Edit folder ${folder.name}`}
         onClick={onEdit}
       >
         <MoreHorizontal aria-hidden="true" />

@@ -1,5 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useLingui } from '@lingui/react/macro'
 import type { LoginSummary, TotpCodeView } from '../../../shared/vault-contract'
 import { cn } from '@renderer/lib/utils'
 import { adjacentItemIndex } from '@renderer/lib/item-selection'
@@ -60,6 +61,7 @@ export function VirtualizedItemList({
   readOnly = false,
   className
 }: VirtualizedItemListProps): React.JSX.Element {
+  const { t } = useLingui()
   const scrollElementRef = useRef<HTMLDivElement>(null)
   const focusAnimationFrameRef = useRef<number | null>(null)
   const previousVisibleItemIdsRef = useRef(new Set<string>())
@@ -211,7 +213,7 @@ export function VirtualizedItemList({
         'scroll-fade-y forced-colors:scroll-fade-none relative m-0 min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] list-none overflow-auto px-4 pb-6',
         className
       )}
-      aria-label={`${scopeTitle}密碼庫項目`}
+      aria-label={t`${scopeTitle} vault items`}
     >
       <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
         {virtualItems.map((virtualRow) => {
@@ -244,7 +246,7 @@ export function VirtualizedItemList({
               key={virtualRow.key}
               className="m-0 list-none p-0 [&:has(+_[data-item-row-list]_>_[data-item-row][data-selected=true])_>_[data-item-row]]:border-b-transparent [&:has(>_[data-item-row][data-selected=true])+_[data-item-row-list]_>_[data-item-row][data-selected=true]]:rounded-t-none [&:has(>_[data-item-row][data-selected=true]):has(+_[data-item-row-list]_>_[data-item-row][data-selected=true])_>_[data-item-row][data-selected=true]]:rounded-b-none [&:has([data-item-row-main]:focus-visible)]:z-1"
               data-item-row-list=""
-              aria-label={`${row.groupLabel ?? scopeTitle}項目`}
+              aria-label={t`${row.groupLabel ?? scopeTitle} items`}
               style={position}
             >
               <ItemRow

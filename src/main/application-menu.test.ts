@@ -46,7 +46,7 @@ describe('installApplicationMenu', () => {
     expect(template[0]?.role).toBe('appMenu')
     const vaultMenu = menuEntry(template, 'vault-menu')
     const lockItem = menuEntry(vaultMenu.submenu ?? [], 'vault-menu-lock')
-    expect(lockItem.label).toBe('鎖定')
+    expect(lockItem.label).toBe('Lock')
     expect(lockItem.accelerator).toBe('CommandOrControl+L')
 
     lockItem.click?.()

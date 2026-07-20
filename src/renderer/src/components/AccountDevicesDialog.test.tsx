@@ -73,9 +73,9 @@ describe('AccountDevicesDialog session deauthorization boundary', () => {
 
     expect(deauthorizationRequest).toEqual({ masterPassword: '', confirmation: '', confirm: true })
     expect(lease.current).toBe(false)
-    expect(deauthorizeSessionsError(original)).toContain('結果無法判定')
+    expect(deauthorizeSessionsError(original)).toContain('結果不明')
     expect(deauthorizeSessionsError(original)).toContain('可能已成功')
-    expect(deauthorizeSessionsError(original)).toContain('不要直接重試')
+    expect(deauthorizeSessionsError(original)).toContain('重試前')
   })
 
   it('does not expose backend detail and requires fresh proof after a password failure', () => {
@@ -84,7 +84,7 @@ describe('AccountDevicesDialog session deauthorization boundary', () => {
     )
 
     expect(message).toContain('主密碼驗證失敗')
-    expect(message).toContain('重新輸入')
+    expect(message).toContain('再次輸入')
     expect(message).not.toContain('sensitive server detail')
   })
 
@@ -103,12 +103,12 @@ describe('AccountDevicesDialog session deauthorization boundary', () => {
       </form>
     )
 
-    expect(markup).toContain('包含目前裝置')
+    expect(markup).toContain('這包括目前裝置')
     expect(markup).toContain('重新登入')
-    expect(markup).toContain('雙重驗證')
-    expect(markup).toContain('最長約一小時')
-    expect(markup).toContain('保留這台電腦上的本機加密 vault')
-    expect(markup).toContain(`輸入「${DEAUTHORIZE_SESSIONS_CONFIRMATION}」確認`)
+    expect(markup).toContain('兩步驟登入')
+    expect(markup).toContain('最多可能保持有效一小時')
+    expect(markup).toContain('保留此電腦的本機加密保管庫')
+    expect(markup).toContain(`輸入「${DEAUTHORIZE_SESSIONS_CONFIRMATION}」以確認`)
     expect(markup).toContain('type="password"')
     expect(markup).toContain('maxLength="1024"')
     expect(markup).toContain('disabled=""')
@@ -129,7 +129,9 @@ describe('AccountDevicesDialog session deauthorization boundary', () => {
       </form>
     )
 
-    const destructiveButton = markup.match(/<button[^>]*>.*?取消所有工作階段<\/button>/u)?.[0]
+    const destructiveButton = markup.match(
+      /<button type="submit"[^>]*>.*?取消所有工作階段(?:的授權)?<\/button>/u
+    )?.[0]
     expect(destructiveButton).toBeDefined()
     expect(destructiveButton).not.toContain('disabled=""')
   })

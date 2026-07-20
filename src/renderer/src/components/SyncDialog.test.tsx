@@ -16,7 +16,7 @@ describe('SyncDialog error diagnostics', () => {
   it('renders a safe reason and stable error code for automatic sync failures', () => {
     const markup = renderToStaticMarkup(<SyncFailureAlert code="SYNC_NETWORK" />)
 
-    expect(markup).toContain('無法連線到同步伺服器')
+    expect(markup).toContain('無法連線至同步伺服器')
     expect(markup).toContain('錯誤代碼：SYNC_NETWORK')
   })
 
@@ -25,7 +25,7 @@ describe('SyncDialog error diagnostics', () => {
       <SyncFailureAlert code="SYNC_INVALID_RESPONSE" detail="cipher" />
     )
 
-    expect(markup).toContain('問題區段：密碼庫項目資料')
+    expect(markup).toContain('問題區段：保管庫項目資料')
     expect(markup).not.toMatch(/uuid|credential|ciphertext/i)
     expect(syncInvalidResponseStageLabel('organization')).toBe('組織金鑰與成員資料')
   })
@@ -33,12 +33,12 @@ describe('SyncDialog error diagnostics', () => {
   it('maps every public error category without accepting raw connector details', () => {
     expect(syncErrorPresentation('SYNC_INVALID_RESPONSE')).toEqual({
       title: '伺服器回應不相容',
-      description: '伺服器回傳的資料無法安全處理。請確認 Bitwarden 或 Vaultwarden 版本與相容性。'
+      description: '無法安全處理伺服器傳回的資料。請檢查 Bitwarden 或 Vaultwarden 的版本與相容性。'
     })
     expect(syncErrorPresentation('SYNC_INVALID_SSH_KEY')).toEqual({
-      title: '伺服器包含不完整的 SSH Key',
+      title: '伺服器包含不完整的 SSH 金鑰',
       description:
-        'Vaultwarden 回傳了一筆缺少必要金鑰欄位的 SSH Key。請先使用官方 Web Vault 修復或刪除該項目，再重新同步。'
+        'Vaultwarden 回傳的 SSH 金鑰缺少必要的金鑰欄位。請在官方網頁保管庫中修復或刪除該金鑰，然後再次同步。'
     })
   })
 })
@@ -182,12 +182,12 @@ describe('SyncDialog pending import resolution', () => {
       />
     )
 
-    expect(markup).toContain('批次匯入的伺服器結果未知')
-    expect(markup).toContain('這 3 筆項目')
-    expect(markup).toContain('不會自動重送')
-    expect(markup).toContain('可能出現重複項目')
-    expect(markup).toContain('本機密碼庫資料會保留')
-    expect(markup).toContain('我了解風險，允許重新傳送')
+    expect(markup).toContain('此批次匯入的伺服器結果不明')
+    expect(markup).toContain('這 3 個項目')
+    expect(markup).toContain('不會自動重新傳送')
+    expect(markup).toContain('可能會在伺服器上建立重複項目')
+    expect(markup).toContain('本機保管庫資料將會保留')
+    expect(markup).toContain('我了解風險。允許重新傳送')
     expect(markup).toContain('type="password"')
     expect(markup).toContain('maxLength="1024"')
     expect(markup).not.toMatch(/marker|localId/i)

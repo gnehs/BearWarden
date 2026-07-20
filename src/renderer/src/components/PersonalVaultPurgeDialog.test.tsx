@@ -100,8 +100,8 @@ describe('PersonalVaultPurgeDialog warning boundary', () => {
         onTogglePassword={() => undefined}
       />
     )
-    expect(markup).toContain('上次清除的結果未知')
-    expect(markup).toContain('4 個個人物件')
+    expect(markup).toContain('上次清除的結果不明')
+    expect(markup).toContain('伺服器仍有 4 個個人項目和 2 個資料夾')
     expect(markup).toContain('無法確認清除結果')
   })
 
@@ -137,13 +137,13 @@ describe('PersonalVaultPurgeDialog warning boundary', () => {
       />
     )
 
-    expect(markup).toContain('個人物件、資料夾與附件')
-    expect(markup).toContain('垃圾桶與封存項目')
+    expect(markup).toContain('個人項目、資料夾和附件')
+    expect(markup).toContain('垃圾桶及封存項目')
     expect(markup).toContain('無法復原')
-    expect(markup).toContain('共享組織的項目會保留')
-    expect(markup).toContain('建議先匯出備份')
+    expect(markup).toContain('共用的組織項目將保留')
+    expect(markup).toContain('請先匯出備份')
     expect(markup).toContain('遠端主密碼')
-    expect(markup).toContain('輸入 PURGE 確認')
+    expect(markup).toContain('輸入 PURGE 以確認')
     expect(markup).toContain('type="password"')
     expect(markup).toContain('maxLength="1024"')
   })
@@ -167,10 +167,9 @@ describe('PersonalVaultPurgeDialog warning boundary', () => {
       />
     )
 
-    expect(markup).toContain('上次清除的結果未知')
-    expect(markup).toContain('3 個個人物件')
-    expect(markup).toContain('2 個資料夾')
-    expect(markup).toContain('不會自動重送')
+    expect(markup).toContain('上次清除的結果不明')
+    expect(markup).toContain('伺服器仍有 3 個個人項目和 2 個資料夾')
+    expect(markup).toContain('不會自動重新傳送')
     expect(markup).not.toMatch(/journal|marker|localId/iu)
   })
 })

@@ -34,6 +34,7 @@ import { EncryptedVaultStore } from './encrypted-vault-store'
 import { FocusTouchIdUnlockController } from './focus-touch-id-unlock'
 import { installApplicationMenu } from './application-menu'
 import { registerApplicationMenuIpc } from './application-menu-ipc'
+import { initializeMainI18n, translateMain } from './i18n'
 import { windowChromeOptions } from './window-chrome'
 import { registerVaultIpc, RepromptAuthorizationStore } from './vault-ipc'
 import { VaultService } from './vault-service'
@@ -467,8 +468,8 @@ async function handleAuthRequestNotification(
   if (window.isVisible() && window.isFocused()) return
   if (!Notification.isSupported()) return
   const systemNotification = new Notification({
-    title: '收到 Bitwarden 登入要求',
-    body: '另一部裝置要求登入。請開啟 BearWarden 並核對驗證詞組。'
+    title: translateMain('authRequest.title'),
+    body: translateMain('authRequest.body')
   })
   systemNotification.once('click', focusMainWindow)
   systemNotification.show()
@@ -652,6 +653,7 @@ function createWindow(): BrowserWindow {
 
 if (hasSingleInstanceLock)
   app.whenReady().then(async () => {
+    initializeMainI18n(app.getLocale())
     electronApp.setAppUserModelId('com.bearwarden.app')
     if (process.platform === 'darwin' && !app.isPackaged) app.dock?.setIcon(icon)
     session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
@@ -689,9 +691,9 @@ if (hasSingleInstanceLock)
     const attachmentFiles = new VaultAttachmentFileService({
       chooseOpenFile: async () => {
         const options = {
-          title: '上傳附件',
-          buttonLabel: '選擇',
-          filters: [{ name: '所有檔案', extensions: ['*'] }],
+          title: translateMain('attachment.uploadTitle'),
+          buttonLabel: translateMain('attachment.select'),
+          filters: [{ name: translateMain('attachment.allFiles'), extensions: ['*'] }],
           // Preserve macOS aliases so the main-only lstat boundary can reject
           // them instead of silently accepting the resolved target.
           properties: ['openFile' as const, 'noResolveAliases' as const]
@@ -703,10 +705,10 @@ if (hasSingleInstanceLock)
       },
       chooseSavePath: async (defaultName) => {
         const options = {
-          title: '下載附件',
+          title: translateMain('attachment.downloadTitle'),
           defaultPath: defaultName,
-          buttonLabel: '儲存',
-          filters: [{ name: '所有檔案', extensions: ['*'] }],
+          buttonLabel: translateMain('attachment.save'),
+          filters: [{ name: translateMain('attachment.allFiles'), extensions: ['*'] }],
           properties: ['showOverwriteConfirmation' as const]
         }
         const result = mainWindow
@@ -854,20 +856,23 @@ if (hasSingleInstanceLock)
         const csv = defaultName.endsWith('.csv')
         const options = {
           title: zip
-            ? '匯出 Bitwarden 明文附件 ZIP'
+            ? translateMain('export.bitwardenZipTitle')
             : csv
-              ? '匯出 Bitwarden 明文 CSV'
-              : '匯出加密密碼庫',
+              ? translateMain('export.bitwardenCsvTitle')
+              : translateMain('export.encryptedVaultTitle'),
           defaultPath: defaultName,
-          buttonLabel: '匯出',
+          buttonLabel: translateMain('export.button'),
           filters: [
             native
-              ? { name: 'BearWarden 原生附件備份', extensions: ['bwbackup'] }
+              ? {
+                  name: translateMain('export.nativeBackupFilter'),
+                  extensions: ['bwbackup']
+                }
               : zip
-                ? { name: 'Bitwarden ZIP（含附件）', extensions: ['zip'] }
+                ? { name: translateMain('export.bitwardenZipFilter'), extensions: ['zip'] }
                 : csv
-                  ? { name: 'Bitwarden CSV', extensions: ['csv'] }
-                  : { name: 'Bitwarden JSON', extensions: ['json'] }
+                  ? { name: translateMain('export.bitwardenCsvFilter'), extensions: ['csv'] }
+                  : { name: translateMain('export.bitwardenJsonFilter'), extensions: ['json'] }
           ],
           properties: ['showOverwriteConfirmation' as const]
         }
@@ -881,18 +886,23 @@ if (hasSingleInstanceLock)
         const keepass = format === 'keepass-xml'
         const options = {
           title: native
-            ? '還原 BearWarden 原生附件備份'
+            ? translateMain('import.nativeBackupTitle')
             : keepass
-              ? '匯入 KeePass 2 XML'
-              : '匯入 Bitwarden 或 Chrome 密碼資料',
-          buttonLabel: '匯入',
+              ? translateMain('import.keepassTitle')
+              : translateMain('import.passwordDataTitle'),
+          buttonLabel: translateMain('import.button'),
           filters: native
-            ? [{ name: 'BearWarden 原生附件備份', extensions: ['bwbackup'] }]
+            ? [
+                {
+                  name: translateMain('export.nativeBackupFilter'),
+                  extensions: ['bwbackup']
+                }
+              ]
             : keepass
-              ? [{ name: 'KeePass 2 XML', extensions: ['xml'] }]
+              ? [{ name: translateMain('import.keepassFilter'), extensions: ['xml'] }]
               : [
-                  { name: 'Bitwarden JSON', extensions: ['json'] },
-                  { name: 'Bitwarden 或 Chrome CSV', extensions: ['csv'] }
+                  { name: translateMain('export.bitwardenJsonFilter'), extensions: ['json'] },
+                  { name: translateMain('import.passwordCsvFilter'), extensions: ['csv'] }
                 ],
           properties: ['openFile' as const]
         }

@@ -12,6 +12,9 @@ import {
   WifiOff,
   X
 } from 'lucide-react'
+import { i18n } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import type {
@@ -53,7 +56,6 @@ import {
   invalidateAccountBreachCheck,
   resolveAccountBreachCheck,
   resolveExposedPasswordCheck,
-  weakPasswordLabel,
   type AccountBreachCheckState,
   type ExposedPasswordCheckState
 } from '../lib/vault-health-ui'
@@ -115,7 +117,7 @@ export async function openInactiveTwoFactorDocumentation(
       matchedDomain: finding.matchedDomain
     })
   } catch {
-    toast.error('無法開啟雙因素驗證設定說明')
+    toast.error(i18n._(msg`Unable to open the two-factor authentication setup instructions`))
   }
 }
 
@@ -131,8 +133,15 @@ function HealthLoading(): React.JSX.Element {
         <EmptyMedia variant="icon">
           <Spinner />
         </EmptyMedia>
-        <EmptyTitle>正在本機分析密碼庫</EmptyTitle>
-        <EmptyDescription>密碼只會留在主程序，不會傳到畫面程序或外部服務。</EmptyDescription>
+        <EmptyTitle>
+          <Trans>Analyzing the vault locally</Trans>
+        </EmptyTitle>
+        <EmptyDescription>
+          <Trans>
+            Passwords remain in the main process and are never sent to the renderer process or an
+            external service.
+          </Trans>
+        </EmptyDescription>
       </EmptyHeader>
     </Empty>
   )
@@ -143,12 +152,13 @@ function HealthEmpty({
 }: {
   kind: Exclude<HealthTab, 'exposed' | 'account'>
 }): React.JSX.Element {
+  const { t } = useLingui()
   const copy =
     kind === 'reused'
-      ? ['沒有重複使用的密碼', '目前分析到的登入項目沒有共用相同密碼。']
+      ? [t`No reused passwords`, t`None of the analyzed login items share the same password.`]
       : kind === 'weak'
-        ? ['沒有弱密碼', '目前分析到的登入項目都高於弱密碼門檻。']
-        : ['沒有不安全網站', '有效的個人登入項目都沒有使用 http:// URI。']
+        ? [t`No weak passwords`, t`All analyzed login items are above the weak-password threshold.`]
+        : [t`No unsecured websites`, t`None of the valid personal login items use an http:// URI.`]
   return (
     <Empty className="min-h-56 xl:col-span-2">
       <EmptyHeader>
@@ -173,6 +183,7 @@ function HealthFindingCard({
   status: ReactNode
   onOpen: () => void
 }): React.JSX.Element {
+  const { t } = useLingui()
   return (
     <Card size="sm">
       <CardHeader className="gap-2 has-data-[slot=card-action]:grid-cols-1 sm:has-data-[slot=card-action]:grid-cols-[1fr_auto]">
@@ -184,10 +195,10 @@ function HealthFindingCard({
             variant="ghost"
             size="sm"
             type="button"
-            aria-label={`查看${title}`}
+            aria-label={t`View ${title}`}
             onClick={onOpen}
           >
-            查看
+            <Trans>View</Trans>
             <ChevronRight data-icon="inline-end" />
           </Button>
         </CardAction>
@@ -211,7 +222,9 @@ function HealthResultsHeader({
         <h2 className="text-base font-medium">{title}</h2>
         <p className="text-muted-foreground mt-1 text-sm">{description}</p>
       </div>
-      <Badge variant={count ? 'destructive' : 'secondary'}>{count} 項</Badge>
+      <Badge variant={count ? 'destructive' : 'secondary'}>
+        <Plural value={count} one="# item" other="# items" />
+      </Badge>
     </div>
   )
 }
@@ -223,11 +236,17 @@ function ReusedFindingCard({
   finding: VaultHealthReusedFinding
   onOpenItem: (id: string) => void
 }): React.JSX.Element {
+  const { t } = useLingui()
+  const reuseCount = finding.reuseCount
   return (
     <HealthFindingCard
       title={finding.name}
-      description={finding.subtitle || '登入項目'}
-      status={<Badge variant="destructive">重複 {finding.reuseCount} 次</Badge>}
+      description={finding.subtitle || t`Login item`}
+      status={
+        <Badge variant="destructive">
+          <Plural value={reuseCount} one="Reused # time" other="Reused # times" />
+        </Badge>
+      }
       onOpen={() => onOpenItem(finding.id)}
     />
   )
@@ -240,13 +259,14 @@ function WeakFindingCard({
   finding: VaultHealthWeakFinding
   onOpenItem: (id: string) => void
 }): React.JSX.Element {
+  const { t } = useLingui()
   return (
     <HealthFindingCard
       title={finding.name}
-      description={finding.subtitle || '登入項目'}
+      description={finding.subtitle || t`Login item`}
       status={
         <Badge variant={finding.score <= 1 ? 'destructive' : 'outline'}>
-          {weakPasswordLabel(finding.score)}
+          {finding.score <= 1 ? t`Very weak` : t`Weak`}
         </Badge>
       }
       onOpen={() => onOpenItem(finding.id)}
@@ -261,11 +281,16 @@ function UnsecuredWebsiteFindingCard({
   finding: VaultHealthUnsecuredWebsiteFinding
   onOpenItem: (id: string) => void
 }): React.JSX.Element {
+  const { t } = useLingui()
   return (
     <HealthFindingCard
       title={finding.name}
-      description="至少一個 URI 明確使用 http://"
-      status={<Badge variant="destructive">未加密連線</Badge>}
+      description={t`At least one URI explicitly uses http://`}
+      status={
+        <Badge variant="destructive">
+          <Trans>Unencrypted connection</Trans>
+        </Badge>
+      }
       onOpen={() => onOpenItem(finding.id)}
     />
   )
@@ -278,33 +303,38 @@ function InactiveTwoFactorFindingCard({
   finding: InactiveTwoFactorFinding
   onOpenItem: (id: string) => void
 }): React.JSX.Element {
+  const { t } = useLingui()
+  const findingName = finding.name
+  const matchedDomain = finding.matchedDomain
   return (
     <Card size="sm">
       <CardHeader>
-        <CardTitle>{finding.name}</CardTitle>
-        <CardDescription>2fa.directory 服務：{finding.matchedDomain}</CardDescription>
+        <CardTitle>{findingName}</CardTitle>
+        <CardDescription>
+          <Trans>2fa.directory service: {matchedDomain}</Trans>
+        </CardDescription>
         <CardAction className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
             size="sm"
             type="button"
-            aria-label={`查看${finding.name}`}
+            aria-label={t`View ${findingName}`}
             onClick={() => onOpenItem(finding.id)}
           >
-            查看項目
+            <Trans>View item</Trans>
           </Button>
           {finding.documentationUrl !== null && (
             <Button
               variant="outline"
               size="sm"
               type="button"
-              aria-label={`開啟${finding.name}的雙因素驗證設定說明`}
+              aria-label={t`Open two-factor authentication setup instructions for ${findingName}`}
               onClick={() => {
                 void openInactiveTwoFactorDocumentation(finding)
               }}
             >
               <ExternalLink data-icon="inline-start" />
-              設定說明
+              <Trans>Setup instructions</Trans>
             </Button>
           )}
         </CardAction>
@@ -317,10 +347,15 @@ function InactiveTwoFactorPrivacyNotice(): React.JSX.Element {
   return (
     <Alert>
       <ShieldCheck />
-      <AlertTitle>只在你要求時下載服務清單</AlertTitle>
+      <AlertTitle>
+        <Trans>Download the service list only when requested</Trans>
+      </AlertTitle>
       <AlertDescription>
-        按下檢查後，主程序只會下載 2fa.directory 的靜態 TOTP
-        服務清單並在本機比對；密碼庫網域、URI、密碼與 TOTP 都不會上傳。
+        <Trans>
+          After you start the check, the main process downloads only the static TOTP service list
+          from 2fa.directory and compares it locally. Vault domains, URIs, passwords, and TOTP
+          secrets are never uploaded.
+        </Trans>
       </AlertDescription>
     </Alert>
   )
@@ -333,15 +368,20 @@ function InactiveTwoFactorIdle({ onStart }: { onStart: () => void }): React.JSX.
         <EmptyMedia variant="icon">
           <KeyRound />
         </EmptyMedia>
-        <EmptyTitle>尚未檢查未啟用雙因素驗證的登入項目</EmptyTitle>
+        <EmptyTitle>
+          <Trans>Login items without two-factor authentication have not been checked yet</Trans>
+        </EmptyTitle>
         <EmptyDescription>
-          只有在你按下按鈕後才會載入服務清單；垃圾桶、封存與已有 TOTP 的項目會略過。
+          <Trans>
+            The service list is loaded only after you press the button. Items in the trash, archived
+            items, and items that already have TOTP are skipped.
+          </Trans>
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
         <Button type="button" onClick={onStart}>
           <Search data-icon="inline-start" />
-          檢查雙因素驗證
+          <Trans>Check two-factor authentication</Trans>
         </Button>
       </EmptyContent>
     </Empty>
@@ -355,8 +395,14 @@ function InactiveTwoFactorLoading(): React.JSX.Element {
         <EmptyMedia variant="icon">
           <Spinner />
         </EmptyMedia>
-        <EmptyTitle>正在載入 2fa.directory 服務清單</EmptyTitle>
-        <EmptyDescription>主程序正在本機比對服務網域，不會上傳任何密碼庫資料。</EmptyDescription>
+        <EmptyTitle>
+          <Trans>Loading the 2fa.directory service list</Trans>
+        </EmptyTitle>
+        <EmptyDescription>
+          <Trans>
+            The main process is comparing service domains locally without uploading any vault data.
+          </Trans>
+        </EmptyDescription>
       </EmptyHeader>
     </Empty>
   )
@@ -366,13 +412,18 @@ function InactiveTwoFactorFailed({ onRetry }: { onRetry: () => void }): React.JS
   return (
     <Alert variant="destructive">
       <WifiOff />
-      <AlertTitle>無法完成雙因素驗證檢查</AlertTitle>
+      <AlertTitle>
+        <Trans>Unable to complete the two-factor authentication check</Trans>
+      </AlertTitle>
       <AlertDescription>
-        2fa.directory 網路、服務清單或回應驗證失敗，本次結果為未知；請稍後重試。
+        <Trans>
+          The 2fa.directory network request, service list, or response validation failed, so this
+          result is unknown. Try again later.
+        </Trans>
       </AlertDescription>
       <AlertAction>
         <Button variant="outline" size="sm" type="button" onClick={onRetry}>
-          重試
+          <Trans>Retry</Trans>
         </Button>
       </AlertAction>
     </Alert>
@@ -386,40 +437,69 @@ function InactiveTwoFactorSuccess({
   report: InactiveTwoFactorReport
   onOpenItem: (id: string) => void
 }): React.JSX.Element {
+  const analyzedCount = report.analyzedCount
+  const findingCount = report.findings.length
+  const excludedTotpCount = report.excludedTotpCount
+  const excludedDeletedCount = report.excludedDeletedCount
+  const excludedArchivedCount = report.excludedArchivedCount
   return (
     <div className="flex flex-col gap-3">
       <div className="grid gap-3 sm:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>本次已分析</CardTitle>
-            <CardDescription>本次檢查納入的有效個人登入項目</CardDescription>
+            <CardTitle>
+              <Trans>Analyzed this time</Trans>
+            </CardTitle>
+            <CardDescription>
+              <Trans>Valid personal login items included in this check</Trans>
+            </CardDescription>
             <CardAction>
-              <Badge variant="secondary">{report.analyzedCount}</Badge>
+              <Badge variant="secondary">{analyzedCount}</Badge>
             </CardAction>
           </CardHeader>
-          <CardContent>服務網域只在本機與靜態清單比對。</CardContent>
+          <CardContent>
+            <Trans>Service domains are compared with the static list only on this device.</Trans>
+          </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>可啟用 TOTP</CardTitle>
-            <CardDescription>服務支援 TOTP，但登入項目尚未設定</CardDescription>
+            <CardTitle>
+              <Trans>TOTP available</Trans>
+            </CardTitle>
+            <CardDescription>
+              <Trans>The service supports TOTP, but the login item is not configured</Trans>
+            </CardDescription>
             <CardAction>
-              <Badge variant={report.findings.length ? 'destructive' : 'secondary'}>
-                {report.findings.length}
-              </Badge>
+              <Badge variant={findingCount ? 'destructive' : 'secondary'}>{findingCount}</Badge>
             </CardAction>
           </CardHeader>
-          <CardContent>可從項目檢視進入編輯流程，或查看服務提供的設定說明。</CardContent>
+          <CardContent>
+            <Trans>
+              Open an item to edit it, or view the setup instructions provided by the service.
+            </Trans>
+          </CardContent>
         </Card>
       </div>
 
       <Alert>
         <ShieldCheck />
-        <AlertTitle>已略過不適用的項目</AlertTitle>
+        <AlertTitle>
+          <Trans>Items that do not apply were skipped</Trans>
+        </AlertTitle>
         <AlertDescription className="flex flex-wrap gap-2">
-          <Badge variant="outline">已有 TOTP {report.excludedTotpCount}</Badge>
-          <Badge variant="outline">垃圾桶 {report.excludedDeletedCount}</Badge>
-          <Badge variant="outline">封存 {report.excludedArchivedCount}</Badge>
+          <Badge variant="outline">
+            <Plural
+              value={excludedTotpCount}
+              one="# already has TOTP"
+              other="# already have TOTP"
+            />
+          </Badge>
+          <Badge variant="outline">
+            <Plural value={excludedDeletedCount} one="# item in trash" other="# items in trash" />
+          </Badge>
+          <Badge variant="outline">
+            <Plural value={excludedArchivedCount} one="# archived item" other="# archived items" />
+          </Badge>
         </AlertDescription>
       </Alert>
 
@@ -437,9 +517,14 @@ function InactiveTwoFactorSuccess({
             <EmptyMedia variant="icon">
               <CheckCircle2 />
             </EmptyMedia>
-            <EmptyTitle>沒有找到尚未設定 TOTP 的支援服務</EmptyTitle>
+            <EmptyTitle>
+              <Trans>No supported services without TOTP were found</Trans>
+            </EmptyTitle>
             <EmptyDescription>
-              本次已分析的登入項目，沒有符合 2fa.directory TOTP 清單且尚未設定 TOTP 的服務。
+              <Trans>
+                None of the analyzed login items matched a service in the 2fa.directory TOTP list
+                that does not yet have TOTP configured.
+              </Trans>
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -480,12 +565,16 @@ function ExposedFindingCard({
   finding: VaultHealthExposedFinding
   onOpenItem: (id: string) => void
 }): React.JSX.Element {
+  const { t } = useLingui()
+  const exposedCount = finding.exposedCount
   return (
     <HealthFindingCard
       title={finding.name}
-      description={finding.subtitle || '登入項目'}
+      description={finding.subtitle || t`Login item`}
       status={
-        <Badge variant="destructive">已知外洩紀錄 {finding.exposedCount.toLocaleString()}</Badge>
+        <Badge variant="destructive">
+          <Plural value={exposedCount} one="# known breach record" other="# known breach records" />
+        </Badge>
       }
       onOpen={() => onOpenItem(finding.id)}
     />
@@ -496,10 +585,16 @@ function ExposedPrivacyNotice(): React.JSX.Element {
   return (
     <Alert>
       <ShieldCheck />
-      <AlertTitle>使用 k-anonymity 保護查詢內容</AlertTitle>
+      <AlertTitle>
+        <Trans>Protect queries with k-anonymity</Trans>
+      </AlertTitle>
       <AlertDescription>
-        BearWarden 只會送出密碼 SHA-1 雜湊的前 5 碼，下載 HIBP Pwned Passwords 的 padded range
-        回應，再由主程序以完整 SHA-1 在本機比對。密碼與完整雜湊都不會傳給 HIBP 或畫面程序。
+        <Trans>
+          BearWarden sends only the first 5 characters of the password SHA-1 hash, downloads the
+          padded range response from HIBP Pwned Passwords, and compares the complete SHA-1 locally
+          in the main process. Neither the password nor the complete hash is sent to HIBP or the
+          renderer process.
+        </Trans>
       </AlertDescription>
     </Alert>
   )
@@ -512,15 +607,20 @@ function ExposedIdle({ onStart }: { onStart: () => void }): React.JSX.Element {
         <EmptyMedia variant="icon">
           <ShieldQuestion />
         </EmptyMedia>
-        <EmptyTitle>尚未檢查已知外洩紀錄</EmptyTitle>
+        <EmptyTitle>
+          <Trans>Known breaches have not been checked yet</Trans>
+        </EmptyTitle>
         <EmptyDescription>
-          這項檢查會連線至 HIBP，只有在你按下按鈕後才會開始，不會因開啟此頁面自動查詢。
+          <Trans>
+            This check connects to HIBP only after you press the button. Opening this page does not
+            start a query automatically.
+          </Trans>
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
         <Button type="button" onClick={onStart}>
           <Search data-icon="inline-start" />
-          檢查外洩密碼
+          <Trans>Check exposed passwords</Trans>
         </Button>
       </EmptyContent>
     </Empty>
@@ -534,15 +634,20 @@ function ExposedLoading({ onCancel }: { onCancel: () => void }): React.JSX.Eleme
         <EmptyMedia variant="icon">
           <Spinner />
         </EmptyMedia>
-        <EmptyTitle>正在查詢 HIBP padded ranges</EmptyTitle>
+        <EmptyTitle>
+          <Trans>Querying HIBP padded ranges</Trans>
+        </EmptyTitle>
         <EmptyDescription>
-          主程序正在逐一比對完整 SHA-1；密碼與完整雜湊不會離開本機。
+          <Trans>
+            The main process is comparing each complete SHA-1. Passwords and complete hashes never
+            leave this device.
+          </Trans>
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
         <Button variant="outline" type="button" onClick={onCancel}>
           <X data-icon="inline-start" />
-          取消檢查
+          <Trans>Cancel check</Trans>
         </Button>
       </EmptyContent>
     </Empty>
@@ -553,13 +658,18 @@ function ExposedFailed({ onRetry }: { onRetry: () => void }): React.JSX.Element 
   return (
     <Alert variant="destructive">
       <WifiOff />
-      <AlertTitle>無法判定是否有外洩密碼</AlertTitle>
+      <AlertTitle>
+        <Trans>Unable to determine whether any passwords were exposed</Trans>
+      </AlertTitle>
       <AlertDescription>
-        HIBP 網路或回應驗證失敗，本次結果為未知；BearWarden 不會因此把任何登入項目標示為安全。
+        <Trans>
+          The HIBP network request or response validation failed, so this result is unknown.
+          BearWarden will not mark any login item as safe because of this failure.
+        </Trans>
       </AlertDescription>
       <AlertAction>
         <Button variant="outline" size="sm" type="button" onClick={onRetry}>
-          重試
+          <Trans>Retry</Trans>
         </Button>
       </AlertAction>
     </Alert>
@@ -573,40 +683,61 @@ function ExposedSuccess({
   report: VaultHealthExposedReport
   onOpenItem: (id: string) => void
 }): React.JSX.Element {
+  const protectedSkippedCount = report.totals.protectedSkippedCount
   return (
     <div className="flex flex-col gap-3">
       <div className="grid gap-3 sm:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>本次已檢查</CardTitle>
-            <CardDescription>未受重新提示保護的有效登入密碼</CardDescription>
+            <CardTitle>
+              <Trans>Checked this time</Trans>
+            </CardTitle>
+            <CardDescription>
+              <Trans>Valid login passwords not protected by master password reprompt</Trans>
+            </CardDescription>
             <CardAction>
               <Badge variant="secondary">{report.totals.analyzedCount}</Badge>
             </CardAction>
           </CardHeader>
-          <CardContent>完整 SHA-1 僅在主程序記憶體中進行比對。</CardContent>
+          <CardContent>
+            <Trans>The complete SHA-1 is compared only in main-process memory.</Trans>
+          </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>找到已知外洩紀錄</CardTitle>
-            <CardDescription>在 HIBP padded range 中完整雜湊相符的登入項目</CardDescription>
+            <CardTitle>
+              <Trans>Known breaches found</Trans>
+            </CardTitle>
+            <CardDescription>
+              <Trans>Login items whose complete hash matched an HIBP padded range</Trans>
+            </CardDescription>
             <CardAction>
               <Badge variant={report.totals.exposedPasswordCount ? 'destructive' : 'secondary'}>
                 {report.totals.exposedPasswordCount}
               </Badge>
             </CardAction>
           </CardHeader>
-          <CardContent>紀錄次數來自 HIBP，並不代表密碼仍在特定網站流通。</CardContent>
+          <CardContent>
+            <Trans>
+              Breach counts come from HIBP and do not mean the password is still circulating on a
+              specific website.
+            </Trans>
+          </CardContent>
         </Card>
       </div>
 
-      {report.totals.protectedSkippedCount > 0 && (
+      {protectedSkippedCount > 0 && (
         <Alert>
           <ShieldCheck />
-          <AlertTitle>受保護項目未送出查詢</AlertTitle>
+          <AlertTitle>
+            <Trans>Protected items were not queried</Trans>
+          </AlertTitle>
           <AlertDescription>
-            {report.totals.protectedSkippedCount} 個啟用主密碼重新提示的登入項目已略過，未建立 SHA-1
-            或發出 HIBP range 查詢。
+            <Plural
+              value={protectedSkippedCount}
+              one="# login item with master password reprompt enabled was skipped without creating a SHA-1 or sending an HIBP range query."
+              other="# login items with master password reprompt enabled were skipped without creating a SHA-1 or sending an HIBP range query."
+            />
           </AlertDescription>
         </Alert>
       )}
@@ -621,9 +752,14 @@ function ExposedSuccess({
             <EmptyMedia variant="icon">
               <CheckCircle2 />
             </EmptyMedia>
-            <EmptyTitle>本次未找到已知外洩紀錄</EmptyTitle>
+            <EmptyTitle>
+              <Trans>No known breaches were found this time</Trans>
+            </EmptyTitle>
             <EmptyDescription>
-              已檢查的完整 SHA-1 沒有出現在 HIBP 回應中；這是本次查詢結果，不代表密碼永遠安全。
+              <Trans>
+                The checked complete SHA-1 hashes did not appear in the HIBP response. This is only
+                the result of the current query and does not mean the passwords will always be safe.
+              </Trans>
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -670,7 +806,7 @@ function HibpWebsiteLink(): React.JSX.Element {
         })
       }}
     >
-      Have I Been Pwned (HIBP)
+      <Trans>Have I Been Pwned (HIBP)</Trans>
     </a>
   )
 }
@@ -679,11 +815,15 @@ function AccountBreachPrivacyNotice(): React.JSX.Element {
   return (
     <Alert>
       <MailSearch />
-      <AlertTitle>完整電子郵件會離開此裝置</AlertTitle>
+      <AlertTitle>
+        <Trans>Your complete email address will leave this device</Trans>
+      </AlertTitle>
       <AlertDescription>
-        只有在你送出查詢後，BearWarden 才會把完整電子郵件傳給已設定的 Vaultwarden
-        server；該伺服器會再將它傳給 <HibpWebsiteLink />
-        。這不是 k-anonymity 密碼檢查，請只查詢你有權檢查的帳號。
+        <Trans>
+          BearWarden sends your complete email address to the configured Vaultwarden server only
+          after you submit a query. That server then sends it to <HibpWebsiteLink />. This is not a
+          k-anonymity password check. Query only accounts you are authorized to check.
+        </Trans>
       </AlertDescription>
     </Alert>
   )
@@ -711,8 +851,12 @@ function AccountBreachForm({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>查詢帳號外洩紀錄</CardTitle>
-        <CardDescription>輸入要透過 Vaultwarden 與 HIBP 查詢的電子郵件。</CardDescription>
+        <CardTitle>
+          <Trans>Search account breaches</Trans>
+        </CardTitle>
+        <CardDescription>
+          <Trans>Enter the email address to query through Vaultwarden and HIBP.</Trans>
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form
@@ -724,7 +868,9 @@ function AccountBreachForm({
         >
           <FieldGroup>
             <Field data-invalid={invalid || undefined} data-disabled={loading || undefined}>
-              <FieldLabel htmlFor="account-breach-email">電子郵件</FieldLabel>
+              <FieldLabel htmlFor="account-breach-email">
+                <Trans>Email address</Trans>
+              </FieldLabel>
               <Input
                 id="account-breach-email"
                 type="email"
@@ -736,10 +882,14 @@ function AccountBreachForm({
                 disabled={loading}
                 onChange={(event) => onEmailChange(event.target.value)}
               />
-              <FieldDescription>完整地址只會在按下「查詢帳號外洩」後送出。</FieldDescription>
+              <FieldDescription>
+                <Trans>
+                  The complete address is sent only after you select “Search account breaches.”
+                </Trans>
+              </FieldDescription>
               {invalid && (
                 <FieldError id="account-breach-email-error">
-                  請輸入有效且不超過 254 個字元的電子郵件地址。
+                  <Trans>Enter a valid email address with no more than 254 characters.</Trans>
                 </FieldError>
               )}
             </Field>
@@ -750,12 +900,12 @@ function AccountBreachForm({
                 ) : (
                   <Search data-icon="inline-start" />
                 )}
-                查詢帳號外洩
+                <Trans>Search account breaches</Trans>
               </Button>
               {loading && (
                 <Button variant="outline" type="button" onClick={onCancel}>
                   <X data-icon="inline-start" />
-                  取消查詢
+                  <Trans>Cancel query</Trans>
                 </Button>
               )}
             </div>
@@ -771,6 +921,13 @@ function AccountBreachFindingCard({
 }: {
   breach: VaultHealthAccountBreachFinding
 }): React.JSX.Element {
+  const { i18n: activeI18n, t } = useLingui()
+  const pwnCount = breach.pwnCount
+  const breachDate = new Date(`${breach.breachDate}T00:00:00.000Z`).toLocaleDateString(
+    activeI18n.locale,
+    { timeZone: 'UTC' }
+  )
+  const addedDate = new Date(breach.addedDate).toLocaleDateString(activeI18n.locale)
   return (
     <Card size="sm">
       <CardHeader>
@@ -778,18 +935,21 @@ function AccountBreachFindingCard({
         <CardDescription>{breach.domain || breach.name}</CardDescription>
         <CardAction className="flex items-center gap-2">
           <Badge variant={breach.isVerified ? 'secondary' : 'outline'}>
-            {breach.isVerified ? '已驗證' : '未驗證'}
+            {breach.isVerified ? t`Verified` : t`Unverified`}
           </Badge>
-          <Badge variant="outline">{breach.pwnCount.toLocaleString()} 筆帳號</Badge>
+          <Badge variant="outline">
+            <Plural value={pwnCount} one="# account" other="# accounts" />
+          </Badge>
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <p className="text-muted-foreground text-sm">
-          外洩日期：{breach.breachDate}；加入 HIBP：
-          {new Date(breach.addedDate).toLocaleDateString()}
+          <Trans>
+            Breach date: {breachDate}; added to HIBP: {addedDate}
+          </Trans>
         </p>
         {breach.dataClasses.length > 0 && (
-          <div className="flex flex-wrap gap-2" aria-label="受影響資料類別">
+          <div className="flex flex-wrap gap-2" aria-label={t`Affected data classes`}>
             {breach.dataClasses.map((dataClass, index) => (
               <Badge key={`${dataClass}-${index}`} variant="outline">
                 {dataClass}
@@ -813,9 +973,13 @@ function AccountBreachResults({
     return (
       <Alert aria-live="polite" aria-busy="true">
         <Spinner />
-        <AlertTitle>正在查詢帳號外洩紀錄</AlertTitle>
+        <AlertTitle>
+          <Trans>Searching account breaches</Trans>
+        </AlertTitle>
         <AlertDescription>
-          完整電子郵件正由已設定的 Vaultwarden server 轉送至 HIBP。
+          <Trans>
+            The configured Vaultwarden server is forwarding the complete email address to HIBP.
+          </Trans>
         </AlertDescription>
       </Alert>
     )
@@ -825,9 +989,14 @@ function AccountBreachResults({
     return (
       <Alert variant="destructive">
         <WifiOff />
-        <AlertTitle>無法判定帳號是否出現在外洩事件</AlertTitle>
+        <AlertTitle>
+          <Trans>Unable to determine whether the account appears in a breach</Trans>
+        </AlertTitle>
         <AlertDescription>
-          Vaultwarden、HIBP 網路或回應驗證失敗，本次結果為未知；這不代表帳號安全。
+          <Trans>
+            The Vaultwarden or HIBP network request or response validation failed, so this result is
+            unknown. This does not mean the account is safe.
+          </Trans>
         </AlertDescription>
       </Alert>
     )
@@ -837,22 +1006,33 @@ function AccountBreachResults({
     return (
       <Alert>
         <ShieldQuestion />
-        <AlertTitle>Vaultwarden 尚未設定 HIBP API key</AlertTitle>
+        <AlertTitle>
+          <Trans>Vaultwarden does not have an HIBP API key configured</Trans>
+        </AlertTitle>
         <AlertDescription>
-          伺服器回傳的是未設定 API key 的提示，不是查詢結果；請由伺服器管理者設定 HIBP API key
-          後再試。
+          <Trans>
+            The server returned a notice that its API key is not configured, not a query result. Ask
+            the server administrator to configure an HIBP API key and try again.
+          </Trans>
         </AlertDescription>
       </Alert>
     )
   }
 
-  return state.report.breaches.length ? (
+  const breachCount = state.report.breaches.length
+
+  return breachCount ? (
     <div className="flex flex-col gap-3">
       <Alert>
         <AlertTriangle />
-        <AlertTitle>找到 {state.report.breaches.length} 個已知外洩事件</AlertTitle>
+        <AlertTitle>
+          <Plural value={breachCount} one="# known breach found" other="# known breaches found" />
+        </AlertTitle>
         <AlertDescription>
-          資料由 <HibpWebsiteLink /> 提供；請依受影響資料與密碼重複使用情況採取行動。
+          <Trans>
+            Data provided by <HibpWebsiteLink />. Take action based on the affected data and whether
+            the password was reused.
+          </Trans>
         </AlertDescription>
       </Alert>
       {state.report.breaches.map((breach) => (
@@ -865,14 +1045,21 @@ function AccountBreachResults({
         <EmptyMedia variant="icon">
           <CheckCircle2 />
         </EmptyMedia>
-        <EmptyTitle>本次未找到已知外洩事件</EmptyTitle>
+        <EmptyTitle>
+          <Trans>No known breaches were found this time</Trans>
+        </EmptyTitle>
         <EmptyDescription>
-          HIBP 沒有回傳此帳號的已知外洩事件；這是本次查詢結果，不代表帳號永遠安全。
+          <Trans>
+            HIBP returned no known breaches for this account. This is only the result of the current
+            query and does not mean the account will always be safe.
+          </Trans>
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
         <p className="text-muted-foreground text-sm">
-          資料來源： <HibpWebsiteLink />
+          <Trans>
+            Data source: <HibpWebsiteLink />
+          </Trans>
         </p>
       </EmptyContent>
     </Empty>
@@ -914,6 +1101,7 @@ export default function VaultHealthPage({
   revision,
   onOpenItem
 }: VaultHealthPageProps): React.JSX.Element {
+  const { t } = useLingui()
   const [tab, setTab] = useState<HealthTab>('reused')
   const [report, setReport] = useState<VaultHealthReport | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1120,6 +1308,7 @@ export default function VaultHealthPage({
     accountBreachState.revision === revision
       ? accountBreachState
       : createAccountBreachIdleState(revision)
+  const protectedSkippedCount = report?.totals.protectedSkippedCount ?? 0
 
   return (
     <section className="flex min-h-0 flex-1 flex-col" aria-labelledby="health-title">
@@ -1133,7 +1322,7 @@ export default function VaultHealthPage({
               <ShieldCheck />
             </span>
             <h1 id="health-title" className="min-w-0 text-2xl font-semibold tracking-tight">
-              密碼庫健康報告
+              <Trans>Vault health report</Trans>
             </h1>
           </div>
           <div className="sm:self-center">
@@ -1148,7 +1337,7 @@ export default function VaultHealthPage({
               ) : (
                 <RefreshCw data-icon="inline-start" />
               )}
-              重新分析
+              <Trans>Analyze again</Trans>
             </Button>
           </div>
         </div>
@@ -1159,11 +1348,15 @@ export default function VaultHealthPage({
           {failed && (
             <Alert variant="destructive">
               <AlertTriangle />
-              <AlertTitle>無法產生健康報告</AlertTitle>
-              <AlertDescription>請確認密碼庫仍為解鎖狀態，再重新分析。</AlertDescription>
+              <AlertTitle>
+                <Trans>Unable to generate the health report</Trans>
+              </AlertTitle>
+              <AlertDescription>
+                <Trans>Make sure the vault is still unlocked, then analyze it again.</Trans>
+              </AlertDescription>
               <AlertAction>
                 <Button variant="outline" size="sm" type="button" onClick={() => void loadReport()}>
-                  重試
+                  <Trans>Retry</Trans>
                 </Button>
               </AlertAction>
             </Alert>
@@ -1180,7 +1373,9 @@ export default function VaultHealthPage({
             >
               <Card size="sm" className="lg:sticky lg:top-0">
                 <CardHeader>
-                  <CardTitle id="health-checks-title">檢查項目</CardTitle>
+                  <CardTitle id="health-checks-title">
+                    <Trans>Checks</Trans>
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <TabsList
@@ -1192,28 +1387,28 @@ export default function VaultHealthPage({
                       value="reused"
                       className="min-h-9 px-2 group-data-vertical/tabs:justify-between"
                     >
-                      重複密碼
+                      <Trans>Reused passwords</Trans>
                       <Badge variant="secondary">{report.totals.reusedPasswordCount}</Badge>
                     </TabsTrigger>
                     <TabsTrigger
                       value="weak"
                       className="min-h-9 px-2 group-data-vertical/tabs:justify-between"
                     >
-                      弱密碼
+                      <Trans>Weak passwords</Trans>
                       <Badge variant="secondary">{report.totals.weakPasswordCount}</Badge>
                     </TabsTrigger>
                     <TabsTrigger
                       value="unsecured"
                       className="min-h-9 px-2 group-data-vertical/tabs:justify-between"
                     >
-                      不安全網站
+                      <Trans>Unsecured websites</Trans>
                       <Badge variant="secondary">{report.totals.unsecuredWebsiteCount}</Badge>
                     </TabsTrigger>
                     <TabsTrigger
                       value="inactive-two-factor"
                       className="min-h-9 px-2 group-data-vertical/tabs:justify-between"
                     >
-                      未啟用雙因素驗證
+                      <Trans>Two-factor authentication not enabled</Trans>
                       {visibleInactiveTwoFactorState.status === 'loading' ? (
                         <Spinner />
                       ) : visibleInactiveTwoFactorState.status === 'success' ? (
@@ -1227,14 +1422,16 @@ export default function VaultHealthPage({
                           {visibleInactiveTwoFactorState.report.findings.length}
                         </Badge>
                       ) : visibleInactiveTwoFactorState.status === 'failed' ? (
-                        <Badge variant="outline">未知</Badge>
+                        <Badge variant="outline">
+                          <Trans>Unknown</Trans>
+                        </Badge>
                       ) : null}
                     </TabsTrigger>
                     <TabsTrigger
                       value="exposed"
                       className="min-h-9 px-2 group-data-vertical/tabs:justify-between"
                     >
-                      外洩密碼
+                      <Trans>Exposed passwords</Trans>
                       {visibleExposedState.status === 'loading' ? (
                         <Spinner />
                       ) : visibleExposedState.status === 'success' ? (
@@ -1248,14 +1445,16 @@ export default function VaultHealthPage({
                           {visibleExposedState.report.totals.exposedPasswordCount}
                         </Badge>
                       ) : visibleExposedState.status === 'failed' ? (
-                        <Badge variant="outline">未知</Badge>
+                        <Badge variant="outline">
+                          <Trans>Unknown</Trans>
+                        </Badge>
                       ) : null}
                     </TabsTrigger>
                     <TabsTrigger
                       value="account"
                       className="min-h-9 px-2 group-data-vertical/tabs:justify-between"
                     >
-                      帳號外洩
+                      <Trans>Account breaches</Trans>
                       {visibleAccountBreachState.status === 'loading' ? (
                         <Spinner />
                       ) : visibleAccountBreachState.status === 'success' ? (
@@ -1269,9 +1468,13 @@ export default function VaultHealthPage({
                           {visibleAccountBreachState.report.breaches.length}
                         </Badge>
                       ) : visibleAccountBreachState.status === 'unavailable' ? (
-                        <Badge variant="outline">未設定</Badge>
+                        <Badge variant="outline">
+                          <Trans>Not configured</Trans>
+                        </Badge>
                       ) : visibleAccountBreachState.status === 'failed' ? (
-                        <Badge variant="outline">未知</Badge>
+                        <Badge variant="outline">
+                          <Trans>Unknown</Trans>
+                        </Badge>
                       ) : null}
                     </TabsTrigger>
                   </TabsList>
@@ -1279,21 +1482,26 @@ export default function VaultHealthPage({
               </Card>
 
               <div className="flex min-w-0 flex-col gap-5">
-                {report.totals.protectedSkippedCount > 0 && (
+                {protectedSkippedCount > 0 && (
                   <Alert>
                     <ShieldCheck />
-                    <AlertTitle>受保護項目未分析</AlertTitle>
+                    <AlertTitle>
+                      <Trans>Protected items were not analyzed</Trans>
+                    </AlertTitle>
                     <AlertDescription>
-                      {report.totals.protectedSkippedCount}{' '}
-                      個啟用主密碼重新提示的登入項目已略過，避免健康標籤洩漏受保護內容的特徵。
+                      <Plural
+                        value={protectedSkippedCount}
+                        one="# login item with master password reprompt enabled was skipped to prevent health labels from revealing characteristics of protected content."
+                        other="# login items with master password reprompt enabled were skipped to prevent health labels from revealing characteristics of protected content."
+                      />
                     </AlertDescription>
                   </Alert>
                 )}
 
                 <TabsContent value="reused" className="grid gap-3 xl:grid-cols-2">
                   <HealthResultsHeader
-                    title="重複使用的登入項目"
-                    description="優先替共用次數較多的項目建立獨立密碼。"
+                    title={t`Login items with reused passwords`}
+                    description={t`Create unique passwords for the most frequently reused items first.`}
                     count={report.totals.reusedPasswordCount}
                   />
                   {report.reusedPasswords.length ? (
@@ -1310,8 +1518,8 @@ export default function VaultHealthPage({
                 </TabsContent>
                 <TabsContent value="weak" className="grid gap-3 xl:grid-cols-2">
                   <HealthResultsHeader
-                    title="容易猜中的密碼"
-                    description="建議改用由密碼產生器建立的長密碼。"
+                    title={t`Easy-to-guess passwords`}
+                    description={t`Use long passwords created by the password generator instead.`}
                     count={report.totals.weakPasswordCount}
                   />
                   {report.weakPasswords.length ? (
@@ -1324,8 +1532,8 @@ export default function VaultHealthPage({
                 </TabsContent>
                 <TabsContent value="unsecured" className="grid gap-3 xl:grid-cols-2">
                   <HealthResultsHeader
-                    title="未加密連線"
-                    description="確認服務是否提供 HTTPS，並更新儲存的網站位址。"
+                    title={t`Unencrypted connections`}
+                    description={t`Check whether the service offers HTTPS and update the saved website address.`}
                     count={report.totals.unsecuredWebsiteCount}
                   />
                   {report.unsecuredWebsites.length ? (

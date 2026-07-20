@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Eye, EyeOff, FolderInput, History, KeyRound, X } from 'lucide-react'
+import { plural } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import type {
   FolderView,
   PasswordHistoryEntryRequest,
@@ -59,6 +61,7 @@ export function Modal({
   busy = false,
   onClose
 }: ModalProps): React.JSX.Element {
+  const { t } = useLingui()
   const [open, setOpen] = useState(true)
 
   return (
@@ -87,7 +90,7 @@ export function Modal({
                 variant="ghost"
                 size="icon-sm"
                 type="button"
-                aria-label="關閉"
+                aria-label={t`Close`}
                 disabled={busy}
               />
             }
@@ -116,6 +119,7 @@ export function FolderDialog({
   onSave,
   onDelete
 }: FolderDialogProps): React.JSX.Element {
+  const { t } = useLingui()
   const submittingRef = useRef(false)
   const [name, setName] = useState(folder?.name ?? '')
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -126,7 +130,7 @@ export function FolderDialog({
     if (busy || submittingRef.current) return
     const nextName = name.trim()
     if (!nextName) {
-      setError('請輸入資料夾名稱。')
+      setError(t`Enter a folder name.`)
       return
     }
     setError('')
@@ -140,15 +144,17 @@ export function FolderDialog({
 
   return (
     <Modal
-      title={folder ? '編輯資料夾' : '新增資料夾'}
-      description="資料夾只會整理你的項目，不會改變其中的登入資料。"
+      title={folder ? t`Edit folder` : t`Add folder`}
+      description={t`Folders organize your items without changing their login details.`}
       busy={busy}
       onClose={onClose}
     >
       <form onSubmit={submit}>
         <ModalBody>
           <Field data-invalid={Boolean(error)}>
-            <FieldLabel htmlFor="folder-name">名稱</FieldLabel>
+            <FieldLabel htmlFor="folder-name">
+              <Trans>Name</Trans>
+            </FieldLabel>
             <Input
               id="folder-name"
               autoFocus
@@ -176,20 +182,22 @@ export function FolderDialog({
                 }}
               >
                 <AlertDialogTrigger render={<Button type="button" variant="ghost" />}>
-                  刪除
+                  <Trans>Delete</Trans>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
                     <AlertDialogMedia>
                       <AlertTriangle aria-hidden="true" />
                     </AlertDialogMedia>
-                    <AlertDialogTitle>刪除「{folder.name}」？</AlertDialogTitle>
+                    <AlertDialogTitle>{t`Delete “${folder.name}”?`}</AlertDialogTitle>
                     <AlertDialogDescription>
-                      其中的項目會移到「未分類」，不會被刪除。
+                      <Trans>Its items will move to Unfiled and will not be deleted.</Trans>
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel disabled={busy}>返回</AlertDialogCancel>
+                    <AlertDialogCancel disabled={busy}>
+                      <Trans>Back</Trans>
+                    </AlertDialogCancel>
                     <AlertDialogAction
                       variant="destructive"
                       type="button"
@@ -197,7 +205,7 @@ export function FolderDialog({
                       onClick={onDelete}
                     >
                       {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
-                      刪除資料夾
+                      <Trans>Delete folder</Trans>
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -206,11 +214,11 @@ export function FolderDialog({
           </div>
           <ModalActionGroup>
             <DialogClose render={<Button variant="secondary" type="button" disabled={busy} />}>
-              取消
+              <Trans>Cancel</Trans>
             </DialogClose>
             <Button type="submit" disabled={busy}>
               {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
-              儲存
+              <Trans>Save</Trans>
             </Button>
           </ModalActionGroup>
         </ModalFooter>
@@ -238,22 +246,28 @@ export function MoveDialog({
   onClose,
   onMove
 }: MoveDialogProps): React.JSX.Element {
+  const { t } = useLingui()
   const submittingRef = useRef(false)
   const [folderId, setFolderId] = useState<string | null>(
     currentFolderId === undefined ? null : (currentFolderId ?? '')
   )
   const folderItems = [
-    { label: '未分類', value: '' },
+    { label: t`Unfiled`, value: '' },
     ...folders.map((folder) => ({ label: folder.name, value: folder.id }))
   ]
 
   return (
     <Modal
-      title="移動至資料夾"
+      title={t`Move to folder`}
       description={
         itemCount > 1
-          ? `選擇這 ${itemCount} 個項目的新位置。這是拖放操作的鍵盤替代方式。`
-          : `選擇「${itemName}」的新位置。這是拖放操作的鍵盤替代方式。`
+          ? t({
+              message: plural(itemCount, {
+                one: `Choose a new location for # item. This is a keyboard alternative to drag and drop.`,
+                other: `Choose a new location for # items. This is a keyboard alternative to drag and drop.`
+              })
+            })
+          : t`Choose a new location for “${itemName}”. This is a keyboard alternative to drag and drop.`
       }
       busy={busy}
       onClose={onClose}
@@ -279,7 +293,9 @@ export function MoveDialog({
               <FolderInput />
             </span>
             <Field className="min-w-0">
-              <FieldLabel htmlFor="move-folder">資料夾</FieldLabel>
+              <FieldLabel htmlFor="move-folder">
+                <Trans>Folder</Trans>
+              </FieldLabel>
               <Select
                 items={folderItems}
                 value={folderId}
@@ -287,7 +303,7 @@ export function MoveDialog({
                 disabled={busy}
               >
                 <SelectTrigger id="move-folder" autoFocus className="w-full">
-                  <SelectValue placeholder="選擇資料夾" />
+                  <SelectValue placeholder={t`Choose a folder`} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
@@ -303,11 +319,11 @@ export function MoveDialog({
           </ModalBody>
           <ModalFooter>
             <DialogClose render={<Button variant="secondary" type="button" disabled={busy} />}>
-              取消
+              <Trans>Cancel</Trans>
             </DialogClose>
             <Button type="submit" disabled={busy}>
               {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
-              移動
+              <Trans>Move</Trans>
             </Button>
           </ModalFooter>
         </form>
@@ -331,6 +347,7 @@ export function DeleteLoginDialog({
   onClose,
   onDelete
 }: DeleteLoginDialogProps): React.JSX.Element {
+  const { t } = useLingui()
   return (
     <AlertDialog
       open
@@ -344,19 +361,21 @@ export function DeleteLoginDialog({
             <AlertTriangle aria-hidden="true" />
           </AlertDialogMedia>
           <AlertDialogTitle>
-            {permanent ? `永久刪除「${itemName}」？` : `將「${itemName}」移至垃圾桶？`}
+            {permanent ? t`Permanently delete “${itemName}”?` : t`Move “${itemName}” to the trash?`}
           </AlertDialogTitle>
           <AlertDialogDescription>
             {permanent
-              ? '這個動作無法復原。BearWarden 不會保留可復原的明文副本。'
-              : '項目會保留在加密的垃圾桶中，之後仍可還原。'}
+              ? t`This action cannot be undone. BearWarden does not retain a recoverable plaintext copy.`
+              : t`The item remains in the encrypted trash and can be restored later.`}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
+          <AlertDialogCancel disabled={busy}>
+            <Trans>Cancel</Trans>
+          </AlertDialogCancel>
           <AlertDialogAction variant="destructive" type="button" disabled={busy} onClick={onDelete}>
             {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
-            {permanent ? '永久刪除' : '移至垃圾桶'}
+            {permanent ? <Trans>Permanently delete</Trans> : <Trans>Move to trash</Trans>}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -377,14 +396,15 @@ export function RepromptDialog({
   onCancel,
   onAuthorize
 }: RepromptDialogProps): React.JSX.Element {
+  const { t } = useLingui()
   const passwordRef = useRef<HTMLInputElement>(null)
   const submittingRef = useRef(false)
   const [error, setError] = useState('')
 
   return (
     <Modal
-      title="需要主密碼"
-      description={`「${itemName}」已啟用主密碼重新提示。`}
+      title={t`Master password required`}
+      description={t`“${itemName}” requires master password reprompt.`}
       busy={busy}
       onClose={onCancel}
     >
@@ -396,7 +416,7 @@ export function RepromptDialog({
           const masterPassword = input?.value ?? ''
           if (input) input.value = ''
           if (!masterPassword) {
-            setError('請輸入主密碼。')
+            setError(t`Enter your master password.`)
             return
           }
           submittingRef.current = true
@@ -407,8 +427,8 @@ export function RepromptDialog({
             setError(
               authorizeError instanceof Error &&
                 authorizeError.message.includes('INVALID_MASTER_PASSWORD')
-                ? '主密碼不正確。'
-                : '無法驗證主密碼，請再試一次。'
+                ? t`Incorrect master password.`
+                : t`Unable to verify the master password. Try again.`
             )
             queueMicrotask(() => passwordRef.current?.focus())
           } finally {
@@ -424,7 +444,9 @@ export function RepromptDialog({
             <KeyRound />
           </span>
           <Field className="min-w-0" data-invalid={Boolean(error)}>
-            <FieldLabel htmlFor="reprompt-master-password">主密碼</FieldLabel>
+            <FieldLabel htmlFor="reprompt-master-password">
+              <Trans>Master password</Trans>
+            </FieldLabel>
             <Input
               ref={passwordRef}
               id="reprompt-master-password"
@@ -444,11 +466,11 @@ export function RepromptDialog({
         </ModalBody>
         <ModalFooter>
           <Button type="button" variant="secondary" disabled={busy} onClick={onCancel}>
-            取消
+            <Trans>Cancel</Trans>
           </Button>
           <Button type="submit" disabled={busy}>
             {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
-            驗證
+            <Trans>Verify</Trans>
           </Button>
         </ModalFooter>
       </form>
@@ -497,6 +519,7 @@ export function PasswordHistoryDialog({
   onReveal,
   onCopy
 }: PasswordHistoryDialogProps): React.JSX.Element {
+  const { i18n, t } = useLingui()
   const [history, setHistory] = useState<VaultPasswordHistoryView | null>(null)
   const [loading, setLoading] = useState(true)
   const [revealedValues, setRevealedValues] = useState<Record<string, string>>({})
@@ -537,13 +560,13 @@ export function PasswordHistoryDialog({
         })
         .catch(() => {
           if (!mountedRef.current) return
-          setError('無法讀取密碼歷史，請再試一次。')
+          setError(t`Unable to read password history. Try again.`)
         })
         .finally(() => {
           if (mountedRef.current) setLoading(false)
         })
     },
-    [onLoad]
+    [onLoad, t]
   )
 
   useEffect(() => {
@@ -618,7 +641,8 @@ export function PasswordHistoryDialog({
         }, 30_000)
       )
     } catch {
-      if (mountedRef.current) setError('無法顯示這筆歷史，項目可能已在其他地方變更。')
+      if (mountedRef.current)
+        setError(t`Unable to display this history entry. The item may have changed elsewhere.`)
     } finally {
       if (mountedRef.current) {
         setRevealing((current) => {
@@ -644,7 +668,8 @@ export function PasswordHistoryDialog({
         setCopiedKey(null)
       }, 2_000)
     } catch {
-      if (mountedRef.current) setError('無法複製這筆歷史，項目可能已在其他地方變更。')
+      if (mountedRef.current)
+        setError(t`Unable to copy this history entry. The item may have changed elsewhere.`)
     } finally {
       if (mountedRef.current) {
         setCopying((current) => {
@@ -661,8 +686,13 @@ export function PasswordHistoryDialog({
 
   return (
     <Modal
-      title="密碼歷史"
-      description={`「${itemName}」有 ${count} 筆歷史紀錄。`}
+      title={t`Password history`}
+      description={t({
+        message: plural(count, {
+          one: `“${itemName}” has # history entry.`,
+          other: `“${itemName}” has # history entries.`
+        })
+      })}
       onClose={closeDialog}
     >
       <ModalBody className="flex flex-col gap-3">
@@ -680,7 +710,7 @@ export function PasswordHistoryDialog({
             className="blur-0 absolute inset-0 z-1 flex flex-col gap-2 overflow-hidden opacity-100 transition-[opacity,filter] duration-[var(--reveal-dur)] ease-[var(--reveal-ease)] motion-reduce:!transition-none data-[pulsing=true]:[&>*]:animate-[pulse_var(--pulse-dur)_ease-in-out_var(--pulse-count)] motion-reduce:data-[pulsing=true]:[&>*]:!animate-none"
             data-pulsing="true"
             role="status"
-            aria-label="正在載入密碼歷史"
+            aria-label={t`Loading password history`}
             aria-hidden={!loading}
           >
             {Array.from({ length: skeletonRowCount }, (_, index) => (
@@ -712,11 +742,15 @@ export function PasswordHistoryDialog({
                       <Card size="sm">
                         <CardHeader>
                           <CardTitle>
-                            {new Date(entry.lastUsedDate).toLocaleString('zh-TW')}
+                            {new Date(entry.lastUsedDate).toLocaleString(i18n.locale)}
                           </CardTitle>
                           <CardAction className="flex gap-1">
                             <PasswordHistoryIconButton
-                              label={isRevealed ? '隱藏這筆歷史密碼' : '顯示這筆歷史密碼'}
+                              label={
+                                isRevealed
+                                  ? t`Hide this historical password`
+                                  : t`Show this historical password`
+                              }
                               aria-pressed={isRevealed}
                               disabled={rowBusy}
                               onClick={() => void toggleReveal(index, entry.lastUsedDate)}
@@ -730,7 +764,9 @@ export function PasswordHistoryDialog({
                               )}
                             </PasswordHistoryIconButton>
                             <PasswordHistoryIconButton
-                              label={copiedKey === key ? '已複製' : '複製這筆歷史密碼'}
+                              label={
+                                copiedKey === key ? t`Copied` : t`Copy this historical password`
+                              }
                               disabled={rowBusy}
                               onClick={() => void copyEntry(index, entry.lastUsedDate)}
                             >
@@ -751,7 +787,9 @@ export function PasswordHistoryDialog({
                                 <code className="text-sm" aria-hidden="true">
                                   ••••••••••••
                                 </code>
-                                <span className="sr-only">歷史密碼已遮蔽</span>
+                                <span className="sr-only">
+                                  <Trans>Historical password is masked</Trans>
+                                </span>
                               </>
                             )}
                           </div>
@@ -768,8 +806,12 @@ export function PasswordHistoryDialog({
                   <EmptyMedia variant="icon">
                     <History aria-hidden="true" />
                   </EmptyMedia>
-                  <EmptyTitle>沒有密碼歷史</EmptyTitle>
-                  <EmptyDescription>目前沒有可顯示的歷史紀錄。</EmptyDescription>
+                  <EmptyTitle>
+                    <Trans>No password history</Trans>
+                  </EmptyTitle>
+                  <EmptyDescription>
+                    <Trans>There are no history entries to display.</Trans>
+                  </EmptyDescription>
                 </EmptyHeader>
               </Empty>
             )}
@@ -785,7 +827,7 @@ export function PasswordHistoryDialog({
                       size="sm"
                       onClick={() => loadHistory(true)}
                     >
-                      重新載入
+                      <Trans>Reload</Trans>
                     </Button>
                   </AlertAction>
                 )}
@@ -796,7 +838,7 @@ export function PasswordHistoryDialog({
       </ModalBody>
       <ModalFooter>
         <Button type="button" variant="secondary" onClick={closeDialog}>
-          關閉
+          <Trans>Close</Trans>
         </Button>
       </ModalFooter>
     </Modal>

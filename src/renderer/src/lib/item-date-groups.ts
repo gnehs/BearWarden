@@ -1,9 +1,12 @@
+import { msg } from '@lingui/core/macro'
+import { i18n } from '../i18n'
+
 /** The date buckets used by the vault list. */
 export type ItemDateGroupKey = 'today' | 'yesterday' | 'thisWeek' | 'older'
 
 export interface ItemDateGroup<T> {
   key: ItemDateGroupKey
-  label: '今天' | '昨天' | '本週' | '較早'
+  label: string
   items: T[]
 }
 
@@ -15,12 +18,25 @@ export interface ItemDateFields {
 
 export type ItemDateSource = 'activity' | 'updatedAt'
 
-const GROUP_DEFINITIONS: ReadonlyArray<Pick<ItemDateGroup<never>, 'key' | 'label'>> = [
-  { key: 'today', label: '今天' },
-  { key: 'yesterday', label: '昨天' },
-  { key: 'thisWeek', label: '本週' },
-  { key: 'older', label: '較早' }
+const GROUP_DEFINITIONS: ReadonlyArray<Pick<ItemDateGroup<never>, 'key'>> = [
+  { key: 'today' },
+  { key: 'yesterday' },
+  { key: 'thisWeek' },
+  { key: 'older' }
 ]
+
+function itemDateGroupLabel(key: ItemDateGroupKey): string {
+  switch (key) {
+    case 'today':
+      return i18n._(msg`Today`)
+    case 'yesterday':
+      return i18n._(msg`Yesterday`)
+    case 'thisWeek':
+      return i18n._(msg`This week`)
+    case 'older':
+      return i18n._(msg`Earlier`)
+  }
+}
 
 function startOfLocalDay(value: Date): Date {
   return new Date(value.getFullYear(), value.getMonth(), value.getDate())
@@ -66,7 +82,7 @@ function groupKeyForDate(value: Date | null, now: Date): ItemDateGroupKey {
 /**
  * Groups items into calendar buckets without sorting them.
  *
- * The returned groups always follow the order 今天、昨天、本週、較早 and
+ * The returned groups always follow the order Today, Yesterday, This Week, Earlier and
  * include empty groups so callers can render a consistent section structure.
  * `now` is injectable to keep callers and tests deterministic.
  */
@@ -82,9 +98,9 @@ export function groupItemsByDate<T extends ItemDateFields>(
     groups.get(groupKeyForDate(parseItemDate(item, source), now))?.push(item)
   }
 
-  return GROUP_DEFINITIONS.map(({ key, label }) => ({
+  return GROUP_DEFINITIONS.map(({ key }) => ({
     key,
-    label,
+    label: itemDateGroupLabel(key),
     items: groups.get(key) ?? []
   }))
 }

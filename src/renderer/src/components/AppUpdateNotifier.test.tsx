@@ -33,7 +33,7 @@ describe('app update notifications', () => {
     )
 
     expect(toast.info).toHaveBeenCalledWith(
-      'BearWarden 1.1.0 可供更新',
+      'BearWarden 1.1.0 有可用更新',
       expect.objectContaining({ action: expect.objectContaining({ label: '下載更新' }) })
     )
   })
@@ -44,8 +44,8 @@ describe('app update notifications', () => {
     )
 
     expect(toast.info).toHaveBeenCalledWith(
-      'BearWarden 1.1.0 可供更新',
-      expect.objectContaining({ action: expect.objectContaining({ label: '前往下載' }) })
+      'BearWarden 1.1.0 有可用更新',
+      expect.objectContaining({ action: expect.objectContaining({ label: '前往下載頁面' }) })
     )
   })
 
@@ -62,7 +62,7 @@ describe('app update notifications', () => {
       updateState({ status: 'downloaded', availableVersion: '1.1.0', progress: 100 })
     )
     expect(toast.success).toHaveBeenCalledWith(
-      'BearWarden 1.1.0 已準備好',
+      'BearWarden 1.1.0 已準備就緒',
       expect.objectContaining({
         action: expect.objectContaining({ label: '重新啟動並安裝' })
       })

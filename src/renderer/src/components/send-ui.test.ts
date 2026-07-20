@@ -83,7 +83,7 @@ describe('Send dates', () => {
 
   it('handles missing and malformed dates without throwing', () => {
     expect(formatSendDate(null)).toBe('未設定')
-    expect(formatSendDate('not-a-date')).toBe('日期格式無效')
+    expect(formatSendDate('not-a-date')).toBe('無效的日期格式')
     expect(dateTimeLocalValue('not-a-date')).toBe('')
     expect(dateTimeLocalToIso('')).toBeNull()
   })
@@ -95,6 +95,6 @@ describe('maximum access count', () => {
   })
 
   it.each([0, -1, 1.5, 2_147_483_648, Number.NaN])('rejects an unsafe limit (%s)', (value) => {
-    expect(maxAccessCountValidationMessage(value)).toContain('1 到 2,147,483,647')
+    expect(maxAccessCountValidationMessage(value)).toMatch(/1\D+2,147,483,647/)
   })
 })

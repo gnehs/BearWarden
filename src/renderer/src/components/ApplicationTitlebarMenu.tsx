@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import { useLingui } from '@lingui/react/macro'
 import type { ApplicationMenuCommand } from '../../../shared/vault-contract'
 import { shouldUseApplicationTitlebarMenu } from '../lib/application-titlebar-menu'
 import {
@@ -23,6 +24,7 @@ const usesWindowControlsOverlay = shouldUseApplicationTitlebarMenu(navigator.use
 export default function ApplicationTitlebarMenu({
   onLockVault
 }: ApplicationTitlebarMenuProps): React.JSX.Element | null {
+  const { t } = useLingui()
   const execute = useCallback((command: ApplicationMenuCommand): void => {
     void window.bearwarden.applicationMenu.execute(command).catch(() => undefined)
   }, [])
@@ -36,7 +38,7 @@ export default function ApplicationTitlebarMenu({
   const fileItems = (
     <MenubarGroup>
       <MenubarItem onClick={() => execute('close-window')}>
-        關閉視窗
+        {t`Close window`}
         <MenubarShortcut>{shortcutPrefix}+W</MenubarShortcut>
       </MenubarItem>
     </MenubarGroup>
@@ -44,7 +46,7 @@ export default function ApplicationTitlebarMenu({
   const vaultItems = (
     <MenubarGroup>
       <MenubarItem disabled={!onLockVault} onClick={requestLock}>
-        鎖定密碼庫
+        {t`Lock vault`}
         <MenubarShortcut>{shortcutPrefix}+L</MenubarShortcut>
       </MenubarItem>
     </MenubarGroup>
@@ -53,34 +55,34 @@ export default function ApplicationTitlebarMenu({
     <>
       <MenubarGroup>
         <MenubarItem onClick={() => execute('undo')}>
-          復原
+          {t`Undo`}
           <MenubarShortcut>{shortcutPrefix}+Z</MenubarShortcut>
         </MenubarItem>
         <MenubarItem onClick={() => execute('redo')}>
-          重做
+          {t`Redo`}
           <MenubarShortcut>{shortcutPrefix}+Shift+Z</MenubarShortcut>
         </MenubarItem>
       </MenubarGroup>
       <MenubarSeparator />
       <MenubarGroup>
         <MenubarItem onClick={() => execute('cut')}>
-          剪下
+          {t`Cut`}
           <MenubarShortcut>{shortcutPrefix}+X</MenubarShortcut>
         </MenubarItem>
         <MenubarItem onClick={() => execute('copy')}>
-          複製
+          {t`Copy`}
           <MenubarShortcut>{shortcutPrefix}+C</MenubarShortcut>
         </MenubarItem>
         <MenubarItem onClick={() => execute('paste')}>
-          貼上
+          {t`Paste`}
           <MenubarShortcut>{shortcutPrefix}+V</MenubarShortcut>
         </MenubarItem>
-        <MenubarItem onClick={() => execute('delete')}>刪除</MenubarItem>
+        <MenubarItem onClick={() => execute('delete')}>{t`Delete`}</MenubarItem>
       </MenubarGroup>
       <MenubarSeparator />
       <MenubarGroup>
         <MenubarItem onClick={() => execute('select-all')}>
-          全選
+          {t`Select all`}
           <MenubarShortcut>{shortcutPrefix}+A</MenubarShortcut>
         </MenubarItem>
       </MenubarGroup>
@@ -89,16 +91,18 @@ export default function ApplicationTitlebarMenu({
   const viewItems = (
     <MenubarGroup>
       <MenubarItem onClick={() => execute('toggle-full-screen')}>
-        切換全螢幕
+        {t`Toggle full screen`}
         <MenubarShortcut>F11</MenubarShortcut>
       </MenubarItem>
     </MenubarGroup>
   )
   const windowItems = (
     <MenubarGroup>
-      <MenubarItem onClick={() => execute('minimize-window')}>最小化</MenubarItem>
-      <MenubarItem onClick={() => execute('toggle-maximize-window')}>最大化／還原</MenubarItem>
-      <MenubarItem onClick={() => execute('close-window')}>關閉</MenubarItem>
+      <MenubarItem onClick={() => execute('minimize-window')}>{t`Minimize`}</MenubarItem>
+      <MenubarItem
+        onClick={() => execute('toggle-maximize-window')}
+      >{t`Maximize / Restore`}</MenubarItem>
+      <MenubarItem onClick={() => execute('close-window')}>{t`Close`}</MenubarItem>
     </MenubarGroup>
   )
 
@@ -106,36 +110,36 @@ export default function ApplicationTitlebarMenu({
     <>
       <Menubar
         className="hidden h-auto border-0 bg-transparent p-0 shadow-none [-webkit-app-region:no-drag] min-[1051px]:flex"
-        aria-label="應用程式選單"
+        aria-label={t`Application menu`}
       >
         <MenubarMenu>
-          <MenubarTrigger>檔案</MenubarTrigger>
+          <MenubarTrigger>{t`File`}</MenubarTrigger>
           <MenubarContent>{fileItems}</MenubarContent>
         </MenubarMenu>
         <MenubarMenu>
-          <MenubarTrigger>密碼庫</MenubarTrigger>
+          <MenubarTrigger>{t`Vault`}</MenubarTrigger>
           <MenubarContent>{vaultItems}</MenubarContent>
         </MenubarMenu>
         <MenubarMenu>
-          <MenubarTrigger>編輯</MenubarTrigger>
+          <MenubarTrigger>{t`Edit`}</MenubarTrigger>
           <MenubarContent>{editItems}</MenubarContent>
         </MenubarMenu>
         <MenubarMenu>
-          <MenubarTrigger>顯示方式</MenubarTrigger>
+          <MenubarTrigger>{t`View`}</MenubarTrigger>
           <MenubarContent>{viewItems}</MenubarContent>
         </MenubarMenu>
         <MenubarMenu>
-          <MenubarTrigger>視窗</MenubarTrigger>
+          <MenubarTrigger>{t`Window`}</MenubarTrigger>
           <MenubarContent>{windowItems}</MenubarContent>
         </MenubarMenu>
       </Menubar>
 
       <Menubar
         className="h-auto border-0 bg-transparent p-0 shadow-none [-webkit-app-region:no-drag] min-[1051px]:hidden"
-        aria-label="應用程式選單"
+        aria-label={t`Application menu`}
       >
         <MenubarMenu>
-          <MenubarTrigger>選單</MenubarTrigger>
+          <MenubarTrigger>{t`Menu`}</MenubarTrigger>
           <MenubarContent>
             {fileItems}
             <MenubarSeparator />

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Trans, useLingui } from '@lingui/react/macro'
 import {
   ArrowDown,
   ArrowUp,
@@ -112,12 +113,7 @@ import { Spinner } from './ui/spinner'
 import { Textarea } from './ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import CredentialGeneratorDialog from './CredentialGeneratorDialog'
-import {
-  editorHeaderContent,
-  uriMatchExample,
-  uriMatchOptions,
-  type UriMatchOptionValue
-} from './login-editor-ui'
+import type { UriMatchOptionValue } from './login-editor-ui'
 import {
   applyImportedSshKey,
   applyGeneratedSshKey,
@@ -126,7 +122,6 @@ import {
   invalidateFailedSshImport,
   isValidSshImportPassphrase,
   isSshKeyGenerationBlockingSave,
-  sshKeyImportErrorMessage,
   sshKeyImportResultAction,
   sshKeyGenerationAction,
   sshKeyMaterialState,
@@ -143,72 +138,16 @@ export type EditorCustomField = VaultCustomFieldUpdate & {
   clientId: string
 }
 
-const linkedFieldLabels: Record<number, string> = {
-  100: '使用者名稱',
-  101: '密碼',
-  300: '持卡人',
-  301: '到期月',
-  302: '到期年',
-  303: '安全碼',
-  304: '發卡組織',
-  305: '卡號',
-  400: '稱謂',
-  401: '中間名',
-  402: '地址',
-  403: '地址第二行',
-  404: '地址第三行',
-  405: '城市',
-  406: '州／縣市',
-  407: '郵遞區號',
-  408: '國家／地區',
-  409: '公司',
-  410: '電子郵件',
-  411: '電話',
-  412: '身分證／社會安全號',
-  413: '使用者名稱',
-  414: '護照號碼',
-  415: '駕照號碼',
-  416: '名字',
-  417: '姓氏',
-  418: '全名'
-}
-
-const customFieldTypeLabels: Record<VaultCustomFieldType, string> = {
-  text: '文字',
-  hidden: '隱藏文字',
-  boolean: '核取方塊',
-  linked: '連結欄位'
-}
-
-const paymentCardBrandLabels: Record<Exclude<PaymentCardBrand, 'unknown'>, string> = {
-  visa: 'Visa',
-  mastercard: 'Mastercard',
-  jcb: 'JCB',
-  'american-express': 'American Express'
-}
-
-const paymentCardBrands = Object.keys(paymentCardBrandLabels) as Exclude<
-  PaymentCardBrand,
-  'unknown'
->[]
-
-const paymentCardBrandSelectItems: Array<{ value: PaymentCardBrandOption; label: string }> = [
-  { value: '', label: '未設定' },
-  ...paymentCardBrands.map((value) => ({ value, label: paymentCardBrandLabels[value] })),
-  { value: 'unknown', label: '其他' }
+const paymentCardBrands: Exclude<PaymentCardBrand, 'unknown'>[] = [
+  'visa',
+  'mastercard',
+  'jcb',
+  'american-express'
 ]
 
 const fieldGridClassName = 'grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-[13px]'
 const checkFieldClassName =
   'flex items-start gap-2.5 rounded-[9px] border bg-muted p-2.5 [&_[data-slot=checkbox]]:size-[17px] [&_[data-slot=checkbox]]:accent-[var(--primary)] [&_[data-slot=field-content]]:grid [&_[data-slot=field-content]]:gap-[3px] [&_[data-slot=field-content]_[data-slot=field-label]]:text-xs [&_[data-slot=field-description]]:text-[10px]'
-
-const itemTypes: Array<{ value: VaultItemType; label: string; description: string }> = [
-  { value: 'login', label: '登入', description: '帳號、密碼與網站' },
-  { value: 'card', label: '卡片', description: '付款卡與安全碼' },
-  { value: 'identity', label: '身分資料', description: '個人與聯絡資訊' },
-  { value: 'secureNote', label: '安全備註', description: '只保留加密備註' },
-  { value: 'sshKey', label: 'SSH 金鑰', description: '私鑰、公鑰與指紋' }
-]
 
 const itemTypeIcons: Record<VaultItemType, typeof KeyRound> = {
   login: KeyRound,
@@ -217,11 +156,6 @@ const itemTypeIcons: Record<VaultItemType, typeof KeyRound> = {
   secureNote: NotebookPen,
   sshKey: FileKey2
 }
-
-const itemTypeSelectItems = itemTypes.map((item) => ({
-  value: item.value,
-  label: `${item.label}：${item.description}`
-}))
 
 const emptyFields: VaultItemFields = {
   username: '',
@@ -337,10 +271,6 @@ interface LoginEditorProps {
   onSave: (draft: LoginDraft) => Promise<boolean>
 }
 
-function typeLabel(type: VaultItemType): string {
-  return itemTypes.find((item) => item.value === type)?.label ?? '項目'
-}
-
 function EditorFormSection({
   title,
   titleId,
@@ -392,18 +322,20 @@ function EditorSection({
 
 function UriMatchExample({
   value,
-  uri
+  example
 }: {
   value: UriMatchOptionValue
-  uri: string
+  example: string
 }): React.JSX.Element {
   return (
     <p
       className="text-muted-foreground m-0 flex min-w-0 items-baseline gap-1.5 px-1 text-[10px] leading-4"
       data-uri-match-example={value}
     >
-      <span className="shrink-0 font-medium">匹配範例</span>
-      <code className="truncate font-mono text-[10px]">{uriMatchExample(value, uri)}</code>
+      <span className="shrink-0 font-medium">
+        <Trans>Match example</Trans>
+      </span>
+      <code className="truncate font-mono text-[10px]">{example}</code>
     </p>
   )
 }
@@ -418,6 +350,117 @@ function LoginEditor({
   onDeletePasskey,
   onSave
 }: LoginEditorProps): React.JSX.Element {
+  const { t } = useLingui()
+  const linkedFieldLabels: Record<number, string> = {
+    100: t`Username`,
+    101: t`Password`,
+    300: t`Cardholder`,
+    301: t`Expiration month`,
+    302: t`Expiration year`,
+    303: t`Security code`,
+    304: t`Card brand`,
+    305: t`Card number`,
+    400: t`Title`,
+    401: t`Middle name`,
+    402: t`Address`,
+    403: t`Address line 2`,
+    404: t`Address line 3`,
+    405: t`City`,
+    406: t`State / Province`,
+    407: t`Postal code`,
+    408: t`Country / Region`,
+    409: t`Company`,
+    410: t`Email`,
+    411: t`Phone`,
+    412: t`National ID / Social Security number`,
+    413: t`Username`,
+    414: t`Passport number`,
+    415: t`License number`,
+    416: t`First name`,
+    417: t`Last name`,
+    418: t`Full name`
+  }
+  const customFieldTypeLabels: Record<VaultCustomFieldType, string> = {
+    text: t`Text`,
+    hidden: t`Hidden text`,
+    boolean: t`Checkbox`,
+    linked: t`Linked field`
+  }
+  const paymentCardBrandLabels: Record<Exclude<PaymentCardBrand, 'unknown'>, string> = {
+    visa: t`Visa`,
+    mastercard: t`Mastercard`,
+    jcb: t`JCB`,
+    'american-express': t`American Express`
+  }
+  const paymentCardBrandSelectItems: Array<{
+    value: PaymentCardBrandOption
+    label: string
+  }> = [
+    { value: '', label: t`Not set` },
+    ...paymentCardBrands.map((value) => ({ value, label: paymentCardBrandLabels[value] })),
+    { value: 'unknown', label: t`Other` }
+  ]
+  const itemTypes: Array<{ value: VaultItemType; label: string; description: string }> = [
+    { value: 'login', label: t`Login`, description: t`Username, password, and websites` },
+    { value: 'card', label: t`Card`, description: t`Payment card and security code` },
+    { value: 'identity', label: t`Identity`, description: t`Personal and contact information` },
+    { value: 'secureNote', label: t`Secure note`, description: t`Encrypted notes only` },
+    { value: 'sshKey', label: t`SSH key`, description: t`Private key, public key, and fingerprint` }
+  ]
+  const typeLabel = (type: VaultItemType): string =>
+    itemTypes.find((item) => item.value === type)?.label ?? t`Item`
+  const itemTypeSelectItems = itemTypes.map((item) => ({
+    value: item.value,
+    label: t`${item.label}: ${item.description}`
+  }))
+  const uriMatchOptions: Array<{ value: UriMatchOptionValue; label: string }> = [
+    { value: 'default', label: t`Default` },
+    { value: '0', label: t`Base domain` },
+    { value: '1', label: t`Host` },
+    { value: '2', label: t`Starts with` },
+    { value: '3', label: t`Exact` },
+    { value: '4', label: t`Regular expression` },
+    { value: '5', label: t`Never` }
+  ]
+  const uriMatchExample = (value: UriMatchOptionValue, rawUri: string): string => {
+    const uri = rawUri.trim()
+    if (!uri) return t`Enter a URL to see a matching example`
+
+    switch (value) {
+      case 'default':
+        return t`${uri} → match using the account's default setting`
+      case '0':
+        return t`${uri} ≈ any URL with the same base domain`
+      case '1':
+        return t`${uri} ≈ any path on the same host`
+      case '2':
+        return t`${uri} ≈ any URL starting with ${uri}`
+      case '3':
+        return t`${uri} = only this exact URL`
+      case '4':
+        return t`${uri} → URLs matching this regular expression`
+      case '5':
+        return t`${uri} ≠ all URLs`
+    }
+  }
+  const sshImportErrorMessage = (
+    code: Extract<
+      Awaited<ReturnType<typeof window.bearwarden.sshKeys.beginImport>>,
+      { status: 'error' }
+    >['code']
+  ): string => {
+    const messages = {
+      EmptyClipboard: t`The clipboard is empty. Copy an SSH private key and try again.`,
+      ClipboardTooLarge: t`The clipboard contents are too large to import safely as an SSH private key.`,
+      ParsingError: t`The SSH private key in the clipboard could not be parsed. Make sure the key is complete.`,
+      UnsupportedKeyType: t`This SSH private key type is not supported. Use a supported key format.`,
+      WrongPassword: t`The private key password is incorrect. Try again.`,
+      InvalidPassphrase: t`Enter a valid private key password.`,
+      SessionUnavailable: t`The SSH private key import session has expired. Import the key from the clipboard again.`,
+      SessionLimitReached: t`Too many SSH private key import sessions are active. Try again later.`
+    }
+    return messages[code]
+  }
   const submittingRef = useRef(false)
   const editorMountedRef = useRef(true)
   const sshKeyGenerationRequestRef = useRef(0)
@@ -547,14 +590,14 @@ function LoginEditor({
       .catch(() => {
         if (!active) return
         setSecretLoadState('error')
-        setError('無法載入現有敏感欄位，請取消編輯後再試一次。')
+        setError(t`Existing sensitive fields could not be loaded. Cancel editing and try again.`)
         setErrorKind('reveal')
       })
 
     return () => {
       active = false
     }
-  }, [editorSnapshot])
+  }, [editorSnapshot, t])
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange])
   useEffect(() => () => onDirtyChange(false), [onDirtyChange])
   useEffect(() => {
@@ -576,7 +619,7 @@ function LoginEditor({
       }
       if (action === 'error') {
         setSshKeyGenerationState('error')
-        setError('SSH 金鑰資料不完整，請切換類型後再重新產生。')
+        setError(t`The SSH key data is incomplete. Change the item type and generate it again.`)
         setErrorKind('ssh')
         return
       }
@@ -617,7 +660,7 @@ function LoginEditor({
         .catch(() => {
           if (!editorMountedRef.current || requestId !== sshKeyGenerationRequestRef.current) return
           setSshKeyGenerationState('error')
-          setError('無法產生 Ed25519 SSH 金鑰，請重試。')
+          setError(t`An Ed25519 SSH key could not be generated. Try again.`)
           setErrorKind('ssh')
         })
     })
@@ -628,7 +671,8 @@ function LoginEditor({
     draft.type,
     secretLoadState,
     sshKeyGenerationState,
-    sshKeyImportState
+    sshKeyImportState,
+    t
   ])
   function cancelActiveSshImport(clearImportedDraft = true): void {
     sshKeyImportRequestRef.current += 1
@@ -792,12 +836,12 @@ function LoginEditor({
       }
 
       setSshKeyImportState('idle')
-      setError(sshKeyImportErrorMessage(result.code))
+      setError(sshImportErrorMessage(result.code))
       setErrorKind('ssh')
     } catch {
       if (!editorMountedRef.current || requestId !== sshKeyImportRequestRef.current) return
       setSshKeyImportState('idle')
-      setError('無法讀取剪貼簿中的 SSH 私鑰，請稍後再試。')
+      setError(t`The SSH private key could not be read from the clipboard. Try again later.`)
       setErrorKind('ssh')
     }
   }
@@ -812,7 +856,7 @@ function LoginEditor({
     let passphrase = input.value
     input.value = ''
     if (!isValidSshImportPassphrase(passphrase)) {
-      setSshKeyImportError(sshKeyImportErrorMessage('InvalidPassphrase'))
+      setSshKeyImportError(sshImportErrorMessage('InvalidPassphrase'))
       setSshKeyImportState('awaitingPassphrase')
       requestAnimationFrame(() => sshImportPassphraseRef.current?.focus())
       return
@@ -849,18 +893,18 @@ function LoginEditor({
         return
       }
       if (sshKeyImportResultAction(result) === 'retryPassphrase') {
-        setSshKeyImportError(sshKeyImportErrorMessage(result.code))
+        setSshKeyImportError(sshImportErrorMessage(result.code))
         setSshKeyImportState('awaitingPassphrase')
         requestAnimationFrame(() => sshImportPassphraseRef.current?.focus())
         return
       }
 
       cancelActiveSshImport(false)
-      setError(sshKeyImportErrorMessage(result.code))
+      setError(sshImportErrorMessage(result.code))
       setErrorKind('ssh')
     } catch {
       if (!editorMountedRef.current || requestId !== sshKeyImportRequestRef.current) return
-      setSshKeyImportError('無法驗證私鑰密碼，請重新輸入。')
+      setSshKeyImportError(t`The private key password could not be verified. Try again.`)
       setSshKeyImportState('awaitingPassphrase')
       requestAnimationFrame(() => sshImportPassphraseRef.current?.focus())
     }
@@ -1021,26 +1065,26 @@ function LoginEditor({
           }
         >
           <Plus data-icon="inline-start" />
-          新增欄位
+          <Trans>Add field</Trans>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuGroup>
             <DropdownMenuItem onClick={() => addCustomField('text')}>
               <TextCursorInput />
-              文字
+              <Trans>Text</Trans>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => addCustomField('hidden')}>
               <EyeOff />
-              隱藏文字
+              <Trans>Hidden text</Trans>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => addCustomField('boolean')}>
               <CheckSquare2 />
-              核取方塊
+              <Trans>Checkbox</Trans>
             </DropdownMenuItem>
             {canAddLinkedField && (
               <DropdownMenuItem onClick={() => addCustomField('linked')}>
                 <Link2 />
-                連結欄位
+                <Trans>Linked field</Trans>
               </DropdownMenuItem>
             )}
           </DropdownMenuGroup>
@@ -1092,7 +1136,7 @@ function LoginEditor({
       setError('')
       setErrorKind(null)
     } catch {
-      setError('無法顯示自訂欄位內容，請稍後再試。')
+      setError(t`The custom field contents could not be shown. Try again later.`)
       setErrorKind('reveal')
     } finally {
       setRevealingCustomFields((current) => ({ ...current, [customField.clientId]: false }))
@@ -1167,7 +1211,7 @@ function LoginEditor({
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                aria-label="產生密碼"
+                aria-label={t`Generate password`}
                 onClick={() => setGeneratorTarget('password')}
                 disabled={disabled}
               >
@@ -1178,7 +1222,7 @@ function LoginEditor({
               type="button"
               variant="ghost"
               size="icon-xs"
-              aria-label={visible ? `隱藏輸入的${label}` : `顯示輸入的${label}`}
+              aria-label={visible ? t`Hide ${label}` : t`Show ${label}`}
               aria-pressed={visible}
               onClick={() => setVisibleSecrets((current) => ({ ...current, [field]: !visible }))}
               disabled={disabled}
@@ -1196,13 +1240,13 @@ function LoginEditor({
     event.preventDefault()
     if (busy || secretsUnavailable || sshKeyUnavailable || submittingRef.current) return
     if (!draft.name.trim()) {
-      setError('請輸入項目名稱。')
+      setError(t`Enter an item name.`)
       setErrorKind('name')
       requestAnimationFrame(() => nameRef.current?.focus())
       return
     }
     if (!login && draft.type === 'login' && !draft.password) {
-      setError('新增登入項目時必須輸入密碼。')
+      setError(t`A password is required when adding a login item.`)
       setErrorKind('password')
       requestAnimationFrame(() => document.getElementById('editor-password')?.focus())
       return
@@ -1210,7 +1254,7 @@ function LoginEditor({
     const blankUriIndex =
       draft.type === 'login' ? draft.uris.findIndex((entry) => !entry.uri.trim()) : -1
     if (blankUriIndex >= 0) {
-      setError('網站欄位不可留白；不需要的列請移除。')
+      setError(t`Website fields cannot be blank. Remove any rows you do not need.`)
       setErrorKind('uri')
       requestAnimationFrame(() => document.getElementById(`editor-uri-${blankUriIndex}`)?.focus())
       return
@@ -1226,8 +1270,8 @@ function LoginEditor({
     if (importedSshKeyIncomplete || generatedSshKeyIncomplete) {
       setError(
         draft.sshImportToken
-          ? 'SSH 金鑰暫存工作階段或公開中繼資料不完整，請重新產生或匯入。'
-          : 'SSH 金鑰必須包含私鑰、公鑰與金鑰指紋。'
+          ? t`The SSH key staging session or public metadata is incomplete. Generate or import the key again.`
+          : t`The SSH key must include a private key, public key, and fingerprint.`
       )
       setErrorKind('ssh')
       const missingFieldId = draft.sshImportToken
@@ -1261,7 +1305,9 @@ function LoginEditor({
         setDraft((current) => invalidateFailedSshImport(current, submittedImportToken))
         setSshKeyImportState('idle')
         setSshKeyGenerationState('error')
-        setError('這次 SSH 私鑰暫存已失效，請重新產生或匯入後再儲存。')
+        setError(
+          t`This SSH private key staging session has expired. Generate or import the key again before saving.`
+        )
         setErrorKind('ssh')
       }
     } finally {
@@ -1279,11 +1325,14 @@ function LoginEditor({
     setPasskeyDeleteTarget(null)
   }
 
-  const headerContent = editorHeaderContent(typeLabel(draft.type), login?.name ?? null)
+  const currentTypeLabel = typeLabel(draft.type)
+  const headerContent = login
+    ? { heading: login.name, eyebrow: t`Edit ${currentTypeLabel}` }
+    : { heading: currentTypeLabel, eyebrow: t`Add item` }
   const ItemTypeIcon = itemTypeIcons[draft.type]
   const detectedCardBrand = detectPaymentCardBrand(draft.number)
   const folderSelectItems = [
-    { value: '', label: '未分類' },
+    { value: '', label: t`Unfiled` },
     ...folders.map((folder) => ({ value: folder.id, label: folder.name }))
   ]
 
@@ -1315,7 +1364,12 @@ function LoginEditor({
           </h2>
           <p className="text-muted-foreground mt-[3px] mb-0 truncate text-[10px]">
             {headerContent.eyebrow}
-            {dirty ? ' · 未儲存' : ''}
+            {dirty && (
+              <>
+                {' · '}
+                <Trans>Unsaved</Trans>
+              </>
+            )}
           </p>
         </div>
         <Button
@@ -1323,7 +1377,7 @@ function LoginEditor({
           size="icon"
           className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-[34px] min-w-[34px] rounded-[9px] shadow-(--control-highlight)"
           type="button"
-          aria-label="取消編輯"
+          aria-label={t`Cancel editing`}
           onClick={requestCancel}
           disabled={busy}
         >
@@ -1340,11 +1394,13 @@ function LoginEditor({
           )}
 
           <EditorSection value="details">
-            <EditorFormSection title={`${typeLabel(draft.type)}資料`} titleId="item-section-title">
+            <EditorFormSection title={t`${currentTypeLabel} details`} titleId="item-section-title">
               <FieldGroup className="gap-4">
                 {!login && (
                   <Field>
-                    <FieldLabel htmlFor="editor-type">類型</FieldLabel>
+                    <FieldLabel htmlFor="editor-type">
+                      <Trans>Type</Trans>
+                    </FieldLabel>
                     <Select
                       items={itemTypeSelectItems}
                       value={draft.type}
@@ -1367,7 +1423,9 @@ function LoginEditor({
                   </Field>
                 )}
                 <Field data-invalid={errorKind === 'name' || undefined}>
-                  <FieldLabel htmlFor="editor-name">名稱</FieldLabel>
+                  <FieldLabel htmlFor="editor-name">
+                    <Trans>Name</Trans>
+                  </FieldLabel>
                   <Input
                     id="editor-name"
                     ref={nameRef}
@@ -1386,7 +1444,9 @@ function LoginEditor({
                 {draft.type === 'login' && (
                   <>
                     <Field>
-                      <FieldLabel htmlFor="editor-username">使用者名稱</FieldLabel>
+                      <FieldLabel htmlFor="editor-username">
+                        <Trans>Username</Trans>
+                      </FieldLabel>
                       <InputGroup>
                         <InputGroupInput
                           id="editor-username"
@@ -1401,7 +1461,7 @@ function LoginEditor({
                             type="button"
                             variant="ghost"
                             size="icon-xs"
-                            aria-label="產生使用者名稱"
+                            aria-label={t`Generate username`}
                             onClick={() => setGeneratorTarget('username')}
                             disabled={busy}
                           >
@@ -1410,15 +1470,16 @@ function LoginEditor({
                         </InputGroupAddon>
                       </InputGroup>
                     </Field>
-                    {secretInput('password', '密碼')}
-                    {secretInput('totp', '驗證器密鑰（TOTP）', {
-                      placeholder: 'Base32、otpauth://… 或 steam://…',
-                      description:
-                        'Base32 密鑰可直接輸入；SHA-1／SHA-256／SHA-512、自訂 1–10 位驗證碼或週期請使用 otpauth URI；Steam 驗證碼請使用 steam://。'
+                    {secretInput('password', t`Password`)}
+                    {secretInput('totp', t`Authenticator key (TOTP)`, {
+                      placeholder: t`Base32, otpauth://…, or steam://…`,
+                      description: t`Enter a Base32 key directly. Use an otpauth URI for SHA-1, SHA-256, SHA-512, custom 1–10 digit codes, or custom periods. Use steam:// for Steam codes.`
                     })}
                     <Field data-invalid={errorKind === 'uri' || undefined}>
                       <div className="flex items-center justify-between gap-3">
-                        <FieldLabel>網站</FieldLabel>
+                        <FieldLabel>
+                          <Trans>Websites</Trans>
+                        </FieldLabel>
                         <Button
                           type="button"
                           variant="outline"
@@ -1427,12 +1488,14 @@ function LoginEditor({
                           disabled={busy || draft.uris.length >= 1_000}
                         >
                           <Plus data-icon="inline-start" />
-                          新增網站
+                          <Trans>Add website</Trans>
                         </Button>
                       </div>
                       {draft.uris.length === 0 ? (
                         <FieldDescription>
-                          尚未設定網站；你也可以只保存帳號與密碼。
+                          <Trans>
+                            No websites are set. You can save only a username and password.
+                          </Trans>
                         </FieldDescription>
                       ) : (
                         <div className="flex flex-col gap-3">
@@ -1472,7 +1535,7 @@ function LoginEditor({
                                   }
                                 >
                                   <SelectTrigger
-                                    aria-label={`網站 ${index + 1} 符合方式`}
+                                    aria-label={t`Matching method for website ${index + 1}`}
                                     className="w-full"
                                   >
                                     <SelectValue />
@@ -1496,7 +1559,12 @@ function LoginEditor({
                                       ? 'default'
                                       : String(entry.match)) as UriMatchOptionValue
                                   }
-                                  uri={entry.uri}
+                                  example={uriMatchExample(
+                                    (entry.match === null
+                                      ? 'default'
+                                      : String(entry.match)) as UriMatchOptionValue,
+                                    entry.uri
+                                  )}
                                 />
                               </div>
                               <div className="flex items-start justify-end gap-1">
@@ -1504,7 +1572,7 @@ function LoginEditor({
                                   type="button"
                                   variant="ghost"
                                   size="icon-sm"
-                                  aria-label="上移網站"
+                                  aria-label={t`Move website up`}
                                   onClick={() => moveUri(index, -1)}
                                   disabled={busy || index === 0}
                                 >
@@ -1514,7 +1582,7 @@ function LoginEditor({
                                   type="button"
                                   variant="ghost"
                                   size="icon-sm"
-                                  aria-label="下移網站"
+                                  aria-label={t`Move website down`}
                                   onClick={() => moveUri(index, 1)}
                                   disabled={busy || index === draft.uris.length - 1}
                                 >
@@ -1524,7 +1592,7 @@ function LoginEditor({
                                   type="button"
                                   variant="ghost"
                                   size="icon-sm"
-                                  aria-label="移除網站"
+                                  aria-label={t`Remove website`}
                                   onClick={() => removeUri(index)}
                                   disabled={busy}
                                 >
@@ -1538,9 +1606,14 @@ function LoginEditor({
                     </Field>
                     {login && login.passkeys.length > 0 && (
                       <Field>
-                        <FieldLabel>通行密鑰</FieldLabel>
+                        <FieldLabel>
+                          <Trans>Passkeys</Trans>
+                        </FieldLabel>
                         <FieldDescription>
-                          刪除會立即同步，不會把私鑰載入編輯畫面；其他尚未儲存的欄位會保留。
+                          <Trans>
+                            Deletion syncs immediately without loading private keys into the editor.
+                            Other unsaved fields are preserved.
+                          </Trans>
                         </FieldDescription>
                         <div className="grid overflow-hidden rounded-md border">
                           {login.passkeys.map((passkey, index) => (
@@ -1557,7 +1630,9 @@ function LoginEditor({
                               <div>
                                 <strong>{passkey.rpName || passkey.rpId}</strong>
                                 <span>
-                                  {passkey.userDisplayName || passkey.userName || '未命名使用者'}
+                                  {passkey.userDisplayName || passkey.userName || (
+                                    <Trans>Unnamed user</Trans>
+                                  )}
                                 </span>
                                 <small>{passkey.rpId}</small>
                               </div>
@@ -1565,7 +1640,7 @@ function LoginEditor({
                                 type="button"
                                 variant="ghost"
                                 size="icon-sm"
-                                aria-label={`刪除 ${passkey.rpName || passkey.rpId} 的通行密鑰`}
+                                aria-label={t`Delete the passkey for ${passkey.rpName || passkey.rpId}`}
                                 disabled={busy}
                                 onClick={() => setPasskeyDeleteTarget(passkey)}
                               >
@@ -1582,7 +1657,9 @@ function LoginEditor({
                 {draft.type === 'card' && (
                   <>
                     <Field>
-                      <FieldLabel htmlFor="editor-cardholder-name">持卡人</FieldLabel>
+                      <FieldLabel htmlFor="editor-cardholder-name">
+                        <Trans>Cardholder</Trans>
+                      </FieldLabel>
                       <Input
                         id="editor-cardholder-name"
                         value={draft.cardholderName}
@@ -1591,7 +1668,9 @@ function LoginEditor({
                       />
                     </Field>
                     <Field>
-                      <FieldLabel htmlFor="editor-card-brand">發卡組織</FieldLabel>
+                      <FieldLabel htmlFor="editor-card-brand">
+                        <Trans>Card brand</Trans>
+                      </FieldLabel>
                       <Select
                         items={paymentCardBrandSelectItems}
                         value={selectedCardBrand}
@@ -1622,15 +1701,15 @@ function LoginEditor({
                       {selectedCardBrand === 'unknown' && (
                         <Input
                           id="editor-custom-card-brand"
-                          aria-label="其他發卡組織名稱"
+                          aria-label={t`Other card brand name`}
                           value={draft.brand}
                           onChange={(event) => update('brand', event.target.value)}
-                          placeholder="輸入其他發卡組織"
+                          placeholder={t`Enter another card brand`}
                           disabled={busy}
                         />
                       )}
                     </Field>
-                    {secretInput('number', '卡號', {
+                    {secretInput('number', t`Card number`, {
                       inputMode: 'numeric',
                       displayValue: formatPaymentCardNumber(draft.number),
                       onValueChange: (value) => {
@@ -1646,12 +1725,16 @@ function LoginEditor({
                     })}
                     {cardBrandAutoDetected && detectedCardBrand !== 'unknown' && (
                       <FieldDescription className="-mt-[5px] mb-0 justify-self-start rounded-full border bg-[var(--accent-soft)] px-[9px] py-[5px] text-[10px] font-bold text-[var(--accent-hover)]">
-                        卡號已辨識為 {paymentCardBrandLabels[detectedCardBrand]}
+                        <Trans>
+                          Card number recognized as {paymentCardBrandLabels[detectedCardBrand]}
+                        </Trans>
                       </FieldDescription>
                     )}
                     <FieldGroup className={fieldGridClassName}>
                       <Field>
-                        <FieldLabel htmlFor="editor-exp-month">到期月</FieldLabel>
+                        <FieldLabel htmlFor="editor-exp-month">
+                          <Trans>Expiration month</Trans>
+                        </FieldLabel>
                         <Input
                           id="editor-exp-month"
                           inputMode="numeric"
@@ -1661,7 +1744,9 @@ function LoginEditor({
                         />
                       </Field>
                       <Field>
-                        <FieldLabel htmlFor="editor-exp-year">到期年</FieldLabel>
+                        <FieldLabel htmlFor="editor-exp-year">
+                          <Trans>Expiration year</Trans>
+                        </FieldLabel>
                         <Input
                           id="editor-exp-year"
                           inputMode="numeric"
@@ -1671,7 +1756,7 @@ function LoginEditor({
                         />
                       </Field>
                     </FieldGroup>
-                    {secretInput('code', '安全碼')}
+                    {secretInput('code', t`Security code`)}
                   </>
                 )}
 
@@ -1680,14 +1765,14 @@ function LoginEditor({
                     <FieldGroup className={fieldGridClassName}>
                       <TextField
                         id="editor-honorific"
-                        label="稱謂"
+                        label={t`Title`}
                         value={draft.title}
                         onChange={(value) => update('title', value)}
                         disabled={busy}
                       />
                       <TextField
                         id="editor-company"
-                        label="公司"
+                        label={t`Company`}
                         value={draft.company}
                         onChange={(value) => update('company', value)}
                         disabled={busy}
@@ -1696,21 +1781,21 @@ function LoginEditor({
                     <FieldGroup className={fieldGridClassName}>
                       <TextField
                         id="editor-first-name"
-                        label="名字"
+                        label={t`First name`}
                         value={draft.firstName}
                         onChange={(value) => update('firstName', value)}
                         disabled={busy}
                       />
                       <TextField
                         id="editor-middle-name"
-                        label="中間名"
+                        label={t`Middle name`}
                         value={draft.middleName}
                         onChange={(value) => update('middleName', value)}
                         disabled={busy}
                       />
                       <TextField
                         id="editor-last-name"
-                        label="姓氏"
+                        label={t`Last name`}
                         value={draft.lastName}
                         onChange={(value) => update('lastName', value)}
                         disabled={busy}
@@ -1718,21 +1803,21 @@ function LoginEditor({
                     </FieldGroup>
                     <TextField
                       id="editor-address-1"
-                      label="地址"
+                      label={t`Address`}
                       value={draft.address1}
                       onChange={(value) => update('address1', value)}
                       disabled={busy}
                     />
                     <TextField
                       id="editor-address-2"
-                      label="地址第二行"
+                      label={t`Address line 2`}
                       value={draft.address2}
                       onChange={(value) => update('address2', value)}
                       disabled={busy}
                     />
                     <TextField
                       id="editor-address-3"
-                      label="地址第三行"
+                      label={t`Address line 3`}
                       value={draft.address3}
                       onChange={(value) => update('address3', value)}
                       disabled={busy}
@@ -1740,21 +1825,21 @@ function LoginEditor({
                     <FieldGroup className={fieldGridClassName}>
                       <TextField
                         id="editor-city"
-                        label="城市"
+                        label={t`City`}
                         value={draft.city}
                         onChange={(value) => update('city', value)}
                         disabled={busy}
                       />
                       <TextField
                         id="editor-state"
-                        label="州／縣市"
+                        label={t`State / Province`}
                         value={draft.state}
                         onChange={(value) => update('state', value)}
                         disabled={busy}
                       />
                       <TextField
                         id="editor-postal-code"
-                        label="郵遞區號"
+                        label={t`Postal code`}
                         value={draft.postalCode}
                         onChange={(value) => update('postalCode', value)}
                         disabled={busy}
@@ -1762,7 +1847,7 @@ function LoginEditor({
                     </FieldGroup>
                     <TextField
                       id="editor-country"
-                      label="國家／地區"
+                      label={t`Country / Region`}
                       value={draft.country}
                       onChange={(value) => update('country', value)}
                       disabled={busy}
@@ -1770,7 +1855,7 @@ function LoginEditor({
                     <FieldGroup className={fieldGridClassName}>
                       <TextField
                         id="editor-email"
-                        label="電子郵件"
+                        label={t`Email`}
                         type="email"
                         value={draft.email}
                         onChange={(value) => update('email', value)}
@@ -1778,7 +1863,7 @@ function LoginEditor({
                       />
                       <TextField
                         id="editor-phone"
-                        label="電話"
+                        label={t`Phone`}
                         type="tel"
                         value={draft.phone}
                         onChange={(value) => update('phone', value)}
@@ -1787,20 +1872,22 @@ function LoginEditor({
                     </FieldGroup>
                     <TextField
                       id="editor-identity-username"
-                      label="使用者名稱"
+                      label={t`Username`}
                       value={draft.identityUsername}
                       onChange={(value) => update('identityUsername', value)}
                       disabled={busy}
                     />
-                    {secretInput('ssn', '身分證／社會安全號')}
-                    {secretInput('passportNumber', '護照號碼')}
-                    {secretInput('licenseNumber', '駕照號碼')}
+                    {secretInput('ssn', t`National ID / Social Security number`)}
+                    {secretInput('passportNumber', t`Passport number`)}
+                    {secretInput('licenseNumber', t`License number`)}
                   </>
                 )}
 
                 {draft.type === 'secureNote' && (
                   <Field>
-                    <FieldLabel htmlFor="editor-notes">內容</FieldLabel>
+                    <FieldLabel htmlFor="editor-notes">
+                      <Trans>Content</Trans>
+                    </FieldLabel>
                     <Textarea
                       id="editor-notes"
                       rows={12}
@@ -1831,7 +1918,11 @@ function LoginEditor({
                         ) : (
                           <RefreshCw data-icon="inline-start" />
                         )}
-                        {sshKeyGenerationState === 'generating' ? '產生中…' : '重新產生'}
+                        {sshKeyGenerationState === 'generating' ? (
+                          <Trans>Generating…</Trans>
+                        ) : (
+                          <Trans>Generate again</Trans>
+                        )}
                       </Button>
                       <Button
                         type="button"
@@ -1849,43 +1940,54 @@ function LoginEditor({
                         ) : (
                           <ClipboardPaste data-icon="inline-start" />
                         )}
-                        {sshKeyImportState === 'reading' ? '讀取剪貼簿中…' : '從剪貼簿匯入'}
+                        {sshKeyImportState === 'reading' ? (
+                          <Trans>Reading clipboard…</Trans>
+                        ) : (
+                          <Trans>Import from clipboard</Trans>
+                        )}
                       </Button>
                     </div>
                     {draft.sshImportToken ? (
                       <Field data-disabled>
-                        <FieldLabel htmlFor="editor-privateKey">私鑰</FieldLabel>
+                        <FieldLabel htmlFor="editor-privateKey">
+                          <Trans>Private key</Trans>
+                        </FieldLabel>
                         <Textarea
                           id="editor-privateKey"
                           rows={3}
                           value=""
-                          placeholder="私鑰只保留在安全的主程序，不會載入編輯畫面。"
+                          placeholder={t`The private key remains in the secure main process and is not loaded into the editor.`}
                           readOnly
                           disabled
                           autoComplete="off"
                         />
                         <FieldDescription>
-                          儲存時只會使用短效匯入代碼；此欄位不含也不顯示私鑰。
+                          <Trans>
+                            Only a short-lived import token is used when saving. This field neither
+                            contains nor displays the private key.
+                          </Trans>
                         </FieldDescription>
                       </Field>
                     ) : (
-                      secretInput('privateKey', '私鑰', {
+                      secretInput('privateKey', t`Private key`, {
                         multiline: true,
                         readOnly: true,
                         disabled: sshKeyGenerationState === 'generating',
                         description:
                           sshKeyGenerationState === 'generating'
-                            ? '正在安全地建立新的 Ed25519 金鑰。'
+                            ? t`A new Ed25519 key is being created securely.`
                             : sshKeyGenerationState === 'error'
-                              ? '自動產生失敗；請重試，或切換項目類型以取消。'
-                              : '金鑰材料為唯讀；私鑰可透過顯示按鈕暫時查看。'
+                              ? t`Automatic generation failed. Try again, or change the item type to cancel.`
+                              : t`Key material is read-only. Use the show button to view the private key temporarily.`
                       })
                     )}
                     <Field
                       data-invalid={(errorKind === 'ssh' && !draft.publicKey.trim()) || undefined}
                       data-disabled={sshKeyFieldsDisabled || undefined}
                     >
-                      <FieldLabel htmlFor="editor-public-key">公鑰</FieldLabel>
+                      <FieldLabel htmlFor="editor-public-key">
+                        <Trans>Public key</Trans>
+                      </FieldLabel>
                       <Textarea
                         id="editor-public-key"
                         rows={4}
@@ -1905,7 +2007,9 @@ function LoginEditor({
                       data-invalid={(errorKind === 'ssh' && !draft.fingerprint.trim()) || undefined}
                       data-disabled={sshKeyFieldsDisabled || undefined}
                     >
-                      <FieldLabel htmlFor="editor-fingerprint">金鑰指紋</FieldLabel>
+                      <FieldLabel htmlFor="editor-fingerprint">
+                        <Trans>Key fingerprint</Trans>
+                      </FieldLabel>
                       <Input
                         id="editor-fingerprint"
                         value={draft.fingerprint}
@@ -1927,10 +2031,12 @@ function LoginEditor({
           </EditorSection>
 
           <EditorSection value="organize" className="flex flex-col">
-            <EditorFormSection title="整理" titleId="organization-section-title">
+            <EditorFormSection title={t`Organization`} titleId="organization-section-title">
               <FieldGroup className="gap-4">
                 <Field>
-                  <FieldLabel htmlFor="editor-folder">資料夾</FieldLabel>
+                  <FieldLabel htmlFor="editor-folder">
+                    <Trans>Folder</Trans>
+                  </FieldLabel>
                   <Select
                     items={folderSelectItems}
                     value={draft.folderId ?? ''}
@@ -1964,9 +2070,13 @@ function LoginEditor({
                   />
                   <FieldContent>
                     <FieldLabel htmlFor="editor-favorite">
-                      <FieldTitle>加入常用項目</FieldTitle>
+                      <FieldTitle>
+                        <Trans>Add to favorites</Trans>
+                      </FieldTitle>
                     </FieldLabel>
-                    <FieldDescription>從側邊欄快速找到這筆資料</FieldDescription>
+                    <FieldDescription>
+                      <Trans>Find this item quickly from the sidebar</Trans>
+                    </FieldDescription>
                   </FieldContent>
                 </Field>
                 <Field
@@ -1982,20 +2092,26 @@ function LoginEditor({
                   />
                   <FieldContent>
                     <FieldLabel htmlFor="editor-reprompt">
-                      <FieldTitle>需要主密碼重新提示</FieldTitle>
+                      <FieldTitle>
+                        <Trans>Require master password reprompt</Trans>
+                      </FieldTitle>
                     </FieldLabel>
-                    <FieldDescription>檢視或變更這個項目前，需再次驗證主密碼</FieldDescription>
+                    <FieldDescription>
+                      <Trans>
+                        Verify the master password again before viewing or changing this item
+                      </Trans>
+                    </FieldDescription>
                   </FieldContent>
                 </Field>
               </FieldGroup>
             </EditorFormSection>
 
             {draft.type !== 'secureNote' && (
-              <EditorFormSection title="備註" titleId="notes-section-title">
+              <EditorFormSection title={t`Notes`} titleId="notes-section-title">
                 <FieldGroup className="gap-4">
                   <Field>
                     <FieldLabel className="sr-only" htmlFor="editor-notes">
-                      備註
+                      <Trans>Notes</Trans>
                     </FieldLabel>
                     <Textarea
                       id="editor-notes"
@@ -2012,10 +2128,10 @@ function LoginEditor({
           </EditorSection>
 
           <EditorSection value="custom" className="flex flex-col">
-            <EditorFormSection title="自訂欄位" titleId="custom-fields-section-title">
+            <EditorFormSection title={t`Custom fields`} titleId="custom-fields-section-title">
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <p className="text-muted-foreground m-0 text-sm">
-                  新增文字、隱藏文字、核取方塊，或連結項目的既有資料。
+                  <Trans>Add text, hidden text, checkboxes, or links to existing item data.</Trans>
                 </p>
                 {draft.customFields.length > 0 && customFieldAddMenu()}
               </div>
@@ -2026,8 +2142,12 @@ function LoginEditor({
                     <EmptyMedia variant="icon">
                       <ListPlus />
                     </EmptyMedia>
-                    <EmptyTitle>還沒有自訂欄位</EmptyTitle>
-                    <EmptyDescription>依用途新增欄位，補充這筆項目專屬的資料。</EmptyDescription>
+                    <EmptyTitle>
+                      <Trans>No custom fields yet</Trans>
+                    </EmptyTitle>
+                    <EmptyDescription>
+                      <Trans>Add fields as needed to store data specific to this item.</Trans>
+                    </EmptyDescription>
                   </EmptyHeader>
                   <EmptyContent>{customFieldAddMenu('default')}</EmptyContent>
                 </Empty>
@@ -2044,7 +2164,7 @@ function LoginEditor({
                     const customFieldNameId = `${customFieldId}-name`
                     const customFieldTypeId = `${customFieldId}-type`
                     const customFieldValueId = `${customFieldId}-value`
-                    const customFieldLabel = customField.name.trim() || `欄位 ${index + 1}`
+                    const customFieldLabel = customField.name.trim() || t`Field ${index + 1}`
                     const customFieldVisible = Boolean(visibleCustomFields[customField.clientId])
                     const customFieldBusy =
                       busy ||
@@ -2063,12 +2183,16 @@ function LoginEditor({
                             id={`${customFieldId}-title`}
                             className="flex min-w-0 flex-wrap items-center gap-2"
                           >
-                            <span className="truncate">{customField.name || '未命名欄位'}</span>
+                            <span className="truncate">
+                              {customField.name || <Trans>Unnamed field</Trans>}
+                            </span>
                             <Badge variant="secondary">
                               {customFieldTypeLabels[customField.type]}
                             </Badge>
                           </CardTitle>
-                          <CardDescription>欄位 {index + 1}</CardDescription>
+                          <CardDescription>
+                            <Trans>Field {index + 1}</Trans>
+                          </CardDescription>
                           <CardAction className="flex items-center gap-1">
                             <Tooltip>
                               <TooltipTrigger
@@ -2077,7 +2201,7 @@ function LoginEditor({
                                     type="button"
                                     variant="ghost"
                                     size="icon-sm"
-                                    aria-label={`上移「${customFieldLabel}」`}
+                                    aria-label={t`Move “${customFieldLabel}” up`}
                                     onClick={() => moveCustomField(index, -1)}
                                     disabled={customFieldBusy || index === 0}
                                   />
@@ -2085,7 +2209,9 @@ function LoginEditor({
                               >
                                 <ArrowUp />
                               </TooltipTrigger>
-                              <TooltipContent>上移</TooltipContent>
+                              <TooltipContent>
+                                <Trans>Move up</Trans>
+                              </TooltipContent>
                             </Tooltip>
                             <Tooltip>
                               <TooltipTrigger
@@ -2094,7 +2220,7 @@ function LoginEditor({
                                     type="button"
                                     variant="ghost"
                                     size="icon-sm"
-                                    aria-label={`下移「${customFieldLabel}」`}
+                                    aria-label={t`Move “${customFieldLabel}” down`}
                                     onClick={() => moveCustomField(index, 1)}
                                     disabled={
                                       customFieldBusy || index === draft.customFields.length - 1
@@ -2104,7 +2230,9 @@ function LoginEditor({
                               >
                                 <ArrowDown />
                               </TooltipTrigger>
-                              <TooltipContent>下移</TooltipContent>
+                              <TooltipContent>
+                                <Trans>Move down</Trans>
+                              </TooltipContent>
                             </Tooltip>
                             <Tooltip>
                               <TooltipTrigger
@@ -2113,7 +2241,7 @@ function LoginEditor({
                                     type="button"
                                     variant="ghost"
                                     size="icon-sm"
-                                    aria-label={`刪除「${customFieldLabel}」`}
+                                    aria-label={t`Delete “${customFieldLabel}”`}
                                     onClick={() => removeCustomField(customField.clientId)}
                                     disabled={customFieldBusy}
                                   />
@@ -2121,7 +2249,9 @@ function LoginEditor({
                               >
                                 <Trash2 />
                               </TooltipTrigger>
-                              <TooltipContent>刪除</TooltipContent>
+                              <TooltipContent>
+                                <Trans>Delete</Trans>
+                              </TooltipContent>
                             </Tooltip>
                           </CardAction>
                         </CardHeader>
@@ -2129,7 +2259,9 @@ function LoginEditor({
                           <FieldGroup>
                             <FieldGroup className={fieldGridClassName}>
                               <Field>
-                                <FieldLabel htmlFor={customFieldNameId}>名稱</FieldLabel>
+                                <FieldLabel htmlFor={customFieldNameId}>
+                                  <Trans>Name</Trans>
+                                </FieldLabel>
                                 <Input
                                   id={customFieldNameId}
                                   value={customField.name}
@@ -2144,7 +2276,9 @@ function LoginEditor({
                                 />
                               </Field>
                               <Field>
-                                <FieldLabel htmlFor={customFieldTypeId}>類型</FieldLabel>
+                                <FieldLabel htmlFor={customFieldTypeId}>
+                                  <Trans>Type</Trans>
+                                </FieldLabel>
                                 <Select
                                   items={customFieldTypeItems}
                                   value={customField.type}
@@ -2176,7 +2310,9 @@ function LoginEditor({
 
                             {customField.type === 'text' && (
                               <Field>
-                                <FieldLabel htmlFor={customFieldValueId}>內容</FieldLabel>
+                                <FieldLabel htmlFor={customFieldValueId}>
+                                  <Trans>Content</Trans>
+                                </FieldLabel>
                                 <Input
                                   id={customFieldValueId}
                                   value={customField.value ?? ''}
@@ -2194,7 +2330,9 @@ function LoginEditor({
 
                             {customField.type === 'hidden' && (
                               <Field>
-                                <FieldLabel htmlFor={customFieldValueId}>內容</FieldLabel>
+                                <FieldLabel htmlFor={customFieldValueId}>
+                                  <Trans>Content</Trans>
+                                </FieldLabel>
                                 <InputGroup>
                                   <InputGroupInput
                                     id={customFieldValueId}
@@ -2216,7 +2354,9 @@ function LoginEditor({
                                       variant="ghost"
                                       size="icon-xs"
                                       aria-label={
-                                        customFieldVisible ? '隱藏自訂欄位內容' : '顯示自訂欄位內容'
+                                        customFieldVisible
+                                          ? t`Hide custom field contents`
+                                          : t`Show custom field contents`
                                       }
                                       aria-pressed={customFieldVisible}
                                       onClick={() => void toggleCustomFieldVisibility(customField)}
@@ -2254,7 +2394,9 @@ function LoginEditor({
                                 />
                                 <FieldContent>
                                   <FieldLabel htmlFor={customFieldValueId}>
-                                    <FieldTitle>已啟用</FieldTitle>
+                                    <FieldTitle>
+                                      <Trans>Enabled</Trans>
+                                    </FieldTitle>
                                   </FieldLabel>
                                 </FieldContent>
                               </Field>
@@ -2262,11 +2404,13 @@ function LoginEditor({
 
                             {customField.type === 'linked' && (
                               <Field>
-                                <FieldLabel htmlFor={customFieldValueId}>連結至</FieldLabel>
+                                <FieldLabel htmlFor={customFieldValueId}>
+                                  <Trans>Link to</Trans>
+                                </FieldLabel>
                                 <Select
                                   items={linkedIds.map((linkedId) => ({
                                     value: String(linkedId),
-                                    label: linkedFieldLabels[linkedId] ?? `欄位 ${linkedId}`
+                                    label: linkedFieldLabels[linkedId] ?? t`Field ${linkedId}`
                                   }))}
                                   value={String(customField.linkedId ?? linkedIds[0] ?? '')}
                                   disabled={customFieldBusy}
@@ -2288,7 +2432,7 @@ function LoginEditor({
                                     <SelectGroup>
                                       {linkedIds.map((linkedId) => (
                                         <SelectItem key={linkedId} value={String(linkedId)}>
-                                          {linkedFieldLabels[linkedId] ?? `欄位 ${linkedId}`}
+                                          {linkedFieldLabels[linkedId] ?? t`Field ${linkedId}`}
                                         </SelectItem>
                                       ))}
                                     </SelectGroup>
@@ -2310,7 +2454,7 @@ function LoginEditor({
 
       <footer className="bg-card flex min-h-16 items-center justify-end gap-2 border-t px-5 py-1">
         <Button variant="secondary" type="button" onClick={requestCancel} disabled={busy}>
-          取消
+          <Trans>Cancel</Trans>
         </Button>
         <Button type="submit" disabled={busy || secretsUnavailable || sshKeyUnavailable}>
           {busy ||
@@ -2321,17 +2465,19 @@ function LoginEditor({
           ) : (
             <Save data-icon="inline-start" />
           )}
-          {secretLoadState === 'loading'
-            ? '載入中…'
-            : sshKeyGenerationState === 'generating'
-              ? '產生 SSH 金鑰中…'
-              : sshKeyImportState === 'reading'
-                ? '讀取剪貼簿中…'
-                : sshKeyImportState === 'awaitingPassphrase'
-                  ? '等待私鑰密碼…'
-                  : sshKeyImportState === 'submittingPassphrase'
-                    ? '驗證私鑰密碼中…'
-                    : '儲存'}
+          {secretLoadState === 'loading' ? (
+            <Trans>Loading…</Trans>
+          ) : sshKeyGenerationState === 'generating' ? (
+            <Trans>Generating SSH key…</Trans>
+          ) : sshKeyImportState === 'reading' ? (
+            <Trans>Reading clipboard…</Trans>
+          ) : sshKeyImportState === 'awaitingPassphrase' ? (
+            <Trans>Waiting for private key password…</Trans>
+          ) : sshKeyImportState === 'submittingPassphrase' ? (
+            <Trans>Verifying private key password…</Trans>
+          ) : (
+            <Trans>Save</Trans>
+          )}
         </Button>
       </footer>
       <Dialog
@@ -2343,14 +2489,21 @@ function LoginEditor({
         <DialogContent showCloseButton={false}>
           <form onSubmit={(event) => void submitSshImportPassphrase(event)}>
             <DialogHeader>
-              <DialogTitle>輸入 SSH 私鑰密碼</DialogTitle>
+              <DialogTitle>
+                <Trans>Enter the SSH private key password</Trans>
+              </DialogTitle>
               <DialogDescription>
-                剪貼簿中的私鑰已加密。密碼只會送往主程序解密這次匯入，不會儲存在編輯器草稿中。
+                <Trans>
+                  The private key in the clipboard is encrypted. The password is sent only to the
+                  main process to decrypt this import and is not stored in the editor draft.
+                </Trans>
               </DialogDescription>
             </DialogHeader>
             <FieldGroup className="py-4">
               <Field data-invalid={Boolean(sshKeyImportError) || undefined}>
-                <FieldLabel htmlFor="ssh-import-passphrase">私鑰密碼</FieldLabel>
+                <FieldLabel htmlFor="ssh-import-passphrase">
+                  <Trans>Private key password</Trans>
+                </FieldLabel>
                 <Input
                   ref={sshImportPassphraseRef}
                   id="ssh-import-passphrase"
@@ -2375,13 +2528,17 @@ function LoginEditor({
                 onClick={cancelSshImportPassphrase}
                 disabled={busy || sshKeyImportState === 'submittingPassphrase'}
               >
-                取消
+                <Trans>Cancel</Trans>
               </Button>
               <Button type="submit" disabled={busy || sshKeyImportState === 'submittingPassphrase'}>
                 {sshKeyImportState === 'submittingPassphrase' && (
                   <Spinner data-icon="inline-start" />
                 )}
-                {sshKeyImportState === 'submittingPassphrase' ? '驗證中…' : '繼續匯入'}
+                {sshKeyImportState === 'submittingPassphrase' ? (
+                  <Trans>Verifying…</Trans>
+                ) : (
+                  <Trans>Continue import</Trans>
+                )}
               </Button>
             </DialogFooter>
           </form>
@@ -2398,16 +2555,23 @@ function LoginEditor({
             <AlertDialogMedia>
               <Trash2 />
             </AlertDialogMedia>
-            <AlertDialogTitle>刪除這組通行密鑰？</AlertDialogTitle>
+            <AlertDialogTitle>
+              <Trans>Delete this passkey?</Trans>
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {passkeyDeleteTarget
-                ? `「${passkeyDeleteTarget.rpName || passkeyDeleteTarget.rpId}」的通行密鑰會立即從此登入項目移除並同步，這個動作無法復原。`
-                : '這組通行密鑰會立即從登入項目移除。'}
+              {passkeyDeleteTarget ? (
+                <Trans>
+                  The passkey for “{passkeyDeleteTarget.rpName || passkeyDeleteTarget.rpId}” will be
+                  removed from this login and synced immediately. This action cannot be undone.
+                </Trans>
+              ) : (
+                <Trans>This passkey will be removed from the login immediately.</Trans>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel type="button" disabled={busy}>
-              保留通行密鑰
+              <Trans>Keep passkey</Trans>
             </AlertDialogCancel>
             <AlertDialogAction
               type="button"
@@ -2416,7 +2580,7 @@ function LoginEditor({
               onClick={() => void deletePasskey()}
             >
               {busy ? <Spinner data-icon="inline-start" /> : <Trash2 data-icon="inline-start" />}
-              {busy ? '刪除中…' : '刪除通行密鑰'}
+              {busy ? <Trans>Deleting…</Trans> : <Trans>Delete passkey</Trans>}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

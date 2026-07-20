@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useLingui } from '@lingui/react/macro'
 import type { AppUpdateState } from '../../../shared/vault-contract'
 import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
@@ -27,47 +28,8 @@ interface AboutPageProps {
   onOpenRepository: () => Promise<void>
 }
 
-function updateStatusLabel(state: AppUpdateState, hasChecked: boolean): string {
-  switch (state.status) {
-    case 'checking':
-      return '檢查中'
-    case 'available':
-      return '有新版本'
-    case 'downloading':
-      return '下載中'
-    case 'downloaded':
-      return '已準備好'
-    case 'error':
-      return '檢查失敗'
-    case 'disabled':
-      return '手動更新'
-    case 'idle':
-      return hasChecked ? '已是最新版本' : '尚未檢查'
-  }
-}
-
-function updateDescription(state: AppUpdateState, hasChecked: boolean): string {
-  switch (state.status) {
-    case 'checking':
-      return '正在向更新服務確認是否有新版。'
-    case 'available':
-      return state.canAutoInstall
-        ? `版本 ${state.availableVersion ?? '新版'} 已可下載。`
-        : '這個安裝格式需從 GitHub Releases 手動下載。'
-    case 'downloading':
-      return '更新檔會在背景下載，完成後可選擇何時重新啟動。'
-    case 'downloaded':
-      return `版本 ${state.availableVersion ?? '新版'} 已下載完成。`
-    case 'error':
-      return '無法完成更新檢查，請確認網路連線後再試。'
-    case 'disabled':
-      return '開發版本不提供自動更新，請從 GitHub Releases 取得安裝檔。'
-    case 'idle':
-      return hasChecked ? '目前沒有可用更新。' : '手動檢查 BearWarden 是否有新版本。'
-  }
-}
-
 export default function AboutPage({ onOpenRepository }: AboutPageProps): React.JSX.Element {
+  const { t } = useLingui()
   const [updateState, setUpdateState] = useState<AppUpdateState>(initialUpdateState)
   const [hasChecked, setHasChecked] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -83,14 +45,14 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
         if (active) setUpdateState(state)
       },
       () => {
-        if (active) setActionError('無法讀取更新狀態。')
+        if (active) setActionError(t`Unable to read update status.`)
       }
     )
     return () => {
       active = false
       unsubscribe()
     }
-  }, [])
+  }, [t])
 
   async function runUpdateAction(action: () => Promise<AppUpdateState | void>): Promise<void> {
     setBusy(true)
@@ -99,14 +61,54 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
       const nextState = await action()
       if (nextState) setUpdateState(nextState)
     } catch {
-      setActionError('無法執行更新操作，請稍後再試。')
+      setActionError(t`Unable to complete the update action. Please try again later.`)
     } finally {
       setBusy(false)
     }
   }
 
-  const currentVersion = updateState.currentVersion || '讀取中…'
-  const statusLabel = updateStatusLabel(updateState, hasChecked)
+  const currentVersion = updateState.currentVersion || t`Loading…`
+  const availableVersion = updateState.availableVersion ?? t`a new version`
+  const statusLabel = (() => {
+    switch (updateState.status) {
+      case 'checking':
+        return t`Checking`
+      case 'available':
+        return t`Update available`
+      case 'downloading':
+        return t`Downloading`
+      case 'downloaded':
+        return t`Ready to install`
+      case 'error':
+        return t`Check failed`
+      case 'disabled':
+        return t`Manual update`
+      case 'idle':
+        return hasChecked ? t`Up to date` : t`Not checked`
+    }
+  })()
+  const updateDescription = (() => {
+    switch (updateState.status) {
+      case 'checking':
+        return t`Checking the update service for a new version.`
+      case 'available':
+        return updateState.canAutoInstall
+          ? t`Version ${availableVersion} is available to download.`
+          : t`This installation format must be downloaded manually from GitHub Releases.`
+      case 'downloading':
+        return t`The update downloads in the background. You can choose when to restart after it finishes.`
+      case 'downloaded':
+        return t`Version ${availableVersion} has finished downloading.`
+      case 'error':
+        return t`Unable to check for updates. Check your network connection and try again.`
+      case 'disabled':
+        return t`Development builds do not support automatic updates. Download an installer from GitHub Releases.`
+      case 'idle':
+        return hasChecked
+          ? t`No updates are currently available.`
+          : t`Check manually for a new version of BearWarden.`
+    }
+  })()
   const canCheck = updateState.status === 'idle' || updateState.status === 'error'
   const showProgress = updateState.status === 'downloading'
   const progress = Math.min(100, Math.max(0, updateState.progress ?? 0))
@@ -118,8 +120,8 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
           <SettingsCardHeading
             id="about-settings-title"
             icon={Info}
-            title="關於 BearWarden"
-            description="查看目前版本、更新狀態與專案資訊。"
+            title={t`About BearWarden`}
+            description={t`View the current version, update status, and project information.`}
           />
           <CardAction>
             <Badge variant={updateState.status === 'available' ? 'default' : 'secondary'}>
@@ -130,20 +132,18 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
         <SettingsCardContent className="grid gap-4">
           <div className="flex items-center justify-between gap-4">
             <div className="grid gap-0.5">
-              <strong className="text-xs">目前版本</strong>
-              <span className="text-muted-foreground text-xs">BearWarden Desktop</span>
+              <strong className="text-xs">{t`Current version`}</strong>
+              <span className="text-muted-foreground text-xs">{t`BearWarden Desktop`}</span>
             </div>
             <Badge variant="outline" className="font-mono tabular-nums">
-              {currentVersion === '讀取中…' ? currentVersion : `v${currentVersion}`}
+              {updateState.currentVersion ? `v${currentVersion}` : currentVersion}
             </Badge>
           </div>
           <Separator />
           <div className="flex items-start justify-between gap-4 max-[680px]:flex-col">
             <div className="grid min-w-0 gap-1">
-              <strong className="text-xs">版本更新</strong>
-              <p className="text-muted-foreground m-0 text-xs leading-[1.5]">
-                {updateDescription(updateState, hasChecked)}
-              </p>
+              <strong className="text-xs">{t`Version updates`}</strong>
+              <p className="text-muted-foreground m-0 text-xs leading-[1.5]">{updateDescription}</p>
             </div>
             {updateState.status === 'available' ? (
               <Button
@@ -158,7 +158,7 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
                   )
                 }
               >
-                {updateState.canAutoInstall ? '下載更新' : '前往 Releases'}
+                {updateState.canAutoInstall ? t`Download update` : t`Go to Releases`}
               </Button>
             ) : updateState.status === 'downloaded' ? (
               <Button
@@ -167,7 +167,7 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
                 disabled={busy}
                 onClick={() => void runUpdateAction(() => window.bearwarden.updater.install())}
               >
-                重新啟動並安裝
+                {t`Restart and install`}
               </Button>
             ) : (
               <Button
@@ -187,13 +187,15 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
                 ) : (
                   <RefreshCw data-icon="inline-start" aria-hidden="true" />
                 )}
-                檢查更新
+                {t`Check for updates`}
               </Button>
             )}
           </div>
           {showProgress && (
             <Progress value={progress} className="gap-1.5">
-              <ProgressLabel className="text-muted-foreground text-xs">下載進度</ProgressLabel>
+              <ProgressLabel className="text-muted-foreground text-xs">
+                {t`Download progress`}
+              </ProgressLabel>
               <ProgressValue className="text-xs" />
             </Progress>
           )}
@@ -208,13 +210,13 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
       <SettingsCard aria-labelledby="about-project-title">
         <CardHeader>
           <CardTitle id="about-project-title" role="heading" aria-level={2}>
-            專案資訊
+            {t`Project information`}
           </CardTitle>
-          <CardDescription>BearWarden 是一個以本機優先為核心的桌面密碼管理器。</CardDescription>
+          <CardDescription>{t`BearWarden is a local-first desktop password manager.`}</CardDescription>
         </CardHeader>
         <SettingsCardContent>
           <p className="text-muted-foreground m-0 text-xs leading-[1.6]">
-            查看原始碼、回報問題，或取得最新發行版本。
+            {t`View the source code, report an issue, or get the latest release.`}
           </p>
         </SettingsCardContent>
         <CardFooter className="gap-2">
@@ -226,7 +228,7 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
             onClick={() => void runUpdateAction(() => onOpenRepository())}
           >
             <GitFork data-icon="inline-start" aria-hidden="true" />
-            GitHub
+            {t`GitHub`}
           </Button>
           <Button
             variant="ghost"
@@ -236,7 +238,7 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
             onClick={() => void runUpdateAction(() => window.bearwarden.updater.openReleasePage())}
           >
             <ExternalLink data-icon="inline-start" aria-hidden="true" />
-            Releases
+            {t`Releases`}
           </Button>
         </CardFooter>
       </SettingsCard>

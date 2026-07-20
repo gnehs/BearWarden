@@ -1,5 +1,6 @@
 import { resolve } from 'path'
 import { defineConfig } from 'electron-vite'
+import { lingui } from '@lingui/vite-plugin'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import Icons from 'unplugin-icons/vite'
@@ -39,6 +40,15 @@ export default defineConfig({
       },
       isolatedEntries: true
     },
-    plugins: [tailwindcss(), react(), Icons({ compiler: 'jsx', jsx: 'react' })]
+    plugins: [
+      tailwindcss(),
+      react({
+        babel: {
+          plugins: ['@lingui/babel-plugin-lingui-macro']
+        }
+      }),
+      lingui(),
+      Icons({ compiler: 'jsx', jsx: 'react' })
+    ]
   }
 })

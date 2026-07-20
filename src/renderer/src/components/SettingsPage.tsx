@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import {
   ClipboardCheck,
   Cloud,
@@ -92,42 +93,62 @@ const maxVaultTimeoutMinutes = MAX_VAULT_TIMEOUT_MINUTES
 const maxVaultTimeoutHours = Math.floor(maxVaultTimeoutMinutes / 60)
 
 export const contentProtectionDescription =
-  '啟用後，Windows 遠端桌面、螢幕分享與錄影可能看不到 BearWarden 視窗。若只剩工作列圖示，請在本機工作階段關閉此選項。'
+  'When enabled, BearWarden may be hidden in Windows Remote Desktop, screen sharing, and recordings. If only the taskbar icon remains visible, turn this option off in a local session.'
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function autofillStatusPresentation(
   enabled: boolean,
   status: AutofillFeatureStatus | null
 ): { label: string; variant: 'default' | 'secondary' | 'destructive' } {
-  if (!status) return { label: '檢查中', variant: 'secondary' }
-  if (!status.available) return { label: '僅 macOS', variant: 'secondary' }
-  if (!enabled) return { label: '未啟用', variant: 'secondary' }
-  if (!status.shortcutRegistered) return { label: '快捷鍵衝突', variant: 'destructive' }
-  if (!status.accessibilityTrusted) return { label: '需要權限', variant: 'destructive' }
-  return { label: '可使用', variant: 'default' }
+  if (!status) return { label: 'Checking', variant: 'secondary' }
+  if (!status.available) return { label: 'macOS only', variant: 'secondary' }
+  if (!enabled) return { label: 'Disabled', variant: 'secondary' }
+  if (!status.shortcutRegistered) return { label: 'Shortcut conflict', variant: 'destructive' }
+  if (!status.accessibilityTrusted) return { label: 'Permission required', variant: 'destructive' }
+  return { label: 'Available', variant: 'default' }
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const settingsCategories = [
-  { id: 'general', label: '一般', description: '外觀與預設行為', icon: Palette },
-  { id: 'security', label: '安全與解鎖', description: '鎖定與解鎖方式', icon: ShieldCheck },
-  { id: 'privacy', label: '隱私', description: '剪貼簿與網站圖示', icon: ClipboardCheck },
-  { id: 'accounts', label: '帳號與同步', description: '本機帳號與雲端連線', icon: Cloud },
-  { id: 'tools', label: '工具與資料', description: '自動填入、SSH Agent 與備份', icon: KeyRound },
-  { id: 'about', label: '關於', description: '版本與更新資訊', icon: Info }
+  { id: 'general', label: 'General', description: 'Appearance and defaults', icon: Palette },
+  {
+    id: 'security',
+    label: 'Security & unlock',
+    description: 'Locking and unlocking',
+    icon: ShieldCheck
+  },
+  {
+    id: 'privacy',
+    label: 'Privacy',
+    description: 'Clipboard and website icons',
+    icon: ClipboardCheck
+  },
+  {
+    id: 'accounts',
+    label: 'Accounts & sync',
+    description: 'Local accounts and cloud connections',
+    icon: Cloud
+  },
+  {
+    id: 'tools',
+    label: 'Tools & data',
+    description: 'Autofill, SSH Agent, and backups',
+    icon: KeyRound
+  },
+  { id: 'about', label: 'About', description: 'Version and update information', icon: Info }
 ] as const
 
 type SettingsCategoryId = (typeof settingsCategories)[number]['id']
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const vaultTimeoutItems = [
-  { label: 'App 重新啟動時鎖定', value: 'onRestart' },
-  { label: '系統閒置 5 分鐘', value: 'systemIdle' },
+  { label: 'When the app restarts', value: 'onRestart' },
+  { label: 'After 5 minutes of system inactivity', value: 'systemIdle' },
   ...vaultTimeoutPresetMinutes.map((minutes) => ({
-    label: `${minutes} 分鐘`,
+    label: `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`,
     value: String(minutes)
   })),
-  { label: '自訂', value: 'custom' }
+  { label: 'Custom', value: 'custom' }
 ] as const
 
 type VaultTimeoutSelectValue = (typeof vaultTimeoutItems)[number]['value']
@@ -180,19 +201,19 @@ export function vaultTimeoutPolicyFromCustomFields(
 // eslint-disable-next-line react-refresh/only-export-components
 export function vaultTimeoutCustomValidationMessage(hours: string, minutes: string): string | null {
   if (!/^\d+$/.test(hours) || !/^\d+$/.test(minutes)) {
-    return '請輸入整數的小時與分鐘。'
+    return 'Enter whole numbers for hours and minutes.'
   }
   const parsedHours = Number(hours)
   const parsedMinutes = Number(minutes)
-  if (parsedMinutes > 59) return '分鐘必須介於 0 到 59。'
+  if (parsedMinutes > 59) return 'Minutes must be between 0 and 59.'
   if (
     parsedHours > maxVaultTimeoutHours ||
     parsedHours * 60 + parsedMinutes > maxVaultTimeoutMinutes
   ) {
-    return '自訂閒置時間最長為 8,760 小時。'
+    return 'The custom inactivity timeout cannot exceed 8,760 hours.'
   }
   if (!vaultTimeoutPolicyFromCustomFields(hours, minutes)) {
-    return '自訂閒置時間至少為 0 小時 1 分鐘。'
+    return 'The custom inactivity timeout must be at least 1 minute.'
   }
   return null
 }
@@ -206,7 +227,7 @@ export function applyVaultTimeoutCustomFields(
   const validationMessage = vaultTimeoutCustomValidationMessage(hours, minutes)
   if (validationMessage) return validationMessage
   const policy = vaultTimeoutPolicyFromCustomFields(hours, minutes)
-  if (!policy) return '請確認自訂閒置時間。'
+  if (!policy) return 'Check the custom inactivity timeout.'
   void onUpdate({ vaultTimeoutPolicy: policy })
   return null
 }
@@ -222,26 +243,49 @@ function VaultTimeoutCustomFields({
   disabled,
   onUpdate
 }: VaultTimeoutCustomFieldsProps): React.JSX.Element {
+  const { t } = useLingui()
   const initialFields = vaultTimeoutCustomFields(policy)
   const [hours, setHours] = useState(initialFields.hours)
   const [minutes, setMinutes] = useState(initialFields.minutes)
-  const validationMessage = vaultTimeoutCustomValidationMessage(hours, minutes)
+  const validationMessage = (() => {
+    if (!/^\d+$/.test(hours) || !/^\d+$/.test(minutes)) {
+      return t`Enter whole numbers for hours and minutes.`
+    }
+    const parsedHours = Number(hours)
+    const parsedMinutes = Number(minutes)
+    if (parsedMinutes > 59) return t`Minutes must be between 0 and 59.`
+    if (
+      parsedHours > maxVaultTimeoutHours ||
+      parsedHours * 60 + parsedMinutes > maxVaultTimeoutMinutes
+    ) {
+      return t`The custom inactivity timeout cannot exceed 8,760 hours.`
+    }
+    if (!vaultTimeoutPolicyFromCustomFields(hours, minutes)) {
+      return t`The custom inactivity timeout must be at least 1 minute.`
+    }
+    return null
+  })()
 
   const apply = (): void => {
-    applyVaultTimeoutCustomFields(hours, minutes, onUpdate)
+    if (validationMessage) return
+    const policy = vaultTimeoutPolicyFromCustomFields(hours, minutes)
+    if (!policy) return
+    void onUpdate({ vaultTimeoutPolicy: policy })
   }
 
   return (
     <SettingsSelectRow>
       <FieldContent>
-        <FieldLabel>自訂閒置時間</FieldLabel>
+        <FieldLabel>
+          <Trans>Custom inactivity timeout</Trans>
+        </FieldLabel>
         <FieldDescription id="vault-timeout-custom-description">
-          最短 0 小時 1 分鐘，最長 8,760 小時；分鐘必須介於 0 到 59。
+          <Trans>Minimum 1 minute, maximum 8,760 hours; minutes must be between 0 and 59.</Trans>
         </FieldDescription>
       </FieldContent>
       <div className="flex items-center gap-2" aria-describedby="vault-timeout-custom-description">
         <Input
-          aria-label="自訂閒置時間小時"
+          aria-label={t`Custom inactivity timeout hours`}
           type="number"
           inputMode="numeric"
           min={0}
@@ -252,9 +296,11 @@ function VaultTimeoutCustomFields({
           aria-invalid={Boolean(validationMessage)}
           onChange={(event) => setHours(event.target.value)}
         />
-        <span aria-hidden="true">小時</span>
+        <span aria-hidden="true">
+          <Trans>hours</Trans>
+        </span>
         <Input
-          aria-label="自訂閒置時間分鐘"
+          aria-label={t`Custom inactivity timeout minutes`}
           type="number"
           inputMode="numeric"
           min={0}
@@ -265,14 +311,16 @@ function VaultTimeoutCustomFields({
           aria-invalid={Boolean(validationMessage)}
           onChange={(event) => setMinutes(event.target.value)}
         />
-        <span aria-hidden="true">分鐘</span>
+        <span aria-hidden="true">
+          <Trans>minutes</Trans>
+        </span>
         <Button
           type="button"
           size="sm"
           disabled={disabled || Boolean(validationMessage)}
           onClick={apply}
         >
-          套用
+          <Trans>Apply</Trans>
         </Button>
         {validationMessage && (
           <p className="text-destructive text-sm" role="alert">
@@ -284,45 +332,11 @@ function VaultTimeoutCustomFields({
   )
 }
 
-const clipboardClearItems = [
-  { label: '不自動清除', value: 0 },
-  { label: '15 秒後', value: 15 },
-  { label: '30 秒後', value: 30 },
-  { label: '1 分鐘後', value: 60 },
-  { label: '2 分鐘後', value: 120 }
-] as const
-
-const defaultSortItems = [
-  { label: '最近使用', value: 'recent' },
-  { label: '使用頻率', value: 'frequency' },
-  { label: '依名稱', value: 'name' }
-] as const
-
-const themeItems = [
-  { label: '跟隨系統', value: 'system' },
-  { label: '淺色', value: 'light' },
-  { label: '深色', value: 'dark' }
-] as const
-
-const sshAgentPromptItems: ReadonlyArray<{ label: string; value: SshAgentPromptBehavior }> = [
-  { label: '每次簽署都詢問', value: 'always' },
-  { label: '從不詢問（自動核准）', value: 'never' },
-  { label: '鎖定前記住核准結果', value: 'rememberUntilLock' }
-]
-
 const initialSshAgentStatus: SshAgentStatus = {
   enabled: false,
   running: false,
   state: 'stopped',
   identityCount: 0
-}
-
-const syncLabels: Record<SyncStatus['state'], string> = {
-  unconfigured: '尚未設定',
-  locked: '需要解鎖',
-  ready: '已連線',
-  syncing: '同步中…',
-  error: '需要處理'
 }
 
 interface SettingsPageProps {
@@ -376,6 +390,7 @@ function SettingsPage({
   onReorderAccounts,
   onRemoveAccount
 }: SettingsPageProps): React.JSX.Element {
+  const { t } = useLingui()
   const [sshAgentStatus, setSshAgentStatus] = useState<SshAgentStatus>(initialSshAgentStatus)
   const [autofillStatus, setAutofillStatus] = useState<AutofillFeatureStatus | null>(null)
   const [autofillPermissionBusy, setAutofillPermissionBusy] = useState(false)
@@ -397,6 +412,82 @@ function SettingsPage({
   const [activeSettingsCategory, setActiveSettingsCategory] = useState<SettingsCategoryId>(
     settingsCategories[0].id
   )
+  const localizedSettingsCategories = [
+    {
+      id: 'general',
+      label: t`General`,
+      description: t`Appearance and defaults`,
+      icon: Palette
+    },
+    {
+      id: 'security',
+      label: t`Security & unlock`,
+      description: t`Locking and unlocking`,
+      icon: ShieldCheck
+    },
+    {
+      id: 'privacy',
+      label: t`Privacy`,
+      description: t`Clipboard and website icons`,
+      icon: ClipboardCheck
+    },
+    {
+      id: 'accounts',
+      label: t`Accounts & sync`,
+      description: t`Local accounts and cloud connections`,
+      icon: Cloud
+    },
+    {
+      id: 'tools',
+      label: t`Tools & data`,
+      description: t`Autofill, SSH Agent, and backups`,
+      icon: KeyRound
+    },
+    { id: 'about', label: t`About`, description: t`Version and update information`, icon: Info }
+  ] as const
+  const localizedVaultTimeoutItems = [
+    { label: t`When the app restarts`, value: 'onRestart' },
+    { label: t`After 5 minutes of system inactivity`, value: 'systemIdle' },
+    { label: t`1 minute`, value: '1' },
+    { label: t`5 minutes`, value: '5' },
+    { label: t`15 minutes`, value: '15' },
+    { label: t`30 minutes`, value: '30' },
+    { label: t`60 minutes`, value: '60' },
+    { label: t`240 minutes`, value: '240' },
+    { label: t`Custom`, value: 'custom' }
+  ] as const
+  const localizedClipboardClearItems = [
+    { label: t`Never`, value: 0 },
+    { label: t`After 15 seconds`, value: 15 },
+    { label: t`After 30 seconds`, value: 30 },
+    { label: t`After 1 minute`, value: 60 },
+    { label: t`After 2 minutes`, value: 120 }
+  ] as const
+  const localizedDefaultSortItems = [
+    { label: t`Recently used`, value: 'recent' },
+    { label: t`Most used`, value: 'frequency' },
+    { label: t`Name`, value: 'name' }
+  ] as const
+  const localizedThemeItems = [
+    { label: t`System`, value: 'system' },
+    { label: t`Light`, value: 'light' },
+    { label: t`Dark`, value: 'dark' }
+  ] as const
+  const localizedSshAgentPromptItems: ReadonlyArray<{
+    label: string
+    value: SshAgentPromptBehavior
+  }> = [
+    { label: t`Ask before every signature`, value: 'always' },
+    { label: t`Never ask (approve automatically)`, value: 'never' },
+    { label: t`Remember approvals until locked`, value: 'rememberUntilLock' }
+  ]
+  const localizedSyncLabels: Record<SyncStatus['state'], string> = {
+    unconfigured: t`Not configured`,
+    locked: t`Unlock required`,
+    ready: t`Connected`,
+    syncing: t`Syncing…`,
+    error: t`Action required`
+  }
 
   useEffect(() => {
     let active = true
@@ -432,7 +523,7 @@ function SettingsPage({
           if (active && epoch === autofillStatusEpochRef.current) setAutofillStatus(status)
         },
         () => {
-          if (active) setAutofillFeedback('無法讀取自動填入狀態。')
+          if (active) setAutofillFeedback(t`Unable to read the autofill status.`)
         }
       )
     }
@@ -443,7 +534,7 @@ function SettingsPage({
       autofillStatusEpochRef.current += 1
       window.removeEventListener('focus', refresh)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     let active = true
@@ -452,26 +543,26 @@ function SettingsPage({
         if (active) setPinStatus(status)
       },
       () => {
-        if (active) setPinFeedback('無法讀取 PIN 解鎖狀態。')
+        if (active) setPinFeedback(t`Unable to read the PIN unlock status.`)
       }
     )
     return () => {
       active = false
     }
-  }, [])
+  }, [t])
 
   async function enablePinUnlock(): Promise<void> {
     setPinFeedback('')
     if (pin.normalize('NFC').length < 4) {
-      setPinFeedback('PIN 至少需要 4 個字元。')
+      setPinFeedback(t`The PIN must contain at least 4 characters.`)
       return
     }
     if (pin !== pinConfirmation) {
-      setPinFeedback('兩次輸入的 PIN 不一致。')
+      setPinFeedback(t`The PINs do not match.`)
       return
     }
     if (!pinMasterPassword) {
-      setPinFeedback('請輸入主密碼以確認。')
+      setPinFeedback(t`Enter your master password to confirm.`)
       return
     }
     const request = { pin, masterPassword: pinMasterPassword }
@@ -481,12 +572,12 @@ function SettingsPage({
     setPinBusy(true)
     try {
       setPinStatus(await window.bearwarden.vault.enablePin(request))
-      setPinFeedback('PIN 解鎖已啟用；只在這次執行期間有效。')
+      setPinFeedback(t`PIN unlock is enabled for this session only.`)
     } catch (error) {
       setPinFeedback(
         error instanceof Error && error.message.includes('INVALID_MASTER_PASSWORD')
-          ? '主密碼驗證失敗。'
-          : '無法啟用 PIN 解鎖。'
+          ? t`The master password is incorrect.`
+          : t`Unable to enable PIN unlock.`
       )
     } finally {
       request.pin = ''
@@ -500,9 +591,9 @@ function SettingsPage({
     setPinFeedback('')
     try {
       setPinStatus(await window.bearwarden.vault.disablePin())
-      setPinFeedback('PIN 解鎖已停用。')
+      setPinFeedback(t`PIN unlock is disabled.`)
     } catch {
-      setPinFeedback('無法停用 PIN 解鎖。')
+      setPinFeedback(t`Unable to disable PIN unlock.`)
     } finally {
       setPin('')
       setPinConfirmation('')
@@ -515,10 +606,30 @@ function SettingsPage({
     settings?.sshAgentEnabled ?? false,
     sshAgentStatus
   )
+  const sshAgentStatusLabel = !(settings?.sshAgentEnabled ?? false)
+    ? t`Disabled`
+    : sshAgentStatus.state === 'ready'
+      ? t`Ready`
+      : sshAgentStatus.state === 'starting'
+        ? t`Starting`
+        : sshAgentStatus.state === 'error'
+          ? t`Action required`
+          : t`Stopped`
   const autofillStatusPresentationValue = autofillStatusPresentation(
     settings?.autofillEnabled ?? false,
     autofillStatus
   )
+  const autofillStatusLabel = !autofillStatus
+    ? t`Checking`
+    : !autofillStatus.available
+      ? t`macOS only`
+      : !settings?.autofillEnabled
+        ? t`Disabled`
+        : !autofillStatus.shortcutRegistered
+          ? t`Shortcut conflict`
+          : !autofillStatus.accessibilityTrusted
+            ? t`Permission required`
+            : t`Available`
   const sshAgentEndpoint = sshAgentStatus.endpoint
   const usesWindowsNamedPipe = isWindowsSshAgentEndpoint(sshAgentEndpoint)
   const sshAgentCommand = usesWindowsNamedPipe
@@ -542,10 +653,10 @@ function SettingsPage({
       const status = await window.bearwarden.autofill.status()
       if (epoch !== autofillStatusEpochRef.current) return
       setAutofillStatus(status)
-      setAutofillFeedback('已重新檢查輔助使用與快捷鍵狀態。')
+      setAutofillFeedback(t`Accessibility and shortcut status checked again.`)
     } catch {
       if (epoch !== autofillStatusEpochRef.current) return
-      setAutofillFeedback('無法讀取自動填入狀態。')
+      setAutofillFeedback(t`Unable to read the autofill status.`)
     }
   }
 
@@ -556,7 +667,9 @@ function SettingsPage({
     try {
       const saved = await onUpdate({ autofillEnabled: enabled })
       if (saved === false) {
-        setAutofillFeedback('自動填入設定未能儲存，快捷鍵狀態沒有變更。')
+        setAutofillFeedback(
+          t`The autofill setting could not be saved, so the shortcut status was not changed.`
+        )
         return
       }
       const epoch = ++autofillStatusEpochRef.current
@@ -564,10 +677,12 @@ function SettingsPage({
       if (epoch !== autofillStatusEpochRef.current) return
       setAutofillStatus(status)
       if (enabled && !status.shortcutRegistered) {
-        setAutofillFeedback('全域自動填入快捷鍵已被其他程式使用；請先停用另一個程式的相同快捷鍵。')
+        setAutofillFeedback(
+          t`The global autofill shortcut is already used by another app. Disable the same shortcut in that app first.`
+        )
       }
     } catch {
-      setAutofillFeedback('無法更新自動填入設定。')
+      setAutofillFeedback(t`Unable to update the autofill setting.`)
     } finally {
       setAutofillOperationBusy(false)
     }
@@ -585,12 +700,14 @@ function SettingsPage({
       setAutofillStatus(status)
       setAutofillFeedback(
         status.accessibilityTrusted
-          ? '輔助使用權限已開啟，可以使用跨瀏覽器自動填入。'
-          : '請在「系統設定 → 隱私權與安全性 → 輔助使用」允許 BearWarden，再回來重新檢查。'
+          ? t`Accessibility permission is enabled. Cross-browser autofill is ready to use.`
+          : t`Allow BearWarden under System Settings → Privacy & Security → Accessibility, then return and check again.`
       )
     } catch {
       if (epoch !== autofillStatusEpochRef.current) return
-      setAutofillFeedback('無法要求輔助使用權限，請改由系統設定手動開啟。')
+      setAutofillFeedback(
+        t`Unable to request accessibility permission. Enable it manually in System Settings.`
+      )
     } finally {
       setAutofillPermissionBusy(false)
       setAutofillOperationBusy(false)
@@ -599,10 +716,10 @@ function SettingsPage({
 
   return (
     <AuxiliaryPageLayout
-      eyebrow="應用程式"
-      title="設定"
+      eyebrow={t`Application`}
+      title={t`Settings`}
       titleId="settings-title"
-      subtitle="調整這台裝置上的安全性、外觀與同步方式。"
+      subtitle={t`Manage security, appearance, and sync on this device.`}
       headerIcon={<Settings2 />}
       scrollRef={settingsScrollRef}
       scrollClassName="scroll-fade scroll-fade-4 forced-colors:scroll-fade-none"
@@ -613,7 +730,7 @@ function SettingsPage({
             role="status"
           >
             <Spinner />
-            正在儲存
+            <Trans>Saving</Trans>
           </span>
         ) : undefined
       }
@@ -623,7 +740,7 @@ function SettingsPage({
           className="text-muted-foreground flex min-h-0 flex-1 flex-row items-center justify-center gap-2.5 p-7 text-center text-[11px]"
           role="status"
         >
-          <Spinner /> 正在讀取設定…
+          <Spinner /> <Trans>Loading settings…</Trans>
         </div>
       ) : (
         <AuxiliaryPageContent className="max-w-[760px] !grid-cols-[minmax(0,1fr)] gap-0">
@@ -639,10 +756,10 @@ function SettingsPage({
             <TabsList
               variant="line"
               sliding
-              aria-label="設定分類"
+              aria-label={t`Settings categories`}
               className="scroll-fade-x scroll-fade-4 forced-colors:scroll-fade-none w-full justify-start gap-1 overflow-x-auto px-1 group-data-horizontal/tabs:h-10"
             >
-              {settingsCategories.map(({ id, label, description, icon: Icon }) => (
+              {localizedSettingsCategories.map(({ id, label, description, icon: Icon }) => (
                 <TabsTrigger
                   key={id}
                   value={id}
@@ -661,16 +778,18 @@ function SettingsPage({
                   <SettingsCardHeading
                     id="general-settings-title"
                     icon={Palette}
-                    title="一般"
-                    description="調整密碼庫的外觀與預設排列方式。"
+                    title={t`General`}
+                    description={t`Customize the vault's appearance and default sorting.`}
                   />
                 </CardHeader>
                 <SettingsCardContent flush>
                   <FieldGroup className="gap-0">
                     <SettingsStackedRow>
-                      <FieldLabel htmlFor="theme-select">主題</FieldLabel>
+                      <FieldLabel htmlFor="theme-select">
+                        <Trans>Theme</Trans>
+                      </FieldLabel>
                       <Select
-                        items={themeItems}
+                        items={localizedThemeItems}
                         value={settings.theme}
                         disabled={settingsBusy}
                         onValueChange={(value) =>
@@ -682,7 +801,7 @@ function SettingsPage({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
-                            {themeItems.map((item) => (
+                            {localizedThemeItems.map((item) => (
                               <SelectItem key={item.value} value={item.value}>
                                 {item.label}
                               </SelectItem>
@@ -693,9 +812,11 @@ function SettingsPage({
                     </SettingsStackedRow>
                     <Separator />
                     <SettingsStackedRow>
-                      <FieldLabel htmlFor="default-sort-select">預設排序</FieldLabel>
+                      <FieldLabel htmlFor="default-sort-select">
+                        <Trans>Default sort</Trans>
+                      </FieldLabel>
                       <Select
-                        items={defaultSortItems}
+                        items={localizedDefaultSortItems}
                         value={settings.defaultSort}
                         disabled={settingsBusy}
                         onValueChange={(value) =>
@@ -707,7 +828,7 @@ function SettingsPage({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
-                            {defaultSortItems.map((item) => (
+                            {localizedDefaultSortItems.map((item) => (
                               <SelectItem key={item.value} value={item.value}>
                                 {item.label}
                               </SelectItem>
@@ -720,14 +841,14 @@ function SettingsPage({
                     <SettingsRow data-disabled={!settings.startAtLoginAvailable}>
                       <FieldContent>
                         <FieldLabel htmlFor="start-at-login-switch">
-                          登入時啟動 BearWarden
+                          <Trans>Launch BearWarden at login</Trans>
                         </FieldLabel>
                         <FieldDescription id="start-at-login-description">
                           {settings.startAtLoginAvailable
                             ? settings.startAtLoginNeedsApproval
-                              ? '已登錄，但仍需在 macOS「系統設定」的「登入項目」中允許。'
-                              : '登入這台電腦後，自動啟動 BearWarden。'
-                            : '僅 macOS 與 Windows 的安裝版支援自動啟動。'}
+                              ? t`Registered, but you still need to allow BearWarden in Login Items under macOS System Settings.`
+                              : t`Launch BearWarden automatically after you log in to this computer.`
+                            : t`Automatic launch is available only in installed versions for macOS and Windows.`}
                         </FieldDescription>
                       </FieldContent>
                       <Switch
@@ -748,20 +869,28 @@ function SettingsPage({
                   <SettingsCardHeading
                     id="security-settings-title"
                     icon={ShieldCheck}
-                    title="安全性"
-                    description="決定密碼庫何時鎖定，以及視窗內容如何受到保護。"
+                    title={t`Security`}
+                    description={t`Choose when the vault locks and how window content is protected.`}
                   />
                   <CardAction>
-                    <Badge variant="secondary">此裝置</Badge>
+                    <Badge variant="secondary">
+                      <Trans>This device</Trans>
+                    </Badge>
                   </CardAction>
                 </CardHeader>
                 <SettingsCardContent flush>
                   <FieldGroup className="gap-0">
                     <SettingsRow>
                       <FieldContent>
-                        <FieldLabel htmlFor="content-protection-switch">禁止螢幕截圖</FieldLabel>
+                        <FieldLabel htmlFor="content-protection-switch">
+                          <Trans>Block screenshots</Trans>
+                        </FieldLabel>
                         <FieldDescription id="content-protection-description">
-                          {contentProtectionDescription}
+                          <Trans>
+                            When enabled, BearWarden may be hidden in Windows Remote Desktop, screen
+                            sharing, and recordings. If only the taskbar icon remains visible, turn
+                            this option off in a local session.
+                          </Trans>
                         </FieldDescription>
                       </FieldContent>
                       <Switch
@@ -775,9 +904,11 @@ function SettingsPage({
                     <Separator />
                     <SettingsRow>
                       <FieldContent>
-                        <FieldLabel htmlFor="screen-lock-switch">螢幕鎖定時自動鎖定</FieldLabel>
+                        <FieldLabel htmlFor="screen-lock-switch">
+                          <Trans>Lock when the screen is locked</Trans>
+                        </FieldLabel>
                         <FieldDescription id="screen-lock-description">
-                          離開電腦並鎖定螢幕時，立即鎖定密碼庫。
+                          <Trans>Lock the vault immediately when you lock the screen.</Trans>
                         </FieldDescription>
                       </FieldContent>
                       <Switch
@@ -791,9 +922,11 @@ function SettingsPage({
                     <Separator />
                     <SettingsRow>
                       <FieldContent>
-                        <FieldLabel htmlFor="suspend-lock-switch">電腦休眠時自動鎖定</FieldLabel>
+                        <FieldLabel htmlFor="suspend-lock-switch">
+                          <Trans>Lock when the computer sleeps</Trans>
+                        </FieldLabel>
                         <FieldDescription id="suspend-lock-description">
-                          電腦進入休眠狀態時，立即鎖定密碼庫。
+                          <Trans>Lock the vault immediately when the computer goes to sleep.</Trans>
                         </FieldDescription>
                       </FieldContent>
                       <Switch
@@ -807,13 +940,18 @@ function SettingsPage({
                     <Separator />
                     <SettingsSelectRow>
                       <FieldContent>
-                        <FieldLabel htmlFor="vault-timeout-select">閒置自動鎖定</FieldLabel>
+                        <FieldLabel htmlFor="vault-timeout-select">
+                          <Trans>Lock after inactivity</Trans>
+                        </FieldLabel>
                         <FieldDescription id="vault-timeout-description">
-                          一段時間沒有操作後自動鎖定；關閉 App 時一律鎖定密碼庫。
+                          <Trans>
+                            Lock automatically after a period of inactivity. The vault always locks
+                            when the app closes.
+                          </Trans>
                         </FieldDescription>
                       </FieldContent>
                       <Select
-                        items={vaultTimeoutItems}
+                        items={localizedVaultTimeoutItems}
                         value={
                           customTimeoutSelected
                             ? 'custom'
@@ -849,7 +987,7 @@ function SettingsPage({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
-                            {vaultTimeoutItems.map((item) => (
+                            {localizedVaultTimeoutItems.map((item) => (
                               <SelectItem key={item.value} value={item.value}>
                                 {item.label}
                               </SelectItem>
@@ -883,12 +1021,12 @@ function SettingsPage({
                   <SettingsCardHeading
                     id="pin-settings-title"
                     icon={LockKeyholeOpen}
-                    title="PIN 解鎖"
-                    description="使用短期 PIN 解鎖本機密碼庫。"
+                    title={t`PIN unlock`}
+                    description={t`Unlock the local vault with a temporary PIN.`}
                   />
                   <CardAction>
                     <Badge variant={pinStatus.available ? 'default' : 'secondary'}>
-                      {pinStatus.available ? '已啟用' : '未啟用'}
+                      {pinStatus.available ? t`Enabled` : t`Disabled`}
                     </Badge>
                   </CardAction>
                 </CardHeader>
@@ -896,11 +1034,18 @@ function SettingsPage({
                   <>
                     <SettingsCardContent className="grid gap-2">
                       <p className="text-muted-foreground m-0 text-xs leading-[1.6]">
-                        PIN
-                        加密憑證只保留在記憶體中；重新啟動、登出、斷開或切換帳號後，必須使用主密碼。
+                        <Trans>
+                          The encrypted PIN credential remains in memory only. You must use the
+                          master password after restarting, signing out, disconnecting, or switching
+                          accounts.
+                        </Trans>
                       </p>
                       <p className="text-muted-foreground m-0 text-xs leading-[1.5]">
-                        PIN 連續錯誤 5 次會自動停用。目前可嘗試 {pinStatus.remainingAttempts} 次。
+                        <Plural
+                          value={pinStatus.remainingAttempts}
+                          one="PIN unlock is disabled after 5 consecutive failures. You have # attempt remaining."
+                          other="PIN unlock is disabled after 5 consecutive failures. You have # attempts remaining."
+                        />
                       </p>
                       {pinFeedback && (
                         <p className="text-muted-foreground m-0 text-xs leading-[1.5]">
@@ -916,7 +1061,7 @@ function SettingsPage({
                         disabled={pinBusy || settingsBusy}
                         onClick={() => void disablePinUnlock()}
                       >
-                        停用 PIN 解鎖
+                        <Trans>Disable PIN unlock</Trans>
                       </Button>
                     </CardFooter>
                   </>
@@ -924,12 +1069,17 @@ function SettingsPage({
                   <>
                     <SettingsCardContent className="grid gap-4">
                       <p className="text-muted-foreground m-0 text-xs leading-[1.6]">
-                        PIN 與加密憑證不會寫入磁碟。普通鎖定後可用
-                        PIN，但程式重新啟動時一定需要主密碼。
+                        <Trans>
+                          The PIN and encrypted credential are never written to disk. You can use
+                          the PIN after a normal lock, but restarting the app always requires the
+                          master password.
+                        </Trans>
                       </p>
                       <FieldGroup>
                         <Field>
-                          <FieldLabel htmlFor="pin-unlock-pin">PIN</FieldLabel>
+                          <FieldLabel htmlFor="pin-unlock-pin">
+                            <Trans>PIN</Trans>
+                          </FieldLabel>
                           <Input
                             id="pin-unlock-pin"
                             type="password"
@@ -939,11 +1089,15 @@ function SettingsPage({
                             onChange={(event) => setPin(event.target.value)}
                           />
                           <FieldDescription>
-                            至少 4 個字元，建議不要使用容易猜測的數字。
+                            <Trans>
+                              Use at least 4 characters and avoid numbers that are easy to guess.
+                            </Trans>
                           </FieldDescription>
                         </Field>
                         <Field>
-                          <FieldLabel htmlFor="pin-unlock-confirmation">再次輸入 PIN</FieldLabel>
+                          <FieldLabel htmlFor="pin-unlock-confirmation">
+                            <Trans>Enter PIN again</Trans>
+                          </FieldLabel>
                           <Input
                             id="pin-unlock-confirmation"
                             type="password"
@@ -954,7 +1108,9 @@ function SettingsPage({
                           />
                         </Field>
                         <Field>
-                          <FieldLabel htmlFor="pin-unlock-master-password">確認主密碼</FieldLabel>
+                          <FieldLabel htmlFor="pin-unlock-master-password">
+                            <Trans>Confirm master password</Trans>
+                          </FieldLabel>
                           <Input
                             id="pin-unlock-master-password"
                             type="password"
@@ -964,7 +1120,10 @@ function SettingsPage({
                             onChange={(event) => setPinMasterPassword(event.target.value)}
                           />
                           <FieldDescription>
-                            主密碼每次啟用時都會在 main process 重新驗證。
+                            <Trans>
+                              The master password is verified again in the main process each time
+                              PIN unlock is enabled.
+                            </Trans>
                           </FieldDescription>
                         </Field>
                       </FieldGroup>
@@ -992,7 +1151,7 @@ function SettingsPage({
                         ) : (
                           <LockKeyhole data-icon="inline-start" aria-hidden="true" />
                         )}
-                        啟用 PIN 解鎖
+                        <Trans>Enable PIN unlock</Trans>
                       </Button>
                     </CardFooter>
                   </>
@@ -1004,16 +1163,16 @@ function SettingsPage({
                   <SettingsCardHeading
                     id="touch-id-settings-title"
                     icon={Fingerprint}
-                    title="生物辨識"
-                    description="使用裝置的生物辨識快速解鎖，目前僅支援 macOS Touch ID。"
+                    title={t`Biometrics`}
+                    description={t`Unlock quickly with device biometrics. Currently, only macOS Touch ID is supported.`}
                   />
                   <CardAction>
                     <Badge variant={settings.touchIdEnabled ? 'default' : 'secondary'}>
                       {!settings.touchIdAvailable
-                        ? '不可用'
+                        ? t`Unavailable`
                         : settings.touchIdEnabled
-                          ? '已啟用'
-                          : '未啟用'}
+                          ? t`Enabled`
+                          : t`Disabled`}
                     </Badge>
                   </CardAction>
                 </CardHeader>
@@ -1024,9 +1183,14 @@ function SettingsPage({
                         <EmptyMedia variant="icon">
                           <Fingerprint />
                         </EmptyMedia>
-                        <EmptyTitle>這台裝置無法使用生物辨識</EmptyTitle>
+                        <EmptyTitle>
+                          <Trans>Biometrics are unavailable on this device</Trans>
+                        </EmptyTitle>
                         <EmptyDescription>
-                          目前僅支援 macOS Touch ID；你仍可使用主密碼解鎖密碼庫。
+                          <Trans>
+                            Currently, only macOS Touch ID is supported. You can still unlock the
+                            vault with your master password.
+                          </Trans>
                         </EmptyDescription>
                       </EmptyHeader>
                     </Empty>
@@ -1035,7 +1199,7 @@ function SettingsPage({
                   <>
                     <SettingsCardContent>
                       <p className="text-muted-foreground m-0 text-xs leading-[1.6]">
-                        下次鎖定後即可直接使用生物辨識解鎖。
+                        <Trans>You can use biometrics to unlock after the next lock.</Trans>
                       </p>
                     </SettingsCardContent>
                     <CardFooter>
@@ -1046,7 +1210,7 @@ function SettingsPage({
                         disabled={settingsBusy}
                         onClick={() => void onDisableTouchId()}
                       >
-                        停用生物辨識
+                        <Trans>Disable biometrics</Trans>
                       </Button>
                     </CardFooter>
                   </>
@@ -1054,7 +1218,9 @@ function SettingsPage({
                   <>
                     <SettingsCardContent>
                       <Field>
-                        <FieldLabel htmlFor="touch-id-password">確認主密碼</FieldLabel>
+                        <FieldLabel htmlFor="touch-id-password">
+                          <Trans>Confirm master password</Trans>
+                        </FieldLabel>
                         <Input
                           id="touch-id-password"
                           type="password"
@@ -1063,7 +1229,11 @@ function SettingsPage({
                           disabled={settingsBusy}
                           onChange={(event) => onTouchIdPasswordChange(event.target.value)}
                         />
-                        <FieldDescription>主密碼只會送到本機程序進行驗證。</FieldDescription>
+                        <FieldDescription>
+                          <Trans>
+                            The master password is sent only to the local process for verification.
+                          </Trans>
+                        </FieldDescription>
                       </Field>
                     </SettingsCardContent>
                     <CardFooter>
@@ -1074,7 +1244,7 @@ function SettingsPage({
                         onClick={() => void onEnableTouchId()}
                       >
                         <LockKeyhole data-icon="inline-start" aria-hidden="true" />
-                        啟用生物辨識
+                        <Trans>Enable biometrics</Trans>
                       </Button>
                     </CardFooter>
                   </>
@@ -1087,21 +1257,25 @@ function SettingsPage({
                   <SettingsCardHeading
                     id="privacy-settings-title"
                     icon={ClipboardCheck}
-                    title="隱私與剪貼簿"
-                    description="降低敏感資料留在螢幕或剪貼簿中的時間。"
+                    title={t`Privacy & clipboard`}
+                    description={t`Reduce how long sensitive data remains on screen or in the clipboard.`}
                   />
                 </CardHeader>
                 <SettingsCardContent flush>
                   <FieldGroup className="gap-0">
                     <SettingsSelectRow>
                       <FieldContent>
-                        <FieldLabel htmlFor="clipboard-clear-select">清除剪貼簿</FieldLabel>
+                        <FieldLabel htmlFor="clipboard-clear-select">
+                          <Trans>Clear clipboard</Trans>
+                        </FieldLabel>
                         <FieldDescription id="clipboard-clear-description">
-                          只清除由 BearWarden 寫入且尚未被你覆蓋的內容。
+                          <Trans>
+                            Clear only content written by BearWarden that you have not overwritten.
+                          </Trans>
                         </FieldDescription>
                       </FieldContent>
                       <Select
-                        items={clipboardClearItems}
+                        items={localizedClipboardClearItems}
                         value={settings.clearClipboardSeconds}
                         disabled={settingsBusy}
                         onValueChange={(value) =>
@@ -1118,7 +1292,7 @@ function SettingsPage({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
-                            {clipboardClearItems.map((item) => (
+                            {localizedClipboardClearItems.map((item) => (
                               <SelectItem key={item.value} value={item.value}>
                                 {item.label}
                               </SelectItem>
@@ -1130,9 +1304,14 @@ function SettingsPage({
                     <Separator />
                     <SettingsRow>
                       <FieldContent>
-                        <FieldLabel htmlFor="website-icons-switch">顯示網站圖示</FieldLabel>
+                        <FieldLabel htmlFor="website-icons-switch">
+                          <Trans>Show website icons</Trans>
+                        </FieldLabel>
                         <FieldDescription id="website-icons-description">
-                          透過已設定的 Bitwarden／Vaultwarden 圖示服務載入；停用後使用本機縮寫。
+                          <Trans>
+                            Load icons through the configured Bitwarden or Vaultwarden icon service.
+                            When disabled, local initials are used instead.
+                          </Trans>
                         </FieldDescription>
                       </FieldContent>
                       <Switch
@@ -1167,8 +1346,8 @@ function SettingsPage({
                   <SettingsCardHeading
                     id="sync-settings-title"
                     icon={Cloud}
-                    title="同步與帳號"
-                    description="連接 Bitwarden 或 Vaultwarden 以同步密碼庫。"
+                    title={t`Sync & accounts`}
+                    description={t`Connect to Bitwarden or Vaultwarden to sync the vault.`}
                   />
                   <CardAction>
                     <Badge
@@ -1180,7 +1359,7 @@ function SettingsPage({
                             : 'secondary'
                       }
                     >
-                      {syncLabels[syncStatus.state]}
+                      {localizedSyncLabels[syncStatus.state]}
                     </Badge>
                   </CardAction>
                 </CardHeader>
@@ -1193,9 +1372,11 @@ function SettingsPage({
                       <Cloud />
                     </span>
                     <div className="grid min-w-0 gap-0.5">
-                      <strong className="text-xs">{syncLabels[syncStatus.state]}</strong>
+                      <strong className="text-xs">{localizedSyncLabels[syncStatus.state]}</strong>
                       <small className="text-muted-foreground truncate text-[11px]">
-                        {syncStatus.email ?? syncStatus.serverUrl ?? '尚未連接 Bitwarden 帳號'}
+                        {syncStatus.email ??
+                          syncStatus.serverUrl ??
+                          t`No Bitwarden account connected`}
                       </small>
                     </div>
                   </div>
@@ -1211,7 +1392,7 @@ function SettingsPage({
                     />
                   )}
                   <Button variant="outline" size="sm" type="button" onClick={onOpenSync}>
-                    {syncStatus.configured ? '管理同步與帳號' : '設定 Bitwarden 同步'}
+                    {syncStatus.configured ? t`Manage sync & accounts` : t`Set up Bitwarden sync`}
                   </Button>
                 </CardFooter>
               </SettingsCard>
@@ -1222,17 +1403,17 @@ function SettingsPage({
                   <SettingsCardHeading
                     id="autofill-settings-title"
                     icon={Keyboard}
-                    title="跨瀏覽器自動填入"
+                    title={t`Cross-browser autofill`}
                     description={
-                      <>
-                        在支援的瀏覽器中按 <AutofillShortcut />
-                        ，依目前網站匹配並填入登入資料。
-                      </>
+                      <Trans>
+                        Press <AutofillShortcut /> in a supported browser to match the current site
+                        and fill in login details.
+                      </Trans>
                     }
                   />
                   <CardAction>
                     <Badge variant={autofillStatusPresentationValue.variant}>
-                      {autofillStatusPresentationValue.label}
+                      {autofillStatusLabel}
                     </Badge>
                   </CardAction>
                 </CardHeader>
@@ -1241,10 +1422,15 @@ function SettingsPage({
                     <SettingsRow data-disabled={autofillStatus?.available === false}>
                       <FieldContent>
                         <FieldLabel htmlFor="autofill-switch">
-                          啟用 <AutofillShortcut /> 自動填入
+                          <Trans>
+                            Enable <AutofillShortcut /> autofill
+                          </Trans>
                         </FieldLabel>
                         <FieldDescription id="autofill-description">
-                          只在你按下快捷鍵時讀取前景瀏覽器的網址與表單；多筆匹配會顯示迷你選擇器。
+                          <Trans>
+                            Read the foreground browser’s URL and form only when you press the
+                            shortcut. Multiple matches appear in a mini picker.
+                          </Trans>
                         </FieldDescription>
                       </FieldContent>
                       <Switch
@@ -1261,11 +1447,13 @@ function SettingsPage({
                       <>
                         <Separator />
                         <SettingsStackedRow>
-                          <FieldLabel>輔助使用權限</FieldLabel>
+                          <FieldLabel>
+                            <Trans>Accessibility permission</Trans>
+                          </FieldLabel>
                           <FieldDescription>
                             {autofillStatus.accessibilityTrusted
-                              ? '已允許 BearWarden 控制目前瀏覽器，可執行自動填入。'
-                              : 'macOS 需要你在「系統設定 → 隱私權與安全性 → 輔助使用」允許 BearWarden；若清單顯示自動填入輔助程式，也請一併允許。若曾拒絕，系統可能不會再次顯示提示。'}
+                              ? t`BearWarden can control the current browser and perform autofill.`
+                              : t`On macOS, allow BearWarden under System Settings → Privacy & Security → Accessibility. If the autofill helper appears in the list, allow it as well. After a denial, macOS may not show the prompt again.`}
                           </FieldDescription>
                           <div className="flex flex-wrap gap-2">
                             {!autofillStatus.accessibilityTrusted && (
@@ -1277,7 +1465,7 @@ function SettingsPage({
                                 onClick={() => void requestAutofillAccessibility()}
                               >
                                 {autofillPermissionBusy ? <Spinner /> : null}
-                                要求輔助使用權限
+                                <Trans>Request accessibility permission</Trans>
                               </Button>
                             )}
                             <Button
@@ -1287,7 +1475,7 @@ function SettingsPage({
                               disabled={autofillPermissionBusy || autofillOperationBusy}
                               onClick={() => void refreshAutofillStatus()}
                             >
-                              重新檢查
+                              <Trans>Check again</Trans>
                             </Button>
                           </div>
                         </SettingsStackedRow>
@@ -1296,11 +1484,15 @@ function SettingsPage({
                             <Separator />
                             <SettingsStackedRow>
                               <FieldLabel>
-                                <AutofillShortcut /> 無法註冊
+                                <Trans>
+                                  <AutofillShortcut /> could not be registered
+                                </Trans>
                               </FieldLabel>
                               <FieldDescription>
-                                這個快捷鍵已被其他程式使用（例如
-                                1Password）。請先停用另一個程式的相同快捷鍵，再重新檢查。
+                                <Trans>
+                                  Another app, such as 1Password, already uses this shortcut.
+                                  Disable the same shortcut in that app, then check again.
+                                </Trans>
                               </FieldDescription>
                             </SettingsStackedRow>
                           </>
@@ -1309,7 +1501,9 @@ function SettingsPage({
                           <>
                             <Separator />
                             <SettingsStackedRow>
-                              <FieldLabel>設定狀態</FieldLabel>
+                              <FieldLabel>
+                                <Trans>Setting status</Trans>
+                              </FieldLabel>
                               <FieldDescription role="status">{autofillFeedback}</FieldDescription>
                             </SettingsStackedRow>
                           </>
@@ -1325,12 +1519,12 @@ function SettingsPage({
                   <SettingsCardHeading
                     id="ssh-agent-settings-title"
                     icon={KeyRound}
-                    title="SSH Agent"
-                    description="讓終端機與 Git 經由本機 socket 使用密碼庫中的 SSH 金鑰。"
+                    title={t`SSH Agent`}
+                    description={t`Let terminals and Git use SSH keys from the vault through a local socket.`}
                   />
                   <CardAction>
                     <Badge variant={sshAgentStatusPresentationValue.variant}>
-                      {sshAgentStatusPresentationValue.label}
+                      {sshAgentStatusLabel}
                     </Badge>
                   </CardAction>
                 </CardHeader>
@@ -1338,9 +1532,14 @@ function SettingsPage({
                   <FieldGroup className="gap-0">
                     <SettingsRow>
                       <FieldContent>
-                        <FieldLabel htmlFor="ssh-agent-switch">啟用 SSH Agent</FieldLabel>
+                        <FieldLabel htmlFor="ssh-agent-switch">
+                          <Trans>Enable SSH Agent</Trans>
+                        </FieldLabel>
                         <FieldDescription id="ssh-agent-description">
-                          BearWarden 只會提供未封存、未刪除的 SSH 金鑰；每次簽署依下方規則核准。
+                          <Trans>
+                            BearWarden provides only unarchived, undeleted SSH keys. Each signature
+                            is approved according to the rule below.
+                          </Trans>
                         </FieldDescription>
                       </FieldContent>
                       <Switch
@@ -1354,14 +1553,19 @@ function SettingsPage({
                     <Separator />
                     <SettingsSelectRow data-disabled={!settings.sshAgentEnabled}>
                       <FieldContent>
-                        <FieldLabel htmlFor="ssh-agent-prompt-select">簽署核准方式</FieldLabel>
+                        <FieldLabel htmlFor="ssh-agent-prompt-select">
+                          <Trans>Signature approval</Trans>
+                        </FieldLabel>
                         <FieldDescription id="ssh-agent-prompt-description">
-                          「鎖定前記住」會區分本機請求；透過 forwarding
-                          的請求還必須對應已驗證的遠端主機指紋。鎖定後會清除。
+                          <Trans>
+                            Remember until locked distinguishes local requests. Forwarded requests
+                            must also match a verified remote host fingerprint. Approvals are
+                            cleared when the vault locks.
+                          </Trans>
                         </FieldDescription>
                       </FieldContent>
                       <Select
-                        items={sshAgentPromptItems}
+                        items={localizedSshAgentPromptItems}
                         value={settings.sshAgentPromptBehavior}
                         disabled={settingsBusy || !settings.sshAgentEnabled}
                         onValueChange={(value) =>
@@ -1378,7 +1582,7 @@ function SettingsPage({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
-                            {sshAgentPromptItems.map((item) => (
+                            {localizedSshAgentPromptItems.map((item) => (
                               <SelectItem key={item.value} value={item.value}>
                                 {item.label}
                               </SelectItem>
@@ -1389,32 +1593,38 @@ function SettingsPage({
                     </SettingsSelectRow>
                     <Separator />
                     <SettingsStackedRow>
-                      <FieldLabel htmlFor="ssh-agent-command">終端機設定</FieldLabel>
+                      <FieldLabel htmlFor="ssh-agent-command">
+                        <Trans>Terminal setup</Trans>
+                      </FieldLabel>
                       {usesWindowsNamedPipe ? (
                         <FieldDescription>
-                          BearWarden 使用固定的 <code>\\.\pipe\openssh-ssh-agent</code> named
-                          pipe。請先停用系統的 OpenSSH Authentication Agent，避免兩個 agent
-                          爭用同一個 pipe。
+                          <Trans>
+                            BearWarden uses the fixed <code>\\.\pipe\openssh-ssh-agent</code> named
+                            pipe. Disable the system OpenSSH Authentication Agent first so the two
+                            agents do not compete for the same pipe.
+                          </Trans>
                         </FieldDescription>
                       ) : sshAgentCommand ? (
                         <>
                           <FieldDescription>
-                            在終端機環境中設定 <code>SSH_AUTH_SOCK</code>，讓 SSH 與 Git 使用
-                            BearWarden 的本機 socket。
+                            <Trans>
+                              Set <code>SSH_AUTH_SOCK</code> in the terminal environment so SSH and
+                              Git use BearWarden’s local socket.
+                            </Trans>
                           </FieldDescription>
                           <InputGroup>
                             <InputGroupInput
                               id="ssh-agent-command"
                               value={sshAgentCommand}
                               readOnly
-                              aria-label="SSH Agent 終端機設定指令"
+                              aria-label={t`SSH Agent terminal setup command`}
                             />
                             <InputGroupAddon align="inline-end">
                               <InputGroupButton
                                 aria-label={
                                   copiedKey === 'ssh-agent-command'
-                                    ? 'SSH Agent 設定指令已複製'
-                                    : '複製 SSH Agent 設定指令'
+                                    ? t`SSH Agent setup command copied`
+                                    : t`Copy SSH Agent setup command`
                                 }
                                 onClick={() => void copySshAgentCommand()}
                               >
@@ -1422,16 +1632,18 @@ function SettingsPage({
                                   copied={copiedKey === 'ssh-agent-command'}
                                   placement="inline-start"
                                 />
-                                {copiedKey === 'ssh-agent-command' ? '已複製' : '複製'}
+                                {copiedKey === 'ssh-agent-command' ? t`Copied` : t`Copy`}
                               </InputGroupButton>
                             </InputGroupAddon>
                           </InputGroup>
                         </>
                       ) : (
                         <FieldDescription>
-                          Agent endpoint 含有無法安全放入 shell
-                          指令的控制字元，因此未提供複製指令。請在修正
-                          <code>BEARWARDEN_SSH_AUTH_SOCK</code> 後重新啟用 Agent。
+                          <Trans>
+                            The Agent endpoint contains control characters that cannot be safely
+                            placed in a shell command, so no copyable command is available. Fix
+                            <code>BEARWARDEN_SSH_AUTH_SOCK</code>, then enable the Agent again.
+                          </Trans>
                         </FieldDescription>
                       )}
                     </SettingsStackedRow>
@@ -1439,12 +1651,14 @@ function SettingsPage({
                       <>
                         <Separator />
                         <SettingsStackedRow>
-                          <FieldLabel>Agent 無法啟動</FieldLabel>
+                          <FieldLabel>
+                            <Trans>Agent could not start</Trans>
+                          </FieldLabel>
                           <FieldDescription>
                             {sshAgentStatus.lastError === 'SOCKET_IN_USE' ||
                             sshAgentStatus.lastError === 'PIPE_IN_USE'
-                              ? '既有 SSH Agent 正在使用相同 endpoint。請停止該 Agent 後重新啟用 BearWarden SSH Agent。'
-                              : 'BearWarden 無法安全地建立 SSH Agent endpoint。請確認家目錄權限與 socket 路徑後再試。'}
+                              ? t`Another SSH Agent is using the same endpoint. Stop that Agent, then enable BearWarden SSH Agent again.`
+                              : t`BearWarden could not create the SSH Agent endpoint safely. Check the home directory permissions and socket path, then try again.`}
                           </FieldDescription>
                         </SettingsStackedRow>
                       </>
@@ -1453,8 +1667,11 @@ function SettingsPage({
                 </SettingsCardContent>
                 <CardFooter>
                   <p className="text-muted-foreground m-0 text-xs leading-[1.6]">
-                    {sshAgentStatus.identityCount} 把可用 SSH
-                    金鑰。私鑰與實際簽署資料不會傳到畫面程序。
+                    <Plural
+                      value={sshAgentStatus.identityCount}
+                      one="# SSH key is available. Private keys and signing data are never sent to the renderer process."
+                      other="# SSH keys are available. Private keys and signing data are never sent to the renderer process."
+                    />
                   </p>
                 </CardFooter>
               </SettingsCard>
@@ -1464,23 +1681,26 @@ function SettingsPage({
                   <SettingsCardHeading
                     id="portability-settings-title"
                     icon={DatabaseBackup}
-                    title="資料可攜性"
-                    description="匯入 Bitwarden JSON，或建立密碼保護的可攜備份。"
+                    title={t`Data portability`}
+                    description={t`Import Bitwarden JSON or create a password-protected portable backup.`}
                   />
                 </CardHeader>
                 <SettingsCardContent>
                   <p className="text-muted-foreground m-0 text-xs leading-[1.6]">
-                    檔案內容與路徑只會由本機主程序處理，不會傳回畫面程序。
+                    <Trans>
+                      File contents and paths are handled only by the local main process and are
+                      never sent back to the renderer process.
+                    </Trans>
                   </p>
                 </SettingsCardContent>
                 <CardFooter className="gap-2">
                   <Button variant="outline" size="sm" type="button" onClick={onImportVault}>
                     <Upload data-icon="inline-start" aria-hidden="true" />
-                    匯入 JSON
+                    <Trans>Import JSON</Trans>
                   </Button>
                   <Button size="sm" type="button" onClick={onExportVault}>
                     <Download data-icon="inline-start" aria-hidden="true" />
-                    匯出加密備份
+                    <Trans>Export encrypted backup</Trans>
                   </Button>
                 </CardFooter>
               </SettingsCard>

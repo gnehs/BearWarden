@@ -114,6 +114,7 @@ import type { AccountSwitchService } from './account-switch-service'
 import { accountSwitchVaultError, isVaultError, VaultError } from './vault-errors'
 import type { VaultService } from './vault-service'
 import type { VaultPortabilityService } from './vault-portability'
+import { translateMain } from './i18n'
 import { showItemContextMenu } from './item-context-menu'
 import { SshKeyImportSessionStore } from './ssh-key-import-session'
 import {
@@ -2837,12 +2838,14 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     if (!window || window.isDestroyed()) throw new VaultError('INVALID_INPUT')
     const item = await runAuthorized(event, request, () => vault.getLogin(request))
     const itemId = item.id
-    const itemName = item.reprompt === 1 ? '這個受保護項目' : item.name
+    const itemName = item.reprompt === 1 ? translateMain('nativeDialog.protectedItem') : item.name
     const hasUsername = item.reprompt === 1 ? item.type === 'login' : Boolean(item.username)
     const hasPassword = item.type === 'login'
     const uriLabels =
       item.reprompt === 0
-        ? item.uris.map((entry, index) => entry.uri || `網站 ${index + 1}`)
+        ? item.uris.map(
+            (entry, index) => entry.uri || `${translateMain('itemContext.website')} ${index + 1}`
+          )
         : item.uris.map(() => '')
     const folderId = item.folderId
     const archivedAt = item.archivedAt
@@ -2865,9 +2868,9 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
         if (window.isDestroyed()) return
         void dialog.showMessageBox(window, {
           type: 'error',
-          title: '操作失敗',
-          message: '無法完成這個動作',
-          detail: '請稍後再試；你的密碼庫資料沒有因這次失敗而被移除。'
+          title: translateMain('nativeDialog.actionFailedTitle'),
+          message: translateMain('nativeDialog.actionFailedMessage'),
+          detail: translateMain('nativeDialog.actionFailedDetail')
         })
       },
       ...(request.x === undefined ? {} : { position: { x: request.x, y: request.y! } }),
@@ -2910,12 +2913,15 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
         deleteItem: async () => {
           const confirmation = await dialog.showMessageBox(window, {
             type: 'warning',
-            buttons: ['移至垃圾桶', '取消'],
+            buttons: [
+              translateMain('nativeDialog.moveToTrash'),
+              translateMain('nativeDialog.cancel')
+            ],
             defaultId: 1,
             cancelId: 1,
-            title: '刪除項目',
-            message: `確定要刪除「${itemName}」嗎？`,
-            detail: '你可以之後從垃圾桶還原這個項目。'
+            title: translateMain('nativeDialog.deleteItemTitle'),
+            message: `${translateMain('nativeDialog.deleteConfirmationPrefix')}${itemName}${translateMain('nativeDialog.deleteConfirmationSuffix')}`,
+            detail: translateMain('nativeDialog.restoreFromTrashDetail')
           })
           if (confirmation.response !== 0) return
           await runAuthorized(event, request, () => vault.deleteLogin(request))

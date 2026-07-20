@@ -1,146 +1,146 @@
 # BearWarden
 
+**English** | [繁體中文](README.zh.md)
+
 > [!CAUTION]
 >
-> ## 重要警告與免責聲明
+> ## Important warnings and disclaimer
 >
-> BearWarden 目前仍是實驗性軟體，包含大量以即興編碼（vibe coding）方式產生或修改的程式碼。**使用前請先以其他可信任的方式完整備份你的密碼庫，並確認備份可以正常還原。請勿將 BearWarden 作為任何重要密碼或資料的唯一副本。**
+> BearWarden is currently experimental software and contains a substantial amount of code generated or modified through vibe coding. **Before use, fully back up your vault through another trusted method and confirm that the backup can be restored successfully. Do not use BearWarden as the sole copy of any important passwords or data.**
 >
-> 本軟體未經任何獨立的密碼學審查、安全稽核或安全認證，可能包含導致密碼、附件、金鑰或整個密碼庫意外遺失、損毀、刪除、外洩或遭竊的缺陷。下載、安裝或使用本軟體，即表示你已了解並自行承擔上述風險。
+> This software has not undergone an independent cryptographic review, security audit, or security certification. It may contain defects that cause passwords, attachments, keys, or an entire vault to be accidentally lost, corrupted, deleted, exposed, or stolen. By downloading, installing, or using this software, you acknowledge and assume these risks.
 >
-> 在適用法律允許的最大範圍內，開發者與貢獻者不對因使用或無法使用本軟體所造成的任何資料遺失、帳號遭盜用、財務損失或其他直接或間接損害負責。
+> To the maximum extent permitted by applicable law, the developers and contributors are not liable for any data loss, account compromise, financial loss, or other direct or indirect damages arising from use of, or inability to use, this software.
 
-BearWarden 是一個以「快速找到、安心使用」為核心的桌面密碼管理器。介面採三欄式工作流程，支援搜尋、收藏、最近使用排序，以及把登入項目拖放到資料夾中整理。
+BearWarden is a desktop password manager focused on finding things quickly and using them confidently. Its interface uses a three-pane workflow and supports search, favorites, recent-use ordering, and drag-and-drop organization of login items into folders.
 
-![BearWarden 三欄式密碼庫介面，左側為項目分類與資料夾，中間為項目清單，右側為所選項目的詳細資料](docs/assets/bearwarden-overview.png)
+![BearWarden three-pane vault interface: item categories and folders at left, the item list in the middle, and details for the selected item at right](docs/assets/bearwarden-overview.png)
 
-> 截圖為開發中的 Beta 版本，介面與功能可能持續調整。
+> The screenshot is of an in-development Beta; the interface and functionality may continue to change.
 
-## 安裝
+## Installation
 
-### macOS（Homebrew）
+### macOS (Homebrew)
 
 ```bash
 brew install --cask gnehs/tap/bearwarden
 ```
 
-## 已實作範圍
+## Implemented scope
 
-- 以主密碼建立、解鎖與鎖定本機密碼庫
-- 登入項目的新增、檢視、編輯與刪除
-- 每個登入項目可保存有順序的多個 URI，並設定 Bitwarden 相容的 URI match 規則
-- 設定帳號層級的自訂與內建等效網域；passkey 建立選擇器會以目前 origin、URI match 與等效網域篩選登入項目
-- 最多保留 5 個彼此隔離的本機帳號；可依穩定本機代碼重新排序，帳號切換會先鎖定目前密碼庫再完整重新啟動，非目前帳號則可經明確確認後安全移除本機資料
-- 保存最近 5 筆密碼／隱藏欄位歷史；詳情只顯示安全計數，確認明文警告與必要的主密碼重新提示後才讀取
-- 垃圾桶、項目還原、永久刪除與清空垃圾桶，並支援所選項目的批次移入、還原與永久刪除
-- 項目複製、封存、取消封存與封存篩選，並支援批次移動、封存與取消封存
-- 資料夾的新增、重新命名、排序與刪除
-- 拖放登入項目到資料夾，以及鍵盤可操作的移動選單
-- 全域搜尋、收藏、使用頻率、最近使用與最近修改排序
-- macOS 實驗性 `Ctrl+\\` 跨瀏覽器自動填入：以使用者授權的 Accessibility 讀取 Safari、Chrome、Edge、Arc、Brave、Vivaldi、Opera 或 Firefox 目前網址，單筆直接填入、多筆顯示鍵盤可操作的快速選擇器；填入前會重驗瀏覽器簽章、網址、欄位位置與密碼欄語意，無固定官方簽章的 Chromium 社群 build 不在支援範圍
-- 密碼預設遮蔽、明確揭露、複製及開啟網站
-- 產生 Bitwarden 相容的一次性驗證碼，支援 Base32、`otpauth://` 自訂演算法／位數／週期與 Steam Guard；無效或未來格式仍可原樣同步
-- 新增 SSH Key 項目時由主程序安全產生 Ed25519 金鑰，或從剪貼簿匯入 OpenSSH／PKCS#8 的 Ed25519、RSA 與 ECDSA 私鑰（含密碼保護），並正規化為相符的 OpenSSH 私鑰、公鑰與 `SHA256:` 指紋
-- 內建 SSH Agent，可列舉並簽署 Ed25519、RSA SHA-2 與 ECDSA P-256／P-384／P-521 金鑰；支援每次詢問、自動核准或鎖定前記住，以及經驗證的 forwarding host scope
-- 本機安全產生密碼、EFF 長單字密語、隨機使用者名稱、Plus Address 與 Catch-all Email；最近 200 筆結果保存在加密歷史中
-- 匯入 Bitwarden JSON，並可匯出受獨立密碼保護的 JSON、Bitwarden 相容明文附件 ZIP，或 BearWarden 加密完整備份
-- 支援主密碼重新提示；短效授權只存在主程序，並綁定視窗、項目集合與密碼庫世代
-- Electron renderer sandbox、context isolation、具名 IPC 與外部網址驗證
-- 系統鎖定或休眠時自動鎖定密碼庫
-- 直接與 Bitwarden Cloud 或 Vaultwarden 雙向同步，不依賴 `bw` CLI
-- 同步個人密碼庫項目、資料夾、多 URI／match、密碼歷史、重新提示、封存與垃圾桶狀態，並以衝突副本避免覆蓋資料
-- 以 SignalR MessagePack 接收 Bitwarden／Vaultwarden 即時通知；遠端變更會合併成 authoritative full sync，斷線重連後也會補同步
-- 個人文字 Send 的端到端加密同步、建立／編輯／移除密碼／刪除；檔案 Send metadata 同步與主程序 Direct multipart 建立／上傳；以及由主程序複製分享連結
-- 同步附件的解密檔名、大小與 legacy 狀態，並可安全上傳、下載、刪除及修復 legacy 附件；操作提供進度與主動取消，金鑰、短效網址、檔案路徑與內容只存在主程序
+- Create, unlock, and lock local vaults with a master password.
+- Create, view, edit, and delete login items.
+- Store multiple ordered URIs for each login item and configure Bitwarden-compatible URI match rules.
+- Configure account-level custom and built-in equivalent domains; the passkey creation selector filters login items by the current origin, URI match, and equivalent domains.
+- Keep up to five isolated local accounts; reorder them by stable local code, lock the current vault and fully restart before switching accounts, and safely remove local data for non-current accounts after explicit confirmation.
+- Keep the latest five password/hidden-field history entries; details show only a safe count and read plaintext only after a confirmation warning and required master-password reprompt.
+- Trash, restore items, permanently delete, and empty trash, including bulk moving, restoring, and permanently deleting selected items.
+- Copy, archive, unarchive, and filter items by archive status, including bulk moving, archiving, and unarchiving.
+- Create, rename, reorder, and delete folders.
+- Drag login items into folders and use a keyboard-operable move menu.
+- Global search, favorites, frequency-of-use, recent-use, and recently-modified sorting.
+- Experimental macOS `Ctrl+\\` cross-browser autofill: with user-authorized Accessibility access, reads the current URL in Safari, Chrome, Edge, Arc, Brave, Vivaldi, Opera, or Firefox; fills a single match directly or presents a keyboard-operable quick selector for multiple matches. Before filling, it revalidates the browser signature, URL, field location, and password-field semantics. Chromium community builds without a fixed official signature are outside the supported scope.
+- Passwords are masked by default, with explicit reveal, copy, and open-website actions.
+- Generate Bitwarden-compatible one-time passwords, supporting Base32, `otpauth://` custom algorithms/digits/periods, and Steam Guard; invalid or future formats can still synchronize unchanged.
+- When creating an SSH Key item, securely generate an Ed25519 key in the main process, or import password-protected Ed25519, RSA, and ECDSA private keys in OpenSSH/PKCS#8 format from the clipboard, normalizing them into matching OpenSSH private keys, public keys, and `SHA256:` fingerprints.
+- Built-in SSH Agent can enumerate and sign with Ed25519, RSA SHA-2, and ECDSA P-256/P-384/P-521 keys; supports ask every time, automatic approval, or remember until lock, plus verified forwarding-host scope.
+- Securely generate passwords, EFF long-word passphrases, random usernames, Plus Addresses, and catch-all email addresses locally; the latest 200 results are retained in encrypted history.
+- Import Bitwarden JSON and export independently password-protected JSON, Bitwarden-compatible plaintext attachment ZIPs, or a BearWarden encrypted full backup.
+- Support master-password reprompts; short-lived authorization exists only in the main process and is bound to the window, item set, and vault generation.
+- Electron renderer sandboxing, context isolation, named IPC, and external-URL validation.
+- Automatically lock the vault when the system locks or sleeps.
+- Two-way sync directly with Bitwarden Cloud or Vaultwarden, without relying on the `bw` CLI.
+- Synchronize personal-vault items, folders, multiple URIs/matches, password history, reprompts, archive state, and trash state; conflict copies prevent overwrites.
+- Receive Bitwarden/Vaultwarden real-time notifications through SignalR MessagePack; remote changes merge through an authoritative full sync, including after reconnection.
+- End-to-end encrypted synchronization of personal text Sends; create/edit/remove password/delete actions; file-Send metadata synchronization and main-process Direct multipart creation/upload; and main-process copying of share links.
+- Synchronize decrypted attachment filenames, sizes, and legacy status, and safely upload, download, delete, and repair legacy attachments. Operations provide progress and proactive cancellation; keys, short-lived URLs, file paths, and content exist only in the main process.
 
-## 資料安全模型
+## Data security model
 
-- 主密碼不寫入磁碟。
-- 密碼庫使用密碼型 KDF 衍生的金鑰與 authenticated encryption 加密後才寫入 app data。
-- 每次寫入先建立權限為 `0600` 的暫存檔，再以原子替換更新密碼庫。
-- 移除本機帳號會先寫入不含個資的 journal、提交 registry 並 checkpoint primary／backup，之後才把帳號目錄隔離成 tombstone 並刪除；中斷時會在下次啟動安全續作，且不影響伺服器帳號。
-- renderer 不具 Node.js、任意 IPC 或檔案系統能力；登入清單不包含密碼。
-- 匯入／匯出的路徑與檔案內容只由主程序處理；備份以 `0600` 暫存檔、fsync 與原子替換寫入。
-- SSH 私鑰匯入只在主程序讀取一次剪貼簿；renderer 僅取得綁定視窗與密碼庫世代的短效單次 token、公鑰及指紋，鎖定、取消、逾期或程式結束都會清除未完成 session。
-- SSH Agent 的私鑰、public key blob 與待簽內容只留在主程序；renderer 僅收到項目名稱、指紋、用途與 forwarding 狀態。每次核准使用短效單次 grant，鎖定、停用、renderer reload 或逾時都會失效。
-- 附件上傳會在主程序建立獨立金鑰與 authenticated type-2 加密 envelope，再依伺服器指定的 Direct 或 Azure 流程傳送；下載會重新取得短效網址、先驗證 metadata，再於主程序驗證 HMAC／解密，並以 `0600` 暫存檔與原子替換寫入。上傳、下載、刪除與 legacy Fix 支援進度、主動取消及鎖定中止，明文 Buffer 用畢後會清除。
-- 附件以 1 MiB chunk 在主程序串流加解密，支援 Bitwarden 桌面端同級的 500 MiB 明文上限；加密 envelope 只落在權限為 `0600` 的短生命週期暫存檔，驗證、取消或失敗後都會清除。
-- BearWarden `.bwbackup` 會以獨立備份密碼加密個人項目與附件，逐段驗證、支援中斷續傳與原子完成，並可在還原前完整預檢。這是 BearWarden 的完整備份格式，不是 Bitwarden 相容 ZIP。
-- Bitwarden 附件 ZIP 依官方個人密碼庫格式串流建立 `data.json` 與附件目錄，輸出本身完全未加密；只應儲存在受信任的加密磁碟，使用後應安全刪除。
-- 受重新提示保護的項目清單不包含使用者名稱、URI 或 TOTP 中繼資料；主密碼驗證後取得的 capability 會在 60 秒後失效。
-- 鎖定時會清除主程序內的金鑰與已解密資料。
+- The master password is not written to disk.
+- The vault is encrypted with password-KDF-derived keys and authenticated encryption before writing to app data.
+- Each write first creates a temporary file with `0600` permissions, then atomically replaces the vault.
+- Removing a local account first writes a journal with no personal data, commits the registry, and checkpoints primary/backup; only then does it isolate the account directory as a tombstone and delete it. If interrupted, it safely resumes on the next launch and does not affect the server account.
+- The renderer has no Node.js, arbitrary IPC, or filesystem capabilities; login lists do not include passwords.
+- Import/export paths and file content are handled only by the main process; backups are written using a `0600` temporary file, fsync, and atomic replacement.
+- SSH private-key import reads the clipboard only once in the main process; the renderer receives only a short-lived, single-use token bound to the window and vault generation, the public key, and fingerprint. Locking, cancellation, expiry, or application exit clears incomplete sessions.
+- SSH Agent private keys, public-key blobs, and content to be signed stay only in the main process; the renderer receives only an item name, fingerprint, purpose, and forwarding state. Each approval uses a short-lived, single-use grant that becomes invalid on lock, disablement, renderer reload, or timeout.
+- Attachment uploads create a separate key and authenticated type-2 encryption envelope in the main process, then send it through the server-specified Direct or Azure flow. Downloads reacquire short-lived URLs, validate metadata first, then validate HMAC/decrypt in the main process and write using a `0600` temporary file and atomic replacement. Upload, download, delete, and legacy Fix provide progress, proactive cancellation, and lock abort; plaintext Buffers are cleared after use.
+- Attachments are encrypted/decrypted as 1 MiB chunks in the main process, with the same 500 MiB plaintext limit as Bitwarden desktop. Encryption envelopes are written only to short-lived temporary files with `0600` permissions and are cleared after validation, cancellation, or failure.
+- BearWarden `.bwbackup` encrypts personal items and attachments with an independent backup password, validates incrementally, supports interrupted resumption and atomic completion, and performs a complete preflight before restore. It is BearWarden's full-backup format, not a Bitwarden-compatible ZIP.
+- Bitwarden attachment ZIPs stream the official personal-vault `data.json` and attachment directory format. Their output is entirely unencrypted; store it only on a trusted encrypted disk and securely delete it after use.
+- Lists of reprompt-protected items do not include usernames, URIs, or TOTP metadata; the capability obtained after master-password verification expires after 60 seconds.
+- Locking clears keys and decrypted data from the main process.
 
-Bitwarden 的 Password Manager SDK 目前不是公開穩定 API，因此本專案沒有把 `@bitwarden/sdk-napi`（Secrets Manager SDK）誤用為個人密碼庫資料層。
+Bitwarden's Password Manager SDK is not currently a public, stable API, so this project does not misuse `@bitwarden/sdk-napi` (the Secrets Manager SDK) as a personal-vault data layer.
 
-### Windows 遠端桌面與畫面擷取保護
+### Windows Remote Desktop and screen-capture protection
 
-「設定 → 安全性 → 禁止螢幕截圖」預設為關閉。啟用後，Windows 會把 BearWarden 視窗排除在螢幕擷取之外；使用遠端桌面、螢幕分享或錄影工具時，視窗可能完全不可見，只留下工作列圖示。若發生此情況，請回到本機 Windows 工作階段關閉此選項，再重新連線。開發模式固定停用這項保護，讓 `pnpm dev` 可透過遠端桌面正常除錯。
+**Settings → Security → Prevent screen capture** is off by default. When enabled, Windows excludes BearWarden windows from screen capture; the window may be completely invisible during Remote Desktop, screen sharing, or recording, leaving only a taskbar icon. If that happens, return to the local Windows session, turn this option off, and reconnect. Development mode always disables this protection so `pnpm dev` can be debugged through Remote Desktop.
 
 ## SSH Agent
 
-在「設定 → SSH Agent」啟用後，BearWarden 會依 [Bitwarden SSH Agent 的使用模型](https://bitwarden.com/help/ssh-agent/)讓 OpenSSH 與 Git 使用密碼庫中的 SSH Key。Agent 在密碼庫鎖定時仍可回應；第一次解鎖前會要求開啟 BearWarden，之後可列出已快取的公開身分，但每次實際簽署仍必須解鎖。
+After enabling **Settings → SSH Agent**, BearWarden lets OpenSSH and Git use SSH Keys in the vault according to the [Bitwarden SSH Agent usage model](https://bitwarden.com/help/ssh-agent/). The Agent can respond while the vault is locked; before its first unlock it asks to open BearWarden, and afterwards it can enumerate cached public identities, but every actual signature still requires unlocking.
 
-macOS／Linux 預設 socket 是 `~/.bearwarden-ssh-agent.sock`。在要使用的 shell 執行設定頁提供的指令：
+The default socket on macOS/Linux is `~/.bearwarden-ssh-agent.sock`. In the shell where it will be used, run the command shown in Settings:
 
 ```bash
 export SSH_AUTH_SOCK="$HOME/.bearwarden-ssh-agent.sock"
 ```
 
-若要改變 BearWarden 建立 socket 的位置，請在啟動 BearWarden 前設定 `BEARWARDEN_SSH_AUTH_SOCK`，再把相同路徑指定給 `SSH_AUTH_SOCK`。自訂 socket 必須位於可信任且可寫入的位置；BearWarden 只會移除已確認失效的 socket，拒絕 symlink 或一般檔案，並把新 socket 權限設為 `0600`。
+To change where BearWarden creates its socket, set `BEARWARDEN_SSH_AUTH_SOCK` before starting BearWarden, then assign the same path to `SSH_AUTH_SOCK`. A custom socket must be in a trusted, writable location. BearWarden removes only sockets it has confirmed are stale, rejects symlinks and regular files, and sets new socket permissions to `0600`.
 
-Windows 使用 OpenSSH 固定的 `\\.\pipe\openssh-ssh-agent` named pipe。啟用前需停用系統的 OpenSSH Authentication Agent，避免 pipe 被另一個 agent 佔用。
+Windows uses OpenSSH's fixed `\\.\pipe\openssh-ssh-agent` named pipe. Before enabling it, disable the system OpenSSH Authentication Agent to prevent another agent from occupying the pipe.
 
-「鎖定前記住」會分別記住本機請求與經 `session-bind@openssh.com` 驗證的 forwarding 主機；沒有已驗證主機指紋的 forwarding 要求不會被記住。項目啟用主密碼重新提示時，無論選擇哪種 Agent 核准策略，都仍需重新輸入主密碼。
+**Remember until lock** remembers local requests and forwarding hosts verified via `session-bind@openssh.com` separately. Forwarding requests without a verified host fingerprint are not remembered. When an item has master-password reprompt enabled, the master password must be entered again regardless of the Agent approval strategy selected.
 
-## 匯入、互通匯出與加密備份
+## Import, interoperable export, and encrypted backup
 
-在「設定 → 資料可攜性」可匯入未加密或受密碼保護的 Bitwarden JSON，也可建立受獨立密碼保護的可攜 JSON、包含附件的 Bitwarden 相容明文 ZIP，或可續傳還原的 BearWarden 加密 `.bwbackup`。所有匯出都會先在主程序重新驗證目前的主密碼；備份密碼不會成為 BearWarden 主密碼，明文 ZIP 則明確不接受備份密碼。
+In **Settings → Data portability**, you can import unencrypted or password-protected Bitwarden JSON and create password-protected portable JSON, Bitwarden-compatible plaintext ZIPs with attachments, or resumable-restoration BearWarden encrypted `.bwbackup` files. Every export revalidates the current master password in the main process first; the backup password does not become the BearWarden master password, and plaintext ZIP explicitly does not accept a backup password.
 
-匯入遵循 Bitwarden 的不去重語意：每個資料夾與項目都會取得新的本機 ID，撞名資料夾會加上 `Imported` 後綴；JSON 匯入會略過垃圾桶項目。JSON 匯出不包含垃圾桶、附件或 Sends，附件 ZIP 也依官方規則排除垃圾桶與 Sends。官方目前只提供附件 ZIP 匯出，沒有能無損批次還原附件的 ZIP 匯入格式，因此 BearWarden 不會用可能有歧義的項目名稱猜測附件歸屬；完整還原請使用 `.bwbackup`。帳號限制型加密 JSON 綁定原帳號金鑰，無法跨帳號攜帶，因此目前只支援[官方所述的 password-protected encrypted export](https://bitwarden.com/help/encrypted-export/)；其 PBKDF2 與 Argon2id KDF 均可匯入，格式與限制以 [Bitwarden Import Data](https://bitwarden.com/help/import-data/) 為準。
+Imports follow Bitwarden's non-deduplication semantics: each folder and item receives a new local ID, and colliding folder names receive an `Imported` suffix; JSON import skips trashed items. JSON export excludes trash, attachments, and Sends; attachment ZIPs also exclude trash and Sends under the official rules. The official product currently provides only attachment-ZIP export and has no ZIP-import format that can losslessly restore attachments in bulk, so BearWarden does not guess attachment ownership from potentially ambiguous item names; use `.bwbackup` for complete restore. Account-restricted encrypted JSON is bound to its original account key and cannot be carried across accounts, so only the [official password-protected encrypted export](https://bitwarden.com/help/encrypted-export/) is currently supported. Its PBKDF2 and Argon2id KDFs can both be imported; format and limitations follow [Bitwarden Import Data](https://bitwarden.com/help/import-data/).
 
-## Bitwarden／Vaultwarden 同步
+## Bitwarden/Vaultwarden synchronization
 
-BearWarden 直接實作 Bitwarden 桌面客戶端使用的登入、KDF、端對端加密與同步流程，
-不需要另外安裝 `bw`。這是相容性協定而非穩定的公開 API，因此升級時必須以 Bitwarden
-Cloud 與支援中的 Vaultwarden 版本執行相容測試。
+BearWarden directly implements the login, KDF, end-to-end encryption, and synchronization flows used by the Bitwarden desktop client, so it does not require installing `bw`. This is a compatibility protocol rather than a stable public API; upgrades must be compatibility-tested against Bitwarden Cloud and supported Vaultwarden versions.
 
-在 BearWarden 左側欄開啟「Bitwarden 同步」後：
+After opening **Bitwarden Sync** in BearWarden's left sidebar:
 
-- Bitwarden Cloud 的伺服器網址填 `https://bitwarden.com`。
-- Vaultwarden 填部署站台的 HTTPS 根網址；開發測試僅後端允許 loopback HTTP。
-- 支援 Authenticator、Email、YubiKey OTP、安全金鑰，以及新裝置電子郵件驗證碼。可列出、新增與逐把移除帳號 FIDO2 安全金鑰；登入與註冊的 challenge、assertion、attestation 及 server verification token 只在受限的主程序視窗中處理，不會進入主要 renderer。
-- 連線後會顯示 Email 驗證與雙重驗證狀態；未驗證時可要求伺服器重新寄送驗證信。
-- 可在主程序重新驗證主密碼後複製個人 API Client ID／Secret，或經二次確認輪替；Secret 不會回傳 renderer 或寫入密碼庫，剪貼簿最晚 30 秒清除。
+- Use `https://bitwarden.com` as the server URL for Bitwarden Cloud.
+- For Vaultwarden, enter the HTTPS root URL of the deployment; only the backend permits loopback HTTP for development testing.
+- Authenticator, Email, YubiKey OTP, security keys, and new-device email verification codes are supported. You can list, add, and remove account FIDO2 security keys one by one; challenges, assertions, attestations, and server verification tokens for login and registration are handled only in a restricted main-process window and never enter the primary renderer.
+- The connected state displays email-verification and two-factor status; before verification, you can ask the server to resend the verification email.
+- After revalidating the master password in the main process, you can copy the personal API Client ID/Secret or rotate it after a second confirmation. The Secret is not returned to the renderer or written to the vault, and the clipboard is cleared no later than 30 seconds.
 
-主密碼不會寫入 BearWarden 密碼庫或設定；只在登入或解鎖時於主程序記憶體使用，
-衍生金鑰在鎖定時清除。登入 token、同步設定與 ID 對應只存放在已加密的本機密碼庫內。
+The master password is not written to the BearWarden vault or settings; it is used only in main-process memory during login or unlock, and derived keys are cleared on lock. Login tokens, sync settings, and ID mappings are stored only in the encrypted local vault.
 
-目前同步範圍包含個人密碼庫的 items、folders、封存、垃圾桶、附件、文字與檔案 Send metadata、帳號等效網域，以及 Organizations／Collections／共享 cipher 的只讀鏡像。檔案 Send 目前可由主程序選檔、加密、透過 Direct multipart 建立／上傳，並以 legacy access 核發 URL 後下載／解密／原子寫入；獨立公開接收頁、Azure 與進階驗證仍未接通。Emergency Access 目前可讀取 trusted／granted 狀態，但不會執行邀請、接管或金鑰輪替。附件 metadata 以 server 為準，支援安全上傳、下載、刪除及 legacy Fix；等效網域可在設定頁編輯自訂群組及排除伺服器內建群組。組織頁可依組織與 Collection 篩選共享項目，密碼可見性由 server 權限決定，shared item 不會進入個人 merge 或寫入流程。主程序會連線至官方 SignalR MessagePack notification hub，忽略本裝置事件，並在遠端變更、首次連線與重連後要求完整同步；通知服務停用或暫時無法連線不會妨礙手動同步。檔案／公開接收 Send、Passkey 寫入與
-SSO 尚不由 BearWarden 編輯。同步的自訂欄位可在項目詳情安全地顯示與編輯。附件主要流程已有自動化 fixture 覆蓋，但 Direct／Azure live server 相容驗證仍是後續工作。完整差距與
-實作順序記錄於 [`docs/vaultwarden-feature-gap.md`](docs/vaultwarden-feature-gap.md)。
-更新既有 login 時，direct connector 會保留 BearWarden 未支援的遠端欄位。若兩端同時修改，
-遠端版本會保留為主要項目，本機修改會另建 `(BearWarden conflict)` 副本。
+Current sync scope includes personal-vault items, folders, archives, trash, attachments, text and file-Send metadata, account equivalent domains, and read-only mirrors of Organizations, Collections, and shared ciphers. File Sends can currently select a file in the main process, encrypt it, create/upload via Direct multipart, and issue a URL through legacy access before downloading/decrypting/atomically writing it; independent public-receive pages, Azure, and advanced verification are not wired yet. Emergency Access can currently read trusted/granted status, but does not perform invitations, takeover, or key rotation. Attachment metadata follows the server and supports safe upload, download, deletion, and legacy Fix; equivalent domains allow editing custom groups and excluding server-built-in groups in Settings. The organization page filters shared items by organization and Collection; password visibility is determined by server permissions, and shared items do not enter the personal merge or write flow. The main process connects to the official SignalR MessagePack notification hub, ignores events from this device, and requests a full sync on remote changes, initial connection, and reconnection; a disabled or temporarily unavailable notification service does not prevent manual sync. File/public-receive Sends, passkey writes, and SSO are not edited by BearWarden yet. Synchronized custom fields can be safely displayed and edited in item details. The main attachment flow is covered by automated fixtures, but Direct/Azure live-server compatibility validation remains future work. The full gap and implementation order are recorded in [`docs/vaultwarden-feature-gap.md`](docs/vaultwarden-feature-gap.md). When updating an existing login, the direct connector preserves remote fields that BearWarden does not support. If both sides change simultaneously, the remote version remains the primary item and local changes create a separate `(BearWarden conflict)` copy.
 
-目前支援 V1 AES-CBC-HMAC 與 Account Encryption V2 個人密碼庫。V2 會嚴格驗證
-COSE/XChaCha20-Poly1305、Ed25519 或 ML-DSA-44 security state、簽署的公開金鑰，以及包裝的
-帳號私鑰；新版個人項目的 `Cipher.data` SealedCipherBlob 也支援舊版 XChaCha envelope 與目前的
-AES-256-GCM data envelope。驗證失敗時不會暴露資料或執行遠端寫入。Key Connector、
-SSO／Trusted Device Encryption 仍會保持同步鎖定，且不會降級使用 legacy key。
+V1 AES-CBC-HMAC and Account Encryption V2 personal vaults are currently supported. V2 strictly validates COSE/XChaCha20-Poly1305, Ed25519 or ML-DSA-44 security state, signed public keys, and wrapped account private keys; the `Cipher.data` SealedCipherBlob for newer personal items also supports the legacy XChaCha envelope and the current AES-256-GCM data envelope. Validation failures do not expose data or perform remote writes. Key Connector and SSO/Trusted Device Encryption remain sync-locked and do not fall back to legacy keys.
 
-## 開發
+## Development
 
-需求：Node.js 24.13.1 以上、pnpm 11.12.0。
+Requirements: Node.js 24.13.1 or later and pnpm 11.12.0.
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Electron 43 之後會在第一次使用時下載平台 binary。`pnpm dev` 與 `pnpm start`
-會先執行官方的 `install-electron`，避免 electron-vite 在 binary 尚未就緒時誤判為
-`Electron uninstall`。
+Electron 43 and later downloads the platform binary on first use. `pnpm dev` and `pnpm start` first run the official `install-electron` to prevent electron-vite from incorrectly reporting `Electron uninstall` before the binary is ready.
 
-## 驗證
+### Localization
+
+Renderer messages use English source text with Lingui catalogs for English, Simplified Chinese,
+Traditional Chinese, and Japanese. After changing user-facing copy, update and validate the
+catalogs with:
+
+```bash
+pnpm i18n:extract
+pnpm i18n:compile
+```
+
+## Verification
 
 ```bash
 pnpm lint
@@ -151,7 +151,7 @@ pnpm build:unpack
 pnpm audit --prod
 ```
 
-## 封裝
+## Packaging
 
 ```bash
 pnpm build:mac
@@ -159,4 +159,4 @@ pnpm build:win
 pnpm build:linux
 ```
 
-正式發佈前仍需在對應作業系統完成簽章、公證、安裝與升級路徑測試。
+Before a production release, signing, notarization, installation, and upgrade-path testing must still be completed on the corresponding operating system.

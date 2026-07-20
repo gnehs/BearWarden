@@ -9,6 +9,8 @@ import {
   Save,
   Trash2
 } from 'lucide-react'
+import { plural } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
@@ -59,9 +61,8 @@ import FeatureUnderConstructionNotice from './FeatureUnderConstructionNotice'
 import {
   dateTimeLocalToIso,
   dateTimeLocalValue,
-  formatSendDate,
-  maxAccessCountValidationMessage,
   sendStatuses,
+  type SendStatus,
   usesEmailVerification
 } from './send-ui'
 
@@ -78,9 +79,9 @@ const emptyDraft: SendCreateRequest = {
   hideEmail: true
 }
 
-function draftFromSend(send: SendView): SendCreateRequest {
+function draftFromSend(send: SendView, fileSendErrorMessage: string): SendCreateRequest {
   if (send.type !== 'text') {
-    throw new Error('File Sends are read-only until file transfer support is enabled')
+    throw new Error(fileSendErrorMessage)
   }
   return {
     name: send.name,
@@ -96,7 +97,38 @@ function draftFromSend(send: SendView): SendCreateRequest {
   }
 }
 
+function isValidMaxAccessCount(value: number | null | undefined): boolean {
+  return (
+    value === null ||
+    value === undefined ||
+    (Number.isSafeInteger(value) && value > 0 && value <= 2_147_483_647)
+  )
+}
+
+function SendStatusBadge({ status }: { status: SendStatus }): React.JSX.Element {
+  const { t } = useLingui()
+  const label =
+    status.key === 'password'
+      ? t`Password required`
+      : status.key === 'email-verification'
+        ? t`Email verification`
+        : status.key === 'disabled'
+          ? t`Disabled`
+          : status.key === 'expired'
+            ? t`Expired`
+            : status.key === 'max-access-reached'
+              ? t`Access limit reached`
+              : status.key === 'pending-deletion'
+                ? t`Pending deletion`
+                : status.key === 'hidden-text'
+                  ? t`Hide text by default`
+                  : t`Hide sender email`
+
+  return <Badge variant="outline">{label}</Badge>
+}
+
 function SendsPage(): React.JSX.Element {
+  const { i18n, t } = useLingui()
   const [sends, setSends] = useState<SendView[]>([])
   const { copiedKey, clearCopied, showCopied } = useCopyFeedback()
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -107,6 +139,19 @@ function SendsPage(): React.JSX.Element {
   const [deleteTarget, setDeleteTarget] = useState<SendView | null>(null)
 
   const selected = sends.find((send) => send.id === selectedId) ?? null
+
+  function formatDate(value: string | null): string {
+    if (!value) return t`Not set`
+    const date = new Date(value)
+    if (!Number.isFinite(date.getTime())) return t`Invalid date`
+    return new Intl.DateTimeFormat(i18n.locale, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(date)
+  }
 
   async function retryLoad(): Promise<void> {
     setLoading(true)
@@ -146,33 +191,38 @@ function SendsPage(): React.JSX.Element {
 
   function startEdit(send: SendView): void {
     if (usesEmailVerification(send)) {
-      toast.info('此 Send 使用 Email 驗證；BearWarden 目前不支援 OTP，因此無法安全編輯')
+      toast.info(
+        t`This Send uses email verification. BearWarden does not yet support OTP, so it cannot be safely edited.`
+      )
       return
     }
     if (send.type !== 'text') {
-      toast.info('檔案 Send 目前只能查看與複製連結')
+      toast.info(t`File Sends can currently only be viewed and their links copied.`)
       return
     }
     setSelectedId(send.id)
-    setDraft(draftFromSend(send))
+    setDraft(
+      draftFromSend(send, t`File Sends are read-only until file transfer support is enabled`)
+    )
   }
 
   async function save(): Promise<void> {
     if (draft.name.trim().length === 0 || draft.text.length === 0) {
-      toast.error('請填寫 Send 名稱與內容')
+      toast.error(t`Enter a Send name and content.`)
       return
     }
     if (selected?.type === 'file') {
-      toast.info('檔案 Send 編輯功能尚未開放')
+      toast.info(t`Editing file Sends is not available yet.`)
       return
     }
     if (selected && usesEmailVerification(selected)) {
-      toast.error('此 Send 使用 Email 驗證，目前不支援 OTP，已停止編輯以保留安全條件')
+      toast.error(
+        t`This Send uses email verification. Editing is disabled because OTP is not yet supported, preserving its security requirements.`
+      )
       return
     }
-    const maxAccessCountError = maxAccessCountValidationMessage(draft.maxAccessCount)
-    if (maxAccessCountError) {
-      toast.error(maxAccessCountError)
+    if (!isValidMaxAccessCount(draft.maxAccessCount)) {
+      toast.error(t`Maximum access count must be an integer between 1 and 2,147,483,647.`)
       return
     }
     setBusy(true)
@@ -182,10 +232,12 @@ function SendsPage(): React.JSX.Element {
         : await window.bearwarden.sends.create(draft)
       setSends((current) => [saved, ...current.filter((send) => send.id !== saved.id)])
       setSelectedId(saved.id)
-      setDraft(draftFromSend(saved))
-      toast.success(selected ? 'Send 已更新' : 'Send 已建立')
+      setDraft(
+        draftFromSend(saved, t`File Sends are read-only until file transfer support is enabled`)
+      )
+      toast.success(selected ? t`Send updated` : t`Send created`)
     } catch {
-      toast.error('Send 儲存失敗，請確認同步已連線')
+      toast.error(t`Could not save the Send. Confirm that sync is connected.`)
     } finally {
       setBusy(false)
     }
@@ -194,12 +246,11 @@ function SendsPage(): React.JSX.Element {
   async function createFile(): Promise<void> {
     const name = draft.name.trim()
     if (name.length === 0) {
-      toast.error('請先填寫 Send 名稱')
+      toast.error(t`Enter a Send name first.`)
       return
     }
-    const maxAccessCountError = maxAccessCountValidationMessage(draft.maxAccessCount)
-    if (maxAccessCountError) {
-      toast.error(maxAccessCountError)
+    if (!isValidMaxAccessCount(draft.maxAccessCount)) {
+      toast.error(t`Maximum access count must be an integer between 1 and 2,147,483,647.`)
       return
     }
     setBusy(true)
@@ -221,9 +272,9 @@ function SendsPage(): React.JSX.Element {
         ...current.filter((send) => send.id !== result.send!.id)
       ])
       setSelectedId(null)
-      toast.success('檔案 Send 已建立')
+      toast.success(t`File Send created`)
     } catch {
-      toast.error('檔案 Send 建立失敗，請確認同步已連線')
+      toast.error(t`Could not create the file Send. Confirm that sync is connected.`)
     } finally {
       setBusy(false)
     }
@@ -235,9 +286,9 @@ function SendsPage(): React.JSX.Element {
       await window.bearwarden.sends.delete({ id: send.id })
       setSends((current) => current.filter((entry) => entry.id !== send.id))
       if (selectedId === send.id) startCreate()
-      toast.success('Send 已刪除')
+      toast.success(t`Send deleted`)
     } catch {
-      toast.error('Send 刪除失敗')
+      toast.error(t`Could not delete the Send.`)
     } finally {
       setBusy(false)
     }
@@ -249,27 +300,29 @@ function SendsPage(): React.JSX.Element {
       await window.bearwarden.sends.copyLink({ id: send.id })
       showCopied(send.id)
     } catch {
-      toast.error('無法複製分享連結')
+      toast.error(t`Could not copy the sharing link.`)
     }
   }
 
   async function downloadFile(send: SendView): Promise<void> {
     if (send.type !== 'file') return
     if (usesEmailVerification(send)) {
-      toast.error('此 Send 需要 Email OTP 驗證，BearWarden 目前不支援下載')
+      toast.error(
+        t`This Send requires email OTP verification. BearWarden does not yet support downloading it.`
+      )
       return
     }
     let password: string | null = null
     if (send.passwordProtected) {
-      password = window.prompt('請輸入 Send 存取密碼')
+      password = window.prompt(t`Enter the Send access password`)
       if (password === null) return
     }
     setBusy(true)
     try {
       const result = await window.bearwarden.sends.downloadFile({ id: send.id, password })
-      if (!result.canceled) toast.success(`已儲存 ${result.fileName}`)
+      if (!result.canceled) toast.success(t`Saved ${result.fileName}`)
     } catch {
-      toast.error('檔案 Send 下載失敗，請確認密碼與同步連線')
+      toast.error(t`Could not download the file Send. Check the password and sync connection.`)
     } finally {
       setBusy(false)
     }
@@ -281,10 +334,12 @@ function SendsPage(): React.JSX.Element {
     try {
       const saved = await window.bearwarden.sends.removePassword({ id: selected.id })
       setSends((current) => [saved, ...current.filter((send) => send.id !== saved.id)])
-      setDraft(draftFromSend(saved))
-      toast.success('Send 密碼已移除')
+      setDraft(
+        draftFromSend(saved, t`File Sends are read-only until file transfer support is enabled`)
+      )
+      toast.success(t`Send password removed`)
     } catch {
-      toast.error('Send 密碼移除失敗')
+      toast.error(t`Could not remove the Send password.`)
     } finally {
       setBusy(false)
     }
@@ -292,39 +347,48 @@ function SendsPage(): React.JSX.Element {
 
   return (
     <AuxiliaryPageLayout
-      title="Sends"
+      title={t`Sends`}
       titleId="sends-title"
-      subtitle="文字與檔案 Send 都會先在主程序解密 metadata。"
+      subtitle={t`Text and file Send metadata is decrypted in the main process first.`}
       headerActions={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" type="button" onClick={() => void createFile()} disabled={busy}>
             <FilePlus data-icon="inline-start" />
-            建立檔案 Send
+            <Trans>Create file Send</Trans>
           </Button>
           <Button type="button" onClick={startCreate} disabled={busy}>
             <Plus data-icon="inline-start" />
-            新增文字 Send
+            <Trans>Create text Send</Trans>
           </Button>
         </div>
       }
     >
       <FeatureUnderConstructionNotice>
-        文字與檔案 Send 的主要流程已可使用；檔案編輯、進階驗證與完整公開接收流程仍在開發中。
+        <Trans>
+          Core text and file Send workflows are available. File editing, advanced verification, and
+          the complete public receiving flow are still in development.
+        </Trans>
       </FeatureUnderConstructionNotice>
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-16" role="status">
           <Spinner />
-          載入 Sends…
+          <Trans>Loading Sends…</Trans>
         </div>
       ) : loadError ? (
         <Alert variant="destructive">
           <AlertTriangle aria-hidden="true" />
-          <AlertTitle>無法載入 Sends</AlertTitle>
-          <AlertDescription>請確認同步連線後重試。既有資料沒有被變更。</AlertDescription>
+          <AlertTitle>
+            <Trans>Could not load Sends</Trans>
+          </AlertTitle>
+          <AlertDescription>
+            <Trans>
+              Confirm that sync is connected and try again. Existing data has not been changed.
+            </Trans>
+          </AlertDescription>
           <AlertAction>
             <Button size="sm" variant="outline" type="button" onClick={() => void retryLoad()}>
               <RefreshCw data-icon="inline-start" />
-              重試
+              <Trans>Try again</Trans>
             </Button>
           </AlertAction>
         </Alert>
@@ -334,13 +398,17 @@ function SendsPage(): React.JSX.Element {
             {sends.length === 0 ? (
               <Empty>
                 <EmptyHeader>
-                  <EmptyTitle>還沒有 Send</EmptyTitle>
-                  <EmptyDescription>建立文字 Send，安全地分享一次性內容。</EmptyDescription>
+                  <EmptyTitle>
+                    <Trans>No Sends yet</Trans>
+                  </EmptyTitle>
+                  <EmptyDescription>
+                    <Trans>Create a text Send to securely share one-time content.</Trans>
+                  </EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
                   <Button type="button" onClick={startCreate}>
                     <Plus data-icon="inline-start" />
-                    建立第一個 Send
+                    <Trans>Create your first Send</Trans>
                   </Button>
                 </EmptyContent>
               </Empty>
@@ -355,14 +423,16 @@ function SendsPage(): React.JSX.Element {
                       {send.type === 'file' && <FileText aria-hidden="true" />}
                       {send.name}
                       {sendStatuses(send).map((status) => (
-                        <Badge key={status.key} variant="outline">
-                          {status.label}
-                        </Badge>
+                        <SendStatusBadge key={status.key} status={status} />
                       ))}
                     </CardTitle>
                     <CardDescription>
-                      {send.accessCount} 次存取
-                      {send.maxAccessCount ? `／上限 ${send.maxAccessCount}` : ''}
+                      {t({
+                        message: plural(send.accessCount, { one: '# access', other: '# accesses' })
+                      })}
+                      {send.maxAccessCount
+                        ? t` / maximum ${new Intl.NumberFormat(i18n.locale).format(send.maxAccessCount)}`
+                        : ''}
                     </CardDescription>
                     <CardAction className="flex gap-1">
                       <Button
@@ -370,7 +440,9 @@ function SendsPage(): React.JSX.Element {
                         size="icon"
                         type="button"
                         onClick={() => void copyLink(send)}
-                        aria-label={copiedKey === send.id ? '分享連結已複製' : '複製分享連結'}
+                        aria-label={
+                          copiedKey === send.id ? t`Sharing link copied` : t`Copy sharing link`
+                        }
                       >
                         <CopyFeedbackIcon copied={copiedKey === send.id} />
                       </Button>
@@ -380,7 +452,7 @@ function SendsPage(): React.JSX.Element {
                           size="icon"
                           type="button"
                           onClick={() => void downloadFile(send)}
-                          aria-label="下載檔案 Send"
+                          aria-label={t`Download file Send`}
                           disabled={busy || usesEmailVerification(send)}
                         >
                           <Download />
@@ -391,7 +463,7 @@ function SendsPage(): React.JSX.Element {
                         size="icon"
                         type="button"
                         onClick={() => startEdit(send)}
-                        aria-label="編輯 Send"
+                        aria-label={t`Edit Send`}
                         disabled={send.type === 'file' || usesEmailVerification(send)}
                       >
                         <Pencil />
@@ -401,7 +473,7 @@ function SendsPage(): React.JSX.Element {
                         size="icon"
                         type="button"
                         onClick={() => setDeleteTarget(send)}
-                        aria-label="刪除 Send"
+                        aria-label={t`Delete Send`}
                       >
                         <Trash2 />
                       </Button>
@@ -411,10 +483,14 @@ function SendsPage(): React.JSX.Element {
                     {usesEmailVerification(send) && (
                       <Alert className="mb-3">
                         <AlertTriangle aria-hidden="true" />
-                        <AlertTitle>Email 驗證 Send</AlertTitle>
+                        <AlertTitle>
+                          <Trans>Email-verified Send</Trans>
+                        </AlertTitle>
                         <AlertDescription>
-                          BearWarden 目前不支援收件者 OTP；為避免移除驗證條件，無法編輯或下載此
-                          Send。
+                          <Trans>
+                            BearWarden does not yet support recipient OTP. To avoid removing
+                            verification requirements, this Send cannot be edited or downloaded.
+                          </Trans>
                         </AlertDescription>
                       </Alert>
                     )}
@@ -423,7 +499,11 @@ function SendsPage(): React.JSX.Element {
                         <FileText aria-hidden="true" />
                         <span className="truncate">{send.file.fileName}</span>
                         <span className="shrink-0">
-                          {send.file.sizeName ?? `${send.file.size} bytes`}
+                          {send.file.sizeName ?? (
+                            <Trans>
+                              {new Intl.NumberFormat(i18n.locale).format(send.file.size)} bytes
+                            </Trans>
+                          )}
                         </span>
                       </div>
                     ) : (
@@ -433,22 +513,30 @@ function SendsPage(): React.JSX.Element {
                     )}
                     {send.notes && (
                       <div className="mt-3 flex flex-col gap-1 text-sm">
-                        <span className="font-medium">私人備註</span>
+                        <span className="font-medium">
+                          <Trans>Private notes</Trans>
+                        </span>
                         <p className="text-muted-foreground whitespace-pre-wrap">{send.notes}</p>
                       </div>
                     )}
                     <dl className="text-muted-foreground mt-3 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
                       <div className="flex justify-between gap-2">
-                        <dt>到期</dt>
-                        <dd>{formatSendDate(send.expirationDate)}</dd>
+                        <dt>
+                          <Trans>Expires</Trans>
+                        </dt>
+                        <dd>{formatDate(send.expirationDate)}</dd>
                       </div>
                       <div className="flex justify-between gap-2">
-                        <dt>刪除</dt>
-                        <dd>{formatSendDate(send.deletionDate)}</dd>
+                        <dt>
+                          <Trans>Deletes</Trans>
+                        </dt>
+                        <dd>{formatDate(send.deletionDate)}</dd>
                       </div>
                       <div className="flex justify-between gap-2 sm:col-span-2">
-                        <dt>最後修訂</dt>
-                        <dd>{formatSendDate(send.revisionDate)}</dd>
+                        <dt>
+                          <Trans>Last revised</Trans>
+                        </dt>
+                        <dd>{formatDate(send.revisionDate)}</dd>
                       </div>
                     </dl>
                   </CardContent>
@@ -460,13 +548,21 @@ function SendsPage(): React.JSX.Element {
           <aside className="col-start-2 flex min-w-0 flex-col gap-[18px] max-[880px]:col-start-1">
             <Card>
               <CardHeader>
-                <CardTitle>{selected ? '編輯 Send' : '新增 Send'}</CardTitle>
-                <CardDescription>內容在主程序加密後才會送往伺服器。</CardDescription>
+                <CardTitle>
+                  {selected ? <Trans>Edit Send</Trans> : <Trans>Create Send</Trans>}
+                </CardTitle>
+                <CardDescription>
+                  <Trans>
+                    Content is encrypted in the main process before it is sent to the server.
+                  </Trans>
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <FieldGroup>
                   <Field>
-                    <FieldLabel htmlFor="send-name">名稱</FieldLabel>
+                    <FieldLabel htmlFor="send-name">
+                      <Trans>Name</Trans>
+                    </FieldLabel>
                     <Input
                       id="send-name"
                       value={draft.name}
@@ -474,18 +570,26 @@ function SendsPage(): React.JSX.Element {
                     />
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="send-text">內容</FieldLabel>
+                    <FieldLabel htmlFor="send-text">
+                      <Trans>Content</Trans>
+                    </FieldLabel>
                     <Textarea
                       id="send-text"
                       rows={8}
                       value={draft.text}
                       onChange={(event) => setDraft({ ...draft, text: event.target.value })}
                     />
-                    <FieldDescription>文字內容不會加入分享連結。</FieldDescription>
+                    <FieldDescription>
+                      <Trans>Text content is not included in the sharing link.</Trans>
+                    </FieldDescription>
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="send-password">
-                      存取密碼（{selected ? '留空維持現有密碼' : '選填'}）
+                      {selected ? (
+                        <Trans>Access password (leave blank to keep the current password)</Trans>
+                      ) : (
+                        <Trans>Access password (optional)</Trans>
+                      )}
                     </FieldLabel>
                     <Input
                       id="send-password"
@@ -511,12 +615,14 @@ function SendsPage(): React.JSX.Element {
                         onClick={() => void removePassword()}
                         disabled={busy}
                       >
-                        移除現有密碼
+                        <Trans>Remove current password</Trans>
                       </Button>
                     )}
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="send-notes">私人備註</FieldLabel>
+                    <FieldLabel htmlFor="send-notes">
+                      <Trans>Private notes</Trans>
+                    </FieldLabel>
                     <Textarea
                       id="send-notes"
                       rows={3}
@@ -525,10 +631,14 @@ function SendsPage(): React.JSX.Element {
                         setDraft({ ...draft, notes: event.target.value || null })
                       }
                     />
-                    <FieldDescription>只有你能看到，不會顯示給接收者。</FieldDescription>
+                    <FieldDescription>
+                      <Trans>Only you can see this. It is not shown to recipients.</Trans>
+                    </FieldDescription>
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="send-max-access-count">最大存取次數</FieldLabel>
+                    <FieldLabel htmlFor="send-max-access-count">
+                      <Trans>Maximum access count</Trans>
+                    </FieldLabel>
                     <Input
                       id="send-max-access-count"
                       type="number"
@@ -544,10 +654,14 @@ function SendsPage(): React.JSX.Element {
                         })
                       }
                     />
-                    <FieldDescription>留空代表不限制。</FieldDescription>
+                    <FieldDescription>
+                      <Trans>Leave blank for no limit.</Trans>
+                    </FieldDescription>
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="send-expiration-date">到期日期</FieldLabel>
+                    <FieldLabel htmlFor="send-expiration-date">
+                      <Trans>Expiration date</Trans>
+                    </FieldLabel>
                     <Input
                       id="send-expiration-date"
                       type="datetime-local"
@@ -560,11 +674,16 @@ function SendsPage(): React.JSX.Element {
                       }
                     />
                     <FieldDescription>
-                      到期後連結停止接受存取，但 Send 不會立刻刪除。
+                      <Trans>
+                        After this date, the link stops accepting access, but the Send is not
+                        immediately deleted.
+                      </Trans>
                     </FieldDescription>
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="send-deletion-date">刪除日期</FieldLabel>
+                    <FieldLabel htmlFor="send-deletion-date">
+                      <Trans>Deletion date</Trans>
+                    </FieldLabel>
                     <Input
                       id="send-deletion-date"
                       type="datetime-local"
@@ -576,12 +695,18 @@ function SendsPage(): React.JSX.Element {
                         })
                       }
                     />
-                    <FieldDescription>到達此時間後，伺服器會永久清除 Send。</FieldDescription>
+                    <FieldDescription>
+                      <Trans>After this time, the server permanently removes the Send.</Trans>
+                    </FieldDescription>
                   </Field>
                   <Field orientation="horizontal">
                     <FieldContent>
-                      <FieldLabel htmlFor="send-hidden">預設隱藏文字</FieldLabel>
-                      <FieldDescription>接收者必須主動切換顯示才能看到文字。</FieldDescription>
+                      <FieldLabel htmlFor="send-hidden">
+                        <Trans>Hide text by default</Trans>
+                      </FieldLabel>
+                      <FieldDescription>
+                        <Trans>Recipients must actively reveal the text to see it.</Trans>
+                      </FieldDescription>
                     </FieldContent>
                     <Switch
                       id="send-hidden"
@@ -591,8 +716,12 @@ function SendsPage(): React.JSX.Element {
                   </Field>
                   <Field orientation="horizontal">
                     <FieldContent>
-                      <FieldLabel htmlFor="send-disabled">停用 Send</FieldLabel>
-                      <FieldDescription>保留 Send，但不允許任何接收者存取。</FieldDescription>
+                      <FieldLabel htmlFor="send-disabled">
+                        <Trans>Disable Send</Trans>
+                      </FieldLabel>
+                      <FieldDescription>
+                        <Trans>Keep the Send but prevent all recipient access.</Trans>
+                      </FieldDescription>
                     </FieldContent>
                     <Switch
                       id="send-disabled"
@@ -602,8 +731,12 @@ function SendsPage(): React.JSX.Element {
                   </Field>
                   <Field orientation="horizontal">
                     <FieldContent>
-                      <FieldLabel htmlFor="send-hide-email">隱藏寄件者 Email</FieldLabel>
-                      <FieldDescription>不向接收者顯示你的帳號 Email。</FieldDescription>
+                      <FieldLabel htmlFor="send-hide-email">
+                        <Trans>Hide sender email</Trans>
+                      </FieldLabel>
+                      <FieldDescription>
+                        <Trans>Do not show your account email to recipients.</Trans>
+                      </FieldDescription>
                     </FieldContent>
                     <Switch
                       id="send-hide-email"
@@ -616,10 +749,10 @@ function SendsPage(): React.JSX.Element {
               <CardFooter className="flex gap-2">
                 <Button type="button" onClick={() => void save()} disabled={busy}>
                   <Save data-icon="inline-start" />
-                  {busy ? '儲存中…' : '儲存'}
+                  {busy ? <Trans>Saving…</Trans> : <Trans>Save</Trans>}
                 </Button>
                 <Button variant="outline" type="button" onClick={startCreate} disabled={busy}>
-                  清除
+                  <Trans>Clear</Trans>
                 </Button>
               </CardFooter>
             </Card>
@@ -634,13 +767,20 @@ function SendsPage(): React.JSX.Element {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>刪除這個 Send？</AlertDialogTitle>
+            <AlertDialogTitle>
+              <Trans>Delete this Send?</Trans>
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              「{deleteTarget?.name ?? ''}」會從 Vaultwarden 移除，且無法從垃圾桶還原。
+              <Trans>
+                “{deleteTarget?.name ?? ''}” will be removed from Vaultwarden and cannot be restored
+                from the trash.
+              </Trans>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={busy}>
+              <Trans>Cancel</Trans>
+            </AlertDialogCancel>
             <AlertDialogAction
               disabled={busy || deleteTarget === null}
               onClick={(event) => {
@@ -650,7 +790,7 @@ function SendsPage(): React.JSX.Element {
                 void remove(target).finally(() => setDeleteTarget(null))
               }}
             >
-              刪除
+              <Trans>Delete</Trans>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

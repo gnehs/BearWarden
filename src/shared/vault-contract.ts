@@ -1151,7 +1151,7 @@ export interface AccountTwoFactorDisableRequest {
   confirm: true
 }
 
-export const ACCOUNT_SESSION_DEAUTHORIZATION_CONFIRMATION = '取消所有工作階段'
+export const ACCOUNT_SESSION_DEAUTHORIZATION_CONFIRMATION = 'deauthorize all sessions'
 
 export interface AccountSessionDeauthorizationRequest {
   masterPassword: string

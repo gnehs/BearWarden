@@ -6,6 +6,7 @@ import {
   LockKeyhole,
   ShieldAlert
 } from 'lucide-react'
+import { useLingui } from '@lingui/react/macro'
 import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -73,10 +74,12 @@ function PickerMessage({
 }
 
 function LoadingState(): React.JSX.Element {
+  const { t } = useLingui()
+
   return (
     <div
       role="status"
-      aria-label="正在尋找可自動填入的登入項目"
+      aria-label={t`Finding logins to autofill`}
       className="flex min-h-64 flex-col gap-3 p-4"
     >
       <div className="flex items-center gap-3">
@@ -93,7 +96,7 @@ function LoadingState(): React.JSX.Element {
           <Skeleton className="h-3 w-1/2" />
         </div>
       </div>
-      <span className="sr-only">正在尋找可自動填入的登入項目…</span>
+      <span className="sr-only">{t`Finding logins to autofill…`}</span>
     </div>
   )
 }
@@ -102,20 +105,22 @@ function PickerFooter({
   onCancel,
   onOpenMain
 }: Pick<AutofillPickerProps, 'onCancel' | 'onOpenMain'>): React.JSX.Element {
+  const { t } = useLingui()
+
   return (
     <>
       <Separator />
       <div className="flex items-center justify-between gap-3 px-3 py-2">
         <Button variant="ghost" size="xs" onClick={onOpenMain}>
-          開啟 BearWarden
+          {t`Open BearWarden`}
           <ExternalLink data-icon="inline-end" aria-hidden="true" />
         </Button>
         <div className="text-muted-foreground flex items-center gap-3 text-xs">
           <span className="flex items-center gap-1">
-            選取 <Kbd>↵</Kbd>
+            {t`Select`} <Kbd>↵</Kbd>
           </span>
           <Button variant="ghost" size="xs" onClick={onCancel}>
-            取消 <Kbd>Esc</Kbd>
+            {t`Cancel`} <Kbd>Esc</Kbd>
           </Button>
         </div>
       </div>
@@ -134,37 +139,51 @@ export default function AutofillPicker({
   onCancel,
   onOpenMain
 }: AutofillPickerProps): React.JSX.Element {
+  const { t } = useLingui()
   let content: React.JSX.Element
 
   if (error) {
     content = (
-      <PickerMessage icon={AlertTriangle} title="無法載入登入項目" description={error} alert />
+      <PickerMessage
+        icon={AlertTriangle}
+        title={t`Unable to load logins`}
+        description={error}
+        alert
+      />
     )
   } else if (permission !== 'granted') {
     content = (
       <PickerMessage
         icon={ShieldAlert}
-        title={permission === 'denied' ? '需要輔助使用權限' : '尚未允許輔助使用權限'}
-        description="BearWarden 需要這項權限才能辨識目前瀏覽器與網站。請在系統設定中允許後再試一次。"
+        title={
+          permission === 'denied'
+            ? t`Accessibility permission required`
+            : t`Accessibility permission not granted`
+        }
+        description={t`BearWarden needs this permission to identify the current browser and website. Allow it in System Settings, then try again.`}
       />
     )
   } else if (locked) {
     content = (
       <PickerMessage
         icon={LockKeyhole}
-        title="密碼庫已鎖定"
-        description="請先在 BearWarden 解鎖密碼庫，再回到瀏覽器使用自動填入。"
+        title={t`Vault locked`}
+        description={t`Unlock your vault in BearWarden, then return to the browser to use autofill.`}
       />
     )
   } else if (loading) {
     content = <LoadingState />
   } else {
     content = (
-      <Command className="rounded-none" aria-label="選擇要自動填入的登入項目">
-        <CommandInput autoFocus placeholder="搜尋名稱、帳號或網站…" aria-label="搜尋登入項目" />
+      <Command className="rounded-none" aria-label={t`Choose a login to autofill`}>
+        <CommandInput
+          autoFocus
+          placeholder={t`Search by name, username, or website…`}
+          aria-label={t`Search logins`}
+        />
         <CommandList className="min-h-56">
-          <CommandEmpty>找不到符合的登入項目</CommandEmpty>
-          <CommandGroup heading={choices.length > 0 ? `${choices.length} 個相符項目` : '相符項目'}>
+          <CommandEmpty>{t`No matching logins found`}</CommandEmpty>
+          <CommandGroup heading={choices.length > 0 ? t`${choices.length} matches` : t`Matches`}>
             {choices.map((choice) => {
               const hostname = autofillPickerHostname(choice)
               return (
@@ -180,10 +199,13 @@ export default function AutofillPicker({
                   <div className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate font-medium">{choice.name}</span>
                     <span className="text-muted-foreground truncate text-xs">
-                      {[choice.username, hostname].filter(Boolean).join(' · ') || '未提供帳號'}
+                      {[choice.username, hostname].filter(Boolean).join(' · ') ||
+                        t`No username provided`}
                     </span>
                   </div>
-                  {choice.reprompt ? <Badge variant="secondary">需重新驗證</Badge> : null}
+                  {choice.reprompt ? (
+                    <Badge variant="secondary">{t`Reauthentication required`}</Badge>
+                  ) : null}
                 </CommandItem>
               )
             })}
@@ -196,7 +218,7 @@ export default function AutofillPicker({
   return (
     <section
       data-request-id={requestId}
-      aria-label="BearWarden 自動填入"
+      aria-label={t`BearWarden autofill`}
       className="bg-popover text-popover-foreground overflow-hidden rounded-xl border shadow-lg"
       onKeyDown={(event) => {
         if (event.key !== 'Escape') return

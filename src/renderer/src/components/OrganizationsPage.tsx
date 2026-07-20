@@ -1,4 +1,5 @@
 import { FolderOpen, LockKeyhole, RefreshCw, TriangleAlert, UsersRound } from 'lucide-react'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   CollectionView,
@@ -26,16 +27,109 @@ import {
 import { Spinner } from '@renderer/components/ui/spinner'
 import AuxiliaryPageLayout, { AuxiliaryPageContent } from './AuxiliaryPageLayout'
 import FeatureUnderConstructionNotice from './FeatureUnderConstructionNotice'
-import {
-  collectionPermissionLabel,
-  collectionAssignmentLabel,
-  createLatestRequestGuard,
-  organizationRoleLabel,
-  organizationStatusLabel,
-  sharedItemPermissionLabels
-} from './organizations-ui'
+import { createLatestRequestGuard } from './organizations-ui'
+
+function OrganizationRoleBadge({ type }: Pick<OrganizationView, 'type'>): React.JSX.Element {
+  return (
+    <Badge variant="secondary">
+      {type === null ? (
+        <Trans>Role unavailable</Trans>
+      ) : type === 0 ? (
+        <Trans>Owner</Trans>
+      ) : type === 1 ? (
+        <Trans>Administrator</Trans>
+      ) : type === 2 ? (
+        <Trans>User</Trans>
+      ) : type === 4 ? (
+        <Trans>Custom role</Trans>
+      ) : (
+        <Trans>Unknown role ({type})</Trans>
+      )}
+    </Badge>
+  )
+}
+
+function OrganizationStatusBadge({
+  organization
+}: {
+  organization: OrganizationView
+}): React.JSX.Element {
+  return (
+    <Badge variant="outline">
+      {!organization.enabled ? (
+        <Trans>Disabled</Trans>
+      ) : organization.status === null ? (
+        <Trans>Status unavailable</Trans>
+      ) : organization.status === 0 ? (
+        <Trans>Invited</Trans>
+      ) : organization.status === 1 ? (
+        <Trans>Accepted</Trans>
+      ) : organization.status === 2 ? (
+        <Trans>Confirmed</Trans>
+      ) : organization.status === 3 ? (
+        <Trans>Provisioned</Trans>
+      ) : (
+        <Trans>Unknown status ({organization.status})</Trans>
+      )}
+    </Badge>
+  )
+}
+
+function CollectionPermissionLabel({
+  collection
+}: {
+  collection: CollectionView
+}): React.JSX.Element {
+  return (
+    <>
+      {collection.manage ? (
+        <Trans>Manage Collection</Trans>
+      ) : collection.readOnly && collection.hidePasswords ? (
+        <Trans>View items, hide passwords</Trans>
+      ) : collection.readOnly ? (
+        <Trans>View items</Trans>
+      ) : collection.hidePasswords ? (
+        <Trans>Edit items, hide passwords</Trans>
+      ) : (
+        <Trans>Edit items</Trans>
+      )}
+    </>
+  )
+}
+
+function CollectionAssignmentBadge({
+  collection
+}: {
+  collection: CollectionView
+}): React.JSX.Element {
+  return (
+    <Badge variant="secondary">
+      {collection.assigned ? <Trans>Direct assignment</Trans> : <Trans>Indirect assignment</Trans>}
+    </Badge>
+  )
+}
+
+function SharedItemPermissionBadges({ item }: { item: SharedLoginSummary }): React.JSX.Element {
+  return (
+    <div className="flex flex-wrap gap-1">
+      <Badge variant="outline">
+        {item.edit ? <Trans>Can edit</Trans> : <Trans>Read-only</Trans>}
+      </Badge>
+      <Badge variant="outline">
+        {item.viewPassword ? <Trans>Standard view</Trans> : <Trans>Passwords hidden</Trans>}
+      </Badge>
+      <Badge variant="outline">
+        {item.delete ? <Trans>Can delete</Trans> : <Trans>Cannot delete</Trans>}
+      </Badge>
+      <Badge variant="outline">
+        {item.restore ? <Trans>Can restore</Trans> : <Trans>Cannot restore</Trans>}
+      </Badge>
+    </div>
+  )
+}
 
 function OrganizationsPage(): React.JSX.Element {
+  const { t } = useLingui()
   const [organizations, setOrganizations] = useState<OrganizationView[]>([])
   const [collections, setCollections] = useState<CollectionView[]>([])
   const [items, setItems] = useState<SharedLoginSummary[]>([])
@@ -145,27 +239,34 @@ function OrganizationsPage(): React.JSX.Element {
 
   return (
     <AuxiliaryPageLayout
-      title="組織項目"
+      title={t`Organization items`}
       titleId="organizations-title"
-      subtitle="共享項目只讀鏡像；權限與密碼可見性由伺服器決定。"
+      subtitle={t`A read-only mirror of shared items. The server determines permissions and password visibility.`}
     >
       <FeatureUnderConstructionNotice>
-        目前可唯讀瀏覽已同步的組織與共享項目；建立、編輯、刪除、分享與其他管理操作尚未支援。
+        <Trans>
+          You can currently browse synced organizations and shared items in read-only mode.
+          Creating, editing, deleting, sharing, and other management actions are not supported yet.
+        </Trans>
       </FeatureUnderConstructionNotice>
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-16" role="status">
           <Spinner />
-          載入組織項目…
+          <Trans>Loading organization items…</Trans>
         </div>
       ) : loadError ? (
         <Alert variant="destructive">
           <TriangleAlert aria-hidden="true" />
-          <AlertTitle>無法載入組織項目</AlertTitle>
+          <AlertTitle>
+            <Trans>Could not load organization items</Trans>
+          </AlertTitle>
           <AlertDescription>
-            <p>請確認保管庫已解鎖，或稍後再試一次。</p>
+            <p>
+              <Trans>Confirm that the vault is unlocked, then try again later.</Trans>
+            </p>
             <Button type="button" variant="outline" onClick={retryLoad}>
               <RefreshCw data-icon="inline-start" />
-              重試
+              <Trans>Try again</Trans>
             </Button>
           </AlertDescription>
         </Alert>
@@ -175,9 +276,14 @@ function OrganizationsPage(): React.JSX.Element {
             <EmptyMedia variant="icon">
               <UsersRound />
             </EmptyMedia>
-            <EmptyTitle>尚未同步到組織</EmptyTitle>
+            <EmptyTitle>
+              <Trans>No organizations have been synced</Trans>
+            </EmptyTitle>
             <EmptyDescription>
-              完成 Bitwarden 同步後，具備權限的共享項目會顯示在這裡。
+              <Trans>
+                After Bitwarden sync completes, shared items that you have permission to access will
+                appear here.
+              </Trans>
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -185,7 +291,9 @@ function OrganizationsPage(): React.JSX.Element {
         <AuxiliaryPageContent>
           <Card>
             <CardHeader>
-              <CardTitle>組織</CardTitle>
+              <CardTitle>
+                <Trans>Organizations</Trans>
+              </CardTitle>
             </CardHeader>
             <CardContent className="grid gap-2">
               <Button
@@ -195,7 +303,7 @@ function OrganizationsPage(): React.JSX.Element {
                 aria-pressed={organizationId === null}
                 onClick={() => selectOrganization(null)}
               >
-                全部組織
+                <Trans>All organizations</Trans>
               </Button>
               {organizations.map((organization) => (
                 <div key={organization.id} className="flex flex-col gap-1">
@@ -210,8 +318,8 @@ function OrganizationsPage(): React.JSX.Element {
                     {organization.name}
                   </Button>
                   <div className="flex flex-wrap gap-1 px-2">
-                    <Badge variant="secondary">{organizationRoleLabel(organization.type)}</Badge>
-                    <Badge variant="outline">{organizationStatusLabel(organization)}</Badge>
+                    <OrganizationRoleBadge type={organization.type} />
+                    <OrganizationStatusBadge organization={organization} />
                   </div>
                 </div>
               ))}
@@ -220,8 +328,12 @@ function OrganizationsPage(): React.JSX.Element {
           <div className="grid content-start gap-4">
             <Card>
               <CardHeader>
-                <CardTitle>Collections</CardTitle>
-                <CardDescription>依 Collection 篩選共享項目。</CardDescription>
+                <CardTitle>
+                  <Trans>Collections</Trans>
+                </CardTitle>
+                <CardDescription>
+                  <Trans>Filter shared items by Collection.</Trans>
+                </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-2">
                 <Button
@@ -233,7 +345,7 @@ function OrganizationsPage(): React.JSX.Element {
                     clearSelected()
                   }}
                 >
-                  全部
+                  <Trans>All</Trans>
                 </Button>
                 {visibleCollections.map((collection) => (
                   <Button
@@ -249,8 +361,10 @@ function OrganizationsPage(): React.JSX.Element {
                   >
                     <FolderOpen data-icon="inline-start" />
                     {collection.name}
-                    <Badge variant="outline">{collectionPermissionLabel(collection)}</Badge>
-                    <Badge variant="secondary">{collectionAssignmentLabel(collection)}</Badge>
+                    <Badge variant="outline">
+                      <CollectionPermissionLabel collection={collection} />
+                    </Badge>
+                    <CollectionAssignmentBadge collection={collection} />
                   </Button>
                 ))}
               </CardContent>
@@ -262,24 +376,18 @@ function OrganizationsPage(): React.JSX.Element {
                     <div className="flex min-w-0 flex-col gap-2">
                       <CardTitle>{item.name}</CardTitle>
                       <CardDescription>
-                        {item.subtitle || item.username || '共享項目'}
+                        {item.subtitle || item.username || <Trans>Shared item</Trans>}
                       </CardDescription>
-                      <div className="flex flex-wrap gap-1">
-                        {sharedItemPermissionLabels(item).map((label) => (
-                          <Badge key={label} variant="outline">
-                            {label}
-                          </Badge>
-                        ))}
-                      </div>
+                      <SharedItemPermissionBadges item={item} />
                     </div>
                     <Button
                       type="button"
                       variant={selectedItemId === item.id ? 'secondary' : 'outline'}
                       aria-pressed={selectedItemId === item.id}
-                      aria-label={`查看 ${item.name}`}
+                      aria-label={t`View ${item.name}`}
                       onClick={() => void selectItem(item)}
                     >
-                      查看
+                      <Trans>View</Trans>
                     </Button>
                   </CardHeader>
                 </Card>
@@ -290,8 +398,14 @@ function OrganizationsPage(): React.JSX.Element {
                     <EmptyMedia variant="icon">
                       <FolderOpen />
                     </EmptyMedia>
-                    <EmptyTitle>沒有共享項目</EmptyTitle>
-                    <EmptyDescription>目前的組織或 Collection 沒有可讀取項目。</EmptyDescription>
+                    <EmptyTitle>
+                      <Trans>No shared items</Trans>
+                    </EmptyTitle>
+                    <EmptyDescription>
+                      <Trans>
+                        The current organization or Collection has no items you can read.
+                      </Trans>
+                    </EmptyDescription>
                   </EmptyHeader>
                 </Empty>
               )}
@@ -299,13 +413,15 @@ function OrganizationsPage(): React.JSX.Element {
             {selectedLoading && (
               <div className="flex items-center gap-2" role="status">
                 <Spinner />
-                載入共享項目…
+                <Trans>Loading shared item…</Trans>
               </div>
             )}
             {selectedError && selectedItemId && (
               <Alert variant="destructive">
                 <TriangleAlert aria-hidden="true" />
-                <AlertTitle>無法載入共享項目</AlertTitle>
+                <AlertTitle>
+                  <Trans>Could not load shared item</Trans>
+                </AlertTitle>
                 <AlertDescription>
                   <Button
                     type="button"
@@ -316,7 +432,7 @@ function OrganizationsPage(): React.JSX.Element {
                     }}
                   >
                     <RefreshCw data-icon="inline-start" />
-                    重試
+                    <Trans>Try again</Trans>
                   </Button>
                 </AlertDescription>
               </Alert>
@@ -326,25 +442,50 @@ function OrganizationsPage(): React.JSX.Element {
                 <CardHeader>
                   <CardTitle>{selected.name}</CardTitle>
                   <CardDescription>
-                    {selected.viewPassword
-                      ? '伺服器允許一般檢視；此唯讀頁不顯示或複製密碼。'
-                      : '伺服器套用隱藏密碼權限，敏感欄位已遮罩。'}
+                    {selected.viewPassword ? (
+                      <Trans>
+                        The server allows standard viewing. This read-only page does not show or
+                        copy passwords.
+                      </Trans>
+                    ) : (
+                      <Trans>
+                        The server applies hidden-password permissions, so sensitive fields are
+                        masked.
+                      </Trans>
+                    )}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-2 text-sm">
                   <div className="flex items-center gap-2">
                     <LockKeyhole className="size-4" aria-hidden="true" />
-                    <span>{selected.viewPassword ? '一般檢視權限' : '密碼與敏感欄位已遮罩'}</span>
+                    <span>
+                      {selected.viewPassword ? (
+                        <Trans>Standard view permission</Trans>
+                      ) : (
+                        <Trans>Passwords and sensitive fields are masked</Trans>
+                      )}
+                    </span>
                   </div>
-                  {selected.username && <div>使用者名稱：{selected.username}</div>}
-                  {selected.uri && <div className="truncate">網站：{selected.uri}</div>}
+                  {selected.username && (
+                    <div>
+                      <Trans>Username: {selected.username}</Trans>
+                    </div>
+                  )}
+                  {selected.uri && (
+                    <div className="truncate">
+                      <Trans>Website: {selected.uri}</Trans>
+                    </div>
+                  )}
                   {selectedCollections.length > 0 && (
                     <div className="flex flex-col gap-1">
-                      <span>Collection：</span>
+                      <span>
+                        <Trans>Collection:</Trans>
+                      </span>
                       <div className="flex flex-wrap gap-1">
                         {selectedCollections.map((collection) => (
                           <Badge key={collection.id} variant="outline">
-                            {collection.name} · {collectionPermissionLabel(collection)}
+                            {collection.name} ·{' '}
+                            <CollectionPermissionLabel collection={collection} />
                           </Badge>
                         ))}
                       </div>

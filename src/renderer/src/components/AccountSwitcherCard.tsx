@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import type { AccountStatus } from '../../../shared/vault-contract'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
 import {
   AlertDialog,
@@ -69,12 +70,16 @@ function AccountSwitcherCard({
   onReorder,
   onRemove
 }: AccountSwitcherCardProps): React.JSX.Element {
+  const { i18n, t } = useLingui()
   const [confirmationAction, setConfirmationAction] = useState<AccountConfirmationAction | null>(
     null
   )
   const addAccountButtonRef = useRef<HTMLButtonElement>(null)
   const accounts = accountStatus?.accounts ?? []
   const confirmation = confirmationAction ? accountConfirmationContent(confirmationAction) : null
+  const numberFormatter = new Intl.NumberFormat(i18n.locale)
+  const formattedAccountCount = numberFormatter.format(accounts.length)
+  const formattedMaxLocalAccounts = numberFormatter.format(MAX_LOCAL_ACCOUNTS)
 
   async function confirm(): Promise<void> {
     if (!confirmationAction) return
@@ -98,12 +103,16 @@ function AccountSwitcherCard({
       <SettingsCard aria-labelledby="local-accounts-settings-title">
         <CardHeader>
           <CardTitle id="local-accounts-settings-title" role="heading" aria-level={2}>
-            本機帳號
+            <Trans>Local accounts</Trans>
           </CardTitle>
-          <CardDescription>新增、排序、切換或移除這台裝置上的密碼庫帳號。</CardDescription>
+          <CardDescription>
+            <Trans>Add, reorder, switch, or remove vault accounts on this device.</Trans>
+          </CardDescription>
           <CardAction>
             <Badge variant="secondary">
-              {accounts.length} / {MAX_LOCAL_ACCOUNTS}
+              <Trans>
+                {formattedAccountCount} / {formattedMaxLocalAccounts}
+              </Trans>
             </Badge>
           </CardAction>
         </CardHeader>
@@ -113,8 +122,12 @@ function AccountSwitcherCard({
               ? !error && (
                   <Field>
                     <FieldContent>
-                      <FieldTitle>正在讀取本機帳號</FieldTitle>
-                      <FieldDescription aria-live="polite">請稍候。</FieldDescription>
+                      <FieldTitle>
+                        <Trans>Loading local accounts</Trans>
+                      </FieldTitle>
+                      <FieldDescription aria-live="polite">
+                        <Trans>Please wait.</Trans>
+                      </FieldDescription>
                     </FieldContent>
                   </Field>
                 )
@@ -137,7 +150,7 @@ function AccountSwitcherCard({
                 <FieldContent>
                   <FieldDescription role="status" aria-live="polite">
                     <Spinner data-icon="inline-start" aria-hidden="true" />
-                    {busyLabel || '正在處理本機帳號'}
+                    {busyLabel || t`Processing local accounts`}
                   </FieldDescription>
                 </FieldContent>
               </Field>
@@ -150,8 +163,11 @@ function AccountSwitcherCard({
             {accountStatus?.cleanupPending && (
               <Alert>
                 <AlertDescription>
-                  上次移除的本機資料尚未完成安全清理。BearWarden
-                  會在下次啟動再次嘗試；在完成前不會刪除或覆寫未知資料。
+                  <Trans>
+                    The local data from the last removal has not completed secure cleanup.
+                    BearWarden will try again the next time it starts; it will not delete or
+                    overwrite unknown data until cleanup is complete.
+                  </Trans>
                 </AlertDescription>
               </Alert>
             )}
@@ -166,7 +182,7 @@ function AccountSwitcherCard({
             onClick={() => onRequestAdd(() => setConfirmationAction({ kind: 'add' }))}
           >
             <Plus data-icon="inline-start" aria-hidden="true" />
-            新增本機帳號
+            <Trans>Add local account</Trans>
           </Button>
         </CardFooter>
       </SettingsCard>
@@ -190,7 +206,9 @@ function AccountSwitcherCard({
             <AlertDialogDescription>{confirmation?.description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={busy}>
+              <Trans>Cancel</Trans>
+            </AlertDialogCancel>
             <AlertDialogAction
               type="button"
               variant={confirmation?.destructive ? 'destructive' : 'default'}
@@ -236,6 +254,7 @@ function AccountRow({
   onReorder,
   onConfirm
 }: AccountRowProps): React.JSX.Element {
+  const { t } = useLingui()
   const presentation = localAccountPresentation(account)
   async function move(direction: 'up' | 'down'): Promise<void> {
     const accountIds = moveAccountIds(accounts, account.id, direction)
@@ -252,13 +271,17 @@ function AccountRow({
         <FieldTitle>{presentation.label}</FieldTitle>
         <FieldDescription>{presentation.description}</FieldDescription>
       </FieldContent>
-      {presentation.active && <Badge>使用中</Badge>}
+      {presentation.active && (
+        <Badge>
+          <Trans>Active</Trans>
+        </Badge>
+      )}
       <div className="flex items-center gap-1">
         <Button
           variant="ghost"
           size="icon-sm"
           type="button"
-          aria-label={`將${presentation.label}上移`}
+          aria-label={t`Move ${presentation.label} up`}
           disabled={accountMoveButtonDisabled(index, accounts.length, 'up', busy)}
           onClick={() => void move('up')}
         >
@@ -268,7 +291,7 @@ function AccountRow({
           variant="ghost"
           size="icon-sm"
           type="button"
-          aria-label={`將${presentation.label}下移`}
+          aria-label={t`Move ${presentation.label} down`}
           disabled={accountMoveButtonDisabled(index, accounts.length, 'down', busy)}
           onClick={() => void move('down')}
         >
@@ -285,14 +308,14 @@ function AccountRow({
             )
           }
         >
-          切換
+          <Trans>Switch</Trans>
         </Button>
         {!account.active && (
           <Button
             variant="destructive"
             size="icon-sm"
             type="button"
-            aria-label={`移除${presentation.label}`}
+            aria-label={t`Remove ${presentation.label}`}
             disabled={accountRemoveButtonDisabled(account, accounts.length, busy)}
             onClick={() =>
               onRequestRemove(() =>

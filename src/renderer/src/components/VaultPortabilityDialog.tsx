@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArchiveRestore, FileKey2, ShieldAlert } from 'lucide-react'
+import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import type {
   NativeRestorePreviewResult,
   NativeRestoreProgress,
@@ -40,17 +41,32 @@ interface VaultPortabilityDialogProps {
   onImported: (result: VaultImportResult) => Promise<void>
 }
 
-function formatBackupBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes < 0) return '0 B'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+function FormattedBackupBytes({ bytes }: { bytes: number }): React.JSX.Element {
+  const { i18n } = useLingui()
+  const normalizedBytes = Number.isFinite(bytes) && bytes >= 0 ? bytes : 0
+
+  if (normalizedBytes < 1024) {
+    const formattedBytes = new Intl.NumberFormat(i18n.locale).format(normalizedBytes)
+    return <Trans>{formattedBytes} B</Trans>
+  }
+
+  const formatter = new Intl.NumberFormat(i18n.locale, {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1
+  })
+  if (normalizedBytes < 1024 * 1024) {
+    const formattedKilobytes = formatter.format(normalizedBytes / 1024)
+    return <Trans>{formattedKilobytes} KB</Trans>
+  }
+
+  const formattedMegabytes = formatter.format(normalizedBytes / 1024 / 1024)
+  return <Trans>{formattedMegabytes} MB</Trans>
 }
 
-function formatBackupCreatedAt(value: string): string {
+function formatBackupCreatedAt(value: string, locale: string): string | null {
   const date = new Date(value)
-  if (!Number.isFinite(date.getTime())) return '未知時間'
-  return new Intl.DateTimeFormat('zh-TW', {
+  if (!Number.isFinite(date.getTime())) return null
+  return new Intl.DateTimeFormat(locale, {
     dateStyle: 'medium',
     timeStyle: 'short'
   }).format(date)
@@ -58,27 +74,31 @@ function formatBackupCreatedAt(value: string): string {
 
 export function VaultCsvExportWarning(): React.JSX.Element {
   return (
-    <>
-      CSV
-      不是完整備份。它只會寫出未封存與封存的登入、安全筆記及部分文字值；不包含垃圾桶、附件、卡片、身分、SSH
-      金鑰、Passkey、密碼歷史或 Sends。URI 比對與部分登入 metadata 會遺失，自訂欄位會被壓成「名稱:
-      值」文字，型別及含空名稱、換行或「: 」的原始結構可能無法還原。若要較完整的可攜資料，請改用加密
-      JSON；若要包含附件，請用 BearWarden 完整備份。請只用文字編輯器檢視 CSV；若用試算表開啟，以
-      =、+、- 或 @ 開頭的原始欄位可能被當成公式執行。BearWarden 為保持與 Bitwarden
-      相容及資料不失真，不會改寫這些秘密。
-    </>
+    <Trans>
+      CSV is not a complete backup. It only exports active and archived logins, secure notes, and
+      some text values. It does not include trash, attachments, cards, identities, SSH keys,
+      passkeys, password history, or Sends. URI matching and some login metadata are lost. Custom
+      fields are flattened into “name: value” text, so their types and original structure may not be
+      recoverable when names are empty or contain line breaks or “: ”. Use encrypted JSON for more
+      complete portable data, or a full BearWarden backup to include attachments. Only inspect CSV
+      files in a text editor. If opened in a spreadsheet, original fields beginning with =, +, -, or
+      @ may execute as formulas. To preserve Bitwarden compatibility and data fidelity, BearWarden
+      does not rewrite these secrets.
+    </Trans>
   )
 }
 
 export function VaultKeePassXmlImportWarning(): React.JSX.Element {
   return (
-    <>
-      KeePass 2 XML 是未加密明文，內含可直接讀取的密碼；請只從受信任的加密磁碟開啟，匯入後安全刪除。
-      BearWarden 只匯入個人 Entry，並將巢狀群組展平成資料夾路徑；附件 Binary、History 歷史版本與進階
-      metadata 不會匯入，回收桶與範本群組也會略過。現代 KeePass TimeOtp
-      欄位會轉成可產碼格式；若密鑰、
-      編碼或參數互相衝突或無法轉換，整次匯入會停止，不會靜默略過驗證碼。
-    </>
+    <Trans>
+      KeePass 2 XML is unencrypted plaintext containing directly readable passwords. Only open it
+      from a trusted encrypted drive, and securely delete it after importing. BearWarden imports
+      personal entries only and flattens nested groups into folder paths. Attachment binaries,
+      history revisions, and advanced metadata are not imported, and recycle-bin and template groups
+      are skipped. Modern KeePass TimeOtp fields are converted into a code-generating format. If the
+      secret, encoding, or parameters conflict or cannot be converted, the entire import stops
+      instead of silently skipping the authenticator.
+    </Trans>
   )
 }
 
@@ -90,6 +110,7 @@ function VaultPortabilityDialog({
   onExported,
   onImported
 }: VaultPortabilityDialogProps): React.JSX.Element {
+  const { i18n, t } = useLingui()
   const mountedRef = useRef(true)
   const submittingRef = useRef(false)
   const [masterPassword, setMasterPassword] = useState('')
@@ -143,18 +164,18 @@ function VaultPortabilityDialog({
     const plaintextCsv = mode === 'export' && exportFormat === 'bitwarden-csv'
     const passwordlessExport = plaintextZip || plaintextCsv
     if (!nativeImport && !masterPassword) {
-      setError('請輸入目前的主密碼。')
+      setError(t`Enter your current master password.`)
       return
     }
     if (
       ((mode === 'export' && !passwordlessExport) || nativeImport) &&
       backupPassword.length < 12
     ) {
-      setError('備份密碼至少需要 12 個字元。')
+      setError(t`The backup password must be at least 12 characters.`)
       return
     }
     if (mode === 'export' && !passwordlessExport && backupPassword !== confirmPassword) {
-      setError('兩次輸入的備份密碼不一致。')
+      setError(t`The backup passwords do not match.`)
       return
     }
 
@@ -191,7 +212,7 @@ function VaultPortabilityDialog({
         if (!result.canceled) setPreview(result)
       } else {
         if (!masterPassword) {
-          setError('請輸入目前的主密碼，確認要還原到這個密碼庫。')
+          setError(t`Enter your current master password to confirm restoring to this vault.`)
           return
         }
         const result = await window.bearwarden.portability.startNativeRestore({
@@ -217,17 +238,17 @@ function VaultPortabilityDialog({
             ? plaintextZip &&
               portabilityFailure instanceof Error &&
               portabilityFailure.message.includes('EXPORT_RESULT_UNKNOWN')
-              ? 'ZIP 是否已完整寫入無法確認。請先檢查剛才選擇的儲存位置；若檔案存在，它包含未加密的密碼與附件，確認前請勿直接重試。'
+              ? t`It is unclear whether the ZIP was written completely. Check the save location you just selected before retrying. If the file exists, it contains unencrypted passwords and attachments.`
               : plaintextZip
-                ? '無法建立 ZIP。請確認主密碼、儲存位置與附件狀態後再試一次。'
+                ? t`Could not create the ZIP. Check the master password, save location, and attachment status, then try again.`
                 : plaintextCsv
-                  ? '無法建立 CSV。請確認主密碼與儲存位置後再試一次。'
-                  : '無法建立備份。請確認主密碼、儲存位置與備份密碼後再試一次。'
+                  ? t`Could not create the CSV. Check the master password and save location, then try again.`
+                  : t`Could not create the backup. Check the master password, save location, and backup password, then try again.`
             : nativeImport
-              ? '還原未完成。若顯示衝突，請先確認伺服器上的同名附件；進度已安全保留，可重新選取同一份備份續傳。'
+              ? t`The restore did not finish. If a conflict is shown, check attachments with the same name on the server. Progress was saved safely; select the same backup again to resume.`
               : keepassImport
-                ? '無法匯入 KeePass XML。請確認主密碼，並確認檔案是由 KeePass 2 匯出的完整 XML。'
-                : '無法匯入檔案。請確認主密碼、檔案格式與備份密碼後再試一次。'
+                ? t`Could not import the KeePass XML. Check the master password and make sure the file is a complete XML export from KeePass 2.`
+                : t`Could not import the file. Check the master password, file format, and backup password, then try again.`
         )
       }
     } finally {
@@ -246,7 +267,7 @@ function VaultPortabilityDialog({
       scrubPasswords()
       onClose()
     } catch {
-      setError('無法清除完成紀錄；備份資料本身沒有被刪除。')
+      setError(t`Could not clear the completion record. The backup data itself was not deleted.`)
     } finally {
       if (mountedRef.current) setBusy(false)
     }
@@ -264,32 +285,40 @@ function VaultPortabilityDialog({
     : progress?.phase === 'complete'
       ? 100
       : 0
+  const numberFormatter = new Intl.NumberFormat(i18n.locale)
+  const backupCreatedAt = preview ? formatBackupCreatedAt(preview.createdAt, i18n.locale) : null
+  const formattedItemCount = numberFormatter.format(preview?.itemCount ?? 0)
+  const formattedAttachmentCount = numberFormatter.format(preview?.attachmentCount ?? 0)
+  const formattedUploadedAttachments = numberFormatter.format(progress?.uploadedAttachments ?? 0)
+  const formattedTotalAttachments = numberFormatter.format(progress?.totalAttachments ?? 0)
+  const restoredItemCount = restoreResult?.summary.totalItems ?? 0
+  const restoredAttachmentCount = restoreResult?.summary.uploadedAttachments ?? 0
 
   return (
     <Modal
       title={
         exporting
           ? plaintextZip
-            ? '匯出 Bitwarden 附件 ZIP'
+            ? t`Export Bitwarden attachment ZIP`
             : plaintextCsv
-              ? '匯出 Bitwarden CSV'
-              : '匯出加密備份'
+              ? t`Export Bitwarden CSV`
+              : t`Export encrypted backup`
           : nativeImport
-            ? '還原完整備份'
-            : '匯入密碼資料'
+            ? t`Restore full backup`
+            : t`Import password data`
       }
       description={
         exporting
           ? plaintextZip
-            ? '建立可由 Bitwarden 相容工具解壓使用的個人密碼庫與附件明文副本。'
+            ? t`Create a plaintext copy of your personal vault and attachments that Bitwarden-compatible tools can extract.`
             : plaintextCsv
-              ? '建立可重新匯入 Bitwarden 的登入與安全筆記明文副本。'
-              : '建立受密碼保護的可攜備份。'
+              ? t`Create a plaintext copy of logins and secure notes that can be imported into Bitwarden.`
+              : t`Create a password-protected portable backup.`
           : nativeImport
-            ? '從 BearWarden 完整備份還原項目與附件，可在中斷後安全續傳。'
+            ? t`Restore items and attachments from a full BearWarden backup, with safe resuming after interruptions.`
             : keepassImport
-              ? '將 KeePass 2 匯出的明文 XML Entry 加入目前的密碼庫。既有項目不會被覆蓋。'
-              : '將 Bitwarden JSON、Bitwarden CSV 或 Chrome／Chromium 密碼 CSV 加入目前的密碼庫。既有項目不會被覆蓋。'
+              ? t`Add entries from a plaintext KeePass 2 XML export to the current vault. Existing items are not overwritten.`
+              : t`Add a Bitwarden JSON, Bitwarden CSV, or Chrome/Chromium password CSV to the current vault. Existing items are not overwritten.`
       }
       busy={busy && !(nativeImport && preview && !completed)}
       onClose={() => void closeSafely()}
@@ -299,7 +328,9 @@ function VaultPortabilityDialog({
           <ModalBody className="flex flex-col gap-4">
             {!preview && (
               <Field data-disabled={busy || undefined}>
-                <FieldLabel htmlFor="portability-format">備份格式</FieldLabel>
+                <FieldLabel htmlFor="portability-format">
+                  <Trans>Backup format</Trans>
+                </FieldLabel>
                 <NativeSelect
                   id="portability-format"
                   className="w-full"
@@ -321,28 +352,28 @@ function VaultPortabilityDialog({
                   {exporting ? (
                     <>
                       <NativeSelectOption value="bitwarden-json">
-                        Bitwarden 密碼保護 JSON
+                        <Trans>Bitwarden password-protected JSON</Trans>
                       </NativeSelectOption>
                       <NativeSelectOption value="bitwarden-csv">
-                        Bitwarden 明文 CSV（登入與安全筆記）
+                        <Trans>Bitwarden plaintext CSV (logins and secure notes)</Trans>
                       </NativeSelectOption>
                       <NativeSelectOption value="bitwarden-zip">
-                        Bitwarden 明文 ZIP（含附件）
+                        <Trans>Bitwarden plaintext ZIP (with attachments)</Trans>
                       </NativeSelectOption>
                       <NativeSelectOption value="bearwarden-native">
-                        BearWarden 完整備份（含附件）
+                        <Trans>Full BearWarden backup (with attachments)</Trans>
                       </NativeSelectOption>
                     </>
                   ) : (
                     <>
                       <NativeSelectOption value="portable">
-                        Bitwarden JSON／CSV 或 Chrome CSV
+                        <Trans>Bitwarden JSON/CSV or Chrome CSV</Trans>
                       </NativeSelectOption>
                       <NativeSelectOption value="keepass-xml">
-                        KeePass 2 明文 XML
+                        <Trans>KeePass 2 plaintext XML</Trans>
                       </NativeSelectOption>
                       <NativeSelectOption value="bearwarden-native">
-                        BearWarden 完整備份（.bwbackup）
+                        <Trans>Full BearWarden backup (.bwbackup)</Trans>
                       </NativeSelectOption>
                     </>
                   )}
@@ -360,34 +391,54 @@ function VaultPortabilityDialog({
               )}
               <AlertTitle>
                 {plaintextZip
-                  ? 'ZIP 內的密碼與附件都是未加密明文'
+                  ? t`Passwords and attachments in the ZIP are unencrypted plaintext`
                   : plaintextCsv
-                    ? 'CSV 是不完整且未加密的明文匯出'
+                    ? t`CSV is an incomplete, unencrypted plaintext export`
                     : keepassImport
-                      ? 'KeePass XML 內的密碼是未加密明文'
+                      ? t`Passwords in KeePass XML are unencrypted plaintext`
                       : exporting && exportFormat === 'bearwarden-native'
-                        ? '完整備份不是 Bitwarden 相容格式'
+                        ? t`Full backups are not in a Bitwarden-compatible format`
                         : nativeImport
-                          ? '可安全續傳，但不會自動解決伺服器衝突'
+                          ? t`Safe resuming is supported, but server conflicts are not resolved automatically`
                           : exporting
-                            ? '請妥善保存備份密碼'
-                            : '匯入不會自動去除重複項目'}
+                            ? t`Keep the backup password safe`
+                            : t`Importing does not remove duplicate items automatically`}
               </AlertTitle>
               <AlertDescription>
                 {plaintextZip ? (
-                  '只應儲存在受信任的加密磁碟，使用後請安全刪除。格式對齊 Bitwarden 個人密碼庫 ZIP 匯出；官方目前不支援把附件 ZIP 批次匯入，因此 BearWarden 不宣稱可用它無損還原附件。垃圾桶與 Sends 不包含在內。'
+                  <Trans>
+                    Store it only on a trusted encrypted drive, and securely delete it after use.
+                    The format matches Bitwarden personal vault ZIP exports. Bitwarden does not
+                    currently support bulk importing attachment ZIPs, so BearWarden does not claim
+                    that this can restore attachments without loss. Trash and Sends are not
+                    included.
+                  </Trans>
                 ) : plaintextCsv ? (
                   <VaultCsvExportWarning />
                 ) : keepassImport ? (
                   <VaultKeePassXmlImportWarning />
                 ) : exporting && exportFormat === 'bearwarden-native' ? (
-                  '加密的 .bwbackup 會包含個人項目與附件，只能由支援此格式的 BearWarden 還原；Bitwarden 官方客戶端無法直接匯入。垃圾桶與 Sends 不包含在內。'
+                  <Trans>
+                    The encrypted .bwbackup contains personal items and attachments and can only be
+                    restored by a BearWarden version that supports this format. Official Bitwarden
+                    clients cannot import it directly. Trash and Sends are not included.
+                  </Trans>
                 ) : nativeImport ? (
-                  '若上傳結果不明，BearWarden 會先比對伺服器附件的完整內容；只有確認不存在時才重試。取消只會停止本次工作，不會丟失續傳進度。'
+                  <Trans>
+                    If an upload result is unknown, BearWarden compares the full server attachment
+                    contents first and retries only after confirming that the attachment is absent.
+                    Canceling stops only this run and does not discard resume progress.
+                  </Trans>
                 ) : exporting ? (
-                  '垃圾桶、附件與 Sends 不會包含在 Bitwarden JSON 中；忘記備份密碼後將無法解密。'
+                  <Trans>
+                    Trash, attachments, and Sends are not included in Bitwarden JSON. The backup
+                    cannot be decrypted if you forget its password.
+                  </Trans>
                 ) : (
-                  '所有項目都會以新識別碼加入。JSON 垃圾桶項目會略過，CSV 不包含附件或 Passkey。'
+                  <Trans>
+                    Every item is added with a new identifier. Trashed JSON items are skipped, and
+                    CSV does not include attachments or passkeys.
+                  </Trans>
                 )}
               </AlertDescription>
             </Alert>
@@ -395,27 +446,37 @@ function VaultPortabilityDialog({
             {preview && (
               <Card size="sm">
                 <CardHeader>
-                  <CardTitle>備份內容</CardTitle>
+                  <CardTitle>
+                    <Trans>Backup contents</Trans>
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <dl className="grid grid-cols-2 gap-3">
                     <div>
-                      <dt className="text-muted-foreground">建立時間</dt>
-                      <dd>{formatBackupCreatedAt(preview.createdAt)}</dd>
+                      <dt className="text-muted-foreground">
+                        <Trans>Created</Trans>
+                      </dt>
+                      <dd>{backupCreatedAt ?? <Trans>Unknown time</Trans>}</dd>
                     </div>
                     <div>
-                      <dt className="text-muted-foreground">附件大小</dt>
-                      <dd>{formatBackupBytes(preview.attachmentBytes)}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted-foreground">資料夾</dt>
-                      <dd>{preview.folderCount}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted-foreground">項目／附件</dt>
+                      <dt className="text-muted-foreground">
+                        <Trans>Attachment size</Trans>
+                      </dt>
                       <dd>
-                        {preview.itemCount}／{preview.attachmentCount}
+                        <FormattedBackupBytes bytes={preview.attachmentBytes} />
                       </dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">
+                        <Trans>Folders</Trans>
+                      </dt>
+                      <dd>{numberFormatter.format(preview.folderCount)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">
+                        <Trans>Items / attachments</Trans>
+                      </dt>
+                      <dd>{t`${formattedItemCount} / ${formattedAttachmentCount}`}</dd>
                     </div>
                   </dl>
                 </CardContent>
@@ -426,28 +487,33 @@ function VaultPortabilityDialog({
               <Progress value={progressPercent}>
                 <ProgressLabel>
                   {progress.state === 'conflict'
-                    ? '需要處理衝突'
+                    ? t`Conflict requires attention`
                     : progress.state === 'partial'
-                      ? '部分完成，可稍後續傳'
+                      ? t`Partially complete; you can resume later`
                       : progress.state === 'complete'
-                        ? '還原完成'
-                        : '正在還原附件'}
+                        ? t`Restore complete`
+                        : t`Restoring attachments`}
                 </ProgressLabel>
                 <ProgressValue>
-                  {() => `${progress.uploadedAttachments} / ${progress.totalAttachments}`}
+                  {() => t`${formattedUploadedAttachments} / ${formattedTotalAttachments}`}
                 </ProgressValue>
               </Progress>
             )}
 
             {restoreResult?.state === 'conflict' && (
               <FieldError>
-                伺服器上有多個同名附件，或內容無法確認。為避免重複上傳，BearWarden
-                已停止並保留進度。
+                <Trans>
+                  The server has multiple attachments with the same name, or their contents could
+                  not be verified. BearWarden stopped and saved progress to avoid duplicate uploads.
+                </Trans>
               </FieldError>
             )}
             {restoreResult?.state === 'partial' && (
               <FieldError>
-                本次未能完成所有附件。請重新選取同一份備份與輸入備份密碼，即可從保留的進度繼續。
+                <Trans>
+                  Not all attachments were completed this time. Select the same backup again and
+                  enter its password to continue from the saved progress.
+                </Trans>
               </FieldError>
             )}
 
@@ -455,7 +521,9 @@ function VaultPortabilityDialog({
               <FieldGroup>
                 {(!nativeImport || preview) && (
                   <Field>
-                    <FieldLabel htmlFor="portability-master-password">目前的主密碼</FieldLabel>
+                    <FieldLabel htmlFor="portability-master-password">
+                      <Trans>Current master password</Trans>
+                    </FieldLabel>
                     <Input
                       id="portability-master-password"
                       type="password"
@@ -468,8 +536,8 @@ function VaultPortabilityDialog({
                     />
                     <FieldDescription>
                       {nativeImport
-                        ? '預覽後需要新的本機擁有者驗證，才會開始同步與還原。'
-                        : '只會送到本機主程序確認密碼庫擁有者。'}
+                        ? t`After previewing, new local owner verification is required before syncing and restoring begin.`
+                        : t`This is sent only to the local main process to verify the vault owner.`}
                     </FieldDescription>
                   </Field>
                 )}
@@ -477,10 +545,10 @@ function VaultPortabilityDialog({
                   <Field>
                     <FieldLabel htmlFor="portability-backup-password">
                       {exporting
-                        ? '新的備份密碼'
+                        ? t`New backup password`
                         : nativeImport
-                          ? '完整備份密碼'
-                          : '備份密碼（選填）'}
+                          ? t`Full backup password`
+                          : t`Backup password (optional)`}
                     </FieldLabel>
                     <Input
                       id="portability-backup-password"
@@ -493,14 +561,16 @@ function VaultPortabilityDialog({
                     />
                     <FieldDescription>
                       {exporting || nativeImport
-                        ? '至少 12 個字元，只會交給本機主程序加解密。'
-                        : '密碼保護的 JSON 需要填寫；未加密 JSON 或 CSV 請留空。'}
+                        ? t`At least 12 characters. It is provided only to the local main process for encryption or decryption.`
+                        : t`Required for password-protected JSON. Leave blank for unencrypted JSON or CSV.`}
                     </FieldDescription>
                   </Field>
                 )}
                 {exporting && !passwordlessExport && (
                   <Field>
-                    <FieldLabel htmlFor="portability-confirm-password">再次輸入備份密碼</FieldLabel>
+                    <FieldLabel htmlFor="portability-confirm-password">
+                      <Trans>Enter the backup password again</Trans>
+                    </FieldLabel>
                     <Input
                       id="portability-confirm-password"
                       type="password"
@@ -519,11 +589,20 @@ function VaultPortabilityDialog({
             {completed && (
               <Alert>
                 <ArchiveRestore aria-hidden="true" />
-                <AlertTitle>完整備份已還原</AlertTitle>
+                <AlertTitle>
+                  <Trans>Full backup restored</Trans>
+                </AlertTitle>
                 <AlertDescription>
-                  已還原 {restoreResult.summary.totalItems} 個項目與{' '}
-                  {restoreResult.summary.uploadedAttachments}{' '}
-                  個附件。請確認後清除完成紀錄；這不會刪除備份檔案。
+                  <Trans>
+                    Restored <Plural value={restoredItemCount} one="# item" other="# items" /> and{' '}
+                    <Plural
+                      value={restoredAttachmentCount}
+                      one="# attachment"
+                      other="# attachments"
+                    />
+                    . Review the result, then clear the completion record. This does not delete the
+                    backup file.
+                  </Trans>
                 </AlertDescription>
               </Alert>
             )}
@@ -536,16 +615,17 @@ function VaultPortabilityDialog({
               disabled={busy && !(nativeImport && preview && !completed)}
               onClick={() => void closeSafely()}
             >
-              {busy && nativeImport && preview ? '停止並保留進度' : '取消'}
+              {busy && nativeImport && preview ? t`Stop and save progress` : t`Cancel`}
             </Button>
             {completed ? (
               confirmClear ? (
                 <Button type="button" disabled={busy} onClick={() => void clearCompleted()}>
-                  {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}確認清除完成紀錄
+                  {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
+                  <Trans>Confirm clearing completion record</Trans>
                 </Button>
               ) : (
                 <Button type="button" onClick={() => setConfirmClear(true)}>
-                  完成並清除續傳紀錄
+                  <Trans>Finish and clear resume record</Trans>
                 </Button>
               )
             ) : (
@@ -562,16 +642,16 @@ function VaultPortabilityDialog({
               >
                 {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
                 {exporting
-                  ? '選擇儲存位置'
+                  ? t`Choose save location`
                   : nativeImport
                     ? preview
                       ? restoreResult
                         ? restoreResult.state === 'conflict'
-                          ? '重新檢查衝突'
-                          : '繼續還原'
-                        : '確認並開始還原'
-                      : '選擇完整備份'
-                    : '選擇並匯入檔案'}
+                          ? t`Check conflicts again`
+                          : t`Continue restoring`
+                        : t`Confirm and start restoring`
+                      : t`Choose full backup`
+                    : t`Choose and import file`}
               </Button>
             )}
           </ModalFooter>

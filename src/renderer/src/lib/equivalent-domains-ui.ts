@@ -1,7 +1,9 @@
+import { msg } from '@lingui/core/macro'
 import type {
   EquivalentDomainSettingsView,
   GlobalEquivalentDomainView
 } from '../../../shared/vault-contract'
+import { i18n } from '../i18n'
 
 const MAX_GROUPS = 10_000
 const MAX_DOMAINS_PER_GROUP = 1_000
@@ -119,16 +121,24 @@ export function equivalentDomainRows(settings: EquivalentDomainSettingsView): st
 }
 
 export function equivalentDomainErrorMessage(error: unknown): string {
-  if (!(error instanceof Error)) return '無法讀取等效網域設定，請稍後再試。'
+  if (!(error instanceof Error)) {
+    return i18n._(msg`Unable to read equivalent domain settings. Please try again later.`)
+  }
   if (error.message.includes('SYNC_CONFLICT')) {
-    return '設定已在其他裝置變更。已重新載入伺服器版本，請確認後再儲存。'
+    return i18n._(
+      msg`Settings were changed on another device. The server version has been reloaded; review it before saving.`
+    )
   }
   if (error.message.includes('SYNC_AUTH_REQUIRED')) {
-    return 'Bitwarden 帳號需要重新登入或解鎖。'
+    return i18n._(msg`Your Bitwarden account needs to be signed in or unlocked again.`)
   }
-  if (error.message.includes('LOCKED')) return '密碼庫已鎖定。重新解鎖後再試。'
+  if (error.message.includes('LOCKED')) {
+    return i18n._(msg`The vault is locked. Unlock it and try again.`)
+  }
   if (error.message.includes('INVALID_INPUT')) {
-    return '請檢查網域格式；每一列可用逗號或換行分隔。'
+    return i18n._(msg`Check the domain format; separate domains with commas or new lines.`)
   }
-  return '無法儲存等效網域設定，請確認連線後再試。'
+  return i18n._(
+    msg`Unable to save equivalent domain settings. Check your connection and try again.`
+  )
 }

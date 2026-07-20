@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog'
+import { useLingui } from '@lingui/react/macro'
 
 import { cn } from '@renderer/lib/utils'
 import { Button } from '@renderer/components/ui/button'
@@ -57,6 +58,8 @@ function DialogContent({
   showOverlay?: boolean
   forceOverlay?: boolean
 }) {
+  const { t } = useLingui()
+
   return (
     <DialogPortal>
       {showOverlay && <DialogOverlay forceRender={forceOverlay} />}
@@ -75,7 +78,7 @@ function DialogContent({
             render={<Button variant="ghost" className="absolute top-2 right-2" size="icon-sm" />}
           >
             <XIcon />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{t`Close`}</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Popup>
@@ -97,6 +100,8 @@ function DialogFooter({
 }: React.ComponentProps<'div'> & {
   showCloseButton?: boolean
 }) {
+  const { t } = useLingui()
+
   return (
     <div
       data-slot="dialog-footer"
@@ -108,7 +113,9 @@ function DialogFooter({
     >
       {children}
       {showCloseButton && (
-        <DialogPrimitive.Close render={<Button variant="outline" />}>Close</DialogPrimitive.Close>
+        <DialogPrimitive.Close
+          render={<Button variant="outline" />}
+        >{t`Close`}</DialogPrimitive.Close>
       )}
     </div>
   )

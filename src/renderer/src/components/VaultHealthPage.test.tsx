@@ -68,7 +68,7 @@ describe('InactiveTwoFactorPanel', () => {
     )
 
     expect(onStart).not.toHaveBeenCalled()
-    expect(markup).toContain('只有在你按下按鈕後才會載入服務清單')
+    expect(markup).toContain('只有在您按下按鈕後才會載入服務清單')
     expect(markup).toContain('檢查雙因素驗證')
   })
 
@@ -80,16 +80,16 @@ describe('InactiveTwoFactorPanel', () => {
 
     const successMarkup = renderPanel({ status: 'success', revision: 'revision-1', report })
     expect(successMarkup).toContain('本次已分析')
-    expect(successMarkup).toContain('已有 TOTP 2')
-    expect(successMarkup).toContain('垃圾桶 1')
-    expect(successMarkup).toContain('封存 3')
+    expect(successMarkup).toContain('2 個已有 TOTP')
+    expect(successMarkup).toContain('垃圾桶中的 1 個項目')
+    expect(successMarkup).toContain('3 個已封存項目')
 
     const emptyMarkup = renderPanel({
       status: 'success',
       revision: 'revision-1',
       report: { ...report, findings: [] }
     })
-    expect(emptyMarkup).toContain('沒有找到尚未設定 TOTP 的支援服務')
+    expect(emptyMarkup).toContain('未找到尚未設定 TOTP 的受支援服務')
   })
 
   it('uses documentationUrl only as a button gate and never renders it', () => {

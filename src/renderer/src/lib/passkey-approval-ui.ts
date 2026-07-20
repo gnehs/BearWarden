@@ -1,8 +1,10 @@
+import { msg } from '@lingui/core/macro'
 import type {
   PasskeyApprovalPrompt,
   PasskeyVerificationMethod,
   VaultState
 } from '../../../shared/vault-contract'
+import { i18n } from '../i18n'
 
 export type PasskeyApprovalUiVerificationMethod = Exclude<PasskeyVerificationMethod, 'none'>
 
@@ -117,5 +119,7 @@ export function canApprovePasskeyApproval(
 
 export function formatPasskeyApprovalExpiry(expiresAt: number, now = Date.now()): string {
   const remainingSeconds = Math.max(0, Math.ceil((expiresAt - now) / 1_000))
-  return remainingSeconds > 0 ? `此要求將在約 ${remainingSeconds} 秒後過期。` : '此要求已過期。'
+  return remainingSeconds > 0
+    ? i18n._(msg`This request expires in about ${remainingSeconds} seconds.`)
+    : i18n._(msg`This request has expired.`)
 }

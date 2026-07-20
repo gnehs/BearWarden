@@ -89,7 +89,7 @@ describe('preload account API', () => {
     const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
     const request = {
       masterPassword: 'test-master-password',
-      confirmation: '取消所有工作階段' as const,
+      confirmation: 'deauthorize all sessions' as const,
       confirm: true as const
     }
 

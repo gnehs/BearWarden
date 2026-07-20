@@ -1,4 +1,6 @@
 import { Eye, EyeOff } from 'lucide-react'
+import { i18n } from '@lingui/core'
+import { plural, t } from '@lingui/core/macro'
 
 import { Alert, AlertDescription, AlertTitle } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
@@ -22,10 +24,10 @@ interface PendingImportWarningProps {
   onConfirm: () => void
 }
 
-function formatStartedAt(value: string): string {
+function formatStartedAt(value: string, locale: string, unknownDate: string): string {
   const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '時間不明'
-  return new Intl.DateTimeFormat('zh-TW', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+  if (Number.isNaN(date.getTime())) return unknownDate
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
 }
 
 export function PendingImportWarning({
@@ -40,17 +42,29 @@ export function PendingImportWarning({
 }: PendingImportWarningProps): React.JSX.Element {
   return (
     <Alert variant="destructive">
-      <AlertTitle>批次匯入的伺服器結果未知</AlertTitle>
+      <AlertTitle>{t`The server result for this batch import is unknown`}</AlertTitle>
       <AlertDescription className="flex flex-col gap-3 text-left">
         <p>
-          伺服器是否已建立這 {count} 筆項目目前無法確認。BearWarden 不會自動重送，以免產生重複項目。
+          {t({
+            message: plural(count, {
+              one: `It is unknown whether the server created this item. BearWarden will not resend it automatically to avoid duplicates.`,
+              other: `It is unknown whether the server created these # items. BearWarden will not resend them automatically to avoid duplicates.`
+            })
+          })}
         </p>
-        <p>開始時間：{formatStartedAt(startedAt)}</p>
-        <p>輸入主密碼並明確確認後，下一次同步會再次送出未確認的項目，伺服器上可能出現重複項目。</p>
-        <p>若不想承擔重複風險，可中斷連線；本機密碼庫資料會保留。</p>
+        <p>
+          {t`Started:`}
+          {formatStartedAt(startedAt, i18n.locale, t`Unknown time`)}
+        </p>
+        <p>
+          {t`After you enter your master password and explicitly confirm, the next sync will resend unconfirmed items. This may create duplicates on the server.`}
+        </p>
+        <p>
+          {t`If you do not want to risk duplicates, disconnect instead. Your local vault data will be kept.`}
+        </p>
         <FieldGroup>
           <Field data-disabled={busy || undefined}>
-            <FieldLabel htmlFor="pending-import-master-password">主密碼</FieldLabel>
+            <FieldLabel htmlFor="pending-import-master-password">{t`Master password`}</FieldLabel>
             <InputGroup>
               <InputGroupInput
                 id="pending-import-master-password"
@@ -65,7 +79,7 @@ export function PendingImportWarning({
               <InputGroupAddon align="inline-end">
                 <InputGroupButton
                   size="icon-xs"
-                  aria-label={showPassword ? '隱藏主密碼' : '顯示主密碼'}
+                  aria-label={showPassword ? t`Hide master password` : t`Show master password`}
                   aria-pressed={showPassword}
                   onClick={onTogglePassword}
                   disabled={busy}
@@ -83,7 +97,7 @@ export function PendingImportWarning({
           onClick={onConfirm}
         >
           {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
-          {busy ? '正在確認…' : '我了解風險，允許重新傳送'}
+          {busy ? t`Confirming…` : t`I understand the risk. Allow resend`}
         </Button>
       </AlertDescription>
     </Alert>

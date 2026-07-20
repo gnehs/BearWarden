@@ -37,7 +37,7 @@ describe('ItemDragPreview', () => {
 
     expect(markup).toContain('w-full')
     expect(markup).toContain('max-w-[calc(100vw-24px)]')
-    expect(markup).toContain('安全備註 · 拖曳以移動')
+    expect(markup).toContain('安全筆記 · 拖曳以移動')
     expect(markup).toContain('aria-hidden="true"')
     expect(markup).not.toContain('data-drag-preview-layer')
   })

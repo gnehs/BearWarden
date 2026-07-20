@@ -1,4 +1,6 @@
 import { useRef, useState, type FormEvent, type MutableRefObject } from 'react'
+import { plural, t } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Eye, EyeOff, Trash2, TriangleAlert } from 'lucide-react'
 import type {
   SyncPurgePersonalVaultRequest,
@@ -28,10 +30,6 @@ import {
 import { Spinner } from '@renderer/components/ui/spinner'
 
 type PendingPurge = NonNullable<SyncStatus['pendingPurge']>
-
-function personalVaultPurgeActionLabel(pending: boolean): string {
-  return pending ? '再次清除剩餘項目' : '永久清除個人密碼庫'
-}
 
 interface PersonalVaultPurgeExecutionOptions {
   lease: MutableRefObject<boolean>
@@ -110,23 +108,33 @@ export function PersonalVaultPurgeForm({
     <div className="grid gap-4">
       <Alert variant="destructive">
         <TriangleAlert aria-hidden="true" />
-        <AlertTitle>這項操作無法復原</AlertTitle>
+        <AlertTitle>{t`This action cannot be undone`}</AlertTitle>
         <AlertDescription>
-          會永久刪除伺服器上的所有個人物件、資料夾與附件，包含垃圾桶與封存項目。共享組織的項目會保留。建議先匯出備份。
+          {t`This permanently deletes all personal items, folders, and attachments from the server, including trash and archived items. Shared organization items are kept. Export a backup first.`}
         </AlertDescription>
       </Alert>
       {pendingPurge && (
         <Alert variant="destructive">
-          <AlertTitle>上次清除的結果未知</AlertTitle>
+          <AlertTitle>{t`The result of the previous purge is unknown`}</AlertTitle>
           <AlertDescription>
-            伺服器仍有 {pendingPurge.remainingItems} 個個人物件與 {pendingPurge.remainingFolders}{' '}
-            個資料夾。BearWarden 不會自動重送；再次操作只會清除剩餘資料。
+            {t({
+              message: plural(pendingPurge.remainingItems, {
+                one: plural(pendingPurge.remainingFolders, {
+                  one: `The server still has ${pendingPurge.remainingItems} personal item and # folder. BearWarden will not resend automatically; trying again only removes remaining data.`,
+                  other: `The server still has ${pendingPurge.remainingItems} personal item and # folders. BearWarden will not resend automatically; trying again only removes remaining data.`
+                }),
+                other: plural(pendingPurge.remainingFolders, {
+                  one: `The server still has ${pendingPurge.remainingItems} personal items and # folder. BearWarden will not resend automatically; trying again only removes remaining data.`,
+                  other: `The server still has ${pendingPurge.remainingItems} personal items and # folders. BearWarden will not resend automatically; trying again only removes remaining data.`
+                })
+              })
+            })}
           </AlertDescription>
         </Alert>
       )}
       <FieldGroup>
         <Field>
-          <FieldLabel htmlFor="purge-personal-vault-password">遠端主密碼</FieldLabel>
+          <FieldLabel htmlFor="purge-personal-vault-password">{t`Remote master password`}</FieldLabel>
           <InputGroup>
             <InputGroupInput
               id="purge-personal-vault-password"
@@ -140,7 +148,7 @@ export function PersonalVaultPurgeForm({
             />
             <InputGroupAddon align="inline-end">
               <InputGroupButton
-                aria-label={showPassword ? '隱藏主密碼' : '顯示主密碼'}
+                aria-label={showPassword ? t`Hide master password` : t`Show master password`}
                 disabled={busy}
                 onClick={onTogglePassword}
               >
@@ -148,10 +156,10 @@ export function PersonalVaultPurgeForm({
               </InputGroupButton>
             </InputGroupAddon>
           </InputGroup>
-          <FieldDescription>每次嘗試都必須重新輸入，且只用於這一次遠端驗證。</FieldDescription>
+          <FieldDescription>{t`Enter it again for every attempt. It is used only for this remote verification.`}</FieldDescription>
         </Field>
         <Field>
-          <FieldLabel htmlFor="purge-personal-vault-confirmation">輸入 PURGE 確認</FieldLabel>
+          <FieldLabel htmlFor="purge-personal-vault-confirmation">{t`Enter PURGE to confirm`}</FieldLabel>
           <InputGroup>
             <InputGroupInput
               id="purge-personal-vault-confirmation"
@@ -164,7 +172,7 @@ export function PersonalVaultPurgeForm({
               onChange={(event) => onConfirmationChange(event.target.value)}
             />
           </InputGroup>
-          <FieldDescription>必須完全符合大寫 PURGE。</FieldDescription>
+          <FieldDescription>{t`It must exactly match the uppercase word PURGE.`}</FieldDescription>
         </Field>
       </FieldGroup>
       {error && (
@@ -187,6 +195,7 @@ function PersonalVaultPurgeDialog({
   disabled = false,
   onVaultChanged
 }: PersonalVaultPurgeDialogProps): React.JSX.Element {
+  const { t } = useLingui()
   const [open, setOpen] = useState(false)
   const [masterPassword, setMasterPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
@@ -245,8 +254,8 @@ function PersonalVaultPurgeDialog({
       const message = cause instanceof Error ? cause.message : ''
       setError(
         /INVALID_MASTER_PASSWORD|USER_VERIFICATION_FAILED/u.test(message)
-          ? '遠端主密碼驗證失敗。'
-          : '無法確認清除結果。請先重新同步確認剩餘資料；BearWarden 不會自動重送。'
+          ? t`Remote master password verification failed.`
+          : t`The purge result could not be confirmed. Sync again to check remaining data; BearWarden will not resend automatically.`
       )
     } finally {
       if (acquired) setBusy(false)
@@ -261,7 +270,7 @@ function PersonalVaultPurgeDialog({
         }
       >
         <Trash2 data-icon="inline-start" aria-hidden="true" />
-        {visiblePending ? '處理未完成的清除' : '清除個人密碼庫'}
+        {visiblePending ? t`Handle incomplete purge` : t`Purge personal vault`}
       </AlertDialogTrigger>
       <AlertDialogContent>
         <form className="grid gap-4" onSubmit={(event) => void submit(event)}>
@@ -269,9 +278,14 @@ function PersonalVaultPurgeDialog({
             <AlertDialogMedia>
               <TriangleAlert aria-hidden="true" />
             </AlertDialogMedia>
-            <AlertDialogTitle>永久清除個人密碼庫？</AlertDialogTitle>
+            <AlertDialogTitle>
+              <Trans>Permanently purge personal vault?</Trans>
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              這只清除目前同步帳號的個人資料，不會刪除共享組織項目。
+              <Trans>
+                This only deletes personal data for the currently synced account. Shared
+                organization items are not deleted.
+              </Trans>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <PersonalVaultPurgeForm
@@ -286,14 +300,18 @@ function PersonalVaultPurgeDialog({
             onTogglePassword={() => setShowPassword((value) => !value)}
           />
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>返回</AlertDialogCancel>
+            <AlertDialogCancel disabled={busy}>
+              <Trans>Back</Trans>
+            </AlertDialogCancel>
             <Button
               type="submit"
               variant="destructive"
               disabled={busy || !masterPassword || confirmation !== 'PURGE'}
             >
               {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
-              {personalVaultPurgeActionLabel(visiblePending !== undefined)}
+              {visiblePending
+                ? t`Purge remaining items again`
+                : t`Permanently purge personal vault`}
             </Button>
           </AlertDialogFooter>
         </form>

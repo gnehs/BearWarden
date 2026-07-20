@@ -177,7 +177,7 @@ describe('account session deauthorization renderer contract', () => {
   it('requires a fresh password and two exact destructive confirmations', () => {
     expectTypeOf<AccountSessionDeauthorizationRequest>().toEqualTypeOf<{
       masterPassword: string
-      confirmation: '取消所有工作階段'
+      confirmation: 'deauthorize all sessions'
       confirm: true
     }>()
     expectTypeOf<

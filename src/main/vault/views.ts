@@ -136,7 +136,7 @@ export function summarizeSecureNote(notes: string | null): string {
       .map((line) => line.trim())
       .find(Boolean) ?? ''
   const graphemes = Array.from(
-    new Intl.Segmenter('zh-Hant', { granularity: 'grapheme' }).segment(firstLine),
+    new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(firstLine),
     (segment) => segment.segment
   )
   if (graphemes.length <= 80) return firstLine

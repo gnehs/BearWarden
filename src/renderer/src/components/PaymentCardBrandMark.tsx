@@ -1,4 +1,5 @@
 import { CreditCard } from 'lucide-react'
+import { useLingui } from '@lingui/react/macro'
 import AmexLogo from '~icons/logos/amex'
 import JcbLogo from '~icons/logos/jcb'
 import MastercardLogo from '~icons/logos/mastercard'
@@ -12,28 +13,36 @@ interface PaymentCardBrandMarkProps {
 }
 
 const paymentCardBrandLogos = {
-  visa: { label: 'Visa', Logo: VisaLogo },
-  mastercard: { label: 'Mastercard', Logo: MastercardLogo },
-  jcb: { label: 'JCB', Logo: JcbLogo },
-  'american-express': { label: 'American Express', Logo: AmexLogo }
-} satisfies Record<Exclude<PaymentCardBrand, 'unknown'>, { label: string; Logo: typeof VisaLogo }>
+  visa: VisaLogo,
+  mastercard: MastercardLogo,
+  jcb: JcbLogo,
+  'american-express': AmexLogo
+} satisfies Record<Exclude<PaymentCardBrand, 'unknown'>, typeof VisaLogo>
 
 function PaymentCardBrandMark({
   brand,
   compact = false
 }: PaymentCardBrandMarkProps): React.JSX.Element {
+  const { t } = useLingui()
+
   if (brand === 'unknown') {
     return (
       <span
         className="relative inline-flex min-h-5 min-w-7 items-center justify-center leading-none"
         role="img"
-        aria-label="其他發卡組織"
+        aria-label={t`Other card issuer`}
       >
         <CreditCard size={compact ? 17 : 20} aria-hidden="true" />
       </span>
     )
   }
-  const { label, Logo } = paymentCardBrandLogos[brand]
+  const Logo = paymentCardBrandLogos[brand]
+  const label = {
+    visa: t`Visa`,
+    mastercard: t`Mastercard`,
+    jcb: t`JCB`,
+    'american-express': t`American Express`
+  }[brand]
 
   return (
     <span

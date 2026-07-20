@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, Globe2, Plus, Search, Trash2 } from 'lucide-react'
+import { Trans, useLingui } from '@lingui/react/macro'
 import type { EquivalentDomainSettingsView } from '../../../shared/vault-contract'
 import { Alert, AlertDescription, AlertTitle } from '@renderer/components/ui/alert'
 import { Badge } from '@renderer/components/ui/badge'
@@ -30,7 +31,6 @@ import { Spinner } from '@renderer/components/ui/spinner'
 import { Switch } from '@renderer/components/ui/switch'
 import { Textarea } from '@renderer/components/ui/textarea'
 import {
-  equivalentDomainErrorMessage,
   equivalentDomainRows,
   isEquivalentDomainSettingsView,
   parseEquivalentDomainDraft
@@ -47,6 +47,7 @@ function sameNumbers(left: readonly number[], right: readonly number[]): boolean
 }
 
 function EquivalentDomainsDialog(): React.JSX.Element {
+  const { i18n, t } = useLingui()
   const rowId = useRef(0)
   const requestId = useRef(0)
   const [settings, setSettings] = useState<EquivalentDomainSettingsView | null>(null)
@@ -56,7 +57,28 @@ function EquivalentDomainsDialog(): React.JSX.Element {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showUpdateMessage, setShowUpdateMessage] = useState(false)
   const [open, setOpen] = useState(false)
+
+  const errorMessage = useCallback(
+    (loadError: unknown): string => {
+      if (!(loadError instanceof Error))
+        return t`Unable to read equivalent domain settings. Try again later.`
+      if (loadError.message.includes('SYNC_CONFLICT')) {
+        return t`Settings changed on another device. The server version has been reloaded; review it before saving.`
+      }
+      if (loadError.message.includes('SYNC_AUTH_REQUIRED')) {
+        return t`Your Bitwarden account needs to sign in again or unlock.`
+      }
+      if (loadError.message.includes('LOCKED'))
+        return t`The vault is locked. Unlock it and try again.`
+      if (loadError.message.includes('INVALID_INPUT')) {
+        return t`Check the domain format. Use commas or line breaks to separate each row.`
+      }
+      return t`Unable to save equivalent domain settings. Check your connection and try again.`
+    },
+    [t]
+  )
 
   useEffect(
     () => () => {
@@ -85,6 +107,7 @@ function EquivalentDomainsDialog(): React.JSX.Element {
       const currentRequest = ++requestId.current
       setLoading(true)
       setError(null)
+      setShowUpdateMessage(false)
       try {
         const result: unknown = await window.bearwarden.domainRules.get()
         if (currentRequest !== requestId.current) return
@@ -94,22 +117,25 @@ function EquivalentDomainsDialog(): React.JSX.Element {
       } catch (loadError) {
         if (currentRequest === requestId.current) {
           setSettings(null)
-          setError(equivalentDomainErrorMessage(loadError))
+          setError(errorMessage(loadError))
         }
       } finally {
         if (currentRequest === requestId.current) setLoading(false)
       }
     },
-    [hydrate]
+    [errorMessage, hydrate]
   )
 
   const parsedDraft = useMemo(() => {
     try {
       return { value: parseEquivalentDomainDraft(rows.map(({ value }) => value)), error: null }
     } catch {
-      return { value: null, error: '請縮短網域內容，並確認每一列使用逗號或換行分隔。' }
+      return {
+        value: null,
+        error: t`Shorten the domain content and use commas or line breaks to separate each row.`
+      }
     }
-  }, [rows])
+  }, [rows, t])
 
   const excludedTypeList = useMemo(
     () => [...excludedTypes].sort((left, right) => left - right),
@@ -132,12 +158,12 @@ function EquivalentDomainsDialog(): React.JSX.Element {
   }, [excludedTypeList, initialExcludedTypeList, parsedDraft.value, settings])
 
   const filteredGlobals = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase()
+    const query = search.trim().toLocaleLowerCase(i18n.locale)
     if (!query) return settings?.globalEquivalentDomains ?? []
     return (settings?.globalEquivalentDomains ?? []).filter(({ domains }) =>
-      domains.some((domain) => domain.toLocaleLowerCase().includes(query))
+      domains.some((domain) => domain.toLocaleLowerCase(i18n.locale).includes(query))
     )
-  }, [search, settings])
+  }, [i18n.locale, search, settings])
 
   function setRowValue(id: number, value: string): void {
     setRows((current) => current.map((row) => (row.id === id ? { ...row, value } : row)))
@@ -171,6 +197,7 @@ function EquivalentDomainsDialog(): React.JSX.Element {
       requestId.current += 1
       setSearch('')
       setError(null)
+      setShowUpdateMessage(false)
     }
   }
 
@@ -192,9 +219,10 @@ function EquivalentDomainsDialog(): React.JSX.Element {
       setOpen(false)
     } catch (saveError) {
       if (saveError instanceof Error && saveError.message.includes('SYNC_CONFLICT')) {
-        await loadSettings(equivalentDomainErrorMessage(saveError))
+        await loadSettings(errorMessage(saveError))
+        setShowUpdateMessage(true)
       } else {
-        setError(equivalentDomainErrorMessage(saveError))
+        setError(errorMessage(saveError))
       }
     } finally {
       setSaving(false)
@@ -205,7 +233,7 @@ function EquivalentDomainsDialog(): React.JSX.Element {
     <Dialog open={open} onOpenChange={changeOpen}>
       <DialogTrigger render={<Button variant="outline" size="sm" type="button" />}>
         <Globe2 data-icon="inline-start" aria-hidden="true" />
-        等效網域
+        <Trans>Equivalent domains</Trans>
       </DialogTrigger>
       <DialogContent
         className="max-h-[min(88vh,760px)] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-2xl"
@@ -220,9 +248,14 @@ function EquivalentDomainsDialog(): React.JSX.Element {
               <Globe2 className="size-4" />
             </span>
             <div className="min-w-0">
-              <DialogTitle>等效網域</DialogTitle>
+              <DialogTitle>
+                <Trans>Equivalent domains</Trans>
+              </DialogTitle>
               <DialogDescription className="mt-1">
-                將同一服務的不同網域視為相關，例如 example.com 與 example.net。
+                <Trans>
+                  Treat different domains for the same service as related, such as example.com and
+                  example.net.
+                </Trans>
               </DialogDescription>
             </div>
           </div>
@@ -232,16 +265,27 @@ function EquivalentDomainsDialog(): React.JSX.Element {
           <div className="flex flex-col gap-5 py-1">
             <Alert>
               <Globe2 aria-hidden="true" />
-              <AlertTitle>這是帳號層級設定</AlertTitle>
+              <AlertTitle>
+                <Trans>This is an account-level setting</Trans>
+              </AlertTitle>
               <AlertDescription>
-                儲存後會整組取代伺服器上的等效網域，並同步到其他 Bitwarden 用戶端。
+                <Trans>
+                  Saving replaces all equivalent domains on the server and syncs them to other
+                  Bitwarden clients.
+                </Trans>
               </AlertDescription>
             </Alert>
 
             {error && (
-              <Alert variant={error.includes('已重新載入') ? 'default' : 'destructive'}>
+              <Alert variant={showUpdateMessage ? 'default' : 'destructive'}>
                 <AlertCircle aria-hidden="true" />
-                <AlertTitle>{error.includes('已重新載入') ? '設定已更新' : '無法完成'}</AlertTitle>
+                <AlertTitle>
+                  {showUpdateMessage ? (
+                    <Trans>Settings updated</Trans>
+                  ) : (
+                    <Trans>Unable to complete</Trans>
+                  )}
+                </AlertTitle>
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
@@ -251,40 +295,45 @@ function EquivalentDomainsDialog(): React.JSX.Element {
                 className="text-muted-foreground flex min-h-48 items-center justify-center gap-2 text-sm"
                 role="status"
               >
-                <Spinner /> 正在讀取網域規則…
+                <Spinner /> <Trans>Loading domain rules…</Trans>
               </div>
             ) : settings ? (
               <>
                 <FieldSet>
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <FieldLegend>自訂等效網域</FieldLegend>
+                      <FieldLegend>
+                        <Trans>Custom equivalent domains</Trans>
+                      </FieldLegend>
                       <FieldDescription>
-                        每一列是一組；使用逗號或換行分隔網域。網址會在主程序轉為可註冊網域。
+                        <Trans>
+                          Each row is a group. Use commas or line breaks to separate domains. URLs
+                          are converted to registrable domains in the main process.
+                        </Trans>
                       </FieldDescription>
                     </div>
                     <Button variant="outline" size="sm" type="button" onClick={addRow}>
                       <Plus data-icon="inline-start" aria-hidden="true" />
-                      新增群組
+                      <Trans>Add group</Trans>
                     </Button>
                   </div>
                   <FieldGroup className="gap-3">
                     {rows.length === 0 ? (
                       <div className="text-muted-foreground rounded-lg border border-dashed p-4 text-center text-sm">
-                        尚未建立自訂群組。
+                        <Trans>No custom groups yet.</Trans>
                       </div>
                     ) : (
                       rows.map((row, index) => (
                         <Field key={row.id} data-invalid={Boolean(parsedDraft.error)}>
                           <div className="flex items-center justify-between gap-2">
                             <FieldLabel htmlFor={`equivalent-domain-${row.id}`}>
-                              群組 {index + 1}
+                              {t`Group ${index + 1}`}
                             </FieldLabel>
                             <Button
                               variant="ghost"
                               size="icon-sm"
                               type="button"
-                              aria-label={`移除群組 ${index + 1}`}
+                              aria-label={t`Remove group ${index + 1}`}
                               onClick={() => removeRow(row.id)}
                             >
                               <Trash2 aria-hidden="true" />
@@ -295,7 +344,7 @@ function EquivalentDomainsDialog(): React.JSX.Element {
                             value={row.value}
                             rows={2}
                             aria-invalid={Boolean(parsedDraft.error)}
-                            placeholder="example.com, example.net"
+                            placeholder={t`example.com, example.net`}
                             onChange={(event) => setRowValue(row.id, event.target.value)}
                           />
                         </Field>
@@ -304,8 +353,7 @@ function EquivalentDomainsDialog(): React.JSX.Element {
                     {parsedDraft.error && <FieldError>{parsedDraft.error}</FieldError>}
                     {parsedDraft.value && parsedDraft.value.singleDomainGroupCount > 0 && (
                       <p className="text-muted-foreground text-xs">
-                        {parsedDraft.value.singleDomainGroupCount}{' '}
-                        組目前只有一個網域；可以儲存，但不會形成跨網域關聯。
+                        {t`${parsedDraft.value.singleDomainGroupCount} groups currently have only one domain. You can save them, but they will not create cross-domain associations.`}
                       </p>
                     )}
                   </FieldGroup>
@@ -314,19 +362,23 @@ function EquivalentDomainsDialog(): React.JSX.Element {
                 <FieldSet>
                   <div className="flex flex-wrap items-end justify-between gap-3">
                     <div>
-                      <FieldLegend>內建全域規則</FieldLegend>
+                      <FieldLegend>
+                        <Trans>Built-in global rules</Trans>
+                      </FieldLegend>
                       <FieldDescription>
-                        Vaultwarden 提供的預設服務群組；關閉後會加入帳號的排除清單。
+                        <Trans>
+                          Default service groups provided by Vaultwarden. Turning one off adds it to
+                          this account’s exclusion list.
+                        </Trans>
                       </FieldDescription>
                     </div>
                     <Badge variant="secondary">
-                      {settings.globalEquivalentDomains.length - excludedTypes.size} /{' '}
-                      {settings.globalEquivalentDomains.length} 已啟用
+                      {t`${settings.globalEquivalentDomains.length - excludedTypes.size} / ${settings.globalEquivalentDomains.length} enabled`}
                     </Badge>
                   </div>
                   <Field>
                     <FieldLabel className="sr-only" htmlFor="global-domain-search">
-                      搜尋全域規則
+                      <Trans>Search global rules</Trans>
                     </FieldLabel>
                     <div className="relative">
                       <Search
@@ -338,7 +390,7 @@ function EquivalentDomainsDialog(): React.JSX.Element {
                         className="pl-8"
                         type="search"
                         value={search}
-                        placeholder="搜尋網域"
+                        placeholder={t`Search domains`}
                         onChange={(event) => setSearch(event.target.value)}
                       />
                     </div>
@@ -346,25 +398,24 @@ function EquivalentDomainsDialog(): React.JSX.Element {
                   <div className="divide-y rounded-lg border">
                     {filteredGlobals.length === 0 ? (
                       <p className="text-muted-foreground p-4 text-center text-sm">
-                        找不到符合的規則。
+                        <Trans>No matching rules found.</Trans>
                       </p>
                     ) : (
                       filteredGlobals.map((group) => {
                         const switchId = `global-domain-${group.type}`
+                        const groupName = group.domains[0] ?? t`Rule ${group.type}`
                         return (
                           <Field key={group.type} className="p-3" orientation="horizontal">
                             <FieldContent>
-                              <FieldLabel htmlFor={switchId}>
-                                {group.domains[0] ?? `規則 ${group.type}`}
-                              </FieldLabel>
+                              <FieldLabel htmlFor={switchId}>{groupName}</FieldLabel>
                               <FieldDescription className="break-words">
-                                {group.domains.join(', ') || '此規則沒有網域'}
+                                {group.domains.join(', ') || t`This rule has no domains`}
                               </FieldDescription>
                             </FieldContent>
                             <Switch
                               id={switchId}
                               checked={!excludedTypes.has(group.type)}
-                              aria-label={`${group.domains[0] ?? `規則 ${group.type}`} 等效網域`}
+                              aria-label={t`${groupName} equivalent domains`}
                               onCheckedChange={(checked) => toggleGlobal(group.type, checked)}
                             />
                           </Field>
@@ -376,14 +427,16 @@ function EquivalentDomainsDialog(): React.JSX.Element {
               </>
             ) : (
               <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-center">
-                <p className="text-muted-foreground text-sm">目前無法顯示網域規則。</p>
+                <p className="text-muted-foreground text-sm">
+                  <Trans>Domain rules cannot be displayed right now.</Trans>
+                </p>
                 <Button
                   variant="outline"
                   size="sm"
                   type="button"
                   onClick={() => void loadSettings()}
                 >
-                  重新載入
+                  <Trans>Reload</Trans>
                 </Button>
               </div>
             )}
@@ -392,7 +445,7 @@ function EquivalentDomainsDialog(): React.JSX.Element {
 
         <DialogFooter>
           <DialogClose render={<Button variant="outline" type="button" disabled={saving} />}>
-            取消
+            <Trans>Cancel</Trans>
           </DialogClose>
           <Button
             type="button"
@@ -400,7 +453,7 @@ function EquivalentDomainsDialog(): React.JSX.Element {
             onClick={() => void save()}
           >
             {saving && <Spinner data-icon="inline-start" />}
-            儲存網域規則
+            <Trans>Save domain rules</Trans>
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -7,3 +7,4 @@ resources/bin/
 .eslintcache
 *.tsbuildinfo
 *.log*
+src/renderer/src/locales/*/messages.js

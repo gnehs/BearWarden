@@ -20,7 +20,7 @@ describe('TotpCountdownIndicator', () => {
       <TotpCountdownIndicator remainingSeconds={null} period={30} />
     )
 
-    expect(markup).toContain('aria-valuetext="正在取得驗證碼"')
+    expect(markup).toContain('aria-valuetext="正在擷取驗證碼"')
     expect(markup).not.toContain('aria-valuenow')
     expect(markup).toContain('>…</span>')
   })
