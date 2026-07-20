@@ -29,7 +29,6 @@ import type {
   CustomFieldRequest,
   ItemFieldRequest,
   FolderView,
-  GeneratorCredentialAlgorithm,
   GeneratedCredentialCopyRequest,
   GeneratorHistoryEntry,
   GeneratorHistoryLocator,
@@ -120,15 +119,6 @@ import {
   type TwoFactorDirectoryDataset
 } from './inactive-two-factor'
 import {
-  generateCatchAllEmail,
-  generatePassphrase,
-  generatePassword,
-  generatePlusAddressedEmail,
-  generateRandomWordUsername,
-  type RandomInt
-} from './credential-generator'
-import { loadEffLongWordlist } from './eff-wordlist'
-import {
   buildBitwardenJson,
   parseBitwardenJson,
   type PortableVaultSnapshot
@@ -171,7 +161,7 @@ import {
   getPasskeyAssertion as createSoftwarePasskeyAssertion
 } from './passkey-authenticator'
 import { generateTotp } from './totp'
-import { generateSshKeyMaterial, type SshKeyMaterial } from './ssh-key'
+import type { SshKeyMaterial } from './ssh-key'
 import { signSshAgentData as createSshAgentSignature } from './ssh-agent-crypto'
 import { SSH_AGENT_MAX_MESSAGE_LENGTH } from './ssh-agent-protocol'
 import {
@@ -198,10 +188,6 @@ import {
   MAX_ITEM_FIELD_LENGTH,
   MAX_PASSWORD_HISTORY,
   MAX_ATTACHMENT_ID_LENGTH,
-  MAX_GENERATOR_HISTORY,
-  GENERATED_CREDENTIAL_TOKEN_TTL_MS,
-  MAX_PENDING_GENERATED_CREDENTIALS,
-  MAX_GENERATED_CREDENTIAL_LENGTH,
   MAX_SYNC_SECRET_LENGTH,
   MAX_TWO_FACTOR_CODE_LENGTH,
   MAX_PENDING_LOGIN_IMPORT_ENTRIES,
@@ -236,11 +222,7 @@ import {
   assertNoPendingPersonalVaultPurge
 } from './vault/sync-data-parsing'
 import { parseFolder, cloneItemName, parseStoredLogin } from './vault/login-parsing'
-import {
-  sendViewFromRemote,
-  normalizeSendDraft,
-  normalizeFileSendDraft
-} from './vault/send-parsing'
+import { sendViewFromRemote } from './vault/send-parsing'
 import {
   normalizePasskeyRpId,
   normalizePasskeyCredentialId,
@@ -288,12 +270,9 @@ import {
 } from './vault/org-collection-parsing'
 import { cloneAttachments, validateRemoteAttachments } from './vault/attachments-parsing'
 import { parseSupportedSshAgentPublicKeyBlob, sshAgentFingerprint } from './vault/ssh-helpers'
-import {
-  generatorCategoryForAlgorithm,
-  isGeneratorCategory,
-  isGeneratorAlgorithm,
-  cloneGeneratorHistory
-} from './vault/generator-history'
+import { VaultGeneratorService } from './vault/generator-service'
+import { VaultSendService } from './vault/send-service'
+import { cloneGeneratorHistory } from './vault/generator-history'
 import { clonePasswordHistory } from './vault/password-history'
 import type {
   StoredLogin,
@@ -414,11 +393,6 @@ interface ActiveAccountBreachOperation {
   readonly promise: Promise<VaultHealthAccountBreachReport>
 }
 
-interface PendingGeneratedCredential {
-  readonly entry: GeneratorHistoryEntry & { algorithm: GeneratorCredentialAlgorithm }
-  readonly expiresAt: number
-}
-
 interface AuthenticatorSetupSession {
   readonly generation: number
   readonly client: BitwardenSyncClient
@@ -494,7 +468,8 @@ export class VaultService {
   private readonly nativeAttachmentRestoreAborts = new Set<AbortController>()
   private readonly authenticatorSetupSessions = new Map<string, AuthenticatorSetupSession>()
   private readonly emailTwoFactorSetupSessions = new Map<string, EmailTwoFactorSetupSession>()
-  private readonly pendingGeneratedCredentials = new Map<string, PendingGeneratedCredential>()
+  private readonly generatorService: VaultGeneratorService
+  private readonly sendService: VaultSendService
   private syncInProgress = false
   private sessionDeauthorizationInProgress = false
   private syncLastError: import('../shared/vault-contract').SyncErrorCode | null = null
@@ -511,7 +486,6 @@ export class VaultService {
   private readonly createId: () => string
   private readonly createSyncClient: (sync: PersistedSyncData) => BitwardenSyncClient
   private readonly fetch: typeof fetch
-  private readonly randomInt: RandomInt
   private readonly attachmentFiles: VaultAttachmentFileService | null
   private readonly requestAccountWebAuthnAssertion: VaultAccountWebAuthnAssertionRequester | null
   private readonly requestAccountWebAuthnRegistration: VaultAccountWebAuthnRegistrationRequester | null
@@ -528,7 +502,6 @@ export class VaultService {
     this.now = options.now ?? (() => new Date())
     this.createId = options.createId ?? randomUUID
     this.fetch = options.fetch ?? fetch
-    this.randomInt = options.randomInt ?? nodeRandomInt
     this.attachmentFiles = options.attachmentFiles ?? null
     this.requestAccountWebAuthnAssertion = options.requestAccountWebAuthnAssertion ?? null
     this.requestAccountWebAuthnRegistration = options.requestAccountWebAuthnRegistration ?? null
@@ -537,6 +510,47 @@ export class VaultService {
       (() => {
         throw new BitwardenDirectError('INVALID_RESPONSE')
       })
+    this.generatorService = new VaultGeneratorService({
+      now: this.now,
+      createId: this.createId,
+      randomInt: options.randomInt ?? nodeRandomInt,
+      copyText: (text) => this.platform.copyText(text),
+      exclusive: (operation) => this.exclusive(operation),
+      assertUnlocked: () => {
+        this.requireData()
+      },
+      readHistory: () => this.requireData().generatorHistory,
+      commitHistory: async (history) => {
+        const current = this.requireData()
+        const next = cloneData(current)
+        next.generatorHistory = cloneGeneratorHistory(history)
+        next.updatedAt = this.nowIso()
+        const generation = this.generation
+        await this.persist(next)
+        if (generation !== this.generation) throw new VaultError('LOCKED')
+        this.data = next
+      }
+    })
+    this.sendService = new VaultSendService({
+      attachmentFiles: this.attachmentFiles,
+      exclusive: (operation) => this.exclusive(operation),
+      readData: () => this.requireData(),
+      requireSyncData: () => this.requireSyncData(),
+      getSyncClient: (sync) => this.getOrCreateSyncClient(sync),
+      currentGeneration: () => this.generation,
+      startSyncOperation: () => this.startSyncOperation(),
+      finishSyncOperation: (abort) => this.finishSyncOperation(abort),
+      persistData: async (data) => {
+        await this.persist(data)
+        this.data = data
+      },
+      nowIso: () => this.nowIso(),
+      clearSyncError: () => {
+        this.syncLastError = null
+      },
+      mapSyncError: (error) => this.mapSyncError(error),
+      copyText: (text) => this.platform.copyText(text)
+    })
   }
 
   status(): Promise<VaultStatus> {
@@ -992,7 +1006,7 @@ export class VaultService {
     this.key = null
     this.salt = null
     this.data = null
-    this.pendingGeneratedCredentials.clear()
+    this.generatorService.clearRuntimeState()
     this.websiteIconCache.clear()
     this.websiteIconRequests.clear()
   }
@@ -2894,261 +2908,35 @@ export class VaultService {
   }
 
   listSends(): Promise<SendView[]> {
-    return this.exclusive(async () =>
-      this.requireData()
-        .sends.map((send) => ({ ...send }))
-        .sort(
-          (left, right) => compareText(left.name, right.name) || left.id.localeCompare(right.id)
-        )
-    )
+    return this.sendService.list()
   }
 
   createSend(request: SendCreateRequest): Promise<SendView> {
-    return this.exclusive(async () => {
-      const draft = normalizeSendDraft(request)
-      const current = this.requireData()
-      const sync = this.requireSyncData()
-      const client = this.getOrCreateSyncClient(sync)
-      if (!client.createSend) throw new VaultError('SYNC_FAILED')
-      const abort = this.startSyncOperation()
-      try {
-        const remote = await client.createSend(draft, abort.signal)
-        const next = cloneData(current)
-        next.sends = [
-          ...next.sends.filter((send) => send.id !== remote.id),
-          sendViewFromRemote(remote)
-        ]
-        if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
-        next.sync.state = client.exportState()
-        next.updatedAt = this.nowIso()
-        await this.persist(next)
-        this.data = next
-        this.syncLastError = null
-        return { ...sendViewFromRemote(remote) }
-      } catch (error) {
-        throw this.mapSyncError(error)
-      } finally {
-        this.finishSyncOperation(abort)
-      }
-    })
+    return this.sendService.create(request)
   }
 
   async createFileSend(request: SendFileCreateRequest): Promise<SendFileCreateResult> {
-    const preflight = await this.exclusive(async () => {
-      assertUuid(request.operationId)
-      const files = this.attachmentFiles
-      if (!files) throw new VaultError('INTERNAL_ERROR')
-      const sync = this.requireSyncData()
-      const client = this.getOrCreateSyncClient(sync)
-      if (!client.createFileSend) throw new VaultError('SYNC_FAILED')
-      return { files, generation: this.generation }
-    })
-    const selection = await preflight.files.chooseOpenFile()
-    if (selection === null) return { canceled: true, send: null }
-
-    return this.exclusive(async () => {
-      if (preflight.generation !== this.generation) throw new VaultError('LOCKED')
-      const current = this.requireData()
-      const sync = this.requireSyncData()
-      const client = this.getOrCreateSyncClient(sync)
-      if (!client.createFileSend) throw new VaultError('SYNC_FAILED')
-      const normalized = normalizeFileSendDraft(request)
-      const abort = this.startSyncOperation()
-      let plaintext: Buffer | null = null
-      try {
-        plaintext = await preflight.files.readSelectedFile(selection, abort.signal)
-        const remote = await client.createFileSend(
-          {
-            ...normalized,
-            fileName: selection.fileName,
-            data: plaintext
-          },
-          abort.signal
-        )
-        const authoritative = (await client.listSends?.(abort.signal))?.find(
-          (send) => send.id === remote.id
-        )
-        if (!authoritative || authoritative.type !== 'file' || !authoritative.file) {
-          throw new VaultError('SYNC_FAILED')
-        }
-        const next = cloneData(current)
-        next.sends = [
-          ...next.sends.filter((send) => send.id !== authoritative.id),
-          sendViewFromRemote(authoritative)
-        ]
-        if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
-        next.sync.state = client.exportState()
-        next.sync.lastSyncAt = this.nowIso()
-        next.updatedAt = this.nowIso()
-        await this.persist(next)
-        this.data = next
-        this.syncLastError = null
-        return { canceled: false, send: { ...sendViewFromRemote(authoritative) } }
-      } catch (error) {
-        throw this.mapSyncError(error)
-      } finally {
-        plaintext?.fill(0)
-        this.finishSyncOperation(abort)
-      }
-    })
+    return this.sendService.createFile(request)
   }
 
   async downloadFileSend(request: SendFileDownloadRequest): Promise<SendFileDownloadResult> {
-    const password =
-      request.password === undefined
-        ? null
-        : normalizeNullableString(request.password, MAX_SYNC_SECRET_LENGTH)
-    const preflight = await this.exclusive(async () => {
-      assertUuid(request.id)
-      const send = this.requireData().sends.find((candidate) => candidate.id === request.id)
-      if (!send || send.type !== 'file' || !send.file) throw new VaultError('NOT_FOUND')
-      const files = this.attachmentFiles
-      if (!files) throw new VaultError('INTERNAL_ERROR')
-      const sync = this.requireSyncData()
-      const client = this.getOrCreateSyncClient(sync)
-      if (!client.downloadFileSend) throw new VaultError('SYNC_FAILED')
-      return { files, fileName: send.file.fileName, generation: this.generation }
-    })
-    const destination = await preflight.files.chooseSavePath(preflight.fileName)
-    if (destination === null) return { canceled: true, fileName: preflight.fileName }
-
-    return this.exclusive(async () => {
-      if (preflight.generation !== this.generation) throw new VaultError('LOCKED')
-      const send = this.requireData().sends.find((candidate) => candidate.id === request.id)
-      if (
-        !send ||
-        send.type !== 'file' ||
-        !send.file ||
-        send.file.fileName !== preflight.fileName
-      ) {
-        throw new VaultError('NOT_FOUND')
-      }
-      const sync = this.requireSyncData()
-      const client = this.getOrCreateSyncClient(sync)
-      if (!client.downloadFileSend) throw new VaultError('SYNC_FAILED')
-      const abort = this.startSyncOperation()
-      let clearText: Buffer | null = null
-      try {
-        clearText = (await client.downloadFileSend(send.id, password, abort.signal)).data
-        if (preflight.generation !== this.generation || abort.signal.aborted) {
-          throw new VaultError('LOCKED')
-        }
-        await preflight.files.write(destination, clearText, abort.signal)
-        return { canceled: false, fileName: preflight.fileName }
-      } catch (error) {
-        if (error instanceof BitwardenDirectError && error.code === 'NOT_FOUND') {
-          throw new VaultError('NOT_FOUND')
-        }
-        throw this.mapSyncError(error)
-      } finally {
-        clearText?.fill(0)
-        this.finishSyncOperation(abort)
-      }
-    })
+    return this.sendService.downloadFile(request)
   }
 
   updateSend(request: SendUpdateRequest): Promise<SendView> {
-    return this.exclusive(async () => {
-      assertUuid(request.id)
-      const draft = normalizeSendDraft(request)
-      const current = this.requireData()
-      if (!current.sends.some((send) => send.id === request.id)) throw new VaultError('NOT_FOUND')
-      const sync = this.requireSyncData()
-      const client = this.getOrCreateSyncClient(sync)
-      if (!client.updateSend) throw new VaultError('SYNC_FAILED')
-      const abort = this.startSyncOperation()
-      try {
-        const remote = await client.updateSend(request.id, draft, abort.signal)
-        const next = cloneData(current)
-        next.sends = [
-          ...next.sends.filter((send) => send.id !== remote.id),
-          sendViewFromRemote(remote)
-        ]
-        if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
-        next.sync.state = client.exportState()
-        next.updatedAt = this.nowIso()
-        await this.persist(next)
-        this.data = next
-        this.syncLastError = null
-        return { ...sendViewFromRemote(remote) }
-      } catch (error) {
-        throw this.mapSyncError(error)
-      } finally {
-        this.finishSyncOperation(abort)
-      }
-    })
+    return this.sendService.update(request)
   }
 
   removeSendPassword(request: SendIdRequest): Promise<SendView> {
-    return this.exclusive(async () => {
-      assertUuid(request.id)
-      const current = this.requireData()
-      if (!current.sends.some((send) => send.id === request.id)) throw new VaultError('NOT_FOUND')
-      const sync = this.requireSyncData()
-      const client = this.getOrCreateSyncClient(sync)
-      if (!client.removeSendPassword) throw new VaultError('SYNC_FAILED')
-      const abort = this.startSyncOperation()
-      try {
-        const remote = await client.removeSendPassword(request.id, abort.signal)
-        const next = cloneData(current)
-        next.sends = [
-          ...next.sends.filter((send) => send.id !== remote.id),
-          sendViewFromRemote(remote)
-        ]
-        if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
-        next.sync.state = client.exportState()
-        next.updatedAt = this.nowIso()
-        await this.persist(next)
-        this.data = next
-        this.syncLastError = null
-        return { ...sendViewFromRemote(remote) }
-      } catch (error) {
-        throw this.mapSyncError(error)
-      } finally {
-        this.finishSyncOperation(abort)
-      }
-    })
+    return this.sendService.removePassword(request)
   }
 
   deleteSend(request: SendIdRequest): Promise<void> {
-    return this.exclusive(async () => {
-      assertUuid(request.id)
-      const current = this.requireData()
-      if (!current.sends.some((send) => send.id === request.id)) throw new VaultError('NOT_FOUND')
-      const sync = this.requireSyncData()
-      const client = this.getOrCreateSyncClient(sync)
-      if (!client.deleteSend) throw new VaultError('SYNC_FAILED')
-      const abort = this.startSyncOperation()
-      try {
-        await client.deleteSend(request.id, abort.signal)
-        const next = cloneData(current)
-        next.sends = next.sends.filter((send) => send.id !== request.id)
-        if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
-        next.sync.state = client.exportState()
-        next.updatedAt = this.nowIso()
-        await this.persist(next)
-        this.data = next
-        this.syncLastError = null
-      } catch (error) {
-        throw this.mapSyncError(error)
-      } finally {
-        this.finishSyncOperation(abort)
-      }
-    })
+    return this.sendService.delete(request)
   }
 
   copySendLink(request: SendIdRequest): Promise<void> {
-    return this.exclusive(async () => {
-      assertUuid(request.id)
-      const sync = this.requireSyncData()
-      const client = this.getOrCreateSyncClient(sync)
-      if (!client.copySendLink) throw new VaultError('SYNC_FAILED')
-      try {
-        await client.copySendLink(request.id, (value) => this.platform.copyText(value))
-      } catch (error) {
-        throw this.mapSyncError(error)
-      }
-    })
+    return this.sendService.copyLink(request)
   }
 
   listFolders(): Promise<FolderView[]> {
@@ -4876,133 +4664,27 @@ export class VaultService {
   }
 
   generateCredential(request: CredentialGeneratorRequest): Promise<CredentialGeneratorResult> {
-    return this.exclusive(async () => {
-      this.requireData()
-      let credential: string
-      const algorithm = request.algorithm
-      if (algorithm === 'password') {
-        credential = generatePassword(request.options, this.randomInt)
-      } else if (algorithm === 'passphrase') {
-        credential = generatePassphrase(request.options, loadEffLongWordlist(), this.randomInt)
-      } else if (algorithm === 'username') {
-        credential = generateRandomWordUsername(
-          request.options,
-          loadEffLongWordlist(),
-          this.randomInt
-        )
-      } else if (algorithm === 'subaddress') {
-        credential = generatePlusAddressedEmail(request.email, this.randomInt)
-      } else if (algorithm === 'catchall') {
-        credential = generateCatchAllEmail(request.domain, this.randomInt)
-      } else {
-        throw new VaultError('INVALID_INPUT')
-      }
-      if (credential.length === 0 || credential.length > MAX_GENERATED_CREDENTIAL_LENGTH) {
-        throw new VaultError('INTERNAL_ERROR')
-      }
-
-      const category = generatorCategoryForAlgorithm(algorithm)
-      const generationDate = Date.parse(this.nowIso())
-      const generated: GeneratorHistoryEntry & { algorithm: GeneratorCredentialAlgorithm } = {
-        credential,
-        category,
-        generationDate,
-        algorithm
-      }
-      this.removeExpiredGeneratedCredentials()
-      while (this.pendingGeneratedCredentials.size >= MAX_PENDING_GENERATED_CREDENTIALS) {
-        const oldestToken = this.pendingGeneratedCredentials.keys().next().value
-        if (oldestToken === undefined) break
-        this.pendingGeneratedCredentials.delete(oldestToken)
-      }
-      const copyToken = this.createId()
-      this.pendingGeneratedCredentials.set(copyToken, {
-        entry: generated,
-        expiresAt: this.now().getTime() + GENERATED_CREDENTIAL_TOKEN_TTL_MS
-      })
-      return { ...generated, copyToken }
-    })
+    return this.generatorService.generateCredential(request)
   }
 
   copyGeneratedCredential(request: GeneratedCredentialCopyRequest): Promise<void> {
-    return this.exclusive(async () => {
-      assertUuid(request.token)
-      this.requireData()
-      this.removeExpiredGeneratedCredentials()
-      const pending = this.pendingGeneratedCredentials.get(request.token)
-      if (!pending) throw new VaultError('INVALID_INPUT')
-
-      const current = this.requireData()
-      if (
-        !current.generatorHistory.some((entry) => entry.credential === pending.entry.credential)
-      ) {
-        const next = cloneData(current)
-        next.generatorHistory.unshift({ ...pending.entry })
-        next.generatorHistory.splice(MAX_GENERATOR_HISTORY)
-        next.updatedAt = this.nowIso()
-        const generation = this.generation
-        await this.persist(next)
-        if (generation !== this.generation) throw new VaultError('LOCKED')
-        this.data = next
-      }
-      await this.platform.copyText(pending.entry.credential)
-    })
-  }
-
-  private removeExpiredGeneratedCredentials(): void {
-    const now = this.now().getTime()
-    for (const [token, pending] of this.pendingGeneratedCredentials) {
-      if (pending.expiresAt <= now) this.pendingGeneratedCredentials.delete(token)
-    }
+    return this.generatorService.copyGeneratedCredential(request)
   }
 
   generateSshKey(): Promise<SshKeyMaterial> {
-    return this.exclusive(async () => {
-      this.requireData()
-      return generateSshKeyMaterial()
-    })
+    return this.generatorService.generateSshKey()
   }
 
   generatorHistory(): Promise<GeneratorHistoryEntry[]> {
-    return this.exclusive(async () => cloneGeneratorHistory(this.requireData().generatorHistory))
+    return this.generatorService.history()
   }
 
   clearGeneratorHistory(): Promise<void> {
-    return this.exclusive(async () => {
-      const current = this.requireData()
-      if (current.generatorHistory.length === 0) return
-      const next = cloneData(current)
-      next.generatorHistory = []
-      next.updatedAt = this.nowIso()
-      const generation = this.generation
-      await this.persist(next)
-      if (generation !== this.generation) throw new VaultError('LOCKED')
-      this.data = next
-    })
+    return this.generatorService.clearHistory()
   }
 
   copyGeneratorHistory(request: GeneratorHistoryLocator): Promise<void> {
-    return this.exclusive(async () => {
-      if (
-        !Number.isSafeInteger(request.index) ||
-        request.index < 0 ||
-        !Number.isSafeInteger(request.generationDate) ||
-        !isGeneratorCategory(request.category) ||
-        (request.algorithm !== undefined && !isGeneratorAlgorithm(request.algorithm))
-      ) {
-        throw new VaultError('INVALID_INPUT')
-      }
-      const entry = this.requireData().generatorHistory[request.index]
-      if (
-        !entry ||
-        entry.generationDate !== request.generationDate ||
-        entry.category !== request.category ||
-        entry.algorithm !== request.algorithm
-      ) {
-        throw new VaultError('INVALID_INPUT')
-      }
-      await this.platform.copyText(entry.credential)
-    })
+    return this.generatorService.copyHistory(request)
   }
 
   loginAuthorizationState(request: LoginIdRequest): Promise<{
