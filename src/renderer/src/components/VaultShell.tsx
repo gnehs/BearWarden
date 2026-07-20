@@ -63,7 +63,8 @@ import {
   UserRound,
   UsersRound,
   Wrench,
-  X
+  X,
+  ZoomIn
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -99,14 +100,17 @@ import {
 } from '../../../shared/vault-contract'
 import bearCutUrl from '../assets/bear-cut.svg'
 import BrandMark from './BrandMark'
+import { ColoredPassword } from './ColoredPassword'
 import ApplicationTitlebarMenu from './ApplicationTitlebarMenu'
 import {
   DeleteLoginDialog,
   FolderDialog,
+  Modal,
   MoveDialog,
   PasswordHistoryDialog,
   RepromptDialog
 } from './Dialogs'
+import { ModalBody } from './ModalLayout'
 import { FolderDragPreview, ItemDragPreview } from './DragPreview'
 import { FolderRow, type ItemSelectionModifiers } from './DndRows'
 import LoginEditor, { type LoginDraft } from './LoginEditor'
@@ -1032,6 +1036,9 @@ function VaultShell({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [emptyTrashDialogOpen, setEmptyTrashDialogOpen] = useState(false)
   const [passwordHistoryDialogOpen, setPasswordHistoryDialogOpen] = useState(false)
+  const [passwordZoomValue, setPasswordZoomValue] = useState<string | null>(null)
+  const passwordHoveringRef = useRef(false)
+  const passwordZoomOpenRef = useRef(false)
   const [generatorDialogOpen, setGeneratorDialogOpen] = useState(false)
   const [attachmentOperation, setAttachmentOperation] = useState<AttachmentOperationState | null>(
     null
@@ -2004,6 +2011,12 @@ function VaultShell({
     const timeout = window.setTimeout(() => setRevealedSecrets(emptyRevealedSecrets), 30_000)
     return () => window.clearTimeout(timeout)
   }, [revealedSecrets])
+
+  useEffect(() => {
+    passwordHoveringRef.current = false
+    passwordZoomOpenRef.current = false
+    setPasswordZoomValue(null)
+  }, [selectedLogin?.id])
 
   useEffect(() => {
     if (Object.keys(revealedCustomFields.values).length === 0) return
@@ -3367,19 +3380,23 @@ function VaultShell({
     }
   }
 
-  async function revealSecret(field: VaultSecretField): Promise<void> {
-    if (!selectedSummary) return
+  async function revealSecret(
+    field: VaultSecretField,
+    options: { quiet?: boolean; forceShow?: boolean } = {}
+  ): Promise<string | undefined> {
+    if (!selectedSummary) return undefined
     const itemId = selectedSummary.id
     const revealedValue =
       revealedSecrets.itemId === itemId ? revealedSecrets.values[field] : undefined
     if (revealedValue !== undefined) {
+      if (options.forceShow) return revealedValue
       setRevealedSecrets((current) => {
         if (current.itemId !== itemId) return current
         const next = { ...current.values }
         delete next[field]
         return Object.keys(next).length ? { itemId, values: next } : emptyRevealedSecrets
       })
-      return
+      return undefined
     }
     try {
       const value = await withReprompt([itemId], (tokenFor) =>
@@ -3389,7 +3406,15 @@ function VaultShell({
           ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
         })
       )
-      if (selectedIdRef.current !== itemId) return
+      if (selectedIdRef.current !== itemId) return undefined
+      if (
+        field === 'password' &&
+        options.quiet &&
+        !passwordHoveringRef.current &&
+        !passwordZoomOpenRef.current
+      ) {
+        return value
+      }
       setRevealedSecrets((current) => ({
         itemId,
         values: {
@@ -3397,10 +3422,41 @@ function VaultShell({
           [field]: value
         }
       }))
-      announce(`${field === 'privateKey' ? '私鑰' : '敏感資料'}已顯示，將在 30 秒後自動隱藏。`)
+      if (!options.quiet) {
+        announce(`${field === 'privateKey' ? '私鑰' : '敏感資料'}已顯示，將在 30 秒後自動隱藏。`)
+      }
+      return value
     } catch (revealError) {
       announceError(describeError(revealError))
+      return undefined
     }
+  }
+
+  function hideRevealedSecret(field: VaultSecretField): void {
+    if (!selectedSummary) return
+    const itemId = selectedSummary.id
+    setRevealedSecrets((current) => {
+      if (current.itemId !== itemId || current.values[field] === undefined) return current
+      const next = { ...current.values }
+      delete next[field]
+      return Object.keys(next).length ? { itemId, values: next } : emptyRevealedSecrets
+    })
+  }
+
+  async function openPasswordZoom(): Promise<void> {
+    passwordZoomOpenRef.current = true
+    const value = await revealSecret('password', { quiet: true, forceShow: true })
+    if (value === undefined) {
+      passwordZoomOpenRef.current = false
+      return
+    }
+    setPasswordZoomValue(value)
+  }
+
+  function closePasswordZoom(): void {
+    passwordZoomOpenRef.current = false
+    setPasswordZoomValue(null)
+    if (!passwordHoveringRef.current) hideRevealedSecret('password')
   }
 
   async function copyField(field: VaultCopyField, uriIndex?: number): Promise<void> {
@@ -3751,6 +3807,7 @@ function VaultShell({
 
   function renderDetailField(field: DetailField): React.JSX.Element {
     const secretField = field.field as VaultSecretField
+    const isPasswordField = field.field === 'password'
     const revealedValue =
       field.secret && revealedSecrets.itemId === selectedLogin?.id
         ? revealedSecrets.values[secretField]
@@ -3761,18 +3818,46 @@ function VaultShell({
     const valueClassName = field.secret
       ? revealedValue === undefined
         ? 'tracking-[0.13em]'
-        : 'font-mono select-text'
+        : isPasswordField
+          ? 'min-w-0 select-text'
+          : 'font-mono select-text'
       : undefined
-    const displayValue = field.secret
-      ? revealedValue === undefined
-        ? field.field === 'code'
-          ? '•••'
-          : '••••••••••••'
-        : field.field === 'number'
-          ? formatPaymentCardNumber(revealedValue) || '未設定'
-          : revealedValue || '未設定'
-      : field.value || '未設定'
+    const displayValue =
+      field.secret && revealedValue !== undefined && isPasswordField ? (
+        revealedValue ? (
+          <ColoredPassword value={revealedValue} className="text-xs font-[590]" />
+        ) : (
+          '未設定'
+        )
+      ) : field.secret ? (
+        revealedValue === undefined ? (
+          field.field === 'code' ? (
+            '•••'
+          ) : (
+            '••••••••••••'
+          )
+        ) : field.field === 'number' ? (
+          formatPaymentCardNumber(revealedValue) || '未設定'
+        ) : (
+          revealedValue || '未設定'
+        )
+      ) : (
+        field.value || '未設定'
+      )
     const value = <strong className={valueClassName}>{displayValue}</strong>
+    const passwordHoverHandlers = isPasswordField
+      ? {
+          onMouseEnter: () => {
+            passwordHoveringRef.current = true
+            void revealSecret('password', { quiet: true, forceShow: true })
+          },
+          onMouseLeave: () => {
+            passwordHoveringRef.current = false
+            if (passwordZoomOpenRef.current) return
+            hideRevealedSecret('password')
+          }
+        }
+      : undefined
     return (
       <div
         className={cn(
@@ -3792,6 +3877,7 @@ function VaultShell({
             aria-label={copiedKey === copyKey ? `${field.label}已複製` : `複製${field.label}`}
             disabled={field.field === 'username' && !field.value}
             onClick={() => void copyField(field.field)}
+            {...passwordHoverHandlers}
           >
             {value}
           </Button>
@@ -3800,16 +3886,28 @@ function VaultShell({
         )}
         {field.secret ? (
           <>
-            <TooltipIconButton
-              variant="outline"
-              size="icon"
-              type="button"
-              label={revealedValue === undefined ? `顯示${field.label}` : `隱藏${field.label}`}
-              aria-pressed={revealedValue !== undefined}
-              onClick={() => void revealSecret(secretField)}
-            >
-              {revealedValue === undefined ? <Eye /> : <EyeOff />}
-            </TooltipIconButton>
+            {isPasswordField ? (
+              <TooltipIconButton
+                variant="outline"
+                size="icon"
+                type="button"
+                label="放大顯示密碼"
+                onClick={() => void openPasswordZoom()}
+              >
+                <ZoomIn />
+              </TooltipIconButton>
+            ) : (
+              <TooltipIconButton
+                variant="outline"
+                size="icon"
+                type="button"
+                label={revealedValue === undefined ? `顯示${field.label}` : `隱藏${field.label}`}
+                aria-pressed={revealedValue !== undefined}
+                onClick={() => void revealSecret(secretField)}
+              >
+                {revealedValue === undefined ? <Eye /> : <EyeOff />}
+              </TooltipIconButton>
+            )}
             <TooltipIconButton
               variant="outline"
               size="icon"
@@ -5502,6 +5600,22 @@ function VaultShell({
             onReveal={revealPasswordHistory}
             onCopy={copyPasswordHistory}
           />
+        )}
+        {passwordZoomValue !== null && (
+          <Modal
+            title="密碼"
+            description="符號、數字與英文以不同顏色標示，方便辨認。"
+            onClose={closePasswordZoom}
+          >
+            <ModalBody>
+              <div className="bg-muted/60 rounded-xl px-4 py-5">
+                <ColoredPassword
+                  value={passwordZoomValue}
+                  className="text-[22px] leading-[1.7] select-text"
+                />
+              </div>
+            </ModalBody>
+          </Modal>
         )}
         {generatorDialogOpen && (
           <CredentialGeneratorDialog
