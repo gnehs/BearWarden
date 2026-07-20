@@ -5,7 +5,8 @@ import { ItemHistoryRows } from './ItemHistoryRows'
 const baseItem = {
   updatedAt: '2026-07-17T01:00:00.000Z',
   createdAt: '2026-07-16T01:00:00.000Z',
-  passwordUpdatedAt: null
+  passwordUpdatedAt: null,
+  passwordHistoryCount: 0
 }
 
 describe('ItemHistoryRows', () => {
@@ -39,5 +40,26 @@ describe('ItemHistoryRows', () => {
 
     expect(markup).toContain('密碼最後更新')
     expect(markup).toContain('未知')
+  })
+
+  it('shows a password history row with count and view action when history exists', () => {
+    const markup = renderToStaticMarkup(
+      <ItemHistoryRows
+        item={{ ...baseItem, passwordHistoryCount: 3 }}
+        onViewPasswordHistory={() => undefined}
+      />
+    )
+
+    expect(markup).toContain('密碼歷史')
+    expect(markup).toContain('3 筆紀錄')
+    expect(markup).toContain('查看密碼歷史')
+  })
+
+  it('hides the password history row when there is no history', () => {
+    const markup = renderToStaticMarkup(
+      <ItemHistoryRows item={baseItem} onViewPasswordHistory={() => undefined} />
+    )
+
+    expect(markup).not.toContain('密碼歷史')
   })
 })

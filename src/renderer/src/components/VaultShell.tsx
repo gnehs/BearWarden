@@ -4951,22 +4951,32 @@ function VaultShell({
                     {hasTrashPasswordHistory(selectedSummary) && (
                       <DetailCard role="region" aria-labelledby="trash-password-history-title">
                         <CardHeader className="bg-muted rounded-none border-b">
-                          <CardTitle id="trash-password-history-title">密碼歷史</CardTitle>
-                          <CardDescription>
-                            {selectedSummary.passwordHistoryCount} 筆唯讀紀錄
-                          </CardDescription>
+                          <CardTitle id="trash-password-history-title">項目歷史記錄</CardTitle>
                         </CardHeader>
-                        <CardContent className="flex justify-end py-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            type="button"
-                            disabled={busy}
-                            onClick={() => setPasswordHistoryDialogOpen(true)}
-                          >
-                            <History data-icon="inline-start" aria-hidden="true" />
-                            查看紀錄
-                          </Button>
+                        <CardContent className="contents">
+                          <dl className="m-0 px-[15px] py-1">
+                            <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
+                              <dt className="text-muted-foreground text-[11px] leading-4">
+                                密碼歷史
+                              </dt>
+                              <dd className="m-0 flex min-w-0 items-center gap-2 text-xs leading-4">
+                                <span className="min-w-0 flex-1 truncate">
+                                  {selectedSummary.passwordHistoryCount} 筆唯讀紀錄
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="-my-1.5 ml-auto"
+                                  type="button"
+                                  aria-label="查看密碼歷史"
+                                  disabled={busy}
+                                  onClick={() => setPasswordHistoryDialogOpen(true)}
+                                >
+                                  <History aria-hidden="true" />
+                                </Button>
+                              </dd>
+                            </div>
+                          </dl>
                         </CardContent>
                       </DetailCard>
                     )}
@@ -5301,28 +5311,6 @@ function VaultShell({
                       </DetailCard>
                     )}
 
-                    {selectedLogin.passwordHistoryCount > 0 && (
-                      <DetailCard role="region" aria-labelledby="password-history-title">
-                        <CardHeader className="bg-muted rounded-none border-b">
-                          <CardTitle id="password-history-title">密碼歷史</CardTitle>
-                          <CardDescription>
-                            {selectedLogin.passwordHistoryCount} 筆紀錄
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent className="flex justify-end py-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            type="button"
-                            onClick={() => setPasswordHistoryDialogOpen(true)}
-                          >
-                            <History data-icon="inline-start" aria-hidden="true" />
-                            查看紀錄
-                          </Button>
-                        </CardContent>
-                      </DetailCard>
-                    )}
-
                     {selectedLogin.type === 'login' && selectedLogin.hasTotp && (
                       <DetailCard
                         role="region"
@@ -5500,7 +5488,12 @@ function VaultShell({
                         <CardTitle id="history-title">項目歷史記錄</CardTitle>
                       </CardHeader>
                       <CardContent className="contents">
-                        <ItemHistoryRows item={selectedLogin} formatDate={formatDate} />
+                        <ItemHistoryRows
+                          item={selectedLogin}
+                          formatDate={formatDate}
+                          busy={busy}
+                          onViewPasswordHistory={() => setPasswordHistoryDialogOpen(true)}
+                        />
                       </CardContent>
                     </DetailCard>
                   </div>
