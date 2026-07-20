@@ -34,7 +34,7 @@ import { EncryptedVaultStore } from './encrypted-vault-store'
 import { FocusTouchIdUnlockController } from './focus-touch-id-unlock'
 import { installApplicationMenu } from './application-menu'
 import { registerApplicationMenuIpc } from './application-menu-ipc'
-import { initializeMainI18n, translateMain } from './i18n'
+import { initializeMainI18n, initializeMainI18nFromPreference, translateMain } from './i18n'
 import { windowChromeOptions } from './window-chrome'
 import { registerVaultIpc, RepromptAuthorizationStore } from './vault-ipc'
 import { VaultService } from './vault-service'
@@ -563,6 +563,13 @@ function requestMenuLock(): void {
   requestSystemLock()
 }
 
+function installCurrentApplicationMenu(): void {
+  installApplicationMenu({
+    isMac: process.platform === 'darwin',
+    onLockVault: requestMenuLock
+  })
+}
+
 function createWindow(): BrowserWindow {
   const isMac = process.platform === 'darwin'
   const window = new BrowserWindow({
@@ -946,6 +953,13 @@ if (hasSingleInstanceLock)
         },
         applyClipboardTimeout: (seconds) => sensitiveClipboard.setClearDelay(seconds),
         applyAutofillEnabled,
+        applyLanguage: (language) => {
+          initializeMainI18nFromPreference(
+            language,
+            language === 'system' ? app.getLocale() : undefined
+          )
+          if (mainInitializationComplete) installCurrentApplicationMenu()
+        },
         applySshAgentSettings: (next) => {
           sshAgentRuntime.applySettings(next)
         },
@@ -1190,10 +1204,7 @@ if (hasSingleInstanceLock)
       pendingMainWindowRequest = false
       focusMainWindow()
     }
-    installApplicationMenu({
-      isMac: process.platform === 'darwin',
-      onLockVault: requestMenuLock
-    })
+    installCurrentApplicationMenu()
     if (process.platform !== 'darwin') mainWindow.setMenuBarVisibility(false)
 
     app.on('activate', () => {

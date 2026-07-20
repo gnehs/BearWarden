@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { initializeMainI18n, mainI18n, normalizeMainLocale, translateMain } from './i18n'
+import {
+  initializeMainI18n,
+  initializeMainI18nFromPreference,
+  mainI18n,
+  normalizeMainLocale,
+  translateMain
+} from './i18n'
 
 describe('main-process i18n', () => {
   afterEach(() => {
@@ -34,5 +40,10 @@ describe('main-process i18n', () => {
     expect(initializeMainI18n('ja-JP')).toBe('ja')
     expect(translateMain('applicationMenu.vault')).toBe('保管庫')
     expect(mainI18n.locale).toBe('ja')
+  })
+
+  it('uses the Electron locale only for the system preference', () => {
+    expect(initializeMainI18nFromPreference('system', 'zh-Hant-HK')).toBe('zh-TW')
+    expect(initializeMainI18nFromPreference('ja', 'zh-Hant-HK')).toBe('ja')
   })
 })

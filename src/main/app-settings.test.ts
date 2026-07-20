@@ -27,6 +27,7 @@ interface TestRuntime {
   applyContentProtection: TestMock
   applyClipboardTimeout: TestMock
   applyAutofillEnabled: TestMock
+  applyLanguage: TestMock
   applySshAgentSettings: TestMock
   getStartAtLoginStatus: TestMock
   setStartAtLogin: TestMock
@@ -82,6 +83,7 @@ describe('AppSettingsService', () => {
       applyContentProtection: vi.fn(),
       applyClipboardTimeout: vi.fn(),
       applyAutofillEnabled: vi.fn(),
+      applyLanguage: vi.fn(),
       applySshAgentSettings: vi.fn(),
       getStartAtLoginStatus: vi.fn(() => ({
         available: false,
@@ -129,6 +131,7 @@ describe('AppSettingsService', () => {
       clearClipboardSeconds: 30,
       defaultSort: 'recent',
       theme: 'system',
+      language: 'system',
       autofillEnabled: false,
       sshAgentEnabled: false,
       sshAgentPromptBehavior: 'always'
@@ -141,6 +144,7 @@ describe('AppSettingsService', () => {
       clearClipboardSeconds: 60,
       defaultSort: 'frequency',
       theme: 'dark',
+      language: 'ja',
       autofillEnabled: true,
       sshAgentEnabled: true,
       sshAgentPromptBehavior: 'rememberUntilLock'
@@ -152,6 +156,7 @@ describe('AppSettingsService', () => {
       clearClipboardSeconds: 60,
       defaultSort: 'frequency',
       theme: 'dark',
+      language: 'ja',
       autofillEnabled: true,
       sshAgentEnabled: true,
       sshAgentPromptBehavior: 'rememberUntilLock'
@@ -159,12 +164,13 @@ describe('AppSettingsService', () => {
     expect(runtime.applyContentProtection).toHaveBeenLastCalledWith(true)
     expect(runtime.applyClipboardTimeout).toHaveBeenLastCalledWith(60)
     expect(runtime.applyAutofillEnabled).toHaveBeenLastCalledWith(true)
+    expect(runtime.applyLanguage).toHaveBeenLastCalledWith('ja')
     expect(runtime.applySshAgentSettings).toHaveBeenLastCalledWith({
       enabled: true,
       promptBehavior: 'rememberUntilLock'
     })
     expect(JSON.parse(await readFile(join(directory, 'settings.json'), 'utf8'))).toMatchObject({
-      version: 7,
+      version: 8,
       startAtLogin: false,
       defaultSort: 'frequency',
       sshAgentEnabled: true,
@@ -200,7 +206,7 @@ describe('AppSettingsService', () => {
       vaultTimeoutPolicy: { type: 'appInactivity', minutes: 15 }
     })
     expect(JSON.parse(await readFile(settingsPath, 'utf8'))).toMatchObject({
-      version: 7,
+      version: 8,
       autofillEnabled: false
     })
     service.dispose()
@@ -278,7 +284,7 @@ describe('AppSettingsService', () => {
     [30, { type: 'appInactivity', minutes: 30 }],
     [60, { type: 'appInactivity', minutes: 60 }]
   ] as const)(
-    'migrates the version 4 timeout value %i to the v7 discriminated policy',
+    'migrates the version 4 timeout value %i to the v8 discriminated policy',
     async (autoLockMinutes, expectedPolicy) => {
       const settingsPath = join(directory, 'settings.json')
       await writeFile(
@@ -306,7 +312,7 @@ describe('AppSettingsService', () => {
       })
       const migrated = JSON.parse(await readFile(settingsPath, 'utf8'))
       expect(migrated).toMatchObject({
-        version: 7,
+        version: 8,
         autofillEnabled: false,
         vaultTimeoutPolicy: expectedPolicy
       })
@@ -316,7 +322,7 @@ describe('AppSettingsService', () => {
   )
 
   it.each([{ type: 'onRestart' }, { type: 'appInactivity', minutes: 240 }] as const)(
-    'migrates a valid version 5 policy to version 7: $type',
+    'migrates a valid version 5 policy to version 8: $type',
     async (vaultTimeoutPolicy) => {
       const settingsPath = join(directory, 'settings.json')
       await writeFile(
@@ -340,7 +346,7 @@ describe('AppSettingsService', () => {
       await service.initialize()
 
       await expect(service.get()).resolves.toMatchObject({ vaultTimeoutPolicy })
-      await expect(readFile(settingsPath, 'utf8')).resolves.toContain('"version":7')
+      await expect(readFile(settingsPath, 'utf8')).resolves.toContain('"version":8')
       service.dispose()
     }
   )
@@ -370,7 +376,44 @@ describe('AppSettingsService', () => {
       vaultTimeoutPolicy: { type: 'systemIdle' },
       autofillEnabled: false
     })
-    expect(JSON.parse(await readFile(settingsPath, 'utf8'))).toMatchObject({ version: 7 })
+    expect(JSON.parse(await readFile(settingsPath, 'utf8'))).toMatchObject({ version: 8 })
+    service.dispose()
+  })
+
+  it('migrates version 7 without losing the AutoFill preference', async () => {
+    const settingsPath = join(directory, 'settings.json')
+    await writeFile(
+      settingsPath,
+      JSON.stringify({
+        version: 7,
+        contentProtection: true,
+        showWebsiteIcons: true,
+        startAtLogin: false,
+        vaultTimeoutPolicy: { type: 'appInactivity', minutes: 30 },
+        lockOnScreenLock: true,
+        lockOnSuspend: true,
+        clearClipboardSeconds: 30,
+        defaultSort: 'recent',
+        theme: 'system',
+        autofillEnabled: true,
+        sshAgentEnabled: false,
+        sshAgentPromptBehavior: 'always'
+      })
+    )
+    const { service, runtime } = createService(settingsPath)
+    await service.initialize()
+
+    await expect(service.get()).resolves.toMatchObject({
+      language: 'system',
+      autofillEnabled: true
+    })
+    expect(runtime.applyAutofillEnabled).toHaveBeenLastCalledWith(true)
+    expect(runtime.applyLanguage).toHaveBeenLastCalledWith('system')
+    expect(JSON.parse(await readFile(settingsPath, 'utf8'))).toMatchObject({
+      version: 8,
+      language: 'system',
+      autofillEnabled: true
+    })
     service.dispose()
   })
 
@@ -410,7 +453,7 @@ describe('AppSettingsService', () => {
       vaultTimeoutPolicy: { type: 'appInactivity', minutes: 15 }
     })
     await expect(readFile(settingsPath, 'utf8')).resolves.toMatchObject(
-      expect.stringContaining('"version":7')
+      expect.stringContaining('"version":8')
     )
     retry.service.dispose()
   })
@@ -436,7 +479,7 @@ describe('AppSettingsService', () => {
     })
     expect(runtime.setStartAtLogin).toHaveBeenCalledWith(true)
     expect(JSON.parse(await readFile(join(directory, 'settings.json'), 'utf8'))).toMatchObject({
-      version: 7,
+      version: 8,
       startAtLogin: true
     })
     service.dispose()

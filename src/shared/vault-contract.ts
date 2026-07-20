@@ -1699,6 +1699,8 @@ export interface AutofillFeatureStatus {
 /** Upper bound keeps storage, IPC, and timer calculations within safe limits. */
 export const MAX_VAULT_TIMEOUT_MINUTES = 525_600
 
+export type AppLanguagePreference = 'system' | 'en' | 'zh-CN' | 'zh-TW' | 'ja'
+
 /**
  * Timeout policy is deliberately closed: only policies implemented by the
  * main process may be persisted or accepted from a renderer.
@@ -1723,6 +1725,7 @@ export interface AppSettings {
   clearClipboardSeconds: 0 | 15 | 30 | 60 | 120
   defaultSort: LoginSort
   theme: AppTheme
+  language: AppLanguagePreference
   /** Enables the macOS Ctrl+\\ cross-browser AutoFill shortcut. */
   autofillEnabled: boolean
   /** Whether BearWarden exposes SSH keys through the local SSH agent socket. */

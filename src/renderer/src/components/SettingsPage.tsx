@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import type {
   AccountStatus,
+  AppLanguagePreference,
   AppSettings,
   AppSettingsUpdate,
   AutofillFeatureStatus,
@@ -150,6 +151,18 @@ export const vaultTimeoutItems = [
   })),
   { label: 'Custom', value: 'custom' }
 ] as const
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const languageItems: ReadonlyArray<{
+  label: string
+  value: AppLanguagePreference
+}> = [
+  { label: 'System', value: 'system' },
+  { label: 'English', value: 'en' },
+  { label: 'Simplified Chinese', value: 'zh-CN' },
+  { label: 'Traditional Chinese', value: 'zh-TW' },
+  { label: 'Japanese', value: 'ja' }
+]
 
 type VaultTimeoutSelectValue = (typeof vaultTimeoutItems)[number]['value']
 
@@ -473,6 +486,16 @@ function SettingsPage({
     { label: t`Light`, value: 'light' },
     { label: t`Dark`, value: 'dark' }
   ] as const
+  const localizedLanguageItems: ReadonlyArray<{
+    label: string
+    value: AppLanguagePreference
+  }> = [
+    { label: t`System`, value: 'system' },
+    { label: t`English`, value: 'en' },
+    { label: t`Simplified Chinese`, value: 'zh-CN' },
+    { label: t`Traditional Chinese`, value: 'zh-TW' },
+    { label: t`Japanese`, value: 'ja' }
+  ]
   const localizedSshAgentPromptItems: ReadonlyArray<{
     label: string
     value: SshAgentPromptBehavior
@@ -802,6 +825,33 @@ function SettingsPage({
                         <SelectContent>
                           <SelectGroup>
                             {localizedThemeItems.map((item) => (
+                              <SelectItem key={item.value} value={item.value}>
+                                {item.label}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </SettingsStackedRow>
+                    <Separator />
+                    <SettingsStackedRow>
+                      <FieldLabel htmlFor="language-select">
+                        <Trans>Language</Trans>
+                      </FieldLabel>
+                      <Select
+                        items={localizedLanguageItems}
+                        value={settings.language}
+                        disabled={settingsBusy}
+                        onValueChange={(value) =>
+                          void onUpdate({ language: value as AppLanguagePreference })
+                        }
+                      >
+                        <SelectTrigger id="language-select">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {localizedLanguageItems.map((item) => (
                               <SelectItem key={item.value} value={item.value}>
                                 {item.label}
                               </SelectItem>

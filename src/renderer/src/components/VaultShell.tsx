@@ -236,6 +236,7 @@ import { Spinner } from '@renderer/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { cn } from '@renderer/lib/utils'
 import { applyThemePreference } from '@renderer/lib/theme'
+import { activateLanguagePreference } from '@renderer/i18n'
 import { sortVaultItems, type VaultSortMode } from '@renderer/lib/vault-sort'
 import { useVaultRouteState } from '@renderer/lib/vault-route-state'
 import {
@@ -995,7 +996,7 @@ function VaultShell({
               : category.id === 'passkey'
                 ? t`Passkeys`
                 : category.id === 'totp'
-                  ? t`Verification codes`
+                  ? t`Codes`
                   : category.id === 'card'
                     ? t`Cards`
                     : category.id === 'identity'
@@ -2565,7 +2566,7 @@ function VaultShell({
     if (scope.kind === 'trash') return t`Trash`
     if (scope.kind === 'folder')
       return folders.find((folder) => folder.id === scope.folderId)?.name ?? t`Folder`
-    if (typeFilter === 'totp') return t`Verification codes`
+    if (typeFilter === 'totp') return t`Codes`
     if (typeFilter === 'passkey') return t`Passkeys`
     if (typeFilter !== 'all') return itemTypeMeta[typeFilter].label
     return t`All items`
@@ -2895,6 +2896,7 @@ function VaultShell({
     try {
       const next = await window.bearwarden.settings.update(update)
       setSettings(next)
+      if (update.language) await activateLanguagePreference(next.language).catch(() => undefined)
       if (update.defaultSort) {
         setSortMode(update.defaultSort === 'name' ? 'title' : update.defaultSort)
       }

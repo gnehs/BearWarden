@@ -770,6 +770,27 @@ describe('registerVaultIpc settings validation', () => {
     expect(settings.update).toHaveBeenCalledTimes(1)
   })
 
+  it('accepts only supported application language preferences', async () => {
+    const { event, settings } = settingsHarness()
+    const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!
+
+    for (const language of ['system', 'en', 'zh-CN', 'zh-TW', 'ja'] as const) {
+      await expect(update(event, { language })).resolves.toEqual({ language })
+      expect(settings.update).toHaveBeenLastCalledWith({ language })
+    }
+
+    for (const invalid of [
+      { language: 'en-US' },
+      { language: 'zh-cn' },
+      { language: '' },
+      { language: null },
+      { language: true }
+    ]) {
+      await expect(update(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(settings.update).toHaveBeenCalledTimes(5)
+  })
+
   it('accepts only exact, data-only vault timeout policies', async () => {
     const { event, settings } = settingsHarness()
     const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!

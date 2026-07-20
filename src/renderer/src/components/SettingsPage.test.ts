@@ -3,6 +3,7 @@ import {
   applyVaultTimeoutCustomFields,
   autofillStatusPresentation,
   contentProtectionDescription,
+  languageItems,
   settingsCategories,
   vaultTimeoutCustomFields,
   vaultTimeoutCustomValidationMessage,
@@ -57,6 +58,18 @@ describe('settings category navigation', () => {
       'about'
     ])
     expect(settingsCategories.every(({ label }) => label.length > 0)).toBe(true)
+  })
+})
+
+describe('language settings UI', () => {
+  it('offers system and every shipped catalog using English source labels', () => {
+    expect(languageItems).toEqual([
+      { label: 'System', value: 'system' },
+      { label: 'English', value: 'en' },
+      { label: 'Simplified Chinese', value: 'zh-CN' },
+      { label: 'Traditional Chinese', value: 'zh-TW' },
+      { label: 'Japanese', value: 'ja' }
+    ])
   })
 })
 

@@ -15,7 +15,8 @@ import AutofillPickerHost from './components/AutofillPickerHost'
 import { Toaster } from './components/ui/sonner'
 import { TooltipProvider } from './components/ui/tooltip'
 import { router } from './router'
-import { activateLocale, detectSystemLocale, i18n } from './i18n'
+import { activateLanguagePreference, handleSystemLanguageChange, i18n } from './i18n'
+import { initialLanguagePreference } from './lib/locale'
 
 const isAutofillPicker = new URLSearchParams(window.location.search).get('mode') === 'autofill'
 if (isAutofillPicker) {
@@ -23,26 +24,28 @@ if (isAutofillPicker) {
   document.body.style.background = 'transparent'
 }
 
-void activateLocale(detectSystemLocale()).then(() => {
-  createRoot(document.getElementById('root')!).render(
-    <StrictMode>
-      <I18nProvider i18n={i18n}>
-        <TooltipProvider>
-          {isAutofillPicker ? (
-            <AutofillPickerHost />
-          ) : (
-            <>
-              <RouterProvider router={router} />
-              <AppUpdateNotifier />
-              <Toaster position="bottom-right" />
-            </>
-          )}
-        </TooltipProvider>
-      </I18nProvider>
-    </StrictMode>
-  )
+void initialLanguagePreference(() => window.bearwarden.settings.get())
+  .then(activateLanguagePreference)
+  .then(() => {
+    createRoot(document.getElementById('root')!).render(
+      <StrictMode>
+        <I18nProvider i18n={i18n}>
+          <TooltipProvider>
+            {isAutofillPicker ? (
+              <AutofillPickerHost />
+            ) : (
+              <>
+                <RouterProvider router={router} />
+                <AppUpdateNotifier />
+                <Toaster position="bottom-right" />
+              </>
+            )}
+          </TooltipProvider>
+        </I18nProvider>
+      </StrictMode>
+    )
 
-  window.addEventListener('languagechange', () => {
-    void activateLocale(detectSystemLocale())
+    window.addEventListener('languagechange', () => {
+      void handleSystemLanguageChange()
+    })
   })
-})

@@ -21,6 +21,7 @@ const harness = vi.hoisted(() => {
   let storePath: string | null = null
   let storeOptions: Record<string, unknown> | null = null
   let settingsPaths: { settingsPath: string; touchIdPath: string } | null = null
+  let settingsRuntime: Record<string, unknown> | null = null
   let twoFactorDirectoryPath: string | null = null
   let registryStorePath: string | null = null
   let registryStore: unknown = null
@@ -73,6 +74,7 @@ const harness = vi.hoisted(() => {
     dispose: vi.fn(),
     run: vi.fn(async () => ({ attestation: true }))
   }
+  const installApplicationMenu = vi.fn()
 
   class FakeWebContents {
     readonly id = 1
@@ -194,6 +196,12 @@ const harness = vi.hoisted(() => {
     setSettingsPaths: (value: { settingsPath: string; touchIdPath: string }) => {
       settingsPaths = value
     },
+    get settingsRuntime(): Record<string, unknown> | null {
+      return settingsRuntime
+    },
+    setSettingsRuntime: (value: Record<string, unknown>) => {
+      settingsRuntime = value
+    },
     get twoFactorDirectoryPath(): string | null {
       return twoFactorDirectoryPath
     },
@@ -296,6 +304,7 @@ const harness = vi.hoisted(() => {
     appRelaunch,
     appSetPath,
     requestSingleInstanceLock,
+    installApplicationMenu,
     appLifecycleOrder,
     get userDataPath(): string {
       return userDataPath
@@ -395,8 +404,14 @@ vi.mock('./bitwarden-notifications', () => ({
 }))
 vi.mock('./app-settings', () => ({
   AppSettingsService: class {
-    constructor(settingsPath: string, touchIdPath: string) {
+    constructor(
+      settingsPath: string,
+      touchIdPath: string,
+      _store: unknown,
+      runtime: Record<string, unknown>
+    ) {
       harness.setSettingsPaths({ settingsPath, touchIdPath })
+      harness.setSettingsRuntime(runtime)
     }
 
     initialize(): Promise<void> {
@@ -478,7 +493,7 @@ vi.mock('./focus-touch-id-unlock', () => ({
     lockedWhileFocused = harness.lockedWhileFocused
   }
 }))
-vi.mock('./application-menu', () => ({ installApplicationMenu: vi.fn() }))
+vi.mock('./application-menu', () => ({ installApplicationMenu: harness.installApplicationMenu }))
 vi.mock('./application-menu-ipc', () => ({ registerApplicationMenuIpc: vi.fn() }))
 vi.mock('./window-chrome', () => ({ windowChromeOptions: vi.fn(() => ({})) }))
 vi.mock('./vault-ipc', () => ({
@@ -621,6 +636,22 @@ describe('main WebAuthn lifecycle wiring', () => {
     expect(harness.accountSwitchOptions?.removalJournal).toBeDefined()
     expect(harness.accountSwitchOptions?.initialCleanupPending).toBe(false)
     expect(harness.vaultIpcOptions?.accountSwitchService).toBe(harness.accountSwitchService)
+  })
+
+  it('applies persisted language preferences and rebuilds the application menu', async () => {
+    const applyLanguage = harness.settingsRuntime!.applyLanguage as (
+      language: 'en' | 'system'
+    ) => void
+    const { mainI18n } = await import('./i18n')
+    const initialInstallCount = harness.installApplicationMenu.mock.calls.length
+
+    applyLanguage('en')
+    expect(mainI18n.locale).toBe('en')
+    expect(harness.installApplicationMenu).toHaveBeenCalledTimes(initialInstallCount + 1)
+
+    applyLanguage('system')
+    expect(mainI18n.locale).toBe('zh-TW')
+    expect(harness.installApplicationMenu).toHaveBeenCalledTimes(initialInstallCount + 2)
   })
 
   it('locks through the teardown barrier without notifying the renderer, then relaunches once', async () => {

@@ -4,6 +4,7 @@ import { dirname } from 'node:path'
 import { safeStorage, systemPreferences } from 'electron'
 import { MAX_VAULT_TIMEOUT_MINUTES } from '../shared/vault-contract'
 import type {
+  AppLanguagePreference,
   AppSettings,
   AppSettingsUpdate,
   VaultStatus,
@@ -14,7 +15,7 @@ import { translateMain } from './i18n'
 import { VaultError } from './vault-errors'
 import type { VaultTimeoutCoordinator } from './vault-timeout-coordinator'
 
-const SETTINGS_VERSION = 7
+const SETTINGS_VERSION = 8
 const MAX_SETTINGS_BYTES = 16 * 1024
 const MAX_TOUCH_ID_BYTES = 64 * 1024
 
@@ -36,6 +37,7 @@ export interface AppSettingsRuntime {
   applyClipboardTimeout: (seconds: AppSettings['clearClipboardSeconds']) => void
   /** Registers or removes the global AutoFill shortcut without requesting OS permission. */
   applyAutofillEnabled: (enabled: boolean) => void
+  applyLanguage: (language: AppLanguagePreference) => void
   /**
    * Synchronously publishes persisted SSH-agent preferences to the main-process owner.
    * The runtime owns any asynchronous socket lifecycle work.
@@ -62,6 +64,7 @@ function defaultSettings(): StoredSettings {
     clearClipboardSeconds: 30,
     defaultSort: 'recent',
     theme: 'system',
+    language: 'system',
     autofillEnabled: false,
     sshAgentEnabled: false,
     sshAgentPromptBehavior: 'always'
@@ -105,12 +108,14 @@ function parseSettings(value: unknown): { settings: StoredSettings; needsMigrati
       value.version !== 4 &&
       value.version !== 5 &&
       value.version !== 6 &&
+      value.version !== 7 &&
       value.version !== SETTINGS_VERSION)
   ) {
     throw new Error('invalid settings')
   }
   const usesTimeoutPolicy = value.version >= 5
   const isCurrent = value.version === SETTINGS_VERSION
+  const hasAutofillPreference = value.version >= 7
   const autoLockMinutes = value.autoLockMinutes
   const clearClipboardSeconds = value.clearClipboardSeconds
   const legacyTimeoutValid =
@@ -122,7 +127,7 @@ function parseSettings(value: unknown): { settings: StoredSettings; needsMigrati
     autoLockMinutes === 60
   if (
     usesTimeoutPolicy &&
-    (Object.keys(value).length !== (isCurrent ? 13 : 12) ||
+    (Object.keys(value).length !== (isCurrent ? 14 : hasAutofillPreference ? 13 : 12) ||
       ![
         'version',
         'contentProtection',
@@ -134,7 +139,8 @@ function parseSettings(value: unknown): { settings: StoredSettings; needsMigrati
         'clearClipboardSeconds',
         'defaultSort',
         'theme',
-        ...(isCurrent ? ['autofillEnabled'] : []),
+        ...(isCurrent ? ['language'] : []),
+        ...(hasAutofillPreference ? ['autofillEnabled'] : []),
         'sshAgentEnabled',
         'sshAgentPromptBehavior'
       ].every((key) => Object.prototype.hasOwnProperty.call(value, key)))
@@ -157,7 +163,13 @@ function parseSettings(value: unknown): { settings: StoredSettings; needsMigrati
       value.defaultSort !== 'name' &&
       value.defaultSort !== 'frequency') ||
     (value.theme !== 'system' && value.theme !== 'light' && value.theme !== 'dark') ||
-    (isCurrent && typeof value.autofillEnabled !== 'boolean') ||
+    (isCurrent &&
+      value.language !== 'system' &&
+      value.language !== 'en' &&
+      value.language !== 'zh-CN' &&
+      value.language !== 'zh-TW' &&
+      value.language !== 'ja') ||
+    (hasAutofillPreference && typeof value.autofillEnabled !== 'boolean') ||
     (value.version >= 3 && typeof value.sshAgentEnabled !== 'boolean') ||
     (value.version >= 3 &&
       value.sshAgentPromptBehavior !== 'always' &&
@@ -184,7 +196,8 @@ function parseSettings(value: unknown): { settings: StoredSettings; needsMigrati
       clearClipboardSeconds,
       defaultSort: value.defaultSort,
       theme: value.theme,
-      autofillEnabled: isCurrent ? (value.autofillEnabled as boolean) : false,
+      language: isCurrent ? (value.language as AppLanguagePreference) : 'system',
+      autofillEnabled: hasAutofillPreference ? (value.autofillEnabled as boolean) : false,
       sshAgentEnabled: value.version >= 3 ? (value.sshAgentEnabled as boolean) : false,
       sshAgentPromptBehavior:
         value.version >= 3
@@ -515,6 +528,7 @@ export class AppSettingsService {
     this.runtime.applyContentProtection(this.settings.contentProtection)
     this.runtime.applyClipboardTimeout(this.settings.clearClipboardSeconds)
     this.runtime.applyAutofillEnabled(this.settings.autofillEnabled)
+    this.runtime.applyLanguage(this.settings.language)
     this.runtime.applySshAgentSettings({
       enabled: this.settings.sshAgentEnabled,
       promptBehavior: this.settings.sshAgentPromptBehavior

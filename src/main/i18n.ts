@@ -1,4 +1,5 @@
 import { setupI18n, type Messages } from '@lingui/core'
+import type { AppLanguagePreference } from '../shared/vault-contract'
 
 export const mainLocales = ['en', 'zh-CN', 'zh-TW', 'ja'] as const
 
@@ -260,6 +261,13 @@ export function initializeMainI18n(locale: string | null | undefined): MainLocal
   const normalized = normalizeMainLocale(locale)
   mainI18n.activate(normalized)
   return normalized
+}
+
+export function initializeMainI18nFromPreference(
+  preference: AppLanguagePreference,
+  systemLocale: string | null | undefined
+): MainLocale {
+  return initializeMainI18n(preference === 'system' ? systemLocale : preference)
 }
 
 export function translateMain(id: MainMessageId): string {

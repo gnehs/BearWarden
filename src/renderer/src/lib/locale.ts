@@ -1,8 +1,29 @@
+import type { AppLanguagePreference } from '../../../shared/vault-contract'
+
 export const supportedLocales = ['en', 'zh-CN', 'zh-TW', 'ja'] as const
 
 export type SupportedLocale = (typeof supportedLocales)[number]
 
 export const defaultLocale: SupportedLocale = 'en'
+
+/** Reads the persisted preference without allowing settings IPC failure to block application boot. */
+export async function initialLanguagePreference(
+  readSettings: () => Promise<{ language: AppLanguagePreference }>
+): Promise<AppLanguagePreference> {
+  try {
+    return (await readSettings()).language
+  } catch {
+    return 'system'
+  }
+}
+
+/** Resolves a persisted preference to the catalog that should be active right now. */
+export function localeForPreference(
+  preference: AppLanguagePreference,
+  systemLocale: string | null | undefined
+): SupportedLocale {
+  return preference === 'system' ? normalizeLocale(systemLocale) : preference
+}
 
 /** Maps browser and operating-system locale variants onto the catalogs shipped by BearWarden. */
 export function normalizeLocale(locale: string | null | undefined): SupportedLocale {
