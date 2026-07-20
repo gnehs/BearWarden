@@ -13,7 +13,7 @@ import {
   NotebookPen,
   Star
 } from 'lucide-react'
-import type { FolderView, LoginSummary } from '../../../shared/vault-contract'
+import type { FolderView, LoginSummary, TotpCodeView } from '../../../shared/vault-contract'
 import { normalizeBitwardenCardBrand } from '../lib/payment-card'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
@@ -43,6 +43,8 @@ interface ItemRowProps {
   onFavorite: (item: LoginSummary) => void
   onContextMenu: (id: string, position: { x: number; y: number }) => void
   showWebsiteIcons: boolean
+  showTotpCode?: boolean
+  totpCodes?: ReadonlyMap<string, TotpCodeView | null>
   readOnly?: boolean
 }
 
@@ -67,6 +69,8 @@ export const ItemRow = memo(function ItemRow({
   onFavorite,
   onContextMenu,
   showWebsiteIcons,
+  showTotpCode = false,
+  totpCodes,
   readOnly = false
 }: ItemRowProps): React.JSX.Element {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
@@ -103,6 +107,9 @@ export const ItemRow = memo(function ItemRow({
 
   const meta = itemTypeMeta[item.type]
   const ItemIcon = meta.icon
+  const shouldShowTotpCode = showTotpCode && item.type === 'login' && Boolean(item.hasTotp)
+  const totpCode = shouldShowTotpCode ? totpCodes?.get(item.id) : undefined
+  const hasTotpResult = shouldShowTotpCode && totpCodes?.has(item.id)
 
   return (
     <li
@@ -189,9 +196,22 @@ export const ItemRow = memo(function ItemRow({
               selected && 'text-primary-foreground/82'
             )}
           >
-            {readOnly
-              ? '已刪除的項目'
-              : item.subtitle || item.username || item.uri || '尚未設定摘要'}
+            {shouldShowTotpCode ? (
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="truncate font-mono tracking-[0.12em]">
+                  {totpCode?.code ?? (hasTotpResult ? '—' : '產生中…')}
+                </span>
+                {totpCode && (
+                  <span className="flex-none text-[10px] tracking-normal tabular-nums opacity-75">
+                    {totpCode.remainingSeconds}s
+                  </span>
+                )}
+              </span>
+            ) : readOnly ? (
+              '已刪除的項目'
+            ) : (
+              item.subtitle || item.username || item.uri || '尚未設定摘要'
+            )}
           </small>
         </span>
       </button>

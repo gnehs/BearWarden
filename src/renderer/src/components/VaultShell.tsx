@@ -334,6 +334,8 @@ interface TotpGenerationErrorState {
   kind: 'unsupported'
 }
 
+type TotpListEntry = { code: TotpCodeView; expiresAt: number } | null
+
 interface RevealedCustomFieldsState {
   itemId: string | null
   values: Record<
@@ -1020,6 +1022,8 @@ function VaultShell({
   } | null>(null)
   const [totpGenerationErrorState, setTotpGenerationErrorState] =
     useState<TotpGenerationErrorState | null>(null)
+  const [totpListState, setTotpListState] = useState<Map<string, TotpListEntry>>(() => new Map())
+  const totpListStateRef = useRef(new Map<string, TotpListEntry>())
   const totpCode =
     selectedLogin && totpCodeState?.itemId === selectedLogin.id ? totpCodeState.code : null
   const totpGenerationError =
@@ -2094,6 +2098,142 @@ function VaultShell({
     return sortVaultItems(scoped, scope.kind === 'recent' ? 'recent' : sortMode)
   }, [items, query, scope, searchMatches, sortMode, typeFilter])
   const scopedItemIds = useMemo(() => scopedItems.map((item) => item.id), [scopedItems])
+  const totpListItemIds = useMemo(
+    () =>
+      scopedItems
+        .filter((item) => item.type === 'login' && Boolean(item.hasTotp))
+        .map((item) => item.id),
+    [scopedItems]
+  )
+  const totpListRevision = useMemo(
+    () =>
+      scopedItems
+        .filter((item) => item.type === 'login' && Boolean(item.hasTotp))
+        .map((item) => `${item.id}:${item.updatedAt}`)
+        .join('\0'),
+    [scopedItems]
+  )
+  const totpListCodes = useMemo(() => {
+    const codes = new Map<string, TotpCodeView | null>()
+    for (const [id, entry] of totpListState) codes.set(id, entry?.code ?? null)
+    return codes
+  }, [totpListState])
+
+  useEffect(() => {
+    if (typeFilter !== 'totp' || totpListItemIds.length === 0) {
+      totpListStateRef.current = new Map()
+      queueMicrotask(() => setTotpListState(new Map()))
+      return
+    }
+
+    let active = true
+    let refreshing = false
+    let listAuthorization: LoginAuthorization | undefined
+    totpListStateRef.current = new Map()
+    queueMicrotask(() => {
+      if (active) setTotpListState(new Map())
+    })
+
+    const readCodes = async (
+      tokenFor: (id: string) => string | undefined
+    ): Promise<Array<{ id: string; code: TotpCodeView | null; fetchedAt: number }>> =>
+      Promise.all(
+        totpListItemIds.map(async (id) => {
+          try {
+            const code = await window.bearwarden.logins.getTotp({
+              id,
+              ...(tokenFor(id) ? { authorizationToken: tokenFor(id) } : {})
+            })
+            return { id, code, fetchedAt: Date.now() }
+          } catch (error) {
+            if (isRepromptRequired(error)) throw error
+            return { id, code: null, fetchedAt: Date.now() }
+          }
+        })
+      )
+
+    const refresh = async (): Promise<void> => {
+      if (!active || refreshing) return
+      refreshing = true
+      try {
+        const now = Date.now()
+        if (listAuthorization && listAuthorization.expiresAt <= now) listAuthorization = undefined
+        const requiresListAuthorization = totpListItemIds.some(
+          (id) =>
+            itemsRef.current.find((item) => item.id === id)?.reprompt === 1 &&
+            !authorizationToken(id)
+        )
+        if (!listAuthorization && requiresListAuthorization) {
+          listAuthorization = await requestReprompt(totpListItemIds)
+        }
+
+        const tokenFor = (id: string): string | undefined =>
+          listAuthorization?.token ?? authorizationToken(id)
+        let results: Array<{ id: string; code: TotpCodeView | null; fetchedAt: number }>
+        try {
+          results = await readCodes(tokenFor)
+        } catch (error) {
+          if (!isRepromptRequired(error)) throw error
+          listAuthorization = await requestReprompt(totpListItemIds)
+          results = await readCodes(() => listAuthorization?.token)
+        }
+        if (!active) return
+
+        const next = new Map<string, TotpListEntry>()
+        for (const entry of results) {
+          next.set(
+            entry.id,
+            entry.code
+              ? {
+                  code: entry.code,
+                  expiresAt: entry.fetchedAt + entry.code.remainingSeconds * 1_000
+                }
+              : null
+          )
+        }
+        totpListStateRef.current = next
+        setTotpListState(next)
+      } catch (error) {
+        if (active) announceError(describeError(error))
+      } finally {
+        refreshing = false
+      }
+    }
+
+    const tick = (): void => {
+      const now = Date.now()
+      const current = totpListStateRef.current
+      if (current.size === 0) return
+      let shouldRefresh = false
+      let changed = false
+      const next = new Map<string, TotpListEntry>()
+      for (const [id, entry] of current) {
+        if (!entry) {
+          next.set(id, null)
+          continue
+        }
+        const remainingSeconds = Math.max(0, Math.ceil((entry.expiresAt - now) / 1_000))
+        if (remainingSeconds === 0) shouldRefresh = true
+        if (remainingSeconds !== entry.code.remainingSeconds) changed = true
+        next.set(id, {
+          ...entry,
+          code: { ...entry.code, remainingSeconds }
+        })
+      }
+      if (changed || shouldRefresh) {
+        totpListStateRef.current = next
+        setTotpListState(next)
+      }
+      if (shouldRefresh) void refresh()
+    }
+
+    void refresh()
+    const timer = window.setInterval(tick, 1_000)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [authorizationToken, requestReprompt, totpListItemIds, totpListRevision, typeFilter])
 
   const selectItems = useCallback(
     (id: string, modifiers: ItemSelectionModifiers): void => {
@@ -4731,6 +4871,8 @@ function VaultShell({
                       showWebsiteIcons={
                         scope.kind !== 'trash' && (settings?.showWebsiteIcons ?? false)
                       }
+                      showTotpCodes={typeFilter === 'totp'}
+                      totpCodes={totpListCodes}
                       readOnly={scope.kind === 'trash'}
                     />
                   ) : (

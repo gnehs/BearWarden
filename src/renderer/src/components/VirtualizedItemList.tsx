@@ -1,6 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import type { LoginSummary } from '../../../shared/vault-contract'
+import type { LoginSummary, TotpCodeView } from '../../../shared/vault-contract'
 import { cn } from '@renderer/lib/utils'
 import { adjacentItemIndex } from '@renderer/lib/item-selection'
 import { virtualRowScrollOffsets, visibleVirtualIndexes } from '@renderer/lib/virtualized-range'
@@ -25,6 +25,8 @@ interface VirtualizedItemListProps {
   onFavorite: (item: LoginSummary) => void
   onContextMenu: (id: string, position: { x: number; y: number }) => void
   showWebsiteIcons: boolean
+  showTotpCodes?: boolean
+  totpCodes?: ReadonlyMap<string, TotpCodeView | null>
   readOnly?: boolean
   className?: string
 }
@@ -53,6 +55,8 @@ export function VirtualizedItemList({
   onFavorite,
   onContextMenu,
   showWebsiteIcons,
+  showTotpCodes = false,
+  totpCodes,
   readOnly = false,
   className
 }: VirtualizedItemListProps): React.JSX.Element {
@@ -251,6 +255,8 @@ export function VirtualizedItemList({
                 onFavorite={onFavorite}
                 onContextMenu={onContextMenu}
                 showWebsiteIcons={showWebsiteIcons}
+                showTotpCode={showTotpCodes}
+                totpCodes={totpCodes}
                 readOnly={readOnly}
               />
             </ul>
