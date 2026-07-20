@@ -4568,7 +4568,7 @@ function VaultShell({
               <TooltipIconButton
                 variant="sidebar"
                 size="icon"
-                className="size-[34px] rounded-[9px]"
+                className="hover:bg-sidebar-overlay-hover hover:text-foreground size-[34px] rounded-[9px] border-transparent bg-transparent shadow-none hover:shadow-(--control-highlight) dark:bg-transparent"
                 type="button"
                 label={`雲端同步：${syncStateMeta[syncStatus.state].label}`}
                 onClick={() => setSyncDialogOpen(true)}
