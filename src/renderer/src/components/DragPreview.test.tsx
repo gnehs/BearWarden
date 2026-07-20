@@ -39,6 +39,7 @@ describe('ItemDragPreview', () => {
     expect(markup).toContain('max-w-[calc(100vw-24px)]')
     expect(markup).toContain('安全備註 · 拖曳以移動')
     expect(markup).toContain('aria-hidden="true"')
+    expect(markup).not.toContain('data-drag-preview-layer')
   })
 
   it('shows the current drop action when a destination is active', () => {
@@ -66,5 +67,19 @@ describe('ItemDragPreview', () => {
     )
 
     expect(markup).toContain('放開以取消移動')
+  })
+
+  it('stacks card layers behind the active item when multiple items are dragged', () => {
+    const twoItemMarkup = renderToStaticMarkup(
+      <ItemDragPreview item={item} count={2} showWebsiteIcons={false} />
+    )
+    const manyItemMarkup = renderToStaticMarkup(
+      <ItemDragPreview item={item} count={5} showWebsiteIcons={false} />
+    )
+
+    expect(twoItemMarkup.match(/data-drag-preview-layer=/g)).toHaveLength(1)
+    expect(manyItemMarkup.match(/data-drag-preview-layer=/g)).toHaveLength(2)
+    expect(manyItemMarkup).toContain('與其他 4 個項目一起移動')
+    expect(manyItemMarkup).toContain('>5</span>')
   })
 })
