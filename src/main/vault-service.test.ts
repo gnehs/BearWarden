@@ -8729,6 +8729,12 @@ describe('VaultService encrypted local data', () => {
     expect('privateKey' in sshKey).toBe(false)
     expect(await service.getLogin({ id: sshKey.id })).not.toHaveProperty('privateKey')
     expect(await service.revealSecret({ id: card.id, field: 'number' })).toBe('4242424242424242')
+    await service.copyField({ id: card.id, field: 'cardExpiration' })
+    expect(copyText).toHaveBeenCalledWith('12 / 2030')
+    await service.copyField({ id: card.id, field: 'cardholderName' })
+    expect(copyText).toHaveBeenCalledWith('Test holder')
+    await service.copyField({ id: card.id, field: 'brand' })
+    expect(copyText).toHaveBeenCalledWith('visa')
     await service.copyField({ id: identity.id, field: 'identityUsername' })
     expect(copyText).toHaveBeenCalledWith('identity-user')
     expect(await service.revealSecret({ id: sshKey.id, field: 'privateKey' })).toContain(

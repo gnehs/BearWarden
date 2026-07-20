@@ -1546,7 +1546,10 @@ function parseItemField(value: unknown): ItemFieldRequest {
     field !== 'email' &&
     field !== 'phone' &&
     field !== 'publicKey' &&
-    field !== 'fingerprint'
+    field !== 'fingerprint' &&
+    field !== 'cardholderName' &&
+    field !== 'brand' &&
+    field !== 'cardExpiration'
   )
     throw new VaultError('INVALID_INPUT')
   const authorizationToken = optionalAuthorizationToken(record)

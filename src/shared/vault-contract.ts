@@ -1381,6 +1381,9 @@ export type VaultCopyField =
   | 'phone'
   | 'publicKey'
   | 'fingerprint'
+  | 'cardholderName'
+  | 'brand'
+  | 'cardExpiration'
 
 export interface ItemFieldRequest extends LoginIdRequest {
   field: VaultCopyField

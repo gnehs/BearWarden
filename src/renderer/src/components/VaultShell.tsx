@@ -628,12 +628,18 @@ function detailFields(login: LoginView): DetailField[] {
     return [
       { field: 'number', label: '卡號', secret: true },
       { field: 'code', label: '安全碼', secret: true },
-      { field: 'username', label: '持卡人', value: login.cardholderName },
-      { field: 'username', label: '品牌', value: login.brand },
       {
-        field: 'username',
+        field: 'cardholderName',
+        label: '持卡人',
+        value: login.cardholderName,
+        copyable: true
+      },
+      { field: 'brand', label: '品牌', value: login.brand, copyable: true },
+      {
+        field: 'cardExpiration',
         label: '到期日',
-        value: [login.expMonth, login.expYear].filter(Boolean).join(' / ')
+        value: [login.expMonth, login.expYear].filter(Boolean).join(' / '),
+        copyable: true
       }
     ]
   }
@@ -3835,7 +3841,10 @@ function VaultShell({
         ? revealedSecrets.values[secretField]
         : undefined
     const hasExtraAction = Boolean(field.copyable) && Boolean(field.openUri)
-    const canCopyFromValue = field.field === 'username' || field.field === 'password'
+    const canCopyFromValue =
+      field.field === 'username' ||
+      field.field === 'password' ||
+      Boolean(field.copyable && !field.secret && !field.openUri)
     const copyKey = `field:${selectedSummary?.id}:${field.field}:${field.uriIndex ?? ''}`
     const valueClassName = field.secret
       ? revealedValue === undefined
@@ -3897,8 +3906,8 @@ function VaultShell({
             data-field-copy-value=""
             type="button"
             aria-label={copiedKey === copyKey ? `${field.label}已複製` : `複製${field.label}`}
-            disabled={field.field === 'username' && !field.value}
-            onClick={() => void copyField(field.field)}
+            disabled={!field.secret && !field.value}
+            onClick={() => void copyField(field.field, field.uriIndex)}
             {...passwordHoverHandlers}
           >
             {value}

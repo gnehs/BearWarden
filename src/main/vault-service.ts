@@ -990,7 +990,7 @@ const EDITOR_SECRET_FIELDS_BY_TYPE: Record<VaultItemType, readonly VaultEditorSe
 
 const COPY_FIELDS_BY_TYPE: Record<VaultItemType, readonly VaultCopyField[]> = {
   login: ['username', 'password', 'uri'],
-  card: ['number', 'code'],
+  card: ['number', 'code', 'cardholderName', 'brand', 'cardExpiration'],
   identity: ['email', 'phone', 'ssn', 'identityUsername', 'passportNumber', 'licenseNumber'],
   secureNote: [],
   sshKey: ['privateKey', 'publicKey', 'fingerprint']
@@ -8763,7 +8763,11 @@ export class VaultService {
     return this.useLogin(request, async (login) => {
       assertCopyField(login.type, request.field)
       const value =
-        request.field === 'uri' ? loginUriAt(login, request.uriIndex) : login[request.field]
+        request.field === 'uri'
+          ? loginUriAt(login, request.uriIndex)
+          : request.field === 'cardExpiration'
+            ? [login.expMonth, login.expYear].filter(Boolean).join(' / ')
+            : login[request.field]
       if (typeof value !== 'string' || value.length === 0) throw new VaultError('INVALID_INPUT')
       await this.platform.copyText(value)
     })
