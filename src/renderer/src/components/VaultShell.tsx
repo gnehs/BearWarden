@@ -4448,7 +4448,7 @@ function VaultShell({
                 ) : undefined
               }
             />
-            <CommandList className="max-h-[min(420px,calc(70vh-54px))] p-1.5">
+            <CommandList className="scroll-fade-y forced-colors:scroll-fade-none max-h-[min(420px,calc(70vh-54px))] p-1.5">
               <CommandEmpty>找不到符合的密碼庫項目</CommandEmpty>
               {scopedItems.length > 0 && (
                 <CommandGroup
