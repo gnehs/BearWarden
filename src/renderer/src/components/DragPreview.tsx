@@ -1,5 +1,5 @@
-import { ContactRound, CreditCard, FileKey2, Folder, Globe2, NotebookPen } from 'lucide-react'
-import type { FolderView, LoginSummary } from '../../../shared/vault-contract'
+import { ContactRound, CreditCard, FileKey2, Globe2, NotebookPen } from 'lucide-react'
+import type { LoginSummary } from '../../../shared/vault-contract'
 import { Badge } from '@renderer/components/ui/badge'
 import { normalizeBitwardenCardBrand } from '../lib/payment-card'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
@@ -10,11 +10,6 @@ interface ItemDragPreviewProps {
   count: number
   showWebsiteIcons: boolean
   destinationDescription?: string | null
-}
-
-interface FolderDragPreviewProps {
-  folder: FolderView
-  count: number
 }
 
 const itemTypeMeta = {
@@ -56,23 +51,6 @@ export function ItemDragPreview({
         </small>
       </span>
       {count > 1 && <Badge variant="secondary">{count}</Badge>}
-    </div>
-  )
-}
-
-export function FolderDragPreview({ folder, count }: FolderDragPreviewProps): React.JSX.Element {
-  return (
-    <div
-      className="bg-popover/95 text-foreground grid min-h-14 w-64 max-w-[calc(100vw-24px)] grid-cols-[36px_minmax(0,1fr)] items-center gap-2.5 rounded-xl border px-2.5 py-2 shadow-lg backdrop-blur-md forced-colors:outline-2 forced-colors:outline-[CanvasText]"
-      aria-hidden
-    >
-      <span className="bg-accent text-primary grid size-9 place-items-center rounded-lg border">
-        <Folder />
-      </span>
-      <span className="grid min-w-0 gap-0.5">
-        <strong className="truncate text-sm font-semibold">{folder.name}</strong>
-        <small className="text-muted-foreground truncate text-xs">重新排列 · {count} 個項目</small>
-      </span>
     </div>
   )
 }

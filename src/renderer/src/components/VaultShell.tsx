@@ -3,6 +3,7 @@ import {
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
+  useDndContext,
   useDroppable,
   useSensor,
   useSensors,
@@ -111,7 +112,7 @@ import {
   RepromptDialog
 } from './Dialogs'
 import { ModalBody } from './ModalLayout'
-import { FolderDragPreview, ItemDragPreview } from './DragPreview'
+import { ItemDragPreview } from './DragPreview'
 import { FolderRow, type ItemSelectionModifiers } from './DndRows'
 import LoginEditor, { type LoginDraft } from './LoginEditor'
 import {
@@ -425,8 +426,9 @@ function TooltipIconButton({
   className,
   ...props
 }: TooltipIconButtonProps): React.JSX.Element {
+  const { active } = useDndContext()
   return (
-    <Tooltip>
+    <Tooltip disabled={active != null}>
       <TooltipTrigger
         render={
           <Button
@@ -1076,6 +1078,9 @@ function VaultShell({
   )
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
   const [activeDragOverId, setActiveDragOverId] = useState<string | null>(null)
+  const foldersBeforeDragRef = useRef<FolderView[] | null>(null)
+  const foldersRef = useRef(folders)
+  foldersRef.current = folders
   const searchRef = useRef<HTMLInputElement>(null)
   const queryRef = useRef(query)
   const searchRequestIdRef = useRef(0)
@@ -2174,9 +2179,6 @@ function VaultShell({
   }, [busy, scope.kind])
   const activeDragItem = activeDragId
     ? (items.find((item) => item.id === activeDragId) ?? null)
-    : null
-  const activeDragFolder = activeDragId
-    ? (folders.find((folder) => folder.id === activeDragId) ?? null)
     : null
   const activeDragItemCount =
     activeDragItem && selectedIds.has(activeDragItem.id) ? selectedIds.size : 1
@@ -3752,18 +3754,45 @@ function VaultShell({
   function startDrag(event: DragStartEvent): void {
     const activeId = String(event.active.id)
     if (itemIds.has(activeId) && !selectedIdsRef.current.has(activeId)) selectLogin(activeId)
+    foldersBeforeDragRef.current = folderIds.has(activeId) ? foldersRef.current : null
     setActiveDragId(activeId)
     setActiveDragOverId(null)
   }
 
   function dragOver(event: DragOverEvent): void {
     setActiveDragOverId(event.over ? String(event.over.id) : null)
+    const activeId = String(event.active.id)
+    const overId = event.over ? String(event.over.id) : null
+    if (!overId || activeId === overId) return
+    if (!folderIds.has(activeId) || !folderIds.has(overId)) return
+    setFolders((previous) => {
+      const oldIndex = previous.findIndex((folder) => folder.id === activeId)
+      const newIndex = previous.findIndex((folder) => folder.id === overId)
+      if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return previous
+      return arrayMove(previous, oldIndex, newIndex).map((folder, position) => ({
+        ...folder,
+        position
+      }))
+    })
+  }
+
+  function cancelDrag(): void {
+    const previousFolders = foldersBeforeDragRef.current
+    foldersBeforeDragRef.current = null
+    if (previousFolders) setFolders(previousFolders)
+    setActiveDragId(null)
+    setActiveDragOverId(null)
   }
 
   async function endDrag(event: DragEndEvent): Promise<void> {
+    const previousFolders = foldersBeforeDragRef.current
+    foldersBeforeDragRef.current = null
     setActiveDragId(null)
     setActiveDragOverId(null)
-    if (!event.over) return
+    if (!event.over) {
+      if (previousFolders) setFolders(previousFolders)
+      return
+    }
     const activeId = String(event.active.id)
     const overId = String(event.over.id)
     if (itemIds.has(activeId)) {
@@ -3784,23 +3813,16 @@ function VaultShell({
       else if (folderIds.has(overId)) await moveLogins(snapshot, overId)
       return
     }
-    if (!folderIds.has(activeId) || !folderIds.has(overId) || activeId === overId) return
-    const previous = folders
-    const oldIndex = previous.findIndex((folder) => folder.id === activeId)
-    const newIndex = previous.findIndex((folder) => folder.id === overId)
-    const reordered = arrayMove(previous, oldIndex, newIndex).map((folder, position) => ({
-      ...folder,
-      position
-    }))
-    setFolders(reordered)
+    if (!previousFolders || !folderIds.has(activeId)) return
+    const reordered = foldersRef.current
+    const orderedIds = reordered.map((folder) => folder.id)
+    if (orderedIds.every((id, index) => id === previousFolders[index]?.id)) return
     try {
-      const saved = await window.bearwarden.folders.reorder({
-        orderedIds: reordered.map((folder) => folder.id)
-      })
+      const saved = await window.bearwarden.folders.reorder({ orderedIds })
       setFolders([...saved].sort((left, right) => left.position - right.position))
       announce('資料夾順序已更新。')
     } catch (reorderError) {
-      setFolders(previous)
+      setFolders(previousFolders)
       announceError(describeError(reorderError))
     }
   }
@@ -4078,10 +4100,7 @@ function VaultShell({
       collisionDetection={precisePointerCollisionDetection}
       onDragStart={startDrag}
       onDragOver={dragOver}
-      onDragCancel={() => {
-        setActiveDragId(null)
-        setActiveDragOverId(null)
-      }}
+      onDragCancel={cancelDrag}
       onDragEnd={(event) => void endDrag(event)}
     >
       <main
@@ -5718,11 +5737,6 @@ function VaultShell({
             count={activeDragItemCount}
             showWebsiteIcons={settings?.showWebsiteIcons ?? false}
             destinationDescription={activeDragDestinationDescription}
-          />
-        ) : activeDragFolder ? (
-          <FolderDragPreview
-            folder={activeDragFolder}
-            count={folderCounts.get(activeDragFolder.id) ?? 0}
           />
         ) : null}
       </DragOverlay>

@@ -1,4 +1,4 @@
-import { useDraggable } from '@dnd-kit/core'
+import { useDndContext, useDraggable } from '@dnd-kit/core'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS, useCombinedRefs } from '@dnd-kit/utilities'
 import { memo, useEffect, useRef } from 'react'
@@ -26,8 +26,9 @@ interface RowIconButtonProps extends React.ComponentProps<typeof Button> {
 }
 
 function RowIconButton({ label, children, ...props }: RowIconButtonProps): React.JSX.Element {
+  const { active } = useDndContext()
   return (
-    <Tooltip>
+    <Tooltip disabled={active != null}>
       <TooltipTrigger render={<Button aria-label={label} {...props} />}>{children}</TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
@@ -241,10 +242,12 @@ export function FolderRow({
       ref={setNodeRef}
       className={cn(
         'group/folder text-foreground grid min-h-9 grid-cols-[22px_minmax(0,1fr)_25px] items-center rounded-lg',
-        !selected && !isOver && 'hover:bg-sidebar-overlay-hover',
-        selected && 'bg-sidebar-overlay-active shadow-none',
-        isDragging && 'opacity-35',
+        !selected && !isOver && !isDragging && 'hover:bg-sidebar-overlay-hover',
+        selected && !isDragging && 'bg-sidebar-overlay-active shadow-none',
+        isDragging &&
+          'bg-sidebar-overlay-active relative z-10 shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--sidebar-primary)_55%,transparent)] forced-colors:outline-2 forced-colors:outline-offset-[-2px] forced-colors:outline-[Highlight]',
         isOver &&
+          !isDragging &&
           'bg-sidebar-overlay-active shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--sidebar-primary)_55%,transparent)] forced-colors:outline-2 forced-colors:outline-offset-[-2px] forced-colors:outline-[Highlight]'
       )}
       style={{ transform: CSS.Transform.toString(transform), transition }}
