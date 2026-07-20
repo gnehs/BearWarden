@@ -154,6 +154,10 @@
   --native-material-shadow:
     0 1px 0 color-mix(in oklch, white 58%, transparent) inset,
     0 10px 30px color-mix(in oklch, var(--shadow-color) 7%, transparent);
+  --popup-material-shadow:
+    0 1px 0 color-mix(in oklch, white 72%, transparent) inset,
+    0 12px 40px color-mix(in oklch, var(--shadow-color) 14%, transparent),
+    0 2px 8px color-mix(in oklch, var(--shadow-color) 6%, transparent);
   font-family:
     'Inter',
     ui-sans-serif,
@@ -253,6 +257,11 @@
   --native-material-shadow:
     0 1px 0 color-mix(in oklch, var(--shadow-color) 18%, transparent) inset,
     0 10px 30px color-mix(in oklch, var(--shadow-color) 28%, transparent);
+  --popup-material-shadow:
+    0 1px 0 color-mix(in oklch, white 14%, transparent) inset,
+    0 -1px 0 color-mix(in oklch, black 22%, transparent) inset,
+    0 16px 48px color-mix(in oklch, var(--shadow-color) 42%, transparent),
+    0 4px 12px color-mix(in oklch, var(--shadow-color) 22%, transparent);
 }
 
 @layer base {
