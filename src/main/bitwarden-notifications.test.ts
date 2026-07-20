@@ -8,6 +8,7 @@ import {
 const USER_ID = '10000000-0000-4000-8000-000000000001'
 const DEVICE_ID = '20000000-0000-4000-8000-000000000002'
 const OTHER_DEVICE_ID = '30000000-0000-4000-8000-000000000003'
+const AUTH_REQUEST_ID = '40000000-0000-4000-8000-000000000004'
 
 function info(
   overrides: Partial<BitwardenNotificationConnectionInfo> = {}
@@ -78,6 +79,7 @@ function harness(
   connections: FakeConnection[]
   source: ReturnType<typeof vi.fn>
   onSyncRequested: ReturnType<typeof vi.fn>
+  onAuthRequest: ReturnType<typeof vi.fn>
   onRemoteLogout: ReturnType<typeof vi.fn>
   setInfo: (next: BitwardenNotificationConnectionInfo | null) => void
 } {
@@ -85,10 +87,12 @@ function harness(
   const source = vi.fn(async () => (current ? { ...current } : null))
   const connections: FakeConnection[] = []
   const onSyncRequested = vi.fn()
+  const onAuthRequest = vi.fn(async () => undefined)
   const onRemoteLogout = vi.fn(async () => undefined)
   const coordinator = new BitwardenNotificationCoordinator({
     source: { notificationConnectionInfo: source },
     onSyncRequested,
+    onAuthRequest,
     onRemoteLogout,
     random: () => 0,
     connectionFactory: (options) => {
@@ -103,6 +107,7 @@ function harness(
     connections,
     source,
     onSyncRequested,
+    onAuthRequest,
     onRemoteLogout,
     setInfo: (next) => {
       current = next
@@ -184,6 +189,64 @@ describe('BitwardenNotificationCoordinator', () => {
     expect(connection.stop).toHaveBeenCalled()
     connection.emit({ ContextId: OTHER_DEVICE_ID, Type: 11, Payload: { UserId: USER_ID } })
     expect(onRemoteLogout).toHaveBeenCalledOnce()
+    await coordinator.dispose()
+  })
+
+  it('short-term de-duplicates valid auth requests without requesting a vault sync', async () => {
+    const { coordinator, connections, onAuthRequest, onSyncRequested } = harness()
+    await coordinator.refresh()
+    const connection = connections[0]!
+    await waitForConnected(connection)
+    onSyncRequested.mockClear()
+
+    const notification = {
+      ContextId: OTHER_DEVICE_ID,
+      Type: 15,
+      Payload: { Id: AUTH_REQUEST_ID, UserId: USER_ID }
+    }
+    vi.spyOn(Date, 'now').mockReturnValue(0)
+    connection.emit(notification)
+    connection.emit(notification)
+
+    expect(onAuthRequest).toHaveBeenCalledOnce()
+    expect(onAuthRequest).toHaveBeenCalledWith({ id: AUTH_REQUEST_ID, userId: USER_ID })
+    expect(onSyncRequested).not.toHaveBeenCalled()
+
+    vi.mocked(Date.now).mockReturnValue(5 * 60 * 1_000)
+    connection.emit(notification)
+    expect(onAuthRequest).toHaveBeenCalledTimes(2)
+    await coordinator.dispose()
+  })
+
+  it('rejects malformed, wrong-account, and self-context auth requests', async () => {
+    const { coordinator, connections, onAuthRequest, onSyncRequested } = harness()
+    await coordinator.refresh()
+    const connection = connections[0]!
+    await waitForConnected(connection)
+    onSyncRequested.mockClear()
+
+    for (const payload of [
+      {},
+      { Id: AUTH_REQUEST_ID },
+      { UserId: USER_ID },
+      { Id: 'not-a-uuid', UserId: USER_ID },
+      { Id: AUTH_REQUEST_ID, UserId: 42 }
+    ]) {
+      connection.emit({ ContextId: OTHER_DEVICE_ID, Type: 15, Payload: payload })
+    }
+    connection.emit({
+      ContextId: OTHER_DEVICE_ID,
+      Type: 15,
+      Payload: { Id: AUTH_REQUEST_ID, UserId: DEVICE_ID }
+    })
+    connection.emit({
+      ContextId: DEVICE_ID,
+      Type: 15,
+      Payload: { Id: AUTH_REQUEST_ID, UserId: USER_ID }
+    })
+
+    expect(onAuthRequest).not.toHaveBeenCalled()
+    expect(onSyncRequested).not.toHaveBeenCalled()
     await coordinator.dispose()
   })
 
@@ -271,6 +334,7 @@ describe('BitwardenNotificationCoordinator', () => {
         }
       },
       onSyncRequested: vi.fn(),
+      onAuthRequest: vi.fn(),
       onRemoteLogout: vi.fn(),
       connectionFactory: (options) => {
         const connection = new FakeConnection(options)

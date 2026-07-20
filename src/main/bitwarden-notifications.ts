@@ -21,6 +21,9 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 const FULL_SYNC_NOTIFICATION_TYPES = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 17, 18, 19, 25])
 const RECONNECT_AFTER_SYNC_NOTIFICATION_TYPE = 6
 const LOG_OUT_NOTIFICATION_TYPE = 11
+const AUTH_REQUEST_NOTIFICATION_TYPE = 15
+const MAX_SEEN_AUTH_REQUESTS = 256
+const AUTH_REQUEST_DEDUPLICATION_WINDOW_MS = 5 * 60 * 1_000
 
 export interface BitwardenNotificationConnectionInfo {
   notificationsUrl: string
@@ -31,6 +34,11 @@ export interface BitwardenNotificationConnectionInfo {
 
 export interface BitwardenNotificationSource {
   notificationConnectionInfo: () => Promise<BitwardenNotificationConnectionInfo | null>
+}
+
+export interface BitwardenAuthRequestNotification {
+  id: string
+  userId: string
 }
 
 interface NotificationConnection {
@@ -58,6 +66,7 @@ interface TimerApi {
 export interface BitwardenNotificationCoordinatorOptions {
   source: BitwardenNotificationSource
   onSyncRequested: () => void
+  onAuthRequest: (notification: BitwardenAuthRequestNotification) => void | Promise<void>
   onRemoteLogout: () => void | Promise<void>
   connectionFactory?: NotificationConnectionFactory
   timerApi?: TimerApi
@@ -68,6 +77,7 @@ interface ParsedNotification {
   type: number
   contextId: string | null
   payloadUserId: string | null
+  authRequest: BitwardenAuthRequestNotification | null
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -104,10 +114,24 @@ function parseNotification(value: unknown): ParsedNotification | null {
     return null
   }
   if (typeof payloadUserId === 'string' && payloadUserId.length > 128) return null
+  let authRequest: BitwardenAuthRequestNotification | null = null
+  if (type === AUTH_REQUEST_NOTIFICATION_TYPE) {
+    const id = property(payload, 'id', 'Id')
+    if (
+      typeof id !== 'string' ||
+      !UUID_PATTERN.test(id) ||
+      typeof payloadUserId !== 'string' ||
+      !UUID_PATTERN.test(payloadUserId)
+    ) {
+      return null
+    }
+    authRequest = { id, userId: payloadUserId }
+  }
   return {
     type,
     contextId: typeof contextId === 'string' ? contextId : null,
-    payloadUserId: typeof payloadUserId === 'string' ? payloadUserId : null
+    payloadUserId: typeof payloadUserId === 'string' ? payloadUserId : null,
+    authRequest
   }
 }
 
@@ -177,6 +201,7 @@ export class BitwardenNotificationCoordinator {
   private generation = 0
   private disposed = false
   private reconnectAfterRefresh = false
+  private readonly seenAuthRequestIds = new Map<string, number>()
   private operationQueue: Promise<void> = Promise.resolve()
   private readonly connectionFactory: NotificationConnectionFactory
   private readonly timerApi: TimerApi
@@ -319,6 +344,25 @@ export class BitwardenNotificationCoordinator {
         .catch(() => undefined)
       return
     }
+    if (notification.type === AUTH_REQUEST_NOTIFICATION_TYPE) {
+      const authRequest = notification.authRequest
+      if (!authRequest || authRequest.userId !== current.userId) return
+      const now = Date.now()
+      const seenAt = this.seenAuthRequestIds.get(authRequest.id)
+      if (seenAt !== undefined && now - seenAt < AUTH_REQUEST_DEDUPLICATION_WINDOW_MS) return
+      this.seenAuthRequestIds.delete(authRequest.id)
+      this.seenAuthRequestIds.set(authRequest.id, now)
+      if (this.seenAuthRequestIds.size > MAX_SEEN_AUTH_REQUESTS) {
+        const oldest = this.seenAuthRequestIds.keys().next().value
+        if (oldest) this.seenAuthRequestIds.delete(oldest)
+      }
+      try {
+        void Promise.resolve(this.options.onAuthRequest(authRequest)).catch(() => undefined)
+      } catch {
+        // A notification handler failure must not tear down the authenticated socket.
+      }
+      return
+    }
     if (FULL_SYNC_NOTIFICATION_TYPES.has(notification.type)) {
       if (notification.type === RECONNECT_AFTER_SYNC_NOTIFICATION_TYPE) {
         this.reconnectAfterRefresh = true
@@ -362,6 +406,7 @@ export class BitwardenNotificationCoordinator {
   private async invalidateAndStop(): Promise<void> {
     this.connectionInfo = null
     this.reconnectAfterRefresh = false
+    this.seenAuthRequestIds.clear()
     this.generation += 1
     await this.stopConnectionOnly()
   }

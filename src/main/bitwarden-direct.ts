@@ -1,4 +1,14 @@
-import { createPrivateKey, randomBytes, randomUUID, type KeyObject } from 'node:crypto'
+import {
+  constants,
+  createHash,
+  createHmac,
+  createPrivateKey,
+  createPublicKey,
+  publicEncrypt,
+  randomBytes,
+  randomUUID,
+  type KeyObject
+} from 'node:crypto'
 import { Encoder } from 'cbor-x'
 import {
   BitwardenCryptoError,
@@ -28,6 +38,7 @@ import {
   BitwardenHttpClient,
   BitwardenHttpError,
   type BitwardenAccountBreachReport,
+  type BitwardenAuthRequest,
   type BitwardenAccountDevice,
   type BitwardenAccountSecurityProfile,
   type BitwardenAuthenticatorSetup,
@@ -49,6 +60,7 @@ import {
   type JsonObject,
   type JsonValue
 } from './bitwarden-http'
+import { loadEffLongWordlist } from './eff-wordlist'
 import type {
   VaultCustomField,
   VaultCustomFieldType,
@@ -254,6 +266,17 @@ export interface BitwardenDownloadedAttachment {
   fileName: string
   data: Buffer
 }
+
+/** Safe metadata for an actionable Login with device request. */
+export interface BitwardenLoginApprovalRequest {
+  id: string
+  fingerprint: string
+  requestDeviceType: string
+  createdAt: string
+}
+
+/** @deprecated Use BitwardenLoginApprovalRequest. */
+export type BitwardenLoginRequestMetadata = BitwardenLoginApprovalRequest
 
 export interface BitwardenStreamedAttachment {
   fileName: string
@@ -566,6 +589,14 @@ export interface BitwardenSyncClient {
   deleteSend?(id: string, signal?: AbortSignal): Promise<void>
   copySendLink?(id: string, copy: (value: string) => void | Promise<void>): Promise<void>
   notificationAccessToken?(signal?: AbortSignal): Promise<string>
+  getLoginRequest?(id: string, signal?: AbortSignal): Promise<BitwardenLoginApprovalRequest>
+  listPendingLoginRequests?(signal?: AbortSignal): Promise<BitwardenLoginApprovalRequest[]>
+  respondLoginRequest?(
+    id: string,
+    expectedFingerprint: string,
+    approved: boolean,
+    signal?: AbortSignal
+  ): Promise<void>
   login(request: BitwardenLoginRequest): Promise<void>
   unlock(request: BitwardenUnlockRequest): Promise<void>
   changeMasterPassword?(request: BitwardenMasterPasswordChangeRequest): Promise<void>
@@ -1431,6 +1462,45 @@ function encodeUserKeyForMasterKeyWrap(key: BitwardenSymmetricKey): Buffer {
     return Buffer.concat([encoded, Buffer.alloc(padding, padding)])
   } finally {
     encoded.fill(0)
+  }
+}
+
+function loginRequestFingerprint(email: string, request: BitwardenAuthRequest): string {
+  const publicKey = Buffer.from(request.publicKey, 'base64')
+  const prk = createHash('sha256').update(publicKey).digest()
+  const info = Buffer.from(email.toLocaleLowerCase('en-US'), 'utf8')
+  const expanded = createHmac('sha256', prk)
+    .update(info)
+    .update(Buffer.from([1]))
+    .digest()
+  try {
+    const words = loadEffLongWordlist()
+    let value = BigInt(`0x${expanded.toString('hex')}`)
+    const radix = BigInt(words.length)
+    const phrase: string[] = []
+    // Six EFF-long words exceed the required 64-bit minimum and match this feature's UX contract.
+    for (let index = 0; index < 6; index += 1) {
+      phrase.push(words[Number(value % radix)]!)
+      value /= radix
+    }
+    return phrase.join('-')
+  } finally {
+    publicKey.fill(0)
+    prk.fill(0)
+    info.fill(0)
+    expanded.fill(0)
+  }
+}
+
+function loginRequestMetadata(
+  email: string,
+  request: BitwardenAuthRequest
+): BitwardenLoginApprovalRequest {
+  return {
+    id: request.id,
+    fingerprint: loginRequestFingerprint(email, request),
+    requestDeviceType: request.requestDeviceType,
+    createdAt: request.creationDate
   }
 }
 
@@ -3046,6 +3116,79 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       return token
     } catch (error) {
       throw this.mapError(error)
+    }
+  }
+
+  async getLoginRequest(id: string, signal?: AbortSignal): Promise<BitwardenLoginApprovalRequest> {
+    this.requireUserKey()
+    try {
+      return loginRequestMetadata(this.email, await this.http.getAuthRequest(id, signal))
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  async listPendingLoginRequests(signal?: AbortSignal): Promise<BitwardenLoginApprovalRequest[]> {
+    this.requireUserKey()
+    try {
+      const requests = await this.http.getPendingAuthRequests(signal)
+      return requests.map((request) => loginRequestMetadata(this.email, request))
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  async respondLoginRequest(
+    id: string,
+    expectedFingerprint: string,
+    approved: boolean,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const userKey = this.requireUserKey()
+    if (
+      typeof expectedFingerprint !== 'string' ||
+      expectedFingerprint.length === 0 ||
+      expectedFingerprint.length > 1_024 ||
+      /[\0\r\n]/u.test(expectedFingerprint) ||
+      typeof approved !== 'boolean'
+    ) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
+    let encodedUserKey: Buffer | null = null
+    let publicKey: Buffer | null = null
+    let encryptedUserKey: Buffer | null = null
+    try {
+      // Re-fetch immediately before encrypting and responding so stale UI metadata cannot approve
+      // a replacement request with the same id but different key material.
+      const request = await this.http.getAuthRequest(id, signal)
+      const currentFingerprint = loginRequestFingerprint(this.email, request)
+      if (currentFingerprint !== expectedFingerprint) throw new BitwardenDirectError('CONFLICT')
+      encodedUserKey = encodeUserKeyForMasterKeyWrap(userKey)
+      publicKey = Buffer.from(request.publicKey, 'base64')
+      encryptedUserKey = publicEncrypt(
+        {
+          key: createPublicKey({ key: publicKey, format: 'der', type: 'spki' }),
+          padding: constants.RSA_PKCS1_OAEP_PADDING,
+          oaepHash: 'sha1'
+        },
+        encodedUserKey
+      )
+      await this.http.respondAuthRequest(
+        request.id,
+        {
+          key: `4.${encryptedUserKey.toString('base64')}`,
+          masterPasswordHash: null,
+          deviceIdentifier: this.state.deviceIdentifier,
+          requestApproved: approved
+        },
+        signal
+      )
+    } catch (error) {
+      throw this.mapError(error)
+    } finally {
+      encodedUserKey?.fill(0)
+      publicKey?.fill(0)
+      encryptedUserKey?.fill(0)
     }
   }
 

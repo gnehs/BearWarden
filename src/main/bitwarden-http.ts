@@ -17,6 +17,7 @@ import {
   type AccountWebAuthnRegistrationChallenge
 } from './account-webauthn-registration-codec'
 import { MAX_ACCOUNT_PROFILE_NAME_BYTES } from '../shared/vault-contract'
+import { createPublicKey } from 'node:crypto'
 
 export type BitwardenEnvironment = 'us' | 'eu' | string
 export type JsonPrimitive = string | number | boolean | null
@@ -154,6 +155,22 @@ export interface BitwardenAccountDevice {
   current: boolean
   trusted: boolean
   pendingAuthRequest: boolean
+}
+
+/** Main-process-only wire data for an actionable Login with device request. */
+export interface BitwardenAuthRequest {
+  id: string
+  /** Canonical Base64-encoded SubjectPublicKeyInfo DER for an RSA-2048 key. */
+  publicKey: string
+  requestDeviceType: string
+  creationDate: string
+}
+
+export interface BitwardenAuthRequestResponse {
+  key: string
+  masterPasswordHash: null
+  deviceIdentifier: string
+  requestApproved: boolean
 }
 
 export interface BitwardenPersonalApiKey {
@@ -382,6 +399,9 @@ const MAX_ACCOUNT_PROFILE_RESPONSE_BYTES = 256 * 1024
 const MAX_ACCOUNT_DEVICES_RESPONSE_BYTES = 4 * 1024 * 1024
 const MAX_ACCOUNT_DEVICES = 10_000
 const MAX_DEVICE_STRING_BYTES = 256
+const MAX_AUTH_REQUESTS_RESPONSE_BYTES = 2 * 1024 * 1024
+const MAX_PENDING_AUTH_REQUESTS = 10_000
+const AUTH_REQUEST_VALIDITY_MS = 15 * 60 * 1000
 const MAX_EMERGENCY_ACCESS_RESPONSE_BYTES = 2 * 1024 * 1024
 const MAX_EMERGENCY_ACCESS_ENTRIES = 10_000
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
@@ -995,6 +1015,66 @@ export class BitwardenHttpClient {
       tooLargeCode: 'TOO_LARGE'
     })
     return parseAccountDevices(response, currentDeviceIdentifier)
+  }
+
+  async getAuthRequest(id: string, signal?: AbortSignal): Promise<BitwardenAuthRequest> {
+    const requestId = assertUuid(id)
+    const response = await this.requestJson(
+      'GET',
+      `${this.urls.apiUrl}/auth-requests/${requestId}`,
+      {
+        signal,
+        maxResponseBytes: MAX_AUTH_REQUESTS_RESPONSE_BYTES,
+        tooLargeCode: 'TOO_LARGE'
+      }
+    )
+    const request = parsePendingAuthRequest(response, this.now())
+    if (request.id.toLocaleLowerCase('en-US') !== requestId.toLocaleLowerCase('en-US')) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    return request
+  }
+
+  async getPendingAuthRequests(signal?: AbortSignal): Promise<BitwardenAuthRequest[]> {
+    const response = await this.requestJson('GET', `${this.urls.apiUrl}/auth-requests/pending`, {
+      signal,
+      maxResponseBytes: MAX_AUTH_REQUESTS_RESPONSE_BYTES,
+      tooLargeCode: 'TOO_LARGE'
+    })
+    return parsePendingAuthRequests(response, this.now())
+  }
+
+  async respondAuthRequest(
+    id: string,
+    response: BitwardenAuthRequestResponse,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const requestId = assertUuid(id)
+    if (
+      !isRecord(response) ||
+      Object.keys(response).length !== 4 ||
+      response.masterPasswordHash !== null ||
+      typeof response.deviceIdentifier !== 'string' ||
+      response.deviceIdentifier.length === 0 ||
+      Buffer.byteLength(response.deviceIdentifier, 'utf8') > MAX_DEVICE_STRING_BYTES ||
+      /[\0\r\n]/u.test(response.deviceIdentifier) ||
+      typeof response.requestApproved !== 'boolean'
+    ) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    authRequestEncryptedKey(response.key)
+    const payload = await this.requestJson(
+      'PUT',
+      `${this.urls.apiUrl}/auth-requests/${requestId}`,
+      {
+        body: { ...response },
+        signal,
+        retry: false,
+        maxResponseBytes: MAX_AUTH_REQUESTS_RESPONSE_BYTES,
+        tooLargeCode: 'TOO_LARGE'
+      }
+    )
+    parseAnsweredAuthRequest(payload, requestId, response.requestApproved)
   }
 
   async resendVerificationEmail(signal?: AbortSignal): Promise<void> {
@@ -2713,6 +2793,149 @@ function deviceDate(value: unknown, nullable: boolean): string | null {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
   return new Date(value).toISOString()
+}
+
+function authRequestPublicKey(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 1_024 ||
+    !/^[A-Za-z0-9+/]+={0,2}$/u.test(value)
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  const der = Buffer.from(value, 'base64')
+  if (der.length === 0 || der.toString('base64') !== value) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  try {
+    const key = createPublicKey({ key: der, format: 'der', type: 'spki' })
+    const canonical = key.export({ format: 'der', type: 'spki' })
+    if (
+      key.asymmetricKeyType !== 'rsa' ||
+      key.asymmetricKeyDetails?.modulusLength !== 2_048 ||
+      !Buffer.from(canonical).equals(der)
+    ) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+  } catch (error) {
+    if (error instanceof BitwardenHttpError) throw error
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  } finally {
+    der.fill(0)
+  }
+  return value
+}
+
+function authRequestEncryptedKey(value: unknown): string {
+  if (typeof value !== 'string' || !value.startsWith('4.')) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  const base64 = value.slice(2)
+  if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(base64)) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  const bytes = Buffer.from(base64, 'base64')
+  try {
+    if (bytes.length !== 256 || bytes.toString('base64') !== base64) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+  } finally {
+    bytes.fill(0)
+  }
+  return value
+}
+
+function authRequestDeviceType(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    Buffer.byteLength(value, 'utf8') > MAX_DEVICE_STRING_BYTES ||
+    /[\0\r\n]/u.test(value)
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function authRequestDate(value: unknown): string {
+  return deviceDate(value, false)
+}
+
+function parsePendingAuthRequest(value: JsonValue, now: number): BitwardenAuthRequest {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const id = value.id ?? value.Id
+  const publicKey = value.publicKey ?? value.PublicKey
+  const requestDeviceType = value.requestDeviceType ?? value.RequestDeviceType
+  const creationDate = authRequestDate(value.creationDate ?? value.CreationDate)
+  const responseDate = value.responseDate ?? value.ResponseDate
+  const requestApproved =
+    value.requestApproved !== undefined ? value.requestApproved : value.RequestApproved
+  const object = value.object ?? value.Object
+  const createdAt = Date.parse(creationDate)
+  const age = now - createdAt
+  if (
+    typeof id !== 'string' ||
+    !UUID_PATTERN.test(id) ||
+    (responseDate !== undefined && responseDate !== null) ||
+    (requestApproved !== undefined && requestApproved !== false && requestApproved !== null) ||
+    (object !== undefined && object !== 'auth-request') ||
+    !Number.isFinite(age) ||
+    age < 0 ||
+    age >= AUTH_REQUEST_VALIDITY_MS
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return {
+    id,
+    publicKey: authRequestPublicKey(publicKey),
+    requestDeviceType: authRequestDeviceType(requestDeviceType),
+    creationDate
+  }
+}
+
+function parsePendingAuthRequests(value: JsonValue, now: number): BitwardenAuthRequest[] {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const data = value.data ?? value.Data
+  const object = value.object ?? value.Object
+  const continuationToken = value.continuationToken ?? value.ContinuationToken
+  if (
+    !Array.isArray(data) ||
+    data.length > MAX_PENDING_AUTH_REQUESTS ||
+    (object !== undefined && object !== 'list') ||
+    (continuationToken !== undefined && continuationToken !== null)
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  const ids = new Set<string>()
+  return data.map((entry) => {
+    const request = parsePendingAuthRequest(entry, now)
+    const normalizedId = request.id.toLocaleLowerCase('en-US')
+    if (ids.has(normalizedId)) throw new BitwardenHttpError('INVALID_RESPONSE')
+    ids.add(normalizedId)
+    return request
+  })
+}
+
+function parseAnsweredAuthRequest(value: JsonValue, id: string, approved: boolean): void {
+  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const responseId = value.id ?? value.Id
+  const requestApproved =
+    value.requestApproved !== undefined ? value.requestApproved : value.RequestApproved
+  const responseDate = value.responseDate ?? value.ResponseDate
+  // Vaultwarden deletes a rejected request before serializing the response, so
+  // its compatibility response can contain null here. Bitwarden returns false.
+  const approvalMatches = approved
+    ? requestApproved === true
+    : requestApproved === false || requestApproved === null
+  if (
+    typeof responseId !== 'string' ||
+    responseId.toLocaleLowerCase('en-US') !== id.toLocaleLowerCase('en-US') ||
+    !approvalMatches
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  authRequestDate(responseDate)
 }
 
 function parseAccountDevices(

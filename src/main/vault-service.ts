@@ -19,6 +19,8 @@ import type {
   AttachmentUploadRequest,
   AttachmentUploadResult,
   AccountSessionDeauthorizationRequest,
+  LoginApprovalPrompt,
+  LoginApprovalResponse,
   EditorSecretsView,
   CredentialGeneratorRequest,
   CredentialGeneratorResult,
@@ -96,6 +98,7 @@ import {
   type BitwardenFolder,
   type BitwardenLoginDraft,
   type BitwardenLoginItem,
+  type BitwardenLoginApprovalRequest,
   type BitwardenOrganizationCipher,
   type BitwardenSendItem,
   type BitwardenDirectState,
@@ -418,6 +421,19 @@ interface AccountWebAuthnOperationLease {
   readonly abort: AbortController
 }
 
+interface LoginApprovalSession {
+  readonly generation: number
+  readonly client: BitwardenSyncClient
+  readonly requestId: string
+  readonly fingerprint: string
+  readonly requestDeviceType: string
+  readonly createdAt: string
+  readonly expiresAt: number
+}
+
+const LOGIN_APPROVAL_TTL_MS = 15 * 60 * 1_000
+const MAX_LOGIN_APPROVAL_SESSIONS = 64
+
 function clearAccountWebAuthnRegistrationSetup(
   setup: BitwardenWebAuthnRegistrationSetup | null
 ): void {
@@ -468,6 +484,7 @@ export class VaultService {
   private readonly nativeAttachmentRestoreAborts = new Set<AbortController>()
   private readonly authenticatorSetupSessions = new Map<string, AuthenticatorSetupSession>()
   private readonly emailTwoFactorSetupSessions = new Map<string, EmailTwoFactorSetupSession>()
+  private readonly loginApprovalSessions = new Map<string, LoginApprovalSession>()
   private readonly generatorService: VaultGeneratorService
   private readonly sendService: VaultSendService
   private syncInProgress = false
@@ -1218,6 +1235,113 @@ export class VaultService {
         }
         if (error instanceof BitwardenDirectError && error.code === 'NOT_FOUND') {
           return { status: 'unavailable' }
+        }
+        if (error instanceof VaultError) throw error
+        throw this.mapSyncError(error)
+      })
+    }
+  }
+
+  /** Main-process entry point used by a trusted type-15 SignalR notification. */
+  async prepareLoginApproval(requestId: string): Promise<LoginApprovalPrompt | null> {
+    const lease = await this.exclusive(async () => {
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      if (!client.exportState().session) throw new VaultError('SYNC_AUTH_REQUIRED')
+      const request = client.getLoginRequest?.bind(client)
+      if (!request) return null
+      const abort = new AbortController()
+      this.accountSecurityAborts.add(abort)
+      return { generation: this.generation, client, request, abort }
+    })
+    if (!lease) return null
+    try {
+      const pending = await lease.request(requestId, lease.abort.signal)
+      return this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        this.assertLoginApprovalLease(lease)
+        return this.issueLoginApproval(pending, lease.client, lease.generation)
+      })
+    } catch (error) {
+      return this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        if (lease.abort.signal.aborted || lease.generation !== this.generation) return null
+        if (error instanceof BitwardenDirectError && error.code === 'NOT_FOUND') return null
+        if (error instanceof VaultError) throw error
+        throw this.mapSyncError(error)
+      })
+    }
+  }
+
+  async getPendingLoginApprovals(): Promise<LoginApprovalPrompt[]> {
+    const lease = await this.exclusive(async () => {
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      if (!client.exportState().session) throw new VaultError('SYNC_AUTH_REQUIRED')
+      const request = client.listPendingLoginRequests?.bind(client)
+      if (!request) return null
+      const abort = new AbortController()
+      this.accountSecurityAborts.add(abort)
+      return { generation: this.generation, client, request, abort }
+    })
+    if (!lease) return []
+    try {
+      const pending = await lease.request(lease.abort.signal)
+      return this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        this.assertLoginApprovalLease(lease)
+        return pending
+          .map((request) => this.issueLoginApproval(request, lease.client, lease.generation))
+          .filter((prompt): prompt is LoginApprovalPrompt => prompt !== null)
+      })
+    } catch (error) {
+      return this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+          throw new VaultError('LOCKED')
+        }
+        if (error instanceof BitwardenDirectError && error.code === 'NOT_FOUND') return []
+        if (error instanceof VaultError) throw error
+        throw this.mapSyncError(error)
+      })
+    }
+  }
+
+  async respondLoginApproval(response: LoginApprovalResponse): Promise<void> {
+    const lease = await this.exclusive(async () => {
+      const session = this.loginApprovalSessions.get(response.token)
+      this.loginApprovalSessions.delete(response.token)
+      if (
+        !session ||
+        session.generation !== this.generation ||
+        session.client !== this.syncClient ||
+        session.expiresAt <= this.now().getTime() ||
+        session.fingerprint !== response.fingerprint ||
+        !session.client.exportState().session
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      const request = session.client.respondLoginRequest?.bind(session.client)
+      if (!request) throw new VaultError('SYNC_FAILED')
+      const abort = new AbortController()
+      this.accountSecurityAborts.add(abort)
+      return { ...session, request, abort }
+    })
+    try {
+      await lease.request(lease.requestId, lease.fingerprint, response.approved, lease.abort.signal)
+      await this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        this.assertLoginApprovalLease(lease)
+        for (const [token, session] of this.loginApprovalSessions) {
+          if (session.requestId === lease.requestId) this.loginApprovalSessions.delete(token)
+        }
+        await this.persistCurrentClientState().catch(() => undefined)
+      })
+    } catch (error) {
+      await this.exclusive(async () => {
+        this.accountSecurityAborts.delete(lease.abort)
+        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+          throw new VaultError('LOCKED')
         }
         if (error instanceof VaultError) throw error
         throw this.mapSyncError(error)
@@ -5930,9 +6054,81 @@ export class VaultService {
     this.notificationTokenAborts.clear()
   }
 
+  private assertLoginApprovalLease(lease: {
+    generation: number
+    client: BitwardenSyncClient
+    abort: AbortController
+  }): void {
+    if (
+      lease.abort.signal.aborted ||
+      lease.generation !== this.generation ||
+      lease.client !== this.syncClient ||
+      !lease.client.exportState().session
+    ) {
+      throw new VaultError('SYNC_AUTH_REQUIRED')
+    }
+  }
+
+  private issueLoginApproval(
+    request: BitwardenLoginApprovalRequest,
+    client: BitwardenSyncClient,
+    generation: number
+  ): LoginApprovalPrompt | null {
+    const now = this.now().getTime()
+    const expiresAt = Date.parse(request.createdAt) + LOGIN_APPROVAL_TTL_MS
+    for (const [token, session] of this.loginApprovalSessions) {
+      if (
+        session.expiresAt <= now ||
+        session.generation !== this.generation ||
+        session.client !== this.syncClient
+      ) {
+        this.loginApprovalSessions.delete(token)
+        continue
+      }
+      if (
+        session.requestId === request.id &&
+        session.fingerprint === request.fingerprint &&
+        session.client === client &&
+        session.generation === generation
+      ) {
+        return {
+          token,
+          fingerprint: session.fingerprint,
+          requestDeviceType: session.requestDeviceType,
+          createdAt: session.createdAt,
+          expiresAt: new Date(session.expiresAt).toISOString()
+        }
+      }
+    }
+    if (!Number.isFinite(expiresAt) || expiresAt <= now) return null
+    while (this.loginApprovalSessions.size >= MAX_LOGIN_APPROVAL_SESSIONS) {
+      const oldest = this.loginApprovalSessions.keys().next().value
+      if (oldest === undefined) break
+      this.loginApprovalSessions.delete(oldest)
+    }
+    const token = randomUUID()
+    this.loginApprovalSessions.set(token, {
+      generation,
+      client,
+      requestId: request.id,
+      fingerprint: request.fingerprint,
+      requestDeviceType: request.requestDeviceType,
+      createdAt: request.createdAt,
+      expiresAt
+    })
+    return {
+      token,
+      fingerprint: request.fingerprint,
+      requestDeviceType: request.requestDeviceType,
+      createdAt: request.createdAt,
+      expiresAt: new Date(expiresAt).toISOString()
+    }
+  }
+
   private abortAccountSecurityRequests(): void {
     for (const abort of this.accountSecurityAborts) abort.abort()
     this.accountSecurityAborts.clear()
+    this.loginApprovalSessions.clear()
     for (const sessionId of this.authenticatorSetupSessions.keys()) {
       this.deleteAuthenticatorSetupSession(sessionId)
     }

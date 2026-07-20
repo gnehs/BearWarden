@@ -19,6 +19,7 @@ import {
   type AccountRemoveRequest,
   type AccountReorderRequest,
   type AccountSessionDeauthorizationRequest,
+  type LoginApprovalResponse,
   type AccountStatus,
   type AppSettingsUpdate,
   type AccountApiKeyCopyRequest,
@@ -706,6 +707,22 @@ function parseAccountProfileAvatarUpdate(value: unknown): AccountProfileAvatarUp
     avatarColor: record.avatarColor?.toLocaleUpperCase('en-US') ?? null,
     expectedAvatarColor: record.expectedAvatarColor?.toLocaleUpperCase('en-US') ?? null
   }
+}
+
+function parseLoginApprovalResponse(value: unknown): LoginApprovalResponse {
+  const record = exactDataRecord(value, ['token', 'fingerprint', 'approved'])
+  const token = requiredString(record, 'token')
+  const fingerprint = requiredString(record, 'fingerprint')
+  if (
+    !UUID_PATTERN.test(token) ||
+    fingerprint.length === 0 ||
+    fingerprint.length > 256 ||
+    /[\0\r\n]/u.test(fingerprint) ||
+    typeof record.approved !== 'boolean'
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return { token, fingerprint, approved: record.approved }
 }
 
 function parseAccountSessionDeauthorization(value: unknown): AccountSessionDeauthorizationRequest {
@@ -3137,6 +3154,13 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   registerHandler(IPC_CHANNELS.accountDevices, getMainWindow, (_event, input) => {
     parseNoInput(input)
     return vault.getAccountDevices()
+  })
+  registerHandler(IPC_CHANNELS.accountPendingLoginApprovals, getMainWindow, (_event, input) => {
+    parseNoInput(input)
+    return vault.getPendingLoginApprovals()
+  })
+  registerHandler(IPC_CHANNELS.accountRespondLoginApproval, getMainWindow, (_event, input) => {
+    return vault.respondLoginApproval(parseLoginApprovalResponse(input))
   })
   registerHandler(IPC_CHANNELS.accountDeauthorizeSessions, getMainWindow, async (_event, input) => {
     let request: AccountSessionDeauthorizationRequest | null = null

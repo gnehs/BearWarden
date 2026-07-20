@@ -1800,6 +1800,16 @@ describe('registerVaultIpc reprompt gate', () => {
           }
         ]
       })),
+      getPendingLoginApprovals: vi.fn(async () => [
+        {
+          token: '22222222-2222-4222-8222-222222222222',
+          fingerprint: 'alpha-bravo-charlie-delta-echo-foxtrot',
+          requestDeviceType: 'Chrome',
+          createdAt: '2026-07-17T01:02:03.000Z',
+          expiresAt: '2026-07-17T01:17:03.000Z'
+        }
+      ]),
+      respondLoginApproval: vi.fn(async () => undefined),
       syncStatus: vi.fn(async () => ({ configured: true, state: 'locked' as const })),
       deauthorizeAllSessions: vi.fn(async () => undefined),
       resendAccountVerificationEmail: vi.fn(async () => undefined),
@@ -2610,6 +2620,37 @@ describe('registerVaultIpc reprompt gate', () => {
     expect(vault.getAccountSecurityProfile).toHaveBeenCalledOnce()
     expect(vault.getAccountDevices).toHaveBeenCalledOnce()
     expect(vault.resendAccountVerificationEmail).toHaveBeenCalledOnce()
+  })
+
+  it('validates the opaque login approval response exactly', async () => {
+    const { event, vault } = harness()
+    const pending = electronMock.handlers.get(IPC_CHANNELS.accountPendingLoginApprovals)!
+    const respond = electronMock.handlers.get(IPC_CHANNELS.accountRespondLoginApproval)!
+    const response = {
+      token: '22222222-2222-4222-8222-222222222222',
+      fingerprint: 'alpha-bravo-charlie-delta-echo-foxtrot',
+      approved: true
+    }
+
+    await expect(pending(event, undefined)).resolves.toHaveLength(1)
+    await expect(respond(event, response)).resolves.toBeUndefined()
+    expect(vault.respondLoginApproval).toHaveBeenCalledWith(response)
+
+    for (const invalid of [
+      undefined,
+      {},
+      { ...response, token: 'not-a-token' },
+      { ...response, fingerprint: '' },
+      { ...response, approved: 1 },
+      { ...response, extra: true }
+    ]) {
+      await expect(respond(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    for (const invalid of [null, {}, []]) {
+      await expect(pending(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(vault.respondLoginApproval).toHaveBeenCalledOnce()
+    expect(vault.getPendingLoginApprovals).toHaveBeenCalledOnce()
   })
 
   it('deauthorizes sessions only after exact confirmation and scrubs retained input', async () => {

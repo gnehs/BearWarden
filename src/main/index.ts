@@ -5,6 +5,7 @@ import {
   clipboard,
   dialog,
   ipcMain,
+  Notification,
   powerMonitor,
   session,
   shell
@@ -20,7 +21,10 @@ import {
 } from '../shared/vault-contract'
 import { BitwardenDirectClient } from './bitwarden-direct'
 import { AutoSyncCoordinator } from './auto-sync-coordinator'
-import { BitwardenNotificationCoordinator } from './bitwarden-notifications'
+import {
+  BitwardenNotificationCoordinator,
+  type BitwardenAuthRequestNotification
+} from './bitwarden-notifications'
 import { AppSettingsService } from './app-settings'
 import { AppUpdaterController } from './app-updater'
 import { EncryptedVaultStore } from './encrypted-vault-store'
@@ -306,6 +310,26 @@ async function handleRemoteSyncLogout(): Promise<void> {
     const status = await currentVault.syncStatus().catch(() => null)
     if (status) handleSyncChanged(status)
   }
+}
+
+async function handleAuthRequestNotification(
+  notification: BitwardenAuthRequestNotification
+): Promise<void> {
+  const currentVault = vault
+  if (!currentVault) return
+  const prompt = await currentVault.prepareLoginApproval(notification.id).catch(() => null)
+  if (!prompt) return
+  const window = mainWindow
+  if (!window || window.isDestroyed()) return
+  window.webContents.send(IPC_EVENTS.loginApprovalRequested, prompt)
+  if (window.isVisible() && window.isFocused()) return
+  if (!Notification.isSupported()) return
+  const systemNotification = new Notification({
+    title: '收到 Bitwarden 登入要求',
+    body: '另一部裝置要求登入。請開啟 BearWarden 並核對驗證詞組。'
+  })
+  systemNotification.once('click', focusMainWindow)
+  systemNotification.show()
 }
 
 async function unlockSyncWithLocalPassword(masterPassword: string): Promise<void> {
@@ -742,7 +766,8 @@ if (hasSingleInstanceLock)
     })
     serverNotifications = new BitwardenNotificationCoordinator({
       source: vault,
-      onSyncRequested: () => autoSync?.request(),
+      onSyncRequested: () => autoSync?.requestImmediate(),
+      onAuthRequest: handleAuthRequestNotification,
       onRemoteLogout: handleRemoteSyncLogout
     })
     twoFactorDirectory = new TwoFactorDirectoryCache(

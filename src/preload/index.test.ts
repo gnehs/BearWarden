@@ -23,7 +23,7 @@ vi.mock('electron', () => ({
   }
 }))
 
-import { IPC_CHANNELS, type BearWardenAPI } from '../shared/vault-contract'
+import { IPC_CHANNELS, IPC_EVENTS, type BearWardenAPI } from '../shared/vault-contract'
 
 beforeAll(async () => {
   Object.defineProperty(process, 'contextIsolated', { configurable: true, value: true })
@@ -82,6 +82,37 @@ describe('preload account API', () => {
     expect(electronMock.invoke).toHaveBeenCalledWith(
       IPC_CHANNELS.accountDeauthorizeSessions,
       request
+    )
+  })
+
+  it('exposes short-lived login approval operations and a removable event listener', async () => {
+    electronMock.invoke.mockClear()
+    electronMock.on.mockClear()
+    electronMock.removeListener.mockClear()
+    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
+    const response = {
+      token: '22222222-2222-4222-8222-222222222222',
+      fingerprint: 'alpha-bravo-charlie-delta-echo-foxtrot',
+      approved: false
+    }
+    const listener = vi.fn()
+
+    await api.accountSecurity.pendingLoginApprovals()
+    await api.accountSecurity.respondLoginApproval(response)
+    const unsubscribe = api.accountSecurity.onLoginApprovalRequested(listener)
+
+    expect(electronMock.invoke.mock.calls).toEqual([
+      [IPC_CHANNELS.accountPendingLoginApprovals],
+      [IPC_CHANNELS.accountRespondLoginApproval, response]
+    ])
+    expect(electronMock.on).toHaveBeenCalledWith(
+      IPC_EVENTS.loginApprovalRequested,
+      expect.any(Function)
+    )
+    unsubscribe()
+    expect(electronMock.removeListener).toHaveBeenCalledWith(
+      IPC_EVENTS.loginApprovalRequested,
+      expect.any(Function)
     )
   })
 

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { generateKeyPairSync } from 'node:crypto'
 import {
   BitwardenHttpClient,
   BitwardenHttpError,
@@ -42,6 +43,31 @@ function vaultwardenChallengeFixture(): Record<string, unknown> {
 const REGISTRATION_CREDENTIAL_ID = Buffer.alloc(32, 0x33).toString('base64url')
 const REGISTRATION_CLIENT_DATA = Buffer.from('{"type":"webauthn.create"}').toString('base64url')
 const REGISTRATION_ATTESTATION = Buffer.alloc(128, 0x34).toString('base64url')
+const AUTH_REQUEST_ID = '90000000-0000-4000-8000-000000000001'
+
+function authRequestPublicKey(modulusLength = 2_048): string {
+  const { publicKey } = generateKeyPairSync('rsa', { modulusLength })
+  return publicKey.export({ format: 'der', type: 'spki' }).toString('base64')
+}
+
+function authRequest(
+  publicKey: string,
+  overrides: Record<string, unknown> = {}
+): Record<string, unknown> {
+  return {
+    id: AUTH_REQUEST_ID,
+    publicKey,
+    requestDeviceType: 'Firefox',
+    requestDeviceTypeValue: 3,
+    requestDeviceIdentifier: 'must-not-cross-the-safe-model',
+    requestIpAddress: '192.0.2.20',
+    creationDate: '2026-07-20T03:50:00.000Z',
+    requestApproved: false,
+    responseDate: null,
+    object: 'auth-request',
+    ...overrides
+  }
+}
 
 function registrationOptions(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -360,6 +386,92 @@ describe('BitwardenHttpClient', () => {
       'https://api.bitwarden.com/devices',
       expect.objectContaining({ method: 'GET' })
     )
+  })
+
+  it('strictly fetches one and lists pending actionable auth requests', async () => {
+    const publicKey = authRequestPublicKey()
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(json(authRequest(publicKey)))
+      .mockResolvedValueOnce(
+        json({ data: [authRequest(publicKey)], object: 'list', continuationToken: null })
+      )
+    const client = new BitwardenHttpClient({
+      server: 'us',
+      fetch,
+      now: () => Date.parse('2026-07-20T04:00:00.000Z')
+    })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    const expected = {
+      id: AUTH_REQUEST_ID,
+      publicKey,
+      requestDeviceType: 'Firefox',
+      creationDate: '2026-07-20T03:50:00.000Z'
+    }
+    await expect(client.getAuthRequest(AUTH_REQUEST_ID)).resolves.toEqual(expected)
+    await expect(client.getPendingAuthRequests()).resolves.toEqual([expected])
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+      `https://api.bitwarden.com/auth-requests/${AUTH_REQUEST_ID}`,
+      'https://api.bitwarden.com/auth-requests/pending'
+    ])
+  })
+
+  it.each([
+    ['non-canonical Base64', (key: string) => authRequest(`${key}=`, {})],
+    ['unsupported RSA size', () => authRequest(authRequestPublicKey(1_024))],
+    [
+      'expired request',
+      (key: string) => authRequest(key, { creationDate: '2026-07-20T03:45:00.000Z' })
+    ],
+    [
+      'answered request',
+      (key: string) =>
+        authRequest(key, {
+          requestApproved: true,
+          responseDate: '2026-07-20T03:55:00.000Z'
+        })
+    ]
+  ])('rejects a %s', async (_label, fixture) => {
+    const publicKey = authRequestPublicKey()
+    const client = new BitwardenHttpClient({
+      server: 'us',
+      fetch: vi.fn<FetchLike>().mockResolvedValue(json(fixture(publicKey))),
+      now: () => Date.parse('2026-07-20T04:00:00.000Z')
+    })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+    await expect(client.getAuthRequest(AUTH_REQUEST_ID)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+  })
+
+  it('puts the exact auth-request response body without retrying', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        json({
+          id: AUTH_REQUEST_ID,
+          requestApproved: null,
+          responseDate: '2026-07-20T04:00:01.000Z'
+        })
+      )
+      .mockResolvedValueOnce(json({ message: 'ambiguous' }, 503))
+    const client = new BitwardenHttpClient({ server: 'us', fetch, maxRetries: 3 })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+    const response = {
+      key: `4.${Buffer.alloc(256, 0x33).toString('base64')}`,
+      masterPasswordHash: null,
+      deviceIdentifier: 'installation-id',
+      requestApproved: false
+    } as const
+
+    await expect(client.respondAuthRequest(AUTH_REQUEST_ID, response)).resolves.toBeUndefined()
+    await expect(client.respondAuthRequest(AUTH_REQUEST_ID, response)).rejects.toMatchObject({
+      code: 'NETWORK',
+      status: 503
+    })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(String(fetch.mock.calls[0]![1]?.body))).toEqual(response)
   })
 
   it('rejects malformed, duplicate, paginated, and excessive account-device responses', async () => {

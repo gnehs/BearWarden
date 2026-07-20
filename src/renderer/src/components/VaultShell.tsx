@@ -82,6 +82,7 @@ import type {
   LoginSummary,
   LoginView,
   LoginAuthorization,
+  LoginApprovalPrompt,
   PasswordHistoryEntryRequest,
   SyncStatus,
   TotpCodeView,
@@ -135,6 +136,7 @@ import {
   quickAccessDropIds
 } from './VaultShell-dnd'
 import SyncDialog from './SyncDialog'
+import LoginApprovalDialog from './LoginApprovalDialog'
 import SettingsPage from './SettingsPage'
 import SendsPage from './SendsPage'
 import OrganizationsPage from './OrganizationsPage'
@@ -1075,6 +1077,7 @@ function VaultShell({
   const [authorizationTokenState, setAuthorizationTokenState] = useState<Record<string, string>>({})
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
+  const [loginApprovalPrompts, setLoginApprovalPrompts] = useState<LoginApprovalPrompt[]>([])
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(initialSyncStatus)
   const [syncStatusLoaded, setSyncStatusLoaded] = useState(false)
   const showSyncSetupPrompt = shouldShowSyncSetupPrompt(promptSyncSetup, syncStatusLoaded)
@@ -1821,6 +1824,14 @@ function VaultShell({
           .catch(() => undefined)
       }
     }
+  }, [])
+
+  useEffect(() => {
+    return window.bearwarden.accountSecurity.onLoginApprovalRequested((prompt) => {
+      setLoginApprovalPrompts((current) =>
+        current.some((entry) => entry.token === prompt.token) ? current : [...current, prompt]
+      )
+    })
   }, [])
 
   useEffect(() => {
@@ -5785,6 +5796,13 @@ function VaultShell({
             busy={repromptBusy}
             onCancel={cancelReprompt}
             onAuthorize={submitReprompt}
+          />
+        )}
+        {loginApprovalPrompts[0] && (
+          <LoginApprovalDialog
+            key={loginApprovalPrompts[0].token}
+            prompt={loginApprovalPrompts[0]}
+            onClose={() => setLoginApprovalPrompts((current) => current.slice(1))}
           />
         )}
         {(syncDialogOpen || showSyncSetupPrompt) && (

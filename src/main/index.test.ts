@@ -24,6 +24,10 @@ const harness = vi.hoisted(() => {
   let vaultTimeoutOptions: Record<string, unknown> | null = null
   let vaultState: 'uninitialized' | 'locked' | 'unlocked' = 'unlocked'
   let systemIdleTime = 0
+  let windowVisible = true
+  let windowFocused = true
+  let loginApprovalPrompt: Record<string, unknown> | null = null
+  const shownNotifications: Record<string, unknown>[] = []
   const autoSyncRequest = vi.fn()
   const autoSyncRequestImmediate = vi.fn()
   const autoSyncUpdateStatus = vi.fn()
@@ -112,10 +116,10 @@ const harness = vi.hoisted(() => {
       return false
     }
     isVisible(): boolean {
-      return true
+      return windowVisible
     }
     isFocused(): boolean {
-      return true
+      return windowFocused
     }
     restore(): void {}
     show(): void {}
@@ -124,11 +128,30 @@ const harness = vi.hoisted(() => {
     loadFile = vi.fn(async () => undefined)
   }
 
+  class FakeNotification {
+    private readonly options: Record<string, unknown>
+
+    constructor(options: Record<string, unknown>) {
+      this.options = options
+    }
+
+    static isSupported(): boolean {
+      return true
+    }
+    once(): this {
+      return this
+    }
+    show(): void {
+      shownNotifications.push(this.options)
+    }
+  }
+
   return {
     appListeners,
     powerMonitorListeners,
     windows,
     FakeWindow,
+    FakeNotification,
     controller,
     registrationController,
     get vaultOptions(): Record<string, unknown> | null {
@@ -234,6 +257,17 @@ const harness = vi.hoisted(() => {
     setSystemIdleTime: (seconds: number) => {
       systemIdleTime = seconds
     },
+    setWindowState: (visible: boolean, focused: boolean) => {
+      windowVisible = visible
+      windowFocused = focused
+    },
+    get loginApprovalPrompt(): Record<string, unknown> | null {
+      return loginApprovalPrompt
+    },
+    setLoginApprovalPrompt: (prompt: Record<string, unknown> | null) => {
+      loginApprovalPrompt = prompt
+    },
+    shownNotifications,
     autoSyncRequest,
     autoSyncRequestImmediate,
     autoSyncUpdateStatus,
@@ -269,6 +303,7 @@ vi.mock('electron', () => ({
     setAboutPanelOptions: vi.fn()
   },
   BrowserWindow: harness.FakeWindow,
+  Notification: harness.FakeNotification,
   clipboard: { readText: () => '' },
   dialog: {},
   ipcMain: { on: vi.fn() },
@@ -432,6 +467,9 @@ vi.mock('./vault-service', () => ({
         state: 'ready',
         serverUrl: 'https://vault.example.invalid'
       })
+    }
+    prepareLoginApproval(): Promise<Record<string, unknown> | null> {
+      return Promise.resolve(harness.loginApprovalPrompt)
     }
     dispose(): void {}
   }
@@ -652,6 +690,44 @@ describe('main WebAuthn lifecycle wiring', () => {
     expect(harness.vaultTimeoutResume).toHaveBeenCalledOnce()
   })
 
+  it('delivers login approvals and keeps the native notification non-sensitive', async () => {
+    const prompt = {
+      token: '50000000-0000-4000-8000-000000000005',
+      fingerprint: 'alpha-bravo-charlie-delta-echo-foxtrot',
+      requestDeviceType: 'Firefox',
+      createdAt: '2026-07-20T04:00:00.000Z',
+      expiresAt: '2026-07-20T04:15:00.000Z'
+    }
+    const webContents = harness.windows[0]!.webContents
+    webContents.send.mockClear()
+    harness.shownNotifications.length = 0
+    harness.setLoginApprovalPrompt(prompt)
+    harness.setWindowState(false, false)
+
+    await (
+      harness.serverNotificationOptions!.onAuthRequest as (notification: {
+        id: string
+        userId: string
+      }) => Promise<void>
+    )({ id: '40000000-0000-4000-8000-000000000004', userId: 'user-id' })
+
+    expect(webContents.send).toHaveBeenCalledWith(
+      'account-security:login-approval-requested',
+      prompt
+    )
+    expect(harness.shownNotifications).toEqual([
+      {
+        title: '收到 Bitwarden 登入要求',
+        body: '另一部裝置要求登入。請開啟 BearWarden 並核對驗證詞組。'
+      }
+    ])
+    expect(JSON.stringify(harness.shownNotifications)).not.toContain(prompt.fingerprint)
+    expect(JSON.stringify(harness.shownNotifications)).not.toContain(prompt.token)
+
+    harness.setLoginApprovalPrompt(null)
+    harness.setWindowState(true, true)
+  })
+
   it('keeps the account connector main-only and bounds application teardown', async () => {
     harness.controller.cancel.mockClear()
     harness.registrationController.cancel.mockClear()
@@ -722,14 +798,23 @@ describe('main WebAuthn lifecycle wiring', () => {
     vi.useRealTimers()
   })
 
-  it('keeps server invalidations on the background cadence and syncs lifecycle boundaries immediately', async () => {
+  it('syncs server invalidations and lifecycle boundaries immediately', async () => {
     harness.autoSyncRequest.mockClear()
     harness.autoSyncRequestImmediate.mockClear()
     harness.autoSyncUpdateStatus.mockClear()
 
     ;(harness.serverNotificationOptions!.onSyncRequested as () => void)()
-    expect(harness.autoSyncRequest).toHaveBeenCalledOnce()
-    expect(harness.autoSyncRequestImmediate).not.toHaveBeenCalled()
+    expect(harness.autoSyncRequest).not.toHaveBeenCalled()
+    expect(harness.autoSyncRequestImmediate).toHaveBeenCalledOnce()
+
+    expect(harness.serverNotificationOptions!.onAuthRequest).toEqual(expect.any(Function))
+    ;(
+      harness.serverNotificationOptions!.onAuthRequest as (notification: {
+        id: string
+        userId: string
+      }) => void
+    )({ id: '40000000-0000-4000-8000-000000000004', userId: 'user-id' })
+    expect(harness.autoSyncRequestImmediate).toHaveBeenCalledOnce()
 
     harness.powerMonitorListeners.get('resume')!()
     harness.appListeners.get('activate')!()
@@ -737,12 +822,12 @@ describe('main WebAuthn lifecycle wiring', () => {
     await (harness.vaultIpcOptions!.afterUnlock as (masterPassword: string) => Promise<void>)(
       'test-master-password'
     )
-    expect(harness.autoSyncRequest).toHaveBeenCalledOnce()
-    expect(harness.autoSyncRequestImmediate).toHaveBeenCalledTimes(4)
+    expect(harness.autoSyncRequest).not.toHaveBeenCalled()
+    expect(harness.autoSyncRequestImmediate).toHaveBeenCalledTimes(5)
     expect(harness.appListeners.has('browser-window-focus')).toBe(false)
 
     ;(harness.vaultIpcOptions!.afterMutation as () => void)()
-    expect(harness.autoSyncRequestImmediate).toHaveBeenCalledTimes(5)
+    expect(harness.autoSyncRequestImmediate).toHaveBeenCalledTimes(6)
 
     const ready: import('../shared/vault-contract').SyncStatus = {
       configured: true,

@@ -1,8 +1,10 @@
 import {
   constants,
+  createHash,
   createCipheriv,
   createHmac,
   generateKeyPairSync,
+  privateDecrypt,
   publicEncrypt,
   webcrypto
 } from 'node:crypto'
@@ -40,6 +42,7 @@ import {
   type FetchLike,
   type JsonObject
 } from './bitwarden-http'
+import { loadEffLongWordlist } from './eff-wordlist'
 
 const EMAIL = 'bear@example.invalid'
 const PASSWORD = 'test master password'
@@ -61,6 +64,9 @@ const ACCOUNT_WEBAUTHN_CHALLENGE = Buffer.alloc(32, 0x31).toString('base64url')
 const ACCOUNT_WEBAUTHN_CREDENTIAL_ID = Buffer.alloc(32, 0x32).toString('base64url')
 const ACCOUNT_WEBAUTHN_REGISTRATION_USER_ID = Buffer.alloc(16, 0x33).toString('base64url')
 const ACCOUNT_WEBAUTHN_ATTESTATION_OBJECT = Buffer.alloc(128, 0x34).toString('base64url')
+const AUTH_REQUEST_ID = '90000000-0000-4000-8000-000000000001'
+const LOGIN_REQUEST_FINGERPRINT_VECTOR_PUBLIC_KEY =
+  'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7r0ep8ZLpe6cXqYz7IJutnhTdd8YqxAM1y7sh/dth1qR5LvBYg3H9GusCI4EXl+L9dfUoYGHFC+92bS3jTWsqLHEbIWcT41POqnZkgy1FPC2AxxB72diFqnyRP4yq33uP7YmvwBNZDi8A/QbUn9eTQKfrhJd5GcO1cWY9sQOj6G0D0ZnMBcgHMYwNy2e8dXKzC+S9AUcYprzR7W5uEdiqGE0gn6wILcGSZaIgisrwoG8Y6cy3W6Su8lW5dZOwMMl+8utkXx7vP4wZ+ChDPPJOFloauA1Rjju5FgFnH/eiiWN7it0C0XRSdDmVtQYKnjqst94uQGyG50CQjTaJTtE8QIDAQAB'
 
 function accountWebAuthnAssertion(): AccountWebAuthnAssertion {
   return {
@@ -613,6 +619,93 @@ function jsonResponse(value: unknown, status = 200): Response {
   })
 }
 
+function expectedLoginRequestFingerprint(publicKey: Buffer): string {
+  const prk = createHash('sha256').update(publicKey).digest()
+  const expanded = createHmac('sha256', prk)
+    .update(Buffer.from(EMAIL.toLowerCase(), 'utf8'))
+    .update(Buffer.from([1]))
+    .digest()
+  const words = loadEffLongWordlist()
+  let value = BigInt(`0x${expanded.toString('hex')}`)
+  const phrase: string[] = []
+  for (let index = 0; index < 6; index += 1) {
+    phrase.push(words[Number(value % BigInt(words.length))]!)
+    value /= BigInt(words.length)
+  }
+  return phrase.join('-')
+}
+
+async function loginRequestHarness(
+  v2 = false,
+  publicKeyOverride?: Buffer
+): Promise<{
+  client: BitwardenDirectClient
+  privateKey: ReturnType<typeof generateKeyPairSync>['privateKey']
+  publicKey: Buffer
+  responses: JsonObject[]
+}> {
+  const sync = v2 ? await encryptedV2Sync() : await encryptedSync()
+  const pair = generateKeyPairSync('rsa', { modulusLength: 2_048 })
+  const publicKey = publicKeyOverride ?? pair.publicKey.export({ format: 'der', type: 'spki' })
+  const request = {
+    id: AUTH_REQUEST_ID,
+    publicKey: publicKey.toString('base64'),
+    requestDeviceType: 'Firefox',
+    creationDate: '2026-07-20T03:50:00.000Z',
+    requestApproved: false,
+    responseDate: null,
+    object: 'auth-request'
+  }
+  const responses: JsonObject[] = []
+  const http = new BitwardenHttpClient({
+    server: 'https://vault.example.invalid',
+    now: () => Date.parse('2026-07-20T04:00:00.000Z'),
+    fetch: async (url, init) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/identity/connect/token')) {
+        return jsonResponse({
+          access_token: 'access-token',
+          refresh_token: 'refresh-token',
+          expires_in: 3_600
+        })
+      }
+      if (url.includes('/api/sync?')) return jsonResponse(sync)
+      if (url.endsWith('/api/auth-requests/pending')) {
+        return jsonResponse({ data: [request], object: 'list', continuationToken: null })
+      }
+      if (url.endsWith(`/api/auth-requests/${AUTH_REQUEST_ID}`) && init?.method === 'GET') {
+        return jsonResponse(request)
+      }
+      if (url.endsWith(`/api/auth-requests/${AUTH_REQUEST_ID}`) && init?.method === 'PUT') {
+        const response = JSON.parse(String(init.body)) as JsonObject
+        responses.push(response)
+        return jsonResponse({
+          ...request,
+          requestApproved: response.requestApproved,
+          responseDate: '2026-07-20T04:00:01.000Z'
+        })
+      }
+      return jsonResponse({ message: 'not found' }, 404)
+    }
+  })
+  const client = new BitwardenDirectClient({
+    serverUrl: 'https://vault.example.invalid',
+    email: EMAIL,
+    state: {
+      session: null,
+      deviceIdentifier: 'approving-installation-id',
+      profileId: null,
+      securityStamp: null
+    },
+    httpClient: http
+  })
+  await client.login({ email: EMAIL, password: PASSWORD })
+  await client.sync()
+  return { client, privateKey: pair.privateKey, publicKey, responses }
+}
+
 /** Produces Bitwarden's type-2 attachment envelope (type | IV | MAC | ciphertext). */
 function encryptAttachmentFixture(plaintext: Buffer, key: Buffer): Buffer {
   const iv = Buffer.alloc(16, 21)
@@ -903,6 +996,92 @@ async function expectInvalidSync(
 }
 
 describe('BitwardenDirectClient', () => {
+  it('matches a fixed Login with device fingerprint vector', async () => {
+    const publicKey = Buffer.from(LOGIN_REQUEST_FINGERPRINT_VECTOR_PUBLIC_KEY, 'base64')
+    const { client } = await loginRequestHarness(false, publicKey)
+    await expect(client.getLoginRequest(AUTH_REQUEST_ID)).resolves.toMatchObject({
+      fingerprint: 'skeptic-macaroni-shamrock-snowdrop-audio-collage'
+    })
+  })
+
+  it('derives the official six-word login-request fingerprint and exposes only safe metadata', async () => {
+    const { client, publicKey } = await loginRequestHarness()
+    const expected = {
+      id: AUTH_REQUEST_ID,
+      fingerprint: expectedLoginRequestFingerprint(publicKey),
+      requestDeviceType: 'Firefox',
+      createdAt: '2026-07-20T03:50:00.000Z'
+    }
+    await expect(client.getLoginRequest(AUTH_REQUEST_ID)).resolves.toEqual(expected)
+    await expect(client.listPendingLoginRequests()).resolves.toEqual([expected])
+    expect(Object.keys(expected).sort()).toEqual([
+      'createdAt',
+      'fingerprint',
+      'id',
+      'requestDeviceType'
+    ])
+  })
+
+  it.each([
+    ['legacy', false],
+    ['V2', true]
+  ])(
+    'wraps the current %s user key with RSA-OAEP-SHA1 for approval and denial',
+    async (_label, v2) => {
+      for (const approved of [true, false]) {
+        const { client, privateKey, publicKey, responses } = await loginRequestHarness(v2)
+        const fingerprint = expectedLoginRequestFingerprint(publicKey)
+        await client.respondLoginRequest(AUTH_REQUEST_ID, fingerprint, approved)
+        expect(responses).toHaveLength(1)
+        expect(responses[0]).toMatchObject({
+          masterPasswordHash: null,
+          deviceIdentifier: 'approving-installation-id',
+          requestApproved: approved
+        })
+        const envelope = String(responses[0]!.key)
+        expect(envelope.startsWith('4.')).toBe(true)
+        const decoded = privateDecrypt(
+          {
+            key: privateKey,
+            padding: constants.RSA_PKCS1_OAEP_PADDING,
+            oaepHash: 'sha1'
+          },
+          Buffer.from(envelope.slice(2), 'base64')
+        )
+        if (v2) {
+          const encoder = new Encoder({
+            mapsAsObjects: false,
+            tagUint8Array: false,
+            useRecords: false
+          })
+          const encoded = Buffer.from(
+            encoder.encode(
+              new Map<unknown, unknown>([
+                [1, 4],
+                [2, Buffer.from([...Array(16).keys()])],
+                [3, -70_000],
+                [4, [3, 4, 5, 6]],
+                [-1, Buffer.from([...Array(32).keys()].map((value) => value + 1))]
+              ])
+            )
+          )
+          const padding = Math.max(1, 65 - encoded.length)
+          expect(decoded).toEqual(Buffer.concat([encoded, Buffer.alloc(padding, padding)]))
+        } else {
+          expect(decoded).toEqual(Buffer.alloc(64, 7))
+        }
+      }
+    }
+  )
+
+  it('re-fetches before responding and refuses a mismatched fingerprint without sending a PUT', async () => {
+    const { client, responses } = await loginRequestHarness()
+    await expect(
+      client.respondLoginRequest(AUTH_REQUEST_ID, 'wrong-wrong-wrong-wrong-wrong-wrong', true)
+    ).rejects.toMatchObject({ code: 'CONFLICT' })
+    expect(responses).toEqual([])
+  })
+
   it.each([
     { label: 'Vaultwarden camelCase', pascalCase: false, providersKey: 'TwoFactorProviders2' },
     { label: 'official PascalCase', pascalCase: true, providersKey: 'twoFactorProviders2' }

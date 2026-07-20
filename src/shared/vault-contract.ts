@@ -117,6 +117,8 @@ export const IPC_CHANNELS = {
   accountSecurityUpdateName: 'account-security:update-name',
   accountSecurityUpdateAvatar: 'account-security:update-avatar',
   accountDevices: 'account-security:devices',
+  accountPendingLoginApprovals: 'account-security:pending-login-approvals',
+  accountRespondLoginApproval: 'account-security:respond-login-approval',
   accountDeauthorizeSessions: 'account-security:deauthorize-sessions',
   accountResendVerification: 'account-security:resend-verification',
   accountCopyApiClientId: 'account-security:copy-api-client-id',
@@ -158,6 +160,7 @@ export const IPC_EVENTS = {
   vaultUnlocked: 'vault:unlocked',
   vaultChanged: 'vault:changed',
   syncChanged: 'sync:changed',
+  loginApprovalRequested: 'account-security:login-approval-requested',
   attachmentProgress: 'attachment:progress',
   nativeRestoreProgress: 'vault:native-restore-progress',
   passkeyApprovalRequested: 'passkey:approval-requested',
@@ -1101,6 +1104,21 @@ export interface AccountDeviceView {
 export type AccountDevicesResult =
   { status: 'available'; devices: AccountDeviceView[] } | { status: 'unavailable' }
 
+/** Renderer-safe, short-lived view of a Bitwarden Login with device request. */
+export interface LoginApprovalPrompt {
+  token: string
+  fingerprint: string
+  requestDeviceType: string
+  createdAt: string
+  expiresAt: string
+}
+
+export interface LoginApprovalResponse {
+  token: string
+  fingerprint: string
+  approved: boolean
+}
+
 export interface AccountApiKeyCopyRequest {
   masterPassword: string
   rotate: boolean
@@ -1856,6 +1874,9 @@ export interface BearWardenAPI {
     updateName: (request: AccountProfileNameUpdateRequest) => Promise<AccountSecurityProfile>
     updateAvatar: (request: AccountProfileAvatarUpdateRequest) => Promise<AccountSecurityProfile>
     devices: () => Promise<AccountDevicesResult>
+    pendingLoginApprovals: () => Promise<LoginApprovalPrompt[]>
+    respondLoginApproval: (response: LoginApprovalResponse) => Promise<void>
+    onLoginApprovalRequested: (listener: (prompt: LoginApprovalPrompt) => void) => () => void
     deauthorizeSessions: (request: AccountSessionDeauthorizationRequest) => Promise<void>
     resendVerification: () => Promise<void>
     copyApiClientId: () => Promise<void>

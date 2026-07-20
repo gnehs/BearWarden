@@ -453,6 +453,21 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
         pendingAuthRequest: false
       }
     ],
+    getLoginRequest: async (id: string) => ({
+      id,
+      fingerprint: 'alpha-bravo-charlie-delta-echo-foxtrot',
+      requestDeviceType: 'Chrome',
+      createdAt: '2026-07-14T00:01:00.000Z'
+    }),
+    listPendingLoginRequests: async () => [
+      {
+        id: '92000000-0000-4000-8000-000000000002',
+        fingerprint: 'alpha-bravo-charlie-delta-echo-foxtrot',
+        requestDeviceType: 'Chrome',
+        createdAt: '2026-07-14T00:01:00.000Z'
+      }
+    ],
+    respondLoginRequest: async () => undefined,
     deauthorizeAllSessions: async () => {
       unlocked = false
       state = { ...state, session: null, securityStamp: null }
@@ -6889,6 +6904,50 @@ describe('VaultService encrypted local data', () => {
 
     fake!.getAccountDevices = undefined
     await expect(service.getAccountDevices()).resolves.toEqual({ status: 'unavailable' })
+  })
+
+  it('issues one-shot opaque capabilities for login approvals', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const respond = vi.spyOn(fake!, 'respondLoginRequest')
+
+    const [prompt] = await service.getPendingLoginApprovals()
+    expect(prompt).toMatchObject({
+      fingerprint: 'alpha-bravo-charlie-delta-echo-foxtrot',
+      requestDeviceType: 'Chrome'
+    })
+    expect(prompt?.token).toMatch(/^[0-9a-f-]{36}$/u)
+    expect(JSON.stringify(prompt)).not.toContain('92000000-0000-4000-8000-000000000002')
+
+    await service.respondLoginApproval({
+      token: prompt!.token,
+      fingerprint: prompt!.fingerprint,
+      approved: true
+    })
+    expect(respond).toHaveBeenCalledWith(
+      '92000000-0000-4000-8000-000000000002',
+      prompt!.fingerprint,
+      true,
+      expect.any(AbortSignal)
+    )
+    await expect(
+      service.respondLoginApproval({
+        token: prompt!.token,
+        fingerprint: prompt!.fingerprint,
+        approved: true
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
   })
 
   it('aborts an in-flight account devices request when the vault locks', async () => {

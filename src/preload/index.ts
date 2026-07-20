@@ -241,6 +241,18 @@ const api: BearWardenAPI = {
     updateAvatar: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.accountSecurityUpdateAvatar, request),
     devices: () => ipcRenderer.invoke(IPC_CHANNELS.accountDevices),
+    pendingLoginApprovals: () => ipcRenderer.invoke(IPC_CHANNELS.accountPendingLoginApprovals),
+    respondLoginApproval: (response) =>
+      ipcRenderer.invoke(IPC_CHANNELS.accountRespondLoginApproval, response),
+    onLoginApprovalRequested: (listener) => {
+      const wrappedListener = (
+        _event: IpcRendererEvent,
+        prompt: Parameters<typeof listener>[0]
+      ): void => listener(prompt)
+      ipcRenderer.on(IPC_EVENTS.loginApprovalRequested, wrappedListener)
+
+      return () => ipcRenderer.removeListener(IPC_EVENTS.loginApprovalRequested, wrappedListener)
+    },
     deauthorizeSessions: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.accountDeauthorizeSessions, request),
     resendVerification: () => ipcRenderer.invoke(IPC_CHANNELS.accountResendVerification),
