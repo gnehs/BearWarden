@@ -170,7 +170,6 @@ function EmergencyAccessPage(): React.JSX.Element {
 
   return (
     <AuxiliaryPageLayout
-      eyebrow="Bitwarden Emergency Access"
       title="Emergency Access"
       titleId="emergency-access-title"
       subtitle="目前提供唯讀狀態；邀請、確認、檢視與接管尚未開放。"

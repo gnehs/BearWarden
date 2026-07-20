@@ -21,18 +21,29 @@ describe('FeatureUnderConstructionNotice', () => {
     {
       name: '組織',
       Page: OrganizationsPage,
-      details: '目前可唯讀瀏覽已同步的組織與共享項目'
+      details: '目前可唯讀瀏覽已同步的組織與共享項目',
+      removedHeadline: 'Bitwarden Organizations'
     },
     {
       name: 'Emergency Access',
       Page: EmergencyAccessPage,
-      details: '目前僅可檢視 Emergency Access'
+      details: '目前僅可檢視 Emergency Access',
+      removedHeadline: 'Bitwarden Emergency Access'
     },
-    { name: 'Sends', Page: SendsPage, details: '文字與檔案 Send 的主要流程已可使用' }
-  ])('marks the $name page as under construction', ({ Page, details }) => {
-    const markup = renderToStaticMarkup(<Page />)
+    {
+      name: 'Sends',
+      Page: SendsPage,
+      details: '文字與檔案 Send 的主要流程已可使用',
+      removedHeadline: 'Bitwarden Send'
+    }
+  ])(
+    'marks the $name page as under construction without a headline',
+    ({ Page, details, removedHeadline }) => {
+      const markup = renderToStaticMarkup(<Page />)
 
-    expect(markup).toContain('施工中')
-    expect(markup).toContain(details)
-  })
+      expect(markup).toContain('施工中')
+      expect(markup).toContain(details)
+      expect(markup).not.toContain(removedHeadline)
+    }
+  )
 })

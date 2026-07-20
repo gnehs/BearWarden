@@ -2,7 +2,7 @@ import type { ReactNode, RefObject } from 'react'
 import { cn } from '@renderer/lib/utils'
 
 interface AuxiliaryPageLayoutProps {
-  eyebrow: string
+  eyebrow?: string
   title: string
   titleId: string
   subtitle: string
@@ -60,9 +60,11 @@ function AuxiliaryPageLayout({
                 </span>
               )}
               <div className="min-w-0">
-                <p className="text-primary mb-px text-[9px] font-extrabold tracking-[0.11em] uppercase">
-                  {eyebrow}
-                </p>
+                {eyebrow && (
+                  <p className="text-primary mb-px text-[9px] font-extrabold tracking-[0.11em] uppercase">
+                    {eyebrow}
+                  </p>
+                )}
                 <h1 id={titleId} className="m-0 text-[23px] leading-[1.2] tracking-[-0.035em]">
                   {title}
                 </h1>

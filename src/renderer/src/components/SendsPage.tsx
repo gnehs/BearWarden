@@ -292,7 +292,6 @@ function SendsPage(): React.JSX.Element {
 
   return (
     <AuxiliaryPageLayout
-      eyebrow="Bitwarden Send"
       title="Sends"
       titleId="sends-title"
       subtitle="文字與檔案 Send 都會先在主程序解密 metadata。"

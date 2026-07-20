@@ -145,7 +145,6 @@ function OrganizationsPage(): React.JSX.Element {
 
   return (
     <AuxiliaryPageLayout
-      eyebrow="Bitwarden Organizations"
       title="組織項目"
       titleId="organizations-title"
       subtitle="共享項目只讀鏡像；權限與密碼可見性由伺服器決定。"
