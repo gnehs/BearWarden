@@ -64,7 +64,6 @@ const Toaster = ({
       }}
       style={
         {
-          '--width': '360px',
           '--normal-bg': 'var(--popover)',
           '--normal-text': 'var(--popover-foreground)',
           '--normal-border': 'var(--border)',
@@ -77,18 +76,17 @@ const Toaster = ({
         ...toastOptions,
         classNames: {
           toast:
-            'cn-toast !w-[min(360px,calc(100vw-24px))] !min-h-0 !items-start !gap-3 !px-3.5 !py-3 !border-[color-mix(in_oklch,var(--border)_78%,transparent)] !rounded-[calc(var(--radius)+2px)] !text-popover-foreground !bg-[color-mix(in_oklch,var(--popover)_94%,transparent)] !shadow-[inset_0_1px_0_color-mix(in_oklch,var(--shadow-color)_5%,transparent),0_10px_30px_color-mix(in_oklch,var(--shadow-color)_16%,transparent)] backdrop-blur-[18px] backdrop-saturate-[1.2]',
-          title: '!text-popover-foreground !text-[13px] !font-semibold !leading-[1.45]',
+            'cn-toast !items-center !gap-2.5 !px-3.5 !py-3 has-[.cn-toast-close-button]:!pr-10',
+          title: '!text-popover-foreground !text-[13px] !font-medium !leading-5',
           description: '!text-muted-foreground !text-xs !leading-[1.45]',
-          content: '!min-w-0 !gap-0.5 !pr-5',
-          icon: 'cn-toast-icon !grid !size-7 !m-0 ![flex:0_0_28px] !place-content-center !place-items-center !rounded-[calc(var(--radius)-2px)] !text-primary !bg-[color-mix(in_oklch,var(--primary)_12%,transparent)] [&>svg]:block [&>svg]:size-4 [&>svg]:!m-0',
+          content: '!min-w-0 !gap-0.5',
+          icon: 'cn-toast-icon !m-0 !shrink-0 !text-primary [&>svg]:block [&>svg]:size-4 [&>svg]:!m-0',
           closeButton:
-            'cn-toast-close-button !top-2.5 !right-2.5 !left-auto !grid !size-6 !p-0 !place-items-center !translate-y-0 !border-0 !text-muted-foreground !bg-transparent !shadow-none !leading-none hover:!text-foreground hover:!bg-muted focus-visible:!ring-2 focus-visible:!ring-ring/50 [&>svg]:block [&>svg]:size-4 [&>svg]:!m-0',
-          info: '[&_.cn-toast-icon]:!text-foreground [&_.cn-toast-icon]:!bg-muted',
-          warning: '[&_.cn-toast-icon]:!text-foreground [&_.cn-toast-icon]:!bg-muted',
-          error:
-            '[&_.cn-toast-icon]:!text-destructive [&_.cn-toast-icon]:!bg-[color-mix(in_oklch,var(--destructive)_12%,transparent)]',
-          loading: '[&_.cn-toast-icon]:!text-foreground [&_.cn-toast-icon]:!bg-muted',
+            'cn-toast-close-button !top-1/2 !right-2.5 !left-auto !grid !size-6 !-translate-y-1/2 !transform-none !place-items-center !border-0 !bg-transparent !p-0 !text-muted-foreground !shadow-none !leading-none hover:!bg-muted hover:!text-foreground focus-visible:!ring-2 focus-visible:!ring-ring/50 [&>svg]:block [&>svg]:size-4 [&>svg]:!m-0',
+          info: '[&_.cn-toast-icon]:!text-foreground',
+          warning: '[&_.cn-toast-icon]:!text-foreground',
+          error: '[&_.cn-toast-icon]:!text-destructive',
+          loading: '[&_.cn-toast-icon]:!text-foreground',
           ...toastOptions?.classNames
         }
       }}
