@@ -120,7 +120,8 @@ export const ItemRow = memo(function ItemRow({
       data-item-row=""
       data-selected={selected ? 'true' : 'false'}
       className={cn(
-        'group/item border-border has-[[data-item-row-main]:focus-visible]:outline-ring/72 relative grid cursor-grab touch-none grid-cols-[minmax(0,1fr)_28px] items-center rounded-none border-0 border-b pr-3 has-[[data-item-row-main]:focus-visible]:rounded-lg has-[[data-item-row-main]:focus-visible]:outline-[3px] has-[[data-item-row-main]:focus-visible]:outline-offset-2',
+        'group/item border-border has-[[data-item-row-main]:focus-visible]:outline-ring/72 relative grid cursor-grab touch-none items-center rounded-none border-0 border-b has-[[data-item-row-main]:focus-visible]:rounded-lg has-[[data-item-row-main]:focus-visible]:outline-[3px] has-[[data-item-row-main]:focus-visible]:outline-offset-2',
+        shouldShowTotpCode ? 'grid-cols-1' : 'grid-cols-[minmax(0,1fr)_28px] pr-3',
         !selected && 'active:bg-accent/85 hover:bg-accent/50 hover:rounded-lg',
         selected &&
           'active:bg-primary active:text-primary-foreground bg-primary text-primary-foreground hover:bg-primary rounded-[11px] border-b-transparent shadow-[0_4px_13px_color-mix(in_oklch,var(--shadow-color)_18%,transparent)] hover:rounded-[11px] has-[[data-item-row-main]:focus-visible]:rounded-[11px] forced-colors:outline-2 forced-colors:outline-offset-[-2px] forced-colors:outline-[Highlight]',
@@ -189,7 +190,7 @@ export const ItemRow = memo(function ItemRow({
             <ItemIcon />
           )}
         </span>
-        <span className={cn('min-w-0', shouldShowTotpCode ? 'flex items-center' : 'grid gap-1')}>
+        <span className="grid min-w-0 gap-1">
           <strong
             className={cn(
               'text-foreground flex min-w-0 items-center gap-[5px] truncate text-[13px] font-medium',
@@ -198,23 +199,21 @@ export const ItemRow = memo(function ItemRow({
           >
             {item.name}
           </strong>
-          {!shouldShowTotpCode && (
-            <small
-              className={cn(
-                'text-muted-foreground truncate text-[11px]',
-                selected && 'text-primary-foreground/82'
-              )}
-            >
-              {readOnly
-                ? '已刪除的項目'
-                : item.subtitle || item.username || item.uri || '尚未設定摘要'}
-            </small>
-          )}
+          <small
+            className={cn(
+              'text-muted-foreground truncate text-[11px]',
+              selected && 'text-primary-foreground/82'
+            )}
+          >
+            {readOnly
+              ? '已刪除的項目'
+              : item.subtitle || item.username || item.uri || '尚未設定摘要'}
+          </small>
         </span>
         {shouldShowTotpCode && (
           <span
             className={cn(
-              'grid min-w-[84px] justify-items-end gap-1 self-start pt-2 text-right',
+              'grid min-w-[84px] justify-items-end text-right',
               selected ? 'text-primary-foreground' : 'text-foreground'
             )}
             aria-label={
@@ -225,14 +224,6 @@ export const ItemRow = memo(function ItemRow({
                   : '驗證碼產生中'
             }
           >
-            <span
-              className={cn(
-                'text-muted-foreground text-[10px] leading-none tabular-nums',
-                selected && 'text-primary-foreground/75'
-              )}
-            >
-              {totpCode ? `${totpCode.remainingSeconds}s` : ' '}
-            </span>
             <strong className="font-mono text-[20px] leading-none tracking-[0.12em]">
               {totpCode && /^\d+$/.test(totpCode.code) ? (
                 <NumberFlow

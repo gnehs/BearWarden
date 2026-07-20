@@ -166,6 +166,7 @@ import { vaultHealthRevision } from '../lib/vault-health-ui'
 import { formatVaultDate as formatDate } from '../lib/vault-date'
 import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
 import { resolveTotpRefreshTarget } from './totp-refresh-target'
+import TotpCountdownIndicator from './TotpCountdownIndicator'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
 import { ItemHistoryRows } from './ItemHistoryRows'
@@ -318,6 +319,7 @@ const isWindows = navigator.userAgent.includes('Windows')
 const usesWindowControlsOverlay = !isMac
 const commandLabel = isMac ? '⌘' : 'Ctrl'
 const detailCacheLimit = 48
+const totpListCountdownPeriodSeconds = 30
 
 interface VaultShellProps {
   onLocked: () => void
@@ -2140,6 +2142,12 @@ function VaultShell({
     for (const [id, entry] of totpListState) codes.set(id, entry?.code ?? null)
     return codes
   }, [totpListState])
+  const totpListCountdown = useMemo(() => {
+    for (const code of totpListCodes.values()) {
+      if (code) return code
+    }
+    return null
+  }, [totpListCodes])
 
   useEffect(() => {
     if (typeFilter !== 'totp' || totpListItemIds.length === 0) {
@@ -4755,7 +4763,7 @@ function VaultShell({
           >
             <section
               className={cn(
-                'border-border flex min-h-0 min-w-0 flex-col border-r bg-transparent max-[680px]:size-full [[data-has-detail=true]_&]:max-[680px]:hidden',
+                'border-border relative flex min-h-0 min-w-0 flex-col border-r bg-transparent max-[680px]:size-full [[data-has-detail=true]_&]:max-[680px]:hidden',
                 (isMac || isWindows) && 'border-r-(--native-material-border)'
               )}
               data-vault-list-pane=""
@@ -4885,6 +4893,7 @@ function VaultShell({
                       showTotpCodes={typeFilter === 'totp'}
                       totpCodes={totpListCodes}
                       readOnly={scope.kind === 'trash'}
+                      className={cn(typeFilter === 'totp' && 'pb-20')}
                     />
                   ) : (
                     <Empty className="min-h-0 flex-1 gap-0 p-7">
@@ -4927,6 +4936,20 @@ function VaultShell({
                         ) : null}
                       </EmptyContent>
                     </Empty>
+                  )}
+                  {typeFilter === 'totp' && scopedItems.length > 0 && (
+                    <div
+                      className={cn(
+                        'pointer-events-none absolute right-4 bottom-4',
+                        selectedSummaries.length >= 2 && 'bottom-20'
+                      )}
+                    >
+                      <TotpCountdownIndicator
+                        key={totpListCountdown?.code ?? 'loading'}
+                        remainingSeconds={totpListCountdown?.remainingSeconds ?? null}
+                        period={totpListCountdownPeriodSeconds}
+                      />
+                    </div>
                   )}
                   {(selectedSummaries.length >= 2 ||
                     (scope.kind === 'trash' && trashItems.length > 0)) && (
@@ -5526,7 +5549,7 @@ function VaultShell({
                               <CopyFeedbackIcon copied={copiedKey === `totp:${selectedLogin.id}`} />
                             </TooltipIconButton>
                           </div>
-                          {!totpGenerationError && (
+                          {!totpGenerationError && typeFilter !== 'totp' && (
                             <div className="h-[19px]">
                               {totpCode ? (
                                 <Progress
