@@ -4175,14 +4175,14 @@ function VaultShell({
             !emergencyAccessOpen && (
               <InputGroup
                 className={cn(
-                  'text-muted-foreground [@media(prefers-reduced-transparency:reduce)]:bg-card bg-card/50 absolute left-1/2 h-[38px] w-[clamp(300px,44vw,560px)] min-w-0 -translate-x-1/2 gap-[7px] rounded-[11px] border-0 py-0 pr-2 pl-2.5 focus-within:border-(--focus) max-[880px]:static max-[880px]:max-w-none max-[880px]:flex-1 max-[880px]:translate-x-0 max-[680px]:[&_kbd]:hidden',
-                  'shadow-(--control-highlight)',
+                  'text-muted-foreground [@media(prefers-reduced-transparency:reduce)]:bg-card bg-card/50 hover:bg-muted hover:text-foreground absolute left-1/2 h-[38px] w-[clamp(300px,44vw,560px)] min-w-0 -translate-x-1/2 gap-[7px] rounded-[11px] border-0 py-0 pr-2 pl-2.5 focus-within:border-(--focus) max-[880px]:static max-[880px]:max-w-none max-[880px]:flex-1 max-[880px]:translate-x-0 max-[680px]:[&_kbd]:hidden',
+                  'shadow-(--control-highlight) hover:shadow-(--control-highlight)',
                   '[-webkit-app-region:no-drag] **:[-webkit-app-region:no-drag]'
                 )}
               >
                 <Button
                   variant="ghost"
-                  className="text-foreground h-full min-w-0 flex-1 justify-start bg-transparent p-0 text-xs font-normal shadow-none hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 focus-visible:outline-none aria-expanded:bg-transparent [&>span]:w-full [&>span]:min-w-0 [&>span]:text-left"
+                  className="text-foreground hover:text-foreground h-full min-w-0 flex-1 justify-start bg-transparent p-0 text-xs font-normal shadow-none hover:bg-transparent hover:shadow-none focus-visible:border-transparent focus-visible:ring-0 focus-visible:outline-none aria-expanded:bg-transparent [&>span]:w-full [&>span]:min-w-0 [&>span]:text-left"
                   type="button"
                   aria-label={query ? `搜尋密碼庫項目，目前為 ${query}` : '搜尋密碼庫項目'}
                   aria-haspopup="dialog"
