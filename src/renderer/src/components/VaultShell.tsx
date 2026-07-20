@@ -233,6 +233,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui
 import { cn } from '@renderer/lib/utils'
 import { applyThemePreference } from '@renderer/lib/theme'
 import { sortVaultItems, type VaultSortMode } from '@renderer/lib/vault-sort'
+import { useVaultRouteState } from '@renderer/lib/vault-route-state'
 import {
   accountMutationError,
   isCurrentAccountRefresh,
@@ -1002,6 +1003,18 @@ function VaultShell({
   promptSyncSetup,
   onSyncSetupPromptHandled
 }: VaultShellProps): React.JSX.Element {
+  const {
+    settingsOpen,
+    setSettingsOpen,
+    healthOpen,
+    setHealthOpen,
+    sendsOpen,
+    setSendsOpen,
+    organizationsOpen,
+    setOrganizationsOpen,
+    emergencyAccessOpen,
+    setEmergencyAccessOpen
+  } = useVaultRouteState()
   const [folders, setFolders] = useState<FolderView[]>([])
   const [items, setItems] = useState<LoginSummary[]>([])
   const [scope, setScope] = useState<Scope>({ kind: 'all' })
@@ -1072,15 +1085,10 @@ function VaultShell({
   }>({ owner: '', profile: null })
   const SyncSidebarIcon = syncStateMeta[syncStatus.state].icon
   const [settings, setSettings] = useState<AppSettings | null>(null)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null)
   const [accountBusy, setAccountBusy] = useState(false)
   const [accountBusyLabel, setAccountBusyLabel] = useState('')
   const [accountError, setAccountError] = useState('')
-  const [healthOpen, setHealthOpen] = useState(false)
-  const [sendsOpen, setSendsOpen] = useState(false)
-  const [organizationsOpen, setOrganizationsOpen] = useState(false)
-  const [emergencyAccessOpen, setEmergencyAccessOpen] = useState(false)
   const [settingsBusy, setSettingsBusy] = useState(false)
   const [touchIdPassword, setTouchIdPassword] = useState('')
   const [portabilityDialogMode, setPortabilityDialogMode] = useState<VaultPortabilityMode | null>(
@@ -2549,6 +2557,7 @@ function VaultShell({
     })
     return () => {
       active = false
+      queueMicrotask(() => setTouchIdPassword(''))
     }
   }, [settingsOpen])
 
@@ -2596,10 +2605,6 @@ function VaultShell({
     requestEditorTransition(() => {
       rememberNavigationReturnFocus()
       setSettingsOpen(true)
-      setHealthOpen(false)
-      setSendsOpen(false)
-      setOrganizationsOpen(false)
-      setEmergencyAccessOpen(false)
       setSidebarOpen(false)
       setEditorMode(null)
       setMoveSnapshot(null)
@@ -2618,10 +2623,6 @@ function VaultShell({
     requestEditorTransition(() => {
       rememberNavigationReturnFocus()
       setHealthOpen(true)
-      setSettingsOpen(false)
-      setSendsOpen(false)
-      setOrganizationsOpen(false)
-      setEmergencyAccessOpen(false)
       setSearchOpen(false)
       setSidebarOpen(false)
       setEditorMode(null)
@@ -2640,10 +2641,6 @@ function VaultShell({
     requestEditorTransition(() => {
       rememberNavigationReturnFocus()
       setSendsOpen(true)
-      setSettingsOpen(false)
-      setHealthOpen(false)
-      setOrganizationsOpen(false)
-      setEmergencyAccessOpen(false)
       setSearchOpen(false)
       setSidebarOpen(false)
       setEditorMode(null)
@@ -2662,10 +2659,6 @@ function VaultShell({
     requestEditorTransition(() => {
       rememberNavigationReturnFocus()
       setOrganizationsOpen(true)
-      setSettingsOpen(false)
-      setHealthOpen(false)
-      setSendsOpen(false)
-      setEmergencyAccessOpen(false)
       setSearchOpen(false)
       setSidebarOpen(false)
       setEditorMode(null)
@@ -2684,10 +2677,6 @@ function VaultShell({
     requestEditorTransition(() => {
       rememberNavigationReturnFocus()
       setEmergencyAccessOpen(true)
-      setSettingsOpen(false)
-      setHealthOpen(false)
-      setSendsOpen(false)
-      setOrganizationsOpen(false)
       setSearchOpen(false)
       setSidebarOpen(false)
       setEditorMode(null)

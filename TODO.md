@@ -9,6 +9,18 @@
 - [x] 不實作 Organizations／Collections 寫入、分享或管理功能；既有只讀相容流程保留。
 - [x] 不實作 Email forwarder 或保存第三方 forwarder API 憑證。
 
+## 已完成：組織、Emergency Access 與 Send 顯示／相容性
+
+- [x] 組織唯讀頁補上組織／Collection／共享項目權限與狀態顯示。
+- [x] 組織隱藏密碼權限的摘要遮罩、快速切換競態、載入錯誤與鍵盤操作。
+- [x] Emergency Access 相容 Vaultwarden 缺省／nullable metadata 與官方狀態 enum。
+- [x] Emergency Access 載入錯誤、重試、名稱 fallback 與唯讀狀態顯示。
+- [x] Send 補上生命週期、存取限制、隱私條件、日期與備註的表單及列表顯示。
+- [x] Send 補上已停用、已過期、達存取上限、待刪除、密碼、Email 驗證等狀態標籤。
+- [x] Email OTP Send 可安全辨識並保留既有驗證條件；不支援的 OTP 編輯／下載流程維持唯讀。
+- [x] 輔助頁面支援 `/vault/*` 深連結、重新整理與上一頁／下一頁。
+- [x] 完成 focused tests、完整測試與 Node／Web typecheck 驗證。
+
 ## 已完成：取消所有工作階段授權
 
 - [x] 重新核對 Vaultwarden 與 Bitwarden Server 的 `security-stamp` 契約、主密碼 proof、回應格式及目前工作階段失效語意。
@@ -30,6 +42,34 @@
 3. `.bwbackup` 定期復原演練與官方明文附件 ZIP 跨客戶端 fixture。
 4. 多帳號切換、移除中斷、重啟續作與 stale operation 壓力測試。
 5. Windows OpenSSH named pipe、實體 FIDO2 security key 與附件 transport 真機驗證。
+
+## VaultService 重構
+
+Phase 1 的純函式拆分，以及 Phase 2 的 `VaultGeneratorService`、`VaultSendService` 已完成。`src/main/vault-service.ts` 目前約 8,000 行；後續每個協作類別應維持原公開 API，由 `VaultService` 做薄委派。
+
+建議依下列順序逐批執行，每批獨立驗證與 commit：
+
+1. [ ] 抽出 `vault/health-report-service.ts`：local health、inactive 2FA、exposed password、account breach 與 HIBP website。
+2. [ ] 將 `activeExposedPasswordOperation`、`activeAccountBreachOperation` 與 AbortController lifecycle 一起移入 health collaborator。
+3. [ ] 保留 account deauthorization 的 operation exclusion；lock、disconnect、remote logout、dispose 必須呼叫 health reset／abort。
+4. [ ] 抽出 `vault/folder-service.ts`：folder CRUD、reorder、sync deletion 與 folder mapping helpers。
+5. [ ] 抽出 `vault/account-security-service.ts`：profile、devices、驗證信、API key、TOTP／Email／WebAuthn 2FA 與 session deauthorization。
+6. [ ] 將 `accountSecurityAborts`、authenticator/email setup sessions、WebAuthn operation lease 與秘密清除責任一起移入 account-security collaborator。
+7. [ ] 抽出 `vault/attachment-service.ts`：upload、download、delete、fix legacy、cancel、progress 與 operation lease。
+8. [ ] 將 `activeAttachmentOperation` 與 attachment plaintext buffer cleanup 一起移入 attachment collaborator，保留 lock/cancel/generation 競態語意。
+9. [ ] 抽出 `vault/portability-service.ts`：JSON import/export、native attachment backup/restore、restore journal reconciliation。
+10. [ ] 抽出 `vault/sync-engine.ts`：connect/unlock/disconnect、performSync、snapshot、login import、personal purge、bulk mutation 與 action replay。
+11. [ ] 最後評估 equivalent domains、SSH Agent、讀取清單與 item/passkey CRUD 是否值得再拆；生命週期、核心 CRUD、`exclusive`、`persist`、`requireData` 預設留在 `VaultService`。
+
+重構約束：
+
+- [ ] 不改 IPC、preload、renderer 或其他 importer；既有 `VaultService` 公開方法簽名維持不變。
+- [ ] 所有 collaborator 共用既有 `exclusive` queue、sync client 與 generation，不建立平行 mutex 或第二份 connector state。
+- [ ] Abort、lease、plaintext 暫存與 setup session 必須隨功能一起搬移，並接回 `clearUnlockedRuntimeState()`／`dispose()`。
+- [ ] 不順手改業務邏輯；錯誤碼、驗證順序、remote mutation 次數與 persist 時機必須保持一致。
+- [ ] 每個新檔案控制在 1,000 行內，且不得反向 import `vault-service.ts`。
+- [ ] 每批至少執行 changed-file ESLint、`pnpm typecheck`、focused tests 與完整 `pnpm test`。
+- [ ] 全部完成後確認 `vault-service.ts` 約 2,500–3,000 行，並檢查 `src/main/vault/` 無循環依賴。
 
 ## 已完成：垃圾桶密碼歷史窄化唯讀入口
 

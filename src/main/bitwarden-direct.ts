@@ -343,7 +343,7 @@ export interface BitwardenSendItem {
   deletionDate: string
   disabled: boolean
   hideEmail: boolean
-  authType: 1 | 2
+  authType: 0 | 1 | 2
   passwordProtected: boolean
 }
 
@@ -4419,7 +4419,12 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       }
       const authTypeValue = property(raw, 'authType')
       const password = nullableStringProperty(raw, 'password')
-      const authType = authTypeValue === 1 || authTypeValue === 2 ? authTypeValue : password ? 1 : 2
+      const authType =
+        authTypeValue === 0 || authTypeValue === 1 || authTypeValue === 2
+          ? authTypeValue
+          : password
+            ? 1
+            : 2
       const maxAccessCountValue = property(raw, 'maxAccessCount')
       const maxAccessCount =
         maxAccessCountValue === null || maxAccessCountValue === undefined
@@ -4512,13 +4517,15 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       const preservePassword = existing !== undefined && draft.password === undefined
       const existingAuthType = existing ? property(existing, 'authType') : undefined
       const existingPassword = existing ? nullableStringProperty(existing, 'password') : null
+      const existingEmails = existing ? nullableStringProperty(existing, 'emails') : null
       const password = preservePassword
         ? existingPassword
         : draft.password?.length
           ? draft.password
           : null
       const authType =
-        preservePassword && (existingAuthType === 1 || existingAuthType === 2)
+        preservePassword &&
+        (existingAuthType === 0 || existingAuthType === 1 || existingAuthType === 2)
           ? existingAuthType
           : password
             ? 1
@@ -4539,7 +4546,9 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
           hidden: draft.hidden
         },
         password: preservePassword ? existingPassword : null,
-        emails: null,
+        // Email OTP configuration is server-owned for now. Keeping the exact existing value on
+        // metadata-only edits prevents silently weakening an Email-authenticated Send.
+        emails: preservePassword && existingAuthType === 0 ? existingEmails : null,
         disabled: draft.disabled,
         hideEmail: draft.hideEmail
       }

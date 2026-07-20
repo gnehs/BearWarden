@@ -1342,6 +1342,84 @@ describe('BitwardenHttpClient', () => {
     expect(JSON.stringify(fetch.mock.calls)).not.toContain('must-not-escape')
   })
 
+  it('accepts Vaultwarden Emergency Access details with nullable or omitted display metadata', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        json({
+          data: [
+            {
+              id: '61000000-0000-4000-8000-000000000001',
+              granteeId: '61000000-0000-4000-8000-000000000002',
+              name: '',
+              email: 'trusted@example.invalid',
+              type: 0,
+              status: 0,
+              waitTimeDays: 7,
+              avatarColor: null
+            }
+          ]
+        })
+      )
+      .mockResolvedValueOnce(
+        json({
+          data: [
+            {
+              id: '61000000-0000-4000-8000-000000000003',
+              grantorId: '61000000-0000-4000-8000-000000000004',
+              name: null,
+              email: 'grantor@example.invalid',
+              type: 1,
+              status: 4,
+              waitTimeDays: 14
+            }
+          ]
+        })
+      )
+    const client = new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 1 })
+
+    await expect(client.listEmergencyAccess()).resolves.toEqual([
+      expect.objectContaining({
+        role: 'trusted',
+        name: '',
+        creationDate: null,
+        avatarColor: null
+      }),
+      expect.objectContaining({
+        role: 'granted',
+        name: null,
+        creationDate: null,
+        avatarColor: null
+      })
+    ])
+  })
+
+  it('rejects Emergency Access statuses outside the official enum', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        json({
+          data: [
+            {
+              id: '62000000-0000-4000-8000-000000000001',
+              granteeId: '62000000-0000-4000-8000-000000000002',
+              name: 'Trusted contact',
+              email: 'trusted@example.invalid',
+              type: 0,
+              status: 5,
+              waitTimeDays: 7
+            }
+          ]
+        })
+      )
+      .mockResolvedValueOnce(json({ data: [] }))
+    const client = new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 1 })
+
+    await expect(client.listEmergencyAccess()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  })
+
   it('queries Vaultwarden account breaches with auth and excludes remote HTML from the safe model', async () => {
     const fetch = vi.fn<FetchLike>().mockResolvedValue(
       json([

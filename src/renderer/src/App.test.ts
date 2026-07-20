@@ -5,7 +5,7 @@ vi.mock('./components/PasskeyApprovalDialog', () => ({ default: () => null }))
 vi.mock('./components/SshAgentApprovalDialog', () => ({ default: () => null }))
 vi.mock('./components/VaultShell', () => ({ default: () => null }))
 
-import { nextVaultActivityTimestamp } from './App'
+import { nextVaultActivityTimestamp, vaultNavigationTarget } from './App'
 import { shouldPromptSyncSetup, shouldShowSyncSetupPrompt } from './lib/sync-setup-prompt'
 
 describe('new vault sync invitation', () => {
@@ -36,5 +36,41 @@ describe('vault activity reporting', () => {
     expect(nextVaultActivityTimestamp(quickLockAt, lastActivityAfterLockCleanup, true)).toBe(
       quickLockAt
     )
+  })
+})
+
+describe('vault route guard', () => {
+  it.each([
+    '/vault',
+    '/vault/settings',
+    '/vault/health',
+    '/vault/sends',
+    '/vault/organizations',
+    '/vault/emergency-access'
+  ])('preserves unlocked vault route %s', (pathname) => {
+    expect(vaultNavigationTarget('unlocked', pathname)).toBeNull()
+  })
+
+  it('preserves a supported unlocked vault route with a trailing slash', () => {
+    expect(vaultNavigationTarget('unlocked', '/vault/sends/')).toBeNull()
+  })
+
+  it.each(['/unlock', '/', '/vault-evil', '/vault/unknown'])(
+    'sends unlocked non-vault route %s to the vault',
+    (pathname) => {
+      expect(vaultNavigationTarget('unlocked', pathname)).toBe('/vault')
+    }
+  )
+
+  it.each(['locked', 'unavailable'] as const)(
+    'sends %s vault state to unlock from nested vault routes',
+    (state) => {
+      expect(vaultNavigationTarget(state, '/vault/settings')).toBe('/unlock')
+      expect(vaultNavigationTarget(state, '/unlock')).toBeNull()
+    }
+  )
+
+  it('does not redirect while vault state is loading', () => {
+    expect(vaultNavigationTarget('loading', '/vault/settings')).toBeNull()
   })
 })

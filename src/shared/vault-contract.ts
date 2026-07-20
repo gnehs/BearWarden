@@ -836,17 +836,19 @@ export interface SharedLoginView extends LoginView {
   restore: boolean
 }
 
+export type EmergencyAccessStatus = 0 | 1 | 2 | 3 | 4
+
 export interface EmergencyAccessView {
   id: string
   role: 'trusted' | 'granted'
   subjectId: string
-  name: string
+  name: string | null
   email: string
   type: number
-  status: number
+  status: EmergencyAccessStatus
   waitTimeDays: number
-  creationDate: string
-  avatarColor: string
+  creationDate: string | null
+  avatarColor: string | null
 }
 
 export interface LoginSummary {
@@ -1249,7 +1251,7 @@ export interface SendView {
   deletionDate: string
   disabled: boolean
   hideEmail: boolean
-  authType: 'none' | 'password'
+  authType: 'none' | 'password' | 'email'
   passwordProtected: boolean
 }
 

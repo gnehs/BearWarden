@@ -236,22 +236,24 @@ export interface BitwardenEquivalentDomainUpdate {
   excludedGlobalEquivalentDomains: number[]
 }
 
+export type BitwardenEmergencyAccessStatus = 0 | 1 | 2 | 3 | 4
+
 export interface BitwardenEmergencyAccess {
   id: string
   role: 'trusted' | 'granted'
   subjectId: string
-  name: string
+  name: string | null
   email: string
   type: number
-  status: number
+  status: BitwardenEmergencyAccessStatus
   waitTimeDays: number
-  creationDate: string
-  avatarColor: string
+  creationDate: string | null
+  avatarColor: string | null
 }
 
 export interface BitwardenSendRequest {
   type: 0
-  authType: 1 | 2
+  authType: 0 | 1 | 2
   name: string
   notes: string | null
   key: string
@@ -260,7 +262,7 @@ export interface BitwardenSendRequest {
   deletionDate: string
   text: { text: string; hidden: boolean }
   password: string | null
-  emails: null
+  emails: string | null
   disabled: boolean
   hideEmail: boolean
 }
@@ -269,7 +271,7 @@ export interface BitwardenSendRequest {
 export interface BitwardenSendFileRequest {
   type: 1
   fileLength: number
-  authType: 1 | 2
+  authType: 0 | 1 | 2
   name: string
   notes: string | null
   key: string
@@ -278,7 +280,7 @@ export interface BitwardenSendFileRequest {
   deletionDate: string
   file: { fileName: string }
   password: string | null
-  emails: null
+  emails: string | null
   disabled: boolean
   hideEmail: boolean
 }
@@ -3540,33 +3542,31 @@ function parseEmergencyAccessList(
       role === 'trusted' ? 'granteeId' : 'grantorId',
       role === 'trusted' ? 'GranteeId' : 'GrantorId'
     )
-    const name = emergencyStringProperty(candidate, 'name', 'Name')
+    const name = emergencyNullableStringProperty(candidate, 'name', 'Name')
     const email = emergencyStringProperty(candidate, 'email', 'Email')
     const type = finiteInteger(emergencyProperty(candidate, 'type', 'Type'))
     const status = finiteInteger(emergencyProperty(candidate, 'status', 'Status'))
     const waitTimeDays = finiteInteger(emergencyProperty(candidate, 'waitTimeDays', 'WaitTimeDays'))
-    const creationDate = emergencyStringProperty(candidate, 'creationDate', 'CreationDate')
-    const avatarColor = emergencyStringProperty(candidate, 'avatarColor', 'AvatarColor')
+    const creationDate = emergencyNullableStringProperty(candidate, 'creationDate', 'CreationDate')
+    const avatarColor = emergencyNullableStringProperty(candidate, 'avatarColor', 'AvatarColor')
     if (
       !id ||
       !UUID_PATTERN.test(id) ||
       !subjectId ||
       !UUID_PATTERN.test(subjectId) ||
-      !name ||
-      Buffer.byteLength(name, 'utf8') > 256 ||
+      (name !== null && Buffer.byteLength(name, 'utf8') > 256) ||
       !email ||
       Buffer.byteLength(email, 'utf8') > 512 ||
       type === undefined ||
       type < 0 ||
       status === undefined ||
       status < 0 ||
+      status > 4 ||
       waitTimeDays === undefined ||
       waitTimeDays < 1 ||
       waitTimeDays > 32_767 ||
-      !creationDate ||
-      !Number.isFinite(Date.parse(creationDate)) ||
-      !avatarColor ||
-      avatarColor.length > 64
+      (creationDate !== null && !Number.isFinite(Date.parse(creationDate))) ||
+      (avatarColor !== null && avatarColor.length > 64)
     ) {
       throw new BitwardenHttpError('INVALID_RESPONSE')
     }
@@ -3577,9 +3577,9 @@ function parseEmergencyAccessList(
       name,
       email,
       type,
-      status,
+      status: status as BitwardenEmergencyAccess['status'],
       waitTimeDays,
-      creationDate: new Date(creationDate).toISOString(),
+      creationDate: creationDate === null ? null : new Date(creationDate).toISOString(),
       avatarColor
     }
   })
@@ -3596,6 +3596,17 @@ function emergencyProperty(
 function emergencyStringProperty(record: JsonObject, lower: string, upper: string): string | null {
   const value = emergencyProperty(record, lower, upper)
   return typeof value === 'string' ? value : null
+}
+
+function emergencyNullableStringProperty(
+  record: JsonObject,
+  lower: string,
+  upper: string
+): string | null {
+  const value = emergencyProperty(record, lower, upper)
+  if (value === undefined || value === null) return null
+  if (typeof value !== 'string') throw new BitwardenHttpError('INVALID_RESPONSE')
+  return value
 }
 
 interface ParsedAttachmentDownload {

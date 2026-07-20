@@ -1553,6 +1553,83 @@ describe('BitwardenDirectClient', () => {
     userKey.fill(0)
   })
 
+  it('preserves Email OTP authentication when updating Send metadata', async () => {
+    const sync = await encryptedSync()
+    const userKey = Buffer.alloc(64, 7)
+    const seed = Buffer.alloc(16, 6)
+    const sendKey = deriveBitwardenSendKey(seed)
+    const send: JsonObject = {
+      id: SEND_ID,
+      accessId: 'UAAAAAAAQABAAAAAAAAAAQ',
+      type: 0,
+      key: encryptBitwardenBytes(seed, userKey),
+      name: encryptBitwardenString('Verified note', sendKey),
+      notes: null,
+      text: { text: encryptBitwardenString('shared text', sendKey), hidden: true },
+      maxAccessCount: 2,
+      accessCount: 0,
+      revisionDate: '2026-07-16T00:00:00.000Z',
+      expirationDate: null,
+      deletionDate: '2026-07-30T00:00:00.000Z',
+      authType: 0,
+      password: null,
+      emails: 'recipient@example.invalid',
+      disabled: false,
+      hideEmail: true
+    }
+    sync.sends = [send]
+    let updateBody: JsonObject | null = null
+    const fetch = vi.fn<FetchLike>().mockImplementation(async (url, init) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/identity/connect/token')) {
+        return jsonResponse({
+          access_token: 'access-token',
+          refresh_token: 'refresh-token',
+          expires_in: 3_600
+        })
+      }
+      if (url.includes('/api/sync?')) return jsonResponse(sync)
+      if (url.endsWith(`/api/sends/${SEND_ID}`) && init?.method === 'PUT') {
+        updateBody = JSON.parse(String(init.body)) as JsonObject
+        return jsonResponse(send)
+      }
+      return jsonResponse({ message: 'not found' }, 404)
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
+    })
+
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+    await expect(client.listSends()).resolves.toEqual([
+      expect.objectContaining({ authType: 0, passwordProtected: false })
+    ])
+    await client.updateSend(SEND_ID, {
+      name: 'Updated verified note',
+      notes: null,
+      text: 'shared text',
+      hidden: true,
+      maxAccessCount: 2,
+      expirationDate: null,
+      deletionDate: '2026-07-30T00:00:00.000Z',
+      disabled: false,
+      hideEmail: true
+    })
+    expect(updateBody).toMatchObject({
+      authType: 0,
+      password: null,
+      emails: 'recipient@example.invalid'
+    })
+    expect(JSON.stringify(await client.listSends())).not.toContain('recipient@example.invalid')
+    seed.fill(0)
+    sendKey.fill(0)
+    userKey.fill(0)
+  })
+
   it('syncs file Send metadata without exposing encrypted bytes or URL capabilities', async () => {
     const sync = await encryptedSync()
     const userKey = Buffer.alloc(64, 7)

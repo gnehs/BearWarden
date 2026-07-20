@@ -82,7 +82,7 @@ export function parseStoredSend(value: unknown): StoredSend {
       (typeof expirationDate !== 'string' || !Number.isFinite(Date.parse(expirationDate)))) ||
     typeof disabled !== 'boolean' ||
     typeof hideEmail !== 'boolean' ||
-    (authType !== 'none' && authType !== 'password') ||
+    (authType !== 'none' && authType !== 'password' && authType !== 'email') ||
     typeof passwordProtected !== 'boolean'
   ) {
     throw new VaultError('CORRUPT_VAULT')
@@ -150,7 +150,7 @@ export function sendViewFromRemote(send: BitwardenSendItem): StoredSend {
     deletionDate: send.deletionDate,
     disabled: send.disabled,
     hideEmail: send.hideEmail,
-    authType: send.authType === 1 ? 'password' : 'none',
+    authType: send.authType === 0 ? 'email' : send.authType === 1 ? 'password' : 'none',
     passwordProtected: send.passwordProtected
   }
 }

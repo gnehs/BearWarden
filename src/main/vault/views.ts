@@ -79,8 +79,18 @@ export function toSummary(login: StoredLogin): LoginSummary {
 }
 
 export function toSharedSummary(login: StoredSharedLogin): SharedLoginSummary {
+  const summary = toSummary(login)
+  const safeSummary = login.viewPassword
+    ? summary
+    : {
+        ...summary,
+        subtitle: '',
+        username: '',
+        ...(summary.cardBrand !== undefined ? { cardBrand: undefined } : {}),
+        ...(summary.hasTotp !== undefined ? { hasTotp: false } : {})
+      }
   return {
-    ...toSummary(login),
+    ...safeSummary,
     organizationId: login.organizationId,
     collectionIds: [...login.collectionIds],
     shared: true,
@@ -183,6 +193,7 @@ export function toSharedView(login: StoredSharedLogin): SharedLoginView {
     ? view
     : {
         ...view,
+        subtitle: '',
         passwordUpdatedAt: null,
         username: '',
         notes: null,

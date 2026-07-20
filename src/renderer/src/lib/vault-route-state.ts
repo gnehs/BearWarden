@@ -38,6 +38,8 @@ interface VaultRouteState {
   setEmergencyAccessOpen: Dispatch<SetStateAction<boolean>>
 }
 
+type AuxiliaryVaultPagePath = Exclude<VaultPagePath, '/vault'>
+
 function resolveValue<T>(value: SetStateAction<T>, current: T): T {
   return typeof value === 'function' ? (value as (current: T) => T)(current) : value
 }
@@ -48,21 +50,33 @@ function scopeFromSearch(search: ReturnType<typeof vaultRoute.useSearch>): Vault
   return { kind: 'all' }
 }
 
-function routeForPage(page: string | undefined): VaultPagePath {
-  switch (page) {
-    case 'settings':
+export function vaultPagePathFromPathname(pathname: string): VaultPagePath {
+  const normalizedPathname = pathname.replace(/\/+$/, '') || '/'
+  switch (normalizedPathname) {
+    case '/vault/settings':
       return '/vault/settings'
-    case 'health':
+    case '/vault/health':
       return '/vault/health'
-    case 'sends':
+    case '/vault/sends':
       return '/vault/sends'
-    case 'organizations':
+    case '/vault/organizations':
       return '/vault/organizations'
-    case 'emergency-access':
+    case '/vault/emergency-access':
       return '/vault/emergency-access'
     default:
       return '/vault'
   }
+}
+
+export function nextVaultPagePath(
+  currentPath: VaultPagePath,
+  targetPath: AuxiliaryVaultPagePath,
+  value: SetStateAction<boolean>
+): VaultPagePath | null {
+  const isOpen = currentPath === targetPath
+  const next = resolveValue(value, isOpen)
+  if (next === isOpen) return null
+  return next ? targetPath : '/vault'
 }
 
 export function useVaultRouteState(): VaultRouteState {
@@ -75,7 +89,7 @@ export function useVaultRouteState(): VaultRouteState {
   const selectedId = search.item ?? null
   const editorMode = search.editor ?? null
   const sortMode = search.sort ?? 'title'
-  const currentPath = routeForPage(pathname.split('/')[2])
+  const currentPath = vaultPagePathFromPathname(pathname)
 
   const updateSearch = (
     update: (current: typeof search) => typeof search,
@@ -88,12 +102,12 @@ export function useVaultRouteState(): VaultRouteState {
     void navigate({ to: path, search: (current) => current })
   }
 
-  const pageSetter = (path: VaultPagePath): Dispatch<SetStateAction<boolean>> => (value) => {
-    const isOpen = currentPath === path
-    const next = resolveValue(value, isOpen)
-    if (next === isOpen) return
-    navigatePage(next ? path : '/vault')
-  }
+  const pageSetter =
+    (path: AuxiliaryVaultPagePath): Dispatch<SetStateAction<boolean>> =>
+    (value) => {
+      const nextPath = nextVaultPagePath(currentPath, path, value)
+      if (nextPath) navigatePage(nextPath)
+    }
 
   return {
     scope,

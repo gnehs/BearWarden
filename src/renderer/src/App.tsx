@@ -15,6 +15,26 @@ import { applyThemePreference } from './lib/theme'
 
 type AppState = VaultState | 'loading' | 'unavailable'
 const activityThrottleMs = 10_000
+const vaultPathnames = new Set([
+  '/vault',
+  '/vault/settings',
+  '/vault/health',
+  '/vault/sends',
+  '/vault/organizations',
+  '/vault/emergency-access'
+])
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function vaultNavigationTarget(
+  state: AppState,
+  pathname: string
+): '/vault' | '/unlock' | null {
+  if (state === 'loading') return null
+  if (state !== 'unlocked') return pathname === '/unlock' ? null : '/unlock'
+
+  const normalizedPathname = pathname.replace(/\/+$/, '') || '/'
+  return vaultPathnames.has(normalizedPathname) ? null : '/vault'
+}
 
 /** Returns the timestamp to retain when renderer activity should reach the main process. */
 // eslint-disable-next-line react-refresh/only-export-components
@@ -57,9 +77,8 @@ function App(): React.JSX.Element {
   }
 
   useEffect(() => {
-    if (state === 'loading') return
-    const target = state === 'unlocked' ? '/vault' : '/unlock'
-    if (pathname !== target) void navigate({ to: target, replace: true })
+    const target = vaultNavigationTarget(state, pathname)
+    if (target) void navigate({ to: target, replace: true })
   }, [navigate, pathname, state])
 
   useEffect(() => {
