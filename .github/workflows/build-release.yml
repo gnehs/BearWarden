@@ -93,12 +93,42 @@ jobs:
           codesign --verify --strict --verbose=2 "$helper_app"
           "$helper_app/Contents/MacOS/bearwarden-macos-autofill" self-test
 
-      - name: Build unsigned macOS installers
+      - name: Build ad-hoc signed macOS installers
         if: matrix.target == 'mac'
-        run: pnpm exec electron-builder --mac ${{ matrix.architecture }} --publish never --config.mac.identity=null
+        run: >-
+          pnpm exec electron-builder --mac ${{ matrix.architecture }} --publish never
+          --config.mac.identity=-
+          --config.mac.entitlements=build/entitlements.mac.adhoc.plist
+          --config.mac.entitlementsInherit=build/entitlements.mac.adhoc.plist
+          --config.mac.signIgnore='Contents/Helpers/BearWarden Autofill Helper\.app'
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
           NODE_OPTIONS: --require=./.github/scripts/electron-vite-stdout.cjs
+
+      - name: Verify macOS application signatures
+        if: matrix.target == 'mac'
+        shell: bash
+        run: |
+          found_app=false
+          while IFS= read -r -d '' app; do
+            found_app=true
+            codesign --verify --deep --strict --verbose=2 "$app"
+            test "$(codesign -d --verbose=4 "$app" 2>&1 | sed -n 's/^Identifier=//p')" = 'com.bearwarden.app'
+            signature_info="$(codesign -d --verbose=4 "$app" 2>&1)"
+            grep -q '^Signature=adhoc$' <<< "$signature_info"
+            grep -Eq '^CodeDirectory .+\(adhoc,runtime\)' <<< "$signature_info"
+            grep -q '^TeamIdentifier=not set$' <<< "$signature_info"
+            test "$(codesign -d --entitlements :- "$app" 2>/dev/null | plutil -extract 'com\.apple\.security\.cs\.disable-library-validation' raw -)" = true
+            helper_app="$app/Contents/Helpers/BearWarden Autofill Helper.app"
+            test "$(codesign -d --verbose=4 "$helper_app" 2>&1 | sed -n 's/^Identifier=//p')" = 'com.bearwarden.app.autofill-helper'
+            helper_signature_info="$(codesign -d --verbose=4 "$helper_app" 2>&1)"
+            grep -q '^Signature=adhoc$' <<< "$helper_signature_info"
+            grep -Eq '^CodeDirectory .+flags=0x2\(adhoc\)' <<< "$helper_signature_info"
+            grep -q '^TeamIdentifier=not set$' <<< "$helper_signature_info"
+            test -z "$(codesign -d --entitlements :- "$helper_app" 2>/dev/null)"
+            "$helper_app/Contents/MacOS/bearwarden-macos-autofill" self-test
+          done < <(find dist -type d -name 'BearWarden.app' -print0)
+          test "$found_app" = true
 
       - name: Build unsigned Windows installer
         if: matrix.target == 'win'

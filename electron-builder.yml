@@ -21,6 +21,7 @@ nsis:
   createDesktopShortcut: always
 mac:
   icon: resources/icon.icon
+  entitlements: build/entitlements.mac.plist
   extraFiles:
     - from: resources/bin/BearWarden Autofill Helper.app
       to: Helpers/BearWarden Autofill Helper.app
