@@ -9,7 +9,6 @@ import {
   Eye,
   EyeOff,
   FileKey2,
-  FolderHeart,
   KeyRound,
   Link2,
   ListPlus,
@@ -110,11 +109,15 @@ import {
   SelectValue
 } from './ui/select'
 import { Spinner } from './ui/spinner'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 import { Textarea } from './ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import CredentialGeneratorDialog from './CredentialGeneratorDialog'
-import { editorHeaderContent } from './login-editor-ui'
+import {
+  editorHeaderContent,
+  uriMatchExample,
+  uriMatchOptions,
+  type UriMatchOptionValue
+} from './login-editor-ui'
 import {
   applyImportedSshKey,
   applyGeneratedSshKey,
@@ -132,7 +135,6 @@ import {
 } from './ssh-key-editor-state'
 
 type EditorSecretField = VaultEditorSecretField
-type EditorTab = 'details' | 'custom' | 'organize'
 type EditorErrorKind = 'name' | 'password' | 'ssh' | 'uri' | 'reveal' | null
 type SecretLoadState = 'loading' | 'ready' | 'error'
 
@@ -220,16 +222,6 @@ const itemTypeSelectItems = itemTypes.map((item) => ({
   value: item.value,
   label: `${item.label}：${item.description}`
 }))
-
-const uriMatchItems = [
-  { value: 'default', label: '帳號預設' },
-  { value: '0', label: '基礎網域' },
-  { value: '1', label: '主機' },
-  { value: '2', label: '開頭符合' },
-  { value: '3', label: '完全符合' },
-  { value: '4', label: '正規表示式' },
-  { value: '5', label: '永不符合' }
-]
 
 const emptyFields: VaultItemFields = {
   username: '',
@@ -360,25 +352,59 @@ function EditorFormSection({
 }): React.JSX.Element {
   return (
     <Card
-      className="[[data-theme=dark]_&]:bg-card mx-auto mb-3.5 w-full max-w-[720px] gap-0 overflow-hidden rounded-[14px] border bg-[color-mix(in_oklch,var(--card)_94%,transparent)] py-0 shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_3%,transparent)]"
+      className="bg-card mx-auto mb-3.5 w-full max-w-[720px] gap-0 overflow-hidden rounded-md border py-0 shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_3%,transparent)]"
       role="region"
       aria-labelledby={titleId}
     >
-      <CardHeader className="bg-muted min-h-[33px] gap-2 rounded-none border-b px-3.5 pt-2.75 pb-2">
+      <CardHeader className="bg-muted flex min-h-[33px] items-center gap-2 rounded-none border-b px-3.5 py-2.5">
         <CardTitle
-          className="m-0 text-[10px] leading-[1.4] font-[780] tracking-[0.06em] uppercase"
+          className="text-muted-foreground m-0 text-[10px] leading-[1.4] font-medium uppercase"
           id={titleId}
         >
           {title}
         </CardTitle>
       </CardHeader>
-      <CardContent className="py-4">
+      <CardContent className="px-[15px] py-4">
         <FieldSet>
           <FieldLegend className="sr-only">{title}</FieldLegend>
           {children}
         </FieldSet>
       </CardContent>
     </Card>
+  )
+}
+
+function EditorSection({
+  value,
+  className,
+  children
+}: {
+  value: 'details' | 'custom' | 'organize'
+  className?: string
+  children: ReactNode
+}): React.JSX.Element {
+  return (
+    <section className={className} data-editor-section={value}>
+      {children}
+    </section>
+  )
+}
+
+function UriMatchExample({
+  value,
+  uri
+}: {
+  value: UriMatchOptionValue
+  uri: string
+}): React.JSX.Element {
+  return (
+    <p
+      className="text-muted-foreground m-0 flex min-w-0 items-baseline gap-1.5 px-1 text-[10px] leading-4"
+      data-uri-match-example={value}
+    >
+      <span className="shrink-0 font-medium">匹配範例</span>
+      <code className="truncate font-mono text-[10px]">{uriMatchExample(value, uri)}</code>
+    </p>
   )
 }
 
@@ -443,7 +469,6 @@ function LoginEditor({
   )
   const [visibleCustomFields, setVisibleCustomFields] = useState<Record<string, boolean>>({})
   const [revealingCustomFields, setRevealingCustomFields] = useState<Record<string, boolean>>({})
-  const [activeTab, setActiveTab] = useState<EditorTab>('details')
   const [error, setError] = useState('')
   const [errorKind, setErrorKind] = useState<EditorErrorKind>(null)
   const [secretLoadState, setSecretLoadState] = useState<SecretLoadState>(
@@ -524,7 +549,6 @@ function LoginEditor({
         setSecretLoadState('error')
         setError('無法載入現有敏感欄位，請取消編輯後再試一次。')
         setErrorKind('reveal')
-        setActiveTab('details')
       })
 
     return () => {
@@ -595,7 +619,6 @@ function LoginEditor({
           setSshKeyGenerationState('error')
           setError('無法產生 Ed25519 SSH 金鑰，請重試。')
           setErrorKind('ssh')
-          setActiveTab('details')
         })
     })
   }, [
@@ -771,13 +794,11 @@ function LoginEditor({
       setSshKeyImportState('idle')
       setError(sshKeyImportErrorMessage(result.code))
       setErrorKind('ssh')
-      setActiveTab('details')
     } catch {
       if (!editorMountedRef.current || requestId !== sshKeyImportRequestRef.current) return
       setSshKeyImportState('idle')
       setError('無法讀取剪貼簿中的 SSH 私鑰，請稍後再試。')
       setErrorKind('ssh')
-      setActiveTab('details')
     }
   }
 
@@ -837,7 +858,6 @@ function LoginEditor({
       cancelActiveSshImport(false)
       setError(sshKeyImportErrorMessage(result.code))
       setErrorKind('ssh')
-      setActiveTab('details')
     } catch {
       if (!editorMountedRef.current || requestId !== sshKeyImportRequestRef.current) return
       setSshKeyImportError('無法驗證私鑰密碼，請重新輸入。')
@@ -909,7 +929,6 @@ function LoginEditor({
         }
       ]
     }))
-    setActiveTab('custom')
     requestAnimationFrame(() =>
       document.getElementById(`editor-custom-field-${clientId}-name`)?.focus()
     )
@@ -1075,7 +1094,6 @@ function LoginEditor({
     } catch {
       setError('無法顯示自訂欄位內容，請稍後再試。')
       setErrorKind('reveal')
-      setActiveTab('custom')
     } finally {
       setRevealingCustomFields((current) => ({ ...current, [customField.clientId]: false }))
     }
@@ -1180,14 +1198,12 @@ function LoginEditor({
     if (!draft.name.trim()) {
       setError('請輸入項目名稱。')
       setErrorKind('name')
-      setActiveTab('details')
       requestAnimationFrame(() => nameRef.current?.focus())
       return
     }
     if (!login && draft.type === 'login' && !draft.password) {
       setError('新增登入項目時必須輸入密碼。')
       setErrorKind('password')
-      setActiveTab('details')
       requestAnimationFrame(() => document.getElementById('editor-password')?.focus())
       return
     }
@@ -1196,7 +1212,6 @@ function LoginEditor({
     if (blankUriIndex >= 0) {
       setError('網站欄位不可留白；不需要的列請移除。')
       setErrorKind('uri')
-      setActiveTab('details')
       requestAnimationFrame(() => document.getElementById(`editor-uri-${blankUriIndex}`)?.focus())
       return
     }
@@ -1215,7 +1230,6 @@ function LoginEditor({
           : 'SSH 金鑰必須包含私鑰、公鑰與金鑰指紋。'
       )
       setErrorKind('ssh')
-      setActiveTab('details')
       const missingFieldId = draft.sshImportToken
         ? !draft.publicKey.trim()
           ? 'editor-public-key'
@@ -1249,7 +1263,6 @@ function LoginEditor({
         setSshKeyGenerationState('error')
         setError('這次 SSH 私鑰暫存已失效，請重新產生或匯入後再儲存。')
         setErrorKind('ssh')
-        setActiveTab('details')
       }
     } finally {
       submittingRef.current = false
@@ -1281,15 +1294,14 @@ function LoginEditor({
       onSubmit={submit}
       aria-labelledby="editor-title"
     >
-      <header className="[@media(prefers-reduced-transparency:reduce)]:bg-card flex min-h-[88px] items-center gap-3 border-b bg-[color-mix(in_oklch,var(--card)_82%,transparent)] px-[22px] py-[15px] backdrop-blur-[18px] max-[680px]:px-3 max-[680px]:py-[11px] [.platform-macos_&]:bg-[color-mix(in_oklch,var(--card)_68%,transparent)] [.platform-macos_&]:backdrop-blur-[18px] [.platform-macos_&]:backdrop-saturate-[1.35] [.platform-windows_&]:bg-[color-mix(in_oklch,var(--card)_68%,transparent)] [.platform-windows_&]:backdrop-blur-[18px] [.platform-windows_&]:backdrop-saturate-[1.35] [@media(prefers-reduced-transparency:reduce)]:backdrop-blur-none [[data-theme=dark]_&]:bg-[color-mix(in_oklch,var(--card)_88%,transparent)]">
+      <header className="bg-card flex items-center gap-3 border-b px-[22px] py-[15px] max-[680px]:px-3 max-[680px]:py-[11px]">
         <span
           className={cn(
-            'border-border bg-muted text-primary [[data-theme=dark]_&]:text-muted-foreground grid size-12 shrink-0 place-items-center rounded-xl border max-[430px]:hidden forced-colors:[forced-color-adjust:none]',
+            'outline-foreground/5 bg-muted text-primary dark:border-border dark:bg-muted dark:text-muted-foreground grid size-12 shrink-0 place-items-center rounded-lg shadow-(--control-highlight) outline max-[430px]:hidden forced-colors:[forced-color-adjust:none]',
             draft.type === 'login' && 'overflow-hidden',
-            draft.type === 'card' &&
-              'text-chart-4 [[data-theme=dark]_&]:bg-[var(--website-icon-background)]',
+            draft.type === 'card' && 'text-chart-4 dark:bg-website-icon-background',
             draft.type === 'identity' && 'bg-accent text-primary',
-            draft.type === 'secureNote' && 'text-chart-3',
+            draft.type === 'secureNote' && 'bg-muted text-chart-3',
             draft.type === 'sshKey' && 'bg-accent text-chart-2'
           )}
           data-detail-icon=""
@@ -1298,24 +1310,18 @@ function LoginEditor({
           <ItemTypeIcon />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-muted-foreground tracking-normal normal-case">
-            {headerContent.eyebrow}
-          </p>
           <h2 className="m-0 truncate text-xl tracking-[-0.025em]" id="editor-title">
             {headerContent.heading}
           </h2>
-          {(login || dirty) && (
-            <div className="flex flex-wrap items-center gap-2">
-              {headerContent.typeBadge && (
-                <Badge variant="secondary">{headerContent.typeBadge}</Badge>
-              )}
-              {dirty && <Badge variant="outline">未儲存</Badge>}
-            </div>
-          )}
+          <p className="text-muted-foreground mt-[3px] mb-0 truncate text-[10px]">
+            {headerContent.eyebrow}
+            {dirty ? ' · 未儲存' : ''}
+          </p>
         </div>
         <Button
-          variant="ghost"
+          variant="outline"
           size="icon"
+          className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-[34px] min-w-[34px] rounded-[9px] shadow-(--control-highlight)"
           type="button"
           aria-label="取消編輯"
           onClick={requestCancel}
@@ -1326,39 +1332,14 @@ function LoginEditor({
       </header>
 
       <div className="scroll-fade-y forced-colors:scroll-fade-none grid min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] content-start gap-3.5 overflow-auto px-5 pt-5 pb-10 max-[680px]:px-3 max-[680px]:pt-[13px] max-[680px]:pb-7">
-        <Tabs
-          value={activeTab}
-          onValueChange={(value) => setActiveTab(value as EditorTab)}
-          className="w-full"
-        >
-          <TabsList
-            variant="line"
-            sliding
-            aria-label="編輯器區段"
-            className="w-full justify-start overflow-x-auto"
-          >
-            <TabsTrigger value="details">
-              <FileKey2 data-icon="inline-start" />
-              資料
-            </TabsTrigger>
-            <TabsTrigger value="custom">
-              <ListPlus data-icon="inline-start" />
-              自訂
-              <Badge variant="secondary">{draft.customFields.length}</Badge>
-            </TabsTrigger>
-            <TabsTrigger value="organize">
-              <FolderHeart data-icon="inline-start" />
-              整理
-            </TabsTrigger>
-          </TabsList>
-
+        <div className="flex w-full flex-col">
           {error && (
             <FieldError id="editor-error" role="alert" className="mt-2">
               {error}
             </FieldError>
           )}
 
-          <TabsContent value="details" className="pt-4">
+          <EditorSection value="details">
             <EditorFormSection title={`${typeLabel(draft.type)}資料`} titleId="item-section-title">
               <FieldGroup className="gap-4">
                 {!login && (
@@ -1454,7 +1435,7 @@ function LoginEditor({
                           尚未設定網站；你也可以只保存帳號與密碼。
                         </FieldDescription>
                       ) : (
-                        <div className="space-y-3">
+                        <div className="flex flex-col gap-3">
                           {draft.uris.map((entry, index) => (
                             <div
                               key={index}
@@ -1476,36 +1457,49 @@ function LoginEditor({
                                   errorKind === 'uri' && !entry.uri.trim() ? true : undefined
                                 }
                               />
-                              <Select
-                                items={uriMatchItems}
-                                value={entry.match === null ? 'default' : String(entry.match)}
-                                disabled={busy}
-                                onValueChange={(value) =>
-                                  updateUri(index, {
-                                    match:
-                                      value === 'default' || value === null
-                                        ? null
-                                        : (Number(value) as VaultUriMatch)
-                                  })
-                                }
-                              >
-                                <SelectTrigger
-                                  aria-label={`網站 ${index + 1} 符合方式`}
-                                  className="w-full"
+                              <div className="flex min-w-0 flex-col gap-1.5">
+                                <Select
+                                  items={uriMatchOptions}
+                                  value={entry.match === null ? 'default' : String(entry.match)}
+                                  disabled={busy}
+                                  onValueChange={(value) =>
+                                    updateUri(index, {
+                                      match:
+                                        value === 'default' || value === null
+                                          ? null
+                                          : (Number(value) as VaultUriMatch)
+                                    })
+                                  }
                                 >
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectGroup>
-                                    {uriMatchItems.map((item) => (
-                                      <SelectItem key={item.value} value={item.value}>
-                                        {item.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectGroup>
-                                </SelectContent>
-                              </Select>
-                              <div className="flex items-center justify-end gap-1">
+                                  <SelectTrigger
+                                    aria-label={`網站 ${index + 1} 符合方式`}
+                                    className="w-full"
+                                  >
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent className="min-w-80" alignItemWithTrigger={false}>
+                                    <SelectGroup>
+                                      {uriMatchOptions.map((item) => (
+                                        <SelectItem key={item.value} value={item.value}>
+                                          <span>{item.label}</span>
+                                          <span className="text-muted-foreground ml-auto max-w-60 truncate text-xs">
+                                            {uriMatchExample(item.value, entry.uri)}
+                                          </span>
+                                        </SelectItem>
+                                      ))}
+                                    </SelectGroup>
+                                  </SelectContent>
+                                </Select>
+                                <UriMatchExample
+                                  value={
+                                    (entry.match === null
+                                      ? 'default'
+                                      : String(entry.match)) as UriMatchOptionValue
+                                  }
+                                  uri={entry.uri}
+                                />
+                              </div>
+                              <div className="flex items-start justify-end gap-1">
                                 <Button
                                   type="button"
                                   variant="ghost"
@@ -1930,9 +1924,9 @@ function LoginEditor({
                 )}
               </FieldGroup>
             </EditorFormSection>
-          </TabsContent>
+          </EditorSection>
 
-          <TabsContent value="organize" className="flex flex-col gap-4 pt-4">
+          <EditorSection value="organize" className="flex flex-col">
             <EditorFormSection title="整理" titleId="organization-section-title">
               <FieldGroup className="gap-4">
                 <Field>
@@ -2015,198 +2009,176 @@ function LoginEditor({
                 </FieldGroup>
               </EditorFormSection>
             )}
-          </TabsContent>
+          </EditorSection>
 
-          <TabsContent value="custom" className="flex flex-col gap-4 pt-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="flex min-w-0 flex-col gap-1">
-                <h3 className="font-medium">自訂欄位</h3>
-                <p className="text-muted-foreground text-sm">
+          <EditorSection value="custom" className="flex flex-col">
+            <EditorFormSection title="自訂欄位" titleId="custom-fields-section-title">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <p className="text-muted-foreground m-0 text-sm">
                   新增文字、隱藏文字、核取方塊，或連結項目的既有資料。
                 </p>
+                {draft.customFields.length > 0 && customFieldAddMenu()}
               </div>
-              {draft.customFields.length > 0 && customFieldAddMenu()}
-            </div>
 
-            {draft.customFields.length === 0 ? (
-              <Empty className="border">
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <ListPlus />
-                  </EmptyMedia>
-                  <EmptyTitle>還沒有自訂欄位</EmptyTitle>
-                  <EmptyDescription>依用途新增欄位，補充這筆項目專屬的資料。</EmptyDescription>
-                </EmptyHeader>
-                <EmptyContent>{customFieldAddMenu('default')}</EmptyContent>
-              </Empty>
-            ) : (
-              <FieldGroup>
-                {draft.customFields.map((customField, index) => {
-                  const linkedIds = linkedIdsForItemType(draft.type)
-                  const customFieldTypeItems = (
-                    Object.entries(customFieldTypeLabels) as Array<[VaultCustomFieldType, string]>
-                  )
-                    .filter(([type]) => type !== 'linked' || linkedIds.length > 0)
-                    .map(([value, label]) => ({ value, label }))
-                  const customFieldId = `editor-custom-field-${customField.clientId}`
-                  const customFieldNameId = `${customFieldId}-name`
-                  const customFieldTypeId = `${customFieldId}-type`
-                  const customFieldValueId = `${customFieldId}-value`
-                  const customFieldLabel = customField.name.trim() || `欄位 ${index + 1}`
-                  const customFieldVisible = Boolean(visibleCustomFields[customField.clientId])
-                  const customFieldBusy =
-                    busy ||
-                    secretsUnavailable ||
-                    Boolean(revealingCustomFields[customField.clientId])
+              {draft.customFields.length === 0 ? (
+                <Empty className="border">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <ListPlus />
+                    </EmptyMedia>
+                    <EmptyTitle>還沒有自訂欄位</EmptyTitle>
+                    <EmptyDescription>依用途新增欄位，補充這筆項目專屬的資料。</EmptyDescription>
+                  </EmptyHeader>
+                  <EmptyContent>{customFieldAddMenu('default')}</EmptyContent>
+                </Empty>
+              ) : (
+                <FieldGroup>
+                  {draft.customFields.map((customField, index) => {
+                    const linkedIds = linkedIdsForItemType(draft.type)
+                    const customFieldTypeItems = (
+                      Object.entries(customFieldTypeLabels) as Array<[VaultCustomFieldType, string]>
+                    )
+                      .filter(([type]) => type !== 'linked' || linkedIds.length > 0)
+                      .map(([value, label]) => ({ value, label }))
+                    const customFieldId = `editor-custom-field-${customField.clientId}`
+                    const customFieldNameId = `${customFieldId}-name`
+                    const customFieldTypeId = `${customFieldId}-type`
+                    const customFieldValueId = `${customFieldId}-value`
+                    const customFieldLabel = customField.name.trim() || `欄位 ${index + 1}`
+                    const customFieldVisible = Boolean(visibleCustomFields[customField.clientId])
+                    const customFieldBusy =
+                      busy ||
+                      secretsUnavailable ||
+                      Boolean(revealingCustomFields[customField.clientId])
 
-                  return (
-                    <Card
-                      key={customField.clientId}
-                      size="sm"
-                      aria-labelledby={`${customFieldId}-title`}
-                      aria-disabled={customFieldBusy || undefined}
-                    >
-                      <CardHeader>
-                        <CardTitle
-                          id={`${customFieldId}-title`}
-                          className="flex min-w-0 flex-wrap items-center gap-2"
-                        >
-                          <span className="truncate">{customField.name || '未命名欄位'}</span>
-                          <Badge variant="secondary">
-                            {customFieldTypeLabels[customField.type]}
-                          </Badge>
-                        </CardTitle>
-                        <CardDescription>欄位 {index + 1}</CardDescription>
-                        <CardAction className="flex items-center gap-1">
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  aria-label={`上移「${customFieldLabel}」`}
-                                  onClick={() => moveCustomField(index, -1)}
-                                  disabled={customFieldBusy || index === 0}
-                                />
-                              }
-                            >
-                              <ArrowUp />
-                            </TooltipTrigger>
-                            <TooltipContent>上移</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  aria-label={`下移「${customFieldLabel}」`}
-                                  onClick={() => moveCustomField(index, 1)}
-                                  disabled={
-                                    customFieldBusy || index === draft.customFields.length - 1
+                    return (
+                      <Card
+                        key={customField.clientId}
+                        size="sm"
+                        aria-labelledby={`${customFieldId}-title`}
+                        aria-disabled={customFieldBusy || undefined}
+                      >
+                        <CardHeader>
+                          <CardTitle
+                            id={`${customFieldId}-title`}
+                            className="flex min-w-0 flex-wrap items-center gap-2"
+                          >
+                            <span className="truncate">{customField.name || '未命名欄位'}</span>
+                            <Badge variant="secondary">
+                              {customFieldTypeLabels[customField.type]}
+                            </Badge>
+                          </CardTitle>
+                          <CardDescription>欄位 {index + 1}</CardDescription>
+                          <CardAction className="flex items-center gap-1">
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    aria-label={`上移「${customFieldLabel}」`}
+                                    onClick={() => moveCustomField(index, -1)}
+                                    disabled={customFieldBusy || index === 0}
+                                  />
+                                }
+                              >
+                                <ArrowUp />
+                              </TooltipTrigger>
+                              <TooltipContent>上移</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    aria-label={`下移「${customFieldLabel}」`}
+                                    onClick={() => moveCustomField(index, 1)}
+                                    disabled={
+                                      customFieldBusy || index === draft.customFields.length - 1
+                                    }
+                                  />
+                                }
+                              >
+                                <ArrowDown />
+                              </TooltipTrigger>
+                              <TooltipContent>下移</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    aria-label={`刪除「${customFieldLabel}」`}
+                                    onClick={() => removeCustomField(customField.clientId)}
+                                    disabled={customFieldBusy}
+                                  />
+                                }
+                              >
+                                <Trash2 />
+                              </TooltipTrigger>
+                              <TooltipContent>刪除</TooltipContent>
+                            </Tooltip>
+                          </CardAction>
+                        </CardHeader>
+                        <CardContent>
+                          <FieldGroup>
+                            <FieldGroup className={fieldGridClassName}>
+                              <Field>
+                                <FieldLabel htmlFor={customFieldNameId}>名稱</FieldLabel>
+                                <Input
+                                  id={customFieldNameId}
+                                  value={customField.name}
+                                  onChange={(event) =>
+                                    updateCustomField(customField.clientId, (field) => ({
+                                      ...field,
+                                      name: event.target.value
+                                    }))
                                   }
-                                />
-                              }
-                            >
-                              <ArrowDown />
-                            </TooltipTrigger>
-                            <TooltipContent>下移</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  aria-label={`刪除「${customFieldLabel}」`}
-                                  onClick={() => removeCustomField(customField.clientId)}
+                                  maxLength={5000}
                                   disabled={customFieldBusy}
                                 />
-                              }
-                            >
-                              <Trash2 />
-                            </TooltipTrigger>
-                            <TooltipContent>刪除</TooltipContent>
-                          </Tooltip>
-                        </CardAction>
-                      </CardHeader>
-                      <CardContent>
-                        <FieldGroup>
-                          <FieldGroup className={fieldGridClassName}>
-                            <Field>
-                              <FieldLabel htmlFor={customFieldNameId}>名稱</FieldLabel>
-                              <Input
-                                id={customFieldNameId}
-                                value={customField.name}
-                                onChange={(event) =>
-                                  updateCustomField(customField.clientId, (field) => ({
-                                    ...field,
-                                    name: event.target.value
-                                  }))
-                                }
-                                maxLength={5000}
-                                disabled={customFieldBusy}
-                              />
-                            </Field>
-                            <Field>
-                              <FieldLabel htmlFor={customFieldTypeId}>類型</FieldLabel>
-                              <Select
-                                items={customFieldTypeItems}
-                                value={customField.type}
-                                disabled={customFieldBusy}
-                                onValueChange={(value) => {
-                                  if (value) {
-                                    updateCustomFieldType(
-                                      customField.clientId,
-                                      value as VaultCustomFieldType
-                                    )
-                                  }
-                                }}
-                              >
-                                <SelectTrigger id={customFieldTypeId} className="w-full">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectGroup>
-                                    {customFieldTypeItems.map((item) => (
-                                      <SelectItem key={item.value} value={item.value}>
-                                        {item.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectGroup>
-                                </SelectContent>
-                              </Select>
-                            </Field>
-                          </FieldGroup>
+                              </Field>
+                              <Field>
+                                <FieldLabel htmlFor={customFieldTypeId}>類型</FieldLabel>
+                                <Select
+                                  items={customFieldTypeItems}
+                                  value={customField.type}
+                                  disabled={customFieldBusy}
+                                  onValueChange={(value) => {
+                                    if (value) {
+                                      updateCustomFieldType(
+                                        customField.clientId,
+                                        value as VaultCustomFieldType
+                                      )
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger id={customFieldTypeId} className="w-full">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectGroup>
+                                      {customFieldTypeItems.map((item) => (
+                                        <SelectItem key={item.value} value={item.value}>
+                                          {item.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectGroup>
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                            </FieldGroup>
 
-                          {customField.type === 'text' && (
-                            <Field>
-                              <FieldLabel htmlFor={customFieldValueId}>內容</FieldLabel>
-                              <Input
-                                id={customFieldValueId}
-                                value={customField.value ?? ''}
-                                onChange={(event) =>
-                                  updateCustomField(customField.clientId, (field) => ({
-                                    ...field,
-                                    value: event.target.value
-                                  }))
-                                }
-                                maxLength={5000}
-                                disabled={customFieldBusy}
-                              />
-                            </Field>
-                          )}
-
-                          {customField.type === 'hidden' && (
-                            <Field>
-                              <FieldLabel htmlFor={customFieldValueId}>內容</FieldLabel>
-                              <InputGroup>
-                                <InputGroupInput
+                            {customField.type === 'text' && (
+                              <Field>
+                                <FieldLabel htmlFor={customFieldValueId}>內容</FieldLabel>
+                                <Input
                                   id={customFieldValueId}
-                                  type={customFieldVisible ? 'text' : 'password'}
                                   value={customField.value ?? ''}
                                   onChange={(event) =>
                                     updateCustomField(customField.clientId, (field) => ({
@@ -2215,107 +2187,128 @@ function LoginEditor({
                                     }))
                                   }
                                   maxLength={5000}
-                                  autoComplete="off"
                                   disabled={customFieldBusy}
                                 />
-                                <InputGroupAddon align="inline-end">
-                                  <InputGroupButton
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-xs"
-                                    aria-label={
-                                      customFieldVisible ? '隱藏自訂欄位內容' : '顯示自訂欄位內容'
+                              </Field>
+                            )}
+
+                            {customField.type === 'hidden' && (
+                              <Field>
+                                <FieldLabel htmlFor={customFieldValueId}>內容</FieldLabel>
+                                <InputGroup>
+                                  <InputGroupInput
+                                    id={customFieldValueId}
+                                    type={customFieldVisible ? 'text' : 'password'}
+                                    value={customField.value ?? ''}
+                                    onChange={(event) =>
+                                      updateCustomField(customField.clientId, (field) => ({
+                                        ...field,
+                                        value: event.target.value
+                                      }))
                                     }
-                                    aria-pressed={customFieldVisible}
-                                    onClick={() => void toggleCustomFieldVisibility(customField)}
+                                    maxLength={5000}
+                                    autoComplete="off"
                                     disabled={customFieldBusy}
-                                  >
-                                    {revealingCustomFields[customField.clientId] ? (
-                                      <Spinner />
-                                    ) : customFieldVisible ? (
-                                      <EyeOff />
-                                    ) : (
-                                      <Eye />
-                                    )}
-                                  </InputGroupButton>
-                                </InputGroupAddon>
-                              </InputGroup>
-                            </Field>
-                          )}
+                                  />
+                                  <InputGroupAddon align="inline-end">
+                                    <InputGroupButton
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon-xs"
+                                      aria-label={
+                                        customFieldVisible ? '隱藏自訂欄位內容' : '顯示自訂欄位內容'
+                                      }
+                                      aria-pressed={customFieldVisible}
+                                      onClick={() => void toggleCustomFieldVisibility(customField)}
+                                      disabled={customFieldBusy}
+                                    >
+                                      {revealingCustomFields[customField.clientId] ? (
+                                        <Spinner />
+                                      ) : customFieldVisible ? (
+                                        <EyeOff />
+                                      ) : (
+                                        <Eye />
+                                      )}
+                                    </InputGroupButton>
+                                  </InputGroupAddon>
+                                </InputGroup>
+                              </Field>
+                            )}
 
-                          {customField.type === 'boolean' && (
-                            <Field
-                              className={checkFieldClassName}
-                              orientation="horizontal"
-                              data-disabled={customFieldBusy || undefined}
-                            >
-                              <Checkbox
-                                id={customFieldValueId}
-                                checked={customField.value === 'true'}
-                                onCheckedChange={(checked) =>
-                                  updateCustomField(customField.clientId, (field) => ({
-                                    ...field,
-                                    value: checked ? 'true' : 'false'
-                                  }))
-                                }
-                                disabled={customFieldBusy}
-                              />
-                              <FieldContent>
-                                <FieldLabel htmlFor={customFieldValueId}>
-                                  <FieldTitle>已啟用</FieldTitle>
-                                </FieldLabel>
-                              </FieldContent>
-                            </Field>
-                          )}
-
-                          {customField.type === 'linked' && (
-                            <Field>
-                              <FieldLabel htmlFor={customFieldValueId}>連結至</FieldLabel>
-                              <Select
-                                items={linkedIds.map((linkedId) => ({
-                                  value: String(linkedId),
-                                  label: linkedFieldLabels[linkedId] ?? `欄位 ${linkedId}`
-                                }))}
-                                value={String(customField.linkedId ?? linkedIds[0] ?? '')}
-                                disabled={customFieldBusy}
-                                onValueChange={(value) => {
-                                  const linkedId = Number(value)
-                                  if (linkedIds.includes(linkedId)) {
+                            {customField.type === 'boolean' && (
+                              <Field
+                                className={checkFieldClassName}
+                                orientation="horizontal"
+                                data-disabled={customFieldBusy || undefined}
+                              >
+                                <Checkbox
+                                  id={customFieldValueId}
+                                  checked={customField.value === 'true'}
+                                  onCheckedChange={(checked) =>
                                     updateCustomField(customField.clientId, (field) => ({
                                       ...field,
-                                      value: null,
-                                      linkedId
+                                      value: checked ? 'true' : 'false'
                                     }))
                                   }
-                                }}
-                              >
-                                <SelectTrigger id={customFieldValueId} className="w-full">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectGroup>
-                                    {linkedIds.map((linkedId) => (
-                                      <SelectItem key={linkedId} value={String(linkedId)}>
-                                        {linkedFieldLabels[linkedId] ?? `欄位 ${linkedId}`}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectGroup>
-                                </SelectContent>
-                              </Select>
-                            </Field>
-                          )}
-                        </FieldGroup>
-                      </CardContent>
-                    </Card>
-                  )
-                })}
-              </FieldGroup>
-            )}
-          </TabsContent>
-        </Tabs>
+                                  disabled={customFieldBusy}
+                                />
+                                <FieldContent>
+                                  <FieldLabel htmlFor={customFieldValueId}>
+                                    <FieldTitle>已啟用</FieldTitle>
+                                  </FieldLabel>
+                                </FieldContent>
+                              </Field>
+                            )}
+
+                            {customField.type === 'linked' && (
+                              <Field>
+                                <FieldLabel htmlFor={customFieldValueId}>連結至</FieldLabel>
+                                <Select
+                                  items={linkedIds.map((linkedId) => ({
+                                    value: String(linkedId),
+                                    label: linkedFieldLabels[linkedId] ?? `欄位 ${linkedId}`
+                                  }))}
+                                  value={String(customField.linkedId ?? linkedIds[0] ?? '')}
+                                  disabled={customFieldBusy}
+                                  onValueChange={(value) => {
+                                    const linkedId = Number(value)
+                                    if (linkedIds.includes(linkedId)) {
+                                      updateCustomField(customField.clientId, (field) => ({
+                                        ...field,
+                                        value: null,
+                                        linkedId
+                                      }))
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger id={customFieldValueId} className="w-full">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectGroup>
+                                      {linkedIds.map((linkedId) => (
+                                        <SelectItem key={linkedId} value={String(linkedId)}>
+                                          {linkedFieldLabels[linkedId] ?? `欄位 ${linkedId}`}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectGroup>
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                            )}
+                          </FieldGroup>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </FieldGroup>
+              )}
+            </EditorFormSection>
+          </EditorSection>
+        </div>
       </div>
 
-      <footer className="bg-muted flex min-h-16 items-center justify-end gap-2 border-t px-5 py-1">
+      <footer className="bg-card flex min-h-16 items-center justify-end gap-2 border-t px-5 py-1">
         <Button variant="secondary" type="button" onClick={requestCancel} disabled={busy}>
           取消
         </Button>
