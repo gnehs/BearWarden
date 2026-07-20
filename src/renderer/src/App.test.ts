@@ -5,7 +5,7 @@ vi.mock('./components/PasskeyApprovalDialog', () => ({ default: () => null }))
 vi.mock('./components/SshAgentApprovalDialog', () => ({ default: () => null }))
 vi.mock('./components/VaultShell', () => ({ default: () => null }))
 
-import { nextVaultActivityTimestamp, vaultNavigationTarget } from './App'
+import { nextVaultActivityTimestamp, shouldRenderVault, vaultNavigationTarget } from './App'
 import { shouldPromptSyncSetup, shouldShowSyncSetupPrompt } from './lib/sync-setup-prompt'
 
 describe('new vault sync invitation', () => {
@@ -61,6 +61,12 @@ describe('vault route guard', () => {
       expect(vaultNavigationTarget('unlocked', pathname)).toBe('/vault')
     }
   )
+
+  it('waits for the vault route match before rendering route-bound vault hooks', () => {
+    expect(shouldRenderVault('unlocked', false)).toBe(false)
+    expect(shouldRenderVault('unlocked', true)).toBe(true)
+    expect(shouldRenderVault('locked', true)).toBe(false)
+  })
 
   it.each(['locked', 'unavailable'] as const)(
     'sends %s vault state to unlock from nested vault routes',

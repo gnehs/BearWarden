@@ -1063,7 +1063,12 @@ function VaultShell({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [emptyTrashDialogOpen, setEmptyTrashDialogOpen] = useState(false)
   const [passwordHistoryDialogOpen, setPasswordHistoryDialogOpen] = useState(false)
-  const [passwordZoomValue, setPasswordZoomValue] = useState<string | null>(null)
+  const [passwordZoom, setPasswordZoom] = useState<{ itemId: string; value: string } | null>(null)
+  if (passwordZoom !== null && passwordZoom.itemId !== selectedLogin?.id) {
+    setPasswordZoom(null)
+  }
+  const passwordZoomValue =
+    passwordZoom !== null && passwordZoom.itemId === selectedLogin?.id ? passwordZoom.value : null
   const passwordHoveringRef = useRef(false)
   const passwordZoomOpenRef = useRef(false)
   const [generatorDialogOpen, setGeneratorDialogOpen] = useState(false)
@@ -1100,8 +1105,7 @@ function VaultShell({
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
   const [activeDragOverId, setActiveDragOverId] = useState<string | null>(null)
   const foldersBeforeDragRef = useRef<FolderView[] | null>(null)
-  const foldersRef = useRef(folders)
-  foldersRef.current = folders
+  const foldersDuringDragRef = useRef<FolderView[] | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const queryRef = useRef(query)
   const searchRequestIdRef = useRef(0)
@@ -2049,7 +2053,6 @@ function VaultShell({
   useEffect(() => {
     passwordHoveringRef.current = false
     passwordZoomOpenRef.current = false
-    setPasswordZoomValue(null)
   }, [selectedLogin?.id])
 
   useEffect(() => {
@@ -3592,18 +3595,20 @@ function VaultShell({
   }
 
   async function openPasswordZoom(): Promise<void> {
+    if (!selectedSummary) return
+    const itemId = selectedSummary.id
     passwordZoomOpenRef.current = true
     const value = await revealSecret('password', { quiet: true, forceShow: true })
     if (value === undefined) {
       passwordZoomOpenRef.current = false
       return
     }
-    setPasswordZoomValue(value)
+    setPasswordZoom({ itemId, value })
   }
 
   function closePasswordZoom(): void {
     passwordZoomOpenRef.current = false
-    setPasswordZoomValue(null)
+    setPasswordZoom(null)
     if (!passwordHoveringRef.current) hideRevealedSecret('password')
   }
 
@@ -3900,7 +3905,8 @@ function VaultShell({
   function startDrag(event: DragStartEvent): void {
     const activeId = String(event.active.id)
     if (itemIds.has(activeId) && !selectedIdsRef.current.has(activeId)) selectLogin(activeId)
-    foldersBeforeDragRef.current = folderIds.has(activeId) ? foldersRef.current : null
+    foldersBeforeDragRef.current = folderIds.has(activeId) ? folders : null
+    foldersDuringDragRef.current = folderIds.has(activeId) ? folders : null
     setActiveDragId(activeId)
     setActiveDragOverId(null)
   }
@@ -3915,16 +3921,19 @@ function VaultShell({
       const oldIndex = previous.findIndex((folder) => folder.id === activeId)
       const newIndex = previous.findIndex((folder) => folder.id === overId)
       if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return previous
-      return arrayMove(previous, oldIndex, newIndex).map((folder, position) => ({
+      const reordered = arrayMove(previous, oldIndex, newIndex).map((folder, position) => ({
         ...folder,
         position
       }))
+      foldersDuringDragRef.current = reordered
+      return reordered
     })
   }
 
   function cancelDrag(): void {
     const previousFolders = foldersBeforeDragRef.current
     foldersBeforeDragRef.current = null
+    foldersDuringDragRef.current = null
     if (previousFolders) setFolders(previousFolders)
     setActiveDragId(null)
     setActiveDragOverId(null)
@@ -3932,7 +3941,9 @@ function VaultShell({
 
   async function endDrag(event: DragEndEvent): Promise<void> {
     const previousFolders = foldersBeforeDragRef.current
+    const reorderedFolders = foldersDuringDragRef.current
     foldersBeforeDragRef.current = null
+    foldersDuringDragRef.current = null
     setActiveDragId(null)
     setActiveDragOverId(null)
     if (!event.over) {
@@ -3960,7 +3971,7 @@ function VaultShell({
       return
     }
     if (!previousFolders || !folderIds.has(activeId)) return
-    const reordered = foldersRef.current
+    const reordered = reorderedFolders ?? previousFolders
     const orderedIds = reordered.map((folder) => folder.id)
     if (orderedIds.every((id, index) => id === previousFolders[index]?.id)) return
     try {

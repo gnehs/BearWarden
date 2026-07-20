@@ -1,4 +1,4 @@
-import { useNavigate, useRouterState } from '@tanstack/react-router'
+import { useMatch, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import type {
   PasskeyApprovalPrompt,
@@ -12,17 +12,10 @@ import VaultShell from './components/VaultShell'
 import { shouldDenyPasskeyApproval } from './lib/passkey-approval-ui'
 import { shouldPromptSyncSetup } from './lib/sync-setup-prompt'
 import { applyThemePreference } from './lib/theme'
+import { isVaultPagePath } from './lib/vault-paths'
 
 type AppState = VaultState | 'loading' | 'unavailable'
 const activityThrottleMs = 10_000
-const vaultPathnames = new Set([
-  '/vault',
-  '/vault/settings',
-  '/vault/health',
-  '/vault/sends',
-  '/vault/organizations',
-  '/vault/emergency-access'
-])
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function vaultNavigationTarget(
@@ -32,8 +25,14 @@ export function vaultNavigationTarget(
   if (state === 'loading') return null
   if (state !== 'unlocked') return pathname === '/unlock' ? null : '/unlock'
 
-  const normalizedPathname = pathname.replace(/\/+$/, '') || '/'
-  return vaultPathnames.has(normalizedPathname) ? null : '/vault'
+  return isVaultPagePath(pathname) ? null : '/vault'
+}
+
+// The vault route hooks require an active /vault match. Authentication can complete one render
+// before the route-guard effect commits its navigation, so do not mount VaultShell during that gap.
+// eslint-disable-next-line react-refresh/only-export-components
+export function shouldRenderVault(state: AppState, hasVaultMatch: boolean): boolean {
+  return state === 'unlocked' && hasVaultMatch
 }
 
 /** Returns the timestamp to retain when renderer activity should reach the main process. */
@@ -61,6 +60,7 @@ function denyPasskeyApproval(request: PasskeyApprovalPrompt): void {
 function App(): React.JSX.Element {
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (routerState) => routerState.location.pathname })
+  const vaultMatch = useMatch({ from: '/vault', shouldThrow: false })
   const [state, setState] = useState<AppState>('loading')
   const [retryKey, setRetryKey] = useState(0)
   const [syncSetupPromptPending, setSyncSetupPromptPending] = useState(false)
@@ -214,7 +214,7 @@ function App(): React.JSX.Element {
     }
   }, [state])
 
-  if (state === 'unlocked') {
+  if (shouldRenderVault(state, Boolean(vaultMatch))) {
     return (
       <>
         <VaultShell
@@ -251,7 +251,7 @@ function App(): React.JSX.Element {
 
   return (
     <AuthScreen
-      state={state}
+      state={state === 'unlocked' ? 'loading' : state}
       onAuthenticated={(source) => {
         setSyncSetupPromptPending(shouldPromptSyncSetup(source))
         updateState('unlocked')

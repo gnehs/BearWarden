@@ -20,7 +20,12 @@ const vaultCategories = [
   'totp',
   'passkey'
 ] as const satisfies readonly VaultCategoryFilter[]
-const vaultSortModes = ['title', 'recent', 'frequency', 'modified'] as const satisfies readonly VaultSortMode[]
+const vaultSortModes = [
+  'title',
+  'recent',
+  'frequency',
+  'modified'
+] as const satisfies readonly VaultSortMode[]
 
 export interface VaultSearch {
   scope?: (typeof vaultScopes)[number]
@@ -111,13 +116,7 @@ const routeTree = rootRoute.addChildren([
   ])
 ])
 
-export type VaultPagePath =
-  | '/vault'
-  | '/vault/settings'
-  | '/vault/health'
-  | '/vault/sends'
-  | '/vault/organizations'
-  | '/vault/emergency-access'
+export type { VaultPagePath } from './lib/vault-paths'
 
 export const router = createRouter({
   routeTree,

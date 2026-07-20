@@ -1,8 +1,11 @@
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import type { Dispatch, SetStateAction } from 'react'
-import { vaultRoute, type VaultPagePath } from '../router'
+import { vaultRoute } from '../router'
 import type { VaultCategoryFilter } from './vault-category'
+import { vaultPagePathFromPathname, type VaultPagePath } from './vault-paths'
 import type { VaultSortMode } from './vault-sort'
+
+export { vaultPagePathFromPathname } from './vault-paths'
 
 export type VaultScope =
   | { kind: 'all' }
@@ -48,24 +51,6 @@ function scopeFromSearch(search: ReturnType<typeof vaultRoute.useSearch>): Vault
   if (search.scope === 'folder' && search.folder) return { kind: 'folder', folderId: search.folder }
   if (search.scope && search.scope !== 'folder') return { kind: search.scope }
   return { kind: 'all' }
-}
-
-export function vaultPagePathFromPathname(pathname: string): VaultPagePath {
-  const normalizedPathname = pathname.replace(/\/+$/, '') || '/'
-  switch (normalizedPathname) {
-    case '/vault/settings':
-      return '/vault/settings'
-    case '/vault/health':
-      return '/vault/health'
-    case '/vault/sends':
-      return '/vault/sends'
-    case '/vault/organizations':
-      return '/vault/organizations'
-    case '/vault/emergency-access':
-      return '/vault/emergency-access'
-    default:
-      return '/vault'
-  }
 }
 
 export function nextVaultPagePath(
