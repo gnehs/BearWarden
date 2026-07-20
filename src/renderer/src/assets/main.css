@@ -166,16 +166,6 @@
   text-rendering: optimizeLegibility;
 }
 
-@keyframes t-skel-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: var(--pulse-min);
-  }
-}
-
 @keyframes t-toggle-on {
   0% {
     translate: 0 0;

@@ -65,7 +65,7 @@ import {
   Wrench,
   X
 } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import type {
   AppSettings,
@@ -1015,6 +1015,7 @@ function VaultShell({
       ? totpGenerationErrorState.kind
       : null
   const totpRevealReady = totpCode !== null || totpGenerationError !== null
+  const [showTotpSkeleton, setShowTotpSkeleton] = useState(false)
   const [editorMode, setEditorMode] = useState<'create' | 'edit' | null>(null)
   const totpRefreshTarget = resolveTotpRefreshTarget(selectedLogin, selectedId, editorMode !== null)
   const [editorSessionId, setEditorSessionId] = useState(0)
@@ -1077,7 +1078,6 @@ function VaultShell({
     setQuery(bounded)
   }, [])
   const sidebarMenuTriggerRef = useRef<HTMLButtonElement>(null)
-  const totpRevealRegionRef = useRef<HTMLDivElement>(null)
   const settingsReturnFocusRef = useRef<HTMLElement | null>(null)
   const accountStatusRequestRef = useRef(0)
   const accountMutationRequestRef = useRef(0)
@@ -1990,27 +1990,13 @@ function VaultShell({
     totpRefreshTarget?.sourceRevision
   ])
 
-  useLayoutEffect(() => {
-    const region = totpRevealRegionRef.current
-    if (!region) return
-
-    const loaders = Array.from(region.querySelectorAll<HTMLElement>('[data-slot="totp-reveal"]'))
-    if (totpRevealReady) {
-      for (const loader of loaders) loader.dataset.revealState = 'revealed'
+  useEffect(() => {
+    if (totpRevealReady || !totpRefreshTarget?.itemId) {
+      queueMicrotask(() => setShowTotpSkeleton(false))
       return
     }
-
-    for (const loader of loaders) {
-      loader.dataset.revealState = 'resetting'
-      const skeleton = loader.querySelector<HTMLElement>('[data-slot="totp-reveal-skeleton"]')
-      if (skeleton) skeleton.dataset.pulsing = 'false'
-    }
-    void region.offsetWidth
-    for (const loader of loaders) {
-      loader.dataset.revealState = 'loading'
-      const skeleton = loader.querySelector<HTMLElement>('[data-slot="totp-reveal-skeleton"]')
-      if (skeleton) skeleton.dataset.pulsing = 'true'
-    }
+    const timer = window.setTimeout(() => setShowTotpSkeleton(true), 100)
+    return () => window.clearTimeout(timer)
   }, [totpRefreshTarget?.itemId, totpRefreshTarget?.sourceRevision, totpRevealReady])
 
   useEffect(() => {
@@ -5222,10 +5208,9 @@ function VaultShell({
 
                     {selectedLogin.type === 'login' && selectedLogin.hasTotp && (
                       <DetailCard
-                        ref={totpRevealRegionRef}
                         role="region"
                         aria-labelledby="totp-title"
-                        aria-busy={!totpCode && totpGenerationError === null}
+                        aria-busy={!totpRevealReady}
                       >
                         <CardHeader className="bg-muted rounded-none border-b">
                           <CardTitle id="totp-title">一次性驗證碼</CardTitle>
@@ -5236,39 +5221,28 @@ function VaultShell({
                         </CardHeader>
                         <CardContent className="contents">
                           <div className="grid grid-cols-[minmax(0,1fr)_34px] items-center gap-2 px-[15px] pt-3.5 pb-2 [&_strong]:font-mono [&_strong]:text-[25px] [&_strong]:tracking-[0.18em]">
-                            <div
-                              className="group/totp-reveal relative h-8 min-w-0"
-                              data-slot="totp-reveal"
-                              data-reveal-state="loading"
-                            >
-                              <div
-                                className="absolute inset-0 z-1 flex items-center opacity-100 blur-none transition-[opacity,filter] duration-(--reveal-dur) ease-(--reveal-ease) group-data-[reveal-state=resetting]/totp-reveal:!transition-none group-data-[reveal-state=revealed]/totp-reveal:opacity-0 group-data-[reveal-state=revealed]/totp-reveal:blur-(--reveal-blur) motion-reduce:transition-none data-[pulsing=true]:[&>*]:animate-[t-skel-pulse_var(--pulse-dur)_ease-in-out_var(--pulse-count)] motion-reduce:data-[pulsing=true]:[&>*]:animate-none"
-                                data-slot="totp-reveal-skeleton"
-                                data-pulsing="true"
-                              >
+                            <div className="flex h-8 min-w-0 items-center">
+                              {totpCode ? (
+                                <strong>
+                                  {/^\d+$/.test(totpCode.code) ? (
+                                    <NumberFlow
+                                      className="tabular-nums"
+                                      value={Number(totpCode.code)}
+                                      format={{
+                                        useGrouping: false,
+                                        minimumIntegerDigits: totpCode.code.length
+                                      }}
+                                      trend={0}
+                                    />
+                                  ) : (
+                                    totpCode.code
+                                  )}
+                                </strong>
+                              ) : totpGenerationError ? (
+                                <strong>—</strong>
+                              ) : showTotpSkeleton ? (
                                 <Skeleton className="h-8 w-36" aria-hidden="true" />
-                              </div>
-                              <div className="absolute inset-0 z-2 flex items-center opacity-0 blur-(--reveal-blur) transition-[opacity,filter] duration-(--reveal-dur) ease-(--reveal-ease) group-data-[reveal-state=resetting]/totp-reveal:!transition-none group-data-[reveal-state=revealed]/totp-reveal:opacity-100 group-data-[reveal-state=revealed]/totp-reveal:blur-none motion-reduce:transition-none">
-                                {totpCode ? (
-                                  <strong>
-                                    {/^\d+$/.test(totpCode.code) ? (
-                                      <NumberFlow
-                                        className="tabular-nums"
-                                        value={Number(totpCode.code)}
-                                        format={{
-                                          useGrouping: false,
-                                          minimumIntegerDigits: totpCode.code.length
-                                        }}
-                                        trend={0}
-                                      />
-                                    ) : (
-                                      totpCode.code
-                                    )}
-                                  </strong>
-                                ) : totpGenerationError ? (
-                                  <strong>—</strong>
-                                ) : null}
-                              </div>
+                              ) : null}
                             </div>
                             <TooltipIconButton
                               variant="outline"
@@ -5286,32 +5260,21 @@ function VaultShell({
                             </TooltipIconButton>
                           </div>
                           {!totpGenerationError && (
-                            <div
-                              className="group/totp-reveal relative h-[19px]"
-                              data-slot="totp-reveal"
-                              data-reveal-state="loading"
-                            >
-                              <div
-                                className="absolute inset-0 z-1 opacity-100 blur-none transition-[opacity,filter] duration-(--reveal-dur) ease-(--reveal-ease) group-data-[reveal-state=resetting]/totp-reveal:!transition-none group-data-[reveal-state=revealed]/totp-reveal:opacity-0 group-data-[reveal-state=revealed]/totp-reveal:blur-(--reveal-blur) motion-reduce:transition-none data-[pulsing=true]:[&>*]:animate-[t-skel-pulse_var(--pulse-dur)_ease-in-out_var(--pulse-count)] motion-reduce:data-[pulsing=true]:[&>*]:animate-none"
-                                data-slot="totp-reveal-skeleton"
-                                data-pulsing="true"
-                              >
+                            <div className="h-[19px]">
+                              {totpCode ? (
+                                <Progress
+                                  key={totpCodeState?.cycle}
+                                  className="mx-[15px] mb-[15px] block w-[calc(100%-30px)] [&_[data-slot=progress-indicator]]:duration-[1s] [&_[data-slot=progress-indicator]]:ease-linear motion-reduce:[&_[data-slot=progress-indicator]]:duration-0"
+                                  aria-label="驗證碼剩餘時間"
+                                  max={totpCode.period}
+                                  value={totpCode.remainingSeconds}
+                                />
+                              ) : showTotpSkeleton ? (
                                 <Skeleton
-                                  className="mx-[15px] mb-[15px] block h-1 w-[calc(100%-30px)] motion-reduce:animate-none"
+                                  className="mx-[15px] mb-[15px] block h-1 w-[calc(100%-30px)]"
                                   aria-hidden="true"
                                 />
-                              </div>
-                              <div className="absolute inset-0 z-2 opacity-0 blur-(--reveal-blur) transition-[opacity,filter] duration-(--reveal-dur) ease-(--reveal-ease) group-data-[reveal-state=resetting]/totp-reveal:!transition-none group-data-[reveal-state=revealed]/totp-reveal:opacity-100 group-data-[reveal-state=revealed]/totp-reveal:blur-none motion-reduce:transition-none">
-                                {totpCode && (
-                                  <Progress
-                                    key={totpCodeState?.cycle}
-                                    className="mx-[15px] mb-[15px] block w-[calc(100%-30px)] [&_[data-slot=progress-indicator]]:duration-[1s] [&_[data-slot=progress-indicator]]:ease-linear motion-reduce:[&_[data-slot=progress-indicator]]:duration-0"
-                                    aria-label="驗證碼剩餘時間"
-                                    max={totpCode.period}
-                                    value={totpCode.remainingSeconds}
-                                  />
-                                )}
-                              </div>
+                              ) : null}
                             </div>
                           )}
                         </CardContent>
