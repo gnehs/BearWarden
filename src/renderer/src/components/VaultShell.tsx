@@ -4466,10 +4466,26 @@ function VaultShell({
                         }}
                       >
                         <span
-                          className="bg-foreground/5 text-muted-foreground grid size-[30px] flex-none place-items-center rounded"
+                          className={cn(
+                            'bg-foreground/5 text-muted-foreground grid size-[30px] flex-none place-items-center rounded',
+                            item.type === 'login' && scope.kind !== 'trash' && 'overflow-hidden'
+                          )}
                           aria-hidden="true"
                         >
-                          <ItemIcon />
+                          {item.type === 'card' ? (
+                            <PaymentCardBrandMark
+                              brand={normalizeBitwardenCardBrand(item.cardBrand)}
+                              compact
+                            />
+                          ) : item.type === 'login' && scope.kind !== 'trash' ? (
+                            <WebsiteIcon
+                              id={item.id}
+                              uri={item.uri}
+                              enabled={settings?.showWebsiteIcons ?? false}
+                            />
+                          ) : (
+                            <ItemIcon />
+                          )}
                         </span>
                         <span className="min-w-0 flex-1">
                           <strong className="block truncate">{item.name}</strong>
@@ -5510,7 +5526,7 @@ function VaultShell({
                           {!totpRevealReady && <span className="sr-only">產生中…</span>}
                         </CardHeader>
                         <CardContent className="contents">
-                          <div className="grid grid-cols-[minmax(0,1fr)_34px] items-center gap-2 px-[15px] pt-3.5 pb-2 [&_strong]:font-mono [&_strong]:text-[25px] [&_strong]:tracking-[0.18em]">
+                          <div className="grid grid-cols-[minmax(0,1fr)_34px] items-center gap-2 px-[15px] pt-3.5 pb-3 [&_strong]:font-mono [&_strong]:text-[25px] [&_strong]:tracking-[0.18em]">
                             <div className="flex h-8 min-w-0 items-center">
                               {totpCode ? (
                                 <strong>
