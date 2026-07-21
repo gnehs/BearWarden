@@ -298,6 +298,24 @@ body {
 
 #root {
   isolation: isolate;
+  position: relative;
+}
+body:not([data-window-mode='autofill']) #root::before {
+  background-image: url('./interface-noise.svg');
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  content: '';
+  background-size: 100px;
+  opacity: 0.2;
+  mix-blend-mode: plus-lighter;
+}
+:root[data-theme='dark'] #root::before {
+  mix-blend-mode: plus-darker;
+  opacity: 0.1;
 }
 
 body {
@@ -358,6 +376,16 @@ body:has(.platform-windows) {
   body:has(.platform-macos),
   body:has(.platform-windows) {
     background: var(--background);
+  }
+
+  #root::before {
+    display: none;
+  }
+}
+
+@media (forced-colors: active) {
+  #root::before {
+    display: none;
   }
 }
 

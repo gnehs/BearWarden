@@ -20,6 +20,7 @@ import { initialLanguagePreference } from './lib/locale'
 
 const isAutofillPicker = new URLSearchParams(window.location.search).get('mode') === 'autofill'
 if (isAutofillPicker) {
+  document.body.dataset.windowMode = 'autofill'
   document.documentElement.style.background = 'transparent'
   document.body.style.background = 'transparent'
 }
