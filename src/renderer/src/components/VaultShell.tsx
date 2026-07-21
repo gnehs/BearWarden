@@ -3,80 +3,45 @@ import {
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
-  useDndContext,
-  useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent
 } from '@dnd-kit/core'
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy
-} from '@dnd-kit/sortable'
-import NumberFlow from '@number-flow/react'
+import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { plural } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import {
-  AlertTriangle,
   ArrowLeft,
-  ArrowUpRight,
   Archive,
   ArchiveRestore,
   BadgeCheck,
-  Clock3,
   CloudAlert,
   CloudCheck,
   CloudCog,
   CloudSync,
-  ChevronUp,
   ContactRound,
   Copy,
   CreditCard,
-  Download,
   Edit3,
-  Eye,
-  EyeOff,
   FileKey2,
   Fingerprint,
-  FolderOpen,
   History,
   KeyRound,
-  ListFilter,
-  LockKeyhole,
-  Menu,
   MoreHorizontal,
   NotebookPen,
-  Paperclip,
-  Pencil,
-  Plus,
   RotateCcw,
   Settings2,
-  Search,
-  Send as SendIcon,
-  ShieldAlert,
-  ShieldCheck,
-  Sparkles,
   Star,
   Trash2,
-  Upload,
-  UserRound,
-  UsersRound,
-  Wrench,
-  X,
-  ZoomIn
+  Upload
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import type {
   AppSettings,
   AppSettingsUpdate,
-  AccountSecurityProfile,
-  AccountMutationResult,
-  AccountStatus,
   AttachmentOperationKind,
   AttachmentOperationStage,
   AttachmentProgressEvent,
@@ -103,26 +68,13 @@ import {
   MAX_LOGIN_PREFETCH_IDS
 } from '../../../shared/vault-contract'
 import bearCutUrl from '../assets/bear-cut.svg'
-import BrandMark from './BrandMark'
-import { ColoredPassword } from './ColoredPassword'
-import ApplicationTitlebarMenu from './ApplicationTitlebarMenu'
-import {
-  DeleteLoginDialog,
-  FolderDialog,
-  Modal,
-  MoveDialog,
-  PasswordHistoryDialog,
-  RepromptDialog
-} from './Dialogs'
-import { ModalBody } from './ModalLayout'
 import { ItemDragPreview } from './DragPreview'
-import { FolderRow, type ItemSelectionModifiers } from './DndRows'
+import { type ItemSelectionModifiers } from './DndRows'
 import LoginEditor, { type LoginDraft } from './LoginEditor'
 import {
   createLoginWithOptionalSshImport,
   updateLoginWithOptionalSshImport
 } from './ssh-key-editor-state'
-import CredentialGeneratorDialog from './CredentialGeneratorDialog'
 import {
   canUseCachedLoginDetail,
   hasTrashPasswordHistory,
@@ -134,154 +86,111 @@ import {
 import {
   itemDropPreviewDescription,
   precisePointerCollisionDetection,
-  quickAccessDropAction,
-  quickAccessDropIds
+  quickAccessDropAction
 } from './VaultShell-dnd'
-import SyncDialog from './SyncDialog'
-import LoginApprovalDialog from './LoginApprovalDialog'
 import SettingsPage from './SettingsPage'
 import SendsPage from './SendsPage'
 import OrganizationsPage from './OrganizationsPage'
 import EmergencyAccessPage from './EmergencyAccessPage'
 import VaultHealthPage from './VaultHealthPage'
-import VaultPortabilityDialog, { type VaultPortabilityMode } from './VaultPortabilityDialog'
+import { type VaultPortabilityMode } from './VaultPortabilityDialog'
+import VaultShellDialogs from './VaultShellDialogs'
 import { formatVaultExportResult, formatVaultImportResult } from '../lib/vault-portability-ui'
-import VirtualizedItemList from './VirtualizedItemList'
 import { groupItemsByDate } from '../lib/item-date-groups'
-import { matchesVaultCategory, type VaultCategoryFilter } from '../lib/vault-category'
-import { formatPaymentCardNumber } from '../lib/payment-card'
+import { matchesVaultCategory } from '../lib/vault-category'
 import { normalizeBitwardenCardBrand } from '../lib/payment-card'
 import { shouldShowSyncSetupPrompt } from '../lib/sync-setup-prompt'
 import { normalizeItemSelection, updateItemSelection } from '../lib/item-selection'
-import {
-  boundedVaultSearchQuery,
-  filterVaultSearchMatches,
-  isCurrentVaultSearchResponse,
-  MAX_VAULT_SEARCH_QUERY_LENGTH,
-  matchesVaultSearchNavigation,
-  normalizedVaultSearchQuery,
-  VAULT_SEARCH_DEBOUNCE_MS,
-  vaultSearchListRequests,
-  type VaultSearchMatches
-} from '../lib/vault-search-ui'
 import { vaultHealthRevision } from '../lib/vault-health-ui'
 import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
+import { useEditorTransitionGuard } from '@renderer/hooks/use-editor-transition-guard'
+import { useVaultAccounts } from '@renderer/hooks/use-vault-accounts'
+import { useVaultSearch } from '@renderer/hooks/use-vault-search'
 import { resolveTotpRefreshTarget } from './totp-refresh-target'
-import TotpCountdownIndicator from './TotpCountdownIndicator'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
-import { ItemHistoryRows } from './ItemHistoryRows'
-import { CopyFeedbackIcon } from './CopyFeedbackIcon'
+import { VaultCustomFieldRows, VaultDetailFieldRows } from './VaultDetailFieldRows'
+import { VaultItemMetadataCards } from './VaultItemMetadataCards'
+import { VaultItemListPane } from './VaultItemListPane'
+import { VaultItemAttachmentsCard, VaultItemTotpCard } from './VaultItemAccessCards'
 import { Button } from '@renderer/components/ui/button'
-import { Badge } from '@renderer/components/ui/badge'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogMedia,
-  AlertDialogTitle
-} from '@renderer/components/ui/alert-dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuShortcut,
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle
-} from '@renderer/components/ui/card'
+import { CardContent, CardDescription, CardHeader, CardTitle } from '@renderer/components/ui/card'
 import {
   Empty,
-  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle
 } from '@renderer/components/ui/empty'
-import { InputGroup, InputGroupAddon, InputGroupButton } from '@renderer/components/ui/input-group'
-import {
-  Command,
-  CommandDialog,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList
-} from '@renderer/components/ui/command'
-import { Kbd } from '@renderer/components/ui/kbd'
-import { Progress, ProgressLabel, ProgressValue } from '@renderer/components/ui/progress'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@renderer/components/ui/select'
-import { Skeleton } from '@renderer/components/ui/skeleton'
-import { Spinner } from '@renderer/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { cn } from '@renderer/lib/utils'
 import { applyThemePreference } from '@renderer/lib/theme'
 import { activateLanguagePreference } from '@renderer/i18n'
-import { sortVaultItems, type VaultSortMode } from '@renderer/lib/vault-sort'
+import { type VaultSortMode } from '@renderer/lib/vault-sort'
 import { useVaultRouteState } from '@renderer/lib/vault-route-state'
+import { requestAccountAction } from './account-switcher-ui'
 import {
-  accountMutationError,
-  isCurrentAccountRefresh,
-  accountMutationKeepsBusy,
-  AccountMutationGate,
-  requestAccountAction
-} from './account-switcher-ui'
-
-type Scope =
-  | { kind: 'all' }
-  | { kind: 'favorites' }
-  | { kind: 'recent' }
-  | { kind: 'folder'; folderId: string }
-  | { kind: 'unfiled' }
-  | { kind: 'archive' }
-  | { kind: 'trash' }
-
-type TypeFilter = VaultCategoryFilter
+  DetailCard,
+  DetailHeader,
+  DetailPlaceholder,
+  TooltipIconButton,
+  detailIconClassName,
+  detailScrollClassName,
+  hostLabel,
+  type SidebarTone
+} from './VaultShell-primitives'
+import { VaultShellSidebar } from './VaultShellSidebar'
+import {
+  emptyRevealedCustomFields,
+  emptyRevealedSecrets,
+  initialSyncStatus,
+  totpListCountdownPeriodSeconds,
+  type BulkActionKind,
+  type BulkActionSnapshot,
+  type BulkSelectionState,
+  type MoveSnapshot,
+  type PendingReprompt,
+  type RepromptPromptState,
+  type RevealedCustomFieldsState,
+  type RevealedSecretsState,
+  type Scope,
+  type TotpGenerationErrorState,
+  type TotpListEntry,
+  type TypeFilter
+} from './VaultShell-model'
+import {
+  initialAttachmentStages,
+  isAttachmentCanceled,
+  type AttachmentDeleteTarget,
+  type AttachmentOperationState
+} from './vault-attachment-ui'
+import {
+  customFieldCopyFeedbackKey,
+  detailFields,
+  matchesCustomFieldSource
+} from './vault-detail-view-model'
+import {
+  cacheLoginDetail,
+  firstAuthorizationToken,
+  mergeCachedSummary,
+  mergeLoginSummary,
+  toLoginSummary
+} from './vault-detail-cache'
+import { describeError, isRepromptRequired } from './vault-error-ui'
+import { VaultSearchDialog, VaultShellLoading, VaultShellTitlebar } from './VaultShellChrome'
 
 interface ItemTypeMeta {
   label: string
   icon: typeof KeyRound
 }
-
-interface DetailField {
-  field: VaultCopyField
-  label: string
-  value?: string | null
-  secret?: boolean
-  copyable?: boolean
-  openUri?: boolean
-  uriIndex?: number
-}
-
-const itemTypeIcons: Record<VaultItemType, typeof KeyRound> = {
-  login: KeyRound,
-  card: CreditCard,
-  identity: ContactRound,
-  secureNote: NotebookPen,
-  sshKey: FileKey2
-}
-
-type SidebarTone = 'blue' | 'indigo' | 'green' | 'yellow' | 'cyan' | 'red' | 'orange' | 'gray'
 
 const categoryDefinitions: Array<{
   id: TypeFilter
@@ -298,8 +207,6 @@ const categoryDefinitions: Array<{
   { id: 'sshKey', icon: FileKey2, tone: 'gray' }
 ]
 
-const initialSyncStatus: SyncStatus = { configured: false, state: 'unconfigured' }
-
 const syncStateIcons = {
   unconfigured: CloudCog,
   locked: CloudAlert,
@@ -312,209 +219,11 @@ const isMac = navigator.userAgent.includes('Mac')
 const isWindows = navigator.userAgent.includes('Windows')
 const usesWindowControlsOverlay = !isMac
 const commandLabel = isMac ? '⌘' : 'Ctrl'
-const detailCacheLimit = 48
-const totpListCountdownPeriodSeconds = 30
 
 interface VaultShellProps {
   onLocked: () => void
   promptSyncSetup: boolean
   onSyncSetupPromptHandled: () => void
-}
-
-interface RevealedSecretsState {
-  itemId: string | null
-  values: Partial<Record<VaultSecretField, string>>
-}
-
-const emptyRevealedSecrets: RevealedSecretsState = { itemId: null, values: {} }
-
-interface TotpGenerationErrorState {
-  itemId: string
-  kind: 'unsupported'
-}
-
-type TotpListEntry = { code: TotpCodeView; expiresAt: number } | null
-
-interface RevealedCustomFieldsState {
-  itemId: string | null
-  values: Record<
-    number,
-    { value: string; source: VaultCustomFieldSource; expectedUpdatedAt: string }
-  >
-}
-
-interface RepromptPromptState {
-  itemName: string
-}
-
-interface PendingReprompt {
-  key: string
-  ids: string[]
-  promise: Promise<LoginAuthorization>
-  resolve: (authorization: LoginAuthorization) => void
-  reject: (error: Error) => void
-}
-
-interface AttachmentOperationState extends AttachmentProgressEvent {
-  fileName: string | null
-  canceling: boolean
-}
-
-interface AttachmentDeleteTarget {
-  itemId: string
-  attachmentId: string
-  fileName: string
-}
-
-type BulkSelectionState = 'active' | 'archive' | 'trash'
-type BulkActionKind = 'archive' | 'unarchive' | 'delete' | 'restore' | 'deletePermanently'
-
-interface BulkActionSnapshot {
-  action: BulkActionKind
-  ids: string[]
-  state: BulkSelectionState
-}
-
-interface MoveSnapshot {
-  ids: string[]
-  state: Exclude<BulkSelectionState, 'trash'>
-}
-
-const initialAttachmentStages: Record<AttachmentOperationKind, AttachmentOperationStage> = {
-  download: 'choosing-file',
-  upload: 'choosing-file',
-  delete: 'deleting',
-  'fix-legacy': 'downloading'
-}
-
-function attachmentProgressPercent(progress: AttachmentProgressEvent): number | null {
-  if (progress.totalBytes === null || progress.totalBytes <= 0) return null
-  return Math.round(
-    Math.min(100, Math.max(0, (progress.completedBytes / progress.totalBytes) * 100))
-  )
-}
-
-function isAttachmentCanceled(error: unknown): boolean {
-  return error instanceof Error && error.message.includes('ATTACHMENT_CANCELED')
-}
-
-const emptyRevealedCustomFields: RevealedCustomFieldsState = { itemId: null, values: {} }
-
-interface TooltipIconButtonProps extends React.ComponentProps<typeof Button> {
-  label: string
-}
-
-function TooltipIconButton({
-  label,
-  children,
-  className,
-  ...props
-}: TooltipIconButtonProps): React.JSX.Element {
-  const { active } = useDndContext()
-  return (
-    <Tooltip disabled={active != null}>
-      <TooltipTrigger
-        render={
-          <Button
-            aria-label={label}
-            className={cn(
-              'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-[34px] min-w-[34px] rounded-md shadow-(--control-highlight) transition-[background,color,border-color,transform] duration-[130ms] [-webkit-app-region:no-drag]',
-              className
-            )}
-            {...props}
-          />
-        }
-      >
-        {children}
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-  )
-}
-
-interface DetailCardProps extends Omit<React.ComponentProps<typeof Card>, 'variant'> {
-  variant?: 'default' | 'attachment' | 'placeholder'
-}
-
-function DetailCard({
-  className,
-  variant = 'default',
-  ...props
-}: DetailCardProps): React.JSX.Element {
-  return (
-    <Card
-      variant="item"
-      className={cn(
-        'mx-auto mb-3 w-full max-w-[720px]',
-        '[&_[data-slot=card-description]]:ml-auto',
-        variant === 'attachment' &&
-          '[&_[data-slot=card-description]]:text-xs [&_[data-slot=card-description]]:leading-normal',
-        variant === 'placeholder' && '[&_[data-slot=skeleton]]:opacity-72',
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
-function DetailHeader({ className, ...props }: React.ComponentProps<'header'>): React.JSX.Element {
-  return (
-    <header
-      className={cn(
-        'bg-muted/30 flex items-center gap-2.5 px-4 py-3 max-[680px]:px-3 max-[680px]:py-2.5',
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
-const detailFieldClassName =
-  'border-border/60 grid min-h-12 grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)_repeat(2,34px)] items-center gap-2 border-b py-0.5 last:border-b-0 [&>span]:text-[11px] [&>span]:text-muted-foreground [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-medium [&>:nth-child(3):last-child]:col-start-[-2] max-[430px]:grid-cols-[1fr_auto_auto] max-[430px]:gap-1.5 max-[430px]:[&>span]:col-span-full max-[430px]:[&>strong]:col-start-1 max-[430px]:[&>[data-field-copy-value]]:col-start-1'
-
-const detailScrollClassName =
-  'bg-muted/30 min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] overflow-auto px-4 pt-4 pb-7 max-[680px]:px-3 max-[680px]:pt-3 max-[680px]:pb-5'
-
-const titlebarClassName = cn(
-  // Base titlebar layout and appearance.
-  'border-border relative z-20 flex h-[54px] min-h-[54px] items-center gap-3 border-b bg-[color-mix(in_oklch,var(--card)_86%,transparent)] py-0 pr-3.5 pl-[78px] shadow-[inset_0_1px_color-mix(in_oklch,var(--shadow-color)_5%,transparent)] backdrop-blur-xl backdrop-saturate-180 select-none [-webkit-app-region:drag]',
-  // Compact layouts.
-  'max-[1050px]:pl-[70px] max-[880px]:pl-3.5 max-[680px]:h-[52px] max-[680px]:min-h-[52px] max-[430px]:gap-2 max-[430px]:px-[9px]',
-  // Leave space for the macOS traffic-light controls.
-  '[.platform-macos_&]:border-b-transparent [.platform-macos_&]:bg-transparent [.platform-macos_&]:pl-[94px] [.platform-macos_&]:shadow-none [.platform-macos_&]:backdrop-filter-none max-[880px]:[.platform-macos_&]:pl-[82px] max-[430px]:[.platform-macos_&]:py-0 max-[430px]:[.platform-macos_&]:pr-[9px] max-[430px]:[.platform-macos_&]:pl-[82px]',
-  // Windows draws its native controls outside the titlebar content.
-  '[.platform-windows_&]:border-b-transparent [.platform-windows_&]:bg-transparent [.platform-windows_&]:pl-3.5 [.platform-windows_&]:shadow-none [.platform-windows_&]:backdrop-filter-none max-[430px]:[.platform-windows_&]:px-[9px]',
-  // Respect the browser-provided safe area when Window Controls Overlay is active.
-  '[.platform-window-controls-overlay_&]:h-[env(titlebar-area-height,54px)] [.platform-window-controls-overlay_&]:min-h-[env(titlebar-area-height,54px)] [.platform-window-controls-overlay_&]:pr-[calc(14px+100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw))] [.platform-window-controls-overlay_&]:pl-[calc(14px+env(titlebar-area-x,0px))] max-[430px]:[.platform-window-controls-overlay_&]:pr-[calc(9px+100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw))] max-[430px]:[.platform-window-controls-overlay_&]:pl-[calc(9px+env(titlebar-area-x,0px))]'
-)
-
-const folderSectionClassName =
-  'flex flex-none flex-col [&>header]:flex [&>header]:items-center [&>header]:justify-between [&>header]:pt-0 [&>header]:pr-1.5 [&>header]:pb-1 [&>header]:pl-[9px] [&_h2]:m-0 [&_h2]:text-[10px] [&_h2]:font-[760] [&_h2]:tracking-[0.11em] [&_h2]:text-muted-foreground [&_h2]:uppercase'
-
-function detailIconClassName(type?: VaultItemType): string {
-  return cn(
-    'outline-foreground/5 bg-muted text-primary dark:border-border dark:bg-muted dark:text-muted-foreground grid size-9 flex-none place-items-center rounded-md shadow-(--control-highlight) outline max-[430px]:hidden forced-colors:[forced-color-adjust:none]',
-    type === 'login' && 'overflow-hidden',
-    type === 'card' && 'bg-muted text-chart-4 dark:bg-website-icon-background',
-    type === 'identity' && 'bg-accent text-primary',
-    type === 'secureNote' && 'bg-muted text-chart-3',
-    type === 'sshKey' && 'bg-accent text-chart-2'
-  )
-}
-
-function describeError(
-  error: unknown,
-  messages: Record<string, string>,
-  unknownError: string,
-  fallbackError: string
-): string {
-  if (!(error instanceof Error)) return unknownError
-  const code = Object.keys(messages).find((key) => error.message.includes(key))
-  return code ? messages[code] : fallbackError
-}
-
-function isRepromptRequired(error: unknown): boolean {
-  return error instanceof Error && error.message.includes('REPROMPT_REQUIRED')
 }
 
 const vaultErrorToastId = 'vault-error'
@@ -524,454 +233,6 @@ function announceError(message: string): void {
     id: vaultErrorToastId,
     duration: 7_000
   })
-}
-
-function hostLabel(uri: string | null, unsetLabel: string): string {
-  if (!uri) return unsetLabel
-  try {
-    return new URL(uri).hostname
-  } catch {
-    return uri
-  }
-}
-
-function customFieldDisplayValue(
-  field: VaultCustomFieldView,
-  labels: {
-    yes: string
-    no: string
-    linkedTo: (label: string) => string
-    itemField: string
-    linkedFields: Record<number, string>
-    unset: string
-  }
-): string {
-  if (field.type === 'boolean')
-    return field.value?.toLowerCase() === 'true' ? labels.yes : labels.no
-  if (field.type === 'linked') {
-    return labels.linkedTo(
-      field.linkedId === null
-        ? labels.itemField
-        : (labels.linkedFields[field.linkedId] ?? labels.itemField)
-    )
-  }
-  return field.value || labels.unset
-}
-
-function matchesCustomFieldSource(
-  field: VaultCustomFieldView,
-  index: number,
-  source: VaultCustomFieldSource
-): boolean {
-  return (
-    source.index === index &&
-    source.name === field.name &&
-    source.type === field.type &&
-    source.linkedId === field.linkedId
-  )
-}
-
-function customFieldCopyFeedbackKey(
-  itemId: string,
-  index: number,
-  field: VaultCustomFieldView
-): string {
-  return JSON.stringify(['custom', itemId, index, field.name, field.type, field.linkedId])
-}
-
-function detailFields(login: LoginView, labels: Record<string, string>): DetailField[] {
-  if (login.type === 'login') {
-    return [
-      { field: 'username', label: labels.username!, value: login.username, copyable: true },
-      { field: 'password', label: labels.password!, secret: true },
-      ...login.uris.map((entry, uriIndex) => ({
-        field: 'uri' as const,
-        label: uriIndex === 0 ? labels.website! : `${labels.website} ${uriIndex + 1}`,
-        value: entry.uri,
-        copyable: true,
-        openUri: true,
-        uriIndex
-      }))
-    ]
-  }
-  if (login.type === 'card') {
-    return [
-      { field: 'number', label: labels.cardNumber!, secret: true },
-      { field: 'code', label: labels.securityCode!, secret: true },
-      {
-        field: 'cardholderName',
-        label: labels.cardholder!,
-        value: login.cardholderName,
-        copyable: true
-      },
-      { field: 'brand', label: labels.brand!, value: login.brand, copyable: true },
-      {
-        field: 'cardExpiration',
-        label: labels.expirationDate!,
-        value: [login.expMonth, login.expYear].filter(Boolean).join(' / '),
-        copyable: true
-      }
-    ]
-  }
-  if (login.type === 'identity') {
-    return [
-      {
-        field: 'username',
-        label: labels.name!,
-        value: [login.title, login.firstName, login.middleName, login.lastName]
-          .filter(Boolean)
-          .join(' ')
-      },
-      { field: 'username', label: labels.company!, value: login.company },
-      { field: 'email', label: labels.email!, value: login.email, copyable: true },
-      { field: 'phone', label: labels.phone!, value: login.phone, copyable: true },
-      {
-        field: 'identityUsername',
-        label: labels.username!,
-        value: login.identityUsername,
-        copyable: true
-      },
-      {
-        field: 'username',
-        label: labels.address!,
-        value: [
-          login.address1,
-          login.address2,
-          login.address3,
-          login.city,
-          login.state,
-          login.postalCode,
-          login.country
-        ]
-          .filter(Boolean)
-          .join('，')
-      },
-      { field: 'ssn', label: labels.ssn!, secret: true },
-      { field: 'passportNumber', label: labels.passportNumber!, secret: true },
-      { field: 'licenseNumber', label: labels.licenseNumber!, secret: true }
-    ]
-  }
-  if (login.type === 'sshKey') {
-    return [
-      { field: 'privateKey', label: labels.privateKey!, secret: true },
-      { field: 'publicKey', label: labels.publicKey!, value: login.publicKey, copyable: true },
-      {
-        field: 'fingerprint',
-        label: labels.keyFingerprint!,
-        value: login.fingerprint,
-        copyable: true
-      }
-    ]
-  }
-  return []
-}
-
-function mergeCachedSummary(cache: Map<string, LoginView>, summary: LoginSummary): void {
-  const cached = cache.get(summary.id)
-  if (cached) cache.set(summary.id, mergeLoginSummary(cached, summary))
-}
-
-function mergeLoginSummary(login: LoginView, summary: LoginSummary): LoginView {
-  if (summary.reprompt === 0 || summary.deletedAt) return { ...login, ...summary }
-  return {
-    ...login,
-    id: summary.id,
-    type: summary.type,
-    name: summary.name,
-    folderId: summary.folderId,
-    favorite: summary.favorite,
-    usageCount: summary.usageCount,
-    lastUsedAt: summary.lastUsedAt,
-    createdAt: summary.createdAt,
-    updatedAt: summary.updatedAt,
-    deletedAt: summary.deletedAt,
-    archivedAt: summary.archivedAt,
-    reprompt: summary.reprompt,
-    passwordHistoryCount: summary.passwordHistoryCount,
-    attachmentCount: summary.attachmentCount
-  }
-}
-
-function cacheLoginDetail(cache: Map<string, LoginView>, login: LoginView): void {
-  cache.delete(login.id)
-  while (cache.size >= detailCacheLimit) {
-    const oldestId = cache.keys().next().value
-    if (!oldestId) break
-    cache.delete(oldestId)
-  }
-  cache.set(login.id, login)
-}
-
-function firstAuthorizationToken(
-  ids: readonly string[],
-  tokenFor: (id: string) => string | undefined
-): string | undefined {
-  for (const id of ids) {
-    const token = tokenFor(id)
-    if (token) return token
-  }
-  return undefined
-}
-
-function toLoginSummary(login: LoginView): LoginSummary {
-  return {
-    id: login.id,
-    type: login.type,
-    name: login.name,
-    subtitle: login.subtitle,
-    username: login.username,
-    uri: login.uri,
-    uris: login.uris.map((entry) => ({ ...entry })),
-    ...(login.cardBrand === undefined ? {} : { cardBrand: login.cardBrand }),
-    hasTotp: login.hasTotp,
-    ...(login.passkeyCount === undefined ? {} : { passkeyCount: login.passkeyCount }),
-    passwordHistoryCount: login.passwordHistoryCount,
-    attachmentCount: login.attachmentCount,
-    folderId: login.folderId,
-    favorite: login.favorite,
-    usageCount: login.usageCount,
-    lastUsedAt: login.lastUsedAt,
-    createdAt: login.createdAt,
-    updatedAt: login.updatedAt,
-    deletedAt: login.deletedAt,
-    archivedAt: login.archivedAt,
-    reprompt: login.reprompt
-  }
-}
-
-interface SidebarLinkProps {
-  icon: React.ReactNode
-  label: string
-  count: number
-  active: boolean
-  variant?: 'row' | 'tile'
-  tone?: SidebarTone
-  dropTargetId?: string
-  onClick: () => void
-}
-
-const sidebarToneClasses: Record<SidebarTone, string> = {
-  blue: 'bg-sidebar-primary text-sidebar-primary-foreground',
-  indigo: 'bg-chart-4 text-primary-foreground',
-  green: 'bg-sidebar-primary text-sidebar-primary-foreground',
-  yellow: 'bg-chart-1 text-category-light-foreground',
-  cyan: 'bg-chart-2 text-primary-foreground',
-  red: 'bg-destructive text-destructive-foreground',
-  orange: 'bg-chart-3 text-primary-foreground',
-  gray: 'bg-muted text-foreground'
-}
-
-const sidebarLinkClasses = {
-  base: 'h-auto border-none text-left',
-  row: 'grid min-h-[38px] grid-cols-[22px_1fr_auto] items-center gap-2 rounded-lg border-0 bg-transparent px-[9px] py-1.5 shadow-[none] hover:shadow-[none]',
-  tile: 'bg-sidebar-overlay grid min-h-[72px] grid-cols-[1fr_auto] grid-rows-[31px_auto] items-center gap-2 rounded-[15px] px-3 pt-[11px] pb-2.5 shadow-[var(--sidebar-tile-highlight)] hover:shadow-[var(--sidebar-tile-highlight)]',
-  active: {
-    row: 'bg-sidebar-overlay-active text-sidebar-foreground hover:bg-sidebar-overlay-active hover:text-sidebar-foreground',
-    tile: 'bg-sidebar-primary text-sidebar-primary-foreground shadow-(--control-highlight) hover:bg-sidebar-primary hover:text-sidebar-primary-foreground hover:shadow-(--control-highlight)'
-  }
-} as const
-
-function SidebarLink({
-  icon,
-  label,
-  count,
-  active,
-  variant = 'row',
-  tone,
-  dropTargetId,
-  onClick
-}: SidebarLinkProps): React.JSX.Element {
-  const isTile = variant === 'tile'
-  const { setNodeRef, isOver } = useDroppable({
-    id: dropTargetId ?? `sidebar-link:${label}`,
-    disabled: dropTargetId === undefined
-  })
-
-  return (
-    <Button
-      ref={dropTargetId ? setNodeRef : undefined}
-      variant="sidebar"
-      className={cn(
-        sidebarLinkClasses.base,
-        sidebarLinkClasses[variant],
-        active && sidebarLinkClasses.active[variant],
-        isOver &&
-          'bg-sidebar-overlay-active text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-overlay-active hover:text-sidebar-foreground ring-2'
-      )}
-      type="button"
-      aria-current={active ? 'page' : undefined}
-      data-sidebar-active={active ? '' : undefined}
-      onClick={onClick}
-    >
-      <span
-        className={cn(
-          'grid place-items-center',
-          isTile
-            ? [
-                'bg-sidebar-primary text-sidebar-primary-foreground col-start-1 row-start-1 size-[30px] rounded-full',
-                tone && sidebarToneClasses[tone],
-                active && 'bg-sidebar-primary-foreground text-sidebar-primary'
-              ]
-            : 'size-[22px]'
-        )}
-        aria-hidden="true"
-      >
-        {icon}
-      </span>
-      <strong
-        className={cn(
-          isTile
-            ? 'col-span-2 row-start-2 self-end text-[13px] leading-[1.15] font-[720]'
-            : 'text-xs font-[610]'
-        )}
-      >
-        {label}
-      </strong>
-      <small
-        className={cn(
-          'text-muted-foreground group-hover/button:text-sidebar-foreground',
-          isTile
-            ? 'col-start-2 row-start-1 self-center justify-self-end text-[11px] font-[650]'
-            : 'text-[10px]',
-          active &&
-            isTile &&
-            'text-[color-mix(in_oklch,var(--sidebar-primary-foreground)_88%,transparent)] group-hover/button:text-[color-mix(in_oklch,var(--sidebar-primary-foreground)_88%,transparent)]'
-        )}
-      >
-        {count}
-      </small>
-    </Button>
-  )
-}
-
-interface UnfiledRowProps {
-  selected: boolean
-  count: number
-  onSelect: () => void
-}
-
-function UnfiledRow({ selected, count, onSelect }: UnfiledRowProps): React.JSX.Element {
-  const { t } = useLingui()
-  const { setNodeRef, isOver } = useDroppable({ id: 'folder:none' })
-  return (
-    <li
-      ref={setNodeRef}
-      className={cn(
-        'text-foreground hover:bg-sidebar-overlay-hover static grid min-h-9 grid-cols-[22px_minmax(0,1fr)_25px] items-center rounded-lg',
-        selected && 'bg-sidebar-overlay-active shadow-none',
-        isOver &&
-          'bg-sidebar-overlay-active text-foreground shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--sidebar-primary)_55%,transparent)] forced-colors:outline-2 forced-colors:-outline-offset-2 forced-colors:outline-[Highlight]'
-      )}
-    >
-      <span className="w-[22px]" aria-hidden="true" />
-      <Button
-        variant="sidebar"
-        className="[&>small]:text-muted-foreground grid h-[34px] min-w-0 grid-cols-[21px_minmax(0,1fr)_auto] items-center gap-1 border-0 bg-transparent p-0 text-left text-inherit shadow-none hover:bg-transparent hover:shadow-none aria-expanded:bg-transparent aria-expanded:shadow-none [&>small]:min-w-[3ch] [&>small]:pr-1 [&>small]:text-right [&>small]:text-[10px] [&>small]:tabular-nums [&>span]:truncate [&>span]:text-xs"
-        type="button"
-        aria-current={selected ? 'page' : undefined}
-        onClick={onSelect}
-      >
-        <FolderOpen size={16} aria-hidden="true" />
-        <span>
-          <Trans>Unfiled</Trans>
-        </span>
-        <small aria-label={t`${count} items`}>{count}</small>
-      </Button>
-    </li>
-  )
-}
-
-interface DetailPlaceholderProps {
-  item: LoginSummary
-  showWebsiteIcons: boolean
-  onBack: () => void
-}
-
-function DetailPlaceholder({
-  item,
-  showWebsiteIcons,
-  onBack
-}: DetailPlaceholderProps): React.JSX.Element {
-  const { t } = useLingui()
-  const TypeIcon = itemTypeIcons[item.type]
-
-  return (
-    <article
-      className="flex size-full min-h-0 min-w-0 flex-col motion-reduce:[&_[data-slot=skeleton]]:animate-none"
-      aria-busy="true"
-    >
-      <DetailHeader>
-        <TooltipIconButton
-          variant="outline"
-          size="icon"
-          className="hidden max-[680px]:grid"
-          data-detail-back=""
-          type="button"
-          label={t`Back to item list`}
-          onClick={onBack}
-        >
-          <ArrowLeft />
-        </TooltipIconButton>
-        <span className={detailIconClassName(item.type)} data-detail-icon="" aria-hidden="true">
-          {item.type === 'login' ? (
-            <WebsiteIcon id={item.id} uri={item.uri} enabled={showWebsiteIcons} />
-          ) : item.type === 'card' ? (
-            <PaymentCardBrandMark brand={normalizeBitwardenCardBrand(item.cardBrand)} compact />
-          ) : (
-            <TypeIcon size={18} />
-          )}
-        </span>
-        <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-base [&>h2]:font-medium [&>h2]:tracking-[-0.015em] [&>span]:mt-0.5 [&>span]:block [&>span]:truncate [&>span]:text-[10px]">
-          <h2>{item.name}</h2>
-          <span>
-            {item.subtitle ||
-              (item.type === 'login'
-                ? hostLabel(item.uri, t`Website not set`)
-                : t`Securely stored item`)}
-          </span>
-        </div>
-        <Skeleton className="size-[34px] flex-none rounded-md" aria-hidden="true" />
-        <Skeleton
-          className="h-8 w-[68px] flex-none rounded-md max-[680px]:w-[34px]"
-          aria-hidden="true"
-        />
-        <span className="sr-only" role="status">
-          <Trans>Loading item details…</Trans>
-        </span>
-      </DetailHeader>
-
-      <div className={detailScrollClassName} aria-hidden="true">
-        <DetailCard variant="placeholder">
-          <CardHeader>
-            <Skeleton className="h-3 w-20" />
-          </CardHeader>
-          <CardContent className="flex flex-col">
-            {[0, 1, 2].map((row) => (
-              <div className={detailFieldClassName} key={row}>
-                <Skeleton className="h-3 w-16" />
-                <Skeleton className={cn('h-4', row === 1 ? 'w-2/3' : 'w-1/2')} />
-                <Skeleton className="size-8" />
-              </div>
-            ))}
-          </CardContent>
-        </DetailCard>
-        <DetailCard variant="placeholder">
-          <CardHeader>
-            <Skeleton className="h-3 w-24" />
-          </CardHeader>
-          <CardContent className="flex flex-col">
-            {[0, 1].map((row) => (
-              <div className={detailFieldClassName} key={row}>
-                <Skeleton className="h-3 w-14" />
-                <Skeleton className="h-4 w-1/3" />
-                <span />
-              </div>
-            ))}
-          </CardContent>
-        </DetailCard>
-      </div>
-    </article>
-  )
 }
 
 function VaultShell({
@@ -1173,9 +434,14 @@ function VaultShell({
   const [scope, setScope] = useState<Scope>({ kind: 'all' })
   const [sortMode, setSortMode] = useState<VaultSortMode>('title')
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
-  const [query, setQuery] = useState('')
-  const [searchMatches, setSearchMatches] = useState<VaultSearchMatches | null>(null)
-  const [searchOpen, setSearchOpen] = useState(false)
+  const { query, searchOpen, searchRef, scopedItems, updateQuery, setSearchOpen } = useVaultSearch({
+    items,
+    scope,
+    typeFilter,
+    sortMode,
+    describeError: describeVaultError,
+    onError: announceError
+  })
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedLogin, setSelectedLogin] = useState<LoginView | null>(null)
@@ -1201,8 +467,16 @@ function VaultShell({
   const [editorMode, setEditorMode] = useState<'create' | 'edit' | null>(null)
   const totpRefreshTarget = resolveTotpRefreshTarget(selectedLogin, selectedId, editorMode !== null)
   const [editorSessionId, setEditorSessionId] = useState(0)
-  const [editorDirty, setEditorDirty] = useState(false)
-  const [discardEditorDialogOpen, setDiscardEditorDialogOpen] = useState(false)
+  const {
+    editorDirty,
+    discardEditorDialogOpen,
+    handleEditorDirtyChange,
+    clearEditorDirty,
+    isEditorDirty,
+    requestEditorTransition,
+    confirmEditorDiscard,
+    handleDiscardEditorDialogOpenChange
+  } = useEditorTransitionGuard()
   const [revealedSecrets, setRevealedSecrets] = useState<RevealedSecretsState>(emptyRevealedSecrets)
   const [revealedCustomFields, setRevealedCustomFields] =
     useState<RevealedCustomFieldsState>(emptyRevealedCustomFields)
@@ -1238,17 +512,8 @@ function VaultShell({
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(initialSyncStatus)
   const [syncStatusLoaded, setSyncStatusLoaded] = useState(false)
   const showSyncSetupPrompt = shouldShowSyncSetupPrompt(promptSyncSetup, syncStatusLoaded)
-  const [accountProfileRefreshRevision, setAccountProfileRefreshRevision] = useState(0)
-  const [sidebarAccountProfile, setSidebarAccountProfile] = useState<{
-    owner: string
-    profile: AccountSecurityProfile | null
-  }>({ owner: '', profile: null })
   const SyncSidebarIcon = syncStateMeta[syncStatus.state].icon
   const [settings, setSettings] = useState<AppSettings | null>(null)
-  const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null)
-  const [accountBusy, setAccountBusy] = useState(false)
-  const [accountBusyLabel, setAccountBusyLabel] = useState('')
-  const [accountError, setAccountError] = useState('')
   const [settingsBusy, setSettingsBusy] = useState(false)
   const [touchIdPassword, setTouchIdPassword] = useState('')
   const [portabilityDialogMode, setPortabilityDialogMode] = useState<VaultPortabilityMode | null>(
@@ -1258,20 +523,8 @@ function VaultShell({
   const [activeDragOverId, setActiveDragOverId] = useState<string | null>(null)
   const foldersBeforeDragRef = useRef<FolderView[] | null>(null)
   const foldersDuringDragRef = useRef<FolderView[] | null>(null)
-  const searchRef = useRef<HTMLInputElement>(null)
-  const queryRef = useRef(query)
-  const searchRequestIdRef = useRef(0)
-  const updateQuery = useCallback((value: string): void => {
-    const bounded = boundedVaultSearchQuery(value)
-    queryRef.current = bounded
-    setQuery(bounded)
-  }, [])
   const sidebarMenuTriggerRef = useRef<HTMLButtonElement>(null)
   const settingsReturnFocusRef = useRef<HTMLElement | null>(null)
-  const accountStatusRequestRef = useRef(0)
-  const accountMutationRequestRef = useRef(0)
-  const accountMutationGateRef = useRef(new AccountMutationGate())
-  const accountStaleRefreshPendingRef = useRef(false)
   const compactReturnIdRef = useRef<string | null>(null)
   const compactDetailFocusIdRef = useRef<string | null>(null)
   const selectedIdRef = useRef<string | null>(null)
@@ -1289,15 +542,7 @@ function VaultShell({
   const authorizationCacheRef = useRef(new Map<string, LoginAuthorization>())
   const authorizationExpiryTimersRef = useRef(new Map<string, number>())
   const pendingRepromptRef = useRef<PendingReprompt | null>(null)
-  const editorDirtyRef = useRef(false)
-  const editorTransitionApprovedRef = useRef(false)
-  const pendingEditorActionRef = useRef<(() => void) | null>(null)
   const attachmentOperationRef = useRef<AttachmentOperationState | null>(null)
-
-  const handleEditorDirtyChange = useCallback((dirty: boolean): void => {
-    editorDirtyRef.current = dirty
-    setEditorDirty(dirty)
-  }, [])
 
   const beginAttachmentOperation = useCallback(
     (kind: AttachmentOperationKind, itemId: string, fileName: string | null): string => {
@@ -1350,31 +595,6 @@ function VaultShell({
     },
     []
   )
-
-  const requestEditorTransition = useCallback(
-    (action: () => void): void => {
-      if (editorTransitionApprovedRef.current || !editorDirtyRef.current) {
-        action()
-        return
-      }
-      pendingEditorActionRef.current = action
-      setDiscardEditorDialogOpen(true)
-    },
-    [setDiscardEditorDialogOpen]
-  )
-
-  const confirmEditorDiscard = useCallback((): void => {
-    const action = pendingEditorActionRef.current
-    pendingEditorActionRef.current = null
-    setDiscardEditorDialogOpen(false)
-    if (!action) return
-    editorTransitionApprovedRef.current = true
-    try {
-      action()
-    } finally {
-      editorTransitionApprovedRef.current = false
-    }
-  }, [setDiscardEditorDialogOpen])
 
   const openEditor = useCallback(
     (mode: 'create' | 'edit'): void => {
@@ -1453,14 +673,13 @@ function VaultShell({
         setPasswordHistoryDialogOpen(false)
         setSelectedLogin(null)
         setEditorMode(null)
-        editorDirtyRef.current = false
-        setEditorDirty(false)
+        clearEditorDirty()
         setTotpCodeState(null)
         setRevealedSecrets(emptyRevealedSecrets)
         setRevealedCustomFields(emptyRevealedCustomFields)
       }
     },
-    [authorizationToken, setPasswordHistoryDialogOpen]
+    [authorizationToken, clearEditorDirty, setPasswordHistoryDialogOpen]
   )
 
   const discardAuthorizationToken = useCallback((id: string): void => {
@@ -1909,12 +1128,12 @@ function VaultShell({
       setRevealedSecrets(emptyRevealedSecrets)
       setRevealedCustomFields(emptyRevealedCustomFields)
     }
-    if (editorDirtyRef.current) {
+    if (isEditorDirty()) {
       requestEditorTransition(() => void applyRefresh())
       return
     }
     await applyRefresh()
-  }, [clearItemSelection, loadVault, requestEditorTransition])
+  }, [clearItemSelection, isEditorDirty, loadVault, requestEditorTransition])
 
   useEffect(() => {
     queueMicrotask(() => void loadVault())
@@ -2032,30 +1251,6 @@ function VaultShell({
       unsubscribe()
     }
   }, [])
-
-  const syncAccountIdentity = `${syncStatus.serverUrl ?? ''}\0${syncStatus.email?.toLowerCase() ?? ''}`
-  const visibleSidebarAccountProfile =
-    sidebarAccountProfile.owner === syncAccountIdentity ? sidebarAccountProfile.profile : null
-  const sidebarAccountName =
-    visibleSidebarAccountProfile?.name.trim() ||
-    (syncStatus.configured ? t`Connected account` : t`Local vault`)
-
-  useEffect(() => {
-    let active = true
-    if (syncStatus.state === 'ready') {
-      void window.bearwarden.accountSecurity.profile().then(
-        (profile) => {
-          if (active) setSidebarAccountProfile({ owner: syncAccountIdentity, profile })
-        },
-        () => {
-          // The footer stays usable when the remote profile is temporarily unavailable.
-        }
-      )
-    }
-    return () => {
-      active = false
-    }
-  }, [accountProfileRefreshRevision, syncAccountIdentity, syncStatus.state])
 
   useEffect(() => {
     let active = true
@@ -2231,61 +1426,6 @@ function VaultShell({
     return () => window.clearTimeout(timeout)
   }, [revealedCustomFields])
 
-  useEffect(() => {
-    const searchQuery = normalizedVaultSearchQuery(query)
-    const requestId = ++searchRequestIdRef.current
-    if (!searchQuery) return
-
-    const timeout = window.setTimeout(() => {
-      const [activeRequest, archivedRequest, deletedRequest] = vaultSearchListRequests(searchQuery)
-      void Promise.all([
-        window.bearwarden.logins.list(activeRequest),
-        window.bearwarden.logins.list(archivedRequest),
-        window.bearwarden.logins.list(deletedRequest)
-      ]).then(
-        ([activeItems, archivedItems, deletedItems]) => {
-          if (
-            !isCurrentVaultSearchResponse({
-              requestId,
-              currentRequestId: searchRequestIdRef.current,
-              query: searchQuery,
-              currentQuery: queryRef.current
-            })
-          ) {
-            return
-          }
-          setSearchMatches({
-            query: searchQuery,
-            ids: new Set([...activeItems, ...archivedItems, ...deletedItems].map((item) => item.id))
-          })
-        },
-        (searchError) => {
-          if (
-            !isCurrentVaultSearchResponse({
-              requestId,
-              currentRequestId: searchRequestIdRef.current,
-              query: searchQuery,
-              currentQuery: queryRef.current
-            })
-          ) {
-            return
-          }
-          setSearchMatches({ query: searchQuery, ids: new Set() })
-          announceError(describeVaultError(searchError))
-        }
-      )
-    }, VAULT_SEARCH_DEBOUNCE_MS)
-
-    return () => window.clearTimeout(timeout)
-  }, [describeVaultError, items, query])
-
-  const scopedItems = useMemo(() => {
-    const matchedItems = filterVaultSearchMatches(items, query, searchMatches)
-    const scoped = matchedItems.filter((item) =>
-      matchesVaultSearchNavigation(item, query, scope, typeFilter)
-    )
-    return sortVaultItems(scoped, scope.kind === 'recent' ? 'recent' : sortMode)
-  }, [items, query, scope, searchMatches, sortMode, typeFilter])
   const scopedItemIds = useMemo(() => scopedItems.map((item) => item.id), [scopedItems])
   const totpListItemIds = useMemo(
     () =>
@@ -2609,6 +1749,20 @@ function VaultShell({
   const announce = useCallback((message: string): void => {
     toast.success(message)
   }, [])
+  const {
+    accountStatus,
+    accountBusy,
+    accountBusyLabel,
+    accountError,
+    sidebarAccountProfileName,
+    refreshAccountProfile,
+    addLocalAccount,
+    switchLocalAccount,
+    reorderLocalAccounts,
+    removeLocalAccount
+  } = useVaultAccounts({ settingsOpen, syncStatus, announce })
+  const sidebarAccountName =
+    sidebarAccountProfileName || (syncStatus.configured ? t`Connected account` : t`Local vault`)
 
   const performLockVault = useCallback(async (): Promise<void> => {
     cancelAndClearAttachmentOperation()
@@ -2627,12 +1781,12 @@ function VaultShell({
   }, [cancelAndClearAttachmentOperation, clearDetailCache, describeVaultError, onLocked, t])
 
   const lockVault = useCallback(async (): Promise<void> => {
-    if (editorDirtyRef.current) {
+    if (isEditorDirty()) {
       requestEditorTransition(() => void performLockVault())
       return
     }
     await performLockVault()
-  }, [performLockVault, requestEditorTransition])
+  }, [isEditorDirty, performLockVault, requestEditorTransition])
 
   useEffect(() => {
     const unsubscribe = window.bearwarden.vault.onLockRequested(() => void lockVault())
@@ -2699,6 +1853,7 @@ function VaultShell({
     openEditor,
     scopedItemIds,
     searchOpen,
+    setSearchOpen,
     selectedLogin,
     selectedSummary,
     scope.kind,
@@ -2715,7 +1870,7 @@ function VaultShell({
       searchRef.current?.focus()
       searchRef.current?.select()
     })
-  }, [searchOpen])
+  }, [searchOpen, searchRef])
 
   useEffect(() => {
     if (
@@ -2732,31 +1887,7 @@ function VaultShell({
 
   useEffect(() => {
     if (!settingsOpen) return
-    if (accountStaleRefreshPendingRef.current) {
-      accountStaleRefreshPendingRef.current = false
-      accountMutationGateRef.current.leave()
-      setAccountBusy(false)
-      setAccountBusyLabel('')
-    }
-    let active = true
-    const requestId = ++accountStatusRequestRef.current
-    queueMicrotask(() => {
-      if (!active) return
-      setAccountStatus(null)
-      setAccountError('')
-      void window.bearwarden.accounts.status().then(
-        (status) => {
-          if (active && requestId === accountStatusRequestRef.current) setAccountStatus(status)
-        },
-        () => {
-          if (active && requestId === accountStatusRequestRef.current) {
-            setAccountError(t`The local account list could not be loaded. Try again later.`)
-          }
-        }
-      )
-    })
     return () => {
-      active = false
       queueMicrotask(() => setTouchIdPassword(''))
     }
   }, [settingsOpen, t])
@@ -2975,118 +2106,6 @@ function VaultShell({
     } finally {
       setSettingsBusy(false)
     }
-  }
-
-  async function runAccountMutation(
-    operation: 'add' | 'switch' | 'reorder' | 'remove',
-    mutation: () => Promise<AccountMutationResult>
-  ): Promise<void> {
-    if (!accountMutationGateRef.current.tryEnter()) return
-    accountStatusRequestRef.current += 1
-    const mutationRequestId = ++accountMutationRequestRef.current
-    setAccountBusy(true)
-    setAccountBusyLabel(
-      operation === 'add' || operation === 'switch'
-        ? t`Securely switching accounts and restarting`
-        : operation === 'remove'
-          ? t`Securely removing local account`
-          : t`Updating local account order`
-    )
-    setAccountError('')
-    try {
-      const result = await mutation()
-      if (mutationRequestId !== accountMutationRequestRef.current) return
-      accountStatusRequestRef.current += 1
-      setAccountStatus(result.status)
-      if (!accountMutationKeepsBusy(result)) {
-        accountMutationGateRef.current.leave()
-        setAccountBusy(false)
-        setAccountBusyLabel('')
-        if (operation === 'remove') {
-          announce(
-            result.kind === 'updated' && result.cleanupPending
-              ? t`The local account was removed. Remaining encrypted local data will be securely cleaned up on the next launch.`
-              : t`The local account and its data on this device were removed.`
-          )
-        } else if (operation === 'reorder' && result.kind === 'updated') {
-          announce(t`Local account order updated.`)
-        }
-      }
-    } catch (accountMutationFailure) {
-      if (mutationRequestId !== accountMutationRequestRef.current) return
-      const message = accountMutationError(accountMutationFailure)
-      setAccountError(message)
-      if (
-        accountMutationFailure instanceof Error &&
-        accountMutationFailure.message.includes('ACCOUNT_STALE_STATE')
-      ) {
-        const statusRequestId = ++accountStatusRequestRef.current
-        accountStaleRefreshPendingRef.current = true
-        setAccountBusy(true)
-        setAccountBusyLabel(t`Reloading local accounts`)
-        void window.bearwarden.accounts.status().then(
-          (status) => {
-            if (
-              !isCurrentAccountRefresh(
-                mutationRequestId,
-                accountMutationRequestRef.current,
-                statusRequestId,
-                accountStatusRequestRef.current
-              )
-            )
-              return
-            accountStaleRefreshPendingRef.current = false
-            setAccountStatus(status)
-            accountMutationGateRef.current.leave()
-            setAccountBusy(false)
-            setAccountBusyLabel('')
-          },
-          () => {
-            if (
-              !isCurrentAccountRefresh(
-                mutationRequestId,
-                accountMutationRequestRef.current,
-                statusRequestId,
-                accountStatusRequestRef.current
-              )
-            )
-              return
-            accountStaleRefreshPendingRef.current = false
-            setAccountError(
-              t`${message} The list could not be reloaded. Close Settings and try again.`
-            )
-            accountMutationGateRef.current.leave()
-            setAccountBusy(false)
-            setAccountBusyLabel('')
-          }
-        )
-        return
-      }
-      accountMutationGateRef.current.leave()
-      setAccountBusy(false)
-      setAccountBusyLabel('')
-    }
-  }
-
-  async function addLocalAccount(): Promise<void> {
-    await runAccountMutation('add', () => window.bearwarden.accounts.add())
-  }
-
-  async function switchLocalAccount(accountId: string): Promise<void> {
-    await runAccountMutation('switch', () => window.bearwarden.accounts.switch(accountId))
-  }
-
-  async function reorderLocalAccounts(
-    accountIds: readonly string[],
-    expectedRevision: number
-  ): Promise<void> {
-    await runAccountMutation('reorder', () =>
-      window.bearwarden.accounts.reorder(accountIds, expectedRevision)
-    )
-  }
-
-  async function removeLocalAccount(accountId: string): Promise<void> {
-    await runAccountMutation('remove', () => window.bearwarden.accounts.remove(accountId, true))
   }
 
   function announceExported(result: VaultExportResult): void {
@@ -3517,8 +2536,7 @@ function VaultShell({
         announce(t`Saved “${updated.name}”.`)
       }
       setRevealedCustomFields(emptyRevealedCustomFields)
-      editorDirtyRef.current = false
-      setEditorDirty(false)
+      clearEditorDirty()
       setEditorMode(null)
       return true
     } catch (saveError) {
@@ -4199,236 +3217,6 @@ function VaultShell({
     }
   }
 
-  function renderDetailField(field: DetailField): React.JSX.Element {
-    const secretField = field.field as VaultSecretField
-    const isPasswordField = field.field === 'password'
-    const revealedValue =
-      field.secret && revealedSecrets.itemId === selectedLogin?.id
-        ? revealedSecrets.values[secretField]
-        : undefined
-    const hasExtraAction = Boolean(field.copyable) && Boolean(field.openUri)
-    const canCopyFromValue =
-      field.field === 'username' ||
-      field.field === 'password' ||
-      Boolean(field.copyable && !field.secret && !field.openUri)
-    const copyKey = `field:${selectedSummary?.id}:${field.field}:${field.uriIndex ?? ''}`
-    const valueClassName = field.secret
-      ? revealedValue === undefined
-        ? 'tracking-[0.13em]'
-        : isPasswordField
-          ? 'min-w-0 select-text'
-          : 'font-mono select-text'
-      : undefined
-    const displayValue =
-      field.secret && revealedValue !== undefined && isPasswordField ? (
-        revealedValue ? (
-          <ColoredPassword value={revealedValue} className="text-xs font-[590]" />
-        ) : (
-          t`Not set`
-        )
-      ) : field.secret ? (
-        revealedValue === undefined ? (
-          field.field === 'code' ? (
-            '•••'
-          ) : (
-            '••••••••••••'
-          )
-        ) : field.field === 'number' ? (
-          formatPaymentCardNumber(revealedValue) || t`Not set`
-        ) : (
-          revealedValue || t`Not set`
-        )
-      ) : (
-        field.value || t`Not set`
-      )
-    const secretHoverHandlers = field.secret
-      ? {
-          onMouseEnter: () => {
-            hoveringSecretFieldsRef.current.add(secretField)
-            if (revealedValue !== undefined) return
-            hoverRevealedSecretFieldsRef.current.add(secretField)
-            void revealSecret(secretField, { quiet: true, forceShow: true })
-          },
-          onMouseLeave: () => {
-            hoveringSecretFieldsRef.current.delete(secretField)
-            if (secretField === 'password' && passwordZoomOpenRef.current) return
-            if (!hoverRevealedSecretFieldsRef.current.delete(secretField)) return
-            hideRevealedSecret(secretField)
-          }
-        }
-      : undefined
-    const value = (
-      <strong className={valueClassName} {...(canCopyFromValue ? undefined : secretHoverHandlers)}>
-        {displayValue}
-      </strong>
-    )
-    return (
-      <div
-        className={cn(
-          detailFieldClassName,
-          !field.secret && !hasExtraAction && 'max-[430px]:grid-cols-[1fr_auto]'
-        )}
-        key={`${field.label}:${field.field}:${field.uriIndex ?? ''}`}
-      >
-        <span>{field.label}</span>
-        {canCopyFromValue ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="-ml-2 w-[calc(100%+8px)] min-w-0 justify-start overflow-hidden px-2 [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-[590]"
-            data-field-copy-value=""
-            type="button"
-            aria-label={copiedKey === copyKey ? t`${field.label} copied` : t`Copy ${field.label}`}
-            disabled={!field.secret && !field.value}
-            onClick={() => void copyField(field.field, field.uriIndex)}
-            {...secretHoverHandlers}
-          >
-            {value}
-          </Button>
-        ) : (
-          value
-        )}
-        {field.secret ? (
-          <>
-            {isPasswordField ? (
-              <TooltipIconButton
-                variant="outline"
-                size="icon"
-                type="button"
-                label={t`Show password in large type`}
-                onClick={() => void openPasswordZoom()}
-              >
-                <ZoomIn />
-              </TooltipIconButton>
-            ) : (
-              <TooltipIconButton
-                variant="outline"
-                size="icon"
-                type="button"
-                label={
-                  revealedValue === undefined ? t`Show ${field.label}` : t`Hide ${field.label}`
-                }
-                aria-pressed={revealedValue !== undefined}
-                onClick={() => void revealSecret(secretField)}
-              >
-                {revealedValue === undefined ? <Eye /> : <EyeOff />}
-              </TooltipIconButton>
-            )}
-            <TooltipIconButton
-              variant="outline"
-              size="icon"
-              type="button"
-              label={copiedKey === copyKey ? t`${field.label} copied` : t`Copy ${field.label}`}
-              onClick={() => void copyField(field.field)}
-            >
-              <CopyFeedbackIcon copied={copiedKey === copyKey} />
-            </TooltipIconButton>
-          </>
-        ) : (
-          <>
-            {field.copyable && (
-              <TooltipIconButton
-                variant="outline"
-                size="icon"
-                type="button"
-                label={
-                  copiedKey ===
-                  `field:${selectedSummary?.id}:${field.field}:${field.uriIndex ?? ''}`
-                    ? t`${field.label} copied`
-                    : t`Copy ${field.label}`
-                }
-                disabled={!field.value}
-                onClick={() => void copyField(field.field, field.uriIndex)}
-              >
-                <CopyFeedbackIcon
-                  copied={
-                    copiedKey ===
-                    `field:${selectedSummary?.id}:${field.field}:${field.uriIndex ?? ''}`
-                  }
-                />
-              </TooltipIconButton>
-            )}
-            {field.openUri && (
-              <TooltipIconButton
-                variant="outline"
-                size="icon"
-                type="button"
-                label={t`Open website`}
-                disabled={!field.value}
-                onClick={() => void openWebsite(field.uriIndex)}
-              >
-                <ArrowUpRight />
-              </TooltipIconButton>
-            )}
-          </>
-        )}
-      </div>
-    )
-  }
-
-  function renderCustomField(field: VaultCustomFieldView, index: number): React.JSX.Element {
-    const revealedEntry =
-      revealedCustomFields.itemId === selectedLogin?.id
-        ? revealedCustomFields.values[index]
-        : undefined
-    const revealedValue =
-      revealedEntry &&
-      revealedEntry.expectedUpdatedAt === selectedLogin?.updatedAt &&
-      matchesCustomFieldSource(field, index, revealedEntry.source)
-        ? revealedEntry.value
-        : undefined
-    const hidden = field.type === 'hidden'
-    const label = field.name || t`Unnamed field`
-    const copyFeedbackKey = selectedLogin
-      ? customFieldCopyFeedbackKey(selectedLogin.id, index, field)
-      : null
-    return (
-      <div
-        className={cn(detailFieldClassName, !hidden && 'max-[430px]:grid-cols-[1fr_auto]')}
-        key={`${index}:${field.name}:${field.type}`}
-      >
-        <span>{label}</span>
-        <strong
-          className={cn(
-            hidden && (revealedValue === undefined ? 'tracking-[0.13em]' : 'font-mono select-text')
-          )}
-        >
-          {hidden
-            ? revealedValue === undefined
-              ? '••••••••••••'
-              : revealedValue || t`Not set`
-            : customFieldDisplayValue(field, customFieldLabels)}
-        </strong>
-        {hidden && (
-          <TooltipIconButton
-            variant="outline"
-            size="icon"
-            type="button"
-            label={revealedValue === undefined ? t`Show ${label}` : t`Hide ${label}`}
-            aria-pressed={revealedValue !== undefined}
-            onClick={() => void revealCustomField(index, field)}
-          >
-            {revealedValue === undefined ? <Eye /> : <EyeOff />}
-          </TooltipIconButton>
-        )}
-        <TooltipIconButton
-          variant="outline"
-          size="icon"
-          type="button"
-          label={
-            copyFeedbackKey !== null && copiedKey === copyFeedbackKey
-              ? t`${label} copied`
-              : t`Copy ${label}`
-          }
-          disabled={field.type !== 'linked' && !field.value && !hidden}
-          onClick={() => void copyCustomField(index, field)}
-        >
-          <CopyFeedbackIcon copied={copyFeedbackKey !== null && copiedKey === copyFeedbackKey} />
-        </TooltipIconButton>
-      </div>
-    )
-  }
-
   const closeAuxiliaryPage = healthOpen
     ? closeHealth
     : organizationsOpen
@@ -4443,43 +3231,7 @@ function VaultShell({
   const auxiliaryPageOpen = closeAuxiliaryPage !== null
 
   if (loading) {
-    if (isMac) {
-      return (
-        <main
-          className="bg-background text-muted-foreground flex size-full items-center justify-center gap-3.5"
-          role="status"
-        >
-          <BrandMark className="absolute top-[25px] left-1/2 -translate-x-1/2" />
-          <Spinner className="size-6" aria-hidden="true" />
-          <p>
-            <Trans>Decrypting your items…</Trans>
-          </p>
-        </main>
-      )
-    }
-
-    return (
-      <main
-        className={cn(
-          'bg-background flex size-full min-w-0 flex-col',
-          usesWindowControlsOverlay && 'platform-window-controls-overlay'
-        )}
-      >
-        <header className={titlebarClassName}>
-          <ApplicationTitlebarMenu />
-          <div className="flex-1 self-stretch" aria-hidden="true" />
-        </header>
-        <div
-          className="bg-background text-muted-foreground flex size-full items-center justify-center gap-3.5"
-          role="status"
-        >
-          <Spinner className="size-6" aria-hidden="true" />
-          <p>
-            <Trans>Decrypting your items…</Trans>
-          </p>
-        </div>
-      </main>
-    )
+    return <VaultShellLoading appearance={{ isMac, usesWindowControlsOverlay }} />
   }
 
   return (
@@ -4501,122 +3253,27 @@ function VaultShell({
         )}
         data-has-detail={selectedId || editorMode ? 'true' : 'false'}
       >
-        <header className={titlebarClassName}>
-          <ApplicationTitlebarMenu onLockVault={lockVault} />
-          {!settingsOpen &&
-            !healthOpen &&
-            !sendsOpen &&
-            !organizationsOpen &&
-            !emergencyAccessOpen && (
-              <TooltipIconButton
-                variant="outline"
-                size="icon"
-                className="hidden max-[880px]:grid"
-                type="button"
-                label={sidebarOpen ? t`Close sidebar` : t`Open sidebar`}
-                aria-expanded={sidebarOpen}
-                onClick={() => setSidebarOpen((open) => !open)}
-              >
-                <span
-                  className="group/icon-swap relative inline-grid"
-                  data-state={sidebarOpen ? 'b' : 'a'}
-                  aria-hidden="true"
-                >
-                  <Menu
-                    className="col-start-1 row-start-1 scale-(--icon-swap-start-scale) opacity-0 blur-(--icon-swap-blur) transition-[opacity,filter,transform] duration-(--icon-swap-dur) ease-(--icon-swap-ease) will-change-[opacity,filter,transform] group-data-[state=a]/icon-swap:scale-100 group-data-[state=a]/icon-swap:opacity-100 group-data-[state=a]/icon-swap:blur-none motion-reduce:transition-none"
-                    data-icon="a"
-                  />
-                  <X
-                    className="col-start-1 row-start-1 scale-(--icon-swap-start-scale) opacity-0 blur-(--icon-swap-blur) transition-[opacity,filter,transform] duration-(--icon-swap-dur) ease-(--icon-swap-ease) will-change-[opacity,filter,transform] group-data-[state=b]/icon-swap:scale-100 group-data-[state=b]/icon-swap:opacity-100 group-data-[state=b]/icon-swap:blur-none motion-reduce:transition-none"
-                    data-icon="b"
-                  />
-                </span>
-              </TooltipIconButton>
-            )}
-          {closeAuxiliaryPage && (
-            <Button variant="outline" size="sm" type="button" onClick={closeAuxiliaryPage}>
-              <ArrowLeft data-icon="inline-start" />
-              <Trans>Vault</Trans>
-            </Button>
-          )}
-          {isMac && (
-            <div className="inline-flex items-center gap-2 max-[680px]:hidden">
-              <BrandMark hideMark />
-              <Badge variant="secondary" className="bg-black/5 shadow-(--control-highlight)">
-                <Trans>Beta</Trans>
-              </Badge>
-            </div>
-          )}
-          {!settingsOpen &&
-            !healthOpen &&
-            !sendsOpen &&
-            !organizationsOpen &&
-            !emergencyAccessOpen && (
-              <InputGroup
-                className={cn(
-                  'text-muted-foreground [@media(prefers-reduced-transparency:reduce)]:bg-card bg-card/50 hover:bg-muted hover:text-foreground absolute left-1/2 h-[38px] w-[clamp(300px,44vw,560px)] min-w-0 -translate-x-1/2 gap-[7px] rounded-[11px] border-0 py-0 pr-2 pl-2.5 focus-within:border-(--focus) max-[880px]:static max-[880px]:max-w-none max-[880px]:flex-1 max-[880px]:translate-x-0 max-[680px]:[&_kbd]:hidden',
-                  'shadow-(--control-highlight) hover:shadow-(--control-highlight)',
-                  '[-webkit-app-region:no-drag] **:[-webkit-app-region:no-drag]'
-                )}
-              >
-                <Button
-                  variant="ghost"
-                  className="text-foreground hover:text-foreground h-full min-w-0 flex-1 justify-start bg-transparent p-0 text-xs font-normal shadow-none hover:bg-transparent hover:shadow-none focus-visible:border-transparent focus-visible:ring-0 focus-visible:outline-none aria-expanded:bg-transparent [&>span]:w-full [&>span]:min-w-0 [&>span]:text-left"
-                  type="button"
-                  aria-label={
-                    query ? t`Search vault items, currently ${query}` : t`Search vault items`
-                  }
-                  aria-haspopup="dialog"
-                  aria-expanded={searchOpen}
-                  onClick={() => setSearchOpen(true)}
-                >
-                  <span className={cn('truncate', !query && 'text-muted-foreground')}>
-                    {query || t`Search vault`}
-                  </span>
-                </Button>
-                <InputGroupAddon align="inline-start">
-                  <Search aria-hidden="true" />
-                </InputGroupAddon>
-                {query && (
-                  <InputGroupAddon align="inline-end">
-                    <InputGroupButton
-                      size="icon-xs"
-                      type="button"
-                      aria-label={t`Clear search`}
-                      onClick={() => updateQuery('')}
-                    >
-                      <X />
-                    </InputGroupButton>
-                  </InputGroupAddon>
-                )}
-                <InputGroupAddon align="inline-end">
-                  <Kbd>{commandLabel} F</Kbd>
-                </InputGroupAddon>
-              </InputGroup>
-            )}
-          <div
-            className={cn('flex-1 self-stretch', !auxiliaryPageOpen && 'max-[880px]:hidden')}
-            aria-hidden="true"
-          />
-          {!settingsOpen &&
-            !healthOpen &&
-            !sendsOpen &&
-            !organizationsOpen &&
-            !emergencyAccessOpen &&
-            scope.kind !== 'archive' &&
-            scope.kind !== 'trash' && (
-              <TooltipIconButton
-                variant="outline"
-                size="icon"
-                className="border-border text-foreground rounded-[10px] bg-[color-mix(in_oklch,var(--card)_32%,transparent)] shadow-[var(--control-highlight),0_1px_2px_color-mix(in_oklch,var(--shadow-color)_12%,transparent)]"
-                type="button"
-                label={t`Add item`}
-                onClick={() => openEditor('create')}
-              >
-                <Plus aria-hidden="true" />
-              </TooltipIconButton>
-            )}
-        </header>
+        <VaultShellTitlebar
+          appearance={{ isMac }}
+          navigation={{
+            auxiliaryPageOpen,
+            closeAuxiliaryPage,
+            sidebarOpen,
+            onToggleSidebar: () => setSidebarOpen((open) => !open)
+          }}
+          search={{
+            query,
+            open: searchOpen,
+            shortcutLabel: commandLabel,
+            onOpen: () => setSearchOpen(true),
+            onClear: () => updateQuery('')
+          }}
+          itemCreation={{
+            visible: !auxiliaryPageOpen && scope.kind !== 'archive' && scope.kind !== 'trash',
+            onCreate: () => openEditor('create')
+          }}
+          onLockVault={lockVault}
+        />
 
         <Button
           variant="ghost"
@@ -4631,107 +3288,23 @@ function VaultShell({
           onClick={() => setSidebarOpen(false)}
         />
 
-        <CommandDialog
-          open={searchOpen}
-          onOpenChange={setSearchOpen}
-          title={t`Search vault`}
-          description={t`Search names, summaries, websites, and content. Start with > for advanced field-specific search.`}
-        >
-          <Command
-            className="max-h-[min(480px,70vh)] [&_[data-slot=command-input-wrapper]]:px-2 [&_[data-slot=command-input-wrapper]]:pt-2 [&_[data-slot=command-input-wrapper]]:pb-0"
-            label={t`Search vault items`}
-            loop
-            shouldFilter={false}
-          >
-            <CommandInput
-              ref={searchRef}
-              placeholder={t`Search vault; for example, >name:github`}
-              maxLength={MAX_VAULT_SEARCH_QUERY_LENGTH}
-              value={query}
-              onValueChange={updateQuery}
-              endAdornment={
-                query ? (
-                  <InputGroupAddon align="inline-end">
-                    <InputGroupButton
-                      size="icon-xs"
-                      type="button"
-                      aria-label={t`Clear search`}
-                      onClick={() => {
-                        updateQuery('')
-                        window.requestAnimationFrame(() => searchRef.current?.focus())
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') event.stopPropagation()
-                      }}
-                    >
-                      <X />
-                    </InputGroupButton>
-                  </InputGroupAddon>
-                ) : undefined
-              }
-            />
-            <CommandList className="scroll-fade-y forced-colors:scroll-fade-none max-h-[min(420px,calc(70vh-54px))] p-1.5">
-              <CommandEmpty>
-                <Trans>No matching vault items</Trans>
-              </CommandEmpty>
-              {scopedItems.length > 0 && (
-                <CommandGroup
-                  heading={
-                    normalizedVaultSearchQuery(query)
-                      ? t`Search results · ${scopedItems.length} items`
-                      : t`${scopeTitle} · ${scopedItems.length} items`
-                  }
-                >
-                  {scopedItems.map((item) => {
-                    const ItemIcon = itemTypeMeta[item.type].icon
-                    return (
-                      <CommandItem
-                        key={item.id}
-                        value={item.id}
-                        onSelect={() => {
-                          selectLogin(item.id)
-                          setSearchOpen(false)
-                        }}
-                      >
-                        <span
-                          className={cn(
-                            'bg-foreground/5 text-muted-foreground grid size-[30px] flex-none place-items-center rounded',
-                            item.type === 'login' && scope.kind !== 'trash' && 'overflow-hidden'
-                          )}
-                          aria-hidden="true"
-                        >
-                          {item.type === 'card' ? (
-                            <PaymentCardBrandMark
-                              brand={normalizeBitwardenCardBrand(item.cardBrand)}
-                              compact
-                            />
-                          ) : item.type === 'login' && scope.kind !== 'trash' ? (
-                            <WebsiteIcon
-                              id={item.id}
-                              uri={item.uri}
-                              enabled={settings?.showWebsiteIcons ?? false}
-                            />
-                          ) : (
-                            <ItemIcon />
-                          )}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <strong className="block truncate">{item.name}</strong>
-                          <small className="text-muted-foreground block truncate text-[10px]">
-                            {item.subtitle || item.username || item.uri || t`No summary`}
-                          </small>
-                        </span>
-                        <span className="text-muted-foreground flex-none text-[10px]">
-                          {itemTypeMeta[item.type].label}
-                        </span>
-                      </CommandItem>
-                    )
-                  })}
-                </CommandGroup>
-              )}
-            </CommandList>
-          </Command>
-        </CommandDialog>
+        <VaultSearchDialog
+          state={{ open: searchOpen, query, items: scopedItems, scopeTitle }}
+          inputRef={searchRef}
+          presentation={{
+            itemTypes: itemTypeMeta,
+            showWebsiteIcons: settings?.showWebsiteIcons ?? false,
+            isTrash: scope.kind === 'trash'
+          }}
+          actions={{
+            onOpenChange: setSearchOpen,
+            onQueryChange: updateQuery,
+            onSelectItem: (id) => {
+              selectLogin(id)
+              setSearchOpen(false)
+            }
+          }}
+        />
 
         <div
           className={cn(
@@ -4745,261 +3318,45 @@ function VaultShell({
             auxiliaryPageOpen && (isMac || isWindows) && 'pl-2'
           )}
         >
-          <aside
-            className={cn(
-              'border-sidebar-border bg-sidebar text-foreground z-11 flex min-h-0 min-w-0 flex-col overflow-hidden border-r bg-[linear-gradient(color-mix(in_oklch,var(--sidebar-foreground)_3%,transparent),transparent)] [backdrop-filter:saturate(165%)_blur(28px)] [-webkit-backdrop-filter:saturate(165%)_blur(28px)] max-[880px]:absolute max-[880px]:inset-y-0 max-[880px]:left-0 max-[880px]:z-31 max-[880px]:w-[248px] max-[880px]:-translate-x-full max-[880px]:transition-transform max-[880px]:duration-180 max-[880px]:ease-out',
-              (isMac || isWindows) &&
-                'max-[880px]:bg-sidebar mb-[-8px] border-0 bg-transparent bg-none shadow-none [backdrop-filter:none] [-webkit-backdrop-filter:none] max-[880px]:[inset:0_auto_8px_8px] max-[880px]:mb-0 max-[880px]:translate-x-[calc(-100%-8px)] max-[880px]:rounded-2xl max-[880px]:border max-[880px]:border-(--native-material-border) max-[880px]:shadow-(--native-material-shadow) max-[880px]:[backdrop-filter:saturate(165%)_blur(28px)] max-[880px]:[-webkit-backdrop-filter:saturate(165%)_blur(28px)] [@media(max-width:880px)_and_(prefers-reduced-transparency:reduce)]:[backdrop-filter:none] [@media(max-width:880px)_and_(prefers-reduced-transparency:reduce)]:[-webkit-backdrop-filter:none]',
-              sidebarOpen &&
-                'max-[880px]:translate-x-0 max-[880px]:shadow-[14px_0_40px_color-mix(in_oklch,var(--shadow-color)_30%,transparent)]',
-              sidebarOpen && (isMac || isWindows) && 'max-[880px]:shadow-(--native-material-shadow)'
-            )}
-            data-vault-sidebar=""
-            aria-label={t`Vault navigation`}
-          >
-            <div className="scroll-fade-y forced-colors:scroll-fade-none min-h-0 flex-1 [scrollbar-color:color-mix(in_oklch,var(--muted-foreground)_25%,transparent)_transparent] overflow-y-auto overscroll-contain max-[880px]:pt-2">
-              <section
-                className={cn(folderSectionClassName, 'px-[11px] pb-1')}
-                aria-labelledby="categories-title"
-              >
-                <h2 className="hidden" id="categories-title">
-                  <Trans>Categories</Trans>
-                </h2>
-                <nav className="grid grid-cols-2 gap-2 p-0 pt-px" aria-label={t`Vault categories`}>
-                  {categoryMeta.map((category) => {
-                    const Icon = category.icon
-                    return (
-                      <SidebarLink
-                        key={category.id}
-                        icon={<Icon size={17} />}
-                        label={category.label}
-                        count={categoryCounts.get(category.id) ?? 0}
-                        active={scope.kind === 'all' && typeFilter === category.id}
-                        variant="tile"
-                        tone={category.tone}
-                        onClick={() => selectType(category.id)}
-                      />
-                    )
-                  })}
-                </nav>
-              </section>
-
-              <section
-                className={cn(folderSectionClassName, 'px-[9px] py-1')}
-                aria-labelledby="quick-title"
-              >
-                <header>
-                  <h2 id="quick-title">
-                    <Trans>Quick access</Trans>
-                  </h2>
-                </header>
-                <nav className="grid gap-[3px] px-2.5 py-1" aria-label={t`Quick access`}>
-                  <SidebarLink
-                    icon={<Star size={16} />}
-                    label={t`Favorites`}
-                    count={activeItems.filter((item) => item.favorite).length}
-                    active={scope.kind === 'favorites'}
-                    dropTargetId={
-                      scope.kind === 'archive' || scope.kind === 'trash'
-                        ? undefined
-                        : quickAccessDropIds.favorites
-                    }
-                    onClick={() => selectScope({ kind: 'favorites' })}
-                  />
-                  <SidebarLink
-                    icon={<Clock3 size={16} />}
-                    label={t({
-                      message: 'Recently used',
-                      context: 'recent-items-filter',
-                      comment:
-                        'Navigation and sort label for vault items that have been used most recently.'
-                    })}
-                    count={activeItems.filter((item) => item.lastUsedAt).length}
-                    active={scope.kind === 'recent'}
-                    onClick={() => selectScope({ kind: 'recent' })}
-                  />
-                  <SidebarLink
-                    icon={<Archive size={16} />}
-                    label={t`Archive`}
-                    count={archivedItems.length}
-                    active={scope.kind === 'archive'}
-                    dropTargetId={
-                      scope.kind === 'archive' || scope.kind === 'trash'
-                        ? undefined
-                        : quickAccessDropIds.archive
-                    }
-                    onClick={() => selectScope({ kind: 'archive' })}
-                  />
-                  <SidebarLink
-                    icon={<Trash2 size={16} />}
-                    label={t`Trash`}
-                    count={trashItems.length}
-                    active={scope.kind === 'trash'}
-                    dropTargetId={scope.kind === 'trash' ? undefined : quickAccessDropIds.trash}
-                    onClick={() => selectScope({ kind: 'trash' })}
-                  />
-                </nav>
-              </section>
-
-              <section
-                className={cn(folderSectionClassName, 'px-[9px] py-1')}
-                aria-labelledby="folders-title"
-              >
-                <header>
-                  <h2 id="folders-title">
-                    <Trans>Folders</Trans>
-                  </h2>
-                  <TooltipIconButton
-                    variant="sidebar"
-                    size="icon"
-                    className="hover:bg-sidebar-overlay-hover hover:text-foreground border-transparent bg-transparent shadow-none hover:shadow-(--control-highlight) dark:bg-transparent"
-                    type="button"
-                    label={t`Add folder`}
-                    onClick={() => setFolderDialog('new')}
-                  >
-                    <Plus aria-hidden="true" />
-                  </TooltipIconButton>
-                </header>
-                <ul className="m-0 [scrollbar-color:var(--sidebar-ring)_transparent] list-none overflow-visible p-0">
-                  <UnfiledRow
-                    selected={scope.kind === 'unfiled'}
-                    count={folderCounts.get(null) ?? 0}
-                    onSelect={() => selectScope({ kind: 'unfiled' })}
-                  />
-                  <SortableContext
-                    items={folders.map((folder) => folder.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    {folders.map((folder) => (
-                      <FolderRow
-                        key={folder.id}
-                        folder={folder}
-                        count={folderCounts.get(folder.id) ?? 0}
-                        selected={scope.kind === 'folder' && scope.folderId === folder.id}
-                        onSelect={() => selectScope({ kind: 'folder', folderId: folder.id })}
-                        onEdit={() => setFolderDialog(folder)}
-                      />
-                    ))}
-                  </SortableContext>
-                </ul>
-              </section>
-            </div>
-
-            <footer className="text-muted-foreground grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 border-t-0 bg-transparent px-[9px] pt-[7px] pb-[9px] text-[10px]">
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button
-                      ref={sidebarMenuTriggerRef}
-                      variant="sidebar"
-                      className="text-sidebar-foreground hover:bg-sidebar-overlay-hover data-popup-open:bg-sidebar-overlay-active h-auto min-h-9 w-full justify-start gap-[7px] rounded-[9px] px-1.5 py-1"
-                      type="button"
-                      aria-label={t`Open ${sidebarAccountName} menu`}
-                    />
-                  }
-                >
-                  <span
-                    className="text-muted-foreground grid size-5 flex-none place-items-center [&>svg]:size-[18px]"
-                    aria-hidden="true"
-                  >
-                    <UserRound />
-                  </span>
-                  <span className="block min-w-0 flex-1 text-left">
-                    <strong className="text-sidebar-foreground block truncate text-xs font-bold">
-                      {sidebarAccountName}
-                    </strong>
-                  </span>
-                  <ChevronUp className="text-muted-foreground ml-auto" aria-hidden="true" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  side="top"
-                  align="start"
-                  sideOffset={8}
-                  className="min-w-[220px] p-[5px] [&_[data-slot=dropdown-menu-item]]:min-h-[34px] [&_[data-slot=dropdown-menu-item]]:gap-2 [&_[data-slot=dropdown-menu-item]]:px-[9px]"
-                >
-                  <DropdownMenuGroup>
-                    <DropdownMenuLabel className="flex items-center gap-[7px] p-[7px]">
-                      <span
-                        className="text-muted-foreground grid size-5 flex-none place-items-center [&>svg]:size-[18px]"
-                        aria-hidden="true"
-                      >
-                        <UserRound />
-                      </span>
-                      <span className="grid min-w-0 gap-px">
-                        <strong className="text-sidebar-foreground block truncate text-xs font-bold">
-                          {sidebarAccountName}
-                        </strong>
-                        <small className="text-muted-foreground block truncate text-[10px] font-medium">
-                          {syncStateMeta[syncStatus.state].label}
-                        </small>
-                      </span>
-                    </DropdownMenuLabel>
-                  </DropdownMenuGroup>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem onClick={() => setGeneratorDialogOpen(true)}>
-                      <Sparkles data-icon="inline-start" />
-                      <Trans>Generator</Trans>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={openOrganizations}>
-                      <UsersRound data-icon="inline-start" />
-                      <Trans>Organizations</Trans>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={openEmergencyAccess}>
-                      <ShieldAlert data-icon="inline-start" />
-                      <Trans>Emergency Access</Trans>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={openSends}>
-                      <SendIcon data-icon="inline-start" />
-                      <Trans>Sends</Trans>
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem onClick={openHealth}>
-                      <ShieldCheck data-icon="inline-start" />
-                      <Trans>Health report</Trans>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={openSettings}>
-                      <Settings2 data-icon="inline-start" />
-                      <Trans>Settings</Trans>
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem onClick={() => void lockVault()}>
-                      <LockKeyhole data-icon="inline-start" />
-                      <Trans>Lock vault</Trans>
-                      <DropdownMenuShortcut>
-                        <Kbd>{commandLabel} L</Kbd>
-                      </DropdownMenuShortcut>
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <TooltipIconButton
-                variant="sidebar"
-                size="icon"
-                className="hover:bg-sidebar-overlay-hover hover:text-foreground size-[34px] rounded-[9px] border-transparent bg-transparent shadow-none hover:shadow-(--control-highlight) dark:bg-transparent"
-                type="button"
-                label={t`Cloud sync: ${syncStateMeta[syncStatus.state].label}`}
-                onClick={() => setSyncDialogOpen(true)}
-              >
-                <SyncSidebarIcon
-                  className={cn(
-                    'text-muted-foreground',
-                    syncStatus.state === 'ready' && 'text-sidebar-status-success',
-                    (syncStatus.state === 'locked' || syncStatus.state === 'unconfigured') &&
-                      'text-chart-4',
-                    syncStatus.state === 'error' && 'text-destructive',
-                    syncStatus.state === 'syncing' &&
-                      'text-ring animate-[sync-pulse_1.1s_ease-in-out_infinite]'
-                  )}
-                  aria-hidden="true"
-                />
-              </TooltipIconButton>
-            </footer>
-          </aside>
+          <VaultShellSidebar
+            appearance={{ isMac, isWindows, open: sidebarOpen }}
+            navigation={{
+              scope,
+              typeFilter,
+              categories: categoryMeta,
+              categoryCounts,
+              quickAccessCounts: {
+                favorites: activeItems.filter((item) => item.favorite).length,
+                recentlyUsed: activeItems.filter((item) => item.lastUsedAt).length,
+                archive: archivedItems.length,
+                trash: trashItems.length
+              },
+              folders,
+              folderCounts
+            }}
+            account={{
+              name: sidebarAccountName,
+              syncState: syncStatus.state,
+              syncLabel: syncStateMeta[syncStatus.state].label,
+              syncIcon: SyncSidebarIcon,
+              commandLabel
+            }}
+            actions={{
+              onSelectType: selectType,
+              onSelectScope: selectScope,
+              onAddFolder: () => setFolderDialog('new'),
+              onEditFolder: setFolderDialog,
+              onOpenGenerator: () => setGeneratorDialogOpen(true),
+              onOpenOrganizations: openOrganizations,
+              onOpenEmergencyAccess: openEmergencyAccess,
+              onOpenSends: openSends,
+              onOpenHealth: openHealth,
+              onOpenSettings: openSettings,
+              onLockVault: lockVault,
+              onOpenSync: () => setSyncDialogOpen(true)
+            }}
+            accountMenuTriggerRef={sidebarMenuTriggerRef}
+          />
 
           <div
             className={cn(
@@ -5080,249 +3437,42 @@ function VaultShell({
                   onRemoveAccount={removeLocalAccount}
                 />
               ) : (
-                <>
-                  <header className="flex min-h-[82px] items-center justify-between gap-3 px-[18px] pt-[15px] pb-[11px] max-[430px]:px-[11px]">
-                    <div className="grid gap-0.5">
-                      <h1
-                        className="m-0 text-[21px] leading-[1.2] font-[760] tracking-[-0.025em]"
-                        id="list-title"
-                      >
-                        {scopeTitle}
-                      </h1>
-                      <small className="text-muted-foreground text-[11px]">
-                        {selectedIds.size > 1
-                          ? t`${selectedIds.size} selected · ${scopedItems.length} items total`
-                          : t`${scopedItems.length} items`}
-                      </small>
-                    </div>
-                    <div className="border-border flex items-center gap-[7px] rounded-[14px] border bg-[color-mix(in_oklch,var(--card)_78%,transparent)] p-1 shadow-none dark:bg-[color-mix(in_oklch,var(--card)_70%,transparent)]">
-                      <div className="text-muted-foreground flex h-8 items-center gap-1 border-0 bg-transparent py-0 pr-1 pl-1.5 shadow-none">
-                        <ListFilter size={16} aria-hidden="true" />
-                        <Select
-                          items={sortItemsOptions}
-                          value={sortMode}
-                          disabled={scope.kind === 'recent'}
-                          onValueChange={(value) => setSortMode(value as VaultSortMode)}
-                        >
-                          <SelectTrigger size="sm" variant="embedded" aria-label={t`Sort order`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              {sortItemsOptions.map((item) => (
-                                <SelectItem key={item.value} value={item.value}>
-                                  {item.label}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </header>
-                  {query && (
-                    <div
-                      className="text-muted-foreground flex min-h-7 items-center justify-between gap-2.5 px-[19px] pt-0 pb-[7px] text-[10px]"
-                      role="status"
-                    >
-                      <span>
-                        <Trans>Search “{query}”</Trans>
-                      </span>
-                      <span>
-                        <Trans>{scopedItems.length} results</Trans>
-                      </span>
-                    </div>
-                  )}
-
-                  {scopedItems.length ? (
-                    <VirtualizedItemList
-                      groups={itemGroups}
-                      scopeTitle={scopeTitle}
-                      activeId={editorMode ? null : selectedId}
-                      selectedIds={selectedIds}
-                      onPrefetch={scope.kind === 'trash' ? undefined : prefetchLoginDetail}
-                      onSelect={selectItems}
-                      onFavorite={toggleFavorite}
-                      onContextMenu={showLoginContextMenu}
-                      showWebsiteIcons={
-                        scope.kind !== 'trash' && (settings?.showWebsiteIcons ?? false)
-                      }
-                      showTotpCodes={typeFilter === 'totp'}
-                      totpCodes={totpListCodes}
-                      readOnly={scope.kind === 'trash'}
-                      className={cn(typeFilter === 'totp' && 'pb-20')}
-                    />
-                  ) : (
-                    <Empty className="min-h-0 flex-1 gap-0 p-7">
-                      <EmptyHeader>
-                        <EmptyMedia
-                          variant="icon"
-                          className="text-primary mb-[13px] size-[52px] rounded-2xl bg-(--accent-soft)"
-                        >
-                          {query ? (
-                            <Search className="size-8" />
-                          ) : scope.kind === 'trash' ? (
-                            <Trash2 className="size-8" />
-                          ) : (
-                            <KeyRound className="size-8" />
-                          )}
-                        </EmptyMedia>
-                        <EmptyTitle className="m-0">
-                          {query
-                            ? t`No matching items`
-                            : scope.kind === 'trash'
-                              ? t`Trash is empty`
-                              : t`There are no vault items here yet`}
-                        </EmptyTitle>
-                        <EmptyDescription className="text-muted-foreground mb-4 max-w-[290px] leading-[1.55]">
-                          {query
-                            ? t`Try a shorter search term or switch to All items.`
-                            : scope.kind === 'trash'
-                              ? t`Deleted items remain here until you restore or permanently delete them, or the server removes them according to its retention policy.`
-                              : t`Add your first item and BearWarden will keep it safe.`}
-                        </EmptyDescription>
-                      </EmptyHeader>
-                      <EmptyContent>
-                        {query ? (
-                          <Button variant="outline" type="button" onClick={() => updateQuery('')}>
-                            <Trans>Clear search</Trans>
-                          </Button>
-                        ) : scope.kind !== 'trash' && scope.kind !== 'archive' ? (
-                          <Button
-                            className="before:ring-primary-foreground/20 relative h-[38px] gap-2 rounded-[9px] border-0 px-3.5 font-[680] shadow-[var(--subtle-primary-action-shadow)] before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:ring-1 before:ring-inset has-data-[icon=inline-start]:pl-3.5"
-                            type="button"
-                            onClick={() => openEditor('create')}
-                          >
-                            <Plus data-icon="inline-start" />
-                            <Trans>Add item</Trans>
-                          </Button>
-                        ) : null}
-                      </EmptyContent>
-                    </Empty>
-                  )}
-                  {typeFilter === 'totp' && scopedItems.length > 0 && (
-                    <div
-                      className={cn(
-                        'pointer-events-none absolute right-4 bottom-4',
-                        selectedSummaries.length >= 2 && 'bottom-20'
-                      )}
-                    >
-                      <TotpCountdownIndicator
-                        key={totpListCountdown?.code ?? 'loading'}
-                        remainingSeconds={totpListCountdown?.remainingSeconds ?? null}
-                        period={totpListCountdownPeriodSeconds}
-                      />
-                    </div>
-                  )}
-                  {(selectedSummaries.length >= 2 ||
-                    (scope.kind === 'trash' && trashItems.length > 0)) && (
-                    <footer
-                      className="border-border bg-muted flex min-h-16 flex-none flex-wrap items-center justify-end gap-2 border-t px-5 py-1"
-                      aria-label={t`List actions`}
-                    >
-                      {selectedSummaries.length >= 2 && (
-                        <div
-                          className={cn(
-                            'flex flex-wrap items-center gap-2',
-                            scope.kind !== 'trash' && 'flex-1'
-                          )}
-                          role="toolbar"
-                          aria-label={t`Bulk actions for selected items`}
-                          aria-busy={busy}
-                        >
-                          <span className="sr-only" aria-live="polite">
-                            <Trans>{selectedSummaries.length} items selected</Trans>
-                          </span>
-                          {scope.kind === 'trash' ? (
-                            <>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                type="button"
-                                disabled={busy}
-                                onClick={() =>
-                                  void performBulkAction(snapshotBulkAction('restore'))
-                                }
-                              >
-                                <RotateCcw data-icon="inline-start" />
-                                <Trans>Restore</Trans>
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                type="button"
-                                disabled={busy}
-                                onClick={() =>
-                                  setPendingBulkAction(snapshotBulkAction('deletePermanently'))
-                                }
-                              >
-                                <Trash2 data-icon="inline-start" />
-                                <Trans>Delete permanently</Trans>
-                              </Button>
-                            </>
-                          ) : (
-                            <>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                type="button"
-                                disabled={busy}
-                                onClick={() => setPendingBulkAction(snapshotBulkAction('delete'))}
-                              >
-                                <Trash2 data-icon="inline-start" />
-                                <Trans>Delete</Trans>
-                              </Button>
-                              <div className="ml-auto flex flex-wrap items-center gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  type="button"
-                                  disabled={busy}
-                                  onClick={openMoveDialogForSelection}
-                                >
-                                  <FolderOpen data-icon="inline-start" />
-                                  <Trans>Move</Trans>
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  type="button"
-                                  disabled={busy}
-                                  onClick={() =>
-                                    void performBulkAction(
-                                      snapshotBulkAction(
-                                        scope.kind === 'archive' ? 'unarchive' : 'archive'
-                                      )
-                                    )
-                                  }
-                                >
-                                  {scope.kind === 'archive' ? (
-                                    <ArchiveRestore data-icon="inline-start" />
-                                  ) : (
-                                    <Archive data-icon="inline-start" />
-                                  )}
-                                  {scope.kind === 'archive' ? t`Unarchive` : t`Archive`}
-                                </Button>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      )}
-                      {scope.kind === 'trash' && trashItems.length > 0 && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          type="button"
-                          disabled={busy}
-                          onClick={() => setEmptyTrashDialogOpen(true)}
-                        >
-                          <Trash2 data-icon="inline-start" />
-                          <Trans>Empty Trash</Trans>
-                        </Button>
-                      )}
-                    </footer>
-                  )}
-                </>
+                <VaultItemListPane
+                  list={{
+                    scope,
+                    scopeTitle,
+                    query,
+                    itemCount: scopedItems.length,
+                    groups: itemGroups,
+                    sortMode,
+                    sortOptions: sortItemsOptions,
+                    typeFilter,
+                    showWebsiteIcons: settings?.showWebsiteIcons ?? false,
+                    totpCodes: totpListCodes,
+                    totpCountdown: totpListCountdown,
+                    trashItemCount: trashItems.length
+                  }}
+                  selection={{
+                    activeId: editorMode ? null : selectedId,
+                    selectedIds,
+                    selectedItemCount: selectedSummaries.length,
+                    busy
+                  }}
+                  actions={{
+                    onSortChange: setSortMode,
+                    onQueryChange: updateQuery,
+                    onPrefetch: prefetchLoginDetail,
+                    onSelect: selectItems,
+                    onToggleFavorite: toggleFavorite,
+                    onContextMenu: showLoginContextMenu,
+                    onOpenCreate: () => openEditor('create'),
+                    snapshotBulkAction,
+                    onPerformBulkAction: performBulkAction,
+                    onSetPendingBulkAction: setPendingBulkAction,
+                    onOpenMove: openMoveDialogForSelection,
+                    onEmptyTrash: () => setEmptyTrashDialogOpen(true)
+                  }}
+                />
               )}
             </section>
 
@@ -5626,9 +3776,27 @@ function VaultShell({
                           </CardTitle>
                         </CardHeader>
                         <CardContent className="flex flex-col">
-                          {selectedDetailFields
-                            .filter((field) => field.secret || Boolean(field.value))
-                            .map(renderDetailField)}
+                          <VaultDetailFieldRows
+                            fields={selectedDetailFields.filter(
+                              (field) => field.secret || Boolean(field.value)
+                            )}
+                            copy={{
+                              copiedKey,
+                              itemId: selectedSummary?.id,
+                              copyField
+                            }}
+                            reveal={{
+                              state: revealedSecrets,
+                              selectedItemId: selectedLogin.id,
+                              hoveringFieldsRef: hoveringSecretFieldsRef,
+                              hoverRevealedFieldsRef: hoverRevealedSecretFieldsRef,
+                              passwordZoomOpenRef,
+                              reveal: revealSecret,
+                              hide: hideRevealedSecret,
+                              openPasswordZoom
+                            }}
+                            website={{ openWebsite }}
+                          />
                         </CardContent>
                       </DetailCard>
                     )}
@@ -5646,391 +3814,53 @@ function VaultShell({
                           </CardTitle>
                         </CardHeader>
                         <CardContent className="flex flex-col">
-                          {selectedLogin.customFields.map(renderCustomField)}
+                          <VaultCustomFieldRows
+                            fields={selectedLogin.customFields}
+                            item={{ id: selectedLogin.id, updatedAt: selectedLogin.updatedAt }}
+                            labels={customFieldLabels}
+                            copy={{ copiedKey, copyField: copyCustomField }}
+                            reveal={{ state: revealedCustomFields, reveal: revealCustomField }}
+                          />
                         </CardContent>
                       </DetailCard>
                     )}
 
-                    {(selectedLogin.attachments.length > 0 ||
-                      attachmentOperation?.itemId === selectedLogin.id) && (
-                      <DetailCard
-                        variant="attachment"
-                        role="region"
-                        aria-labelledby="attachments-title"
-                        className="gap-1 pb-0"
-                      >
-                        <CardHeader>
-                          <CardTitle id="attachments-title">
-                            <Paperclip aria-hidden="true" />
-                            <Trans>Attachments</Trans>
-                          </CardTitle>
-                          <CardAction>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              type="button"
-                              disabled={
-                                busy || attachmentOperation !== null || syncStatus.state !== 'ready'
-                              }
-                              onClick={() => void uploadAttachment()}
-                            >
-                              {attachmentOperation?.kind === 'upload' ? (
-                                <Spinner data-icon="inline-start" />
-                              ) : (
-                                <Upload data-icon="inline-start" />
-                              )}
-                              <Trans>Upload attachment</Trans>
-                            </Button>
-                          </CardAction>
-                        </CardHeader>
-                        <CardContent className="flex flex-col gap-4">
-                          {attachmentOperation?.itemId === selectedLogin.id && (
-                            <section className="flex flex-col gap-3" aria-live="polite">
-                              <Progress value={attachmentProgressPercent(attachmentOperation)}>
-                                <ProgressLabel>
-                                  {getAttachmentStageLabel(attachmentOperation)}
-                                  {attachmentOperation.fileName
-                                    ? `：${attachmentOperation.fileName}`
-                                    : ''}
-                                </ProgressLabel>
-                                <ProgressValue>
-                                  {() =>
-                                    attachmentProgressPercent(attachmentOperation) === null
-                                      ? t`Processing`
-                                      : `${attachmentProgressPercent(attachmentOperation)}%`
-                                  }
-                                </ProgressValue>
-                              </Progress>
-                              <Button
-                                className="self-end"
-                                variant="outline"
-                                size="sm"
-                                type="button"
-                                disabled={attachmentOperation.canceling}
-                                onClick={() => void cancelAttachmentOperation()}
-                              >
-                                {attachmentOperation.canceling ? (
-                                  <Spinner data-icon="inline-start" />
-                                ) : (
-                                  <X data-icon="inline-start" />
-                                )}
-                                {attachmentOperation.canceling ? t`Canceling` : t`Cancel`}
-                              </Button>
-                            </section>
-                          )}
-                          {selectedLogin.attachments.length > 0 && (
-                            <div className="-mx-(--card-spacing) -mb-(--card-spacing) grid">
-                              {selectedLogin.attachments.map((attachment) => (
-                                <article
-                                  key={attachment.id}
-                                  className="border-border [&_small]:text-muted-foreground grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-2.5 border-b px-(--card-spacing) py-3 [&_small]:truncate [&_small]:text-[10px] [&_span]:truncate [&_span]:text-[11px] [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[3px]"
-                                >
-                                  <span
-                                    className="text-primary grid size-8 place-items-center rounded-md bg-(--accent-soft)"
-                                    aria-hidden="true"
-                                  >
-                                    <Paperclip size={17} />
-                                  </span>
-                                  <div>
-                                    <strong>{attachment.fileName}</strong>
-                                    <span>
-                                      {attachment.sizeName}
-                                      {attachment.legacy
-                                        ? t` · Legacy unauthenticated encryption`
-                                        : ''}
-                                    </span>
-                                  </div>
-                                  <section
-                                    className="flex flex-wrap items-center justify-end gap-1"
-                                    aria-label={t`Attachment actions for ${attachment.fileName}`}
-                                  >
-                                    {attachment.legacy && (
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        type="button"
-                                        disabled={
-                                          busy ||
-                                          attachmentOperation !== null ||
-                                          syncStatus.state !== 'ready'
-                                        }
-                                        onClick={() => void fixLegacyAttachment(attachment.id)}
-                                      >
-                                        <Wrench data-icon="inline-start" />
-                                        <Trans>Repair</Trans>
-                                      </Button>
-                                    )}
-                                    <TooltipIconButton
-                                      variant="outline"
-                                      size="icon"
-                                      type="button"
-                                      label={t`Download ${attachment.fileName}`}
-                                      disabled={
-                                        busy ||
-                                        attachmentOperation !== null ||
-                                        syncStatus.state !== 'ready'
-                                      }
-                                      onClick={() => void downloadAttachment(attachment.id)}
-                                    >
-                                      <Download data-icon="inline-start" />
-                                    </TooltipIconButton>
-                                    <TooltipIconButton
-                                      variant="destructive"
-                                      size="icon"
-                                      type="button"
-                                      label={t`Delete ${attachment.fileName}`}
-                                      disabled={
-                                        busy ||
-                                        attachmentOperation !== null ||
-                                        syncStatus.state !== 'ready'
-                                      }
-                                      onClick={() =>
-                                        setAttachmentDeleteTarget({
-                                          itemId: selectedLogin.id,
-                                          attachmentId: attachment.id,
-                                          fileName: attachment.fileName
-                                        })
-                                      }
-                                    >
-                                      <Trash2 data-icon="inline-start" />
-                                    </TooltipIconButton>
-                                  </section>
-                                </article>
-                              ))}
-                            </div>
-                          )}
-                        </CardContent>
-                      </DetailCard>
-                    )}
+                    <VaultItemAttachmentsCard
+                      itemId={selectedLogin.id}
+                      attachments={selectedLogin.attachments}
+                      busy={busy}
+                      syncReady={syncStatus.state === 'ready'}
+                      operation={attachmentOperation}
+                      getOperationStageLabel={getAttachmentStageLabel}
+                      onUpload={uploadAttachment}
+                      onCancelOperation={cancelAttachmentOperation}
+                      onFixLegacy={fixLegacyAttachment}
+                      onDownload={downloadAttachment}
+                      onDelete={setAttachmentDeleteTarget}
+                    />
 
                     {selectedLogin.type === 'login' && selectedLogin.hasTotp && (
-                      <DetailCard
-                        className="gap-2 py-2"
-                        role="region"
-                        aria-labelledby="totp-title"
-                        aria-busy={!totpRevealReady}
-                      >
-                        <CardHeader>
-                          <CardTitle id="totp-title">
-                            <Clock3 aria-hidden="true" />
-                            <Trans>One-time verification code</Trans>
-                          </CardTitle>
-                          {totpGenerationError === 'unsupported' && (
-                            <CardDescription>
-                              <Trans>Unsupported key format</Trans>
-                            </CardDescription>
-                          )}
-                          {!totpRevealReady && (
-                            <span className="sr-only">
-                              <Trans>Generating…</Trans>
-                            </span>
-                          )}
-                          {!totpGenerationError && typeFilter !== 'totp' && (
-                            <CardAction>
-                              <TotpCountdownIndicator
-                                key={totpCodeState?.cycle ?? 'loading'}
-                                remainingSeconds={totpCode?.remainingSeconds ?? null}
-                                period={totpCode?.period ?? totpListCountdownPeriodSeconds}
-                                compact
-                              />
-                            </CardAction>
-                          )}
-                        </CardHeader>
-                        <CardContent className="contents">
-                          <div className="grid grid-cols-[minmax(0,1fr)_34px] items-center gap-2 px-(--card-spacing) py-2.5 [&_strong]:font-mono [&_strong]:text-[25px] [&_strong]:tracking-[0.18em]">
-                            <div className="flex h-8 min-w-0 items-center">
-                              {totpCode ? (
-                                <strong>
-                                  {/^\d+$/.test(totpCode.code) ? (
-                                    <NumberFlow
-                                      className="tabular-nums"
-                                      value={Number(totpCode.code)}
-                                      format={{
-                                        useGrouping: false,
-                                        minimumIntegerDigits: totpCode.code.length
-                                      }}
-                                      trend={0}
-                                    />
-                                  ) : (
-                                    totpCode.code
-                                  )}
-                                </strong>
-                              ) : totpGenerationError ? (
-                                <strong>—</strong>
-                              ) : showTotpSkeleton ? (
-                                <Skeleton className="h-8 w-36" aria-hidden="true" />
-                              ) : null}
-                            </div>
-                            <TooltipIconButton
-                              variant="outline"
-                              size="icon"
-                              type="button"
-                              label={
-                                copiedKey === `totp:${selectedLogin.id}`
-                                  ? t`One-time verification code copied`
-                                  : t`Copy one-time verification code`
-                              }
-                              disabled={!totpCode || totpGenerationError !== null}
-                              onClick={() => void copyTotp()}
-                            >
-                              <CopyFeedbackIcon copied={copiedKey === `totp:${selectedLogin.id}`} />
-                            </TooltipIconButton>
-                          </div>
-                        </CardContent>
-                      </DetailCard>
+                      <VaultItemTotpCard
+                        code={totpCode}
+                        generationError={totpGenerationError}
+                        revealReady={totpRevealReady}
+                        showSkeleton={showTotpSkeleton}
+                        codeCycle={totpCodeState?.cycle ?? null}
+                        showCountdown={typeFilter !== 'totp'}
+                        copied={copiedKey === `totp:${selectedLogin.id}`}
+                        defaultCountdownPeriodSeconds={totpListCountdownPeriodSeconds}
+                        onCopy={copyTotp}
+                      />
                     )}
 
-                    {selectedLogin.type === 'login' && selectedLogin.passkeys.length > 0 && (
-                      <DetailCard
-                        role="region"
-                        aria-labelledby="passkeys-title"
-                        className="gap-1 pb-0"
-                      >
-                        <CardHeader>
-                          <CardTitle id="passkeys-title">
-                            <KeyRound aria-hidden="true" />
-                            <Trans>Passkeys</Trans>
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent className="contents">
-                          <div className="grid">
-                            {selectedLogin.passkeys.map((passkey) => (
-                              <article
-                                key={passkey.credentialId}
-                                className="border-border [&_small]:text-muted-foreground grid grid-cols-[34px_minmax(0,1fr)] items-start gap-2.5 border-b px-(--card-spacing) py-3 [&_small]:truncate [&_small]:text-[10px] [&_span]:truncate [&_span]:text-[11px] [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[3px]"
-                              >
-                                <span
-                                  className="text-primary grid size-8 place-items-center rounded-md bg-(--accent-soft)"
-                                  aria-hidden="true"
-                                >
-                                  <KeyRound size={17} />
-                                </span>
-                                <div>
-                                  <strong>{passkey.rpName || passkey.rpId}</strong>
-                                  <span>
-                                    {passkey.userDisplayName || passkey.userName || t`Unnamed user`}
-                                  </span>
-                                  <small>
-                                    {passkey.rpId} · {formatDate(passkey.creationDate)}
-                                    {passkey.discoverable ? t` · Discoverable` : ''}
-                                  </small>
-                                </div>
-                              </article>
-                            ))}
-                          </div>
-                          <p className="text-muted-foreground m-0 px-(--card-spacing) pt-2.5 pb-[13px] text-[10px] leading-normal">
-                            <Trans>
-                              You can safely delete passkeys while editing the item. Private key
-                              material is never sent to the renderer.
-                            </Trans>
-                          </p>
-                        </CardContent>
-                      </DetailCard>
-                    )}
-
-                    {(selectedLogin.type === 'secureNote' || selectedLogin.notes) && (
-                      <DetailCard
-                        role="region"
-                        aria-labelledby="notes-title"
-                        className="gap-1 pb-0"
-                      >
-                        <CardHeader>
-                          <CardTitle id="notes-title">
-                            <NotebookPen aria-hidden="true" />
-                            {selectedLogin.type === 'secureNote' ? t`Secure note` : t`Notes`}
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent className="contents">
-                          <p
-                            className={cn(
-                              'm-0 px-(--card-spacing) pt-3.5 pb-[17px] text-xs leading-[1.65] whitespace-pre-wrap',
-                              !selectedLogin.notes?.trim() && 'text-muted-foreground'
-                            )}
-                          >
-                            {selectedLogin.notes?.trim() ? selectedLogin.notes : t`No content yet`}
-                          </p>
-                        </CardContent>
-                      </DetailCard>
-                    )}
-
-                    <DetailCard
-                      role="region"
-                      aria-labelledby="organization-title"
-                      className="gap-1 pb-0"
-                    >
-                      <CardHeader>
-                        <CardTitle id="organization-title">
-                          <FolderOpen aria-hidden="true" />
-                          <Trans comment="Section heading in a login item details view; groups the folder and the item usage timestamp, not calendar events.">
-                            Organization and activity
-                          </Trans>
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="contents">
-                        <dl className="m-0 px-(--card-spacing) py-1">
-                          <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
-                            <dt className="text-muted-foreground text-[11px] leading-4">
-                              <Trans comment="Field label for the folder that contains this login item.">
-                                Folder
-                              </Trans>
-                            </dt>
-                            <dd className="m-0 flex min-w-0 items-center gap-2 text-xs leading-4">
-                              <span className="min-w-0 flex-1 truncate">
-                                {folders.find((folder) => folder.id === selectedLogin.folderId)
-                                  ?.name ?? t`Unfiled`}
-                              </span>
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                className="-my-1.5 ml-auto"
-                                type="button"
-                                aria-label={t`Move to folder`}
-                                disabled={busy}
-                                onClick={openMoveDialogForSelection}
-                              >
-                                <Pencil aria-hidden="true" />
-                              </Button>
-                            </dd>
-                          </div>
-                          <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
-                            <dt className="text-muted-foreground text-[11px] leading-4">
-                              <Trans
-                                context="item-last-used"
-                                comment="Field label for the last time this vault item was used; this is a usage timestamp, not a recent calendar event."
-                              >
-                                Recently used
-                              </Trans>
-                            </dt>
-                            <dd className="m-0 min-w-0 text-xs leading-4">
-                              {formatDate(selectedLogin.lastUsedAt)}
-                            </dd>
-                          </div>
-                        </dl>
-                      </CardContent>
-                    </DetailCard>
-
-                    <DetailCard
-                      role="region"
-                      aria-labelledby="history-title"
-                      className="gap-1 pb-0"
-                    >
-                      <CardHeader>
-                        <CardTitle id="history-title">
-                          <History aria-hidden="true" />
-                          <Trans comment="Section heading for the login item's creation, edit, password-change, and password-history metadata.">
-                            Item history
-                          </Trans>
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="contents">
-                        <ItemHistoryRows
-                          item={selectedLogin}
-                          formatDate={formatDate}
-                          busy={busy}
-                          onViewPasswordHistory={() => setPasswordHistoryDialogOpen(true)}
-                        />
-                      </CardContent>
-                    </DetailCard>
+                    <VaultItemMetadataCards
+                      selectedLogin={selectedLogin}
+                      folders={folders}
+                      formatDate={formatDate}
+                      busy={busy}
+                      onMoveToFolder={openMoveDialogForSelection}
+                      onViewPasswordHistory={() => setPasswordHistoryDialogOpen(true)}
+                    />
                   </div>
                 </article>
               ) : (
@@ -6055,230 +3885,103 @@ function VaultShell({
           </div>
         </div>
 
-        {folderDialog && (
-          <FolderDialog
-            folder={folderDialog === 'new' ? undefined : folderDialog}
-            busy={busy}
-            onClose={() => setFolderDialog(null)}
-            onSave={saveFolder}
-            onDelete={folderDialog === 'new' ? undefined : deleteFolder}
-          />
-        )}
-        {moveSnapshot && (
-          <MoveDialog
-            itemName={moveSummaries[0]?.name ?? t`Selected items`}
-            itemCount={moveSnapshot.ids.length}
-            currentFolderId={moveFolderId}
-            folders={folders}
-            busy={busy}
-            onClose={() => setMoveSnapshot(null)}
-            onMove={(folderId) => moveLogins(moveSnapshot, folderId)}
-          />
-        )}
-        {deleteDialogOpen && selectedSummary && (
-          <DeleteLoginDialog
-            itemName={selectedSummary.name}
-            busy={busy}
-            permanent={Boolean(selectedSummary.deletedAt)}
-            onClose={() => setDeleteDialogOpen(false)}
-            onDelete={deleteLogin}
-          />
-        )}
-        {emptyTrashDialogOpen && trashItems.length > 0 && (
-          <DeleteLoginDialog
-            itemName={t`${trashItems.length} items in Trash`}
-            busy={busy}
-            permanent
-            onClose={() => setEmptyTrashDialogOpen(false)}
-            onDelete={emptyTrash}
-          />
-        )}
-        {pendingBulkAction &&
-          (pendingBulkAction.action === 'delete' ||
-            pendingBulkAction.action === 'deletePermanently') && (
-            <AlertDialog
-              open
-              onOpenChange={(open) => {
-                if (!open && !busy) setPendingBulkAction(null)
-              }}
-            >
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogMedia>
-                    <AlertTriangle aria-hidden="true" />
-                  </AlertDialogMedia>
-                  <AlertDialogTitle>
-                    {pendingBulkAction.action === 'deletePermanently'
-                      ? t`Permanently delete ${pendingBulkAction.ids.length} items?`
-                      : t`Move ${pendingBulkAction.ids.length} items to Trash?`}
-                  </AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {pendingBulkAction.action === 'deletePermanently'
-                      ? t`This action cannot be undone. BearWarden does not keep a recoverable plaintext copy.`
-                      : t`Items remain encrypted in Trash and can be restored later.`}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel disabled={busy}>
-                    <Trans>Cancel</Trans>
-                  </AlertDialogCancel>
-                  <AlertDialogAction
-                    variant="destructive"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      const snapshot = pendingBulkAction
-                      void performBulkAction(snapshot).then((completed) => {
-                        if (completed) setPendingBulkAction(null)
-                      })
-                    }}
-                  >
-                    {busy && <Spinner data-icon="inline-start" aria-hidden="true" />}
-                    {pendingBulkAction.action === 'deletePermanently'
-                      ? t`Delete permanently`
-                      : t`Move to Trash`}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
-        {passwordHistoryDialogOpen && selectedSummary && (
-          <PasswordHistoryDialog
-            itemName={selectedSummary.name}
-            count={selectedSummary.passwordHistoryCount}
-            onClose={() => setPasswordHistoryDialogOpen(false)}
-            onLoad={loadPasswordHistory}
-            onReveal={revealPasswordHistory}
-            onCopy={copyPasswordHistory}
-          />
-        )}
-        {passwordZoomValue !== null && (
-          <Modal
-            title={t`Password`}
-            description={t`Symbols, numbers, and letters use different colors to make them easier to distinguish.`}
-            onClose={closePasswordZoom}
-          >
-            <ModalBody>
-              <div className="bg-muted/60 rounded-xl px-4 py-5">
-                <ColoredPassword
-                  value={passwordZoomValue}
-                  className="text-[22px] leading-[1.7] select-text"
-                />
-              </div>
-            </ModalBody>
-          </Modal>
-        )}
-        {generatorDialogOpen && (
-          <CredentialGeneratorDialog
-            onClose={() => setGeneratorDialogOpen(false)}
-            onGenerate={window.bearwarden.generator.generate}
-            onCopyGenerated={(token) => window.bearwarden.generator.copyGenerated({ token })}
-            onListHistory={window.bearwarden.generator.history}
-            onCopyHistory={window.bearwarden.generator.copyHistory}
-            onClearHistory={window.bearwarden.generator.clearHistory}
-          />
-        )}
-        {repromptPrompt && (
-          <RepromptDialog
-            itemName={repromptPrompt.itemName}
-            busy={repromptBusy}
-            onCancel={cancelReprompt}
-            onAuthorize={submitReprompt}
-          />
-        )}
-        {loginApprovalPrompts[0] && (
-          <LoginApprovalDialog
-            key={loginApprovalPrompts[0].token}
-            prompt={loginApprovalPrompts[0]}
-            onClose={() => setLoginApprovalPrompts((current) => current.slice(1))}
-          />
-        )}
-        {(syncDialogOpen || showSyncSetupPrompt) && (
-          <SyncDialog
-            status={syncStatus}
-            onClose={() => {
-              setSyncDialogOpen(false)
-              onSyncSetupPromptHandled()
-              setAccountProfileRefreshRevision((revision) => revision + 1)
-            }}
-            onStatusChange={setSyncStatus}
-            onSynced={refreshAfterSync}
-          />
-        )}
-        {portabilityDialogMode && (
-          <VaultPortabilityDialog
-            mode={portabilityDialogMode}
-            onClose={() => setPortabilityDialogMode(null)}
-            onExport={(request) => window.bearwarden.portability.export(request)}
-            onImport={(request) => window.bearwarden.portability.import(request)}
-            onExported={announceExported}
-            onImported={refreshAfterImport}
-          />
-        )}
-        <AlertDialog
-          open={attachmentDeleteTarget !== null}
-          onOpenChange={(open) => {
-            if (!open) setAttachmentDeleteTarget(null)
+        <VaultShellDialogs
+          itemDialogs={{
+            busy,
+            folder: {
+              value: folderDialog,
+              onClose: () => setFolderDialog(null),
+              onSave: saveFolder,
+              onDelete: deleteFolder
+            },
+            move: {
+              snapshot: moveSnapshot,
+              itemName: moveSummaries[0]?.name,
+              currentFolderId: moveFolderId,
+              folders,
+              onClose: () => setMoveSnapshot(null),
+              onMove: moveLogins
+            },
+            deletion: {
+              selectedSummary,
+              deleteOpen: deleteDialogOpen,
+              onCloseDelete: () => setDeleteDialogOpen(false),
+              onDelete: deleteLogin,
+              trashItemCount: trashItems.length,
+              emptyTrashOpen: emptyTrashDialogOpen,
+              onCloseEmptyTrash: () => setEmptyTrashDialogOpen(false),
+              onEmptyTrash: emptyTrash,
+              pendingBulkAction,
+              onCloseBulkAction: () => setPendingBulkAction(null),
+              onPerformBulkAction: performBulkAction
+            },
+            passwordHistory: {
+              open: passwordHistoryDialogOpen,
+              selectedSummary,
+              onClose: () => setPasswordHistoryDialogOpen(false),
+              onLoad: loadPasswordHistory,
+              onReveal: revealPasswordHistory,
+              onCopy: copyPasswordHistory
+            },
+            passwordZoom: {
+              value: passwordZoomValue,
+              onClose: closePasswordZoom
+            },
+            generator: {
+              open: generatorDialogOpen,
+              onClose: () => setGeneratorDialogOpen(false),
+              onGenerate: window.bearwarden.generator.generate,
+              onCopyGenerated: (token) => window.bearwarden.generator.copyGenerated({ token }),
+              onListHistory: window.bearwarden.generator.history,
+              onCopyHistory: window.bearwarden.generator.copyHistory,
+              onClearHistory: window.bearwarden.generator.clearHistory
+            },
+            attachment: {
+              deleteTarget: attachmentDeleteTarget,
+              onCloseDelete: () => setAttachmentDeleteTarget(null),
+              onDelete: deleteSelectedAttachment
+            }
           }}
-        >
-          <AlertDialogContent size="sm">
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                <Trans>Delete attachment?</Trans>
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                <Trans>
-                  “{attachmentDeleteTarget?.fileName ?? t`This attachment`}” will be permanently
-                  deleted from Bitwarden and cannot be recovered.
-                </Trans>
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel type="button">
-                <Trans>Keep attachment</Trans>
-              </AlertDialogCancel>
-              <AlertDialogAction
-                type="button"
-                variant="destructive"
-                onClick={() => void deleteSelectedAttachment()}
-              >
-                <Trash2 data-icon="inline-start" />
-                <Trans>Delete attachment</Trans>
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-        <AlertDialog
-          open={discardEditorDialogOpen && editorDirty}
-          onOpenChange={(open) => {
-            setDiscardEditorDialogOpen(open)
-            if (!open) pendingEditorActionRef.current = null
+          securityDialogs={{
+            reprompt: {
+              prompt: repromptPrompt,
+              busy: repromptBusy,
+              onCancel: cancelReprompt,
+              onAuthorize: submitReprompt
+            },
+            loginApproval: {
+              prompt: loginApprovalPrompts[0],
+              onClose: () => setLoginApprovalPrompts((current) => current.slice(1))
+            },
+            editorDiscard: {
+              open: discardEditorDialogOpen && editorDirty,
+              busy,
+              onOpenChange: handleDiscardEditorDialogOpenChange,
+              onConfirm: confirmEditorDiscard
+            }
           }}
-        >
-          <AlertDialogContent size="sm">
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                <Trans>Discard unsaved changes?</Trans>
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                <Trans>These changes have not been saved. Discarding them cannot be undone.</Trans>
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel type="button">
-                <Trans>Continue editing</Trans>
-              </AlertDialogCancel>
-              <AlertDialogAction
-                type="button"
-                variant="destructive"
-                onClick={confirmEditorDiscard}
-                disabled={busy}
-              >
-                <Trans>Discard changes</Trans>
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+          syncDialogs={{
+            sync: {
+              open: syncDialogOpen || showSyncSetupPrompt,
+              status: syncStatus,
+              onClose: () => {
+                setSyncDialogOpen(false)
+                onSyncSetupPromptHandled()
+                refreshAccountProfile()
+              },
+              onStatusChange: setSyncStatus,
+              onSynced: refreshAfterSync
+            },
+            portability: {
+              mode: portabilityDialogMode,
+              onClose: () => setPortabilityDialogMode(null),
+              onExport: (request) => window.bearwarden.portability.export(request),
+              onImport: (request) => window.bearwarden.portability.import(request),
+              onExported: announceExported,
+              onImported: refreshAfterImport
+            }
+          }}
+        />
       </main>
 
       <DragOverlay dropAnimation={null} style={{ pointerEvents: 'none' }}>
