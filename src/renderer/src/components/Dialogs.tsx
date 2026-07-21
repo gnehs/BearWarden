@@ -1,12 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Eye, EyeOff, FolderInput, History, KeyRound, X } from 'lucide-react'
 import { plural } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
-import type {
-  FolderView,
-  PasswordHistoryEntryRequest,
-  VaultPasswordHistoryView
-} from '../../../shared/vault-contract'
+import type { FolderView } from '../../../shared/vault-contract'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,6 +39,10 @@ import {
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Skeleton } from '@renderer/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
+import {
+  usePasswordHistory,
+  type UsePasswordHistoryOptions
+} from '@renderer/hooks/use-password-history'
 import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 import { ModalActionGroup, ModalBody, ModalContent, ModalFooter, ModalHeader } from './ModalLayout'
 
@@ -478,15 +478,10 @@ export function RepromptDialog({
   )
 }
 
-type PasswordHistoryEntryLocator = Omit<PasswordHistoryEntryRequest, 'id' | 'authorizationToken'>
-
-interface PasswordHistoryDialogProps {
+interface PasswordHistoryDialogProps extends UsePasswordHistoryOptions {
   itemName: string
   count: number
   onClose: () => void
-  onLoad: () => Promise<VaultPasswordHistoryView>
-  onReveal: (locator: PasswordHistoryEntryLocator) => Promise<string>
-  onCopy: (locator: PasswordHistoryEntryLocator) => Promise<void>
 }
 
 function PasswordHistoryIconButton({
@@ -520,68 +515,21 @@ export function PasswordHistoryDialog({
   onCopy
 }: PasswordHistoryDialogProps): React.JSX.Element {
   const { i18n, t } = useLingui()
-  const [history, setHistory] = useState<VaultPasswordHistoryView | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [revealedValues, setRevealedValues] = useState<Record<string, string>>({})
-  const [revealing, setRevealing] = useState<Record<string, boolean>>({})
-  const [copying, setCopying] = useState<Record<string, boolean>>({})
-  const [copiedKey, setCopiedKey] = useState<string | null>(null)
-  const [error, setError] = useState('')
-  const mountedRef = useRef(true)
-  const loadRequestRef = useRef<Promise<VaultPasswordHistoryView> | null>(null)
-  const revealTimersRef = useRef(new Map<string, number>())
-  const copiedTimerRef = useRef<number | null>(null)
   const historyTransitionRef = useRef<HTMLDivElement>(null)
   const historySkeletonRef = useRef<HTMLDivElement>(null)
-
-  const clearRevealTimer = useCallback((key: string): void => {
-    const timer = revealTimersRef.current.get(key)
-    if (timer !== undefined) window.clearTimeout(timer)
-    revealTimersRef.current.delete(key)
-  }, [])
-
-  const clearSecrets = useCallback((): void => {
-    for (const timer of revealTimersRef.current.values()) window.clearTimeout(timer)
-    revealTimersRef.current.clear()
-    setRevealedValues({})
-  }, [])
-
-  const loadHistory = useCallback(
-    (retry = false): void => {
-      if (retry) loadRequestRef.current = null
-      setLoading(true)
-      setError('')
-      const request = loadRequestRef.current ?? onLoad()
-      loadRequestRef.current = request
-      void request
-        .then((loaded) => {
-          if (!mountedRef.current) return
-          setHistory(loaded)
-        })
-        .catch(() => {
-          if (!mountedRef.current) return
-          setError(t`Unable to read password history. Try again.`)
-        })
-        .finally(() => {
-          if (mountedRef.current) setLoading(false)
-        })
-    },
-    [onLoad, t]
-  )
-
-  useEffect(() => {
-    mountedRef.current = true
-    const revealTimers = revealTimersRef.current
-    queueMicrotask(() => {
-      if (mountedRef.current) loadHistory()
-    })
-    return () => {
-      mountedRef.current = false
-      for (const timer of revealTimers.values()) window.clearTimeout(timer)
-      revealTimers.clear()
-      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
-    }
-  }, [loadHistory])
+  const {
+    history,
+    loading,
+    revealedValues,
+    revealing,
+    copying,
+    copiedKey,
+    error,
+    clearSecrets,
+    loadHistory,
+    toggleReveal,
+    copyEntry
+  } = usePasswordHistory({ onLoad, onReveal, onCopy })
 
   useEffect(() => {
     const transition = historyTransitionRef.current
@@ -603,82 +551,6 @@ export function PasswordHistoryDialog({
   const closeDialog = (): void => {
     clearSecrets()
     onClose()
-  }
-
-  const locatorFor = (index: number, lastUsedDate: string): PasswordHistoryEntryLocator => ({
-    index,
-    lastUsedDate,
-    expectedUpdatedAt: history!.expectedUpdatedAt
-  })
-
-  const toggleReveal = async (index: number, lastUsedDate: string): Promise<void> => {
-    const key = `${index}:${lastUsedDate}`
-    if (revealedValues[key] !== undefined) {
-      clearRevealTimer(key)
-      setRevealedValues((current) => {
-        const next = { ...current }
-        delete next[key]
-        return next
-      })
-      return
-    }
-    setRevealing((current) => ({ ...current, [key]: true }))
-    setError('')
-    try {
-      const value = await onReveal(locatorFor(index, lastUsedDate))
-      if (!mountedRef.current) return
-      setRevealedValues((current) => ({ ...current, [key]: value }))
-      clearRevealTimer(key)
-      revealTimersRef.current.set(
-        key,
-        window.setTimeout(() => {
-          revealTimersRef.current.delete(key)
-          setRevealedValues((current) => {
-            const next = { ...current }
-            delete next[key]
-            return next
-          })
-        }, 30_000)
-      )
-    } catch {
-      if (mountedRef.current)
-        setError(t`Unable to display this history entry. The item may have changed elsewhere.`)
-    } finally {
-      if (mountedRef.current) {
-        setRevealing((current) => {
-          const next = { ...current }
-          delete next[key]
-          return next
-        })
-      }
-    }
-  }
-
-  const copyEntry = async (index: number, lastUsedDate: string): Promise<void> => {
-    const key = `${index}:${lastUsedDate}`
-    setCopying((current) => ({ ...current, [key]: true }))
-    setError('')
-    try {
-      await onCopy(locatorFor(index, lastUsedDate))
-      if (!mountedRef.current) return
-      setCopiedKey(key)
-      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
-      copiedTimerRef.current = window.setTimeout(() => {
-        copiedTimerRef.current = null
-        setCopiedKey(null)
-      }, 2_000)
-    } catch {
-      if (mountedRef.current)
-        setError(t`Unable to copy this history entry. The item may have changed elsewhere.`)
-    } finally {
-      if (mountedRef.current) {
-        setCopying((current) => {
-          const next = { ...current }
-          delete next[key]
-          return next
-        })
-      }
-    }
   }
 
   const skeletonRowCount = Math.min(Math.max(count, 1), 5)
