@@ -4,12 +4,14 @@ import { useLingui } from '@lingui/react/macro'
 interface TotpCountdownIndicatorProps {
   remainingSeconds: number | null
   period: number
+  compact?: boolean
   className?: string
 }
 
 export default function TotpCountdownIndicator({
   remainingSeconds,
   period,
+  compact = false,
   className
 }: TotpCountdownIndicatorProps): React.JSX.Element {
   const { t } = useLingui()
@@ -19,7 +21,10 @@ export default function TotpCountdownIndicator({
   return (
     <div
       className={cn(
-        'bg-card text-foreground relative grid size-11 place-items-center rounded-full shadow-[0_6px_18px_color-mix(in_oklch,var(--shadow-color)_24%,transparent)] ring-2 ring-white',
+        'relative grid place-items-center rounded-full',
+        compact
+          ? 'size-4'
+          : 'bg-card text-foreground size-11 shadow-[0_6px_18px_color-mix(in_oklch,var(--shadow-color)_24%,transparent)] ring-2 ring-white',
         className
       )}
       data-slot="totp-countdown-indicator"
@@ -33,7 +38,13 @@ export default function TotpCountdownIndicator({
       }
     >
       <svg className="size-full -rotate-90" viewBox="0 0 100 100" aria-hidden="true">
-        <circle className="stroke-muted fill-none" cx="50" cy="50" r="40" strokeWidth="18" />
+        <circle
+          className="stroke-muted fill-none"
+          cx="50"
+          cy="50"
+          r="40"
+          strokeWidth={compact ? 14 : 18}
+        />
         <circle
           className="stroke-primary fill-none [transition-property:stroke-dashoffset] duration-[1s] ease-linear motion-reduce:duration-0"
           cx="50"
@@ -42,13 +53,15 @@ export default function TotpCountdownIndicator({
           pathLength="100"
           strokeDasharray="100"
           strokeLinecap="round"
-          strokeWidth="18"
+          strokeWidth={compact ? 14 : 18}
           style={{ strokeDashoffset: 100 - percentage }}
         />
       </svg>
-      <span className="absolute inset-0 grid place-items-center text-[11px] font-medium tracking-tight tabular-nums">
-        {value ?? '…'}
-      </span>
+      {!compact && (
+        <span className="absolute inset-0 grid place-items-center text-[11px] font-medium tracking-tight tabular-nums">
+          {value ?? '…'}
+        </span>
+      )}
     </div>
   )
 }

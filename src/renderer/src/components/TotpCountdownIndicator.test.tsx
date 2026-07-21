@@ -24,4 +24,16 @@ describe('TotpCountdownIndicator', () => {
     expect(markup).not.toContain('aria-valuenow')
     expect(markup).toContain('>…</span>')
   })
+
+  it('renders a compact icon-sized ring without visible text', () => {
+    const markup = renderToStaticMarkup(
+      <TotpCountdownIndicator remainingSeconds={8} period={30} compact />
+    )
+
+    expect(markup).toContain('size-4')
+    expect(markup).toContain('stroke-width="14"')
+    expect(markup).toContain('aria-valuetext="剩餘 8 秒"')
+    expect(markup).not.toContain('>8</span>')
+    expect(markup).not.toContain('shadow-')
+  })
 })

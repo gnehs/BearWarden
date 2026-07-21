@@ -5761,6 +5761,7 @@ function VaultShell({
 
                     {selectedLogin.type === 'login' && selectedLogin.hasTotp && (
                       <DetailCard
+                        className="gap-2 py-2.5"
                         role="region"
                         aria-labelledby="totp-title"
                         aria-busy={!totpRevealReady}
@@ -5780,9 +5781,19 @@ function VaultShell({
                               <Trans>Generating…</Trans>
                             </span>
                           )}
+                          {!totpGenerationError && typeFilter !== 'totp' && (
+                            <CardAction>
+                              <TotpCountdownIndicator
+                                key={totpCodeState?.cycle ?? 'loading'}
+                                remainingSeconds={totpCode?.remainingSeconds ?? null}
+                                period={totpCode?.period ?? totpListCountdownPeriodSeconds}
+                                compact
+                              />
+                            </CardAction>
+                          )}
                         </CardHeader>
                         <CardContent className="contents">
-                          <div className="grid grid-cols-[minmax(0,1fr)_34px] items-center gap-2 px-[15px] pt-3.5 pb-3 [&_strong]:font-mono [&_strong]:text-[25px] [&_strong]:tracking-[0.18em]">
+                          <div className="grid grid-cols-[minmax(0,1fr)_34px] items-center gap-2 px-[15px] py-2.5 [&_strong]:font-mono [&_strong]:text-[25px] [&_strong]:tracking-[0.18em]">
                             <div className="flex h-8 min-w-0 items-center">
                               {totpCode ? (
                                 <strong>
@@ -5821,24 +5832,6 @@ function VaultShell({
                               <CopyFeedbackIcon copied={copiedKey === `totp:${selectedLogin.id}`} />
                             </TooltipIconButton>
                           </div>
-                          {!totpGenerationError && typeFilter !== 'totp' && (
-                            <div className="h-[19px]">
-                              {totpCode ? (
-                                <Progress
-                                  key={totpCodeState?.cycle}
-                                  className="mx-[15px] mb-[15px] block w-[calc(100%-30px)] [&_[data-slot=progress-indicator]]:duration-[1s] [&_[data-slot=progress-indicator]]:ease-linear motion-reduce:[&_[data-slot=progress-indicator]]:duration-0"
-                                  aria-label={t`Verification code time remaining`}
-                                  max={totpCode.period}
-                                  value={totpCode.remainingSeconds}
-                                />
-                              ) : showTotpSkeleton ? (
-                                <Skeleton
-                                  className="mx-[15px] mb-[15px] block h-1 w-[calc(100%-30px)]"
-                                  aria-hidden="true"
-                                />
-                              ) : null}
-                            </div>
-                          )}
                         </CardContent>
                       </DetailCard>
                     )}
