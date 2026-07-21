@@ -1194,7 +1194,8 @@ function VaultShell({
   }
   const passwordZoomValue =
     passwordZoom !== null && passwordZoom.itemId === selectedLogin?.id ? passwordZoom.value : null
-  const passwordHoveringRef = useRef(false)
+  const hoveringSecretFieldsRef = useRef(new Set<VaultSecretField>())
+  const hoverRevealedSecretFieldsRef = useRef(new Set<VaultSecretField>())
   const passwordZoomOpenRef = useRef(false)
   const [generatorDialogOpen, setGeneratorDialogOpen] = useState(false)
   const [attachmentOperation, setAttachmentOperation] = useState<AttachmentOperationState | null>(
@@ -2190,7 +2191,8 @@ function VaultShell({
   }, [revealedSecrets])
 
   useEffect(() => {
-    passwordHoveringRef.current = false
+    hoveringSecretFieldsRef.current.clear()
+    hoverRevealedSecretFieldsRef.current.clear()
     passwordZoomOpenRef.current = false
   }, [selectedLogin?.id])
 
@@ -3729,10 +3731,9 @@ function VaultShell({
       )
       if (selectedIdRef.current !== itemId) return undefined
       if (
-        field === 'password' &&
         options.quiet &&
-        !passwordHoveringRef.current &&
-        !passwordZoomOpenRef.current
+        !hoveringSecretFieldsRef.current.has(field) &&
+        !(field === 'password' && passwordZoomOpenRef.current)
       ) {
         return value
       }
@@ -3780,7 +3781,10 @@ function VaultShell({
   function closePasswordZoom(): void {
     passwordZoomOpenRef.current = false
     setPasswordZoom(null)
-    if (!passwordHoveringRef.current) hideRevealedSecret('password')
+    if (!hoveringSecretFieldsRef.current.has('password')) {
+      hoverRevealedSecretFieldsRef.current.delete('password')
+      hideRevealedSecret('password')
+    }
   }
 
   async function copyField(field: VaultCopyField, uriIndex?: number): Promise<void> {
@@ -4205,20 +4209,27 @@ function VaultShell({
       ) : (
         field.value || t`Not set`
       )
-    const value = <strong className={valueClassName}>{displayValue}</strong>
-    const passwordHoverHandlers = isPasswordField
+    const secretHoverHandlers = field.secret
       ? {
           onMouseEnter: () => {
-            passwordHoveringRef.current = true
-            void revealSecret('password', { quiet: true, forceShow: true })
+            hoveringSecretFieldsRef.current.add(secretField)
+            if (revealedValue !== undefined) return
+            hoverRevealedSecretFieldsRef.current.add(secretField)
+            void revealSecret(secretField, { quiet: true, forceShow: true })
           },
           onMouseLeave: () => {
-            passwordHoveringRef.current = false
-            if (passwordZoomOpenRef.current) return
-            hideRevealedSecret('password')
+            hoveringSecretFieldsRef.current.delete(secretField)
+            if (secretField === 'password' && passwordZoomOpenRef.current) return
+            if (!hoverRevealedSecretFieldsRef.current.delete(secretField)) return
+            hideRevealedSecret(secretField)
           }
         }
       : undefined
+    const value = (
+      <strong className={valueClassName} {...(canCopyFromValue ? undefined : secretHoverHandlers)}>
+        {displayValue}
+      </strong>
+    )
     return (
       <div
         className={cn(
@@ -4238,7 +4249,7 @@ function VaultShell({
             aria-label={copiedKey === copyKey ? t`${field.label} copied` : t`Copy ${field.label}`}
             disabled={!field.secret && !field.value}
             onClick={() => void copyField(field.field, field.uriIndex)}
-            {...passwordHoverHandlers}
+            {...secretHoverHandlers}
           >
             {value}
           </Button>
