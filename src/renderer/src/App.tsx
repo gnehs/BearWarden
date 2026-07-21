@@ -1,10 +1,6 @@
 import { useMatch, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-import type {
-  PasskeyApprovalPrompt,
-  SshAgentApprovalPrompt,
-  VaultState
-} from '../../shared/vault-contract'
+import type { PasskeyApprovalPrompt, SshAgentApprovalPrompt } from '../../shared/vault-contract'
 import AuthScreen from './components/AuthScreen'
 import PasskeyApprovalDialog from './components/PasskeyApprovalDialog'
 import SshAgentApprovalDialog from './components/SshAgentApprovalDialog'
@@ -13,13 +9,14 @@ import { shouldDenyPasskeyApproval } from './lib/passkey-approval-ui'
 import { shouldPromptSyncSetup } from './lib/sync-setup-prompt'
 import { applyThemePreference } from './lib/theme'
 import { isVaultPagePath } from './lib/vault-paths'
+import { useVaultRuntimeStore, type AppVaultState } from './stores/vault-runtime-store'
+import { useSettingsStore } from './stores/settings-runtime'
 
-type AppState = VaultState | 'loading' | 'unavailable'
 const activityThrottleMs = 10_000
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function vaultNavigationTarget(
-  state: AppState,
+  state: AppVaultState,
   pathname: string
 ): '/vault' | '/unlock' | null {
   if (state === 'loading') return null
@@ -31,7 +28,7 @@ export function vaultNavigationTarget(
 // The vault route hooks require an active /vault match. Authentication can complete one render
 // before the route-guard effect commits its navigation, so do not mount VaultShell during that gap.
 // eslint-disable-next-line react-refresh/only-export-components
-export function shouldRenderVault(state: AppState, hasVaultMatch: boolean): boolean {
+export function shouldRenderVault(state: AppVaultState, hasVaultMatch: boolean): boolean {
   return state === 'unlocked' && hasVaultMatch
 }
 
@@ -61,20 +58,18 @@ function App(): React.JSX.Element {
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (routerState) => routerState.location.pathname })
   const vaultMatch = useMatch({ from: '/vault', shouldThrow: false })
-  const [state, setState] = useState<AppState>('loading')
-  const [retryKey, setRetryKey] = useState(0)
+  const state = useVaultRuntimeStore((store) => store.vaultState)
+  const statusAttempt = useVaultRuntimeStore((store) => store.statusAttempt)
+  const applyVaultState = useVaultRuntimeStore((store) => store.applyVaultState)
+  const retryVaultStatus = useVaultRuntimeStore((store) => store.retryVaultStatus)
+  const settings = useSettingsStore((store) => store.settings)
+  const loadSettings = useSettingsStore((store) => store.load)
   const [syncSetupPromptPending, setSyncSetupPromptPending] = useState(false)
   const [sshAgentApproval, setSshAgentApproval] = useState<SshAgentApprovalPrompt | null>(null)
   const [passkeyApproval, setPasskeyApproval] = useState<PasskeyApprovalPrompt | null>(null)
   const lastActivityAt = useRef(0)
-  const stateRef = useRef<AppState>('loading')
   const sshAgentApprovalRef = useRef<SshAgentApprovalPrompt | null>(null)
   const passkeyApprovalRef = useRef<PasskeyApprovalPrompt | null>(null)
-
-  function updateState(nextState: AppState): void {
-    stateRef.current = nextState
-    setState(nextState)
-  }
 
   useEffect(() => {
     const target = vaultNavigationTarget(state, pathname)
@@ -82,7 +77,6 @@ function App(): React.JSX.Element {
   }, [navigate, pathname, state])
 
   useEffect(() => {
-    let active = true
     const darkMode = window.matchMedia('(prefers-color-scheme: dark)')
     const handleSystemTheme = (): void => {
       if (document.documentElement.dataset.themePreference === 'system') {
@@ -90,18 +84,13 @@ function App(): React.JSX.Element {
       }
     }
 
-    void window.bearwarden.settings.get().then(
-      (settings) => {
-        if (active) applyThemePreference(settings.theme, darkMode)
-      },
-      () => applyThemePreference('system', darkMode)
-    )
+    applyThemePreference(settings?.theme ?? 'system', darkMode)
+    if (!settings) void loadSettings().catch(() => undefined)
     darkMode.addEventListener('change', handleSystemTheme)
     return () => {
-      active = false
       darkMode.removeEventListener('change', handleSystemTheme)
     }
-  }, [])
+  }, [loadSettings, settings])
 
   useEffect(() => {
     let active = true
@@ -117,20 +106,20 @@ function App(): React.JSX.Element {
       setSyncSetupPromptPending(false)
       if (pendingSshAgentApproval) denySshAgentApproval(pendingSshAgentApproval)
       if (pendingPasskeyApproval) denyPasskeyApproval(pendingPasskeyApproval)
-      updateState('locked')
+      applyVaultState('locked')
     })
     const unsubscribeUnlocked = window.bearwarden.vault.onUnlocked(() => {
       receivedStateEvent = true
-      updateState('unlocked')
+      applyVaultState('unlocked')
     })
 
     window.bearwarden.vault
       .status()
       .then((status) => {
-        if (active && !receivedStateEvent) updateState(status.state)
+        if (active && !receivedStateEvent) applyVaultState(status.state)
       })
       .catch(() => {
-        if (active && !receivedStateEvent) updateState('unavailable')
+        if (active && !receivedStateEvent) applyVaultState('unavailable')
       })
 
     return () => {
@@ -138,14 +127,14 @@ function App(): React.JSX.Element {
       unsubscribeLocked()
       unsubscribeUnlocked()
     }
-  }, [retryKey])
+  }, [applyVaultState, statusAttempt])
 
   useEffect(() => {
     const unsubscribe = window.bearwarden.sshAgent.onApprovalRequested((request) => {
       // A prompt must never become an implicit approval while the UI is unavailable or locked.
       if (
         shouldDenyPasskeyApproval(
-          stateRef.current,
+          useVaultRuntimeStore.getState().vaultState,
           Boolean(sshAgentApprovalRef.current || passkeyApprovalRef.current)
         )
       ) {
@@ -168,7 +157,7 @@ function App(): React.JSX.Element {
     const unsubscribe = window.bearwarden.passkeys.onApprovalRequested((request) => {
       if (
         shouldDenyPasskeyApproval(
-          stateRef.current,
+          useVaultRuntimeStore.getState().vaultState,
           Boolean(sshAgentApprovalRef.current || passkeyApprovalRef.current)
         )
       ) {
@@ -218,7 +207,7 @@ function App(): React.JSX.Element {
     return (
       <>
         <VaultShell
-          onLocked={() => updateState('locked')}
+          onLocked={() => applyVaultState('locked')}
           promptSyncSetup={syncSetupPromptPending}
           onSyncSetupPromptHandled={() => setSyncSetupPromptPending(false)}
         />
@@ -254,11 +243,10 @@ function App(): React.JSX.Element {
       state={state === 'unlocked' ? 'loading' : state}
       onAuthenticated={(source) => {
         setSyncSetupPromptPending(shouldPromptSyncSetup(source))
-        updateState('unlocked')
+        applyVaultState('unlocked')
       }}
       onRetry={() => {
-        updateState('loading')
-        setRetryKey((key) => key + 1)
+        retryVaultStatus()
       }}
     />
   )

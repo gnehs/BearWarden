@@ -31,25 +31,21 @@ import {
   SelectValue
 } from '@renderer/components/ui/select'
 import type { ItemSelectionModifiers } from './DndRows'
+import { useShallow } from 'zustand/react/shallow'
+import { useVaultSessionStore } from '@renderer/stores/vault-session-store'
 import TotpCountdownIndicator from './TotpCountdownIndicator'
 import VirtualizedItemList, { type VirtualizedItemGroup } from './VirtualizedItemList'
 import {
   totpListCountdownPeriodSeconds,
   type BulkActionKind,
-  type BulkActionSnapshot,
-  type Scope,
-  type TypeFilter
+  type BulkActionSnapshot
 } from './VaultShell-model'
 
 interface VaultItemListPaneList {
-  scope: Scope
   scopeTitle: string
-  query: string
   itemCount: number
   groups: readonly VirtualizedItemGroup[]
-  sortMode: VaultSortMode
   sortOptions: ReadonlyArray<{ label: string; value: VaultSortMode }>
-  typeFilter: TypeFilter
   showWebsiteIcons: boolean
   totpCodes: ReadonlyMap<string, TotpCodeView | null>
   totpCountdown: TotpCodeView | null
@@ -57,15 +53,10 @@ interface VaultItemListPaneList {
 }
 
 interface VaultItemListPaneSelection {
-  activeId: string | null
-  selectedIds: ReadonlySet<string>
   selectedItemCount: number
-  busy: boolean
 }
 
 interface VaultItemListPaneActions {
-  onSortChange: (sortMode: VaultSortMode) => void
-  onQueryChange: (query: string) => void
   onPrefetch: (id: string) => void
   onSelect: (id: string, modifiers: ItemSelectionModifiers) => void
   onToggleFavorite: (item: LoginSummary) => void
@@ -90,8 +81,20 @@ export function VaultItemListPane({
   actions
 }: VaultItemListPaneProps): React.JSX.Element {
   const { t } = useLingui()
-  const { scope } = list
-  const query = list.query
+  const { scope, query, sortMode, typeFilter, activeId, selectedIds, busy, setSortMode, setQuery } =
+    useVaultSessionStore(
+      useShallow((state) => ({
+        scope: state.scope,
+        query: state.query,
+        sortMode: state.sortMode,
+        typeFilter: state.typeFilter,
+        activeId: state.editorMode ? null : state.selectedId,
+        selectedIds: state.selectedIds,
+        busy: state.busy,
+        setSortMode: state.setSortMode,
+        setQuery: state.setQuery
+      }))
+    )
 
   return (
     <>
@@ -104,8 +107,8 @@ export function VaultItemListPane({
             {list.scopeTitle}
           </h1>
           <small className="text-muted-foreground text-[11px]">
-            {selection.selectedIds.size > 1
-              ? t`${selection.selectedIds.size} selected · ${list.itemCount} items total`
+            {selectedIds.size > 1
+              ? t`${selectedIds.size} selected · ${list.itemCount} items total`
               : t`${list.itemCount} items`}
           </small>
         </div>
@@ -114,9 +117,9 @@ export function VaultItemListPane({
             <ListFilter size={16} aria-hidden="true" />
             <Select
               items={list.sortOptions}
-              value={list.sortMode}
+              value={sortMode}
               disabled={scope.kind === 'recent'}
-              onValueChange={(value) => actions.onSortChange(value as VaultSortMode)}
+              onValueChange={(value) => setSortMode(value as VaultSortMode)}
             >
               <SelectTrigger size="sm" variant="embedded" aria-label={t`Sort order`}>
                 <SelectValue />
@@ -152,17 +155,17 @@ export function VaultItemListPane({
         <VirtualizedItemList
           groups={list.groups}
           scopeTitle={list.scopeTitle}
-          activeId={selection.activeId}
-          selectedIds={selection.selectedIds}
+          activeId={activeId}
+          selectedIds={selectedIds}
           onPrefetch={scope.kind === 'trash' ? undefined : actions.onPrefetch}
           onSelect={actions.onSelect}
           onFavorite={actions.onToggleFavorite}
           onContextMenu={actions.onContextMenu}
           showWebsiteIcons={scope.kind !== 'trash' && list.showWebsiteIcons}
-          showTotpCodes={list.typeFilter === 'totp'}
+          showTotpCodes={typeFilter === 'totp'}
           totpCodes={list.totpCodes}
           readOnly={scope.kind === 'trash'}
-          className={cn(list.typeFilter === 'totp' && 'pb-20')}
+          className={cn(typeFilter === 'totp' && 'pb-20')}
         />
       ) : (
         <Empty className="min-h-0 flex-1 gap-0 p-7">
@@ -171,7 +174,7 @@ export function VaultItemListPane({
               variant="icon"
               className="text-primary mb-[13px] size-[52px] rounded-2xl bg-(--accent-soft)"
             >
-              {list.query ? (
+              {query ? (
                 <Search className="size-8" />
               ) : scope.kind === 'trash' ? (
                 <Trash2 className="size-8" />
@@ -180,14 +183,14 @@ export function VaultItemListPane({
               )}
             </EmptyMedia>
             <EmptyTitle className="m-0">
-              {list.query
+              {query
                 ? t`No matching items`
                 : scope.kind === 'trash'
                   ? t`Trash is empty`
                   : t`There are no vault items here yet`}
             </EmptyTitle>
             <EmptyDescription className="text-muted-foreground mb-4 max-w-[290px] leading-[1.55]">
-              {list.query
+              {query
                 ? t`Try a shorter search term or switch to All items.`
                 : scope.kind === 'trash'
                   ? t`Deleted items remain here until you restore or permanently delete them, or the server removes them according to its retention policy.`
@@ -195,8 +198,8 @@ export function VaultItemListPane({
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
-            {list.query ? (
-              <Button variant="outline" type="button" onClick={() => actions.onQueryChange('')}>
+            {query ? (
+              <Button variant="outline" type="button" onClick={() => setQuery('')}>
                 <Trans>Clear search</Trans>
               </Button>
             ) : scope.kind !== 'trash' && scope.kind !== 'archive' ? (
@@ -212,7 +215,7 @@ export function VaultItemListPane({
           </EmptyContent>
         </Empty>
       )}
-      {list.typeFilter === 'totp' && list.itemCount > 0 && (
+      {typeFilter === 'totp' && list.itemCount > 0 && (
         <div
           className={cn(
             'pointer-events-none absolute right-4 bottom-4',
@@ -240,7 +243,7 @@ export function VaultItemListPane({
               )}
               role="toolbar"
               aria-label={t`Bulk actions for selected items`}
-              aria-busy={selection.busy}
+              aria-busy={busy}
             >
               <span className="sr-only" aria-live="polite">
                 <Trans>{selection.selectedItemCount} items selected</Trans>
@@ -251,7 +254,7 @@ export function VaultItemListPane({
                     variant="outline"
                     size="sm"
                     type="button"
-                    disabled={selection.busy}
+                    disabled={busy}
                     onClick={() =>
                       void actions.onPerformBulkAction(actions.snapshotBulkAction('restore'))
                     }
@@ -263,7 +266,7 @@ export function VaultItemListPane({
                     variant="destructive"
                     size="sm"
                     type="button"
-                    disabled={selection.busy}
+                    disabled={busy}
                     onClick={() =>
                       actions.onSetPendingBulkAction(
                         actions.snapshotBulkAction('deletePermanently')
@@ -280,7 +283,7 @@ export function VaultItemListPane({
                     variant="destructive"
                     size="sm"
                     type="button"
-                    disabled={selection.busy}
+                    disabled={busy}
                     onClick={() =>
                       actions.onSetPendingBulkAction(actions.snapshotBulkAction('delete'))
                     }
@@ -293,7 +296,7 @@ export function VaultItemListPane({
                       variant="outline"
                       size="sm"
                       type="button"
-                      disabled={selection.busy}
+                      disabled={busy}
                       onClick={actions.onOpenMove}
                     >
                       <FolderOpen data-icon="inline-start" />
@@ -303,7 +306,7 @@ export function VaultItemListPane({
                       variant="outline"
                       size="sm"
                       type="button"
-                      disabled={selection.busy}
+                      disabled={busy}
                       onClick={() =>
                         void actions.onPerformBulkAction(
                           actions.snapshotBulkAction(
@@ -329,7 +332,7 @@ export function VaultItemListPane({
               variant="outline"
               size="sm"
               type="button"
-              disabled={selection.busy}
+              disabled={busy}
               onClick={actions.onEmptyTrash}
             >
               <Trash2 data-icon="inline-start" />

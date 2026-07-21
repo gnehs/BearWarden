@@ -20,12 +20,13 @@ interface UseVaultSearchOptions {
   scope: VaultSearchNavigationScope
   typeFilter: VaultCategoryFilter
   sortMode: VaultSortMode
+  query: string
+  setQuery: Dispatch<SetStateAction<string>>
   describeError: (error: unknown) => string
   onError: (message: string) => void
 }
 
 interface VaultSearchState {
-  query: string
   searchOpen: boolean
   searchRef: RefObject<HTMLInputElement | null>
   scopedItems: LoginSummary[]
@@ -38,21 +39,29 @@ export function useVaultSearch({
   scope,
   typeFilter,
   sortMode,
+  query,
+  setQuery,
   describeError,
   onError
 }: UseVaultSearchOptions): VaultSearchState {
-  const [query, setQuery] = useState('')
   const [searchMatches, setSearchMatches] = useState<VaultSearchMatches | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
   const queryRef = useRef(query)
   const searchRequestIdRef = useRef(0)
 
-  const updateQuery = useCallback((value: string): void => {
-    const bounded = boundedVaultSearchQuery(value)
-    queryRef.current = bounded
-    setQuery(bounded)
-  }, [])
+  const updateQuery = useCallback(
+    (value: string): void => {
+      const bounded = boundedVaultSearchQuery(value)
+      queryRef.current = bounded
+      setQuery(bounded)
+    },
+    [setQuery]
+  )
+
+  useEffect(() => {
+    queryRef.current = query
+  }, [query])
 
   useEffect(() => {
     const searchQuery = normalizedVaultSearchQuery(query)
@@ -110,5 +119,5 @@ export function useVaultSearch({
     return sortVaultItems(scoped, scope.kind === 'recent' ? 'recent' : sortMode)
   }, [items, query, scope, searchMatches, sortMode, typeFilter])
 
-  return { query, searchOpen, searchRef, scopedItems, updateQuery, setSearchOpen }
+  return { searchOpen, searchRef, scopedItems, updateQuery, setSearchOpen }
 }

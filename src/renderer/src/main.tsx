@@ -17,6 +17,7 @@ import { TooltipProvider } from './components/ui/tooltip'
 import { router } from './router'
 import { activateLanguagePreference, handleSystemLanguageChange, i18n } from './i18n'
 import { initialLanguagePreference } from './lib/locale'
+import { settingsStore } from './stores/settings-runtime'
 
 const isAutofillPicker = new URLSearchParams(window.location.search).get('mode') === 'autofill'
 if (isAutofillPicker) {
@@ -25,7 +26,7 @@ if (isAutofillPicker) {
   document.body.style.background = 'transparent'
 }
 
-void initialLanguagePreference(() => window.bearwarden.settings.get())
+void initialLanguagePreference(() => settingsStore.getState().load())
   .then(activateLanguagePreference)
   .then(() => {
     createRoot(document.getElementById('root')!).render(

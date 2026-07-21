@@ -1,34 +1,10 @@
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import type { Dispatch, SetStateAction } from 'react'
-import { vaultRoute } from '../router'
-import type { VaultCategoryFilter } from './vault-category'
 import { vaultPagePathFromPathname, type VaultPagePath } from './vault-paths'
-import type { VaultSortMode } from './vault-sort'
 
 export { vaultPagePathFromPathname } from './vault-paths'
 
-export type VaultScope =
-  | { kind: 'all' }
-  | { kind: 'favorites' }
-  | { kind: 'recent' }
-  | { kind: 'folder'; folderId: string }
-  | { kind: 'unfiled' }
-  | { kind: 'archive' }
-  | { kind: 'trash' }
-
 interface VaultRouteState {
-  scope: VaultScope
-  setScope: Dispatch<SetStateAction<VaultScope>>
-  typeFilter: VaultCategoryFilter
-  setTypeFilter: Dispatch<SetStateAction<VaultCategoryFilter>>
-  query: string
-  setQuery: Dispatch<SetStateAction<string>>
-  selectedId: string | null
-  setSelectedId: Dispatch<SetStateAction<string | null>>
-  editorMode: 'create' | 'edit' | null
-  setEditorMode: Dispatch<SetStateAction<'create' | 'edit' | null>>
-  sortMode: VaultSortMode
-  setSortMode: Dispatch<SetStateAction<VaultSortMode>>
   settingsOpen: boolean
   setSettingsOpen: Dispatch<SetStateAction<boolean>>
   healthOpen: boolean
@@ -47,12 +23,6 @@ function resolveValue<T>(value: SetStateAction<T>, current: T): T {
   return typeof value === 'function' ? (value as (current: T) => T)(current) : value
 }
 
-function scopeFromSearch(search: ReturnType<typeof vaultRoute.useSearch>): VaultScope {
-  if (search.scope === 'folder' && search.folder) return { kind: 'folder', folderId: search.folder }
-  if (search.scope && search.scope !== 'folder') return { kind: search.scope }
-  return { kind: 'all' }
-}
-
 export function nextVaultPagePath(
   currentPath: VaultPagePath,
   targetPath: AuxiliaryVaultPagePath,
@@ -67,24 +37,10 @@ export function nextVaultPagePath(
 export function useVaultRouteState(): VaultRouteState {
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (state) => state.location.pathname })
-  const search = vaultRoute.useSearch()
-  const scope = scopeFromSearch(search)
-  const typeFilter = search.category ?? 'all'
-  const query = search.q ?? ''
-  const selectedId = search.item ?? null
-  const editorMode = search.editor ?? null
-  const sortMode = search.sort ?? 'title'
   const currentPath = vaultPagePathFromPathname(pathname)
 
-  const updateSearch = (
-    update: (current: typeof search) => typeof search,
-    replace = false
-  ): void => {
-    void navigate({ to: currentPath, search: update, replace })
-  }
-
   const navigatePage = (path: VaultPagePath): void => {
-    void navigate({ to: path, search: (current) => current })
+    void navigate({ to: path })
   }
 
   const pageSetter =
@@ -95,43 +51,6 @@ export function useVaultRouteState(): VaultRouteState {
     }
 
   return {
-    scope,
-    setScope: (value) => {
-      const next = resolveValue(value, scope)
-      updateSearch((current) => ({
-        ...current,
-        scope: next.kind === 'all' ? undefined : next.kind,
-        folder: next.kind === 'folder' ? next.folderId : undefined
-      }))
-    },
-    typeFilter,
-    setTypeFilter: (value) => {
-      const next = resolveValue(value, typeFilter)
-      updateSearch((current) => ({
-        ...current,
-        category: next === 'all' ? undefined : next
-      }))
-    },
-    query,
-    setQuery: (value) => {
-      const next = resolveValue(value, query)
-      updateSearch((current) => ({ ...current, q: next || undefined }), true)
-    },
-    selectedId,
-    setSelectedId: (value) => {
-      const next = resolveValue(value, selectedId)
-      updateSearch((current) => ({ ...current, item: next || undefined }))
-    },
-    editorMode,
-    setEditorMode: (value) => {
-      const next = resolveValue(value, editorMode)
-      updateSearch((current) => ({ ...current, editor: next || undefined }))
-    },
-    sortMode,
-    setSortMode: (value) => {
-      const next = resolveValue(value, sortMode)
-      updateSearch((current) => ({ ...current, sort: next === 'title' ? undefined : next }), true)
-    },
     settingsOpen: currentPath === '/vault/settings',
     setSettingsOpen: pageSetter('/vault/settings'),
     healthOpen: currentPath === '/vault/health',

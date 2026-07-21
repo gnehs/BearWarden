@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { plural } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { ArrowRight, Fingerprint, KeyRound, RotateCcw, ShieldAlert } from 'lucide-react'
-import type { AppSettings, PinUnlockStatus } from '../../../shared/vault-contract'
+import type { PinUnlockStatus } from '../../../shared/vault-contract'
 import BrandMark from './BrandMark'
 import ApplicationTitlebarMenu from './ApplicationTitlebarMenu'
 import AuthGodRaysBackground from './AuthGodRaysBackground'
@@ -13,6 +13,7 @@ import { Input } from '@renderer/components/ui/input'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { cn } from '@renderer/lib/utils'
 import { shouldUseApplicationTitlebarMenu } from '../lib/application-titlebar-menu'
+import { useSettingsStore } from '../stores/settings-runtime'
 
 const usesWindowControlsOverlay = shouldUseApplicationTitlebarMenu(navigator.userAgent)
 const isMac = navigator.userAgent.includes('Mac')
@@ -36,7 +37,8 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
   const [confirmation, setConfirmation] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [settings, setSettings] = useState<AppSettings | null>(null)
+  const settings = useSettingsStore((store) => store.settings)
+  const loadSettings = useSettingsStore((store) => store.load)
   const passwordRef = useRef<HTMLInputElement>(null)
   const pinRef = useRef<HTMLInputElement>(null)
   const focusPasswordAfterTouchIdRef = useRef(false)
@@ -89,18 +91,17 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
         if (active) setPinStatus({ available: false, remainingAttempts: 0 })
       }
     )
-    void window.bearwarden.settings.get().then(
-      (nextSettings) => {
-        if (active) setSettings(nextSettings)
-      },
-      () => {
-        // A missing settings service must not block master-password unlock.
-      }
-    )
     return () => {
       active = false
     }
   }, [state])
+
+  useEffect(() => {
+    if (state !== 'locked' || settings) return
+    void loadSettings().catch(() => {
+      // A missing settings service must not block master-password unlock.
+    })
+  }, [loadSettings, settings, state])
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()

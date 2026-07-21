@@ -1,6 +1,7 @@
 import { useDndContext } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Trans, useLingui } from '@lingui/react/macro'
+import { useShallow } from 'zustand/react/shallow'
 import {
   Archive,
   ChevronUp,
@@ -21,6 +22,8 @@ import {
 import type { ComponentProps, JSX, RefObject } from 'react'
 import type { FolderView, SyncStatus } from '../../../shared/vault-contract'
 import type { VaultCategoryFilter } from '../lib/vault-category'
+import { useVaultSessionStore } from '../stores/vault-session-store'
+import type { Scope } from './VaultShell-model'
 import { quickAccessDropIds } from './VaultShell-dnd'
 import { SidebarLink, UnfiledRow, type SidebarTone } from './VaultShell-primitives'
 import { FolderRow } from './DndRows'
@@ -39,15 +42,6 @@ import { Kbd } from '@renderer/components/ui/kbd'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { cn } from '@renderer/lib/utils'
 
-type VaultSidebarScope =
-  | { kind: 'all' }
-  | { kind: 'favorites' }
-  | { kind: 'recent' }
-  | { kind: 'folder'; folderId: string }
-  | { kind: 'unfiled' }
-  | { kind: 'archive' }
-  | { kind: 'trash' }
-
 interface VaultSidebarAppearance {
   isMac: boolean
   isWindows: boolean
@@ -62,8 +56,6 @@ interface VaultSidebarCategory {
 }
 
 interface VaultSidebarNavigation {
-  scope: VaultSidebarScope
-  typeFilter: VaultCategoryFilter
   categories: readonly VaultSidebarCategory[]
   categoryCounts: ReadonlyMap<VaultCategoryFilter, number>
   quickAccessCounts: {
@@ -72,7 +64,6 @@ interface VaultSidebarNavigation {
     archive: number
     trash: number
   }
-  folders: readonly FolderView[]
   folderCounts: ReadonlyMap<string | null, number>
 }
 
@@ -86,7 +77,7 @@ interface VaultSidebarAccount {
 
 interface VaultSidebarActions {
   onSelectType: (type: VaultCategoryFilter) => void
-  onSelectScope: (scope: VaultSidebarScope) => void
+  onSelectScope: (scope: Scope) => void
   onAddFolder: () => void
   onEditFolder: (folder: FolderView) => void
   onOpenGenerator: () => void
@@ -151,10 +142,16 @@ export function VaultShellSidebar({
   accountMenuTriggerRef
 }: VaultShellSidebarProps): JSX.Element {
   const { t } = useLingui()
+  const { folders, scope, typeFilter } = useVaultSessionStore(
+    useShallow((state) => ({
+      folders: state.folders,
+      scope: state.scope,
+      typeFilter: state.typeFilter
+    }))
+  )
   const SyncSidebarIcon = account.syncIcon
   const sidebarAccountName = account.name
-  const canDropIntoQuickAccess =
-    navigation.scope.kind !== 'archive' && navigation.scope.kind !== 'trash'
+  const canDropIntoQuickAccess = scope.kind !== 'archive' && scope.kind !== 'trash'
 
   return (
     <aside
@@ -188,7 +185,7 @@ export function VaultShellSidebar({
                   icon={<Icon size={17} />}
                   label={category.label}
                   count={navigation.categoryCounts.get(category.id) ?? 0}
-                  active={navigation.scope.kind === 'all' && navigation.typeFilter === category.id}
+                  active={scope.kind === 'all' && typeFilter === category.id}
                   variant="tile"
                   tone={category.tone}
                   onClick={() => actions.onSelectType(category.id)}
@@ -212,7 +209,7 @@ export function VaultShellSidebar({
               icon={<Star size={16} />}
               label={t`Favorites`}
               count={navigation.quickAccessCounts.favorites}
-              active={navigation.scope.kind === 'favorites'}
+              active={scope.kind === 'favorites'}
               dropTargetId={canDropIntoQuickAccess ? quickAccessDropIds.favorites : undefined}
               onClick={() => actions.onSelectScope({ kind: 'favorites' })}
             />
@@ -225,14 +222,14 @@ export function VaultShellSidebar({
                   'Navigation and sort label for vault items that have been used most recently.'
               })}
               count={navigation.quickAccessCounts.recentlyUsed}
-              active={navigation.scope.kind === 'recent'}
+              active={scope.kind === 'recent'}
               onClick={() => actions.onSelectScope({ kind: 'recent' })}
             />
             <SidebarLink
               icon={<Archive size={16} />}
               label={t`Archive`}
               count={navigation.quickAccessCounts.archive}
-              active={navigation.scope.kind === 'archive'}
+              active={scope.kind === 'archive'}
               dropTargetId={canDropIntoQuickAccess ? quickAccessDropIds.archive : undefined}
               onClick={() => actions.onSelectScope({ kind: 'archive' })}
             />
@@ -240,10 +237,8 @@ export function VaultShellSidebar({
               icon={<Trash2 size={16} />}
               label={t`Trash`}
               count={navigation.quickAccessCounts.trash}
-              active={navigation.scope.kind === 'trash'}
-              dropTargetId={
-                navigation.scope.kind === 'trash' ? undefined : quickAccessDropIds.trash
-              }
+              active={scope.kind === 'trash'}
+              dropTargetId={scope.kind === 'trash' ? undefined : quickAccessDropIds.trash}
               onClick={() => actions.onSelectScope({ kind: 'trash' })}
             />
           </nav>
@@ -270,22 +265,20 @@ export function VaultShellSidebar({
           </header>
           <ul className="m-0 [scrollbar-color:var(--sidebar-ring)_transparent] list-none overflow-visible p-0">
             <UnfiledRow
-              selected={navigation.scope.kind === 'unfiled'}
+              selected={scope.kind === 'unfiled'}
               count={navigation.folderCounts.get(null) ?? 0}
               onSelect={() => actions.onSelectScope({ kind: 'unfiled' })}
             />
             <SortableContext
-              items={navigation.folders.map((folder) => folder.id)}
+              items={folders.map((folder) => folder.id)}
               strategy={verticalListSortingStrategy}
             >
-              {navigation.folders.map((folder) => (
+              {folders.map((folder) => (
                 <FolderRow
                   key={folder.id}
                   folder={folder}
                   count={navigation.folderCounts.get(folder.id) ?? 0}
-                  selected={
-                    navigation.scope.kind === 'folder' && navigation.scope.folderId === folder.id
-                  }
+                  selected={scope.kind === 'folder' && scope.folderId === folder.id}
                   onSelect={() => actions.onSelectScope({ kind: 'folder', folderId: folder.id })}
                   onEdit={() => actions.onEditFolder(folder)}
                 />

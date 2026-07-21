@@ -39,8 +39,9 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { useStore } from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
 import type {
-  AppSettings,
   AppSettingsUpdate,
   AttachmentOperationKind,
   AttachmentOperationStage,
@@ -132,10 +133,17 @@ import {
 } from '@renderer/components/ui/empty'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { cn } from '@renderer/lib/utils'
-import { applyThemePreference } from '@renderer/lib/theme'
 import { activateLanguagePreference } from '@renderer/i18n'
-import { type VaultSortMode } from '@renderer/lib/vault-sort'
 import { useVaultRouteState } from '@renderer/lib/vault-route-state'
+import {
+  VaultSessionStoreProvider,
+  useVaultSessionStore
+} from '@renderer/stores/vault-session-store'
+import {
+  createSyncStatusStore,
+  startSyncStatusSubscription
+} from '@renderer/stores/sync-status-store'
+import { useSettingsStore } from '@renderer/stores/settings-runtime'
 import { requestAccountAction } from './account-switcher-ui'
 import {
   DetailCard,
@@ -151,7 +159,6 @@ import { VaultShellSidebar } from './VaultShellSidebar'
 import {
   emptyRevealedCustomFields,
   emptyRevealedSecrets,
-  initialSyncStatus,
   totpListCountdownPeriodSeconds,
   type BulkActionKind,
   type BulkActionSnapshot,
@@ -235,7 +242,7 @@ function announceError(message: string): void {
   })
 }
 
-function VaultShell({
+function VaultShellContent({
   onLocked,
   promptSyncSetup,
   onSyncSetupPromptHandled
@@ -429,21 +436,65 @@ function VaultShell({
     emergencyAccessOpen,
     setEmergencyAccessOpen
   } = useVaultRouteState()
-  const [folders, setFolders] = useState<FolderView[]>([])
-  const [items, setItems] = useState<LoginSummary[]>([])
-  const [scope, setScope] = useState<Scope>({ kind: 'all' })
-  const [sortMode, setSortMode] = useState<VaultSortMode>('title')
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
-  const { query, searchOpen, searchRef, scopedItems, updateQuery, setSearchOpen } = useVaultSearch({
+  const {
+    folders,
+    items,
+    scope,
+    sortMode,
+    typeFilter,
+    query,
+    selectedIds,
+    selectedId,
+    editorMode,
+    loading,
+    busy,
+    setFolders,
+    setItems,
+    setScope,
+    setSortMode,
+    setTypeFilter,
+    setQuery,
+    setSelectedIds,
+    setSelectedId,
+    setEditorMode,
+    setLoading,
+    setBusy
+  } = useVaultSessionStore(
+    useShallow((state) => ({
+      folders: state.folders,
+      items: state.items,
+      scope: state.scope,
+      sortMode: state.sortMode,
+      typeFilter: state.typeFilter,
+      query: state.query,
+      selectedIds: state.selectedIds,
+      selectedId: state.selectedId,
+      editorMode: state.editorMode,
+      loading: state.loading,
+      busy: state.busy,
+      setFolders: state.setFolders,
+      setItems: state.setItems,
+      setScope: state.setScope,
+      setSortMode: state.setSortMode,
+      setTypeFilter: state.setTypeFilter,
+      setQuery: state.setQuery,
+      setSelectedIds: state.setSelectedIds,
+      setSelectedId: state.setSelectedId,
+      setEditorMode: state.setEditorMode,
+      setLoading: state.setLoading,
+      setBusy: state.setBusy
+    }))
+  )
+  const { searchOpen, searchRef, scopedItems, updateQuery, setSearchOpen } = useVaultSearch({
     items,
     scope,
     typeFilter,
     sortMode,
+    query,
+    setQuery,
     describeError: describeVaultError,
     onError: announceError
   })
-  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
-  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedLogin, setSelectedLogin] = useState<LoginView | null>(null)
   const { copiedKey, clearCopied, showCopied } = useCopyFeedback()
   const selectedSummary = items.find((item) => item.id === selectedId) ?? null
@@ -464,7 +515,6 @@ function VaultShell({
       : null
   const totpRevealReady = totpCode !== null || totpGenerationError !== null
   const [showTotpSkeleton, setShowTotpSkeleton] = useState(false)
-  const [editorMode, setEditorMode] = useState<'create' | 'edit' | null>(null)
   const totpRefreshTarget = resolveTotpRefreshTarget(selectedLogin, selectedId, editorMode !== null)
   const [editorSessionId, setEditorSessionId] = useState(0)
   const {
@@ -480,8 +530,6 @@ function VaultShell({
   const [revealedSecrets, setRevealedSecrets] = useState<RevealedSecretsState>(emptyRevealedSecrets)
   const [revealedCustomFields, setRevealedCustomFields] =
     useState<RevealedCustomFieldsState>(emptyRevealedCustomFields)
-  const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState(false)
   const [folderDialog, setFolderDialog] = useState<FolderView | 'new' | null>(null)
   const [moveSnapshot, setMoveSnapshot] = useState<MoveSnapshot | null>(null)
   const [pendingBulkAction, setPendingBulkAction] = useState<BulkActionSnapshot | null>(null)
@@ -509,12 +557,18 @@ function VaultShell({
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   const [loginApprovalPrompts, setLoginApprovalPrompts] = useState<LoginApprovalPrompt[]>([])
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>(initialSyncStatus)
-  const [syncStatusLoaded, setSyncStatusLoaded] = useState(false)
+  const [syncStatusStore] = useState(() => createSyncStatusStore())
+  const syncStatus = useStore(syncStatusStore, (state) => state.status)
+  const syncStatusLoaded = useStore(syncStatusStore, (state) => state.loaded)
+  const setSyncStatus = syncStatusStore.getState().setStatus
   const showSyncSetupPrompt = shouldShowSyncSetupPrompt(promptSyncSetup, syncStatusLoaded)
   const SyncSidebarIcon = syncStateMeta[syncStatus.state].icon
-  const [settings, setSettings] = useState<AppSettings | null>(null)
-  const [settingsBusy, setSettingsBusy] = useState(false)
+  const settings = useSettingsStore((state) => state.settings)
+  const settingsBusy = useSettingsStore((state) => state.busy)
+  const loadSettings = useSettingsStore((state) => state.load)
+  const persistSettings = useSettingsStore((state) => state.update)
+  const persistTouchIdEnable = useSettingsStore((state) => state.enableTouchId)
+  const persistTouchIdDisable = useSettingsStore((state) => state.disableTouchId)
   const [touchIdPassword, setTouchIdPassword] = useState('')
   const [portabilityDialogMode, setPortabilityDialogMode] = useState<VaultPortabilityMode | null>(
     null
@@ -525,6 +579,7 @@ function VaultShell({
   const foldersDuringDragRef = useRef<FolderView[] | null>(null)
   const sidebarMenuTriggerRef = useRef<HTMLButtonElement>(null)
   const settingsReturnFocusRef = useRef<HTMLElement | null>(null)
+  const defaultSortInitializedRef = useRef(false)
   const compactReturnIdRef = useRef<string | null>(null)
   const compactDetailFocusIdRef = useRef<string | null>(null)
   const selectedIdRef = useRef<string | null>(null)
@@ -603,13 +658,16 @@ function VaultShell({
         setEditorMode(mode)
       })
     },
-    [requestEditorTransition]
+    [requestEditorTransition, setEditorMode]
   )
 
-  const updateSelectedIds = useCallback((nextIds: ReadonlySet<string>): void => {
-    selectedIdsRef.current = nextIds
-    setSelectedIds(nextIds)
-  }, [])
+  const updateSelectedIds = useCallback(
+    (nextIds: ReadonlySet<string>): void => {
+      selectedIdsRef.current = nextIds
+      setSelectedIds(nextIds)
+    },
+    [setSelectedIds]
+  )
 
   const clearItemSelection = useCallback((): void => {
     updateSelectedIds(new Set())
@@ -618,7 +676,7 @@ function VaultShell({
     setSelectedId(null)
     setSelectedLogin(null)
     setPasswordHistoryDialogOpen(false)
-  }, [setPasswordHistoryDialogOpen, updateSelectedIds])
+  }, [setPasswordHistoryDialogOpen, setSelectedId, updateSelectedIds])
 
   const clearDetailCache = useCallback((): void => {
     detailCacheGenerationRef.current += 1
@@ -657,7 +715,7 @@ function VaultShell({
       }
       return authorization.token
     },
-    [setPasswordHistoryDialogOpen]
+    [setEditorMode, setPasswordHistoryDialogOpen]
   )
 
   const invalidateProtectedDetails = useCallback(
@@ -679,7 +737,7 @@ function VaultShell({
         setRevealedCustomFields(emptyRevealedCustomFields)
       }
     },
-    [authorizationToken, clearEditorDirty, setPasswordHistoryDialogOpen]
+    [authorizationToken, clearEditorDirty, setEditorMode, setPasswordHistoryDialogOpen]
   )
 
   const discardAuthorizationToken = useCallback((id: string): void => {
@@ -709,7 +767,7 @@ function VaultShell({
         setRevealedCustomFields(emptyRevealedCustomFields)
       }
     },
-    [discardAuthorizationToken, setPasswordHistoryDialogOpen]
+    [discardAuthorizationToken, setEditorMode, setPasswordHistoryDialogOpen]
   )
 
   const cacheAuthorization = useCallback(
@@ -834,7 +892,16 @@ function VaultShell({
     } finally {
       if (isCurrentVaultLoad(requestId, vaultLoadRequestIdRef.current)) setLoading(false)
     }
-  }, [clearDetailCache, describeVaultError, invalidateProtectedDetails])
+  }, [
+    clearDetailCache,
+    describeVaultError,
+    invalidateProtectedDetails,
+    setFolders,
+    setItems,
+    setLoading,
+    setScope,
+    setSelectedId
+  ])
 
   const loadLoginDetail = useCallback(
     (id: string): Promise<LoginView> => {
@@ -998,7 +1065,13 @@ function VaultShell({
         setEditorMode(null)
       })
     },
-    [authorizationToken, requestEditorTransition, setPasswordHistoryDialogOpen]
+    [
+      authorizationToken,
+      requestEditorTransition,
+      setEditorMode,
+      setPasswordHistoryDialogOpen,
+      setSelectedId
+    ]
   )
 
   const selectLogin = useCallback(
@@ -1101,7 +1174,7 @@ function VaultShell({
       const summary = loginList.find((item) => item.id === current.id)
       return summary ? mergeLoginSummary(current, summary) : current
     })
-  }, [invalidateProtectedDetails])
+  }, [invalidateProtectedDetails, setItems])
 
   const updateSelectedAttachments = useCallback(
     (
@@ -1133,7 +1206,7 @@ function VaultShell({
       return
     }
     await applyRefresh()
-  }, [clearItemSelection, isEditorDirty, loadVault, requestEditorTransition])
+  }, [clearItemSelection, isEditorDirty, loadVault, requestEditorTransition, setEditorMode])
 
   useEffect(() => {
     queueMicrotask(() => void loadVault())
@@ -1228,59 +1301,20 @@ function VaultShell({
   }, [loadVault])
 
   useEffect(() => {
-    let active = true
-    void window.bearwarden.sync.status().then(
-      (status) => {
-        if (active) {
-          setSyncStatus(status)
-          setSyncStatusLoaded(true)
-        }
-      },
-      () => {
-        // A missing sync service should not prevent the local vault from being usable.
-      }
-    )
-    const unsubscribe = window.bearwarden.sync.onChanged((status) => {
-      if (active) {
-        setSyncStatus(status)
-        setSyncStatusLoaded(true)
-      }
-    })
-    return () => {
-      active = false
-      unsubscribe()
-    }
-  }, [])
+    return startSyncStatusSubscription(syncStatusStore, window.bearwarden.sync)
+  }, [syncStatusStore])
 
   useEffect(() => {
-    let active = true
-    void window.bearwarden.settings.get().then(
-      (nextSettings) => {
-        if (!active) return
-        setSettings(nextSettings)
-        setSortMode(nextSettings.defaultSort === 'name' ? 'title' : nextSettings.defaultSort)
-      },
-      () => {
+    if (!settings) {
+      void loadSettings().catch(() => {
         // Settings must not prevent access to a successfully unlocked local vault.
-      }
-    )
-    return () => {
-      active = false
+      })
+      return
     }
-  }, [])
-
-  useEffect(() => {
-    if (!settings) return
-    const darkMode = window.matchMedia('(prefers-color-scheme: dark)')
-    const applyTheme = (): void => {
-      applyThemePreference(settings.theme, darkMode)
-    }
-    applyTheme()
-    if (settings.theme === 'system') darkMode.addEventListener('change', applyTheme)
-    return () => {
-      darkMode.removeEventListener('change', applyTheme)
-    }
-  }, [settings])
+    if (defaultSortInitializedRef.current) return
+    defaultSortInitializedRef.current = true
+    setSortMode(settings.defaultSort === 'name' ? 'title' : settings.defaultSort)
+  }, [loadSettings, setSortMode, settings])
 
   useEffect(() => {
     let active = true
@@ -2057,10 +2091,8 @@ function VaultShell({
   }
 
   async function updateSettings(update: AppSettingsUpdate): Promise<boolean> {
-    setSettingsBusy(true)
     try {
-      const next = await window.bearwarden.settings.update(update)
-      setSettings(next)
+      const next = await persistSettings(update)
       if (update.language) await activateLanguagePreference(next.language).catch(() => undefined)
       if (update.defaultSort) {
         setSortMode(update.defaultSort === 'name' ? 'title' : update.defaultSort)
@@ -2070,8 +2102,6 @@ function VaultShell({
     } catch (settingsError) {
       announceError(describeVaultError(settingsError))
       return false
-    } finally {
-      setSettingsBusy(false)
     }
   }
 
@@ -2080,31 +2110,23 @@ function VaultShell({
       announceError(t`Enter your master password before enabling biometrics.`)
       return
     }
-    setSettingsBusy(true)
     try {
-      const next = await window.bearwarden.settings.enableTouchId({
+      await persistTouchIdEnable({
         masterPassword: touchIdPassword
       })
-      setSettings(next)
       setTouchIdPassword('')
       announce(t`Biometrics enabled.`)
     } catch (touchIdError) {
       announceError(describeVaultError(touchIdError))
-    } finally {
-      setSettingsBusy(false)
     }
   }
 
   async function disableTouchId(): Promise<void> {
-    setSettingsBusy(true)
     try {
-      const next = await window.bearwarden.settings.disableTouchId()
-      setSettings(next)
+      await persistTouchIdDisable()
       announce(t`Biometrics disabled.`)
     } catch (touchIdError) {
       announceError(describeVaultError(touchIdError))
-    } finally {
-      setSettingsBusy(false)
     }
   }
 
@@ -2137,7 +2159,7 @@ function VaultShell({
         announceError(describeVaultError(favoriteError))
       }
     },
-    [announce, describeVaultError, t, withReprompt]
+    [announce, describeVaultError, setItems, t, withReprompt]
   )
 
   function revalidateBulkSelection(
@@ -3321,8 +3343,6 @@ function VaultShell({
           <VaultShellSidebar
             appearance={{ isMac, isWindows, open: sidebarOpen }}
             navigation={{
-              scope,
-              typeFilter,
               categories: categoryMeta,
               categoryCounts,
               quickAccessCounts: {
@@ -3331,7 +3351,6 @@ function VaultShell({
                 archive: archivedItems.length,
                 trash: trashItems.length
               },
-              folders,
               folderCounts
             }}
             account={{
@@ -3413,7 +3432,9 @@ function VaultShell({
                   onVaultPurged={async () => {
                     await Promise.allSettled([
                       loadVault(),
-                      window.bearwarden.sync.status().then(setSyncStatus)
+                      syncStatusStore
+                        .getState()
+                        .refreshStatus(() => window.bearwarden.sync.status())
                     ])
                   }}
                   onExportVault={() => setPortabilityDialogMode('export')}
@@ -3439,28 +3460,19 @@ function VaultShell({
               ) : (
                 <VaultItemListPane
                   list={{
-                    scope,
                     scopeTitle,
-                    query,
                     itemCount: scopedItems.length,
                     groups: itemGroups,
-                    sortMode,
                     sortOptions: sortItemsOptions,
-                    typeFilter,
                     showWebsiteIcons: settings?.showWebsiteIcons ?? false,
                     totpCodes: totpListCodes,
                     totpCountdown: totpListCountdown,
                     trashItemCount: trashItems.length
                   }}
                   selection={{
-                    activeId: editorMode ? null : selectedId,
-                    selectedIds,
-                    selectedItemCount: selectedSummaries.length,
-                    busy
+                    selectedItemCount: selectedSummaries.length
                   }}
                   actions={{
-                    onSortChange: setSortMode,
-                    onQueryChange: updateQuery,
                     onPrefetch: prefetchLoginDetail,
                     onSelect: selectItems,
                     onToggleFavorite: toggleFavorite,
@@ -3995,6 +4007,14 @@ function VaultShell({
         ) : null}
       </DragOverlay>
     </DndContext>
+  )
+}
+
+function VaultShell(props: VaultShellProps): React.JSX.Element {
+  return (
+    <VaultSessionStoreProvider>
+      <VaultShellContent {...props} />
+    </VaultSessionStoreProvider>
   )
 }
 

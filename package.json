@@ -56,6 +56,7 @@
     "ssh2": "1.17.0",
     "tailwind-merge": "^3.6.0",
     "tldts": "^7.4.8",
+    "zustand": "^5.0.14",
     "zxcvbn": "4.4.2"
   },
   "devDependencies": {
