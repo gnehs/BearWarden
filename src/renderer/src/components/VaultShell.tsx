@@ -983,7 +983,13 @@ function VaultShell({
   const itemTypeMeta = useMemo<Record<VaultItemType, ItemTypeMeta>>(
     () => ({
       login: { label: t`Login`, icon: KeyRound },
-      card: { label: t`Card`, icon: CreditCard },
+      card: {
+        label: t({
+          message: 'Card',
+          comment: 'Vault item category label for payment card records.'
+        }),
+        icon: CreditCard
+      },
       identity: { label: t`Identity`, icon: ContactRound },
       secureNote: { label: t`Secure note`, icon: NotebookPen },
       sshKey: { label: t`SSH key`, icon: FileKey2 }
@@ -1022,7 +1028,14 @@ function VaultShell({
   } satisfies Record<SyncStatus['state'], { label: string; icon: typeof CloudCheck }>
   const sortItemsOptions = [
     { label: t`Name`, value: 'title' },
-    { label: t`Recently used`, value: 'recent' },
+    {
+      label: t({
+        message: 'Recently used',
+        context: 'recent-items-filter',
+        comment: 'Navigation and sort label for vault items that have been used most recently.'
+      }),
+      value: 'recent'
+    },
     { label: t`Most used`, value: 'frequency' },
     { label: t`Recently modified`, value: 'modified' }
   ] as const
@@ -1034,10 +1047,17 @@ function VaultShell({
       cardNumber: t`Card number`,
       securityCode: t`Security code`,
       cardholder: t`Cardholder`,
-      brand: t`Brand`,
+      brand: t({
+        message: 'Brand',
+        comment:
+          'Field label for the payment card issuer or network brand, such as Visa or Mastercard.'
+      }),
       expirationDate: t`Expiration date`,
       name: t`Name`,
-      company: t`Company`,
+      company: t({
+        message: 'Company',
+        comment: 'Field label for the company name in an identity item.'
+      }),
       email: t`Email`,
       phone: t`Phone`,
       address: t`Address`,
@@ -2568,7 +2588,13 @@ function VaultShell({
 
   const scopeTitle = useMemo(() => {
     if (scope.kind === 'favorites') return t`Favorites`
-    if (scope.kind === 'recent') return t`Recently used`
+    if (scope.kind === 'recent') {
+      return t({
+        message: 'Recently used',
+        context: 'recent-items-filter',
+        comment: 'Navigation and sort label for vault items that have been used most recently.'
+      })
+    }
     if (scope.kind === 'unfiled') return t`Unfiled`
     if (scope.kind === 'archive') return t`Archive`
     if (scope.kind === 'trash') return t`Trash`
@@ -4782,7 +4808,12 @@ function VaultShell({
                   />
                   <SidebarLink
                     icon={<Clock3 size={16} />}
-                    label={t`Recently used`}
+                    label={t({
+                      message: 'Recently used',
+                      context: 'recent-items-filter',
+                      comment:
+                        'Navigation and sort label for vault items that have been used most recently.'
+                    })}
                     count={activeItems.filter((item) => item.lastUsedAt).length}
                     active={scope.kind === 'recent'}
                     onClick={() => selectScope({ kind: 'recent' })}
@@ -5930,14 +5961,18 @@ function VaultShell({
                       <CardHeader>
                         <CardTitle id="organization-title">
                           <FolderOpen aria-hidden="true" />
-                          <Trans>Organization and activity</Trans>
+                          <Trans comment="Section heading in a login item details view; groups the folder and the item usage timestamp, not calendar events.">
+                            Organization and activity
+                          </Trans>
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="contents">
                         <dl className="m-0 px-(--card-spacing) py-1">
                           <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
                             <dt className="text-muted-foreground text-[11px] leading-4">
-                              <Trans>Folder</Trans>
+                              <Trans comment="Field label for the folder that contains this login item.">
+                                Folder
+                              </Trans>
                             </dt>
                             <dd className="m-0 flex min-w-0 items-center gap-2 text-xs leading-4">
                               <span className="min-w-0 flex-1 truncate">
@@ -5959,7 +5994,12 @@ function VaultShell({
                           </div>
                           <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
                             <dt className="text-muted-foreground text-[11px] leading-4">
-                              <Trans>Recently used</Trans>
+                              <Trans
+                                context="item-last-used"
+                                comment="Field label for the last time this vault item was used; this is a usage timestamp, not a recent calendar event."
+                              >
+                                Recently used
+                              </Trans>
                             </dt>
                             <dd className="m-0 min-w-0 text-xs leading-4">
                               {formatDate(selectedLogin.lastUsedAt)}
@@ -5977,7 +6017,9 @@ function VaultShell({
                       <CardHeader>
                         <CardTitle id="history-title">
                           <History aria-hidden="true" />
-                          <Trans>Item history</Trans>
+                          <Trans comment="Section heading for the login item's creation, edit, password-change, and password-history metadata.">
+                            Item history
+                          </Trans>
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="contents">

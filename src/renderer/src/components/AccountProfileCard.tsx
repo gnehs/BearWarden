@@ -139,7 +139,9 @@ function AccountProfileCard({
         </span>
         <div className="min-w-0 flex-1">
           <h3 id="account-profile-title" className="font-medium">
-            <Trans>Profile</Trans>
+            <Trans comment="Heading for the signed-in account's display name, email address, and avatar settings.">
+              Profile
+            </Trans>
           </h3>
           <p className="text-muted-foreground truncate text-sm">{current.name || current.email}</p>
         </div>

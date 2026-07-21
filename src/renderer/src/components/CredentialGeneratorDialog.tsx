@@ -463,7 +463,9 @@ export default function CredentialGeneratorDialog({
                   <Trans>Username</Trans>
                 </TabsTrigger>
                 <TabsTrigger value="history">
-                  <Trans>History</Trans>
+                  <Trans comment="Tab showing previously generated credentials stored in the local generator history.">
+                    History
+                  </Trans>
                 </TabsTrigger>
               </TabsList>
 
@@ -557,7 +559,12 @@ export default function CredentialGeneratorDialog({
                 <FieldGroup className="scroll-fade-y forced-colors:scroll-fade-none h-full overflow-y-auto p-px">
                   <FieldSet>
                     <FieldLegend variant="label">
-                      <Trans>Type</Trans>
+                      <Trans
+                        context="credential-generator-type"
+                        comment="Fieldset label for choosing the password or username generation algorithm or format."
+                      >
+                        Type
+                      </Trans>
                     </FieldLegend>
                     <ToggleGroup
                       value={[passwordAlgorithm]}
@@ -731,7 +738,12 @@ export default function CredentialGeneratorDialog({
                 <FieldGroup className="scroll-fade-y forced-colors:scroll-fade-none h-full overflow-y-auto p-px">
                   <FieldSet>
                     <FieldLegend variant="label">
-                      <Trans>Type</Trans>
+                      <Trans
+                        context="credential-generator-type"
+                        comment="Fieldset label for choosing the password or username generation algorithm or format."
+                      >
+                        Type
+                      </Trans>
                     </FieldLegend>
                     <ToggleGroup
                       value={[usernameAlgorithm]}

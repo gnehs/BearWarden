@@ -470,7 +470,12 @@ function AccountDevicesDialog(): React.JSX.Element {
                       </div>
                       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
                         <dt className="text-muted-foreground">
-                          <Trans>Created</Trans>
+                          <Trans
+                            context="device-created"
+                            comment="Metadata label showing when this signed-in account device was first registered."
+                          >
+                            Created
+                          </Trans>
                         </dt>
                         <dd>{formatDeviceDate(device.createdAt, i18n.locale)}</dd>
                         <dt className="text-muted-foreground">

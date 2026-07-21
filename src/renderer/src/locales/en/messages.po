@@ -2030,9 +2030,21 @@ msgstr "Create your first Send"
 msgid "Create your vault"
 msgstr "Create your vault"
 
-#: src/renderer/src/components/AccountDevicesDialog.tsx:473
-#: src/renderer/src/components/ItemHistoryRows.tsx:40
+#. Metadata label showing when the backup file was created.
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:457
+msgctxt "backup-created"
+msgid "Created"
+msgstr "Created"
+
+#. Metadata label showing when this signed-in account device was first registered.
+#: src/renderer/src/components/AccountDevicesDialog.tsx:473
+msgctxt "device-created"
+msgid "Created"
+msgstr "Created"
+
+#. Metadata label showing when this vault item was first created.
+#: src/renderer/src/components/ItemHistoryRows.tsx:48
+msgctxt "item-created"
 msgid "Created"
 msgstr "Created"
 
@@ -4781,11 +4793,18 @@ msgstr "Reauthentication required"
 msgid "Recently modified"
 msgstr "Recently modified"
 
-#: src/renderer/src/components/SettingsPage.tsx:483
-#: src/renderer/src/components/VaultShell.tsx:1019
-#: src/renderer/src/components/VaultShell.tsx:2565
-#: src/renderer/src/components/VaultShell.tsx:4779
-#: src/renderer/src/components/VaultShell.tsx:5923
+#. Field label for the last time this vault item was used; this is a usage timestamp, not a recent calendar event.
+#: src/renderer/src/components/VaultShell.tsx:5994
+msgctxt "item-last-used"
+msgid "Recently used"
+msgstr "Recently used"
+
+#. Navigation and sort label for vault items that have been used most recently.
+#: src/renderer/src/components/SettingsPage.tsx:485
+#: src/renderer/src/components/VaultShell.tsx:1033
+#: src/renderer/src/components/VaultShell.tsx:2593
+#: src/renderer/src/components/VaultShell.tsx:4806
+msgctxt "recent-items-filter"
 msgid "Recently used"
 msgstr "Recently used"
 
@@ -6684,10 +6703,22 @@ msgstr "Two-step verification not enabled"
 msgid "Two-step verification was invalid, expired, or canceled. Please try again."
 msgstr "Two-step verification was invalid, expired, or canceled. Please try again."
 
-#: src/renderer/src/components/CredentialGeneratorDialog.tsx:560
-#: src/renderer/src/components/CredentialGeneratorDialog.tsx:734
-#: src/renderer/src/components/LoginEditor.tsx:1402
-#: src/renderer/src/components/LoginEditor.tsx:2280
+#. Fieldset label for choosing the password or username generation algorithm or format.
+#: src/renderer/src/components/CredentialGeneratorDialog.tsx:562
+#: src/renderer/src/components/CredentialGeneratorDialog.tsx:741
+msgctxt "credential-generator-type"
+msgid "Type"
+msgstr "Type"
+
+#. Field label for choosing the data type of a custom field, such as text, hidden, or boolean.
+#: src/renderer/src/components/LoginEditor.tsx:2481
+msgctxt "custom-field-type"
+msgid "Type"
+msgstr "Type"
+
+#. Field label for choosing the kind of vault item being edited, such as login, card, identity, or secure note.
+#: src/renderer/src/components/LoginEditor.tsx:1546
+msgctxt "item-type"
 msgid "Type"
 msgstr "Type"
 

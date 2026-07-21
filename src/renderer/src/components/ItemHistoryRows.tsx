@@ -36,10 +36,30 @@ export function ItemHistoryRows({
 
   return (
     <dl className="m-0 px-(--card-spacing) py-1">
-      <HistoryRow label={t`Last edited`}>{formatDate(item.updatedAt)}</HistoryRow>
-      <HistoryRow label={t`Created`}>{formatDate(item.createdAt)}</HistoryRow>
+      <HistoryRow
+        label={t({
+          message: 'Last edited',
+          comment: 'Metadata label showing when this vault item was last modified.'
+        })}
+      >
+        {formatDate(item.updatedAt)}
+      </HistoryRow>
+      <HistoryRow
+        label={t({
+          message: 'Created',
+          context: 'item-created',
+          comment: 'Metadata label showing when this vault item was first created.'
+        })}
+      >
+        {formatDate(item.createdAt)}
+      </HistoryRow>
       {item.passwordUpdatedAt !== null && (
-        <HistoryRow label={t`Password last updated`}>
+        <HistoryRow
+          label={t({
+            message: 'Password last updated',
+            comment: 'Metadata label showing when the password in this login item was last changed.'
+          })}
+        >
           {formatDate(item.passwordUpdatedAt)}
         </HistoryRow>
       )}

@@ -1543,7 +1543,12 @@ function LoginEditor({
                 {!login && (
                   <Field>
                     <FieldLabel htmlFor="editor-type">
-                      <Trans>Type</Trans>
+                      <Trans
+                        context="item-type"
+                        comment="Field label for choosing the kind of vault item being edited, such as login, card, identity, or secure note."
+                      >
+                        Type
+                      </Trans>
                     </FieldLabel>
                     <Select
                       items={itemTypeSelectItems}
@@ -2206,7 +2211,11 @@ function LoginEditor({
 
           <EditorSection value="organize" className="flex flex-col">
             <EditorFormSection
-              title={t`Organization`}
+              title={t({
+                message: 'Organization',
+                comment:
+                  'Section heading in the login item editor for organizing the item into a folder and configuring item-level options.'
+              })}
               titleId="organization-section-title"
               icon={<FolderOpen aria-hidden="true" />}
             >
@@ -2469,7 +2478,12 @@ function LoginEditor({
                                     </Field>
                                     <Field>
                                       <FieldLabel htmlFor={customFieldTypeId}>
-                                        <Trans>Type</Trans>
+                                        <Trans
+                                          context="custom-field-type"
+                                          comment="Field label for choosing the data type of a custom field, such as text, hidden, or boolean."
+                                        >
+                                          Type
+                                        </Trans>
                                       </FieldLabel>
                                       <Select
                                         items={customFieldTypeItems}

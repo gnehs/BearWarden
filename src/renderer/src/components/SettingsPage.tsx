@@ -480,7 +480,14 @@ function SettingsPage({
     { label: t`After 2 minutes`, value: 120 }
   ] as const
   const localizedDefaultSortItems = [
-    { label: t`Recently used`, value: 'recent' },
+    {
+      label: t({
+        message: 'Recently used',
+        context: 'recent-items-filter',
+        comment: 'Navigation and sort label for vault items that have been used most recently.'
+      }),
+      value: 'recent'
+    },
     { label: t`Most used`, value: 'frequency' },
     { label: t`Name`, value: 'name' }
   ] as const

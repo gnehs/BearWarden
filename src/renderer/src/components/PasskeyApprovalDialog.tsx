@@ -254,7 +254,13 @@ export default function PasskeyApprovalDialog({
             <Badge variant="outline">{request.rpId}</Badge>
           </Field>
           <Field>
-            <FieldLabel>{t`Action`}</FieldLabel>
+            <FieldLabel>
+              {t({
+                message: 'Action',
+                comment:
+                  'Field label showing what the website is asking the user to do with a passkey, such as sign in or register.'
+              })}
+            </FieldLabel>
             <FieldDescription>{ceremony.detail}</FieldDescription>
             <Badge variant="secondary">{ceremony.label}</Badge>
           </Field>

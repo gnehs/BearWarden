@@ -454,7 +454,12 @@ function VaultPortabilityDialog({
                   <dl className="grid grid-cols-2 gap-3">
                     <div>
                       <dt className="text-muted-foreground">
-                        <Trans>Created</Trans>
+                        <Trans
+                          context="backup-created"
+                          comment="Metadata label showing when the backup file was created."
+                        >
+                          Created
+                        </Trans>
                       </dt>
                       <dd>{backupCreatedAt ?? <Trans>Unknown time</Trans>}</dd>
                     </div>
