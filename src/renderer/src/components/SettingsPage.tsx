@@ -763,44 +763,24 @@ function SettingsPage({
   }
 
   return (
-    <AuxiliaryPageLayout
-      eyebrow={t`Application`}
-      title={t`Settings`}
-      titleId="settings-title"
-      subtitle={t`Manage security, appearance, and sync on this device.`}
-      headerIcon={<Settings2 />}
-      scrollRef={settingsScrollRef}
-      scrollClassName="scroll-fade scroll-fade-4 forced-colors:scroll-fade-none"
-      headerActions={
-        settingsBusy ? (
-          <span
-            className="text-muted-foreground inline-flex shrink-0 items-center gap-1.5 text-[11px]"
-            role="status"
-          >
-            <Spinner />
-            <Trans>Saving</Trans>
-          </span>
-        ) : undefined
-      }
+    <Tabs
+      value={activeSettingsCategory}
+      className="min-h-0 min-w-0 flex-1 gap-0"
+      onValueChange={(value) => {
+        if (typeof value !== 'string') return
+        setActiveSettingsCategory(value as SettingsCategoryId)
+        settingsScrollRef.current?.scrollTo({ top: 0 })
+      }}
     >
-      {!settings ? (
-        <div
-          className="text-muted-foreground flex min-h-0 flex-1 flex-row items-center justify-center gap-2.5 p-7 text-center text-[11px]"
-          role="status"
-        >
-          <Spinner /> <Trans>Loading settings…</Trans>
-        </div>
-      ) : (
-        <AuxiliaryPageContent className="max-w-[760px] !grid-cols-[minmax(0,1fr)] gap-0">
-          <Tabs
-            value={activeSettingsCategory}
-            className="min-w-0 gap-4"
-            onValueChange={(value) => {
-              if (typeof value !== 'string') return
-              setActiveSettingsCategory(value as SettingsCategoryId)
-              settingsScrollRef.current?.scrollTo({ top: 0 })
-            }}
-          >
+      <AuxiliaryPageLayout
+        title={t`Settings`}
+        titleId="settings-title"
+        subtitle={t`Manage security, appearance, and sync on this device.`}
+        headerIcon={<Settings2 />}
+        scrollRef={settingsScrollRef}
+        scrollClassName="scroll-fade scroll-fade-4 forced-colors:scroll-fade-none"
+        headerNavigation={
+          settings ? (
             <TabsList
               variant="line"
               sliding
@@ -819,7 +799,29 @@ function SettingsPage({
                 </TabsTrigger>
               ))}
             </TabsList>
-
+          ) : undefined
+        }
+        headerActions={
+          settingsBusy ? (
+            <span
+              className="text-muted-foreground inline-flex shrink-0 items-center gap-1.5 text-[11px]"
+              role="status"
+            >
+              <Spinner />
+              <Trans>Saving</Trans>
+            </span>
+          ) : undefined
+        }
+      >
+        {!settings ? (
+          <div
+            className="text-muted-foreground flex min-h-0 flex-1 flex-row items-center justify-center gap-2.5 p-7 text-center text-[11px]"
+            role="status"
+          >
+            <Spinner /> <Trans>Loading settings…</Trans>
+          </div>
+        ) : (
+          <AuxiliaryPageContent className="max-w-[910px] !grid-cols-[minmax(0,1fr)] gap-4">
             <SettingsCategoryContent value="general">
               <SettingsCard aria-labelledby="general-settings-title">
                 <CardHeader>
@@ -1831,10 +1833,10 @@ function SettingsPage({
             <SettingsCategoryContent value="about">
               <AboutPage onOpenRepository={() => window.bearwarden.updater.openRepositoryPage()} />
             </SettingsCategoryContent>
-          </Tabs>
-        </AuxiliaryPageContent>
-      )}
-    </AuxiliaryPageLayout>
+          </AuxiliaryPageContent>
+        )}
+      </AuxiliaryPageLayout>
+    </Tabs>
   )
 }
 
