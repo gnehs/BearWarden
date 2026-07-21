@@ -84,7 +84,7 @@ const Toaster = ({
           content: '!min-w-0 !gap-0.5',
           icon: 'cn-toast-icon !m-0 !shrink-0 !text-primary [&>svg]:block [&>svg]:size-4 [&>svg]:!m-0',
           closeButton:
-            'cn-toast-close-button !top-1/2 !right-2.5 !left-auto !grid !size-6 !-translate-y-1/2 !transform-none !place-items-center !border-0 !bg-transparent !p-0 !text-muted-foreground !shadow-none !leading-none hover:!bg-muted hover:!text-foreground focus-visible:!ring-2 focus-visible:!ring-ring/50 [&>svg]:block [&>svg]:size-4 [&>svg]:!m-0',
+            'cn-toast-close-button !top-2.5 !right-2.5 !left-auto !grid !size-6 !transform-none !place-items-center !border-0 !bg-transparent !p-0 !text-muted-foreground !shadow-none !leading-none hover:!bg-muted hover:!text-foreground focus-visible:!ring-2 focus-visible:!ring-ring/50 [&>svg]:block [&>svg]:size-4 [&>svg]:!m-0',
           info: '[&_.cn-toast-icon]:!text-foreground',
           warning: '[&_.cn-toast-icon]:!text-foreground',
           error: '[&_.cn-toast-icon]:!text-destructive',
