@@ -486,8 +486,15 @@ export interface BitwardenDirectState {
   securityStamp: string | null
 }
 
+export interface BitwardenPinUnlockMaterial {
+  accountKey: Buffer
+  wrappedKeyFingerprint: Buffer
+}
+
 export interface BitwardenSyncClient {
   status(signal?: AbortSignal): Promise<{ status: 'unauthenticated' | 'locked' | 'unlocked' }>
+  pinUnlockMaterial?(): BitwardenPinUnlockMaterial | null
+  restorePinUnlockMaterial?(material: BitwardenPinUnlockMaterial): void
   getAccountSecurityProfile?(signal?: AbortSignal): Promise<BitwardenAccountSecurityProfile>
   updateAccountProfileName?(
     name: string,
@@ -1465,6 +1472,16 @@ function encodeUserKeyForMasterKeyWrap(key: BitwardenSymmetricKey): Buffer {
   }
 }
 
+function cloneBitwardenAccountKey(key: BitwardenSymmetricKey): BitwardenSymmetricKey {
+  return Buffer.isBuffer(key)
+    ? Buffer.from(key)
+    : {
+        algorithm: key.algorithm,
+        keyId: Buffer.from(key.keyId),
+        encryptionKey: Buffer.from(key.encryptionKey)
+      }
+}
+
 function loginRequestFingerprint(email: string, request: BitwardenAuthRequest): string {
   const publicKey = Buffer.from(request.publicKey, 'base64')
   const prk = createHash('sha256').update(publicKey).digest()
@@ -1818,6 +1835,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   private state: BitwardenDirectState
   private stretchedKey: Buffer | null = null
   private userKey: BitwardenSymmetricKey | null = null
+  private wrappedUserKeyFingerprint: Buffer | null = null
   private folders = new Map<string, CachedFolder>()
   private logins = new Map<string, CachedLogin>()
   private organizations = new Map<string, BitwardenOrganization>()
@@ -1866,9 +1884,28 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     }
   }
 
+  pinUnlockMaterial(): BitwardenPinUnlockMaterial | null {
+    if (!this.userKey || !this.wrappedUserKeyFingerprint) return null
+    return {
+      accountKey: encodeUserKeyForMasterKeyWrap(this.userKey),
+      wrappedKeyFingerprint: Buffer.from(this.wrappedUserKeyFingerprint)
+    }
+  }
+
+  restorePinUnlockMaterial(material: BitwardenPinUnlockMaterial): void {
+    if (material.wrappedKeyFingerprint.length !== 32) {
+      throw new BitwardenDirectError('AUTH_REQUIRED')
+    }
+    const userKey = decodeBitwardenUserKey(material.accountKey)
+    clearBitwardenSymmetricKey(this.userKey)
+    this.wrappedUserKeyFingerprint?.fill(0)
+    this.userKey = userKey
+    this.wrappedUserKeyFingerprint = Buffer.from(material.wrappedKeyFingerprint)
+  }
+
   async status(): Promise<{ status: 'unauthenticated' | 'locked' | 'unlocked' }> {
     if (!this.http.exportSession()) return { status: 'unauthenticated' }
-    return { status: this.stretchedKey ? 'unlocked' : 'locked' }
+    return { status: this.stretchedKey || this.userKey ? 'unlocked' : 'locked' }
   }
 
   async getAccountBreachReport(
@@ -3216,8 +3253,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   }
 
   async sync(signal?: AbortSignal): Promise<void> {
-    const stretchedKey = this.requireStretchedKey()
     let invalidResponseStage: BitwardenSyncInvalidResponseStage | null = 'response'
+    let wrappedKeyFingerprint: Buffer | null = null
     try {
       const payload = await this.http.sync(signal)
       invalidResponseStage = 'account'
@@ -3228,14 +3265,31 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       this.assertAccountIdentity(profileId, securityStamp)
 
       const wrappedUserKey = this.findWrappedUserKey(payload, profile)
-      const encodedUserKey = decryptBitwardenBytes(wrappedUserKey, stretchedKey)
+      wrappedKeyFingerprint = createHash('sha256').update(wrappedUserKey, 'utf8').digest()
       let userKey: BitwardenSymmetricKey
-      try {
-        userKey = decodeBitwardenUserKey(encodedUserKey)
-      } finally {
-        encodedUserKey.fill(0)
+      if (this.stretchedKey) {
+        const encodedUserKey = decryptBitwardenBytes(wrappedUserKey, this.stretchedKey)
+        try {
+          userKey = decodeBitwardenUserKey(encodedUserKey)
+        } finally {
+          encodedUserKey.fill(0)
+        }
+      } else {
+        if (
+          !this.wrappedUserKeyFingerprint ||
+          !this.wrappedUserKeyFingerprint.equals(wrappedKeyFingerprint)
+        ) {
+          this.clearDecryptedState()
+          throw new BitwardenDirectError('AUTH_REQUIRED')
+        }
+        userKey = cloneBitwardenAccountKey(this.requireUserKey())
       }
-      await this.validateAccountKeys(profile, userKey)
+      try {
+        await this.validateAccountKeys(profile, userKey)
+      } catch (error) {
+        clearBitwardenSymmetricKey(userKey)
+        throw error
+      }
 
       const nextFolders = new Map<string, CachedFolder>()
       const nextLogins = new Map<string, CachedLogin>()
@@ -3395,7 +3449,10 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       for (const organizationKey of organizationKeys.values()) organizationKey.fill(0)
 
       clearBitwardenSymmetricKey(this.userKey)
+      this.wrappedUserKeyFingerprint?.fill(0)
       this.userKey = userKey
+      this.wrappedUserKeyFingerprint = wrappedKeyFingerprint
+      wrappedKeyFingerprint = null
       this.folders = nextFolders
       this.logins = nextLogins
       this.organizations = nextOrganizations
@@ -3416,6 +3473,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         throw new BitwardenDirectError('INVALID_RESPONSE', undefined, invalidResponseStage)
       }
       throw mapped
+    } finally {
+      wrappedKeyFingerprint?.fill(0)
     }
   }
 
@@ -5219,11 +5278,6 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     }
   }
 
-  private requireStretchedKey(): Buffer {
-    if (!this.stretchedKey) throw new BitwardenDirectError('AUTH_REQUIRED')
-    return this.stretchedKey
-  }
-
   private requireUserKey(): BitwardenSymmetricKey {
     if (!this.userKey) throw new BitwardenDirectError('AUTH_REQUIRED')
     return this.userKey
@@ -5322,8 +5376,10 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     this.preparedLoginImports.clear()
     this.stretchedKey?.fill(0)
     clearBitwardenSymmetricKey(this.userKey)
+    this.wrappedUserKeyFingerprint?.fill(0)
     this.stretchedKey = null
     this.userKey = null
+    this.wrappedUserKeyFingerprint = null
     this.folders.clear()
     this.logins.clear()
     this.organizations.clear()

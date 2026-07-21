@@ -42,6 +42,31 @@ describe('PinUnlockCapability', () => {
     capability.dispose()
   })
 
+  it('authenticates and returns copied sync material in the PIN capsule', async () => {
+    const source = material()
+    const sync = {
+      accountKey: randomBytes(64),
+      wrappedKeyFingerprint: randomBytes(32)
+    }
+    const expectedAccountKey = Buffer.from(sync.accountKey)
+    const expectedFingerprint = Buffer.from(sync.wrappedKeyFingerprint)
+    const capability = await PinUnlockCapability.create('bear-2026', source.key, source.salt, sync)
+    sync.accountKey.fill(0)
+    sync.wrappedKeyFingerprint.fill(0)
+
+    const unlocked = await capability.unlock('bear-2026')
+
+    expect(unlocked.sync?.accountKey).toEqual(expectedAccountKey)
+    expect(unlocked.sync?.wrappedKeyFingerprint).toEqual(expectedFingerprint)
+    unlocked.sync?.accountKey.fill(0)
+    unlocked.sync?.wrappedKeyFingerprint.fill(0)
+    clearMaterial(unlocked)
+    clearMaterial(source)
+    expectedAccountKey.fill(0)
+    expectedFingerprint.fill(0)
+    capability.dispose()
+  })
+
   it('disposes the capability on the fifth serialized failed attempt', async () => {
     const source = material()
     const capability = await PinUnlockCapability.create('correct-pin', source.key, source.salt)

@@ -1532,6 +1532,107 @@ describe('BitwardenDirectClient', () => {
     ).rejects.toMatchObject({ code: 'ABORTED' })
     await expect(client.status()).resolves.toEqual({ status: 'unlocked' })
   })
+
+  it.each([
+    ['V1', () => encryptedSync()],
+    ['V2', () => encryptedV2Sync()]
+  ])(
+    'restores PIN-wrapped %s account material for sync without persisting the key',
+    async (_version, createSync) => {
+      const sync = await createSync()
+      const createHttp = (): BitwardenHttpClient =>
+        new BitwardenHttpClient({
+          server: 'https://vault.example.invalid',
+          fetch: async (url) => {
+            if (url.endsWith('/identity/accounts/prelogin/password')) {
+              return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+            }
+            if (url.endsWith('/identity/connect/token')) {
+              return jsonResponse({
+                access_token: 'access',
+                refresh_token: 'refresh',
+                expires_in: 3600
+              })
+            }
+            if (url.includes('/api/sync?')) return jsonResponse(sync)
+            return jsonResponse({ message: 'not found' }, 404)
+          }
+        })
+      const connected = new BitwardenDirectClient({
+        serverUrl: 'https://vault.example.invalid',
+        email: EMAIL,
+        httpClient: createHttp()
+      })
+      await connected.login({ email: EMAIL, password: PASSWORD })
+      await connected.sync()
+      const persisted = connected.exportState()
+      const pinMaterial = connected.pinUnlockMaterial()
+      expect(pinMaterial).not.toBeNull()
+      expect(persisted).not.toHaveProperty('accountKey')
+
+      const resumed = new BitwardenDirectClient({
+        serverUrl: 'https://vault.example.invalid',
+        email: EMAIL,
+        state: persisted,
+        httpClient: createHttp()
+      })
+      resumed.restorePinUnlockMaterial(pinMaterial!)
+      pinMaterial!.accountKey.fill(0)
+      pinMaterial!.wrappedKeyFingerprint.fill(0)
+      await expect(resumed.status()).resolves.toEqual({ status: 'unlocked' })
+      await resumed.sync()
+      await expect(resumed.listPersonalLogins()).resolves.toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: LOGIN_ID })])
+      )
+    }
+  )
+
+  it('rejects stale PIN account material when the remote wrapped key changes', async () => {
+    const sync = await encryptedSync()
+    const connectedHttp = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          return jsonResponse({
+            access_token: 'access',
+            refresh_token: 'refresh',
+            expires_in: 3600
+          })
+        }
+        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const connected = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: connectedHttp
+    })
+    await connected.login({ email: EMAIL, password: PASSWORD })
+    await connected.sync()
+    const pinMaterial = connected.pinUnlockMaterial()!
+    const rotated = structuredClone(sync)
+    ;(rotated.profile as JsonObject).key = `${(rotated.profile as JsonObject).key}changed`
+    const resumed = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      state: connected.exportState(),
+      httpClient: new BitwardenHttpClient({
+        server: 'https://vault.example.invalid',
+        fetch: async () => jsonResponse(rotated)
+      })
+    })
+    resumed.restorePinUnlockMaterial(pinMaterial)
+    pinMaterial.accountKey.fill(0)
+    pinMaterial.wrappedKeyFingerprint.fill(0)
+
+    await expect(resumed.sync()).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
+    await expect(resumed.status()).resolves.toEqual({ status: 'locked' })
+  })
+
   it('decrypts organization keys and keeps shared ciphers separate from personal items', async () => {
     const sync = await encryptedSync()
     const userKey = Buffer.alloc(64, 7)

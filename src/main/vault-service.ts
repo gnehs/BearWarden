@@ -110,7 +110,12 @@ import {
 } from './bitwarden-direct'
 import { resolveBitwardenUrls } from './bitwarden-http'
 import { EncryptedVaultStore } from './encrypted-vault-store'
-import { PinUnlockCapability, PinUnlockError } from './pin-unlock'
+import {
+  PinUnlockCapability,
+  PinUnlockError,
+  type PinSyncKeyMaterial,
+  type PinVaultKeyMaterial
+} from './pin-unlock'
 import type { BitwardenNotificationConnectionInfo } from './bitwarden-notifications'
 import { searchVaultItems } from './vault-search'
 import { analyzeVaultHealth, type VaultHealthItem } from './vault-health'
@@ -676,11 +681,12 @@ export class VaultService {
     const generation = this.generation
     return this.exclusive(async () => {
       let capability: PinUnlockCapability | null = null
+      let syncMaterial: PinSyncKeyMaterial | null = null
       try {
         if (generation !== this.generation || lifecycleEpoch !== this.pinLifecycleEpoch) {
           throw new VaultError('LOCKED')
         }
-        this.requireData()
+        const data = this.requireData()
         if (
           typeof request.pin !== 'string' ||
           request.pin.normalize('NFC').length < 4 ||
@@ -693,7 +699,14 @@ export class VaultService {
         }
         await this.assertMasterPassword(request.masterPassword)
         if (!this.key || !this.salt) throw new VaultError('LOCKED')
-        capability = await PinUnlockCapability.create(request.pin, this.key, this.salt)
+        const client = data.sync ? this.getOrCreateSyncClient(data.sync) : null
+        syncMaterial = client?.pinUnlockMaterial?.() ?? null
+        capability = await PinUnlockCapability.create(
+          request.pin,
+          this.key,
+          this.salt,
+          syncMaterial
+        )
         if (
           generation !== this.generation ||
           lifecycleEpoch !== this.pinLifecycleEpoch ||
@@ -713,6 +726,8 @@ export class VaultService {
       } finally {
         request.pin = ''
         request.masterPassword = ''
+        syncMaterial?.accountKey.fill(0)
+        syncMaterial?.wrappedKeyFingerprint.fill(0)
         capability?.dispose()
       }
     })
@@ -913,7 +928,7 @@ export class VaultService {
     const lifecycleEpoch = this.pinLifecycleEpoch
     const generation = this.generation
     return this.exclusive(async () => {
-      let material: { key: Buffer; salt: Buffer } | null = null
+      let material: PinVaultKeyMaterial | null = null
       let unlocked: Awaited<ReturnType<EncryptedVaultStore<unknown>['unlockWithKey']>> | null = null
       try {
         if (generation !== this.generation || lifecycleEpoch !== this.pinLifecycleEpoch) {
@@ -952,6 +967,9 @@ export class VaultService {
         this.salt = unlocked.salt
         unlocked = null
         await this.recoverNativeAttachmentRestoreAfterUnlock(requiresMigration)
+        if (material.sync && this.data.sync) {
+          this.getOrCreateSyncClient(this.data.sync).restorePinUnlockMaterial?.(material.sync)
+        }
         this.fastReadsBlocked = false
         return { state: 'unlocked' }
       } catch (error) {
@@ -975,6 +993,8 @@ export class VaultService {
         request.pin = ''
         material?.key.fill(0)
         material?.salt.fill(0)
+        material?.sync?.accountKey.fill(0)
+        material?.sync?.wrappedKeyFingerprint.fill(0)
         unlocked?.key.fill(0)
         unlocked?.salt.fill(0)
       }

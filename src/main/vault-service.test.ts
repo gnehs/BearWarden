@@ -1353,6 +1353,52 @@ describe('VaultService encrypted local data', () => {
     await expect(service.listLogins()).resolves.toEqual([])
   })
 
+  it('restores sync and account profile access from the memory-only PIN capsule', async () => {
+    let clientCount = 0
+    const restorePinUnlockMaterial = vi.fn()
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        clientCount += 1
+        const client = createSyncFake(sync.state)
+        let restored = false
+        return {
+          ...client,
+          status: async () => (restored ? { status: 'unlocked' as const } : await client.status()),
+          pinUnlockMaterial: () => ({
+            accountKey: Buffer.alloc(64, 7),
+            wrappedKeyFingerprint: Buffer.alloc(32, 9)
+          }),
+          restorePinUnlockMaterial: (material) => {
+            expect(material.accountKey).toEqual(Buffer.alloc(64, 7))
+            expect(material.wrappedKeyFingerprint).toEqual(Buffer.alloc(32, 9))
+            restored = true
+            restorePinUnlockMaterial()
+          },
+          lock: async () => {
+            restored = false
+            await client.lock()
+          }
+        }
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: MASTER_PASSWORD
+    })
+    await service.enablePinUnlock({ pin: 'bear-2026', masterPassword: MASTER_PASSWORD })
+    await service.lock()
+
+    await expect(service.unlockWithPin({ pin: 'bear-2026' })).resolves.toEqual({
+      state: 'unlocked'
+    })
+    await expect(service.syncStatus()).resolves.toMatchObject({ state: 'ready' })
+    await expect(service.getAccountSecurityProfile()).resolves.toMatchObject({ name: 'Sync User' })
+    expect(clientCount).toBe(2)
+    expect(restorePinUnlockMaterial).toHaveBeenCalledOnce()
+  })
+
   it('requires a correct master-password proof and destroys PIN capability after five failures', async () => {
     const { service } = await createHarness()
     await service.setup(MASTER_PASSWORD)
