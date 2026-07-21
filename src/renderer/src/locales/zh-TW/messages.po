@@ -175,7 +175,7 @@ msgstr "{0} 種自訂欄位類型已簡化為文字"
 #. placeholder {0}: itemTypeMeta[selectedLogin.type].label
 #: src/renderer/src/components/VaultShell.tsx:5562
 msgid "{0} details"
-msgstr "{0} 詳細資料"
+msgstr "{0}詳細資料"
 
 #. placeholder {0}: selectedLogin.customFields.length
 #: src/renderer/src/components/VaultShell.tsx:5580

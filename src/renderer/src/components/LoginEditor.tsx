@@ -282,19 +282,18 @@ function EditorFormSection({
 }): React.JSX.Element {
   return (
     <Card
-      className="bg-card mx-auto mb-3.5 w-full max-w-[720px] gap-0 overflow-hidden rounded-md border py-0 shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_3%,transparent)]"
+      className="bg-card outline-border mx-auto mb-3.5 w-full max-w-[720px] gap-0 overflow-hidden rounded-md py-0 shadow-xs outline"
       role="region"
       aria-labelledby={titleId}
     >
-      <CardHeader className="bg-muted flex min-h-[33px] items-center gap-2 rounded-none border-b px-3.5 py-2.5">
-        <CardTitle
-          className="text-muted-foreground m-0 text-[10px] leading-[1.4] font-medium uppercase"
+      <CardHeader className="bg-muted flex items-center gap-2 rounded-none px-4 py-2">
+        <CardTitle className="text-muted-foreground m-0 text-xs font-medium uppercase"
           id={titleId}
         >
           {title}
         </CardTitle>
       </CardHeader>
-      <CardContent className="px-[15px] py-4">
+      <CardContent className="p-4">
         <FieldSet>
           <FieldLegend className="sr-only">{title}</FieldLegend>
           {children}
