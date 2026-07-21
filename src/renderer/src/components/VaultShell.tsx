@@ -5122,16 +5122,22 @@ function VaultShell({
                           variant="icon"
                           className="text-primary mb-[13px] size-[52px] rounded-2xl bg-(--accent-soft)"
                         >
-                          {query ? <Search /> : scope.kind === 'trash' ? <Trash2 /> : <KeyRound />}
+                          {query ? (
+                            <Search className="size-8" />
+                          ) : scope.kind === 'trash' ? (
+                            <Trash2 className="size-8" />
+                          ) : (
+                            <KeyRound className="size-8" />
+                          )}
                         </EmptyMedia>
-                        <EmptyTitle className="m-0 text-[15px]">
+                        <EmptyTitle className="m-0">
                           {query
                             ? t`No matching items`
                             : scope.kind === 'trash'
                               ? t`Trash is empty`
                               : t`There are no vault items here yet`}
                         </EmptyTitle>
-                        <EmptyDescription className="text-muted-foreground mt-[7px] mb-4 max-w-[290px] text-[11px] leading-[1.55]">
+                        <EmptyDescription className="text-muted-foreground mb-4 max-w-[290px] leading-[1.55]">
                           {query
                             ? t`Try a shorter search term or switch to All items.`
                             : scope.kind === 'trash'
@@ -5951,10 +5957,10 @@ function VaultShell({
                 <Empty className="min-h-0 flex-1 gap-0 p-7">
                   <EmptyHeader>
                     <EmptyMedia
-                      className="text-muted-foreground mb-4 h-16 w-[78px] bg-transparent"
+                      className="text-muted-foreground mb-4 h-48 bg-transparent"
                       aria-hidden="true"
                     >
-                      <img className="size-16 object-contain" src={bearCutUrl} alt="" />
+                      <img className="size-48 object-contain" src={bearCutUrl} alt="" />
                     </EmptyMedia>
                     <EmptyTitle className="text-foreground m-0 text-xl font-[720]">
                       <Trans>No item selected</Trans>

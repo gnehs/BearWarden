@@ -299,6 +299,7 @@ body {
 #root {
   isolation: isolate;
   position: relative;
+  corner-shape: squircle;
 }
 body:not([data-window-mode='autofill']) #root::before {
   background-image: url('./interface-noise.svg');
