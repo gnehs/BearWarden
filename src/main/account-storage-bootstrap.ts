@@ -1,4 +1,5 @@
 import { lstat } from 'node:fs/promises'
+import { match } from 'ts-pattern'
 import {
   createAccountId,
   createAccountPathLayout,
@@ -62,49 +63,11 @@ async function requireMissing(path: string): Promise<void> {
   throw new Error('ACCOUNT_STORAGE_INITIALIZATION_COLLISION')
 }
 
-/**
- * Establishes the sole storage location used by the currently active account. This is intentionally
- * separate from account switching: startup needs one safe path before it can construct services.
- */
-export async function bootstrapAccountStorage(
+async function initializeAccountStorage(
   userDataDirectory: string,
-  options: AccountStorageBootstrapOptions = {}
-): Promise<ActiveAccountStorage> {
-  const createUuid = options.createUuid
-  const registryStore =
-    options.registryStore ?? new AccountRegistryStore(userDataDirectory, { createUuid })
-  const migration = await migrateLegacyAccountStorage(userDataDirectory, {
-    ...options.migrationOptions,
-    createUuid,
-    registryStore
-  })
-
-  if (migration.kind === 'account') {
-    // A crash after the vault rename can leave the marker behind. The vault is already committed,
-    // so repair is deliberately best effort and must not make startup fail.
-    if (await vaultFileExists(migration.accountPaths.vaultPath)) {
-      await clearPendingInitializationMarker(migration.accountPaths.initializationMarkerPath).catch(
-        () => undefined
-      )
-    }
-    return accountStorage(migration.accountId, migration.accountPaths)
-  }
-  if (migration.kind === 'legacy-fallback') {
-    return {
-      mode: 'legacy-fallback',
-      activeAccountId: null,
-      paths: {
-        vaultPath: migration.legacyVaultPath,
-        settingsPath: migration.legacySettingsPath,
-        touchIdPath: migration.legacyTouchIdPath
-      },
-      fallbackReason: migration.reason
-    }
-  }
-  if (migration.kind === 'storage-unavailable') {
-    throw new Error(`ACCOUNT_STORAGE_${migration.reason.toUpperCase().replaceAll('-', '_')}`)
-  }
-
+  registryStore: AccountRegistryStore,
+  createUuid: AccountStorageBootstrapOptions['createUuid']
+): Promise<Extract<ActiveAccountStorage, { mode: 'account' }>> {
   const layout = createAccountPathLayout(userDataDirectory)
   const accountId = createAccountId(createUuid)
   const paths = layout.account(accountId)
@@ -122,4 +85,54 @@ export async function bootstrapAccountStorage(
   const registry = createInitialAccountRegistry(accountId)
   await registryStore.save(registry, null)
   return accountStorage(registry.activeAccountId, paths)
+}
+
+/**
+ * Establishes the sole storage location used by the currently active account. This is intentionally
+ * separate from account switching: startup needs one safe path before it can construct services.
+ */
+export async function bootstrapAccountStorage(
+  userDataDirectory: string,
+  options: AccountStorageBootstrapOptions = {}
+): Promise<ActiveAccountStorage> {
+  const createUuid = options.createUuid
+  const registryStore =
+    options.registryStore ?? new AccountRegistryStore(userDataDirectory, { createUuid })
+  const migration = await migrateLegacyAccountStorage(userDataDirectory, {
+    ...options.migrationOptions,
+    createUuid,
+    registryStore
+  })
+
+  return match(migration)
+    .with({ kind: 'account' }, async ({ accountId, accountPaths }) => {
+      // A crash after the vault rename can leave the marker behind. The vault is already committed,
+      // so repair is deliberately best effort and must not make startup fail.
+      if (await vaultFileExists(accountPaths.vaultPath)) {
+        await clearPendingInitializationMarker(accountPaths.initializationMarkerPath).catch(
+          () => undefined
+        )
+      }
+      return accountStorage(accountId, accountPaths)
+    })
+    .with(
+      { kind: 'legacy-fallback' },
+      ({ legacyVaultPath, legacySettingsPath, legacyTouchIdPath, reason }) => ({
+        mode: 'legacy-fallback' as const,
+        activeAccountId: null,
+        paths: {
+          vaultPath: legacyVaultPath,
+          settingsPath: legacySettingsPath,
+          touchIdPath: legacyTouchIdPath
+        },
+        fallbackReason: reason
+      })
+    )
+    .with({ kind: 'storage-unavailable' }, ({ reason }) => {
+      throw new Error(`ACCOUNT_STORAGE_${reason.toUpperCase().replaceAll('-', '_')}`)
+    })
+    .with({ kind: 'no-legacy-vault' }, () =>
+      initializeAccountStorage(userDataDirectory, registryStore, createUuid)
+    )
+    .exhaustive()
 }

@@ -1,5 +1,6 @@
 import { i18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
+import { format } from 'date-fns'
 import type { SendView } from '../../../shared/vault-contract'
 
 export interface SendStatus {
@@ -77,8 +78,7 @@ export function dateTimeLocalValue(value: string | null): string {
   if (!value) return ''
   const date = new Date(value)
   if (!Number.isFinite(date.getTime())) return ''
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-  return local.toISOString().slice(0, 16)
+  return format(date, "yyyy-MM-dd'T'HH:mm")
 }
 
 export function dateTimeLocalToIso(value: string): string | null {

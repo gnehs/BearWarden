@@ -1,4 +1,5 @@
 import { msg } from '@lingui/core/macro'
+import { isValid, parseISO, startOfDay, startOfWeek, subDays } from 'date-fns'
 import { i18n } from '../i18n'
 
 /** The date buckets used by the vault list. */
@@ -38,25 +39,12 @@ function itemDateGroupLabel(key: ItemDateGroupKey): string {
   }
 }
 
-function startOfLocalDay(value: Date): Date {
-  return new Date(value.getFullYear(), value.getMonth(), value.getDate())
-}
-
-/** Returns Monday 00:00 in the same local week as `value`. */
-function startOfLocalWeek(value: Date): Date {
-  const day = value.getDay()
-  const daysSinceMonday = (day + 6) % 7
-  const start = startOfLocalDay(value)
-  start.setDate(start.getDate() - daysSinceMonday)
-  return start
-}
-
 function parseDate(value: string | null | undefined): Date | null {
   const candidate = value?.trim()
   if (!candidate) return null
 
-  const timestamp = Date.parse(candidate)
-  return Number.isNaN(timestamp) ? null : new Date(timestamp)
+  const parsed = parseISO(candidate)
+  return isValid(parsed) ? parsed : null
 }
 
 function parseItemDate(item: ItemDateFields, source: ItemDateSource): Date | null {
@@ -68,10 +56,9 @@ function parseItemDate(item: ItemDateFields, source: ItemDateSource): Date | nul
 function groupKeyForDate(value: Date | null, now: Date): ItemDateGroupKey {
   if (!value) return 'older'
 
-  const today = startOfLocalDay(now)
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
-  const thisWeek = startOfLocalWeek(now)
+  const today = startOfDay(now)
+  const yesterday = subDays(today, 1)
+  const thisWeek = startOfWeek(now, { weekStartsOn: 1 })
 
   if (value >= today) return 'today'
   if (value >= yesterday) return 'yesterday'

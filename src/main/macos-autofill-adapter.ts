@@ -2,6 +2,7 @@ import { execFile, spawn } from 'node:child_process'
 import { access } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { app } from 'electron'
+import { z } from 'zod'
 import type { AutofillCredentials } from './autofill'
 
 // Chromium may debounce AXEnhancedUserInterface activation for up to three seconds.
@@ -49,9 +50,55 @@ export interface MacOSBrowserContext {
   }>
 }
 
-interface HelperErrorBody {
-  readonly error?: { readonly code?: string }
-}
+const nullableOptionalStringSchema = z
+  .string()
+  .nullable()
+  .optional()
+  .transform((value) => value ?? null)
+const nullableOptionalNumberSchema = z
+  .number()
+  .nullable()
+  .optional()
+  .transform((value) => value ?? null)
+
+const focusContextSchema = z.strictObject({
+  role: nullableOptionalStringSchema,
+  subrole: nullableOptionalStringSchema,
+  editable: z.boolean(),
+  secure: z.boolean(),
+  x: nullableOptionalNumberSchema,
+  y: nullableOptionalNumberSchema,
+  width: nullableOptionalNumberSchema,
+  height: nullableOptionalNumberSchema
+})
+
+const browserContextResponseSchema = z.strictObject({
+  ok: z.literal(true),
+  pid: z.int().positive(),
+  bundleIdentifier: z.string(),
+  browser: z.string(),
+  url: z.string(),
+  focus: focusContextSchema
+})
+
+const permissionResponseSchema = z.strictObject({
+  ok: z.literal(true),
+  trusted: z.boolean()
+})
+
+const fillSuccessResponseSchema = z.strictObject({
+  ok: z.literal(true),
+  filledUsername: z.boolean(),
+  filledPassword: z.boolean()
+})
+
+const helperErrorResponseSchema = z.strictObject({
+  ok: z.literal(false),
+  error: z.strictObject({
+    code: z.string(),
+    message: z.string()
+  })
+})
 
 export function resolveMacOSAutofillHelperPath(
   packaged: boolean,
@@ -68,19 +115,24 @@ function helperPath(): string {
   return resolveMacOSAutofillHelperPath(app.isPackaged, process.resourcesPath, app.getAppPath())
 }
 
-function record(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null
+function parseHelperJson<T extends z.ZodType>(value: string, schema: T): z.output<T> | null {
+  try {
+    const result = schema.safeParse(JSON.parse(value))
+    return result.success ? result.data : null
+  } catch {
+    return null
+  }
+}
+
+function parseHelperResponse<T extends z.ZodType>(value: string, schema: T): z.output<T> {
+  const parsed = parseHelperJson(value, schema)
+  if (parsed === null) throw new MacOSAutofillError('INVALID_HELPER_RESPONSE')
+  return parsed
 }
 
 function mapHelperError(value: string): MacOSAutofillError {
-  let code = ''
-  try {
-    code = (JSON.parse(value) as HelperErrorBody).error?.code ?? ''
-  } catch {
-    // Never echo native stderr because it could contain platform details.
-  }
+  // Parse only the bounded helper contract and never echo native stderr.
+  const code = parseHelperJson(value, helperErrorResponseSchema)?.error.code ?? ''
   switch (code) {
     case 'ACCESSIBILITY_PERMISSION_DENIED':
     case 'UNSUPPORTED_APPLICATION':
@@ -123,33 +175,7 @@ async function runHelper(command: string, args: readonly string[] = []): Promise
 }
 
 export function parseMacOSBrowserContext(value: string): MacOSBrowserContext {
-  let raw: unknown
-  try {
-    raw = JSON.parse(value)
-  } catch {
-    throw new MacOSAutofillError('INVALID_HELPER_RESPONSE')
-  }
-  const context = record(raw)
-  const focus = record(context?.focus)
-  if (
-    context?.ok !== true ||
-    typeof context.pid !== 'number' ||
-    !Number.isSafeInteger(context.pid) ||
-    context.pid <= 0 ||
-    typeof context.bundleIdentifier !== 'string' ||
-    typeof context.browser !== 'string' ||
-    typeof context.url !== 'string' ||
-    !focus ||
-    (focus.role !== undefined && focus.role !== null && typeof focus.role !== 'string') ||
-    (focus.subrole !== undefined && focus.subrole !== null && typeof focus.subrole !== 'string') ||
-    typeof focus.editable !== 'boolean' ||
-    typeof focus.secure !== 'boolean' ||
-    !['x', 'y', 'width', 'height'].every(
-      (key) => focus[key] === undefined || focus[key] === null || typeof focus[key] === 'number'
-    )
-  ) {
-    throw new MacOSAutofillError('INVALID_HELPER_RESPONSE')
-  }
+  const context = parseHelperResponse(value, browserContextResponseSchema)
   let url: URL
   try {
     url = new URL(context.url)
@@ -164,31 +190,14 @@ export function parseMacOSBrowserContext(value: string): MacOSBrowserContext {
     bundleIdentifier: context.bundleIdentifier,
     browser: context.browser,
     url: url.toString(),
-    focus: {
-      role: (focus.role as string | null | undefined) ?? null,
-      subrole: (focus.subrole as string | null | undefined) ?? null,
-      editable: focus.editable,
-      secure: focus.secure,
-      x: (focus.x as number | null | undefined) ?? null,
-      y: (focus.y as number | null | undefined) ?? null,
-      width: (focus.width as number | null | undefined) ?? null,
-      height: (focus.height as number | null | undefined) ?? null
-    }
+    focus: context.focus
   }
 }
 
 export class MacOSAutofillAdapter {
   async permission(prompt = false): Promise<boolean> {
     const output = await runHelper('permission', prompt ? ['--prompt'] : [])
-    try {
-      const parsed = record(JSON.parse(output))
-      if (parsed?.ok !== true || typeof parsed.trusted !== 'boolean') {
-        throw new Error('invalid')
-      }
-      return parsed.trusted
-    } catch {
-      throw new MacOSAutofillError('INVALID_HELPER_RESPONSE')
-    }
+    return parseHelperResponse(output, permissionResponseSchema).trusted
   }
 
   async context(): Promise<MacOSBrowserContext> {
@@ -256,13 +265,12 @@ export class MacOSAutofillAdapter {
           finish(() => reject(mapHelperError(stderr)))
           return
         }
-        try {
-          const parsed = record(JSON.parse(stdout))
-          if (parsed?.ok !== true) throw new Error('invalid')
-          finish(resolve)
-        } catch {
-          finish(() => reject(new MacOSAutofillError('INVALID_HELPER_RESPONSE')))
-        }
+        const parsed = parseHelperJson(stdout, fillSuccessResponseSchema)
+        finish(
+          parsed === null
+            ? () => reject(new MacOSAutofillError('INVALID_HELPER_RESPONSE'))
+            : resolve
+        )
       })
       // Secrets travel only through the child's private stdin, never argv, logs, or clipboard.
       child.stdin.end(

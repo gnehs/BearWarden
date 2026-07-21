@@ -87,4 +87,20 @@ describe('app update notifications', () => {
     presentAppUpdateState(error, true)
     expect(toast.error).toHaveBeenCalledWith('無法下載更新', expect.any(Object))
   })
+
+  it.each(['idle', 'disabled'] as const)('dismisses notifications while %s', (status) => {
+    presentAppUpdateState(updateState({ status }))
+
+    expect(toast.dismiss).toHaveBeenCalledWith('app-update')
+  })
+
+  it('keeps active update checks quiet', () => {
+    presentAppUpdateState(updateState({ status: 'checking' }))
+
+    expect(toast.info).not.toHaveBeenCalled()
+    expect(toast.loading).not.toHaveBeenCalled()
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(toast.dismiss).not.toHaveBeenCalled()
+  })
 })

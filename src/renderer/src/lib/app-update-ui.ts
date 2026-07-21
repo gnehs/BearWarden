@@ -1,5 +1,6 @@
 import { msg } from '@lingui/core/macro'
 import { toast } from 'sonner'
+import { match, P } from 'ts-pattern'
 import type { AppUpdateState } from '../../../shared/vault-contract'
 import { i18n } from '../i18n'
 
@@ -16,8 +17,8 @@ function runUpdateAction(action: () => Promise<unknown>): void {
 export function presentAppUpdateState(state: AppUpdateState, showError = false): void {
   const version = state.availableVersion ? ` ${state.availableVersion}` : ''
 
-  switch (state.status) {
-    case 'available':
+  match(state.status)
+    .with('available', () => {
       toast.info(i18n._(msg`BearWarden${version} update available`), {
         id: updateToastId,
         duration: Infinity,
@@ -40,17 +41,16 @@ export function presentAppUpdateState(state: AppUpdateState, showError = false):
             )
         }
       })
-      break
-    case 'downloading': {
+    })
+    .with('downloading', () => {
       const progress = Math.round(state.progress ?? 0)
       toast.loading(i18n._(msg`Downloading BearWarden${version}`), {
         id: updateToastId,
         duration: Infinity,
         description: `${progress}%`
       })
-      break
-    }
-    case 'downloaded':
+    })
+    .with('downloaded', () => {
       toast.success(i18n._(msg`BearWarden${version} is ready`), {
         id: updateToastId,
         duration: Infinity,
@@ -60,20 +60,18 @@ export function presentAppUpdateState(state: AppUpdateState, showError = false):
           onClick: () => runUpdateAction(() => window.bearwarden.updater.install())
         }
       })
-      break
-    case 'error':
+    })
+    .with('error', () => {
       if (showError) {
         toast.error(i18n._(msg`Unable to download update`), {
           id: updateToastId,
           description: i18n._(msg`Check your network connection and try again later.`)
         })
       }
-      break
-    case 'disabled':
-    case 'idle':
+    })
+    .with(P.union('disabled', 'idle'), () => {
       toast.dismiss(updateToastId)
-      break
-    case 'checking':
-      break
-  }
+    })
+    .with('checking', () => undefined)
+    .exhaustive()
 }

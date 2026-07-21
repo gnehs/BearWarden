@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { chmod, mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { safeStorage, systemPreferences } from 'electron'
+import { z } from 'zod'
 import { DEFAULT_AUTOFILL_SHORTCUT, isAutofillShortcut } from '../shared/autofill-shortcuts'
 import { MAX_VAULT_TIMEOUT_MINUTES } from '../shared/vault-contract'
 import type {
@@ -87,28 +88,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+const vaultTimeoutPolicySchema = z.discriminatedUnion('type', [
+  z.strictObject({ type: z.literal('onRestart') }),
+  z.strictObject({ type: z.literal('systemIdle') }),
+  z.strictObject({
+    type: z.literal('appInactivity'),
+    minutes: z.number().int().min(1).max(MAX_VAULT_TIMEOUT_MINUTES)
+  })
+])
+
 function parseVaultTimeoutPolicy(value: unknown, allowSystemIdle: boolean): VaultTimeoutPolicy {
-  if (!isRecord(value)) throw new Error('invalid settings')
-  const keys = Object.keys(value)
-  if (value.type === 'onRestart' && keys.length === 1 && keys[0] === 'type') {
-    return { type: 'onRestart' }
+  const result = vaultTimeoutPolicySchema.safeParse(value)
+  if (!result.success || (!allowSystemIdle && result.data.type === 'systemIdle')) {
+    throw new Error('invalid settings')
   }
-  if (allowSystemIdle && value.type === 'systemIdle' && keys.length === 1 && keys[0] === 'type') {
-    return { type: 'systemIdle' }
-  }
-  if (
-    value.type === 'appInactivity' &&
-    keys.length === 2 &&
-    keys.includes('type') &&
-    keys.includes('minutes') &&
-    typeof value.minutes === 'number' &&
-    Number.isSafeInteger(value.minutes) &&
-    value.minutes >= 1 &&
-    value.minutes <= MAX_VAULT_TIMEOUT_MINUTES
-  ) {
-    return { type: 'appInactivity', minutes: value.minutes }
-  }
-  throw new Error('invalid settings')
+  return result.data
 }
 
 function parseSettings(value: unknown): { settings: StoredSettings; needsMigration: boolean } {
