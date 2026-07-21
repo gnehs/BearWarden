@@ -23,6 +23,20 @@ import type { VaultTimeoutCoordinator } from './vault-timeout-coordinator'
 
 type TestMock = ReturnType<typeof vi.fn>
 
+function deferred<T>(): {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (reason?: unknown) => void
+} {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 interface TestRuntime {
   applyContentProtection: TestMock
   applyClipboardTimeout: TestMock
@@ -745,6 +759,50 @@ describe('AppSettingsService', () => {
       { state: 'unlocked' }
     ])
     expect(runtime.unlockVault).toHaveBeenCalledTimes(1)
+    service.dispose()
+  })
+
+  it('gives an interactive request a fresh attempt after an automatic unlock fails', async () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    const { service, runtime } = createService()
+    await service.initialize()
+    await service.enableTouchId('fake-master-password')
+    vi.mocked(systemPreferences.promptTouchID).mockClear()
+
+    const automaticPrompt = deferred<void>()
+    vi.mocked(systemPreferences.promptTouchID)
+      .mockImplementationOnce(() => automaticPrompt.promise)
+      .mockResolvedValueOnce(undefined)
+
+    const automatic = service.unlockTouchId('automatic')
+    await vi.waitFor(() => expect(systemPreferences.promptTouchID).toHaveBeenCalledOnce())
+    const interactive = service.unlockTouchId()
+    automaticPrompt.reject(new Error('cancelled'))
+
+    await expect(automatic).rejects.toMatchObject({ code: 'TOUCH_ID_FAILED' })
+    await expect(interactive).resolves.toEqual({ state: 'unlocked' })
+    expect(systemPreferences.promptTouchID).toHaveBeenCalledTimes(2)
+    expect(runtime.unlockVault).toHaveBeenCalledOnce()
+    service.dispose()
+  })
+
+  it('retries decryption to complete safe storage key rotation without rewriting the capsule', async () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    const { service, runtime, touchIdPath } = createService()
+    await service.initialize()
+    await service.enableTouchId('fake-master-password')
+    const originalCapsule = await readFile(touchIdPath)
+    vi.mocked(safeStorage.encryptStringAsync).mockClear()
+    vi.mocked(safeStorage.decryptStringAsync)
+      .mockResolvedValueOnce({ result: '', shouldReEncrypt: true })
+      .mockResolvedValueOnce({ result: 'fake-master-password', shouldReEncrypt: false })
+
+    await expect(service.unlockTouchId()).resolves.toEqual({ state: 'unlocked' })
+
+    expect(safeStorage.decryptStringAsync).toHaveBeenCalledTimes(2)
+    expect(safeStorage.encryptStringAsync).not.toHaveBeenCalled()
+    expect(await readFile(touchIdPath)).toEqual(originalCapsule)
+    expect(runtime.unlockVault).toHaveBeenCalledWith('fake-master-password')
     service.dispose()
   })
 

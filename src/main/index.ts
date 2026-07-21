@@ -650,7 +650,7 @@ function createWindow(): BrowserWindow {
     },
     unlock: async () => {
       if (!settings) throw new Error('Settings service unavailable')
-      return settings.unlockTouchId()
+      return settings.unlockTouchId('automatic')
     },
     lock: lockVaultFailClosed,
     notifyUnlocked: notifyVaultUnlocked

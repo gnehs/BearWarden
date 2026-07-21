@@ -20,6 +20,13 @@ const SETTINGS_VERSION = 9
 const MAX_SETTINGS_BYTES = 16 * 1024
 const MAX_TOUCH_ID_BYTES = 64 * 1024
 
+type TouchIdUnlockOrigin = 'automatic' | 'interactive'
+
+interface TouchIdUnlockOperation {
+  origin: TouchIdUnlockOrigin
+  promise: Promise<VaultStatus>
+}
+
 interface StoredSettings extends Omit<
   AppSettings,
   'startAtLoginAvailable' | 'startAtLoginNeedsApproval' | 'touchIdAvailable' | 'touchIdEnabled'
@@ -272,7 +279,7 @@ async function syncDirectory(path: string): Promise<void> {
 
 export class AppSettingsService {
   private settings: StoredSettings = defaultSettings()
-  private touchIdUnlock: Promise<VaultStatus> | null = null
+  private touchIdUnlock: TouchIdUnlockOperation | null = null
   private touchIdOperationInProgress = false
   private settingsUpdateTail: Promise<void> = Promise.resolve()
   private disposed = false
@@ -445,15 +452,23 @@ export class AppSettingsService {
     return this.get()
   }
 
-  unlockTouchId(): Promise<VaultStatus> {
+  unlockTouchId(origin: TouchIdUnlockOrigin = 'interactive'): Promise<VaultStatus> {
     if (this.disposed) return Promise.reject(new VaultError('TOUCH_ID_FAILED'))
-    if (this.touchIdUnlock) return this.touchIdUnlock
+    const current = this.touchIdUnlock
+    if (current) {
+      // A renderer action must not inherit a canceled or invalidated focus-triggered attempt.
+      // Wait for the native prompt to close first, then give the explicit action its own attempt.
+      if (origin === 'interactive' && current.origin === 'automatic') {
+        return current.promise.catch(() => this.unlockTouchId('interactive'))
+      }
+      return current.promise
+    }
 
-    const operation = this.performTouchIdUnlock().finally(() => {
-      if (this.touchIdUnlock === operation) this.touchIdUnlock = null
+    const promise = this.performTouchIdUnlock().finally(() => {
+      if (this.touchIdUnlock?.promise === promise) this.touchIdUnlock = null
     })
-    this.touchIdUnlock = operation
-    return operation
+    this.touchIdUnlock = { origin, promise }
+    return promise
   }
 
   /**
@@ -498,19 +513,16 @@ export class AppSettingsService {
       if (encrypted.length === 0 || encrypted.length > MAX_TOUCH_ID_BYTES) {
         throw new VaultError('TOUCH_ID_FAILED')
       }
-      const decrypted = await safeStorage.decryptStringAsync(encrypted)
-      masterPassword = decrypted.result
+      let decrypted = await safeStorage.decryptStringAsync(encrypted)
       this.assertCurrent(operationEpoch)
       if (decrypted.shouldReEncrypt) {
-        const refreshed = await safeStorage.encryptStringAsync(masterPassword)
-        try {
-          this.assertCurrent(operationEpoch)
-          await atomicWrite(this.touchIdPath, refreshed)
-        } finally {
-          refreshed.fill(0)
-        }
-        this.assertCurrent(operationEpoch)
+        // Electron instructs callers to repeat decryption before using a key-rotation result.
+        // Do not replace the persisted capsule using the first, provisional result.
+        decrypted = await safeStorage.decryptStringAsync(encrypted)
       }
+      if (decrypted.shouldReEncrypt) throw new VaultError('TOUCH_ID_FAILED')
+      masterPassword = decrypted.result
+      this.assertCurrent(operationEpoch)
       const status = await this.runtime.unlockVault(masterPassword)
       this.assertCurrent(operationEpoch)
       return status
