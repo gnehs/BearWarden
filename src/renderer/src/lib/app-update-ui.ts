@@ -23,9 +23,13 @@ export function presentAppUpdateState(state: AppUpdateState, showError = false):
         duration: Infinity,
         description: state.canAutoInstall
           ? i18n._(msg`When the download is complete, you can choose when to restart and install.`)
-          : i18n._(
-              msg`This installation format must currently be downloaded manually from GitHub Releases.`
-            ),
+          : state.manualUpdateSource === 'homebrew'
+            ? i18n._(
+                msg`On macOS, update by running brew upgrade --cask gnehs/tap/bearwarden in Terminal. You can also download the latest version from GitHub Releases.`
+              )
+            : i18n._(
+                msg`This installation format must currently be downloaded manually from GitHub Releases.`
+              ),
         action: {
           label: state.canAutoInstall ? i18n._(msg`Download update`) : i18n._(msg`Go to download`),
           onClick: () =>

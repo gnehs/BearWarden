@@ -304,7 +304,8 @@ describe('preload updater API', () => {
       currentVersion: '0.1.1',
       availableVersion: '0.2.0',
       progress: 42,
-      canAutoInstall: true
+      canAutoInstall: true,
+      manualUpdateSource: 'github'
     }
     wrappedListener({}, state)
     expect(listener).toHaveBeenCalledWith(state)

@@ -93,7 +93,8 @@ describe('AppUpdaterController', () => {
       currentVersion: '0.1.1',
       availableVersion: null,
       progress: null,
-      canAutoInstall: false
+      canAutoInstall: false,
+      manualUpdateSource: 'github'
     })
     expect(harness.updater.on).not.toHaveBeenCalled()
     expect(harness.updater.checkForUpdates).not.toHaveBeenCalled()
@@ -102,7 +103,8 @@ describe('AppUpdaterController', () => {
       currentVersion: '0.1.1',
       availableVersion: null,
       progress: null,
-      canAutoInstall: false
+      canAutoInstall: false,
+      manualUpdateSource: 'github'
     })
   })
 
@@ -141,13 +143,15 @@ describe('AppUpdaterController', () => {
       currentVersion: '0.1.1',
       availableVersion: '0.2.0',
       progress: 100,
-      canAutoInstall: true
+      canAutoInstall: true,
+      manualUpdateSource: 'github'
     })
     for (const [, state] of window.webContents.send.mock.calls) {
       expect(Object.keys(state as object).sort()).toEqual([
         'availableVersion',
         'canAutoInstall',
         'currentVersion',
+        'manualUpdateSource',
         'progress',
         'status'
       ])
@@ -220,7 +224,8 @@ describe('AppUpdaterController', () => {
       currentVersion: '0.1.1',
       availableVersion: null,
       progress: null,
-      canAutoInstall: true
+      canAutoInstall: true,
+      manualUpdateSource: 'github'
     })
     expect(JSON.stringify(window.webContents.send.mock.calls)).not.toContain('token=private')
 
@@ -249,6 +254,7 @@ describe('AppUpdaterController', () => {
     await check?.({ sender })
     expect(harness.updater.checkForUpdates).toHaveBeenCalledOnce()
     expect(controller.state.canAutoInstall).toBe(false)
+    expect(controller.state.manualUpdateSource).toBe('homebrew')
     expect(harness.updater.autoDownload).toBe(false)
     expect(harness.updater.autoInstallOnAppQuit).toBe(false)
 

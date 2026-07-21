@@ -1754,6 +1754,8 @@ export interface TouchIdEnableRequest {
 export type AppUpdateStatus =
   'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error' | 'disabled'
 
+export type AppManualUpdateSource = 'homebrew' | 'github'
+
 /** Renderer-safe update metadata. Provider URLs, file paths, and raw errors stay in main. */
 export interface AppUpdateState {
   readonly status: AppUpdateStatus
@@ -1763,6 +1765,8 @@ export interface AppUpdateState {
   readonly progress: number | null
   /** False on platforms where this build cannot safely install an update automatically. */
   readonly canAutoInstall: boolean
+  /** Recommended fallback when this build cannot safely install an update automatically. */
+  readonly manualUpdateSource: AppManualUpdateSource
 }
 
 export interface BearWardenAPI {

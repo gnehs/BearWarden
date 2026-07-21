@@ -21,7 +21,8 @@ const initialUpdateState: AppUpdateState = {
   currentVersion: '',
   availableVersion: null,
   progress: null,
-  canAutoInstall: false
+  canAutoInstall: false,
+  manualUpdateSource: 'github'
 }
 
 interface AboutPageProps {
@@ -94,7 +95,9 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
       case 'available':
         return updateState.canAutoInstall
           ? t`Version ${availableVersion} is available to download.`
-          : t`This installation format must be downloaded manually from GitHub Releases.`
+          : updateState.manualUpdateSource === 'homebrew'
+            ? t`On macOS, update by running brew upgrade --cask gnehs/tap/bearwarden in Terminal. You can also download the latest version from GitHub Releases.`
+            : t`This installation format must be downloaded manually from GitHub Releases.`
       case 'downloading':
         return t`The update downloads in the background. You can choose when to restart after it finishes.`
       case 'downloaded':

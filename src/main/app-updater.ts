@@ -9,7 +9,8 @@ import {
   IPC_CHANNELS,
   IPC_EVENTS,
   type AppUpdateState,
-  type AppUpdateStatus
+  type AppUpdateStatus,
+  type AppManualUpdateSource
 } from '../shared/vault-contract'
 
 // electron-updater is CommonJS. Its documented TypeScript ESM interop uses a default import.
@@ -31,6 +32,7 @@ export class AppUpdaterController {
   private readonly updater: ElectronAppUpdater
   private readonly enabled: boolean
   private readonly canAutoInstall: boolean
+  private readonly manualUpdateSource: AppManualUpdateSource
   private readonly openExternal: (url: string) => Promise<unknown>
   private attachedWindow: BrowserWindow | null = null
   private disposed = false
@@ -68,13 +70,15 @@ export class AppUpdaterController {
     const isAppImage = options.isAppImage ?? Boolean(process.env['APPIMAGE'])
     this.canAutoInstall =
       this.enabled && (platform === 'win32' || (platform === 'linux' && isAppImage))
+    this.manualUpdateSource = this.enabled && platform === 'darwin' ? 'homebrew' : 'github'
     this.openExternal = options.openExternal ?? ((url) => shell.openExternal(url))
     this.stateValue = Object.freeze({
       status: this.enabled ? 'idle' : 'disabled',
       currentVersion: options.currentVersion ?? app.getVersion(),
       availableVersion: null,
       progress: null,
-      canAutoInstall: this.canAutoInstall
+      canAutoInstall: this.canAutoInstall,
+      manualUpdateSource: this.manualUpdateSource
     })
 
     if (this.enabled) {
@@ -229,7 +233,8 @@ export class AppUpdaterController {
       currentVersion: this.stateValue.currentVersion,
       availableVersion,
       progress,
-      canAutoInstall: this.canAutoInstall
+      canAutoInstall: this.canAutoInstall,
+      manualUpdateSource: this.manualUpdateSource
     })
     this.notifyStateChanged()
   }

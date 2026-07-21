@@ -20,6 +20,7 @@ function updateState(overrides: Partial<AppUpdateState> = {}): AppUpdateState {
     availableVersion: null,
     progress: null,
     canAutoInstall: true,
+    manualUpdateSource: 'github',
     ...overrides
   }
 }
@@ -38,14 +39,23 @@ describe('app update notifications', () => {
     )
   })
 
-  it('sends unsigned macOS builds to the fixed release page flow', () => {
+  it('recommends Homebrew for unsigned macOS builds and keeps the release fallback', () => {
     presentAppUpdateState(
-      updateState({ status: 'available', availableVersion: '1.1.0', canAutoInstall: false })
+      updateState({
+        status: 'available',
+        availableVersion: '1.1.0',
+        canAutoInstall: false,
+        manualUpdateSource: 'homebrew'
+      })
     )
 
     expect(toast.info).toHaveBeenCalledWith(
       'BearWarden 1.1.0 有可用更新',
-      expect.objectContaining({ action: expect.objectContaining({ label: '前往下載頁面' }) })
+      expect.objectContaining({
+        description:
+          '在 macOS 上，請於「終端機」執行 brew upgrade --cask gnehs/tap/bearwarden 進行更新；也可以從 GitHub Releases 下載最新版本。',
+        action: expect.objectContaining({ label: '前往下載頁面' })
+      })
     )
   })
 
