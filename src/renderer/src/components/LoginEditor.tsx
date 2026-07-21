@@ -24,6 +24,7 @@ import {
   Eye,
   EyeOff,
   FileKey2,
+  FolderOpen,
   GripVertical,
   KeyRound,
   Link2,
@@ -168,7 +169,7 @@ const paymentCardBrands: Exclude<PaymentCardBrand, 'unknown'>[] = [
 
 const fieldGridClassName = 'grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-[13px]'
 const checkFieldClassName =
-  'flex items-start gap-2.5 rounded-[9px] border bg-muted p-2.5 [&_[data-slot=checkbox]]:size-[17px] [&_[data-slot=checkbox]]:accent-[var(--primary)] [&_[data-slot=field-content]]:grid [&_[data-slot=field-content]]:gap-[3px] [&_[data-slot=field-content]_[data-slot=field-label]]:text-xs [&_[data-slot=field-description]]:text-[10px]'
+  'flex items-start gap-2.5 rounded-lg border bg-muted p-2.5 [&_[data-slot=checkbox]]:size-[17px] [&_[data-slot=checkbox]]:accent-[var(--primary)] [&_[data-slot=field-content]]:grid [&_[data-slot=field-content]]:gap-[3px] [&_[data-slot=field-content]_[data-slot=field-label]]:text-xs [&_[data-slot=field-description]]:text-[10px]'
 
 const itemTypeIcons: Record<VaultItemType, typeof KeyRound> = {
   login: KeyRound,
@@ -303,26 +304,28 @@ interface LoginEditorProps {
 function EditorFormSection({
   title,
   titleId,
+  icon,
   children
 }: {
   title: string
   titleId: string
+  icon: ReactNode
   children: ReactNode
 }): React.JSX.Element {
   return (
     <Card
-      className="bg-card outline-border mx-auto mb-3.5 w-full max-w-[720px] gap-0 overflow-hidden rounded-md py-0 shadow-xs outline"
+      variant="item"
+      className="mx-auto mb-3 w-full max-w-[720px]"
       role="region"
       aria-labelledby={titleId}
     >
-      <CardHeader className="bg-muted flex items-center gap-2 rounded-none px-4 py-2">
-        <CardTitle className="text-muted-foreground m-0 text-xs font-medium uppercase"
-          id={titleId}
-        >
+      <CardHeader>
+        <CardTitle id={titleId}>
+          {icon}
           {title}
         </CardTitle>
       </CardHeader>
-      <CardContent className="p-4">
+      <CardContent>
         <FieldSet>
           <FieldLegend className="sr-only">{title}</FieldLegend>
           {children}
@@ -1480,10 +1483,10 @@ function LoginEditor({
       onSubmit={submit}
       aria-labelledby="editor-title"
     >
-      <header className="bg-card flex items-center gap-3 border-b px-[22px] py-[15px] max-[680px]:px-3 max-[680px]:py-[11px]">
+      <header className="bg-muted/30 flex items-center gap-2.5 px-4 py-3 max-[680px]:px-3 max-[680px]:py-2.5">
         <span
           className={cn(
-            'outline-foreground/5 bg-muted text-primary dark:border-border dark:bg-muted dark:text-muted-foreground grid size-12 shrink-0 place-items-center rounded-lg shadow-(--control-highlight) outline max-[430px]:hidden forced-colors:[forced-color-adjust:none]',
+            'outline-foreground/5 bg-muted text-primary dark:border-border dark:bg-muted dark:text-muted-foreground grid size-9 shrink-0 place-items-center rounded-md shadow-(--control-highlight) outline max-[430px]:hidden forced-colors:[forced-color-adjust:none] [&>svg]:size-4.5',
             draft.type === 'login' && 'overflow-hidden',
             draft.type === 'card' && 'text-chart-4 dark:bg-website-icon-background',
             draft.type === 'identity' && 'bg-accent text-primary',
@@ -1496,7 +1499,7 @@ function LoginEditor({
           <ItemTypeIcon />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="m-0 truncate text-xl tracking-[-0.025em]" id="editor-title">
+          <h2 className="m-0 truncate text-base font-medium tracking-[-0.015em]" id="editor-title">
             {headerContent.heading}
           </h2>
           <p className="text-muted-foreground mt-[3px] mb-0 truncate text-[10px]">
@@ -1512,7 +1515,7 @@ function LoginEditor({
         <Button
           variant="outline"
           size="icon"
-          className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-[34px] min-w-[34px] rounded-[9px] shadow-(--control-highlight)"
+          className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-[34px] min-w-[34px] rounded-md shadow-(--control-highlight)"
           type="button"
           aria-label={t`Cancel editing`}
           onClick={requestCancel}
@@ -1522,7 +1525,7 @@ function LoginEditor({
         </Button>
       </header>
 
-      <div className="scroll-fade-y forced-colors:scroll-fade-none grid min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] content-start gap-3.5 overflow-auto px-5 pt-5 pb-10 max-[680px]:px-3 max-[680px]:pt-[13px] max-[680px]:pb-7">
+      <div className="scroll-fade-y forced-colors:scroll-fade-none bg-muted/30 grid min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] content-start gap-3 overflow-auto px-4 pt-4 pb-7 max-[680px]:px-3 max-[680px]:pt-3 max-[680px]:pb-5">
         <div className="flex w-full flex-col">
           {error && (
             <FieldError id="editor-error" role="alert" className="mt-2">
@@ -1531,8 +1534,12 @@ function LoginEditor({
           )}
 
           <EditorSection value="details">
-            <EditorFormSection title={t`${currentTypeLabel} details`} titleId="item-section-title">
-              <FieldGroup className="gap-4">
+            <EditorFormSection
+              title={t`${currentTypeLabel} details`}
+              titleId="item-section-title"
+              icon={<ItemTypeIcon aria-hidden="true" />}
+            >
+              <FieldGroup className="gap-3">
                 {!login && (
                   <Field>
                     <FieldLabel htmlFor="editor-type">
@@ -1789,7 +1796,7 @@ function LoginEditor({
                               className="border-border [&_small]:text-muted-foreground grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-2.5 border-b px-[15px] py-3 last:border-b-0 [&_small]:truncate [&_small]:text-[10px] [&_span]:truncate [&_span]:text-[11px] [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[3px]"
                             >
                               <span
-                                className="text-primary grid size-8 place-items-center rounded-[9px] bg-(--accent-soft)"
+                                className="text-primary grid size-8 place-items-center rounded-md bg-(--accent-soft)"
                                 aria-hidden="true"
                               >
                                 <KeyRound size={17} />
@@ -2198,8 +2205,12 @@ function LoginEditor({
           </EditorSection>
 
           <EditorSection value="organize" className="flex flex-col">
-            <EditorFormSection title={t`Organization`} titleId="organization-section-title">
-              <FieldGroup className="gap-4">
+            <EditorFormSection
+              title={t`Organization`}
+              titleId="organization-section-title"
+              icon={<FolderOpen aria-hidden="true" />}
+            >
+              <FieldGroup className="gap-3">
                 <Field>
                   <FieldLabel htmlFor="editor-folder">
                     <Trans>Folder</Trans>
@@ -2274,8 +2285,12 @@ function LoginEditor({
             </EditorFormSection>
 
             {draft.type !== 'secureNote' && (
-              <EditorFormSection title={t`Notes`} titleId="notes-section-title">
-                <FieldGroup className="gap-4">
+              <EditorFormSection
+                title={t`Notes`}
+                titleId="notes-section-title"
+                icon={<NotebookPen aria-hidden="true" />}
+              >
+                <FieldGroup className="gap-3">
                   <Field>
                     <FieldLabel className="sr-only" htmlFor="editor-notes">
                       <Trans>Notes</Trans>
@@ -2295,7 +2310,11 @@ function LoginEditor({
           </EditorSection>
 
           <EditorSection value="custom" className="flex flex-col">
-            <EditorFormSection title={t`Custom fields`} titleId="custom-fields-section-title">
+            <EditorFormSection
+              title={t`Custom fields`}
+              titleId="custom-fields-section-title"
+              icon={<ListPlus aria-hidden="true" />}
+            >
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <p className="text-muted-foreground m-0 text-sm">
                   <Trans>Add text, hidden text, checkboxes, or links to existing item data.</Trans>

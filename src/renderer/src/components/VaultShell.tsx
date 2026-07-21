@@ -418,7 +418,7 @@ function TooltipIconButton({
           <Button
             aria-label={label}
             className={cn(
-              'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-[34px] min-w-[34px] rounded-[9px] shadow-(--control-highlight) transition-[background,color,border-color,transform] duration-[130ms] [-webkit-app-region:no-drag]',
+              'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-[34px] min-w-[34px] rounded-md shadow-(--control-highlight) transition-[background,color,border-color,transform] duration-[130ms] [-webkit-app-region:no-drag]',
               className
             )}
             {...props}
@@ -432,7 +432,7 @@ function TooltipIconButton({
   )
 }
 
-interface DetailCardProps extends React.ComponentProps<typeof Card> {
+interface DetailCardProps extends Omit<React.ComponentProps<typeof Card>, 'variant'> {
   variant?: 'default' | 'attachment' | 'placeholder'
 }
 
@@ -443,16 +443,12 @@ function DetailCard({
 }: DetailCardProps): React.JSX.Element {
   return (
     <Card
+      variant="item"
       className={cn(
-        'border-border dark:bg-card mx-auto mb-3.5 w-full max-w-[720px] gap-0 overflow-hidden rounded-md bg-[color-mix(in_oklch,var(--card)_94%,transparent)] py-0 shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_3%,transparent)]',
-        // header
-        '[&>[data-slot=card-header]]:border-border [&>[data-slot=card-header]]:bg-muted [&>[data-slot=card-header]]:flex [&>[data-slot=card-header]]:items-center [&>[data-slot=card-header]]:gap-2 [&>[data-slot=card-header]]:border-b [&>[data-slot=card-header]]:px-3.5 [&>[data-slot=card-header]]:py-2.5',
-        // title
-        '[&_[data-slot=card-title]]:text-muted-foreground [&_[data-slot=card-title]]:m-0 [&_[data-slot=card-title]]:text-[10px] [&_[data-slot=card-title]]:leading-[1.4] [&_[data-slot=card-title]]:font-medium [&_[data-slot=card-title]]:uppercase',
-        // description
-        '[&_[data-slot=card-description]]:ml-auto [&_[data-slot=card-description]]:text-[10px] [&_[data-slot=card-description]]:leading-[1.4]',
+        'mx-auto mb-3 w-full max-w-[720px]',
+        '[&_[data-slot=card-description]]:ml-auto',
         variant === 'attachment' &&
-          '[&_[data-slot=card-description]]:text-xs [&_[data-slot=card-description]]:leading-normal [&_[data-slot=card-title]]:text-sm [&_[data-slot=card-title]]:font-[650] [&_[data-slot=card-title]]:tracking-normal [&_[data-slot=card-title]]:normal-case',
+          '[&_[data-slot=card-description]]:text-xs [&_[data-slot=card-description]]:leading-normal',
         variant === 'placeholder' && '[&_[data-slot=skeleton]]:opacity-72',
         className
       )}
@@ -465,7 +461,7 @@ function DetailHeader({ className, ...props }: React.ComponentProps<'header'>): 
   return (
     <header
       className={cn(
-        'border-border bg-card flex items-center gap-3 border-b px-[22px] py-[15px] max-[680px]:px-3 max-[680px]:py-[11px]',
+        'bg-muted/30 flex items-center gap-2.5 px-4 py-3 max-[680px]:px-3 max-[680px]:py-2.5',
         className
       )}
       {...props}
@@ -474,7 +470,10 @@ function DetailHeader({ className, ...props }: React.ComponentProps<'header'>): 
 }
 
 const detailFieldClassName =
-  'grid min-h-[59px] grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)_repeat(2,34px)] items-center gap-2 border-b border-border py-[9px] pr-3 pl-[15px] last:border-b-0 [&>span]:text-[11px] [&>span]:text-muted-foreground [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-[590] [&>:nth-child(3):last-child]:col-start-[-2] max-[430px]:grid-cols-[1fr_auto_auto] max-[430px]:gap-1.5 max-[430px]:[&>span]:col-span-full max-[430px]:[&>strong]:col-start-1 max-[430px]:[&>[data-field-copy-value]]:col-start-1'
+  'border-border/60 grid min-h-12 grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)_repeat(2,34px)] items-center gap-2 border-b px-3 py-2 last:border-b-0 [&>span]:text-[11px] [&>span]:text-muted-foreground [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-medium [&>:nth-child(3):last-child]:col-start-[-2] max-[430px]:grid-cols-[1fr_auto_auto] max-[430px]:gap-1.5 max-[430px]:[&>span]:col-span-full max-[430px]:[&>strong]:col-start-1 max-[430px]:[&>[data-field-copy-value]]:col-start-1'
+
+const detailScrollClassName =
+  'bg-muted/30 min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] overflow-auto px-4 pt-4 pb-7 max-[680px]:px-3 max-[680px]:pt-3 max-[680px]:pb-5'
 
 const titlebarClassName =
   'relative z-20 flex h-[54px] min-h-[54px] select-none items-center gap-3 border-b border-border bg-[color-mix(in_oklch,var(--card)_86%,transparent)] py-0 pr-3.5 pl-[78px] shadow-[inset_0_1px_color-mix(in_oklch,var(--shadow-color)_5%,transparent)] [-webkit-app-region:drag] [-webkit-backdrop-filter:saturate(180%)_blur(24px)] [backdrop-filter:saturate(180%)_blur(24px)] max-[1050px]:pl-[70px] max-[880px]:pl-3.5 max-[680px]:h-[52px] max-[680px]:min-h-[52px] max-[430px]:gap-2 max-[430px]:px-[9px] [.platform-macos_&]:border-b-transparent [.platform-macos_&]:bg-transparent [.platform-macos_&]:pl-[94px] [.platform-macos_&]:shadow-none [.platform-macos_&]:[-webkit-backdrop-filter:none] [.platform-macos_&]:[backdrop-filter:none] max-[880px]:[.platform-macos_&]:pl-[82px] max-[430px]:[.platform-macos_&]:py-0 max-[430px]:[.platform-macos_&]:pr-[9px] max-[430px]:[.platform-macos_&]:pl-[82px] [.platform-windows_&]:border-b-transparent [.platform-windows_&]:bg-transparent [.platform-windows_&]:pl-3.5 [.platform-windows_&]:shadow-none [.platform-windows_&]:[-webkit-backdrop-filter:none] [.platform-windows_&]:[backdrop-filter:none] max-[430px]:[.platform-windows_&]:px-[9px] [.platform-window-controls-overlay_&]:h-[env(titlebar-area-height,54px)] [.platform-window-controls-overlay_&]:min-h-[env(titlebar-area-height,54px)] [.platform-window-controls-overlay_&]:pr-[calc(14px+100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw))] [.platform-window-controls-overlay_&]:pl-[calc(14px+env(titlebar-area-x,0px))] max-[430px]:[.platform-window-controls-overlay_&]:pr-[calc(9px+100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw))] max-[430px]:[.platform-window-controls-overlay_&]:pl-[calc(9px+env(titlebar-area-x,0px))]'
@@ -484,7 +483,7 @@ const folderSectionClassName =
 
 function detailIconClassName(type?: VaultItemType): string {
   return cn(
-    'outline-foreground/5 bg-muted text-primary dark:border-border dark:bg-muted dark:text-muted-foreground grid size-12 flex-none place-items-center rounded-lg shadow-(--control-highlight) outline max-[430px]:hidden forced-colors:[forced-color-adjust:none]',
+    'outline-foreground/5 bg-muted text-primary dark:border-border dark:bg-muted dark:text-muted-foreground grid size-9 flex-none place-items-center rounded-md shadow-(--control-highlight) outline max-[430px]:hidden forced-colors:[forced-color-adjust:none]',
     type === 'login' && 'overflow-hidden',
     type === 'card' && 'bg-muted text-chart-4 dark:bg-website-icon-background',
     type === 'identity' && 'bg-accent text-primary',
@@ -909,10 +908,10 @@ function DetailPlaceholder({
           ) : item.type === 'card' ? (
             <PaymentCardBrandMark brand={normalizeBitwardenCardBrand(item.cardBrand)} compact />
           ) : (
-            <TypeIcon size={23} />
+            <TypeIcon size={18} />
           )}
         </span>
-        <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-xl [&>h2]:tracking-[-0.025em] [&>span]:mt-[3px] [&>span]:block [&>span]:truncate [&>span]:text-[10px]">
+        <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-base [&>h2]:font-medium [&>h2]:tracking-[-0.015em] [&>span]:mt-0.5 [&>span]:block [&>span]:truncate [&>span]:text-[10px]">
           <h2>{item.name}</h2>
           <span>
             {item.subtitle ||
@@ -921,9 +920,9 @@ function DetailPlaceholder({
                 : t`Securely stored item`)}
           </span>
         </div>
-        <Skeleton className="size-[34px] flex-none rounded-[9px]" aria-hidden="true" />
+        <Skeleton className="size-[34px] flex-none rounded-md" aria-hidden="true" />
         <Skeleton
-          className="h-8 w-[68px] flex-none rounded-lg max-[680px]:w-[34px]"
+          className="h-8 w-[68px] flex-none rounded-md max-[680px]:w-[34px]"
           aria-hidden="true"
         />
         <span className="sr-only" role="status">
@@ -931,15 +930,12 @@ function DetailPlaceholder({
         </span>
       </DetailHeader>
 
-      <div
-        className="min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] overflow-auto px-5 pt-5 pb-10 max-[680px]:px-3 max-[680px]:pt-[13px] max-[680px]:pb-7"
-        aria-hidden="true"
-      >
+      <div className={detailScrollClassName} aria-hidden="true">
         <DetailCard variant="placeholder">
-          <CardHeader className="bg-muted rounded-none border-b">
+          <CardHeader>
             <Skeleton className="h-3 w-20" />
           </CardHeader>
-          <CardContent className="contents">
+          <CardContent className="flex flex-col">
             {[0, 1, 2].map((row) => (
               <div className={detailFieldClassName} key={row}>
                 <Skeleton className="h-3 w-16" />
@@ -950,10 +946,10 @@ function DetailPlaceholder({
           </CardContent>
         </DetailCard>
         <DetailCard variant="placeholder">
-          <CardHeader className="bg-muted rounded-none border-b">
+          <CardHeader>
             <Skeleton className="h-3 w-24" />
           </CardHeader>
-          <CardContent className="contents">
+          <CardContent className="flex flex-col">
             {[0, 1].map((row) => (
               <div className={detailFieldClassName} key={row}>
                 <Skeleton className="h-3 w-14" />
@@ -5325,7 +5321,7 @@ function VaultShell({
                     <span className={detailIconClassName()} aria-hidden="true">
                       <Trash2 />
                     </span>
-                    <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-xl [&>h2]:tracking-[-0.025em] [&>span]:mt-[3px] [&>span]:block [&>span]:truncate [&>span]:text-[10px]">
+                    <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-base [&>h2]:font-medium [&>h2]:tracking-[-0.015em] [&>span]:mt-0.5 [&>span]:block [&>span]:truncate [&>span]:text-[10px]">
                       <p className="text-primary m-0 mb-[3px] text-[9px] font-extrabold tracking-[0.11em] uppercase">
                         <Trans>Trash</Trans>
                       </p>
@@ -5333,10 +5329,16 @@ function VaultShell({
                       <span>{itemTypeMeta[selectedSummary.type].label}</span>
                     </div>
                   </DetailHeader>
-                  <div className="scroll-fade-y forced-colors:scroll-fade-none min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] overflow-auto px-5 pt-5 pb-10 max-[680px]:px-3 max-[680px]:pt-[13px] max-[680px]:pb-7">
+                  <div
+                    className={cn(
+                      'scroll-fade-y forced-colors:scroll-fade-none',
+                      detailScrollClassName
+                    )}
+                  >
                     <DetailCard>
                       <CardHeader>
                         <CardTitle>
+                          <Trash2 aria-hidden="true" />
                           <Trans>This item is in Trash</Trans>
                         </CardTitle>
                         <CardDescription>
@@ -5370,8 +5372,9 @@ function VaultShell({
                     </DetailCard>
                     {hasTrashPasswordHistory(selectedSummary) && (
                       <DetailCard role="region" aria-labelledby="trash-password-history-title">
-                        <CardHeader className="bg-muted rounded-none border-b">
+                        <CardHeader>
                           <CardTitle id="trash-password-history-title">
+                            <History aria-hidden="true" />
                             <Trans>Item history</Trans>
                           </CardTitle>
                         </CardHeader>
@@ -5460,11 +5463,11 @@ function VaultShell({
                       ) : (
                         (() => {
                           const TypeIcon = itemTypeMeta[selectedLogin.type].icon
-                          return <TypeIcon size={23} />
+                          return <TypeIcon size={18} />
                         })()
                       )}
                     </span>
-                    <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-xl [&>h2]:tracking-[-0.025em] [&>span]:mt-[3px] [&>span]:block [&>span]:truncate [&>span]:text-[10px]">
+                    <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-base [&>h2]:font-medium [&>h2]:tracking-[-0.015em] [&>span]:mt-0.5 [&>span]:block [&>span]:truncate [&>span]:text-[10px]">
                       <h2>{selectedLogin.name}</h2>
                       <span>
                         {selectedLogin.subtitle ||
@@ -5495,7 +5498,7 @@ function VaultShell({
                                 <Button
                                   variant="outline"
                                   size="icon"
-                                  className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-[34px] min-w-[34px] rounded-[9px] shadow-(--control-highlight)"
+                                  className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-[34px] min-w-[34px] rounded-md shadow-(--control-highlight)"
                                   type="button"
                                   aria-label={t`More actions`}
                                   disabled={busy}
@@ -5560,15 +5563,24 @@ function VaultShell({
                     </DropdownMenu>
                   </DetailHeader>
 
-                  <div className="scroll-fade-y forced-colors:scroll-fade-none min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] overflow-auto px-5 pt-5 pb-10 max-[680px]:px-3 max-[680px]:pt-[13px] max-[680px]:pb-7">
+                  <div
+                    className={cn(
+                      'scroll-fade-y forced-colors:scroll-fade-none',
+                      detailScrollClassName
+                    )}
+                  >
                     {selectedDetailFields.length > 0 && (
                       <DetailCard role="region" aria-labelledby="credentials-title">
-                        <CardHeader className="bg-muted rounded-none border-b">
+                        <CardHeader>
                           <CardTitle id="credentials-title">
+                            {(() => {
+                              const TypeIcon = itemTypeMeta[selectedLogin.type].icon
+                              return <TypeIcon aria-hidden="true" />
+                            })()}
                             {t`${itemTypeMeta[selectedLogin.type].label} details`}
                           </CardTitle>
                         </CardHeader>
-                        <CardContent className="contents">
+                        <CardContent className="flex flex-col">
                           {selectedDetailFields
                             .filter((field) => field.secret || Boolean(field.value))
                             .map(renderDetailField)}
@@ -5578,15 +5590,16 @@ function VaultShell({
 
                     {selectedLogin.customFields.length > 0 && (
                       <DetailCard role="region" aria-labelledby="custom-fields-title">
-                        <CardHeader className="bg-muted rounded-none border-b">
+                        <CardHeader>
                           <CardTitle id="custom-fields-title">
+                            <Settings2 aria-hidden="true" />
                             <Trans>Custom fields</Trans>
                           </CardTitle>
                           <CardDescription>
                             <Trans>{selectedLogin.customFields.length} fields</Trans>
                           </CardDescription>
                         </CardHeader>
-                        <CardContent className="contents">
+                        <CardContent className="flex flex-col">
                           {selectedLogin.customFields.map(renderCustomField)}
                         </CardContent>
                       </DetailCard>
@@ -5599,8 +5612,9 @@ function VaultShell({
                         role="region"
                         aria-labelledby="attachments-title"
                       >
-                        <CardHeader className="bg-muted rounded-none border-b">
+                        <CardHeader>
                           <CardTitle id="attachments-title">
+                            <Paperclip aria-hidden="true" />
                             <Trans>Attachments</Trans>
                           </CardTitle>
                           <CardDescription>
@@ -5668,7 +5682,7 @@ function VaultShell({
                                   className="border-border [&_small]:text-muted-foreground grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-2.5 border-b px-[15px] py-3 [&_small]:truncate [&_small]:text-[10px] [&_span]:truncate [&_span]:text-[11px] [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[3px]"
                                 >
                                   <span
-                                    className="text-primary grid size-8 place-items-center rounded-[9px] bg-(--accent-soft)"
+                                    className="text-primary grid size-8 place-items-center rounded-md bg-(--accent-soft)"
                                     aria-hidden="true"
                                   >
                                     <Paperclip size={17} />
@@ -5751,8 +5765,9 @@ function VaultShell({
                         aria-labelledby="totp-title"
                         aria-busy={!totpRevealReady}
                       >
-                        <CardHeader className="bg-muted rounded-none border-b">
+                        <CardHeader>
                           <CardTitle id="totp-title">
+                            <Clock3 aria-hidden="true" />
                             <Trans>One-time verification code</Trans>
                           </CardTitle>
                           {totpGenerationError === 'unsupported' && (
@@ -5830,8 +5845,9 @@ function VaultShell({
 
                     {selectedLogin.type === 'login' && selectedLogin.passkeys.length > 0 && (
                       <DetailCard role="region" aria-labelledby="passkeys-title">
-                        <CardHeader className="bg-muted rounded-none border-b">
+                        <CardHeader>
                           <CardTitle id="passkeys-title">
+                            <KeyRound aria-hidden="true" />
                             <Trans>Passkeys</Trans>
                           </CardTitle>
                           <CardDescription>
@@ -5846,7 +5862,7 @@ function VaultShell({
                                 className="border-border [&_small]:text-muted-foreground grid grid-cols-[34px_minmax(0,1fr)] items-start gap-2.5 border-b px-[15px] py-3 [&_small]:truncate [&_small]:text-[10px] [&_span]:truncate [&_span]:text-[11px] [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[3px]"
                               >
                                 <span
-                                  className="text-primary grid size-8 place-items-center rounded-[9px] bg-(--accent-soft)"
+                                  className="text-primary grid size-8 place-items-center rounded-md bg-(--accent-soft)"
                                   aria-hidden="true"
                                 >
                                   <KeyRound size={17} />
@@ -5876,8 +5892,9 @@ function VaultShell({
 
                     {(selectedLogin.type === 'secureNote' || selectedLogin.notes) && (
                       <DetailCard role="region" aria-labelledby="notes-title">
-                        <CardHeader className="bg-muted rounded-none border-b">
+                        <CardHeader>
                           <CardTitle id="notes-title">
+                            <NotebookPen aria-hidden="true" />
                             {selectedLogin.type === 'secureNote' ? t`Secure note` : t`Notes`}
                           </CardTitle>
                         </CardHeader>
@@ -5895,8 +5912,9 @@ function VaultShell({
                     )}
 
                     <DetailCard role="region" aria-labelledby="organization-title">
-                      <CardHeader className="bg-muted rounded-none border-b">
+                      <CardHeader>
                         <CardTitle id="organization-title">
+                          <FolderOpen aria-hidden="true" />
                           <Trans>Organization and activity</Trans>
                         </CardTitle>
                       </CardHeader>
@@ -5937,8 +5955,9 @@ function VaultShell({
                     </DetailCard>
 
                     <DetailCard role="region" aria-labelledby="history-title">
-                      <CardHeader className="bg-muted rounded-none border-b">
+                      <CardHeader>
                         <CardTitle id="history-title">
+                          <History aria-hidden="true" />
                           <Trans>Item history</Trans>
                         </CardTitle>
                       </CardHeader>

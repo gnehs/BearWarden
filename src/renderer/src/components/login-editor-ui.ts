@@ -39,38 +39,11 @@ export function editorHeaderContent(
     : { eyebrow: i18n._(msg`Edit ${typeLabel}`), heading: itemName, typeBadge: typeLabel }
 }
 
-export const uriMatchOptions = [
-  {
-    value: 'default',
-    label: i18n._(msg`Account default`)
-  },
-  {
-    value: '0',
-    label: i18n._(msg`Base domain`)
-  },
-  {
-    value: '1',
-    label: i18n._(msg`Host`)
-  },
-  {
-    value: '2',
-    label: i18n._(msg`Starts with`)
-  },
-  {
-    value: '3',
-    label: i18n._(msg`Exact match`)
-  },
-  {
-    value: '4',
-    label: i18n._(msg`Regular expression`)
-  },
-  {
-    value: '5',
-    label: i18n._(msg`Never match`)
-  }
-] as const
+// Keep module initialization locale-independent. Labels are created inside LoginEditor after
+// Lingui has activated the selected catalog, while these values remain safe to import at startup.
+export const uriMatchOptionValues = ['default', '0', '1', '2', '3', '4', '5'] as const
 
-export type UriMatchOptionValue = (typeof uriMatchOptions)[number]['value']
+export type UriMatchOptionValue = (typeof uriMatchOptionValues)[number]
 
 export interface UriMatchRecognizedParts {
   leading: string

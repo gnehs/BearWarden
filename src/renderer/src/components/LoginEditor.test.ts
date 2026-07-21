@@ -8,7 +8,7 @@ import {
   reorderEditorItemsByClientId,
   reorderEditorUris,
   uriMatchExample,
-  uriMatchOptions,
+  uriMatchOptionValues,
   uriMatchRecognizedParts,
   type EditorLoginUri
 } from './login-editor-ui'
@@ -100,8 +100,12 @@ describe('LoginEditor design language', () => {
     expect(markup).toContain('aria-labelledby="editor-title"')
     expect(markup).toContain('id="editor-title">登入</h2>')
     expect(markup).toContain('data-slot="card"')
+    expect(markup).toContain('data-variant="item"')
     expect(markup).toContain('data-slot="card-header"')
     expect(markup).toContain('aria-labelledby="item-section-title"')
+    expect(markup).toContain('id="organization-section-title"')
+    expect(markup).toContain('id="notes-section-title"')
+    expect(markup).toContain('id="custom-fields-section-title"')
   })
 
   it('新增模式不使用分頁，並同時呈現所有編輯器區段', () => {
@@ -126,14 +130,13 @@ describe('LoginEditor design language', () => {
     expect(markup).toContain('data-editor-section="organize"')
   })
 
-  it('所有網站匹配選項都有標籤，並以使用者網址產生符號範例', () => {
+  it('所有網站匹配選項都能以使用者網址產生符號範例', () => {
     const uri = 'https://vault.example.invalid/account'
 
-    expect(uriMatchOptions).toHaveLength(7)
-    for (const option of uriMatchOptions) {
-      expect(option.label.trim()).not.toBe('')
-      expect(uriMatchExample(option.value, uri)).toContain(uri)
-      expect(uriMatchExample(option.value, uri)).toMatch(/[○△]/)
+    expect(uriMatchOptionValues).toHaveLength(7)
+    for (const value of uriMatchOptionValues) {
+      expect(uriMatchExample(value, uri)).toContain(uri)
+      expect(uriMatchExample(value, uri)).toMatch(/[○△]/)
     }
     expect(uriMatchExample('1', '   ')).toBe('輸入 URL 以顯示相符範例')
   })
