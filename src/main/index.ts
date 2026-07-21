@@ -13,6 +13,7 @@ import {
   shell
 } from 'electron'
 import { electronApp, is } from '@electron-toolkit/utils'
+import { DEFAULT_AUTOFILL_SHORTCUT } from '../shared/autofill-shortcuts'
 import {
   IPC_CHANNELS,
   IPC_EVENTS,
@@ -29,6 +30,7 @@ import {
   type BitwardenAuthRequestNotification
 } from './bitwarden-notifications'
 import { AppSettingsService } from './app-settings'
+import { AutofillShortcutRegistration } from './autofill-shortcut-registration'
 import { AppUpdaterController } from './app-updater'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import { FocusTouchIdUnlockController } from './focus-touch-id-unlock'
@@ -99,8 +101,11 @@ let accountWebAuthnRegistrationController: AccountWebAuthnRegistrationWindowCont
 let autofillCoordinator: AutofillCoordinator | null = null
 let autofillAdapter: MacOSAutofillAdapter | null = null
 let autofillWindow: BrowserWindow | null = null
-let autofillEnabled = false
-let autofillShortcutRegistered = false
+const autofillShortcutRegistration = new AutofillShortcutRegistration(
+  globalShortcut,
+  DEFAULT_AUTOFILL_SHORTCUT,
+  () => void autofillCoordinator?.trigger()
+)
 let repromptAuthorizations: RepromptAuthorizationStore | null = null
 let twoFactorDirectory: TwoFactorDirectoryCache | null = null
 let contentProtectionEnabled = true
@@ -130,26 +135,32 @@ const sshAgentRuntime = {
   }
 }
 
-function applyAutofillEnabled(enabled: boolean): void {
-  autofillEnabled = process.platform === 'darwin' && enabled
-  if (!autofillEnabled) {
+function applyAutofillSettings({
+  enabled,
+  shortcut
+}: {
+  enabled: boolean
+  shortcut: import('../shared/autofill-shortcuts').AutofillShortcut
+}): boolean {
+  const available = process.platform === 'darwin'
+  if (!available || !enabled) {
     autofillCoordinator?.cancel()
-    globalShortcut.unregister('Control+\\')
-    autofillShortcutRegistered = false
-    return
+    autofillShortcutRegistration.apply(false, shortcut)
+    return true
   }
-  if (autofillShortcutRegistered) return
-  autofillShortcutRegistered = globalShortcut.register('Control+\\', () => {
-    void autofillCoordinator?.trigger()
-  })
+  return autofillShortcutRegistration.apply(true, shortcut)
 }
 
 async function getAutofillFeatureStatus(prompt = false): Promise<AutofillFeatureStatus> {
   const available = process.platform === 'darwin'
-  // A conflicting app may release Ctrl+\\ after BearWarden starts; status refresh doubles as a
+  // A conflicting app may release the shortcut after BearWarden starts; status refresh doubles as a
   // safe retry so the user does not have to toggle the feature off and on again.
-  if (available && autofillEnabled && !autofillShortcutRegistered) {
-    applyAutofillEnabled(true)
+  if (
+    available &&
+    autofillShortcutRegistration.enabled &&
+    !autofillShortcutRegistration.registered
+  ) {
+    autofillShortcutRegistration.retry()
   }
   let accessibilityTrusted = false
   if (available && autofillAdapter) {
@@ -157,8 +168,8 @@ async function getAutofillFeatureStatus(prompt = false): Promise<AutofillFeature
   }
   return {
     available,
-    enabled: available && autofillEnabled,
-    shortcutRegistered: available && autofillShortcutRegistered,
+    enabled: available && autofillShortcutRegistration.enabled,
+    shortcutRegistered: available && autofillShortcutRegistration.registered,
     accessibilityTrusted
   }
 }
@@ -952,7 +963,7 @@ if (hasSingleInstanceLock)
           }
         },
         applyClipboardTimeout: (seconds) => sensitiveClipboard.setClearDelay(seconds),
-        applyAutofillEnabled,
+        applyAutofillSettings,
         applyLanguage: (language) => {
           initializeMainI18nFromPreference(
             language,
@@ -1111,7 +1122,7 @@ if (hasSingleInstanceLock)
         : unavailableAutofillStatus
     )
     ipcMain.handle(IPC_CHANNELS.autofillRequestAccessibility, (event) => {
-      if (!trustedAutofillPermissionSender(event) || !autofillEnabled) {
+      if (!trustedAutofillPermissionSender(event) || !autofillShortcutRegistration.enabled) {
         return unavailableAutofillStatus
       }
       return getAutofillFeatureStatus(true)
@@ -1217,9 +1228,7 @@ function disposeServices(): void {
   if (servicesDisposed) return
   servicesDisposed = true
   sensitiveClipboard.clearIfOwned()
-  globalShortcut.unregister('Control+\\')
-  autofillShortcutRegistered = false
-  autofillEnabled = false
+  autofillShortcutRegistration.dispose()
   autofillCoordinator?.dispose()
   autofillCoordinator = null
   autofillAdapter = null

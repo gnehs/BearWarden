@@ -118,12 +118,12 @@ msgid "{0, plural, one {# protected item} other {# protected items}}"
 msgstr "{0, plural, one {# 個受保護項目} other {# 個受保護項目}}"
 
 #. placeholder {0}: sshAgentStatus.identityCount
-#: src/renderer/src/components/SettingsPage.tsx:1720
+#: src/renderer/src/components/SettingsPage.tsx:1793
 msgid "{0, plural, one {# SSH key is available. Private keys and signing data are never sent to the renderer process.} other {# SSH keys are available. Private keys and signing data are never sent to the renderer process.}}"
 msgstr "{0, plural, one {有 # 個 SSH 金鑰可用。私密金鑰與簽署資料絕不會傳送至轉譯程序。} other {有 # 個 SSH 金鑰可用。私密金鑰與簽署資料絕不會傳送至轉譯程序。}}"
 
 #. placeholder {0}: pinStatus.remainingAttempts
-#: src/renderer/src/components/SettingsPage.tsx:1094
+#: src/renderer/src/components/SettingsPage.tsx:1119
 msgid "{0, plural, one {PIN unlock is disabled after 5 consecutive failures. You have # attempt remaining.} other {PIN unlock is disabled after 5 consecutive failures. You have # attempts remaining.}}"
 msgstr "{0, plural, one {連續失敗 5 次後，PIN 解鎖將停用。您還有 # 次嘗試機會。} other {連續失敗 5 次後，PIN 解鎖將停用。您還有 # 次嘗試機會。}}"
 
@@ -473,19 +473,19 @@ msgstr "{uri} ≈ 同一基底網域的任何 URL"
 msgid "{value} seconds remaining"
 msgstr "剩餘 {value} 秒"
 
-#: src/renderer/src/components/SettingsPage.tsx:1537
+#: src/renderer/src/components/SettingsPage.tsx:1608
 msgid "<0/> could not be registered"
 msgstr "<0/> 無法註冊"
 
-#: src/renderer/src/components/SettingsPage.tsx:464
+#: src/renderer/src/components/SettingsPage.tsx:467
 msgid "1 minute"
 msgstr "1 分鐘"
 
-#: src/renderer/src/components/SettingsPage.tsx:466
+#: src/renderer/src/components/SettingsPage.tsx:469
 msgid "15 minutes"
 msgstr "15 分鐘"
 
-#: src/renderer/src/components/SettingsPage.tsx:469
+#: src/renderer/src/components/SettingsPage.tsx:472
 msgid "240 minutes"
 msgstr "240 分鐘"
 
@@ -493,11 +493,11 @@ msgstr "240 分鐘"
 msgid "2fa.directory service: {matchedDomain}"
 msgstr "2fa.directory 服務：{matchedDomain}"
 
-#: src/renderer/src/components/SettingsPage.tsx:467
+#: src/renderer/src/components/SettingsPage.tsx:470
 msgid "30 minutes"
 msgstr "30 分鐘"
 
-#: src/renderer/src/components/SettingsPage.tsx:465
+#: src/renderer/src/components/SettingsPage.tsx:468
 msgid "5 minutes"
 msgstr "5 分鐘"
 
@@ -505,7 +505,7 @@ msgstr "5 分鐘"
 msgid "6-digit verification code"
 msgstr "6 位數驗證碼"
 
-#: src/renderer/src/components/SettingsPage.tsx:468
+#: src/renderer/src/components/SettingsPage.tsx:471
 msgid "60 minutes"
 msgstr "60 分鐘"
 
@@ -533,7 +533,7 @@ msgstr "共用項目的唯讀映像。伺服器會決定權限及密碼的可見
 msgid "A sync issue needs attention"
 msgstr "同步問題需要處理"
 
-#: src/renderer/src/components/SettingsPage.tsx:459
+#: src/renderer/src/components/SettingsPage.tsx:462
 msgid "About"
 msgstr "關於"
 
@@ -567,15 +567,15 @@ msgstr "存取密碼（選填）"
 msgid "Access requested"
 msgstr "已請求存取"
 
-#: src/renderer/src/components/SettingsPage.tsx:679
+#: src/renderer/src/components/SettingsPage.tsx:682
 msgid "Accessibility and shortcut status checked again."
 msgstr "已再次檢查輔助使用與快速鍵狀態。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1501
+#: src/renderer/src/components/SettingsPage.tsx:1569
 msgid "Accessibility permission"
 msgstr "輔助使用權限"
 
-#: src/renderer/src/components/SettingsPage.tsx:726
+#: src/renderer/src/components/SettingsPage.tsx:751
 msgid "Accessibility permission is enabled. Cross-browser autofill is ready to use."
 msgstr "已啟用輔助使用權限。跨瀏覽器自動填入已可使用。"
 
@@ -624,7 +624,7 @@ msgstr "帳戶管理"
 msgid "Account security status"
 msgstr "帳戶安全性狀態"
 
-#: src/renderer/src/components/SettingsPage.tsx:449
+#: src/renderer/src/components/SettingsPage.tsx:452
 msgid "Accounts & sync"
 msgstr "帳戶與同步"
 
@@ -632,8 +632,8 @@ msgstr "帳戶與同步"
 msgid "Action"
 msgstr "操作"
 
-#: src/renderer/src/components/SettingsPage.tsx:512
-#: src/renderer/src/components/SettingsPage.tsx:639
+#: src/renderer/src/components/SettingsPage.tsx:515
+#: src/renderer/src/components/SettingsPage.tsx:642
 #: src/renderer/src/lib/ssh-agent-ui.ts:73
 msgid "Action required"
 msgstr "需要處理"
@@ -778,23 +778,23 @@ msgstr "管理員"
 msgid "Affected data classes"
 msgstr "受影響的資料類別"
 
-#: src/renderer/src/components/SettingsPage.tsx:476
+#: src/renderer/src/components/SettingsPage.tsx:479
 msgid "After 1 minute"
 msgstr "1 分鐘後"
 
-#: src/renderer/src/components/SettingsPage.tsx:474
+#: src/renderer/src/components/SettingsPage.tsx:477
 msgid "After 15 seconds"
 msgstr "15 秒後"
 
-#: src/renderer/src/components/SettingsPage.tsx:477
+#: src/renderer/src/components/SettingsPage.tsx:480
 msgid "After 2 minutes"
 msgstr "2 分鐘後"
 
-#: src/renderer/src/components/SettingsPage.tsx:475
+#: src/renderer/src/components/SettingsPage.tsx:478
 msgid "After 30 seconds"
 msgstr "30 秒後"
 
-#: src/renderer/src/components/SettingsPage.tsx:463
+#: src/renderer/src/components/SettingsPage.tsx:466
 msgid "After 5 minutes of system inactivity"
 msgstr "系統閒置 5 分鐘後"
 
@@ -814,6 +814,10 @@ msgstr "此日期過後，連結將不再接受存取，但 Send 不會立即刪
 msgid "After this time, the server permanently removes the Send."
 msgstr "此時間過後，伺服器會永久刪除 Send。"
 
+#: src/renderer/src/components/AutofillAccessibilityGuide.tsx:53
+msgid "After updating BearWarden: if the system switch is already on but this page still says “Permission required”, select BearWarden in the Accessibility list, click − to remove the old entry, then return here and request permission again."
+msgstr "更新 BearWarden 後：若系統開關已開啟，但此頁仍顯示「需要權限」，請在「輔助使用」清單中選取 BearWarden，按下 − 移除舊項目，再回到此處重新要求權限。"
+
 #: src/renderer/src/components/MasterPasswordChangeDialog.tsx:332
 msgid "After you acknowledge this, reconnect. You can start a new master-password change only after reconnecting."
 msgstr "確認後，請重新連線。重新連線後才能再次啟動主密碼變更。"
@@ -826,7 +830,7 @@ msgstr "輸入主密碼並明確確認後，下次同步會重新傳送尚未確
 msgid "After you start the check, the main process downloads only the static TOTP service list from 2fa.directory and compares it locally. Vault domains, URIs, passwords, and TOTP secrets are never uploaded."
 msgstr "啟動檢查後，主程序僅會從 2fa.directory 下載靜態 TOTP 服務清單，並在本機比對。絕不會上傳保管庫網域、URI、密碼或 TOTP 密鑰。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1705
+#: src/renderer/src/components/SettingsPage.tsx:1778
 msgid "Agent could not start"
 msgstr "無法啟動 Agent"
 
@@ -851,7 +855,7 @@ msgstr "所有項目"
 msgid "All organizations"
 msgstr "所有組織"
 
-#: src/renderer/src/components/SettingsPage.tsx:727
+#: src/renderer/src/components/SettingsPage.tsx:752
 msgid "Allow BearWarden under System Settings → Privacy & Security → Accessibility, then return and check again."
 msgstr "在「系統設定」→「隱私權與安全性」→「輔助使用」中允許 BearWarden，然後返回並再次檢查。"
 
@@ -862,6 +866,10 @@ msgstr "允許登入"
 #: src/renderer/src/components/LoginApprovalDialog.tsx:85
 msgid "Allow this only if you're signing in on another device and both devices show the exact same verification phrase."
 msgstr "僅當您正在另一台裝置登入，且兩台裝置都顯示完全相同的驗證片語時，才允許此操作。"
+
+#: src/renderer/src/components/AutofillAccessibilityGuide.tsx:50
+msgid "Already enabled but still not working?"
+msgstr "已開啟但仍無法使用？"
 
 #: src/renderer/src/components/LoginEditor.tsx:393
 #: src/renderer/src/components/PaymentCardBrandMark.tsx:44
@@ -904,19 +912,23 @@ msgstr "Android"
 msgid "Android (Amazon)"
 msgstr "Android（Amazon）"
 
-#: src/renderer/src/components/SettingsPage.tsx:1542
-msgid "Another app, such as 1Password, already uses this shortcut. Disable the same shortcut in that app, then check again."
-msgstr "另一個應用程式（例如 1Password）已使用此快速鍵。請在該應用程式中停用相同的快速鍵，然後再次檢查。"
+#: src/renderer/src/components/SettingsPage.tsx:1614
+msgid "Another app, such as 1Password, already uses this shortcut. Choose another shortcut above, or disable the same shortcut in that app and check again."
+msgstr "其他應用程式（例如 1Password）已使用這組快速鍵。請從上方選擇其他快速鍵，或在該應用程式中停用相同的快速鍵後重新檢查。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1710
+#: src/renderer/src/components/SettingsPage.tsx:1614
+#~ msgid "Another app, such as 1Password, already uses this shortcut. Disable the same shortcut in that app, then check again."
+#~ msgstr "另一個應用程式（例如 1Password）已使用此快速鍵。請在該應用程式中停用相同的快速鍵，然後再次檢查。"
+
+#: src/renderer/src/components/SettingsPage.tsx:1783
 msgid "Another SSH Agent is using the same endpoint. Stop that Agent, then enable BearWarden SSH Agent again."
 msgstr "另一個 SSH Agent 正在使用相同端點。請停止該 Agent，然後再次啟用 BearWarden SSH Agent。"
 
-#: src/renderer/src/components/SettingsPage.tsx:432
+#: src/renderer/src/components/SettingsPage.tsx:435
 msgid "Appearance and defaults"
 msgstr "外觀與預設值"
 
-#: src/renderer/src/components/SettingsPage.tsx:742
+#: src/renderer/src/components/SettingsPage.tsx:767
 msgid "Application"
 msgstr "應用程式"
 
@@ -925,7 +937,7 @@ msgstr "應用程式"
 msgid "Application menu"
 msgstr "應用程式選單"
 
-#: src/renderer/src/components/SettingsPage.tsx:336
+#: src/renderer/src/components/SettingsPage.tsx:339
 msgid "Apply"
 msgstr "套用"
 
@@ -976,7 +988,7 @@ msgstr "已封存「{0}」。"
 msgid "Archived {affectedCount} items."
 msgstr "已封存 {affectedCount} 個項目。"
 
-#: src/renderer/src/components/SettingsPage.tsx:503
+#: src/renderer/src/components/SettingsPage.tsx:506
 msgid "Ask before every signature"
 msgstr "每次簽署前詢問"
 
@@ -1032,7 +1044,15 @@ msgstr "驗證器金鑰（TOTP）"
 msgid "Authorization expired. Select the item again and verify your master password."
 msgstr "授權已過期。請重新選取項目並驗證主密碼。"
 
-#: src/renderer/src/components/SettingsPage.tsx:456
+#: src/renderer/src/components/SettingsPage.tsx:1527
+msgid "Autofill shortcut"
+msgstr "自動填入快速鍵"
+
+#: src/renderer/src/components/SettingsPage.tsx:731
+msgid "Autofill shortcut updated."
+msgstr "自動填入快速鍵已更新。"
+
+#: src/renderer/src/components/SettingsPage.tsx:459
 msgid "Autofill, SSH Agent, and backups"
 msgstr "自動填入、SSH Agent 與備份"
 
@@ -1040,11 +1060,11 @@ msgstr "自動填入、SSH Agent 與備份"
 msgid "Automatic generation failed. Try again, or change the item type to cancel."
 msgstr "自動產生失敗。請再試一次，或變更項目類型以取消。"
 
-#: src/renderer/src/components/SettingsPage.tsx:901
+#: src/renderer/src/components/SettingsPage.tsx:926
 msgid "Automatic launch is available only in installed versions for macOS and Windows."
 msgstr "自動啟動僅適用於已安裝的 macOS 與 Windows 版本。"
 
-#: src/renderer/src/components/SettingsPage.tsx:655
+#: src/renderer/src/components/SettingsPage.tsx:658
 msgid "Available"
 msgstr "可用"
 
@@ -1105,7 +1125,7 @@ msgstr "Base32、otpauth://… 或 steam://…"
 msgid "BearWarden autofill"
 msgstr "BearWarden 自動填入"
 
-#: src/renderer/src/components/SettingsPage.tsx:1505
+#: src/renderer/src/components/SettingsPage.tsx:1573
 msgid "BearWarden can control the current browser and perform autofill."
 msgstr "BearWarden 可以控制目前的瀏覽器並執行自動填入。"
 
@@ -1113,7 +1133,7 @@ msgstr "BearWarden 可以控制目前的瀏覽器並執行自動填入。"
 msgid "BearWarden can't safely determine the remote outcome on the current connection. No new action will be submitted now to prevent duplicate changes."
 msgstr "BearWarden 無法安全地判定目前連線的遠端結果。為避免重複變更，現在不會提交任何新動作。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1711
+#: src/renderer/src/components/SettingsPage.tsx:1784
 msgid "BearWarden could not create the SSH Agent endpoint safely. Check the home directory permissions and socket path, then try again."
 msgstr "BearWarden 無法安全地建立 SSH Agent 端點。請檢查主目錄權限與通訊端路徑，然後再試一次。"
 
@@ -1137,7 +1157,7 @@ msgstr "BearWarden 是一套本機優先的桌面密碼管理器。"
 msgid "BearWarden needs this permission to identify the current browser and website. Allow it in System Settings, then try again."
 msgstr "BearWarden 需要此權限來識別目前的瀏覽器與網站。請在「系統設定」中允許此權限，然後再試一次。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1589
+#: src/renderer/src/components/SettingsPage.tsx:1662
 msgid "BearWarden provides only unarchived, undeleted SSH keys. Each signature is approved according to the rule below."
 msgstr "BearWarden 僅提供未封存且未刪除的 SSH 金鑰。每次簽署均會依下列規則核准。"
 
@@ -1153,7 +1173,7 @@ msgstr "BearWarden 僅傳送密碼 SHA-1 雜湊的前 5 個字元，從 HIBP Pwn
 msgid "BearWarden sends your complete email address to the configured Vaultwarden server only after you submit a query. That server then sends it to <0/>. This is not a k-anonymity password check. Query only accounts you are authorized to check."
 msgstr "BearWarden 僅會在您提交查詢後，將完整的電子郵件地址傳送至已設定的 Vaultwarden 伺服器。該伺服器隨後會將地址傳送到 <0/>。這不是 k-匿名性密碼檢查。僅查詢您有權檢查的帳戶。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1651
+#: src/renderer/src/components/SettingsPage.tsx:1724
 msgid "BearWarden uses the fixed <0>\\\\.\\pipe\\openssh-ssh-agent</0> named pipe. Disable the system OpenSSH Authentication Agent first so the two agents do not compete for the same pipe."
 msgstr "BearWarden 使用固定的 <0>\\\\.\\pipe\\openssh-ssh-agent</0> 命名管線。請先停用系統的 OpenSSH Authentication Agent，以免兩個代理程式競爭同一條管線。"
 
@@ -1185,11 +1205,11 @@ msgstr "目前無法使用生物辨識驗證。請輸入您的主密碼。"
 msgid "Biometric unlock is unavailable right now. Enter your master password."
 msgstr "目前無法使用生物辨識解鎖。請輸入您的主密碼。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1216
+#: src/renderer/src/components/SettingsPage.tsx:1241
 msgid "Biometrics"
 msgstr "生物辨識"
 
-#: src/renderer/src/components/SettingsPage.tsx:1237
+#: src/renderer/src/components/SettingsPage.tsx:1262
 msgid "Biometrics are unavailable on this device"
 msgstr "此裝置無法使用生物辨識"
 
@@ -1221,7 +1241,7 @@ msgstr "未加密的 Bitwarden ZIP（含附件）"
 msgid "Bitwarden-compatible settings allow only one UTF-16 character."
 msgstr "與 Bitwarden 相容的設定僅允許一個 UTF-16 字元。"
 
-#: src/renderer/src/components/SettingsPage.tsx:936
+#: src/renderer/src/components/SettingsPage.tsx:961
 msgid "Block screenshots"
 msgstr "阻止螢幕擷取"
 
@@ -1378,7 +1398,7 @@ msgstr "要變更您的主密碼嗎？"
 msgid "Character types"
 msgstr "字元類型"
 
-#: src/renderer/src/components/SettingsPage.tsx:1528
+#: src/renderer/src/components/SettingsPage.tsx:1599
 msgid "Check again"
 msgstr "再次檢查"
 
@@ -1452,7 +1472,7 @@ msgid "Checked this time"
 msgstr "本次已檢查"
 
 #: src/renderer/src/components/AboutPage.tsx:75
-#: src/renderer/src/components/SettingsPage.tsx:646
+#: src/renderer/src/components/SettingsPage.tsx:649
 msgid "Checking"
 msgstr "檢查中"
 
@@ -1471,6 +1491,10 @@ msgstr "檢查項目"
 #: src/renderer/src/components/Dialogs.tsx:306
 msgid "Choose a folder"
 msgstr "選擇資料夾"
+
+#: src/renderer/src/components/SettingsPage.tsx:1530
+msgid "Choose a global shortcut that is not used by your browser or another password manager."
+msgstr "請選擇未被瀏覽器或其他密碼管理器使用的全域快速鍵。"
 
 #: src/renderer/src/components/AutofillPicker.tsx:178
 msgid "Choose a login to autofill"
@@ -1511,7 +1535,7 @@ msgstr "選擇完整備份"
 msgid "Choose save location"
 msgstr "選擇儲存位置"
 
-#: src/renderer/src/components/SettingsPage.tsx:923
+#: src/renderer/src/components/SettingsPage.tsx:948
 msgid "Choose when the vault locks and how window content is protected."
 msgstr "選擇保管庫鎖定的時機，以及保護視窗內容的方式。"
 
@@ -1533,7 +1557,7 @@ msgstr "城市"
 msgid "Clear"
 msgstr "清除"
 
-#: src/renderer/src/components/SettingsPage.tsx:1319
+#: src/renderer/src/components/SettingsPage.tsx:1344
 msgid "Clear clipboard"
 msgstr "清除剪貼簿"
 
@@ -1545,7 +1569,7 @@ msgstr "清除自訂顏色"
 msgid "Clear history"
 msgstr "清除歷程紀錄"
 
-#: src/renderer/src/components/SettingsPage.tsx:1322
+#: src/renderer/src/components/SettingsPage.tsx:1347
 msgid "Clear only content written by BearWarden that you have not overwritten."
 msgstr "僅清除由 BearWarden 寫入且您尚未覆寫的內容。"
 
@@ -1555,11 +1579,15 @@ msgstr "僅清除由 BearWarden 寫入且您尚未覆寫的內容。"
 msgid "Clear search"
 msgstr "清除搜尋"
 
+#: src/renderer/src/components/AutofillAccessibilityGuide.tsx:29
+msgid "Click “Request accessibility permission” below."
+msgstr "點擊下方的「要求輔助使用權限」。"
+
 #: src/renderer/src/components/AccountApiKeyDialog.tsx:77
 msgid "Client ID copied."
 msgstr "已複製 Client ID。"
 
-#: src/renderer/src/components/SettingsPage.tsx:444
+#: src/renderer/src/components/SettingsPage.tsx:447
 msgid "Clipboard and website icons"
 msgstr "剪貼簿和網站圖示"
 
@@ -1609,6 +1637,18 @@ msgstr "收藏："
 msgid "Collections"
 msgstr "收藏"
 
+#: src/renderer/src/components/AutofillShortcut.tsx:25
+msgid "Command plus Control plus backslash"
+msgstr "Command 加 Control 加反斜線"
+
+#: src/renderer/src/components/AutofillShortcut.tsx:28
+msgid "Command plus Control plus K"
+msgstr "Command 加 Control 加 K"
+
+#: src/renderer/src/components/AutofillShortcut.tsx:27
+msgid "Command plus Option plus backslash"
+msgstr "Command 加 Option 加反斜線"
+
 #: src/renderer/src/components/LoginEditor.tsx:372
 #: src/renderer/src/components/LoginEditor.tsx:1775
 #: src/renderer/src/components/VaultShell.tsx:1034
@@ -1651,8 +1691,8 @@ msgstr "確認停用 {disableTargetName}"
 
 #: src/renderer/src/components/AuthScreen.tsx:315
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:409
-#: src/renderer/src/components/SettingsPage.tsx:1162
-#: src/renderer/src/components/SettingsPage.tsx:1272
+#: src/renderer/src/components/SettingsPage.tsx:1187
+#: src/renderer/src/components/SettingsPage.tsx:1297
 #: src/renderer/src/components/SshAgentApprovalDialog.tsx:195
 msgid "Confirm master password"
 msgstr "確認主密碼"
@@ -1709,11 +1749,11 @@ msgstr "衝突需要處理"
 msgid "Connect and sync"
 msgstr "連線並同步"
 
-#: src/renderer/src/components/SettingsPage.tsx:1400
+#: src/renderer/src/components/SettingsPage.tsx:1425
 msgid "Connect to Bitwarden or Vaultwarden to sync the vault."
 msgstr "連線至 Bitwarden 或 Vaultwarden 以同步保管庫。"
 
-#: src/renderer/src/components/SettingsPage.tsx:510
+#: src/renderer/src/components/SettingsPage.tsx:513
 #: src/renderer/src/components/VaultShell.tsx:1013
 msgid "Connected"
 msgstr "已連線"
@@ -1757,15 +1797,23 @@ msgstr "繼續匯入"
 msgid "Continue restoring"
 msgstr "繼續還原"
 
+#: src/renderer/src/components/AutofillShortcut.tsx:21
+msgid "Control plus backslash"
+msgstr "Control 加反斜線"
+
+#: src/renderer/src/components/AutofillShortcut.tsx:23
+msgid "Control plus Shift plus backslash"
+msgstr "Control 加 Shift 加反斜線"
+
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:524
 #: src/renderer/src/components/Dialogs.tsx:768
-#: src/renderer/src/components/SettingsPage.tsx:1685
+#: src/renderer/src/components/SettingsPage.tsx:1758
 msgid "Copied"
 msgstr "已複製"
 
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:73
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:526
-#: src/renderer/src/components/SettingsPage.tsx:1685
+#: src/renderer/src/components/SettingsPage.tsx:1758
 msgid "Copy"
 msgstr "複製"
 
@@ -1808,7 +1856,7 @@ msgstr "複製設定金鑰"
 msgid "Copy sharing link"
 msgstr "複製分享連結"
 
-#: src/renderer/src/components/SettingsPage.tsx:1677
+#: src/renderer/src/components/SettingsPage.tsx:1750
 msgid "Copy SSH Agent setup command"
 msgstr "複製 SSH Agent 設定指令"
 
@@ -2004,7 +2052,7 @@ msgstr "已於 {creationLabel} 建立"
 msgid "Created folder “{0}”."
 msgstr "已建立資料夾「{0}」。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1456
+#: src/renderer/src/components/SettingsPage.tsx:1481
 msgid "Cross-browser autofill"
 msgstr "跨瀏覽器自動填入"
 
@@ -2017,8 +2065,8 @@ msgid "CSV is not a complete backup. It only exports active and archived logins,
 msgstr "CSV 不是完整備份。它只會匯出使用中及封存的登入資料、安全筆記和部分文字值；不包含垃圾桶、附件、卡片、身分資料、SSH 金鑰、通行密鑰、密碼歷程或 Sends。URI 比對及部分登入中繼資料會遺失。自訂欄位會攤平成「名稱: 值」文字；若名稱為空白、含換行或「: 」，其型別與原始結構可能無法復原。使用加密 JSON 可取得更完整的可攜資料，或使用完整 BearWarden 備份以包含附件。僅可使用文字編輯器檢查 CSV 檔案。若在試算表中開啟，以 =、+、- 或 @ 起始的原始欄位可能會以公式執行。為了維持 Bitwarden 相容性與資料完整性，BearWarden 不會改寫這些敏感資料。"
 
 #: src/renderer/src/components/AutofillShortcut.tsx:8
-msgid "Ctrl plus backslash"
-msgstr "Ctrl 加反斜線"
+#~ msgid "Ctrl plus backslash"
+#~ msgstr "Ctrl 加反斜線"
 
 #. placeholder {0}: current.avatarColor
 #: src/renderer/src/components/AccountProfileCard.tsx:240
@@ -2050,11 +2098,11 @@ msgstr "目前為唯讀。尚未提供邀請、確認、檢視及接管功能。
 msgid "Currently you can only view Emergency Access grants and statuses. Inviting, accepting, confirming, accessing, taking over grants, and key rotation are not supported yet."
 msgstr "目前只能檢視緊急存取授權與狀態。尚不支援邀請、接受、確認、存取、接管授權及金鑰輪替。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1240
+#: src/renderer/src/components/SettingsPage.tsx:1265
 msgid "Currently, only macOS Touch ID is supported. You can still unlock the vault with your master password."
 msgstr "目前僅支援 macOS Touch ID。您仍可使用主密碼解鎖保管庫。"
 
-#: src/renderer/src/components/SettingsPage.tsx:470
+#: src/renderer/src/components/SettingsPage.tsx:473
 msgid "Custom"
 msgstr "自訂"
 
@@ -2071,15 +2119,15 @@ msgstr "自訂等效網域"
 msgid "Custom fields"
 msgstr "自訂欄位"
 
-#: src/renderer/src/components/SettingsPage.tsx:293
+#: src/renderer/src/components/SettingsPage.tsx:296
 msgid "Custom inactivity timeout"
 msgstr "自訂閒置逾時時間"
 
-#: src/renderer/src/components/SettingsPage.tsx:301
+#: src/renderer/src/components/SettingsPage.tsx:304
 msgid "Custom inactivity timeout hours"
 msgstr "自訂閒置逾時小時數"
 
-#: src/renderer/src/components/SettingsPage.tsx:316
+#: src/renderer/src/components/SettingsPage.tsx:319
 msgid "Custom inactivity timeout minutes"
 msgstr "自訂閒置逾時分鐘數"
 
@@ -2088,7 +2136,7 @@ msgstr "自訂閒置逾時分鐘數"
 msgid "Custom role"
 msgstr "自訂角色"
 
-#: src/renderer/src/components/SettingsPage.tsx:805
+#: src/renderer/src/components/SettingsPage.tsx:830
 msgid "Customize the vault's appearance and default sorting."
 msgstr "自訂保管庫外觀和預設排序。"
 
@@ -2096,11 +2144,11 @@ msgstr "自訂保管庫外觀和預設排序。"
 msgid "Cut"
 msgstr "剪下"
 
-#: src/renderer/src/components/SettingsPage.tsx:487
+#: src/renderer/src/components/SettingsPage.tsx:490
 msgid "Dark"
 msgstr "深色"
 
-#: src/renderer/src/components/SettingsPage.tsx:1734
+#: src/renderer/src/components/SettingsPage.tsx:1807
 msgid "Data portability"
 msgstr "資料可攜性"
 
@@ -2134,7 +2182,7 @@ msgstr "預設"
 msgid "Default service groups provided by Vaultwarden. Turning one off adds it to this account’s exclusion list."
 msgstr "Vaultwarden 提供的預設服務群組。關閉其中一個會將其加入此帳戶的排除清單。"
 
-#: src/renderer/src/components/SettingsPage.tsx:866
+#: src/renderer/src/components/SettingsPage.tsx:891
 msgid "Default sort"
 msgstr "預設排序"
 
@@ -2264,11 +2312,11 @@ msgstr "停用"
 msgid "Disable {disableTargetName}?"
 msgstr "要停用 {disableTargetName} 嗎？"
 
-#: src/renderer/src/components/SettingsPage.tsx:1263
+#: src/renderer/src/components/SettingsPage.tsx:1288
 msgid "Disable biometrics"
 msgstr "停用生物辨識"
 
-#: src/renderer/src/components/SettingsPage.tsx:1114
+#: src/renderer/src/components/SettingsPage.tsx:1139
 msgid "Disable PIN unlock"
 msgstr "停用 PIN 解鎖"
 
@@ -2280,10 +2328,10 @@ msgstr "停用 Send"
 #: src/renderer/src/components/OrganizationsPage.tsx:60
 #: src/renderer/src/components/send-ui.ts:44
 #: src/renderer/src/components/SendsPage.tsx:116
-#: src/renderer/src/components/SettingsPage.tsx:633
-#: src/renderer/src/components/SettingsPage.tsx:650
-#: src/renderer/src/components/SettingsPage.tsx:1079
-#: src/renderer/src/components/SettingsPage.tsx:1225
+#: src/renderer/src/components/SettingsPage.tsx:636
+#: src/renderer/src/components/SettingsPage.tsx:653
+#: src/renderer/src/components/SettingsPage.tsx:1104
+#: src/renderer/src/components/SettingsPage.tsx:1250
 #: src/renderer/src/lib/ssh-agent-ui.ts:69
 msgid "Disabled"
 msgstr "已停用"
@@ -2516,7 +2564,7 @@ msgstr "尚未設定緊急存取"
 msgid "Empty Trash"
 msgstr "清空垃圾桶"
 
-#: src/renderer/src/components/SettingsPage.tsx:1475
+#: src/renderer/src/components/SettingsPage.tsx:1500
 msgid "Enable <0/> autofill"
 msgstr "啟用 <0/> 自動填入"
 
@@ -2524,7 +2572,7 @@ msgstr "啟用 <0/> 自動填入"
 msgid "Enable authenticator"
 msgstr "啟用驗證器"
 
-#: src/renderer/src/components/SettingsPage.tsx:1297
+#: src/renderer/src/components/SettingsPage.tsx:1322
 msgid "Enable biometrics"
 msgstr "啟用生物辨識"
 
@@ -2532,17 +2580,17 @@ msgstr "啟用生物辨識"
 msgid "Enable email two-factor authentication"
 msgstr "啟用電子郵件雙因素驗證"
 
-#: src/renderer/src/components/SettingsPage.tsx:1204
+#: src/renderer/src/components/SettingsPage.tsx:1229
 msgid "Enable PIN unlock"
 msgstr "啟用 PIN 解鎖"
 
-#: src/renderer/src/components/SettingsPage.tsx:1586
+#: src/renderer/src/components/SettingsPage.tsx:1659
 msgid "Enable SSH Agent"
 msgstr "啟用 SSH Agent"
 
 #: src/renderer/src/components/LoginEditor.tsx:2398
-#: src/renderer/src/components/SettingsPage.tsx:1079
-#: src/renderer/src/components/SettingsPage.tsx:1224
+#: src/renderer/src/components/SettingsPage.tsx:1104
+#: src/renderer/src/components/SettingsPage.tsx:1249
 msgid "Enabled"
 msgstr "已啟用"
 
@@ -2558,7 +2606,7 @@ msgstr "僅加密備註"
 msgid "Encrypting locally"
 msgstr "正在本機加密"
 
-#: src/renderer/src/components/SettingsPage.tsx:494
+#: src/renderer/src/components/SettingsPage.tsx:497
 msgid "English"
 msgstr "英文"
 
@@ -2641,7 +2689,7 @@ msgstr "每次停用要求時都必須再次輸入；不會重複使用先前的
 msgid "Enter master password again"
 msgstr "再次輸入主密碼"
 
-#: src/renderer/src/components/SettingsPage.tsx:1149
+#: src/renderer/src/components/SettingsPage.tsx:1174
 msgid "Enter PIN again"
 msgstr "再次輸入 PIN"
 
@@ -2681,7 +2729,7 @@ msgstr "輸入 Send 的存取密碼"
 msgid "Enter the SSH private key password"
 msgstr "請輸入 SSH 私密金鑰密碼"
 
-#: src/renderer/src/components/SettingsPage.tsx:265
+#: src/renderer/src/components/SettingsPage.tsx:268
 msgid "Enter whole numbers for hours and minutes."
 msgstr "請輸入整數的小時與分鐘。"
 
@@ -2717,7 +2765,7 @@ msgstr "啟用生物辨識前，請輸入主密碼。"
 msgid "Enter your master password to approve this protected SSH key."
 msgstr "請輸入主密碼以核准此受保護的 SSH 金鑰。"
 
-#: src/renderer/src/components/SettingsPage.tsx:588
+#: src/renderer/src/components/SettingsPage.tsx:591
 msgid "Enter your master password to confirm."
 msgstr "請輸入主密碼以確認。"
 
@@ -2813,7 +2861,7 @@ msgstr "匯出 Bitwarden 附件 ZIP"
 msgid "Export Bitwarden CSV"
 msgstr "匯出 Bitwarden CSV"
 
-#: src/renderer/src/components/SettingsPage.tsx:1753
+#: src/renderer/src/components/SettingsPage.tsx:1826
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:305
 msgid "Export encrypted backup"
 msgstr "匯出加密備份"
@@ -2856,7 +2904,7 @@ msgstr "欄位 {linkedId}"
 msgid "File"
 msgstr "檔案"
 
-#: src/renderer/src/components/SettingsPage.tsx:1740
+#: src/renderer/src/components/SettingsPage.tsx:1813
 msgid "File contents and paths are handled only by the local main process and are never sent back to the renderer process."
 msgstr "檔案內容和路徑只會由本機主程序處理，絕不會傳回轉譯程序。"
 
@@ -2937,6 +2985,10 @@ msgstr "資料夾"
 msgid "Folders organize your items without changing their login details."
 msgstr "資料夾可整理您的項目，不會變更其登入詳細資料。"
 
+#: src/renderer/src/components/SettingsPage.tsx:1574
+msgid "Follow the steps below to let BearWarden identify the current website and fill the focused login form."
+msgstr "按照下列步驟，讓 BearWarden 識別目前的網站並填入游標所在的登入表單。"
+
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1037
 msgid "For example, “Office USB security key.” The name is used only to identify this key."
 msgstr "例如「辦公室 USB 安全金鑰」。此名稱僅用於識別這把金鑰。"
@@ -2987,8 +3039,8 @@ msgstr "完整 BearWarden 備份（含附件）"
 msgid "Full name"
 msgstr "全名"
 
-#: src/renderer/src/components/SettingsPage.tsx:431
-#: src/renderer/src/components/SettingsPage.tsx:804
+#: src/renderer/src/components/SettingsPage.tsx:434
+#: src/renderer/src/components/SettingsPage.tsx:829
 msgid "General"
 msgstr "一般"
 
@@ -3161,7 +3213,7 @@ msgstr "歷史記錄會以純文字顯示"
 msgid "Host"
 msgstr "主機"
 
-#: src/renderer/src/components/SettingsPage.tsx:313
+#: src/renderer/src/components/SettingsPage.tsx:316
 msgid "hours"
 msgstr "小時"
 
@@ -3213,7 +3265,7 @@ msgstr "若非您提出此要求，請拒絕並檢查帳戶安全性。"
 msgid "If you do not want to risk duplicates, disconnect instead. Your local vault data will be kept."
 msgstr "若不想承擔重複項目的風險，請改為中斷連線。您的本機保管庫資料將會保留。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1735
+#: src/renderer/src/components/SettingsPage.tsx:1808
 msgid "Import Bitwarden JSON or create a password-protected portable backup."
 msgstr "匯入 Bitwarden JSON，或建立受密碼保護的可攜備份。"
 
@@ -3227,7 +3279,7 @@ msgstr "匯入完成：已新增 {0} 個項目和 {1} 個資料夾{skipped}{loss
 msgid "Import from clipboard"
 msgstr "從剪貼簿匯入"
 
-#: src/renderer/src/components/SettingsPage.tsx:1749
+#: src/renderer/src/components/SettingsPage.tsx:1822
 msgid "Import JSON"
 msgstr "匯入 JSON"
 
@@ -3238,6 +3290,10 @@ msgstr "匯入密碼資料"
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:405
 msgid "Importing does not remove duplicate items automatically"
 msgstr "匯入不會自動移除重複項目"
+
+#: src/renderer/src/components/AutofillAccessibilityGuide.tsx:32
+msgid "In System Settings → Privacy & Security → Accessibility, turn on BearWarden. If it is missing, click + and select BearWarden from Applications."
+msgstr "前往「系統設定」→「隱私權與安全性」→「輔助使用」，開啟 BearWarden。若清單中沒有 BearWarden，請按下 +，再從「應用程式」中選取 BearWarden。"
 
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:774
 msgid "Include four digits"
@@ -3337,7 +3393,7 @@ msgstr "不適用的項目已略過"
 msgid "Its items will move to Unfiled and will not be deleted."
 msgstr "其中的項目將移至未分類，且不會遭到刪除。"
 
-#: src/renderer/src/components/SettingsPage.tsx:497
+#: src/renderer/src/components/SettingsPage.tsx:500
 msgid "Japanese"
 msgstr "日文"
 
@@ -3395,7 +3451,7 @@ msgstr "發現已知外洩事件"
 msgid "Known breaches have not been checked yet"
 msgstr "尚未檢查已知外洩事件"
 
-#: src/renderer/src/components/SettingsPage.tsx:839
+#: src/renderer/src/components/SettingsPage.tsx:864
 msgid "Language"
 msgstr "語言"
 
@@ -3425,11 +3481,11 @@ msgstr "上次同步"
 msgid "Last synced: {lastSyncTime}"
 msgstr "上次同步：{lastSyncTime}"
 
-#: src/renderer/src/components/SettingsPage.tsx:894
+#: src/renderer/src/components/SettingsPage.tsx:919
 msgid "Launch BearWarden at login"
 msgstr "登入時啟動 BearWarden"
 
-#: src/renderer/src/components/SettingsPage.tsx:900
+#: src/renderer/src/components/SettingsPage.tsx:925
 msgid "Launch BearWarden automatically after you log in to this computer."
 msgstr "登入此電腦後自動啟動 BearWarden。"
 
@@ -3441,7 +3497,7 @@ msgstr "留空表示不設上限。"
 msgid "Length"
 msgstr "長度"
 
-#: src/renderer/src/components/SettingsPage.tsx:1573
+#: src/renderer/src/components/SettingsPage.tsx:1646
 msgid "Let terminals and Git use SSH keys from the vault through a local socket."
 msgstr "讓終端機與 Git 透過本機 socket 使用保管庫中的 SSH 金鑰。"
 
@@ -3454,7 +3510,7 @@ msgstr "允許伺服器暫時略過此裝置的兩步驟驗證。"
 msgid "License number"
 msgstr "授權號碼"
 
-#: src/renderer/src/components/SettingsPage.tsx:486
+#: src/renderer/src/components/SettingsPage.tsx:489
 msgid "Light"
 msgstr "淺色"
 
@@ -3487,7 +3543,7 @@ msgstr "清單操作"
 msgid "load"
 msgstr "載入"
 
-#: src/renderer/src/components/SettingsPage.tsx:1361
+#: src/renderer/src/components/SettingsPage.tsx:1386
 msgid "Load icons through the configured Bitwarden or Vaultwarden icon service. When disabled, local initials are used instead."
 msgstr "透過設定的 Bitwarden 或 Vaultwarden 圖示服務載入圖示。停用時會改用本機的名稱縮寫。"
 
@@ -3527,7 +3583,7 @@ msgstr "正在載入密碼歷程記錄"
 msgid "Loading Sends…"
 msgstr "正在載入 Sends…"
 
-#: src/renderer/src/components/SettingsPage.tsx:766
+#: src/renderer/src/components/SettingsPage.tsx:791
 msgid "Loading settings…"
 msgstr "正在載入設定…"
 
@@ -3556,7 +3612,7 @@ msgstr "本機帳戶排序已更新。"
 msgid "Local accounts"
 msgstr "本機帳戶"
 
-#: src/renderer/src/components/SettingsPage.tsx:450
+#: src/renderer/src/components/SettingsPage.tsx:453
 msgid "Local accounts and cloud connections"
 msgstr "本機帳戶與雲端連線"
 
@@ -3568,7 +3624,7 @@ msgstr "本機產生器"
 msgid "Local vault"
 msgstr "本機保管庫"
 
-#: src/renderer/src/components/SettingsPage.tsx:994
+#: src/renderer/src/components/SettingsPage.tsx:1019
 msgid "Lock after inactivity"
 msgstr "閒置後鎖定"
 
@@ -3576,15 +3632,15 @@ msgstr "閒置後鎖定"
 msgid "Lock and restart"
 msgstr "鎖定並重新啟動"
 
-#: src/renderer/src/components/SettingsPage.tsx:997
+#: src/renderer/src/components/SettingsPage.tsx:1022
 msgid "Lock automatically after a period of inactivity. The vault always locks when the app closes."
 msgstr "一段時間未操作後自動鎖定。應用程式關閉時，保管庫一定會鎖定。"
 
-#: src/renderer/src/components/SettingsPage.tsx:979
+#: src/renderer/src/components/SettingsPage.tsx:1004
 msgid "Lock the vault immediately when the computer goes to sleep."
 msgstr "電腦進入睡眠時立即鎖定保管庫。"
 
-#: src/renderer/src/components/SettingsPage.tsx:961
+#: src/renderer/src/components/SettingsPage.tsx:986
 msgid "Lock the vault immediately when you lock the screen."
 msgstr "鎖定螢幕時立即鎖定保管庫。"
 
@@ -3593,15 +3649,15 @@ msgstr "鎖定螢幕時立即鎖定保管庫。"
 msgid "Lock vault"
 msgstr "鎖定保管庫"
 
-#: src/renderer/src/components/SettingsPage.tsx:976
+#: src/renderer/src/components/SettingsPage.tsx:1001
 msgid "Lock when the computer sleeps"
 msgstr "電腦進入睡眠時鎖定"
 
-#: src/renderer/src/components/SettingsPage.tsx:958
+#: src/renderer/src/components/SettingsPage.tsx:983
 msgid "Lock when the screen is locked"
 msgstr "螢幕鎖定時鎖定"
 
-#: src/renderer/src/components/SettingsPage.tsx:438
+#: src/renderer/src/components/SettingsPage.tsx:441
 msgid "Locking and unlocking"
 msgstr "鎖定與解鎖"
 
@@ -3645,7 +3701,11 @@ msgstr "macOS CLI"
 msgid "macOS desktop app"
 msgstr "macOS 桌面應用程式"
 
-#: src/renderer/src/components/SettingsPage.tsx:648
+#: src/renderer/src/components/AutofillAccessibilityGuide.tsx:42
+msgid "macOS grants broad Accessibility access to control the computer. BearWarden uses it only to read and fill supported browsers when you press <0/>."
+msgstr "macOS 的輔助使用權限可廣泛控制電腦。BearWarden 只會在您按下 <0/> 時，用它讀取支援的瀏覽器並執行填入。"
+
+#: src/renderer/src/components/SettingsPage.tsx:651
 msgid "macOS only"
 msgstr "僅限 macOS"
 
@@ -3665,11 +3725,11 @@ msgstr "管理集合"
 msgid "Manage FIDO2 security keys"
 msgstr "管理 FIDO2 安全金鑰"
 
-#: src/renderer/src/components/SettingsPage.tsx:745
+#: src/renderer/src/components/SettingsPage.tsx:770
 msgid "Manage security, appearance, and sync on this device."
 msgstr "在此裝置上管理安全性、外觀與同步。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1445
+#: src/renderer/src/components/SettingsPage.tsx:1470
 msgid "Manage sync & accounts"
 msgstr "管理同步與帳戶"
 
@@ -3793,7 +3853,7 @@ msgstr "已移轉"
 msgid "Minimize"
 msgstr "最小化"
 
-#: src/renderer/src/components/SettingsPage.tsx:296
+#: src/renderer/src/components/SettingsPage.tsx:299
 msgid "Minimum 1 minute, maximum 8,760 hours; minutes must be between 0 and 59."
 msgstr "最少 1 分鐘，最多 8,760 小時；分鐘必須介於 0 至 59。"
 
@@ -3813,11 +3873,11 @@ msgstr "最少特殊字元"
 msgid "Minimum uppercase"
 msgstr "最少大寫字母"
 
-#: src/renderer/src/components/SettingsPage.tsx:328
+#: src/renderer/src/components/SettingsPage.tsx:331
 msgid "minutes"
 msgstr "分鐘"
 
-#: src/renderer/src/components/SettingsPage.tsx:269
+#: src/renderer/src/components/SettingsPage.tsx:272
 msgid "Minutes must be between 0 and 59."
 msgstr "分鐘必須介於 0 到 59 之間。"
 
@@ -3826,7 +3886,7 @@ msgstr "分鐘必須介於 0 到 59 之間。"
 msgid "More actions"
 msgstr "更多操作"
 
-#: src/renderer/src/components/SettingsPage.tsx:481
+#: src/renderer/src/components/SettingsPage.tsx:484
 #: src/renderer/src/components/VaultShell.tsx:1020
 msgid "Most used"
 msgstr "最常使用"
@@ -3936,7 +3996,7 @@ msgstr "正與其他 {0} 個項目一起移動"
 #: src/renderer/src/components/LoginEditor.tsx:1427
 #: src/renderer/src/components/LoginEditor.tsx:2263
 #: src/renderer/src/components/SendsPage.tsx:564
-#: src/renderer/src/components/SettingsPage.tsx:482
+#: src/renderer/src/components/SettingsPage.tsx:485
 #: src/renderer/src/components/VaultShell.tsx:1018
 #: src/renderer/src/components/VaultShell.tsx:1033
 msgid "Name"
@@ -3952,11 +4012,11 @@ msgid "Needs attention"
 msgstr "需要注意"
 
 #: src/renderer/src/components/LoginEditor.tsx:423
-#: src/renderer/src/components/SettingsPage.tsx:473
+#: src/renderer/src/components/SettingsPage.tsx:476
 msgid "Never"
 msgstr "從不"
 
-#: src/renderer/src/components/SettingsPage.tsx:504
+#: src/renderer/src/components/SettingsPage.tsx:507
 msgid "Never ask (approve automatically)"
 msgstr "永不詢問（自動核准）"
 
@@ -4008,7 +4068,7 @@ msgstr "已產生新結果"
 msgid "No"
 msgstr "否"
 
-#: src/renderer/src/components/SettingsPage.tsx:1429
+#: src/renderer/src/components/SettingsPage.tsx:1454
 msgid "No Bitwarden account connected"
 msgstr "未連結 Bitwarden 帳戶"
 
@@ -4145,7 +4205,7 @@ msgstr "這次並未完成所有附件。請再次選取相同的備份並輸入
 msgid "Not checked"
 msgstr "未檢查"
 
-#: src/renderer/src/components/SettingsPage.tsx:508
+#: src/renderer/src/components/SettingsPage.tsx:511
 #: src/renderer/src/components/VaultHealthPage.tsx:1472
 #: src/renderer/src/components/VaultShell.tsx:1011
 msgid "Not configured"
@@ -4192,8 +4252,8 @@ msgid "Numbers"
 msgstr "數字"
 
 #: src/renderer/src/components/SettingsPage.tsx:1506
-msgid "On macOS, allow BearWarden under System Settings → Privacy & Security → Accessibility. If the autofill helper appears in the list, allow it as well. After a denial, macOS may not show the prompt again."
-msgstr "在 macOS 上，請於「系統設定」→「隱私權與安全性」→「輔助使用」中允許 BearWarden。若清單中出現自動填寫輔助程式，也請一併允許。遭拒後，macOS 可能不會再次顯示提示。"
+#~ msgid "On macOS, allow BearWarden under System Settings → Privacy & Security → Accessibility. If the autofill helper appears in the list, allow it as well. After a denial, macOS may not show the prompt again."
+#~ msgstr "在 macOS 上，請於「系統設定」→「隱私權與安全性」→「輔助使用」中允許 BearWarden。若清單中出現自動填寫輔助程式，也請一併允許。遭拒後，macOS 可能不會再次顯示提示。"
 
 #: src/renderer/src/components/VaultShell.tsx:5739
 msgid "One-time verification code"
@@ -4444,7 +4504,7 @@ msgstr "要徹底清除個人保管庫嗎？"
 msgid "Permanently remove local data"
 msgstr "永久移除本機資料"
 
-#: src/renderer/src/components/SettingsPage.tsx:654
+#: src/renderer/src/components/SettingsPage.tsx:657
 msgid "Permission required"
 msgstr "需要權限"
 
@@ -4473,15 +4533,15 @@ msgid "Phone"
 msgstr "電話"
 
 #: src/renderer/src/components/AuthScreen.tsx:278
-#: src/renderer/src/components/SettingsPage.tsx:1131
+#: src/renderer/src/components/SettingsPage.tsx:1156
 msgid "PIN"
 msgstr "PIN"
 
-#: src/renderer/src/components/SettingsPage.tsx:1074
+#: src/renderer/src/components/SettingsPage.tsx:1099
 msgid "PIN unlock"
 msgstr "PIN 解鎖"
 
-#: src/renderer/src/components/SettingsPage.tsx:617
+#: src/renderer/src/components/SettingsPage.tsx:620
 msgid "PIN unlock is disabled."
 msgstr "PIN 解鎖已停用。"
 
@@ -4493,7 +4553,7 @@ msgstr "PIN 解鎖已停用。請改輸入主密碼。"
 msgid "PIN unlock is disabled. Use your master password instead."
 msgstr "PIN 解鎖已停用。請改用主密碼。"
 
-#: src/renderer/src/components/SettingsPage.tsx:598
+#: src/renderer/src/components/SettingsPage.tsx:601
 msgid "PIN unlock is enabled for this session only."
 msgstr "PIN 解鎖僅限本次工作階段使用。"
 
@@ -4527,15 +4587,15 @@ msgstr "加號地址"
 msgid "Postal code"
 msgstr "郵遞區號"
 
-#: src/renderer/src/components/SettingsPage.tsx:1458
+#: src/renderer/src/components/SettingsPage.tsx:1483
 msgid "Press <0/> in a supported browser to match the current site and fill in login details."
 msgstr "在支援的瀏覽器中按下 <0/>，即可比對目前網站並填入登入資訊。"
 
-#: src/renderer/src/components/SettingsPage.tsx:443
+#: src/renderer/src/components/SettingsPage.tsx:446
 msgid "Privacy"
 msgstr "隱私"
 
-#: src/renderer/src/components/SettingsPage.tsx:1310
+#: src/renderer/src/components/SettingsPage.tsx:1335
 msgid "Privacy & clipboard"
 msgstr "隱私與剪貼簿"
 
@@ -4630,7 +4690,7 @@ msgstr "快速存取"
 msgid "Random word"
 msgstr "隨機詞彙"
 
-#: src/renderer/src/components/SettingsPage.tsx:1480
+#: src/renderer/src/components/SettingsPage.tsx:1506
 msgid "Read the foreground browser’s URL and form only when you press the shortcut. Multiple matches appear in a mini picker."
 msgstr "僅在您按下快速鍵時讀取前景瀏覽器的 URL 與表單。多個相符項目會顯示在迷你選擇器中。"
 
@@ -4644,7 +4704,7 @@ msgstr "唯讀"
 msgid "Reading clipboard…"
 msgstr "正在讀取剪貼簿…"
 
-#: src/renderer/src/components/SettingsPage.tsx:635
+#: src/renderer/src/components/SettingsPage.tsx:638
 #: src/renderer/src/lib/ssh-agent-ui.ts:70
 msgid "Ready"
 msgstr "就緒"
@@ -4661,7 +4721,7 @@ msgstr "需要重新驗證身分"
 msgid "Recently modified"
 msgstr "最近修改"
 
-#: src/renderer/src/components/SettingsPage.tsx:480
+#: src/renderer/src/components/SettingsPage.tsx:483
 #: src/renderer/src/components/VaultShell.tsx:1019
 #: src/renderer/src/components/VaultShell.tsx:2563
 #: src/renderer/src/components/VaultShell.tsx:4768
@@ -4672,6 +4732,10 @@ msgstr "最近使用"
 #: src/renderer/src/components/SendsPage.tsx:708
 msgid "Recipients must actively reveal the text to see it."
 msgstr "收件者必須主動揭露文字才能查看。"
+
+#: src/renderer/src/components/SettingsPage.tsx:1555
+msgid "Recommended"
+msgstr "建議"
 
 #: src/renderer/src/components/MasterPasswordChangeDialog.tsx:443
 msgid "Reconnect"
@@ -4689,7 +4753,7 @@ msgstr "復原碼"
 msgid "Redo"
 msgstr "重做"
 
-#: src/renderer/src/components/SettingsPage.tsx:1311
+#: src/renderer/src/components/SettingsPage.tsx:1336
 msgid "Reduce how long sensitive data remains on screen or in the clipboard."
 msgstr "縮短敏感資料顯示在螢幕上或保留於剪貼簿中的時間。"
 
@@ -4705,7 +4769,7 @@ msgstr "重新產生 {generateLabel}"
 msgid "Registered security keys"
 msgstr "已註冊的安全金鑰"
 
-#: src/renderer/src/components/SettingsPage.tsx:899
+#: src/renderer/src/components/SettingsPage.tsx:924
 msgid "Registered, but you still need to allow BearWarden in Login Items under macOS System Settings."
 msgstr "已註冊，但您仍須在 macOS「系統設定」的「登入項目」中允許 BearWarden。"
 
@@ -4735,7 +4799,7 @@ msgstr "重新載入"
 msgid "Reloading local accounts"
 msgstr "正在重新載入本機帳戶"
 
-#: src/renderer/src/components/SettingsPage.tsx:505
+#: src/renderer/src/components/SettingsPage.tsx:508
 msgid "Remember approvals until locked"
 msgstr "在鎖定前記住核准"
 
@@ -4744,7 +4808,7 @@ msgstr "在鎖定前記住核准"
 msgid "Remember this device"
 msgstr "記住此裝置"
 
-#: src/renderer/src/components/SettingsPage.tsx:1610
+#: src/renderer/src/components/SettingsPage.tsx:1683
 msgid "Remember until locked distinguishes local requests. Forwarded requests must also match a verified remote host fingerprint. Approvals are cleared when the vault locks."
 msgstr "「記住直到鎖定」會區分本機請求。轉送的請求還必須符合已驗證的遠端主機指紋。保管庫鎖定時，核准記錄會被清除。"
 
@@ -4827,7 +4891,7 @@ msgstr "修復"
 msgid "Repaired “{0}”."
 msgstr "已修復「{0}」。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1518
+#: src/renderer/src/components/SettingsPage.tsx:1589
 msgid "Request accessibility permission"
 msgstr "請求輔助使用權限"
 
@@ -4907,6 +4971,10 @@ msgstr "正在還原附件"
 msgid "Retry"
 msgstr "重試"
 
+#: src/renderer/src/components/AutofillAccessibilityGuide.tsx:38
+msgid "Return to BearWarden and click “Check again”."
+msgstr "回到 BearWarden，點擊「重新檢查」。"
+
 #: src/renderer/src/components/VaultHealthPage.tsx:1390
 msgid "Reused passwords"
 msgstr "重複使用的密碼"
@@ -4981,7 +5049,7 @@ msgstr "已儲存「{0}」。"
 msgid "Saved {0}"
 msgstr "已儲存 {0}"
 
-#: src/renderer/src/components/SettingsPage.tsx:756
+#: src/renderer/src/components/SettingsPage.tsx:781
 msgid "Saving"
 msgstr "正在儲存"
 
@@ -5073,11 +5141,11 @@ msgstr "安全儲存的項目"
 msgid "Securely switching accounts and restarting"
 msgstr "正在安全切換帳戶並重新啟動"
 
-#: src/renderer/src/components/SettingsPage.tsx:922
+#: src/renderer/src/components/SettingsPage.tsx:947
 msgid "Security"
 msgstr "安全性"
 
-#: src/renderer/src/components/SettingsPage.tsx:437
+#: src/renderer/src/components/SettingsPage.tsx:440
 msgid "Security & unlock"
 msgstr "安全性與解鎖"
 
@@ -5186,7 +5254,7 @@ msgstr "伺服器 URL"
 msgid "Service domains are compared with the static list only on this device."
 msgstr "服務網域只會與此裝置上的靜態清單比較。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1660
+#: src/renderer/src/components/SettingsPage.tsx:1733
 msgid "Set <0>SSH_AUTH_SOCK</0> in the terminal environment so SSH and Git use BearWarden’s local socket."
 msgstr "在終端機環境中設定 <0>SSH_AUTH_SOCK</0>，讓 SSH 與 Git 使用 BearWarden 的本機通訊端。"
 
@@ -5194,11 +5262,15 @@ msgstr "在終端機環境中設定 <0>SSH_AUTH_SOCK</0>，讓 SSH 與 Git 使�
 msgid "Set a master password that only you know. BearWarden cannot recover it for you."
 msgstr "請設定只有您知道的主密碼。BearWarden 無法為您復原它。"
 
+#: src/renderer/src/components/AutofillAccessibilityGuide.tsx:24
+msgid "Set up Accessibility permission"
+msgstr "設定輔助使用權限"
+
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:736
 msgid "Set up an authenticator app"
 msgstr "設定驗證器應用程式"
 
-#: src/renderer/src/components/SettingsPage.tsx:1445
+#: src/renderer/src/components/SettingsPage.tsx:1470
 msgid "Set up Bitwarden sync"
 msgstr "設定 Bitwarden 同步"
 
@@ -5206,16 +5278,16 @@ msgstr "設定 Bitwarden 同步"
 msgid "Set up email two-factor authentication"
 msgstr "設定電子郵件雙因素驗證"
 
-#: src/renderer/src/components/SettingsPage.tsx:1555
+#: src/renderer/src/components/SettingsPage.tsx:1630
 msgid "Setting status"
 msgstr "設定狀態"
 
-#: src/renderer/src/components/SettingsPage.tsx:743
+#: src/renderer/src/components/SettingsPage.tsx:768
 #: src/renderer/src/components/VaultShell.tsx:4917
 msgid "Settings"
 msgstr "設定"
 
-#: src/renderer/src/components/SettingsPage.tsx:782
+#: src/renderer/src/components/SettingsPage.tsx:807
 msgid "Settings categories"
 msgstr "設定分類"
 
@@ -5251,7 +5323,7 @@ msgstr "已分享的項目"
 msgid "Sharing link copied"
 msgstr "分享連結已複製"
 
-#: src/renderer/src/components/SettingsPage.tsx:652
+#: src/renderer/src/components/SettingsPage.tsx:655
 msgid "Shortcut conflict"
 msgstr "快速鍵衝突"
 
@@ -5295,7 +5367,7 @@ msgstr "顯示此歷史密碼"
 msgid "Show two-step verification"
 msgstr "顯示兩步驟驗證"
 
-#: src/renderer/src/components/SettingsPage.tsx:1358
+#: src/renderer/src/components/SettingsPage.tsx:1383
 msgid "Show website icons"
 msgstr "顯示網站圖示"
 
@@ -5303,11 +5375,11 @@ msgstr "顯示網站圖示"
 msgid "Sign in with a passkey"
 msgstr "使用通行密鑰登入"
 
-#: src/renderer/src/components/SettingsPage.tsx:1607
+#: src/renderer/src/components/SettingsPage.tsx:1680
 msgid "Signature approval"
 msgstr "簽章核准"
 
-#: src/renderer/src/components/SettingsPage.tsx:495
+#: src/renderer/src/components/SettingsPage.tsx:498
 msgid "Simplified Chinese"
 msgstr "簡體中文"
 
@@ -5319,15 +5391,15 @@ msgstr "排序順序"
 msgid "Special characters !@#$%^&*"
 msgstr "特殊字元 !@#$%^&*"
 
-#: src/renderer/src/components/SettingsPage.tsx:1572
+#: src/renderer/src/components/SettingsPage.tsx:1645
 msgid "SSH Agent"
 msgstr "SSH Agent"
 
-#: src/renderer/src/components/SettingsPage.tsx:1676
+#: src/renderer/src/components/SettingsPage.tsx:1749
 msgid "SSH Agent setup command copied"
 msgstr "已複製 SSH Agent 設定指令"
 
-#: src/renderer/src/components/SettingsPage.tsx:1670
+#: src/renderer/src/components/SettingsPage.tsx:1743
 msgid "SSH Agent terminal setup command"
 msgstr "SSH Agent 終端機設定指令"
 
@@ -5367,7 +5439,7 @@ msgstr "開始設定"
 msgid "Started:"
 msgstr "已開始："
 
-#: src/renderer/src/components/SettingsPage.tsx:637
+#: src/renderer/src/components/SettingsPage.tsx:640
 #: src/renderer/src/lib/ssh-agent-ui.ts:71
 msgid "Starting"
 msgstr "啟動中"
@@ -5400,7 +5472,7 @@ msgstr "停止並重新連線。在確認哪一組主密碼可讓您登入前，
 msgid "Stop and save progress"
 msgstr "停止並儲存進度"
 
-#: src/renderer/src/components/SettingsPage.tsx:640
+#: src/renderer/src/components/SettingsPage.tsx:643
 #: src/renderer/src/lib/ssh-agent-ui.ts:74
 msgid "Stopped"
 msgstr "已停止"
@@ -5434,7 +5506,7 @@ msgstr "符號、數字與字母會使用不同顏色，以便區分。"
 msgid "Sync"
 msgstr "同步"
 
-#: src/renderer/src/components/SettingsPage.tsx:1399
+#: src/renderer/src/components/SettingsPage.tsx:1424
 msgid "Sync & accounts"
 msgstr "同步與帳戶"
 
@@ -5482,14 +5554,14 @@ msgstr "同步中"
 msgid "Syncing attachment list"
 msgstr "正在同步附件清單"
 
-#: src/renderer/src/components/SettingsPage.tsx:511
+#: src/renderer/src/components/SettingsPage.tsx:514
 #: src/renderer/src/components/SyncDialog.tsx:573
 #: src/renderer/src/components/VaultShell.tsx:1014
 msgid "Syncing…"
 msgstr "同步中…"
 
-#: src/renderer/src/components/SettingsPage.tsx:485
-#: src/renderer/src/components/SettingsPage.tsx:493
+#: src/renderer/src/components/SettingsPage.tsx:488
+#: src/renderer/src/components/SettingsPage.tsx:496
 msgid "System"
 msgstr "系統"
 
@@ -5498,7 +5570,7 @@ msgstr "系統"
 msgid "Takeover"
 msgstr "接管"
 
-#: src/renderer/src/components/SettingsPage.tsx:1647
+#: src/renderer/src/components/SettingsPage.tsx:1720
 msgid "Terminal setup"
 msgstr "終端機設定"
 
@@ -5523,6 +5595,10 @@ msgstr "預設隱藏文字"
 msgid "That name is already in use. Choose another name."
 msgstr "該名稱已在使用中。請選擇其他名稱。"
 
+#: src/renderer/src/components/SettingsPage.tsx:724
+msgid "That shortcut is unavailable. Your previous shortcut remains active."
+msgstr "這組快速鍵無法使用。原本的快速鍵仍可使用。"
+
 #. placeholder {0}: webAuthnActionLabel(action)
 #: src/renderer/src/components/account-webauthn-ui.ts:79
 msgid "The {0} result is unknown. The status has been refreshed. Verify your current keys before retrying."
@@ -5544,7 +5620,7 @@ msgstr "啟用結果不明。狀態已重新整理。請勿立即重試。"
 msgid "The active application is not a supported browser."
 msgstr "目前作用中的應用程式不是受支援的瀏覽器。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1692
+#: src/renderer/src/components/SettingsPage.tsx:1765
 msgid "The Agent endpoint contains control characters that cannot be safely placed in a shell command, so no copyable command is available. Fix<0>BEARWARDEN_SSH_AUTH_SOCK</0>, then enable the Agent again."
 msgstr "Agent 端點含有無法安全放入 Shell 指令的控制字元，因此沒有可複製的指令可用。請修正<0>BEARWARDEN_SSH_AUTH_SOCK</0>，再重新啟用 Agent。"
 
@@ -5584,7 +5660,7 @@ msgstr "驗證器應用程式已啟用。"
 msgid "The autofill service is currently unavailable."
 msgstr "自動填入服務目前無法使用。"
 
-#: src/renderer/src/components/SettingsPage.tsx:694
+#: src/renderer/src/components/SettingsPage.tsx:697
 msgid "The autofill setting could not be saved, so the shortcut status was not changed."
 msgstr "無法儲存自動填入設定，因此未變更快速鍵狀態。"
 
@@ -5665,11 +5741,11 @@ msgstr "目前伺服器不支援帳戶裝置清單。"
 msgid "The custom field contents could not be shown. Try again later."
 msgstr "無法顯示自訂欄位內容。請稍後再試。"
 
-#: src/renderer/src/components/SettingsPage.tsx:274
+#: src/renderer/src/components/SettingsPage.tsx:277
 msgid "The custom inactivity timeout cannot exceed 8,760 hours."
 msgstr "自訂閒置逾時不得超過 8,760 小時。"
 
-#: src/renderer/src/components/SettingsPage.tsx:277
+#: src/renderer/src/components/SettingsPage.tsx:280
 msgid "The custom inactivity timeout must be at least 1 minute."
 msgstr "自訂閒置逾時至少須為 1 分鐘。"
 
@@ -5693,11 +5769,11 @@ msgstr "顯示名稱不得超過 50 個 UTF-8 位元組。"
 msgid "The encrypted .bwbackup contains personal items and attachments and can only be restored by a BearWarden version that supports this format. Official Bitwarden clients cannot import it directly. Trash and Sends are not included."
 msgstr "加密的 .bwbackup 包含個人項目與附件，且只能由支援此格式的 BearWarden 版本還原。官方 Bitwarden 用戶端無法直接匯入。未包含垃圾桶與 Sends。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1087
+#: src/renderer/src/components/SettingsPage.tsx:1112
 msgid "The encrypted PIN credential remains in memory only. You must use the master password after restarting, signing out, disconnecting, or switching accounts."
 msgstr "加密的 PIN 憑證僅保留在記憶體中。重新啟動、登出、中斷連線或切換帳戶後，必須使用主密碼。"
 
-#: src/renderer/src/components/SettingsPage.tsx:704
+#: src/renderer/src/components/SettingsPage.tsx:707
 msgid "The global autofill shortcut is already used by another app. Disable the same shortcut in that app first."
 msgstr "全域自動填入快速鍵已由另一個應用程式使用。請先在該應用程式中停用相同的快速鍵。"
 
@@ -5763,16 +5839,16 @@ msgstr "主程序正在本機比對服務網域，不會上傳任何保管庫資
 
 #: src/renderer/src/components/auth-screen-ui.ts:12
 #: src/renderer/src/components/AuthScreen.tsx:48
-#: src/renderer/src/components/SettingsPage.tsx:602
+#: src/renderer/src/components/SettingsPage.tsx:605
 #: src/renderer/src/components/SyncDialog.tsx:150
 msgid "The master password is incorrect."
 msgstr "主密碼不正確。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1283
+#: src/renderer/src/components/SettingsPage.tsx:1308
 msgid "The master password is sent only to the local process for verification."
 msgstr "主密碼僅會傳送至本機程序進行驗證。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1173
+#: src/renderer/src/components/SettingsPage.tsx:1198
 msgid "The master password is verified again in the main process each time PIN unlock is enabled."
 msgstr "每次啟用 PIN 解鎖時，主密碼都會在主程序中再次驗證。"
 
@@ -5817,7 +5893,7 @@ msgstr "另一部裝置顯示完全相同的詞組"
 msgid "The passkey for “{0}” will be removed from this login and synced immediately. This action cannot be undone."
 msgstr "「{0}」的通行密鑰將從此登入項目移除並立即同步。此動作無法復原。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1122
+#: src/renderer/src/components/SettingsPage.tsx:1147
 msgid "The PIN and encrypted credential are never written to disk. You can use the PIN after a normal lock, but restarting the app always requires the master password."
 msgstr "PIN 與加密憑證絕不會寫入磁碟。一般鎖定後可以使用 PIN，但重新啟動應用程式一律需要主密碼。"
 
@@ -5827,11 +5903,11 @@ msgid "The PIN is incorrect."
 msgstr "PIN 不正確。"
 
 #: src/renderer/src/components/AuthScreen.tsx:111
-#: src/renderer/src/components/SettingsPage.tsx:580
+#: src/renderer/src/components/SettingsPage.tsx:583
 msgid "The PIN must contain at least 4 characters."
 msgstr "PIN 至少須包含 4 個字元。"
 
-#: src/renderer/src/components/SettingsPage.tsx:584
+#: src/renderer/src/components/SettingsPage.tsx:587
 msgid "The PINs do not match."
 msgstr "PIN 不一致。"
 
@@ -6137,7 +6213,7 @@ msgstr "驗證電子郵件請求已傳送。若伺服器已設定電子郵件，
 msgid "The website URL is invalid."
 msgstr "網站 URL 無效。"
 
-#: src/renderer/src/components/SettingsPage.tsx:812
+#: src/renderer/src/components/SettingsPage.tsx:837
 msgid "Theme"
 msgstr "佈景主題"
 
@@ -6226,7 +6302,7 @@ msgid "This check connects to HIBP only after you press the button. Opening this
 msgstr "只有在您按下按鈕後，此檢查才會連線至 HIBP。開啟此頁面不會自動開始查詢。"
 
 #: src/renderer/src/components/AccountDevicesDialog.tsx:458
-#: src/renderer/src/components/SettingsPage.tsx:927
+#: src/renderer/src/components/SettingsPage.tsx:952
 msgid "This device"
 msgstr "此裝置"
 
@@ -6456,7 +6532,7 @@ msgstr "目前有過多 SSH 私密金鑰匯入工作階段處於啟用狀態。�
 msgid "Too many SSH private key import sessions are in progress. Try again later."
 msgstr "目前有過多 SSH 私密金鑰匯入工作階段正在進行。請稍後再試。"
 
-#: src/renderer/src/components/SettingsPage.tsx:455
+#: src/renderer/src/components/SettingsPage.tsx:458
 msgid "Tools & data"
 msgstr "工具與資料"
 
@@ -6464,7 +6540,7 @@ msgstr "工具與資料"
 msgid "TOTP available"
 msgstr "可使用 TOTP"
 
-#: src/renderer/src/components/SettingsPage.tsx:496
+#: src/renderer/src/components/SettingsPage.tsx:499
 msgid "Traditional Chinese"
 msgstr "繁體中文"
 
@@ -6612,7 +6688,7 @@ msgstr "無法判斷帳戶是否出現在外洩事件中"
 msgid "Unable to disable {providerName}. Try again later."
 msgstr "無法停用 {providerName}。請稍後再試。"
 
-#: src/renderer/src/components/SettingsPage.tsx:619
+#: src/renderer/src/components/SettingsPage.tsx:622
 msgid "Unable to disable PIN unlock."
 msgstr "無法停用 PIN 解鎖。"
 
@@ -6628,7 +6704,7 @@ msgstr "無法下載更新"
 msgid "Unable to enable email two-factor authentication. Restart setup."
 msgstr "無法啟用電子郵件雙因素驗證。請重新開始設定。"
 
-#: src/renderer/src/components/SettingsPage.tsx:603
+#: src/renderer/src/components/SettingsPage.tsx:606
 msgid "Unable to enable PIN unlock."
 msgstr "無法啟用 PIN 解鎖。"
 
@@ -6684,12 +6760,12 @@ msgstr "無法讀取產生器記錄。"
 msgid "Unable to read password history. Try again."
 msgstr "無法讀取密碼歷史紀錄。請再試一次。"
 
-#: src/renderer/src/components/SettingsPage.tsx:549
-#: src/renderer/src/components/SettingsPage.tsx:682
+#: src/renderer/src/components/SettingsPage.tsx:552
+#: src/renderer/src/components/SettingsPage.tsx:685
 msgid "Unable to read the autofill status."
 msgstr "無法讀取自動填入狀態。"
 
-#: src/renderer/src/components/SettingsPage.tsx:569
+#: src/renderer/src/components/SettingsPage.tsx:572
 msgid "Unable to read the PIN unlock status."
 msgstr "無法讀取 PIN 解鎖狀態。"
 
@@ -6709,7 +6785,7 @@ msgstr "無法讀取更新狀態。"
 msgid "Unable to read vault data. Try again. If this continues, the vault file may be corrupted."
 msgstr "無法讀取保管庫資料。請再試一次。若問題持續發生，保管庫檔案可能已損毀。"
 
-#: src/renderer/src/components/SettingsPage.tsx:732
+#: src/renderer/src/components/SettingsPage.tsx:757
 msgid "Unable to request accessibility permission. Enable it manually in System Settings."
 msgstr "無法要求輔助使用權限。請在「系統設定」中手動啟用。"
 
@@ -6766,9 +6842,13 @@ msgstr "無法啟動驗證器設定。"
 msgid "Unable to start email two-factor authentication setup."
 msgstr "無法啟動電子郵件雙因素驗證設定。"
 
-#: src/renderer/src/components/SettingsPage.tsx:708
+#: src/renderer/src/components/SettingsPage.tsx:711
 msgid "Unable to update the autofill setting."
 msgstr "無法更新自動填寫設定。"
+
+#: src/renderer/src/components/SettingsPage.tsx:733
+msgid "Unable to update the autofill shortcut."
+msgstr "無法更新自動填入快速鍵。"
 
 #: src/renderer/src/components/Dialogs.tsx:431
 msgid "Unable to verify the master password. Try again."
@@ -6788,7 +6868,7 @@ msgstr "已取消封存「{0}」。"
 msgid "Unarchived {affectedCount} items."
 msgstr "已取消封存 {affectedCount} 個項目。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1222
+#: src/renderer/src/components/SettingsPage.tsx:1247
 msgid "Unavailable"
 msgstr "無法使用"
 
@@ -6877,16 +6957,16 @@ msgstr "未知的類型 ({type})"
 msgid "Unlock and sync"
 msgstr "解鎖並同步"
 
-#: src/renderer/src/components/SettingsPage.tsx:1217
+#: src/renderer/src/components/SettingsPage.tsx:1242
 msgid "Unlock quickly with device biometrics. Currently, only macOS Touch ID is supported."
 msgstr "使用裝置生物辨識快速解鎖。目前僅支援 macOS Touch ID。"
 
-#: src/renderer/src/components/SettingsPage.tsx:509
+#: src/renderer/src/components/SettingsPage.tsx:512
 #: src/renderer/src/components/VaultShell.tsx:1012
 msgid "Unlock required"
 msgstr "需要解鎖"
 
-#: src/renderer/src/components/SettingsPage.tsx:1075
+#: src/renderer/src/components/SettingsPage.tsx:1100
 msgid "Unlock the local vault with a temporary PIN."
 msgstr "使用暫時性 PIN 解鎖本機保管庫。"
 
@@ -6975,7 +7055,7 @@ msgstr "正在上傳加密附件"
 msgid "Uppercase letters"
 msgstr "大寫字母"
 
-#: src/renderer/src/components/SettingsPage.tsx:1142
+#: src/renderer/src/components/SettingsPage.tsx:1167
 msgid "Use at least 4 characters and avoid numbers that are easy to guess."
 msgstr "至少使用 4 個字元，並避免使用容易猜到的數字。"
 
@@ -7133,7 +7213,7 @@ msgstr "版本 {availableVersion} 已完成下載。"
 msgid "Version {availableVersion} is available to download."
 msgstr "版本 {availableVersion} 可供下載。"
 
-#: src/renderer/src/components/SettingsPage.tsx:459
+#: src/renderer/src/components/SettingsPage.tsx:462
 msgid "Version and update information"
 msgstr "版本與更新資訊"
 
@@ -7267,11 +7347,11 @@ msgstr "網站"
 msgid "Welcome back"
 msgstr "歡迎回來"
 
-#: src/renderer/src/components/SettingsPage.tsx:939
+#: src/renderer/src/components/SettingsPage.tsx:964
 msgid "When enabled, BearWarden may be hidden in Windows Remote Desktop, screen sharing, and recordings. If only the taskbar icon remains visible, turn this option off in a local session."
 msgstr "啟用後，BearWarden 可能會在 Windows 遠端桌面、螢幕分享和錄製畫面中隱藏。若只剩工作列圖示可見，請在本機工作階段關閉此選項。"
 
-#: src/renderer/src/components/SettingsPage.tsx:462
+#: src/renderer/src/components/SettingsPage.tsx:465
 msgid "When the app restarts"
 msgstr "應用程式重新啟動時"
 
@@ -7330,7 +7410,7 @@ msgstr "一次最多可處理 {MAX_LOGIN_BATCH_IDS} 個項目。"
 msgid "You can safely delete passkeys while editing the item. Private key material is never sent to the renderer."
 msgstr "您可以在編輯項目時安全刪除通行密鑰。私密金鑰資料絕不會傳送到轉譯程序。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1252
+#: src/renderer/src/components/SettingsPage.tsx:1277
 msgid "You can use biometrics to unlock after the next lock."
 msgstr "下次鎖定後，您可以使用生物辨識解鎖。"
 

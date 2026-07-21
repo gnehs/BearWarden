@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { dialog, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
+import { isAutofillShortcut } from '../shared/autofill-shortcuts'
 import {
   IPC_CHANNELS,
   IPC_ERROR_PREFIX,
@@ -358,6 +359,7 @@ function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
     'theme',
     'language',
     'autofillEnabled',
+    'autofillShortcut',
     'sshAgentEnabled',
     'sshAgentPromptBehavior'
   ])
@@ -437,6 +439,10 @@ function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
   if (record.autofillEnabled !== undefined) {
     if (typeof record.autofillEnabled !== 'boolean') throw new VaultError('INVALID_INPUT')
     result.autofillEnabled = record.autofillEnabled
+  }
+  if (record.autofillShortcut !== undefined) {
+    if (!isAutofillShortcut(record.autofillShortcut)) throw new VaultError('INVALID_INPUT')
+    result.autofillShortcut = record.autofillShortcut
   }
   if (record.sshAgentEnabled !== undefined) {
     if (typeof record.sshAgentEnabled !== 'boolean') throw new VaultError('INVALID_INPUT')

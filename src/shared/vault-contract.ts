@@ -1701,6 +1701,8 @@ export const MAX_VAULT_TIMEOUT_MINUTES = 525_600
 
 export type AppLanguagePreference = 'system' | 'en' | 'zh-CN' | 'zh-TW' | 'ja'
 
+export type { AutofillShortcut } from './autofill-shortcuts'
+
 /**
  * Timeout policy is deliberately closed: only policies implemented by the
  * main process may be persisted or accepted from a renderer.
@@ -1726,8 +1728,10 @@ export interface AppSettings {
   defaultSort: LoginSort
   theme: AppTheme
   language: AppLanguagePreference
-  /** Enables the macOS Ctrl+\\ cross-browser AutoFill shortcut. */
+  /** Enables the selected macOS cross-browser AutoFill shortcut. */
   autofillEnabled: boolean
+  /** A validated global shortcut chosen from BearWarden's conflict-aware presets. */
+  autofillShortcut: import('./autofill-shortcuts').AutofillShortcut
   /** Whether BearWarden exposes SSH keys through the local SSH agent socket. */
   sshAgentEnabled: boolean
   /** Controls whether individual SSH signing requests require user approval. */

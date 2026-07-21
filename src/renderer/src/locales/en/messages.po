@@ -118,12 +118,12 @@ msgid "{0, plural, one {# protected item} other {# protected items}}"
 msgstr "{0, plural, one {# protected item} other {# protected items}}"
 
 #. placeholder {0}: sshAgentStatus.identityCount
-#: src/renderer/src/components/SettingsPage.tsx:1720
+#: src/renderer/src/components/SettingsPage.tsx:1793
 msgid "{0, plural, one {# SSH key is available. Private keys and signing data are never sent to the renderer process.} other {# SSH keys are available. Private keys and signing data are never sent to the renderer process.}}"
 msgstr "{0, plural, one {# SSH key is available. Private keys and signing data are never sent to the renderer process.} other {# SSH keys are available. Private keys and signing data are never sent to the renderer process.}}"
 
 #. placeholder {0}: pinStatus.remainingAttempts
-#: src/renderer/src/components/SettingsPage.tsx:1094
+#: src/renderer/src/components/SettingsPage.tsx:1119
 msgid "{0, plural, one {PIN unlock is disabled after 5 consecutive failures. You have # attempt remaining.} other {PIN unlock is disabled after 5 consecutive failures. You have # attempts remaining.}}"
 msgstr "{0, plural, one {PIN unlock is disabled after 5 consecutive failures. You have # attempt remaining.} other {PIN unlock is disabled after 5 consecutive failures. You have # attempts remaining.}}"
 
@@ -473,19 +473,19 @@ msgstr "{uri} ≈ any URL with the same base domain"
 msgid "{value} seconds remaining"
 msgstr "{value} seconds remaining"
 
-#: src/renderer/src/components/SettingsPage.tsx:1537
+#: src/renderer/src/components/SettingsPage.tsx:1608
 msgid "<0/> could not be registered"
 msgstr "<0/> could not be registered"
 
-#: src/renderer/src/components/SettingsPage.tsx:464
+#: src/renderer/src/components/SettingsPage.tsx:467
 msgid "1 minute"
 msgstr "1 minute"
 
-#: src/renderer/src/components/SettingsPage.tsx:466
+#: src/renderer/src/components/SettingsPage.tsx:469
 msgid "15 minutes"
 msgstr "15 minutes"
 
-#: src/renderer/src/components/SettingsPage.tsx:469
+#: src/renderer/src/components/SettingsPage.tsx:472
 msgid "240 minutes"
 msgstr "240 minutes"
 
@@ -493,11 +493,11 @@ msgstr "240 minutes"
 msgid "2fa.directory service: {matchedDomain}"
 msgstr "2fa.directory service: {matchedDomain}"
 
-#: src/renderer/src/components/SettingsPage.tsx:467
+#: src/renderer/src/components/SettingsPage.tsx:470
 msgid "30 minutes"
 msgstr "30 minutes"
 
-#: src/renderer/src/components/SettingsPage.tsx:465
+#: src/renderer/src/components/SettingsPage.tsx:468
 msgid "5 minutes"
 msgstr "5 minutes"
 
@@ -505,7 +505,7 @@ msgstr "5 minutes"
 msgid "6-digit verification code"
 msgstr "6-digit verification code"
 
-#: src/renderer/src/components/SettingsPage.tsx:468
+#: src/renderer/src/components/SettingsPage.tsx:471
 msgid "60 minutes"
 msgstr "60 minutes"
 
@@ -533,7 +533,7 @@ msgstr "A read-only mirror of shared items. The server determines permissions an
 msgid "A sync issue needs attention"
 msgstr "A sync issue needs attention"
 
-#: src/renderer/src/components/SettingsPage.tsx:459
+#: src/renderer/src/components/SettingsPage.tsx:462
 msgid "About"
 msgstr "About"
 
@@ -567,15 +567,15 @@ msgstr "Access password (optional)"
 msgid "Access requested"
 msgstr "Access requested"
 
-#: src/renderer/src/components/SettingsPage.tsx:679
+#: src/renderer/src/components/SettingsPage.tsx:682
 msgid "Accessibility and shortcut status checked again."
 msgstr "Accessibility and shortcut status checked again."
 
-#: src/renderer/src/components/SettingsPage.tsx:1501
+#: src/renderer/src/components/SettingsPage.tsx:1569
 msgid "Accessibility permission"
 msgstr "Accessibility permission"
 
-#: src/renderer/src/components/SettingsPage.tsx:726
+#: src/renderer/src/components/SettingsPage.tsx:751
 msgid "Accessibility permission is enabled. Cross-browser autofill is ready to use."
 msgstr "Accessibility permission is enabled. Cross-browser autofill is ready to use."
 
@@ -624,7 +624,7 @@ msgstr "Account management"
 msgid "Account security status"
 msgstr "Account security status"
 
-#: src/renderer/src/components/SettingsPage.tsx:449
+#: src/renderer/src/components/SettingsPage.tsx:452
 msgid "Accounts & sync"
 msgstr "Accounts & sync"
 
@@ -632,8 +632,8 @@ msgstr "Accounts & sync"
 msgid "Action"
 msgstr "Action"
 
-#: src/renderer/src/components/SettingsPage.tsx:512
-#: src/renderer/src/components/SettingsPage.tsx:639
+#: src/renderer/src/components/SettingsPage.tsx:515
+#: src/renderer/src/components/SettingsPage.tsx:642
 #: src/renderer/src/lib/ssh-agent-ui.ts:73
 msgid "Action required"
 msgstr "Action required"
@@ -778,23 +778,23 @@ msgstr "Administrator"
 msgid "Affected data classes"
 msgstr "Affected data classes"
 
-#: src/renderer/src/components/SettingsPage.tsx:476
+#: src/renderer/src/components/SettingsPage.tsx:479
 msgid "After 1 minute"
 msgstr "After 1 minute"
 
-#: src/renderer/src/components/SettingsPage.tsx:474
+#: src/renderer/src/components/SettingsPage.tsx:477
 msgid "After 15 seconds"
 msgstr "After 15 seconds"
 
-#: src/renderer/src/components/SettingsPage.tsx:477
+#: src/renderer/src/components/SettingsPage.tsx:480
 msgid "After 2 minutes"
 msgstr "After 2 minutes"
 
-#: src/renderer/src/components/SettingsPage.tsx:475
+#: src/renderer/src/components/SettingsPage.tsx:478
 msgid "After 30 seconds"
 msgstr "After 30 seconds"
 
-#: src/renderer/src/components/SettingsPage.tsx:463
+#: src/renderer/src/components/SettingsPage.tsx:466
 msgid "After 5 minutes of system inactivity"
 msgstr "After 5 minutes of system inactivity"
 
@@ -814,6 +814,10 @@ msgstr "After this date, the link stops accepting access, but the Send is not im
 msgid "After this time, the server permanently removes the Send."
 msgstr "After this time, the server permanently removes the Send."
 
+#: src/renderer/src/components/AutofillAccessibilityGuide.tsx:53
+msgid "After updating BearWarden: if the system switch is already on but this page still says “Permission required”, select BearWarden in the Accessibility list, click − to remove the old entry, then return here and request permission again."
+msgstr "After updating BearWarden: if the system switch is already on but this page still says “Permission required”, select BearWarden in the Accessibility list, click − to remove the old entry, then return here and request permission again."
+
 #: src/renderer/src/components/MasterPasswordChangeDialog.tsx:332
 msgid "After you acknowledge this, reconnect. You can start a new master-password change only after reconnecting."
 msgstr "After you acknowledge this, reconnect. You can start a new master-password change only after reconnecting."
@@ -826,7 +830,7 @@ msgstr "After you enter your master password and explicitly confirm, the next sy
 msgid "After you start the check, the main process downloads only the static TOTP service list from 2fa.directory and compares it locally. Vault domains, URIs, passwords, and TOTP secrets are never uploaded."
 msgstr "After you start the check, the main process downloads only the static TOTP service list from 2fa.directory and compares it locally. Vault domains, URIs, passwords, and TOTP secrets are never uploaded."
 
-#: src/renderer/src/components/SettingsPage.tsx:1705
+#: src/renderer/src/components/SettingsPage.tsx:1778
 msgid "Agent could not start"
 msgstr "Agent could not start"
 
@@ -851,7 +855,7 @@ msgstr "All items"
 msgid "All organizations"
 msgstr "All organizations"
 
-#: src/renderer/src/components/SettingsPage.tsx:727
+#: src/renderer/src/components/SettingsPage.tsx:752
 msgid "Allow BearWarden under System Settings → Privacy & Security → Accessibility, then return and check again."
 msgstr "Allow BearWarden under System Settings → Privacy & Security → Accessibility, then return and check again."
 
@@ -862,6 +866,10 @@ msgstr "Allow login"
 #: src/renderer/src/components/LoginApprovalDialog.tsx:85
 msgid "Allow this only if you're signing in on another device and both devices show the exact same verification phrase."
 msgstr "Allow this only if you're signing in on another device and both devices show the exact same verification phrase."
+
+#: src/renderer/src/components/AutofillAccessibilityGuide.tsx:50
+msgid "Already enabled but still not working?"
+msgstr "Already enabled but still not working?"
 
 #: src/renderer/src/components/LoginEditor.tsx:393
 #: src/renderer/src/components/PaymentCardBrandMark.tsx:44
@@ -904,19 +912,23 @@ msgstr "Android"
 msgid "Android (Amazon)"
 msgstr "Android (Amazon)"
 
-#: src/renderer/src/components/SettingsPage.tsx:1542
-msgid "Another app, such as 1Password, already uses this shortcut. Disable the same shortcut in that app, then check again."
-msgstr "Another app, such as 1Password, already uses this shortcut. Disable the same shortcut in that app, then check again."
+#: src/renderer/src/components/SettingsPage.tsx:1614
+msgid "Another app, such as 1Password, already uses this shortcut. Choose another shortcut above, or disable the same shortcut in that app and check again."
+msgstr "Another app, such as 1Password, already uses this shortcut. Choose another shortcut above, or disable the same shortcut in that app and check again."
 
-#: src/renderer/src/components/SettingsPage.tsx:1710
+#: src/renderer/src/components/SettingsPage.tsx:1614
+#~ msgid "Another app, such as 1Password, already uses this shortcut. Disable the same shortcut in that app, then check again."
+#~ msgstr "Another app, such as 1Password, already uses this shortcut. Disable the same shortcut in that app, then check again."
+
+#: src/renderer/src/components/SettingsPage.tsx:1783
 msgid "Another SSH Agent is using the same endpoint. Stop that Agent, then enable BearWarden SSH Agent again."
 msgstr "Another SSH Agent is using the same endpoint. Stop that Agent, then enable BearWarden SSH Agent again."
 
-#: src/renderer/src/components/SettingsPage.tsx:432
+#: src/renderer/src/components/SettingsPage.tsx:435
 msgid "Appearance and defaults"
 msgstr "Appearance and defaults"
 
-#: src/renderer/src/components/SettingsPage.tsx:742
+#: src/renderer/src/components/SettingsPage.tsx:767
 msgid "Application"
 msgstr "Application"
 
@@ -925,7 +937,7 @@ msgstr "Application"
 msgid "Application menu"
 msgstr "Application menu"
 
-#: src/renderer/src/components/SettingsPage.tsx:336
+#: src/renderer/src/components/SettingsPage.tsx:339
 msgid "Apply"
 msgstr "Apply"
 
@@ -976,7 +988,7 @@ msgstr "Archived “{0}”."
 msgid "Archived {affectedCount} items."
 msgstr "Archived {affectedCount} items."
 
-#: src/renderer/src/components/SettingsPage.tsx:503
+#: src/renderer/src/components/SettingsPage.tsx:506
 msgid "Ask before every signature"
 msgstr "Ask before every signature"
 
@@ -1032,7 +1044,15 @@ msgstr "Authenticator key (TOTP)"
 msgid "Authorization expired. Select the item again and verify your master password."
 msgstr "Authorization expired. Select the item again and verify your master password."
 
-#: src/renderer/src/components/SettingsPage.tsx:456
+#: src/renderer/src/components/SettingsPage.tsx:1527
+msgid "Autofill shortcut"
+msgstr "Autofill shortcut"
+
+#: src/renderer/src/components/SettingsPage.tsx:731
+msgid "Autofill shortcut updated."
+msgstr "Autofill shortcut updated."
+
+#: src/renderer/src/components/SettingsPage.tsx:459
 msgid "Autofill, SSH Agent, and backups"
 msgstr "Autofill, SSH Agent, and backups"
 
@@ -1040,11 +1060,11 @@ msgstr "Autofill, SSH Agent, and backups"
 msgid "Automatic generation failed. Try again, or change the item type to cancel."
 msgstr "Automatic generation failed. Try again, or change the item type to cancel."
 
-#: src/renderer/src/components/SettingsPage.tsx:901
+#: src/renderer/src/components/SettingsPage.tsx:926
 msgid "Automatic launch is available only in installed versions for macOS and Windows."
 msgstr "Automatic launch is available only in installed versions for macOS and Windows."
 
-#: src/renderer/src/components/SettingsPage.tsx:655
+#: src/renderer/src/components/SettingsPage.tsx:658
 msgid "Available"
 msgstr "Available"
 
@@ -1105,7 +1125,7 @@ msgstr "Base32, otpauth://…, or steam://…"
 msgid "BearWarden autofill"
 msgstr "BearWarden autofill"
 
-#: src/renderer/src/components/SettingsPage.tsx:1505
+#: src/renderer/src/components/SettingsPage.tsx:1573
 msgid "BearWarden can control the current browser and perform autofill."
 msgstr "BearWarden can control the current browser and perform autofill."
 
@@ -1113,7 +1133,7 @@ msgstr "BearWarden can control the current browser and perform autofill."
 msgid "BearWarden can't safely determine the remote outcome on the current connection. No new action will be submitted now to prevent duplicate changes."
 msgstr "BearWarden can't safely determine the remote outcome on the current connection. No new action will be submitted now to prevent duplicate changes."
 
-#: src/renderer/src/components/SettingsPage.tsx:1711
+#: src/renderer/src/components/SettingsPage.tsx:1784
 msgid "BearWarden could not create the SSH Agent endpoint safely. Check the home directory permissions and socket path, then try again."
 msgstr "BearWarden could not create the SSH Agent endpoint safely. Check the home directory permissions and socket path, then try again."
 
@@ -1137,7 +1157,7 @@ msgstr "BearWarden is a local-first desktop password manager."
 msgid "BearWarden needs this permission to identify the current browser and website. Allow it in System Settings, then try again."
 msgstr "BearWarden needs this permission to identify the current browser and website. Allow it in System Settings, then try again."
 
-#: src/renderer/src/components/SettingsPage.tsx:1589
+#: src/renderer/src/components/SettingsPage.tsx:1662
 msgid "BearWarden provides only unarchived, undeleted SSH keys. Each signature is approved according to the rule below."
 msgstr "BearWarden provides only unarchived, undeleted SSH keys. Each signature is approved according to the rule below."
 
@@ -1153,7 +1173,7 @@ msgstr "BearWarden sends only the first 5 characters of the password SHA-1 hash,
 msgid "BearWarden sends your complete email address to the configured Vaultwarden server only after you submit a query. That server then sends it to <0/>. This is not a k-anonymity password check. Query only accounts you are authorized to check."
 msgstr "BearWarden sends your complete email address to the configured Vaultwarden server only after you submit a query. That server then sends it to <0/>. This is not a k-anonymity password check. Query only accounts you are authorized to check."
 
-#: src/renderer/src/components/SettingsPage.tsx:1651
+#: src/renderer/src/components/SettingsPage.tsx:1724
 msgid "BearWarden uses the fixed <0>\\\\.\\pipe\\openssh-ssh-agent</0> named pipe. Disable the system OpenSSH Authentication Agent first so the two agents do not compete for the same pipe."
 msgstr "BearWarden uses the fixed <0>\\\\.\\pipe\\openssh-ssh-agent</0> named pipe. Disable the system OpenSSH Authentication Agent first so the two agents do not compete for the same pipe."
 
@@ -1185,11 +1205,11 @@ msgstr "Biometric authentication is currently unavailable. Enter your master pas
 msgid "Biometric unlock is unavailable right now. Enter your master password."
 msgstr "Biometric unlock is unavailable right now. Enter your master password."
 
-#: src/renderer/src/components/SettingsPage.tsx:1216
+#: src/renderer/src/components/SettingsPage.tsx:1241
 msgid "Biometrics"
 msgstr "Biometrics"
 
-#: src/renderer/src/components/SettingsPage.tsx:1237
+#: src/renderer/src/components/SettingsPage.tsx:1262
 msgid "Biometrics are unavailable on this device"
 msgstr "Biometrics are unavailable on this device"
 
@@ -1221,7 +1241,7 @@ msgstr "Bitwarden plaintext ZIP (with attachments)"
 msgid "Bitwarden-compatible settings allow only one UTF-16 character."
 msgstr "Bitwarden-compatible settings allow only one UTF-16 character."
 
-#: src/renderer/src/components/SettingsPage.tsx:936
+#: src/renderer/src/components/SettingsPage.tsx:961
 msgid "Block screenshots"
 msgstr "Block screenshots"
 
@@ -1378,7 +1398,7 @@ msgstr "Change your master password?"
 msgid "Character types"
 msgstr "Character types"
 
-#: src/renderer/src/components/SettingsPage.tsx:1528
+#: src/renderer/src/components/SettingsPage.tsx:1599
 msgid "Check again"
 msgstr "Check again"
 
@@ -1452,7 +1472,7 @@ msgid "Checked this time"
 msgstr "Checked this time"
 
 #: src/renderer/src/components/AboutPage.tsx:75
-#: src/renderer/src/components/SettingsPage.tsx:646
+#: src/renderer/src/components/SettingsPage.tsx:649
 msgid "Checking"
 msgstr "Checking"
 
@@ -1471,6 +1491,10 @@ msgstr "Checks"
 #: src/renderer/src/components/Dialogs.tsx:306
 msgid "Choose a folder"
 msgstr "Choose a folder"
+
+#: src/renderer/src/components/SettingsPage.tsx:1530
+msgid "Choose a global shortcut that is not used by your browser or another password manager."
+msgstr "Choose a global shortcut that is not used by your browser or another password manager."
 
 #: src/renderer/src/components/AutofillPicker.tsx:178
 msgid "Choose a login to autofill"
@@ -1511,7 +1535,7 @@ msgstr "Choose full backup"
 msgid "Choose save location"
 msgstr "Choose save location"
 
-#: src/renderer/src/components/SettingsPage.tsx:923
+#: src/renderer/src/components/SettingsPage.tsx:948
 msgid "Choose when the vault locks and how window content is protected."
 msgstr "Choose when the vault locks and how window content is protected."
 
@@ -1533,7 +1557,7 @@ msgstr "City"
 msgid "Clear"
 msgstr "Clear"
 
-#: src/renderer/src/components/SettingsPage.tsx:1319
+#: src/renderer/src/components/SettingsPage.tsx:1344
 msgid "Clear clipboard"
 msgstr "Clear clipboard"
 
@@ -1545,7 +1569,7 @@ msgstr "Clear custom color"
 msgid "Clear history"
 msgstr "Clear history"
 
-#: src/renderer/src/components/SettingsPage.tsx:1322
+#: src/renderer/src/components/SettingsPage.tsx:1347
 msgid "Clear only content written by BearWarden that you have not overwritten."
 msgstr "Clear only content written by BearWarden that you have not overwritten."
 
@@ -1555,11 +1579,15 @@ msgstr "Clear only content written by BearWarden that you have not overwritten."
 msgid "Clear search"
 msgstr "Clear search"
 
+#: src/renderer/src/components/AutofillAccessibilityGuide.tsx:29
+msgid "Click “Request accessibility permission” below."
+msgstr "Click “Request accessibility permission” below."
+
 #: src/renderer/src/components/AccountApiKeyDialog.tsx:77
 msgid "Client ID copied."
 msgstr "Client ID copied."
 
-#: src/renderer/src/components/SettingsPage.tsx:444
+#: src/renderer/src/components/SettingsPage.tsx:447
 msgid "Clipboard and website icons"
 msgstr "Clipboard and website icons"
 
@@ -1609,6 +1637,18 @@ msgstr "Collection:"
 msgid "Collections"
 msgstr "Collections"
 
+#: src/renderer/src/components/AutofillShortcut.tsx:25
+msgid "Command plus Control plus backslash"
+msgstr "Command plus Control plus backslash"
+
+#: src/renderer/src/components/AutofillShortcut.tsx:28
+msgid "Command plus Control plus K"
+msgstr "Command plus Control plus K"
+
+#: src/renderer/src/components/AutofillShortcut.tsx:27
+msgid "Command plus Option plus backslash"
+msgstr "Command plus Option plus backslash"
+
 #: src/renderer/src/components/LoginEditor.tsx:372
 #: src/renderer/src/components/LoginEditor.tsx:1775
 #: src/renderer/src/components/VaultShell.tsx:1034
@@ -1651,8 +1691,8 @@ msgstr "Confirm disabling {disableTargetName}"
 
 #: src/renderer/src/components/AuthScreen.tsx:315
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:409
-#: src/renderer/src/components/SettingsPage.tsx:1162
-#: src/renderer/src/components/SettingsPage.tsx:1272
+#: src/renderer/src/components/SettingsPage.tsx:1187
+#: src/renderer/src/components/SettingsPage.tsx:1297
 #: src/renderer/src/components/SshAgentApprovalDialog.tsx:195
 msgid "Confirm master password"
 msgstr "Confirm master password"
@@ -1709,11 +1749,11 @@ msgstr "Conflict requires attention"
 msgid "Connect and sync"
 msgstr "Connect and sync"
 
-#: src/renderer/src/components/SettingsPage.tsx:1400
+#: src/renderer/src/components/SettingsPage.tsx:1425
 msgid "Connect to Bitwarden or Vaultwarden to sync the vault."
 msgstr "Connect to Bitwarden or Vaultwarden to sync the vault."
 
-#: src/renderer/src/components/SettingsPage.tsx:510
+#: src/renderer/src/components/SettingsPage.tsx:513
 #: src/renderer/src/components/VaultShell.tsx:1013
 msgid "Connected"
 msgstr "Connected"
@@ -1757,15 +1797,23 @@ msgstr "Continue import"
 msgid "Continue restoring"
 msgstr "Continue restoring"
 
+#: src/renderer/src/components/AutofillShortcut.tsx:21
+msgid "Control plus backslash"
+msgstr "Control plus backslash"
+
+#: src/renderer/src/components/AutofillShortcut.tsx:23
+msgid "Control plus Shift plus backslash"
+msgstr "Control plus Shift plus backslash"
+
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:524
 #: src/renderer/src/components/Dialogs.tsx:768
-#: src/renderer/src/components/SettingsPage.tsx:1685
+#: src/renderer/src/components/SettingsPage.tsx:1758
 msgid "Copied"
 msgstr "Copied"
 
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:73
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:526
-#: src/renderer/src/components/SettingsPage.tsx:1685
+#: src/renderer/src/components/SettingsPage.tsx:1758
 msgid "Copy"
 msgstr "Copy"
 
@@ -1808,7 +1856,7 @@ msgstr "Copy setup key"
 msgid "Copy sharing link"
 msgstr "Copy sharing link"
 
-#: src/renderer/src/components/SettingsPage.tsx:1677
+#: src/renderer/src/components/SettingsPage.tsx:1750
 msgid "Copy SSH Agent setup command"
 msgstr "Copy SSH Agent setup command"
 
@@ -2004,7 +2052,7 @@ msgstr "Created {creationLabel}"
 msgid "Created folder “{0}”."
 msgstr "Created folder “{0}”."
 
-#: src/renderer/src/components/SettingsPage.tsx:1456
+#: src/renderer/src/components/SettingsPage.tsx:1481
 msgid "Cross-browser autofill"
 msgstr "Cross-browser autofill"
 
@@ -2017,8 +2065,8 @@ msgid "CSV is not a complete backup. It only exports active and archived logins,
 msgstr "CSV is not a complete backup. It only exports active and archived logins, secure notes, and some text values. It does not include trash, attachments, cards, identities, SSH keys, passkeys, password history, or Sends. URI matching and some login metadata are lost. Custom fields are flattened into “name: value” text, so their types and original structure may not be recoverable when names are empty or contain line breaks or “: ”. Use encrypted JSON for more complete portable data, or a full BearWarden backup to include attachments. Only inspect CSV files in a text editor. If opened in a spreadsheet, original fields beginning with =, +, -, or @ may execute as formulas. To preserve Bitwarden compatibility and data fidelity, BearWarden does not rewrite these secrets."
 
 #: src/renderer/src/components/AutofillShortcut.tsx:8
-msgid "Ctrl plus backslash"
-msgstr "Ctrl plus backslash"
+#~ msgid "Ctrl plus backslash"
+#~ msgstr "Ctrl plus backslash"
 
 #. placeholder {0}: current.avatarColor
 #: src/renderer/src/components/AccountProfileCard.tsx:240
@@ -2050,11 +2098,11 @@ msgstr "Currently read-only. Inviting, confirming, viewing, and taking over are 
 msgid "Currently you can only view Emergency Access grants and statuses. Inviting, accepting, confirming, accessing, taking over grants, and key rotation are not supported yet."
 msgstr "Currently you can only view Emergency Access grants and statuses. Inviting, accepting, confirming, accessing, taking over grants, and key rotation are not supported yet."
 
-#: src/renderer/src/components/SettingsPage.tsx:1240
+#: src/renderer/src/components/SettingsPage.tsx:1265
 msgid "Currently, only macOS Touch ID is supported. You can still unlock the vault with your master password."
 msgstr "Currently, only macOS Touch ID is supported. You can still unlock the vault with your master password."
 
-#: src/renderer/src/components/SettingsPage.tsx:470
+#: src/renderer/src/components/SettingsPage.tsx:473
 msgid "Custom"
 msgstr "Custom"
 
@@ -2071,15 +2119,15 @@ msgstr "Custom equivalent domains"
 msgid "Custom fields"
 msgstr "Custom fields"
 
-#: src/renderer/src/components/SettingsPage.tsx:293
+#: src/renderer/src/components/SettingsPage.tsx:296
 msgid "Custom inactivity timeout"
 msgstr "Custom inactivity timeout"
 
-#: src/renderer/src/components/SettingsPage.tsx:301
+#: src/renderer/src/components/SettingsPage.tsx:304
 msgid "Custom inactivity timeout hours"
 msgstr "Custom inactivity timeout hours"
 
-#: src/renderer/src/components/SettingsPage.tsx:316
+#: src/renderer/src/components/SettingsPage.tsx:319
 msgid "Custom inactivity timeout minutes"
 msgstr "Custom inactivity timeout minutes"
 
@@ -2088,7 +2136,7 @@ msgstr "Custom inactivity timeout minutes"
 msgid "Custom role"
 msgstr "Custom role"
 
-#: src/renderer/src/components/SettingsPage.tsx:805
+#: src/renderer/src/components/SettingsPage.tsx:830
 msgid "Customize the vault's appearance and default sorting."
 msgstr "Customize the vault's appearance and default sorting."
 
@@ -2096,11 +2144,11 @@ msgstr "Customize the vault's appearance and default sorting."
 msgid "Cut"
 msgstr "Cut"
 
-#: src/renderer/src/components/SettingsPage.tsx:487
+#: src/renderer/src/components/SettingsPage.tsx:490
 msgid "Dark"
 msgstr "Dark"
 
-#: src/renderer/src/components/SettingsPage.tsx:1734
+#: src/renderer/src/components/SettingsPage.tsx:1807
 msgid "Data portability"
 msgstr "Data portability"
 
@@ -2134,7 +2182,7 @@ msgstr "Default"
 msgid "Default service groups provided by Vaultwarden. Turning one off adds it to this account’s exclusion list."
 msgstr "Default service groups provided by Vaultwarden. Turning one off adds it to this account’s exclusion list."
 
-#: src/renderer/src/components/SettingsPage.tsx:866
+#: src/renderer/src/components/SettingsPage.tsx:891
 msgid "Default sort"
 msgstr "Default sort"
 
@@ -2264,11 +2312,11 @@ msgstr "Disable"
 msgid "Disable {disableTargetName}?"
 msgstr "Disable {disableTargetName}?"
 
-#: src/renderer/src/components/SettingsPage.tsx:1263
+#: src/renderer/src/components/SettingsPage.tsx:1288
 msgid "Disable biometrics"
 msgstr "Disable biometrics"
 
-#: src/renderer/src/components/SettingsPage.tsx:1114
+#: src/renderer/src/components/SettingsPage.tsx:1139
 msgid "Disable PIN unlock"
 msgstr "Disable PIN unlock"
 
@@ -2280,10 +2328,10 @@ msgstr "Disable Send"
 #: src/renderer/src/components/OrganizationsPage.tsx:60
 #: src/renderer/src/components/send-ui.ts:44
 #: src/renderer/src/components/SendsPage.tsx:116
-#: src/renderer/src/components/SettingsPage.tsx:633
-#: src/renderer/src/components/SettingsPage.tsx:650
-#: src/renderer/src/components/SettingsPage.tsx:1079
-#: src/renderer/src/components/SettingsPage.tsx:1225
+#: src/renderer/src/components/SettingsPage.tsx:636
+#: src/renderer/src/components/SettingsPage.tsx:653
+#: src/renderer/src/components/SettingsPage.tsx:1104
+#: src/renderer/src/components/SettingsPage.tsx:1250
 #: src/renderer/src/lib/ssh-agent-ui.ts:69
 msgid "Disabled"
 msgstr "Disabled"
@@ -2516,7 +2564,7 @@ msgstr "Emergency Access is not configured"
 msgid "Empty Trash"
 msgstr "Empty Trash"
 
-#: src/renderer/src/components/SettingsPage.tsx:1475
+#: src/renderer/src/components/SettingsPage.tsx:1500
 msgid "Enable <0/> autofill"
 msgstr "Enable <0/> autofill"
 
@@ -2524,7 +2572,7 @@ msgstr "Enable <0/> autofill"
 msgid "Enable authenticator"
 msgstr "Enable authenticator"
 
-#: src/renderer/src/components/SettingsPage.tsx:1297
+#: src/renderer/src/components/SettingsPage.tsx:1322
 msgid "Enable biometrics"
 msgstr "Enable biometrics"
 
@@ -2532,17 +2580,17 @@ msgstr "Enable biometrics"
 msgid "Enable email two-factor authentication"
 msgstr "Enable email two-factor authentication"
 
-#: src/renderer/src/components/SettingsPage.tsx:1204
+#: src/renderer/src/components/SettingsPage.tsx:1229
 msgid "Enable PIN unlock"
 msgstr "Enable PIN unlock"
 
-#: src/renderer/src/components/SettingsPage.tsx:1586
+#: src/renderer/src/components/SettingsPage.tsx:1659
 msgid "Enable SSH Agent"
 msgstr "Enable SSH Agent"
 
 #: src/renderer/src/components/LoginEditor.tsx:2398
-#: src/renderer/src/components/SettingsPage.tsx:1079
-#: src/renderer/src/components/SettingsPage.tsx:1224
+#: src/renderer/src/components/SettingsPage.tsx:1104
+#: src/renderer/src/components/SettingsPage.tsx:1249
 msgid "Enabled"
 msgstr "Enabled"
 
@@ -2558,7 +2606,7 @@ msgstr "Encrypted notes only"
 msgid "Encrypting locally"
 msgstr "Encrypting locally"
 
-#: src/renderer/src/components/SettingsPage.tsx:494
+#: src/renderer/src/components/SettingsPage.tsx:497
 msgid "English"
 msgstr "English"
 
@@ -2641,7 +2689,7 @@ msgstr "Enter it again for every disable request; previous verification is never
 msgid "Enter master password again"
 msgstr "Enter master password again"
 
-#: src/renderer/src/components/SettingsPage.tsx:1149
+#: src/renderer/src/components/SettingsPage.tsx:1174
 msgid "Enter PIN again"
 msgstr "Enter PIN again"
 
@@ -2681,7 +2729,7 @@ msgstr "Enter the Send access password"
 msgid "Enter the SSH private key password"
 msgstr "Enter the SSH private key password"
 
-#: src/renderer/src/components/SettingsPage.tsx:265
+#: src/renderer/src/components/SettingsPage.tsx:268
 msgid "Enter whole numbers for hours and minutes."
 msgstr "Enter whole numbers for hours and minutes."
 
@@ -2717,7 +2765,7 @@ msgstr "Enter your master password before enabling biometrics."
 msgid "Enter your master password to approve this protected SSH key."
 msgstr "Enter your master password to approve this protected SSH key."
 
-#: src/renderer/src/components/SettingsPage.tsx:588
+#: src/renderer/src/components/SettingsPage.tsx:591
 msgid "Enter your master password to confirm."
 msgstr "Enter your master password to confirm."
 
@@ -2813,7 +2861,7 @@ msgstr "Export Bitwarden attachment ZIP"
 msgid "Export Bitwarden CSV"
 msgstr "Export Bitwarden CSV"
 
-#: src/renderer/src/components/SettingsPage.tsx:1753
+#: src/renderer/src/components/SettingsPage.tsx:1826
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:305
 msgid "Export encrypted backup"
 msgstr "Export encrypted backup"
@@ -2856,7 +2904,7 @@ msgstr "Field {linkedId}"
 msgid "File"
 msgstr "File"
 
-#: src/renderer/src/components/SettingsPage.tsx:1740
+#: src/renderer/src/components/SettingsPage.tsx:1813
 msgid "File contents and paths are handled only by the local main process and are never sent back to the renderer process."
 msgstr "File contents and paths are handled only by the local main process and are never sent back to the renderer process."
 
@@ -2937,6 +2985,10 @@ msgstr "Folders"
 msgid "Folders organize your items without changing their login details."
 msgstr "Folders organize your items without changing their login details."
 
+#: src/renderer/src/components/SettingsPage.tsx:1574
+msgid "Follow the steps below to let BearWarden identify the current website and fill the focused login form."
+msgstr "Follow the steps below to let BearWarden identify the current website and fill the focused login form."
+
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1037
 msgid "For example, “Office USB security key.” The name is used only to identify this key."
 msgstr "For example, “Office USB security key.” The name is used only to identify this key."
@@ -2987,8 +3039,8 @@ msgstr "Full BearWarden backup (with attachments)"
 msgid "Full name"
 msgstr "Full name"
 
-#: src/renderer/src/components/SettingsPage.tsx:431
-#: src/renderer/src/components/SettingsPage.tsx:804
+#: src/renderer/src/components/SettingsPage.tsx:434
+#: src/renderer/src/components/SettingsPage.tsx:829
 msgid "General"
 msgstr "General"
 
@@ -3161,7 +3213,7 @@ msgstr "History is shown in plaintext"
 msgid "Host"
 msgstr "Host"
 
-#: src/renderer/src/components/SettingsPage.tsx:313
+#: src/renderer/src/components/SettingsPage.tsx:316
 msgid "hours"
 msgstr "hours"
 
@@ -3213,7 +3265,7 @@ msgstr "If you didn't make this request, deny it and check your account security
 msgid "If you do not want to risk duplicates, disconnect instead. Your local vault data will be kept."
 msgstr "If you do not want to risk duplicates, disconnect instead. Your local vault data will be kept."
 
-#: src/renderer/src/components/SettingsPage.tsx:1735
+#: src/renderer/src/components/SettingsPage.tsx:1808
 msgid "Import Bitwarden JSON or create a password-protected portable backup."
 msgstr "Import Bitwarden JSON or create a password-protected portable backup."
 
@@ -3227,7 +3279,7 @@ msgstr "Import complete: {0} items and {1} folders added{skipped}{lossSummary}."
 msgid "Import from clipboard"
 msgstr "Import from clipboard"
 
-#: src/renderer/src/components/SettingsPage.tsx:1749
+#: src/renderer/src/components/SettingsPage.tsx:1822
 msgid "Import JSON"
 msgstr "Import JSON"
 
@@ -3238,6 +3290,10 @@ msgstr "Import password data"
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:405
 msgid "Importing does not remove duplicate items automatically"
 msgstr "Importing does not remove duplicate items automatically"
+
+#: src/renderer/src/components/AutofillAccessibilityGuide.tsx:32
+msgid "In System Settings → Privacy & Security → Accessibility, turn on BearWarden. If it is missing, click + and select BearWarden from Applications."
+msgstr "In System Settings → Privacy & Security → Accessibility, turn on BearWarden. If it is missing, click + and select BearWarden from Applications."
 
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:774
 msgid "Include four digits"
@@ -3337,7 +3393,7 @@ msgstr "Items that do not apply were skipped"
 msgid "Its items will move to Unfiled and will not be deleted."
 msgstr "Its items will move to Unfiled and will not be deleted."
 
-#: src/renderer/src/components/SettingsPage.tsx:497
+#: src/renderer/src/components/SettingsPage.tsx:500
 msgid "Japanese"
 msgstr "Japanese"
 
@@ -3395,7 +3451,7 @@ msgstr "Known breaches found"
 msgid "Known breaches have not been checked yet"
 msgstr "Known breaches have not been checked yet"
 
-#: src/renderer/src/components/SettingsPage.tsx:839
+#: src/renderer/src/components/SettingsPage.tsx:864
 msgid "Language"
 msgstr "Language"
 
@@ -3425,11 +3481,11 @@ msgstr "Last sync"
 msgid "Last synced: {lastSyncTime}"
 msgstr "Last synced: {lastSyncTime}"
 
-#: src/renderer/src/components/SettingsPage.tsx:894
+#: src/renderer/src/components/SettingsPage.tsx:919
 msgid "Launch BearWarden at login"
 msgstr "Launch BearWarden at login"
 
-#: src/renderer/src/components/SettingsPage.tsx:900
+#: src/renderer/src/components/SettingsPage.tsx:925
 msgid "Launch BearWarden automatically after you log in to this computer."
 msgstr "Launch BearWarden automatically after you log in to this computer."
 
@@ -3441,7 +3497,7 @@ msgstr "Leave blank for no limit."
 msgid "Length"
 msgstr "Length"
 
-#: src/renderer/src/components/SettingsPage.tsx:1573
+#: src/renderer/src/components/SettingsPage.tsx:1646
 msgid "Let terminals and Git use SSH keys from the vault through a local socket."
 msgstr "Let terminals and Git use SSH keys from the vault through a local socket."
 
@@ -3454,7 +3510,7 @@ msgstr "Let the server temporarily skip two-step verification on this device."
 msgid "License number"
 msgstr "License number"
 
-#: src/renderer/src/components/SettingsPage.tsx:486
+#: src/renderer/src/components/SettingsPage.tsx:489
 msgid "Light"
 msgstr "Light"
 
@@ -3487,7 +3543,7 @@ msgstr "List actions"
 msgid "load"
 msgstr "load"
 
-#: src/renderer/src/components/SettingsPage.tsx:1361
+#: src/renderer/src/components/SettingsPage.tsx:1386
 msgid "Load icons through the configured Bitwarden or Vaultwarden icon service. When disabled, local initials are used instead."
 msgstr "Load icons through the configured Bitwarden or Vaultwarden icon service. When disabled, local initials are used instead."
 
@@ -3527,7 +3583,7 @@ msgstr "Loading password history"
 msgid "Loading Sends…"
 msgstr "Loading Sends…"
 
-#: src/renderer/src/components/SettingsPage.tsx:766
+#: src/renderer/src/components/SettingsPage.tsx:791
 msgid "Loading settings…"
 msgstr "Loading settings…"
 
@@ -3556,7 +3612,7 @@ msgstr "Local account order updated."
 msgid "Local accounts"
 msgstr "Local accounts"
 
-#: src/renderer/src/components/SettingsPage.tsx:450
+#: src/renderer/src/components/SettingsPage.tsx:453
 msgid "Local accounts and cloud connections"
 msgstr "Local accounts and cloud connections"
 
@@ -3568,7 +3624,7 @@ msgstr "Local generator"
 msgid "Local vault"
 msgstr "Local vault"
 
-#: src/renderer/src/components/SettingsPage.tsx:994
+#: src/renderer/src/components/SettingsPage.tsx:1019
 msgid "Lock after inactivity"
 msgstr "Lock after inactivity"
 
@@ -3576,15 +3632,15 @@ msgstr "Lock after inactivity"
 msgid "Lock and restart"
 msgstr "Lock and restart"
 
-#: src/renderer/src/components/SettingsPage.tsx:997
+#: src/renderer/src/components/SettingsPage.tsx:1022
 msgid "Lock automatically after a period of inactivity. The vault always locks when the app closes."
 msgstr "Lock automatically after a period of inactivity. The vault always locks when the app closes."
 
-#: src/renderer/src/components/SettingsPage.tsx:979
+#: src/renderer/src/components/SettingsPage.tsx:1004
 msgid "Lock the vault immediately when the computer goes to sleep."
 msgstr "Lock the vault immediately when the computer goes to sleep."
 
-#: src/renderer/src/components/SettingsPage.tsx:961
+#: src/renderer/src/components/SettingsPage.tsx:986
 msgid "Lock the vault immediately when you lock the screen."
 msgstr "Lock the vault immediately when you lock the screen."
 
@@ -3593,15 +3649,15 @@ msgstr "Lock the vault immediately when you lock the screen."
 msgid "Lock vault"
 msgstr "Lock vault"
 
-#: src/renderer/src/components/SettingsPage.tsx:976
+#: src/renderer/src/components/SettingsPage.tsx:1001
 msgid "Lock when the computer sleeps"
 msgstr "Lock when the computer sleeps"
 
-#: src/renderer/src/components/SettingsPage.tsx:958
+#: src/renderer/src/components/SettingsPage.tsx:983
 msgid "Lock when the screen is locked"
 msgstr "Lock when the screen is locked"
 
-#: src/renderer/src/components/SettingsPage.tsx:438
+#: src/renderer/src/components/SettingsPage.tsx:441
 msgid "Locking and unlocking"
 msgstr "Locking and unlocking"
 
@@ -3645,7 +3701,11 @@ msgstr "macOS CLI"
 msgid "macOS desktop app"
 msgstr "macOS desktop app"
 
-#: src/renderer/src/components/SettingsPage.tsx:648
+#: src/renderer/src/components/AutofillAccessibilityGuide.tsx:42
+msgid "macOS grants broad Accessibility access to control the computer. BearWarden uses it only to read and fill supported browsers when you press <0/>."
+msgstr "macOS grants broad Accessibility access to control the computer. BearWarden uses it only to read and fill supported browsers when you press <0/>."
+
+#: src/renderer/src/components/SettingsPage.tsx:651
 msgid "macOS only"
 msgstr "macOS only"
 
@@ -3665,11 +3725,11 @@ msgstr "Manage Collection"
 msgid "Manage FIDO2 security keys"
 msgstr "Manage FIDO2 security keys"
 
-#: src/renderer/src/components/SettingsPage.tsx:745
+#: src/renderer/src/components/SettingsPage.tsx:770
 msgid "Manage security, appearance, and sync on this device."
 msgstr "Manage security, appearance, and sync on this device."
 
-#: src/renderer/src/components/SettingsPage.tsx:1445
+#: src/renderer/src/components/SettingsPage.tsx:1470
 msgid "Manage sync & accounts"
 msgstr "Manage sync & accounts"
 
@@ -3793,7 +3853,7 @@ msgstr "Migrated"
 msgid "Minimize"
 msgstr "Minimize"
 
-#: src/renderer/src/components/SettingsPage.tsx:296
+#: src/renderer/src/components/SettingsPage.tsx:299
 msgid "Minimum 1 minute, maximum 8,760 hours; minutes must be between 0 and 59."
 msgstr "Minimum 1 minute, maximum 8,760 hours; minutes must be between 0 and 59."
 
@@ -3813,11 +3873,11 @@ msgstr "Minimum special characters"
 msgid "Minimum uppercase"
 msgstr "Minimum uppercase"
 
-#: src/renderer/src/components/SettingsPage.tsx:328
+#: src/renderer/src/components/SettingsPage.tsx:331
 msgid "minutes"
 msgstr "minutes"
 
-#: src/renderer/src/components/SettingsPage.tsx:269
+#: src/renderer/src/components/SettingsPage.tsx:272
 msgid "Minutes must be between 0 and 59."
 msgstr "Minutes must be between 0 and 59."
 
@@ -3826,7 +3886,7 @@ msgstr "Minutes must be between 0 and 59."
 msgid "More actions"
 msgstr "More actions"
 
-#: src/renderer/src/components/SettingsPage.tsx:481
+#: src/renderer/src/components/SettingsPage.tsx:484
 #: src/renderer/src/components/VaultShell.tsx:1020
 msgid "Most used"
 msgstr "Most used"
@@ -3936,7 +3996,7 @@ msgstr "Moving with {0} other items"
 #: src/renderer/src/components/LoginEditor.tsx:1427
 #: src/renderer/src/components/LoginEditor.tsx:2263
 #: src/renderer/src/components/SendsPage.tsx:564
-#: src/renderer/src/components/SettingsPage.tsx:482
+#: src/renderer/src/components/SettingsPage.tsx:485
 #: src/renderer/src/components/VaultShell.tsx:1018
 #: src/renderer/src/components/VaultShell.tsx:1033
 msgid "Name"
@@ -3952,11 +4012,11 @@ msgid "Needs attention"
 msgstr "Needs attention"
 
 #: src/renderer/src/components/LoginEditor.tsx:423
-#: src/renderer/src/components/SettingsPage.tsx:473
+#: src/renderer/src/components/SettingsPage.tsx:476
 msgid "Never"
 msgstr "Never"
 
-#: src/renderer/src/components/SettingsPage.tsx:504
+#: src/renderer/src/components/SettingsPage.tsx:507
 msgid "Never ask (approve automatically)"
 msgstr "Never ask (approve automatically)"
 
@@ -4008,7 +4068,7 @@ msgstr "New result generated"
 msgid "No"
 msgstr "No"
 
-#: src/renderer/src/components/SettingsPage.tsx:1429
+#: src/renderer/src/components/SettingsPage.tsx:1454
 msgid "No Bitwarden account connected"
 msgstr "No Bitwarden account connected"
 
@@ -4145,7 +4205,7 @@ msgstr "Not all attachments were completed this time. Select the same backup aga
 msgid "Not checked"
 msgstr "Not checked"
 
-#: src/renderer/src/components/SettingsPage.tsx:508
+#: src/renderer/src/components/SettingsPage.tsx:511
 #: src/renderer/src/components/VaultHealthPage.tsx:1472
 #: src/renderer/src/components/VaultShell.tsx:1011
 msgid "Not configured"
@@ -4192,8 +4252,8 @@ msgid "Numbers"
 msgstr "Numbers"
 
 #: src/renderer/src/components/SettingsPage.tsx:1506
-msgid "On macOS, allow BearWarden under System Settings → Privacy & Security → Accessibility. If the autofill helper appears in the list, allow it as well. After a denial, macOS may not show the prompt again."
-msgstr "On macOS, allow BearWarden under System Settings → Privacy & Security → Accessibility. If the autofill helper appears in the list, allow it as well. After a denial, macOS may not show the prompt again."
+#~ msgid "On macOS, allow BearWarden under System Settings → Privacy & Security → Accessibility. If the autofill helper appears in the list, allow it as well. After a denial, macOS may not show the prompt again."
+#~ msgstr "On macOS, allow BearWarden under System Settings → Privacy & Security → Accessibility. If the autofill helper appears in the list, allow it as well. After a denial, macOS may not show the prompt again."
 
 #: src/renderer/src/components/VaultShell.tsx:5739
 msgid "One-time verification code"
@@ -4444,7 +4504,7 @@ msgstr "Permanently purge personal vault?"
 msgid "Permanently remove local data"
 msgstr "Permanently remove local data"
 
-#: src/renderer/src/components/SettingsPage.tsx:654
+#: src/renderer/src/components/SettingsPage.tsx:657
 msgid "Permission required"
 msgstr "Permission required"
 
@@ -4473,15 +4533,15 @@ msgid "Phone"
 msgstr "Phone"
 
 #: src/renderer/src/components/AuthScreen.tsx:278
-#: src/renderer/src/components/SettingsPage.tsx:1131
+#: src/renderer/src/components/SettingsPage.tsx:1156
 msgid "PIN"
 msgstr "PIN"
 
-#: src/renderer/src/components/SettingsPage.tsx:1074
+#: src/renderer/src/components/SettingsPage.tsx:1099
 msgid "PIN unlock"
 msgstr "PIN unlock"
 
-#: src/renderer/src/components/SettingsPage.tsx:617
+#: src/renderer/src/components/SettingsPage.tsx:620
 msgid "PIN unlock is disabled."
 msgstr "PIN unlock is disabled."
 
@@ -4493,7 +4553,7 @@ msgstr "PIN unlock is disabled. Enter your master password instead."
 msgid "PIN unlock is disabled. Use your master password instead."
 msgstr "PIN unlock is disabled. Use your master password instead."
 
-#: src/renderer/src/components/SettingsPage.tsx:598
+#: src/renderer/src/components/SettingsPage.tsx:601
 msgid "PIN unlock is enabled for this session only."
 msgstr "PIN unlock is enabled for this session only."
 
@@ -4527,15 +4587,15 @@ msgstr "Plus Address"
 msgid "Postal code"
 msgstr "Postal code"
 
-#: src/renderer/src/components/SettingsPage.tsx:1458
+#: src/renderer/src/components/SettingsPage.tsx:1483
 msgid "Press <0/> in a supported browser to match the current site and fill in login details."
 msgstr "Press <0/> in a supported browser to match the current site and fill in login details."
 
-#: src/renderer/src/components/SettingsPage.tsx:443
+#: src/renderer/src/components/SettingsPage.tsx:446
 msgid "Privacy"
 msgstr "Privacy"
 
-#: src/renderer/src/components/SettingsPage.tsx:1310
+#: src/renderer/src/components/SettingsPage.tsx:1335
 msgid "Privacy & clipboard"
 msgstr "Privacy & clipboard"
 
@@ -4630,7 +4690,7 @@ msgstr "Quick access"
 msgid "Random word"
 msgstr "Random word"
 
-#: src/renderer/src/components/SettingsPage.tsx:1480
+#: src/renderer/src/components/SettingsPage.tsx:1506
 msgid "Read the foreground browser’s URL and form only when you press the shortcut. Multiple matches appear in a mini picker."
 msgstr "Read the foreground browser’s URL and form only when you press the shortcut. Multiple matches appear in a mini picker."
 
@@ -4644,7 +4704,7 @@ msgstr "Read-only"
 msgid "Reading clipboard…"
 msgstr "Reading clipboard…"
 
-#: src/renderer/src/components/SettingsPage.tsx:635
+#: src/renderer/src/components/SettingsPage.tsx:638
 #: src/renderer/src/lib/ssh-agent-ui.ts:70
 msgid "Ready"
 msgstr "Ready"
@@ -4661,7 +4721,7 @@ msgstr "Reauthentication required"
 msgid "Recently modified"
 msgstr "Recently modified"
 
-#: src/renderer/src/components/SettingsPage.tsx:480
+#: src/renderer/src/components/SettingsPage.tsx:483
 #: src/renderer/src/components/VaultShell.tsx:1019
 #: src/renderer/src/components/VaultShell.tsx:2563
 #: src/renderer/src/components/VaultShell.tsx:4768
@@ -4672,6 +4732,10 @@ msgstr "Recently used"
 #: src/renderer/src/components/SendsPage.tsx:708
 msgid "Recipients must actively reveal the text to see it."
 msgstr "Recipients must actively reveal the text to see it."
+
+#: src/renderer/src/components/SettingsPage.tsx:1555
+msgid "Recommended"
+msgstr "Recommended"
 
 #: src/renderer/src/components/MasterPasswordChangeDialog.tsx:443
 msgid "Reconnect"
@@ -4689,7 +4753,7 @@ msgstr "Recovery code"
 msgid "Redo"
 msgstr "Redo"
 
-#: src/renderer/src/components/SettingsPage.tsx:1311
+#: src/renderer/src/components/SettingsPage.tsx:1336
 msgid "Reduce how long sensitive data remains on screen or in the clipboard."
 msgstr "Reduce how long sensitive data remains on screen or in the clipboard."
 
@@ -4705,7 +4769,7 @@ msgstr "Regenerate {generateLabel}"
 msgid "Registered security keys"
 msgstr "Registered security keys"
 
-#: src/renderer/src/components/SettingsPage.tsx:899
+#: src/renderer/src/components/SettingsPage.tsx:924
 msgid "Registered, but you still need to allow BearWarden in Login Items under macOS System Settings."
 msgstr "Registered, but you still need to allow BearWarden in Login Items under macOS System Settings."
 
@@ -4735,7 +4799,7 @@ msgstr "Reload"
 msgid "Reloading local accounts"
 msgstr "Reloading local accounts"
 
-#: src/renderer/src/components/SettingsPage.tsx:505
+#: src/renderer/src/components/SettingsPage.tsx:508
 msgid "Remember approvals until locked"
 msgstr "Remember approvals until locked"
 
@@ -4744,7 +4808,7 @@ msgstr "Remember approvals until locked"
 msgid "Remember this device"
 msgstr "Remember this device"
 
-#: src/renderer/src/components/SettingsPage.tsx:1610
+#: src/renderer/src/components/SettingsPage.tsx:1683
 msgid "Remember until locked distinguishes local requests. Forwarded requests must also match a verified remote host fingerprint. Approvals are cleared when the vault locks."
 msgstr "Remember until locked distinguishes local requests. Forwarded requests must also match a verified remote host fingerprint. Approvals are cleared when the vault locks."
 
@@ -4827,7 +4891,7 @@ msgstr "Repair"
 msgid "Repaired “{0}”."
 msgstr "Repaired “{0}”."
 
-#: src/renderer/src/components/SettingsPage.tsx:1518
+#: src/renderer/src/components/SettingsPage.tsx:1589
 msgid "Request accessibility permission"
 msgstr "Request accessibility permission"
 
@@ -4907,6 +4971,10 @@ msgstr "Restoring attachments"
 msgid "Retry"
 msgstr "Retry"
 
+#: src/renderer/src/components/AutofillAccessibilityGuide.tsx:38
+msgid "Return to BearWarden and click “Check again”."
+msgstr "Return to BearWarden and click “Check again”."
+
 #: src/renderer/src/components/VaultHealthPage.tsx:1390
 msgid "Reused passwords"
 msgstr "Reused passwords"
@@ -4981,7 +5049,7 @@ msgstr "Saved “{0}”."
 msgid "Saved {0}"
 msgstr "Saved {0}"
 
-#: src/renderer/src/components/SettingsPage.tsx:756
+#: src/renderer/src/components/SettingsPage.tsx:781
 msgid "Saving"
 msgstr "Saving"
 
@@ -5073,11 +5141,11 @@ msgstr "Securely stored item"
 msgid "Securely switching accounts and restarting"
 msgstr "Securely switching accounts and restarting"
 
-#: src/renderer/src/components/SettingsPage.tsx:922
+#: src/renderer/src/components/SettingsPage.tsx:947
 msgid "Security"
 msgstr "Security"
 
-#: src/renderer/src/components/SettingsPage.tsx:437
+#: src/renderer/src/components/SettingsPage.tsx:440
 msgid "Security & unlock"
 msgstr "Security & unlock"
 
@@ -5186,7 +5254,7 @@ msgstr "Server URL"
 msgid "Service domains are compared with the static list only on this device."
 msgstr "Service domains are compared with the static list only on this device."
 
-#: src/renderer/src/components/SettingsPage.tsx:1660
+#: src/renderer/src/components/SettingsPage.tsx:1733
 msgid "Set <0>SSH_AUTH_SOCK</0> in the terminal environment so SSH and Git use BearWarden’s local socket."
 msgstr "Set <0>SSH_AUTH_SOCK</0> in the terminal environment so SSH and Git use BearWarden’s local socket."
 
@@ -5194,11 +5262,15 @@ msgstr "Set <0>SSH_AUTH_SOCK</0> in the terminal environment so SSH and Git use 
 msgid "Set a master password that only you know. BearWarden cannot recover it for you."
 msgstr "Set a master password that only you know. BearWarden cannot recover it for you."
 
+#: src/renderer/src/components/AutofillAccessibilityGuide.tsx:24
+msgid "Set up Accessibility permission"
+msgstr "Set up Accessibility permission"
+
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:736
 msgid "Set up an authenticator app"
 msgstr "Set up an authenticator app"
 
-#: src/renderer/src/components/SettingsPage.tsx:1445
+#: src/renderer/src/components/SettingsPage.tsx:1470
 msgid "Set up Bitwarden sync"
 msgstr "Set up Bitwarden sync"
 
@@ -5206,16 +5278,16 @@ msgstr "Set up Bitwarden sync"
 msgid "Set up email two-factor authentication"
 msgstr "Set up email two-factor authentication"
 
-#: src/renderer/src/components/SettingsPage.tsx:1555
+#: src/renderer/src/components/SettingsPage.tsx:1630
 msgid "Setting status"
 msgstr "Setting status"
 
-#: src/renderer/src/components/SettingsPage.tsx:743
+#: src/renderer/src/components/SettingsPage.tsx:768
 #: src/renderer/src/components/VaultShell.tsx:4917
 msgid "Settings"
 msgstr "Settings"
 
-#: src/renderer/src/components/SettingsPage.tsx:782
+#: src/renderer/src/components/SettingsPage.tsx:807
 msgid "Settings categories"
 msgstr "Settings categories"
 
@@ -5251,7 +5323,7 @@ msgstr "Shared item"
 msgid "Sharing link copied"
 msgstr "Sharing link copied"
 
-#: src/renderer/src/components/SettingsPage.tsx:652
+#: src/renderer/src/components/SettingsPage.tsx:655
 msgid "Shortcut conflict"
 msgstr "Shortcut conflict"
 
@@ -5295,7 +5367,7 @@ msgstr "Show this historical password"
 msgid "Show two-step verification"
 msgstr "Show two-step verification"
 
-#: src/renderer/src/components/SettingsPage.tsx:1358
+#: src/renderer/src/components/SettingsPage.tsx:1383
 msgid "Show website icons"
 msgstr "Show website icons"
 
@@ -5303,11 +5375,11 @@ msgstr "Show website icons"
 msgid "Sign in with a passkey"
 msgstr "Sign in with a passkey"
 
-#: src/renderer/src/components/SettingsPage.tsx:1607
+#: src/renderer/src/components/SettingsPage.tsx:1680
 msgid "Signature approval"
 msgstr "Signature approval"
 
-#: src/renderer/src/components/SettingsPage.tsx:495
+#: src/renderer/src/components/SettingsPage.tsx:498
 msgid "Simplified Chinese"
 msgstr "Simplified Chinese"
 
@@ -5319,15 +5391,15 @@ msgstr "Sort order"
 msgid "Special characters !@#$%^&*"
 msgstr "Special characters !@#$%^&*"
 
-#: src/renderer/src/components/SettingsPage.tsx:1572
+#: src/renderer/src/components/SettingsPage.tsx:1645
 msgid "SSH Agent"
 msgstr "SSH Agent"
 
-#: src/renderer/src/components/SettingsPage.tsx:1676
+#: src/renderer/src/components/SettingsPage.tsx:1749
 msgid "SSH Agent setup command copied"
 msgstr "SSH Agent setup command copied"
 
-#: src/renderer/src/components/SettingsPage.tsx:1670
+#: src/renderer/src/components/SettingsPage.tsx:1743
 msgid "SSH Agent terminal setup command"
 msgstr "SSH Agent terminal setup command"
 
@@ -5367,7 +5439,7 @@ msgstr "Start setup"
 msgid "Started:"
 msgstr "Started:"
 
-#: src/renderer/src/components/SettingsPage.tsx:637
+#: src/renderer/src/components/SettingsPage.tsx:640
 #: src/renderer/src/lib/ssh-agent-ui.ts:71
 msgid "Starting"
 msgstr "Starting"
@@ -5400,7 +5472,7 @@ msgstr "Stop and reconnect. Do not submit another master-password change until y
 msgid "Stop and save progress"
 msgstr "Stop and save progress"
 
-#: src/renderer/src/components/SettingsPage.tsx:640
+#: src/renderer/src/components/SettingsPage.tsx:643
 #: src/renderer/src/lib/ssh-agent-ui.ts:74
 msgid "Stopped"
 msgstr "Stopped"
@@ -5434,7 +5506,7 @@ msgstr "Symbols, numbers, and letters use different colors to make them easier t
 msgid "Sync"
 msgstr "Sync"
 
-#: src/renderer/src/components/SettingsPage.tsx:1399
+#: src/renderer/src/components/SettingsPage.tsx:1424
 msgid "Sync & accounts"
 msgstr "Sync & accounts"
 
@@ -5482,14 +5554,14 @@ msgstr "Syncing"
 msgid "Syncing attachment list"
 msgstr "Syncing attachment list"
 
-#: src/renderer/src/components/SettingsPage.tsx:511
+#: src/renderer/src/components/SettingsPage.tsx:514
 #: src/renderer/src/components/SyncDialog.tsx:573
 #: src/renderer/src/components/VaultShell.tsx:1014
 msgid "Syncing…"
 msgstr "Syncing…"
 
-#: src/renderer/src/components/SettingsPage.tsx:485
-#: src/renderer/src/components/SettingsPage.tsx:493
+#: src/renderer/src/components/SettingsPage.tsx:488
+#: src/renderer/src/components/SettingsPage.tsx:496
 msgid "System"
 msgstr "System"
 
@@ -5498,7 +5570,7 @@ msgstr "System"
 msgid "Takeover"
 msgstr "Takeover"
 
-#: src/renderer/src/components/SettingsPage.tsx:1647
+#: src/renderer/src/components/SettingsPage.tsx:1720
 msgid "Terminal setup"
 msgstr "Terminal setup"
 
@@ -5523,6 +5595,10 @@ msgstr "Text hidden by default"
 msgid "That name is already in use. Choose another name."
 msgstr "That name is already in use. Choose another name."
 
+#: src/renderer/src/components/SettingsPage.tsx:724
+msgid "That shortcut is unavailable. Your previous shortcut remains active."
+msgstr "That shortcut is unavailable. Your previous shortcut remains active."
+
 #. placeholder {0}: webAuthnActionLabel(action)
 #: src/renderer/src/components/account-webauthn-ui.ts:79
 msgid "The {0} result is unknown. The status has been refreshed. Verify your current keys before retrying."
@@ -5544,7 +5620,7 @@ msgstr "The activation result is unknown. The status has been refreshed. Do not 
 msgid "The active application is not a supported browser."
 msgstr "The active application is not a supported browser."
 
-#: src/renderer/src/components/SettingsPage.tsx:1692
+#: src/renderer/src/components/SettingsPage.tsx:1765
 msgid "The Agent endpoint contains control characters that cannot be safely placed in a shell command, so no copyable command is available. Fix<0>BEARWARDEN_SSH_AUTH_SOCK</0>, then enable the Agent again."
 msgstr "The Agent endpoint contains control characters that cannot be safely placed in a shell command, so no copyable command is available. Fix<0>BEARWARDEN_SSH_AUTH_SOCK</0>, then enable the Agent again."
 
@@ -5584,7 +5660,7 @@ msgstr "The authenticator app has been enabled."
 msgid "The autofill service is currently unavailable."
 msgstr "The autofill service is currently unavailable."
 
-#: src/renderer/src/components/SettingsPage.tsx:694
+#: src/renderer/src/components/SettingsPage.tsx:697
 msgid "The autofill setting could not be saved, so the shortcut status was not changed."
 msgstr "The autofill setting could not be saved, so the shortcut status was not changed."
 
@@ -5665,11 +5741,11 @@ msgstr "The current server does not support account device lists."
 msgid "The custom field contents could not be shown. Try again later."
 msgstr "The custom field contents could not be shown. Try again later."
 
-#: src/renderer/src/components/SettingsPage.tsx:274
+#: src/renderer/src/components/SettingsPage.tsx:277
 msgid "The custom inactivity timeout cannot exceed 8,760 hours."
 msgstr "The custom inactivity timeout cannot exceed 8,760 hours."
 
-#: src/renderer/src/components/SettingsPage.tsx:277
+#: src/renderer/src/components/SettingsPage.tsx:280
 msgid "The custom inactivity timeout must be at least 1 minute."
 msgstr "The custom inactivity timeout must be at least 1 minute."
 
@@ -5693,11 +5769,11 @@ msgstr "The display name cannot exceed 50 UTF-8 bytes."
 msgid "The encrypted .bwbackup contains personal items and attachments and can only be restored by a BearWarden version that supports this format. Official Bitwarden clients cannot import it directly. Trash and Sends are not included."
 msgstr "The encrypted .bwbackup contains personal items and attachments and can only be restored by a BearWarden version that supports this format. Official Bitwarden clients cannot import it directly. Trash and Sends are not included."
 
-#: src/renderer/src/components/SettingsPage.tsx:1087
+#: src/renderer/src/components/SettingsPage.tsx:1112
 msgid "The encrypted PIN credential remains in memory only. You must use the master password after restarting, signing out, disconnecting, or switching accounts."
 msgstr "The encrypted PIN credential remains in memory only. You must use the master password after restarting, signing out, disconnecting, or switching accounts."
 
-#: src/renderer/src/components/SettingsPage.tsx:704
+#: src/renderer/src/components/SettingsPage.tsx:707
 msgid "The global autofill shortcut is already used by another app. Disable the same shortcut in that app first."
 msgstr "The global autofill shortcut is already used by another app. Disable the same shortcut in that app first."
 
@@ -5763,16 +5839,16 @@ msgstr "The main process is comparing service domains locally without uploading 
 
 #: src/renderer/src/components/auth-screen-ui.ts:12
 #: src/renderer/src/components/AuthScreen.tsx:48
-#: src/renderer/src/components/SettingsPage.tsx:602
+#: src/renderer/src/components/SettingsPage.tsx:605
 #: src/renderer/src/components/SyncDialog.tsx:150
 msgid "The master password is incorrect."
 msgstr "The master password is incorrect."
 
-#: src/renderer/src/components/SettingsPage.tsx:1283
+#: src/renderer/src/components/SettingsPage.tsx:1308
 msgid "The master password is sent only to the local process for verification."
 msgstr "The master password is sent only to the local process for verification."
 
-#: src/renderer/src/components/SettingsPage.tsx:1173
+#: src/renderer/src/components/SettingsPage.tsx:1198
 msgid "The master password is verified again in the main process each time PIN unlock is enabled."
 msgstr "The master password is verified again in the main process each time PIN unlock is enabled."
 
@@ -5817,7 +5893,7 @@ msgstr "The other device shows the exact same phrase"
 msgid "The passkey for “{0}” will be removed from this login and synced immediately. This action cannot be undone."
 msgstr "The passkey for “{0}” will be removed from this login and synced immediately. This action cannot be undone."
 
-#: src/renderer/src/components/SettingsPage.tsx:1122
+#: src/renderer/src/components/SettingsPage.tsx:1147
 msgid "The PIN and encrypted credential are never written to disk. You can use the PIN after a normal lock, but restarting the app always requires the master password."
 msgstr "The PIN and encrypted credential are never written to disk. You can use the PIN after a normal lock, but restarting the app always requires the master password."
 
@@ -5827,11 +5903,11 @@ msgid "The PIN is incorrect."
 msgstr "The PIN is incorrect."
 
 #: src/renderer/src/components/AuthScreen.tsx:111
-#: src/renderer/src/components/SettingsPage.tsx:580
+#: src/renderer/src/components/SettingsPage.tsx:583
 msgid "The PIN must contain at least 4 characters."
 msgstr "The PIN must contain at least 4 characters."
 
-#: src/renderer/src/components/SettingsPage.tsx:584
+#: src/renderer/src/components/SettingsPage.tsx:587
 msgid "The PINs do not match."
 msgstr "The PINs do not match."
 
@@ -6137,7 +6213,7 @@ msgstr "The verification email request was sent. If email is configured on the s
 msgid "The website URL is invalid."
 msgstr "The website URL is invalid."
 
-#: src/renderer/src/components/SettingsPage.tsx:812
+#: src/renderer/src/components/SettingsPage.tsx:837
 msgid "Theme"
 msgstr "Theme"
 
@@ -6226,7 +6302,7 @@ msgid "This check connects to HIBP only after you press the button. Opening this
 msgstr "This check connects to HIBP only after you press the button. Opening this page does not start a query automatically."
 
 #: src/renderer/src/components/AccountDevicesDialog.tsx:458
-#: src/renderer/src/components/SettingsPage.tsx:927
+#: src/renderer/src/components/SettingsPage.tsx:952
 msgid "This device"
 msgstr "This device"
 
@@ -6456,7 +6532,7 @@ msgstr "Too many SSH private key import sessions are active. Try again later."
 msgid "Too many SSH private key import sessions are in progress. Try again later."
 msgstr "Too many SSH private key import sessions are in progress. Try again later."
 
-#: src/renderer/src/components/SettingsPage.tsx:455
+#: src/renderer/src/components/SettingsPage.tsx:458
 msgid "Tools & data"
 msgstr "Tools & data"
 
@@ -6464,7 +6540,7 @@ msgstr "Tools & data"
 msgid "TOTP available"
 msgstr "TOTP available"
 
-#: src/renderer/src/components/SettingsPage.tsx:496
+#: src/renderer/src/components/SettingsPage.tsx:499
 msgid "Traditional Chinese"
 msgstr "Traditional Chinese"
 
@@ -6612,7 +6688,7 @@ msgstr "Unable to determine whether the account appears in a breach"
 msgid "Unable to disable {providerName}. Try again later."
 msgstr "Unable to disable {providerName}. Try again later."
 
-#: src/renderer/src/components/SettingsPage.tsx:619
+#: src/renderer/src/components/SettingsPage.tsx:622
 msgid "Unable to disable PIN unlock."
 msgstr "Unable to disable PIN unlock."
 
@@ -6628,7 +6704,7 @@ msgstr "Unable to download update"
 msgid "Unable to enable email two-factor authentication. Restart setup."
 msgstr "Unable to enable email two-factor authentication. Restart setup."
 
-#: src/renderer/src/components/SettingsPage.tsx:603
+#: src/renderer/src/components/SettingsPage.tsx:606
 msgid "Unable to enable PIN unlock."
 msgstr "Unable to enable PIN unlock."
 
@@ -6684,12 +6760,12 @@ msgstr "Unable to read generator history."
 msgid "Unable to read password history. Try again."
 msgstr "Unable to read password history. Try again."
 
-#: src/renderer/src/components/SettingsPage.tsx:549
-#: src/renderer/src/components/SettingsPage.tsx:682
+#: src/renderer/src/components/SettingsPage.tsx:552
+#: src/renderer/src/components/SettingsPage.tsx:685
 msgid "Unable to read the autofill status."
 msgstr "Unable to read the autofill status."
 
-#: src/renderer/src/components/SettingsPage.tsx:569
+#: src/renderer/src/components/SettingsPage.tsx:572
 msgid "Unable to read the PIN unlock status."
 msgstr "Unable to read the PIN unlock status."
 
@@ -6709,7 +6785,7 @@ msgstr "Unable to read update status."
 msgid "Unable to read vault data. Try again. If this continues, the vault file may be corrupted."
 msgstr "Unable to read vault data. Try again. If this continues, the vault file may be corrupted."
 
-#: src/renderer/src/components/SettingsPage.tsx:732
+#: src/renderer/src/components/SettingsPage.tsx:757
 msgid "Unable to request accessibility permission. Enable it manually in System Settings."
 msgstr "Unable to request accessibility permission. Enable it manually in System Settings."
 
@@ -6766,9 +6842,13 @@ msgstr "Unable to start authenticator setup."
 msgid "Unable to start email two-factor authentication setup."
 msgstr "Unable to start email two-factor authentication setup."
 
-#: src/renderer/src/components/SettingsPage.tsx:708
+#: src/renderer/src/components/SettingsPage.tsx:711
 msgid "Unable to update the autofill setting."
 msgstr "Unable to update the autofill setting."
+
+#: src/renderer/src/components/SettingsPage.tsx:733
+msgid "Unable to update the autofill shortcut."
+msgstr "Unable to update the autofill shortcut."
 
 #: src/renderer/src/components/Dialogs.tsx:431
 msgid "Unable to verify the master password. Try again."
@@ -6788,7 +6868,7 @@ msgstr "Unarchived “{0}”."
 msgid "Unarchived {affectedCount} items."
 msgstr "Unarchived {affectedCount} items."
 
-#: src/renderer/src/components/SettingsPage.tsx:1222
+#: src/renderer/src/components/SettingsPage.tsx:1247
 msgid "Unavailable"
 msgstr "Unavailable"
 
@@ -6877,16 +6957,16 @@ msgstr "Unknown type ({type})"
 msgid "Unlock and sync"
 msgstr "Unlock and sync"
 
-#: src/renderer/src/components/SettingsPage.tsx:1217
+#: src/renderer/src/components/SettingsPage.tsx:1242
 msgid "Unlock quickly with device biometrics. Currently, only macOS Touch ID is supported."
 msgstr "Unlock quickly with device biometrics. Currently, only macOS Touch ID is supported."
 
-#: src/renderer/src/components/SettingsPage.tsx:509
+#: src/renderer/src/components/SettingsPage.tsx:512
 #: src/renderer/src/components/VaultShell.tsx:1012
 msgid "Unlock required"
 msgstr "Unlock required"
 
-#: src/renderer/src/components/SettingsPage.tsx:1075
+#: src/renderer/src/components/SettingsPage.tsx:1100
 msgid "Unlock the local vault with a temporary PIN."
 msgstr "Unlock the local vault with a temporary PIN."
 
@@ -6975,7 +7055,7 @@ msgstr "Uploading encrypted attachment"
 msgid "Uppercase letters"
 msgstr "Uppercase letters"
 
-#: src/renderer/src/components/SettingsPage.tsx:1142
+#: src/renderer/src/components/SettingsPage.tsx:1167
 msgid "Use at least 4 characters and avoid numbers that are easy to guess."
 msgstr "Use at least 4 characters and avoid numbers that are easy to guess."
 
@@ -7133,7 +7213,7 @@ msgstr "Version {availableVersion} has finished downloading."
 msgid "Version {availableVersion} is available to download."
 msgstr "Version {availableVersion} is available to download."
 
-#: src/renderer/src/components/SettingsPage.tsx:459
+#: src/renderer/src/components/SettingsPage.tsx:462
 msgid "Version and update information"
 msgstr "Version and update information"
 
@@ -7267,11 +7347,11 @@ msgstr "Websites"
 msgid "Welcome back"
 msgstr "Welcome back"
 
-#: src/renderer/src/components/SettingsPage.tsx:939
+#: src/renderer/src/components/SettingsPage.tsx:964
 msgid "When enabled, BearWarden may be hidden in Windows Remote Desktop, screen sharing, and recordings. If only the taskbar icon remains visible, turn this option off in a local session."
 msgstr "When enabled, BearWarden may be hidden in Windows Remote Desktop, screen sharing, and recordings. If only the taskbar icon remains visible, turn this option off in a local session."
 
-#: src/renderer/src/components/SettingsPage.tsx:462
+#: src/renderer/src/components/SettingsPage.tsx:465
 msgid "When the app restarts"
 msgstr "When the app restarts"
 
@@ -7330,7 +7410,7 @@ msgstr "You can process up to {MAX_LOGIN_BATCH_IDS} items at a time."
 msgid "You can safely delete passkeys while editing the item. Private key material is never sent to the renderer."
 msgstr "You can safely delete passkeys while editing the item. Private key material is never sent to the renderer."
 
-#: src/renderer/src/components/SettingsPage.tsx:1252
+#: src/renderer/src/components/SettingsPage.tsx:1277
 msgid "You can use biometrics to unlock after the next lock."
 msgstr "You can use biometrics to unlock after the next lock."
 

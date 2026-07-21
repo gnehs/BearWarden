@@ -29,6 +29,7 @@ import type {
   VaultTimeoutPolicy
 } from '../../../shared/vault-contract'
 import { MAX_VAULT_TIMEOUT_MINUTES } from '../../../shared/vault-contract'
+import { AUTOFILL_SHORTCUTS, isAutofillShortcut } from '../../../shared/autofill-shortcuts'
 import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
 import { CardAction, CardFooter, CardHeader } from '@renderer/components/ui/card'
@@ -65,6 +66,7 @@ import { Separator } from '@renderer/components/ui/separator'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Switch } from '@renderer/components/ui/switch'
 import { Tabs, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
+import { ToggleGroup, ToggleGroupItem } from '@renderer/components/ui/toggle-group'
 import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
 import {
   isWindowsSshAgentEndpoint,
@@ -77,6 +79,7 @@ import AccountSwitcherCard from './AccountSwitcherCard'
 import PersonalVaultPurgeDialog from './PersonalVaultPurgeDialog'
 import AuxiliaryPageLayout, { AuxiliaryPageContent } from './AuxiliaryPageLayout'
 import AboutPage from './AboutPage'
+import { AutofillAccessibilityGuide } from './AutofillAccessibilityGuide'
 import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 import AutofillShortcut from './AutofillShortcut'
 import {
@@ -706,6 +709,28 @@ function SettingsPage({
       }
     } catch {
       setAutofillFeedback(t`Unable to update the autofill setting.`)
+    } finally {
+      setAutofillOperationBusy(false)
+    }
+  }
+
+  async function updateAutofillShortcut(shortcut: AppSettings['autofillShortcut']): Promise<void> {
+    if (autofillOperationBusy || shortcut === settings?.autofillShortcut) return
+    setAutofillOperationBusy(true)
+    setAutofillFeedback('')
+    try {
+      const saved = await onUpdate({ autofillShortcut: shortcut })
+      if (saved === false) {
+        setAutofillFeedback(t`That shortcut is unavailable. Your previous shortcut remains active.`)
+        return
+      }
+      const epoch = ++autofillStatusEpochRef.current
+      const status = await window.bearwarden.autofill.status()
+      if (epoch !== autofillStatusEpochRef.current) return
+      setAutofillStatus(status)
+      setAutofillFeedback(t`Autofill shortcut updated.`)
+    } catch {
+      setAutofillFeedback(t`Unable to update the autofill shortcut.`)
     } finally {
       setAutofillOperationBusy(false)
     }
@@ -1456,8 +1481,8 @@ function SettingsPage({
                     title={t`Cross-browser autofill`}
                     description={
                       <Trans>
-                        Press <AutofillShortcut /> in a supported browser to match the current site
-                        and fill in login details.
+                        Press <AutofillShortcut shortcut={settings.autofillShortcut} /> in a
+                        supported browser to match the current site and fill in login details.
                       </Trans>
                     }
                   />
@@ -1473,7 +1498,8 @@ function SettingsPage({
                       <FieldContent>
                         <FieldLabel htmlFor="autofill-switch">
                           <Trans>
-                            Enable <AutofillShortcut /> autofill
+                            Enable <AutofillShortcut shortcut={settings.autofillShortcut} />{' '}
+                            autofill
                           </Trans>
                         </FieldLabel>
                         <FieldDescription id="autofill-description">
@@ -1493,6 +1519,48 @@ function SettingsPage({
                         onCheckedChange={(checked) => void updateAutofillEnabled(checked)}
                       />
                     </SettingsRow>
+                    {autofillStatus?.available && (
+                      <>
+                        <Separator />
+                        <SettingsStackedRow>
+                          <FieldLabel id="autofill-shortcut-label">
+                            <Trans>Autofill shortcut</Trans>
+                          </FieldLabel>
+                          <FieldDescription id="autofill-shortcut-description">
+                            <Trans>
+                              Choose a global shortcut that is not used by your browser or another
+                              password manager.
+                            </Trans>
+                          </FieldDescription>
+                          <ToggleGroup
+                            variant="outline"
+                            size="sm"
+                            value={[settings.autofillShortcut]}
+                            aria-labelledby="autofill-shortcut-label"
+                            aria-describedby="autofill-shortcut-description"
+                            disabled={settingsBusy || autofillOperationBusy}
+                            className="flex-wrap justify-start"
+                            onValueChange={(values) => {
+                              const shortcut = values.at(-1)
+                              if (isAutofillShortcut(shortcut)) {
+                                void updateAutofillShortcut(shortcut)
+                              }
+                            }}
+                          >
+                            {AUTOFILL_SHORTCUTS.map((shortcut) => (
+                              <ToggleGroupItem key={shortcut} value={shortcut}>
+                                <AutofillShortcut shortcut={shortcut} />
+                                {shortcut === 'Control+\\' ? (
+                                  <span className="text-muted-foreground">
+                                    <Trans>Recommended</Trans>
+                                  </span>
+                                ) : null}
+                              </ToggleGroupItem>
+                            ))}
+                          </ToggleGroup>
+                        </SettingsStackedRow>
+                      </>
+                    )}
                     {settings.autofillEnabled && autofillStatus?.available && (
                       <>
                         <Separator />
@@ -1503,8 +1571,11 @@ function SettingsPage({
                           <FieldDescription>
                             {autofillStatus.accessibilityTrusted
                               ? t`BearWarden can control the current browser and perform autofill.`
-                              : t`On macOS, allow BearWarden under System Settings → Privacy & Security → Accessibility. If the autofill helper appears in the list, allow it as well. After a denial, macOS may not show the prompt again.`}
+                              : t`Follow the steps below to let BearWarden identify the current website and fill the focused login form.`}
                           </FieldDescription>
+                          {!autofillStatus.accessibilityTrusted && (
+                            <AutofillAccessibilityGuide shortcut={settings.autofillShortcut} />
+                          )}
                           <div className="flex flex-wrap gap-2">
                             {!autofillStatus.accessibilityTrusted && (
                               <Button
@@ -1535,29 +1606,31 @@ function SettingsPage({
                             <SettingsStackedRow>
                               <FieldLabel>
                                 <Trans>
-                                  <AutofillShortcut /> could not be registered
+                                  <AutofillShortcut shortcut={settings.autofillShortcut} /> could
+                                  not be registered
                                 </Trans>
                               </FieldLabel>
                               <FieldDescription>
                                 <Trans>
-                                  Another app, such as 1Password, already uses this shortcut.
-                                  Disable the same shortcut in that app, then check again.
+                                  Another app, such as 1Password, already uses this shortcut. Choose
+                                  another shortcut above, or disable the same shortcut in that app
+                                  and check again.
                                 </Trans>
                               </FieldDescription>
                             </SettingsStackedRow>
                           </>
                         )}
-                        {autofillFeedback && (
-                          <>
-                            <Separator />
-                            <SettingsStackedRow>
-                              <FieldLabel>
-                                <Trans>Setting status</Trans>
-                              </FieldLabel>
-                              <FieldDescription role="status">{autofillFeedback}</FieldDescription>
-                            </SettingsStackedRow>
-                          </>
-                        )}
+                      </>
+                    )}
+                    {autofillFeedback && (
+                      <>
+                        <Separator />
+                        <SettingsStackedRow>
+                          <FieldLabel>
+                            <Trans>Setting status</Trans>
+                          </FieldLabel>
+                          <FieldDescription role="status">{autofillFeedback}</FieldDescription>
+                        </SettingsStackedRow>
                       </>
                     )}
                   </FieldGroup>

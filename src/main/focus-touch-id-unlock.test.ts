@@ -36,6 +36,7 @@ function createRuntime(
     theme: 'system',
     language: 'system',
     autofillEnabled: false,
+    autofillShortcut: 'Control+\\',
     sshAgentEnabled: false,
     sshAgentPromptBehavior: 'always',
     touchIdAvailable: true,

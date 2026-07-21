@@ -26,7 +26,7 @@ type TestMock = ReturnType<typeof vi.fn>
 interface TestRuntime {
   applyContentProtection: TestMock
   applyClipboardTimeout: TestMock
-  applyAutofillEnabled: TestMock
+  applyAutofillSettings: TestMock
   applyLanguage: TestMock
   applySshAgentSettings: TestMock
   getStartAtLoginStatus: TestMock
@@ -82,7 +82,7 @@ describe('AppSettingsService', () => {
     const runtime = {
       applyContentProtection: vi.fn(),
       applyClipboardTimeout: vi.fn(),
-      applyAutofillEnabled: vi.fn(),
+      applyAutofillSettings: vi.fn(() => true),
       applyLanguage: vi.fn(),
       applySshAgentSettings: vi.fn(),
       getStartAtLoginStatus: vi.fn(() => ({
@@ -133,6 +133,7 @@ describe('AppSettingsService', () => {
       theme: 'system',
       language: 'system',
       autofillEnabled: false,
+      autofillShortcut: 'Control+\\',
       sshAgentEnabled: false,
       sshAgentPromptBehavior: 'always'
     })
@@ -146,6 +147,7 @@ describe('AppSettingsService', () => {
       theme: 'dark',
       language: 'ja',
       autofillEnabled: true,
+      autofillShortcut: 'Command+Control+K',
       sshAgentEnabled: true,
       sshAgentPromptBehavior: 'rememberUntilLock'
     })
@@ -158,21 +160,26 @@ describe('AppSettingsService', () => {
       theme: 'dark',
       language: 'ja',
       autofillEnabled: true,
+      autofillShortcut: 'Command+Control+K',
       sshAgentEnabled: true,
       sshAgentPromptBehavior: 'rememberUntilLock'
     })
     expect(runtime.applyContentProtection).toHaveBeenLastCalledWith(true)
     expect(runtime.applyClipboardTimeout).toHaveBeenLastCalledWith(60)
-    expect(runtime.applyAutofillEnabled).toHaveBeenLastCalledWith(true)
+    expect(runtime.applyAutofillSettings).toHaveBeenLastCalledWith({
+      enabled: true,
+      shortcut: 'Command+Control+K'
+    })
     expect(runtime.applyLanguage).toHaveBeenLastCalledWith('ja')
     expect(runtime.applySshAgentSettings).toHaveBeenLastCalledWith({
       enabled: true,
       promptBehavior: 'rememberUntilLock'
     })
     expect(JSON.parse(await readFile(join(directory, 'settings.json'), 'utf8'))).toMatchObject({
-      version: 8,
+      version: 9,
       startAtLogin: false,
       defaultSort: 'frequency',
+      autofillShortcut: 'Command+Control+K',
       sshAgentEnabled: true,
       sshAgentPromptBehavior: 'rememberUntilLock'
     })
@@ -206,7 +213,7 @@ describe('AppSettingsService', () => {
       vaultTimeoutPolicy: { type: 'appInactivity', minutes: 15 }
     })
     expect(JSON.parse(await readFile(settingsPath, 'utf8'))).toMatchObject({
-      version: 8,
+      version: 9,
       autofillEnabled: false
     })
     service.dispose()
@@ -312,7 +319,7 @@ describe('AppSettingsService', () => {
       })
       const migrated = JSON.parse(await readFile(settingsPath, 'utf8'))
       expect(migrated).toMatchObject({
-        version: 8,
+        version: 9,
         autofillEnabled: false,
         vaultTimeoutPolicy: expectedPolicy
       })
@@ -346,7 +353,7 @@ describe('AppSettingsService', () => {
       await service.initialize()
 
       await expect(service.get()).resolves.toMatchObject({ vaultTimeoutPolicy })
-      await expect(readFile(settingsPath, 'utf8')).resolves.toContain('"version":8')
+      await expect(readFile(settingsPath, 'utf8')).resolves.toContain('"version":9')
       service.dispose()
     }
   )
@@ -376,7 +383,7 @@ describe('AppSettingsService', () => {
       vaultTimeoutPolicy: { type: 'systemIdle' },
       autofillEnabled: false
     })
-    expect(JSON.parse(await readFile(settingsPath, 'utf8'))).toMatchObject({ version: 8 })
+    expect(JSON.parse(await readFile(settingsPath, 'utf8'))).toMatchObject({ version: 9 })
     service.dispose()
   })
 
@@ -407,12 +414,51 @@ describe('AppSettingsService', () => {
       language: 'system',
       autofillEnabled: true
     })
-    expect(runtime.applyAutofillEnabled).toHaveBeenLastCalledWith(true)
+    expect(runtime.applyAutofillSettings).toHaveBeenLastCalledWith({
+      enabled: true,
+      shortcut: 'Control+\\'
+    })
     expect(runtime.applyLanguage).toHaveBeenLastCalledWith('system')
     expect(JSON.parse(await readFile(settingsPath, 'utf8'))).toMatchObject({
-      version: 8,
+      version: 9,
       language: 'system',
       autofillEnabled: true
+    })
+    service.dispose()
+  })
+
+  it('migrates version 8 with the default AutoFill shortcut', async () => {
+    const settingsPath = join(directory, 'settings.json')
+    await writeFile(
+      settingsPath,
+      JSON.stringify({
+        version: 8,
+        contentProtection: true,
+        showWebsiteIcons: true,
+        startAtLogin: false,
+        vaultTimeoutPolicy: { type: 'appInactivity', minutes: 30 },
+        lockOnScreenLock: true,
+        lockOnSuspend: true,
+        clearClipboardSeconds: 30,
+        defaultSort: 'recent',
+        theme: 'system',
+        language: 'zh-TW',
+        autofillEnabled: true,
+        sshAgentEnabled: false,
+        sshAgentPromptBehavior: 'always'
+      })
+    )
+    const { service } = createService(settingsPath)
+    await service.initialize()
+
+    await expect(service.get()).resolves.toMatchObject({
+      language: 'zh-TW',
+      autofillEnabled: true,
+      autofillShortcut: 'Control+\\'
+    })
+    expect(JSON.parse(await readFile(settingsPath, 'utf8'))).toMatchObject({
+      version: 9,
+      autofillShortcut: 'Control+\\'
     })
     service.dispose()
   })
@@ -453,7 +499,7 @@ describe('AppSettingsService', () => {
       vaultTimeoutPolicy: { type: 'appInactivity', minutes: 15 }
     })
     await expect(readFile(settingsPath, 'utf8')).resolves.toMatchObject(
-      expect.stringContaining('"version":8')
+      expect.stringContaining('"version":9')
     )
     retry.service.dispose()
   })
@@ -479,7 +525,7 @@ describe('AppSettingsService', () => {
     })
     expect(runtime.setStartAtLogin).toHaveBeenCalledWith(true)
     expect(JSON.parse(await readFile(join(directory, 'settings.json'), 'utf8'))).toMatchObject({
-      version: 8,
+      version: 9,
       startAtLogin: true
     })
     service.dispose()
@@ -569,7 +615,7 @@ describe('AppSettingsService', () => {
   })
 
   it.each([
-    '{"version":8,"unknown":"future"}',
+    '{"version":10,"unknown":"future"}',
     '{"version":5,"contentProtection":true,"showWebsiteIcons":true,"startAtLogin":false,"vaultTimeoutPolicy":{"type":"systemIdle"},"lockOnScreenLock":true,"lockOnSuspend":true,"clearClipboardSeconds":30,"defaultSort":"recent","theme":"system","sshAgentEnabled":false,"sshAgentPromptBehavior":"always"}',
     '{"version":5,"contentProtection":true,"showWebsiteIcons":true,"startAtLogin":false,"vaultTimeoutPolicy":{"type":"appInactivity","minutes":0},"lockOnScreenLock":true,"lockOnSuspend":true,"clearClipboardSeconds":30,"defaultSort":"recent","theme":"system","sshAgentEnabled":false,"sshAgentPromptBehavior":"always"}',
     '{"version":5,"contentProtection":true,"showWebsiteIcons":true,"startAtLogin":false,"vaultTimeoutPolicy":{"type":"onRestart","minutes":15},"lockOnScreenLock":true,"lockOnSuspend":true,"clearClipboardSeconds":30,"defaultSort":"recent","theme":"system","sshAgentEnabled":false,"sshAgentPromptBehavior":"always"}',
@@ -623,6 +669,31 @@ describe('AppSettingsService', () => {
     expect(runtime.applyContentProtection).toHaveBeenLastCalledWith(false)
     expect(runtime.applyClipboardTimeout).toHaveBeenLastCalledWith(30)
     expect(failedWrite).toHaveBeenCalledOnce()
+    service.dispose()
+  })
+
+  it('keeps the persisted and runtime shortcut when a replacement is unavailable', async () => {
+    const { service, runtime } = createService()
+    await service.initialize()
+    await service.update({ autofillEnabled: true })
+    runtime.applyAutofillSettings.mockImplementation(
+      ({ shortcut }: { shortcut: string }) => shortcut !== 'Command+Control+K'
+    )
+
+    await expect(service.update({ autofillShortcut: 'Command+Control+K' })).rejects.toThrow(
+      'failed to register global autofill shortcut'
+    )
+    await expect(service.get()).resolves.toMatchObject({
+      autofillEnabled: true,
+      autofillShortcut: 'Control+\\'
+    })
+    expect(runtime.applyAutofillSettings).toHaveBeenLastCalledWith({
+      enabled: true,
+      shortcut: 'Control+\\'
+    })
+    expect(JSON.parse(await readFile(join(directory, 'settings.json'), 'utf8'))).toMatchObject({
+      autofillShortcut: 'Control+\\'
+    })
     service.dispose()
   })
 

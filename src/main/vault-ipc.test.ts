@@ -743,6 +743,19 @@ describe('registerVaultIpc settings validation', () => {
     )
   })
 
+  it('accepts only curated AutoFill shortcuts', async () => {
+    const { event, settings } = settingsHarness()
+    const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!
+
+    await expect(update(event, { autofillShortcut: 'Command+Control+K' })).resolves.toEqual({
+      autofillShortcut: 'Command+Control+K'
+    })
+    expect(settings.update).toHaveBeenCalledWith({ autofillShortcut: 'Command+Control+K' })
+    await expect(update(event, { autofillShortcut: 'Command+\\' })).rejects.toThrow(
+      'BEARWARDEN:INVALID_INPUT'
+    )
+  })
+
   it('whitelists and validates the start-at-login preference', async () => {
     const { event, settings } = settingsHarness()
     const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { chmod, mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { safeStorage, systemPreferences } from 'electron'
+import { DEFAULT_AUTOFILL_SHORTCUT, isAutofillShortcut } from '../shared/autofill-shortcuts'
 import { MAX_VAULT_TIMEOUT_MINUTES } from '../shared/vault-contract'
 import type {
   AppLanguagePreference,
@@ -15,7 +16,7 @@ import { translateMain } from './i18n'
 import { VaultError } from './vault-errors'
 import type { VaultTimeoutCoordinator } from './vault-timeout-coordinator'
 
-const SETTINGS_VERSION = 8
+const SETTINGS_VERSION = 9
 const MAX_SETTINGS_BYTES = 16 * 1024
 const MAX_TOUCH_ID_BYTES = 64 * 1024
 
@@ -35,8 +36,11 @@ export interface StartAtLoginStatus {
 export interface AppSettingsRuntime {
   applyContentProtection: (enabled: boolean) => void
   applyClipboardTimeout: (seconds: AppSettings['clearClipboardSeconds']) => void
-  /** Registers or removes the global AutoFill shortcut without requesting OS permission. */
-  applyAutofillEnabled: (enabled: boolean) => void
+  /** Atomically applies the global AutoFill shortcut without requesting OS permission. */
+  applyAutofillSettings: (settings: {
+    enabled: boolean
+    shortcut: AppSettings['autofillShortcut']
+  }) => boolean
   applyLanguage: (language: AppLanguagePreference) => void
   /**
    * Synchronously publishes persisted SSH-agent preferences to the main-process owner.
@@ -66,6 +70,7 @@ function defaultSettings(): StoredSettings {
     theme: 'system',
     language: 'system',
     autofillEnabled: false,
+    autofillShortcut: DEFAULT_AUTOFILL_SHORTCUT,
     sshAgentEnabled: false,
     sshAgentPromptBehavior: 'always'
   }
@@ -109,13 +114,16 @@ function parseSettings(value: unknown): { settings: StoredSettings; needsMigrati
       value.version !== 5 &&
       value.version !== 6 &&
       value.version !== 7 &&
+      value.version !== 8 &&
       value.version !== SETTINGS_VERSION)
   ) {
     throw new Error('invalid settings')
   }
   const usesTimeoutPolicy = value.version >= 5
   const isCurrent = value.version === SETTINGS_VERSION
+  const hasLanguagePreference = value.version >= 8
   const hasAutofillPreference = value.version >= 7
+  const hasAutofillShortcut = value.version >= 9
   const autoLockMinutes = value.autoLockMinutes
   const clearClipboardSeconds = value.clearClipboardSeconds
   const legacyTimeoutValid =
@@ -127,7 +135,11 @@ function parseSettings(value: unknown): { settings: StoredSettings; needsMigrati
     autoLockMinutes === 60
   if (
     usesTimeoutPolicy &&
-    (Object.keys(value).length !== (isCurrent ? 14 : hasAutofillPreference ? 13 : 12) ||
+    (Object.keys(value).length !==
+      12 +
+        Number(hasAutofillPreference) +
+        Number(hasLanguagePreference) +
+        Number(hasAutofillShortcut) ||
       ![
         'version',
         'contentProtection',
@@ -139,8 +151,9 @@ function parseSettings(value: unknown): { settings: StoredSettings; needsMigrati
         'clearClipboardSeconds',
         'defaultSort',
         'theme',
-        ...(isCurrent ? ['language'] : []),
+        ...(hasLanguagePreference ? ['language'] : []),
         ...(hasAutofillPreference ? ['autofillEnabled'] : []),
+        ...(hasAutofillShortcut ? ['autofillShortcut'] : []),
         'sshAgentEnabled',
         'sshAgentPromptBehavior'
       ].every((key) => Object.prototype.hasOwnProperty.call(value, key)))
@@ -163,13 +176,14 @@ function parseSettings(value: unknown): { settings: StoredSettings; needsMigrati
       value.defaultSort !== 'name' &&
       value.defaultSort !== 'frequency') ||
     (value.theme !== 'system' && value.theme !== 'light' && value.theme !== 'dark') ||
-    (isCurrent &&
+    (hasLanguagePreference &&
       value.language !== 'system' &&
       value.language !== 'en' &&
       value.language !== 'zh-CN' &&
       value.language !== 'zh-TW' &&
       value.language !== 'ja') ||
     (hasAutofillPreference && typeof value.autofillEnabled !== 'boolean') ||
+    (hasAutofillShortcut && !isAutofillShortcut(value.autofillShortcut)) ||
     (value.version >= 3 && typeof value.sshAgentEnabled !== 'boolean') ||
     (value.version >= 3 &&
       value.sshAgentPromptBehavior !== 'always' &&
@@ -196,8 +210,11 @@ function parseSettings(value: unknown): { settings: StoredSettings; needsMigrati
       clearClipboardSeconds,
       defaultSort: value.defaultSort,
       theme: value.theme,
-      language: isCurrent ? (value.language as AppLanguagePreference) : 'system',
+      language: hasLanguagePreference ? (value.language as AppLanguagePreference) : 'system',
       autofillEnabled: hasAutofillPreference ? (value.autofillEnabled as boolean) : false,
+      autofillShortcut: hasAutofillShortcut
+        ? (value.autofillShortcut as AppSettings['autofillShortcut'])
+        : DEFAULT_AUTOFILL_SHORTCUT,
       sshAgentEnabled: value.version >= 3 ? (value.sshAgentEnabled as boolean) : false,
       sshAgentPromptBehavior:
         value.version >= 3
@@ -343,6 +360,12 @@ export class AppSettingsService {
       version: SETTINGS_VERSION
     }).settings
     const previousStartAtLogin = this.runtime.getStartAtLoginStatus()
+    const previousAutofill = {
+      enabled: this.settings.autofillEnabled,
+      shortcut: this.settings.autofillShortcut
+    }
+    const changesAutofill =
+      update.autofillEnabled !== undefined || update.autofillShortcut !== undefined
     if (update.startAtLogin !== undefined) {
       if (!previousStartAtLogin.available && update.startAtLogin) {
         throw new VaultError('INVALID_INPUT')
@@ -359,6 +382,16 @@ export class AppSettingsService {
     } else {
       candidate.startAtLogin = previousStartAtLogin.available ? previousStartAtLogin.enabled : false
     }
+    if (
+      changesAutofill &&
+      !this.runtime.applyAutofillSettings({
+        enabled: candidate.autofillEnabled,
+        shortcut: candidate.autofillShortcut
+      })
+    ) {
+      this.runtime.applyAutofillSettings(previousAutofill)
+      throw new Error('failed to register global autofill shortcut')
+    }
     try {
       await this.writeSettings(this.settingsPath, `${JSON.stringify(candidate)}\n`)
     } catch (error) {
@@ -369,6 +402,7 @@ export class AppSettingsService {
       ) {
         this.runtime.setStartAtLogin(previousStartAtLogin.enabled)
       }
+      if (changesAutofill) this.runtime.applyAutofillSettings(previousAutofill)
       throw error
     }
     this.settings = candidate
@@ -527,7 +561,10 @@ export class AppSettingsService {
   private applyRuntimeSettings(): void {
     this.runtime.applyContentProtection(this.settings.contentProtection)
     this.runtime.applyClipboardTimeout(this.settings.clearClipboardSeconds)
-    this.runtime.applyAutofillEnabled(this.settings.autofillEnabled)
+    this.runtime.applyAutofillSettings({
+      enabled: this.settings.autofillEnabled,
+      shortcut: this.settings.autofillShortcut
+    })
     this.runtime.applyLanguage(this.settings.language)
     this.runtime.applySshAgentSettings({
       enabled: this.settings.sshAgentEnabled,
