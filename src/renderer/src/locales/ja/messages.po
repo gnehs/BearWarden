@@ -2218,6 +2218,9 @@ msgstr "既定の並べ替え"
 msgid "Delete"
 msgstr "削除"
 
+msgid "Developer tools"
+msgstr "開発者ツール"
+
 #. placeholder {0}: folder.name
 #: src/renderer/src/components/Dialogs.tsx:192
 msgid "Delete “{0}”?"

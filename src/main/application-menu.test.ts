@@ -44,6 +44,11 @@ describe('installApplicationMenu', () => {
 
     const template = buildFromTemplate.mock.calls[0]?.[0] as TemplateEntry[]
     expect(template[0]?.role).toBe('appMenu')
+    const viewMenu = template.find((candidate) => candidate.label === 'View')
+    expect(viewMenu?.submenu?.map((entry) => entry.role)).toEqual([
+      'toggleDevTools',
+      'togglefullscreen'
+    ])
     const vaultMenu = menuEntry(template, 'vault-menu')
     const lockItem = menuEntry(vaultMenu.submenu ?? [], 'vault-menu-lock')
     expect(lockItem.label).toBe('Lock')
@@ -73,7 +78,8 @@ describe('executeApplicationMenuCommand', () => {
       copy: vi.fn(),
       paste: vi.fn(),
       delete: vi.fn(),
-      selectAll: vi.fn()
+      selectAll: vi.fn(),
+      toggleDevTools: vi.fn()
     }
     const window = {
       webContents,
@@ -93,6 +99,7 @@ describe('executeApplicationMenuCommand', () => {
     executeApplicationMenuCommand(window as never, 'paste')
     executeApplicationMenuCommand(window as never, 'delete')
     executeApplicationMenuCommand(window as never, 'select-all')
+    executeApplicationMenuCommand(window as never, 'toggle-developer-tools')
     executeApplicationMenuCommand(window as never, 'toggle-full-screen')
     executeApplicationMenuCommand(window as never, 'minimize-window')
     executeApplicationMenuCommand(window as never, 'toggle-maximize-window')
@@ -105,6 +112,7 @@ describe('executeApplicationMenuCommand', () => {
     expect(webContents.paste).toHaveBeenCalledOnce()
     expect(webContents.delete).toHaveBeenCalledOnce()
     expect(webContents.selectAll).toHaveBeenCalledOnce()
+    expect(webContents.toggleDevTools).toHaveBeenCalledOnce()
     expect(window.setFullScreen).toHaveBeenCalledWith(true)
     expect(window.minimize).toHaveBeenCalledOnce()
     expect(window.maximize).toHaveBeenCalledOnce()

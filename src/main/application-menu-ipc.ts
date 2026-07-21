@@ -11,6 +11,7 @@ const applicationMenuCommands = new Set<ApplicationMenuCommand>([
   'paste',
   'delete',
   'select-all',
+  'toggle-developer-tools',
   'toggle-full-screen',
   'minimize-window',
   'toggle-maximize-window'

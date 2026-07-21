@@ -36,6 +36,9 @@ export function executeApplicationMenuCommand(
     case 'select-all':
       window.webContents.selectAll()
       return
+    case 'toggle-developer-tools':
+      window.webContents.toggleDevTools()
+      return
     case 'toggle-full-screen':
       window.setFullScreen(!window.isFullScreen())
       return
@@ -66,7 +69,7 @@ export function installApplicationMenu(options: ApplicationMenuOptions): Menu {
     { role: 'editMenu' },
     {
       label: translateMain('applicationMenu.view'),
-      submenu: [{ role: 'togglefullscreen' }]
+      submenu: [{ role: 'toggleDevTools' }, { role: 'togglefullscreen' }]
     },
     { role: 'windowMenu' }
   ]

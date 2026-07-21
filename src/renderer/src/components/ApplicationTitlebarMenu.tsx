@@ -94,6 +94,9 @@ export default function ApplicationTitlebarMenu({
         {t`Toggle full screen`}
         <MenubarShortcut>F11</MenubarShortcut>
       </MenubarItem>
+      <MenubarItem onClick={() => execute('toggle-developer-tools')}>
+        {t`Developer tools`}
+      </MenubarItem>
     </MenubarGroup>
   )
   const windowItems = (

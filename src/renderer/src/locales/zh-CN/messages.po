@@ -2218,6 +2218,9 @@ msgstr "默认排序"
 msgid "Delete"
 msgstr "删除"
 
+msgid "Developer tools"
+msgstr "开发者工具"
+
 #. placeholder {0}: folder.name
 #: src/renderer/src/components/Dialogs.tsx:192
 msgid "Delete “{0}”?"
