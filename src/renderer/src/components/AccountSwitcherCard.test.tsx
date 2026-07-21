@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from 'vitest'
 import AccountSwitcherCard from './AccountSwitcherCard'
 import {
   accountConfirmationContent,
-  accountMoveButtonDisabled,
   AccountMutationGate,
   accountMutationKeepsBusy,
   accountMutationError,
@@ -133,30 +132,57 @@ describe('AccountSwitcherCard presentation helpers', () => {
     expect(JSON.stringify(confirmation)).not.toContain(account().id)
   })
 
-  it('moves only adjacent account IDs and disables unavailable row actions', () => {
+  it('reorders account IDs by the dragged and target accounts', () => {
     const accounts = [
       account({ id: '11111111-1111-4111-8111-111111111111', slot: 1, active: true }),
       account({ id: '22222222-2222-4222-8222-222222222222', slot: 2 }),
       account({ id: '33333333-3333-4333-8333-333333333333', slot: 3 })
     ]
 
-    expect(moveAccountIds(accounts, accounts[1]!.id, 'up')).toEqual([
-      accounts[1]!.id,
-      accounts[0]!.id,
-      accounts[2]!.id
-    ])
-    expect(moveAccountIds(accounts, accounts[1]!.id, 'down')).toEqual([
-      accounts[0]!.id,
+    expect(moveAccountIds(accounts, accounts[2]!.id, accounts[0]!.id)).toEqual([
       accounts[2]!.id,
+      accounts[0]!.id,
       accounts[1]!.id
     ])
-    expect(moveAccountIds(accounts, accounts[0]!.id, 'up')).toBeNull()
-    expect(accountMoveButtonDisabled(0, 3, 'up', false)).toBe(true)
-    expect(accountMoveButtonDisabled(1, 3, 'up', false)).toBe(false)
-    expect(accountMoveButtonDisabled(2, 3, 'down', false)).toBe(true)
+    expect(moveAccountIds(accounts, accounts[0]!.id, accounts[2]!.id)).toEqual([
+      accounts[1]!.id,
+      accounts[2]!.id,
+      accounts[0]!.id
+    ])
+    expect(moveAccountIds(accounts, accounts[0]!.id, accounts[0]!.id)).toBeNull()
+    expect(moveAccountIds(accounts, 'missing-account', accounts[0]!.id)).toBeNull()
     expect(accountRemoveButtonDisabled(accounts[0]!, 3, false)).toBe(true)
     expect(accountRemoveButtonDisabled(accounts[1]!, 3, false)).toBe(false)
     expect(accountRemoveButtonDisabled(accounts[1]!, 1, false)).toBe(true)
+  })
+
+  it('uses narrow drag handles instead of account move buttons', () => {
+    const accounts = [
+      account({ id: '11111111-1111-4111-8111-111111111111', slot: 1, active: true }),
+      account({ id: '22222222-2222-4222-8222-222222222222', slot: 2 })
+    ]
+    const markup = renderToStaticMarkup(
+      <AccountSwitcherCard
+        accountStatus={{ revision: 4, activeAccountId: accounts[0]!.id, accounts }}
+        busy={false}
+        busyLabel=""
+        error=""
+        onRequestAdd={(proceed) => proceed()}
+        onRequestSwitch={(proceed) => proceed()}
+        onRequestRemove={(proceed) => proceed()}
+        onAdd={vi.fn(async () => undefined)}
+        onSwitch={vi.fn(async () => undefined)}
+        onReorder={vi.fn(async () => undefined)}
+        onRemove={vi.fn(async () => undefined)}
+      />
+    )
+
+    expect(markup.match(/data-account-sortable-row=""/g)).toHaveLength(2)
+    expect(markup.match(/lucide-grip-vertical/g)).toHaveLength(2)
+    expect(markup).toMatch(/<button[^>]*type="button"[^>]*class="[^"]*w-5[^"]*cursor-grab/)
+    expect(markup).toContain('aria-label="重新排序 帳戶 1"')
+    expect(markup).not.toContain('aria-label="將帳戶 1上移"')
+    expect(markup).not.toContain('aria-label="將帳戶 1下移"')
   })
 
   it.each([

@@ -1,8 +1,22 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { Trans, useLingui } from '@lingui/react/macro'
 import {
-  ArrowDown,
-  ArrowUp,
   CheckSquare2,
   ClipboardPaste,
   ContactRound,
@@ -10,6 +24,7 @@ import {
   Eye,
   EyeOff,
   FileKey2,
+  GripVertical,
   KeyRound,
   Link2,
   ListPlus,
@@ -113,7 +128,13 @@ import { Spinner } from './ui/spinner'
 import { Textarea } from './ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import CredentialGeneratorDialog from './CredentialGeneratorDialog'
-import type { UriMatchOptionValue } from './login-editor-ui'
+import {
+  reorderEditorItemsByClientId,
+  reorderEditorUris,
+  uriMatchRecognizedParts,
+  type EditorLoginUri,
+  type UriMatchOptionValue
+} from './login-editor-ui'
 import {
   applyImportedSshKey,
   applyGeneratedSshKey,
@@ -195,6 +216,14 @@ function newCustomFieldClientId(): string {
   return `custom-field-${crypto.randomUUID()}`
 }
 
+function newUriClientId(): string {
+  return `uri-${crypto.randomUUID()}`
+}
+
+function urisFromLogin(login?: LoginView): EditorLoginUri[] {
+  return (login?.uris ?? []).map((entry) => ({ ...entry, clientId: newUriClientId() }))
+}
+
 function customFieldsFromLogin(login?: LoginView): EditorCustomField[] {
   return (login?.customFields ?? []).map((field, index) => ({
     clientId: newCustomFieldClientId(),
@@ -253,7 +282,7 @@ export interface LoginDraft extends VaultItemFields {
   folderId: string | null
   favorite: boolean
   reprompt: 0 | 1
-  uris: VaultLoginUri[]
+  uris: EditorLoginUri[]
   changedSecrets: EditorSecretField[]
   customFields: EditorCustomField[]
   /** Renderer-only handle for main-process-only generated or imported private-key material. */
@@ -319,23 +348,155 @@ function EditorSection({
   )
 }
 
-function UriMatchExample({
+function UriMatchExampleText({
   value,
-  example
+  rawUri,
+  className
 }: {
   value: UriMatchOptionValue
-  example: string
+  rawUri: string
+  className?: string
+}): React.JSX.Element {
+  const parts = uriMatchRecognizedParts(value, rawUri)
+  if (!rawUri.trim()) {
+    return (
+      <span className={cn('text-muted-foreground text-[10px]', className)}>
+        <Trans>Enter a URL to see a matching example</Trans>
+      </span>
+    )
+  }
+
+  return (
+    <code
+      className={cn('min-w-0 font-mono text-[10px] break-all whitespace-pre-wrap', className)}
+      data-uri-match-recognized={value}
+    >
+      {parts.leading}
+      {parts.recognized && (
+        <strong className="text-foreground font-semibold">{parts.recognized}</strong>
+      )}
+      {parts.trailing}
+    </code>
+  )
+}
+
+function UriMatchExample({
+  value,
+  rawUri
+}: {
+  value: UriMatchOptionValue
+  rawUri: string
 }): React.JSX.Element {
   return (
     <p
-      className="text-muted-foreground m-0 flex min-w-0 items-baseline gap-1.5 px-1 text-[10px] leading-4"
+      className="text-muted-foreground m-0 flex min-w-0 flex-wrap items-baseline gap-x-1.5 px-1 text-[10px] leading-4"
       data-uri-match-example={value}
     >
       <span className="shrink-0 font-medium">
         <Trans>Match example</Trans>
       </span>
-      <code className="truncate font-mono text-[10px]">{example}</code>
+      <UriMatchExampleText value={value} rawUri={rawUri} />
     </p>
+  )
+}
+
+function SortableUriRow({
+  id,
+  disabled,
+  dragLabel,
+  actions,
+  children
+}: {
+  id: string
+  disabled: boolean
+  dragLabel: string
+  actions: ReactNode
+  children: ReactNode
+}): React.JSX.Element {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id, disabled })
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'grid grid-cols-[auto_minmax(0,1fr)_auto] gap-2 rounded-md border p-3',
+        isDragging && 'opacity-60'
+      )}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      data-uri-sortable-row=""
+      data-dragging={isDragging ? 'true' : undefined}
+    >
+      <Button
+        ref={setActivatorNodeRef}
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        className="row-span-2 h-7 w-5 min-w-5 cursor-grab touch-none self-center px-0 active:cursor-grabbing"
+        aria-label={dragLabel}
+        disabled={disabled}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical aria-hidden="true" />
+      </Button>
+      {children}
+      <div className="col-start-3 row-start-2 flex items-start justify-end gap-1">{actions}</div>
+    </div>
+  )
+}
+
+function SortableCustomFieldCard({
+  id,
+  disabled,
+  dragLabel,
+  children
+}: {
+  id: string
+  disabled: boolean
+  dragLabel: string
+  children: ReactNode
+}): React.JSX.Element {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id, disabled })
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn('grid grid-cols-[auto_minmax(0,1fr)] gap-1', isDragging && 'opacity-60')}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      data-custom-field-sortable-row=""
+      data-dragging={isDragging ? 'true' : undefined}
+    >
+      <Button
+        ref={setActivatorNodeRef}
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        className="mt-3 h-7 w-5 min-w-5 cursor-grab touch-none px-0 active:cursor-grabbing"
+        aria-label={dragLabel}
+        disabled={disabled}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical aria-hidden="true" />
+      </Button>
+      {children}
+    </div>
   )
 }
 
@@ -421,27 +582,6 @@ function LoginEditor({
     { value: '4', label: t`Regular expression` },
     { value: '5', label: t`Never` }
   ]
-  const uriMatchExample = (value: UriMatchOptionValue, rawUri: string): string => {
-    const uri = rawUri.trim()
-    if (!uri) return t`Enter a URL to see a matching example`
-
-    switch (value) {
-      case 'default':
-        return t`${uri} → match using the account's default setting`
-      case '0':
-        return t`${uri} ≈ any URL with the same base domain`
-      case '1':
-        return t`${uri} ≈ any path on the same host`
-      case '2':
-        return t`${uri} ≈ any URL starting with ${uri}`
-      case '3':
-        return t`${uri} = only this exact URL`
-      case '4':
-        return t`${uri} → URLs matching this regular expression`
-      case '5':
-        return t`${uri} ≠ all URLs`
-    }
-  }
   const sshImportErrorMessage = (
     code: Extract<
       Awaited<ReturnType<typeof window.bearwarden.sshKeys.beginImport>>,
@@ -496,7 +636,7 @@ function LoginEditor({
     folderId: login?.folderId ?? null,
     favorite: login?.favorite ?? false,
     reprompt: login?.reprompt ?? 0,
-    uris: login?.uris.map((entry) => ({ ...entry })) ?? [],
+    uris: urisFromLogin(login),
     changedSecrets: [],
     customFields: customFieldsFromLogin(login)
   }))
@@ -523,6 +663,10 @@ function LoginEditor({
     expiresAt: number
   } | null>(null)
   const [sshKeyImportError, setSshKeyImportError] = useState('')
+  const sortableSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
   const nameRef = useRef<HTMLInputElement>(null)
   const secretsUnavailable = secretLoadState !== 'ready'
   const sshKeyImportPending =
@@ -930,7 +1074,7 @@ function LoginEditor({
     setDirty(true)
     setDraft((current) => ({
       ...current,
-      uris: [...current.uris, { uri: '', match: null }]
+      uris: [...current.uris, { clientId: newUriClientId(), uri: '', match: null }]
     }))
   }
 
@@ -942,15 +1086,12 @@ function LoginEditor({
     })
   }
 
-  function moveUri(index: number, direction: -1 | 1): void {
-    const target = index + direction
-    if (target < 0 || target >= draftRef.current.uris.length) return
+  function reorderUri(event: DragEndEvent): void {
+    const overId = event.over ? String(event.over.id) : null
+    const activeId = String(event.active.id)
+    if (!overId || activeId === overId) return
     setDirty(true)
-    setDraft((current) => {
-      const uris = current.uris.map((entry) => ({ ...entry }))
-      ;[uris[index], uris[target]] = [uris[target]!, uris[index]!]
-      return { ...current, uris, uri: uris[0]?.uri ?? null }
-    })
+    setDraft((current) => ({ ...current, ...reorderEditorUris(current.uris, activeId, overId) }))
   }
 
   function addCustomField(type: VaultCustomFieldType): void {
@@ -999,18 +1140,15 @@ function LoginEditor({
     }))
   }
 
-  function moveCustomField(index: number, direction: -1 | 1): void {
-    const destination = index + direction
-    if (destination < 0 || destination >= draftRef.current.customFields.length) return
+  function reorderCustomField(event: DragEndEvent): void {
+    const activeId = String(event.active.id)
+    const overId = event.over ? String(event.over.id) : null
+    if (!overId || activeId === overId) return
+
     setDirty(true)
     setDraft((current) => {
-      if (destination < 0 || destination >= current.customFields.length) return current
-
-      const customFields = [...current.customFields]
-      const [field] = customFields.splice(index, 1)
-      if (!field) return current
-      customFields.splice(destination, 0, field)
-      return { ...current, customFields }
+      const customFields = reorderEditorItemsByClientId(current.customFields, activeId, overId)
+      return customFields === current.customFields ? current : { ...current, customFields }
     })
   }
 
@@ -1497,110 +1635,140 @@ function LoginEditor({
                           </Trans>
                         </FieldDescription>
                       ) : (
-                        <div className="flex flex-col gap-3">
-                          {draft.uris.map((entry, index) => (
-                            <div
-                              key={index}
-                              className="grid gap-2 rounded-md border p-3 sm:grid-cols-[minmax(0,1fr)_11rem_auto]"
-                            >
-                              <Input
-                                id={`editor-uri-${index}`}
-                                type="text"
-                                inputMode={entry.match === 4 ? 'text' : 'url'}
-                                placeholder={
-                                  entry.match === 4
-                                    ? '^https://example\\.com/'
-                                    : 'https://example.com'
-                                }
-                                value={entry.uri}
-                                onChange={(event) => updateUri(index, { uri: event.target.value })}
-                                disabled={busy}
-                                aria-invalid={
-                                  errorKind === 'uri' && !entry.uri.trim() ? true : undefined
-                                }
-                              />
-                              <div className="flex min-w-0 flex-col gap-1.5">
-                                <Select
-                                  items={uriMatchOptions}
-                                  value={entry.match === null ? 'default' : String(entry.match)}
-                                  disabled={busy}
-                                  onValueChange={(value) =>
-                                    updateUri(index, {
-                                      match:
-                                        value === 'default' || value === null
-                                          ? null
-                                          : (Number(value) as VaultUriMatch)
-                                    })
+                        <DndContext
+                          sensors={sortableSensors}
+                          collisionDetection={closestCenter}
+                          accessibility={{
+                            screenReaderInstructions: {
+                              draggable: t`To reorder a website, press space or enter. Use the arrow keys to move it, then press space or enter again to drop it.`
+                            },
+                            announcements: {
+                              onDragStart: ({ active }) => {
+                                const position = draft.uris.findIndex(
+                                  (entry) => entry.clientId === String(active.id)
+                                )
+                                return t`Picked up website ${position + 1} of ${draft.uris.length}.`
+                              },
+                              onDragOver: ({ over }) => {
+                                if (!over) return
+                                const position = draft.uris.findIndex(
+                                  (entry) => entry.clientId === String(over.id)
+                                )
+                                return t`Website moved to position ${position + 1} of ${draft.uris.length}.`
+                              },
+                              onDragEnd: ({ over }) => {
+                                if (!over) return t`Website was not moved.`
+                                const position = draft.uris.findIndex(
+                                  (entry) => entry.clientId === String(over.id)
+                                )
+                                return t`Website dropped at position ${position + 1} of ${draft.uris.length}.`
+                              },
+                              onDragCancel: () => t`Website reordering cancelled.`
+                            }
+                          }}
+                          onDragEnd={reorderUri}
+                        >
+                          <SortableContext
+                            items={draft.uris.map((entry) => entry.clientId)}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            <div className="flex flex-col gap-3">
+                              {draft.uris.map((entry, index) => (
+                                <SortableUriRow
+                                  key={entry.clientId}
+                                  id={entry.clientId}
+                                  disabled={busy || draft.uris.length < 2}
+                                  dragLabel={t`Reorder ${`${t`Website`} ${index + 1}`}`}
+                                  actions={
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      aria-label={t`Remove website`}
+                                      onClick={() => removeUri(index)}
+                                      disabled={busy}
+                                    >
+                                      <Trash2 />
+                                    </Button>
                                   }
                                 >
-                                  <SelectTrigger
-                                    aria-label={t`Matching method for website ${index + 1}`}
-                                    className="w-full"
-                                  >
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent className="min-w-80" alignItemWithTrigger={false}>
-                                    <SelectGroup>
-                                      {uriMatchOptions.map((item) => (
-                                        <SelectItem key={item.value} value={item.value}>
-                                          <span>{item.label}</span>
-                                          <span className="text-muted-foreground ml-auto max-w-60 truncate text-xs">
-                                            {uriMatchExample(item.value, entry.uri)}
-                                          </span>
-                                        </SelectItem>
-                                      ))}
-                                    </SelectGroup>
-                                  </SelectContent>
-                                </Select>
-                                <UriMatchExample
-                                  value={
-                                    (entry.match === null
-                                      ? 'default'
-                                      : String(entry.match)) as UriMatchOptionValue
-                                  }
-                                  example={uriMatchExample(
-                                    (entry.match === null
-                                      ? 'default'
-                                      : String(entry.match)) as UriMatchOptionValue,
-                                    entry.uri
-                                  )}
-                                />
-                              </div>
-                              <div className="flex items-start justify-end gap-1">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  aria-label={t`Move website up`}
-                                  onClick={() => moveUri(index, -1)}
-                                  disabled={busy || index === 0}
-                                >
-                                  <ArrowUp />
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  aria-label={t`Move website down`}
-                                  onClick={() => moveUri(index, 1)}
-                                  disabled={busy || index === draft.uris.length - 1}
-                                >
-                                  <ArrowDown />
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  aria-label={t`Remove website`}
-                                  onClick={() => removeUri(index)}
-                                  disabled={busy}
-                                >
-                                  <Trash2 />
-                                </Button>
-                              </div>
+                                  <Input
+                                    id={`editor-uri-${index}`}
+                                    className="col-start-2 col-end-4"
+                                    type="text"
+                                    inputMode={entry.match === 4 ? 'text' : 'url'}
+                                    placeholder={
+                                      entry.match === 4
+                                        ? '^https://example\\.com/'
+                                        : 'https://example.com'
+                                    }
+                                    value={entry.uri}
+                                    onChange={(event) =>
+                                      updateUri(index, { uri: event.target.value })
+                                    }
+                                    disabled={busy}
+                                    aria-invalid={
+                                      errorKind === 'uri' && !entry.uri.trim() ? true : undefined
+                                    }
+                                  />
+                                  <div className="col-start-2 row-start-2 flex min-w-0 flex-col gap-1.5">
+                                    <Select
+                                      items={uriMatchOptions}
+                                      value={entry.match === null ? 'default' : String(entry.match)}
+                                      disabled={busy}
+                                      onValueChange={(value) =>
+                                        updateUri(index, {
+                                          match:
+                                            value === 'default' || value === null
+                                              ? null
+                                              : (Number(value) as VaultUriMatch)
+                                        })
+                                      }
+                                    >
+                                      <SelectTrigger
+                                        aria-label={t`Matching method for website ${index + 1}`}
+                                        className="w-full"
+                                      >
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent
+                                        className="w-[min(30rem,calc(100vw-2rem))] min-w-80"
+                                        alignItemWithTrigger={false}
+                                      >
+                                        <SelectGroup>
+                                          {uriMatchOptions.map((item) => (
+                                            <SelectItem
+                                              key={item.value}
+                                              value={item.value}
+                                              className="items-start py-2"
+                                            >
+                                              <div className="flex min-w-0 flex-col items-start gap-0.5 whitespace-normal">
+                                                <span>{item.label}</span>
+                                                <UriMatchExampleText
+                                                  value={item.value}
+                                                  rawUri={entry.uri}
+                                                  className="text-muted-foreground text-xs leading-4"
+                                                />
+                                              </div>
+                                            </SelectItem>
+                                          ))}
+                                        </SelectGroup>
+                                      </SelectContent>
+                                    </Select>
+                                    <UriMatchExample
+                                      value={
+                                        (entry.match === null
+                                          ? 'default'
+                                          : String(entry.match)) as UriMatchOptionValue
+                                      }
+                                      rawUri={entry.uri}
+                                    />
+                                  </div>
+                                </SortableUriRow>
+                              ))}
                             </div>
-                          ))}
-                        </div>
+                          </SortableContext>
+                        </DndContext>
                       )}
                     </Field>
                     {login && login.passkeys.length > 0 && (
@@ -2151,300 +2319,312 @@ function LoginEditor({
                   <EmptyContent>{customFieldAddMenu('default')}</EmptyContent>
                 </Empty>
               ) : (
-                <FieldGroup>
-                  {draft.customFields.map((customField, index) => {
-                    const linkedIds = linkedIdsForItemType(draft.type)
-                    const customFieldTypeItems = (
-                      Object.entries(customFieldTypeLabels) as Array<[VaultCustomFieldType, string]>
-                    )
-                      .filter(([type]) => type !== 'linked' || linkedIds.length > 0)
-                      .map(([value, label]) => ({ value, label }))
-                    const customFieldId = `editor-custom-field-${customField.clientId}`
-                    const customFieldNameId = `${customFieldId}-name`
-                    const customFieldTypeId = `${customFieldId}-type`
-                    const customFieldValueId = `${customFieldId}-value`
-                    const customFieldLabel = customField.name.trim() || t`Field ${index + 1}`
-                    const customFieldVisible = Boolean(visibleCustomFields[customField.clientId])
-                    const customFieldBusy =
-                      busy ||
-                      secretsUnavailable ||
-                      Boolean(revealingCustomFields[customField.clientId])
-
-                    return (
-                      <Card
-                        key={customField.clientId}
-                        size="sm"
-                        aria-labelledby={`${customFieldId}-title`}
-                        aria-disabled={customFieldBusy || undefined}
-                      >
-                        <CardHeader>
-                          <CardTitle
-                            id={`${customFieldId}-title`}
-                            className="flex min-w-0 flex-wrap items-center gap-2"
+                <DndContext
+                  sensors={sortableSensors}
+                  collisionDetection={closestCenter}
+                  accessibility={{
+                    screenReaderInstructions: {
+                      draggable: t`To reorder a custom field, press space or enter. Use the arrow keys to move it, then press space or enter again to drop it.`
+                    },
+                    announcements: {
+                      onDragStart: ({ active }) => {
+                        const position = draft.customFields.findIndex(
+                          (field) => field.clientId === String(active.id)
+                        )
+                        return t`Picked up custom field ${position + 1} of ${draft.customFields.length}.`
+                      },
+                      onDragOver: ({ over }) => {
+                        if (!over) return
+                        const position = draft.customFields.findIndex(
+                          (field) => field.clientId === String(over.id)
+                        )
+                        return t`Custom field moved to position ${position + 1} of ${draft.customFields.length}.`
+                      },
+                      onDragEnd: ({ over }) => {
+                        if (!over) return t`Custom field was not moved.`
+                        const position = draft.customFields.findIndex(
+                          (field) => field.clientId === String(over.id)
+                        )
+                        return t`Custom field dropped at position ${position + 1} of ${draft.customFields.length}.`
+                      },
+                      onDragCancel: () => t`Custom field reordering cancelled.`
+                    }
+                  }}
+                  onDragEnd={reorderCustomField}
+                >
+                  <SortableContext
+                    items={draft.customFields.map((field) => field.clientId)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <FieldGroup>
+                      {draft.customFields.map((customField, index) => {
+                        const linkedIds = linkedIdsForItemType(draft.type)
+                        const customFieldTypeItems = (
+                          Object.entries(customFieldTypeLabels) as Array<
+                            [VaultCustomFieldType, string]
                           >
-                            <span className="truncate">
-                              {customField.name || <Trans>Unnamed field</Trans>}
-                            </span>
-                            <Badge variant="secondary">
-                              {customFieldTypeLabels[customField.type]}
-                            </Badge>
-                          </CardTitle>
-                          <CardDescription>
-                            <Trans>Field {index + 1}</Trans>
-                          </CardDescription>
-                          <CardAction className="flex items-center gap-1">
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    aria-label={t`Move “${customFieldLabel}” up`}
-                                    onClick={() => moveCustomField(index, -1)}
-                                    disabled={customFieldBusy || index === 0}
-                                  />
-                                }
-                              >
-                                <ArrowUp />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <Trans>Move up</Trans>
-                              </TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    aria-label={t`Move “${customFieldLabel}” down`}
-                                    onClick={() => moveCustomField(index, 1)}
-                                    disabled={
-                                      customFieldBusy || index === draft.customFields.length - 1
-                                    }
-                                  />
-                                }
-                              >
-                                <ArrowDown />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <Trans>Move down</Trans>
-                              </TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    aria-label={t`Delete “${customFieldLabel}”`}
-                                    onClick={() => removeCustomField(customField.clientId)}
-                                    disabled={customFieldBusy}
-                                  />
-                                }
-                              >
-                                <Trash2 />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <Trans>Delete</Trans>
-                              </TooltipContent>
-                            </Tooltip>
-                          </CardAction>
-                        </CardHeader>
-                        <CardContent>
-                          <FieldGroup>
-                            <FieldGroup className={fieldGridClassName}>
-                              <Field>
-                                <FieldLabel htmlFor={customFieldNameId}>
-                                  <Trans>Name</Trans>
-                                </FieldLabel>
-                                <Input
-                                  id={customFieldNameId}
-                                  value={customField.name}
-                                  onChange={(event) =>
-                                    updateCustomField(customField.clientId, (field) => ({
-                                      ...field,
-                                      name: event.target.value
-                                    }))
-                                  }
-                                  maxLength={5000}
-                                  disabled={customFieldBusy}
-                                />
-                              </Field>
-                              <Field>
-                                <FieldLabel htmlFor={customFieldTypeId}>
-                                  <Trans>Type</Trans>
-                                </FieldLabel>
-                                <Select
-                                  items={customFieldTypeItems}
-                                  value={customField.type}
-                                  disabled={customFieldBusy}
-                                  onValueChange={(value) => {
-                                    if (value) {
-                                      updateCustomFieldType(
-                                        customField.clientId,
-                                        value as VaultCustomFieldType
-                                      )
-                                    }
-                                  }}
+                        )
+                          .filter(([type]) => type !== 'linked' || linkedIds.length > 0)
+                          .map(([value, label]) => ({ value, label }))
+                        const customFieldId = `editor-custom-field-${customField.clientId}`
+                        const customFieldNameId = `${customFieldId}-name`
+                        const customFieldTypeId = `${customFieldId}-type`
+                        const customFieldValueId = `${customFieldId}-value`
+                        const customFieldLabel = customField.name.trim() || t`Field ${index + 1}`
+                        const customFieldVisible = Boolean(
+                          visibleCustomFields[customField.clientId]
+                        )
+                        const customFieldBusy =
+                          busy ||
+                          secretsUnavailable ||
+                          Boolean(revealingCustomFields[customField.clientId])
+
+                        return (
+                          <SortableCustomFieldCard
+                            key={customField.clientId}
+                            id={customField.clientId}
+                            disabled={customFieldBusy || draft.customFields.length < 2}
+                            dragLabel={t`Reorder ${`${customFieldLabel}`}`}
+                          >
+                            <Card
+                              size="sm"
+                              aria-labelledby={`${customFieldId}-title`}
+                              aria-disabled={customFieldBusy || undefined}
+                            >
+                              <CardHeader>
+                                <CardTitle
+                                  id={`${customFieldId}-title`}
+                                  className="flex min-w-0 flex-wrap items-center gap-2"
                                 >
-                                  <SelectTrigger id={customFieldTypeId} className="w-full">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectGroup>
-                                      {customFieldTypeItems.map((item) => (
-                                        <SelectItem key={item.value} value={item.value}>
-                                          {item.label}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectGroup>
-                                  </SelectContent>
-                                </Select>
-                              </Field>
-                            </FieldGroup>
-
-                            {customField.type === 'text' && (
-                              <Field>
-                                <FieldLabel htmlFor={customFieldValueId}>
-                                  <Trans>Content</Trans>
-                                </FieldLabel>
-                                <Input
-                                  id={customFieldValueId}
-                                  value={customField.value ?? ''}
-                                  onChange={(event) =>
-                                    updateCustomField(customField.clientId, (field) => ({
-                                      ...field,
-                                      value: event.target.value
-                                    }))
-                                  }
-                                  maxLength={5000}
-                                  disabled={customFieldBusy}
-                                />
-                              </Field>
-                            )}
-
-                            {customField.type === 'hidden' && (
-                              <Field>
-                                <FieldLabel htmlFor={customFieldValueId}>
-                                  <Trans>Content</Trans>
-                                </FieldLabel>
-                                <InputGroup>
-                                  <InputGroupInput
-                                    id={customFieldValueId}
-                                    type={customFieldVisible ? 'text' : 'password'}
-                                    value={customField.value ?? ''}
-                                    onChange={(event) =>
-                                      updateCustomField(customField.clientId, (field) => ({
-                                        ...field,
-                                        value: event.target.value
-                                      }))
-                                    }
-                                    maxLength={5000}
-                                    autoComplete="off"
-                                    disabled={customFieldBusy}
-                                  />
-                                  <InputGroupAddon align="inline-end">
-                                    <InputGroupButton
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon-xs"
-                                      aria-label={
-                                        customFieldVisible
-                                          ? t`Hide custom field contents`
-                                          : t`Show custom field contents`
+                                  <span className="truncate">
+                                    {customField.name || <Trans>Unnamed field</Trans>}
+                                  </span>
+                                  <Badge variant="secondary">
+                                    {customFieldTypeLabels[customField.type]}
+                                  </Badge>
+                                </CardTitle>
+                                <CardDescription>
+                                  <Trans>Field {index + 1}</Trans>
+                                </CardDescription>
+                                <CardAction className="flex items-center gap-1">
+                                  <Tooltip>
+                                    <TooltipTrigger
+                                      render={
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="icon-sm"
+                                          aria-label={t`Delete “${customFieldLabel}”`}
+                                          onClick={() => removeCustomField(customField.clientId)}
+                                          disabled={customFieldBusy}
+                                        />
                                       }
-                                      aria-pressed={customFieldVisible}
-                                      onClick={() => void toggleCustomFieldVisibility(customField)}
-                                      disabled={customFieldBusy}
                                     >
-                                      {revealingCustomFields[customField.clientId] ? (
-                                        <Spinner />
-                                      ) : customFieldVisible ? (
-                                        <EyeOff />
-                                      ) : (
-                                        <Eye />
-                                      )}
-                                    </InputGroupButton>
-                                  </InputGroupAddon>
-                                </InputGroup>
-                              </Field>
-                            )}
+                                      <Trash2 />
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <Trans>Delete</Trans>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </CardAction>
+                              </CardHeader>
+                              <CardContent>
+                                <FieldGroup>
+                                  <FieldGroup className={fieldGridClassName}>
+                                    <Field>
+                                      <FieldLabel htmlFor={customFieldNameId}>
+                                        <Trans>Name</Trans>
+                                      </FieldLabel>
+                                      <Input
+                                        id={customFieldNameId}
+                                        value={customField.name}
+                                        onChange={(event) =>
+                                          updateCustomField(customField.clientId, (field) => ({
+                                            ...field,
+                                            name: event.target.value
+                                          }))
+                                        }
+                                        maxLength={5000}
+                                        disabled={customFieldBusy}
+                                      />
+                                    </Field>
+                                    <Field>
+                                      <FieldLabel htmlFor={customFieldTypeId}>
+                                        <Trans>Type</Trans>
+                                      </FieldLabel>
+                                      <Select
+                                        items={customFieldTypeItems}
+                                        value={customField.type}
+                                        disabled={customFieldBusy}
+                                        onValueChange={(value) => {
+                                          if (value) {
+                                            updateCustomFieldType(
+                                              customField.clientId,
+                                              value as VaultCustomFieldType
+                                            )
+                                          }
+                                        }}
+                                      >
+                                        <SelectTrigger id={customFieldTypeId} className="w-full">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectGroup>
+                                            {customFieldTypeItems.map((item) => (
+                                              <SelectItem key={item.value} value={item.value}>
+                                                {item.label}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectGroup>
+                                        </SelectContent>
+                                      </Select>
+                                    </Field>
+                                  </FieldGroup>
 
-                            {customField.type === 'boolean' && (
-                              <Field
-                                className={checkFieldClassName}
-                                orientation="horizontal"
-                                data-disabled={customFieldBusy || undefined}
-                              >
-                                <Checkbox
-                                  id={customFieldValueId}
-                                  checked={customField.value === 'true'}
-                                  onCheckedChange={(checked) =>
-                                    updateCustomField(customField.clientId, (field) => ({
-                                      ...field,
-                                      value: checked ? 'true' : 'false'
-                                    }))
-                                  }
-                                  disabled={customFieldBusy}
-                                />
-                                <FieldContent>
-                                  <FieldLabel htmlFor={customFieldValueId}>
-                                    <FieldTitle>
-                                      <Trans>Enabled</Trans>
-                                    </FieldTitle>
-                                  </FieldLabel>
-                                </FieldContent>
-                              </Field>
-                            )}
+                                  {customField.type === 'text' && (
+                                    <Field>
+                                      <FieldLabel htmlFor={customFieldValueId}>
+                                        <Trans>Content</Trans>
+                                      </FieldLabel>
+                                      <Input
+                                        id={customFieldValueId}
+                                        value={customField.value ?? ''}
+                                        onChange={(event) =>
+                                          updateCustomField(customField.clientId, (field) => ({
+                                            ...field,
+                                            value: event.target.value
+                                          }))
+                                        }
+                                        maxLength={5000}
+                                        disabled={customFieldBusy}
+                                      />
+                                    </Field>
+                                  )}
 
-                            {customField.type === 'linked' && (
-                              <Field>
-                                <FieldLabel htmlFor={customFieldValueId}>
-                                  <Trans>Link to</Trans>
-                                </FieldLabel>
-                                <Select
-                                  items={linkedIds.map((linkedId) => ({
-                                    value: String(linkedId),
-                                    label: linkedFieldLabels[linkedId] ?? t`Field ${linkedId}`
-                                  }))}
-                                  value={String(customField.linkedId ?? linkedIds[0] ?? '')}
-                                  disabled={customFieldBusy}
-                                  onValueChange={(value) => {
-                                    const linkedId = Number(value)
-                                    if (linkedIds.includes(linkedId)) {
-                                      updateCustomField(customField.clientId, (field) => ({
-                                        ...field,
-                                        value: null,
-                                        linkedId
-                                      }))
-                                    }
-                                  }}
-                                >
-                                  <SelectTrigger id={customFieldValueId} className="w-full">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectGroup>
-                                      {linkedIds.map((linkedId) => (
-                                        <SelectItem key={linkedId} value={String(linkedId)}>
-                                          {linkedFieldLabels[linkedId] ?? t`Field ${linkedId}`}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectGroup>
-                                  </SelectContent>
-                                </Select>
-                              </Field>
-                            )}
-                          </FieldGroup>
-                        </CardContent>
-                      </Card>
-                    )
-                  })}
-                </FieldGroup>
+                                  {customField.type === 'hidden' && (
+                                    <Field>
+                                      <FieldLabel htmlFor={customFieldValueId}>
+                                        <Trans>Content</Trans>
+                                      </FieldLabel>
+                                      <InputGroup>
+                                        <InputGroupInput
+                                          id={customFieldValueId}
+                                          type={customFieldVisible ? 'text' : 'password'}
+                                          value={customField.value ?? ''}
+                                          onChange={(event) =>
+                                            updateCustomField(customField.clientId, (field) => ({
+                                              ...field,
+                                              value: event.target.value
+                                            }))
+                                          }
+                                          maxLength={5000}
+                                          autoComplete="off"
+                                          disabled={customFieldBusy}
+                                        />
+                                        <InputGroupAddon align="inline-end">
+                                          <InputGroupButton
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon-xs"
+                                            aria-label={
+                                              customFieldVisible
+                                                ? t`Hide custom field contents`
+                                                : t`Show custom field contents`
+                                            }
+                                            aria-pressed={customFieldVisible}
+                                            onClick={() =>
+                                              void toggleCustomFieldVisibility(customField)
+                                            }
+                                            disabled={customFieldBusy}
+                                          >
+                                            {revealingCustomFields[customField.clientId] ? (
+                                              <Spinner />
+                                            ) : customFieldVisible ? (
+                                              <EyeOff />
+                                            ) : (
+                                              <Eye />
+                                            )}
+                                          </InputGroupButton>
+                                        </InputGroupAddon>
+                                      </InputGroup>
+                                    </Field>
+                                  )}
+
+                                  {customField.type === 'boolean' && (
+                                    <Field
+                                      className={checkFieldClassName}
+                                      orientation="horizontal"
+                                      data-disabled={customFieldBusy || undefined}
+                                    >
+                                      <Checkbox
+                                        id={customFieldValueId}
+                                        checked={customField.value === 'true'}
+                                        onCheckedChange={(checked) =>
+                                          updateCustomField(customField.clientId, (field) => ({
+                                            ...field,
+                                            value: checked ? 'true' : 'false'
+                                          }))
+                                        }
+                                        disabled={customFieldBusy}
+                                      />
+                                      <FieldContent>
+                                        <FieldLabel htmlFor={customFieldValueId}>
+                                          <FieldTitle>
+                                            <Trans>Enabled</Trans>
+                                          </FieldTitle>
+                                        </FieldLabel>
+                                      </FieldContent>
+                                    </Field>
+                                  )}
+
+                                  {customField.type === 'linked' && (
+                                    <Field>
+                                      <FieldLabel htmlFor={customFieldValueId}>
+                                        <Trans>Link to</Trans>
+                                      </FieldLabel>
+                                      <Select
+                                        items={linkedIds.map((linkedId) => ({
+                                          value: String(linkedId),
+                                          label: linkedFieldLabels[linkedId] ?? t`Field ${linkedId}`
+                                        }))}
+                                        value={String(customField.linkedId ?? linkedIds[0] ?? '')}
+                                        disabled={customFieldBusy}
+                                        onValueChange={(value) => {
+                                          const linkedId = Number(value)
+                                          if (linkedIds.includes(linkedId)) {
+                                            updateCustomField(customField.clientId, (field) => ({
+                                              ...field,
+                                              value: null,
+                                              linkedId
+                                            }))
+                                          }
+                                        }}
+                                      >
+                                        <SelectTrigger id={customFieldValueId} className="w-full">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectGroup>
+                                            {linkedIds.map((linkedId) => (
+                                              <SelectItem key={linkedId} value={String(linkedId)}>
+                                                {linkedFieldLabels[linkedId] ??
+                                                  t`Field ${linkedId}`}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectGroup>
+                                        </SelectContent>
+                                      </Select>
+                                    </Field>
+                                  )}
+                                </FieldGroup>
+                              </CardContent>
+                            </Card>
+                          </SortableCustomFieldCard>
+                        )
+                      })}
+                    </FieldGroup>
+                  </SortableContext>
+                </DndContext>
               )}
             </EditorFormSection>
           </EditorSection>

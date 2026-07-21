@@ -1,5 +1,6 @@
 import { i18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
+import { arrayMove } from '@dnd-kit/sortable'
 import type { AccountMutationResult, AccountStatusEntry } from '../../../shared/vault-contract'
 
 export const MAX_LOCAL_ACCOUNTS = 5
@@ -8,8 +9,6 @@ export type AccountConfirmationAction =
   | { readonly kind: 'add' }
   | { readonly kind: 'switch'; readonly accountId: string; readonly slot: number }
   | { readonly kind: 'remove'; readonly accountId: string; readonly slot: number }
-
-export type AccountMoveDirection = 'up' | 'down'
 
 export class AccountMutationGate {
   private active = false
@@ -127,15 +126,6 @@ export function accountMutationKeepsBusy(result: AccountMutationResult): boolean
   return result.kind === 'relaunch-required'
 }
 
-export function accountMoveButtonDisabled(
-  index: number,
-  accountCount: number,
-  direction: AccountMoveDirection,
-  busy: boolean
-): boolean {
-  return busy || accountCount < 2 || (direction === 'up' ? index <= 0 : index >= accountCount - 1)
-}
-
 export function accountRemoveButtonDisabled(
   account: AccountStatusEntry,
   accountCount: number,
@@ -146,17 +136,18 @@ export function accountRemoveButtonDisabled(
 
 export function moveAccountIds(
   accounts: readonly AccountStatusEntry[],
-  accountId: string,
-  direction: AccountMoveDirection
+  activeId: string,
+  overId: string
 ): readonly string[] | null {
-  const index = accounts.findIndex((account) => account.id === accountId)
-  const target = direction === 'up' ? index - 1 : index + 1
-  if (index < 0 || target < 0 || target >= accounts.length) return null
-  const orderedIds = accounts.map((account) => account.id)
-  const currentId = orderedIds[index]!
-  orderedIds[index] = orderedIds[target]!
-  orderedIds[target] = currentId
-  return orderedIds
+  const oldIndex = accounts.findIndex((account) => account.id === activeId)
+  const newIndex = accounts.findIndex((account) => account.id === overId)
+  if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return null
+
+  return arrayMove(
+    accounts.map((account) => account.id),
+    oldIndex,
+    newIndex
+  )
 }
 
 export function requestAccountAction(

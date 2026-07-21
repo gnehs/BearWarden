@@ -2119,6 +2119,30 @@ msgstr "Custom equivalent domains"
 msgid "Custom fields"
 msgstr "Custom fields"
 
+#: src/renderer/src/components/LoginEditor.tsx
+msgid "Custom field dropped at position {0} of {1}."
+msgstr "Custom field dropped at position {0} of {1}."
+
+#: src/renderer/src/components/LoginEditor.tsx
+msgid "Custom field moved to position {0} of {1}."
+msgstr "Custom field moved to position {0} of {1}."
+
+#: src/renderer/src/components/LoginEditor.tsx
+msgid "Custom field reordering cancelled."
+msgstr "Custom field reordering cancelled."
+
+#: src/renderer/src/components/LoginEditor.tsx
+msgid "Custom field was not moved."
+msgstr "Custom field was not moved."
+
+#: src/renderer/src/components/LoginEditor.tsx
+msgid "Picked up custom field {0} of {1}."
+msgstr "Picked up custom field {0} of {1}."
+
+#: src/renderer/src/components/LoginEditor.tsx
+msgid "To reorder a custom field, press space or enter. Use the arrow keys to move it, then press space or enter again to drop it."
+msgstr "To reorder a custom field, press space or enter. Use the arrow keys to move it, then press space or enter again to drop it."
+
 #: src/renderer/src/components/SettingsPage.tsx:296
 msgid "Custom inactivity timeout"
 msgstr "Custom inactivity timeout"
@@ -3612,6 +3636,30 @@ msgstr "Local account order updated."
 msgid "Local accounts"
 msgstr "Local accounts"
 
+#: src/renderer/src/components/AccountSwitcherCard.tsx
+msgid "Local account dropped at position {0} of {1}."
+msgstr "Local account dropped at position {0} of {1}."
+
+#: src/renderer/src/components/AccountSwitcherCard.tsx
+msgid "Local account moved to position {0} of {1}."
+msgstr "Local account moved to position {0} of {1}."
+
+#: src/renderer/src/components/AccountSwitcherCard.tsx
+msgid "Local account reordering cancelled."
+msgstr "Local account reordering cancelled."
+
+#: src/renderer/src/components/AccountSwitcherCard.tsx
+msgid "Local account was not moved."
+msgstr "Local account was not moved."
+
+#: src/renderer/src/components/AccountSwitcherCard.tsx
+msgid "Picked up local account {0} of {1}."
+msgstr "Picked up local account {0} of {1}."
+
+#: src/renderer/src/components/AccountSwitcherCard.tsx
+msgid "To reorder a local account, press space or enter. Use the arrow keys to move it, then press space or enter again to drop it."
+msgstr "To reorder a local account, press space or enter. Use the arrow keys to move it, then press space or enter again to drop it."
+
 #: src/renderer/src/components/SettingsPage.tsx:453
 msgid "Local accounts and cloud connections"
 msgstr "Local accounts and cloud connections"
@@ -4565,6 +4613,10 @@ msgstr "PIN unlock is enabled for this session only."
 #: src/renderer/src/components/AuthScreen.tsx:140
 msgid "PIN unlock is no longer available. Enter your master password."
 msgstr "PIN unlock is no longer available. Enter your master password."
+
+#: src/renderer/src/components/LoginEditor.tsx:1593
+msgid "Picked up website {0} of {1}."
+msgstr "Picked up website {0} of {1}."
 
 #: src/renderer/src/components/AutofillPickerHost.tsx:37
 msgid "Place the cursor in a username or password field in the login form first."
@@ -6513,6 +6565,10 @@ msgstr "To prevent data loss, BearWarden stopped writing changes to the server. 
 msgid "To protect deleted sensitive data, restore the item before viewing or editing its contents."
 msgstr "To protect deleted sensitive data, restore the item before viewing or editing its contents."
 
+#: src/renderer/src/components/LoginEditor.tsx:1586
+msgid "To reorder a website, press space or enter. Use the arrow keys to move it, then press space or enter again to drop it."
+msgstr "To reorder a website, press space or enter. Use the arrow keys to move it, then press space or enter again to drop it."
+
 #: src/renderer/src/lib/item-date-groups.ts:31
 msgid "Today"
 msgstr "Today"
@@ -7325,6 +7381,22 @@ msgstr "Weak passwords"
 #: src/renderer/src/components/VaultShell.tsx:1027
 msgid "Website"
 msgstr "Website"
+
+#: src/renderer/src/components/LoginEditor.tsx:1607
+msgid "Website dropped at position {0} of {1}."
+msgstr "Website dropped at position {0} of {1}."
+
+#: src/renderer/src/components/LoginEditor.tsx:1600
+msgid "Website moved to position {0} of {1}."
+msgstr "Website moved to position {0} of {1}."
+
+#: src/renderer/src/components/LoginEditor.tsx:1609
+msgid "Website reordering cancelled."
+msgstr "Website reordering cancelled."
+
+#: src/renderer/src/components/LoginEditor.tsx:1603
+msgid "Website was not moved."
+msgstr "Website was not moved."
 
 #: src/renderer/src/components/LoginEditor.tsx:1257
 msgid "Website fields cannot be blank. Remove any rows you do not need."

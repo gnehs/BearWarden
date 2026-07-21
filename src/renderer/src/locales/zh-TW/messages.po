@@ -2119,6 +2119,30 @@ msgstr "自訂等效網域"
 msgid "Custom fields"
 msgstr "自訂欄位"
 
+#: src/renderer/src/components/LoginEditor.tsx
+msgid "Custom field dropped at position {0} of {1}."
+msgstr "自訂欄位已放置於第 {0} 個位置，共 {1} 個。"
+
+#: src/renderer/src/components/LoginEditor.tsx
+msgid "Custom field moved to position {0} of {1}."
+msgstr "自訂欄位已移至第 {0} 個位置，共 {1} 個。"
+
+#: src/renderer/src/components/LoginEditor.tsx
+msgid "Custom field reordering cancelled."
+msgstr "已取消自訂欄位重新排序。"
+
+#: src/renderer/src/components/LoginEditor.tsx
+msgid "Custom field was not moved."
+msgstr "自訂欄位未移動。"
+
+#: src/renderer/src/components/LoginEditor.tsx
+msgid "Picked up custom field {0} of {1}."
+msgstr "已選取第 {0} 個自訂欄位，共 {1} 個。"
+
+#: src/renderer/src/components/LoginEditor.tsx
+msgid "To reorder a custom field, press space or enter. Use the arrow keys to move it, then press space or enter again to drop it."
+msgstr "若要重新排序自訂欄位，請按空白鍵或 Enter。使用方向鍵移動，然後再次按空白鍵或 Enter 以放置。"
+
 #: src/renderer/src/components/SettingsPage.tsx:296
 msgid "Custom inactivity timeout"
 msgstr "自訂閒置逾時時間"
@@ -3612,6 +3636,30 @@ msgstr "本機帳戶排序已更新。"
 msgid "Local accounts"
 msgstr "本機帳戶"
 
+#: src/renderer/src/components/AccountSwitcherCard.tsx
+msgid "Local account dropped at position {0} of {1}."
+msgstr "本機帳戶已放置於第 {0} 個位置，共 {1} 個。"
+
+#: src/renderer/src/components/AccountSwitcherCard.tsx
+msgid "Local account moved to position {0} of {1}."
+msgstr "本機帳戶已移至第 {0} 個位置，共 {1} 個。"
+
+#: src/renderer/src/components/AccountSwitcherCard.tsx
+msgid "Local account reordering cancelled."
+msgstr "已取消本機帳戶重新排序。"
+
+#: src/renderer/src/components/AccountSwitcherCard.tsx
+msgid "Local account was not moved."
+msgstr "本機帳戶未移動。"
+
+#: src/renderer/src/components/AccountSwitcherCard.tsx
+msgid "Picked up local account {0} of {1}."
+msgstr "已選取第 {0} 個本機帳戶，共 {1} 個。"
+
+#: src/renderer/src/components/AccountSwitcherCard.tsx
+msgid "To reorder a local account, press space or enter. Use the arrow keys to move it, then press space or enter again to drop it."
+msgstr "若要重新排序本機帳戶，請按空白鍵或 Enter。使用方向鍵移動，然後再次按空白鍵或 Enter 以放置。"
+
 #: src/renderer/src/components/SettingsPage.tsx:453
 msgid "Local accounts and cloud connections"
 msgstr "本機帳戶與雲端連線"
@@ -4565,6 +4613,10 @@ msgstr "PIN 解鎖僅限本次工作階段使用。"
 #: src/renderer/src/components/AuthScreen.tsx:140
 msgid "PIN unlock is no longer available. Enter your master password."
 msgstr "PIN 解鎖已無法使用。請輸入主密碼。"
+
+#: src/renderer/src/components/LoginEditor.tsx:1593
+msgid "Picked up website {0} of {1}."
+msgstr "已選取第 {0} 個網站，共 {1} 個。"
 
 #: src/renderer/src/components/AutofillPickerHost.tsx:37
 msgid "Place the cursor in a username or password field in the login form first."
@@ -6513,6 +6565,10 @@ msgstr "為防止資料遺失，BearWarden 已停止將變更寫入伺服器。�
 msgid "To protect deleted sensitive data, restore the item before viewing or editing its contents."
 msgstr "為保護已刪除的敏感資料，請先還原項目，再檢視或編輯其內容。"
 
+#: src/renderer/src/components/LoginEditor.tsx:1586
+msgid "To reorder a website, press space or enter. Use the arrow keys to move it, then press space or enter again to drop it."
+msgstr "若要重新排序網站，請按空白鍵或 Enter。使用方向鍵移動，然後再次按空白鍵或 Enter 以放置。"
+
 #: src/renderer/src/lib/item-date-groups.ts:31
 msgid "Today"
 msgstr "今天"
@@ -7325,6 +7381,22 @@ msgstr "弱密碼"
 #: src/renderer/src/components/VaultShell.tsx:1027
 msgid "Website"
 msgstr "網站"
+
+#: src/renderer/src/components/LoginEditor.tsx:1607
+msgid "Website dropped at position {0} of {1}."
+msgstr "網站已放置在第 {0} 個位置，共 {1} 個。"
+
+#: src/renderer/src/components/LoginEditor.tsx:1600
+msgid "Website moved to position {0} of {1}."
+msgstr "網站已移動到第 {0} 個位置，共 {1} 個。"
+
+#: src/renderer/src/components/LoginEditor.tsx:1609
+msgid "Website reordering cancelled."
+msgstr "已取消網站重新排序。"
+
+#: src/renderer/src/components/LoginEditor.tsx:1603
+msgid "Website was not moved."
+msgstr "網站未移動。"
 
 #: src/renderer/src/components/LoginEditor.tsx:1257
 msgid "Website fields cannot be blank. Remove any rows you do not need."

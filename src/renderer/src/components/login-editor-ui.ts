@@ -1,5 +1,34 @@
 import { i18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
+import { arrayMove } from '@dnd-kit/sortable'
+import { parse } from 'tldts'
+import type { VaultLoginUri } from '../../../shared/vault-contract'
+
+export type EditorLoginUri = VaultLoginUri & {
+  /** Renderer-only identity for stable drag-and-drop keys. Removed before IPC submission. */
+  clientId: string
+}
+
+export function reorderEditorItemsByClientId<T extends { clientId: string }>(
+  items: T[],
+  activeId: string,
+  overId: string
+): T[] {
+  const oldIndex = items.findIndex((entry) => entry.clientId === activeId)
+  const newIndex = items.findIndex((entry) => entry.clientId === overId)
+  if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return items
+
+  return arrayMove(items, oldIndex, newIndex)
+}
+
+export function reorderEditorUris(
+  uris: EditorLoginUri[],
+  activeId: string,
+  overId: string
+): { uri: string | null; uris: EditorLoginUri[] } {
+  const reordered = reorderEditorItemsByClientId(uris, activeId, overId)
+  return { uris: reordered, uri: reordered[0]?.uri ?? null }
+}
 
 export function editorHeaderContent(
   typeLabel: string,
@@ -42,6 +71,59 @@ export const uriMatchOptions = [
 ] as const
 
 export type UriMatchOptionValue = (typeof uriMatchOptions)[number]['value']
+
+export interface UriMatchRecognizedParts {
+  leading: string
+  recognized: string | null
+  trailing: string
+}
+
+function recognizedBaseDomain(uri: string): string | null {
+  try {
+    const parsed = parse(uri, { allowPrivateDomains: true, validHosts: ['localhost'] })
+    return parsed.isIp || parsed.hostname === 'localhost' ? parsed.hostname : parsed.domain
+  } catch {
+    return null
+  }
+}
+
+function recognizedHost(uri: string): string | null {
+  const withProtocol = uri.includes('://') ? uri : uri.includes('.') ? `http://${uri}` : null
+  if (!withProtocol) return null
+  try {
+    return new URL(withProtocol).host || null
+  } catch {
+    return null
+  }
+}
+
+export function uriMatchRecognizedParts(
+  value: UriMatchOptionValue,
+  rawUri: string
+): UriMatchRecognizedParts {
+  const trimmedUri = rawUri.trim()
+  if (!trimmedUri) return { leading: '', recognized: null, trailing: '' }
+  const uri = value === '2' || value === '3' || value === '4' ? rawUri : trimmedUri
+
+  const recognized =
+    value === 'default' || value === '0'
+      ? recognizedBaseDomain(trimmedUri)
+      : value === '1'
+        ? recognizedHost(trimmedUri)
+        : value === '2' || value === '3' || value === '4'
+          ? uri
+          : null
+  if (!recognized) return { leading: uri, recognized: null, trailing: '' }
+
+  const start = uri.toLocaleLowerCase('en-US').indexOf(recognized.toLocaleLowerCase('en-US'))
+  if (start < 0) return { leading: uri, recognized: null, trailing: '' }
+  const end = start + recognized.length
+  return {
+    leading: uri.slice(0, start),
+    recognized: uri.slice(start, end),
+    trailing: uri.slice(end)
+  }
+}
 
 export function uriMatchExample(value: UriMatchOptionValue, rawUri: string): string {
   const uri = rawUri.trim()

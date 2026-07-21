@@ -3398,7 +3398,7 @@ function VaultShell({
       const fields = {
         username: draft.username,
         uri: draft.uri || null,
-        uris: draft.uris.map((entry) => ({ ...entry })),
+        uris: draft.uris.map((entry) => ({ uri: entry.uri, match: entry.match })),
         cardholderName: draft.cardholderName,
         brand: draft.brand,
         expMonth: draft.expMonth,

@@ -1,4 +1,20 @@
 import { useRef, useState } from 'react'
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import type { AccountStatus } from '../../../shared/vault-contract'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
@@ -30,10 +46,10 @@ import {
   FieldTitle
 } from '@renderer/components/ui/field'
 import { Spinner } from '@renderer/components/ui/spinner'
-import { AlertTriangle, ArrowDown, ArrowUp, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { cn } from '@renderer/lib/utils'
+import { AlertTriangle, GripVertical, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import {
   accountConfirmationContent,
-  accountMoveButtonDisabled,
   accountRemoveButtonDisabled,
   accountSwitchButtonDisabled,
   localAccountPresentation,
@@ -80,6 +96,10 @@ function AccountSwitcherCard({
   const numberFormatter = new Intl.NumberFormat(i18n.locale)
   const formattedAccountCount = numberFormatter.format(accounts.length)
   const formattedMaxLocalAccounts = numberFormatter.format(MAX_LOCAL_ACCOUNTS)
+  const sortableSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
 
   async function confirm(): Promise<void> {
     if (!confirmationAction) return
@@ -95,6 +115,18 @@ function AccountSwitcherCard({
       if (action.kind === 'remove') {
         queueMicrotask(() => addAccountButtonRef.current?.focus())
       }
+    }
+  }
+
+  async function reorderAccounts(event: DragEndEvent): Promise<void> {
+    const overId = event.over ? String(event.over.id) : null
+    if (!accountStatus || !overId) return
+    const accountIds = moveAccountIds(accounts, String(event.active.id), overId)
+    if (!accountIds) return
+    try {
+      await onReorder(accountIds, accountStatus.revision)
+    } catch {
+      // VaultShell maps mutation failures to safe, visible renderer feedback.
     }
   }
 
@@ -118,33 +150,71 @@ function AccountSwitcherCard({
         </CardHeader>
         <SettingsCardContent>
           <FieldGroup>
-            {accountStatus === null
-              ? !error && (
-                  <Field>
-                    <FieldContent>
-                      <FieldTitle>
-                        <Trans>Loading local accounts</Trans>
-                      </FieldTitle>
-                      <FieldDescription aria-live="polite">
-                        <Trans>Please wait.</Trans>
-                      </FieldDescription>
-                    </FieldContent>
-                  </Field>
-                )
-              : accounts.map((account, index) => (
-                  <AccountRow
-                    key={account.id}
-                    account={account}
-                    accounts={accounts}
-                    index={index}
-                    revision={accountStatus.revision}
-                    busy={busy}
-                    onRequestSwitch={onRequestSwitch}
-                    onRequestRemove={onRequestRemove}
-                    onReorder={onReorder}
-                    onConfirm={(action) => setConfirmationAction(action)}
-                  />
-                ))}
+            {accountStatus === null ? (
+              !error && (
+                <Field>
+                  <FieldContent>
+                    <FieldTitle>
+                      <Trans>Loading local accounts</Trans>
+                    </FieldTitle>
+                    <FieldDescription aria-live="polite">
+                      <Trans>Please wait.</Trans>
+                    </FieldDescription>
+                  </FieldContent>
+                </Field>
+              )
+            ) : (
+              <DndContext
+                sensors={sortableSensors}
+                collisionDetection={closestCenter}
+                accessibility={{
+                  screenReaderInstructions: {
+                    draggable: t`To reorder a local account, press space or enter. Use the arrow keys to move it, then press space or enter again to drop it.`
+                  },
+                  announcements: {
+                    onDragStart: ({ active }) => {
+                      const position = accounts.findIndex(
+                        (account) => account.id === String(active.id)
+                      )
+                      return t`Picked up local account ${position + 1} of ${accounts.length}.`
+                    },
+                    onDragOver: ({ over }) => {
+                      if (!over) return
+                      const position = accounts.findIndex(
+                        (account) => account.id === String(over.id)
+                      )
+                      return t`Local account moved to position ${position + 1} of ${accounts.length}.`
+                    },
+                    onDragEnd: ({ over }) => {
+                      if (!over) return t`Local account was not moved.`
+                      const position = accounts.findIndex(
+                        (account) => account.id === String(over.id)
+                      )
+                      return t`Local account dropped at position ${position + 1} of ${accounts.length}.`
+                    },
+                    onDragCancel: () => t`Local account reordering cancelled.`
+                  }
+                }}
+                onDragEnd={(event) => void reorderAccounts(event)}
+              >
+                <SortableContext
+                  items={accounts.map((account) => account.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {accounts.map((account) => (
+                    <AccountRow
+                      key={account.id}
+                      account={account}
+                      accounts={accounts}
+                      busy={busy}
+                      onRequestSwitch={onRequestSwitch}
+                      onRequestRemove={onRequestRemove}
+                      onConfirm={(action) => setConfirmationAction(action)}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            )}
             {busy && (
               <Field>
                 <FieldContent>
@@ -234,100 +304,98 @@ function AccountSwitcherCard({
 interface AccountRowProps {
   account: AccountStatus['accounts'][number]
   accounts: AccountStatus['accounts']
-  index: number
-  revision: number
   busy: boolean
   onRequestSwitch: (proceed: () => void) => void
   onRequestRemove: (proceed: () => void) => void
-  onReorder: (accountIds: readonly string[], expectedRevision: number) => Promise<void>
   onConfirm: (action: AccountConfirmationAction) => void
 }
 
 function AccountRow({
   account,
   accounts,
-  index,
-  revision,
   busy,
   onRequestSwitch,
   onRequestRemove,
-  onReorder,
   onConfirm
 }: AccountRowProps): React.JSX.Element {
   const { t } = useLingui()
   const presentation = localAccountPresentation(account)
-  async function move(direction: 'up' | 'down'): Promise<void> {
-    const accountIds = moveAccountIds(accounts, account.id, direction)
-    if (!accountIds) return
-    try {
-      await onReorder(accountIds, revision)
-    } catch {
-      // VaultShell maps mutation failures to safe, visible renderer feedback.
-    }
-  }
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: account.id, disabled: busy || accounts.length < 2 })
   return (
-    <Field orientation="responsive" data-disabled={busy || undefined}>
-      <FieldContent>
-        <FieldTitle>{presentation.label}</FieldTitle>
-        <FieldDescription>{presentation.description}</FieldDescription>
-      </FieldContent>
-      {presentation.active && (
-        <Badge>
-          <Trans>Active</Trans>
-        </Badge>
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'grid grid-cols-[auto_minmax(0,1fr)] items-center gap-1',
+        isDragging && 'opacity-60'
       )}
-      <div className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          type="button"
-          aria-label={t`Move ${presentation.label} up`}
-          disabled={accountMoveButtonDisabled(index, accounts.length, 'up', busy)}
-          onClick={() => void move('up')}
-        >
-          <ArrowUp aria-hidden="true" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          type="button"
-          aria-label={t`Move ${presentation.label} down`}
-          disabled={accountMoveButtonDisabled(index, accounts.length, 'down', busy)}
-          onClick={() => void move('down')}
-        >
-          <ArrowDown aria-hidden="true" />
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          type="button"
-          disabled={accountSwitchButtonDisabled(account, busy)}
-          onClick={() =>
-            onRequestSwitch(() =>
-              onConfirm({ kind: 'switch', accountId: account.id, slot: account.slot })
-            )
-          }
-        >
-          <Trans>Switch</Trans>
-        </Button>
-        {!account.active && (
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      data-account-sortable-row=""
+      data-dragging={isDragging ? 'true' : undefined}
+    >
+      <Button
+        ref={setActivatorNodeRef}
+        variant="ghost"
+        size="icon-sm"
+        type="button"
+        className="h-7 w-5 min-w-5 cursor-grab touch-none px-0 active:cursor-grabbing"
+        aria-label={t`Reorder ${`${presentation.label}`}`}
+        disabled={busy || accounts.length < 2}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical aria-hidden="true" />
+      </Button>
+      <Field orientation="responsive" data-disabled={busy || undefined}>
+        <FieldContent>
+          <FieldTitle>{presentation.label}</FieldTitle>
+          <FieldDescription>{presentation.description}</FieldDescription>
+        </FieldContent>
+        {presentation.active && (
+          <Badge>
+            <Trans>Active</Trans>
+          </Badge>
+        )}
+        <div className="flex items-center gap-1">
           <Button
-            variant="destructive"
-            size="icon-sm"
+            variant="outline"
+            size="sm"
             type="button"
-            aria-label={t`Remove ${presentation.label}`}
-            disabled={accountRemoveButtonDisabled(account, accounts.length, busy)}
+            disabled={accountSwitchButtonDisabled(account, busy)}
             onClick={() =>
-              onRequestRemove(() =>
-                onConfirm({ kind: 'remove', accountId: account.id, slot: account.slot })
+              onRequestSwitch(() =>
+                onConfirm({ kind: 'switch', accountId: account.id, slot: account.slot })
               )
             }
           >
-            <Trash2 aria-hidden="true" />
+            <Trans>Switch</Trans>
           </Button>
-        )}
-      </div>
-    </Field>
+          {!account.active && (
+            <Button
+              variant="destructive"
+              size="icon-sm"
+              type="button"
+              aria-label={t`Remove ${presentation.label}`}
+              disabled={accountRemoveButtonDisabled(account, accounts.length, busy)}
+              onClick={() =>
+                onRequestRemove(() =>
+                  onConfirm({ kind: 'remove', accountId: account.id, slot: account.slot })
+                )
+              }
+            >
+              <Trash2 aria-hidden="true" />
+            </Button>
+          )}
+        </div>
+      </Field>
+    </div>
   )
 }
 
