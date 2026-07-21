@@ -5,7 +5,7 @@ import { ArrowRight, Fingerprint, KeyRound, RotateCcw, ShieldAlert } from 'lucid
 import type { PinUnlockStatus } from '../../../shared/vault-contract'
 import BrandMark from './BrandMark'
 import ApplicationTitlebarMenu from './ApplicationTitlebarMenu'
-import AuthGodRaysBackground from './AuthGodRaysBackground'
+import AuthMeshGradientBackground from './AuthMeshGradientBackground'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
 import { Field, FieldGroup, FieldLabel } from '@renderer/components/ui/field'
@@ -205,7 +205,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
         (isMac || isWindows) && 'bg-transparent'
       )}
     >
-      <AuthGodRaysBackground />
+      <AuthMeshGradientBackground />
       <div
         className="pointer-events-auto absolute inset-x-0 top-0 z-10 h-[52px] [-webkit-app-region:drag]"
         aria-hidden="true"

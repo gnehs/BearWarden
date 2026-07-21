@@ -57,7 +57,7 @@ export function VaultShellLoading({ appearance }: VaultShellLoadingProps): React
         className="bg-background text-muted-foreground flex size-full items-center justify-center gap-3.5"
         role="status"
       >
-        <BrandMark className="absolute top-[25px] left-1/2 -translate-x-1/2" />
+        <BrandMark className="absolute bottom-[25px] left-1/2 -translate-x-1/2" stacked />
         <Spinner className="size-6" aria-hidden="true" />
         <p>
           <Trans>Decrypting your items…</Trans>
