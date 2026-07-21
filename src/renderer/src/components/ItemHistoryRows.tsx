@@ -35,7 +35,7 @@ export function ItemHistoryRows({
   const { t } = useLingui()
 
   return (
-    <dl className="m-0 px-[15px] py-1">
+    <dl className="m-0 px-(--card-spacing) py-1">
       <HistoryRow label={t`Last edited`}>{formatDate(item.updatedAt)}</HistoryRow>
       <HistoryRow label={t`Created`}>{formatDate(item.createdAt)}</HistoryRow>
       {item.passwordUpdatedAt !== null && (

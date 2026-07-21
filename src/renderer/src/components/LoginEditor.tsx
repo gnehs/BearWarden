@@ -1793,7 +1793,7 @@ function LoginEditor({
                           {login.passkeys.map((passkey, index) => (
                             <article
                               key={`${passkey.credentialId}:${index}`}
-                              className="border-border [&_small]:text-muted-foreground grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-2.5 border-b px-[15px] py-3 last:border-b-0 [&_small]:truncate [&_small]:text-[10px] [&_span]:truncate [&_span]:text-[11px] [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[3px]"
+                              className="border-border [&_small]:text-muted-foreground grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-2.5 border-b px-(--card-spacing) py-3 last:border-b-0 [&_small]:truncate [&_small]:text-[10px] [&_span]:truncate [&_span]:text-[11px] [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[3px]"
                             >
                               <span
                                 className="text-primary grid size-8 place-items-center rounded-md bg-(--accent-soft)"

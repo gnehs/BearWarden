@@ -470,7 +470,7 @@ function DetailHeader({ className, ...props }: React.ComponentProps<'header'>): 
 }
 
 const detailFieldClassName =
-  'border-border/60 grid min-h-12 grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)_repeat(2,34px)] items-center gap-2 border-b px-3 py-2 last:border-b-0 [&>span]:text-[11px] [&>span]:text-muted-foreground [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-medium [&>:nth-child(3):last-child]:col-start-[-2] max-[430px]:grid-cols-[1fr_auto_auto] max-[430px]:gap-1.5 max-[430px]:[&>span]:col-span-full max-[430px]:[&>strong]:col-start-1 max-[430px]:[&>[data-field-copy-value]]:col-start-1'
+  'border-border/60 grid min-h-12 grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)_repeat(2,34px)] items-center gap-2 border-b py-0.5 last:border-b-0 [&>span]:text-[11px] [&>span]:text-muted-foreground [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-medium [&>:nth-child(3):last-child]:col-start-[-2] max-[430px]:grid-cols-[1fr_auto_auto] max-[430px]:gap-1.5 max-[430px]:[&>span]:col-span-full max-[430px]:[&>strong]:col-start-1 max-[430px]:[&>[data-field-copy-value]]:col-start-1'
 
 const detailScrollClassName =
   'bg-muted/30 min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] overflow-auto px-4 pt-4 pb-7 max-[680px]:px-3 max-[680px]:pt-3 max-[680px]:pb-5'
@@ -5349,7 +5349,7 @@ function VaultShell({
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
-                        <dl className="m-0 px-[15px] py-1">
+                        <dl className="m-0 px-(--card-spacing) py-1">
                           <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_1fr] border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:gap-1">
                             <dt className="text-muted-foreground text-[11px]">
                               <Trans>Deleted</Trans>
@@ -5379,7 +5379,7 @@ function VaultShell({
                           </CardTitle>
                         </CardHeader>
                         <CardContent className="contents">
-                          <dl className="m-0 px-[15px] py-1">
+                          <dl className="m-0 px-(--card-spacing) py-1">
                             <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
                               <dt className="text-muted-foreground text-[11px] leading-4">
                                 <Trans>Password history</Trans>
@@ -5570,7 +5570,11 @@ function VaultShell({
                     )}
                   >
                     {selectedDetailFields.length > 0 && (
-                      <DetailCard role="region" aria-labelledby="credentials-title">
+                      <DetailCard
+                        role="region"
+                        aria-labelledby="credentials-title"
+                        className="gap-1 pb-0"
+                      >
                         <CardHeader>
                           <CardTitle id="credentials-title">
                             {(() => {
@@ -5589,15 +5593,16 @@ function VaultShell({
                     )}
 
                     {selectedLogin.customFields.length > 0 && (
-                      <DetailCard role="region" aria-labelledby="custom-fields-title">
+                      <DetailCard
+                        role="region"
+                        aria-labelledby="custom-fields-title"
+                        className="gap-1 pb-0"
+                      >
                         <CardHeader>
                           <CardTitle id="custom-fields-title">
                             <Settings2 aria-hidden="true" />
                             <Trans>Custom fields</Trans>
                           </CardTitle>
-                          <CardDescription>
-                            <Trans>{selectedLogin.customFields.length} fields</Trans>
-                          </CardDescription>
                         </CardHeader>
                         <CardContent className="flex flex-col">
                           {selectedLogin.customFields.map(renderCustomField)}
@@ -5611,15 +5616,13 @@ function VaultShell({
                         variant="attachment"
                         role="region"
                         aria-labelledby="attachments-title"
+                        className="gap-1 pb-0"
                       >
                         <CardHeader>
                           <CardTitle id="attachments-title">
                             <Paperclip aria-hidden="true" />
                             <Trans>Attachments</Trans>
                           </CardTitle>
-                          <CardDescription>
-                            <Trans>{selectedLogin.attachments.length} files</Trans>
-                          </CardDescription>
                           <CardAction>
                             <Button
                               variant="outline"
@@ -5679,7 +5682,7 @@ function VaultShell({
                               {selectedLogin.attachments.map((attachment) => (
                                 <article
                                   key={attachment.id}
-                                  className="border-border [&_small]:text-muted-foreground grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-2.5 border-b px-[15px] py-3 [&_small]:truncate [&_small]:text-[10px] [&_span]:truncate [&_span]:text-[11px] [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[3px]"
+                                  className="border-border [&_small]:text-muted-foreground grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-2.5 border-b px-(--card-spacing) py-3 [&_small]:truncate [&_small]:text-[10px] [&_span]:truncate [&_span]:text-[11px] [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[3px]"
                                 >
                                   <span
                                     className="text-primary grid size-8 place-items-center rounded-md bg-(--accent-soft)"
@@ -5761,7 +5764,7 @@ function VaultShell({
 
                     {selectedLogin.type === 'login' && selectedLogin.hasTotp && (
                       <DetailCard
-                        className="gap-2 py-2.5"
+                        className="gap-2 py-2"
                         role="region"
                         aria-labelledby="totp-title"
                         aria-busy={!totpRevealReady}
@@ -5793,7 +5796,7 @@ function VaultShell({
                           )}
                         </CardHeader>
                         <CardContent className="contents">
-                          <div className="grid grid-cols-[minmax(0,1fr)_34px] items-center gap-2 px-[15px] py-2.5 [&_strong]:font-mono [&_strong]:text-[25px] [&_strong]:tracking-[0.18em]">
+                          <div className="grid grid-cols-[minmax(0,1fr)_34px] items-center gap-2 px-(--card-spacing) py-2.5 [&_strong]:font-mono [&_strong]:text-[25px] [&_strong]:tracking-[0.18em]">
                             <div className="flex h-8 min-w-0 items-center">
                               {totpCode ? (
                                 <strong>
@@ -5837,22 +5840,23 @@ function VaultShell({
                     )}
 
                     {selectedLogin.type === 'login' && selectedLogin.passkeys.length > 0 && (
-                      <DetailCard role="region" aria-labelledby="passkeys-title">
+                      <DetailCard
+                        role="region"
+                        aria-labelledby="passkeys-title"
+                        className="gap-1 pb-0"
+                      >
                         <CardHeader>
                           <CardTitle id="passkeys-title">
                             <KeyRound aria-hidden="true" />
                             <Trans>Passkeys</Trans>
                           </CardTitle>
-                          <CardDescription>
-                            <Trans>{selectedLogin.passkeys.length} passkeys</Trans>
-                          </CardDescription>
                         </CardHeader>
                         <CardContent className="contents">
                           <div className="grid">
                             {selectedLogin.passkeys.map((passkey) => (
                               <article
                                 key={passkey.credentialId}
-                                className="border-border [&_small]:text-muted-foreground grid grid-cols-[34px_minmax(0,1fr)] items-start gap-2.5 border-b px-[15px] py-3 [&_small]:truncate [&_small]:text-[10px] [&_span]:truncate [&_span]:text-[11px] [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[3px]"
+                                className="border-border [&_small]:text-muted-foreground grid grid-cols-[34px_minmax(0,1fr)] items-start gap-2.5 border-b px-(--card-spacing) py-3 [&_small]:truncate [&_small]:text-[10px] [&_span]:truncate [&_span]:text-[11px] [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[3px]"
                               >
                                 <span
                                   className="text-primary grid size-8 place-items-center rounded-md bg-(--accent-soft)"
@@ -5873,7 +5877,7 @@ function VaultShell({
                               </article>
                             ))}
                           </div>
-                          <p className="text-muted-foreground m-0 px-[15px] pt-2.5 pb-[13px] text-[10px] leading-normal">
+                          <p className="text-muted-foreground m-0 px-(--card-spacing) pt-2.5 pb-[13px] text-[10px] leading-normal">
                             <Trans>
                               You can safely delete passkeys while editing the item. Private key
                               material is never sent to the renderer.
@@ -5884,7 +5888,11 @@ function VaultShell({
                     )}
 
                     {(selectedLogin.type === 'secureNote' || selectedLogin.notes) && (
-                      <DetailCard role="region" aria-labelledby="notes-title">
+                      <DetailCard
+                        role="region"
+                        aria-labelledby="notes-title"
+                        className="gap-1 pb-0"
+                      >
                         <CardHeader>
                           <CardTitle id="notes-title">
                             <NotebookPen aria-hidden="true" />
@@ -5894,7 +5902,7 @@ function VaultShell({
                         <CardContent className="contents">
                           <p
                             className={cn(
-                              'm-0 px-[15px] pt-3.5 pb-[17px] text-xs leading-[1.65] whitespace-pre-wrap',
+                              'm-0 px-(--card-spacing) pt-3.5 pb-[17px] text-xs leading-[1.65] whitespace-pre-wrap',
                               !selectedLogin.notes?.trim() && 'text-muted-foreground'
                             )}
                           >
@@ -5904,7 +5912,11 @@ function VaultShell({
                       </DetailCard>
                     )}
 
-                    <DetailCard role="region" aria-labelledby="organization-title">
+                    <DetailCard
+                      role="region"
+                      aria-labelledby="organization-title"
+                      className="gap-1 pb-0"
+                    >
                       <CardHeader>
                         <CardTitle id="organization-title">
                           <FolderOpen aria-hidden="true" />
@@ -5912,7 +5924,7 @@ function VaultShell({
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="contents">
-                        <dl className="m-0 px-[15px] py-1">
+                        <dl className="m-0 px-(--card-spacing) py-1">
                           <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
                             <dt className="text-muted-foreground text-[11px] leading-4">
                               <Trans>Folder</Trans>
@@ -5947,7 +5959,11 @@ function VaultShell({
                       </CardContent>
                     </DetailCard>
 
-                    <DetailCard role="region" aria-labelledby="history-title">
+                    <DetailCard
+                      role="region"
+                      aria-labelledby="history-title"
+                      className="gap-1 pb-0"
+                    >
                       <CardHeader>
                         <CardTitle id="history-title">
                           <History aria-hidden="true" />
