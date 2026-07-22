@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { createAccountPathLayout } from './account-paths'
 import { AccountRegistryStore } from './account-registry'
 import { bootstrapAccountStorage } from './account-storage-bootstrap'
+import { AccountSwitchService } from './account-switch-service'
 import {
   clearPendingInitializationMarker,
   hasPendingInitializationMarker
@@ -52,6 +53,31 @@ describe('account storage bootstrap', () => {
       activeAccountId: first.activeAccountId,
       paths: { vaultPath: first.paths.vaultPath }
     })
+  })
+
+  it('starts a newly added pending account instead of falling back to migrated legacy storage', async () => {
+    const fixture = await legacyFixture()
+    const createUuid = uuidGenerator()
+    await bootstrapAccountStorage(fixture.root, { createUuid })
+    const accountSwitchService = new AccountSwitchService(fixture.root, {
+      createUuid,
+      beforeActivation: () => undefined,
+      afterCommitRelaunch: () => undefined
+    })
+
+    const added = await accountSwitchService.addAccount()
+    expect(added.kind).toBe('relaunch-required')
+    const restarted = await bootstrapAccountStorage(fixture.root)
+
+    expect(restarted).toMatchObject({
+      mode: 'account',
+      activeAccountId: added.status.activeAccountId
+    })
+    if (restarted.mode !== 'account') return
+    await expect(access(restarted.paths.vaultPath)).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(
+      hasPendingInitializationMarker(restarted.paths.initializationMarkerPath)
+    ).resolves.toBe(true)
   })
 
   it('does not roll a committed account back after its vault changes', async () => {

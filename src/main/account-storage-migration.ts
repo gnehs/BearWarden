@@ -477,17 +477,15 @@ export async function migrateLegacyAccountStorage(
       if (await fileExistsNoSymlink(accountPaths.vaultPath)) {
         return { kind: 'account', accountId: registry.activeAccountId, accountPaths, registry }
       }
-      if (legacyVaultExists) return legacyFallback(layout, 'target-missing')
 
-      // A fresh account deliberately has no vault.json until EncryptedVaultStore.initialize()
-      // receives the user's master password. Its private directories are nevertheless created
-      // before the registry primary commit, so a restart can distinguish it from broken storage.
-      if (
-        !journal &&
-        (await hasPendingInitializationMarker(accountPaths.initializationMarkerPath))
-      ) {
+      // A fresh or newly added account deliberately has no vault.json until
+      // EncryptedVaultStore.initialize() receives the user's master password. Its private
+      // directories and marker are committed before it becomes active, so the marker must take
+      // precedence over retained legacy recovery data from an older account.
+      if (await hasPendingInitializationMarker(accountPaths.initializationMarkerPath)) {
         return { kind: 'account', accountId: registry.activeAccountId, accountPaths, registry }
       }
+      if (legacyVaultExists) return legacyFallback(layout, 'target-missing')
       return { kind: 'storage-unavailable', reason: 'target-missing' }
     }
     if (!(await verifyFiles(accountPaths, journal.files))) {
