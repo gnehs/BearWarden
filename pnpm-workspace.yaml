@@ -27,3 +27,15 @@ minimumReleaseAgeExclude:
   - dmg-builder@26.15.7
   - electron-builder-squirrel-windows@26.15.7
   - electron-builder@26.15.7
+  - '@takumi-rs/core-darwin-arm64@2.4.1'
+  - '@takumi-rs/core-darwin-x64@2.4.1'
+  - '@takumi-rs/core-linux-arm64-gnu@2.4.1'
+  - '@takumi-rs/core-linux-arm64-musl@2.4.1'
+  - '@takumi-rs/core-linux-x64-gnu@2.4.1'
+  - '@takumi-rs/core-linux-x64-musl@2.4.1'
+  - '@takumi-rs/core-win32-arm64-msvc@2.4.1'
+  - '@takumi-rs/core-win32-x64-msvc@2.4.1'
+  - '@takumi-rs/core@2.4.1'
+  - '@takumi-rs/helpers@2.4.1'
+  - '@takumi-rs/wasm@2.4.1'
+  - takumi-js@2.4.1
