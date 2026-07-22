@@ -640,7 +640,7 @@ export function PasswordHistoryDialog({
       <ModalBody className="flex flex-col gap-3">
         <div
           ref={historyTransitionRef}
-          className="data-[reveal-state=revealed]:[&>[data-slot=password-history-content]]:blur-0 relative data-[reveal-state=resetting]:[&>_*]:!transition-none data-[reveal-state=revealed]:[&>[data-slot=password-history-content]]:opacity-100 data-[reveal-state=revealed]:[&>[data-slot=password-history-skeleton]]:opacity-0 data-[reveal-state=revealed]:[&>[data-slot=password-history-skeleton]]:blur-[var(--reveal-blur)]"
+          className="relative data-[reveal-state=resetting]:[&>_*]:!transition-none data-[reveal-state=revealed]:[&>[data-slot=password-history-content]]:opacity-100 data-[reveal-state=revealed]:[&>[data-slot=password-history-content]]:blur-none data-[reveal-state=revealed]:[&>[data-slot=password-history-skeleton]]:opacity-0 data-[reveal-state=revealed]:[&>[data-slot=password-history-skeleton]]:blur-[var(--reveal-blur)]"
           data-state={loading ? 'loading' : 'loaded'}
           data-reveal-state="loading"
           aria-busy={loading}
@@ -649,7 +649,7 @@ export function PasswordHistoryDialog({
           <div
             ref={historySkeletonRef}
             data-slot="password-history-skeleton"
-            className="blur-0 absolute inset-0 z-1 flex flex-col gap-2 overflow-hidden opacity-100 transition-[opacity,filter] duration-[var(--reveal-dur)] ease-[var(--reveal-ease)] motion-reduce:!transition-none data-[pulsing=true]:[&>*]:animate-[pulse_var(--pulse-dur)_ease-in-out_var(--pulse-count)] motion-reduce:data-[pulsing=true]:[&>*]:!animate-none"
+            className="absolute inset-0 z-1 flex flex-col gap-2 overflow-hidden opacity-100 blur-none transition-[opacity,filter] duration-[var(--reveal-dur)] ease-[var(--reveal-ease)] motion-reduce:!transition-none data-[pulsing=true]:[&>*]:animate-[pulse_var(--pulse-dur)_ease-in-out_var(--pulse-count)] motion-reduce:data-[pulsing=true]:[&>*]:!animate-none"
             data-pulsing="true"
             role="status"
             aria-label={t`Loading password history`}

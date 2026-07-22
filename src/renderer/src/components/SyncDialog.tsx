@@ -690,7 +690,7 @@ function SyncDialog({
                 </Field>
               </FieldGroup>
               <div
-                className="[&[data-open=true]_[data-slot=sync-accordion-panel-inner]]:blur-0 mx-[18px] [&[data-open=true]_[data-slot=sync-accordion-chevron]]:scale-y-[-1] [&[data-open=true]_[data-slot=sync-accordion-panel-inner]]:opacity-100 [&[data-open=true]_[data-slot=sync-accordion-panel-inner]]:duration-[var(--acc-expand)] [&[data-open=true]_[data-slot=sync-accordion-panel]]:grid-rows-[1fr] [&[data-open=true]_[data-slot=sync-accordion-panel]]:duration-[var(--acc-expand)]"
+                className="mx-[18px] [&[data-open=true]_[data-slot=sync-accordion-chevron]]:scale-y-[-1] [&[data-open=true]_[data-slot=sync-accordion-panel-inner]]:opacity-100 [&[data-open=true]_[data-slot=sync-accordion-panel-inner]]:blur-none [&[data-open=true]_[data-slot=sync-accordion-panel-inner]]:duration-[var(--acc-expand)] [&[data-open=true]_[data-slot=sync-accordion-panel]]:grid-rows-[1fr] [&[data-open=true]_[data-slot=sync-accordion-panel]]:duration-[var(--acc-expand)]"
                 data-open={showAdvanced ? 'true' : 'false'}
               >
                 <Button
