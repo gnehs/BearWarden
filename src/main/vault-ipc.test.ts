@@ -30,7 +30,7 @@ import {
   AccountSwitchServiceError,
   type AccountSwitchService
 } from './account-switch-service'
-import { VaultError } from './vault-errors'
+import { SyncTwoFactorRequiredError, VaultError } from './vault-errors'
 import { registerVaultIpc, RepromptAuthorizationStore } from './vault-ipc'
 import type { VaultService } from './vault-service'
 import { SshKeyImportSessionStore } from './ssh-key-import-session'
@@ -1933,6 +1933,15 @@ describe('registerVaultIpc reprompt gate', () => {
       })),
       connectSync: vi.fn(async () => ({ configured: true, state: 'ready' })),
       unlockSync: vi.fn(async () => ({ configured: true, state: 'ready' })),
+      unlockAndSync: vi.fn(async () => ({
+        configured: true,
+        state: 'ready',
+        pulled: 1,
+        pushed: 0,
+        deleted: 0,
+        conflicts: 0
+      })),
+      sendSyncEmailTwoFactorCode: vi.fn(async () => undefined),
       resolvePendingLoginImport: vi.fn(async () => ({ configured: true, state: 'ready' })),
       disconnectSync: vi.fn(async () => ({ configured: false, state: 'unconfigured' })),
       createLogin: vi.fn(async (request) => ({ id: 'created', ...request })),
@@ -2146,7 +2155,7 @@ describe('registerVaultIpc reprompt gate', () => {
   })
 
   it('accepts only the explicit WebAuthn remember flag for sync connect and unlock', async () => {
-    const { event, vault } = harness()
+    const { event, vault, afterSyncChanged } = harness()
     const connect = electronMock.handlers.get(IPC_CHANNELS.syncConnect)!
     const unlock = electronMock.handlers.get(IPC_CHANNELS.syncUnlock)!
     const connectRequest = {
@@ -2155,18 +2164,37 @@ describe('registerVaultIpc reprompt gate', () => {
       masterPassword: 'remote password',
       webAuthnRemember: false
     }
-    const unlockRequest = { masterPassword: 'remote password', webAuthnRemember: true }
+    const unlockRequest = {
+      masterPassword: 'remote password',
+      webAuthnRemember: true
+    }
 
-    await connect(event, connectRequest)
-    await unlock(event, unlockRequest)
+    await expect(connect(event, connectRequest)).resolves.toEqual({
+      kind: 'success',
+      result: { configured: true, state: 'ready' }
+    })
+    expect(afterSyncChanged).toHaveBeenCalledTimes(1)
+    await expect(unlock(event, unlockRequest)).resolves.toEqual({
+      kind: 'success',
+      result: {
+        configured: true,
+        state: 'ready',
+        pulled: 1,
+        pushed: 0,
+        deleted: 0,
+        conflicts: 0
+      }
+    })
+    expect(afterSyncChanged).toHaveBeenCalledTimes(2)
 
     expect(vault.connectSync).toHaveBeenCalledWith(connectRequest)
-    expect(vault.unlockSync).toHaveBeenCalledWith(unlockRequest)
+    expect(vault.unlockAndSync).toHaveBeenCalledWith(unlockRequest)
 
     for (const invalid of [
       { ...connectRequest, webAuthnRemember: 'false' },
       { ...connectRequest, webAuthnRemember: null },
       { ...connectRequest, twoFactorMethod: '7' },
+      { ...connectRequest, twoFactorMethod: '9' },
       { ...connectRequest, challenge: 'must-not-cross-ipc' },
       { ...connectRequest, assertion: 'must-not-cross-ipc' }
     ]) {
@@ -2175,12 +2203,80 @@ describe('registerVaultIpc reprompt gate', () => {
 
     for (const invalid of [
       { ...unlockRequest, webAuthnRemember: 1 },
-      { ...unlockRequest, twoFactorMethod: '7' },
+      { ...unlockRequest, twoFactorMethod: '8' },
+      { ...unlockRequest, twoFactorMethod: '9' },
       { ...unlockRequest, challenge: 'must-not-cross-ipc' },
       { ...unlockRequest, assertion: 'must-not-cross-ipc' }
     ]) {
       await expect(unlock(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
+  })
+
+  it('returns only the provider allowlist for expected two-factor challenges', async () => {
+    const { event, vault, afterSyncChanged } = harness()
+    const connect = electronMock.handlers.get(IPC_CHANNELS.syncConnect)!
+    const unlock = electronMock.handlers.get(IPC_CHANNELS.syncUnlock)!
+    const connectRequest = {
+      serverUrl: 'https://vault.example.invalid',
+      email: 'person@example.invalid',
+      masterPassword: 'remote password'
+    }
+    vault.connectSync.mockRejectedValueOnce(new SyncTwoFactorRequiredError(['0', '1', '7', '7']))
+    vault.unlockAndSync.mockRejectedValueOnce(new SyncTwoFactorRequiredError(['3', '8']))
+
+    await expect(connect(event, connectRequest)).resolves.toEqual({
+      kind: 'two-factor-required',
+      providers: ['0', '1', '7']
+    })
+    await expect(unlock(event, { masterPassword: 'remote password' })).resolves.toEqual({
+      kind: 'two-factor-required',
+      providers: ['3', '8']
+    })
+    expect(afterSyncChanged).not.toHaveBeenCalled()
+
+    vault.connectSync.mockRejectedValueOnce(new VaultError('SYNC_NETWORK'))
+    await expect(connect(event, connectRequest)).rejects.toThrow('BEARWARDEN:SYNC_NETWORK')
+
+    vault.connectSync.mockRejectedValueOnce(new SyncTwoFactorRequiredError(['9' as never]))
+    await expect(connect(event, connectRequest)).rejects.toThrow('BEARWARDEN:SYNC_INVALID_RESPONSE')
+  })
+
+  it('passes an exact data-only email two-factor request to the service', async () => {
+    const { event, vault } = harness()
+    const send = electronMock.handlers.get(IPC_CHANNELS.syncSendEmailTwoFactorCode)!
+    const request = {
+      serverUrl: 'https://vault.example.invalid',
+      email: 'person@example.invalid',
+      masterPassword: 'remote password'
+    }
+
+    await expect(send(event, request)).resolves.toBeUndefined()
+    expect(vault.sendSyncEmailTwoFactorCode).toHaveBeenCalledWith(request)
+
+    for (const invalid of [
+      undefined,
+      {},
+      { ...request, serverUrl: '' },
+      { ...request, email: '' },
+      { ...request, masterPassword: '' },
+      { ...request, serverUrl: 'x'.repeat(4_097) },
+      { ...request, email: 'x'.repeat(513) },
+      { ...request, masterPassword: 'x'.repeat(16_385) },
+      { ...request, twoFactorCode: 'must-not-cross-ipc' },
+      Object.assign({ ...request }, { [Symbol('extra')]: true })
+    ]) {
+      await expect(send(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+
+    const getter = vi.fn(() => 'remote password')
+    const accessorRequest = {
+      serverUrl: request.serverUrl,
+      email: request.email
+    } as Record<string, unknown>
+    Object.defineProperty(accessorRequest, 'masterPassword', { enumerable: true, get: getter })
+    await expect(send(event, accessorRequest)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    expect(getter).not.toHaveBeenCalled()
+    expect(vault.sendSyncEmailTwoFactorCode).toHaveBeenCalledTimes(1)
   })
 
   it('keeps portability IPC path-free, exact, and password-proof scoped', async () => {

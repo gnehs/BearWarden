@@ -1121,6 +1121,7 @@ describe('BitwardenDirectClient', () => {
       .catch((caught: unknown) => caught)
     expect(error).toMatchObject({
       code: 'TWO_FACTOR_REQUIRED',
+      twoFactorProviders: [0, 1, 3, 7],
       webAuthnChallenge: {
         challenge: ACCOUNT_WEBAUTHN_CHALLENGE,
         rpId: 'vault.example.invalid',
@@ -1131,6 +1132,142 @@ describe('BitwardenDirectClient', () => {
     expect(JSON.stringify(error)).not.toContain('must-not-escape')
     expect(client.exportState()).not.toHaveProperty('webAuthnChallenge')
     expect(tokenRequests).toBe(1)
+  })
+
+  it('uses an explicitly supplied two-factor code even when a persisted session exists', async () => {
+    const tokenBodies: URLSearchParams[] = []
+    const fetch = vi.fn<FetchLike>(async (url, init) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/identity/connect/token')) {
+        tokenBodies.push(new URLSearchParams(String(init?.body)))
+        return jsonResponse({
+          access_token: 'fresh-access',
+          refresh_token: 'fresh-refresh',
+          expires_in: 3600
+        })
+      }
+      return jsonResponse({ message: 'not found' }, 404)
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch }),
+      state: {
+        session: {
+          accessToken: 'stale-access',
+          refreshToken: 'stale-refresh',
+          expiresAt: Date.now() + 3_600_000
+        },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'old-security-stamp'
+      }
+    })
+
+    await client.unlock({
+      password: PASSWORD,
+      twoFactor: { method: 0, code: '123456' }
+    })
+
+    expect(tokenBodies).toHaveLength(1)
+    expect(tokenBodies[0]!.get('twoFactorProvider')).toBe('0')
+    expect(tokenBodies[0]!.get('twoFactorToken')).toBe('123456')
+    expect(client.exportState().session).toMatchObject({ accessToken: 'fresh-access' })
+  })
+
+  it('clears a rejected persisted session so the next unlock performs a fresh login', async () => {
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async () => jsonResponse({ message: 'not found' }, 404)
+    })
+    vi.spyOn(http, 'sync').mockRejectedValueOnce(new BitwardenHttpError('AUTH', 401))
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: {
+          accessToken: 'rejected-access',
+          refreshToken: 'rejected-refresh',
+          expiresAt: Date.now() + 3_600_000
+        },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'old-security-stamp'
+      }
+    })
+
+    await expect(client.sync()).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
+    expect(client.exportState().session).toBeNull()
+    await expect(client.status()).resolves.toEqual({ status: 'unauthenticated' })
+  })
+
+  it('derives and sends the Email 2FA login proof without authentication', async () => {
+    const requests: Array<{ body: JsonObject; headers: Headers }> = []
+    const fetch = vi.fn<FetchLike>(async (url, init) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/api/two-factor/send-email-login')) {
+        requests.push({
+          body: JSON.parse(String(init?.body)) as JsonObject,
+          headers: new Headers(init?.headers)
+        })
+        return new Response(null, { status: 201 })
+      }
+      return jsonResponse({ message: 'not found' }, 404)
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      deviceType: 99,
+      state: {
+        session: null,
+        deviceIdentifier: 'installation-id',
+        profileId: null,
+        securityStamp: null
+      },
+      httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
+    })
+    const expectedMasterKey = await deriveMasterKey(PASSWORD, EMAIL, {
+      type: 'pbkdf2',
+      iterations: 5_000
+    })
+    const expectedPasswordKey = await derivePasswordKey(expectedMasterKey, PASSWORD)
+    const expectedHash = expectedPasswordKey.toString('base64')
+
+    try {
+      await client.sendEmailTwoFactorLoginCode(PASSWORD)
+      expect(requests).toHaveLength(1)
+      expect(requests[0]?.body).toEqual({
+        email: EMAIL,
+        masterPasswordHash: expectedHash,
+        deviceIdentifier: 'installation-id'
+      })
+      expect(requests[0]?.headers.get('authorization')).toBeNull()
+      expect(requests[0]?.headers.get('device-type')).toBe('99')
+      expect(fetch.mock.calls.some(([url]) => url.endsWith('/identity/connect/token'))).toBe(false)
+      expect(client.exportState().session).toBeNull()
+    } finally {
+      expectedMasterKey.fill(0)
+      expectedPasswordKey.fill(0)
+    }
+  })
+
+  it('rejects an invalid Email 2FA login password before deriving or dispatching', async () => {
+    const fetch = vi.fn<FetchLike>()
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
+    })
+
+    await expect(client.sendEmailTwoFactorLoginCode('')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
+    expect(fetch).not.toHaveBeenCalled()
   })
 
   it.each([true, false])(
@@ -1331,10 +1468,12 @@ describe('BitwardenDirectClient', () => {
 
     await expect(client.login({ email: EMAIL, password: PASSWORD })).rejects.toMatchObject({
       code: 'TWO_FACTOR_REQUIRED',
+      twoFactorProviders: [7],
       webAuthnChallenge: expect.any(Object)
     })
     await expect(client.login({ email: EMAIL, password: PASSWORD })).rejects.toMatchObject({
       code: 'TWO_FACTOR_REQUIRED',
+      twoFactorProviders: [0, 1, 3],
       webAuthnChallenge: undefined
     })
     expect(tokenRequests).toBe(2)

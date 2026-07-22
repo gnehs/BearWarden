@@ -90,10 +90,12 @@ import {
   type VaultLoginUri,
   type VaultItemType,
   type SyncConnectRequest,
+  type SyncEmailTwoFactorCodeRequest,
   type SyncPurgePersonalVaultRequest,
   type SyncResolvePendingImportRequest,
   type SyncStatus,
   type SyncTwoFactorMethod,
+  type SyncTwoFactorProvider,
   type SyncUnlockRequest,
   type VaultErrorCode,
   type VaultExportRequest,
@@ -115,7 +117,12 @@ import type { AppSettingsService } from './app-settings'
 import { ACCOUNT_ID_PATTERN } from './account-paths'
 import { ACCOUNT_REGISTRY_MAX_ACCOUNTS } from './account-registry'
 import type { AccountSwitchService } from './account-switch-service'
-import { accountSwitchVaultError, isVaultError, VaultError } from './vault-errors'
+import {
+  accountSwitchVaultError,
+  isVaultError,
+  SyncTwoFactorRequiredError,
+  VaultError
+} from './vault-errors'
 import type { VaultService } from './vault-service'
 import type { VaultPortabilityService } from './vault-portability'
 import { translateMain } from './i18n'
@@ -144,6 +151,9 @@ const MAX_EQUIVALENT_DOMAINS_PER_GROUP = 1_000
 const MAX_EQUIVALENT_DOMAIN_TOTAL = 100_000
 const MAX_EQUIVALENT_DOMAIN_LENGTH = 1_024
 const MAX_SYNC_RESOLUTION_MASTER_PASSWORD_LENGTH = 1_024
+const MAX_SYNC_SERVER_URL_LENGTH = 4_096
+const MAX_SYNC_EMAIL_LENGTH = 512
+const MAX_SYNC_SECRET_LENGTH = 16_384
 
 interface RepromptAuthorizationEntry {
   senderId: number
@@ -2094,6 +2104,20 @@ function optionalTwoFactorMethod(
   throw new VaultError('INVALID_INPUT')
 }
 
+function isSyncTwoFactorProvider(value: unknown): value is SyncTwoFactorProvider {
+  return (
+    value === '0' ||
+    value === '1' ||
+    value === '2' ||
+    value === '3' ||
+    value === '4' ||
+    value === '5' ||
+    value === '6' ||
+    value === '7' ||
+    value === '8'
+  )
+}
+
 function parseSyncConnect(value: unknown): SyncConnectRequest {
   const record = exactRecord(value, [
     'serverUrl',
@@ -2140,6 +2164,35 @@ function parseSyncUnlock(value: unknown): SyncUnlockRequest {
   if (webAuthnRemember !== undefined) result.webAuthnRemember = webAuthnRemember
   if (newDeviceOtp) result.newDeviceOtp = newDeviceOtp
   return result
+}
+
+function parseSyncEmailTwoFactorCode(value: unknown): SyncEmailTwoFactorCodeRequest {
+  const record = exactDataRecord(value, ['serverUrl', 'email', 'masterPassword'])
+  const serverUrl = requiredString(record, 'serverUrl')
+  const email = requiredString(record, 'email')
+  const masterPassword = requiredString(record, 'masterPassword')
+  if (
+    serverUrl.length === 0 ||
+    serverUrl.length > MAX_SYNC_SERVER_URL_LENGTH ||
+    email.length === 0 ||
+    email.length > MAX_SYNC_EMAIL_LENGTH ||
+    masterPassword.length === 0 ||
+    masterPassword.length > MAX_SYNC_SECRET_LENGTH
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return { serverUrl, email, masterPassword }
+}
+
+function syncTwoFactorChallenge(error: unknown): {
+  kind: 'two-factor-required'
+  providers: readonly SyncTwoFactorProvider[]
+} | null {
+  if (!(error instanceof SyncTwoFactorRequiredError)) return null
+  if (error.providers.length === 0 || !error.providers.every(isSyncTwoFactorProvider)) {
+    throw new VaultError('SYNC_INVALID_RESPONSE')
+  }
+  return { kind: 'two-factor-required', providers: [...new Set(error.providers)] }
 }
 
 function parseSyncResolvePendingImport(value: unknown): SyncResolvePendingImportRequest {
@@ -3150,15 +3203,30 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   registerHandler(IPC_CHANNELS.syncStatus, getMainWindow, () => vault.syncStatus())
   registerHandler(IPC_CHANNELS.syncConnect, getMainWindow, async (_event, input) => {
     await Promise.resolve(options.beforeSyncReconfigure?.())
-    const result = await vault.connectSync(parseSyncConnect(input))
-    options.afterSyncChanged?.(result)
-    return result
+    try {
+      const result = await vault.connectSync(parseSyncConnect(input))
+      options.afterSyncChanged?.(result)
+      return { kind: 'success' as const, result }
+    } catch (error) {
+      const challenge = syncTwoFactorChallenge(error)
+      if (challenge) return challenge
+      throw error
+    }
   })
   registerHandler(IPC_CHANNELS.syncUnlock, getMainWindow, async (_event, input) => {
-    const status = await vault.unlockSync(parseSyncUnlock(input))
-    options.afterSyncChanged?.(status)
-    return status
+    try {
+      const result = await vault.unlockAndSync(parseSyncUnlock(input))
+      options.afterSyncChanged?.(result)
+      return { kind: 'success' as const, result }
+    } catch (error) {
+      const challenge = syncTwoFactorChallenge(error)
+      if (challenge) return challenge
+      throw error
+    }
   })
+  registerHandler(IPC_CHANNELS.syncSendEmailTwoFactorCode, getMainWindow, (_event, input) =>
+    vault.sendSyncEmailTwoFactorCode(parseSyncEmailTwoFactorCode(input))
+  )
   registerHandler(IPC_CHANNELS.syncNow, getMainWindow, async () => {
     try {
       const result = await vault.syncNow()

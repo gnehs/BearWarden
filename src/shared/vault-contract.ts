@@ -111,6 +111,7 @@ export const IPC_CHANNELS = {
   syncStatus: 'sync:status',
   syncConnect: 'sync:connect',
   syncUnlock: 'sync:unlock',
+  syncSendEmailTwoFactorCode: 'sync:send-email-two-factor-code',
   syncNow: 'sync:now',
   syncResolvePendingImport: 'sync:resolve-pending-import',
   syncPurgePersonalVault: 'sync:purge-personal-vault',
@@ -1069,6 +1070,9 @@ export type SyncPurgePersonalVaultResult =
       startedAt: string
     }
 
+export type SyncTwoFactorProvider = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8'
+
+/** Code-based methods the renderer may submit directly. */
 export type SyncTwoFactorMethod = '0' | '1' | '3'
 
 export interface SyncConnectRequest {
@@ -1089,12 +1093,29 @@ export interface SyncUnlockRequest {
   newDeviceOtp?: string
 }
 
+export interface SyncEmailTwoFactorCodeRequest {
+  serverUrl: string
+  email: string
+  masterPassword: string
+}
+
 export interface SyncResult extends SyncStatus {
   pulled: number
   pushed: number
   deleted: number
   conflicts: number
 }
+
+export interface SyncTwoFactorRequiredResponse {
+  kind: 'two-factor-required'
+  providers: readonly SyncTwoFactorProvider[]
+}
+
+export type SyncConnectResponse =
+  { kind: 'success'; result: SyncResult } | SyncTwoFactorRequiredResponse
+
+export type SyncUnlockResponse =
+  { kind: 'success'; result: SyncResult } | SyncTwoFactorRequiredResponse
 
 export interface AccountSecurityProfile {
   name: string
@@ -1950,8 +1971,9 @@ export interface BearWardenAPI {
   }
   sync: {
     status: () => Promise<SyncStatus>
-    connect: (request: SyncConnectRequest) => Promise<SyncResult>
-    unlock: (request: SyncUnlockRequest) => Promise<SyncStatus>
+    connect: (request: SyncConnectRequest) => Promise<SyncConnectResponse>
+    unlock: (request: SyncUnlockRequest) => Promise<SyncUnlockResponse>
+    sendEmailTwoFactorCode: (request: SyncEmailTwoFactorCodeRequest) => Promise<void>
     now: () => Promise<SyncResult>
     resolvePendingImport: (request: SyncResolvePendingImportRequest) => Promise<SyncStatus>
     purgePersonalVault: (

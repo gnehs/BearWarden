@@ -46,6 +46,26 @@ describe('preload AutoFill settings API', () => {
   })
 })
 
+describe('preload sync API', () => {
+  it('passes only the typed email two-factor request through its dedicated channel', async () => {
+    electronMock.invoke.mockClear()
+    const api = electronMock.exposed() as BearWardenAPI
+    const request = {
+      serverUrl: 'https://vault.example.invalid',
+      email: 'person@example.invalid',
+      masterPassword: 'remote password'
+    }
+
+    await api.sync.sendEmailTwoFactorCode(request)
+
+    expect(electronMock.invoke).toHaveBeenCalledWith(
+      IPC_CHANNELS.syncSendEmailTwoFactorCode,
+      request
+    )
+    electronMock.invoke.mockClear()
+  })
+})
+
 describe('preload account API', () => {
   it('exposes the typed namespace with only narrow account IPC payloads', async () => {
     const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
@@ -176,6 +196,7 @@ describe('preload pending import API', () => {
       'status',
       'connect',
       'unlock',
+      'sendEmailTwoFactorCode',
       'now',
       'resolvePendingImport',
       'purgePersonalVault',

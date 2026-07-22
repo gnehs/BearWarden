@@ -21,7 +21,8 @@ import type {
   SyncErrorCode,
   SyncInvalidResponseStage,
   SyncResult,
-  SyncStatus
+  SyncStatus,
+  SyncTwoFactorProvider
 } from '../../../shared/vault-contract'
 import {
   AlertDialog,
@@ -73,6 +74,8 @@ import { ModalActionGroup, ModalBody, ModalContent, ModalFooter, ModalHeader } f
 import { PendingImportWarning } from './PendingImportWarning'
 import {
   buildSyncTwoFactorRequest,
+  resolveSyncTwoFactorMethod,
+  syncTwoFactorProviderForMethod,
   WEB_AUTHN_TWO_FACTOR_METHOD,
   type SyncTwoFactorFormMethod
 } from './sync-two-factor-request'
@@ -282,6 +285,9 @@ function SyncDialog({
   const [masterPassword, setMasterPassword] = useState('')
   const [twoFactorMethod, setTwoFactorMethod] = useState<SyncTwoFactorFormMethod>('0')
   const [twoFactorCode, setTwoFactorCode] = useState('')
+  const [twoFactorProviders, setTwoFactorProviders] = useState<readonly SyncTwoFactorProvider[]>([])
+  const [emailCodeBusy, setEmailCodeBusy] = useState(false)
+  const [emailCodeSent, setEmailCodeSent] = useState(false)
   const [webAuthnRemember, setWebAuthnRemember] = useState(false)
   const [newDeviceOtp, setNewDeviceOtp] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -302,6 +308,12 @@ function SyncDialog({
     { label: t`YubiKey OTP`, value: '3' },
     { label: t`Security key`, value: WEB_AUTHN_TWO_FACTOR_METHOD }
   ]
+  const availableTwoFactorMethods =
+    twoFactorProviders.length === 0
+      ? twoFactorMethods
+      : twoFactorMethods.filter(({ value }) =>
+          twoFactorProviders.includes(syncTwoFactorProviderForMethod(value))
+        )
 
   const configured = status.configured
   const requiresCredentials =
@@ -366,6 +378,9 @@ function SyncDialog({
     setMasterPassword('')
     setTwoFactorMethod('0')
     setTwoFactorCode('')
+    setTwoFactorProviders([])
+    setEmailCodeBusy(false)
+    setEmailCodeSent(false)
     setWebAuthnRemember(false)
     setNewDeviceOtp('')
     setShowPassword(false)
@@ -397,6 +412,48 @@ function SyncDialog({
     setSuccess(formatMessage(syncSummary(result)))
   }
 
+  function applyTwoFactorChallenge(
+    providers: readonly SyncTwoFactorProvider[]
+  ): SyncTwoFactorFormMethod | null {
+    const method = resolveSyncTwoFactorMethod(twoFactorMethod, providers)
+    setTwoFactorProviders(providers)
+    setShowAdvanced(true)
+    setTwoFactorCode('')
+    setEmailCodeSent(false)
+    if (method) {
+      setTwoFactorMethod(method)
+      setError(t`Two-step verification is required. Enter a current verification code to continue.`)
+    } else {
+      setError(
+        t`This account requires a two-step verification method that BearWarden does not support.`
+      )
+    }
+    return method
+  }
+
+  async function sendEmailTwoFactorCode(
+    normalizedUrl: string,
+    showConfirmation: boolean
+  ): Promise<boolean> {
+    if (!email.trim() || !masterPassword || emailCodeBusy) return false
+    setEmailCodeBusy(true)
+    try {
+      await window.bearwarden.sync.sendEmailTwoFactorCode({
+        serverUrl: normalizedUrl,
+        email: email.trim(),
+        masterPassword
+      })
+      setEmailCodeSent(true)
+      if (showConfirmation) setSuccess(t`A two-step verification code was sent by email.`)
+      return true
+    } catch (sendError) {
+      setError(describeSyncError(sendError))
+      return false
+    } finally {
+      setEmailCodeBusy(false)
+    }
+  }
+
   async function connect(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     const normalizedUrl = validateServerUrl()
@@ -412,14 +469,19 @@ function SyncDialog({
     setError('')
     setSuccess('')
     try {
-      const result = await window.bearwarden.sync.connect({
+      const response = await window.bearwarden.sync.connect({
         serverUrl: normalizedUrl,
         email: email.trim(),
         masterPassword,
         ...(newDeviceOtp.trim() ? { newDeviceOtp: newDeviceOtp.trim() } : {}),
         ...buildSyncTwoFactorRequest({ twoFactorMethod, twoFactorCode, webAuthnRemember })
       })
-      await refreshAfterSuccess(result, (summary) => t`Connected and synced. ${summary}.`)
+      if (response.kind === 'two-factor-required') {
+        const method = applyTwoFactorChallenge(response.providers)
+        if (method === '1') await sendEmailTwoFactorCode(normalizedUrl, false)
+        return
+      }
+      await refreshAfterSuccess(response.result, (summary) => t`Connected and synced. ${summary}.`)
     } catch (connectError) {
       setError(describeSyncError(connectError))
     } finally {
@@ -436,15 +498,20 @@ function SyncDialog({
     setError('')
     setSuccess('')
     try {
-      const nextStatus = await window.bearwarden.sync.unlock({
+      const response = await window.bearwarden.sync.unlock({
         masterPassword,
         ...(newDeviceOtp.trim() ? { newDeviceOtp: newDeviceOtp.trim() } : {}),
         ...buildSyncTwoFactorRequest({ twoFactorMethod, twoFactorCode, webAuthnRemember })
       })
-      onStatusChange(nextStatus)
-      clearSecrets()
-      const result = await window.bearwarden.sync.now()
-      await refreshAfterSuccess(result, (summary) => t`Unlocked and synced. ${summary}.`)
+      if (response.kind === 'two-factor-required') {
+        const method = applyTwoFactorChallenge(response.providers)
+        const normalizedUrl = validateServerUrl()
+        if (method === '1' && normalizedUrl) {
+          await sendEmailTwoFactorCode(normalizedUrl, false)
+        }
+        return
+      }
+      await refreshAfterSuccess(response.result, (summary) => t`Unlocked and synced. ${summary}.`)
     } catch (unlockError) {
       setError(describeSyncError(unlockError))
     } finally {
@@ -723,14 +790,26 @@ function SyncDialog({
                     <FieldGroup className="grid w-auto gap-3 rounded-[10px] border bg-[var(--panel-muted)] p-3">
                       <Field>
                         <FieldLabel htmlFor="two-factor-method">
-                          <Trans>Two-step verification method (optional)</Trans>
+                          {twoFactorProviders.length > 0 ? (
+                            <Trans>Two-step verification method</Trans>
+                          ) : (
+                            <Trans>Two-step verification method (optional)</Trans>
+                          )}
                         </FieldLabel>
                         <Select
-                          items={twoFactorMethods}
+                          items={availableTwoFactorMethods}
                           value={twoFactorMethod}
-                          onValueChange={(value) =>
-                            setTwoFactorMethod(value as SyncTwoFactorFormMethod)
-                          }
+                          onValueChange={(value) => {
+                            const method = value as SyncTwoFactorFormMethod
+                            setTwoFactorMethod(method)
+                            setTwoFactorCode('')
+                            if (method === '1' && !emailCodeSent) {
+                              const normalizedUrl = validateServerUrl()
+                              if (normalizedUrl) {
+                                void sendEmailTwoFactorCode(normalizedUrl, false)
+                              }
+                            }
+                          }}
                           disabled={busy}
                         >
                           <SelectTrigger id="two-factor-method" className="w-full">
@@ -738,7 +817,7 @@ function SyncDialog({
                           </SelectTrigger>
                           <SelectContent>
                             <SelectGroup>
-                              {twoFactorMethods.map((method) => (
+                              {availableTwoFactorMethods.map((method) => (
                                 <SelectItem key={method.value} value={method.value}>
                                   {method.label}
                                 </SelectItem>
@@ -746,6 +825,15 @@ function SyncDialog({
                             </SelectGroup>
                           </SelectContent>
                         </Select>
+                        {twoFactorProviders.length > 0 &&
+                          availableTwoFactorMethods.length === 0 && (
+                            <FieldDescription>
+                              <Trans>
+                                None of the verification methods offered by this server are
+                                supported by BearWarden.
+                              </Trans>
+                            </FieldDescription>
+                          )}
                       </Field>
                       {twoFactorMethod === WEB_AUTHN_TWO_FACTOR_METHOD ? (
                         <Field orientation="horizontal" data-disabled={busy || undefined}>
@@ -770,7 +858,11 @@ function SyncDialog({
                       ) : (
                         <Field>
                           <FieldLabel htmlFor="two-factor-code">
-                            <Trans>Two-step verification code (optional)</Trans>
+                            {twoFactorProviders.length > 0 ? (
+                              <Trans>Two-step verification code</Trans>
+                            ) : (
+                              <Trans>Two-step verification code (optional)</Trans>
+                            )}
                           </FieldLabel>
                           <Input
                             id="two-factor-code"
@@ -780,6 +872,28 @@ function SyncDialog({
                             onChange={(event) => setTwoFactorCode(event.target.value)}
                             disabled={busy}
                           />
+                          {twoFactorMethod === '1' && twoFactorProviders.includes('1') && (
+                            <Button
+                              className="justify-self-start"
+                              variant="outline"
+                              type="button"
+                              disabled={busy || emailCodeBusy || !masterPassword}
+                              onClick={() => {
+                                const normalizedUrl = validateServerUrl()
+                                if (normalizedUrl) {
+                                  void sendEmailTwoFactorCode(normalizedUrl, true)
+                                }
+                              }}
+                            >
+                              {emailCodeBusy ? (
+                                <Spinner />
+                              ) : emailCodeSent ? (
+                                <Trans>Resend email code</Trans>
+                              ) : (
+                                <Trans>Send email code</Trans>
+                              )}
+                            </Button>
+                          )}
                         </Field>
                       )}
                       <Field>

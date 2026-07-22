@@ -54,6 +54,7 @@ import {
   type BitwardenPersonalApiKey,
   type BitwardenPersonalCipherImportRequest,
   type BitwardenTwoFactorProvider,
+  type BitwardenTwoFactorProviderId,
   type BitwardenWebAuthnKey,
   type BitwardenWebAuthnSetup,
   type BitwardenSession,
@@ -215,7 +216,9 @@ export class BitwardenDirectError extends Error {
     /** Main-process-only, strictly normalized provider-7 request options. */
     readonly webAuthnChallenge?: AccountWebAuthnChallenge,
     /** Fixed, value-free location for sync response diagnostics. */
-    readonly syncInvalidResponseStage?: BitwardenSyncInvalidResponseStage
+    readonly syncInvalidResponseStage?: BitwardenSyncInvalidResponseStage,
+    /** Main-process-only, bounded provider ids from the token challenge. */
+    readonly twoFactorProviders?: readonly BitwardenTwoFactorProviderId[]
   ) {
     super(`Bitwarden direct sync failed (${code})`)
     this.name = 'BitwardenDirectError'
@@ -508,6 +511,7 @@ export interface BitwardenSyncClient {
   ): Promise<BitwardenAccountSecurityProfile>
   getAccountDevices?(signal?: AbortSignal): Promise<BitwardenAccountDevice[]>
   resendVerificationEmail?(signal?: AbortSignal): Promise<void>
+  sendEmailTwoFactorLoginCode?(masterPassword: string, signal?: AbortSignal): Promise<void>
   purgePersonalVault?(masterPassword: string, signal?: AbortSignal): Promise<void>
   deauthorizeAllSessions?(masterPassword: string, signal?: AbortSignal): Promise<void>
   getPersonalApiKey?(
@@ -3242,12 +3246,54 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     )
   }
 
+  async sendEmailTwoFactorLoginCode(masterPassword: string, signal?: AbortSignal): Promise<void> {
+    let masterKey: Buffer | null = null
+    let passwordKey: Buffer | null = null
+    let masterPasswordHash = ''
+    try {
+      if (
+        typeof masterPassword !== 'string' ||
+        masterPassword.length === 0 ||
+        masterPassword.length > MAX_SYNC_SECRET_LENGTH
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      const prelogin = await this.http.prelogin(this.email, signal)
+      masterKey = await deriveMasterKey(
+        masterPassword,
+        prelogin.salt ?? this.email,
+        kdfFromPrelogin(prelogin)
+      )
+      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      masterPasswordHash = passwordKey.toString('base64')
+      if (signal?.aborted) throw new BitwardenDirectError('ABORTED')
+      await this.http.sendEmailTwoFactorLoginCode(
+        {
+          email: this.email,
+          masterPasswordHash,
+          deviceIdentifier: this.state.deviceIdentifier,
+          deviceType: this.deviceType
+        },
+        signal
+      )
+    } catch (error) {
+      throw this.mapError(error)
+    } finally {
+      masterPassword = ''
+      masterKey?.fill(0)
+      passwordKey?.fill(0)
+      masterPasswordHash = ''
+    }
+  }
+
   async unlock(request: BitwardenUnlockRequest): Promise<void> {
     await this.deriveAndAuthenticate(
       request.password,
       request.twoFactor,
       request.newDeviceOtp,
-      !this.http.exportSession(),
+      !this.http.exportSession() ||
+        request.twoFactor !== undefined ||
+        request.newDeviceOtp !== undefined,
       request.signal
     )
   }
@@ -3465,6 +3511,9 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       await this.notifyStateChanged()
     } catch (error) {
       const mapped = this.mapError(error)
+      if (error instanceof BitwardenHttpError && error.code === 'AUTH') {
+        await this.clearDeauthorizedSession().catch(() => undefined)
+      }
       if (
         mapped.code === 'INVALID_RESPONSE' &&
         !mapped.syncInvalidResponseStage &&
@@ -5417,7 +5466,12 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     if (error instanceof BitwardenHttpError) {
       if (error.code === 'AUTH') return new BitwardenDirectError('AUTH_REQUIRED')
       if (error.code === 'TWO_FACTOR') {
-        return new BitwardenDirectError('TWO_FACTOR_REQUIRED', error.webAuthnChallenge)
+        return new BitwardenDirectError(
+          'TWO_FACTOR_REQUIRED',
+          error.webAuthnChallenge,
+          undefined,
+          error.twoFactorProviders
+        )
       }
       if (error.code === 'NEW_DEVICE') return new BitwardenDirectError('NEW_DEVICE_REQUIRED')
       if (error.code === 'CONFLICT') return new BitwardenDirectError('CONFLICT')

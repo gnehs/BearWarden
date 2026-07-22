@@ -1,4 +1,4 @@
-import type { VaultErrorCode } from '../shared/vault-contract'
+import type { SyncTwoFactorProvider, VaultErrorCode } from '../shared/vault-contract'
 import {
   AccountRelaunchResultUnknownError,
   AccountSwitchServiceError
@@ -16,6 +16,20 @@ export class VaultError extends Error {
     super(message)
     this.name = 'VaultError'
     this.code = code
+  }
+}
+
+/**
+ * Expected, recoverable password-login challenge. Provider ids are the only server metadata that
+ * may cross the sync IPC boundary; provider-specific payloads and WebAuthn challenges stay in main.
+ */
+export class SyncTwoFactorRequiredError extends VaultError {
+  readonly providers: readonly SyncTwoFactorProvider[]
+
+  constructor(providers: readonly SyncTwoFactorProvider[]) {
+    super('SYNC_AUTH_REQUIRED')
+    this.name = 'SyncTwoFactorRequiredError'
+    this.providers = Object.freeze([...providers])
   }
 }
 

@@ -183,6 +183,9 @@ export interface BitwardenTwoFactorProvider {
   enabled: boolean
 }
 
+/** Main-process-only provider identifiers accepted by Bitwarden's login challenge. */
+export type BitwardenTwoFactorProviderId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
+
 export interface BitwardenTwoFactorDisableSetup {
   enabled: boolean
   verificationMode: 'server-token' | 'master-password'
@@ -371,7 +374,9 @@ export class BitwardenHttpError extends Error {
     /** Non-secret, schema-checked error metadata supplied by the service. */
     readonly details?: JsonObject,
     /** Strictly normalized provider-7 request options; the raw token error is not retained. */
-    readonly webAuthnChallenge?: AccountWebAuthnChallenge
+    readonly webAuthnChallenge?: AccountWebAuthnChallenge,
+    /** Main-process-only, bounded provider ids; raw provider metadata is never retained. */
+    readonly twoFactorProviders?: readonly BitwardenTwoFactorProviderId[]
   ) {
     super(`Bitwarden HTTP request failed (${code})`)
     this.name = 'BitwardenHttpError'
@@ -427,6 +432,7 @@ const MAX_IMPORT_FOLDERS = 2_000
 const MAX_IMPORT_CIPHERS = 7_000
 const MAX_IMPORT_RELATIONSHIPS = 7_000
 const MAX_IMPORT_REQUEST_BYTES = 18 * 1024 * 1024
+const MAX_TWO_FACTOR_PROVIDER_ENTRIES = 32
 
 function isRecord(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -914,6 +920,56 @@ export class BitwardenHttpClient {
       }
     })
     return parseSession(response, this.now())
+  }
+
+  async sendEmailTwoFactorLoginCode(
+    request: {
+      email: string
+      masterPasswordHash: string
+      deviceIdentifier: string
+      deviceType?: number
+    },
+    signal?: AbortSignal
+  ): Promise<void> {
+    if (
+      !string(request.email) ||
+      !string(request.masterPasswordHash) ||
+      !string(request.deviceIdentifier)
+    ) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    const body: JsonObject = {
+      email: request.email,
+      masterPasswordHash: request.masterPasswordHash,
+      deviceIdentifier: request.deviceIdentifier
+    }
+    try {
+      const response = await this.requestJson(
+        'POST',
+        `${this.urls.apiUrl}/two-factor/send-email-login`,
+        {
+          body,
+          signal,
+          authenticate: false,
+          retry: false,
+          headers: {
+            'auth-email': base64Url(request.email),
+            'device-type': String(request.deviceType ?? 14)
+          }
+        }
+      )
+      if (response !== null) throw new BitwardenHttpError('INVALID_RESPONSE')
+    } catch (error) {
+      // The endpoint is unauthenticated and its errors must not retain reflected credentials.
+      if (error instanceof BitwardenHttpError) {
+        throw new BitwardenHttpError(error.code, error.status)
+      }
+      throw error
+    } finally {
+      body.email = ''
+      body.masterPasswordHash = ''
+      body.deviceIdentifier = ''
+    }
   }
 
   async refresh(signal?: AbortSignal): Promise<BitwardenSession> {
@@ -3959,6 +4015,45 @@ function parseSession(value: JsonValue, now: number): BitwardenSession {
   return { accessToken, refreshToken, expiresAt }
 }
 
+function parseTwoFactorProviderId(value: JsonValue): BitwardenTwoFactorProviderId {
+  const normalized = typeof value === 'number' ? value : typeof value === 'string' ? value : NaN
+  if (
+    (typeof normalized === 'number' && !Number.isSafeInteger(normalized)) ||
+    (typeof normalized === 'string' && !/^[0-8]$/u.test(normalized))
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  const provider = Number(normalized)
+  if (provider < 0 || provider > 8) throw new BitwardenHttpError('INVALID_RESPONSE')
+  return provider as BitwardenTwoFactorProviderId
+}
+
+function parseLoginTwoFactorProviders(payload: JsonValue): readonly BitwardenTwoFactorProviderId[] {
+  if (!isRecord(payload)) return Object.freeze([])
+  const providers = new Set<BitwardenTwoFactorProviderId>()
+  const arrayKeys = ['TwoFactorProviders', 'twoFactorProviders'] as const
+  for (const key of arrayKeys) {
+    if (!(key in payload)) continue
+    const value = payload[key]
+    if (!Array.isArray(value) || value.length > MAX_TWO_FACTOR_PROVIDER_ENTRIES) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    for (const provider of value) providers.add(parseTwoFactorProviderId(provider))
+  }
+  const objectKeys = ['TwoFactorProviders2', 'twoFactorProviders2'] as const
+  for (const key of objectKeys) {
+    if (!(key in payload)) continue
+    const value = payload[key]
+    if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+    const keys = Object.keys(value)
+    if (keys.length > MAX_TWO_FACTOR_PROVIDER_ENTRIES) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    for (const provider of keys) providers.add(parseTwoFactorProviderId(provider))
+  }
+  return Object.freeze([...providers].sort((left, right) => left - right))
+}
+
 function toHttpError(status: number, payload: JsonValue): BitwardenHttpError {
   const details = isRecord(payload) ? payload : undefined
   const message = [
@@ -3982,12 +4077,20 @@ function toHttpError(status: number, payload: JsonValue): BitwardenHttpError {
   }
   if (message.includes('two factor')) {
     try {
+      const twoFactorProviders = parseLoginTwoFactorProviders(payload)
       const webAuthnChallenge = parseAccountWebAuthnChallengeFromTokenError(payload)
-      return webAuthnChallenge
-        ? new BitwardenHttpError('TWO_FACTOR', status, undefined, webAuthnChallenge)
-        : new BitwardenHttpError('TWO_FACTOR', status, details)
+      return new BitwardenHttpError(
+        'TWO_FACTOR',
+        status,
+        undefined,
+        webAuthnChallenge ?? undefined,
+        twoFactorProviders
+      )
     } catch (error) {
-      if (error instanceof AccountWebAuthnCodecError) {
+      if (
+        error instanceof AccountWebAuthnCodecError ||
+        (error instanceof BitwardenHttpError && error.code === 'INVALID_RESPONSE')
+      ) {
         return new BitwardenHttpError('INVALID_RESPONSE', status)
       }
       throw error

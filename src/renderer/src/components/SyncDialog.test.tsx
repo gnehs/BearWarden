@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { PendingImportWarning } from './PendingImportWarning'
-import { buildSyncTwoFactorRequest, WEB_AUTHN_TWO_FACTOR_METHOD } from './sync-two-factor-request'
+import {
+  buildSyncTwoFactorRequest,
+  resolveSyncTwoFactorMethod,
+  syncTwoFactorProviderForMethod,
+  WEB_AUTHN_TWO_FACTOR_METHOD
+} from './sync-two-factor-request'
 import {
   accountProfileStateForStatus,
   accountProfileIdentity,
@@ -128,6 +133,17 @@ describe('SyncDialog account profile identity gate', () => {
 })
 
 describe('SyncDialog WebAuthn request boundary', () => {
+  it('keeps the current advertised provider and otherwise chooses a supported fallback', () => {
+    expect(resolveSyncTwoFactorMethod('1', ['0', '1'])).toBe('1')
+    expect(resolveSyncTwoFactorMethod('3', ['7', '1'])).toBe('1')
+    expect(resolveSyncTwoFactorMethod('0', ['7'])).toBe(WEB_AUTHN_TWO_FACTOR_METHOD)
+  })
+
+  it('does not offer unsupported server providers as a usable form method', () => {
+    expect(resolveSyncTwoFactorMethod('0', ['2', '5', '6', '8'])).toBeNull()
+    expect(syncTwoFactorProviderForMethod(WEB_AUTHN_TWO_FACTOR_METHOD)).toBe('7')
+  })
+
   it('keeps legacy two-factor requests free of the WebAuthn remember flag', () => {
     const request = buildSyncTwoFactorRequest({
       twoFactorMethod: '0',

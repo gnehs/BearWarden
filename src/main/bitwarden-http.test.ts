@@ -1224,6 +1224,96 @@ describe('BitwardenHttpClient', () => {
     expect(requestHeaders.get('bitwarden-client-version')).toBe('1.0.0')
   })
 
+  it('sends the exact unauthenticated Email 2FA login request with device headers', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(new Response(null, { status: 204 }))
+    const client = new BitwardenHttpClient({ server: 'https://vault.example.test', fetch })
+    client.setSession({
+      accessToken: 'must-not-be-sent',
+      refreshToken: 'refresh',
+      expiresAt: 60_000
+    })
+
+    await client.sendEmailTwoFactorLoginCode({
+      email: 'person@example.test',
+      masterPasswordHash: 'derived-password-proof',
+      deviceIdentifier: 'installation-id',
+      deviceType: 99
+    })
+
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      'https://vault.example.test/api/two-factor/send-email-login'
+    )
+    const init = fetch.mock.calls[0]?.[1]
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      email: 'person@example.test',
+      masterPasswordHash: 'derived-password-proof',
+      deviceIdentifier: 'installation-id'
+    })
+    const requestHeaders = new Headers(init?.headers)
+    expect(requestHeaders.get('authorization')).toBeNull()
+    expect(requestHeaders.get('auth-email')).toBe(
+      Buffer.from('person@example.test').toString('base64url')
+    )
+    expect(requestHeaders.get('device-type')).toBe('99')
+    expect(requestHeaders.get('bitwarden-client-name')).toBe('desktop')
+  })
+
+  it('does not retry or retain reflected Email 2FA login secrets', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      json(
+        {
+          message: 'temporary failure',
+          masterPasswordHash: 'derived-password-proof',
+          deviceIdentifier: 'installation-id'
+        },
+        503
+      )
+    )
+    const client = new BitwardenHttpClient({ server: 'us', fetch, maxRetries: 5 })
+
+    const error = await client
+      .sendEmailTwoFactorLoginCode({
+        email: 'person@example.test',
+        masterPasswordHash: 'derived-password-proof',
+        deviceIdentifier: 'installation-id'
+      })
+      .catch((caught: unknown) => caught)
+    expect(error).toMatchObject({ code: 'NETWORK', status: 503, details: undefined })
+    expect(JSON.stringify(error)).not.toContain('derived-password-proof')
+    expect(JSON.stringify(error)).not.toContain('installation-id')
+    expect(fetch).toHaveBeenCalledOnce()
+  })
+
+  it('clears the mutable Email 2FA login body after transport completion', async () => {
+    const client = new BitwardenHttpClient({ server: 'us', fetch: vi.fn<FetchLike>() })
+    let capturedBody: JsonObject | undefined
+    const transport = client as unknown as {
+      requestJson: (
+        method: string,
+        url: string,
+        request: { body?: JsonObject }
+      ) => Promise<JsonValue>
+    }
+    transport.requestJson = async (_method, _url, request) => {
+      capturedBody = request.body
+      return null
+    }
+
+    await client.sendEmailTwoFactorLoginCode({
+      email: 'person@example.test',
+      masterPasswordHash: 'derived-password-proof',
+      deviceIdentifier: 'installation-id'
+    })
+
+    expect(capturedBody).toEqual({
+      email: '',
+      masterPasswordHash: '',
+      deviceIdentifier: ''
+    })
+  })
+
   it.each([
     {
       label: 'Vaultwarden camelCase',
@@ -1276,6 +1366,7 @@ describe('BitwardenHttpClient', () => {
         code: 'TWO_FACTOR',
         status: 400,
         details: undefined,
+        twoFactorProviders: [0, 1, 3, 7],
         webAuthnChallenge: {
           challenge: Buffer.alloc(32, 1).toString('base64url'),
           rpId: 'vault.example.test',
@@ -1287,11 +1378,13 @@ describe('BitwardenHttpClient', () => {
     }
   )
 
-  it('keeps providers 0/1/3 behavior and rejects malformed provider 7 without retry', async () => {
+  it('normalizes legacy provider arrays and provider-map keys without retaining raw metadata', async () => {
     const legacyPayload = {
       error: 'invalid_grant',
       error_description: 'Two factor required.',
-      TwoFactorProviders2: { '0': null, '1': null, '3': { Nfc: true } }
+      TwoFactorProviders: ['3', 1, '0', 8, 8],
+      TwoFactorProviders2: { '0': null, '1': null, '3': { Nfc: true } },
+      rawServerSecret: 'must-not-escape'
     }
     const legacyFetch = vi.fn<FetchLike>().mockResolvedValue(json(legacyPayload, 400))
     const legacy = new BitwardenHttpClient({ server: 'us', fetch: legacyFetch })
@@ -1299,10 +1392,41 @@ describe('BitwardenHttpClient', () => {
       legacy.passwordToken({ email: 'person@example.test', password: 'derived-secret' })
     ).rejects.toMatchObject({
       code: 'TWO_FACTOR',
-      details: legacyPayload,
+      details: undefined,
+      twoFactorProviders: [0, 1, 3, 8],
       webAuthnChallenge: undefined
     })
+  })
 
+  it('rejects malformed or unbounded login provider metadata without retry', async () => {
+    const malformedProviders = [
+      { TwoFactorProviders: ['01'] },
+      { TwoFactorProviders: [9] },
+      { TwoFactorProviders: Array.from({ length: 33 }, () => 0) },
+      { TwoFactorProviders2: { '9': null } },
+      { TwoFactorProviders2: [] }
+    ]
+
+    for (const providers of malformedProviders) {
+      const fetch = vi.fn<FetchLike>().mockResolvedValue(
+        json(
+          {
+            error: 'invalid_grant',
+            error_description: 'Two factor required.',
+            ...providers
+          },
+          400
+        )
+      )
+      const client = new BitwardenHttpClient({ server: 'us', fetch, maxRetries: 5 })
+      await expect(
+        client.passwordToken({ email: 'person@example.test', password: 'derived-secret' })
+      ).rejects.toMatchObject({ code: 'INVALID_RESPONSE', details: undefined })
+      expect(fetch).toHaveBeenCalledOnce()
+    }
+  })
+
+  it('rejects malformed provider 7 without retry', async () => {
     const malformedFetch = vi.fn<FetchLike>().mockResolvedValue(
       json(
         {

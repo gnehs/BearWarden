@@ -6,6 +6,7 @@ import type {
   LoginApprovalPrompt,
   LoginApprovalResponse,
   SyncConnectRequest,
+  SyncEmailTwoFactorCodeRequest,
   SyncPurgePersonalVaultRequest,
   SyncPurgePersonalVaultResult,
   SyncResult,
@@ -61,6 +62,29 @@ import {
   type AccountWebAuthnOperationLease
 } from './vault-service-base'
 import { VaultServiceBase } from './vault-service-base'
+
+function initialSyncData(serverUrl: string, email: string): PersistedSyncData {
+  return {
+    provider: 'bitwarden',
+    serverUrl,
+    email,
+    state: {
+      session: null,
+      deviceIdentifier: randomUUID(),
+      profileId: null,
+      securityStamp: null
+    },
+    lastSyncAt: null,
+    folderMappings: [],
+    loginMappings: [],
+    folderTombstones: [],
+    loginTombstones: [],
+    pendingLoginMutation: null,
+    pendingLoginImport: null,
+    pendingPersonalVaultPurge: null,
+    domainSettings: null
+  }
+}
 
 /** Account security, authentication, and public synchronization operations. */
 export class VaultAccountService extends VaultServiceBase {
@@ -1677,26 +1701,7 @@ export class VaultAccountService extends VaultServiceBase {
       const abort = this.startSyncOperation()
 
       try {
-        const sync: PersistedSyncData = {
-          provider: 'bitwarden',
-          serverUrl,
-          email,
-          state: {
-            session: null,
-            deviceIdentifier: randomUUID(),
-            profileId: null,
-            securityStamp: null
-          },
-          lastSyncAt: null,
-          folderMappings: [],
-          loginMappings: [],
-          folderTombstones: [],
-          loginTombstones: [],
-          pendingLoginMutation: null,
-          pendingLoginImport: null,
-          pendingPersonalVaultPurge: null,
-          domainSettings: null
-        }
+        const sync = initialSyncData(serverUrl, email)
         const client = this.createSyncClient(sync)
         await this.authenticateSyncWithWebAuthnRetry(
           (retryTwoFactor) =>
@@ -1729,31 +1734,79 @@ export class VaultAccountService extends VaultServiceBase {
     })
   }
 
+  sendSyncEmailTwoFactorCode(request: SyncEmailTwoFactorCodeRequest): Promise<void> {
+    return this.exclusive(async () => {
+      this.requireData()
+      const serverUrl = this.normalizeSyncServerUrl(request.serverUrl)
+      const email = normalizeRequiredString(request.email, MAX_USERNAME_LENGTH)
+      const password = normalizeSyncPassword(request.masterPassword)
+      const client = this.createSyncClient(initialSyncData(serverUrl, email))
+      if (!client.sendEmailTwoFactorLoginCode) throw new VaultError('SYNC_FAILED')
+      const abort = this.startSyncOperation()
+      try {
+        await client.sendEmailTwoFactorLoginCode(password, abort.signal)
+      } catch (error) {
+        throw this.mapSyncError(error)
+      } finally {
+        request.masterPassword = ''
+        this.finishSyncOperation(abort)
+      }
+    })
+  }
+
+  private async authenticateConfiguredSync(
+    request: SyncUnlockRequest,
+    sync: PersistedSyncData,
+    client: BitwardenSyncClient,
+    signal: AbortSignal
+  ): Promise<void> {
+    const password = normalizeSyncPassword(request.masterPassword)
+    const twoFactor = this.normalizeTwoFactor(request.twoFactorMethod, request.twoFactorCode)
+    const newDeviceOtp = this.normalizeNewDeviceOtp(request.newDeviceOtp)
+    await this.authenticateSyncWithWebAuthnRetry(
+      (retryTwoFactor) =>
+        client.unlock({
+          password,
+          twoFactor: retryTwoFactor,
+          newDeviceOtp,
+          signal
+        }),
+      twoFactor,
+      request.webAuthnRemember,
+      sync.serverUrl,
+      signal
+    )
+  }
+
   unlockSync(request: SyncUnlockRequest): Promise<SyncStatus> {
     return this.exclusive(async () => {
       const sync = this.requireSyncData()
-      const password = normalizeSyncPassword(request.masterPassword)
-      const twoFactor = this.normalizeTwoFactor(request.twoFactorMethod, request.twoFactorCode)
-      const newDeviceOtp = this.normalizeNewDeviceOtp(request.newDeviceOtp)
       const client = this.getOrCreateSyncClient(sync)
       const abort = this.startSyncOperation()
       try {
-        await this.authenticateSyncWithWebAuthnRetry(
-          (retryTwoFactor) =>
-            client.unlock({
-              password,
-              twoFactor: retryTwoFactor,
-              newDeviceOtp,
-              signal: abort.signal
-            }),
-          twoFactor,
-          request.webAuthnRemember,
-          sync.serverUrl,
-          abort.signal
-        )
+        await this.authenticateConfiguredSync(request, sync, client, abort.signal)
         await this.persistCurrentClientState()
         this.syncLastError = null
         return this.baseSyncStatus(sync, 'ready')
+      } catch (error) {
+        await this.persistCurrentClientState().catch(() => undefined)
+        throw this.mapSyncError(error)
+      } finally {
+        this.finishSyncOperation(abort)
+      }
+    })
+  }
+
+  /** Authenticates and completes the first sync before publishing a ready state. */
+  unlockAndSync(request: SyncUnlockRequest): Promise<SyncResult> {
+    return this.exclusive(async () => {
+      const sync = this.requireSyncData()
+      const client = this.getOrCreateSyncClient(sync)
+      const abort = this.startSyncOperation()
+      try {
+        await this.authenticateConfiguredSync(request, sync, client, abort.signal)
+        await this.persistCurrentClientState()
+        return await this.performSync(this.requireData(), client, abort.signal)
       } catch (error) {
         await this.persistCurrentClientState().catch(() => undefined)
         throw this.mapSyncError(error)

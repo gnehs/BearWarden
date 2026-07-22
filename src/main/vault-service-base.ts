@@ -18,6 +18,7 @@ import type {
   SyncPurgePersonalVaultResult,
   SyncResult,
   SyncStatus,
+  SyncTwoFactorProvider,
   VaultStatus
 } from '../shared/vault-contract'
 import { MAX_LOGIN_BATCH_IDS } from '../shared/vault-contract'
@@ -63,7 +64,7 @@ import {
   type SyncMetadata,
   type SyncSnapshot
 } from './sync-merge'
-import { VaultError } from './vault-errors'
+import { SyncTwoFactorRequiredError, VaultError } from './vault-errors'
 import type { VaultAttachmentFileService } from './vault-attachment-files'
 import type { AccountWebAuthnAssertion } from './account-webauthn-codec'
 import type { AccountWebAuthnAttestation } from './account-webauthn-registration-codec'
@@ -1506,9 +1507,18 @@ export class VaultServiceBase {
       return error
     }
     if (error instanceof BitwardenDirectError) {
-      if (error.code === 'AUTH_REQUIRED' || error.code === 'TWO_FACTOR_REQUIRED') {
+      if (error.code === 'AUTH_REQUIRED') {
         this.recordSyncError('SYNC_AUTH_REQUIRED')
         return new VaultError('SYNC_AUTH_REQUIRED')
+      }
+      if (error.code === 'TWO_FACTOR_REQUIRED') {
+        this.recordSyncError('SYNC_AUTH_REQUIRED')
+        const providers = (error.twoFactorProviders ?? []).flatMap((provider) =>
+          Number.isInteger(provider) && provider >= 0 && provider <= 8
+            ? [String(provider) as SyncTwoFactorProvider]
+            : []
+        )
+        return new SyncTwoFactorRequiredError(providers)
       }
       if (error.code === 'NEW_DEVICE_REQUIRED') {
         this.recordSyncError('SYNC_NEW_DEVICE_REQUIRED')

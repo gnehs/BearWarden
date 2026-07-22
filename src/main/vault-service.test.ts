@@ -2408,13 +2408,12 @@ describe('VaultService encrypted local data', () => {
     expect(await service.listLogins()).toHaveLength(1)
 
     await expect(
-      service.unlockSync({ masterPassword: 'remote master password' })
-    ).resolves.toMatchObject({ configured: true, state: 'ready' })
+      service.unlockAndSync({ masterPassword: 'remote master password' })
+    ).resolves.toMatchObject({ configured: true, state: 'ready', conflicts: 0 })
     await expect(service.notificationConnectionInfo()).resolves.toMatchObject({
       accessToken: 'test-access-token-after-logout',
       userId: '90000000-0000-4000-8000-000000000099'
     })
-    await expect(service.syncNow()).resolves.toMatchObject({ conflicts: 0 })
     expect(await service.listLogins()).toHaveLength(1)
   })
 
