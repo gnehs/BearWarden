@@ -1633,7 +1633,7 @@ describe('BitwardenDirectClient', () => {
     await expect(resumed.status()).resolves.toEqual({ status: 'locked' })
   })
 
-  it('decrypts organization keys and keeps shared ciphers separate from personal items', async () => {
+  it('decrypts current and legacy organization keys and keeps shared ciphers separate', async () => {
     const sync = await encryptedSync()
     const userKey = Buffer.alloc(64, 7)
     const organizationKey = Buffer.alloc(64, 11)
@@ -1643,10 +1643,25 @@ describe('BitwardenDirectClient', () => {
       {
         key: rsa.publicKey,
         padding: constants.RSA_PKCS1_OAEP_PADDING,
-        oaepHash: 'sha256'
+        oaepHash: 'sha1'
       },
-      Buffer.from(organizationKey.toString('base64'))
+      organizationKey
     )
+    const legacyOrganizationKeyPayload = Buffer.from(organizationKey.toString('base64'))
+    let encryptedLegacyOrganizationKey: Buffer
+    try {
+      encryptedLegacyOrganizationKey = publicEncrypt(
+        {
+          key: rsa.publicKey,
+          padding: constants.RSA_PKCS1_OAEP_PADDING,
+          oaepHash: 'sha256'
+        },
+        legacyOrganizationKeyPayload
+      )
+    } finally {
+      legacyOrganizationKeyPayload.fill(0)
+    }
+    const legacyOrganizationId = '66666666-6666-4666-8666-666666666666'
     const personalCipher = (sync.ciphers as JsonObject[])[0]!
     const sharedCipher: JsonObject = {
       ...personalCipher,
@@ -1667,11 +1682,21 @@ describe('BitwardenDirectClient', () => {
         {
           id: ORGANIZATION_ID,
           name: 'Shared Team',
-          key: `3.${encryptedOrganizationKey.toString('base64')}`,
+          key: `4.${encryptedOrganizationKey.toString('base64')}`,
           status: 0,
           type: 0,
           enabled: true,
           identifier: 'shared-team',
+          hasPublicAndPrivateKeys: false
+        },
+        {
+          id: legacyOrganizationId,
+          name: 'Legacy Team',
+          key: `3.${encryptedLegacyOrganizationKey.toString('base64')}`,
+          status: 0,
+          type: 0,
+          enabled: true,
+          identifier: 'legacy-team',
           hasPublicAndPrivateKeys: false
         }
       ]
@@ -1691,6 +1716,8 @@ describe('BitwardenDirectClient', () => {
     ]
     sync.ciphers = [personalCipher, sharedCipher]
     privateKey.fill(0)
+    encryptedOrganizationKey.fill(0)
+    encryptedLegacyOrganizationKey.fill(0)
     userKey.fill(0)
     organizationKey.fill(0)
 
@@ -1722,9 +1749,12 @@ describe('BitwardenDirectClient', () => {
     await expect(client.listPersonalLogins()).resolves.toEqual([
       expect.objectContaining({ id: LOGIN_ID, name: 'Example' })
     ])
-    await expect(client.listOrganizations()).resolves.toEqual([
-      expect.objectContaining({ id: ORGANIZATION_ID, name: 'Shared Team' })
-    ])
+    await expect(client.listOrganizations()).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: ORGANIZATION_ID, name: 'Shared Team' }),
+        expect.objectContaining({ id: legacyOrganizationId, name: 'Legacy Team' })
+      ])
+    )
     await expect(client.listCollections()).resolves.toEqual([
       expect.objectContaining({
         id: COLLECTION_ID,

@@ -4502,19 +4502,34 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     userKey: BitwardenSymmetricKey,
     privateKey: KeyObject
   ): Buffer {
-    const encoded = decryptBitwardenString(encryptedKey, userKey, privateKey)
-    if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(encoded) || encoded.length % 4 !== 0) {
-      throw new BitwardenDirectError('INVALID_RESPONSE')
+    const plaintext = decryptBitwardenBytes(encryptedKey, userKey, privateKey)
+    try {
+      // Current Bitwarden clients wrap the encoded organization key as raw bytes.
+      if (plaintext.length === USER_KEY_BYTES) return Buffer.from(plaintext)
+
+      // Retain compatibility with legacy payloads that wrapped the same key as Base64 text.
+      if (
+        plaintext.length !== Math.ceil(USER_KEY_BYTES / 3) * 4 ||
+        plaintext.some((byte) => byte > 0x7f)
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      const encoded = plaintext.toString('ascii')
+      if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(encoded)) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      const organizationKey = Buffer.from(encoded, 'base64')
+      if (
+        organizationKey.length !== USER_KEY_BYTES ||
+        organizationKey.toString('base64') !== encoded
+      ) {
+        organizationKey.fill(0)
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      return organizationKey
+    } finally {
+      plaintext.fill(0)
     }
-    const organizationKey = Buffer.from(encoded, 'base64')
-    if (
-      organizationKey.length !== USER_KEY_BYTES ||
-      organizationKey.toString('base64') !== encoded
-    ) {
-      organizationKey.fill(0)
-      throw new BitwardenDirectError('INVALID_RESPONSE')
-    }
-    return organizationKey
   }
 
   private decryptCollection(
