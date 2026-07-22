@@ -42,6 +42,7 @@ export interface VaultShellItemDialogs {
   busy: boolean
   folder: {
     value: FolderView | 'new' | null
+    folders: FolderView[]
     onClose: () => void
     onSave: ComponentProps<typeof FolderDialog>['onSave']
     onDelete: ComponentProps<typeof FolderDialog>['onDelete']
@@ -154,6 +155,7 @@ function VaultShellDialogs({
       {folder.value && (
         <FolderDialog
           folder={folder.value === 'new' ? undefined : folder.value}
+          folders={folder.folders}
           busy={busy}
           onClose={folder.onClose}
           onSave={folder.onSave}

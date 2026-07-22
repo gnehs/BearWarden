@@ -33,6 +33,7 @@ export const IPC_CHANNELS = {
   emergencyAccessList: 'emergency-access:list',
   folderCreate: 'folder:create',
   folderUpdate: 'folder:update',
+  folderReparent: 'folder:reparent',
   folderDelete: 'folder:delete',
   folderReorder: 'folder:reorder',
   loginList: 'login:list',
@@ -494,6 +495,11 @@ export interface FolderCreateRequest {
 export interface FolderUpdateRequest {
   id: string
   name: string
+}
+
+export interface FolderReparentRequest {
+  id: string
+  parentId: string | null
 }
 
 export interface FolderDeleteRequest {
@@ -1825,7 +1831,8 @@ export interface BearWardenAPI {
   folders: {
     list: () => Promise<FolderView[]>
     create: (request: FolderCreateRequest) => Promise<FolderView>
-    update: (request: FolderUpdateRequest) => Promise<FolderView>
+    update: (request: FolderUpdateRequest) => Promise<FolderView[]>
+    reparent: (request: FolderReparentRequest) => Promise<FolderView[]>
     delete: (request: FolderDeleteRequest) => Promise<void>
     reorder: (request: FolderReorderRequest) => Promise<FolderView[]>
   }

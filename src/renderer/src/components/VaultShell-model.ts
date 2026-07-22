@@ -10,7 +10,6 @@ import type { VaultCategoryFilter } from '../lib/vault-category'
 export type Scope =
   | { kind: 'all' }
   | { kind: 'favorites' }
-  | { kind: 'recent' }
   | { kind: 'folder'; folderId: string }
   | { kind: 'unfiled' }
   | { kind: 'archive' }

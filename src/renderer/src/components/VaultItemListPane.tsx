@@ -118,7 +118,6 @@ export function VaultItemListPane({
             <Select
               items={list.sortOptions}
               value={sortMode}
-              disabled={scope.kind === 'recent'}
               onValueChange={(value) => setSortMode(value as VaultSortMode)}
             >
               <SelectTrigger size="sm" variant="embedded" aria-label={t`Sort order`}>

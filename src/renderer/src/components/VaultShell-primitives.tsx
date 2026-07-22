@@ -251,21 +251,22 @@ export function UnfiledRow({ selected, count, onSelect }: UnfiledRowProps): JSX.
     <li
       ref={setNodeRef}
       className={cn(
-        'text-foreground hover:bg-sidebar-overlay-hover static grid min-h-9 grid-cols-[22px_minmax(0,1fr)_25px] items-center rounded-lg',
+        'text-foreground hover:bg-sidebar-overlay-hover static grid min-h-[38px] grid-cols-[22px_minmax(0,1fr)] items-center gap-2 rounded-lg px-[9px]',
         selected && 'bg-sidebar-overlay-active shadow-none',
         isOver &&
           'bg-sidebar-overlay-active text-foreground shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--sidebar-primary)_55%,transparent)] forced-colors:outline-2 forced-colors:-outline-offset-2 forced-colors:outline-[Highlight]'
       )}
     >
-      <span className="w-[22px]" aria-hidden="true" />
+      <span className="grid size-[22px] place-items-center" aria-hidden="true">
+        <FolderOpen size={16} />
+      </span>
       <Button
         variant="sidebar"
-        className="[&>small]:text-muted-foreground grid h-[34px] min-w-0 grid-cols-[21px_minmax(0,1fr)_auto] items-center gap-1 border-0 bg-transparent p-0 text-left text-inherit shadow-none hover:bg-transparent hover:shadow-none aria-expanded:bg-transparent aria-expanded:shadow-none [&>small]:min-w-[3ch] [&>small]:pr-1 [&>small]:text-right [&>small]:text-[10px] [&>small]:tabular-nums [&>span]:truncate [&>span]:text-xs"
+        className="[&>small]:text-muted-foreground grid h-[34px] min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-0 bg-transparent p-0 text-left text-inherit shadow-none hover:bg-transparent hover:shadow-none aria-expanded:bg-transparent aria-expanded:shadow-none [&>small]:min-w-[3ch] [&>small]:text-right [&>small]:text-[10px] [&>small]:tabular-nums [&>span]:truncate [&>span]:text-xs [&>span]:font-[610]"
         type="button"
         aria-current={selected ? 'page' : undefined}
         onClick={onSelect}
       >
-        <FolderOpen size={16} aria-hidden="true" />
         <span>
           <Trans>Unfiled</Trans>
         </span>

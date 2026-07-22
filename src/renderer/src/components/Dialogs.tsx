@@ -19,7 +19,7 @@ import { Alert, AlertAction, AlertDescription } from '@renderer/components/ui/al
 import { Button } from '@renderer/components/ui/button'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@renderer/components/ui/card'
 import { Dialog, DialogClose, DialogDescription, DialogTitle } from '@renderer/components/ui/dialog'
-import { Field, FieldLabel } from '@renderer/components/ui/field'
+import { Field, FieldGroup, FieldLabel } from '@renderer/components/ui/field'
 import {
   Empty,
   EmptyDescription,
@@ -43,6 +43,13 @@ import {
   usePasswordHistory,
   type UsePasswordHistoryOptions
 } from '@renderer/hooks/use-password-history'
+import {
+  composeVaultFolderName,
+  isVaultFolderNameDuplicate,
+  MAX_VAULT_FOLDER_NAME_LENGTH,
+  vaultFolderFormValue,
+  vaultFolderParentCandidateRows
+} from '@renderer/lib/vault-folder-tree'
 import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 import { ModalActionGroup, ModalBody, ModalContent, ModalFooter, ModalHeader } from './ModalLayout'
 
@@ -106,6 +113,7 @@ export function Modal({
 
 interface FolderDialogProps {
   folder?: FolderView
+  folders: FolderView[]
   busy: boolean
   onClose: () => void
   onSave: (name: string) => Promise<void>
@@ -114,6 +122,7 @@ interface FolderDialogProps {
 
 export function FolderDialog({
   folder,
+  folders,
   busy,
   onClose,
   onSave,
@@ -121,16 +130,31 @@ export function FolderDialog({
 }: FolderDialogProps): React.JSX.Element {
   const { t } = useLingui()
   const submittingRef = useRef(false)
-  const [name, setName] = useState(folder?.name ?? '')
+  const initialValue = vaultFolderFormValue(folder, folders)
+  const [name, setName] = useState(initialValue.name)
+  const [parentId, setParentId] = useState(initialValue.parentId)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [error, setError] = useState('')
 
   async function submit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     if (busy || submittingRef.current) return
-    const nextName = name.trim()
-    if (!nextName) {
+    const nextLeafName = name.trim()
+    if (!nextLeafName) {
       setError(t`Enter a folder name.`)
+      return
+    }
+    const nextName = composeVaultFolderName(nextLeafName, parentId, folders)
+    if (!nextName) {
+      setError(t`Choose an available parent folder.`)
+      return
+    }
+    if (nextName.length > MAX_VAULT_FOLDER_NAME_LENGTH) {
+      setError(t`Folder names can be up to ${MAX_VAULT_FOLDER_NAME_LENGTH} characters.`)
+      return
+    }
+    if (isVaultFolderNameDuplicate(nextName, folders, folder?.id)) {
+      setError(t`That name is already in use. Choose another name.`)
       return
     }
     setError('')
@@ -142,6 +166,20 @@ export function FolderDialog({
     }
   }
 
+  const parentItems = [
+    { label: t`No parent folder`, displayLabel: t`No parent folder`, value: '', depth: 0 },
+    ...vaultFolderParentCandidateRows(folders, folder).map((row) => ({
+      label: row.folder.name,
+      displayLabel: row.label,
+      value: row.folder.id,
+      depth: row.depth
+    }))
+  ]
+  const selectedParent = folders.find((candidate) => candidate.id === parentId)
+  const leafNameMaxLength = selectedParent
+    ? Math.max(0, MAX_VAULT_FOLDER_NAME_LENGTH - selectedParent.name.length - 1)
+    : MAX_VAULT_FOLDER_NAME_LENGTH
+
   return (
     <Modal
       title={folder ? t`Edit folder` : t`Add folder`}
@@ -151,21 +189,53 @@ export function FolderDialog({
     >
       <form onSubmit={submit}>
         <ModalBody>
-          <Field data-invalid={Boolean(error)}>
-            <FieldLabel htmlFor="folder-name">
-              <Trans>Name</Trans>
-            </FieldLabel>
-            <Input
-              id="folder-name"
-              autoFocus
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              maxLength={80}
-              disabled={busy}
-              aria-invalid={Boolean(error)}
-              aria-describedby={error ? 'folder-error' : undefined}
-            />
-          </Field>
+          <FieldGroup>
+            <Field data-invalid={Boolean(error)}>
+              <FieldLabel htmlFor="folder-name">
+                <Trans>Name</Trans>
+              </FieldLabel>
+              <Input
+                id="folder-name"
+                autoFocus
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                maxLength={leafNameMaxLength}
+                disabled={busy}
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? 'folder-error' : undefined}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="folder-parent">
+                <Trans>Parent folder</Trans>
+              </FieldLabel>
+              <Select
+                items={parentItems}
+                value={parentId}
+                onValueChange={(value) => setParentId(value ?? '')}
+                disabled={busy}
+              >
+                <SelectTrigger id="folder-parent" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {parentItems.map((parent) => (
+                      <SelectItem
+                        key={parent.value || 'no-parent'}
+                        value={parent.value}
+                        label={parent.label}
+                        aria-label={parent.label}
+                        style={{ paddingInlineStart: `${6 + parent.depth * 16}px` }}
+                      >
+                        {parent.displayLabel}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+          </FieldGroup>
           {error && (
             <Alert id="folder-error" variant="destructive">
               <AlertDescription>{error}</AlertDescription>

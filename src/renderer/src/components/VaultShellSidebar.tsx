@@ -1,11 +1,10 @@
-import { useDndContext } from '@dnd-kit/core'
+import { useDndContext, useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useShallow } from 'zustand/react/shallow'
 import {
   Archive,
   ChevronUp,
-  Clock3,
   LockKeyhole,
   Plus,
   Send as SendIcon,
@@ -19,12 +18,12 @@ import {
   UsersRound,
   type LucideIcon
 } from 'lucide-react'
-import type { ComponentProps, JSX, RefObject } from 'react'
+import { useMemo, useState, type ComponentProps, type JSX, type RefObject } from 'react'
 import type { FolderView, SyncStatus } from '../../../shared/vault-contract'
 import type { VaultCategoryFilter } from '../lib/vault-category'
 import { useVaultSessionStore } from '../stores/vault-session-store'
 import type { Scope } from './VaultShell-model'
-import { quickAccessDropIds } from './VaultShell-dnd'
+import { folderRootDropId, quickAccessDropIds } from './VaultShell-dnd'
 import { SidebarLink, UnfiledRow, type SidebarTone } from './VaultShell-primitives'
 import { FolderRow } from './DndRows'
 import { Button } from '@renderer/components/ui/button'
@@ -41,6 +40,12 @@ import {
 import { Kbd } from '@renderer/components/ui/kbd'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { cn } from '@renderer/lib/utils'
+import {
+  vaultFolderAggregateCounts,
+  vaultFolderHierarchyRows,
+  vaultFolderVisibleItemCount,
+  visibleVaultFolderHierarchyRows
+} from '@renderer/lib/vault-folder-tree'
 
 interface VaultSidebarAppearance {
   isMac: boolean
@@ -58,9 +63,8 @@ interface VaultSidebarCategory {
 interface VaultSidebarNavigation {
   categories: readonly VaultSidebarCategory[]
   categoryCounts: ReadonlyMap<VaultCategoryFilter, number>
-  quickAccessCounts: {
+  specialFolderCounts: {
     favorites: number
-    recentlyUsed: number
     archive: number
     trash: number
   }
@@ -151,7 +155,36 @@ export function VaultShellSidebar({
   )
   const SyncSidebarIcon = account.syncIcon
   const sidebarAccountName = account.name
-  const canDropIntoQuickAccess = scope.kind !== 'archive' && scope.kind !== 'trash'
+  const canDropIntoSpecialFolder = scope.kind !== 'archive' && scope.kind !== 'trash'
+  const [collapsedFolderIds, setCollapsedFolderIds] = useState<ReadonlySet<string>>(() => new Set())
+  const folderRows = useMemo(() => vaultFolderHierarchyRows(folders), [folders])
+  const { active, over } = useDndContext()
+  const activeFolderDrag = active
+    ? folders.some((folder) => folder.id === String(active.id))
+    : false
+  const temporarilyExpandedFolderId =
+    activeFolderDrag && over && folders.some((folder) => folder.id === String(over.id))
+      ? String(over.id)
+      : null
+  const effectiveCollapsedFolderIds = useMemo(() => {
+    if (!temporarilyExpandedFolderId || !collapsedFolderIds.has(temporarilyExpandedFolderId)) {
+      return collapsedFolderIds
+    }
+    const next = new Set(collapsedFolderIds)
+    next.delete(temporarilyExpandedFolderId)
+    return next
+  }, [collapsedFolderIds, temporarilyExpandedFolderId])
+  const visibleFolderRows = useMemo(
+    () => visibleVaultFolderHierarchyRows(folderRows, effectiveCollapsedFolderIds),
+    [effectiveCollapsedFolderIds, folderRows]
+  )
+  const aggregateFolderCounts = useMemo(
+    () => vaultFolderAggregateCounts(folderRows, navigation.folderCounts),
+    [folderRows, navigation.folderCounts]
+  )
+  const { setNodeRef: setFolderRootRef, isOver: isOverFolderRoot } = useDroppable({
+    id: folderRootDropId
+  })
 
   return (
     <aside
@@ -197,58 +230,17 @@ export function VaultShellSidebar({
 
         <section
           className={cn(folderSectionClassName, 'px-[9px] py-1')}
-          aria-labelledby="quick-title"
-        >
-          <header>
-            <h2 id="quick-title">
-              <Trans>Quick access</Trans>
-            </h2>
-          </header>
-          <nav className="grid gap-[3px] px-2.5 py-1" aria-label={t`Quick access`}>
-            <SidebarLink
-              icon={<Star size={16} />}
-              label={t`Favorites`}
-              count={navigation.quickAccessCounts.favorites}
-              active={scope.kind === 'favorites'}
-              dropTargetId={canDropIntoQuickAccess ? quickAccessDropIds.favorites : undefined}
-              onClick={() => actions.onSelectScope({ kind: 'favorites' })}
-            />
-            <SidebarLink
-              icon={<Clock3 size={16} />}
-              label={t({
-                message: 'Recently used',
-                context: 'recent-items-filter',
-                comment:
-                  'Navigation and sort label for vault items that have been used most recently.'
-              })}
-              count={navigation.quickAccessCounts.recentlyUsed}
-              active={scope.kind === 'recent'}
-              onClick={() => actions.onSelectScope({ kind: 'recent' })}
-            />
-            <SidebarLink
-              icon={<Archive size={16} />}
-              label={t`Archive`}
-              count={navigation.quickAccessCounts.archive}
-              active={scope.kind === 'archive'}
-              dropTargetId={canDropIntoQuickAccess ? quickAccessDropIds.archive : undefined}
-              onClick={() => actions.onSelectScope({ kind: 'archive' })}
-            />
-            <SidebarLink
-              icon={<Trash2 size={16} />}
-              label={t`Trash`}
-              count={navigation.quickAccessCounts.trash}
-              active={scope.kind === 'trash'}
-              dropTargetId={scope.kind === 'trash' ? undefined : quickAccessDropIds.trash}
-              onClick={() => actions.onSelectScope({ kind: 'trash' })}
-            />
-          </nav>
-        </section>
-
-        <section
-          className={cn(folderSectionClassName, 'px-[9px] py-1')}
           aria-labelledby="folders-title"
         >
-          <header>
+          <header
+            ref={setFolderRootRef}
+            className={cn(
+              'rounded-lg transition-shadow',
+              activeFolderDrag &&
+                isOverFolderRoot &&
+                'bg-sidebar-overlay-active ring-sidebar-ring ring-2'
+            )}
+          >
             <h2 id="folders-title">
               <Trans>Folders</Trans>
             </h2>
@@ -264,25 +256,79 @@ export function VaultShellSidebar({
             </SidebarTooltipIconButton>
           </header>
           <ul className="m-0 [scrollbar-color:var(--sidebar-ring)_transparent] list-none overflow-visible p-0">
+            <li className="grid">
+              <SidebarLink
+                icon={<Star size={16} />}
+                label={t`Favorites`}
+                count={navigation.specialFolderCounts.favorites}
+                active={scope.kind === 'favorites'}
+                dropTargetId={canDropIntoSpecialFolder ? quickAccessDropIds.favorites : undefined}
+                onClick={() => actions.onSelectScope({ kind: 'favorites' })}
+              />
+            </li>
+            <li className="grid">
+              <SidebarLink
+                icon={<Archive size={16} />}
+                label={t`Archive`}
+                count={navigation.specialFolderCounts.archive}
+                active={scope.kind === 'archive'}
+                dropTargetId={canDropIntoSpecialFolder ? quickAccessDropIds.archive : undefined}
+                onClick={() => actions.onSelectScope({ kind: 'archive' })}
+              />
+            </li>
+            <li className="grid">
+              <SidebarLink
+                icon={<Trash2 size={16} />}
+                label={t`Trash`}
+                count={navigation.specialFolderCounts.trash}
+                active={scope.kind === 'trash'}
+                dropTargetId={scope.kind === 'trash' ? undefined : quickAccessDropIds.trash}
+                onClick={() => actions.onSelectScope({ kind: 'trash' })}
+              />
+            </li>
             <UnfiledRow
               selected={scope.kind === 'unfiled'}
               count={navigation.folderCounts.get(null) ?? 0}
               onSelect={() => actions.onSelectScope({ kind: 'unfiled' })}
             />
             <SortableContext
-              items={folders.map((folder) => folder.id)}
+              items={visibleFolderRows.map((row) => row.folder.id)}
               strategy={verticalListSortingStrategy}
             >
-              {folders.map((folder) => (
-                <FolderRow
-                  key={folder.id}
-                  folder={folder}
-                  count={navigation.folderCounts.get(folder.id) ?? 0}
-                  selected={scope.kind === 'folder' && scope.folderId === folder.id}
-                  onSelect={() => actions.onSelectScope({ kind: 'folder', folderId: folder.id })}
-                  onEdit={() => actions.onEditFolder(folder)}
-                />
-              ))}
+              {visibleFolderRows.map((row) => {
+                const { folder, label, depth, hasChildren } = row
+                const expanded = !effectiveCollapsedFolderIds.has(folder.id)
+                const count = vaultFolderVisibleItemCount(
+                  row,
+                  expanded,
+                  navigation.folderCounts,
+                  aggregateFolderCounts
+                )
+
+                return (
+                  <FolderRow
+                    key={folder.id}
+                    folder={folder}
+                    label={label}
+                    depth={depth}
+                    count={count}
+                    hasChildren={hasChildren}
+                    expanded={expanded}
+                    toggleDisabled={activeFolderDrag}
+                    selected={scope.kind === 'folder' && scope.folderId === folder.id}
+                    onToggle={() =>
+                      setCollapsedFolderIds((current) => {
+                        const next = new Set(current)
+                        if (next.has(folder.id)) next.delete(folder.id)
+                        else next.add(folder.id)
+                        return next
+                      })
+                    }
+                    onSelect={() => actions.onSelectScope({ kind: 'folder', folderId: folder.id })}
+                    onEdit={() => actions.onEditFolder(folder)}
+                  />
+                )
+              })}
             </SortableContext>
           </ul>
         </section>

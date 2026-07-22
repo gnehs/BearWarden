@@ -16,7 +16,6 @@ export interface VaultSearchMatches {
 export type VaultSearchNavigationScope =
   | { kind: 'all' }
   | { kind: 'favorites' }
-  | { kind: 'recent' }
   | { kind: 'folder'; folderId: string }
   | { kind: 'unfiled' }
   | { kind: 'archive' }
@@ -68,7 +67,6 @@ export function matchesVaultSearchNavigation(
 
   if (normalizedVaultSearchQuery(query)) return true
   if (scope.kind === 'favorites' && !item.favorite) return false
-  if (scope.kind === 'recent' && !item.lastUsedAt) return false
   if (scope.kind === 'folder' && item.folderId !== scope.folderId) return false
   if (scope.kind === 'unfiled' && item.folderId !== null) return false
   return matchesVaultCategory(item, category)

@@ -1,8 +1,9 @@
 import { DndContext } from '@dnd-kit/core'
+import { SortableContext } from '@dnd-kit/sortable'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import type { LoginSummary, TotpCodeView } from '../../../shared/vault-contract'
-import { ItemRow } from './DndRows'
+import type { FolderView, LoginSummary, TotpCodeView } from '../../../shared/vault-contract'
+import { FolderRow, ItemRow } from './DndRows'
 
 vi.mock('./PaymentCardBrandMark', () => ({ default: () => <span /> }))
 vi.mock('./WebsiteIcon', () => ({ default: () => <span /> }))
@@ -57,5 +58,84 @@ describe('ItemRow TOTP countdown', () => {
     expect(markup).not.toContain('grid-cols-[minmax(0,1fr)_28px]')
     expect(markup).not.toContain('role="progressbar"')
     expect(markup).not.toContain('>8s<')
+  })
+})
+
+describe('FolderRow hierarchy', () => {
+  it('shows the leaf label while retaining the complete path for assistive text and actions', () => {
+    const folder: FolderView = {
+      id: 'bank',
+      name: '金融/銀行',
+      position: 0,
+      createdAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:00.000Z'
+    }
+    const markup = renderToStaticMarkup(
+      <DndContext>
+        <SortableContext items={[folder.id]}>
+          <FolderRow
+            folder={folder}
+            label="銀行"
+            depth={1}
+            selected={false}
+            count={2}
+            onSelect={vi.fn()}
+            onEdit={vi.fn()}
+          />
+        </SortableContext>
+      </DndContext>
+    )
+
+    expect(markup).toContain('padding-inline-start:25px')
+    expect(markup).toContain('aria-label="金融/銀行"')
+    expect(markup).toContain('cursor-grab')
+    expect(markup).toContain('>銀行</span>')
+    expect(markup).not.toContain('>金融/銀行</span>')
+    expect(markup).not.toContain('lucide-grip-vertical')
+  })
+
+  it('exposes an independent expansion control only for folders with children', () => {
+    const folder: FolderView = {
+      id: 'finance',
+      name: '金融',
+      position: 0,
+      createdAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:00.000Z'
+    }
+    const parentMarkup = renderToStaticMarkup(
+      <DndContext>
+        <SortableContext items={[folder.id]}>
+          <FolderRow
+            folder={folder}
+            hasChildren
+            expanded={false}
+            selected={false}
+            count={7}
+            onToggle={vi.fn()}
+            onSelect={vi.fn()}
+            onEdit={vi.fn()}
+          />
+        </SortableContext>
+      </DndContext>
+    )
+    const leafMarkup = renderToStaticMarkup(
+      <DndContext>
+        <SortableContext items={[folder.id]}>
+          <FolderRow
+            folder={folder}
+            selected={false}
+            count={2}
+            onSelect={vi.fn()}
+            onEdit={vi.fn()}
+          />
+        </SortableContext>
+      </DndContext>
+    )
+
+    expect(parentMarkup).toContain('aria-expanded="false"')
+    expect(parentMarkup).toContain('padding-inline-start:9px')
+    expect(parentMarkup).toContain('>7</small>')
+    expect(leafMarkup).not.toContain('aria-expanded=')
+    expect(leafMarkup).toContain('>2</small>')
   })
 })

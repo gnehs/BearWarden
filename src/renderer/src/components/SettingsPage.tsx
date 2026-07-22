@@ -484,7 +484,7 @@ function SettingsPage({
       label: t({
         message: 'Recently used',
         context: 'recent-items-filter',
-        comment: 'Navigation and sort label for vault items that have been used most recently.'
+        comment: 'Sort label for vault items that have been used most recently.'
       }),
       value: 'recent'
     },

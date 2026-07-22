@@ -10,6 +10,22 @@ export const quickAccessDropIds = {
 
 export type QuickAccessDropAction = keyof typeof quickAccessDropIds
 export type DraggableItemState = 'active' | 'archive'
+export const FOLDER_HIERARCHY_DRAG_THRESHOLD = 18
+export const folderRootDropId = 'folder:root'
+
+export interface FolderHierarchyDragIntent {
+  parentId: string | null
+}
+
+export function folderHierarchyDragIntent(
+  overId: string | null,
+  deltaX: number
+): FolderHierarchyDragIntent | null {
+  if (overId === folderRootDropId) return { parentId: null }
+  if (deltaX <= -FOLDER_HIERARCHY_DRAG_THRESHOLD) return { parentId: null }
+  if (deltaX >= FOLDER_HIERARCHY_DRAG_THRESHOLD && overId) return { parentId: overId }
+  return null
+}
 
 export const precisePointerCollisionDetection: CollisionDetection = (args) =>
   args.pointerCoordinates === null ? closestCenter(args) : pointerWithin(args)

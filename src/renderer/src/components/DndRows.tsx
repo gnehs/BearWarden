@@ -7,10 +7,10 @@ import { useLingui } from '@lingui/react/macro'
 import {
   ContactRound,
   CreditCard,
+  ChevronRight,
   FileKey2,
   Folder,
   Globe2,
-  GripVertical,
   MoreHorizontal,
   NotebookPen,
   Star
@@ -272,64 +272,113 @@ export const ItemRow = memo(function ItemRow({
 
 interface FolderRowProps {
   folder: FolderView
+  label?: string
+  depth?: number
   selected: boolean
   count: number
+  hasChildren?: boolean
+  expanded?: boolean
+  toggleDisabled?: boolean
+  onToggle?: () => void
   onSelect: () => void
   onEdit: () => void
 }
 
 export function FolderRow({
   folder,
+  label = folder.name,
+  depth = 0,
   selected,
   count,
+  hasChildren = false,
+  expanded = true,
+  toggleDisabled = false,
+  onToggle,
   onSelect,
   onEdit
 }: FolderRowProps): React.JSX.Element {
   const { t } = useLingui()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } =
-    useSortable({ id: folder.id })
+    useSortable({
+      id: folder.id,
+      attributes: {
+        role: 'listitem',
+        roleDescription: t`Draggable item`
+      }
+    })
+  const toggleLabel = hasChildren
+    ? expanded
+      ? t({
+          message: `Collapse ${folder.name}`,
+          comment: 'Disclosure button label for collapsing a folder subtree in the vault sidebar.'
+        })
+      : t({
+          message: `Expand ${folder.name}`,
+          comment: 'Disclosure button label for expanding a folder subtree in the vault sidebar.'
+        })
+    : ''
 
   return (
     <li
       ref={setNodeRef}
+      {...attributes}
+      {...listeners}
       className={cn(
-        'group/folder text-foreground grid min-h-9 grid-cols-[22px_minmax(0,1fr)_25px] items-center rounded-lg',
+        'group/folder text-foreground relative grid min-h-[38px] cursor-grab touch-none grid-cols-[22px_minmax(0,1fr)] items-center gap-2 rounded-lg pe-[9px]',
         !selected && !isOver && !isDragging && 'hover:bg-sidebar-overlay-hover',
         selected && !isDragging && 'bg-sidebar-overlay-active shadow-none',
         isDragging &&
-          'bg-sidebar-overlay-active relative z-10 shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--sidebar-primary)_55%,transparent)] forced-colors:outline-2 forced-colors:outline-offset-[-2px] forced-colors:outline-[Highlight]',
+          'bg-sidebar-overlay-active relative z-10 cursor-grabbing shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--sidebar-primary)_55%,transparent)] forced-colors:outline-2 forced-colors:outline-offset-[-2px] forced-colors:outline-[Highlight]',
         isOver &&
           !isDragging &&
           'bg-sidebar-overlay-active shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--sidebar-primary)_55%,transparent)] forced-colors:outline-2 forced-colors:outline-offset-[-2px] forced-colors:outline-[Highlight]'
       )}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        paddingInlineStart: `${9 + depth * 16}px`
+      }}
     >
-      <RowIconButton
-        variant="ghost"
-        size="icon-sm"
-        className="group-hover/folder:text-muted-foreground focus-visible:text-muted-foreground grid h-[30px] w-6 place-items-center border-0 bg-transparent p-0 text-transparent shadow-none hover:bg-transparent hover:shadow-none"
-        type="button"
-        label={t`Reorder ${folder.name}`}
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical aria-hidden="true" />
-      </RowIconButton>
+      {hasChildren ? (
+        <RowIconButton
+          variant="ghost"
+          size="icon-sm"
+          className="text-muted-foreground hover:text-foreground grid size-[22px] place-items-center border-0 bg-transparent p-0 shadow-none hover:bg-transparent hover:shadow-none aria-expanded:bg-transparent aria-expanded:text-inherit aria-expanded:shadow-none"
+          type="button"
+          label={toggleLabel}
+          aria-expanded={expanded}
+          disabled={toggleDisabled}
+          onClick={onToggle}
+        >
+          <ChevronRight
+            data-icon="inline-start"
+            className={cn('transition-transform duration-150', expanded && 'rotate-90')}
+            aria-hidden="true"
+          />
+        </RowIconButton>
+      ) : (
+        <span
+          className="text-muted-foreground grid size-[22px] place-items-center [&>svg]:size-4"
+          aria-hidden="true"
+        >
+          <Folder />
+        </span>
+      )}
       <Button
         variant="sidebar"
-        className="[&>small]:text-muted-foreground grid h-[34px] min-w-0 grid-cols-[21px_minmax(0,1fr)_auto] items-center gap-1 border-0 bg-transparent p-0 text-left text-inherit hover:bg-transparent hover:shadow-none aria-expanded:bg-transparent aria-expanded:shadow-none [&>small]:min-w-[3ch] [&>small]:pr-1 [&>small]:text-right [&>small]:text-[10px] [&>small]:tabular-nums [&>span]:truncate [&>span]:text-xs"
+        className="[&>small]:text-muted-foreground grid h-[34px] min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-0 bg-transparent p-0 text-left text-inherit shadow-none hover:bg-transparent hover:shadow-none aria-expanded:bg-transparent aria-expanded:shadow-none [&>small]:min-w-[3ch] [&>small]:text-right [&>small]:text-[10px] [&>small]:tabular-nums [&>small]:transition-opacity group-hover/folder:[&>small]:opacity-0 [&>span]:truncate [&>span]:text-xs [&>span]:font-[610]"
         type="button"
+        aria-label={folder.name}
         aria-current={selected ? 'page' : undefined}
         onClick={onSelect}
       >
-        <Folder aria-hidden="true" />
-        <span>{folder.name}</span>
+        <span>{label}</span>
         <small aria-label={t`${count} items`}>{count}</small>
       </Button>
       <RowIconButton
         variant="ghost"
         size="icon-sm"
-        className="group-hover/folder:text-muted-foreground focus-visible:text-muted-foreground grid h-[30px] w-6 place-items-center border-0 bg-transparent p-0 text-transparent shadow-none hover:bg-transparent hover:shadow-none"
+        className="text-muted-foreground focus-visible:text-muted-foreground hover:text-foreground absolute end-0 grid size-6 place-items-center border-0 bg-transparent p-0 opacity-0 shadow-none transition-opacity group-hover/folder:opacity-100 hover:bg-transparent hover:shadow-none focus-visible:opacity-100"
         type="button"
         label={t`Edit folder ${folder.name}`}
         onClick={onEdit}

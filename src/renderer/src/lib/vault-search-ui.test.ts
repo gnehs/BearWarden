@@ -105,7 +105,7 @@ describe('vault search renderer policy', () => {
       )
     ).toBe(true)
     expect(matchesVaultSearchNavigation(item, 'card', { kind: 'favorites' }, 'totp')).toBe(true)
-    expect(matchesVaultSearchNavigation(item, 'card', { kind: 'recent' }, 'passkey')).toBe(true)
+    expect(matchesVaultSearchNavigation(item, 'card', { kind: 'all' }, 'passkey')).toBe(true)
   })
 
   it('keeps lifecycle boundaries while searching globally across categories', () => {

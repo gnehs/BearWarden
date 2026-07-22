@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  folderHierarchyDragIntent,
+  folderRootDropId,
   itemDropPreviewDescription,
   precisePointerCollisionDetection,
   quickAccessDropAction,
@@ -149,5 +151,24 @@ describe('precisePointerCollisionDetection', () => {
     expect(precisePointerCollisionDetection({ ...baseArgs, pointerCoordinates: null })[0]?.id).toBe(
       'bottom'
     )
+  })
+})
+
+describe('folderHierarchyDragIntent', () => {
+  it('keeps vertical movement available for folder reordering', () => {
+    expect(folderHierarchyDragIntent('folder-2', 17)).toBeNull()
+    expect(folderHierarchyDragIntent('folder-2', -17)).toBeNull()
+  })
+
+  it('uses rightward movement to choose a parent folder', () => {
+    expect(folderHierarchyDragIntent('folder-2', 18)).toEqual({ parentId: 'folder-2' })
+  })
+
+  it('uses leftward movement to move a folder to the root', () => {
+    expect(folderHierarchyDragIntent('folder-2', -18)).toEqual({ parentId: null })
+  })
+
+  it('uses the explicit root target without requiring horizontal movement', () => {
+    expect(folderHierarchyDragIntent(folderRootDropId, 0)).toEqual({ parentId: null })
   })
 })

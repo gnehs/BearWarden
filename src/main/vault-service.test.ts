@@ -6181,6 +6181,62 @@ describe('VaultService encrypted local data', () => {
     expect(await service.listLogins()).toEqual([])
   })
 
+  it('reparents a folder subtree atomically and rejects invalid destinations', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const source = await service.createFolder({ name: 'Source' })
+    const child = await service.createFolder({ name: 'Source/Child' })
+    const grandchild = await service.createFolder({ name: 'Source/Child/Grandchild' })
+    const destination = await service.createFolder({ name: 'Destination' })
+
+    await service.reparentFolder({ id: child.id, parentId: destination.id })
+    expect((await service.listFolders()).map((folder) => folder.name)).toEqual([
+      'Source',
+      'Destination/Child',
+      'Destination/Child/Grandchild',
+      'Destination'
+    ])
+
+    const beforeInvalidMove = await service.listFolders()
+    await expect(
+      service.reparentFolder({ id: destination.id, parentId: grandchild.id })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    expect(await service.listFolders()).toEqual(beforeInvalidMove)
+
+    await service.createFolder({ name: 'Child' })
+    await expect(service.reparentFolder({ id: child.id, parentId: null })).rejects.toMatchObject({
+      code: 'DUPLICATE_NAME'
+    })
+    expect((await service.listFolders()).find((folder) => folder.id === child.id)?.name).toBe(
+      'Destination/Child'
+    )
+    expect(source.name).toBe('Source')
+  })
+
+  it('renames a folder subtree atomically', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const source = await service.createFolder({ name: 'Source' })
+    await service.createFolder({ name: 'Source/Child' })
+    await service.createFolder({ name: 'Source/Child/Grandchild' })
+    await service.createFolder({ name: 'Destination' })
+
+    const renamed = await service.updateFolder({ id: source.id, name: 'Destination/Source' })
+    expect(renamed.map((folder) => folder.name)).toEqual([
+      'Destination/Source',
+      'Destination/Source/Child',
+      'Destination/Source/Child/Grandchild',
+      'Destination'
+    ])
+
+    await service.createFolder({ name: 'Existing' })
+    const beforeDuplicate = await service.listFolders()
+    await expect(service.updateFolder({ id: source.id, name: 'Existing' })).rejects.toMatchObject({
+      code: 'DUPLICATE_NAME'
+    })
+    expect(await service.listFolders()).toEqual(beforeDuplicate)
+  })
+
   it('prefetches one detached visible batch without waiting behind the vault operation queue', async () => {
     const { service } = await createHarness()
     await service.setup(MASTER_PASSWORD)

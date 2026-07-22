@@ -85,10 +85,12 @@ import {
   protectedDetailInvalidationIds
 } from './VaultShell-security'
 import {
+  folderHierarchyDragIntent,
   itemDropPreviewDescription,
   precisePointerCollisionDetection,
   quickAccessDropAction
 } from './VaultShell-dnd'
+import { planVaultFolderMove, vaultFolderHierarchyRows } from '@renderer/lib/vault-folder-tree'
 import SettingsPage from './SettingsPage'
 import SendsPage from './SendsPage'
 import OrganizationsPage from './OrganizationsPage'
@@ -300,7 +302,7 @@ function VaultShellContent({
       label: t({
         message: 'Recently used',
         context: 'recent-items-filter',
-        comment: 'Navigation and sort label for vault items that have been used most recently.'
+        comment: 'Sort label for vault items that have been used most recently.'
       }),
       value: 'recent'
     },
@@ -1717,18 +1719,17 @@ function VaultShellContent({
     [detailFieldLabels, selectedLogin]
   )
   const itemGroups = useMemo(() => {
-    const effectiveSort = scope.kind === 'recent' ? 'recent' : sortMode
-    if (effectiveSort === 'title' || effectiveSort === 'frequency') {
+    if (sortMode === 'title' || sortMode === 'frequency') {
       return [{ key: 'name', label: null, items: scopedItems }]
     }
     return groupItemsByDate(
       scopedItems,
       new Date(),
-      effectiveSort === 'modified' ? 'updatedAt' : 'activity'
+      sortMode === 'modified' ? 'updatedAt' : 'activity'
     )
       .filter((group) => group.items.length > 0)
       .map((group) => ({ ...group, label: group.label as string | null }))
-  }, [scope.kind, scopedItems, sortMode])
+  }, [scopedItems, sortMode])
   const folderIds = useMemo(() => new Set(folders.map((folder) => folder.id)), [folders])
   const activeItems = useMemo(
     () => items.filter((item) => !item.deletedAt && !item.archivedAt),
@@ -1762,13 +1763,6 @@ function VaultShellContent({
 
   const scopeTitle = useMemo(() => {
     if (scope.kind === 'favorites') return t`Favorites`
-    if (scope.kind === 'recent') {
-      return t({
-        message: 'Recently used',
-        context: 'recent-items-filter',
-        comment: 'Navigation and sort label for vault items that have been used most recently.'
-      })
-    }
     if (scope.kind === 'unfiled') return t`Unfiled`
     if (scope.kind === 'archive') return t`Archive`
     if (scope.kind === 'trash') return t`Trash`
@@ -2406,11 +2400,13 @@ function VaultShellContent({
         setFolders((current) => [...current, created].sort((a, b) => a.position - b.position))
         announce(t`Created folder “${created.name}”.`)
       } else if (folderDialog) {
-        const updated = await window.bearwarden.folders.update({ id: folderDialog.id, name })
-        setFolders((current) =>
-          current.map((folder) => (folder.id === updated.id ? updated : folder))
-        )
-        announce(t`Renamed to “${updated.name}”.`)
+        const updatedFolders = await window.bearwarden.folders.update({
+          id: folderDialog.id,
+          name
+        })
+        setFolders([...updatedFolders].sort((left, right) => left.position - right.position))
+        const updated = updatedFolders.find((folder) => folder.id === folderDialog.id)
+        if (updated) announce(t`Renamed to “${updated.name}”.`)
       }
       setFolderDialog(null)
     } catch (folderError) {
@@ -3170,19 +3166,27 @@ function VaultShellContent({
     setActiveDragOverId(event.over ? String(event.over.id) : null)
     const activeId = String(event.active.id)
     const overId = event.over ? String(event.over.id) : null
-    if (!overId || activeId === overId) return
-    if (!folderIds.has(activeId) || !folderIds.has(overId)) return
-    setFolders((previous) => {
-      const oldIndex = previous.findIndex((folder) => folder.id === activeId)
-      const newIndex = previous.findIndex((folder) => folder.id === overId)
-      if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return previous
-      const reordered = arrayMove(previous, oldIndex, newIndex).map((folder, position) => ({
-        ...folder,
-        position
-      }))
-      foldersDuringDragRef.current = reordered
-      return reordered
-    })
+    const previousFolders = foldersBeforeDragRef.current
+    if (!previousFolders || !folderIds.has(activeId)) return
+
+    const hierarchyIntent = folderHierarchyDragIntent(overId, event.delta.x)
+    if (hierarchyIntent) {
+      const plan = planVaultFolderMove(previousFolders, activeId, hierarchyIntent.parentId)
+      foldersDuringDragRef.current = previousFolders
+      setFolders(plan.kind === 'move' ? plan.folders : previousFolders)
+      return
+    }
+
+    if (!overId || activeId === overId || !folderIds.has(overId)) return
+    const visualFolders = vaultFolderHierarchyRows(previousFolders).map((row) => row.folder)
+    const oldIndex = visualFolders.findIndex((folder) => folder.id === activeId)
+    const newIndex = visualFolders.findIndex((folder) => folder.id === overId)
+    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return
+    const reordered = vaultFolderHierarchyRows(arrayMove(visualFolders, oldIndex, newIndex)).map(
+      ({ folder }, position) => ({ ...folder, position })
+    )
+    foldersDuringDragRef.current = reordered
+    setFolders(reordered)
   }
 
   function cancelDrag(): void {
@@ -3226,6 +3230,37 @@ function VaultShellContent({
       return
     }
     if (!previousFolders || !folderIds.has(activeId)) return
+    const hierarchyIntent = folderHierarchyDragIntent(overId, event.delta.x)
+    if (hierarchyIntent) {
+      const plan = planVaultFolderMove(previousFolders, activeId, hierarchyIntent.parentId)
+      setFolders(previousFolders)
+      if (plan.kind === 'noop') return
+      if (plan.kind === 'invalid') {
+        announceError(t`That folder can't be moved there.`)
+        return
+      }
+      try {
+        const saved = await window.bearwarden.folders.reparent({
+          id: activeId,
+          parentId: hierarchyIntent.parentId
+        })
+        setFolders([...saved].sort((left, right) => left.position - right.position))
+        const movedFolder = saved.find((folder) => folder.id === activeId)
+        const parentFolder =
+          hierarchyIntent.parentId === null
+            ? null
+            : saved.find((folder) => folder.id === hierarchyIntent.parentId)
+        if (movedFolder && parentFolder) {
+          announce(t`Moved “${movedFolder.name}” into “${parentFolder.name}”.`)
+        } else if (movedFolder) {
+          announce(t`Moved “${movedFolder.name}” to the top level.`)
+        }
+      } catch (moveError) {
+        setFolders(previousFolders)
+        announceError(describeVaultError(moveError))
+      }
+      return
+    }
     const reordered = reorderedFolders ?? previousFolders
     const orderedIds = reordered.map((folder) => folder.id)
     if (orderedIds.every((id, index) => id === previousFolders[index]?.id)) return
@@ -3345,9 +3380,8 @@ function VaultShellContent({
             navigation={{
               categories: categoryMeta,
               categoryCounts,
-              quickAccessCounts: {
+              specialFolderCounts: {
                 favorites: activeItems.filter((item) => item.favorite).length,
-                recentlyUsed: activeItems.filter((item) => item.lastUsedAt).length,
                 archive: archivedItems.length,
                 trash: trashItems.length
               },
@@ -3902,6 +3936,7 @@ function VaultShellContent({
             busy,
             folder: {
               value: folderDialog,
+              folders,
               onClose: () => setFolderDialog(null),
               onSave: saveFolder,
               onDelete: deleteFolder

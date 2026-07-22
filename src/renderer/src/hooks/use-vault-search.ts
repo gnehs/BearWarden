@@ -116,7 +116,7 @@ export function useVaultSearch({
     const scoped = matchedItems.filter((item) =>
       matchesVaultSearchNavigation(item, query, scope, typeFilter)
     )
-    return sortVaultItems(scoped, scope.kind === 'recent' ? 'recent' : sortMode)
+    return sortVaultItems(scoped, sortMode)
   }, [items, query, scope, searchMatches, sortMode, typeFilter])
 
   return { searchOpen, searchRef, scopedItems, updateQuery, setSearchOpen }

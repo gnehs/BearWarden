@@ -78,6 +78,7 @@ const api: BearWardenAPI = {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.folderList),
     create: (request) => ipcRenderer.invoke(IPC_CHANNELS.folderCreate, request),
     update: (request) => ipcRenderer.invoke(IPC_CHANNELS.folderUpdate, request),
+    reparent: (request) => ipcRenderer.invoke(IPC_CHANNELS.folderReparent, request),
     delete: (request) => ipcRenderer.invoke(IPC_CHANNELS.folderDelete, request),
     reorder: (request) => ipcRenderer.invoke(IPC_CHANNELS.folderReorder, request)
   },

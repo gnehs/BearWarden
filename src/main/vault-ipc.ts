@@ -46,6 +46,7 @@ import {
   type FolderCreateRequest,
   type FolderDeleteRequest,
   type FolderReorderRequest,
+  type FolderReparentRequest,
   type FolderUpdateRequest,
   type GeneratedCredentialCopyRequest,
   type GeneratorHistoryLocator,
@@ -1172,6 +1173,13 @@ function parseFolderCreate(value: unknown): FolderCreateRequest {
 function parseFolderUpdate(value: unknown): FolderUpdateRequest {
   const record = exactRecord(value, ['id', 'name'])
   return { id: requiredString(record, 'id'), name: requiredString(record, 'name') }
+}
+
+function parseFolderReparent(value: unknown): FolderReparentRequest {
+  const record = exactRecord(value, ['id', 'parentId'])
+  const parentId = optionalStringOrNull(record, 'parentId')
+  if (parentId === undefined) throw new VaultError('INVALID_INPUT')
+  return { id: requiredString(record, 'id'), parentId }
 }
 
 function parseId(value: unknown): LoginIdRequest {
@@ -2555,6 +2563,9 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   )
   registerHandler(IPC_CHANNELS.folderUpdate, getMainWindow, (_event, input) =>
     afterMutation(vault.updateFolder(parseFolderUpdate(input)))
+  )
+  registerHandler(IPC_CHANNELS.folderReparent, getMainWindow, (_event, input) =>
+    afterMutation(vault.reparentFolder(parseFolderReparent(input)))
   )
   registerHandler(IPC_CHANNELS.folderDelete, getMainWindow, (event, input) => {
     const request = parseFolderDelete(input)
