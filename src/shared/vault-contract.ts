@@ -112,6 +112,7 @@ export const IPC_CHANNELS = {
   syncConnect: 'sync:connect',
   syncUnlock: 'sync:unlock',
   syncSendEmailTwoFactorCode: 'sync:send-email-two-factor-code',
+  syncResendNewDeviceOtp: 'sync:resend-new-device-otp',
   syncNow: 'sync:now',
   syncResolvePendingImport: 'sync:resolve-pending-import',
   syncPurgePersonalVault: 'sync:purge-personal-vault',
@@ -199,9 +200,14 @@ export type VaultErrorCode =
   | 'NOT_FOUND'
   | 'DUPLICATE_NAME'
   | 'INVALID_INPUT'
+  | 'POLICY_RESTRICTED'
   | 'INVALID_URL'
   | 'SYNC_AUTH_REQUIRED'
   | 'SYNC_NEW_DEVICE_REQUIRED'
+  | 'SYNC_SSO_REQUIRED'
+  | 'SYNC_DUO_UNSUPPORTED'
+  | 'SYNC_KEY_CONNECTOR_UNSUPPORTED'
+  | 'SYNC_TRUSTED_DEVICE_UNSUPPORTED'
   | 'SYNC_UNSUPPORTED_ACCOUNT'
   | 'SYNC_NETWORK'
   | 'SYNC_INVALID_RESPONSE'
@@ -1017,6 +1023,10 @@ export type SyncState = 'unconfigured' | 'locked' | 'ready' | 'syncing' | 'error
 export type SyncErrorCode =
   | 'SYNC_AUTH_REQUIRED'
   | 'SYNC_NEW_DEVICE_REQUIRED'
+  | 'SYNC_SSO_REQUIRED'
+  | 'SYNC_DUO_UNSUPPORTED'
+  | 'SYNC_KEY_CONNECTOR_UNSUPPORTED'
+  | 'SYNC_TRUSTED_DEVICE_UNSUPPORTED'
   | 'SYNC_UNSUPPORTED_ACCOUNT'
   | 'SYNC_NETWORK'
   | 'SYNC_INVALID_RESPONSE'
@@ -1026,6 +1036,21 @@ export type SyncErrorCode =
 
 export type SyncInvalidResponseStage =
   'response' | 'account' | 'organization' | 'folder' | 'cipher' | 'collection' | 'send' | 'snapshot'
+
+/** Value-free, closed reasons safe to surface in renderer sync diagnostics. */
+export type SyncInvalidResponseReason =
+  | 'response-shape'
+  | 'account-profile'
+  | 'user-decryption-data'
+  | 'organization-profile'
+  | 'organization-key'
+  | 'provider-organization-key'
+  | 'folder-data'
+  | 'unsupported-cipher-type'
+  | 'cipher-data'
+  | 'collection-data'
+  | 'send-data'
+  | 'snapshot-limit'
 
 export interface SyncStatus {
   configured: boolean
@@ -1039,6 +1064,8 @@ export interface SyncStatus {
   lastErrorAt?: string
   /** Coarse, renderer-safe location for an incompatible sync snapshot. */
   lastErrorDetail?: SyncInvalidResponseStage
+  /** Fixed, value-free reason set only for an incompatible sync response. */
+  lastErrorReason?: SyncInvalidResponseReason
   pendingImport?: {
     count: number
     startedAt: string
@@ -1094,6 +1121,13 @@ export interface SyncUnlockRequest {
 }
 
 export interface SyncEmailTwoFactorCodeRequest {
+  serverUrl: string
+  email: string
+  masterPassword: string
+}
+
+/** Credentials used only long enough to request a fresh new-device verification email. */
+export interface SyncResendNewDeviceOtpRequest {
   serverUrl: string
   email: string
   masterPassword: string
@@ -1974,6 +2008,7 @@ export interface BearWardenAPI {
     connect: (request: SyncConnectRequest) => Promise<SyncConnectResponse>
     unlock: (request: SyncUnlockRequest) => Promise<SyncUnlockResponse>
     sendEmailTwoFactorCode: (request: SyncEmailTwoFactorCodeRequest) => Promise<void>
+    resendNewDeviceOtp: (request: SyncResendNewDeviceOtpRequest) => Promise<void>
     now: () => Promise<SyncResult>
     resolvePendingImport: (request: SyncResolvePendingImportRequest) => Promise<SyncStatus>
     purgePersonalVault: (

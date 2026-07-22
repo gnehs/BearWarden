@@ -13,6 +13,7 @@ import type {
   VaultImportResult
 } from '../shared/vault-contract'
 import { type BitwardenSyncClient } from './bitwarden-direct'
+import { BITWARDEN_POLICY_TYPE } from './bitwarden-policy'
 import {
   buildBitwardenJson,
   parseBitwardenJson,
@@ -381,7 +382,13 @@ export class VaultTransferService extends VaultContentService {
   exportPortableSnapshot(masterPassword: string): Promise<VaultExportSnapshot> {
     return this.exclusive(async () => {
       await this.assertMasterPassword(masterPassword)
-      const snapshot = this.localSyncSnapshot(this.requireData())
+      const data = this.requireData()
+      this.assertBitwardenPolicyDoesNotBlock(
+        BITWARDEN_POLICY_TYPE.DisablePersonalVaultExport,
+        'POLICY_RESTRICTED',
+        data
+      )
+      const snapshot = this.localSyncSnapshot(data)
       const items = snapshot.logins.filter((item) => item.deletedAt === null)
       return {
         snapshot: {
@@ -412,6 +419,11 @@ export class VaultTransferService extends VaultContentService {
     const prepared = await this.exclusive(async () => {
       await this.assertMasterPassword(masterPassword)
       const data = this.requireData()
+      this.assertBitwardenPolicyDoesNotBlock(
+        BITWARDEN_POLICY_TYPE.DisablePersonalVaultExport,
+        'POLICY_RESTRICTED',
+        data
+      )
       assertNoPendingPersonalVaultPurge(data.sync)
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
@@ -660,6 +672,11 @@ export class VaultTransferService extends VaultContentService {
     return this.exclusive(async () => {
       await this.assertMasterPassword(masterPassword)
       const current = this.requireData()
+      this.assertBitwardenPolicyDoesNotBlock(
+        BITWARDEN_POLICY_TYPE.OrganizationDataOwnership,
+        'POLICY_RESTRICTED',
+        current
+      )
       assertNoPendingPersonalVaultPurge(current.sync)
       assertNoPendingLoginImport(current.sync)
       if (current.nativeAttachmentRestore !== null) throw new VaultError('INVALID_INPUT')
@@ -681,6 +698,8 @@ export class VaultTransferService extends VaultContentService {
         const accountFingerprint = this.nativeAttachmentRestoreAccountFingerprint(sync, client)
         const parsed = parseBitwardenJson(preview.vaultJson)
         if (parsed.skippedTrashItems !== 0) throw new VaultError('INVALID_INPUT')
+        for (const item of parsed.snapshot.items)
+          this.assertPersonalItemTypeAllowed(item.type, current)
         const next = cloneData(this.requireData())
         const imported = this.appendPortableSnapshot(next, parsed.snapshot)
         const sourceItemIds = new Set(parsed.snapshot.items.map((item) => item.id))
@@ -977,6 +996,11 @@ export class VaultTransferService extends VaultContentService {
     return this.exclusive(async () => {
       await this.assertMasterPassword(masterPassword)
       const current = this.requireData()
+      this.assertBitwardenPolicyDoesNotBlock(
+        BITWARDEN_POLICY_TYPE.OrganizationDataOwnership,
+        'POLICY_RESTRICTED',
+        current
+      )
       assertNoPendingPersonalVaultPurge(current.sync)
       if (
         !snapshot ||
@@ -991,6 +1015,8 @@ export class VaultTransferService extends VaultContentService {
       if (snapshot.folders.length === 0 && snapshot.items.length === 0) {
         return { importedFolders: 0, importedItems: 0, skippedTrashItems }
       }
+
+      for (const item of snapshot.items) this.assertPersonalItemTypeAllowed(item.type, current)
 
       const next = cloneData(current)
       const generation = this.generation

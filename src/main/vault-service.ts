@@ -28,6 +28,7 @@ import type {
 } from '../shared/vault-contract'
 import { MAX_LOGIN_AUTHORIZE_MANY_IDS, MAX_LOGIN_MOVE_MANY_IDS } from '../shared/vault-contract'
 import { VaultError } from './vault-errors'
+import { BITWARDEN_POLICY_TYPE } from './bitwarden-policy'
 import {
   createPasskeyCredential as createSoftwarePasskeyCredential,
   getPasskeyAssertion as createSoftwarePasskeyAssertion
@@ -353,6 +354,12 @@ export class VaultService extends VaultTransferService {
     return this.mutate((data, now) => {
       const folderId = this.normalizeFolderId(data, request.folderId)
       const type = normalizeItemType(request.type ?? 'login')
+      this.assertBitwardenPolicyDoesNotBlock(
+        BITWARDEN_POLICY_TYPE.OrganizationDataOwnership,
+        'POLICY_RESTRICTED',
+        data
+      )
+      this.assertPersonalItemTypeAllowed(type, data)
       const fields = emptyItemFields()
       applyItemFields(fields, request, type)
       const uris = createRequestUris(request, type)
@@ -392,6 +399,12 @@ export class VaultService extends VaultTransferService {
       assertUuid(request.id)
       const source = this.findLogin(data, request.id)
       this.assertActiveLogin(source)
+      this.assertBitwardenPolicyDoesNotBlock(
+        BITWARDEN_POLICY_TYPE.OrganizationDataOwnership,
+        'POLICY_RESTRICTED',
+        data
+      )
+      this.assertPersonalItemTypeAllowed(source.type, data)
       const clone: StoredLogin = {
         id: this.validatedNewId(),
         type: source.type,
@@ -480,6 +493,7 @@ export class VaultService extends VaultTransferService {
       assertUuid(request.id)
       const login = this.findLogin(data, request.id)
       this.assertActiveLogin(login)
+      this.assertPersonalItemTypeAllowed(login.type, data)
       if (
         request.expectedUpdatedAt !== undefined &&
         (typeof request.expectedUpdatedAt !== 'string' ||

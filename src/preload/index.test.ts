@@ -64,6 +64,21 @@ describe('preload sync API', () => {
     )
     electronMock.invoke.mockClear()
   })
+
+  it('passes only the typed new-device resend request through its dedicated channel', async () => {
+    electronMock.invoke.mockClear()
+    const api = electronMock.exposed() as BearWardenAPI
+    const request = {
+      serverUrl: 'https://vault.example.invalid',
+      email: 'person@example.invalid',
+      masterPassword: 'remote password'
+    }
+
+    await api.sync.resendNewDeviceOtp(request)
+
+    expect(electronMock.invoke).toHaveBeenCalledWith(IPC_CHANNELS.syncResendNewDeviceOtp, request)
+    electronMock.invoke.mockClear()
+  })
 })
 
 describe('preload account API', () => {
@@ -197,6 +212,7 @@ describe('preload pending import API', () => {
       'connect',
       'unlock',
       'sendEmailTwoFactorCode',
+      'resendNewDeviceOtp',
       'now',
       'resolvePendingImport',
       'purgePersonalVault',

@@ -110,16 +110,16 @@ Cloud 與支援中的 Vaultwarden 版本執行相容測試。
 
 - Bitwarden Cloud 的伺服器網址填 `https://bitwarden.com`。
 - Vaultwarden 填部署站台的 HTTPS 根網址；開發測試僅後端允許 loopback HTTP。
-- 支援 Authenticator、Email、YubiKey OTP、安全金鑰，以及新裝置電子郵件驗證碼。可列出、新增與逐把移除帳號 FIDO2 安全金鑰；登入與註冊的 challenge、assertion、attestation 及 server verification token 只在受限的主程序視窗中處理，不會進入主要 renderer。
+- 主密碼登入支援 PBKDF2／Argon2id、可重新寄送的新裝置電子郵件驗證，以及 Authenticator、Email、YubiKey OTP 或 WebAuthn 安全金鑰第二步驗證。伺服器核發的記住第二步驗證 token 只會存於加密的 direct-sync session，伺服器拒絕後便會清除。這裡的 WebAuthn 是第二步驗證，不是 Bitwarden 的 WebAuthn／PRF 無密碼登入；Duo 與 Organization Duo 登入 challenge 尚不支援。
+- 尚不支援 SSO、Key Connector、Trusted Device Encryption、API key 登入，也不能用 Login with Device 讓 BearWarden 本身取代主密碼登入。已登入且已解鎖的 BearWarden 可作為 Login with Device initiator：核對 fingerprint 後，核准或拒絕另一台裝置的 pending request。
+- 可列出、新增與逐把移除帳號 FIDO2 第二步登入安全金鑰；登入與註冊的 challenge、assertion、attestation 及 server verification token 只在受限的主程序視窗中處理，不會進入主要 renderer。
 - 連線後會顯示 Email 驗證與雙重驗證狀態；未驗證時可要求伺服器重新寄送驗證信。
 - 可在主程序重新驗證主密碼後複製個人 API Client ID／Secret，或經二次確認輪替；Secret 不會回傳 renderer 或寫入密碼庫，剪貼簿最晚 30 秒清除。
 
 主密碼不會寫入 BearWarden 密碼庫或設定；只在登入或解鎖時於主程序記憶體使用，
 衍生金鑰在鎖定時清除。登入 token、同步設定與 ID 對應只存放在已加密的本機密碼庫內。
 
-目前同步範圍包含個人密碼庫的 items、folders、封存、垃圾桶、附件、文字與檔案 Send metadata、帳號等效網域，以及 Organizations／Collections／共享 cipher 的只讀鏡像。檔案 Send 目前可由主程序選檔、加密、透過 Direct multipart 建立／上傳，並以 legacy access 核發 URL 後下載／解密／原子寫入；獨立公開接收頁、Azure 與進階驗證仍未接通。Emergency Access 目前可讀取 trusted／granted 狀態，但不會執行邀請、接管或金鑰輪替。附件 metadata 以 server 為準，支援安全上傳、下載、刪除及 legacy Fix；等效網域可在設定頁編輯自訂群組及排除伺服器內建群組。組織頁可依組織與 Collection 篩選共享項目，密碼可見性由 server 權限決定，shared item 不會進入個人 merge 或寫入流程。主程序會連線至官方 SignalR MessagePack notification hub，忽略本裝置事件，並在遠端變更、首次連線與重連後要求完整同步；通知服務停用或暫時無法連線不會妨礙手動同步。檔案／公開接收 Send、Passkey 寫入與
-SSO 尚不由 BearWarden 編輯。同步的自訂欄位可在項目詳情安全地顯示與編輯。附件主要流程已有自動化 fixture 覆蓋，但 Direct／Azure live server 相容驗證仍是後續工作。完整差距與
-實作順序記錄於 [`docs/vaultwarden-feature-gap.md`](docs/vaultwarden-feature-gap.md)。
+目前同步範圍包含個人密碼庫的 items、folders、封存、垃圾桶、附件、文字 Send、檔案 Send metadata 與 Direct multipart 建立／上傳／下載、帳號等效網域，以及 Organizations、provider Organizations、Collections 與共享 cipher 的只讀鏡像。同步也會優先讀取 `PoliciesNew`（必要時回退 legacy `Policies`），並在受影響的操作邊界執行 Password Generator、Remove Unlock with PIN、Disable Send、Disable Personal Vault Export、Organization Data Ownership、Restricted Item Types 與 Maximum Vault Timeout 政策。檔案 Send 建立後的編輯、Azure 檔案 Send transport、獨立公開接收頁與進階接收者驗證尚不支援。Emergency Access 目前可讀取 trusted／granted 狀態，但不會執行邀請、接管或金鑰輪替。附件 metadata 以 server 為準，支援安全上傳、下載、刪除及 legacy Fix；等效網域可在設定頁編輯自訂群組及排除伺服器內建群組。組織頁可依組織與 Collection 篩選共享項目，密碼可見性由 server 權限決定，shared item 不會進入個人 merge 或寫入流程。主程序會連線至官方 SignalR MessagePack notification hub，忽略本裝置事件，並在遠端變更、首次連線與重連後要求 authoritative full sync；目前尚未套用官方客戶端逐事件更新 cipher／folder／Send 的 incremental sync。通知服務停用或暫時無法連線不會妨礙手動同步。Passkey 可安全同步、顯示與刪除，且已有 provider-neutral create/get 核准流程，但目前沒有已簽署的瀏覽器或作業系統 provider transport 可讓外部網站呼叫。同步的自訂欄位可在項目詳情安全地顯示與編輯。不支援的 cipher type 與不相容的帳號模式會 fail closed，顯示原因明確且已去敏感資訊的診斷報告，不會再被靜默略過或暴露伺服器資料。附件主要流程已有自動化 fixture 覆蓋，但 live server 相容驗證仍是後續工作。完整支援矩陣、實作邊界與後續順序記錄於 [`docs/vaultwarden-feature-gap.md`](docs/vaultwarden-feature-gap.md)。
 更新既有 login 時，direct connector 會保留 BearWarden 未支援的遠端欄位。若兩端同時修改，
 遠端版本會保留為主要項目，本機修改會另建 `(BearWarden conflict)` 副本。
 

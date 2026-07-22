@@ -30,6 +30,7 @@ import {
   addAggregateRemoteRows,
   BitwardenDirectClient,
   type BitwardenDirectErrorCode,
+  type BitwardenSyncInvalidResponseReason,
   type BitwardenSyncInvalidResponseStage,
   type BitwardenTwoFactor
 } from './bitwarden-direct'
@@ -60,6 +61,7 @@ const SEND_ID = '50000000-0000-4000-8000-000000000001'
 const ORGANIZATION_ID = '60000000-0000-4000-8000-000000000001'
 const COLLECTION_ID = '70000000-0000-4000-8000-000000000001'
 const ORGANIZATION_CIPHER_ID = '80000000-0000-4000-8000-000000000001'
+const POLICY_ID = 'a0000000-0000-4000-8000-000000000001'
 const ACCOUNT_WEBAUTHN_CHALLENGE = Buffer.alloc(32, 0x31).toString('base64url')
 const ACCOUNT_WEBAUTHN_CREDENTIAL_ID = Buffer.alloc(32, 0x32).toString('base64url')
 const ACCOUNT_WEBAUTHN_REGISTRATION_USER_ID = Buffer.alloc(16, 0x33).toString('base64url')
@@ -963,7 +965,8 @@ async function attachmentMutationHarness(
 async function expectInvalidSync(
   sync: unknown,
   code: BitwardenDirectErrorCode = 'INVALID_RESPONSE',
-  stage?: BitwardenSyncInvalidResponseStage
+  stage?: BitwardenSyncInvalidResponseStage,
+  reason?: BitwardenSyncInvalidResponseReason
 ): Promise<void> {
   const http = new BitwardenHttpClient({
     server: 'https://vault.example.invalid',
@@ -990,12 +993,125 @@ async function expectInvalidSync(
   await client.login({ email: EMAIL, password: PASSWORD })
   await expect(client.sync()).rejects.toMatchObject({
     code,
-    ...(stage ? { syncInvalidResponseStage: stage } : {})
+    ...(stage ? { syncInvalidResponseStage: stage } : {}),
+    ...(reason ? { syncInvalidResponseReason: reason } : {})
   })
   await expect(client.listPersonalLogins()).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
 }
 
+async function clientForSync(sync: JsonObject): Promise<BitwardenDirectClient> {
+  const http = new BitwardenHttpClient({
+    server: 'https://vault.example.invalid',
+    fetch: async (url) => {
+      if (url.endsWith('/identity/accounts/prelogin/password')) {
+        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+      }
+      if (url.endsWith('/identity/connect/token')) {
+        return jsonResponse({
+          access_token: 'access-token',
+          refresh_token: 'refresh-token',
+          expires_in: 3_600
+        })
+      }
+      if (url.includes('/api/sync?')) return jsonResponse(sync)
+      return jsonResponse({ message: 'not found' }, 404)
+    }
+  })
+  const client = new BitwardenDirectClient({
+    serverUrl: 'https://vault.example.invalid',
+    email: EMAIL,
+    httpClient: http
+  })
+  await client.login({ email: EMAIL, password: PASSWORD })
+  await client.sync()
+  return client
+}
+
 describe('BitwardenDirectClient', () => {
+  it('persists remembered two-factor tokens separately and retries with provider 5', async () => {
+    const tokenBodies: URLSearchParams[] = []
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url, init) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          tokenBodies.push(new URLSearchParams(String(init?.body)))
+          return jsonResponse({
+            access_token: `access-${tokenBodies.length}`,
+            refresh_token: `refresh-${tokenBodies.length}`,
+            expires_in: 3_600,
+            ...(tokenBodies.length === 1 ? { TwoFactorToken: 'remembered-token' } : {})
+          })
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+
+    await client.login({
+      email: EMAIL,
+      password: PASSWORD,
+      twoFactor: { method: 0, code: '123456', remember: true }
+    })
+    expect(client.exportState()).toMatchObject({ rememberedTwoFactorToken: 'remembered-token' })
+    expect(client.exportState().session).not.toHaveProperty('twoFactorToken')
+
+    await client.logout()
+    expect(client.exportState()).toMatchObject({
+      session: null,
+      rememberedTwoFactorToken: 'remembered-token'
+    })
+    await client.login({ email: EMAIL, password: PASSWORD })
+    expect(tokenBodies[1]?.get('twoFactorProvider')).toBe('5')
+    expect(tokenBodies[1]?.get('twoFactorToken')).toBe('remembered-token')
+    expect(client.exportState().session).not.toHaveProperty('twoFactorToken')
+  })
+
+  it('clears a rejected remembered two-factor token before returning the fresh challenge', async () => {
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      state: {
+        session: null,
+        rememberedTwoFactorToken: 'expired-remembered-token',
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: null,
+        securityStamp: null
+      },
+      httpClient: new BitwardenHttpClient({
+        server: 'https://vault.example.invalid',
+        fetch: async (url) => {
+          if (url.endsWith('/identity/accounts/prelogin/password')) {
+            return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+          }
+          if (url.endsWith('/identity/connect/token')) {
+            return jsonResponse(
+              {
+                error: 'invalid_grant',
+                error_description: 'Two factor required.',
+                TwoFactorProviders2: { '0': null }
+              },
+              400
+            )
+          }
+          return jsonResponse({ message: 'not found' }, 404)
+        }
+      })
+    })
+
+    await expect(client.login({ email: EMAIL, password: PASSWORD })).rejects.toMatchObject({
+      code: 'TWO_FACTOR_REQUIRED',
+      twoFactorProviders: [0]
+    })
+    expect(client.exportState()).not.toHaveProperty('rememberedTwoFactorToken')
+  })
+
   it('matches a fixed Login with device fingerprint vector', async () => {
     const publicKey = Buffer.from(LOGIN_REQUEST_FINGERPRINT_VECTOR_PUBLIC_KEY, 'base64')
     const { client } = await loginRequestHarness(false, publicKey)
@@ -1915,6 +2031,107 @@ describe('BitwardenDirectClient', () => {
     ])
   })
 
+  it('decrypts provider-managed organization keys through the provider key', async () => {
+    const sync = await encryptedSync()
+    const userKey = Buffer.alloc(64, 7)
+    const providerKey = Buffer.alloc(64, 12)
+    const organizationKey = Buffer.alloc(64, 13)
+    const itemKey = Buffer.alloc(64, 9)
+    const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 })
+    const privateKey = rsa.privateKey.export({ format: 'der', type: 'pkcs8' })
+    const providerId = '77777777-7777-4777-8777-777777777777'
+    const providerOrganizationId = '88888888-8888-4888-8888-888888888888'
+    const encryptedProviderKey = publicEncrypt(
+      {
+        key: rsa.publicKey,
+        padding: constants.RSA_PKCS1_OAEP_PADDING,
+        oaepHash: 'sha1'
+      },
+      providerKey
+    )
+    const personalCipher = (sync.ciphers as JsonObject[])[0]!
+    const providerCipher: JsonObject = {
+      ...personalCipher,
+      id: ORGANIZATION_CIPHER_ID,
+      organizationId: providerOrganizationId,
+      collectionIds: [],
+      folderId: null,
+      name: encryptBitwardenString('Provider item', itemKey),
+      key: encryptBitwardenBytes(itemKey, organizationKey),
+      edit: true,
+      viewPassword: true,
+      permissions: { delete: false, restore: false }
+    }
+    sync.profile = {
+      ...(sync.profile as JsonObject),
+      privateKey: encryptBitwardenBytes(privateKey, userKey),
+      organizationsNew: [],
+      organizations: [],
+      providers: [
+        {
+          id: providerId,
+          name: 'Managed provider',
+          key: `4.${encryptedProviderKey.toString('base64')}`
+        }
+      ],
+      providerOrganizations: [
+        {
+          id: providerOrganizationId,
+          providerId,
+          name: 'Provider team',
+          key: encryptBitwardenBytes(organizationKey, providerKey),
+          status: 0,
+          type: 0,
+          enabled: true,
+          identifier: 'provider-team',
+          hasPublicAndPrivateKeys: false
+        }
+      ]
+    }
+    sync.ciphers = [personalCipher, providerCipher]
+
+    const client = await clientForSync(sync)
+    await expect(client.listOrganizations()).resolves.toEqual([
+      expect.objectContaining({ id: providerOrganizationId, name: 'Provider team' })
+    ])
+    await expect(client.listOrganizationCiphers()).resolves.toEqual([
+      expect.objectContaining({
+        id: ORGANIZATION_CIPHER_ID,
+        organizationId: providerOrganizationId,
+        name: 'Provider item'
+      })
+    ])
+
+    privateKey.fill(0)
+    encryptedProviderKey.fill(0)
+    userKey.fill(0)
+    providerKey.fill(0)
+    organizationKey.fill(0)
+    itemKey.fill(0)
+  })
+
+  it('falls back from an empty OrganizationsNew list to legacy organizations', async () => {
+    const sync = await encryptedSync()
+    const profile = sync.profile as JsonObject
+    profile.organizationsNew = []
+    profile.organizations = [
+      {
+        id: ORGANIZATION_ID,
+        name: 'Legacy fallback team',
+        status: 0,
+        type: 0,
+        enabled: true,
+        identifier: null,
+        hasPublicAndPrivateKeys: false
+      }
+    ]
+
+    const client = await clientForSync(sync)
+    await expect(client.listOrganizations()).resolves.toEqual([
+      expect.objectContaining({ id: ORGANIZATION_ID, name: 'Legacy fallback team' })
+    ])
+  })
+
   it('syncs and decrypts personal text Sends while keeping the URL seed main-process-only', async () => {
     const sync = await encryptedSync()
     const userKey = Buffer.alloc(64, 7)
@@ -2723,7 +2940,8 @@ describe('BitwardenDirectClient', () => {
       session: null,
       deviceIdentifier: before.deviceIdentifier,
       profileId: PROFILE_ID,
-      securityStamp: null
+      securityStamp: null,
+      policySet: { source: 'none', policies: [] }
     })
     expect(http.exportSession()).toBeNull()
     expect(stateChanges).toEqual([client.exportState()])
@@ -2771,7 +2989,8 @@ describe('BitwardenDirectClient', () => {
       session,
       deviceIdentifier: '00000000-0000-4000-8000-000000000000',
       profileId: PROFILE_ID,
-      securityStamp: 'security-stamp'
+      securityStamp: 'security-stamp',
+      policySet: { source: 'none', policies: [] }
     })
     expect(http.exportSession()).toEqual(session)
     expect(onStateChanged).not.toHaveBeenCalled()
@@ -2851,7 +3070,8 @@ describe('BitwardenDirectClient', () => {
       session: null,
       deviceIdentifier: '00000000-0000-4000-8000-000000000000',
       profileId: PROFILE_ID,
-      securityStamp: null
+      securityStamp: null,
+      policySet: { source: 'none', policies: [] }
     })
     expect(http.exportSession()).toBeNull()
     expect(stateChanges).toEqual([client.exportState()])
@@ -3917,6 +4137,211 @@ describe('BitwardenDirectClient', () => {
       await expectInvalidSync(sync, 'INVALID_RESPONSE', stage)
     }
   })
+
+  it('accepts omitted optional sync entity arrays as empty snapshots', async () => {
+    const sync = await encryptedSync()
+    delete sync.folders
+    delete sync.ciphers
+    sync.collections = null
+    sync.sends = null
+
+    const client = await clientForSync(sync)
+    await expect(client.listFolders()).resolves.toEqual([])
+    await expect(client.listPersonalLogins()).resolves.toEqual([])
+    await expect(client.listCollections()).resolves.toEqual([])
+    await expect(client.listSends()).resolves.toEqual([])
+  })
+
+  it('fails atomically with a value-free reason for an unsupported cipher type', async () => {
+    const sync = await encryptedSync()
+    const cipher = (sync.ciphers as JsonObject[])[0]!
+    cipher.type = 99
+    cipher.id = 'sensitive-identifier-must-not-be-reported'
+
+    await expectInvalidSync(sync, 'INVALID_RESPONSE', 'cipher', 'unsupported-cipher-type')
+  })
+
+  it('exposes only capability flags for unsupported user-decryption data', async () => {
+    const sync = await encryptedSync()
+    sync.userDecryption = {
+      webAuthnPrfOptions: [{ encryptedPrivateKey: 'opaque-secret' }],
+      v2UpgradeToken: { token: 'opaque-upgrade-secret' }
+    }
+    const client = await clientForSync(sync)
+    expect(client.userDecryptionCapabilities()).toEqual({
+      hasWebAuthnPrfOptions: true,
+      hasV2UpgradeToken: true,
+      webAuthnPrfUnlockSupported: false,
+      v2AccountUpgradeSupported: false
+    })
+    expect(client.userDecryptionCapabilities()).not.toHaveProperty('token')
+
+    const malformed = await encryptedSync()
+    malformed.userDecryption = { webAuthnPrfOptions: ['opaque-secret'] }
+    await expectInvalidSync(malformed, 'INVALID_RESPONSE', 'account', 'user-decryption-data')
+  })
+
+  it('commits PoliciesNew with explicit policy membership and exports an isolated snapshot', async () => {
+    const sync = await encryptedSync()
+    const profile = sync.profile as JsonObject
+    profile.organizationsNew = [
+      {
+        id: ORGANIZATION_ID,
+        name: 'Policy organization',
+        usePolicies: true
+      }
+    ]
+    sync.policies = [
+      {
+        id: 'a0000000-0000-4000-8000-000000000002',
+        organizationId: ORGANIZATION_ID,
+        type: 10,
+        enabled: true
+      }
+    ]
+    sync.policiesNew = [
+      {
+        id: POLICY_ID,
+        organizationId: ORGANIZATION_ID,
+        type: 6,
+        enabled: true,
+        canToggleState: false,
+        revisionDate: '2026-07-22T00:00:00.000Z'
+      }
+    ]
+
+    const client = await clientForSync(sync)
+    const policySet = client.policySet()
+    expect(policySet).toEqual({
+      source: 'policiesNew',
+      applicableOrganizationIds: [ORGANIZATION_ID],
+      policies: [
+        expect.objectContaining({
+          id: POLICY_ID,
+          organizationId: ORGANIZATION_ID,
+          type: 6,
+          execution: 'actionable',
+          data: { kind: 'disableSend' }
+        })
+      ]
+    })
+    policySet.policies.splice(0)
+    expect(client.policySet().policies).toHaveLength(1)
+    expect(client.exportState().policySet).toEqual(client.policySet())
+  })
+
+  it('falls back from an empty PoliciesNew array and withholds ambiguous membership', async () => {
+    const sync = await encryptedSync()
+    const profile = sync.profile as JsonObject
+    profile.organizations = [{ id: ORGANIZATION_ID, name: 'Legacy organization' }]
+    sync.policiesNew = []
+    sync.policies = [
+      {
+        id: POLICY_ID,
+        organizationId: ORGANIZATION_ID,
+        type: 6,
+        enabled: true
+      }
+    ]
+
+    const client = await clientForSync(sync)
+    expect(client.policySet()).toMatchObject({ source: 'policies', policies: [{ id: POLICY_ID }] })
+    expect(client.policySet()).not.toHaveProperty('applicableOrganizationIds')
+  })
+
+  it('commits read-only vault data with a fail-closed marker for malformed policy data', async () => {
+    const sync = await encryptedSync()
+    sync.policiesNew = [{ id: POLICY_ID, organizationId: ORGANIZATION_ID, type: 'invalid' }]
+
+    const client = await clientForSync(sync)
+    await expect(client.listFolders()).resolves.toHaveLength(1)
+    expect(client.policySet()).toEqual({
+      source: 'none',
+      policies: [],
+      parseFailure: 'invalid-response'
+    })
+    expect(client.exportState().policySet).toEqual(client.policySet())
+  })
+
+  it('restores legacy state without policy metadata as an explicit empty policy snapshot', async () => {
+    const sync = await encryptedSync()
+    const connected = await clientForSync(sync)
+    const legacyState = connected.exportState()
+    delete legacyState.policySet
+    const restored = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      state: legacyState,
+      httpClient: new BitwardenHttpClient({
+        server: 'https://vault.example.invalid',
+        fetch: async () => jsonResponse({ message: 'not found' }, 404)
+      })
+    })
+
+    expect(restored.policySet()).toEqual({ source: 'none', policies: [] })
+    expect(restored.exportState().policySet).toEqual({ source: 'none', policies: [] })
+
+    const unsafeState = connected.exportState()
+    unsafeState.policySet = {
+      source: 'none',
+      policies: [],
+      rawPayload: { message: 'must-not-persist' }
+    } as unknown as NonNullable<typeof unsafeState.policySet>
+    const sanitized = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      state: unsafeState,
+      httpClient: new BitwardenHttpClient({
+        server: 'https://vault.example.invalid',
+        fetch: async () => jsonResponse({ message: 'not found' }, 404)
+      })
+    })
+    expect(sanitized.policySet()).toEqual({
+      source: 'none',
+      policies: [],
+      parseFailure: 'invalid-response'
+    })
+    expect(JSON.stringify(sanitized.exportState())).not.toContain('must-not-persist')
+  })
+
+  it.each([
+    {
+      label: 'Key Connector profile',
+      mutate: (sync: JsonObject) => {
+        const profile = sync.profile as JsonObject
+        delete profile.key
+        profile.usesKeyConnector = true
+      },
+      code: 'KEY_CONNECTOR_UNSUPPORTED'
+    },
+    {
+      label: 'trusted-device-only decryption options',
+      mutate: (sync: JsonObject) => {
+        const profile = sync.profile as JsonObject
+        delete profile.key
+        sync.userDecryptionOptions = {
+          hasMasterPassword: false,
+          trustedDeviceOption: { hasAdminApproval: true }
+        }
+      },
+      code: 'TRUSTED_DEVICE_UNSUPPORTED'
+    },
+    {
+      label: 'ambiguous missing account key',
+      mutate: (sync: JsonObject) => {
+        const profile = sync.profile as JsonObject
+        delete profile.key
+      },
+      code: 'UNSUPPORTED_ACCOUNT_ENCRYPTION'
+    }
+  ] as const)(
+    'reports the precise unsupported encryption mode for $label',
+    async ({ mutate, code }) => {
+      const sync = await encryptedSync()
+      mutate(sync)
+      await expectInvalidSync(sync, code)
+    }
+  )
 
   it('rejects more than 1,000 legacy passkeys on one item', async () => {
     const sync = await encryptedSync()

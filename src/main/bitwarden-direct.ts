@@ -85,6 +85,11 @@ import {
   type AccountWebAuthnAssertion,
   type AccountWebAuthnChallenge
 } from './account-webauthn-codec'
+import {
+  BitwardenPolicyParseError,
+  parseBitwardenPolicySync,
+  type BitwardenPolicySet
+} from './bitwarden-policy'
 import type {
   AccountWebAuthnAttestation,
   AccountWebAuthnRegistrationChallenge
@@ -186,6 +191,7 @@ export type BitwardenDirectErrorCode =
   | 'AUTH_REQUIRED'
   | 'TWO_FACTOR_REQUIRED'
   | 'NEW_DEVICE_REQUIRED'
+  | 'SSO_REQUIRED'
   | 'NETWORK'
   | 'INVALID_RESPONSE'
   | 'INVALID_SSH_KEY'
@@ -197,6 +203,8 @@ export type BitwardenDirectErrorCode =
   | 'STORAGE_LIMIT'
   | 'ATTACHMENT_REJECTED'
   | 'UNSUPPORTED_ACCOUNT_ENCRYPTION'
+  | 'KEY_CONNECTOR_UNSUPPORTED'
+  | 'TRUSTED_DEVICE_UNSUPPORTED'
   | 'ACCOUNT_CHANGED'
   | 'USER_VERIFICATION_FAILED'
   | 'API_KEY_ROTATION_UNKNOWN'
@@ -210,6 +218,21 @@ export type BitwardenDirectErrorCode =
 export type BitwardenSyncInvalidResponseStage =
   'response' | 'account' | 'organization' | 'folder' | 'cipher' | 'collection' | 'send' | 'snapshot'
 
+/** Value-free, closed reasons safe to surface in sync diagnostics. */
+export type BitwardenSyncInvalidResponseReason =
+  | 'response-shape'
+  | 'account-profile'
+  | 'user-decryption-data'
+  | 'organization-profile'
+  | 'organization-key'
+  | 'provider-organization-key'
+  | 'folder-data'
+  | 'unsupported-cipher-type'
+  | 'cipher-data'
+  | 'collection-data'
+  | 'send-data'
+  | 'snapshot-limit'
+
 export class BitwardenDirectError extends Error {
   constructor(
     readonly code: BitwardenDirectErrorCode,
@@ -218,7 +241,9 @@ export class BitwardenDirectError extends Error {
     /** Fixed, value-free location for sync response diagnostics. */
     readonly syncInvalidResponseStage?: BitwardenSyncInvalidResponseStage,
     /** Main-process-only, bounded provider ids from the token challenge. */
-    readonly twoFactorProviders?: readonly BitwardenTwoFactorProviderId[]
+    readonly twoFactorProviders?: readonly BitwardenTwoFactorProviderId[],
+    /** Fixed, value-free reason suitable for renderer diagnostics. */
+    readonly syncInvalidResponseReason?: BitwardenSyncInvalidResponseReason
   ) {
     super(`Bitwarden direct sync failed (${code})`)
     this.name = 'BitwardenDirectError'
@@ -484,14 +509,28 @@ export interface BitwardenWebAuthnRegistrationRequest {
 
 export interface BitwardenDirectState {
   session: BitwardenSession | null
+  /** Server-issued opaque token for the remembered two-step-login provider (5). */
+  rememberedTwoFactorToken?: string
   deviceIdentifier: string
   profileId: string | null
   securityStamp: string | null
+  /** Secret-free organization policy metadata from the latest committed sync snapshot. */
+  policySet?: BitwardenPolicySet
 }
 
 export interface BitwardenPinUnlockMaterial {
   accountKey: Buffer
   wrappedKeyFingerprint: Buffer
+}
+
+/** Secret-free account capabilities observed in the latest committed sync snapshot. */
+export interface BitwardenUserDecryptionCapabilities {
+  hasWebAuthnPrfOptions: boolean
+  hasV2UpgradeToken: boolean
+  /** BearWarden does not yet perform PRF-based account unlock. */
+  webAuthnPrfUnlockSupported: false
+  /** BearWarden accepts V2 accounts but does not initiate an account-key upgrade. */
+  v2AccountUpgradeSupported: false
 }
 
 export interface BitwardenSyncClient {
@@ -512,6 +551,10 @@ export interface BitwardenSyncClient {
   getAccountDevices?(signal?: AbortSignal): Promise<BitwardenAccountDevice[]>
   resendVerificationEmail?(signal?: AbortSignal): Promise<void>
   sendEmailTwoFactorLoginCode?(masterPassword: string, signal?: AbortSignal): Promise<void>
+  resendNewDeviceOtp?(masterPassword: string, signal?: AbortSignal): Promise<void>
+  revisionDate?(signal?: AbortSignal): Promise<string>
+  userDecryptionCapabilities?(): BitwardenUserDecryptionCapabilities
+  policySet?(): BitwardenPolicySet
   purgePersonalVault?(masterPassword: string, signal?: AbortSignal): Promise<void>
   deauthorizeAllSessions?(masterPassword: string, signal?: AbortSignal): Promise<void>
   getPersonalApiKey?(
@@ -739,6 +782,225 @@ function isRecord(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+const EMPTY_POLICY_SET: BitwardenPolicySet = { source: 'none', policies: [] }
+
+function invalidPersistedPolicySet(): BitwardenPolicySet {
+  return { source: 'none', policies: [], parseFailure: 'invalid-response' }
+}
+
+function hasOnlyPolicyKeys(
+  record: JsonObject,
+  required: readonly string[],
+  optional: readonly string[] = []
+): boolean {
+  const prototype = Object.getPrototypeOf(record)
+  if (prototype !== Object.prototype && prototype !== null) return false
+  const ownKeys = Reflect.ownKeys(record)
+  const allowed = new Set([...required, ...optional])
+  return (
+    ownKeys.every((key) => typeof key === 'string' && allowed.has(key)) &&
+    required.every((key) => Object.hasOwn(record, key))
+  )
+}
+
+function isPlainPolicyArray(value: unknown[], maximum: number): boolean {
+  if (value.length > maximum) return false
+  const ownKeys = Reflect.ownKeys(value)
+  return (
+    ownKeys.length === value.length + 1 &&
+    ownKeys.includes('length') &&
+    value.every((_, index) => Object.hasOwn(value, String(index)))
+  )
+}
+
+function isSafePersistedPolicyData(value: JsonObject): boolean {
+  const kind = value.kind
+  if (
+    kind === 'organizationDataOwnership' ||
+    kind === 'disableSend' ||
+    kind === 'disablePersonalVaultExport' ||
+    kind === 'removeUnlockWithPin'
+  ) {
+    return hasOnlyPolicyKeys(value, ['kind'])
+  }
+  if (kind === 'maximumVaultTimeout') {
+    return (
+      hasOnlyPolicyKeys(value, ['kind', 'minutes', 'timeoutType', 'action']) &&
+      typeof value.minutes === 'number' &&
+      Number.isSafeInteger(value.minutes) &&
+      value.minutes > 0 &&
+      value.minutes <= 366 * 24 * 60 &&
+      (value.timeoutType === null ||
+        value.timeoutType === 'never' ||
+        value.timeoutType === 'onAppRestart' ||
+        value.timeoutType === 'onSystemLock' ||
+        value.timeoutType === 'immediately' ||
+        value.timeoutType === 'custom') &&
+      (value.action === null || value.action === 'lock' || value.action === 'logOut')
+    )
+  }
+  if (kind === 'restrictedItemTypes') {
+    const cipherTypes = value.cipherTypes
+    return (
+      hasOnlyPolicyKeys(value, ['kind', 'cipherTypes']) &&
+      Array.isArray(cipherTypes) &&
+      isPlainPolicyArray(cipherTypes, 16) &&
+      cipherTypes.every(
+        (type) => typeof type === 'number' && Number.isSafeInteger(type) && type >= 1 && type <= 8
+      ) &&
+      new Set(cipherTypes).size === cipherTypes.length
+    )
+  }
+  if (kind === 'passwordGenerator') {
+    if (
+      !hasOnlyPolicyKeys(value, [
+        'kind',
+        'overridePasswordType',
+        'minLength',
+        'useUppercase',
+        'useLowercase',
+        'useNumbers',
+        'numberCount',
+        'useSpecial',
+        'specialCount',
+        'minNumberWords',
+        'capitalize',
+        'includeNumber'
+      ]) ||
+      (value.overridePasswordType !== '' &&
+        value.overridePasswordType !== 'password' &&
+        value.overridePasswordType !== 'passphrase')
+    ) {
+      return false
+    }
+    for (const name of ['minLength', 'numberCount', 'specialCount', 'minNumberWords']) {
+      const number = value[name]
+      const maximum = name === 'minLength' ? 4_096 : 1_024
+      if (
+        typeof number !== 'number' ||
+        !Number.isSafeInteger(number) ||
+        number < 0 ||
+        number > maximum
+      ) {
+        return false
+      }
+    }
+    return [
+      'useUppercase',
+      'useLowercase',
+      'useNumbers',
+      'useSpecial',
+      'capitalize',
+      'includeNumber'
+    ].every((name) => typeof value[name] === 'boolean')
+  }
+  return false
+}
+
+/** Persisted state is an input boundary. Restore only bounded, secret-free policy metadata. */
+function restorePolicySet(value: unknown): BitwardenPolicySet {
+  if (value === undefined) return { ...EMPTY_POLICY_SET, policies: [] }
+  if (
+    !isRecord(value) ||
+    !hasOnlyPolicyKeys(value, ['source', 'policies'], ['parseFailure', 'applicableOrganizationIds'])
+  ) {
+    return invalidPersistedPolicySet()
+  }
+  const source = value.source
+  const policies = value.policies
+  const parseFailure = value.parseFailure
+  const applicableOrganizationIds = value.applicableOrganizationIds
+  if (
+    (source !== 'policiesNew' && source !== 'policies' && source !== 'none') ||
+    !Array.isArray(policies) ||
+    !isPlainPolicyArray(policies, 256) ||
+    (parseFailure !== undefined &&
+      parseFailure !== 'invalid-response' &&
+      parseFailure !== 'limit-exceeded') ||
+    (applicableOrganizationIds !== undefined &&
+      (!Array.isArray(applicableOrganizationIds) ||
+        !isPlainPolicyArray(applicableOrganizationIds, 256)))
+  ) {
+    return invalidPersistedPolicySet()
+  }
+  if (parseFailure !== undefined && (source !== 'none' || policies.length !== 0)) {
+    return invalidPersistedPolicySet()
+  }
+  const organizationIds = new Set<string>()
+  if (Array.isArray(applicableOrganizationIds)) {
+    for (const id of applicableOrganizationIds) {
+      if (
+        typeof id !== 'string' ||
+        id !== id.toLowerCase() ||
+        !UUID_PATTERN.test(id) ||
+        organizationIds.has(id)
+      ) {
+        return invalidPersistedPolicySet()
+      }
+      organizationIds.add(id)
+    }
+  }
+  for (const policy of policies) {
+    if (
+      !isRecord(policy) ||
+      !hasOnlyPolicyKeys(policy, [
+        'id',
+        'organizationId',
+        'type',
+        'typeName',
+        'enabled',
+        'canToggleState',
+        'revisionDate',
+        'execution',
+        'data'
+      ])
+    ) {
+      return invalidPersistedPolicySet()
+    }
+    const typeName = policy.typeName
+    const revisionDate = policy.revisionDate
+    const execution = policy.execution
+    if (
+      typeof policy.id !== 'string' ||
+      policy.id !== policy.id.toLowerCase() ||
+      !UUID_PATTERN.test(policy.id) ||
+      typeof policy.organizationId !== 'string' ||
+      policy.organizationId !== policy.organizationId.toLowerCase() ||
+      !UUID_PATTERN.test(policy.organizationId) ||
+      typeof policy.type !== 'number' ||
+      !Number.isSafeInteger(policy.type) ||
+      policy.type < 0 ||
+      policy.type > 65_535 ||
+      (typeName !== null && (typeof typeName !== 'string' || typeName.length > 64)) ||
+      typeof policy.enabled !== 'boolean' ||
+      typeof policy.canToggleState !== 'boolean' ||
+      (revisionDate !== null &&
+        (typeof revisionDate !== 'string' ||
+          revisionDate.length > 40 ||
+          !Number.isFinite(Date.parse(revisionDate)))) ||
+      (execution !== 'actionable' &&
+        execution !== 'unsupported' &&
+        execution !== 'unknown' &&
+        execution !== 'malformed') ||
+      (policy.data !== null && !isRecord(policy.data))
+    ) {
+      return invalidPersistedPolicySet()
+    }
+    if (
+      (execution === 'actionable' &&
+        (!isRecord(policy.data) || !isSafePersistedPolicyData(policy.data))) ||
+      (execution !== 'actionable' && policy.data !== null)
+    ) {
+      return invalidPersistedPolicySet()
+    }
+  }
+  try {
+    return structuredClone(value) as unknown as BitwardenPolicySet
+  } catch {
+    return invalidPersistedPolicySet()
+  }
+}
+
 function property(record: JsonObject, name: string): JsonValue | undefined {
   if (name in record) return record[name]
   const normalized = name.toLocaleLowerCase('en-US')
@@ -751,6 +1013,15 @@ function property(record: JsonObject, name: string): JsonValue | undefined {
 function recordProperty(record: JsonObject, name: string): JsonObject | null {
   const value = property(record, name)
   return isRecord(value) ? value : null
+}
+
+function optionalRemoteArrayProperty(record: JsonObject, name: string): JsonValue[] {
+  const value = property(record, name)
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value) || value.length > MAX_REMOTE_ENTITIES) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  return value
 }
 
 function stringProperty(record: JsonObject, name: string): string | null {
@@ -1400,14 +1671,6 @@ function freshAttachmentMetadata(
   return { encryptedKey, size }
 }
 
-function arrayProperty(record: JsonObject, name: string): JsonValue[] {
-  const value = property(record, name)
-  if (!Array.isArray(value) || value.length > MAX_REMOTE_ENTITIES) {
-    throw new BitwardenDirectError('INVALID_RESPONSE')
-  }
-  return value
-}
-
 export function addAggregateRemoteRows(
   current: number,
   additional: number,
@@ -1846,6 +2109,12 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   private collections = new Map<string, BitwardenCollection>()
   private organizationCiphers = new Map<string, BitwardenOrganizationCipher>()
   private sends = new Map<string, CachedSend>()
+  private syncedUserDecryptionCapabilities: BitwardenUserDecryptionCapabilities = {
+    hasWebAuthnPrfOptions: false,
+    hasV2UpgradeToken: false,
+    webAuthnPrfUnlockSupported: false,
+    v2AccountUpgradeSupported: false
+  }
   private preparedLoginImports = new Map<string, PreparedLoginImportPayload>()
 
   constructor(private readonly options: BitwardenDirectOptions) {
@@ -1854,16 +2123,34 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     this.deviceType = options.deviceType ?? desktopDeviceType()
     this.state = options.state
       ? {
-          session: options.state.session ? { ...options.state.session } : null,
+          session: options.state.session
+            ? {
+                accessToken: options.state.session.accessToken,
+                refreshToken: options.state.session.refreshToken,
+                expiresAt: options.state.session.expiresAt,
+                ...(options.state.session.clientId
+                  ? { clientId: options.state.session.clientId }
+                  : {})
+              }
+            : null,
+          ...((options.state.rememberedTwoFactorToken ?? options.state.session?.twoFactorToken)
+            ? {
+                rememberedTwoFactorToken:
+                  options.state.rememberedTwoFactorToken ?? options.state.session?.twoFactorToken
+              }
+            : {}),
           deviceIdentifier: options.state.deviceIdentifier,
           profileId: options.state.profileId,
-          securityStamp: options.state.securityStamp
+          securityStamp: options.state.securityStamp,
+          policySet: restorePolicySet(options.state.policySet)
         }
       : {
           session: null,
+          rememberedTwoFactorToken: undefined,
           deviceIdentifier: randomUUID(),
           profileId: null,
-          securityStamp: null
+          securityStamp: null,
+          policySet: { ...EMPTY_POLICY_SET, policies: [] }
         }
     this.http =
       options.httpClient ??
@@ -1872,7 +2159,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         clientName: 'desktop',
         clientVersion: protocolClientVersion(options.clientVersion),
         onSessionChanged: async (session) => {
-          this.state.session = { ...session }
+          this.captureRememberedTwoFactorToken(session)
+          this.state.session = this.normalizedSession(session)
           await this.notifyStateChanged()
         }
       })
@@ -1880,11 +2168,16 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   }
 
   exportState(): BitwardenDirectState {
+    const session = this.http.exportSession()
     return {
-      session: this.http.exportSession(),
+      session: session ? this.normalizedSession(session) : null,
+      ...(this.state.rememberedTwoFactorToken
+        ? { rememberedTwoFactorToken: this.state.rememberedTwoFactorToken }
+        : {}),
       deviceIdentifier: this.state.deviceIdentifier,
       profileId: this.state.profileId,
-      securityStamp: this.state.securityStamp
+      securityStamp: this.state.securityStamp,
+      policySet: restorePolicySet(this.state.policySet)
     }
   }
 
@@ -3286,6 +3579,54 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     }
   }
 
+  async resendNewDeviceOtp(masterPassword: string, signal?: AbortSignal): Promise<void> {
+    let masterKey: Buffer | null = null
+    let passwordKey: Buffer | null = null
+    let masterPasswordHash = ''
+    try {
+      if (
+        typeof masterPassword !== 'string' ||
+        masterPassword.length === 0 ||
+        masterPassword.length > MAX_SYNC_SECRET_LENGTH
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      const prelogin = await this.http.prelogin(this.email, signal)
+      masterKey = await deriveMasterKey(
+        masterPassword,
+        prelogin.salt ?? this.email,
+        kdfFromPrelogin(prelogin)
+      )
+      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      masterPasswordHash = passwordKey.toString('base64')
+      if (signal?.aborted) throw new BitwardenDirectError('ABORTED')
+      await this.http.resendNewDeviceOtp({ email: this.email, masterPasswordHash }, signal)
+    } catch (error) {
+      throw this.mapError(error)
+    } finally {
+      masterPassword = ''
+      masterKey?.fill(0)
+      passwordKey?.fill(0)
+      masterPasswordHash = ''
+    }
+  }
+
+  async revisionDate(signal?: AbortSignal): Promise<string> {
+    try {
+      return await this.http.revisionDate(signal)
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  userDecryptionCapabilities(): BitwardenUserDecryptionCapabilities {
+    return { ...this.syncedUserDecryptionCapabilities }
+  }
+
+  policySet(): BitwardenPolicySet {
+    return restorePolicySet(this.state.policySet)
+  }
+
   async unlock(request: BitwardenUnlockRequest): Promise<void> {
     await this.deriveAndAuthenticate(
       request.password,
@@ -3309,6 +3650,19 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       const profileId = requiredStringProperty(profile, 'id')
       const securityStamp = nullableStringProperty(profile, 'securityStamp')
       this.assertAccountIdentity(profileId, securityStamp)
+      const nextUserDecryptionCapabilities = this.parseUserDecryptionCapabilities(payload)
+      let nextPolicySet: BitwardenPolicySet
+      try {
+        nextPolicySet = parseBitwardenPolicySync(payload)
+      } catch (error) {
+        if (!(error instanceof BitwardenPolicyParseError)) throw error
+        nextPolicySet = {
+          source: 'none',
+          policies: [],
+          parseFailure:
+            error.code === 'POLICY_LIMIT_EXCEEDED' ? 'limit-exceeded' : 'invalid-response'
+        }
+      }
 
       const wrappedUserKey = this.findWrappedUserKey(payload, profile)
       wrappedKeyFingerprint = createHash('sha256').update(wrappedUserKey, 'utf8').digest()
@@ -3346,23 +3700,27 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       const organizationKeys = new Map<string, Buffer>()
       try {
         invalidResponseStage = 'folder'
-        const folderRows = arrayProperty(payload, 'folders')
+        const folderRows = optionalRemoteArrayProperty(payload, 'folders')
         invalidResponseStage = 'cipher'
-        const cipherRows = arrayProperty(payload, 'ciphers')
+        const cipherRows = optionalRemoteArrayProperty(payload, 'ciphers')
         invalidResponseStage = 'collection'
-        const collectionsValue = property(payload, 'collections')
-        const collectionRows =
-          collectionsValue === undefined || collectionsValue === null
-            ? []
-            : arrayProperty(payload, 'collections')
+        const collectionRows = optionalRemoteArrayProperty(payload, 'collections')
         invalidResponseStage = 'send'
-        const sendsValue = property(payload, 'sends')
-        const sendRows =
-          sendsValue === undefined || sendsValue === null ? [] : arrayProperty(payload, 'sends')
+        const sendRows = optionalRemoteArrayProperty(payload, 'sends')
         invalidResponseStage = 'organization'
         const organizationsValue = property(profile, 'organizationsNew')
         const legacyOrganizationsValue = property(profile, 'organizations')
         const organizationRows = (() => {
+          if (
+            (organizationsValue !== undefined &&
+              organizationsValue !== null &&
+              !Array.isArray(organizationsValue)) ||
+            (legacyOrganizationsValue !== undefined &&
+              legacyOrganizationsValue !== null &&
+              !Array.isArray(legacyOrganizationsValue))
+          ) {
+            throw new BitwardenDirectError('INVALID_RESPONSE')
+          }
           const rows =
             Array.isArray(organizationsValue) && organizationsValue.length > 0
               ? organizationsValue
@@ -3373,6 +3731,11 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
           }
           return rows
         })()
+        const providerOrganizationRows = optionalRemoteArrayProperty(
+          profile,
+          'providerOrganizations'
+        )
+        const providerRows = optionalRemoteArrayProperty(profile, 'providers')
         const organizationRowsById = new Map<string, JsonObject>()
         for (const value of organizationRows) {
           if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
@@ -3383,18 +3746,80 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
           organizationRowsById.set(organization.id, value)
           nextOrganizations.set(organization.id, organization)
         }
-        const hasOrganizationCiphers = cipherRows.some((value) => {
+        const providerOrganizationRowsById = new Map<string, JsonObject>()
+        for (const value of providerOrganizationRows) {
+          if (!isRecord(value)) {
+            throw new BitwardenDirectError(
+              'INVALID_RESPONSE',
+              undefined,
+              undefined,
+              undefined,
+              'organization-profile'
+            )
+          }
+          const organization = this.parseOrganization(value)
+          if (providerOrganizationRowsById.has(organization.id)) {
+            throw new BitwardenDirectError(
+              'INVALID_RESPONSE',
+              undefined,
+              undefined,
+              undefined,
+              'organization-profile'
+            )
+          }
+          providerOrganizationRowsById.set(organization.id, value)
+          if (!nextOrganizations.has(organization.id)) {
+            nextOrganizations.set(organization.id, organization)
+          }
+        }
+        if (!nextPolicySet.parseFailure && nextPolicySet.policies.length > 0) {
+          const applicableOrganizationIds = new Set<string>()
+          let allPolicyMembershipsExplicit = true
+          for (const organizationId of new Set(
+            nextPolicySet.policies.map((policy) => policy.organizationId)
+          )) {
+            const rawOrganization = organizationRowsById.get(organizationId)
+            const usePolicies = rawOrganization
+              ? property(rawOrganization, 'usePolicies')
+              : undefined
+            if (typeof usePolicies !== 'boolean') {
+              allPolicyMembershipsExplicit = false
+              break
+            }
+            if (usePolicies) applicableOrganizationIds.add(organizationId)
+          }
+          if (allPolicyMembershipsExplicit) {
+            nextPolicySet = {
+              ...nextPolicySet,
+              applicableOrganizationIds: [...applicableOrganizationIds].sort()
+            }
+          }
+        }
+        const requiredOrganizationIds = new Set<string>()
+        for (const value of cipherRows) {
           invalidResponseStage = 'cipher'
           if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
           const organizationId = property(value, 'organizationId')
-          return organizationId !== undefined && organizationId !== null
-        })
-        const hasOrganizationEncryptedData = collectionRows.length > 0 || hasOrganizationCiphers
+          if (organizationId === undefined || organizationId === null) continue
+          if (typeof organizationId !== 'string' || !UUID_PATTERN.test(organizationId)) {
+            throw new BitwardenDirectError('INVALID_RESPONSE')
+          }
+          requiredOrganizationIds.add(organizationId)
+        }
+        for (const value of collectionRows) {
+          invalidResponseStage = 'collection'
+          if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+          requiredOrganizationIds.add(
+            assertUuidValue(requiredStringProperty(value, 'organizationId'))
+          )
+        }
+        const hasOrganizationEncryptedData = requiredOrganizationIds.size > 0
         invalidResponseStage = 'organization'
         const accountPrivateKey = hasOrganizationEncryptedData
           ? this.resolveAccountPrivateKey(profile, userKey)
           : null
         for (const [organizationId, rawOrganization] of organizationRowsById) {
+          if (!requiredOrganizationIds.has(organizationId)) continue
           const encryptedKey = stringProperty(rawOrganization, 'key')
           if (!encryptedKey) continue
           if (!accountPrivateKey) throw new BitwardenDirectError('UNSUPPORTED_ACCOUNT_ENCRYPTION')
@@ -3404,6 +3829,78 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
             accountPrivateKey
           )
           organizationKeys.set(organizationId, organizationKey)
+        }
+        const providerKeys = new Map<string, Buffer>()
+        try {
+          if (providerOrganizationRowsById.size > 0 && hasOrganizationEncryptedData) {
+            if (!accountPrivateKey) {
+              throw new BitwardenDirectError(
+                'INVALID_RESPONSE',
+                undefined,
+                undefined,
+                undefined,
+                'provider-organization-key'
+              )
+            }
+            const requiredProviderIds = new Set<string>()
+            for (const [organizationId, rawOrganization] of providerOrganizationRowsById) {
+              if (!requiredOrganizationIds.has(organizationId)) continue
+              requiredProviderIds.add(
+                assertUuidValue(requiredStringProperty(rawOrganization, 'providerId'))
+              )
+            }
+            for (const value of providerRows) {
+              if (!isRecord(value)) {
+                throw new BitwardenDirectError(
+                  'INVALID_RESPONSE',
+                  undefined,
+                  undefined,
+                  undefined,
+                  'provider-organization-key'
+                )
+              }
+              const providerId = assertUuidValue(requiredStringProperty(value, 'id'))
+              if (!requiredProviderIds.has(providerId)) continue
+              if (providerKeys.has(providerId)) {
+                throw new BitwardenDirectError(
+                  'INVALID_RESPONSE',
+                  undefined,
+                  undefined,
+                  undefined,
+                  'provider-organization-key'
+                )
+              }
+              const encryptedProviderKey = requiredStringProperty(value, 'key')
+              providerKeys.set(
+                providerId,
+                this.decryptOrganizationKey(encryptedProviderKey, userKey, accountPrivateKey)
+              )
+            }
+            for (const [organizationId, rawOrganization] of providerOrganizationRowsById) {
+              if (!requiredOrganizationIds.has(organizationId)) continue
+              const encryptedKey = stringProperty(rawOrganization, 'key')
+              if (!encryptedKey) continue
+              const providerId = assertUuidValue(
+                requiredStringProperty(rawOrganization, 'providerId')
+              )
+              const providerKey = providerKeys.get(providerId)
+              if (!providerKey) {
+                throw new BitwardenDirectError(
+                  'INVALID_RESPONSE',
+                  undefined,
+                  undefined,
+                  undefined,
+                  'provider-organization-key'
+                )
+              }
+              const organizationKey = this.decryptSymmetricWrappedKey(encryptedKey, providerKey)
+              const previousKey = organizationKeys.get(organizationId)
+              previousKey?.fill(0)
+              organizationKeys.set(organizationId, organizationKey)
+            }
+          }
+        } finally {
+          for (const providerKey of providerKeys.values()) providerKey.fill(0)
         }
         invalidResponseStage = 'snapshot'
         let aggregateRows = addAggregateRemoteRows(0, folderRows.length)
@@ -3426,17 +3923,21 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
               throw new BitwardenDirectError('INVALID_RESPONSE')
             }
             const organizationKey = organizationKeys.get(organizationId)
-            if (!organizationKey || !organizationRowsById.has(organizationId)) {
+            if (
+              !organizationKey ||
+              (!organizationRowsById.has(organizationId) &&
+                !providerOrganizationRowsById.has(organizationId))
+            ) {
               throw new BitwardenDirectError('INVALID_RESPONSE')
             }
-            if (
-              property(value, 'type') !== 1 &&
-              property(value, 'type') !== 2 &&
-              property(value, 'type') !== 3 &&
-              property(value, 'type') !== 4 &&
-              property(value, 'type') !== 5
-            ) {
-              continue
+            if (type !== 1 && type !== 2 && type !== 3 && type !== 4 && type !== 5) {
+              throw new BitwardenDirectError(
+                'INVALID_RESPONSE',
+                undefined,
+                undefined,
+                undefined,
+                'unsupported-cipher-type'
+              )
             }
             const item = this.decryptLogin(value, organizationKey)
             const organizationCipher = this.organizationCipher(value, item, organizationId)
@@ -3451,7 +3952,15 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
             )
             continue
           }
-          if (type !== 1 && type !== 2 && type !== 3 && type !== 4 && type !== 5) continue
+          if (type !== 1 && type !== 2 && type !== 3 && type !== 4 && type !== 5) {
+            throw new BitwardenDirectError(
+              'INVALID_RESPONSE',
+              undefined,
+              undefined,
+              undefined,
+              'unsupported-cipher-type'
+            )
+          }
           const item = this.decryptLogin(value, userKey)
           aggregateRows = addAggregateRemoteRows(
             aggregateRows,
@@ -3505,13 +4014,19 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       this.collections = nextCollections
       this.organizationCiphers = nextOrganizationCiphers
       this.sends = nextSends
+      this.syncedUserDecryptionCapabilities = nextUserDecryptionCapabilities
       this.state.profileId = profileId
       this.state.securityStamp = securityStamp
-      this.state.session = this.http.exportSession()
+      this.state.policySet = nextPolicySet
+      const session = this.http.exportSession()
+      this.state.session = session ? this.normalizedSession(session) : null
       await this.notifyStateChanged()
     } catch (error) {
       const mapped = this.mapError(error)
-      if (error instanceof BitwardenHttpError && error.code === 'AUTH') {
+      if (
+        error instanceof BitwardenHttpError &&
+        (error.code === 'AUTH' || error.code === 'SESSION_EXPIRED')
+      ) {
         await this.clearDeauthorizedSession().catch(() => undefined)
       }
       if (
@@ -3519,7 +4034,13 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         !mapped.syncInvalidResponseStage &&
         invalidResponseStage
       ) {
-        throw new BitwardenDirectError('INVALID_RESPONSE', undefined, invalidResponseStage)
+        throw new BitwardenDirectError(
+          'INVALID_RESPONSE',
+          undefined,
+          invalidResponseStage,
+          undefined,
+          mapped.syncInvalidResponseReason ?? this.defaultSyncInvalidReason(invalidResponseStage)
+        )
       }
       throw mapped
     } finally {
@@ -4367,6 +4888,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       stretched = stretchMasterKey(masterKey)
       if (requestToken) {
         let twoFactorRemember: boolean | undefined
+        const rememberedTwoFactorToken = twoFactor ? undefined : this.state.rememberedTwoFactorToken
         if (twoFactor) {
           if (twoFactor.method === 7) {
             if (typeof twoFactor.remember !== 'boolean') {
@@ -4386,26 +4908,47 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
             twoFactorRemember = twoFactor.remember ?? true
           }
         }
-        const session = await this.http.passwordToken(
-          {
-            email: this.email,
-            password: passwordKey.toString('base64'),
-            deviceIdentifier: this.state.deviceIdentifier,
-            deviceType: this.deviceType,
-            deviceName: this.deviceName,
-            ...(newDeviceOtp ? { newDeviceOtp } : {}),
-            ...(twoFactor
-              ? {
-                  twoFactorProvider: twoFactor.method,
-                  twoFactorToken,
-                  twoFactorRemember
-                }
-              : {})
-          },
-          signal
-        )
-        this.http.setSession(session)
-        this.state.session = { ...session }
+        let session: BitwardenSession
+        try {
+          session = await this.http.passwordToken(
+            {
+              email: this.email,
+              password: passwordKey.toString('base64'),
+              deviceIdentifier: this.state.deviceIdentifier,
+              deviceType: this.deviceType,
+              deviceName: this.deviceName,
+              ...(newDeviceOtp ? { newDeviceOtp } : {}),
+              ...(twoFactor
+                ? {
+                    twoFactorProvider: twoFactor.method,
+                    twoFactorToken,
+                    twoFactorRemember
+                  }
+                : rememberedTwoFactorToken
+                  ? {
+                      twoFactorProvider: 5,
+                      twoFactorToken: rememberedTwoFactorToken,
+                      twoFactorRemember: false
+                    }
+                  : {})
+            },
+            signal
+          )
+        } catch (error) {
+          if (
+            rememberedTwoFactorToken &&
+            error instanceof BitwardenHttpError &&
+            error.code === 'TWO_FACTOR'
+          ) {
+            this.state.rememberedTwoFactorToken = undefined
+            await this.notifyStateChanged().catch(() => undefined)
+          }
+          throw error
+        }
+        this.captureRememberedTwoFactorToken(session)
+        const normalizedSession = this.normalizedSession(session)
+        this.http.setSession(normalizedSession)
+        this.state.session = normalizedSession
       }
       this.stretchedKey?.fill(0)
       this.stretchedKey = stretched.combinedKey
@@ -4426,6 +4969,22 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
 
   private findWrappedUserKey(payload: JsonObject, profile: JsonObject): string {
     const userDecryption = recordProperty(payload, 'userDecryption')
+    const masterPasswordUnlockValue = userDecryption
+      ? property(userDecryption, 'masterPasswordUnlock')
+      : undefined
+    if (
+      masterPasswordUnlockValue !== undefined &&
+      masterPasswordUnlockValue !== null &&
+      !isRecord(masterPasswordUnlockValue)
+    ) {
+      throw new BitwardenDirectError(
+        'INVALID_RESPONSE',
+        undefined,
+        undefined,
+        undefined,
+        'user-decryption-data'
+      )
+    }
     const masterPasswordUnlock = userDecryption
       ? recordProperty(userDecryption, 'masterPasswordUnlock')
       : null
@@ -4434,8 +4993,116 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       : null
     const legacy = stringProperty(profile, 'key')
     const wrapped = modern ?? legacy
-    if (!wrapped) throw new BitwardenDirectError('UNSUPPORTED_ACCOUNT_ENCRYPTION')
+    if (!wrapped) {
+      // `UsesKeyConnector` is an authoritative sync-profile flag. Only map the account to the
+      // specific unsupported flow when the server explicitly reports it.
+      if (property(profile, 'usesKeyConnector') === true && masterPasswordUnlock === null) {
+        throw new BitwardenDirectError('KEY_CONNECTOR_UNSUPPORTED')
+      }
+      // Newer identity/sync shapes may include the login decryption options. Trusted-device and
+      // Key Connector errors are intentionally restricted to an explicit passwordless option;
+      // an absent legacy key by itself remains the generic encryption compatibility error.
+      const decryptionOptions =
+        recordProperty(payload, 'userDecryptionOptions') ??
+        recordProperty(profile, 'userDecryptionOptions')
+      if (
+        decryptionOptions &&
+        property(decryptionOptions, 'hasMasterPassword') === false &&
+        recordProperty(decryptionOptions, 'masterPasswordUnlock') === null
+      ) {
+        const keyConnectorOption = recordProperty(decryptionOptions, 'keyConnectorOption')
+        const trustedDeviceOption = recordProperty(decryptionOptions, 'trustedDeviceOption')
+        const webAuthnPrfOption =
+          property(decryptionOptions, 'webAuthnPrfOption') ??
+          property(decryptionOptions, 'webAuthnPrfOptions')
+        if (keyConnectorOption && !trustedDeviceOption && webAuthnPrfOption == null) {
+          throw new BitwardenDirectError('KEY_CONNECTOR_UNSUPPORTED')
+        }
+        if (trustedDeviceOption && !keyConnectorOption && webAuthnPrfOption == null) {
+          throw new BitwardenDirectError('TRUSTED_DEVICE_UNSUPPORTED')
+        }
+      }
+      throw new BitwardenDirectError('UNSUPPORTED_ACCOUNT_ENCRYPTION')
+    }
     return wrapped
+  }
+
+  private parseUserDecryptionCapabilities(
+    payload: JsonObject
+  ): BitwardenUserDecryptionCapabilities {
+    const raw = property(payload, 'userDecryption')
+    if (raw === undefined || raw === null) {
+      return {
+        hasWebAuthnPrfOptions: false,
+        hasV2UpgradeToken: false,
+        webAuthnPrfUnlockSupported: false,
+        v2AccountUpgradeSupported: false
+      }
+    }
+    if (!isRecord(raw)) {
+      throw new BitwardenDirectError(
+        'INVALID_RESPONSE',
+        undefined,
+        undefined,
+        undefined,
+        'user-decryption-data'
+      )
+    }
+    const prfOptions = property(raw, 'webAuthnPrfOptions')
+    if (
+      prfOptions !== undefined &&
+      prfOptions !== null &&
+      (!Array.isArray(prfOptions) ||
+        prfOptions.length > MAX_REMOTE_ENTITIES ||
+        prfOptions.some((option) => !isRecord(option)))
+    ) {
+      throw new BitwardenDirectError(
+        'INVALID_RESPONSE',
+        undefined,
+        undefined,
+        undefined,
+        'user-decryption-data'
+      )
+    }
+    const v2UpgradeToken = property(raw, 'v2UpgradeToken')
+    if (v2UpgradeToken !== undefined && v2UpgradeToken !== null && !isRecord(v2UpgradeToken)) {
+      throw new BitwardenDirectError(
+        'INVALID_RESPONSE',
+        undefined,
+        undefined,
+        undefined,
+        'user-decryption-data'
+      )
+    }
+    return {
+      hasWebAuthnPrfOptions: Array.isArray(prfOptions) && prfOptions.length > 0,
+      hasV2UpgradeToken: isRecord(v2UpgradeToken),
+      webAuthnPrfUnlockSupported: false,
+      v2AccountUpgradeSupported: false
+    }
+  }
+
+  private defaultSyncInvalidReason(
+    stage: BitwardenSyncInvalidResponseStage
+  ): BitwardenSyncInvalidResponseReason {
+    switch (stage) {
+      case 'response':
+        return 'response-shape'
+      case 'account':
+        return 'account-profile'
+      case 'organization':
+        return 'organization-profile'
+      case 'folder':
+        return 'folder-data'
+      case 'cipher':
+        return 'cipher-data'
+      case 'collection':
+        return 'collection-data'
+      case 'send':
+        return 'send-data'
+      case 'snapshot':
+        return 'snapshot-limit'
+    }
   }
 
   private async validateAccountKeys(
@@ -4576,6 +5243,49 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         throw new BitwardenDirectError('INVALID_RESPONSE')
       }
       return organizationKey
+    } finally {
+      plaintext.fill(0)
+    }
+  }
+
+  private decryptSymmetricWrappedKey(encryptedKey: string, wrappingKey: Buffer): Buffer {
+    const plaintext = decryptBitwardenBytes(encryptedKey, wrappingKey)
+    try {
+      if (plaintext.length === USER_KEY_BYTES) return Buffer.from(plaintext)
+      if (
+        plaintext.length !== Math.ceil(USER_KEY_BYTES / 3) * 4 ||
+        plaintext.some((byte) => byte > 0x7f)
+      ) {
+        throw new BitwardenDirectError(
+          'INVALID_RESPONSE',
+          undefined,
+          undefined,
+          undefined,
+          'provider-organization-key'
+        )
+      }
+      const encoded = plaintext.toString('ascii')
+      if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(encoded)) {
+        throw new BitwardenDirectError(
+          'INVALID_RESPONSE',
+          undefined,
+          undefined,
+          undefined,
+          'provider-organization-key'
+        )
+      }
+      const key = Buffer.from(encoded, 'base64')
+      if (key.length !== USER_KEY_BYTES || key.toString('base64') !== encoded) {
+        key.fill(0)
+        throw new BitwardenDirectError(
+          'INVALID_RESPONSE',
+          undefined,
+          undefined,
+          undefined,
+          'provider-organization-key'
+        )
+      }
+      return key
     } finally {
       plaintext.fill(0)
     }
@@ -5389,8 +6099,23 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   }
 
   private async captureSession(): Promise<void> {
-    this.state.session = this.http.exportSession()
+    const session = this.http.exportSession()
+    if (session) this.captureRememberedTwoFactorToken(session)
+    this.state.session = session ? this.normalizedSession(session) : null
     await this.notifyStateChanged()
+  }
+
+  private captureRememberedTwoFactorToken(session: BitwardenSession): void {
+    if (session.twoFactorToken) this.state.rememberedTwoFactorToken = session.twoFactorToken
+  }
+
+  private normalizedSession(session: BitwardenSession): BitwardenSession {
+    return {
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
+      expiresAt: session.expiresAt,
+      ...(session.clientId ? { clientId: session.clientId } : {})
+    }
   }
 
   private async clearDeauthorizedSession(): Promise<void> {
@@ -5450,6 +6175,12 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     this.collections.clear()
     this.organizationCiphers.clear()
     this.sends.clear()
+    this.syncedUserDecryptionCapabilities = {
+      hasWebAuthnPrfOptions: false,
+      hasV2UpgradeToken: false,
+      webAuthnPrfUnlockSupported: false,
+      v2AccountUpgradeSupported: false
+    }
   }
 
   private mapError(error: unknown): BitwardenDirectError {
@@ -5464,7 +6195,10 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       return new BitwardenDirectError('INVALID_RESPONSE')
     }
     if (error instanceof BitwardenHttpError) {
-      if (error.code === 'AUTH') return new BitwardenDirectError('AUTH_REQUIRED')
+      if (error.code === 'AUTH' || error.code === 'SESSION_EXPIRED') {
+        return new BitwardenDirectError('AUTH_REQUIRED')
+      }
+      if (error.code === 'SSO_REQUIRED') return new BitwardenDirectError('SSO_REQUIRED')
       if (error.code === 'TWO_FACTOR') {
         return new BitwardenDirectError(
           'TWO_FACTOR_REQUIRED',

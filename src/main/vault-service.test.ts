@@ -1985,6 +1985,7 @@ describe('VaultService encrypted local data', () => {
 
   it.each([
     ['NETWORK', 'SYNC_NETWORK'],
+    ['SSO_REQUIRED', 'SYNC_SSO_REQUIRED'],
     ['INVALID_RESPONSE', 'SYNC_INVALID_RESPONSE'],
     ['INVALID_SSH_KEY', 'SYNC_INVALID_SSH_KEY'],
     ['CONFLICT', 'SYNC_CONFLICT']
@@ -2026,6 +2027,31 @@ describe('VaultService encrypted local data', () => {
     expect(Number.isFinite(Date.parse(status.lastErrorAt!))).toBe(true)
   })
 
+  it('reports Duo-only two-factor challenges as an unsupported login flow', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    fake!.sync = async () => {
+      throw new BitwardenDirectError('TWO_FACTOR_REQUIRED', undefined, undefined, [2, 6])
+    }
+
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_DUO_UNSUPPORTED' })
+    await expect(service.syncStatus()).resolves.toMatchObject({
+      state: 'error',
+      lastError: 'SYNC_DUO_UNSUPPORTED'
+    })
+  })
+
   it('records internal sync failures without exposing their raw message', async () => {
     const rawDetail = 'database path and credential-secret-detail'
     let fake: ReturnType<typeof createSyncFake> | null = null
@@ -2049,6 +2075,176 @@ describe('VaultService encrypted local data', () => {
     const serialized = JSON.stringify(await service.syncStatus())
     expect(serialized).toContain('SYNC_FAILED')
     expect(serialized).not.toContain(rawDetail)
+  })
+
+  it('skips an unchanged full sync but never skips pending local changes', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        ;(
+          fake as ReturnType<typeof createSyncFake> & {
+            revisionDate: (signal?: AbortSignal) => Promise<string>
+          }
+        ).revisionDate = async () => '2026-07-13T00:00:00.000Z'
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const fullSync = vi.spyOn(fake!, 'sync')
+
+    await expect(service.syncNow()).resolves.toMatchObject({
+      pulled: 0,
+      pushed: 0,
+      deleted: 0,
+      conflicts: 0
+    })
+    expect(fullSync).not.toHaveBeenCalled()
+
+    const local = (await service.listLogins())[0]!
+    await service.updateLogin({ id: local.id, name: 'Locally changed name' })
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 1 })
+    expect(fullSync).toHaveBeenCalledTimes(2)
+  })
+
+  it('persists equivalent domains fetched after the final authoritative sync', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    let domainRead = 0
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.getEquivalentDomainSettings = async () => {
+          domainRead += 1
+          return {
+            equivalentDomains: [
+              [domainRead % 2 === 0 ? 'final.example.invalid' : 'initial.example.invalid']
+            ],
+            globalEquivalentDomains: []
+          }
+        }
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+
+    const persisted = (
+      service as unknown as {
+        data: { sync: { domainSettings: { equivalentDomains: string[][] } | null } | null } | null
+      }
+    ).data?.sync?.domainSettings
+    expect(domainRead).toBe(2)
+    expect(persisted?.equivalentDomains).toEqual([['final.example.invalid']])
+  })
+
+  it.each([
+    ['organization', 'duplicate organization'],
+    ['collection', 'orphaned collection'],
+    ['cipher', 'cross-organization cipher']
+  ] as const)('reports a safe %s stage for malformed shared snapshots', async (stage, marker) => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const organizationId = '60000000-0000-4000-8000-000000000001'
+    const collectionId = '70000000-0000-4000-8000-000000000001'
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.listOrganizations = async () => [
+          {
+            id: organizationId,
+            name: 'Shared Team',
+            status: 0,
+            type: 0,
+            enabled: true,
+            identifier: null,
+            hasPublicAndPrivateKeys: false
+          }
+        ]
+        fake.listCollections = async () => [
+          {
+            id: collectionId,
+            organizationId,
+            name: 'Shared Collection',
+            externalId: null,
+            readOnly: false,
+            hidePasswords: false,
+            manage: true,
+            type: 0,
+            assigned: true
+          }
+        ]
+        fake.listOrganizationCiphers = async () => []
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+
+    if (stage === 'organization') {
+      const organization = (await fake!.listOrganizations!())[0]!
+      fake!.listOrganizations = async () => [organization, organization]
+    } else if (stage === 'collection') {
+      const collection = (await fake!.listCollections!())[0]!
+      fake!.listCollections = async () => [
+        { ...collection, organizationId: '60000000-0000-4000-8000-000000000099' }
+      ]
+    } else {
+      fake!.listOrganizationCiphers = async () => [
+        {
+          ...fake!.remoteLogins[0]!,
+          id: '80000000-0000-4000-8000-000000000001',
+          organizationId,
+          collectionIds: ['70000000-0000-4000-8000-000000000099'],
+          edit: false,
+          viewPassword: false,
+          delete: false,
+          restore: false
+        }
+      ]
+    }
+
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_INVALID_RESPONSE' })
+    const serialized = JSON.stringify(await service.syncStatus())
+    expect(serialized).toContain(`"lastErrorDetail":"${stage}"`)
+    expect(serialized).not.toContain(marker)
+  })
+
+  it('resends new-device verification without retaining the master password', async () => {
+    const resend = vi.fn(async () => undefined)
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        const fake = createSyncFake(sync.state)
+        ;(
+          fake as ReturnType<typeof createSyncFake> & {
+            resendNewDeviceOtp: (password: string, signal?: AbortSignal) => Promise<void>
+          }
+        ).resendNewDeviceOtp = resend
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    const request = {
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'temporary remote password'
+    }
+
+    await service.resendSyncNewDeviceOtp(request)
+
+    expect(resend).toHaveBeenCalledWith('temporary remote password', expect.any(AbortSignal))
+    expect(request.masterPassword).toBe('')
   })
 
   it('persists organization collections and shared items without entering personal sync merge', async () => {

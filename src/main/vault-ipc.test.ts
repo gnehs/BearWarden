@@ -1942,6 +1942,7 @@ describe('registerVaultIpc reprompt gate', () => {
         conflicts: 0
       })),
       sendSyncEmailTwoFactorCode: vi.fn(async () => undefined),
+      resendSyncNewDeviceOtp: vi.fn(async () => undefined),
       resolvePendingLoginImport: vi.fn(async () => ({ configured: true, state: 'ready' })),
       disconnectSync: vi.fn(async () => ({ configured: false, state: 'unconfigured' })),
       createLogin: vi.fn(async (request) => ({ id: 'created', ...request })),
@@ -2318,6 +2319,43 @@ describe('registerVaultIpc reprompt gate', () => {
     await expect(send(event, accessorRequest)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     expect(getter).not.toHaveBeenCalled()
     expect(vault.sendSyncEmailTwoFactorCode).toHaveBeenCalledTimes(1)
+  })
+
+  it('validates new-device resend credentials and clears the parsed password after dispatch', async () => {
+    const { event, vault } = harness()
+    const resend = electronMock.handlers.get(IPC_CHANNELS.syncResendNewDeviceOtp)!
+    let dispatchedPassword = ''
+    let dispatchedRequest: { masterPassword: string } | undefined
+    vault.resendSyncNewDeviceOtp.mockImplementationOnce(async (request) => {
+      dispatchedPassword = request.masterPassword
+      dispatchedRequest = request
+    })
+    const request = {
+      serverUrl: 'https://vault.example.invalid',
+      email: 'person@example.invalid',
+      masterPassword: 'remote password'
+    }
+
+    await expect(resend(event, request)).resolves.toBeUndefined()
+    expect(dispatchedPassword).toBe('remote password')
+    expect(dispatchedRequest?.masterPassword).toBe('')
+    expect(request.masterPassword).toBe('remote password')
+
+    for (const invalid of [
+      undefined,
+      {},
+      { ...request, serverUrl: '' },
+      { ...request, email: '' },
+      { ...request, masterPassword: '' },
+      { ...request, serverUrl: 'x'.repeat(4_097) },
+      { ...request, email: 'x'.repeat(513) },
+      { ...request, masterPassword: 'x'.repeat(16_385) },
+      { ...request, newDeviceOtp: 'must-not-cross-ipc' },
+      Object.assign({ ...request }, { [Symbol('extra')]: true })
+    ]) {
+      await expect(resend(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(vault.resendSyncNewDeviceOtp).toHaveBeenCalledOnce()
   })
 
   it('keeps portability IPC path-free, exact, and password-proof scoped', async () => {

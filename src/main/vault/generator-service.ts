@@ -12,8 +12,16 @@ import {
   generatePassword,
   generatePlusAddressedEmail,
   generateRandomWordUsername,
+  PASSPHRASE_DEFAULTS,
+  PASSWORD_DEFAULTS,
   type RandomInt
 } from '../credential-generator'
+import {
+  BITWARDEN_POLICY_TYPE,
+  policyEnforcementDecision,
+  type BitwardenPolicySet,
+  type PasswordGeneratorPolicyMetadata
+} from '../bitwarden-policy'
 import { loadEffLongWordlist } from '../eff-wordlist'
 import { generateSshKeyMaterial, type SshKeyMaterial } from '../ssh-key'
 import { VaultError } from '../vault-errors'
@@ -43,6 +51,7 @@ export interface VaultGeneratorServiceDependencies {
   readonly copyText: (text: string) => void | Promise<void>
   readonly exclusive: <T>(operation: () => Promise<T>) => Promise<T>
   readonly assertUnlocked: () => void
+  readonly readPolicySet: () => BitwardenPolicySet
   readonly readHistory: () => readonly GeneratorHistoryEntry[]
   readonly commitHistory: (history: readonly GeneratorHistoryEntry[]) => Promise<void>
 }
@@ -56,30 +65,59 @@ export class VaultGeneratorService {
     return this.dependencies.exclusive(async () => {
       this.dependencies.assertUnlocked()
       let credential: string
-      const algorithm = request.algorithm
-      if (algorithm === 'password') {
-        credential = generatePassword(request.options, this.dependencies.randomInt)
-      } else if (algorithm === 'passphrase') {
-        credential = generatePassphrase(
-          request.options,
-          loadEffLongWordlist(),
-          this.dependencies.randomInt
+      let policyApplied = false
+      let algorithm: GeneratorCredentialAlgorithm = request.algorithm
+      if (request.algorithm === 'password') {
+        // Validate the renderer request independently before applying policy. Otherwise a policy
+        // could accidentally turn a contradictory request (for example uppercase=false with a
+        // positive minimum) into a valid one and weaken the IPC validation boundary.
+        generatePassword(request.options, () => 0)
+        const policy = this.passwordGeneratorPolicy()
+        policyApplied = policy !== null
+        algorithm = this.effectivePasswordAlgorithm(request.algorithm, policy)
+        credential = this.generateUnderPolicy(policyApplied, () =>
+          algorithm === 'passphrase'
+            ? generatePassphrase(
+                this.passphraseOptions({}, policy),
+                loadEffLongWordlist(),
+                this.dependencies.randomInt
+              )
+            : generatePassword(
+                this.passwordOptions(request.options, policy),
+                this.dependencies.randomInt
+              )
         )
-      } else if (algorithm === 'username') {
+      } else if (request.algorithm === 'passphrase') {
+        // A one-word validation list exercises every request option without needlessly validating
+        // the complete EFF list twice. Production generation below still uses the vetted list.
+        generatePassphrase(request.options, ['validation'], () => 0)
+        const policy = this.passwordGeneratorPolicy()
+        policyApplied = policy !== null
+        algorithm = this.effectivePasswordAlgorithm(request.algorithm, policy)
+        credential = this.generateUnderPolicy(policyApplied, () =>
+          algorithm === 'password'
+            ? generatePassword(this.passwordOptions({}, policy), this.dependencies.randomInt)
+            : generatePassphrase(
+                this.passphraseOptions(request.options, policy),
+                loadEffLongWordlist(),
+                this.dependencies.randomInt
+              )
+        )
+      } else if (request.algorithm === 'username') {
         credential = generateRandomWordUsername(
           request.options,
           loadEffLongWordlist(),
           this.dependencies.randomInt
         )
-      } else if (algorithm === 'subaddress') {
+      } else if (request.algorithm === 'subaddress') {
         credential = generatePlusAddressedEmail(request.email, this.dependencies.randomInt)
-      } else if (algorithm === 'catchall') {
+      } else if (request.algorithm === 'catchall') {
         credential = generateCatchAllEmail(request.domain, this.dependencies.randomInt)
       } else {
         throw new VaultError('INVALID_INPUT')
       }
       if (credential.length === 0 || credential.length > MAX_GENERATED_CREDENTIAL_LENGTH) {
-        throw new VaultError('INTERNAL_ERROR')
+        throw new VaultError(policyApplied ? 'POLICY_RESTRICTED' : 'INTERNAL_ERROR')
       }
 
       const generated: GeneratorHistoryEntry & { algorithm: GeneratorCredentialAlgorithm } = {
@@ -169,6 +207,147 @@ export class VaultGeneratorService {
 
   clearRuntimeState(): void {
     this.pendingGeneratedCredentials.clear()
+  }
+
+  private generateUnderPolicy<T>(policyApplied: boolean, generate: () => T): T {
+    try {
+      return generate()
+    } catch (error) {
+      if (policyApplied) throw new VaultError('POLICY_RESTRICTED')
+      throw error
+    }
+  }
+
+  private passwordGeneratorPolicy(): PasswordGeneratorPolicyMetadata | null {
+    const policySet = this.dependencies.readPolicySet()
+    if (policySet.parseFailure !== undefined) throw new VaultError('POLICY_RESTRICTED')
+    const hasEnabledGeneratorPolicy = policySet.policies.some(
+      (policy) => policy.enabled && policy.type === BITWARDEN_POLICY_TYPE.PasswordGenerator
+    )
+    if (hasEnabledGeneratorPolicy && policySet.applicableOrganizationIds === undefined) {
+      // Applicability resolves the official membership exemptions. Applying every organization
+      // policy when that context is absent would be incorrect; ignoring them would be unsafe.
+      throw new VaultError('POLICY_RESTRICTED')
+    }
+    const decision = policyEnforcementDecision(
+      policySet,
+      BITWARDEN_POLICY_TYPE.PasswordGenerator,
+      new Set(policySet.applicableOrganizationIds ?? [])
+    )
+    if (decision.state === 'not-applicable') return null
+    if (decision.state === 'fail-closed') throw new VaultError('POLICY_RESTRICTED')
+
+    const combined: PasswordGeneratorPolicyMetadata = {
+      kind: 'passwordGenerator',
+      overridePasswordType: '',
+      minLength: 0,
+      useUppercase: false,
+      useLowercase: false,
+      useNumbers: false,
+      numberCount: 0,
+      useSpecial: false,
+      specialCount: 0,
+      minNumberWords: 0,
+      capitalize: false,
+      includeNumber: false
+    }
+    for (const entry of decision.policies) {
+      if (entry.data?.kind !== 'passwordGenerator') throw new VaultError('POLICY_RESTRICTED')
+      const data = entry.data
+      combined.minLength = Math.max(combined.minLength, data.minLength)
+      combined.useUppercase ||= data.useUppercase
+      combined.useLowercase ||= data.useLowercase
+      combined.useNumbers ||= data.useNumbers
+      combined.numberCount = Math.max(combined.numberCount, data.numberCount)
+      combined.useSpecial ||= data.useSpecial
+      combined.specialCount = Math.max(combined.specialCount, data.specialCount)
+      combined.minNumberWords = Math.max(combined.minNumberWords, data.minNumberWords)
+      combined.capitalize ||= data.capitalize
+      combined.includeNumber ||= data.includeNumber
+      // Official clients prefer a password override over passphrase, independent of policy order.
+      if (
+        data.overridePasswordType === 'password' ||
+        (data.overridePasswordType === 'passphrase' && combined.overridePasswordType === '')
+      ) {
+        combined.overridePasswordType = data.overridePasswordType
+      }
+    }
+    return combined
+  }
+
+  private effectivePasswordAlgorithm(
+    requested: GeneratorCredentialAlgorithm,
+    policy: PasswordGeneratorPolicyMetadata | null
+  ): GeneratorCredentialAlgorithm {
+    if (requested !== 'password' && requested !== 'passphrase') return requested
+    return policy?.overridePasswordType || requested
+  }
+
+  private passwordOptions(
+    options: Extract<CredentialGeneratorRequest, { algorithm: 'password' }>['options'],
+    policy: PasswordGeneratorPolicyMetadata | null
+  ): Extract<CredentialGeneratorRequest, { algorithm: 'password' }>['options'] {
+    if (!policy) return options
+
+    const uppercase = policy.useUppercase || (options.uppercase ?? PASSWORD_DEFAULTS.uppercase)
+    const lowercase = policy.useLowercase || (options.lowercase ?? PASSWORD_DEFAULTS.lowercase)
+    const numbers =
+      policy.useNumbers || policy.numberCount > 0 || (options.numbers ?? PASSWORD_DEFAULTS.numbers)
+    const special =
+      policy.useSpecial || policy.specialCount > 0 || (options.special ?? PASSWORD_DEFAULTS.special)
+    const minUppercase = Math.max(
+      options.minUppercase ?? (uppercase ? PASSWORD_DEFAULTS.minUppercase : 0),
+      policy.useUppercase ? 1 : 0
+    )
+    const minLowercase = Math.max(
+      options.minLowercase ?? (lowercase ? PASSWORD_DEFAULTS.minLowercase : 0),
+      policy.useLowercase ? 1 : 0
+    )
+    const minNumber = Math.max(
+      options.minNumber ?? (numbers ? PASSWORD_DEFAULTS.minNumbers : 0),
+      policy.numberCount,
+      policy.useNumbers ? 1 : 0
+    )
+    const minSpecial = Math.max(
+      options.minSpecial ?? (special ? PASSWORD_DEFAULTS.minSpecial : 0),
+      policy.specialCount,
+      policy.useSpecial ? 1 : 0
+    )
+    const requiredLength = minUppercase + minLowercase + minNumber + minSpecial
+    const length = Math.max(
+      options.length ?? PASSWORD_DEFAULTS.length,
+      policy.minLength,
+      requiredLength
+    )
+    return {
+      ...options,
+      length,
+      uppercase,
+      lowercase,
+      numbers,
+      special,
+      minUppercase,
+      minLowercase,
+      minNumber,
+      minSpecial
+    }
+  }
+
+  private passphraseOptions(
+    options: Extract<CredentialGeneratorRequest, { algorithm: 'passphrase' }>['options'],
+    policy: PasswordGeneratorPolicyMetadata | null
+  ): Extract<CredentialGeneratorRequest, { algorithm: 'passphrase' }>['options'] {
+    if (!policy) return options
+    return {
+      ...options,
+      wordCount: Math.max(
+        options.wordCount ?? PASSPHRASE_DEFAULTS.wordCount,
+        policy.minNumberWords
+      ),
+      capitalize: policy.capitalize || (options.capitalize ?? PASSPHRASE_DEFAULTS.capitalize),
+      includeNumber:
+        policy.includeNumber || (options.includeNumber ?? PASSPHRASE_DEFAULTS.includeNumber)
+    }
   }
 
   private removeExpiredGeneratedCredentials(): void {

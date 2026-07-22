@@ -16,6 +16,12 @@ function json(body: unknown, status = 200, headers?: HeadersInit): Response {
   })
 }
 
+function unsignedAccessToken(payload: Record<string, unknown>): string {
+  return `${Buffer.from('{"alg":"none"}').toString('base64url')}.${Buffer.from(
+    JSON.stringify(payload)
+  ).toString('base64url')}.signature`
+}
+
 function accountProfile(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: '10000000-0000-4000-8000-000000000001',
@@ -1224,6 +1230,95 @@ describe('BitwardenHttpClient', () => {
     expect(requestHeaders.get('bitwarden-client-version')).toBe('1.0.0')
   })
 
+  it('keeps a bounded remembered 2FA token in the main-process session contract', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      json({
+        access_token: 'access',
+        refresh_token: 'refresh',
+        expires_in: 3600,
+        TwoFactorToken: 'remembered-device-token'
+      })
+    )
+    const client = new BitwardenHttpClient({ server: 'us', fetch, now: () => 0 })
+
+    const session = await client.passwordToken({
+      email: 'person@example.test',
+      password: 'derived-secret',
+      twoFactorProvider: 5,
+      twoFactorToken: 'previous-remembered-token',
+      twoFactorRemember: false
+    })
+
+    expect(session).toEqual({
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      expiresAt: 3_600_000,
+      twoFactorToken: 'remembered-device-token'
+    })
+    expect(fetch.mock.calls[0]?.[1]?.body).toContain('twoFactorProvider=5')
+    expect(fetch.mock.calls[0]?.[1]?.body).toContain('twoFactorToken=previous-remembered-token')
+    expect(fetch.mock.calls[0]?.[1]?.body).toContain('twoFactorRemember=0')
+  })
+
+  it('rejects malformed remembered 2FA tokens instead of persisting them', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      json({
+        access_token: 'access',
+        refresh_token: 'refresh',
+        expires_in: 3600,
+        TwoFactorToken: 'unsafe\ntoken'
+      })
+    )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    await expect(
+      client.passwordToken({ email: 'person@example.test', password: 'derived-secret' })
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  })
+
+  it('resends new-device OTP without authentication or retained credential metadata', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(json({ object: 'newDeviceOtpSent' }))
+    const client = new BitwardenHttpClient({ server: 'https://vault.example.test', fetch })
+    client.setSession({ accessToken: 'must-not-be-sent', refreshToken: 'refresh', expiresAt: 1 })
+
+    await client.resendNewDeviceOtp({
+      email: 'person@example.test',
+      masterPasswordHash: 'derived-password-proof'
+    })
+
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      'https://vault.example.test/api/accounts/resend-new-device-otp'
+    )
+    const init = fetch.mock.calls[0]?.[1]
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      email: 'person@example.test',
+      masterPasswordHash: 'derived-password-proof'
+    })
+    const requestHeaders = new Headers(init?.headers)
+    expect(requestHeaders.get('authorization')).toBeNull()
+    expect(requestHeaders.get('auth-email')).toBe(
+      Buffer.from('person@example.test').toString('base64url')
+    )
+  })
+
+  it('does not retry or retain reflected new-device OTP proof errors', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(
+        json({ message: 'failure', masterPasswordHash: 'derived-password-proof' }, 503)
+      )
+    const client = new BitwardenHttpClient({ server: 'us', fetch, maxRetries: 5 })
+    const error = await client
+      .resendNewDeviceOtp({
+        email: 'person@example.test',
+        masterPasswordHash: 'derived-password-proof'
+      })
+      .catch((caught: unknown) => caught)
+    expect(error).toMatchObject({ code: 'NETWORK', status: 503, details: undefined })
+    expect(JSON.stringify(error)).not.toContain('derived-password-proof')
+    expect(fetch).toHaveBeenCalledOnce()
+  })
+
   it('sends the exact unauthenticated Email 2FA login request with device headers', async () => {
     const fetch = vi.fn<FetchLike>().mockResolvedValue(new Response(null, { status: 204 }))
     const client = new BitwardenHttpClient({ server: 'https://vault.example.test', fetch })
@@ -1470,6 +1565,83 @@ describe('BitwardenHttpClient', () => {
       expiresAt: 60_000
     })
     expect(client.exportSession()?.accessToken).toBe('new-access')
+  })
+
+  it('uses the session or access-token OAuth client id when refreshing', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockImplementation(async () =>
+        json({ access_token: 'fresh-access', refresh_token: 'fresh-refresh', expires_in: 60 })
+      )
+    const client = new BitwardenHttpClient({ server: 'us', fetch, now: () => 0 })
+    client.setSession({
+      accessToken: unsignedAccessToken({ client_id: 'browser' }),
+      refreshToken: 'refresh',
+      expiresAt: 1
+    })
+    await client.refresh()
+    expect(fetch.mock.calls[0]?.[1]?.body).toContain('client_id=browser')
+
+    client.setSession({
+      accessToken: unsignedAccessToken({ client_id: 'browser' }),
+      refreshToken: 'refresh',
+      expiresAt: 1,
+      clientId: 'desktop'
+    })
+    await client.refresh()
+    expect(fetch.mock.calls[1]?.[1]?.body).toContain('client_id=desktop')
+  })
+
+  it('falls back to desktop for opaque or unsafe access-token client ids', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(
+        json({ access_token: 'fresh-access', refresh_token: 'fresh-refresh', expires_in: 60 })
+      )
+    const client = new BitwardenHttpClient({ server: 'us', fetch, now: () => 0 })
+    client.setSession({
+      accessToken: unsignedAccessToken({ client_id: 'desktop\r\nx-unsafe' }),
+      refreshToken: 'refresh',
+      expiresAt: 1
+    })
+    await client.refresh()
+    expect(fetch.mock.calls[0]?.[1]?.body).toContain('client_id=desktop')
+  })
+
+  it('classifies refresh invalid_grant as an expired session without raw identity details', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      json(
+        {
+          error: 'invalid_grant',
+          error_description: 'refresh token expired for a deployment-specific account'
+        },
+        400
+      )
+    )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'opaque', refreshToken: 'expired', expiresAt: 1 })
+    const error = await client.refresh().catch((caught: unknown) => caught)
+    expect(error).toMatchObject({ code: 'SESSION_EXPIRED', status: 400, details: undefined })
+    expect(JSON.stringify(error)).not.toContain('deployment-specific')
+  })
+
+  it('classifies forced SSO without exposing the organization identifier', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      json(
+        {
+          error: 'invalid_grant',
+          error_description: 'SSO authentication required.',
+          SsoOrganizationIdentifier: 'private-organization-slug'
+        },
+        400
+      )
+    )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    const error = await client
+      .passwordToken({ email: 'person@example.test', password: 'derived-secret' })
+      .catch((caught: unknown) => caught)
+    expect(error).toMatchObject({ code: 'SSO_REQUIRED', status: 400, details: undefined })
+    expect(JSON.stringify(error)).not.toContain('private-organization-slug')
   })
 
   it('reuses a live notification token and serializes proactive refresh near expiry', async () => {

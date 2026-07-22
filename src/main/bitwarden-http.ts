@@ -58,6 +58,10 @@ export interface BitwardenSession {
   refreshToken: string
   /** Unix epoch milliseconds. */
   expiresAt: number
+  /** Opaque server-issued token used for the remembered two-step-login provider (5). */
+  twoFactorToken?: string
+  /** OAuth client that minted the access token. Kept main-process-only for refresh requests. */
+  clientId?: string
 }
 
 export interface BitwardenPrelogin {
@@ -354,6 +358,8 @@ export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
 export type BitwardenHttpErrorCode =
   | 'AUTH'
+  | 'SESSION_EXPIRED'
+  | 'SSO_REQUIRED'
   | 'TWO_FACTOR'
   | 'NEW_DEVICE'
   | 'NETWORK'
@@ -433,6 +439,10 @@ const MAX_IMPORT_CIPHERS = 7_000
 const MAX_IMPORT_RELATIONSHIPS = 7_000
 const MAX_IMPORT_REQUEST_BYTES = 18 * 1024 * 1024
 const MAX_TWO_FACTOR_PROVIDER_ENTRIES = 32
+const MAX_OPAQUE_AUTH_TOKEN_BYTES = 64 * 1024
+const MAX_OAUTH_CLIENT_ID_BYTES = 256
+const MAX_JWT_PAYLOAD_BYTES = 16 * 1024
+const OAUTH_CLIENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u
 
 function isRecord(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -777,7 +787,15 @@ export class BitwardenHttpClient {
     ) {
       throw new BitwardenHttpError('INVALID_RESPONSE')
     }
-    this.session = { ...session }
+    const twoFactorToken = optionalOpaqueAuthToken(session.twoFactorToken)
+    const clientId = optionalOAuthClientId(session.clientId)
+    this.session = {
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
+      expiresAt: session.expiresAt,
+      ...(twoFactorToken ? { twoFactorToken } : {}),
+      ...(clientId ? { clientId } : {})
+    }
   }
 
   exportSession(): BitwardenSession | null {
@@ -895,7 +913,8 @@ export class BitwardenHttpClient {
     body.set('username', form.email)
     body.set('password', form.password)
     body.set('scope', 'api offline_access')
-    body.set('client_id', form.clientId ?? 'desktop')
+    const clientId = optionalOAuthClientId(form.clientId) ?? 'desktop'
+    body.set('client_id', clientId)
     for (const [key, value] of Object.entries(form)) {
       if (['email', 'password', 'clientId', 'newDeviceOtp'].includes(key) || value === undefined)
         continue
@@ -919,7 +938,38 @@ export class BitwardenHttpClient {
         'cache-control': 'no-store'
       }
     })
-    return parseSession(response, this.now())
+    return parseSession(response, this.now(), { clientId: form.clientId ? clientId : undefined })
+  }
+
+  async resendNewDeviceOtp(
+    request: { email: string; masterPasswordHash: string },
+    signal?: AbortSignal
+  ): Promise<void> {
+    if (!string(request.email) || !string(request.masterPasswordHash)) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    const body: JsonObject = {
+      email: request.email,
+      masterPasswordHash: request.masterPasswordHash
+    }
+    try {
+      await this.requestJson('POST', `${this.urls.apiUrl}/accounts/resend-new-device-otp`, {
+        body,
+        signal,
+        authenticate: false,
+        retry: false,
+        headers: { 'auth-email': base64Url(request.email) }
+      })
+    } catch (error) {
+      // This unauthenticated endpoint may reflect its credential proof. Never retain its payload.
+      if (error instanceof BitwardenHttpError) {
+        throw new BitwardenHttpError(error.code, error.status)
+      }
+      throw error
+    } finally {
+      body.email = ''
+      body.masterPasswordHash = ''
+    }
   }
 
   async sendEmailTwoFactorLoginCode(
@@ -2236,18 +2286,39 @@ export class BitwardenHttpClient {
     refreshToken: string,
     signal?: AbortSignal
   ): Promise<BitwardenSession> {
+    const previousSession = this.session
+    const retainedClientId =
+      optionalOAuthClientId(previousSession?.clientId) ??
+      oauthClientIdFromAccessToken(previousSession?.accessToken)
+    const requestClientId = retainedClientId ?? 'desktop'
     const form = new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: refreshToken,
-      client_id: 'desktop'
+      client_id: requestClientId
     })
-    const payload = await this.requestJson('POST', `${this.urls.identityUrl}/connect/token`, {
-      form,
-      signal,
-      authenticate: false,
-      headers: { 'cache-control': 'no-store' }
+    let payload: JsonValue
+    try {
+      payload = await this.requestJson('POST', `${this.urls.identityUrl}/connect/token`, {
+        form,
+        signal,
+        authenticate: false,
+        headers: { 'cache-control': 'no-store' }
+      })
+    } catch (error) {
+      if (
+        error instanceof BitwardenHttpError &&
+        error.status === 400 &&
+        error.code === 'AUTH' &&
+        hasInvalidGrant(error.details)
+      ) {
+        throw new BitwardenHttpError('SESSION_EXPIRED', 400)
+      }
+      throw error
+    }
+    const updated = parseSession(payload, this.now(), {
+      clientId: retainedClientId,
+      twoFactorToken: previousSession?.twoFactorToken
     })
-    const updated = parseSession(payload, this.now())
     this.session = updated
     await this.options.onSessionChanged?.({ ...updated })
     return updated
@@ -4006,13 +4077,89 @@ function parsePrelogin(value: JsonValue): BitwardenPrelogin {
   }
 }
 
-function parseSession(value: JsonValue, now: number): BitwardenSession {
+function optionalOpaqueAuthToken(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined
+  if (
+    typeof value !== 'string' ||
+    Buffer.byteLength(value, 'utf8') > MAX_OPAQUE_AUTH_TOKEN_BYTES ||
+    [...value].some((character) => {
+      const codePoint = character.codePointAt(0)!
+      return codePoint < 0x20 || codePoint === 0x7f
+    })
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function optionalOAuthClientId(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined
+  if (
+    typeof value !== 'string' ||
+    Buffer.byteLength(value, 'utf8') > MAX_OAUTH_CLIENT_ID_BYTES ||
+    !OAUTH_CLIENT_ID_PATTERN.test(value)
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function oauthClientIdFromAccessToken(accessToken: unknown): string | undefined {
+  if (typeof accessToken !== 'string' || accessToken.length > MAX_OPAQUE_AUTH_TOKEN_BYTES) {
+    return undefined
+  }
+  const parts = accessToken.split('.')
+  if (parts.length !== 3 || !/^[A-Za-z0-9_-]+$/u.test(parts[1] ?? '')) return undefined
+  try {
+    const payloadBytes = Buffer.from(parts[1]!, 'base64url')
+    if (
+      payloadBytes.length === 0 ||
+      payloadBytes.length > MAX_JWT_PAYLOAD_BYTES ||
+      payloadBytes.toString('base64url') !== parts[1]
+    ) {
+      return undefined
+    }
+    const payload: unknown = JSON.parse(payloadBytes.toString('utf8'))
+    if (!isRecord(payload)) return undefined
+    return optionalOAuthClientId(payload.client_id ?? payload.clientId)
+  } catch {
+    // Access tokens are opaque to callers. A malformed/non-JWT token safely uses the desktop client.
+    return undefined
+  }
+}
+
+function hasInvalidGrant(details: JsonObject | undefined): boolean {
+  if (!details) return false
+  const error = details.error ?? details.Error
+  return typeof error === 'string' && error.toLowerCase() === 'invalid_grant'
+}
+
+function parseSession(
+  value: JsonValue,
+  now: number,
+  inherited: { clientId?: string; twoFactorToken?: string } = {}
+): BitwardenSession {
   if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
   const accessToken = string(value.access_token ?? value.accessToken)
   const refreshToken = string(value.refresh_token ?? value.refreshToken)
   const expiresAt = normalizeExpiresAt(value.expires_in ?? value.expiresAt, now)
   if (!accessToken || !refreshToken || !expiresAt) throw new BitwardenHttpError('INVALID_RESPONSE')
-  return { accessToken, refreshToken, expiresAt }
+  const responseTwoFactorToken = optionalOpaqueAuthToken(
+    value.TwoFactorToken ?? value.twoFactorToken
+  )
+  const twoFactorToken = responseTwoFactorToken ?? optionalOpaqueAuthToken(inherited.twoFactorToken)
+  const responseClientId = optionalOAuthClientId(value.client_id ?? value.clientId)
+  const clientId =
+    responseClientId ??
+    optionalOAuthClientId(inherited.clientId) ??
+    oauthClientIdFromAccessToken(accessToken)
+  return {
+    accessToken,
+    refreshToken,
+    expiresAt,
+    ...(twoFactorToken ? { twoFactorToken } : {}),
+    ...(clientId ? { clientId } : {})
+  }
 }
 
 function parseTwoFactorProviderId(value: JsonValue): BitwardenTwoFactorProviderId {
@@ -4072,6 +4219,13 @@ function toHttpError(status: number, payload: JsonValue): BitwardenHttpError {
   if (status === 404) return new BitwardenHttpError('NOT_FOUND', status, details)
   if (status === 413) return new BitwardenHttpError('TOO_LARGE', status, details)
   if (status === 409) return new BitwardenHttpError('CONFLICT', status, details)
+  if (
+    status === 400 &&
+    typeof (details?.SsoOrganizationIdentifier ?? details?.ssoOrganizationIdentifier) === 'string'
+  ) {
+    // The organization identifier and surrounding identity error are not needed outside transport.
+    return new BitwardenHttpError('SSO_REQUIRED', status)
+  }
   if (status === 400 && message.includes('user verification failed')) {
     return new BitwardenHttpError('USER_VERIFICATION_FAILED', status)
   }

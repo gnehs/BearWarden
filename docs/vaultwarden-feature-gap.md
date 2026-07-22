@@ -1,11 +1,11 @@
 # Vaultwarden／Bitwarden 功能差距
 
 本文件追蹤 BearWarden 與 Vaultwarden、Bitwarden 官方桌面客戶端之間的功能差距。
-比較基準為 2026-07-16 的上游版本：
+比較基準為 2026-07-22 至 2026-07-23 間查核的上游版本：
 
 - [Vaultwarden `169aa5e`](https://github.com/dani-garcia/vaultwarden/commit/169aa5efcc8d94684ff3bc813a00e6bcc0cc537a)
 - [Bitwarden Server `4bf70b5`](https://github.com/bitwarden/server/commit/4bf70b598f7bb5fa29b4909505c78189bdfbf34b)
-- [Bitwarden Clients `8afb576`](https://github.com/bitwarden/clients/commit/8afb576cfeaee599416a86515510c64367669fdf)
+- [Bitwarden Clients `7a0e484`](https://github.com/bitwarden/clients/commit/7a0e4841e8ec555b8017ae69baa92fb52de9a064)
 
 ## 比較原則
 
@@ -19,6 +19,40 @@ BearWarden 是本機優先的桌面密碼管理器，不是 Vaultwarden 伺服�
 - **完成主要流程**：使用者可完成主要操作，且已有同步語意與自動化測試；仍有大檔、真機相容或營運資訊等後續工作。
 - **部分**：已有資料或讀取能力，但缺少完整編輯、同步或 UI。
 - **未實作**：尚無可用流程。
+
+## 登入方式與同步邊界
+
+Bitwarden 官方客戶端把「使用 WebAuthn 作為第二步驗證」與「以 WebAuthn／PRF
+無密碼登入」視為不同登入策略；個人 API key 的檢視／輪替也不代表支援
+`client_credentials` API key 登入。BearWarden 的支援邊界如下：
+
+| 官方登入方式                                              | BearWarden 狀態  | 說明                                                                                                                         |
+| --------------------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Email＋主密碼                                             | 支援             | PBKDF2／Argon2id prelogin、可重新寄送的 new-device email OTP、V1 與 Account Encryption V2                                    |
+| 第二步驗證（Authenticator、Email、YubiKey OTP、WebAuthn） | 支援主要流程     | 支援伺服器記住第二步驗證 token，拒絕後自動清除；WebAuthn 是 provider 7 的第二步驗證，仍需實體金鑰 live fixture               |
+| Duo／Organization Duo 登入                                | 未實作           | 帳號設定可管理個人 Duo，但登入 challenge 不會假裝成一般 OTP；Organization Duo 也不支援                                       |
+| SSO／Key Connector／Trusted Device Encryption             | 未實作           | 偵測到不相容的解密模式時 fail closed，不降級使用 legacy key                                                                  |
+| Login with Device                                         | 僅支援 initiator | 已登入且已解鎖的 BearWarden 可檢視、比對 fingerprint 並核准／拒絕另一台裝置的登入請求；BearWarden 本身不能以此取代主密碼登入 |
+| API key 登入                                              | 未實作           | 可在重新驗證主密碼後安全複製／輪替個人 API key，但不以 API key 建立 BearWarden 同步 session                                  |
+| WebAuthn passwordless／PRF 登入                           | 未實作           | 不等同於已支援的 WebAuthn 第二步驗證，也不應由 passkey 網站登入流程推定為已支援                                              |
+
+完整同步目前以伺服器 snapshot 為權威，涵蓋個人 ciphers、folders、Sends、domains，
+以及 Organizations／Collections／共享 ciphers 的只讀鏡像；通知事件會合併成完整同步，
+而不是逐事件採用官方客戶端的 incremental upsert/delete。BearWarden 會保留既有項目的
+未知遠端欄位，但只會把 Login、Secure Note、Card、Identity 與 SSH Key 轉成本機可操作項目；
+未識別的未來 cipher type 會 fail closed 並提供已去敏感資訊的原因碼，不會靜默遺失。
+WebAuthn PRF 解鎖資料與加密遷移 metadata 的同步不代表 BearWarden 已提供對應的
+SSO／passwordless 使用者流程。
+
+| 官方完整同步資料                           | BearWarden 能力與限制                                                                                                                                                                                                                                       |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Profile、KDF、Account Keys、UserDecryption | 支援主密碼解鎖的 V1／V2 帳號；SSO、Key Connector、Trusted Device Encryption 與 WebAuthn PRF passwordless 流程不支援                                                                                                                                         |
+| Folders、Ciphers                           | 個人項目雙向同步；可操作 Login、Secure Note、Card、Identity、SSH Key。官方新增的其他 cipher type 不會被誤當成既有類型                                                                                                                                       |
+| Organizations、Collections、shared ciphers | `OrganizationsNew` 優先、legacy fallback，並支援 provider organization 兩階段 key unwrap 的伺服器權威只讀鏡像；不提供 shared mutation 或管理員流程                                                                                                          |
+| Sends                                      | 文字 Send 可建立／編輯／刪除；檔案 Send 支援 metadata 與 Direct transport 主要流程，但不支援建立後編輯、Azure transport、公開接收頁或進階 recipient verification                                                                                            |
+| Domains                                    | 同步 custom／global equivalent domains；可編輯 custom groups 並排除 global groups                                                                                                                                                                           |
+| Policies／PoliciesNew                      | `PoliciesNew` 優先、legacy fallback；執行 Password Generator、Remove Unlock with PIN、Disable Send、Disable Personal Vault Export、Organization Data Ownership、Restricted Item Types 與 Maximum Vault Timeout；其他政策只保留安全 metadata，不宣稱完整支援 |
+| Server notifications                       | SignalR MessagePack 通知會觸發合併後的 authoritative full sync；尚未採用官方客戶端逐 folder／cipher／Send 的 incremental fetch/upsert/delete                                                                                                                |
 
 ## 功能矩陣
 

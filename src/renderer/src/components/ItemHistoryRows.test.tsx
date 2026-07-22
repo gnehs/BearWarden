@@ -30,7 +30,7 @@ describe('ItemHistoryRows', () => {
 
     expect(markup).not.toContain('密碼上次更新時間')
     expect(markup).toContain('上次編輯')
-    expect(markup).toContain('已建立')
+    expect(markup).toContain('建立時間')
   })
 
   it('renders the existing unknown-date label for invalid revision metadata', () => {

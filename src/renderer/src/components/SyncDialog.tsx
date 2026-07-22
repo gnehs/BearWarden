@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from 'react'
 import type {
   AccountSecurityProfile,
   SyncErrorCode,
+  SyncInvalidResponseReason,
   SyncInvalidResponseStage,
   SyncResult,
   SyncStatus,
@@ -137,6 +138,16 @@ function describeSyncError(error: unknown): string {
   if (/(?:CANCEL|ABORT)/i.test(error.message)) return t`The operation was canceled.`
   if (error.message.includes('NEW_DEVICE_REQUIRED'))
     return t`The server requires a new device verification code. Get the code from the email sent by Bitwarden, then enter it under advanced options.`
+  if (error.message.includes('SYNC_SSO_REQUIRED'))
+    return t`This organization requires single sign-on. Sign in with the official Bitwarden client because BearWarden does not support SSO sign-in yet.`
+  if (error.message.includes('SYNC_DUO_UNSUPPORTED'))
+    return t`This account requires Duo two-step verification, which BearWarden does not support yet. Use another enabled verification method or the official Bitwarden client.`
+  if (error.message.includes('SYNC_KEY_CONNECTOR_UNSUPPORTED'))
+    return t`This organization uses Key Connector. BearWarden cannot unlock this account safely; use the official Bitwarden client.`
+  if (error.message.includes('SYNC_TRUSTED_DEVICE_UNSUPPORTED'))
+    return t`This account requires trusted-device encryption. BearWarden cannot unlock it safely; use the official Bitwarden client.`
+  if (error.message.includes('POLICY_RESTRICTED'))
+    return t`This operation is restricted by your organization's policy.`
   if (error.message.includes('AUTH_REQUIRED'))
     return t`The Bitwarden vault must be signed in to or unlocked again.`
   if (error.message.includes('UNSUPPORTED_ACCOUNT'))
@@ -164,6 +175,11 @@ export interface SyncErrorPresentation {
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
+export function shouldOfferNewDeviceOtpResend(code?: SyncErrorCode): boolean {
+  return code === 'SYNC_NEW_DEVICE_REQUIRED'
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
 export function syncInvalidResponseStageLabel(stage: SyncInvalidResponseStage): string {
   switch (stage) {
     case 'response':
@@ -185,6 +201,38 @@ export function syncInvalidResponseStageLabel(stage: SyncInvalidResponseStage): 
   }
 }
 
+// Reasons are closed, value-free categories mirrored from the main-process parser. Never render
+// connector messages here because they may contain account or vault identifiers.
+// eslint-disable-next-line react-refresh/only-export-components
+export function syncInvalidResponseReasonLabel(reason: SyncInvalidResponseReason): string {
+  switch (reason) {
+    case 'response-shape':
+      return t`Sync response structure`
+    case 'account-profile':
+      return t`Account profile data`
+    case 'user-decryption-data':
+      return t`Account decryption options`
+    case 'organization-profile':
+      return t`Organization profile data`
+    case 'organization-key':
+      return t`Organization encryption key`
+    case 'provider-organization-key':
+      return t`Provider-managed organization key`
+    case 'folder-data':
+      return t`Folder data`
+    case 'unsupported-cipher-type':
+      return t`Unsupported vault item type`
+    case 'cipher-data':
+      return t`Vault item data`
+    case 'collection-data':
+      return t`Organization collection data`
+    case 'send-data':
+      return t`Send data`
+    case 'snapshot-limit':
+      return t`Local sync snapshot limit`
+  }
+}
+
 // eslint-disable-next-line react-refresh/only-export-components
 export function syncErrorPresentation(code: SyncErrorCode): SyncErrorPresentation {
   switch (code) {
@@ -197,6 +245,26 @@ export function syncErrorPresentation(code: SyncErrorCode): SyncErrorPresentatio
       return {
         title: t`New device verification code required`,
         description: t`Get the verification code from the email sent by Bitwarden and enter it under advanced options.`
+      }
+    case 'SYNC_SSO_REQUIRED':
+      return {
+        title: t`Single sign-on is required`,
+        description: t`This organization requires SSO sign-in, which BearWarden does not support yet. Use the official Bitwarden client to sign in.`
+      }
+    case 'SYNC_DUO_UNSUPPORTED':
+      return {
+        title: t`Duo verification is not supported`,
+        description: t`Use another enabled two-step verification method, or sign in with the official Bitwarden client.`
+      }
+    case 'SYNC_KEY_CONNECTOR_UNSUPPORTED':
+      return {
+        title: t`Key Connector accounts are not supported`,
+        description: t`BearWarden cannot unlock this organization's account safely. Use the official Bitwarden client.`
+      }
+    case 'SYNC_TRUSTED_DEVICE_UNSUPPORTED':
+      return {
+        title: t`Trusted-device encryption is not supported`,
+        description: t`BearWarden cannot unlock this account safely without its trusted-device keys. Use the official Bitwarden client.`
       }
     case 'SYNC_UNSUPPORTED_ACCOUNT':
       return {
@@ -304,7 +372,8 @@ function SyncDialog({
   const [emailCodeSent, setEmailCodeSent] = useState(false)
   const [webAuthnRemember, setWebAuthnRemember] = useState(false)
   const [newDeviceOtp, setNewDeviceOtp] = useState('')
-  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [newDeviceOtpBusy, setNewDeviceOtpBusy] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(shouldOfferNewDeviceOtpResend(status.lastError))
   const [showPassword, setShowPassword] = useState(false)
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false)
   const [errorDetailsOpen, setErrorDetailsOpen] = useState(false)
@@ -415,7 +484,7 @@ function SyncDialog({
   }
 
   function close(): void {
-    if (busy) return
+    if (busy || newDeviceOtpBusy) return
     clearSecrets()
     onClose()
   }
@@ -482,6 +551,30 @@ function SyncDialog({
     }
   }
 
+  async function resendNewDeviceOtp(): Promise<void> {
+    const normalizedUrl = validateServerUrl()
+    if (!normalizedUrl) {
+      setError(t`Enter a valid HTTPS server URL.`)
+      return
+    }
+    if (!email.trim() || !masterPassword || newDeviceOtpBusy) return
+    setNewDeviceOtpBusy(true)
+    setError('')
+    setSuccess('')
+    try {
+      await window.bearwarden.sync.resendNewDeviceOtp({
+        serverUrl: normalizedUrl,
+        email: email.trim(),
+        masterPassword
+      })
+      setSuccess(t`A new device verification code was sent by email.`)
+    } catch (resendError) {
+      setError(describeSyncError(resendError))
+    } finally {
+      setNewDeviceOtpBusy(false)
+    }
+  }
+
   async function connect(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     const normalizedUrl = validateServerUrl()
@@ -511,6 +604,9 @@ function SyncDialog({
       }
       await refreshAfterSuccess(response.result, (summary) => t`Connected and synced. ${summary}.`)
     } catch (connectError) {
+      if (connectError instanceof Error && connectError.message.includes('NEW_DEVICE_REQUIRED')) {
+        setShowAdvanced(true)
+      }
       setError(describeSyncError(connectError))
     } finally {
       setBusy(false)
@@ -541,6 +637,9 @@ function SyncDialog({
       }
       await refreshAfterSuccess(response.result, (summary) => t`Unlocked and synced. ${summary}.`)
     } catch (unlockError) {
+      if (unlockError instanceof Error && unlockError.message.includes('NEW_DEVICE_REQUIRED')) {
+        setShowAdvanced(true)
+      }
       setError(describeSyncError(unlockError))
     } finally {
       setBusy(false)
@@ -635,7 +734,7 @@ function SyncDialog({
             type="button"
             aria-label={t`Close`}
             onClick={close}
-            disabled={busy}
+            disabled={busy || newDeviceOtpBusy}
           >
             <X aria-hidden="true" />
           </Button>
@@ -943,6 +1042,20 @@ function SyncDialog({
                         <FieldDescription>
                           <Trans>Use only when Bitwarden asks you to verify a new device.</Trans>
                         </FieldDescription>
+                        {shouldOfferNewDeviceOtpResend(status.lastError) && (
+                          <Button
+                            className="justify-self-start"
+                            variant="outline"
+                            type="button"
+                            disabled={busy || newDeviceOtpBusy || !email.trim() || !masterPassword}
+                            onClick={() => void resendNewDeviceOtp()}
+                          >
+                            {newDeviceOtpBusy && (
+                              <Spinner data-icon="inline-start" aria-hidden="true" />
+                            )}
+                            <Trans>Resend verification code</Trans>
+                          </Button>
+                        )}
                       </Field>
                     </FieldGroup>
                   </div>
@@ -966,7 +1079,12 @@ function SyncDialog({
                 </Alert>
               )}
               <ModalFooter className="mt-px">
-                <Button variant="secondary" type="button" onClick={close} disabled={busy}>
+                <Button
+                  variant="secondary"
+                  type="button"
+                  onClick={close}
+                  disabled={busy || newDeviceOtpBusy}
+                >
                   <Trans>Cancel</Trans>
                 </Button>
                 <Button type="submit" disabled={isSyncing}>
@@ -1165,6 +1283,7 @@ function SyncDialog({
           onOpenChange={setErrorDetailsOpen}
           code={status.lastError}
           detail={status.lastErrorDetail}
+          reason={status.lastError === 'SYNC_INVALID_RESPONSE' ? status.lastErrorReason : undefined}
           occurredAt={status.lastErrorAt}
           serverUrl={status.serverUrl}
           title={syncErrorPresentation(status.lastError).title}
@@ -1172,6 +1291,11 @@ function SyncDialog({
           detailLabel={
             status.lastErrorDetail
               ? syncInvalidResponseStageLabel(status.lastErrorDetail)
+              : undefined
+          }
+          reasonLabel={
+            status.lastError === 'SYNC_INVALID_RESPONSE' && status.lastErrorReason
+              ? syncInvalidResponseReasonLabel(status.lastErrorReason)
               : undefined
           }
         />

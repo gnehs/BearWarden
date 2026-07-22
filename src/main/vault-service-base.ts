@@ -19,6 +19,8 @@ import type {
   SyncResult,
   SyncStatus,
   SyncTwoFactorProvider,
+  VaultTimeoutPolicy,
+  VaultItemType,
   VaultStatus
 } from '../shared/vault-contract'
 import { MAX_LOGIN_BATCH_IDS } from '../shared/vault-contract'
@@ -36,6 +38,13 @@ import {
   type BitwardenWebAuthnRegistrationSetup
 } from './bitwarden-direct'
 import { resolveBitwardenUrls } from './bitwarden-http'
+import {
+  BITWARDEN_POLICY_TYPE,
+  policyEnforcementDecision,
+  type BitwardenPolicyMetadata,
+  type BitwardenPolicySet,
+  type PolicyEnforcementDecision
+} from './bitwarden-policy'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import {
   PinUnlockCapability,
@@ -53,6 +62,7 @@ import {
 } from './native-attachment-restore'
 import {
   completeSyncMetadata,
+  fingerprintFolder,
   fingerprintLogin,
   legacyCustomFieldBaselineUpgrades,
   planSync,
@@ -71,6 +81,7 @@ import type { AccountWebAuthnAttestation } from './account-webauthn-registration
 import {
   DATA_VERSION,
   MAX_MASTER_PASSWORD_LENGTH,
+  MAX_USERNAME_LENGTH,
   MAX_NAME_LENGTH,
   MAX_PASSWORD_LENGTH,
   MAX_URI_LENGTH,
@@ -86,7 +97,8 @@ import {
   assertUuid,
   normalizeRequiredString,
   normalizeNullableString,
-  normalizeMasterPassword
+  normalizeMasterPassword,
+  normalizeSyncPassword
 } from './vault/parse-primitives'
 import { parseVaultData, parseVaultDataTagged, cloneData } from './vault/vault-data-parsing'
 import {
@@ -341,6 +353,8 @@ export class VaultServiceBase {
   protected syncLastErrorAt: string | null = null
   protected syncLastErrorDetail:
     import('../shared/vault-contract').SyncInvalidResponseStage | null = null
+  protected syncLastErrorReason:
+    import('../shared/vault-contract').SyncInvalidResponseReason | null = null
   protected activeAttachmentOperation: {
     operationId: string
     abort: AbortController
@@ -384,6 +398,7 @@ export class VaultServiceBase {
       assertUnlocked: () => {
         this.requireData()
       },
+      readPolicySet: () => this.currentBitwardenPolicySet(),
       readHistory: () => this.requireData().generatorHistory,
       commitHistory: async (history) => {
         const current = this.requireData()
@@ -410,11 +425,11 @@ export class VaultServiceBase {
         this.data = data
       },
       nowIso: () => this.nowIso(),
-      clearSyncError: () => {
-        this.syncLastError = null
-      },
+      clearSyncError: () => this.clearSyncErrorState(),
       mapSyncError: (error) => this.mapSyncError(error),
-      copyText: (text) => this.platform.copyText(text)
+      copyText: (text) => this.platform.copyText(text),
+      assertMutationAllowed: () =>
+        this.assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.DisableSend)
     })
   }
 
@@ -505,6 +520,13 @@ export class VaultServiceBase {
   }
 
   pinUnlockStatus(): import('../shared/vault-contract').PinUnlockStatus {
+    if (
+      this.data &&
+      this.bitwardenPolicyDecision(BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin, this.data).state !==
+        'not-applicable'
+    ) {
+      return { available: false, remainingAttempts: 0 }
+    }
     const status = this.pinUnlockCapability?.status()
     if (!status?.available) return { available: false, remainingAttempts: 0 }
     return status
@@ -524,6 +546,11 @@ export class VaultServiceBase {
           throw new VaultError('LOCKED')
         }
         const data = this.requireData()
+        this.assertBitwardenPolicyDoesNotBlock(
+          BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin,
+          'POLICY_RESTRICTED',
+          data
+        )
         if (
           typeof request.pin !== 'string' ||
           request.pin.normalize('NFC').length < 4 ||
@@ -800,6 +827,11 @@ export class VaultServiceBase {
         }
         const requiresMigration = isRecord(unlocked.data) && unlocked.data.version !== DATA_VERSION
         this.data = parseVaultDataTagged(unlocked.data)
+        this.assertBitwardenPolicyDoesNotBlock(
+          BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin,
+          'POLICY_RESTRICTED',
+          this.data
+        )
         this.key = unlocked.key
         this.salt = unlocked.salt
         unlocked = null
@@ -919,6 +951,9 @@ export class VaultServiceBase {
       ...(this.syncLastError === 'SYNC_INVALID_RESPONSE' && this.syncLastErrorDetail
         ? { lastErrorDetail: this.syncLastErrorDetail }
         : {}),
+      ...(this.syncLastError === 'SYNC_INVALID_RESPONSE' && this.syncLastErrorReason
+        ? { lastErrorReason: this.syncLastErrorReason }
+        : {}),
       ...(sync.pendingLoginImport?.phase === 'dispatched'
         ? {
             pendingImport: {
@@ -937,6 +972,90 @@ export class VaultServiceBase {
           }
         : {})
     }
+  }
+
+  /** Returns only the safe, encrypted-at-rest policy snapshot for the active Bitwarden account. */
+  protected currentBitwardenPolicySet(data: VaultData = this.requireData()): BitwardenPolicySet {
+    return data.sync?.state.policySet ?? { source: 'none', policies: [] }
+  }
+
+  /**
+   * Resolves a policy only against organization memberships that explicitly reported
+   * `usePolicies: true`. Missing applicability metadata cannot be treated as an exemption.
+   */
+  protected bitwardenPolicyDecision(
+    type: number,
+    data: VaultData = this.requireData()
+  ): PolicyEnforcementDecision {
+    const policySet = this.currentBitwardenPolicySet(data)
+    if (policySet.parseFailure) {
+      return { state: 'fail-closed', reason: 'malformed-policy', policies: [] }
+    }
+    const candidates = policySet.policies.filter((policy) => policy.enabled && policy.type === type)
+    if (candidates.length > 0 && policySet.applicableOrganizationIds === undefined) {
+      return { state: 'fail-closed', reason: 'unsupported-policy', policies: candidates }
+    }
+    return policyEnforcementDecision(
+      policySet,
+      type,
+      new Set(policySet.applicableOrganizationIds ?? [])
+    )
+  }
+
+  protected assertBitwardenPolicyDoesNotBlock(
+    type: number,
+    errorCode: import('../shared/vault-contract').VaultErrorCode = 'POLICY_RESTRICTED',
+    data: VaultData = this.requireData()
+  ): void {
+    const decision = this.bitwardenPolicyDecision(type, data)
+    if (decision.state !== 'not-applicable') throw new VaultError(errorCode)
+  }
+
+  protected assertPersonalItemTypeAllowed(type: VaultItemType, data: VaultData): void {
+    const wireType: Record<VaultItemType, number> = {
+      login: 1,
+      secureNote: 2,
+      card: 3,
+      identity: 4,
+      sshKey: 5
+    }
+    const decision = this.bitwardenPolicyDecision(BITWARDEN_POLICY_TYPE.RestrictedItemTypes, data)
+    if (decision.state === 'not-applicable') return
+    if (decision.state === 'fail-closed') throw new VaultError('POLICY_RESTRICTED')
+    if (
+      decision.policies.some(
+        (policy) =>
+          policy.data?.kind !== 'restrictedItemTypes' ||
+          policy.data.cipherTypes.includes(wireType[type])
+      )
+    ) {
+      throw new VaultError('POLICY_RESTRICTED')
+    }
+  }
+
+  async constrainVaultTimeoutPolicy(requested: VaultTimeoutPolicy): Promise<VaultTimeoutPolicy> {
+    return this.exclusive(async () => {
+      if (!this.data) return requested
+      const decision = this.bitwardenPolicyDecision(
+        BITWARDEN_POLICY_TYPE.MaximumVaultTimeout,
+        this.data
+      )
+      if (decision.state === 'not-applicable') return requested
+      if (decision.state === 'fail-closed') return { type: 'appInactivity', minutes: 1 }
+      const maximum = this.maximumVaultTimeoutMinutes(decision.policies)
+      return requested.type === 'appInactivity' && requested.minutes <= maximum
+        ? requested
+        : { type: 'appInactivity', minutes: maximum }
+    })
+  }
+
+  private maximumVaultTimeoutMinutes(policies: readonly BitwardenPolicyMetadata[]): number {
+    let maximum = Number.POSITIVE_INFINITY
+    for (const policy of policies) {
+      if (policy.data?.kind !== 'maximumVaultTimeout' || policy.data.action === 'logOut') return 1
+      maximum = Math.min(maximum, policy.data.minutes)
+    }
+    return Number.isFinite(maximum) ? maximum : 1
   }
 
   protected normalizeSyncServerUrl(value: unknown): string {
@@ -1018,6 +1137,55 @@ export class VaultServiceBase {
       throw new VaultError('INVALID_INPUT')
     }
     return normalized
+  }
+
+  resendSyncNewDeviceOtp(request: {
+    serverUrl: string
+    email: string
+    masterPassword: string
+  }): Promise<void> {
+    return this.exclusive(async () => {
+      let abort: AbortController | null = null
+      try {
+        this.requireData()
+        const serverUrl = this.normalizeSyncServerUrl(request.serverUrl)
+        const email = normalizeRequiredString(request.email, MAX_USERNAME_LENGTH)
+        const password = normalizeSyncPassword(request.masterPassword)
+        const sync: PersistedSyncData = {
+          provider: 'bitwarden',
+          serverUrl,
+          email,
+          state: {
+            session: null,
+            deviceIdentifier: randomUUID(),
+            profileId: null,
+            securityStamp: null
+          },
+          lastSyncAt: null,
+          folderMappings: [],
+          loginMappings: [],
+          folderTombstones: [],
+          loginTombstones: [],
+          pendingLoginMutation: null,
+          pendingLoginImport: null,
+          pendingPersonalVaultPurge: null,
+          domainSettings: null
+        }
+        const client = this.createSyncClient(sync)
+        if (!client.resendNewDeviceOtp) throw new VaultError('SYNC_FAILED')
+        abort = this.startSyncOperation()
+        await client.resendNewDeviceOtp(password, abort.signal)
+      } catch (error) {
+        throw this.mapSyncError(error)
+      } finally {
+        try {
+          request.masterPassword = ''
+        } catch {
+          // Frozen or exotic input must not replace the intended service result.
+        }
+        if (abort) this.finishSyncOperation(abort)
+      }
+    })
   }
 
   protected getOrCreateSyncClient(sync: PersistedSyncData): BitwardenSyncClient {
@@ -1161,7 +1329,7 @@ export class VaultServiceBase {
     const abort = new AbortController()
     this.syncAbort = abort
     this.syncInProgress = true
-    this.syncLastError = null
+    this.clearSyncErrorState()
     return abort
   }
 
@@ -1495,6 +1663,10 @@ export class VaultServiceBase {
       if (
         error.code === 'SYNC_AUTH_REQUIRED' ||
         error.code === 'SYNC_NEW_DEVICE_REQUIRED' ||
+        error.code === 'SYNC_SSO_REQUIRED' ||
+        error.code === 'SYNC_DUO_UNSUPPORTED' ||
+        error.code === 'SYNC_KEY_CONNECTOR_UNSUPPORTED' ||
+        error.code === 'SYNC_TRUSTED_DEVICE_UNSUPPORTED' ||
         error.code === 'SYNC_UNSUPPORTED_ACCOUNT' ||
         error.code === 'SYNC_NETWORK' ||
         error.code === 'SYNC_INVALID_RESPONSE' ||
@@ -1507,13 +1679,34 @@ export class VaultServiceBase {
       return error
     }
     if (error instanceof BitwardenDirectError) {
+      const directCode: string = error.code
+      if (directCode === 'SSO_REQUIRED') {
+        this.recordSyncError('SYNC_SSO_REQUIRED')
+        return new VaultError('SYNC_SSO_REQUIRED')
+      }
+      if (directCode === 'KEY_CONNECTOR_UNSUPPORTED') {
+        this.recordSyncError('SYNC_KEY_CONNECTOR_UNSUPPORTED')
+        return new VaultError('SYNC_KEY_CONNECTOR_UNSUPPORTED')
+      }
+      if (directCode === 'TRUSTED_DEVICE_UNSUPPORTED') {
+        this.recordSyncError('SYNC_TRUSTED_DEVICE_UNSUPPORTED')
+        return new VaultError('SYNC_TRUSTED_DEVICE_UNSUPPORTED')
+      }
       if (error.code === 'AUTH_REQUIRED') {
         this.recordSyncError('SYNC_AUTH_REQUIRED')
         return new VaultError('SYNC_AUTH_REQUIRED')
       }
       if (error.code === 'TWO_FACTOR_REQUIRED') {
+        const rawProviders = error.twoFactorProviders ?? []
+        if (
+          rawProviders.length > 0 &&
+          rawProviders.every((provider) => provider === 2 || provider === 6)
+        ) {
+          this.recordSyncError('SYNC_DUO_UNSUPPORTED')
+          return new VaultError('SYNC_DUO_UNSUPPORTED')
+        }
         this.recordSyncError('SYNC_AUTH_REQUIRED')
-        const providers = (error.twoFactorProviders ?? []).flatMap((provider) =>
+        const providers = rawProviders.flatMap((provider) =>
           Number.isInteger(provider) && provider >= 0 && provider <= 8
             ? [String(provider) as SyncTwoFactorProvider]
             : []
@@ -1529,7 +1722,11 @@ export class VaultServiceBase {
         return new VaultError('SYNC_NETWORK')
       }
       if (error.code === 'INVALID_RESPONSE') {
-        this.recordSyncError('SYNC_INVALID_RESPONSE', error.syncInvalidResponseStage)
+        this.recordSyncError(
+          'SYNC_INVALID_RESPONSE',
+          error.syncInvalidResponseStage,
+          error.syncInvalidResponseReason
+        )
         return new VaultError('SYNC_INVALID_RESPONSE')
       }
       if (error.code === 'INVALID_SSH_KEY') {
@@ -1552,11 +1749,29 @@ export class VaultServiceBase {
 
   protected recordSyncError(
     code: import('../shared/vault-contract').SyncErrorCode,
-    detail?: import('../shared/vault-contract').SyncInvalidResponseStage
+    detail?: import('../shared/vault-contract').SyncInvalidResponseStage,
+    reason?: import('../shared/vault-contract').SyncInvalidResponseReason
   ): void {
     this.syncLastError = code
     this.syncLastErrorAt = this.nowIso()
     this.syncLastErrorDetail = code === 'SYNC_INVALID_RESPONSE' ? (detail ?? null) : null
+    this.syncLastErrorReason = code === 'SYNC_INVALID_RESPONSE' ? (reason ?? null) : null
+  }
+
+  protected clearSyncErrorState(): void {
+    this.syncLastError = null
+    this.syncLastErrorAt = null
+    this.syncLastErrorDetail = null
+    this.syncLastErrorReason = null
+  }
+
+  protected applyBitwardenPolicyRuntimeState(data: VaultData): void {
+    if (
+      this.bitwardenPolicyDecision(BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin, data).state !==
+      'not-applicable'
+    ) {
+      this.invalidatePinUnlockCapability()
+    }
   }
 
   protected mapAttachmentError(
@@ -1729,7 +1944,7 @@ export class VaultServiceBase {
       pending.updatedAt = pending.sync.lastSyncAt
       await this.persist(pending)
       this.data = pending
-      this.syncLastError = null
+      this.clearSyncErrorState()
       return {
         status: 'pending',
         remainingItems: remoteLogins.length,
@@ -1769,7 +1984,7 @@ export class VaultServiceBase {
     complete.updatedAt = complete.sync.lastSyncAt
     await this.persist(complete)
     this.data = complete
-    this.syncLastError = null
+    this.clearSyncErrorState()
     return { status: 'complete', removedItems, removedFolders }
   }
 
@@ -1778,6 +1993,7 @@ export class VaultServiceBase {
     client: BitwardenSyncClient,
     signal: AbortSignal
   ): Promise<SyncResult> {
+    const syncStartedAt = this.nowIso()
     let source = current
     const pendingPurge = source.sync?.pendingPersonalVaultPurge
     if (pendingPurge?.phase === 'prepared') {
@@ -1802,6 +2018,8 @@ export class VaultServiceBase {
     }
     const sync = source.sync
     if (!sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+    const unchanged = await this.skipUnchangedRemoteSync(source, client, signal, syncStartedAt)
+    if (unchanged) return unchanged
     await client.sync(signal)
     const sharedSnapshot = await this.fetchSharedSnapshot(client)
     const initialRemote = await Promise.all([
@@ -1812,7 +2030,7 @@ export class VaultServiceBase {
     ])
     let remoteFolders = initialRemote[0]
     let remoteLogins = initialRemote[1]
-    const domainSettings = validateRemoteEquivalentDomainSettings(initialRemote[2])
+    validateRemoteEquivalentDomainSettings(initialRemote[2])
     let remoteSends = initialRemote[3]
     const next = cloneData(source)
     if (sharedSnapshot) {
@@ -1959,9 +2177,10 @@ export class VaultServiceBase {
 
     const metadata = completeSyncMetadata(plan, results)
     await client.sync(signal)
-    const [finalRemoteFolders, finalRemoteLogins] = await Promise.all([
+    const [finalRemoteFolders, finalRemoteLogins, finalDomainSettings] = await Promise.all([
       client.listFolders(signal),
-      client.listPersonalLogins(signal)
+      client.listPersonalLogins(signal),
+      client.getEquivalentDomainSettings(signal)
     ])
     const finalSharedSnapshot = await this.fetchSharedSnapshot(client)
     const finalRemoteSends = client.listSends ? await client.listSends(signal) : remoteSends
@@ -1977,7 +2196,7 @@ export class VaultServiceBase {
       next.collections = finalSharedSnapshot.collections
       next.sharedLogins = finalSharedSnapshot.sharedLogins
     }
-    const syncedAt = this.nowIso()
+    const syncedAt = syncStartedAt
     next.sync = {
       ...sync,
       state: client.exportState(),
@@ -1989,13 +2208,110 @@ export class VaultServiceBase {
       pendingLoginMutation: null,
       pendingLoginImport: null,
       pendingPersonalVaultPurge: null,
-      domainSettings: cloneEquivalentDomainSettings(domainSettings)
+      domainSettings: cloneEquivalentDomainSettings(
+        validateRemoteEquivalentDomainSettings(finalDomainSettings)
+      )
     }
     next.updatedAt = syncedAt
     await this.persist(next)
     this.data = next
-    this.syncLastError = null
+    this.applyBitwardenPolicyRuntimeState(next)
+    this.clearSyncErrorState()
     return { ...this.baseSyncStatus(next.sync, 'ready'), ...counts }
+  }
+
+  protected async skipUnchangedRemoteSync(
+    source: VaultData,
+    client: BitwardenSyncClient,
+    signal: AbortSignal,
+    syncStartedAt: string
+  ): Promise<SyncResult | null> {
+    const sync = source.sync
+    if (!sync?.lastSyncAt || !Number.isFinite(Date.parse(sync.lastSyncAt))) return null
+    if (this.hasPendingLocalSyncWork(source)) return null
+    const revisionDate = client.revisionDate
+    if (!revisionDate) return null
+
+    let remoteRevision: string
+    try {
+      remoteRevision = await revisionDate.call(client, signal)
+    } catch {
+      // The revision endpoint is an optimization. A full sync remains the authoritative fallback.
+      return null
+    }
+    if (
+      !Number.isFinite(Date.parse(remoteRevision)) ||
+      Date.parse(remoteRevision) > Date.parse(sync.lastSyncAt)
+    ) {
+      return null
+    }
+
+    const completed = cloneData(source)
+    if (!completed.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+    completed.sync.state = client.exportState()
+    completed.sync.lastSyncAt = syncStartedAt
+    completed.updatedAt = syncStartedAt
+    await this.persist(completed)
+    this.data = completed
+    this.applyBitwardenPolicyRuntimeState(completed)
+    this.clearSyncErrorState()
+    return {
+      ...this.baseSyncStatus(completed.sync, 'ready'),
+      pulled: 0,
+      pushed: 0,
+      deleted: 0,
+      conflicts: 0
+    }
+  }
+
+  protected hasPendingLocalSyncWork(data: VaultData): boolean {
+    const sync = data.sync
+    if (!sync) return true
+    if (
+      sync.pendingLoginMutation ||
+      sync.pendingLoginImport ||
+      sync.pendingPersonalVaultPurge ||
+      sync.folderTombstones.length > 0 ||
+      sync.loginTombstones.length > 0
+    ) {
+      return true
+    }
+
+    const folderMappings = new Map(sync.folderMappings.map((entry) => [entry.localId, entry]))
+    const mappedRemoteFolderIds = new Set(sync.folderMappings.map((entry) => entry.remoteId))
+    if (
+      folderMappings.size !== sync.folderMappings.length ||
+      mappedRemoteFolderIds.size !== sync.folderMappings.length ||
+      folderMappings.size !== data.folders.length
+    ) {
+      return true
+    }
+    for (const folder of data.folders) {
+      if (folderMappings.get(folder.id)?.baseFingerprint !== fingerprintFolder(folder)) return true
+    }
+
+    const loginMappings = new Map(sync.loginMappings.map((entry) => [entry.localId, entry]))
+    const mappedRemoteLoginIds = new Set(sync.loginMappings.map((entry) => entry.remoteId))
+    if (
+      loginMappings.size !== sync.loginMappings.length ||
+      mappedRemoteLoginIds.size !== sync.loginMappings.length ||
+      loginMappings.size !== data.logins.length
+    ) {
+      return true
+    }
+    const folderNames = new Map(data.folders.map((folder) => [folder.id, folder.name]))
+    for (const login of this.localSyncSnapshot(data).logins) {
+      const canonicalFolder =
+        login.folderId === null
+          ? null
+          : (folderNames.get(login.folderId) ?? `missing:${login.folderId}`)
+      if (
+        loginMappings.get(login.id)?.baseFingerprint !== fingerprintLogin(login, canonicalFolder)
+      ) {
+        return true
+      }
+    }
+    return false
   }
 
   protected async fetchSharedSnapshot(client: BitwardenSyncClient): Promise<{
@@ -2006,49 +2322,76 @@ export class VaultServiceBase {
     if (!client.listOrganizations || !client.listCollections || !client.listOrganizationCiphers) {
       return null
     }
+    const [organizations, collections, sharedLogins] = await Promise.all([
+      client
+        .listOrganizations()
+        .catch((error) => this.throwSharedSnapshotError(error, 'organization')),
+      client.listCollections().catch((error) => this.throwSharedSnapshotError(error, 'collection')),
+      client
+        .listOrganizationCiphers()
+        .catch((error) => this.throwSharedSnapshotError(error, 'cipher'))
+    ])
+    let parsedOrganizations: OrganizationView[]
     try {
-      const [organizations, collections, sharedLogins] = await Promise.all([
-        client.listOrganizations(),
-        client.listCollections(),
-        client.listOrganizationCiphers()
-      ])
-      const parsedOrganizations = organizations.map(parseStoredOrganization)
-      const organizationIds = new Set(parsedOrganizations.map((organization) => organization.id))
-      if (organizationIds.size !== parsedOrganizations.length)
-        throw new Error('duplicate organization')
-      const parsedCollections = collections.map(parseStoredCollection)
-      const collectionIds = new Set(parsedCollections.map((collection) => collection.id))
-      if (
-        collectionIds.size !== parsedCollections.length ||
-        parsedCollections.some((collection) => !organizationIds.has(collection.organizationId))
-      ) {
-        throw new Error('invalid collection membership')
-      }
-      const parsedSharedLogins = sharedLogins.map((login) => this.sharedLoginFromRemote(login))
-      const sharedIds = new Set(parsedSharedLogins.map((login) => login.id))
-      if (
-        sharedIds.size !== parsedSharedLogins.length ||
-        parsedSharedLogins.some(
-          (login) =>
-            !organizationIds.has(login.organizationId) ||
-            login.collectionIds.some(
-              (id) =>
-                !collectionIds.has(id) ||
-                parsedCollections.find((collection) => collection.id === id)?.organizationId !==
-                  login.organizationId
-            )
-        )
-      ) {
-        throw new Error('invalid shared cipher membership')
-      }
-      return {
-        organizations: parsedOrganizations,
-        collections: parsedCollections,
-        sharedLogins: parsedSharedLogins
-      }
-    } catch {
-      throw new VaultError('SYNC_FAILED')
+      parsedOrganizations = organizations.map(parseStoredOrganization)
+    } catch (error) {
+      this.throwSharedSnapshotError(error, 'organization')
     }
+    const organizationIds = new Set(parsedOrganizations.map((organization) => organization.id))
+    if (organizationIds.size !== parsedOrganizations.length) {
+      throw new BitwardenDirectError('INVALID_RESPONSE', undefined, 'organization')
+    }
+    let parsedCollections: CollectionView[]
+    try {
+      parsedCollections = collections.map(parseStoredCollection)
+    } catch (error) {
+      this.throwSharedSnapshotError(error, 'collection')
+    }
+    const collectionIds = new Set(parsedCollections.map((collection) => collection.id))
+    if (
+      collectionIds.size !== parsedCollections.length ||
+      parsedCollections.some((collection) => !organizationIds.has(collection.organizationId))
+    ) {
+      throw new BitwardenDirectError('INVALID_RESPONSE', undefined, 'collection')
+    }
+    let parsedSharedLogins: StoredSharedLogin[]
+    try {
+      parsedSharedLogins = sharedLogins.map((login) => this.sharedLoginFromRemote(login))
+    } catch (error) {
+      this.throwSharedSnapshotError(error, 'cipher')
+    }
+    const sharedIds = new Set(parsedSharedLogins.map((login) => login.id))
+    if (
+      sharedIds.size !== parsedSharedLogins.length ||
+      parsedSharedLogins.some(
+        (login) =>
+          !organizationIds.has(login.organizationId) ||
+          login.collectionIds.some(
+            (id) =>
+              !collectionIds.has(id) ||
+              parsedCollections.find((collection) => collection.id === id)?.organizationId !==
+                login.organizationId
+          )
+      )
+    ) {
+      throw new BitwardenDirectError('INVALID_RESPONSE', undefined, 'cipher')
+    }
+    return {
+      organizations: parsedOrganizations,
+      collections: parsedCollections,
+      sharedLogins: parsedSharedLogins
+    }
+  }
+
+  protected throwSharedSnapshotError(
+    error: unknown,
+    stage: 'organization' | 'collection' | 'cipher'
+  ): never {
+    if (error instanceof BitwardenDirectError) {
+      if (error.code !== 'INVALID_RESPONSE' || error.syncInvalidResponseStage) throw error
+      throw new BitwardenDirectError('INVALID_RESPONSE', undefined, stage)
+    }
+    throw new BitwardenDirectError('INVALID_RESPONSE', undefined, stage)
   }
 
   protected async resumePendingLoginMutation(

@@ -91,6 +91,7 @@ import {
   type VaultItemType,
   type SyncConnectRequest,
   type SyncEmailTwoFactorCodeRequest,
+  type SyncResendNewDeviceOtpRequest,
   type SyncPurgePersonalVaultRequest,
   type SyncResolvePendingImportRequest,
   type SyncStatus,
@@ -2184,6 +2185,24 @@ function parseSyncEmailTwoFactorCode(value: unknown): SyncEmailTwoFactorCodeRequ
   return { serverUrl, email, masterPassword }
 }
 
+function parseSyncResendNewDeviceOtp(value: unknown): SyncResendNewDeviceOtpRequest {
+  const record = exactDataRecord(value, ['serverUrl', 'email', 'masterPassword'])
+  const serverUrl = requiredString(record, 'serverUrl')
+  const email = requiredString(record, 'email')
+  const masterPassword = requiredString(record, 'masterPassword')
+  if (
+    serverUrl.length === 0 ||
+    serverUrl.length > MAX_SYNC_SERVER_URL_LENGTH ||
+    email.length === 0 ||
+    email.length > MAX_SYNC_EMAIL_LENGTH ||
+    masterPassword.length === 0 ||
+    masterPassword.length > MAX_SYNC_SECRET_LENGTH
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return { serverUrl, email, masterPassword }
+}
+
 function syncTwoFactorChallenge(error: unknown): {
   kind: 'two-factor-required'
   providers: readonly SyncTwoFactorProvider[]
@@ -3237,6 +3256,14 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   registerHandler(IPC_CHANNELS.syncSendEmailTwoFactorCode, getMainWindow, (_event, input) =>
     vault.sendSyncEmailTwoFactorCode(parseSyncEmailTwoFactorCode(input))
   )
+  registerHandler(IPC_CHANNELS.syncResendNewDeviceOtp, getMainWindow, async (_event, input) => {
+    const request = parseSyncResendNewDeviceOtp(input)
+    try {
+      await vault.resendSyncNewDeviceOtp(request)
+    } finally {
+      request.masterPassword = ''
+    }
+  })
   registerHandler(IPC_CHANNELS.syncNow, getMainWindow, async () => {
     try {
       const result = await vault.syncNow()

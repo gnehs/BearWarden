@@ -417,6 +417,9 @@ vi.mock('./app-settings', () => ({
     initialize(): Promise<void> {
       return Promise.resolve()
     }
+    refreshVaultTimeoutPolicyConstraint(): Promise<void> {
+      return Promise.resolve()
+    }
     shouldLockOnSuspend(): boolean {
       return false
     }
@@ -519,6 +522,11 @@ vi.mock('./vault-service', () => ({
         state: 'ready',
         serverUrl: 'https://vault.example.invalid'
       })
+    }
+    constrainVaultTimeoutPolicy(
+      policy: import('../shared/vault-contract').VaultTimeoutPolicy
+    ): Promise<import('../shared/vault-contract').VaultTimeoutPolicy> {
+      return Promise.resolve(policy)
     }
     prepareLoginApproval(): Promise<Record<string, unknown> | null> {
       return Promise.resolve(harness.loginApprovalPrompt)
@@ -889,8 +897,11 @@ describe('main WebAuthn lifecycle wiring', () => {
     expect(harness.autoSyncRequestImmediate).toHaveBeenCalledOnce()
 
     harness.powerMonitorListeners.get('resume')!()
+    expect(harness.autoSyncRequestImmediate).toHaveBeenCalledTimes(2)
     harness.appListeners.get('activate')!()
+    expect(harness.autoSyncRequestImmediate).toHaveBeenCalledTimes(3)
     await (harness.vaultIpcOptions!.afterPinUnlock as () => Promise<void>)()
+    expect(harness.autoSyncRequestImmediate).toHaveBeenCalledTimes(4)
     await (harness.vaultIpcOptions!.afterUnlock as (masterPassword: string) => Promise<void>)(
       'test-master-password'
     )

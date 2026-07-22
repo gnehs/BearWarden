@@ -32,6 +32,7 @@ export interface VaultSendServiceDependencies {
   readonly clearSyncError: () => void
   readonly mapSyncError: (error: unknown) => VaultError
   readonly copyText: (text: string) => void | Promise<void>
+  readonly assertMutationAllowed: () => void
 }
 
 export class VaultSendService {
@@ -50,6 +51,7 @@ export class VaultSendService {
 
   create(request: SendCreateRequest): Promise<SendView> {
     return this.dependencies.exclusive(async () => {
+      this.dependencies.assertMutationAllowed()
       const draft = normalizeSendDraft(request)
       const current = this.dependencies.readData()
       const client = this.syncClient()
@@ -78,6 +80,7 @@ export class VaultSendService {
 
   async createFile(request: SendFileCreateRequest): Promise<SendFileCreateResult> {
     const preflight = await this.dependencies.exclusive(async () => {
+      this.dependencies.assertMutationAllowed()
       assertUuid(request.operationId)
       const files = this.dependencies.attachmentFiles
       if (!files) throw new VaultError('INTERNAL_ERROR')
@@ -198,6 +201,7 @@ export class VaultSendService {
 
   update(request: SendUpdateRequest): Promise<SendView> {
     return this.dependencies.exclusive(async () => {
+      this.dependencies.assertMutationAllowed()
       assertUuid(request.id)
       const draft = normalizeSendDraft(request)
       const current = this.dependencies.readData()
@@ -218,6 +222,7 @@ export class VaultSendService {
 
   removePassword(request: SendIdRequest): Promise<SendView> {
     return this.dependencies.exclusive(async () => {
+      this.dependencies.assertMutationAllowed()
       assertUuid(request.id)
       const current = this.dependencies.readData()
       if (!current.sends.some((send) => send.id === request.id)) throw new VaultError('NOT_FOUND')

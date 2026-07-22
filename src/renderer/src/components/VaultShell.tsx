@@ -397,6 +397,7 @@ function VaultShellContent({
       LOCKED: t`The vault is locked. Unlock it and try again.`,
       NOT_FOUND: t`The requested item could not be found.`,
       INVALID_INPUT: t`The input is invalid. Check it and try again.`,
+      POLICY_RESTRICTED: t`This operation is restricted by your organization's policy.`,
       DUPLICATE_NAME: t`That name is already in use. Choose another name.`,
       INVALID_URL: t`The website URL is invalid.`,
       ATTACHMENT_FAILED: t`The attachment operation failed. The server content may have changed; sync and try again.`,

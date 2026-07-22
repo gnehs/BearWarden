@@ -46,6 +46,7 @@ interface TestRuntime {
   getStartAtLoginStatus: TestMock
   setStartAtLogin: TestMock
   unlockVault: TestMock
+  constrainVaultTimeoutPolicy: TestMock
 }
 
 interface TestTimeoutCoordinator {
@@ -105,7 +106,8 @@ describe('AppSettingsService', () => {
         needsApproval: false
       })),
       setStartAtLogin: vi.fn(() => false),
-      unlockVault: vi.fn().mockResolvedValue({ state: 'unlocked' as const })
+      unlockVault: vi.fn().mockResolvedValue({ state: 'unlocked' as const }),
+      constrainVaultTimeoutPolicy: vi.fn(async (policy) => policy)
     }
     const timeoutCoordinator = {
       updatePolicy: vi.fn(),
@@ -931,5 +933,31 @@ describe('AppSettingsService', () => {
     expect(timeoutCoordinator.updatePolicy).toHaveBeenLastCalledWith({ type: 'onRestart' })
     service.dispose()
     expect(timeoutCoordinator.dispose).toHaveBeenCalledOnce()
+  })
+
+  it('removes an organization timeout constraint without overwriting the user preference', async () => {
+    const { service, runtime, timeoutCoordinator } = createService()
+    await service.initialize()
+    await service.update({ vaultTimeoutPolicy: { type: 'appInactivity', minutes: 30 } })
+
+    runtime.constrainVaultTimeoutPolicy.mockResolvedValueOnce({
+      type: 'appInactivity',
+      minutes: 10
+    })
+    await service.refreshVaultTimeoutPolicyConstraint()
+    expect(timeoutCoordinator.updatePolicy).toHaveBeenLastCalledWith({
+      type: 'appInactivity',
+      minutes: 10
+    })
+    await expect(service.get()).resolves.toMatchObject({
+      vaultTimeoutPolicy: { type: 'appInactivity', minutes: 30 }
+    })
+
+    runtime.constrainVaultTimeoutPolicy.mockImplementation(async (policy) => policy)
+    await service.refreshVaultTimeoutPolicyConstraint()
+    expect(timeoutCoordinator.updatePolicy).toHaveBeenLastCalledWith({
+      type: 'appInactivity',
+      minutes: 30
+    })
   })
 })

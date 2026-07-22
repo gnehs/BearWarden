@@ -447,7 +447,9 @@ function handleSyncChanged(status: SyncStatus): void {
   autoSync?.updateStatus(status)
   notifySyncChanged(status)
   if (status.state === 'ready' || status.state === 'error') refreshServerNotifications()
-  else if (status.state === 'locked' || status.state === 'unconfigured') {
+  if (status.state === 'ready') {
+    void settings?.refreshVaultTimeoutPolicyConstraint().catch(() => undefined)
+  } else if (status.state === 'locked' || status.state === 'unconfigured') {
     autoSync?.cancel()
     void stopServerNotifications()
   }
@@ -1007,7 +1009,9 @@ if (hasSingleInstanceLock)
           await refreshSshAgentAfterUnlock().catch(() => undefined)
           scheduleSshAgentLifecycle()
           return status
-        }
+        },
+        constrainVaultTimeoutPolicy: async (policy) =>
+          vault ? vault.constrainVaultTimeoutPolicy(policy) : policy
       },
       vaultTimeoutCoordinator
     )

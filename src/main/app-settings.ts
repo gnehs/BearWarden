@@ -62,6 +62,8 @@ export interface AppSettingsRuntime {
   /** Applies the preference and confirms the OS reports the requested state. */
   setStartAtLogin: (enabled: boolean) => boolean
   unlockVault: (masterPassword: string) => Promise<VaultStatus>
+  /** Applies the encrypted active-account organization timeout constraint in main. */
+  constrainVaultTimeoutPolicy: (policy: VaultTimeoutPolicy) => Promise<VaultTimeoutPolicy>
 }
 
 function defaultSettings(): StoredSettings {
@@ -324,7 +326,9 @@ export class AppSettingsService {
       }
     }
     this.applyRuntimeSettings()
-    this.vaultTimeoutCoordinator.updatePolicy(this.settings.vaultTimeoutPolicy)
+    this.vaultTimeoutCoordinator.updatePolicy(
+      await this.runtime.constrainVaultTimeoutPolicy(this.settings.vaultTimeoutPolicy)
+    )
   }
 
   async get(): Promise<AppSettings> {
@@ -346,6 +350,21 @@ export class AppSettingsService {
 
   update(update: AppSettingsUpdate): Promise<AppSettings> {
     const operation = this.settingsUpdateTail.then(() => this.performUpdate(update))
+    this.settingsUpdateTail = operation.then(
+      () => undefined,
+      () => undefined
+    )
+    return operation
+  }
+
+  refreshVaultTimeoutPolicyConstraint(): Promise<AppSettings> {
+    const operation = this.settingsUpdateTail.then(async () => {
+      const constrained = await this.runtime.constrainVaultTimeoutPolicy(
+        this.settings.vaultTimeoutPolicy
+      )
+      this.vaultTimeoutCoordinator.updatePolicy(constrained)
+      return this.get()
+    })
     this.settingsUpdateTail = operation.then(
       () => undefined,
       () => undefined
@@ -408,7 +427,9 @@ export class AppSettingsService {
     }
     this.settings = candidate
     this.applyRuntimeSettings()
-    this.vaultTimeoutCoordinator.updatePolicy(this.settings.vaultTimeoutPolicy)
+    this.vaultTimeoutCoordinator.updatePolicy(
+      await this.runtime.constrainVaultTimeoutPolicy(this.settings.vaultTimeoutPolicy)
+    )
     return this.get()
   }
 

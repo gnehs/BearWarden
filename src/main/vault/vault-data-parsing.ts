@@ -1,4 +1,10 @@
 import {
+  BITWARDEN_POLICY_TYPE,
+  type ActionablePolicyMetadata,
+  type BitwardenPolicyMetadata,
+  type BitwardenPolicySet
+} from '../bitwarden-policy'
+import {
   parseNativeAttachmentRestoreJournal,
   type NativeAttachmentRestoreJournal
 } from '../native-attachment-restore'
@@ -42,6 +48,295 @@ import { cloneLoginUris } from './login-uris'
 import { clonePasswordHistory } from './password-history'
 import { cloneCustomFields } from './custom-fields'
 import type { MasterPasswordChangeJournal, VaultData } from './types'
+
+const STORED_POLICY_NAMES = new Map<number, keyof typeof BITWARDEN_POLICY_TYPE>(
+  Object.entries(BITWARDEN_POLICY_TYPE).map(([name, type]) => [
+    type,
+    name as keyof typeof BITWARDEN_POLICY_TYPE
+  ])
+)
+const STORED_POLICY_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u
+const STORED_POLICY_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/u
+
+function strictStoredRecord(
+  value: unknown,
+  requiredKeys: readonly string[],
+  optionalKeys: readonly string[] = []
+): Record<string, unknown> {
+  if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
+  const prototype = Object.getPrototypeOf(value)
+  if (prototype !== Object.prototype && prototype !== null) throw new VaultError('CORRUPT_VAULT')
+  const allowed = new Set([...requiredKeys, ...optionalKeys])
+  const keys = Reflect.ownKeys(value)
+  if (
+    keys.some((key) => typeof key !== 'string' || !allowed.has(key)) ||
+    requiredKeys.some((key) => !Object.hasOwn(value, key))
+  ) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  for (const key of keys) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+    if (!descriptor || !('value' in descriptor) || !descriptor.enumerable) {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+  }
+  return value
+}
+
+function storedInteger(value: unknown, minimum: number, maximum: number): number {
+  if (!Number.isSafeInteger(value) || (value as number) < minimum || (value as number) > maximum) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  return value as number
+}
+
+function parseStoredPolicyDate(value: unknown): string | null {
+  if (value === null) return null
+  if (
+    typeof value !== 'string' ||
+    value.length > 40 ||
+    !STORED_POLICY_DATE_PATTERN.test(value) ||
+    !Number.isFinite(Date.parse(value)) ||
+    new Date(value).toISOString().slice(0, 19) !== value.slice(0, 19)
+  ) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  return value
+}
+
+function parseStoredActionablePolicyData(
+  value: unknown,
+  policyType: number
+): ActionablePolicyMetadata {
+  if (policyType === BITWARDEN_POLICY_TYPE.PasswordGenerator) {
+    const data = strictStoredRecord(value, [
+      'kind',
+      'overridePasswordType',
+      'minLength',
+      'useUppercase',
+      'useLowercase',
+      'useNumbers',
+      'numberCount',
+      'useSpecial',
+      'specialCount',
+      'minNumberWords',
+      'capitalize',
+      'includeNumber'
+    ])
+    if (
+      data.kind !== 'passwordGenerator' ||
+      (data.overridePasswordType !== '' &&
+        data.overridePasswordType !== 'password' &&
+        data.overridePasswordType !== 'passphrase') ||
+      typeof data.useUppercase !== 'boolean' ||
+      typeof data.useLowercase !== 'boolean' ||
+      typeof data.useNumbers !== 'boolean' ||
+      typeof data.useSpecial !== 'boolean' ||
+      typeof data.capitalize !== 'boolean' ||
+      typeof data.includeNumber !== 'boolean'
+    ) {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+    return {
+      kind: 'passwordGenerator',
+      overridePasswordType: data.overridePasswordType,
+      minLength: storedInteger(data.minLength, 0, 4_096),
+      useUppercase: data.useUppercase,
+      useLowercase: data.useLowercase,
+      useNumbers: data.useNumbers,
+      numberCount: storedInteger(data.numberCount, 0, 1_024),
+      useSpecial: data.useSpecial,
+      specialCount: storedInteger(data.specialCount, 0, 1_024),
+      minNumberWords: storedInteger(data.minNumberWords, 0, 1_024),
+      capitalize: data.capitalize,
+      includeNumber: data.includeNumber
+    }
+  }
+  if (policyType === BITWARDEN_POLICY_TYPE.MaximumVaultTimeout) {
+    const data = strictStoredRecord(value, ['kind', 'minutes', 'timeoutType', 'action'])
+    if (
+      data.kind !== 'maximumVaultTimeout' ||
+      (data.timeoutType !== null &&
+        data.timeoutType !== 'never' &&
+        data.timeoutType !== 'onAppRestart' &&
+        data.timeoutType !== 'onSystemLock' &&
+        data.timeoutType !== 'immediately' &&
+        data.timeoutType !== 'custom') ||
+      (data.action !== null && data.action !== 'lock' && data.action !== 'logOut')
+    ) {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+    return {
+      kind: 'maximumVaultTimeout',
+      minutes: storedInteger(data.minutes, 1, 366 * 24 * 60),
+      timeoutType: data.timeoutType,
+      action: data.action
+    }
+  }
+  if (policyType === BITWARDEN_POLICY_TYPE.RestrictedItemTypes) {
+    const data = strictStoredRecord(value, ['kind', 'cipherTypes'])
+    if (
+      data.kind !== 'restrictedItemTypes' ||
+      !Array.isArray(data.cipherTypes) ||
+      data.cipherTypes.length === 0 ||
+      data.cipherTypes.length > 16
+    ) {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+    const cipherTypes = data.cipherTypes.map((type) => storedInteger(type, 1, 8))
+    if (
+      new Set(cipherTypes).size !== cipherTypes.length ||
+      cipherTypes.some((type, index) => index > 0 && cipherTypes[index - 1]! >= type)
+    ) {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+    return { kind: 'restrictedItemTypes', cipherTypes }
+  }
+  const booleanKinds = new Map<
+    number,
+    | 'organizationDataOwnership'
+    | 'disableSend'
+    | 'disablePersonalVaultExport'
+    | 'removeUnlockWithPin'
+  >([
+    [BITWARDEN_POLICY_TYPE.OrganizationDataOwnership, 'organizationDataOwnership'],
+    [BITWARDEN_POLICY_TYPE.DisableSend, 'disableSend'],
+    [BITWARDEN_POLICY_TYPE.DisablePersonalVaultExport, 'disablePersonalVaultExport'],
+    [BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin, 'removeUnlockWithPin']
+  ])
+  const expectedKind = booleanKinds.get(policyType)
+  const data = strictStoredRecord(value, ['kind'])
+  if (!expectedKind || data.kind !== expectedKind) throw new VaultError('CORRUPT_VAULT')
+  return { kind: expectedKind }
+}
+
+function parseStoredPolicy(value: unknown): BitwardenPolicyMetadata {
+  const policy = strictStoredRecord(value, [
+    'id',
+    'organizationId',
+    'type',
+    'typeName',
+    'enabled',
+    'canToggleState',
+    'revisionDate',
+    'execution',
+    'data'
+  ])
+  if (
+    typeof policy.id !== 'string' ||
+    !STORED_POLICY_UUID_PATTERN.test(policy.id) ||
+    typeof policy.organizationId !== 'string' ||
+    !STORED_POLICY_UUID_PATTERN.test(policy.organizationId) ||
+    typeof policy.enabled !== 'boolean' ||
+    typeof policy.canToggleState !== 'boolean' ||
+    (policy.execution !== 'actionable' &&
+      policy.execution !== 'unsupported' &&
+      policy.execution !== 'unknown' &&
+      policy.execution !== 'malformed')
+  ) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  const type = storedInteger(policy.type, 0, 65_535)
+  const expectedTypeName = STORED_POLICY_NAMES.get(type) ?? null
+  if (policy.typeName !== expectedTypeName) throw new VaultError('CORRUPT_VAULT')
+
+  const actionableTypes = new Set<number>([
+    BITWARDEN_POLICY_TYPE.PasswordGenerator,
+    BITWARDEN_POLICY_TYPE.OrganizationDataOwnership,
+    BITWARDEN_POLICY_TYPE.DisableSend,
+    BITWARDEN_POLICY_TYPE.MaximumVaultTimeout,
+    BITWARDEN_POLICY_TYPE.DisablePersonalVaultExport,
+    BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin,
+    BITWARDEN_POLICY_TYPE.RestrictedItemTypes
+  ])
+  const expectedExecution =
+    expectedTypeName === null
+      ? 'unknown'
+      : actionableTypes.has(type)
+        ? policy.execution === 'malformed'
+          ? 'malformed'
+          : 'actionable'
+        : 'unsupported'
+  if (policy.execution !== expectedExecution) throw new VaultError('CORRUPT_VAULT')
+  const data =
+    policy.execution === 'actionable'
+      ? parseStoredActionablePolicyData(policy.data, type)
+      : policy.data === null
+        ? null
+        : (() => {
+            throw new VaultError('CORRUPT_VAULT')
+          })()
+  return {
+    id: policy.id,
+    organizationId: policy.organizationId,
+    type,
+    typeName: expectedTypeName,
+    enabled: policy.enabled,
+    canToggleState: policy.canToggleState,
+    revisionDate: parseStoredPolicyDate(policy.revisionDate),
+    execution: policy.execution,
+    data
+  }
+}
+
+/** Strictly reconstructs the secret-free policy metadata allowed in encrypted vault storage. */
+export function parseStoredBitwardenPolicySet(value: unknown): BitwardenPolicySet {
+  const set = strictStoredRecord(
+    value,
+    ['source', 'policies'],
+    ['parseFailure', 'applicableOrganizationIds']
+  )
+  if (set.source !== 'policiesNew' && set.source !== 'policies' && set.source !== 'none') {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  if (!Array.isArray(set.policies) || set.policies.length > 256) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  const policies = set.policies.map(parseStoredPolicy)
+  if (new Set(policies.map((policy) => policy.id)).size !== policies.length) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  const hasParseFailure = Object.hasOwn(set, 'parseFailure')
+  if (
+    hasParseFailure &&
+    set.parseFailure !== 'invalid-response' &&
+    set.parseFailure !== 'limit-exceeded'
+  ) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  if (
+    (set.source === 'none' && policies.length !== 0) ||
+    (hasParseFailure && (set.source !== 'none' || policies.length !== 0))
+  ) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  const hasApplicableOrganizationIds = Object.hasOwn(set, 'applicableOrganizationIds')
+  let applicableOrganizationIds: string[] | undefined
+  if (hasApplicableOrganizationIds) {
+    if (
+      !Array.isArray(set.applicableOrganizationIds) ||
+      set.applicableOrganizationIds.length > MAX_REMOTE_ENTITIES
+    ) {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+    applicableOrganizationIds = set.applicableOrganizationIds.map((id) => {
+      if (typeof id !== 'string' || !STORED_POLICY_UUID_PATTERN.test(id)) {
+        throw new VaultError('CORRUPT_VAULT')
+      }
+      return id
+    })
+    if (new Set(applicableOrganizationIds).size !== applicableOrganizationIds.length) {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+  }
+  return {
+    source: set.source,
+    policies,
+    ...(hasParseFailure ? { parseFailure: set.parseFailure } : {}),
+    ...(hasApplicableOrganizationIds ? { applicableOrganizationIds } : {})
+  } as BitwardenPolicySet
+}
 
 export function parseMasterPasswordChangeJournal(value: unknown): MasterPasswordChangeJournal {
   if (
@@ -316,6 +611,18 @@ export function parseVaultData(value: unknown): VaultData {
           )
         )
 
+  if (sync) {
+    const storedSync = value.sync
+    const storedState = isRecord(storedSync) && isRecord(storedSync.state) ? storedSync.state : null
+    const policySet =
+      storedState && Object.hasOwn(storedState, 'policySet')
+        ? taggedVaultSection('sync-policy-set', () =>
+            parseStoredBitwardenPolicySet(storedState.policySet)
+          )
+        : { source: 'none' as const, policies: [] }
+    sync.state = { ...sync.state, policySet }
+  }
+
   let nativeAttachmentRestore: NativeAttachmentRestoreJournal | null = null
   if (dataVersion >= NATIVE_ATTACHMENT_RESTORE_DATA_VERSION) {
     try {
@@ -438,7 +745,11 @@ export function cloneData(data: VaultData): VaultData {
           ...data.sync,
           state: {
             ...data.sync.state,
-            session: data.sync.state.session ? { ...data.sync.state.session } : null
+            session: data.sync.state.session ? { ...data.sync.state.session } : null,
+            policySet:
+              data.sync.state.policySet === undefined
+                ? { source: 'none', policies: [] }
+                : parseStoredBitwardenPolicySet(data.sync.state.policySet)
           },
           folderMappings: data.sync.folderMappings.map((entry) => ({ ...entry })),
           loginMappings: data.sync.loginMappings.map((entry) => ({ ...entry })),

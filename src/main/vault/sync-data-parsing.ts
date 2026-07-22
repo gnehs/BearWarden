@@ -98,7 +98,15 @@ export function parseDirectState(value: unknown): BitwardenDirectState {
     session = { accessToken, refreshToken, expiresAt }
   }
 
-  return { session, deviceIdentifier, profileId, securityStamp }
+  // parseVaultData replaces this migration-safe default with the strictly parsed stored policy
+  // snapshot. Keeping the default here also covers legacy and CLI-imported state.
+  return {
+    session,
+    deviceIdentifier,
+    profileId,
+    securityStamp,
+    policySet: { source: 'none', policies: [] }
+  }
 }
 
 export function parseSyncData(
@@ -325,7 +333,8 @@ export function parseSyncData(
           session: null,
           deviceIdentifier: randomUUID(),
           profileId: null,
-          securityStamp: null
+          securityStamp: null,
+          policySet: { source: 'none', policies: [] }
         }
       : parseDirectState(value.state),
     lastSyncAt: value.lastSyncAt,

@@ -229,6 +229,8 @@ const api: BearWardenAPI = {
     unlock: (request) => ipcRenderer.invoke(IPC_CHANNELS.syncUnlock, request),
     sendEmailTwoFactorCode: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.syncSendEmailTwoFactorCode, request),
+    resendNewDeviceOtp: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.syncResendNewDeviceOtp, request),
     now: () => ipcRenderer.invoke(IPC_CHANNELS.syncNow),
     resolvePendingImport: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.syncResolvePendingImport, request),

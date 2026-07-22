@@ -18,6 +18,7 @@ type CopyState = 'idle' | 'copied' | 'error'
 interface SyncErrorDetailsDialogProps extends SyncDiagnosticInput {
   description: string
   detailLabel?: string
+  reasonLabel?: string
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
@@ -29,6 +30,8 @@ export function SyncErrorDetailsDialog({
   description,
   detail,
   detailLabel,
+  reason,
+  reasonLabel,
   occurredAt,
   onOpenChange,
   open,
@@ -57,6 +60,7 @@ export function SyncErrorDetailsDialog({
     appVersion,
     code,
     ...(detail ? { detail } : {}),
+    ...(reason ? { reason } : {}),
     ...(occurredAt ? { occurredAt } : {}),
     ...(serverUrl ? { serverUrl } : {})
   })
@@ -104,6 +108,10 @@ export function SyncErrorDetailsDialog({
               <Trans>Problem section</Trans>
             </dt>
             <dd className="m-0">{detailLabel ?? t`Unknown`}</dd>
+            <dt className="text-muted-foreground">
+              <Trans>Safe reason</Trans>
+            </dt>
+            <dd className="m-0">{reasonLabel ?? t`Unknown`}</dd>
             <dt className="text-muted-foreground">
               <Trans>Occurred at</Trans>
             </dt>

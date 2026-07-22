@@ -13,7 +13,9 @@ import {
   applyAccountProfileIfCurrent,
   SyncFailureAlert,
   syncErrorPresentation,
+  syncInvalidResponseReasonLabel,
   syncInvalidResponseStageLabel,
+  shouldOfferNewDeviceOtpResend,
   shouldAcceptAccountProfile
 } from './SyncDialog'
 import { buildSyncDiagnosticReport } from './sync-error-diagnostics'
@@ -34,6 +36,33 @@ describe('SyncDialog error diagnostics', () => {
     expect(markup).toContain('問題區段：保管庫項目資料')
     expect(markup).not.toMatch(/uuid|credential|ciphertext/i)
     expect(syncInvalidResponseStageLabel('organization')).toBe('組織金鑰與成員資料')
+    expect(syncInvalidResponseReasonLabel('provider-organization-key')).toBe(
+      '服務提供者管理的組織金鑰'
+    )
+  })
+
+  it('maps every invalid-response reason to a fixed non-sensitive label', () => {
+    const reasons = [
+      'response-shape',
+      'account-profile',
+      'user-decryption-data',
+      'organization-profile',
+      'organization-key',
+      'provider-organization-key',
+      'folder-data',
+      'unsupported-cipher-type',
+      'cipher-data',
+      'collection-data',
+      'send-data',
+      'snapshot-limit'
+    ] as const
+
+    for (const reason of reasons) {
+      expect(syncInvalidResponseReasonLabel(reason)).toBeTruthy()
+    }
+    expect(JSON.stringify(reasons.map(syncInvalidResponseReasonLabel))).not.toMatch(
+      /uuid|ciphertext|https?:\/\/|@/i
+    )
   })
 
   it('maps every public error category without accepting raw connector details', () => {
@@ -48,11 +77,46 @@ describe('SyncDialog error diagnostics', () => {
     })
   })
 
+  it('presents unsupported sign-in capabilities as stable safe categories', () => {
+    expect(syncErrorPresentation('SYNC_SSO_REQUIRED').title).toBe('Single sign-on is required')
+    expect(syncErrorPresentation('SYNC_DUO_UNSUPPORTED').title).toBe(
+      'Duo verification is not supported'
+    )
+    expect(syncErrorPresentation('SYNC_KEY_CONNECTOR_UNSUPPORTED').title).toBe(
+      'Key Connector accounts are not supported'
+    )
+    expect(syncErrorPresentation('SYNC_TRUSTED_DEVICE_UNSUPPORTED').title).toBe(
+      'Trusted-device encryption is not supported'
+    )
+    expect(
+      JSON.stringify([
+        syncErrorPresentation('SYNC_SSO_REQUIRED'),
+        syncErrorPresentation('SYNC_DUO_UNSUPPORTED'),
+        syncErrorPresentation('SYNC_KEY_CONNECTOR_UNSUPPORTED'),
+        syncErrorPresentation('SYNC_TRUSTED_DEVICE_UNSUPPORTED')
+      ])
+    ).not.toMatch(/error_description|server message|stack|https?:\/\//i)
+  })
+
+  it('offers OTP resend only for the explicit new-device challenge', () => {
+    expect(shouldOfferNewDeviceOtpResend('SYNC_NEW_DEVICE_REQUIRED')).toBe(true)
+    for (const code of [
+      undefined,
+      'SYNC_AUTH_REQUIRED',
+      'SYNC_SSO_REQUIRED',
+      'SYNC_DUO_UNSUPPORTED',
+      'SYNC_FAILED'
+    ] as const) {
+      expect(shouldOfferNewDeviceOtpResend(code)).toBe(false)
+    }
+  })
+
   it('builds a copyable allowlisted report without account or server identifiers', () => {
     const report = buildSyncDiagnosticReport({
       appVersion: '0.1.10',
       code: 'SYNC_INVALID_RESPONSE',
       detail: 'organization',
+      reason: 'provider-organization-key',
       occurredAt: '2026-07-23T01:02:03.000Z',
       serverUrl: 'https://private-vault.example.invalid'
     })
@@ -60,6 +124,7 @@ describe('SyncDialog error diagnostics', () => {
     expect(report).toContain('App version: 0.1.10')
     expect(report).toContain('Error code: SYNC_INVALID_RESPONSE')
     expect(report).toContain('Problem section: organization')
+    expect(report).toContain('Safe reason: provider-organization-key')
     expect(report).toContain('Server kind: self-hosted')
     expect(report).not.toContain('private-vault.example.invalid')
     expect(report).not.toMatch(/email|password|credential|ciphertext|uuid/i)

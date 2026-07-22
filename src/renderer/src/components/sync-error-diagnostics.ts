@@ -1,9 +1,14 @@
-import type { SyncErrorCode, SyncInvalidResponseStage } from '../../../shared/vault-contract'
+import type {
+  SyncErrorCode,
+  SyncInvalidResponseReason,
+  SyncInvalidResponseStage
+} from '../../../shared/vault-contract'
 
 export interface SyncDiagnosticInput {
   appVersion?: string
   code: SyncErrorCode
   detail?: SyncInvalidResponseStage
+  reason?: SyncInvalidResponseReason
   occurredAt?: string
   serverUrl?: string
 }
@@ -27,6 +32,7 @@ export function buildSyncDiagnosticReport(input: SyncDiagnosticInput): string {
     `App version: ${input.appVersion || 'unknown'}`,
     `Error code: ${input.code}`,
     `Problem section: ${input.detail || 'unknown'}`,
+    `Safe reason: ${input.reason || 'unknown'}`,
     `Occurred at: ${input.occurredAt || 'unknown'}`,
     `Server kind: ${diagnosticServerKind(input.serverUrl)}`,
     'Privacy: no account identifiers, server address, or vault contents are included.'
