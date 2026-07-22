@@ -16,6 +16,7 @@ import {
   syncInvalidResponseStageLabel,
   shouldAcceptAccountProfile
 } from './SyncDialog'
+import { buildSyncDiagnosticReport } from './sync-error-diagnostics'
 
 describe('SyncDialog error diagnostics', () => {
   it('renders a safe reason and stable error code for automatic sync failures', () => {
@@ -45,6 +46,23 @@ describe('SyncDialog error diagnostics', () => {
       description:
         'Vaultwarden 回傳的 SSH 金鑰缺少必要的金鑰欄位。請在官方網頁保管庫中修復或刪除該金鑰，然後再次同步。'
     })
+  })
+
+  it('builds a copyable allowlisted report without account or server identifiers', () => {
+    const report = buildSyncDiagnosticReport({
+      appVersion: '0.1.10',
+      code: 'SYNC_INVALID_RESPONSE',
+      detail: 'organization',
+      occurredAt: '2026-07-23T01:02:03.000Z',
+      serverUrl: 'https://private-vault.example.invalid'
+    })
+
+    expect(report).toContain('App version: 0.1.10')
+    expect(report).toContain('Error code: SYNC_INVALID_RESPONSE')
+    expect(report).toContain('Problem section: organization')
+    expect(report).toContain('Server kind: self-hosted')
+    expect(report).not.toContain('private-vault.example.invalid')
+    expect(report).not.toMatch(/email|password|credential|ciphertext|uuid/i)
   })
 })
 

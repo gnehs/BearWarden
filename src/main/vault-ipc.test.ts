@@ -2241,6 +2241,47 @@ describe('registerVaultIpc reprompt gate', () => {
     await expect(connect(event, connectRequest)).rejects.toThrow('BEARWARDEN:SYNC_INVALID_RESPONSE')
   })
 
+  it('publishes connect and unlock failure status without replacing the original error', async () => {
+    const { event, vault, afterSyncChanged } = harness()
+    const connect = electronMock.handlers.get(IPC_CHANNELS.syncConnect)!
+    const unlock = electronMock.handlers.get(IPC_CHANNELS.syncUnlock)!
+    const failureStatus = {
+      configured: true,
+      state: 'error' as const,
+      lastError: 'SYNC_INVALID_RESPONSE' as const,
+      lastErrorAt: '2026-07-23T01:02:03.000Z',
+      lastErrorDetail: 'organization' as const
+    }
+    vault.syncStatus.mockResolvedValue(failureStatus)
+    vault.connectSync.mockRejectedValueOnce(new VaultError('SYNC_INVALID_RESPONSE'))
+    vault.unlockAndSync.mockRejectedValueOnce(new VaultError('SYNC_INVALID_RESPONSE'))
+
+    await expect(
+      connect(event, {
+        serverUrl: 'https://vault.example.invalid',
+        email: 'person@example.invalid',
+        masterPassword: 'remote password'
+      })
+    ).rejects.toThrow('BEARWARDEN:SYNC_INVALID_RESPONSE')
+    await expect(unlock(event, { masterPassword: 'remote password' })).rejects.toThrow(
+      'BEARWARDEN:SYNC_INVALID_RESPONSE'
+    )
+
+    expect(afterSyncChanged).toHaveBeenCalledTimes(2)
+    expect(afterSyncChanged).toHaveBeenNthCalledWith(1, failureStatus)
+    expect(afterSyncChanged).toHaveBeenNthCalledWith(2, failureStatus)
+
+    vault.connectSync.mockRejectedValueOnce(new VaultError('SYNC_NETWORK'))
+    vault.syncStatus.mockRejectedValueOnce(new Error('status detail must stay in main'))
+    await expect(
+      connect(event, {
+        serverUrl: 'https://vault.example.invalid',
+        email: 'person@example.invalid',
+        masterPassword: 'remote password'
+      })
+    ).rejects.toThrow('BEARWARDEN:SYNC_NETWORK')
+  })
+
   it('passes an exact data-only email two-factor request to the service', async () => {
     const { event, vault } = harness()
     const send = electronMock.handlers.get(IPC_CHANNELS.syncSendEmailTwoFactorCode)!

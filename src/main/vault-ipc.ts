@@ -3210,6 +3210,11 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     } catch (error) {
       const challenge = syncTwoFactorChallenge(error)
       if (challenge) return challenge
+      try {
+        options.afterSyncChanged?.(await vault.syncStatus())
+      } catch {
+        // Never replace the original sync error with an auxiliary status refresh failure.
+      }
       throw error
     }
   })
@@ -3221,6 +3226,11 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     } catch (error) {
       const challenge = syncTwoFactorChallenge(error)
       if (challenge) return challenge
+      try {
+        options.afterSyncChanged?.(await vault.syncStatus())
+      } catch {
+        // Never replace the original sync error with an auxiliary status refresh failure.
+      }
       throw error
     }
   })

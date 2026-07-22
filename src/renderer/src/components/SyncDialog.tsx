@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { plural, t } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type {
   AccountSecurityProfile,
   SyncErrorCode,
@@ -72,6 +72,7 @@ import AccountProfileCard from './AccountProfileCard'
 import AccountTwoFactorDialog from './AccountTwoFactorDialog'
 import { ModalActionGroup, ModalBody, ModalContent, ModalFooter, ModalHeader } from './ModalLayout'
 import { PendingImportWarning } from './PendingImportWarning'
+import { SyncErrorDetailsDialog } from './SyncErrorDetailsDialog'
 import {
   buildSyncTwoFactorRequest,
   resolveSyncTwoFactorMethod,
@@ -232,10 +233,12 @@ export function syncErrorPresentation(code: SyncErrorCode): SyncErrorPresentatio
 
 export function SyncFailureAlert({
   code,
-  detail
+  detail,
+  onShowDetails
 }: {
   code: SyncErrorCode
   detail?: SyncInvalidResponseStage
+  onShowDetails?: () => void
 }): React.JSX.Element {
   const presentation = syncErrorPresentation(code)
   const detailLabel = detail ? syncInvalidResponseStageLabel(detail) : null
@@ -249,6 +252,17 @@ export function SyncFailureAlert({
         <span>{presentation.description}</span>
         {code === 'SYNC_INVALID_RESPONSE' && problemSection && <small>{problemSection}</small>}
         <small>{errorCode}</small>
+        {onShowDetails && (
+          <Button
+            className="mt-1 self-start"
+            variant="outline"
+            size="xs"
+            type="button"
+            onClick={onShowDetails}
+          >
+            <Trans>View details</Trans>
+          </Button>
+        )}
       </AlertDescription>
     </Alert>
   )
@@ -293,6 +307,8 @@ function SyncDialog({
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false)
+  const [errorDetailsOpen, setErrorDetailsOpen] = useState(false)
+  const previousErrorAt = useRef(status.lastErrorAt)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -356,6 +372,18 @@ function SyncDialog({
       active = false
     }
   }, [currentAccountProfileIdentity, status.state, t])
+
+  useEffect(() => {
+    const previous = previousErrorAt.current
+    previousErrorAt.current = status.lastErrorAt
+    if (
+      status.lastError === 'SYNC_INVALID_RESPONSE' &&
+      status.lastErrorAt &&
+      status.lastErrorAt !== previous
+    ) {
+      setErrorDetailsOpen(true)
+    }
+  }, [status.lastError, status.lastErrorAt])
 
   async function resendVerification(): Promise<void> {
     setAccountSecurityBusy(true)
@@ -660,7 +688,11 @@ function SyncDialog({
           </Alert>
 
           {status.lastError && (
-            <SyncFailureAlert code={status.lastError} detail={status.lastErrorDetail} />
+            <SyncFailureAlert
+              code={status.lastError}
+              detail={status.lastErrorDetail}
+              onShowDetails={() => setErrorDetailsOpen(true)}
+            />
           )}
 
           {requiresCredentials ? (
@@ -1127,6 +1159,23 @@ function SyncDialog({
           )}
         </ModalBody>
       </ModalContent>
+      {status.lastError && (
+        <SyncErrorDetailsDialog
+          open={errorDetailsOpen}
+          onOpenChange={setErrorDetailsOpen}
+          code={status.lastError}
+          detail={status.lastErrorDetail}
+          occurredAt={status.lastErrorAt}
+          serverUrl={status.serverUrl}
+          title={syncErrorPresentation(status.lastError).title}
+          description={syncErrorPresentation(status.lastError).description}
+          detailLabel={
+            status.lastErrorDetail
+              ? syncInvalidResponseStageLabel(status.lastErrorDetail)
+              : undefined
+          }
+        />
+      )}
     </Dialog>
   )
 }
