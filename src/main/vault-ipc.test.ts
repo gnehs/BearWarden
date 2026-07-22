@@ -381,12 +381,17 @@ describe('registerVaultIpc account boundary', () => {
       switchAccount: vi.fn(async () => ({
         kind: 'unchanged' as const,
         status: { revision: 1, activeAccountId: accountA, accounts: [] }
+      })),
+      renameAccount: vi.fn(async () => ({
+        kind: 'updated' as const,
+        status: { revision: 2, activeAccountId: accountA, accounts: [] }
       }))
     }
     const { event, untrustedEvent } = accountHarness(service)
     const status = electronMock.handlers.get(IPC_CHANNELS.accountStatus)!
     const add = electronMock.handlers.get(IPC_CHANNELS.accountAdd)!
     const switchAccount = electronMock.handlers.get(IPC_CHANNELS.accountSwitch)!
+    const renameAccount = electronMock.handlers.get(IPC_CHANNELS.accountRename)!
 
     await expect(status(untrustedEvent, undefined)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     await expect(status(event, {})).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
@@ -406,6 +411,20 @@ describe('registerVaultIpc account boundary', () => {
       await expect(switchAccount(event, input)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
     expect(service.switchAccount).not.toHaveBeenCalled()
+
+    await expect(
+      renameAccount(event, { accountId: accountB, displayName: 'Work', expectedRevision: 1 })
+    ).resolves.toMatchObject({
+      kind: 'updated'
+    })
+    expect(service.renameAccount).toHaveBeenCalledWith(accountB, 'Work', 1)
+    for (const input of [
+      { accountId: accountB, displayName: '', expectedRevision: 1, extra: true },
+      { accountId: accountB, displayName: 'x'.repeat(51), expectedRevision: 1 },
+      { accountId: accountB, displayName: 'Work', expectedRevision: 0 }
+    ]) {
+      await expect(renameAccount(event, input)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
 
     await expect(switchAccount(event, { accountId: accountB })).resolves.toMatchObject({
       kind: 'unchanged'

@@ -87,7 +87,7 @@ msgstr "“{0}” は Bitwarden から完全に削除され、復元できませ
 msgid "“{0}” will be removed from Vaultwarden and cannot be restored from the trash."
 msgstr "“{0}” は Vaultwarden から削除され、ゴミ箱から復元できません。"
 
-#: src/renderer/src/components/Dialogs.tsx:469
+#: src/renderer/src/components/Dialogs.tsx:477
 msgid "“{itemName}” requires master password reprompt."
 msgstr "“{itemName}” ではマスターパスワードの再入力が必要です。"
 
@@ -103,7 +103,7 @@ msgid "{0, plural, one {{1, plural, one {The server still has {2} personal item 
 msgstr "{0, plural, one {{1, plural, one {サーバーには個人項目が {2} 件、フォルダーが # 件残っています。BearWarden は自動的に再送信しません。再試行しても残りのデータのみが削除されます。} other {サーバーには個人項目が {3} 件、フォルダーが # 件残っています。BearWarden は自動的に再送信しません。再試行しても残りのデータのみが削除されます。}}} other {{4, plural, one {サーバーには個人項目が {5} 件、フォルダーが # 件残っています。BearWarden は自動的に再送信しません。再試行しても残りのデータのみが削除されます。} other {サーバーには個人項目が {6} 件、フォルダーが # 件残っています。BearWarden は自動的に再送信しません。再試行しても残りのデータのみが削除されます。}}}}"
 
 #. placeholder {0}: nextStatus.remainingAttempts
-#: src/renderer/src/components/AuthScreen.tsx:133
+#: src/renderer/src/components/AuthScreen.tsx:196
 msgid "{0, plural, one {{base} You have # attempt remaining.} other {{base} You have # attempts remaining.}}"
 msgstr "{0, plural, one {{base} 残りの試行回数は # 回です。} other {{base} 残りの試行回数は # 回です。}}"
 
@@ -118,12 +118,12 @@ msgid "{0, plural, one {# protected item} other {# protected items}}"
 msgstr "{0, plural, one {保護されたアイテム # 件} other {保護されたアイテム # 件}}"
 
 #. placeholder {0}: sshAgentStatus.identityCount
-#: src/renderer/src/components/SettingsPage.tsx:1802
+#: src/renderer/src/components/SettingsPage.tsx:1809
 msgid "{0, plural, one {# SSH key is available. Private keys and signing data are never sent to the renderer process.} other {# SSH keys are available. Private keys and signing data are never sent to the renderer process.}}"
 msgstr "{0, plural, one {# 個の SSH キーを利用できます。秘密鍵と署名データがレンダラープロセスに送信されることはありません。} other {# 個の SSH キーを利用できます。秘密鍵と署名データがレンダラープロセスに送信されることはありません。}}"
 
 #. placeholder {0}: pinStatus.remainingAttempts
-#: src/renderer/src/components/SettingsPage.tsx:1128
+#: src/renderer/src/components/SettingsPage.tsx:1134
 msgid "{0, plural, one {PIN unlock is disabled after 5 consecutive failures. You have # attempt remaining.} other {PIN unlock is disabled after 5 consecutive failures. You have # attempts remaining.}}"
 msgstr "{0, plural, one {PIN ロック解除は 5 回連続で失敗すると無効になります。残りの試行回数は # 回です。} other {PIN ロック解除は 5 回連続で失敗すると無効になります。残りの試行回数は # 回です。}}"
 
@@ -179,7 +179,7 @@ msgid "{0} custom field types simplified to text"
 msgstr "{0} 個のカスタムフィールド型をテキストに簡略化しました"
 
 #. placeholder {0}: itemTypeMeta[selectedLogin.type].label
-#: src/renderer/src/components/VaultShell.tsx:3821
+#: src/renderer/src/components/VaultShell.tsx:3823
 msgid "{0} details"
 msgstr "{0} の詳細"
 
@@ -241,7 +241,7 @@ msgid "{0} password revision dates"
 msgstr "パスワード変更日 {0} 件"
 
 #. placeholder {0}: selectedSummary.passwordHistoryCount
-#: src/renderer/src/components/VaultShell.tsx:3626
+#: src/renderer/src/components/VaultShell.tsx:3628
 msgid "{0} read-only records"
 msgstr "読み取り専用レコード {0} 件"
 
@@ -285,7 +285,7 @@ msgstr "{breachCount, plural, one {既知の侵害 # 件を検出} other {既知
 msgid "{conflicts, plural, one {# conflict} other {# conflicts}}"
 msgstr "{conflicts, plural, one {競合 # 件} other {競合 # 件}}"
 
-#: src/renderer/src/components/Dialogs.tsx:624
+#: src/renderer/src/components/Dialogs.tsx:632
 msgid "{count, plural, one {“{itemName}” has # history entry.} other {“{itemName}” has # history entries.}}"
 msgstr "{count, plural, one {“{itemName}” には履歴エントリが # 件あります。} other {“{itemName}” には履歴エントリが # 件あります。}}"
 
@@ -297,7 +297,7 @@ msgstr "{count, plural, one {アイテム # 件} other {アイテム # 件}}"
 msgid "{count, plural, one {It is unknown whether the server created this item. BearWarden will not resend it automatically to avoid duplicates.} other {It is unknown whether the server created these # items. BearWarden will not resend them automatically to avoid duplicates.}}"
 msgstr "{count, plural, one {サーバーがこのアイテムを作成したかどうかは不明です。重複を避けるため、BearWarden は自動的に再送信しません。} other {サーバーがこれら # 件のアイテムを作成したかどうかは不明です。重複を避けるため、BearWarden は自動的に再送信しません。}}"
 
-#: src/renderer/src/components/VaultShell.tsx:2760
+#: src/renderer/src/components/VaultShell.tsx:2761
 msgid "{count, plural, one {Permanently deleted # item.} other {Permanently deleted # items.}}"
 msgstr "{count, plural, one {アイテム # 件を完全に削除しました。} other {アイテム # 件を完全に削除しました。}}"
 
@@ -330,7 +330,7 @@ msgstr "{excludedTotpCount, plural, one {すでに TOTP を持つアイテム # 
 msgid "{exposedCount, plural, one {# known breach record} other {# known breach records}}"
 msgstr "{exposedCount, plural, one {既知の侵害レコード # 件} other {既知の侵害レコード # 件}}"
 
-#: src/renderer/src/components/AccountSwitcherCard.tsx:145
+#: src/renderer/src/components/AccountSwitcherCard.tsx:174
 msgid "{formattedAccountCount} / {formattedMaxLocalAccounts}"
 msgstr "{formattedAccountCount} / {formattedMaxLocalAccounts}"
 
@@ -358,7 +358,7 @@ msgstr "{formattedUploadedAttachments} / {formattedTotalAttachments}"
 msgid "{groupName} equivalent domains"
 msgstr "{groupName} の等価ドメイン"
 
-#: src/renderer/src/components/Dialogs.tsx:326
+#: src/renderer/src/components/Dialogs.tsx:334
 msgid "{itemCount, plural, one {Choose a new location for # item. This is a keyboard alternative to drag and drop.} other {Choose a new location for # items. This is a keyboard alternative to drag and drop.}}"
 msgstr "{itemCount, plural, one {アイテム # 件の新しい場所を選択してください。これはドラッグ＆ドロップのキーボード代替操作です。} other {アイテム # 件の新しい場所を選択してください。これはドラッグ＆ドロップのキーボード代替操作です。}}"
 
@@ -370,11 +370,11 @@ msgstr "{itemTypeLabel} ・ドラッグして移動"
 msgid "{label} copied"
 msgstr "{label} をコピーしました"
 
-#: src/renderer/src/components/VaultShell.tsx:2275
+#: src/renderer/src/components/VaultShell.tsx:2276
 msgid "{message} The list could not be refreshed. Try again later."
 msgstr "{message} リストを更新できませんでした。後でもう一度お試しください。"
 
-#: src/renderer/src/hooks/use-vault-accounts.ts:191
+#: src/renderer/src/hooks/use-vault-accounts.ts:200
 msgid "{message} The list could not be reloaded. Close Settings and try again."
 msgstr "{message} リストを再読み込みできませんでした。設定を閉じてからもう一度お試しください。"
 
@@ -406,7 +406,7 @@ msgstr "{pwnCount, plural, one {アカウント # 件} other {アカウント # 
 msgid "{reuseCount, plural, one {Reused # time} other {Reused # times}}"
 msgstr "{reuseCount, plural, one {# 回再利用} other {# 回再利用}}"
 
-#: src/renderer/src/components/VaultShell.tsx:2817
+#: src/renderer/src/components/VaultShell.tsx:2818
 msgid "{revealedLabel} is visible and will be hidden automatically in 30 seconds."
 msgstr "{revealedLabel} は表示中で、30 秒後に自動的に非表示になります。"
 
@@ -479,19 +479,19 @@ msgstr "{uri} ≈ 同じベースドメインの ○URL△"
 msgid "{value} seconds remaining"
 msgstr "残り {value} 秒"
 
-#: src/renderer/src/components/SettingsPage.tsx:1617
+#: src/renderer/src/components/SettingsPage.tsx:1624
 msgid "<0/> could not be registered"
 msgstr "<0/> を登録できませんでした"
 
-#: src/renderer/src/components/SettingsPage.tsx:467
+#: src/renderer/src/components/SettingsPage.tsx:473
 msgid "1 minute"
 msgstr "1 分"
 
-#: src/renderer/src/components/SettingsPage.tsx:469
+#: src/renderer/src/components/SettingsPage.tsx:475
 msgid "15 minutes"
 msgstr "15 分"
 
-#: src/renderer/src/components/SettingsPage.tsx:472
+#: src/renderer/src/components/SettingsPage.tsx:478
 msgid "240 minutes"
 msgstr "240 分"
 
@@ -499,11 +499,11 @@ msgstr "240 分"
 msgid "2fa.directory service: {matchedDomain}"
 msgstr "2fa.directory サービス：{matchedDomain}"
 
-#: src/renderer/src/components/SettingsPage.tsx:470
+#: src/renderer/src/components/SettingsPage.tsx:476
 msgid "30 minutes"
 msgstr "30 分"
 
-#: src/renderer/src/components/SettingsPage.tsx:468
+#: src/renderer/src/components/SettingsPage.tsx:474
 msgid "5 minutes"
 msgstr "5 分"
 
@@ -511,11 +511,11 @@ msgstr "5 分"
 msgid "6-digit verification code"
 msgstr "6 桁の確認コード"
 
-#: src/renderer/src/components/SettingsPage.tsx:471
+#: src/renderer/src/components/SettingsPage.tsx:477
 msgid "60 minutes"
 msgstr "60 分"
 
-#: src/renderer/src/components/account-switcher-ui.ts:110
+#: src/renderer/src/components/account-switcher-ui.ts:125
 msgid "A local account switch is already in progress. Wait for BearWarden to restart."
 msgstr "ローカルアカウントの切り替えはすでに進行中です。BearWarden が再起動するまでお待ちください。"
 
@@ -539,7 +539,7 @@ msgstr "共有アイテムの読み取り専用ミラーです。権限とパス
 msgid "A sync issue needs attention"
 msgstr "同期の問題に対応が必要です"
 
-#: src/renderer/src/components/SettingsPage.tsx:462
+#: src/renderer/src/components/SettingsPage.tsx:468
 msgid "About"
 msgstr "情報"
 
@@ -573,15 +573,15 @@ msgstr "アクセスパスワード（任意）"
 msgid "Access requested"
 msgstr "アクセスがリクエストされました"
 
-#: src/renderer/src/components/SettingsPage.tsx:689
+#: src/renderer/src/components/SettingsPage.tsx:695
 msgid "Accessibility and shortcut status checked again."
 msgstr "アクセシビリティとショートカットの状態を再確認しました。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1578
+#: src/renderer/src/components/SettingsPage.tsx:1585
 msgid "Accessibility permission"
 msgstr "アクセシビリティの許可"
 
-#: src/renderer/src/components/SettingsPage.tsx:758
+#: src/renderer/src/components/SettingsPage.tsx:764
 msgid "Accessibility permission is enabled. Cross-browser autofill is ready to use."
 msgstr "アクセシビリティの許可が有効です。複数のブラウザーで自動入力を利用できます。"
 
@@ -601,7 +601,7 @@ msgstr "アクセシビリティの許可が必要です"
 msgid "Account"
 msgstr "アカウント"
 
-#: src/renderer/src/components/account-switcher-ui.ts:39
+#: src/renderer/src/components/account-switcher-ui.ts:49
 msgid "Account {slot}"
 msgstr "アカウント {slot}"
 
@@ -626,11 +626,22 @@ msgstr "アカウントのデバイス"
 msgid "Account management"
 msgstr "アカウント管理"
 
+#: src/renderer/src/components/AccountSwitcherCard.tsx:348
+#: src/renderer/src/components/AccountSwitcherCard.tsx:349
+#~ msgid "Account name"
+#~ msgstr ""
+
+#. Label for a user-defined local-only account name on this device, not a remote profile name.
+#: src/renderer/src/components/AccountSwitcherCard.tsx:103
+msgctxt "local-account-name"
+msgid "Account name"
+msgstr ""
+
 #: src/renderer/src/components/SyncDialog.tsx:894
 msgid "Account security status"
 msgstr "アカウントのセキュリティ状態"
 
-#: src/renderer/src/components/SettingsPage.tsx:452
+#: src/renderer/src/components/SettingsPage.tsx:458
 msgid "Accounts & sync"
 msgstr "アカウントと同期"
 
@@ -639,13 +650,13 @@ msgstr "アカウントと同期"
 msgid "Action"
 msgstr "操作"
 
-#: src/renderer/src/components/SettingsPage.tsx:522
-#: src/renderer/src/components/SettingsPage.tsx:649
+#: src/renderer/src/components/SettingsPage.tsx:528
+#: src/renderer/src/components/SettingsPage.tsx:655
 #: src/renderer/src/lib/ssh-agent-ui.ts:73
 msgid "Action required"
 msgstr "操作が必要です"
 
-#: src/renderer/src/components/AccountSwitcherCard.tsx:363
+#: src/renderer/src/components/AccountSwitcherCard.tsx:452
 msgid "Active"
 msgstr "有効"
 
@@ -666,7 +677,7 @@ msgstr "{count} 件のアイテムをお気に入りに追加"
 msgid "Add a Bitwarden JSON, Bitwarden CSV, or Chrome/Chromium password CSV to the current vault. Existing items are not overwritten."
 msgstr "Bitwarden JSON、Bitwarden CSV、または Chrome/Chromium のパスワード CSV を現在の保管庫に追加します。既存のアイテムは上書きされません。"
 
-#: src/renderer/src/components/account-switcher-ui.ts:82
+#: src/renderer/src/components/account-switcher-ui.ts:97
 msgid "Add a local account?"
 msgstr "ローカルアカウントを追加しますか？"
 
@@ -682,7 +693,7 @@ msgstr "フィールドを追加"
 msgid "Add fields as needed to store data specific to this item."
 msgstr "このアイテム固有のデータを保存するために、必要に応じてフィールドを追加してください。"
 
-#: src/renderer/src/components/Dialogs.tsx:183
+#: src/renderer/src/components/Dialogs.tsx:185
 #: src/renderer/src/components/VaultShellSidebar.tsx:252
 msgid "Add folder"
 msgstr "フォルダーを追加"
@@ -697,7 +708,7 @@ msgstr "グループを追加"
 msgid "Add item"
 msgstr "アイテムを追加"
 
-#: src/renderer/src/components/AccountSwitcherCard.tsx:255
+#: src/renderer/src/components/AccountSwitcherCard.tsx:288
 msgid "Add local account"
 msgstr "ローカルアカウントを追加"
 
@@ -714,7 +725,7 @@ msgid "Add the key below to a compatible app such as 1Password, Bitwarden, or Go
 msgstr "以下のキーを、1Password、Bitwarden、Google Authenticator などの対応アプリに追加してください。"
 
 #: src/renderer/src/components/LoginEditor.tsx:2261
-#: src/renderer/src/components/VaultShell.tsx:3722
+#: src/renderer/src/components/VaultShell.tsx:3724
 msgid "Add to favorites"
 msgstr "お気に入りに追加"
 
@@ -730,17 +741,17 @@ msgstr "Webサイトを追加"
 msgid "Add your first item and BearWarden will keep it safe."
 msgstr "最初のアイテムを追加すると、BearWarden が安全に保管します。"
 
-#: src/renderer/src/components/AccountSwitcherCard.tsx:141
+#: src/renderer/src/components/AccountSwitcherCard.tsx:170
 msgid "Add, reorder, switch, or remove vault accounts on this device."
 msgstr "このデバイス上の保管庫アカウントを追加、並べ替え、切り替え、または削除します。"
 
 #. placeholder {0}: updated.length
-#: src/renderer/src/components/VaultShell.tsx:2383
+#: src/renderer/src/components/VaultShell.tsx:2384
 msgid "Added {0} items to favorites."
 msgstr "{0} 個のアイテムをお気に入りに追加しました。"
 
-#: src/renderer/src/components/VaultShell.tsx:2151
-#: src/renderer/src/components/VaultShell.tsx:2383
+#: src/renderer/src/components/VaultShell.tsx:2152
+#: src/renderer/src/components/VaultShell.tsx:2384
 msgid "Added to favorites."
 msgstr "お気に入りに追加しました。"
 
@@ -785,23 +796,23 @@ msgstr "管理者"
 msgid "Affected data classes"
 msgstr "影響を受けたデータの種類"
 
-#: src/renderer/src/components/SettingsPage.tsx:479
+#: src/renderer/src/components/SettingsPage.tsx:485
 msgid "After 1 minute"
 msgstr "1 分後"
 
-#: src/renderer/src/components/SettingsPage.tsx:477
+#: src/renderer/src/components/SettingsPage.tsx:483
 msgid "After 15 seconds"
 msgstr "15 秒後"
 
-#: src/renderer/src/components/SettingsPage.tsx:480
+#: src/renderer/src/components/SettingsPage.tsx:486
 msgid "After 2 minutes"
 msgstr "2 分後"
 
-#: src/renderer/src/components/SettingsPage.tsx:478
+#: src/renderer/src/components/SettingsPage.tsx:484
 msgid "After 30 seconds"
 msgstr "30 秒後"
 
-#: src/renderer/src/components/SettingsPage.tsx:466
+#: src/renderer/src/components/SettingsPage.tsx:472
 msgid "After 5 minutes of system inactivity"
 msgstr "システムの無操作が 5 分続いた後"
 
@@ -837,7 +848,7 @@ msgstr "マスターパスワードを入力して明示的に確認すると、
 msgid "After you start the check, the main process downloads only the static TOTP service list from 2fa.directory and compares it locally. Vault domains, URIs, passwords, and TOTP secrets are never uploaded."
 msgstr "確認を開始すると、メインプロセスは 2fa.directory から静的な TOTP サービス一覧のみをダウンロードし、ローカルで照合します。保管庫のドメイン、URI、パスワード、TOTP シークレットがアップロードされることはありません。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1787
+#: src/renderer/src/components/SettingsPage.tsx:1794
 msgid "Agent could not start"
 msgstr "エージェントを開始できませんでした"
 
@@ -850,7 +861,7 @@ msgstr "すべて"
 msgid "All analyzed login items are above the weak-password threshold."
 msgstr "分析したログインアイテムはすべて、弱いパスワードと判定される基準を上回っています。"
 
-#: src/renderer/src/components/AuthScreen.tsx:231
+#: src/renderer/src/components/AuthScreen.tsx:294
 msgid "All data is decrypted on this device."
 msgstr "すべてのデータはこのデバイスで復号されます。"
 
@@ -862,7 +873,7 @@ msgstr "すべてのアイテム"
 msgid "All organizations"
 msgstr "すべての組織"
 
-#: src/renderer/src/components/SettingsPage.tsx:759
+#: src/renderer/src/components/SettingsPage.tsx:765
 msgid "Allow BearWarden under System Settings → Privacy & Security → Accessibility, then return and check again."
 msgstr "システム設定 → プライバシーとセキュリティ → アクセシビリティで BearWarden を許可してから、戻ってもう一度確認してください。"
 
@@ -891,11 +902,11 @@ msgstr "Ed25519 SSH キーを生成できませんでした。もう一度お試
 msgid "An unknown error occurred."
 msgstr "不明なエラーが発生しました。"
 
-#: src/renderer/src/components/AuthScreen.tsx:48
+#: src/renderer/src/components/AuthScreen.tsx:63
 msgid "An unknown error occurred. Please try again later."
 msgstr "不明なエラーが発生しました。しばらくしてからもう一度お試しください。"
 
-#: src/renderer/src/components/auth-screen-ui.ts:10
+#: src/renderer/src/components/auth-screen-ui.ts:23
 msgid "An unknown error occurred. Try again later."
 msgstr "不明なエラーが発生しました。しばらくしてからもう一度お試しください。"
 
@@ -919,7 +930,7 @@ msgstr "Android"
 msgid "Android (Amazon)"
 msgstr "Android（Amazon）"
 
-#: src/renderer/src/components/SettingsPage.tsx:1623
+#: src/renderer/src/components/SettingsPage.tsx:1630
 msgid "Another app, such as 1Password, already uses this shortcut. Choose another shortcut above, or disable the same shortcut in that app and check again."
 msgstr "1Password などの別のアプリがこのショートカットを使用しています。上から別のショートカットを選択するか、そのアプリで同じショートカットを無効にしてから再確認してください。"
 
@@ -927,11 +938,11 @@ msgstr "1Password などの別のアプリがこのショートカットを使�
 #~ msgid "Another app, such as 1Password, already uses this shortcut. Disable the same shortcut in that app, then check again."
 #~ msgstr "1Password などの別のアプリがすでにこのショートカットを使用しています。そのアプリで同じショートカットを無効にしてから、もう一度確認してください。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1792
+#: src/renderer/src/components/SettingsPage.tsx:1799
 msgid "Another SSH Agent is using the same endpoint. Stop that Agent, then enable BearWarden SSH Agent again."
 msgstr "別の SSH Agent が同じエンドポイントを使用しています。その Agent を停止してから、BearWarden SSH Agent を再度有効にしてください。"
 
-#: src/renderer/src/components/SettingsPage.tsx:435
+#: src/renderer/src/components/SettingsPage.tsx:441
 msgid "Appearance and defaults"
 msgstr "外観と既定値"
 
@@ -982,20 +993,20 @@ msgstr "Arc は、フォーカス中のフィールドが編集可能なテキ�
 msgid "Archive"
 msgstr "アーカイブ"
 
-#: src/renderer/src/components/VaultShell.tsx:3770
+#: src/renderer/src/components/VaultShell.tsx:3772
 msgid "Archive item"
 msgstr "アイテムをアーカイブ"
 
 #. placeholder {0}: archived.name
-#: src/renderer/src/components/VaultShell.tsx:2656
+#: src/renderer/src/components/VaultShell.tsx:2657
 msgid "Archived “{0}”."
 msgstr "「{0}」をアーカイブしました。"
 
-#: src/renderer/src/components/VaultShell.tsx:2264
+#: src/renderer/src/components/VaultShell.tsx:2265
 msgid "Archived {affectedCount} items."
 msgstr "{affectedCount} 個のアイテムをアーカイブしました。"
 
-#: src/renderer/src/components/SettingsPage.tsx:513
+#: src/renderer/src/components/SettingsPage.tsx:519
 msgid "Ask before every signature"
 msgstr "署名のたびに確認する"
 
@@ -1051,15 +1062,15 @@ msgstr "認証キー（TOTP）"
 msgid "Authorization expired. Select the item again and verify your master password."
 msgstr "認可の有効期限が切れました。アイテムを再度選択し、マスターパスワードを確認してください。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1536
+#: src/renderer/src/components/SettingsPage.tsx:1543
 msgid "Autofill shortcut"
 msgstr "自動入力ショートカット"
 
-#: src/renderer/src/components/SettingsPage.tsx:738
+#: src/renderer/src/components/SettingsPage.tsx:744
 msgid "Autofill shortcut updated."
 msgstr "自動入力ショートカットを更新しました。"
 
-#: src/renderer/src/components/SettingsPage.tsx:459
+#: src/renderer/src/components/SettingsPage.tsx:465
 msgid "Autofill, SSH Agent, and backups"
 msgstr "自動入力、SSH Agent、バックアップ"
 
@@ -1067,11 +1078,11 @@ msgstr "自動入力、SSH Agent、バックアップ"
 msgid "Automatic generation failed. Try again, or change the item type to cancel."
 msgstr "自動生成に失敗しました。もう一度試すか、アイテムの種類を変更してキャンセルしてください。"
 
-#: src/renderer/src/components/SettingsPage.tsx:935
+#: src/renderer/src/components/SettingsPage.tsx:941
 msgid "Automatic launch is available only in installed versions for macOS and Windows."
 msgstr "自動起動は、macOS および Windows のインストール版でのみ利用できます。"
 
-#: src/renderer/src/components/SettingsPage.tsx:665
+#: src/renderer/src/components/SettingsPage.tsx:671
 msgid "Available"
 msgstr "利用可能"
 
@@ -1089,13 +1100,13 @@ msgstr "紛らわしい文字を避ける"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1217
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1278
-#: src/renderer/src/components/Dialogs.tsx:261
+#: src/renderer/src/components/Dialogs.tsx:269
 #: src/renderer/src/components/PersonalVaultPurgeDialog.tsx:304
 msgid "Back"
 msgstr "戻る"
 
 #: src/renderer/src/components/VaultShell-primitives.tsx:305
-#: src/renderer/src/components/VaultShell.tsx:3679
+#: src/renderer/src/components/VaultShell.tsx:3681
 msgid "Back to item list"
 msgstr "アイテム一覧に戻る"
 
@@ -1103,7 +1114,7 @@ msgstr "アイテム一覧に戻る"
 msgid "Back to review"
 msgstr "確認に戻る"
 
-#: src/renderer/src/components/VaultShell.tsx:3553
+#: src/renderer/src/components/VaultShell.tsx:3555
 msgid "Back to Trash"
 msgstr "ゴミ箱に戻る"
 
@@ -1131,7 +1142,7 @@ msgstr "Base32、otpauth://…、または steam://…"
 msgid "BearWarden autofill"
 msgstr "BearWarden の自動入力"
 
-#: src/renderer/src/components/SettingsPage.tsx:1582
+#: src/renderer/src/components/SettingsPage.tsx:1589
 msgid "BearWarden can control the current browser and perform autofill."
 msgstr "BearWarden は現在のブラウザーを操作して自動入力できます。"
 
@@ -1139,11 +1150,11 @@ msgstr "BearWarden は現在のブラウザーを操作して自動入力でき�
 msgid "BearWarden can't safely determine the remote outcome on the current connection. No new action will be submitted now to prevent duplicate changes."
 msgstr "BearWarden は現在の接続ではリモート側の結果を安全に判断できません。変更の重複を防ぐため、新しい操作は送信されません。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1793
+#: src/renderer/src/components/SettingsPage.tsx:1800
 msgid "BearWarden could not create the SSH Agent endpoint safely. Check the home directory permissions and socket path, then try again."
 msgstr "BearWarden は SSH Agent エンドポイントを安全に作成できませんでした。ホームディレクトリの権限とソケットパスを確認してから、もう一度お試しください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:248
+#: src/renderer/src/components/AuthScreen.tsx:311
 msgid "BearWarden could not load the vault service. Your data has not been changed."
 msgstr "BearWarden は保管庫サービスを読み込めませんでした。データは変更されていません。"
 
@@ -1163,7 +1174,7 @@ msgstr "BearWarden はローカルファーストのデスクトップパスワ�
 msgid "BearWarden needs this permission to identify the current browser and website. Allow it in System Settings, then try again."
 msgstr "BearWarden が現在のブラウザーと Web サイトを識別するには、この許可が必要です。システム設定で許可してから、もう一度お試しください。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1671
+#: src/renderer/src/components/SettingsPage.tsx:1678
 msgid "BearWarden provides only unarchived, undeleted SSH keys. Each signature is approved according to the rule below."
 msgstr "BearWarden は、アーカイブも削除もされていない SSH キーのみを提供します。各署名は以下のルールに従って承認されます。"
 
@@ -1179,7 +1190,7 @@ msgstr "BearWarden はパスワードの SHA-1 ハッシュの先頭 5 文字の
 msgid "BearWarden sends your complete email address to the configured Vaultwarden server only after you submit a query. That server then sends it to <0/>. This is not a k-anonymity password check. Query only accounts you are authorized to check."
 msgstr "BearWarden は、クエリを送信した後にのみ完全なメールアドレスを設定済みの Vaultwarden サーバーへ送信します。そのサーバーは続いて <0/> に送信します。これは k 匿名性を用いたパスワード確認ではありません。確認する権限があるアカウントのみを照会してください。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1733
+#: src/renderer/src/components/SettingsPage.tsx:1740
 msgid "BearWarden uses the fixed <0>\\\\.\\pipe\\openssh-ssh-agent</0> named pipe. Disable the system OpenSSH Authentication Agent first so the two agents do not compete for the same pipe."
 msgstr "BearWarden は固定の名前付きパイプ <0>\\\\.\\pipe\\openssh-ssh-agent</0> を使用します。2 つのエージェントが同じパイプを競合して使用しないよう、先にシステムの OpenSSH Authentication Agent を無効にしてください。"
 
@@ -1203,27 +1214,27 @@ msgstr "ベータ"
 msgid "Biometric authentication"
 msgstr "生体認証"
 
-#: src/renderer/src/components/auth-screen-ui.ts:39
+#: src/renderer/src/components/auth-screen-ui.ts:52
 msgid "Biometric authentication is currently unavailable. Enter your master password."
 msgstr "現在、生体認証は利用できません。マスターパスワードを入力してください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:191
+#: src/renderer/src/components/AuthScreen.tsx:254
 msgid "Biometric unlock is unavailable right now. Enter your master password."
 msgstr "現在、生体認証によるロック解除は利用できません。マスターパスワードを入力してください。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1250
+#: src/renderer/src/components/SettingsPage.tsx:1256
 msgid "Biometrics"
 msgstr "生体認証"
 
-#: src/renderer/src/components/SettingsPage.tsx:1271
+#: src/renderer/src/components/SettingsPage.tsx:1277
 msgid "Biometrics are unavailable on this device"
 msgstr "このデバイスでは生体認証を利用できません"
 
-#: src/renderer/src/components/VaultShell.tsx:2121
+#: src/renderer/src/components/VaultShell.tsx:2122
 msgid "Biometrics disabled."
 msgstr "生体認証を無効にしました。"
 
-#: src/renderer/src/components/VaultShell.tsx:2112
+#: src/renderer/src/components/VaultShell.tsx:2113
 msgid "Biometrics enabled."
 msgstr "生体認証を有効にしました。"
 
@@ -1247,7 +1258,7 @@ msgstr "Bitwarden プレーンテキスト ZIP（添付ファイルを含む）"
 msgid "Bitwarden-compatible settings allow only one UTF-16 character."
 msgstr "Bitwarden 互換の設定では UTF-16 文字を 1 文字だけ使用できます。"
 
-#: src/renderer/src/components/SettingsPage.tsx:970
+#: src/renderer/src/components/SettingsPage.tsx:976
 msgid "Block screenshots"
 msgstr "スクリーンショットをブロック"
 
@@ -1293,12 +1304,13 @@ msgid "Can view passwords"
 msgstr "パスワードを表示可能"
 
 #: src/renderer/src/components/AccountDevicesDialog.tsx:163
-#: src/renderer/src/components/AccountSwitcherCard.tsx:280
+#: src/renderer/src/components/AccountSwitcherCard.tsx:313
+#: src/renderer/src/components/AccountSwitcherCard.tsx:378
 #: src/renderer/src/components/AutofillPicker.tsx:123
-#: src/renderer/src/components/Dialogs.tsx:279
-#: src/renderer/src/components/Dialogs.tsx:384
-#: src/renderer/src/components/Dialogs.tsx:436
-#: src/renderer/src/components/Dialogs.tsx:531
+#: src/renderer/src/components/Dialogs.tsx:287
+#: src/renderer/src/components/Dialogs.tsx:392
+#: src/renderer/src/components/Dialogs.tsx:444
+#: src/renderer/src/components/Dialogs.tsx:539
 #: src/renderer/src/components/EquivalentDomainsDialog.tsx:448
 #: src/renderer/src/components/LoginEditor.tsx:2669
 #: src/renderer/src/components/LoginEditor.tsx:2743
@@ -1406,7 +1418,7 @@ msgstr "マスターパスワードを変更しますか？"
 msgid "Character types"
 msgstr "文字種"
 
-#: src/renderer/src/components/SettingsPage.tsx:1608
+#: src/renderer/src/components/SettingsPage.tsx:1615
 msgid "Check again"
 msgstr "もう一度確認"
 
@@ -1454,11 +1466,11 @@ msgstr "二要素認証を確認"
 msgid "Check whether the service offers HTTPS and update the saved website address."
 msgstr "サービスが HTTPS を提供しているか確認し、保存済みのウェブサイトアドレスを更新してください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:55
+#: src/renderer/src/components/AuthScreen.tsx:70
 msgid "Check your input and try again."
 msgstr "入力内容を確認して、もう一度お試しください。"
 
-#: src/renderer/src/components/auth-screen-ui.ts:18
+#: src/renderer/src/components/auth-screen-ui.ts:31
 msgid "Check your input."
 msgstr "入力内容を確認してください。"
 
@@ -1480,7 +1492,7 @@ msgid "Checked this time"
 msgstr "今回確認済み"
 
 #: src/renderer/src/components/AboutPage.tsx:76
-#: src/renderer/src/components/SettingsPage.tsx:656
+#: src/renderer/src/components/SettingsPage.tsx:662
 msgid "Checking"
 msgstr "確認中"
 
@@ -1496,11 +1508,11 @@ msgstr "更新サービスで新しいバージョンを確認しています。
 msgid "Checks"
 msgstr "チェック"
 
-#: src/renderer/src/components/Dialogs.tsx:368
+#: src/renderer/src/components/Dialogs.tsx:376
 msgid "Choose a folder"
 msgstr "フォルダーを選択"
 
-#: src/renderer/src/components/SettingsPage.tsx:1539
+#: src/renderer/src/components/SettingsPage.tsx:1546
 msgid "Choose a global shortcut that is not used by your browser or another password manager."
 msgstr "ブラウザや他のパスワードマネージャーで使用されていないグローバルショートカットを選択してください。"
 
@@ -1508,7 +1520,13 @@ msgstr "ブラウザや他のパスワードマネージャーで使用されて
 msgid "Choose a login to autofill"
 msgstr "自動入力するログインを選択"
 
-#: src/renderer/src/components/Dialogs.tsx:332
+#. Description for a local-only account label on this device, not a remote profile name.
+#: src/renderer/src/components/AccountSwitcherCard.tsx:352
+msgctxt "local-account-name"
+msgid "Choose a name used only to identify this account on this device."
+msgstr ""
+
+#: src/renderer/src/components/Dialogs.tsx:340
 msgid "Choose a new location for “{itemName}”. This is a keyboard alternative to drag and drop."
 msgstr "「{itemName}」の新しい場所を選択してください。これはドラッグ＆ドロップのキーボード操作による代替手段です。"
 
@@ -1547,7 +1565,7 @@ msgstr "完全バックアップを選択"
 msgid "Choose save location"
 msgstr "保存場所を選択"
 
-#: src/renderer/src/components/SettingsPage.tsx:957
+#: src/renderer/src/components/SettingsPage.tsx:963
 msgid "Choose when the vault locks and how window content is protected."
 msgstr "保管庫がロックされるタイミングと、ウィンドウ内容の保護方法を選択します。"
 
@@ -1569,7 +1587,7 @@ msgstr "市区町村"
 msgid "Clear"
 msgstr "クリア"
 
-#: src/renderer/src/components/SettingsPage.tsx:1353
+#: src/renderer/src/components/SettingsPage.tsx:1359
 msgid "Clear clipboard"
 msgstr "クリップボードをクリア"
 
@@ -1581,7 +1599,7 @@ msgstr "カスタムカラーをクリア"
 msgid "Clear history"
 msgstr "履歴をクリア"
 
-#: src/renderer/src/components/SettingsPage.tsx:1356
+#: src/renderer/src/components/SettingsPage.tsx:1362
 msgid "Clear only content written by BearWarden that you have not overwritten."
 msgstr "上書きしていない BearWarden によって書き込まれた内容のみをクリアします。"
 
@@ -1599,7 +1617,7 @@ msgstr "下の「アクセシビリティ権限を要求」をクリックしま
 msgid "Client ID copied."
 msgstr "クライアント ID をコピーしました。"
 
-#: src/renderer/src/components/SettingsPage.tsx:447
+#: src/renderer/src/components/SettingsPage.tsx:453
 msgid "Clipboard and website icons"
 msgstr "クリップボードとウェブサイトのアイコン"
 
@@ -1609,7 +1627,7 @@ msgstr "クリップボードとウェブサイトのアイコン"
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:108
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:930
 #: src/renderer/src/components/Dialogs.tsx:100
-#: src/renderer/src/components/Dialogs.tsx:775
+#: src/renderer/src/components/Dialogs.tsx:783
 #: src/renderer/src/components/MasterPasswordChangeDialog.tsx:433
 #: src/renderer/src/components/SyncDialog.tsx:541
 #: src/renderer/src/components/SyncDialog.tsx:1004
@@ -1622,7 +1640,7 @@ msgstr "閉じる"
 msgid "Close notification"
 msgstr "通知を閉じる"
 
-#: src/renderer/src/components/VaultShell.tsx:3342
+#: src/renderer/src/components/VaultShell.tsx:3343
 #: src/renderer/src/components/VaultShellChrome.tsx:136
 msgid "Close sidebar"
 msgstr "サイドバーを閉じる"
@@ -1708,10 +1726,10 @@ msgstr "完了記録のクリアを確認"
 msgid "Confirm disabling {disableTargetName}"
 msgstr "{disableTargetName} を無効にすることを確認"
 
-#: src/renderer/src/components/AuthScreen.tsx:316
+#: src/renderer/src/components/AuthScreen.tsx:410
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:415
-#: src/renderer/src/components/SettingsPage.tsx:1196
-#: src/renderer/src/components/SettingsPage.tsx:1306
+#: src/renderer/src/components/SettingsPage.tsx:1202
+#: src/renderer/src/components/SettingsPage.tsx:1312
 #: src/renderer/src/components/SshAgentApprovalDialog.tsx:195
 msgid "Confirm master password"
 msgstr "マスターパスワードを確認"
@@ -1768,16 +1786,16 @@ msgstr "競合に対応が必要です"
 msgid "Connect and sync"
 msgstr "接続して同期"
 
-#: src/renderer/src/components/SettingsPage.tsx:1434
+#: src/renderer/src/components/SettingsPage.tsx:1441
 msgid "Connect to Bitwarden or Vaultwarden to sync the vault."
 msgstr "Bitwarden または Vaultwarden に接続して保管庫を同期します。"
 
-#: src/renderer/src/components/SettingsPage.tsx:520
+#: src/renderer/src/components/SettingsPage.tsx:526
 #: src/renderer/src/components/VaultShell.tsx:295
 msgid "Connected"
 msgstr "接続済み"
 
-#: src/renderer/src/components/VaultShell.tsx:1793
+#: src/renderer/src/components/VaultShell.tsx:1794
 msgid "Connected account"
 msgstr "接続済みアカウント"
 
@@ -1825,14 +1843,14 @@ msgid "Control plus Shift plus backslash"
 msgstr "Control、Shift、バックスラッシュ"
 
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:526
-#: src/renderer/src/components/Dialogs.tsx:702
-#: src/renderer/src/components/SettingsPage.tsx:1767
+#: src/renderer/src/components/Dialogs.tsx:710
+#: src/renderer/src/components/SettingsPage.tsx:1774
 msgid "Copied"
 msgstr "コピーしました"
 
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:73
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:528
-#: src/renderer/src/components/SettingsPage.tsx:1767
+#: src/renderer/src/components/SettingsPage.tsx:1774
 msgid "Copy"
 msgstr "コピー"
 
@@ -1875,11 +1893,11 @@ msgstr "セットアップキーをコピー"
 msgid "Copy sharing link"
 msgstr "共有リンクをコピー"
 
-#: src/renderer/src/components/SettingsPage.tsx:1759
+#: src/renderer/src/components/SettingsPage.tsx:1766
 msgid "Copy SSH Agent setup command"
 msgstr "SSH Agent のセットアップコマンドをコピー"
 
-#: src/renderer/src/components/Dialogs.tsx:702
+#: src/renderer/src/components/Dialogs.tsx:710
 msgid "Copy this historical password"
 msgstr "この履歴のパスワードをコピー"
 
@@ -2021,7 +2039,7 @@ msgstr "Bitwarden 互換ツールで抽出できる、個人用保管庫と添�
 msgid "Create a text Send to securely share one-time content."
 msgstr "一度限りの内容を安全に共有するテキスト Send を作成します。"
 
-#: src/renderer/src/components/AuthScreen.tsx:346
+#: src/renderer/src/components/AuthScreen.tsx:460
 msgid "Create and unlock"
 msgstr "作成してロックを解除"
 
@@ -2045,7 +2063,7 @@ msgstr "最も頻繁に再利用されている項目から、一意のパスワ
 msgid "Create your first Send"
 msgstr "最初のSendを作成"
 
-#: src/renderer/src/components/AuthScreen.tsx:264
+#: src/renderer/src/components/AuthScreen.tsx:327
 msgid "Create your vault"
 msgstr "保管庫を作成"
 
@@ -2069,8 +2087,8 @@ msgstr "作成日時"
 
 #. placeholder {0}: cloned.name
 #. placeholder {0}: created.name
-#: src/renderer/src/components/VaultShell.tsx:2524
-#: src/renderer/src/components/VaultShell.tsx:2629
+#: src/renderer/src/components/VaultShell.tsx:2525
+#: src/renderer/src/components/VaultShell.tsx:2630
 msgid "Created “{0}”."
 msgstr "「{0}」を作成しました。"
 
@@ -2079,11 +2097,11 @@ msgid "Created {creationLabel}"
 msgstr "作成: {creationLabel}"
 
 #. placeholder {0}: created.name
-#: src/renderer/src/components/VaultShell.tsx:2401
+#: src/renderer/src/components/VaultShell.tsx:2402
 msgid "Created folder “{0}”."
 msgstr "フォルダー「{0}」を作成しました。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1490
+#: src/renderer/src/components/SettingsPage.tsx:1497
 msgid "Cross-browser autofill"
 msgstr "ブラウザー間の自動入力"
 
@@ -2108,7 +2126,7 @@ msgstr "現在の色: {0}"
 msgid "Current device"
 msgstr "現在のデバイス"
 
-#: src/renderer/src/components/account-switcher-ui.ts:56
+#: src/renderer/src/components/account-switcher-ui.ts:71
 msgid "Current local account · Local code {code}"
 msgstr "現在のローカルアカウント · ローカルコード {code}"
 
@@ -2129,11 +2147,11 @@ msgstr "現在は読み取り専用です。招待、確認、表示、引き継
 msgid "Currently you can only view Emergency Access grants and statuses. Inviting, accepting, confirming, accessing, taking over grants, and key rotation are not supported yet."
 msgstr "現在は緊急アクセスの付与とステータスのみを表示できます。招待、受諾、確認、アクセス、付与の引き継ぎ、キーのローテーションはまだサポートされていません。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1274
+#: src/renderer/src/components/SettingsPage.tsx:1280
 msgid "Currently, only macOS Touch ID is supported. You can still unlock the vault with your master password."
 msgstr "現在サポートされているのはmacOSのTouch IDのみです。マスターパスワードでも保管庫のロックを解除できます。"
 
-#: src/renderer/src/components/SettingsPage.tsx:473
+#: src/renderer/src/components/SettingsPage.tsx:479
 msgid "Custom"
 msgstr "カスタム"
 
@@ -2166,7 +2184,7 @@ msgid "Custom field was not moved."
 msgstr "カスタムフィールドは移動しませんでした。"
 
 #: src/renderer/src/components/LoginEditor.tsx:2323
-#: src/renderer/src/components/VaultShell.tsx:3859
+#: src/renderer/src/components/VaultShell.tsx:3861
 msgid "Custom fields"
 msgstr "カスタムフィールド"
 
@@ -2187,7 +2205,7 @@ msgstr "カスタム非アクティブタイムアウト（分）"
 msgid "Custom role"
 msgstr "カスタムロール"
 
-#: src/renderer/src/components/SettingsPage.tsx:839
+#: src/renderer/src/components/SettingsPage.tsx:845
 msgid "Customize the vault's appearance and default sorting."
 msgstr "保管庫の外観と既定の並べ替えをカスタマイズします。"
 
@@ -2195,11 +2213,11 @@ msgstr "保管庫の外観と既定の並べ替えをカスタマイズします
 msgid "Cut"
 msgstr "切り取り"
 
-#: src/renderer/src/components/SettingsPage.tsx:497
+#: src/renderer/src/components/SettingsPage.tsx:503
 msgid "Dark"
 msgstr "ダーク"
 
-#: src/renderer/src/components/SettingsPage.tsx:1816
+#: src/renderer/src/components/SettingsPage.tsx:1823
 msgid "Data portability"
 msgstr "データポータビリティ"
 
@@ -2233,12 +2251,12 @@ msgstr "既定"
 msgid "Default service groups provided by Vaultwarden. Turning one off adds it to this account’s exclusion list."
 msgstr "Vaultwardenが提供する既定のサービスグループです。無効にすると、このアカウントの除外リストに追加されます。"
 
-#: src/renderer/src/components/SettingsPage.tsx:900
+#: src/renderer/src/components/SettingsPage.tsx:906
 msgid "Default sort"
 msgstr "既定の並べ替え"
 
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:80
-#: src/renderer/src/components/Dialogs.tsx:247
+#: src/renderer/src/components/Dialogs.tsx:255
 #: src/renderer/src/components/LoginEditor.tsx:2454
 #: src/renderer/src/components/SendsPage.tsx:793
 #: src/renderer/src/components/VaultItemListPane.tsx:291
@@ -2246,7 +2264,7 @@ msgid "Delete"
 msgstr "削除"
 
 #. placeholder {0}: folder.name
-#: src/renderer/src/components/Dialogs.tsx:254
+#: src/renderer/src/components/Dialogs.tsx:262
 msgid "Delete “{0}”?"
 msgstr "「{0}」を削除しますか？"
 
@@ -2267,7 +2285,7 @@ msgstr "添付ファイルを削除"
 msgid "Delete attachment?"
 msgstr "添付ファイルを削除しますか？"
 
-#: src/renderer/src/components/Dialogs.tsx:270
+#: src/renderer/src/components/Dialogs.tsx:278
 msgid "Delete folder"
 msgstr "フォルダーを削除"
 
@@ -2276,7 +2294,7 @@ msgid "Delete passkey"
 msgstr "パスキーを削除"
 
 #: src/renderer/src/components/VaultItemListPane.tsx:276
-#: src/renderer/src/components/VaultShell.tsx:3659
+#: src/renderer/src/components/VaultShell.tsx:3661
 #: src/renderer/src/components/VaultShellDialogs.tsx:236
 msgid "Delete permanently"
 msgstr "完全に削除"
@@ -2298,17 +2316,17 @@ msgstr "このパスキーを削除しますか？"
 msgid "Delete this Send?"
 msgstr "このSendを削除しますか？"
 
-#: src/renderer/src/components/VaultShell.tsx:3592
+#: src/renderer/src/components/VaultShell.tsx:3594
 msgid "Deleted"
 msgstr "削除日"
 
 #. placeholder {0}: target.fileName
-#: src/renderer/src/components/VaultShell.tsx:3037
+#: src/renderer/src/components/VaultShell.tsx:3038
 msgid "Deleted “{0}”."
 msgstr "「{0}」を削除しました。"
 
 #. placeholder {0}: folderDialog.name
-#: src/renderer/src/components/VaultShell.tsx:2447
+#: src/renderer/src/components/VaultShell.tsx:2448
 msgid "Deleted folder “{0}”. Its items were moved to Unfiled."
 msgstr "フォルダー「{0}」を削除しました。項目は未分類に移動されました。"
 
@@ -2367,11 +2385,11 @@ msgstr "無効にする"
 msgid "Disable {disableTargetName}?"
 msgstr "{disableTargetName}を無効にしますか？"
 
-#: src/renderer/src/components/SettingsPage.tsx:1297
+#: src/renderer/src/components/SettingsPage.tsx:1303
 msgid "Disable biometrics"
 msgstr "生体認証を無効にする"
 
-#: src/renderer/src/components/SettingsPage.tsx:1148
+#: src/renderer/src/components/SettingsPage.tsx:1154
 msgid "Disable PIN unlock"
 msgstr "PINによるロック解除を無効にする"
 
@@ -2383,10 +2401,10 @@ msgstr "Sendを無効にする"
 #: src/renderer/src/components/OrganizationsPage.tsx:60
 #: src/renderer/src/components/send-ui.ts:45
 #: src/renderer/src/components/SendsPage.tsx:116
-#: src/renderer/src/components/SettingsPage.tsx:643
-#: src/renderer/src/components/SettingsPage.tsx:660
-#: src/renderer/src/components/SettingsPage.tsx:1113
-#: src/renderer/src/components/SettingsPage.tsx:1259
+#: src/renderer/src/components/SettingsPage.tsx:649
+#: src/renderer/src/components/SettingsPage.tsx:666
+#: src/renderer/src/components/SettingsPage.tsx:1119
+#: src/renderer/src/components/SettingsPage.tsx:1265
 #: src/renderer/src/lib/ssh-agent-ui.ts:69
 msgid "Disabled"
 msgstr "無効"
@@ -2451,7 +2469,7 @@ msgid "Download update"
 msgstr "更新をダウンロード"
 
 #. placeholder {0}: result.fileName
-#: src/renderer/src/components/VaultShell.tsx:2961
+#: src/renderer/src/components/VaultShell.tsx:2962
 msgid "Downloaded “{0}”."
 msgstr "「{0}」をダウンロードしました。"
 
@@ -2485,7 +2503,7 @@ msgstr "DuckDuckGoウェブアプリ"
 msgid "Duo"
 msgstr "Duo"
 
-#: src/renderer/src/components/VaultShell.tsx:3757
+#: src/renderer/src/components/VaultShell.tsx:3759
 msgid "Duplicate item"
 msgstr "項目を複製"
 
@@ -2511,7 +2529,7 @@ msgstr "Edgeウェブアプリ"
 
 #: src/renderer/src/components/AccountProfileCard.tsx:152
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:127
-#: src/renderer/src/components/VaultShell.tsx:3774
+#: src/renderer/src/components/VaultShell.tsx:3776
 msgid "Edit"
 msgstr "編集"
 
@@ -2523,7 +2541,7 @@ msgstr "{currentTypeLabel}を編集"
 msgid "Edit {typeLabel}"
 msgstr "{typeLabel}を編集"
 
-#: src/renderer/src/components/Dialogs.tsx:183
+#: src/renderer/src/components/Dialogs.tsx:185
 msgid "Edit folder"
 msgstr "フォルダーを編集"
 
@@ -2620,7 +2638,7 @@ msgstr "緊急アクセスが設定されていません"
 msgid "Empty Trash"
 msgstr "ゴミ箱を空にする"
 
-#: src/renderer/src/components/SettingsPage.tsx:1509
+#: src/renderer/src/components/SettingsPage.tsx:1516
 msgid "Enable <0/> autofill"
 msgstr "<0/>の自動入力を有効にする"
 
@@ -2628,7 +2646,7 @@ msgstr "<0/>の自動入力を有効にする"
 msgid "Enable authenticator"
 msgstr "認証アプリを有効にする"
 
-#: src/renderer/src/components/SettingsPage.tsx:1331
+#: src/renderer/src/components/SettingsPage.tsx:1337
 msgid "Enable biometrics"
 msgstr "生体認証を有効にする"
 
@@ -2636,17 +2654,17 @@ msgstr "生体認証を有効にする"
 msgid "Enable email two-factor authentication"
 msgstr "メールによる2要素認証を有効にする"
 
-#: src/renderer/src/components/SettingsPage.tsx:1238
+#: src/renderer/src/components/SettingsPage.tsx:1244
 msgid "Enable PIN unlock"
 msgstr "PINによるロック解除を有効にする"
 
-#: src/renderer/src/components/SettingsPage.tsx:1668
+#: src/renderer/src/components/SettingsPage.tsx:1675
 msgid "Enable SSH Agent"
 msgstr "SSH Agentを有効にする"
 
 #: src/renderer/src/components/LoginEditor.tsx:2606
-#: src/renderer/src/components/SettingsPage.tsx:1113
-#: src/renderer/src/components/SettingsPage.tsx:1258
+#: src/renderer/src/components/SettingsPage.tsx:1119
+#: src/renderer/src/components/SettingsPage.tsx:1264
 msgid "Enabled"
 msgstr "有効"
 
@@ -2662,7 +2680,7 @@ msgstr "暗号化されたメモのみ"
 msgid "Encrypting locally"
 msgstr "ローカルで暗号化中"
 
-#: src/renderer/src/components/SettingsPage.tsx:504
+#: src/renderer/src/components/SettingsPage.tsx:510
 msgid "English"
 msgstr "英語"
 
@@ -2745,7 +2763,7 @@ msgstr "無効化リクエストのたびに再度入力してください。以
 msgid "Enter master password again"
 msgstr "マスターパスワードをもう一度入力"
 
-#: src/renderer/src/components/SettingsPage.tsx:1183
+#: src/renderer/src/components/SettingsPage.tsx:1189
 msgid "Enter PIN again"
 msgstr "PIN をもう一度入力"
 
@@ -2773,7 +2791,7 @@ msgstr "メールで受信した数字の確認コードを入力してくださ
 msgid "Enter the original master password and the new password you set. This only confirms the remote state and completes local recovery; it does not resubmit the master-password change."
 msgstr "元のマスターパスワードと設定した新しいパスワードを入力してください。これはリモートの状態を確認してローカル復旧を完了するだけで、マスターパスワード変更を再送信するものではありません。"
 
-#: src/renderer/src/components/AuthScreen.tsx:270
+#: src/renderer/src/components/AuthScreen.tsx:333
 msgid "Enter the PIN set for this session."
 msgstr "このセッションに設定した PIN を入力してください。"
 
@@ -2813,7 +2831,7 @@ msgstr "削除のたびにマスターパスワードを再入力してくださ
 msgid "Enter your master password and confirm the impact of rotating your API key."
 msgstr "マスターパスワードを入力し、API キーをローテーションする影響を確認してください。"
 
-#: src/renderer/src/components/VaultShell.tsx:2104
+#: src/renderer/src/components/VaultShell.tsx:2105
 msgid "Enter your master password before enabling biometrics."
 msgstr "生体認証を有効にする前にマスターパスワードを入力してください。"
 
@@ -2821,7 +2839,7 @@ msgstr "生体認証を有効にする前にマスターパスワードを入力
 msgid "Enter your master password to approve this protected SSH key."
 msgstr "この保護された SSH 鍵を承認するには、マスターパスワードを入力してください。"
 
-#: src/renderer/src/components/SettingsPage.tsx:598
+#: src/renderer/src/components/SettingsPage.tsx:604
 msgid "Enter your master password to confirm."
 msgstr "確認するにはマスターパスワードを入力してください。"
 
@@ -2829,7 +2847,7 @@ msgstr "確認するにはマスターパスワードを入力してください
 msgid "Enter your master password to continue."
 msgstr "続行するにはマスターパスワードを入力してください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:271
+#: src/renderer/src/components/AuthScreen.tsx:334
 msgid "Enter your master password to unlock items stored on this device."
 msgstr "このデバイスに保存されたアイテムのロックを解除するには、マスターパスワードを入力してください。"
 
@@ -2839,8 +2857,8 @@ msgstr "このデバイスに保存されたアイテムのロックを解除す
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:369
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:484
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:514
-#: src/renderer/src/components/AuthScreen.tsx:151
-#: src/renderer/src/components/Dialogs.tsx:481
+#: src/renderer/src/components/AuthScreen.tsx:214
+#: src/renderer/src/components/Dialogs.tsx:489
 #: src/renderer/src/components/SyncDialog.tsx:432
 #: src/renderer/src/components/SyncDialog.tsx:471
 msgid "Enter your master password."
@@ -2923,7 +2941,7 @@ msgstr "Bitwarden 添付ファイル ZIP をエクスポート"
 msgid "Export Bitwarden CSV"
 msgstr "Bitwarden CSV をエクスポート"
 
-#: src/renderer/src/components/SettingsPage.tsx:1835
+#: src/renderer/src/components/SettingsPage.tsx:1842
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:305
 msgid "Export encrypted backup"
 msgstr "暗号化バックアップをエクスポート"
@@ -2966,7 +2984,7 @@ msgstr "フィールド {linkedId}"
 msgid "File"
 msgstr "ファイル"
 
-#: src/renderer/src/components/SettingsPage.tsx:1822
+#: src/renderer/src/components/SettingsPage.tsx:1829
 msgid "File contents and paths are handled only by the local main process and are never sent back to the renderer process."
 msgstr "ファイルの内容とパスはローカルのメインプロセスでのみ処理され、レンダラープロセスに送り返されることはありません。"
 
@@ -3024,7 +3042,7 @@ msgid "First name"
 msgstr "名"
 
 #. Field label for the folder that contains this login item.
-#: src/renderer/src/components/Dialogs.tsx:359
+#: src/renderer/src/components/Dialogs.tsx:367
 #: src/renderer/src/components/LoginEditor.tsx:2225
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:108
 #: src/renderer/src/components/VaultShell.tsx:1770
@@ -3039,7 +3057,7 @@ msgstr "フォルダーデータ"
 msgid "Folder names can be up to {MAX_VAULT_FOLDER_NAME_LENGTH} characters."
 msgstr "フォルダー名は最大 {MAX_VAULT_FOLDER_NAME_LENGTH} 文字です。"
 
-#: src/renderer/src/components/VaultShell.tsx:3270
+#: src/renderer/src/components/VaultShell.tsx:3271
 msgid "Folder order updated."
 msgstr "フォルダーの順序を更新しました。"
 
@@ -3048,11 +3066,11 @@ msgstr "フォルダーの順序を更新しました。"
 msgid "Folders"
 msgstr "フォルダー"
 
-#: src/renderer/src/components/Dialogs.tsx:184
+#: src/renderer/src/components/Dialogs.tsx:186
 msgid "Folders organize your items without changing their login details."
 msgstr "フォルダーを使うと、ログインの詳細を変更せずにアイテムを整理できます。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1583
+#: src/renderer/src/components/SettingsPage.tsx:1590
 msgid "Follow the steps below to let BearWarden identify the current website and fill the focused login form."
 msgstr "以下の手順で、BearWarden が現在の Web サイトを識別し、フォーカス中のログインフォームへ入力できるようにします。"
 
@@ -3106,8 +3124,8 @@ msgstr "完全な BearWarden バックアップ（添付ファイルを含む）
 msgid "Full name"
 msgstr "氏名"
 
-#: src/renderer/src/components/SettingsPage.tsx:434
-#: src/renderer/src/components/SettingsPage.tsx:838
+#: src/renderer/src/components/SettingsPage.tsx:440
+#: src/renderer/src/components/SettingsPage.tsx:844
 msgid "General"
 msgstr "一般"
 
@@ -3259,11 +3277,11 @@ msgstr "送信者のメールアドレスを非表示"
 msgid "Hide text by default"
 msgstr "テキストをデフォルトで非表示"
 
-#: src/renderer/src/components/Dialogs.tsx:685
+#: src/renderer/src/components/Dialogs.tsx:693
 msgid "Hide this historical password"
 msgstr "この履歴パスワードを非表示"
 
-#: src/renderer/src/components/Dialogs.tsx:725
+#: src/renderer/src/components/Dialogs.tsx:733
 msgid "Historical password is masked"
 msgstr "履歴パスワードはマスクされています"
 
@@ -3332,7 +3350,7 @@ msgstr "このリクエストを行っていない場合は、拒否してアカ
 msgid "If you do not want to risk duplicates, disconnect instead. Your local vault data will be kept."
 msgstr "重複のリスクを避けたい場合は、代わりに切断してください。ローカルの保管庫データは保持されます。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1817
+#: src/renderer/src/components/SettingsPage.tsx:1824
 msgid "Import Bitwarden JSON or create a password-protected portable backup."
 msgstr "Bitwarden JSON をインポートするか、パスワードで保護されたポータブルバックアップを作成します。"
 
@@ -3346,7 +3364,7 @@ msgstr "インポートが完了しました: {0} 個のアイテムと {1} 個�
 msgid "Import from clipboard"
 msgstr "クリップボードからインポート"
 
-#: src/renderer/src/components/SettingsPage.tsx:1831
+#: src/renderer/src/components/SettingsPage.tsx:1838
 msgid "Import JSON"
 msgstr "JSON をインポート"
 
@@ -3370,7 +3388,7 @@ msgstr "4 桁の数字を含める"
 msgid "Include one number"
 msgstr "数字を 1 文字含める"
 
-#: src/renderer/src/components/Dialogs.tsx:492
+#: src/renderer/src/components/Dialogs.tsx:500
 msgid "Incorrect master password."
 msgstr "マスターパスワードが正しくありません。"
 
@@ -3423,7 +3441,7 @@ msgstr "完全に一致する必要があります。スペースや文字は自
 msgid "Item"
 msgstr "アイテム"
 
-#: src/renderer/src/components/VaultShell.tsx:3528
+#: src/renderer/src/components/VaultShell.tsx:3530
 msgid "Item details"
 msgstr "アイテムの詳細"
 
@@ -3433,15 +3451,15 @@ msgstr "アイテムフィールド"
 
 #. Section heading for the login item's creation, edit, password-change, and password-history metadata.
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:151
-#: src/renderer/src/components/VaultShell.tsx:3615
+#: src/renderer/src/components/VaultShell.tsx:3617
 msgid "Item history"
 msgstr "アイテム履歴"
 
-#: src/renderer/src/components/VaultShell.tsx:2709
+#: src/renderer/src/components/VaultShell.tsx:2710
 msgid "Item moved to Trash."
 msgstr "アイテムをゴミ箱に移動しました。"
 
-#: src/renderer/src/components/VaultShell.tsx:2709
+#: src/renderer/src/components/VaultShell.tsx:2710
 msgid "Item permanently deleted."
 msgstr "アイテムを完全に削除しました。"
 
@@ -3457,11 +3475,11 @@ msgstr "アイテムはゴミ箱内でも暗号化されたままで、後で復
 msgid "Items that do not apply were skipped"
 msgstr "適用されないアイテムはスキップされました"
 
-#: src/renderer/src/components/Dialogs.tsx:256
+#: src/renderer/src/components/Dialogs.tsx:264
 msgid "Its items will move to Unfiled and will not be deleted."
 msgstr "含まれるアイテムは未分類に移動され、削除されません。"
 
-#: src/renderer/src/components/SettingsPage.tsx:507
+#: src/renderer/src/components/SettingsPage.tsx:513
 msgid "Japanese"
 msgstr "日本語"
 
@@ -3519,7 +3537,7 @@ msgstr "既知の漏洩が見つかりました"
 msgid "Known breaches have not been checked yet"
 msgstr "既知の漏洩はまだ確認されていません"
 
-#: src/renderer/src/components/SettingsPage.tsx:873
+#: src/renderer/src/components/SettingsPage.tsx:879
 msgid "Language"
 msgstr "言語"
 
@@ -3550,11 +3568,11 @@ msgstr "最終同期"
 msgid "Last synced: {lastSyncTime}"
 msgstr "最終同期: {lastSyncTime}"
 
-#: src/renderer/src/components/SettingsPage.tsx:928
+#: src/renderer/src/components/SettingsPage.tsx:934
 msgid "Launch BearWarden at login"
 msgstr "ログイン時に BearWarden を起動"
 
-#: src/renderer/src/components/SettingsPage.tsx:934
+#: src/renderer/src/components/SettingsPage.tsx:940
 msgid "Launch BearWarden automatically after you log in to this computer."
 msgstr "このコンピューターにログイン後、BearWarden を自動的に起動します。"
 
@@ -3566,7 +3584,7 @@ msgstr "無制限にするには空白のままにしてください。"
 msgid "Length"
 msgstr "長さ"
 
-#: src/renderer/src/components/SettingsPage.tsx:1655
+#: src/renderer/src/components/SettingsPage.tsx:1662
 msgid "Let terminals and Git use SSH keys from the vault through a local socket."
 msgstr "ローカルソケットを介して、ターミナルと Git で保管庫内の SSH キーを使用できるようにします。"
 
@@ -3579,7 +3597,7 @@ msgstr "サーバーがこのデバイスで二段階認証を一時的に省略
 msgid "License number"
 msgstr "ライセンス番号"
 
-#: src/renderer/src/components/SettingsPage.tsx:496
+#: src/renderer/src/components/SettingsPage.tsx:502
 msgid "Light"
 msgstr "ライト"
 
@@ -3612,7 +3630,7 @@ msgstr "リスト操作"
 msgid "load"
 msgstr "読み込む"
 
-#: src/renderer/src/components/SettingsPage.tsx:1395
+#: src/renderer/src/components/SettingsPage.tsx:1401
 msgid "Load icons through the configured Bitwarden or Vaultwarden icon service. When disabled, local initials are used instead."
 msgstr "設定済みの Bitwarden または Vaultwarden アイコンサービスを通じてアイコンを読み込みます。無効にすると、代わりにローカルのイニシャルが使用されます。"
 
@@ -3636,7 +3654,7 @@ msgstr "緊急アクセスを読み込み中…"
 msgid "Loading item details…"
 msgstr "アイテムの詳細を読み込み中…"
 
-#: src/renderer/src/components/AccountSwitcherCard.tsx:158
+#: src/renderer/src/components/AccountSwitcherCard.tsx:187
 msgid "Loading local accounts"
 msgstr "ローカルアカウントを読み込み中"
 
@@ -3644,7 +3662,7 @@ msgstr "ローカルアカウントを読み込み中"
 msgid "Loading organization items…"
 msgstr "組織のアイテムを読み込み中…"
 
-#: src/renderer/src/components/Dialogs.tsx:647
+#: src/renderer/src/components/Dialogs.tsx:655
 msgid "Loading password history"
 msgstr "パスワード履歴を読み込み中"
 
@@ -3652,7 +3670,7 @@ msgstr "パスワード履歴を読み込み中"
 msgid "Loading Sends…"
 msgstr "Send を読み込み中…"
 
-#: src/renderer/src/components/SettingsPage.tsx:828
+#: src/renderer/src/components/SettingsPage.tsx:834
 msgid "Loading settings…"
 msgstr "設定を読み込み中…"
 
@@ -3669,39 +3687,49 @@ msgstr "2fa.directory のサービス一覧を読み込み中"
 msgid "Loading…"
 msgstr "読み込み中…"
 
+#. Field label for choosing which device-local vault account to unlock; this is not a remote Bitwarden profile.
+#: src/renderer/src/components/AuthScreen.tsx:343
+msgctxt "local-account-selector"
+msgid "Local account"
+msgstr ""
+
 #. placeholder {0}: position + 1
 #. placeholder {1}: accounts.length
-#: src/renderer/src/components/AccountSwitcherCard.tsx:193
+#: src/renderer/src/components/AccountSwitcherCard.tsx:222
 msgid "Local account dropped at position {0} of {1}."
 msgstr "ローカルアカウントを全 {1} 件中 {0} 番目にドロップしました。"
 
-#: src/renderer/src/components/account-switcher-ui.ts:106
+#: src/renderer/src/components/account-switcher-ui.ts:121
 msgid "Local account management is currently unavailable. Try again later."
 msgstr "ローカルアカウントの管理は現在利用できません。後でもう一度お試しください。"
 
 #. placeholder {0}: position + 1
 #. placeholder {1}: accounts.length
-#: src/renderer/src/components/AccountSwitcherCard.tsx:186
+#: src/renderer/src/components/AccountSwitcherCard.tsx:215
 msgid "Local account moved to position {0} of {1}."
 msgstr "ローカルアカウントを全 {1} 件中 {0} 番目に移動しました。"
 
-#: src/renderer/src/hooks/use-vault-accounts.ts:147
+#: src/renderer/src/hooks/use-vault-accounts.ts:154
+msgid "Local account name updated."
+msgstr ""
+
+#: src/renderer/src/hooks/use-vault-accounts.ts:156
 msgid "Local account order updated."
 msgstr "ローカルアカウントの順序を更新しました。"
 
-#: src/renderer/src/components/AccountSwitcherCard.tsx:195
+#: src/renderer/src/components/AccountSwitcherCard.tsx:224
 msgid "Local account reordering cancelled."
 msgstr "ローカルアカウントの並べ替えをキャンセルしました。"
 
-#: src/renderer/src/components/AccountSwitcherCard.tsx:189
+#: src/renderer/src/components/AccountSwitcherCard.tsx:218
 msgid "Local account was not moved."
 msgstr "ローカルアカウントは移動しませんでした。"
 
-#: src/renderer/src/components/AccountSwitcherCard.tsx:138
+#: src/renderer/src/components/AccountSwitcherCard.tsx:167
 msgid "Local accounts"
 msgstr "ローカルアカウント"
 
-#: src/renderer/src/components/SettingsPage.tsx:453
+#: src/renderer/src/components/SettingsPage.tsx:459
 msgid "Local accounts and cloud connections"
 msgstr "ローカルアカウントとクラウド接続"
 
@@ -3709,27 +3737,27 @@ msgstr "ローカルアカウントとクラウド接続"
 msgid "Local generator"
 msgstr "ローカルジェネレーター"
 
-#: src/renderer/src/components/VaultShell.tsx:1793
+#: src/renderer/src/components/VaultShell.tsx:1794
 msgid "Local vault"
 msgstr "ローカル保管庫"
 
-#: src/renderer/src/components/SettingsPage.tsx:1028
+#: src/renderer/src/components/SettingsPage.tsx:1034
 msgid "Lock after inactivity"
 msgstr "操作がない場合にロック"
 
-#: src/renderer/src/components/account-switcher-ui.ts:87
+#: src/renderer/src/components/account-switcher-ui.ts:102
 msgid "Lock and restart"
 msgstr "ロックして再起動"
 
-#: src/renderer/src/components/SettingsPage.tsx:1031
+#: src/renderer/src/components/SettingsPage.tsx:1037
 msgid "Lock automatically after a period of inactivity. The vault always locks when the app closes."
 msgstr "一定時間操作がない場合に自動的にロックします。アプリを閉じると、保管庫は常にロックされます。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1013
+#: src/renderer/src/components/SettingsPage.tsx:1019
 msgid "Lock the vault immediately when the computer goes to sleep."
 msgstr "コンピューターがスリープ状態になったら、すぐに保管庫をロックします。"
 
-#: src/renderer/src/components/SettingsPage.tsx:995
+#: src/renderer/src/components/SettingsPage.tsx:1001
 msgid "Lock the vault immediately when you lock the screen."
 msgstr "画面をロックしたら、すぐに保管庫をロックします。"
 
@@ -3738,15 +3766,15 @@ msgstr "画面をロックしたら、すぐに保管庫をロックします。
 msgid "Lock vault"
 msgstr "保管庫をロック"
 
-#: src/renderer/src/components/SettingsPage.tsx:1010
+#: src/renderer/src/components/SettingsPage.tsx:1016
 msgid "Lock when the computer sleeps"
 msgstr "コンピューターのスリープ時にロック"
 
-#: src/renderer/src/components/SettingsPage.tsx:992
+#: src/renderer/src/components/SettingsPage.tsx:998
 msgid "Lock when the screen is locked"
 msgstr "画面のロック時にロック"
 
-#: src/renderer/src/components/SettingsPage.tsx:441
+#: src/renderer/src/components/SettingsPage.tsx:447
 msgid "Locking and unlocking"
 msgstr "ロックとロック解除"
 
@@ -3794,7 +3822,7 @@ msgstr "macOS デスクトップアプリ"
 msgid "macOS grants broad Accessibility access to control the computer. BearWarden uses it only to read and fill supported browsers when you press <0/>."
 msgstr "macOS のアクセシビリティ権限は、コンピュータを広範囲に制御できます。BearWarden は <0/> を押したときにのみ、対応ブラウザの読み取りと入力にこの権限を使用します。"
 
-#: src/renderer/src/components/SettingsPage.tsx:658
+#: src/renderer/src/components/SettingsPage.tsx:664
 msgid "macOS only"
 msgstr "macOS のみ"
 
@@ -3814,11 +3842,11 @@ msgstr "コレクションを管理"
 msgid "Manage FIDO2 security keys"
 msgstr "FIDO2 セキュリティキーを管理"
 
-#: src/renderer/src/components/SettingsPage.tsx:785
+#: src/renderer/src/components/SettingsPage.tsx:791
 msgid "Manage security, appearance, and sync on this device."
 msgstr "このデバイスのセキュリティ、外観、同期を管理します。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1479
+#: src/renderer/src/components/SettingsPage.tsx:1486
 msgid "Manage sync & accounts"
 msgstr "同期とアカウントを管理"
 
@@ -3843,8 +3871,8 @@ msgstr "手動更新"
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1091
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1193
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1260
-#: src/renderer/src/components/AuthScreen.tsx:296
-#: src/renderer/src/components/Dialogs.tsx:510
+#: src/renderer/src/components/AuthScreen.tsx:390
+#: src/renderer/src/components/Dialogs.tsx:518
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:96
 #: src/renderer/src/components/PendingImportWarning.tsx:67
 #: src/renderer/src/components/SyncDialog.tsx:663
@@ -3855,7 +3883,7 @@ msgstr "マスターパスワード"
 msgid "Master password changed"
 msgstr "マスターパスワードを変更しました"
 
-#: src/renderer/src/components/Dialogs.tsx:468
+#: src/renderer/src/components/Dialogs.tsx:476
 msgid "Master password required"
 msgstr "マスターパスワードが必要です"
 
@@ -3970,17 +3998,17 @@ msgstr "分"
 msgid "Minutes must be between 0 and 59."
 msgstr "分は 0 ～ 59 の範囲で指定してください。"
 
-#: src/renderer/src/components/VaultShell.tsx:3740
-#: src/renderer/src/components/VaultShell.tsx:3750
+#: src/renderer/src/components/VaultShell.tsx:3742
+#: src/renderer/src/components/VaultShell.tsx:3752
 msgid "More actions"
 msgstr "その他の操作"
 
-#: src/renderer/src/components/SettingsPage.tsx:491
+#: src/renderer/src/components/SettingsPage.tsx:497
 #: src/renderer/src/components/VaultShell.tsx:309
 msgid "Most used"
 msgstr "使用頻度が高い順"
 
-#: src/renderer/src/components/Dialogs.tsx:388
+#: src/renderer/src/components/Dialogs.tsx:396
 #: src/renderer/src/components/VaultItemListPane.tsx:302
 msgid "Move"
 msgstr "移動"
@@ -3993,7 +4021,7 @@ msgstr "移動"
 #~ msgid "Move “{customFieldLabel}” up"
 #~ msgstr "“{customFieldLabel}” を上に移動"
 
-#: src/renderer/src/components/Dialogs.tsx:426
+#: src/renderer/src/components/Dialogs.tsx:434
 msgid "Move “{itemName}” to the trash?"
 msgstr "“{itemName}” をゴミ箱に移動しますか？"
 
@@ -4036,17 +4064,17 @@ msgstr "“{destination}” に移動"
 msgid "Move to Archive"
 msgstr "アーカイブに移動"
 
-#: src/renderer/src/components/Dialogs.tsx:323
+#: src/renderer/src/components/Dialogs.tsx:331
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:122
 msgid "Move to folder"
 msgstr "フォルダーに移動"
 
-#: src/renderer/src/components/Dialogs.tsx:440
+#: src/renderer/src/components/Dialogs.tsx:448
 msgid "Move to trash"
 msgstr "ゴミ箱に移動"
 
 #: src/renderer/src/components/VaultShell-dnd.ts:71
-#: src/renderer/src/components/VaultShell.tsx:3796
+#: src/renderer/src/components/VaultShell.tsx:3798
 #: src/renderer/src/components/VaultShellDialogs.tsx:237
 msgid "Move to Trash"
 msgstr "ゴミ箱に移動"
@@ -4065,25 +4093,25 @@ msgstr "ゴミ箱に移動"
 
 #. placeholder {0}: movedFolder.name
 #. placeholder {1}: parentFolder.name
-#: src/renderer/src/components/VaultShell.tsx:3254
+#: src/renderer/src/components/VaultShell.tsx:3255
 msgid "Moved “{0}” into “{1}”."
 msgstr "「{0}」を「{1}」に移動しました。"
 
 #. placeholder {0}: movedFolder.name
-#: src/renderer/src/components/VaultShell.tsx:3256
+#: src/renderer/src/components/VaultShell.tsx:3257
 msgid "Moved “{0}” to the top level."
 msgstr "「{0}」を最上位に移動しました。"
 
 #. placeholder {0}: updated.length
-#: src/renderer/src/components/VaultShell.tsx:2329
+#: src/renderer/src/components/VaultShell.tsx:2330
 msgid "Moved {0} items to “{destination}”."
 msgstr "{0} 件のアイテムを「{destination}」に移動しました。"
 
-#: src/renderer/src/components/VaultShell.tsx:2268
+#: src/renderer/src/components/VaultShell.tsx:2269
 msgid "Moved {affectedCount} items to Trash."
 msgstr "{affectedCount} 件のアイテムをゴミ箱に移動しました。"
 
-#: src/renderer/src/components/VaultShell.tsx:2330
+#: src/renderer/src/components/VaultShell.tsx:2331
 msgid "Moved to “{destination}”."
 msgstr "「{destination}」に移動しました。"
 
@@ -4092,11 +4120,11 @@ msgstr "「{destination}」に移動しました。"
 msgid "Moving with {0} other items"
 msgstr "ほか {0} 件のアイテムとともに移動"
 
-#: src/renderer/src/components/Dialogs.tsx:193
+#: src/renderer/src/components/Dialogs.tsx:195
 #: src/renderer/src/components/LoginEditor.tsx:1576
 #: src/renderer/src/components/LoginEditor.tsx:2464
 #: src/renderer/src/components/SendsPage.tsx:564
-#: src/renderer/src/components/SettingsPage.tsx:492
+#: src/renderer/src/components/SettingsPage.tsx:498
 #: src/renderer/src/components/VaultShell.tsx:300
 #: src/renderer/src/components/VaultShell.tsx:326
 msgid "Name"
@@ -4112,11 +4140,11 @@ msgid "Needs attention"
 msgstr "要確認"
 
 #: src/renderer/src/components/LoginEditor.tsx:586
-#: src/renderer/src/components/SettingsPage.tsx:476
+#: src/renderer/src/components/SettingsPage.tsx:482
 msgid "Never"
 msgstr "しない"
 
-#: src/renderer/src/components/SettingsPage.tsx:514
+#: src/renderer/src/components/SettingsPage.tsx:520
 msgid "Never ask (approve automatically)"
 msgstr "確認しない（自動的に承認）"
 
@@ -4168,7 +4196,7 @@ msgstr "新しい結果を生成しました"
 msgid "No"
 msgstr "いいえ"
 
-#: src/renderer/src/components/SettingsPage.tsx:1463
+#: src/renderer/src/components/SettingsPage.tsx:1470
 msgid "No Bitwarden account connected"
 msgstr "Bitwarden アカウントが接続されていません"
 
@@ -4188,7 +4216,7 @@ msgstr "カスタムグループはまだありません。"
 msgid "No generated entries yet."
 msgstr "生成されたエントリはまだありません。"
 
-#: src/renderer/src/components/VaultShell.tsx:3922
+#: src/renderer/src/components/VaultShell.tsx:3924
 msgid "No item selected"
 msgstr "アイテムが選択されていません"
 
@@ -4218,6 +4246,7 @@ msgid "No organizations have been synced"
 msgstr "同期された組織はありません"
 
 #: src/renderer/src/components/Dialogs.tsx:170
+#: src/renderer/src/components/Dialogs.tsx:170
 msgid "No parent folder"
 msgstr "親フォルダーなし"
 
@@ -4225,7 +4254,7 @@ msgstr "親フォルダーなし"
 msgid "No passkey is available"
 msgstr "使用可能なパスキーはありません"
 
-#: src/renderer/src/components/Dialogs.tsx:744
+#: src/renderer/src/components/Dialogs.tsx:752
 msgid "No password history"
 msgstr "パスワード履歴はありません"
 
@@ -4309,7 +4338,7 @@ msgstr "今回はすべての添付ファイルを完了できませんでした
 msgid "Not checked"
 msgstr "未確認"
 
-#: src/renderer/src/components/SettingsPage.tsx:518
+#: src/renderer/src/components/SettingsPage.tsx:524
 #: src/renderer/src/components/VaultHealthPage.tsx:1472
 #: src/renderer/src/components/VaultShell.tsx:293
 msgid "Not configured"
@@ -4413,7 +4442,7 @@ msgstr "{findingName} の二要素認証セットアップ手順を開く"
 msgid "Open website"
 msgstr "ウェブサイトを開く"
 
-#: src/renderer/src/components/AuthScreen.tsx:228
+#: src/renderer/src/components/AuthScreen.tsx:291
 msgid "Opening secure vault"
 msgstr "セキュアな保管庫を開いています"
 
@@ -4460,7 +4489,7 @@ msgstr "組織キーとメンバーデータ"
 msgid "Organizations"
 msgstr "組織"
 
-#: src/renderer/src/components/VaultShell.tsx:3600
+#: src/renderer/src/components/VaultShell.tsx:3602
 msgid "Original folder"
 msgstr "元のフォルダー"
 
@@ -4485,7 +4514,7 @@ msgstr "その他のカード発行会社"
 msgid "Owner"
 msgstr "所有者"
 
-#: src/renderer/src/components/Dialogs.tsx:208
+#: src/renderer/src/components/Dialogs.tsx:210
 msgid "Parent folder"
 msgstr "親フォルダー"
 
@@ -4497,7 +4526,7 @@ msgstr "一部完了しています。後で再開できます"
 msgid "Passkey"
 msgstr "パスキー"
 
-#: src/renderer/src/components/VaultShell.tsx:2598
+#: src/renderer/src/components/VaultShell.tsx:2599
 msgid "Passkey deleted."
 msgstr "パスキーを削除しました。"
 
@@ -4534,9 +4563,9 @@ msgstr "パスポート番号"
 msgid "Password"
 msgstr "パスワード"
 
-#: src/renderer/src/components/Dialogs.tsx:623
+#: src/renderer/src/components/Dialogs.tsx:631
 #: src/renderer/src/components/ItemHistoryRows.tsx:67
-#: src/renderer/src/components/VaultShell.tsx:3622
+#: src/renderer/src/components/VaultShell.tsx:3624
 msgid "Password history"
 msgstr "パスワード履歴"
 
@@ -4596,11 +4625,11 @@ msgstr "サインインリクエスト待ち"
 msgid "Pending sign-in requests"
 msgstr "サインインリクエスト待ち"
 
-#: src/renderer/src/components/Dialogs.tsx:440
+#: src/renderer/src/components/Dialogs.tsx:448
 msgid "Permanently delete"
 msgstr "完全に削除"
 
-#: src/renderer/src/components/Dialogs.tsx:426
+#: src/renderer/src/components/Dialogs.tsx:434
 msgid "Permanently delete “{itemName}”?"
 msgstr "「{itemName}」を完全に削除しますか？"
 
@@ -4609,7 +4638,7 @@ msgstr "「{itemName}」を完全に削除しますか？"
 msgid "Permanently delete {0} items?"
 msgstr "{0} 件のアイテムを完全に削除しますか？"
 
-#: src/renderer/src/components/VaultShell.tsx:2271
+#: src/renderer/src/components/VaultShell.tsx:2272
 msgid "Permanently deleted {affectedCount} items."
 msgstr "{affectedCount} 件のアイテムを完全に削除しました。"
 
@@ -4621,11 +4650,11 @@ msgstr "個人保管庫を完全に消去"
 msgid "Permanently purge personal vault?"
 msgstr "個人保管庫を完全に消去しますか？"
 
-#: src/renderer/src/components/account-switcher-ui.ts:75
+#: src/renderer/src/components/account-switcher-ui.ts:90
 msgid "Permanently remove local data"
 msgstr "ローカルデータを完全に削除"
 
-#: src/renderer/src/components/SettingsPage.tsx:664
+#: src/renderer/src/components/SettingsPage.tsx:670
 msgid "Permission required"
 msgstr "権限が必要です"
 
@@ -4661,7 +4690,7 @@ msgstr "全 {1} 件中 {0} 番目のカスタムフィールドを持ち上げ�
 
 #. placeholder {0}: position + 1
 #. placeholder {1}: accounts.length
-#: src/renderer/src/components/AccountSwitcherCard.tsx:179
+#: src/renderer/src/components/AccountSwitcherCard.tsx:208
 msgid "Picked up local account {0} of {1}."
 msgstr "全 {1} 件中 {0} 番目のローカルアカウントを持ち上げました。"
 
@@ -4671,32 +4700,32 @@ msgstr "全 {1} 件中 {0} 番目のローカルアカウントを持ち上げ�
 msgid "Picked up website {0} of {1}."
 msgstr "全 {1} 件中 {0} 番目のウェブサイトを持ち上げました。"
 
-#: src/renderer/src/components/AuthScreen.tsx:279
-#: src/renderer/src/components/SettingsPage.tsx:1165
+#: src/renderer/src/components/AuthScreen.tsx:373
+#: src/renderer/src/components/SettingsPage.tsx:1171
 msgid "PIN"
 msgstr "PIN"
 
-#: src/renderer/src/components/SettingsPage.tsx:1108
+#: src/renderer/src/components/SettingsPage.tsx:1114
 msgid "PIN unlock"
 msgstr "PIN ロック解除"
 
-#: src/renderer/src/components/SettingsPage.tsx:627
+#: src/renderer/src/components/SettingsPage.tsx:633
 msgid "PIN unlock is disabled."
 msgstr "PIN ロック解除は無効です。"
 
-#: src/renderer/src/components/AuthScreen.tsx:53
+#: src/renderer/src/components/AuthScreen.tsx:68
 msgid "PIN unlock is disabled. Enter your master password instead."
 msgstr "PIN ロック解除は無効です。代わりにマスターパスワードを入力してください。"
 
-#: src/renderer/src/components/auth-screen-ui.ts:15
+#: src/renderer/src/components/auth-screen-ui.ts:28
 msgid "PIN unlock is disabled. Use your master password instead."
 msgstr "PIN ロック解除は無効です。代わりにマスターパスワードを使用してください。"
 
-#: src/renderer/src/components/SettingsPage.tsx:608
+#: src/renderer/src/components/SettingsPage.tsx:614
 msgid "PIN unlock is enabled for this session only."
 msgstr "PIN ロック解除はこのセッションでのみ有効です。"
 
-#: src/renderer/src/components/AuthScreen.tsx:141
+#: src/renderer/src/components/AuthScreen.tsx:204
 msgid "PIN unlock is no longer available. Enter your master password."
 msgstr "PIN ロック解除は利用できなくなりました。マスターパスワードを入力してください。"
 
@@ -4708,7 +4737,7 @@ msgstr "先にログインフォームのユーザー名またはパスワード
 msgid "Please choose a valid six-digit hexadecimal color."
 msgstr "有効な 6 桁の 16 進カラーコードを選択してください。"
 
-#: src/renderer/src/components/AccountSwitcherCard.tsx:161
+#: src/renderer/src/components/AccountSwitcherCard.tsx:190
 msgid "Please wait."
 msgstr "お待ちください。"
 
@@ -4726,22 +4755,22 @@ msgstr "プラスアドレス"
 msgid "Postal code"
 msgstr "郵便番号"
 
-#: src/renderer/src/components/SettingsPage.tsx:1492
+#: src/renderer/src/components/SettingsPage.tsx:1499
 msgid "Press <0/> in a supported browser to match the current site and fill in login details."
 msgstr "対応ブラウザーで <0/> を押すと、現在のサイトに一致するログイン情報を入力できます。"
 
-#: src/renderer/src/components/SettingsPage.tsx:446
+#: src/renderer/src/components/SettingsPage.tsx:452
 msgid "Privacy"
 msgstr "プライバシー"
 
-#: src/renderer/src/components/SettingsPage.tsx:1344
+#: src/renderer/src/components/SettingsPage.tsx:1350
 msgid "Privacy & clipboard"
 msgstr "プライバシーとクリップボード"
 
 #: src/renderer/src/components/LoginEditor.tsx:2132
 #: src/renderer/src/components/LoginEditor.tsx:2151
 #: src/renderer/src/components/VaultShell.tsx:337
-#: src/renderer/src/components/VaultShell.tsx:2816
+#: src/renderer/src/components/VaultShell.tsx:2817
 msgid "Private key"
 msgstr "秘密鍵"
 
@@ -4766,7 +4795,7 @@ msgstr "問題箇所：{detailLabel}"
 msgid "Processing"
 msgstr "処理中"
 
-#: src/renderer/src/components/AccountSwitcherCard.tsx:223
+#: src/renderer/src/components/AccountSwitcherCard.tsx:256
 msgid "Processing local accounts"
 msgstr "ローカルアカウントを処理しています"
 
@@ -4830,7 +4859,7 @@ msgstr "HIBP のパディング済み範囲を照会しています"
 msgid "Random word"
 msgstr "ランダムな単語"
 
-#: src/renderer/src/components/SettingsPage.tsx:1515
+#: src/renderer/src/components/SettingsPage.tsx:1522
 msgid "Read the foreground browser’s URL and form only when you press the shortcut. Multiple matches appear in a mini picker."
 msgstr "ショートカットを押したときにのみ、前面のブラウザーの URL とフォームを読み取ります。複数の候補がある場合はミニピッカーに表示されます。"
 
@@ -4844,7 +4873,7 @@ msgstr "読み取り専用"
 msgid "Reading clipboard…"
 msgstr "クリップボードを読み取っています…"
 
-#: src/renderer/src/components/SettingsPage.tsx:645
+#: src/renderer/src/components/SettingsPage.tsx:651
 #: src/renderer/src/lib/ssh-agent-ui.ts:70
 msgid "Ready"
 msgstr "準備完了"
@@ -4869,7 +4898,7 @@ msgstr "最終使用日時"
 
 #. Sort label for vault items that have been used most recently.
 #. Sort label for vault items that have been used most recently.
-#: src/renderer/src/components/SettingsPage.tsx:484
+#: src/renderer/src/components/SettingsPage.tsx:490
 #: src/renderer/src/components/VaultShell.tsx:302
 msgctxt "recent-items-filter"
 msgid "Recently used"
@@ -4879,7 +4908,7 @@ msgstr "最近使用した項目"
 msgid "Recipients must actively reveal the text to see it."
 msgstr "受信者がテキストを表示する操作を行うまで、内容は表示されません。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1564
+#: src/renderer/src/components/SettingsPage.tsx:1571
 msgid "Recommended"
 msgstr "おすすめ"
 
@@ -4899,7 +4928,7 @@ msgstr "リカバリーコード"
 msgid "Redo"
 msgstr "やり直す"
 
-#: src/renderer/src/components/SettingsPage.tsx:1345
+#: src/renderer/src/components/SettingsPage.tsx:1351
 msgid "Reduce how long sensitive data remains on screen or in the clipboard."
 msgstr "機密データが画面またはクリップボードに残る時間を短縮します。"
 
@@ -4915,7 +4944,7 @@ msgstr "{generateLabel}を再生成"
 msgid "Registered security keys"
 msgstr "登録済みのセキュリティキー"
 
-#: src/renderer/src/components/SettingsPage.tsx:933
+#: src/renderer/src/components/SettingsPage.tsx:939
 msgid "Registered, but you still need to allow BearWarden in Login Items under macOS System Settings."
 msgstr "登録済みですが、macOS のシステム設定にある「ログイン項目」で BearWarden を許可する必要があります。"
 
@@ -4935,16 +4964,16 @@ msgstr "移動をキャンセルするには離してください"
 msgid "Releases"
 msgstr "リリース"
 
-#: src/renderer/src/components/Dialogs.tsx:764
+#: src/renderer/src/components/Dialogs.tsx:772
 #: src/renderer/src/components/EquivalentDomainsDialog.tsx:439
 msgid "Reload"
 msgstr "再読み込み"
 
-#: src/renderer/src/hooks/use-vault-accounts.ts:161
+#: src/renderer/src/hooks/use-vault-accounts.ts:170
 msgid "Reloading local accounts"
 msgstr "ローカルアカウントを再読み込みしています"
 
-#: src/renderer/src/components/SettingsPage.tsx:515
+#: src/renderer/src/components/SettingsPage.tsx:521
 msgid "Remember approvals until locked"
 msgstr "ロックされるまで承認を記憶する"
 
@@ -4953,7 +4982,7 @@ msgstr "ロックされるまで承認を記憶する"
 msgid "Remember this device"
 msgstr "このデバイスを記憶する"
 
-#: src/renderer/src/components/SettingsPage.tsx:1692
+#: src/renderer/src/components/SettingsPage.tsx:1699
 msgid "Remember until locked distinguishes local requests. Forwarded requests must also match a verified remote host fingerprint. Approvals are cleared when the vault locks."
 msgstr "「ロックされるまで記憶」はローカルリクエストを区別します。転送されたリクエストは、検証済みのリモートホストのフィンガープリントとも一致する必要があります。保管庫がロックされると、承認は消去されます。"
 
@@ -4978,7 +5007,7 @@ msgid "Remove"
 msgstr "削除"
 
 #. placeholder {0}: presentation.label
-#: src/renderer/src/components/AccountSwitcherCard.tsx:385
+#: src/renderer/src/components/AccountSwitcherCard.tsx:489
 msgid "Remove {0}"
 msgstr "{0}を削除"
 
@@ -4987,16 +5016,20 @@ msgstr "{0}を削除"
 msgid "Remove {0} from favorites"
 msgstr "{0}をお気に入りから削除"
 
-#. placeholder {0}: localAccountLabel(action.slot)
-#: src/renderer/src/components/account-switcher-ui.ts:71
+#. placeholder {0}: action.displayName?.trim() || localAccountLabel(action.slot)
+#: src/renderer/src/components/account-switcher-ui.ts:86
 msgid "Remove {0}?"
 msgstr "{0}を削除しますか？"
+
+#: src/renderer/src/components/account-switcher-ui.ts:83
+#~ msgid "Remove {label}?"
+#~ msgstr ""
 
 #: src/renderer/src/components/SendsPage.tsx:618
 msgid "Remove current password"
 msgstr "現在のパスワードを削除"
 
-#: src/renderer/src/components/VaultShell.tsx:3722
+#: src/renderer/src/components/VaultShell.tsx:3724
 msgid "Remove from favorites"
 msgstr "お気に入りから削除"
 
@@ -5013,19 +5046,30 @@ msgstr "このセキュリティキーを削除しますか？"
 msgid "Remove website"
 msgstr "ウェブサイトを削除"
 
-#: src/renderer/src/components/VaultShell.tsx:2151
+#: src/renderer/src/components/VaultShell.tsx:2152
 msgid "Removed from favorites."
 msgstr "お気に入りから削除しました。"
 
+#. placeholder {0}: presentation.label
+#: src/renderer/src/components/AccountSwitcherCard.tsx:460
+msgid "Rename {0}"
+msgstr ""
+
+#. Action title for changing a local-only account label on this device, not a remote profile name.
+#: src/renderer/src/components/AccountSwitcherCard.tsx:344
+msgctxt "local-account-name"
+msgid "Rename local account"
+msgstr ""
+
 #. placeholder {0}: updated.name
-#: src/renderer/src/components/VaultShell.tsx:2409
+#: src/renderer/src/components/VaultShell.tsx:2410
 msgid "Renamed to “{0}”."
 msgstr "「{0}」に名前を変更しました。"
 
 #. placeholder {0}: `${customFieldLabel}`
 #. placeholder {0}: `${presentation.label}`
 #. placeholder {0}: `${t`Website`} ${index + 1}`
-#: src/renderer/src/components/AccountSwitcherCard.tsx:349
+#: src/renderer/src/components/AccountSwitcherCard.tsx:438
 #: src/renderer/src/components/LoginEditor.tsx:1693
 #: src/renderer/src/components/LoginEditor.tsx:2415
 msgid "Reorder {0}"
@@ -5041,11 +5085,11 @@ msgid "Repair"
 msgstr "修復"
 
 #. placeholder {0}: attachment.fileName
-#: src/renderer/src/components/VaultShell.tsx:3077
+#: src/renderer/src/components/VaultShell.tsx:3078
 msgid "Repaired “{0}”."
 msgstr "「{0}」を修復しました。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1598
+#: src/renderer/src/components/SettingsPage.tsx:1605
 msgid "Request accessibility permission"
 msgstr "アクセシビリティ権限をリクエスト"
 
@@ -5094,7 +5138,7 @@ msgstr "復元が完了しました"
 msgid "Restore full backup"
 msgstr "完全バックアップを復元"
 
-#: src/renderer/src/components/VaultShell.tsx:3650
+#: src/renderer/src/components/VaultShell.tsx:3652
 msgid "Restore item"
 msgstr "項目を復元"
 
@@ -5103,11 +5147,11 @@ msgid "Restore items and attachments from a full BearWarden backup, with safe re
 msgstr "中断後も安全に再開できるようにして、完全な BearWarden バックアップから項目と添付ファイルを復元します。"
 
 #. placeholder {0}: restored.name
-#: src/renderer/src/components/VaultShell.tsx:2736
+#: src/renderer/src/components/VaultShell.tsx:2737
 msgid "Restored “{0}”."
 msgstr "「{0}」を復元しました。"
 
-#: src/renderer/src/components/VaultShell.tsx:2270
+#: src/renderer/src/components/VaultShell.tsx:2271
 msgid "Restored {affectedCount} items."
 msgstr "{affectedCount}件の項目を復元しました。"
 
@@ -5175,7 +5219,8 @@ msgstr "安全な再開に対応していますが、サーバー上の競合は
 msgid "Safely reading the file"
 msgstr "ファイルを安全に読み取っています"
 
-#: src/renderer/src/components/Dialogs.tsx:283
+#: src/renderer/src/components/AccountSwitcherCard.tsx:381
+#: src/renderer/src/components/Dialogs.tsx:291
 #: src/renderer/src/components/LoginEditor.tsx:2691
 #: src/renderer/src/components/SendsPage.tsx:752
 msgid "Save"
@@ -5194,7 +5239,7 @@ msgid "Save domain rules"
 msgstr "ドメインルールを保存"
 
 #. placeholder {0}: updated.name
-#: src/renderer/src/components/VaultShell.tsx:2554
+#: src/renderer/src/components/VaultShell.tsx:2555
 msgid "Saved “{0}”."
 msgstr "「{0}」を保存しました。"
 
@@ -5203,7 +5248,7 @@ msgstr "「{0}」を保存しました。"
 msgid "Saved {0}"
 msgstr "{0}を保存しました"
 
-#: src/renderer/src/components/SettingsPage.tsx:818
+#: src/renderer/src/components/SettingsPage.tsx:824
 msgid "Saving"
 msgstr "保存中"
 
@@ -5292,24 +5337,25 @@ msgstr "アカウントの漏えいを検索しています"
 msgid "Secure note"
 msgstr "セキュアノート"
 
-#: src/renderer/src/hooks/use-vault-accounts.ts:127
+#: src/renderer/src/hooks/use-vault-accounts.ts:134
 msgid "Securely removing local account"
 msgstr "ローカルアカウントを安全に削除しています"
 
 #: src/renderer/src/components/VaultShell-primitives.tsx:325
-#: src/renderer/src/components/VaultShell.tsx:3713
+#: src/renderer/src/components/VaultShell.tsx:3715
 msgid "Securely stored item"
 msgstr "安全に保存された項目"
 
-#: src/renderer/src/hooks/use-vault-accounts.ts:125
+#: src/renderer/src/components/AuthScreen.tsx:445
+#: src/renderer/src/hooks/use-vault-accounts.ts:130
 msgid "Securely switching accounts and restarting"
 msgstr "アカウントを安全に切り替えて再起動しています"
 
-#: src/renderer/src/components/SettingsPage.tsx:956
+#: src/renderer/src/components/SettingsPage.tsx:962
 msgid "Security"
 msgstr "セキュリティ"
 
-#: src/renderer/src/components/SettingsPage.tsx:440
+#: src/renderer/src/components/SettingsPage.tsx:446
 msgid "Security & unlock"
 msgstr "セキュリティとロック解除"
 
@@ -5340,11 +5386,11 @@ msgstr "確認方法を選択"
 msgid "Select all"
 msgstr "すべて選択"
 
-#: src/renderer/src/components/VaultShell.tsx:3925
+#: src/renderer/src/components/VaultShell.tsx:3927
 msgid "Select an item to view and manage its secure data."
 msgstr "項目を選択して、安全なデータを表示・管理します。"
 
-#: src/renderer/src/components/VaultShell.tsx:2195
+#: src/renderer/src/components/VaultShell.tsx:2196
 msgid "Select at least one item first."
 msgstr "先に少なくとも 1 件の項目を選択してください。"
 
@@ -5389,7 +5435,7 @@ msgstr "送信者のメールアドレスは非表示です"
 msgid "Sends"
 msgstr "Sends"
 
-#: src/renderer/src/components/VaultShell.tsx:2816
+#: src/renderer/src/components/VaultShell.tsx:2817
 msgid "Sensitive data"
 msgstr "機密データ"
 
@@ -5418,11 +5464,11 @@ msgstr "サーバー URL"
 msgid "Service domains are compared with the static list only on this device."
 msgstr "サービスドメインは、このデバイス上でのみ静的リストと照合されます。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1742
+#: src/renderer/src/components/SettingsPage.tsx:1749
 msgid "Set <0>SSH_AUTH_SOCK</0> in the terminal environment so SSH and Git use BearWarden’s local socket."
 msgstr "SSH と Git が BearWarden のローカルソケットを使用するように、ターミナル環境で <0>SSH_AUTH_SOCK</0> を設定してください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:268
+#: src/renderer/src/components/AuthScreen.tsx:331
 msgid "Set a master password that only you know. BearWarden cannot recover it for you."
 msgstr "自分だけが知っているマスターパスワードを設定してください。BearWarden はこのパスワードを回復できません。"
 
@@ -5434,7 +5480,7 @@ msgstr "アクセシビリティ権限を設定"
 msgid "Set up an authenticator app"
 msgstr "認証アプリを設定"
 
-#: src/renderer/src/components/SettingsPage.tsx:1479
+#: src/renderer/src/components/SettingsPage.tsx:1486
 msgid "Set up Bitwarden sync"
 msgstr "Bitwarden 同期を設定"
 
@@ -5442,16 +5488,16 @@ msgstr "Bitwarden 同期を設定"
 msgid "Set up email two-factor authentication"
 msgstr "メールによる二要素認証を設定"
 
-#: src/renderer/src/components/SettingsPage.tsx:1639
+#: src/renderer/src/components/SettingsPage.tsx:1646
 msgid "Setting status"
 msgstr "設定ステータス"
 
-#: src/renderer/src/components/SettingsPage.tsx:783
+#: src/renderer/src/components/SettingsPage.tsx:789
 #: src/renderer/src/components/VaultShellSidebar.tsx:414
 msgid "Settings"
 msgstr "設定"
 
-#: src/renderer/src/components/SettingsPage.tsx:794
+#: src/renderer/src/components/SettingsPage.tsx:800
 msgid "Settings categories"
 msgstr "設定カテゴリ"
 
@@ -5459,7 +5505,7 @@ msgstr "設定カテゴリ"
 msgid "Settings changed on another device. The server version has been reloaded; review it before saving."
 msgstr "設定が別のデバイスで変更されました。サーバー上のバージョンを再読み込みしました。保存する前に内容を確認してください。"
 
-#: src/renderer/src/components/VaultShell.tsx:2094
+#: src/renderer/src/components/VaultShell.tsx:2095
 msgid "Settings saved."
 msgstr "設定を保存しました。"
 
@@ -5487,7 +5533,7 @@ msgstr "共有アイテム"
 msgid "Sharing link copied"
 msgstr "共有リンクをコピーしました"
 
-#: src/renderer/src/components/SettingsPage.tsx:662
+#: src/renderer/src/components/SettingsPage.tsx:668
 msgid "Shortcut conflict"
 msgstr "ショートカットの競合"
 
@@ -5523,7 +5569,7 @@ msgstr "マスターパスワードを表示"
 msgid "Show password in large type"
 msgstr "パスワードを大きな文字で表示"
 
-#: src/renderer/src/components/Dialogs.tsx:686
+#: src/renderer/src/components/Dialogs.tsx:694
 msgid "Show this historical password"
 msgstr "この履歴パスワードを表示"
 
@@ -5531,7 +5577,7 @@ msgstr "この履歴パスワードを表示"
 msgid "Show two-step verification"
 msgstr "二段階認証を表示"
 
-#: src/renderer/src/components/SettingsPage.tsx:1392
+#: src/renderer/src/components/SettingsPage.tsx:1398
 msgid "Show website icons"
 msgstr "Web サイトのアイコンを表示"
 
@@ -5539,11 +5585,11 @@ msgstr "Web サイトのアイコンを表示"
 msgid "Sign in with a passkey"
 msgstr "パスキーでサインイン"
 
-#: src/renderer/src/components/SettingsPage.tsx:1689
+#: src/renderer/src/components/SettingsPage.tsx:1696
 msgid "Signature approval"
 msgstr "署名の承認"
 
-#: src/renderer/src/components/SettingsPage.tsx:505
+#: src/renderer/src/components/SettingsPage.tsx:511
 msgid "Simplified Chinese"
 msgstr "簡体字中国語"
 
@@ -5555,15 +5601,15 @@ msgstr "並べ替え順"
 msgid "Special characters !@#$%^&*"
 msgstr "特殊文字 !@#$%^&*"
 
-#: src/renderer/src/components/SettingsPage.tsx:1654
+#: src/renderer/src/components/SettingsPage.tsx:1661
 msgid "SSH Agent"
 msgstr "SSH Agent"
 
-#: src/renderer/src/components/SettingsPage.tsx:1758
+#: src/renderer/src/components/SettingsPage.tsx:1765
 msgid "SSH Agent setup command copied"
 msgstr "SSH Agent の設定コマンドをコピーしました"
 
-#: src/renderer/src/components/SettingsPage.tsx:1752
+#: src/renderer/src/components/SettingsPage.tsx:1759
 msgid "SSH Agent terminal setup command"
 msgstr "SSH Agent のターミナル設定コマンド"
 
@@ -5603,7 +5649,7 @@ msgstr "設定を開始"
 msgid "Started:"
 msgstr "開始日時:"
 
-#: src/renderer/src/components/SettingsPage.tsx:647
+#: src/renderer/src/components/SettingsPage.tsx:653
 #: src/renderer/src/lib/ssh-agent-ui.ts:71
 msgid "Starting"
 msgstr "開始中"
@@ -5635,7 +5681,7 @@ msgstr "中止して再接続してください。どのマスターパスワー
 msgid "Stop and save progress"
 msgstr "中止して進行状況を保存"
 
-#: src/renderer/src/components/SettingsPage.tsx:650
+#: src/renderer/src/components/SettingsPage.tsx:656
 #: src/renderer/src/lib/ssh-agent-ui.ts:74
 msgid "Stopped"
 msgstr "停止しました"
@@ -5648,16 +5694,16 @@ msgstr "信頼できる暗号化ドライブにのみ保存し、使用後は安
 msgid "Store your recovery code securely first. It can help you regain access to your account if you lose your security key."
 msgstr "まずリカバリーコードを安全に保管してください。セキュリティキーを紛失した場合に、アカウントへのアクセスを回復するのに役立ちます。"
 
-#: src/renderer/src/components/AccountSwitcherCard.tsx:378
+#: src/renderer/src/components/AccountSwitcherCard.tsx:482
 msgid "Switch"
 msgstr "切り替え"
 
-#. placeholder {0}: localAccountLabel(action.slot)
-#: src/renderer/src/components/account-switcher-ui.ts:83
+#. placeholder {0}: action.displayName?.trim() || localAccountLabel(action.slot)
+#: src/renderer/src/components/account-switcher-ui.ts:98
 msgid "Switch to {0}?"
 msgstr "{0}に切り替えますか？"
 
-#: src/renderer/src/components/account-switcher-ui.ts:57
+#: src/renderer/src/components/account-switcher-ui.ts:72
 msgid "Switch to this local account · Local code {code}"
 msgstr "このローカルアカウントに切り替え · ローカルコード {code}"
 
@@ -5669,7 +5715,7 @@ msgstr "記号、数字、文字は区別しやすいように異なる色で表
 msgid "Sync"
 msgstr "同期"
 
-#: src/renderer/src/components/SettingsPage.tsx:1433
+#: src/renderer/src/components/SettingsPage.tsx:1440
 msgid "Sync & accounts"
 msgstr "同期とアカウント"
 
@@ -5717,14 +5763,14 @@ msgstr "同期中"
 msgid "Syncing attachment list"
 msgstr "添付ファイル一覧を同期中"
 
-#: src/renderer/src/components/SettingsPage.tsx:521
+#: src/renderer/src/components/SettingsPage.tsx:527
 #: src/renderer/src/components/SyncDialog.tsx:573
 #: src/renderer/src/components/VaultShell.tsx:296
 msgid "Syncing…"
 msgstr "同期中…"
 
-#: src/renderer/src/components/SettingsPage.tsx:495
-#: src/renderer/src/components/SettingsPage.tsx:503
+#: src/renderer/src/components/SettingsPage.tsx:501
+#: src/renderer/src/components/SettingsPage.tsx:509
 msgid "System"
 msgstr "システム"
 
@@ -5733,7 +5779,7 @@ msgstr "システム"
 msgid "Takeover"
 msgstr "引き継ぎ"
 
-#: src/renderer/src/components/SettingsPage.tsx:1729
+#: src/renderer/src/components/SettingsPage.tsx:1736
 msgid "Terminal setup"
 msgstr "ターミナル設定"
 
@@ -5754,7 +5800,7 @@ msgstr "テキストの内容は共有リンクに含まれません。"
 msgid "Text hidden by default"
 msgstr "テキストは初期設定で非表示"
 
-#: src/renderer/src/components/VaultShell.tsx:3239
+#: src/renderer/src/components/VaultShell.tsx:3240
 msgid "That folder can't be moved there."
 msgstr "そのフォルダーはここに移動できません。"
 
@@ -5763,7 +5809,7 @@ msgstr "そのフォルダーはここに移動できません。"
 msgid "That name is already in use. Choose another name."
 msgstr "その名前はすでに使用されています。別の名前を選択してください。"
 
-#: src/renderer/src/components/SettingsPage.tsx:731
+#: src/renderer/src/components/SettingsPage.tsx:737
 msgid "That shortcut is unavailable. Your previous shortcut remains active."
 msgstr "このショートカットは使用できません。以前のショートカットは引き続き有効です。"
 
@@ -5776,7 +5822,7 @@ msgstr "{0}の結果は不明です。ステータスを更新しました。再
 msgid "The 2fa.directory network request, service list, or response validation failed, so this result is unknown. Try again later."
 msgstr "2fa.directory のネットワークリクエスト、サービス一覧、または応答の検証に失敗したため、この結果は不明です。後でもう一度お試しください。"
 
-#: src/renderer/src/components/account-switcher-ui.ts:115
+#: src/renderer/src/components/account-switcher-ui.ts:130
 msgid "The account operation result could not be confirmed. Restart BearWarden and verify the current status."
 msgstr "アカウント操作の結果を確認できませんでした。BearWarden を再起動し、現在のステータスを確認してください。"
 
@@ -5788,7 +5834,7 @@ msgstr "有効化の結果は不明です。ステータスを更新しました
 msgid "The active application is not a supported browser."
 msgstr "現在アクティブなアプリケーションはサポート対象のブラウザーではありません。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1774
+#: src/renderer/src/components/SettingsPage.tsx:1781
 msgid "The Agent endpoint contains control characters that cannot be safely placed in a shell command, so no copyable command is available. Fix<0>BEARWARDEN_SSH_AUTH_SOCK</0>, then enable the Agent again."
 msgstr "Agent エンドポイントにはシェルコマンドに安全に配置できない制御文字が含まれているため、コピー可能なコマンドはありません。<0>BEARWARDEN_SSH_AUTH_SOCK</0>を修正してから、Agent を再度有効にしてください。"
 
@@ -5804,19 +5850,19 @@ msgstr "添付ファイルの操作に失敗しました。サーバー上の内
 msgid "The attachment operation was canceled."
 msgstr "添付ファイルの操作はキャンセルされました。"
 
-#: src/renderer/src/components/VaultShell.tsx:3040
+#: src/renderer/src/components/VaultShell.tsx:3041
 msgid "The attachment was deleted, but the list could not be refreshed. Sync again later."
 msgstr "添付ファイルは削除されましたが、一覧を更新できませんでした。後で再度同期してください。"
 
-#: src/renderer/src/components/VaultShell.tsx:2966
+#: src/renderer/src/components/VaultShell.tsx:2967
 msgid "The attachment was downloaded, but the list could not be refreshed. Sync again later."
 msgstr "添付ファイルはダウンロードされましたが、一覧を更新できませんでした。後で再度同期してください。"
 
-#: src/renderer/src/components/VaultShell.tsx:3080
+#: src/renderer/src/components/VaultShell.tsx:3081
 msgid "The attachment was repaired, but the list could not be refreshed. Sync again later."
 msgstr "添付ファイルは修復されましたが、一覧を更新できませんでした。後で再度同期してください。"
 
-#: src/renderer/src/components/VaultShell.tsx:3007
+#: src/renderer/src/components/VaultShell.tsx:3008
 msgid "The attachment was uploaded, but the list could not be refreshed. Sync again later."
 msgstr "添付ファイルはアップロードされましたが、一覧を更新できませんでした。後で再度同期してください。"
 
@@ -5828,7 +5874,7 @@ msgstr "認証アプリを有効にしました。"
 msgid "The autofill service is currently unavailable."
 msgstr "自動入力サービスは現在利用できません。"
 
-#: src/renderer/src/components/SettingsPage.tsx:704
+#: src/renderer/src/components/SettingsPage.tsx:710
 msgid "The autofill setting could not be saved, so the shortcut status was not changed."
 msgstr "自動入力の設定を保存できなかったため、ショートカットのステータスは変更されませんでした。"
 
@@ -5893,7 +5939,7 @@ msgstr "認可解除中に接続が中断されたため、結果は不明です
 msgid "The connection was interrupted during rotation, so the result is unknown. Do not rotate again; re-enter your master password and select “Copy current Client Secret” to verify the current value."
 msgstr "ローテーション中に接続が中断されたため、結果は不明です。再度ローテーションしないでください。マスターパスワードを再入力し、「現在のクライアントシークレットをコピー」を選択して現在の値を確認してください。"
 
-#: src/renderer/src/components/account-switcher-ui.ts:100
+#: src/renderer/src/components/account-switcher-ui.ts:115
 msgid "The current account cannot be removed. Switch to another account first."
 msgstr "現在のアカウントは削除できません。先に別のアカウントに切り替えてください。"
 
@@ -5937,11 +5983,11 @@ msgstr "表示名は 50 UTF-8 バイトを超えることはできません。"
 msgid "The encrypted .bwbackup contains personal items and attachments and can only be restored by a BearWarden version that supports this format. Official Bitwarden clients cannot import it directly. Trash and Sends are not included."
 msgstr "暗号化された .bwbackup には個人アイテムと添付ファイルが含まれており、この形式をサポートする BearWarden のバージョンでのみ復元できます。公式 Bitwarden クライアントでは直接インポートできません。ゴミ箱と Sends は含まれません。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1121
+#: src/renderer/src/components/SettingsPage.tsx:1127
 msgid "The encrypted PIN credential remains in memory only. You must use the master password after restarting, signing out, disconnecting, or switching accounts."
 msgstr "暗号化された PIN 認証情報はメモリ内にのみ保持されます。再起動、サインアウト、切断、またはアカウントの切り替え後は、マスターパスワードを使用する必要があります。"
 
-#: src/renderer/src/components/SettingsPage.tsx:714
+#: src/renderer/src/components/SettingsPage.tsx:720
 msgid "The global autofill shortcut is already used by another app. Disable the same shortcut in that app first."
 msgstr "グローバル自動入力ショートカットはすでに別のアプリで使用されています。先にそのアプリで同じショートカットを無効にしてください。"
 
@@ -5949,7 +5995,7 @@ msgstr "グローバル自動入力ショートカットはすでに別のアプ
 msgid "The HIBP network request or response validation failed, so this result is unknown. BearWarden will not mark any login item as safe because of this failure."
 msgstr "HIBP のネットワークリクエストまたは応答の検証に失敗したため、この結果は不明です。この失敗により、BearWarden がログインアイテムを安全とマークすることはありません。"
 
-#: src/renderer/src/components/VaultShell.tsx:2920
+#: src/renderer/src/components/VaultShell.tsx:2921
 msgid "The hidden field is visible and will be hidden automatically in 30 seconds."
 msgstr "非表示フィールドが表示されています。30 秒後に自動的に非表示になります。"
 
@@ -5957,7 +6003,7 @@ msgstr "非表示フィールドが表示されています。30 秒後に自動
 msgid "The input is invalid. Check it and try again."
 msgstr "入力が無効です。確認してから、もう一度お試しください。"
 
-#: src/renderer/src/components/Dialogs.tsx:431
+#: src/renderer/src/components/Dialogs.tsx:439
 msgid "The item remains in the encrypted trash and can be restored later."
 msgstr "アイテムは暗号化されたゴミ箱に残り、後で復元できます。"
 
@@ -5969,31 +6015,32 @@ msgstr "キーはこの短時間の設定セッション中にのみ表示され
 msgid "The last sync encountered a problem."
 msgstr "前回の同期で問題が発生しました。"
 
-#: src/renderer/src/hooks/use-vault-accounts.ts:144
+#: src/renderer/src/hooks/use-vault-accounts.ts:151
 msgid "The local account and its data on this device were removed."
 msgstr "ローカルアカウントとこのデバイス上のそのデータを削除しました。"
 
-#: src/renderer/src/components/account-switcher-ui.ts:95
+#: src/renderer/src/components/account-switcher-ui.ts:110
 msgid "The local account limit has been reached. You can keep up to 5 accounts."
 msgstr "ローカルアカウントの上限に達しました。保持できるアカウントは最大 5 件です。"
 
-#: src/renderer/src/hooks/use-vault-accounts.ts:100
+#: src/renderer/src/components/AuthScreen.tsx:132
+#: src/renderer/src/hooks/use-vault-accounts.ts:105
 msgid "The local account list could not be loaded. Try again later."
 msgstr "ローカルアカウント一覧を読み込めませんでした。後でもう一度お試しください。"
 
-#: src/renderer/src/components/account-switcher-ui.ts:103
+#: src/renderer/src/components/account-switcher-ui.ts:118
 msgid "The local account list has changed. Refresh and try again."
 msgstr "ローカルアカウント一覧が変更されました。更新してから、もう一度お試しください。"
 
-#: src/renderer/src/components/account-switcher-ui.ts:118
+#: src/renderer/src/components/account-switcher-ui.ts:133
 msgid "The local account operation could not be completed. Try again later."
 msgstr "ローカルアカウントの操作を完了できませんでした。後でもう一度お試しください。"
 
-#: src/renderer/src/hooks/use-vault-accounts.ts:143
+#: src/renderer/src/hooks/use-vault-accounts.ts:150
 msgid "The local account was removed. Remaining encrypted local data will be securely cleaned up on the next launch."
 msgstr "ローカルアカウントを削除しました。残っている暗号化済みローカルデータは、次回起動時に安全に消去されます。"
 
-#: src/renderer/src/components/AccountSwitcherCard.tsx:236
+#: src/renderer/src/components/AccountSwitcherCard.tsx:269
 msgid "The local data from the last removal has not completed secure cleanup. BearWarden will try again the next time it starts; it will not delete or overwrite unknown data until cleanup is complete."
 msgstr "前回の削除によるローカルデータの安全な消去が完了していません。BearWarden は次回起動時に再試行します。消去が完了するまで、不明なデータを削除または上書きすることはありません。"
 
@@ -6005,26 +6052,26 @@ msgstr "メインプロセスで各 SHA-1 ハッシュの完全な値を比較�
 msgid "The main process is comparing service domains locally without uploading any vault data."
 msgstr "メインプロセスは保管庫データをアップロードせずに、サービスドメインをローカルで比較しています。"
 
-#: src/renderer/src/components/auth-screen-ui.ts:12
-#: src/renderer/src/components/AuthScreen.tsx:50
-#: src/renderer/src/components/SettingsPage.tsx:612
+#: src/renderer/src/components/auth-screen-ui.ts:25
+#: src/renderer/src/components/AuthScreen.tsx:65
+#: src/renderer/src/components/SettingsPage.tsx:618
 #: src/renderer/src/components/SyncDialog.tsx:150
 msgid "The master password is incorrect."
 msgstr "マスターパスワードが正しくありません。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1317
+#: src/renderer/src/components/SettingsPage.tsx:1323
 msgid "The master password is sent only to the local process for verification."
 msgstr "マスターパスワードは検証のためにローカルプロセスにのみ送信されます。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1207
+#: src/renderer/src/components/SettingsPage.tsx:1213
 msgid "The master password is verified again in the main process each time PIN unlock is enabled."
 msgstr "PIN ロック解除を有効にするたびに、メインプロセスでマスターパスワードが再度検証されます。"
 
-#: src/renderer/src/components/AuthScreen.tsx:155
+#: src/renderer/src/components/AuthScreen.tsx:218
 msgid "The master password must contain at least 12 characters."
 msgstr "マスターパスワードは 12 文字以上にする必要があります。"
 
-#: src/renderer/src/components/AuthScreen.tsx:159
+#: src/renderer/src/components/AuthScreen.tsx:222
 msgid "The master passwords do not match."
 msgstr "マスターパスワードが一致しません。"
 
@@ -6061,21 +6108,21 @@ msgstr "もう一方のデバイスにもまったく同じフレーズが表示
 msgid "The passkey for “{0}” will be removed from this login and synced immediately. This action cannot be undone."
 msgstr "「{0}」のパスキーはこのログインから削除され、直ちに同期されます。この操作は元に戻せません。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1156
+#: src/renderer/src/components/SettingsPage.tsx:1162
 msgid "The PIN and encrypted credential are never written to disk. You can use the PIN after a normal lock, but restarting the app always requires the master password."
 msgstr "PIN と暗号化された認証情報がディスクに書き込まれることはありません。通常のロック後は PIN を使用できますが、アプリの再起動時には必ずマスターパスワードが必要です。"
 
-#: src/renderer/src/components/auth-screen-ui.ts:13
-#: src/renderer/src/components/AuthScreen.tsx:51
+#: src/renderer/src/components/auth-screen-ui.ts:26
+#: src/renderer/src/components/AuthScreen.tsx:66
 msgid "The PIN is incorrect."
 msgstr "PIN が正しくありません。"
 
-#: src/renderer/src/components/AuthScreen.tsx:112
-#: src/renderer/src/components/SettingsPage.tsx:590
+#: src/renderer/src/components/AuthScreen.tsx:175
+#: src/renderer/src/components/SettingsPage.tsx:596
 msgid "The PIN must contain at least 4 characters."
 msgstr "PIN は 4 文字以上で入力してください。"
 
-#: src/renderer/src/components/SettingsPage.tsx:594
+#: src/renderer/src/components/SettingsPage.tsx:600
 msgid "The PINs do not match."
 msgstr "PIN が一致しません。"
 
@@ -6131,7 +6178,7 @@ msgstr "リモートのマスターパスワードが変更済みであること
 msgid "The requested item could not be found."
 msgstr "要求されたアイテムが見つかりませんでした。"
 
-#: src/renderer/src/components/account-switcher-ui.ts:97
+#: src/renderer/src/components/account-switcher-ui.ts:112
 msgid "The requested local account was not found. Refresh and try again."
 msgstr "要求されたローカルアカウントが見つかりませんでした。更新してもう一度お試しください。"
 
@@ -6167,9 +6214,9 @@ msgstr "セキュリティキーが追加された可能性がありますが、
 msgid "The security key may have been removed, but the list could not be refreshed. Enter your master password again to check before retrying."
 msgstr "セキュリティキーが削除された可能性がありますが、一覧を更新できませんでした。再試行する前に、マスターパスワードをもう一度入力して確認してください。"
 
-#: src/renderer/src/components/VaultShell.tsx:2204
-#: src/renderer/src/components/VaultShell.tsx:2289
-#: src/renderer/src/components/VaultShell.tsx:2349
+#: src/renderer/src/components/VaultShell.tsx:2205
+#: src/renderer/src/components/VaultShell.tsx:2290
+#: src/renderer/src/components/VaultShell.tsx:2350
 msgid "The selection changed, so no action was taken. Select the items again and retry."
 msgstr "選択内容が変更されたため、操作は実行されませんでした。アイテムをもう一度選択して再試行してください。"
 
@@ -6311,23 +6358,23 @@ msgstr "クリップボード内の SSH 秘密鍵を解析できませんでし�
 msgid "The update downloads in the background. You can choose when to restart after it finishes."
 msgstr "更新プログラムはバックグラウンドでダウンロードされます。完了後に再起動するタイミングを選択できます。"
 
-#: src/renderer/src/components/AuthScreen.tsx:63
+#: src/renderer/src/components/AuthScreen.tsx:78
 msgid "The vault cannot be opened right now. Please try again later."
 msgstr "現在、保管庫を開けません。しばらくしてからもう一度お試しください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:192
+#: src/renderer/src/components/AuthScreen.tsx:255
 msgid "The vault could not be unlocked with biometrics. Enter your master password."
 msgstr "生体認証で保管庫のロックを解除できませんでした。マスターパスワードを入力してください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:58
+#: src/renderer/src/components/AuthScreen.tsx:73
 msgid "The vault data could not be read. Try again; if this continues, the vault file may be corrupted."
 msgstr "保管庫データを読み取れませんでした。もう一度お試しください。問題が続く場合、保管庫ファイルが破損している可能性があります。"
 
-#: src/renderer/src/components/AuthScreen.tsx:61
+#: src/renderer/src/components/AuthScreen.tsx:76
 msgid "The vault file could not be found. Check that it has not been moved or deleted."
 msgstr "保管庫ファイルが見つかりませんでした。移動または削除されていないことを確認してください。"
 
-#: src/renderer/src/components/auth-screen-ui.ts:26
+#: src/renderer/src/components/auth-screen-ui.ts:39
 msgid "The vault file was not found. Check that it has not been moved or deleted."
 msgstr "保管庫ファイルが見つかりませんでした。移動または削除されていないことを確認してください。"
 
@@ -6335,11 +6382,11 @@ msgstr "保管庫ファイルが見つかりませんでした。移動または
 msgid "The vault is locked. Enter your master password and try again."
 msgstr "保管庫はロックされています。マスターパスワードを入力してもう一度お試しください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:56
+#: src/renderer/src/components/AuthScreen.tsx:71
 msgid "The vault is locked. Please try again."
 msgstr "保管庫はロックされています。もう一度お試しください。"
 
-#: src/renderer/src/components/auth-screen-ui.ts:19
+#: src/renderer/src/components/auth-screen-ui.ts:32
 msgid "The vault is locked. Try again."
 msgstr "保管庫はロックされています。もう一度お試しください。"
 
@@ -6353,7 +6400,7 @@ msgstr "保管庫はロックされています。ロックを解除してもう
 msgid "The vault is locked. Unlock it in BearWarden first."
 msgstr "保管庫はロックされています。先に BearWarden でロックを解除してください。"
 
-#: src/renderer/src/components/VaultShell.tsx:1805
+#: src/renderer/src/components/VaultShell.tsx:1806
 msgid "The vault is not locked yet. Try again."
 msgstr "保管庫はまだロックされていません。もう一度お試しください。"
 
@@ -6381,11 +6428,11 @@ msgstr "確認メールのリクエストを送信しました。サーバーで
 msgid "The website URL is invalid."
 msgstr "Web サイトの URL が無効です。"
 
-#: src/renderer/src/components/SettingsPage.tsx:846
+#: src/renderer/src/components/SettingsPage.tsx:852
 msgid "Theme"
 msgstr "テーマ"
 
-#: src/renderer/src/components/Dialogs.tsx:747
+#: src/renderer/src/components/Dialogs.tsx:755
 msgid "There are no history entries to display."
 msgstr "表示する履歴エントリはありません。"
 
@@ -6429,7 +6476,7 @@ msgstr "この操作は元に戻せません"
 msgid "This action cannot be undone. BearWarden does not keep a recoverable plaintext copy."
 msgstr "この操作は元に戻せません。BearWarden は復元可能な平文コピーを保持しません。"
 
-#: src/renderer/src/components/Dialogs.tsx:430
+#: src/renderer/src/components/Dialogs.tsx:438
 msgid "This action cannot be undone. BearWarden does not retain a recoverable plaintext copy."
 msgstr "この操作は元に戻せません。BearWarden は復元可能な平文コピーを保持しません。"
 
@@ -6470,7 +6517,7 @@ msgid "This check connects to HIBP only after you press the button. Opening this
 msgstr "この確認は、ボタンを押した後にのみ HIBP に接続します。このページを開いてもクエリは自動的に開始されません。"
 
 #: src/renderer/src/components/AccountDevicesDialog.tsx:458
-#: src/renderer/src/components/SettingsPage.tsx:961
+#: src/renderer/src/components/SettingsPage.tsx:967
 msgid "This device"
 msgstr "このデバイス"
 
@@ -6506,7 +6553,7 @@ msgstr "これは利用可能な最後の個人用二要素認証方法です。
 msgid "This item"
 msgstr "このアイテム"
 
-#: src/renderer/src/components/VaultShell.tsx:3579
+#: src/renderer/src/components/VaultShell.tsx:3581
 msgid "This item is in Trash"
 msgstr "このアイテムはゴミ箱にあります"
 
@@ -6514,7 +6561,7 @@ msgstr "このアイテムはゴミ箱にあります"
 msgid "This item requires reauthentication in BearWarden."
 msgstr "このアイテムには BearWarden での再認証が必要です。"
 
-#: src/renderer/src/components/account-switcher-ui.ts:85
+#: src/renderer/src/components/account-switcher-ui.ts:100
 msgid "This locks the vault, then safely restarts BearWarden. Unsaved changes will not be kept."
 msgstr "保管庫をロックしてから、BearWarden を安全に再起動します。保存していない変更は保持されません。"
 
@@ -6542,7 +6589,7 @@ msgstr "このパスキーは直ちにログインから削除されます。"
 msgid "This permanently deletes all personal items, folders, and attachments from the server, including trash and archived items. Shared organization items are kept. Export a backup first."
 msgstr "ゴミ箱内およびアーカイブ済みのアイテムを含め、すべての個人アイテム、フォルダー、添付ファイルをサーバーから完全に削除します。共有組織アイテムは保持されます。先にバックアップをエクスポートしてください。"
 
-#: src/renderer/src/components/account-switcher-ui.ts:73
+#: src/renderer/src/components/account-switcher-ui.ts:88
 msgid "This permanently deletes the encrypted vault, settings, and biometric data on this device and cannot be undone. It does not delete your account or data on the Bitwarden or Vaultwarden server."
 msgstr "このデバイス上の暗号化保管庫、設定、生体認証データを完全に削除します。この操作は元に戻せません。Bitwarden または Vaultwarden サーバー上のアカウントやデータは削除されません。"
 
@@ -6672,7 +6719,7 @@ msgstr "タイトル"
 msgid "To prevent data loss, BearWarden stopped writing changes to the server. Update the app and try again."
 msgstr "データ損失を防ぐため、BearWarden はサーバーへの変更の書き込みを停止しました。アプリを更新してから、もう一度お試しください。"
 
-#: src/renderer/src/components/VaultShell.tsx:3582
+#: src/renderer/src/components/VaultShell.tsx:3584
 msgid "To protect deleted sensitive data, restore the item before viewing or editing its contents."
 msgstr "削除された機密データを保護するため、内容を表示または編集する前にアイテムを復元してください。"
 
@@ -6680,7 +6727,7 @@ msgstr "削除された機密データを保護するため、内容を表示ま
 msgid "To reorder a custom field, press space or enter. Use the arrow keys to move it, then press space or enter again to drop it."
 msgstr "カスタムフィールドの順序を変更するには、Space キーまたは Enter キーを押します。矢印キーで移動し、もう一度 Space キーまたは Enter キーを押してドロップします。"
 
-#: src/renderer/src/components/AccountSwitcherCard.tsx:172
+#: src/renderer/src/components/AccountSwitcherCard.tsx:201
 msgid "To reorder a local account, press space or enter. Use the arrow keys to move it, then press space or enter again to drop it."
 msgstr "ローカルアカウントの順序を変更するには、Space キーまたは Enter キーを押します。矢印キーで移動し、もう一度 Space キーまたは Enter キーを押してドロップします。"
 
@@ -6696,11 +6743,11 @@ msgstr "今日"
 msgid "Toggle full screen"
 msgstr "全画面表示を切り替える"
 
-#: src/renderer/src/components/AuthScreen.tsx:54
+#: src/renderer/src/components/AuthScreen.tsx:69
 msgid "Too many attempts. Please try again later."
 msgstr "試行回数が多すぎます。しばらくしてからもう一度お試しください。"
 
-#: src/renderer/src/components/auth-screen-ui.ts:17
+#: src/renderer/src/components/auth-screen-ui.ts:30
 msgid "Too many attempts. Try again later."
 msgstr "試行回数が多すぎます。しばらくしてからもう一度お試しください。"
 
@@ -6712,7 +6759,7 @@ msgstr "アクティブな SSH 秘密鍵インポートセッションが多す�
 msgid "Too many SSH private key import sessions are in progress. Try again later."
 msgstr "進行中の SSH 秘密鍵インポートセッションが多すぎます。しばらくしてからもう一度お試しください。"
 
-#: src/renderer/src/components/SettingsPage.tsx:458
+#: src/renderer/src/components/SettingsPage.tsx:464
 msgid "Tools & data"
 msgstr "ツールとデータ"
 
@@ -6720,12 +6767,12 @@ msgstr "ツールとデータ"
 msgid "TOTP available"
 msgstr "TOTP を利用可能"
 
-#: src/renderer/src/components/SettingsPage.tsx:506
+#: src/renderer/src/components/SettingsPage.tsx:512
 msgid "Traditional Chinese"
 msgstr "繁体字中国語"
 
 #: src/renderer/src/components/VaultShell.tsx:1768
-#: src/renderer/src/components/VaultShell.tsx:3563
+#: src/renderer/src/components/VaultShell.tsx:3565
 #: src/renderer/src/components/VaultShellSidebar.tsx:282
 msgid "Trash"
 msgstr "ゴミ箱"
@@ -6755,7 +6802,7 @@ msgstr "信頼済み"
 msgid "Try a shorter search term or switch to All items."
 msgstr "検索語を短くするか、「すべてのアイテム」に切り替えてください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:254
+#: src/renderer/src/components/AuthScreen.tsx:317
 #: src/renderer/src/components/EmergencyAccessPage.tsx:68
 #: src/renderer/src/components/OrganizationsPage.tsx:269
 #: src/renderer/src/components/OrganizationsPage.tsx:435
@@ -6853,7 +6900,7 @@ msgstr "更新操作を完了できません。しばらくしてからもう一
 msgid "Unable to confirm whether all sessions were deauthorized. Check your sign-in status and other devices before retrying."
 msgstr "すべてのセッションの認可が解除されたか確認できません。再試行する前に、サインイン状態と他のデバイスを確認してください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:245
+#: src/renderer/src/components/AuthScreen.tsx:308
 msgid "Unable to connect to the security service"
 msgstr "セキュリティサービスに接続できません"
 
@@ -6881,7 +6928,7 @@ msgstr "アカウントが情報漏えいに含まれているかどうかを判
 msgid "Unable to disable {providerName}. Try again later."
 msgstr "{providerName} を無効にできません。しばらくしてからもう一度お試しください。"
 
-#: src/renderer/src/components/SettingsPage.tsx:629
+#: src/renderer/src/components/SettingsPage.tsx:635
 msgid "Unable to disable PIN unlock."
 msgstr "PIN ロック解除を無効にできません。"
 
@@ -6897,7 +6944,7 @@ msgstr "更新をダウンロードできません"
 msgid "Unable to enable email two-factor authentication. Restart setup."
 msgstr "メールによる二要素認証を有効にできません。セットアップをやり直してください。"
 
-#: src/renderer/src/components/SettingsPage.tsx:613
+#: src/renderer/src/components/SettingsPage.tsx:619
 msgid "Unable to enable PIN unlock."
 msgstr "PIN ロック解除を有効にできません。"
 
@@ -6925,11 +6972,11 @@ msgstr "ログイン情報を読み込めません"
 msgid "Unable to open the two-factor authentication setup instructions"
 msgstr "二要素認証のセットアップ手順を開けません"
 
-#: src/renderer/src/components/auth-screen-ui.ts:27
+#: src/renderer/src/components/auth-screen-ui.ts:40
 msgid "Unable to open the vault right now. Try again later."
 msgstr "現在、保管庫を開けません。しばらくしてからもう一度お試しください。"
 
-#: src/renderer/src/components/auth-screen-ui.ts:42
+#: src/renderer/src/components/auth-screen-ui.ts:55
 msgid "Unable to open the vault with biometric authentication. Enter your master password."
 msgstr "生体認証で保管庫を開けません。マスターパスワードを入力してください。"
 
@@ -6953,12 +7000,12 @@ msgstr "ジェネレーター履歴を読み取れません。"
 msgid "Unable to read password history. Try again."
 msgstr "パスワード履歴を読み取れません。もう一度お試しください。"
 
-#: src/renderer/src/components/SettingsPage.tsx:559
-#: src/renderer/src/components/SettingsPage.tsx:692
+#: src/renderer/src/components/SettingsPage.tsx:565
+#: src/renderer/src/components/SettingsPage.tsx:698
 msgid "Unable to read the autofill status."
 msgstr "自動入力の状態を読み取れません。"
 
-#: src/renderer/src/components/SettingsPage.tsx:579
+#: src/renderer/src/components/SettingsPage.tsx:585
 msgid "Unable to read the PIN unlock status."
 msgstr "PIN ロック解除の状態を読み取れません。"
 
@@ -6974,11 +7021,11 @@ msgstr "現在のブラウザータブから URL を読み取れません。"
 msgid "Unable to read update status."
 msgstr "更新状態を読み取れません。"
 
-#: src/renderer/src/components/auth-screen-ui.ts:22
+#: src/renderer/src/components/auth-screen-ui.ts:35
 msgid "Unable to read vault data. Try again. If this continues, the vault file may be corrupted."
 msgstr "保管庫データを読み取れません。もう一度お試しください。問題が続く場合、保管庫ファイルが破損している可能性があります。"
 
-#: src/renderer/src/components/SettingsPage.tsx:764
+#: src/renderer/src/components/SettingsPage.tsx:770
 msgid "Unable to request accessibility permission. Enable it manually in System Settings."
 msgstr "アクセシビリティの許可を要求できません。システム設定で手動で有効にしてください。"
 
@@ -7035,33 +7082,33 @@ msgstr "認証アプリのセットアップを開始できません。"
 msgid "Unable to start email two-factor authentication setup."
 msgstr "メールによる二要素認証のセットアップを開始できません。"
 
-#: src/renderer/src/components/SettingsPage.tsx:718
+#: src/renderer/src/components/SettingsPage.tsx:724
 msgid "Unable to update the autofill setting."
 msgstr "自動入力設定を更新できません。"
 
-#: src/renderer/src/components/SettingsPage.tsx:740
+#: src/renderer/src/components/SettingsPage.tsx:746
 msgid "Unable to update the autofill shortcut."
 msgstr "自動入力ショートカットを更新できません。"
 
-#: src/renderer/src/components/Dialogs.tsx:493
+#: src/renderer/src/components/Dialogs.tsx:501
 msgid "Unable to verify the master password. Try again."
 msgstr "マスターパスワードを確認できません。もう一度お試しください。"
 
 #: src/renderer/src/components/VaultItemListPane.tsx:322
-#: src/renderer/src/components/VaultShell.tsx:3770
+#: src/renderer/src/components/VaultShell.tsx:3772
 msgid "Unarchive"
 msgstr "アーカイブ解除"
 
 #. placeholder {0}: restored.name
-#: src/renderer/src/components/VaultShell.tsx:2683
+#: src/renderer/src/components/VaultShell.tsx:2684
 msgid "Unarchived “{0}”."
 msgstr "「{0}」をアーカイブ解除しました。"
 
-#: src/renderer/src/components/VaultShell.tsx:2266
+#: src/renderer/src/components/VaultShell.tsx:2267
 msgid "Unarchived {affectedCount} items."
 msgstr "{affectedCount} 件のアイテムをアーカイブ解除しました。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1256
+#: src/renderer/src/components/SettingsPage.tsx:1262
 msgid "Unavailable"
 msgstr "利用できません"
 
@@ -7085,13 +7132,13 @@ msgstr "暗号化されていない接続"
 msgid "Unencrypted connections"
 msgstr "暗号化されていない接続"
 
-#: src/renderer/src/components/Dialogs.tsx:317
+#: src/renderer/src/components/Dialogs.tsx:325
 #: src/renderer/src/components/LoginEditor.tsx:1475
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:115
 #: src/renderer/src/components/VaultShell-primitives.tsx:271
 #: src/renderer/src/components/VaultShell.tsx:1766
-#: src/renderer/src/components/VaultShell.tsx:2326
-#: src/renderer/src/components/VaultShell.tsx:3604
+#: src/renderer/src/components/VaultShell.tsx:2327
+#: src/renderer/src/components/VaultShell.tsx:3606
 msgid "Unfiled"
 msgstr "未整理"
 
@@ -7150,29 +7197,29 @@ msgstr "不明な種類（{type}）"
 msgid "Unlock and sync"
 msgstr "ロック解除して同期"
 
-#: src/renderer/src/components/SettingsPage.tsx:1251
+#: src/renderer/src/components/SettingsPage.tsx:1257
 msgid "Unlock quickly with device biometrics. Currently, only macOS Touch ID is supported."
 msgstr "デバイスの生体認証で素早くロックを解除します。現在は macOS Touch ID のみ対応しています。"
 
-#: src/renderer/src/components/SettingsPage.tsx:519
+#: src/renderer/src/components/SettingsPage.tsx:525
 #: src/renderer/src/components/VaultShell.tsx:294
 msgid "Unlock required"
 msgstr "ロック解除が必要です"
 
-#: src/renderer/src/components/SettingsPage.tsx:1109
+#: src/renderer/src/components/SettingsPage.tsx:1115
 msgid "Unlock the local vault with a temporary PIN."
 msgstr "一時 PIN でローカル保管庫のロックを解除します。"
 
-#: src/renderer/src/components/AuthScreen.tsx:349
+#: src/renderer/src/components/AuthScreen.tsx:463
 msgid "Unlock vault"
 msgstr "保管庫のロックを解除"
 
-#: src/renderer/src/components/AuthScreen.tsx:381
+#: src/renderer/src/components/AuthScreen.tsx:495
 msgid "Unlock with biometrics"
 msgstr "生体認証でロック解除"
 
-#: src/renderer/src/components/AuthScreen.tsx:348
-#: src/renderer/src/components/AuthScreen.tsx:365
+#: src/renderer/src/components/AuthScreen.tsx:462
+#: src/renderer/src/components/AuthScreen.tsx:479
 msgid "Unlock with PIN"
 msgstr "PIN でロック解除"
 
@@ -7226,17 +7273,21 @@ msgstr "更新があります"
 msgid "Update your Vaultwarden or Bitwarden account password and local vault unlock password."
 msgstr "Vaultwarden または Bitwarden のアカウントパスワードと、ローカル保管庫のロック解除パスワードを更新します。"
 
-#: src/renderer/src/hooks/use-vault-accounts.ts:128
+#: src/renderer/src/hooks/use-vault-accounts.ts:132
+msgid "Updating local account name"
+msgstr ""
+
+#: src/renderer/src/hooks/use-vault-accounts.ts:135
 msgid "Updating local account order"
 msgstr "ローカルアカウントの順序を更新中"
 
 #: src/renderer/src/components/VaultItemAccessCards.tsx:86
-#: src/renderer/src/components/VaultShell.tsx:3784
+#: src/renderer/src/components/VaultShell.tsx:3786
 msgid "Upload attachment"
 msgstr "添付ファイルをアップロード"
 
 #. placeholder {0}: result.attachment.fileName
-#: src/renderer/src/components/VaultShell.tsx:3003
+#: src/renderer/src/components/VaultShell.tsx:3004
 msgid "Uploaded “{0}”."
 msgstr "「{0}」をアップロードしました。"
 
@@ -7248,7 +7299,7 @@ msgstr "暗号化された添付ファイルをアップロード中"
 msgid "Uppercase letters"
 msgstr "大文字"
 
-#: src/renderer/src/components/SettingsPage.tsx:1176
+#: src/renderer/src/components/SettingsPage.tsx:1182
 msgid "Use at least 4 characters and avoid numbers that are easy to guess."
 msgstr "4 文字以上を使用し、推測されやすい数字は避けてください。"
 
@@ -7260,7 +7311,7 @@ msgstr "Bitwarden Cloud には bitwarden.com を使用してください。Vault
 msgid "Use long passwords created by the password generator instead."
 msgstr "代わりに、パスワードジェネレーターで作成した長いパスワードを使用してください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:365
+#: src/renderer/src/components/AuthScreen.tsx:479
 msgid "Use master password"
 msgstr "マスターパスワードを使用"
 
@@ -7378,7 +7429,7 @@ msgstr "確認済み"
 msgid "Verified remote host fingerprint: {0}"
 msgstr "確認済みのリモートホストフィンガープリント: {0}"
 
-#: src/renderer/src/components/Dialogs.tsx:535
+#: src/renderer/src/components/Dialogs.tsx:543
 msgid "Verify"
 msgstr "確認"
 
@@ -7406,7 +7457,7 @@ msgstr "バージョン {availableVersion} のダウンロードが完了しま�
 msgid "Version {availableVersion} is available to download."
 msgstr "バージョン {availableVersion} をダウンロードできます。"
 
-#: src/renderer/src/components/SettingsPage.tsx:462
+#: src/renderer/src/components/SettingsPage.tsx:468
 msgid "Version and update information"
 msgstr "バージョンと更新情報"
 
@@ -7459,7 +7510,7 @@ msgid "View items, hide passwords"
 msgstr "項目を表示、パスワードを非表示"
 
 #: src/renderer/src/components/ItemHistoryRows.tsx:75
-#: src/renderer/src/components/VaultShell.tsx:3635
+#: src/renderer/src/components/VaultShell.tsx:3637
 msgid "View password history"
 msgstr "パスワード履歴を表示"
 
@@ -7532,11 +7583,11 @@ msgid "Website moved to position {0} of {1}."
 msgstr "ウェブサイトを全 {1} 件中 {0} 番目に移動しました。"
 
 #: src/renderer/src/components/VaultShell-primitives.tsx:324
-#: src/renderer/src/components/VaultShell.tsx:3712
+#: src/renderer/src/components/VaultShell.tsx:3714
 msgid "Website not set"
 msgstr "Web サイトが設定されていません"
 
-#: src/renderer/src/components/VaultShell.tsx:3149
+#: src/renderer/src/components/VaultShell.tsx:3150
 msgid "Website opened."
 msgstr "Web サイトを開きました。"
 
@@ -7557,15 +7608,15 @@ msgstr "Web サイト: {0}"
 msgid "Websites"
 msgstr "Web サイト"
 
-#: src/renderer/src/components/AuthScreen.tsx:264
+#: src/renderer/src/components/AuthScreen.tsx:327
 msgid "Welcome back"
 msgstr "おかえりなさい"
 
-#: src/renderer/src/components/SettingsPage.tsx:973
+#: src/renderer/src/components/SettingsPage.tsx:979
 msgid "When enabled, BearWarden may be hidden in Windows Remote Desktop, screen sharing, and recordings. If only the taskbar icon remains visible, turn this option off in a local session."
 msgstr "有効にすると、BearWarden は Windows リモート デスクトップ、画面共有、録画では非表示になることがあります。タスクバーアイコンだけが表示される場合は、ローカルセッションでこのオプションをオフにしてください。"
 
-#: src/renderer/src/components/SettingsPage.tsx:465
+#: src/renderer/src/components/SettingsPage.tsx:471
 msgid "When the app restarts"
 msgstr "アプリの再起動時"
 
@@ -7611,12 +7662,12 @@ msgstr "昨日"
 msgid "You can currently browse synced organizations and shared items in read-only mode. Creating, editing, deleting, sharing, and other management actions are not supported yet."
 msgstr "現在、同期済みの組織と共有項目は読み取り専用モードで参照できます。作成、編集、削除、共有、その他の管理操作にはまだ対応していません。"
 
-#: src/renderer/src/components/VaultShell.tsx:2298
+#: src/renderer/src/components/VaultShell.tsx:2299
 msgid "You can move up to {MAX_LOGIN_MOVE_MANY_IDS} items at a time."
 msgstr "一度に移動できる項目は最大 {MAX_LOGIN_MOVE_MANY_IDS} 件です。"
 
-#: src/renderer/src/components/VaultShell.tsx:2199
-#: src/renderer/src/components/VaultShell.tsx:2356
+#: src/renderer/src/components/VaultShell.tsx:2200
+#: src/renderer/src/components/VaultShell.tsx:2357
 msgid "You can process up to {MAX_LOGIN_BATCH_IDS} items at a time."
 msgstr "一度に処理できる項目は最大 {MAX_LOGIN_BATCH_IDS} 件です。"
 
@@ -7624,7 +7675,7 @@ msgstr "一度に処理できる項目は最大 {MAX_LOGIN_BATCH_IDS} 件です�
 msgid "You can safely delete passkeys while editing the item. Private key material is never sent to the renderer."
 msgstr "項目の編集中にパスキーを安全に削除できます。秘密鍵データがレンダラープロセスに送信されることはありません。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1286
+#: src/renderer/src/components/SettingsPage.tsx:1292
 msgid "You can use biometrics to unlock after the next lock."
 msgstr "次回のロック後から生体認証でロックを解除できます。"
 
@@ -7672,7 +7723,7 @@ msgstr "現在のマスターパスワードは {MIN_PASSWORD_LENGTH} ～ {MAX_P
 msgid "Your current session has expired. Please sign in again."
 msgstr "現在のセッションは期限切れです。もう一度サインインしてください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:389
+#: src/renderer/src/components/AuthScreen.tsx:503
 msgid "Your master password and decrypted data never leave this device."
 msgstr "マスターパスワードと復号されたデータがこのデバイスから送信されることはありません。"
 

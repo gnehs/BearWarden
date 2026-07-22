@@ -377,6 +377,11 @@ interface SettingsPageProps {
   onRequestAccountRemove: (proceed: () => void) => void
   onAddAccount: () => Promise<void>
   onSwitchAccount: (accountId: string) => Promise<void>
+  onRenameAccount: (
+    accountId: string,
+    displayName: string,
+    expectedRevision: number
+  ) => Promise<void>
   onReorderAccounts: (accountIds: readonly string[], expectedRevision: number) => Promise<void>
   onRemoveAccount: (accountId: string) => Promise<void>
 }
@@ -403,6 +408,7 @@ function SettingsPage({
   onRequestAccountRemove,
   onAddAccount,
   onSwitchAccount,
+  onRenameAccount,
   onReorderAccounts,
   onRemoveAccount
 }: SettingsPageProps): React.JSX.Element {
@@ -1421,6 +1427,7 @@ function SettingsPage({
                 onRequestRemove={onRequestAccountRemove}
                 onAdd={onAddAccount}
                 onSwitch={onSwitchAccount}
+                onRename={onRenameAccount}
                 onReorder={onReorderAccounts}
                 onRemove={onRemoveAccount}
               />

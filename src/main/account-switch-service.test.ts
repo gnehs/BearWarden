@@ -194,6 +194,37 @@ describe('AccountSwitchService renderer-safe status', () => {
       code: 'INVALID_ACCOUNT_SWITCH_REQUEST'
     })
   })
+
+  it('renames a local account with revision compare-and-swap and persists the label', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bearwarden-account-rename-'))
+    const registryStore = memoryStore(registry())
+    const service = new AccountSwitchService(root, {
+      registryStore: registryStore.store,
+      ...callbacks()
+    })
+
+    await expect(service.renameAccount(ACCOUNT_B, '  Work  ', 1)).resolves.toEqual({
+      kind: 'updated',
+      status: {
+        revision: 2,
+        activeAccountId: ACCOUNT_A,
+        accounts: [
+          { id: ACCOUNT_A, active: true, slot: 1 },
+          { id: ACCOUNT_B, active: false, slot: 2, displayName: 'Work' },
+          { id: ACCOUNT_C, active: false, slot: 3 }
+        ]
+      }
+    })
+    expect(registryStore.current().accounts[1]).toMatchObject({ displayName: 'Work' })
+    await expect(service.renameAccount(ACCOUNT_B, '', 2)).resolves.toMatchObject({
+      kind: 'updated',
+      status: { revision: 3 }
+    })
+    expect(registryStore.current().accounts[1]).not.toHaveProperty('displayName')
+    await expect(service.renameAccount(ACCOUNT_B, 'Again', 2)).rejects.toMatchObject({
+      code: 'ACCOUNT_STALE_REORDER_REQUEST'
+    })
+  })
 })
 
 describe('AccountSwitchService account management', () => {

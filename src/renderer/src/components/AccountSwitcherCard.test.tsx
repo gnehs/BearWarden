@@ -40,6 +40,7 @@ describe('AccountSwitcherCard presentation helpers', () => {
         onRequestRemove={(proceed) => proceed()}
         onAdd={vi.fn(async () => undefined)}
         onSwitch={vi.fn(async () => undefined)}
+        onRename={vi.fn(async () => undefined)}
         onReorder={vi.fn(async () => undefined)}
         onRemove={vi.fn(async () => undefined)}
       />
@@ -76,6 +77,11 @@ describe('AccountSwitcherCard presentation helpers', () => {
     expect(localAccountLabel(account().slot)).toBe('帳戶 2')
     expect(localAccountLabel(account().slot)).not.toContain(opaqueId)
     expect(localAccountCode(opaqueId)).toBe('11111111')
+  })
+
+  it('prefers a saved local display name and falls back to the slot label', () => {
+    expect(localAccountPresentation(account({ displayName: 'Work' })).label).toBe('Work')
+    expect(localAccountPresentation(account({ displayName: '   ' })).label).toBe('帳戶 2')
   })
 
   it('disables the active account switch and adding after the local limit', () => {
@@ -172,6 +178,7 @@ describe('AccountSwitcherCard presentation helpers', () => {
         onRequestRemove={(proceed) => proceed()}
         onAdd={vi.fn(async () => undefined)}
         onSwitch={vi.fn(async () => undefined)}
+        onRename={vi.fn(async () => undefined)}
         onReorder={vi.fn(async () => undefined)}
         onRemove={vi.fn(async () => undefined)}
       />

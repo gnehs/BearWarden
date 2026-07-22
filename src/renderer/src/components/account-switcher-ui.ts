@@ -7,8 +7,18 @@ export const MAX_LOCAL_ACCOUNTS = 5
 
 export type AccountConfirmationAction =
   | { readonly kind: 'add' }
-  | { readonly kind: 'switch'; readonly accountId: string; readonly slot: number }
-  | { readonly kind: 'remove'; readonly accountId: string; readonly slot: number }
+  | {
+      readonly kind: 'switch'
+      readonly accountId: string
+      readonly slot: number
+      readonly displayName?: string
+    }
+  | {
+      readonly kind: 'remove'
+      readonly accountId: string
+      readonly slot: number
+      readonly displayName?: string
+    }
 
 export class AccountMutationGate {
   private active = false
@@ -43,14 +53,19 @@ export function localAccountCode(accountId: string): string {
   return accountId.slice(0, 8).toUpperCase()
 }
 
+export function localAccountDisplayLabel(account: AccountStatusEntry): string {
+  return account.displayName?.trim() || localAccountLabel(account.slot)
+}
+
 export function localAccountPresentation(account: AccountStatusEntry): {
   label: string
   description: string
   active: boolean
 } {
   const code = localAccountCode(account.id)
+  const label = localAccountDisplayLabel(account)
   return {
-    label: localAccountLabel(account.slot),
+    label,
     description: i18n._(
       account.active
         ? msg`Current local account · Local code ${code}`
@@ -68,7 +83,7 @@ export function accountConfirmationContent(action: AccountConfirmationAction): {
 } {
   if (action.kind === 'remove') {
     return {
-      title: i18n._(msg`Remove ${localAccountLabel(action.slot)}?`),
+      title: i18n._(msg`Remove ${action.displayName?.trim() || localAccountLabel(action.slot)}?`),
       description: i18n._(
         msg`This permanently deletes the encrypted vault, settings, and biometric data on this device and cannot be undone. It does not delete your account or data on the Bitwarden or Vaultwarden server.`
       ),
@@ -80,7 +95,7 @@ export function accountConfirmationContent(action: AccountConfirmationAction): {
     title:
       action.kind === 'add'
         ? i18n._(msg`Add a local account?`)
-        : i18n._(msg`Switch to ${localAccountLabel(action.slot)}?`),
+        : i18n._(msg`Switch to ${action.displayName?.trim() || localAccountLabel(action.slot)}?`),
     description: i18n._(
       msg`This locks the vault, then safely restarts BearWarden. Unsaved changes will not be kept.`
     ),

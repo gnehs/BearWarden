@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { msg } from '@lingui/core/macro'
 import {
   closestCenter,
   DndContext,
@@ -45,9 +46,18 @@ import {
   FieldGroup,
   FieldTitle
 } from '@renderer/components/ui/field'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@renderer/components/ui/dialog'
+import { Input } from '@renderer/components/ui/input'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { cn } from '@renderer/lib/utils'
-import { AlertTriangle, GripVertical, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { AlertTriangle, GripVertical, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import {
   accountConfirmationContent,
   accountRemoveButtonDisabled,
@@ -69,6 +79,7 @@ interface AccountSwitcherCardProps {
   onRequestRemove: (proceed: () => void) => void
   onAdd: () => Promise<void>
   onSwitch: (accountId: string) => Promise<void>
+  onRename: (accountId: string, displayName: string, expectedRevision: number) => Promise<void>
   onReorder: (accountIds: readonly string[], expectedRevision: number) => Promise<void>
   onRemove: (accountId: string) => Promise<void>
 }
@@ -83,13 +94,24 @@ function AccountSwitcherCard({
   onRequestRemove,
   onAdd,
   onSwitch,
+  onRename,
   onReorder,
   onRemove
 }: AccountSwitcherCardProps): React.JSX.Element {
   const { i18n, t } = useLingui()
+  const accountNameLabel = i18n._(
+    msg({
+      context: 'local-account-name',
+      comment:
+        'Label for a user-defined local-only account name on this device, not a remote profile name.',
+      message: 'Account name'
+    })
+  )
   const [confirmationAction, setConfirmationAction] = useState<AccountConfirmationAction | null>(
     null
   )
+  const [renameAccount, setRenameAccount] = useState<AccountStatus['accounts'][number] | null>(null)
+  const [renameValue, setRenameValue] = useState('')
   const addAccountButtonRef = useRef<HTMLButtonElement>(null)
   const accounts = accountStatus?.accounts ?? []
   const confirmation = confirmationAction ? accountConfirmationContent(confirmationAction) : null
@@ -128,6 +150,13 @@ function AccountSwitcherCard({
     } catch {
       // VaultShell maps mutation failures to safe, visible renderer feedback.
     }
+  }
+
+  async function confirmRename(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    if (!renameAccount) return
+    await onRename(renameAccount.id, renameValue, accountStatus?.revision ?? 0)
+    setRenameAccount(null)
   }
 
   return (
@@ -209,6 +238,10 @@ function AccountSwitcherCard({
                       busy={busy}
                       onRequestSwitch={onRequestSwitch}
                       onRequestRemove={onRequestRemove}
+                      onRequestRename={(account) => {
+                        setRenameAccount(account)
+                        setRenameValue(account.displayName ?? '')
+                      }}
                       onConfirm={(action) => setConfirmationAction(action)}
                     />
                   ))}
@@ -297,6 +330,60 @@ function AccountSwitcherCard({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={renameAccount !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy) setRenameAccount(null)
+        }}
+      >
+        <DialogContent>
+          <form onSubmit={(event) => void confirmRename(event)}>
+            <DialogHeader>
+              <DialogTitle>
+                <Trans
+                  context="local-account-name"
+                  comment="Action title for changing a local-only account label on this device, not a remote profile name."
+                >
+                  Rename local account
+                </Trans>
+              </DialogTitle>
+              <DialogDescription>
+                <Trans
+                  context="local-account-name"
+                  comment="Description for a local-only account label on this device, not a remote profile name."
+                >
+                  Choose a name used only to identify this account on this device.
+                </Trans>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-2">
+              <Input
+                autoFocus
+                value={renameValue}
+                maxLength={50}
+                placeholder={accountNameLabel}
+                aria-label={accountNameLabel}
+                disabled={busy}
+                onChange={(event) => setRenameValue(event.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => setRenameAccount(null)}
+              >
+                <Trans>Cancel</Trans>
+              </Button>
+              <Button type="submit" disabled={busy}>
+                <Trans>Save</Trans>
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
@@ -307,6 +394,7 @@ interface AccountRowProps {
   busy: boolean
   onRequestSwitch: (proceed: () => void) => void
   onRequestRemove: (proceed: () => void) => void
+  onRequestRename: (account: AccountStatus['accounts'][number]) => void
   onConfirm: (action: AccountConfirmationAction) => void
 }
 
@@ -316,6 +404,7 @@ function AccountRow({
   busy,
   onRequestSwitch,
   onRequestRemove,
+  onRequestRename,
   onConfirm
 }: AccountRowProps): React.JSX.Element {
   const { t } = useLingui()
@@ -365,13 +454,28 @@ function AccountRow({
         )}
         <div className="flex items-center gap-1">
           <Button
+            variant="ghost"
+            size="icon-sm"
+            type="button"
+            aria-label={t`Rename ${presentation.label}`}
+            disabled={busy}
+            onClick={() => onRequestRename(account)}
+          >
+            <Pencil aria-hidden="true" />
+          </Button>
+          <Button
             variant="outline"
             size="sm"
             type="button"
             disabled={accountSwitchButtonDisabled(account, busy)}
             onClick={() =>
               onRequestSwitch(() =>
-                onConfirm({ kind: 'switch', accountId: account.id, slot: account.slot })
+                onConfirm({
+                  kind: 'switch',
+                  accountId: account.id,
+                  slot: account.slot,
+                  displayName: account.displayName
+                })
               )
             }
           >
@@ -386,7 +490,12 @@ function AccountRow({
               disabled={accountRemoveButtonDisabled(account, accounts.length, busy)}
               onClick={() =>
                 onRequestRemove(() =>
-                  onConfirm({ kind: 'remove', accountId: account.id, slot: account.slot })
+                  onConfirm({
+                    kind: 'remove',
+                    accountId: account.id,
+                    slot: account.slot,
+                    displayName: account.displayName
+                  })
                 )
               }
             >

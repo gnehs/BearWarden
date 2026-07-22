@@ -1,5 +1,18 @@
 import { i18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
+import type { AccountStatus } from '../../../shared/vault-contract'
+import { localAccountDisplayLabel } from './account-switcher-ui'
+
+export function authAccountItems(
+  status: AccountStatus | null
+): readonly { readonly value: string; readonly label: string }[] {
+  return (
+    status?.accounts.map((account) => ({
+      value: account.id,
+      label: localAccountDisplayLabel(account)
+    })) ?? []
+  )
+}
 
 /**
  * Maps unlock/setup failures to stable, renderer-safe messages. `LOCKED` surfaces when a

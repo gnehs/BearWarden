@@ -14,10 +14,12 @@ import {
   MAX_LOGIN_SEARCH_QUERY_LENGTH,
   MAX_ACCOUNT_BREACH_EMAIL_LENGTH,
   MAX_ACCOUNT_PROFILE_NAME_BYTES,
+  MAX_LOCAL_ACCOUNT_NAME_BYTES,
   type AccountMutationResult,
   type AccountProfileAvatarUpdateRequest,
   type AccountProfileNameUpdateRequest,
   type AccountRemoveRequest,
+  type AccountRenameRequest,
   type AccountReorderRequest,
   type AccountSessionDeauthorizationRequest,
   type LoginApprovalResponse,
@@ -582,6 +584,26 @@ function parseAccountSwitch(value: unknown): string {
   return accountId
 }
 
+function parseAccountRename(value: unknown): AccountRenameRequest {
+  const record = exactDataRecord(value, ['accountId', 'displayName', 'expectedRevision'])
+  const accountId = requiredString(record, 'accountId')
+  const displayName = requiredString(record, 'displayName')
+  if (
+    !ACCOUNT_ID_PATTERN.test(accountId) ||
+    Buffer.byteLength(displayName, 'utf8') > MAX_LOCAL_ACCOUNT_NAME_BYTES ||
+    /[\0\r\n]/u.test(displayName) ||
+    !Number.isSafeInteger(record.expectedRevision) ||
+    (record.expectedRevision as number) < 1
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return {
+    accountId,
+    displayName,
+    expectedRevision: record.expectedRevision as number
+  }
+}
+
 function strictRequiredDataRecord(value: unknown, requiredKeys: readonly string[]): RecordValue {
   if (!isRecord(value)) throw new VaultError('INVALID_INPUT')
   const descriptors = Object.getOwnPropertyDescriptors(value)
@@ -676,7 +698,12 @@ function publicAccountStatus(status: AccountStatus): AccountStatus {
   return {
     revision: status.revision,
     activeAccountId: status.activeAccountId,
-    accounts: status.accounts.map(({ id, active, slot }) => ({ id, active, slot })),
+    accounts: status.accounts.map(({ id, active, slot, displayName }) => ({
+      id,
+      active,
+      slot,
+      ...(displayName === undefined ? {} : { displayName })
+    })),
     ...(status.cleanupPending === true ? { cleanupPending: true } : {})
   }
 }
@@ -2336,6 +2363,14 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     const accountId = parseAccountSwitch(input)
     return publicAccountMutation(
       await runAccountOperation((service) => service.switchAccount(accountId))
+    )
+  })
+  registerHandler(IPC_CHANNELS.accountRename, getMainWindow, async (_event, input) => {
+    const request = parseAccountRename(input)
+    return publicAccountMutation(
+      await runAccountOperation((service) =>
+        service.renameAccount(request.accountId, request.displayName, request.expectedRevision)
+      )
     )
   })
   registerHandler(IPC_CHANNELS.accountReorder, getMainWindow, async (_event, input) => {

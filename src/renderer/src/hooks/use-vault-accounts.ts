@@ -13,7 +13,7 @@ import {
   isCurrentAccountRefresh
 } from '../components/account-switcher-ui'
 
-type AccountOperation = 'add' | 'switch' | 'reorder' | 'remove'
+type AccountOperation = 'add' | 'switch' | 'rename' | 'reorder' | 'remove'
 
 interface UseVaultAccountsOptions {
   settingsOpen: boolean
@@ -30,6 +30,11 @@ interface UseVaultAccountsResult {
   refreshAccountProfile: () => void
   addLocalAccount: () => Promise<void>
   switchLocalAccount: (accountId: string) => Promise<void>
+  renameLocalAccount: (
+    accountId: string,
+    displayName: string,
+    expectedRevision: number
+  ) => Promise<void>
   reorderLocalAccounts: (accountIds: readonly string[], expectedRevision: number) => Promise<void>
   removeLocalAccount: (accountId: string) => Promise<void>
 }
@@ -123,9 +128,11 @@ export function useVaultAccounts({
       setAccountBusyLabel(
         operation === 'add' || operation === 'switch'
           ? t`Securely switching accounts and restarting`
-          : operation === 'remove'
-            ? t`Securely removing local account`
-            : t`Updating local account order`
+          : operation === 'rename'
+            ? t`Updating local account name`
+            : operation === 'remove'
+              ? t`Securely removing local account`
+              : t`Updating local account order`
       )
       setAccountError('')
       try {
@@ -143,6 +150,8 @@ export function useVaultAccounts({
                 ? t`The local account was removed. Remaining encrypted local data will be securely cleaned up on the next launch.`
                 : t`The local account and its data on this device were removed.`
             )
+          } else if (operation === 'rename' && result.kind === 'updated') {
+            announce(t`Local account name updated.`)
           } else if (operation === 'reorder' && result.kind === 'updated') {
             announce(t`Local account order updated.`)
           }
@@ -216,6 +225,15 @@ export function useVaultAccounts({
     [runAccountMutation]
   )
 
+  const renameLocalAccount = useCallback(
+    async (accountId: string, displayName: string, expectedRevision: number): Promise<void> => {
+      await runAccountMutation('rename', () =>
+        window.bearwarden.accounts.rename(accountId, displayName, expectedRevision)
+      )
+    },
+    [runAccountMutation]
+  )
+
   const reorderLocalAccounts = useCallback(
     async (accountIds: readonly string[], expectedRevision: number): Promise<void> => {
       await runAccountMutation('reorder', () =>
@@ -241,6 +259,7 @@ export function useVaultAccounts({
     refreshAccountProfile,
     addLocalAccount,
     switchLocalAccount,
+    renameLocalAccount,
     reorderLocalAccounts,
     removeLocalAccount
   }

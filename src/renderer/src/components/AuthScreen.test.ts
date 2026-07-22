@@ -1,5 +1,32 @@
 import { describe, expect, it } from 'vitest'
-import { describeError, touchIdUnlockFallback } from './auth-screen-ui'
+import { authAccountItems, describeError, touchIdUnlockFallback } from './auth-screen-ui'
+
+describe('AuthScreen local accounts', () => {
+  it('shows only user-defined local labels with a slot fallback', () => {
+    const activeAccountId = '11111111-1111-4111-8111-111111111111'
+    expect(
+      authAccountItems({
+        revision: 3,
+        activeAccountId,
+        accounts: [
+          { id: activeAccountId, active: true, slot: 1, displayName: 'Personal' },
+          {
+            id: '22222222-2222-4222-8222-222222222222',
+            active: false,
+            slot: 2
+          }
+        ]
+      })
+    ).toEqual([
+      { value: activeAccountId, label: 'Personal' },
+      { value: '22222222-2222-4222-8222-222222222222', label: '帳戶 2' }
+    ])
+  })
+
+  it('has no account choices while status is unavailable', () => {
+    expect(authAccountItems(null)).toEqual([])
+  })
+})
 
 describe('AuthScreen unlock errors', () => {
   it.each([

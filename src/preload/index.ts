@@ -247,6 +247,8 @@ const api: BearWardenAPI = {
     status: () => ipcRenderer.invoke(IPC_CHANNELS.accountStatus),
     add: () => ipcRenderer.invoke(IPC_CHANNELS.accountAdd),
     switch: (accountId) => ipcRenderer.invoke(IPC_CHANNELS.accountSwitch, { accountId }),
+    rename: (accountId, displayName, expectedRevision) =>
+      ipcRenderer.invoke(IPC_CHANNELS.accountRename, { accountId, displayName, expectedRevision }),
     reorder: (accountIds, expectedRevision) =>
       ipcRenderer.invoke(IPC_CHANNELS.accountReorder, { accountIds, expectedRevision }),
     remove: (accountId, confirm) =>

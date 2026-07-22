@@ -118,6 +118,7 @@ export const IPC_CHANNELS = {
   accountStatus: 'account:status',
   accountAdd: 'account:add',
   accountSwitch: 'account:switch',
+  accountRename: 'account:rename',
   accountReorder: 'account:reorder',
   accountRemove: 'account:remove',
   accountSecurityProfile: 'account-security:profile',
@@ -160,6 +161,8 @@ export const IPC_CHANNELS = {
   appUpdateOpenRepositoryPage: 'app-update:open-repository-page',
   appUpdateState: 'app-update:state'
 } as const
+
+export const MAX_LOCAL_ACCOUNT_NAME_BYTES = 50
 
 export const IPC_EVENTS = {
   vaultLocked: 'vault:locked',
@@ -253,6 +256,8 @@ export interface AccountStatusEntry {
   readonly active: boolean
   /** One-based position in the user-controlled local account order. */
   readonly slot: number
+  /** Optional non-sensitive, device-local display label. */
+  readonly displayName?: string
 }
 
 export interface AccountStatus {
@@ -266,6 +271,12 @@ export interface AccountStatus {
 
 export interface AccountReorderRequest {
   readonly accountIds: readonly string[]
+  readonly expectedRevision: number
+}
+
+export interface AccountRenameRequest {
+  readonly accountId: string
+  readonly displayName: string
   readonly expectedRevision: number
 }
 
@@ -1953,6 +1964,11 @@ export interface BearWardenAPI {
     status: () => Promise<AccountStatus>
     add: () => Promise<AccountMutationResult>
     switch: (accountId: string) => Promise<AccountMutationResult>
+    rename: (
+      accountId: string,
+      displayName: string,
+      expectedRevision: number
+    ) => Promise<AccountMutationResult>
     reorder: (
       accountIds: readonly string[],
       expectedRevision: number

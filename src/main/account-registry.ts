@@ -9,6 +9,7 @@ import {
   openNoFollow,
   type AccountPathLayout
 } from './account-paths'
+import { MAX_LOCAL_ACCOUNT_NAME_BYTES } from '../shared/vault-contract'
 
 const REGISTRY_FORMAT = 'bearwarden-account-registry'
 const REGISTRY_VERSION = 1
@@ -19,6 +20,8 @@ const IDENTITY_HASH_PATTERN = /^[0-9a-f]{64}$/u
 export interface AccountRegistryEntry {
   readonly id: string
   readonly identityHash?: string
+  /** Non-sensitive, user-controlled label for this device only. */
+  readonly displayName?: string
 }
 
 export interface AccountRegistry {
@@ -90,6 +93,18 @@ function safeArray(value: unknown): readonly unknown[] | null {
   return value
 }
 
+function parseDisplayName(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.trim().length === 0 ||
+    Buffer.byteLength(value, 'utf8') > MAX_LOCAL_ACCOUNT_NAME_BYTES ||
+    /[\0\r\n]/u.test(value)
+  ) {
+    throw new Error('INVALID_ACCOUNT_REGISTRY')
+  }
+  return value.trim()
+}
+
 export function parseAccountRegistry(value: unknown): AccountRegistry {
   if (
     !plainRecord(value) ||
@@ -116,7 +131,7 @@ export function parseAccountRegistry(value: unknown): AccountRegistry {
   const accountIds = new Set<string>()
   const identityHashes = new Set<string>()
   const accounts = rawAccounts.map((candidate): AccountRegistryEntry => {
-    if (!plainRecord(candidate) || !exactKeys(candidate, ['id'], ['identityHash'])) {
+    if (!plainRecord(candidate) || !exactKeys(candidate, ['id'], ['identityHash', 'displayName'])) {
       throw new Error('INVALID_ACCOUNT_REGISTRY')
     }
     try {
@@ -136,9 +151,20 @@ export function parseAccountRegistry(value: unknown): AccountRegistry {
         throw new Error('INVALID_ACCOUNT_REGISTRY')
       }
       identityHashes.add(candidate.identityHash)
-      return { id: candidate.id, identityHash: candidate.identityHash }
+      return {
+        id: candidate.id,
+        identityHash: candidate.identityHash,
+        ...(candidate.displayName === undefined
+          ? {}
+          : { displayName: parseDisplayName(candidate.displayName) })
+      }
     }
-    return { id: candidate.id }
+    return {
+      id: candidate.id,
+      ...(candidate.displayName === undefined
+        ? {}
+        : { displayName: parseDisplayName(candidate.displayName) })
+    }
   })
 
   if (!accountIds.has(value.activeAccountId)) throw new Error('INVALID_ACCOUNT_REGISTRY')
@@ -166,7 +192,8 @@ function registryEqual(left: AccountRegistry, right: AccountRegistry): boolean {
     left.accounts.every(
       (account, index) =>
         account.id === right.accounts[index]?.id &&
-        account.identityHash === right.accounts[index]?.identityHash
+        account.identityHash === right.accounts[index]?.identityHash &&
+        account.displayName === right.accounts[index]?.displayName
     )
   )
 }

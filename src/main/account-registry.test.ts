@@ -57,6 +57,20 @@ describe('account registry parser', () => {
     ).toThrow('INVALID_ACCOUNT_REGISTRY')
   })
 
+  it('accepts a bounded local display label while rejecting unsafe labels', () => {
+    expect(
+      parseAccountRegistry({
+        ...registry(),
+        accounts: [{ id: IDS[0], displayName: '  Work  ' }]
+      }).accounts[0]
+    ).toEqual({ id: IDS[0], displayName: 'Work' })
+    for (const displayName of ['', 'x'.repeat(51), 'bad\nname']) {
+      expect(() =>
+        parseAccountRegistry({ ...registry(), accounts: [{ id: IDS[0], displayName }] })
+      ).toThrow('INVALID_ACCOUNT_REGISTRY')
+    }
+  })
+
   it('rejects duplicate account IDs and duplicate identity hashes', () => {
     expect(() =>
       parseAccountRegistry({ ...registry(), accounts: [{ id: IDS[0] }, { id: IDS[0] }] })

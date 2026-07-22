@@ -53,10 +53,18 @@ describe('preload account API', () => {
 
     const accountIds = [accountId, '33333333-3333-4333-8333-333333333333']
 
-    expect(Object.keys(api.accounts)).toEqual(['status', 'add', 'switch', 'reorder', 'remove'])
+    expect(Object.keys(api.accounts)).toEqual([
+      'status',
+      'add',
+      'switch',
+      'rename',
+      'reorder',
+      'remove'
+    ])
     await api.accounts.status()
     await api.accounts.add()
     await api.accounts.switch(accountId)
+    await api.accounts.rename(accountId, 'Work', 6)
     await api.accounts.reorder(accountIds, 7)
     await api.accounts.remove(accountId, true)
 
@@ -64,6 +72,7 @@ describe('preload account API', () => {
       [IPC_CHANNELS.accountStatus],
       [IPC_CHANNELS.accountAdd],
       [IPC_CHANNELS.accountSwitch, { accountId }],
+      [IPC_CHANNELS.accountRename, { accountId, displayName: 'Work', expectedRevision: 6 }],
       [IPC_CHANNELS.accountReorder, { accountIds, expectedRevision: 7 }],
       [IPC_CHANNELS.accountRemove, { accountId, confirm: true }]
     ])

@@ -1786,6 +1786,7 @@ function VaultShellContent({
     refreshAccountProfile,
     addLocalAccount,
     switchLocalAccount,
+    renameLocalAccount,
     reorderLocalAccounts,
     removeLocalAccount
   } = useVaultAccounts({ settingsOpen, syncStatus, announce })
@@ -3488,6 +3489,7 @@ function VaultShellContent({
                   }
                   onAddAccount={addLocalAccount}
                   onSwitchAccount={switchLocalAccount}
+                  onRenameAccount={renameLocalAccount}
                   onReorderAccounts={reorderLocalAccounts}
                   onRemoveAccount={removeLocalAccount}
                 />

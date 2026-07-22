@@ -1,4 +1,5 @@
 import { lstat } from 'node:fs/promises'
+import { MAX_LOCAL_ACCOUNT_NAME_BYTES } from '../shared/vault-contract'
 import {
   assertAccountId,
   createAccountId,
@@ -24,11 +25,12 @@ import {
 export type AccountActivationReason = 'add-account' | 'switch-account'
 
 export interface RendererSafeAccountStatusEntry {
-  /** Opaque identifier. Display metadata must remain in account-scoped encrypted storage. */
+  /** Opaque identifier. User-defined local labels are the only display metadata exposed here. */
   readonly id: string
   readonly active: boolean
   /** One-based position in the user-controlled local account order. */
   readonly slot: number
+  readonly displayName?: string
 }
 
 export interface RendererSafeAccountStatus {
@@ -117,9 +119,11 @@ export interface AccountSwitchServiceOptions {
 }
 
 function copyEntry(entry: AccountRegistryEntry): AccountRegistryEntry {
-  return entry.identityHash === undefined
-    ? { id: entry.id }
-    : { id: entry.id, identityHash: entry.identityHash }
+  return {
+    id: entry.id,
+    ...(entry.identityHash === undefined ? {} : { identityHash: entry.identityHash }),
+    ...(entry.displayName === undefined ? {} : { displayName: entry.displayName })
+  }
 }
 
 function rendererSafeStatus(
@@ -130,7 +134,8 @@ function rendererSafeStatus(
     Object.freeze({
       id: account.id,
       active: account.id === registry.activeAccountId,
-      slot: index + 1
+      slot: index + 1,
+      ...(account.displayName === undefined ? {} : { displayName: account.displayName })
     })
   )
   return Object.freeze({
@@ -181,7 +186,8 @@ function registryEqual(left: AccountRegistry, right: AccountRegistry): boolean {
     left.accounts.every(
       (account, index) =>
         account.id === right.accounts[index]?.id &&
-        account.identityHash === right.accounts[index]?.identityHash
+        account.identityHash === right.accounts[index]?.identityHash &&
+        account.displayName === right.accounts[index]?.displayName
     )
   )
 }
@@ -251,6 +257,30 @@ export class AccountSwitchService {
       return Promise.reject(new AccountSwitchServiceError('INVALID_ACCOUNT_SWITCH_REQUEST'))
     }
     return this.serializeMutation(() => this.performSwitchAccount(accountId))
+  }
+
+  renameAccount(
+    accountId: unknown,
+    displayName: unknown,
+    expectedRevision: unknown
+  ): Promise<AccountSwitchMutationResult> {
+    try {
+      assertAccountId(accountId)
+    } catch {
+      return Promise.reject(new AccountSwitchServiceError('INVALID_ACCOUNT_SWITCH_REQUEST'))
+    }
+    if (
+      typeof displayName !== 'string' ||
+      Buffer.byteLength(displayName, 'utf8') > MAX_LOCAL_ACCOUNT_NAME_BYTES ||
+      /[\0\r\n]/u.test(displayName) ||
+      !Number.isSafeInteger(expectedRevision) ||
+      (expectedRevision as number) < 1
+    ) {
+      return Promise.reject(new AccountSwitchServiceError('INVALID_ACCOUNT_SWITCH_REQUEST'))
+    }
+    return this.serializeMutation(() =>
+      this.performRenameAccount(accountId, displayName, expectedRevision as number)
+    )
   }
 
   removeAccount(accountId: unknown, confirm: unknown): Promise<AccountSwitchMutationResult> {
@@ -350,6 +380,40 @@ export class AccountSwitchService {
       accounts: current.accounts.map(copyEntry)
     })
     return this.commitActivation(current, next, accountId, 'switch-account')
+  }
+
+  private async performRenameAccount(
+    accountId: string,
+    displayName: string,
+    expectedRevision: number
+  ): Promise<AccountSwitchMutationResult> {
+    const current = await this.loadRegistry()
+    const account = current.accounts.find((candidate) => candidate.id === accountId)
+    if (!account) throw new AccountSwitchServiceError('ACCOUNT_NOT_REGISTERED')
+    if (current.revision !== expectedRevision) {
+      throw new AccountSwitchServiceError('ACCOUNT_STALE_REORDER_REQUEST')
+    }
+    const normalizedName = displayName.trim()
+    if ((account.displayName ?? '') === normalizedName) {
+      return {
+        kind: 'unchanged',
+        status: rendererSafeStatus(current, this.accountRemovalCleanupPending)
+      }
+    }
+    const next = parseAccountRegistry({
+      ...current,
+      revision: current.revision + 1,
+      accounts: current.accounts.map((account) =>
+        account.id !== accountId
+          ? copyEntry(account)
+          : {
+              id: account.id,
+              ...(account.identityHash === undefined ? {} : { identityHash: account.identityHash }),
+              ...(normalizedName.length === 0 ? {} : { displayName: normalizedName })
+            }
+      )
+    })
+    return this.commitRegistryUpdate(current, next)
   }
 
   private async performRemoveAccount(accountId: string): Promise<AccountSwitchMutationResult> {

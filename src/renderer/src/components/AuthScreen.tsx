@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { plural } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { ArrowRight, Fingerprint, KeyRound, RotateCcw, ShieldAlert } from 'lucide-react'
-import type { PinUnlockStatus } from '../../../shared/vault-contract'
+import type { AccountStatus, PinUnlockStatus } from '../../../shared/vault-contract'
 import BrandMark from './BrandMark'
 import ApplicationTitlebarMenu from './ApplicationTitlebarMenu'
 import AuthMeshGradientBackground from './AuthMeshGradientBackground'
@@ -10,10 +10,20 @@ import { Alert, AlertDescription } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
 import { Field, FieldGroup, FieldLabel } from '@renderer/components/ui/field'
 import { Input } from '@renderer/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@renderer/components/ui/select'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { cn } from '@renderer/lib/utils'
 import { shouldUseApplicationTitlebarMenu } from '../lib/application-titlebar-menu'
 import { useSettingsStore } from '../stores/settings-runtime'
+import { accountMutationError, accountMutationKeepsBusy } from './account-switcher-ui'
+import { authAccountItems } from './auth-screen-ui'
 
 const usesWindowControlsOverlay = shouldUseApplicationTitlebarMenu(navigator.userAgent)
 const isMac = navigator.userAgent.includes('Mac')
@@ -37,12 +47,18 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
   const [confirmation, setConfirmation] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null)
+  const [accountError, setAccountError] = useState('')
+  const [accountSwitching, setAccountSwitching] = useState(false)
   const settings = useSettingsStore((store) => store.settings)
   const loadSettings = useSettingsStore((store) => store.load)
   const passwordRef = useRef<HTMLInputElement>(null)
   const pinRef = useRef<HTMLInputElement>(null)
   const focusPasswordAfterTouchIdRef = useRef(false)
+  const authOperationRef = useRef(false)
+  const accountStatusRequestRef = useRef(0)
   const isSetup = state === 'uninitialized'
+  const accountItems = authAccountItems(accountStatus)
 
   function describeError(error: unknown): string {
     if (!(error instanceof Error)) return t`An unknown error occurred. Please try again later.`
@@ -103,16 +119,68 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
     })
   }, [loadSettings, settings, state])
 
+  useEffect(() => {
+    if (state !== 'locked' && state !== 'uninitialized') return
+    let active = true
+    const requestId = ++accountStatusRequestRef.current
+    queueMicrotask(() => {
+      if (!active) return
+      setAccountStatus(null)
+      setAccountError('')
+      void window.bearwarden.accounts.status().then(
+        (status) => {
+          if (active && requestId === accountStatusRequestRef.current) setAccountStatus(status)
+        },
+        () => {
+          if (active && requestId === accountStatusRequestRef.current) {
+            setAccountStatus(null)
+            setAccountError(t`The local account list could not be loaded. Try again later.`)
+          }
+        }
+      )
+    })
+    return () => {
+      active = false
+    }
+  }, [state, t])
+
+  async function switchLocalAccount(accountId: string): Promise<void> {
+    if (!accountStatus || accountId === accountStatus.activeAccountId || authOperationRef.current)
+      return
+    authOperationRef.current = true
+    accountStatusRequestRef.current += 1
+    setMasterPassword('')
+    setConfirmation('')
+    setPin('')
+    setError('')
+    setAccountError('')
+    setAccountSwitching(true)
+    try {
+      const result = await window.bearwarden.accounts.switch(accountId)
+      setAccountStatus(result.status)
+      if (!accountMutationKeepsBusy(result)) {
+        authOperationRef.current = false
+        setAccountSwitching(false)
+      }
+    } catch (switchError) {
+      setAccountError(accountMutationError(switchError))
+      authOperationRef.current = false
+      setAccountSwitching(false)
+    }
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     setError('')
 
     if (!isSetup && unlockMethod === 'pin') {
+      if (authOperationRef.current) return
       if (pin.normalize('NFC').length < 4) {
         setError(t`The PIN must contain at least 4 characters.`)
         return
       }
       const request = { pin }
+      authOperationRef.current = true
       setPin('')
       setSubmitting(true)
       try {
@@ -142,6 +210,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
         )
       } finally {
         request.pin = ''
+        authOperationRef.current = false
         setSubmitting(false)
       }
       return
@@ -160,6 +229,8 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
       return
     }
 
+    if (authOperationRef.current) return
+    authOperationRef.current = true
     setSubmitting(true)
     try {
       const status = isSetup
@@ -172,11 +243,14 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
       setError(describeError(submitError))
       passwordRef.current?.select()
     } finally {
+      authOperationRef.current = false
       setSubmitting(false)
     }
   }
 
   async function unlockWithTouchId(): Promise<void> {
+    if (authOperationRef.current) return
+    authOperationRef.current = true
     setError('')
     setSubmitting(true)
     try {
@@ -192,6 +266,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
           : t`The vault could not be unlocked with biometrics. Enter your master password.`
       )
     } finally {
+      authOperationRef.current = false
       setSubmitting(false)
     }
   }
@@ -274,6 +349,41 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
               </div>
 
               <FieldGroup>
+                {accountStatus && accountStatus.accounts.length > 1 && (
+                  <Field>
+                    <FieldLabel htmlFor="auth-local-account">
+                      <Trans
+                        context="local-account-selector"
+                        comment="Field label for choosing which device-local vault account to unlock; this is not a remote Bitwarden profile."
+                      >
+                        Local account
+                      </Trans>
+                    </FieldLabel>
+                    <Select
+                      items={accountItems}
+                      value={accountStatus.activeAccountId}
+                      disabled={submitting || accountSwitching}
+                      onValueChange={(value) => {
+                        if (typeof value === 'string' && value.length > 0) {
+                          void switchLocalAccount(value)
+                        }
+                      }}
+                    >
+                      <SelectTrigger id="auth-local-account" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {accountItems.map((account) => (
+                            <SelectItem key={account.value} value={account.value}>
+                              {account.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                )}
                 {!isSetup && unlockMethod === 'pin' ? (
                   <Field data-invalid={Boolean(error)}>
                     <FieldLabel htmlFor="vault-pin">{t`PIN`}</FieldLabel>
@@ -285,7 +395,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                       autoComplete="off"
                       value={pin}
                       onChange={(event) => setPin(event.target.value)}
-                      disabled={submitting}
+                      disabled={submitting || accountSwitching}
                       aria-invalid={Boolean(error)}
                       aria-describedby={error ? 'auth-error' : undefined}
                     />
@@ -303,7 +413,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                       autoComplete={isSetup ? 'new-password' : 'current-password'}
                       value={masterPassword}
                       onChange={(event) => setMasterPassword(event.target.value)}
-                      disabled={submitting}
+                      disabled={submitting || accountSwitching}
                       aria-invalid={Boolean(error)}
                       aria-describedby={error ? 'auth-error' : undefined}
                     />
@@ -322,7 +432,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                       autoComplete="new-password"
                       value={confirmation}
                       onChange={(event) => setConfirmation(event.target.value)}
-                      disabled={submitting}
+                      disabled={submitting || accountSwitching}
                       aria-invalid={Boolean(error)}
                       aria-describedby={error ? 'auth-error' : undefined}
                     />
@@ -336,7 +446,27 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                 </Alert>
               )}
 
-              <Button className="h-10 w-full" type="submit" disabled={submitting}>
+              {accountError && (
+                <Alert id="auth-account-error" variant="destructive">
+                  <AlertDescription>{accountError}</AlertDescription>
+                </Alert>
+              )}
+
+              {accountSwitching && (
+                <p
+                  className="text-muted-foreground m-0 flex items-center gap-2 text-sm"
+                  role="status"
+                >
+                  <Spinner className="size-4" aria-hidden="true" />
+                  <Trans>Securely switching accounts and restarting</Trans>
+                </p>
+              )}
+
+              <Button
+                className="h-10 w-full"
+                type="submit"
+                disabled={submitting || accountSwitching}
+              >
                 {submitting ? (
                   <Spinner data-icon="inline-start" aria-hidden="true" />
                 ) : (
@@ -353,7 +483,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                   className="h-10 w-full"
                   variant="outline"
                   type="button"
-                  disabled={submitting}
+                  disabled={submitting || accountSwitching}
                   onClick={() => {
                     setError('')
                     setMasterPassword('')
@@ -370,7 +500,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                   className="h-10 w-full"
                   variant="secondary"
                   type="button"
-                  disabled={submitting}
+                  disabled={submitting || accountSwitching}
                   onClick={() => void unlockWithTouchId()}
                 >
                   {submitting ? (
