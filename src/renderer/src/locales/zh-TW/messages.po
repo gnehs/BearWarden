@@ -120,7 +120,7 @@ msgstr "{0, plural, one {# 個受保護項目} other {# 個受保護項目}}"
 #. placeholder {0}: sshAgentStatus.identityCount
 #: src/renderer/src/components/SettingsPage.tsx:1802
 msgid "{0, plural, one {# SSH key is available. Private keys and signing data are never sent to the renderer process.} other {# SSH keys are available. Private keys and signing data are never sent to the renderer process.}}"
-msgstr "{0, plural, one {有 # 個 SSH 金鑰可用。私密金鑰與簽署資料絕不會傳送至轉譯程序。} other {有 # 個 SSH 金鑰可用。私密金鑰與簽署資料絕不會傳送至轉譯程序。}}"
+msgstr "{0, plural, one {有 # 個 SSH 金鑰可用。私密金鑰與簽署資料絕不會傳送至轉譯程式。} other {有 # 個 SSH 金鑰可用。私密金鑰與簽署資料絕不會傳送至轉譯程式。}}"
 
 #. placeholder {0}: pinStatus.remainingAttempts
 #: src/renderer/src/components/SettingsPage.tsx:1128
@@ -835,7 +835,7 @@ msgstr "輸入主密碼並明確確認後，下次同步會重新傳送尚未確
 
 #: src/renderer/src/components/VaultHealthPage.tsx:354
 msgid "After you start the check, the main process downloads only the static TOTP service list from 2fa.directory and compares it locally. Vault domains, URIs, passwords, and TOTP secrets are never uploaded."
-msgstr "啟動檢查後，主程序僅會從 2fa.directory 下載靜態 TOTP 服務清單，並在本機比對。絕不會上傳保管庫網域、URI、密碼或 TOTP 密鑰。"
+msgstr "啟動檢查後，主程式僅會從 2fa.directory 下載靜態 TOTP 服務清單，並在本機比對。絕不會上傳保管庫網域、URI、密碼或 TOTP 金鑰。"
 
 #: src/renderer/src/components/SettingsPage.tsx:1787
 msgid "Agent could not start"
@@ -1005,7 +1005,7 @@ msgstr "至少 {MIN_PASSWORD_LENGTH} 個字元。請妥善保管：BearWarden �
 
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:569
 msgid "At least 12 characters. It is provided only to the local main process for encryption or decryption."
-msgstr "至少 12 個字元。僅會提供給本機主程序，以進行加密或解密。"
+msgstr "至少 12 個字元。僅會提供給本機主程式，以進行加密或解密。"
 
 #: src/renderer/src/components/VaultHealthPage.tsx:288
 msgid "At least one URI explicitly uses http://"
@@ -1077,11 +1077,11 @@ msgstr "可用"
 
 #: src/renderer/src/components/AccountProfileCard.tsx:222
 msgid "Avatar color"
-msgstr "頭像顏色"
+msgstr "大頭貼顏色"
 
 #: src/renderer/src/components/AccountProfileCard.tsx:115
 msgid "Avatar color saved."
-msgstr "頭像顏色已儲存。"
+msgstr "大頭貼顏色已儲存。"
 
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:636
 msgid "Avoid ambiguous characters"
@@ -1173,7 +1173,7 @@ msgstr "BearWarden 僅將核准結果傳送給本機主程序，絕不會與網�
 
 #: src/renderer/src/components/VaultHealthPage.tsx:592
 msgid "BearWarden sends only the first 5 characters of the password SHA-1 hash, downloads the padded range response from HIBP Pwned Passwords, and compares the complete SHA-1 locally in the main process. Neither the password nor the complete hash is sent to HIBP or the renderer process."
-msgstr "BearWarden 僅傳送密碼 SHA-1 雜湊的前 5 個字元，從 HIBP Pwned Passwords 下載填補範圍回應，並在主程序本機比對完整的 SHA-1。密碼和完整雜湊都不會傳送給 HIBP 或轉譯程序。"
+msgstr "BearWarden 僅傳送密碼 SHA-1 雜湊的前 5 個字元，從 HIBP Pwned Passwords 下載填補範圍回應，並在主程式本機比對完整的 SHA-1。密碼和完整雜湊都不會傳送給 HIBP 或轉譯程式。"
 
 #: src/renderer/src/components/VaultHealthPage.tsx:822
 msgid "BearWarden sends your complete email address to the configured Vaultwarden server only after you submit a query. That server then sends it to <0/>. This is not a k-anonymity password check. Query only accounts you are authorized to check."
@@ -1185,7 +1185,7 @@ msgstr "BearWarden 使用固定的 <0>\\\\.\\pipe\\openssh-ssh-agent</0> 命名�
 
 #: src/renderer/src/components/SshAgentApprovalDialog.tsx:154
 msgid "BearWarden uses the selected SSH key only after you approve; the private key and content to sign never leave the main process."
-msgstr "只有在您核准後，BearWarden 才會使用選取的 SSH 金鑰；私密金鑰與要簽署的內容絕不會離開主程序。"
+msgstr "只有在您核准後，BearWarden 才會使用選取的 SSH 金鑰；私密金鑰與要簽署的內容絕不會離開主程式。"
 
 #: src/renderer/src/lib/app-update-ui.ts:54
 msgid "BearWarden{version} is ready"
@@ -1792,7 +1792,7 @@ msgstr "內容"
 
 #: src/renderer/src/components/SendsPage.tsx:555
 msgid "Content is encrypted in the main process before it is sent to the server."
-msgstr "內容會先在主程序中加密，再傳送至伺服器。"
+msgstr "內容會先在主程式中加密，再傳送至伺服器。"
 
 #: src/renderer/src/components/VaultShellDialogs.tsx:358
 msgid "Continue editing"
@@ -2129,7 +2129,7 @@ msgstr "自訂"
 
 #: src/renderer/src/components/AccountProfileCard.tsx:115
 msgid "Custom avatar color cleared."
-msgstr "已清除自訂頭像顏色。"
+msgstr "已清除自訂大頭貼顏色。"
 
 #: src/renderer/src/components/EquivalentDomainsDialog.tsx:306
 msgid "Custom equivalent domains"
@@ -2480,7 +2480,7 @@ msgstr "複製項目"
 
 #: src/renderer/src/components/EquivalentDomainsDialog.tsx:309
 msgid "Each row is a group. Use commas or line breaks to separate domains. URLs are converted to registrable domains in the main process."
-msgstr "每一列是一個群組。使用逗號或換行分隔網域。URL 會在主程序中轉換為可註冊網域。"
+msgstr "每一列是一個群組。使用逗號或換行分隔網域。URL 會在主程式中轉換為可註冊網域。"
 
 #: src/renderer/src/lib/item-date-groups.ts:37
 msgid "Earlier"
@@ -2951,7 +2951,7 @@ msgstr "檔案"
 
 #: src/renderer/src/components/SettingsPage.tsx:1822
 msgid "File contents and paths are handled only by the local main process and are never sent back to the renderer process."
-msgstr "檔案內容和路徑只會由本機主程序處理，絕不會傳回轉譯程序。"
+msgstr "檔案內容和路徑只會由本機主程式處理，絕不會傳回轉譯程式。"
 
 #: src/renderer/src/components/SendsPage.tsx:275
 msgid "File Send created"
@@ -3475,7 +3475,7 @@ msgstr "KeePass 2 純文字 XML"
 
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:93
 msgid "KeePass 2 XML is unencrypted plaintext containing directly readable passwords. Only open it from a trusted encrypted drive, and securely delete it after importing. BearWarden imports personal entries only and flattens nested groups into folder paths. Attachment binaries, history revisions, and advanced metadata are not imported, and recycle-bin and template groups are skipped. Modern KeePass TimeOtp fields are converted into a code-generating format. If the secret, encoding, or parameters conflict or cannot be converted, the entire import stops instead of silently skipping the authenticator."
-msgstr "KeePass 2 XML 是未加密的純文字，內含可直接讀取的密碼。請僅從受信任的加密磁碟開啟，並在匯入後安全刪除。BearWarden 僅匯入個人項目，並將巢狀群組展平為資料夾路徑。不會匯入附件二進位檔、歷史修訂版與進階中繼資料，並會略過資源回收筒和範本群組。新式 KeePass TimeOtp 欄位會轉換為可產生驗證碼的格式。若密鑰、編碼或參數相互衝突，或無法轉換，整個匯入作業會停止，不會悄悄略過驗證器。"
+msgstr "KeePass 2 XML 是未加密的純文字，內含可直接讀取的密碼。請僅從受信任的加密磁碟開啟，並在匯入後安全刪除。BearWarden 僅匯入個人項目，並將巢狀群組展平為資料夾路徑。不會匯入附件二進位檔、歷史修訂版與進階中繼資料，並會略過資源回收筒和範本群組。新式 KeePass TimeOtp 欄位會轉換為可產生驗證碼的格式。若金鑰、編碼或參數相互衝突，或無法轉換，整個匯入作業會停止，不會悄悄略過驗證器。"
 
 #: src/renderer/src/components/SshAgentApprovalDialog.tsx:160
 msgid "Key"
@@ -3803,7 +3803,7 @@ msgstr "管理同步與帳戶"
 
 #: src/renderer/src/components/AccountProfileCard.tsx:162
 msgid "Manage your display name and avatar color."
-msgstr "管理您的顯示名稱與頭像顏色。"
+msgstr "管理您的顯示名稱與大頭貼顏色。"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:774
 msgid "Manual setup key"
@@ -4529,7 +4529,7 @@ msgstr "KeePass XML 中的密碼為未加密的明文"
 
 #: src/renderer/src/components/VaultHealthPage.tsx:140
 msgid "Passwords remain in the main process and are never sent to the renderer process or an external service."
-msgstr "密碼會保留在主程序中，絕不傳送至轉譯程序或外部服務。"
+msgstr "密碼會保留在主程式中，絕不傳送至轉譯程式或外部服務。"
 
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:77
 msgid "Paste"
@@ -5143,7 +5143,7 @@ msgstr "儲存"
 
 #: src/renderer/src/components/AccountProfileCard.tsx:266
 msgid "Save avatar color"
-msgstr "儲存頭像顏色"
+msgstr "儲存大頭貼顏色"
 
 #: src/renderer/src/components/AccountProfileCard.tsx:209
 msgid "Save display name"
@@ -5310,7 +5310,7 @@ msgstr "請先至少選取一個項目。"
 
 #: src/renderer/src/components/AccountProfileCard.tsx:236
 msgid "Select avatar color"
-msgstr "選取頭像顏色"
+msgstr "選取大頭貼顏色"
 
 #: src/renderer/src/components/VaultShellDialogs.tsx:165
 msgid "Selected items"
@@ -5704,7 +5704,7 @@ msgstr "文字"
 
 #: src/renderer/src/components/SendsPage.tsx:352
 msgid "Text and file Send metadata is decrypted in the main process first."
-msgstr "文字與檔案 Send 的中繼資料會先在主程序中解密。"
+msgstr "文字與檔案 Send 的中繼資料會先在主程式中解密。"
 
 #: src/renderer/src/components/SendsPage.tsx:583
 msgid "Text content is not included in the sharing link."
@@ -5834,7 +5834,7 @@ msgstr "只有在您選取「搜尋帳戶外洩事件」後，才會傳送完整
 
 #: src/renderer/src/components/VaultHealthPage.tsx:703
 msgid "The complete SHA-1 is compared only in main-process memory."
-msgstr "完整 SHA-1 僅會在主程序記憶體中比對。"
+msgstr "完整 SHA-1 僅會在主程式記憶體中比對。"
 
 #: src/renderer/src/components/VaultHealthPage.tsx:980
 msgid "The configured Vaultwarden server is forwarding the complete email address to HIBP."
@@ -5954,11 +5954,11 @@ msgstr "上次移除所留下的本機資料尚未完成安全清理。BearWarde
 
 #: src/renderer/src/components/VaultHealthPage.tsx:641
 msgid "The main process is comparing each complete SHA-1. Passwords and complete hashes never leave this device."
-msgstr "主程序正在比對每個完整的 SHA-1。密碼與完整雜湊永不會離開此裝置。"
+msgstr "主程式正在比對每個完整的 SHA-1。密碼與完整雜湊永不會離開此裝置。"
 
 #: src/renderer/src/components/VaultHealthPage.tsx:402
 msgid "The main process is comparing service domains locally without uploading any vault data."
-msgstr "主程序正在本機比對服務網域，不會上傳任何保管庫資料。"
+msgstr "主程式正在本機比對服務網域，不會上傳任何保管庫資料。"
 
 #: src/renderer/src/components/auth-screen-ui.ts:12
 #: src/renderer/src/components/AuthScreen.tsx:48
@@ -5969,11 +5969,11 @@ msgstr "主密碼不正確。"
 
 #: src/renderer/src/components/SettingsPage.tsx:1317
 msgid "The master password is sent only to the local process for verification."
-msgstr "主密碼僅會傳送至本機程序進行驗證。"
+msgstr "主密碼僅會傳送至本機程式進行驗證。"
 
 #: src/renderer/src/components/SettingsPage.tsx:1207
 msgid "The master password is verified again in the main process each time PIN unlock is enabled."
-msgstr "每次啟用 PIN 解鎖時，主密碼都會在主程序中再次驗證。"
+msgstr "每次啟用 PIN 解鎖時，主密碼都會在主程式中再次驗證。"
 
 #: src/renderer/src/components/AuthScreen.tsx:154
 msgid "The master password must contain at least 12 characters."
@@ -6451,7 +6451,7 @@ msgstr "這是帳戶層級的設定"
 
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:545
 msgid "This is sent only to the local main process to verify the vault owner."
-msgstr "此資料只會傳送至本機主程序，以驗證保管庫擁有者。"
+msgstr "此資料只會傳送至本機主程式，以驗證保管庫擁有者。"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1166
 msgid "This is your last available personal two-factor authentication method. After disabling it, your account will no longer require a recovery code or another two-factor method. If your organization requires 2FA, the server may also revoke your organization membership. You can still continue."
@@ -6964,11 +6964,11 @@ msgstr "無法儲存等效網域設定。請檢查連線後再試一次。"
 
 #: src/renderer/src/components/AccountProfileCard.tsx:122
 msgid "Unable to save the avatar color, and the current server value could not be reloaded. Please try again later."
-msgstr "無法儲存頭像顏色，也無法重新載入目前的伺服器值。請稍後再試。"
+msgstr "無法儲存大頭貼顏色，也無法重新載入目前的伺服器值。請稍後再試。"
 
 #: src/renderer/src/components/AccountProfileCard.tsx:121
 msgid "Unable to save the avatar color; the current server value has been reloaded."
-msgstr "無法儲存頭像顏色；已重新載入目前的伺服器值。"
+msgstr "無法儲存大頭貼顏色；已重新載入目前的伺服器值。"
 
 #: src/renderer/src/components/AccountProfileCard.tsx:86
 msgid "Unable to save the display name, and the current server value could not be reloaded. Please try again later."
@@ -7233,7 +7233,7 @@ msgstr "用於 Bitwarden CLI 用戶端憑證。BearWarden 不會儲存您的 Cli
 
 #: src/renderer/src/components/AccountApiKeyDialog.tsx:158
 msgid "Used only by the main process to create a one-time server proof. It is not stored."
-msgstr "僅供主程序建立一次性伺服器證明之用，且不會儲存。"
+msgstr "僅供主程式建立一次性伺服器證明之用，且不會儲存。"
 
 #: src/renderer/src/components/organizations-ui.ts:12
 #: src/renderer/src/components/OrganizationsPage.tsx:42
@@ -7637,11 +7637,11 @@ msgstr "您的主密碼與驗證碼僅用於此操作，不會儲存在此裝置
 
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:430
 msgid "Your master password is sent directly to the local main process for verification and cleared immediately afterward."
-msgstr "您的主密碼會直接傳送至本機主程序進行驗證，隨後立即清除。"
+msgstr "您的主密碼會直接傳送至本機主程式進行驗證，隨後立即清除。"
 
 #: src/renderer/src/components/SshAgentApprovalDialog.tsx:206
 msgid "Your master password is sent only to the local main process for verification. Approval grants a one-time capability token."
-msgstr "您的主密碼僅會傳送至本機主程序進行驗證。核准會授予一次性授權權杖。"
+msgstr "您的主密碼僅會傳送至本機主程式進行驗證。核准會授予一次性授權權杖。"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1056
 msgid "Your master password is used only for this add request and is cleared immediately after submission."

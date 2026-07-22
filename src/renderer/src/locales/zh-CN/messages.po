@@ -148,7 +148,7 @@ msgstr "{0}（{1}）"
 #. placeholder {1}: settings.globalEquivalentDomains.length
 #: src/renderer/src/components/EquivalentDomainsDialog.tsx:376
 msgid "{0} / {1} enabled"
-msgstr "已启用 {0} / {1}"
+msgstr "已激活 {0} / {1}"
 
 #. placeholder {0}: result.skippedAttachments
 #: src/renderer/src/lib/vault-portability-ui.ts:52
@@ -380,11 +380,11 @@ msgstr "{message} 无法重新加载列表。请关闭“设置”后重试。"
 
 #: src/renderer/src/components/VaultHealthPage.tsx:1492
 msgid "{protectedSkippedCount, plural, one {# login item with master password reprompt enabled was skipped to prevent health labels from revealing characteristics of protected content.} other {# login items with master password reprompt enabled were skipped to prevent health labels from revealing characteristics of protected content.}}"
-msgstr "{protectedSkippedCount, plural, one {已跳过 # 个启用了主密码重新输入的登录项目，以防止健康标签泄露受保护内容的特征。} other {已跳过 # 个启用了主密码重新输入的登录项目，以防止健康标签泄露受保护内容的特征。}}"
+msgstr "{protectedSkippedCount, plural, one {已跳过 # 个激活了主密码重新输入的登录项目，以防止健康标签泄露受保护内容的特征。} other {已跳过 # 个激活了主密码重新输入的登录项目，以防止健康标签泄露受保护内容的特征。}}"
 
 #: src/renderer/src/components/VaultHealthPage.tsx:736
 msgid "{protectedSkippedCount, plural, one {# login item with master password reprompt enabled was skipped without creating a SHA-1 or sending an HIBP range query.} other {# login items with master password reprompt enabled were skipped without creating a SHA-1 or sending an HIBP range query.}}"
-msgstr "{protectedSkippedCount, plural, one {已跳过 # 个启用了主密码重新输入的登录项目，未创建 SHA-1 也未发送 HIBP 范围查询。} other {已跳过 # 个启用了主密码重新输入的登录项目，未创建 SHA-1 也未发送 HIBP 范围查询。}}"
+msgstr "{protectedSkippedCount, plural, one {已跳过 # 个激活了主密码重新输入的登录项目，未创建 SHA-1 也未发送 HIBP 范围查询。} other {已跳过 # 个激活了主密码重新输入的登录项目，未创建 SHA-1 也未发送 HIBP 范围查询。}}"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:230
 msgid "{providerName} has been disabled."
@@ -583,7 +583,7 @@ msgstr "辅助功能权限"
 
 #: src/renderer/src/components/SettingsPage.tsx:758
 msgid "Accessibility permission is enabled. Cross-browser autofill is ready to use."
-msgstr "辅助功能权限已启用。跨浏览器自动填充已可使用。"
+msgstr "辅助功能权限已激活。跨浏览器自动填充已可使用。"
 
 #: src/renderer/src/components/AutofillPickerHost.tsx:33
 msgid "Accessibility permission is required to identify the current browser and website."
@@ -811,7 +811,7 @@ msgstr "Bitwarden 同步完成后，您有权访问的共享项目将显示在�
 
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:544
 msgid "After previewing, new local owner verification is required before syncing and restoring begin."
-msgstr "预览后，开始同步和还原前需要重新验证本地所有者。"
+msgstr "预览后，开始同步和还原前需要重新验证本地属主。"
 
 #: src/renderer/src/components/SendsPage.tsx:677
 msgid "After this date, the link stops accepting access, but the Send is not immediately deleted."
@@ -929,11 +929,11 @@ msgstr "其他应用程序（例如 1Password）已使用该快捷键。请从�
 
 #: src/renderer/src/components/SettingsPage.tsx:1792
 msgid "Another SSH Agent is using the same endpoint. Stop that Agent, then enable BearWarden SSH Agent again."
-msgstr "另一个 SSH Agent 正在使用同一端点。请停止该 Agent，然后再次启用 BearWarden SSH Agent。"
+msgstr "另一个 SSH Agent 正在使用同一端点。请停止该 Agent，然后再次激活 BearWarden SSH Agent。"
 
 #: src/renderer/src/components/SettingsPage.tsx:435
 msgid "Appearance and defaults"
-msgstr "外观和默认设置"
+msgstr "皮肤和默认设置"
 
 #: src/renderer/src/components/SettingsPage.tsx:767
 #~ msgid "Application"
@@ -1109,7 +1109,7 @@ msgstr "返回回收站"
 
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:450
 msgid "Backup contents"
-msgstr "备份内容"
+msgstr "备分内容"
 
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:332
 msgid "Backup format"
@@ -1133,7 +1133,7 @@ msgstr "BearWarden 自动填充"
 
 #: src/renderer/src/components/SettingsPage.tsx:1582
 msgid "BearWarden can control the current browser and perform autofill."
-msgstr "BearWarden 可以控制当前浏览器并执行自动填充。"
+msgstr "BearWarden 可以控制当前浏览器并运行自动填充。"
 
 #: src/renderer/src/components/MasterPasswordChangeDialog.tsx:96
 msgid "BearWarden can't safely determine the remote outcome on the current connection. No new action will be submitted now to prevent duplicate changes."
@@ -1225,7 +1225,7 @@ msgstr "已禁用生物识别。"
 
 #: src/renderer/src/components/VaultShell.tsx:2090
 msgid "Biometrics enabled."
-msgstr "已启用生物识别。"
+msgstr "已激活生物识别。"
 
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:370
 msgid "Bitwarden JSON/CSV or Chrome CSV"
@@ -1271,7 +1271,7 @@ msgstr "内置全局规则"
 
 #: src/renderer/src/components/VaultItemListPane.tsx:242
 msgid "Bulk actions for selected items"
-msgstr "对所选项目执行批量操作"
+msgstr "对所选项目运行批量操作"
 
 #: src/renderer/src/components/organizations-ui.ts:53
 #: src/renderer/src/components/OrganizationsPage.tsx:122
@@ -2083,7 +2083,7 @@ msgstr "CSV 是不完整、未加密的明文导出文件"
 
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:77
 msgid "CSV is not a complete backup. It only exports active and archived logins, secure notes, and some text values. It does not include trash, attachments, cards, identities, SSH keys, passkeys, password history, or Sends. URI matching and some login metadata are lost. Custom fields are flattened into “name: value” text, so their types and original structure may not be recoverable when names are empty or contain line breaks or “: ”. Use encrypted JSON for more complete portable data, or a full BearWarden backup to include attachments. Only inspect CSV files in a text editor. If opened in a spreadsheet, original fields beginning with =, +, -, or @ may execute as formulas. To preserve Bitwarden compatibility and data fidelity, BearWarden does not rewrite these secrets."
-msgstr "CSV 不是完整备份。它仅导出活跃和已归档的登录信息、安全笔记及部分文本值；不包括回收站、附件、卡片、身份信息、SSH 密钥、通行密钥、密码历史记录或 Sends。URI 匹配和部分登录元数据会丢失。自定义字段会被扁平化为“名称: 值”文本，因此当名称为空、包含换行符或“: ”时，可能无法恢复其类型和原始结构。如需更完整的可移植数据，请使用加密 JSON；如需包含附件，请使用完整的 BearWarden 备份。仅应在文本编辑器中查看 CSV 文件。若在电子表格中打开，以 =、+、- 或 @ 开头的原始字段可能会作为公式执行。为保持 Bitwarden 兼容性和数据保真度，BearWarden 不会改写这些机密信息。"
+msgstr "CSV 不是完整备份。它仅导出活跃和已归档的登录信息、安全笔记及部分文本值；不包括回收站、附件、卡片、身份信息、SSH 密钥、通行密钥、密码历史记录或 Sends。URI 匹配和部分登录元数据会丢失。自定义字段会被扁平化为“名称: 值”文本，因此当名称为空、包含换行符或“: ”时，可能无法恢复其类型和原始结构。如需更完整的可移植数据，请使用加密 JSON；如需包含附件，请使用完整的 BearWarden 备份。仅应在文本编辑器中查看 CSV 文件。若在电子表格中打开，以 =、+、- 或 @ 开头的原始字段可能会作为公式运行。为保持 Bitwarden 兼容性和数据保真度，BearWarden 不会改写这些机密信息。"
 
 #: src/renderer/src/components/AutofillShortcut.tsx:8
 #~ msgid "Ctrl plus backslash"
@@ -2179,7 +2179,7 @@ msgstr "自定义角色"
 
 #: src/renderer/src/components/SettingsPage.tsx:839
 msgid "Customize the vault's appearance and default sorting."
-msgstr "自定义密码库的外观和默认排序。"
+msgstr "自定义密码库的皮肤和默认排序。"
 
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:69
 msgid "Cut"
@@ -2534,7 +2534,7 @@ msgstr "编辑项目，隐藏密码"
 #: src/renderer/src/components/AccountProfileCard.tsx:149
 #: src/renderer/src/components/AccountProfileCard.tsx:159
 msgid "Edit profile"
-msgstr "编辑个人资料"
+msgstr "编辑个人数据"
 
 #: src/renderer/src/components/SendsPage.tsx:466
 #: src/renderer/src/components/SendsPage.tsx:552
@@ -2577,7 +2577,7 @@ msgstr "电子邮件地址未验证"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:457
 msgid "Email two-factor authentication has been enabled."
-msgstr "已启用电子邮件双重身份验证。"
+msgstr "已激活电子邮件双重身份验证。"
 
 #: src/renderer/src/components/send-ui.ts:42
 #: src/renderer/src/components/SendsPage.tsx:114
@@ -2611,37 +2611,37 @@ msgstr "清空回收站"
 
 #: src/renderer/src/components/SettingsPage.tsx:1509
 msgid "Enable <0/> autofill"
-msgstr "启用 <0/> 自动填充"
+msgstr "激活 <0/> 自动填充"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:837
 msgid "Enable authenticator"
-msgstr "启用身份验证器"
+msgstr "激活身份验证器"
 
 #: src/renderer/src/components/SettingsPage.tsx:1331
 msgid "Enable biometrics"
-msgstr "启用生物识别"
+msgstr "激活生物识别"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:955
 msgid "Enable email two-factor authentication"
-msgstr "启用电子邮件双重身份验证"
+msgstr "激活电子邮件双重身份验证"
 
 #: src/renderer/src/components/SettingsPage.tsx:1238
 msgid "Enable PIN unlock"
-msgstr "启用 PIN 解锁"
+msgstr "激活 PIN 解锁"
 
 #: src/renderer/src/components/SettingsPage.tsx:1668
 msgid "Enable SSH Agent"
-msgstr "启用 SSH Agent"
+msgstr "激活 SSH Agent"
 
 #: src/renderer/src/components/LoginEditor.tsx:2606
 #: src/renderer/src/components/SettingsPage.tsx:1113
 #: src/renderer/src/components/SettingsPage.tsx:1258
 msgid "Enabled"
-msgstr "已启用"
+msgstr "已激活"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:668
 msgid "Enabled two-factor authentication methods"
-msgstr "已启用的双重身份验证方式"
+msgstr "已激活的双重身份验证方式"
 
 #: src/renderer/src/components/LoginEditor.tsx:570
 msgid "Encrypted notes only"
@@ -2804,7 +2804,7 @@ msgstr "输入主密码，并确认轮换 API 密钥的影响。"
 
 #: src/renderer/src/components/VaultShell.tsx:2080
 msgid "Enter your master password before enabling biometrics."
-msgstr "启用生物识别前请输入主密码。"
+msgstr "激活生物识别前请输入主密码。"
 
 #: src/renderer/src/components/SshAgentApprovalDialog.tsx:107
 msgid "Enter your master password to approve this protected SSH key."
@@ -2961,7 +2961,7 @@ msgstr "已创建文件 Send"
 #: src/renderer/src/components/SendsPage.tsx:236
 #: src/renderer/src/components/SendsPage.tsx:338
 msgid "File Sends are read-only until file transfer support is enabled"
-msgstr "启用文件传输支持前，文件 Send 为只读"
+msgstr "激活文件传输支持前，文件 Send 为只读"
 
 #: src/renderer/src/components/SendsPage.tsx:200
 msgid "File Sends can currently only be viewed and their links copied."
@@ -3751,7 +3751,7 @@ msgstr "使用重复密码的登录项目"
 
 #: src/renderer/src/components/VaultHealthPage.tsx:372
 msgid "Login items without two-factor authentication have not been checked yet"
-msgstr "尚未检查未启用双重身份验证的登录项目"
+msgstr "尚未检查未激活双重身份验证的登录项目"
 
 #: src/renderer/src/components/VaultShell.tsx:268
 msgid "Logins"
@@ -3771,7 +3771,7 @@ msgstr "macOS 桌面应用"
 
 #: src/renderer/src/components/AutofillAccessibilityGuide.tsx:42
 msgid "macOS grants broad Accessibility access to control the computer. BearWarden uses it only to read and fill supported browsers when you press <0/>."
-msgstr "macOS 的辅助功能权限可广泛控制电脑。BearWarden 只会在您按下 <0/> 时，用它读取支持的浏览器并执行填写。"
+msgstr "macOS 的辅助功能权限可广泛控制电脑。BearWarden 只会在您按下 <0/> 时，用它读取支持的浏览器并运行填写。"
 
 #: src/renderer/src/components/SettingsPage.tsx:658
 msgid "macOS only"
@@ -3795,7 +3795,7 @@ msgstr "管理 FIDO2 安全密钥"
 
 #: src/renderer/src/components/SettingsPage.tsx:785
 msgid "Manage security, appearance, and sync on this device."
-msgstr "管理此设备上的安全、外观和同步。"
+msgstr "管理此设备上的安全、皮肤和同步。"
 
 #: src/renderer/src/components/SettingsPage.tsx:1479
 msgid "Manage sync & accounts"
@@ -4227,7 +4227,7 @@ msgstr "未找到尚未配置 TOTP 的受支持服务"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:699
 msgid "No two-factor authentication methods are enabled."
-msgstr "未启用任何双重身份验证方法。"
+msgstr "未激活任何双重身份验证方法。"
 
 #: src/renderer/src/components/VaultHealthPage.tsx:161
 msgid "No unsecured websites"
@@ -4447,7 +4447,7 @@ msgstr "其他发卡机构"
 #: src/renderer/src/components/organizations-ui.ts:10
 #: src/renderer/src/components/OrganizationsPage.tsx:38
 msgid "Owner"
-msgstr "所有者"
+msgstr "属主"
 
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:497
 msgid "Partially complete; you can resume later"
@@ -4654,7 +4654,7 @@ msgstr "PIN 解锁已禁用。请改用主密码。"
 
 #: src/renderer/src/components/SettingsPage.tsx:608
 msgid "PIN unlock is enabled for this session only."
-msgstr "PIN 解锁仅对此会话启用。"
+msgstr "PIN 解锁仅对此会话激活。"
 
 #: src/renderer/src/components/AuthScreen.tsx:140
 msgid "PIN unlock is no longer available. Enter your master password."
@@ -4733,7 +4733,7 @@ msgstr "正在处理本地账号"
 #. Heading for the signed-in account's display name, email address, and avatar settings.
 #: src/renderer/src/components/AccountProfileCard.tsx:142
 msgid "Profile"
-msgstr "个人资料"
+msgstr "个人数据"
 
 #: src/renderer/src/components/AboutPage.tsx:216
 msgid "Project information"
@@ -5099,7 +5099,7 @@ msgstr "审核请求"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:660
 msgid "Review the authentication providers currently enabled on the server and securely copy your recovery code."
-msgstr "查看服务器上当前启用的身份验证提供程序，并安全地复制您的恢复代码。"
+msgstr "查看服务器上当前激活的身份验证提供程序，并安全地复制您的恢复代码。"
 
 #: src/renderer/src/components/organizations-ui.ts:24
 #: src/renderer/src/components/OrganizationsPage.tsx:36
@@ -5745,7 +5745,7 @@ msgstr "当前活动的应用程序不是受支持的浏览器。"
 
 #: src/renderer/src/components/SettingsPage.tsx:1774
 msgid "The Agent endpoint contains control characters that cannot be safely placed in a shell command, so no copyable command is available. Fix<0>BEARWARDEN_SSH_AUTH_SOCK</0>, then enable the Agent again."
-msgstr "Agent 端点包含无法安全放入 shell 命令的控制字符，因此没有可复制的命令可用。请修正<0>BEARWARDEN_SSH_AUTH_SOCK</0>，然后重新启用 Agent。"
+msgstr "Agent 端点包含无法安全放入 shell 命令的控制字符，因此没有可复制的命令可用。请修正<0>BEARWARDEN_SSH_AUTH_SOCK</0>，然后重新激活 Agent。"
 
 #: src/renderer/src/components/VaultShell.tsx:394
 msgid "The attachment is too large to encrypt within the safe memory limit."
@@ -5777,7 +5777,7 @@ msgstr "附件已上传，但无法刷新列表。请稍后再次同步。"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:330
 msgid "The authenticator app has been enabled."
-msgstr "验证器应用已启用。"
+msgstr "验证器应用已激活。"
 
 #: src/renderer/src/components/AutofillPickerHost.tsx:44
 msgid "The autofill service is currently unavailable."
@@ -5973,7 +5973,7 @@ msgstr "主密码仅会发送至本地进程进行验证。"
 
 #: src/renderer/src/components/SettingsPage.tsx:1207
 msgid "The master password is verified again in the main process each time PIN unlock is enabled."
-msgstr "每次启用 PIN 解锁时，主密码都会在主进程中再次验证。"
+msgstr "每次激活 PIN 解锁时，主密码都会在主进程中再次验证。"
 
 #: src/renderer/src/components/AuthScreen.tsx:154
 msgid "The master password must contain at least 12 characters."
@@ -6126,7 +6126,7 @@ msgstr "安全密钥可能已移除，但无法刷新列表。重试前请再次
 #: src/renderer/src/components/VaultShell.tsx:2273
 #: src/renderer/src/components/VaultShell.tsx:2333
 msgid "The selection changed, so no action was taken. Select the items again and retry."
-msgstr "选择内容已更改，因此未执行任何操作。请重新选择项目后重试。"
+msgstr "选择内容已更改，因此未运行任何操作。请重新选择项目后重试。"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:422
 msgid "The send result is unknown. The status has been refreshed. Do not resend immediately."
@@ -6435,7 +6435,7 @@ msgstr "此历史记录已复制"
 
 #: src/renderer/src/components/AccountDevicesDialog.tsx:107
 msgid "This includes the current device. Every device must sign in again and complete two-step login if enabled. Other devices may remain active for up to an hour. BearWarden keeps this computer’s local encrypted vault, but it will not sync until you sign in again."
-msgstr "这包括当前设备。每台设备都必须重新登录，并在已启用时完成两步登录。其他设备可能会在最长一小时内保持活动状态。BearWarden 会保留此计算机上的本地加密密码库，但在您重新登录前不会同步。"
+msgstr "这包括当前设备。每台设备都必须重新登录，并在已激活时完成两步登录。其他设备可能会在最长一小时内保持活动状态。BearWarden 会保留此计算机上的本地加密密码库，但在您重新登录前不会同步。"
 
 #: src/renderer/src/components/AboutPage.tsx:100
 msgid "This installation format must be downloaded manually from GitHub Releases."
@@ -6451,7 +6451,7 @@ msgstr "这是账号级设置"
 
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:545
 msgid "This is sent only to the local main process to verify the vault owner."
-msgstr "此信息仅发送至本地主进程，以验证密码库所有者。"
+msgstr "此信息仅发送至本地主进程，以验证密码库属主。"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1166
 msgid "This is your last available personal two-factor authentication method. After disabling it, your account will no longer require a recovery code or another two-factor method. If your organization requires 2FA, the server may also revoke your organization membership. You can still continue."
@@ -6562,7 +6562,7 @@ msgstr "此服务器要求您再次输入主密码。"
 
 #: src/renderer/src/components/SshAgentApprovalDialog.tsx:106
 msgid "This signing request has expired. Run the original SSH operation again."
-msgstr "此签名请求已过期。请再次执行原始 SSH 操作。"
+msgstr "此签名请求已过期。请再次运行原始 SSH 操作。"
 
 #: src/renderer/src/components/LoginEditor.tsx:1449
 msgid "This SSH private key staging session has expired. Generate or import the key again before saving."
@@ -6733,7 +6733,7 @@ msgstr "双重身份验证"
 
 #: src/renderer/src/components/VaultHealthPage.tsx:1411
 msgid "Two-factor authentication not enabled"
-msgstr "未启用双重身份验证"
+msgstr "未激活双重身份验证"
 
 #: src/renderer/src/components/SyncDialog.tsx:773
 msgid "Two-step verification code (optional)"
@@ -6741,7 +6741,7 @@ msgstr "两步验证代码（可选）"
 
 #: src/renderer/src/components/SyncDialog.tsx:909
 msgid "Two-step verification enabled"
-msgstr "已启用两步验证"
+msgstr "已激活两步验证"
 
 #: src/renderer/src/components/SyncDialog.tsx:726
 msgid "Two-step verification method (optional)"
@@ -6749,7 +6749,7 @@ msgstr "两步验证方式（可选）"
 
 #: src/renderer/src/components/SyncDialog.tsx:910
 msgid "Two-step verification not enabled"
-msgstr "未启用两步验证"
+msgstr "未激活两步验证"
 
 #: src/renderer/src/components/SyncDialog.tsx:152
 msgid "Two-step verification was invalid, expired, or canceled. Please try again."
@@ -6850,15 +6850,15 @@ msgstr "无法下载更新"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:474
 msgid "Unable to enable email two-factor authentication. Restart setup."
-msgstr "无法启用电子邮件双重身份验证。请重新开始设置。"
+msgstr "无法激活电子邮件双重身份验证。请重新开始设置。"
 
 #: src/renderer/src/components/SettingsPage.tsx:613
 msgid "Unable to enable PIN unlock."
-msgstr "无法启用 PIN 解锁。"
+msgstr "无法激活 PIN 解锁。"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:350
 msgid "Unable to enable the authenticator. Restart setup."
-msgstr "无法启用验证器。请重新开始设置。"
+msgstr "无法激活验证器。请重新开始设置。"
 
 #: src/renderer/src/components/DndRows.tsx:225
 msgid "Unable to generate authentication code"
@@ -6890,7 +6890,7 @@ msgstr "无法使用生物识别验证打开密码库。请输入主密码。"
 
 #: src/renderer/src/lib/app-update-ui.ts:10
 msgid "Unable to perform the update action. Please try again later."
-msgstr "无法执行更新操作。请稍后重试。"
+msgstr "无法运行更新操作。请稍后重试。"
 
 #: src/renderer/src/lib/equivalent-domains-ui.ts:125
 msgid "Unable to read equivalent domain settings. Please try again later."
@@ -6935,7 +6935,7 @@ msgstr "无法读取密码库数据。请重试。如果问题持续出现，密
 
 #: src/renderer/src/components/SettingsPage.tsx:764
 msgid "Unable to request accessibility permission. Enable it manually in System Settings."
-msgstr "无法请求辅助功能权限。请在“系统设置”中手动启用。"
+msgstr "无法请求辅助功能权限。请在“系统设置”中手动激活。"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:503
 msgid "Unable to retrieve the recovery code."
@@ -7518,7 +7518,7 @@ msgstr "欢迎回来"
 
 #: src/renderer/src/components/SettingsPage.tsx:973
 msgid "When enabled, BearWarden may be hidden in Windows Remote Desktop, screen sharing, and recordings. If only the taskbar icon remains visible, turn this option off in a local session."
-msgstr "启用后，BearWarden 可能会在 Windows 远程桌面、屏幕共享和录制中隐藏。如果只剩任务栏图标可见，请在本地会话中关闭此选项。"
+msgstr "激活后，BearWarden 可能会在 Windows 远程桌面、屏幕共享和录制中隐藏。如果只剩任务栏图标可见，请在本地会话中关闭此选项。"
 
 #: src/renderer/src/components/SettingsPage.tsx:465
 msgid "When the app restarts"
