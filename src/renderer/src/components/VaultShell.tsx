@@ -2623,19 +2623,53 @@ function VaultShellContent({
           reprompt: draft.reprompt,
           customFields
         }
-        const created = await createLoginWithOptionalSshImport(request, draft.sshImportToken, {
-          create: window.bearwarden.logins.create,
-          createImported: window.bearwarden.sshKeys.createImported
-        })
-        if (created.reprompt === 0) cacheLoginDetail(detailCacheRef.current, created)
-        setItems((current) => [...current, toLoginSummary(created)])
-        setScope({ kind: 'all' })
-        updateSelectedIds(new Set([created.id]))
-        selectionAnchorIdRef.current = created.id
-        selectedIdRef.current = created.id
-        setSelectedId(created.id)
-        setSelectedLogin(created.reprompt === 0 ? created : null)
-        announce(t`Created “${created.name}”.`)
+        if (draft.ownerOrganizationId) {
+          if (draft.sshImportToken) throw new Error('Shared SSH key imports are not supported.')
+          const created = await window.bearwarden.sharedLogins.create({
+            type: draft.type,
+            name: draft.name,
+            ...fields,
+            notes: draft.notes || null,
+            organizationId: draft.ownerOrganizationId,
+            collectionIds: draft.collectionIds,
+            customFields
+          })
+          cacheLoginDetail(detailCacheRef.current, created)
+          setSharedItems((current) => [
+            ...current,
+            {
+              ...toLoginSummary(created),
+              organizationId: created.organizationId,
+              collectionIds: created.collectionIds,
+              shared: true,
+              edit: created.edit,
+              viewPassword: created.viewPassword,
+              delete: created.delete,
+              restore: created.restore
+            }
+          ])
+          setScope({ kind: 'organization', organizationId: created.organizationId })
+          updateSelectedIds(new Set([created.id]))
+          selectionAnchorIdRef.current = created.id
+          selectedIdRef.current = created.id
+          setSelectedId(created.id)
+          setSelectedLogin(created)
+          announce(t`Created “${created.name}”.`)
+        } else {
+          const created = await createLoginWithOptionalSshImport(request, draft.sshImportToken, {
+            create: window.bearwarden.logins.create,
+            createImported: window.bearwarden.sshKeys.createImported
+          })
+          if (created.reprompt === 0) cacheLoginDetail(detailCacheRef.current, created)
+          setItems((current) => [...current, toLoginSummary(created)])
+          setScope({ kind: 'all' })
+          updateSelectedIds(new Set([created.id]))
+          selectionAnchorIdRef.current = created.id
+          selectedIdRef.current = created.id
+          setSelectedId(created.id)
+          setSelectedLogin(created.reprompt === 0 ? created : null)
+          announce(t`Created “${created.name}”.`)
+        }
       } else if (selectedLogin) {
         const itemId = selectedLogin.id
         if (selectedSharedSummary) {
@@ -3710,8 +3744,10 @@ function VaultShellContent({
                   key={`${editorSessionId}:${editorMode}:${selectedLogin?.id ?? 'new'}`}
                   login={editorMode === 'edit' ? (selectedLogin ?? undefined) : undefined}
                   folders={folders}
+                  organizations={organizations}
+                  collections={collections}
                   sharedContext={
-                    selectedSharedSummary && selectedSharedContext
+                    editorMode === 'edit' && selectedSharedSummary && selectedSharedContext
                       ? {
                           organizationName: selectedSharedContext.organization?.name ?? '',
                           collectionNames: selectedSharedContext.collections.map(

@@ -91,6 +91,7 @@ const api: BearWardenAPI = {
   sharedLogins: {
     list: (request = {}) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginList, request),
     get: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginGet, request),
+    create: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginCreate, request),
     update: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginUpdate, request),
     revealEditorSecrets: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.sharedLoginRevealEditorSecrets, request),

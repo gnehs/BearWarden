@@ -21,6 +21,7 @@ import type {
   LoginSummary,
   LoginUpdateRequest,
   LoginView,
+  SharedLoginCreateRequest,
   SharedLoginUpdateRequest,
   SharedLoginView,
   VaultPasswordHistoryEntry,
@@ -161,6 +162,111 @@ export type {
 
 /** Stable public entry point for item, autofill, passkey, SSH, and generator operations. */
 export class VaultService extends VaultTransferService {
+  createSharedLogin(request: SharedLoginCreateRequest): Promise<SharedLoginView> {
+    return this.exclusive(async () => {
+      const current = this.requireData()
+      if (!current.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+      if (
+        !current.organizations.some((organization) => organization.id === request.organizationId)
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      if (request.collectionIds.length < 1) throw new VaultError('INVALID_INPUT')
+      const collectionIds = new Set(request.collectionIds)
+      if (collectionIds.size !== request.collectionIds.length) throw new VaultError('INVALID_INPUT')
+      const collections = request.collectionIds.map((collectionId) => {
+        const collection = current.collections.find((candidate) => candidate.id === collectionId)
+        if (
+          !collection ||
+          collection.organizationId !== request.organizationId ||
+          !collection.assigned ||
+          collection.readOnly
+        ) {
+          throw new VaultError('INVALID_INPUT')
+        }
+        return collection
+      })
+      const client = this.getOrCreateSyncClient(current.sync)
+      if (!client.createOrganizationCipher) throw new VaultError('SYNC_FAILED')
+
+      const type = normalizeItemType(request.type ?? 'login')
+      const fields = emptyItemFields()
+      applyItemFields(fields, request, type)
+      const uris = createRequestUris(request, type)
+      fields.uri = uriAlias(uris)
+      const customFields = normalizeCustomFields([], request.customFields ?? [], type)
+      const now = this.nowIso()
+      const login: StoredSharedLogin = {
+        id: this.validatedNewId(),
+        type,
+        name: normalizeRequiredString(request.name, MAX_NAME_LENGTH),
+        notes: normalizeNullableString(request.notes, MAX_NOTES_LENGTH),
+        folderId: null,
+        favorite: false,
+        usageCount: 0,
+        lastUsedAt: null,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+        archivedAt: null,
+        reprompt: 0,
+        passkeys: [],
+        customFields,
+        passwordHistory: [],
+        passwordRevisionDate: null,
+        autofillOnPageLoad: null,
+        attachments: [],
+        uris,
+        organizationId: request.organizationId,
+        collectionIds: [...collectionIds],
+        shared: true,
+        edit: true,
+        viewPassword: true,
+        delete: true,
+        restore: false,
+        ...fields
+      }
+
+      const generation = this.generation
+      const abort = this.startSyncOperation()
+      let remote
+      try {
+        remote = await client.createOrganizationCipher(
+          request.organizationId,
+          [...collectionIds],
+          this.remoteDraft(login, null),
+          abort.signal
+        )
+      } catch (error) {
+        if (abort.signal.aborted || generation !== this.generation || this.syncClient !== client) {
+          throw new VaultError('LOCKED')
+        }
+        throw this.mapSyncError(error)
+      } finally {
+        this.finishSyncOperation(abort)
+      }
+      if (generation !== this.generation || this.syncClient !== client) {
+        throw new VaultError('LOCKED')
+      }
+      const created = this.sharedLoginFromRemote(remote)
+      const remoteCollectionIds = new Set(created.collectionIds)
+      if (
+        created.organizationId !== request.organizationId ||
+        request.collectionIds.some((collectionId) => !remoteCollectionIds.has(collectionId))
+      ) {
+        throw new VaultError('SYNC_FAILED')
+      }
+      created.collectionIds = collections.map((collection) => collection.id)
+      const next = cloneData(current)
+      next.sharedLogins.push(created)
+      next.updatedAt = this.nowIso()
+      await this.persist(next)
+      if (generation !== this.generation) throw new VaultError('LOCKED')
+      this.data = next
+      return toSharedView(created)
+    })
+  }
+
   private findEditableSharedLogin(id: string): StoredSharedLogin {
     assertUuid(id)
     const login = this.requireData().sharedLogins.find((candidate) => candidate.id === id)

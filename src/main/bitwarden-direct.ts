@@ -625,6 +625,12 @@ export interface BitwardenSyncClient {
   listOrganizations?(): Promise<BitwardenOrganization[]>
   listCollections?(): Promise<BitwardenCollection[]>
   listOrganizationCiphers?(): Promise<BitwardenOrganizationCipher[]>
+  createOrganizationCipher?(
+    organizationId: string,
+    collectionIds: string[],
+    draft: BitwardenLoginDraft,
+    signal?: AbortSignal
+  ): Promise<BitwardenOrganizationCipher>
   editOrganizationCipher?(
     id: string,
     draft: BitwardenLoginDraft,
@@ -4088,6 +4094,55 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   async listOrganizationCiphers(): Promise<BitwardenOrganizationCipher[]> {
     this.requireUserKey()
     return [...this.organizationCiphers.values()].map(cloneOrganizationCipher)
+  }
+
+  async createOrganizationCipher(
+    organizationId: string,
+    collectionIds: string[],
+    draft: BitwardenLoginDraft,
+    signal?: AbortSignal
+  ): Promise<BitwardenOrganizationCipher> {
+    this.requireUserKey()
+    const organizationKey = this.organizationKeys.get(organizationId)
+    if (!organizationKey) throw new BitwardenDirectError('INVALID_RESPONSE')
+    const itemKey = randomBytes(USER_KEY_BYTES)
+    try {
+      const request = this.encryptLoginRequest(resolveDraft(draft, null), itemKey, null)
+      request.organizationId = organizationId
+      request.folderId = null
+      request.collectionIds = [...collectionIds]
+      request.key = encryptBitwardenBytes(itemKey, organizationKey, 'legacy-key')
+      const response = await this.http.createCipher(request, signal)
+      const raw = responseEntity(response, 'cipher')
+      if (property(raw, 'organizationId') !== organizationId) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      const item = this.decryptLogin(raw, organizationKey)
+      const parsed = this.organizationCipher(raw, item, organizationId)
+      const selectedCollectionIds = new Set(collectionIds)
+      if (
+        parsed.collectionIds.length !== collectionIds.length ||
+        parsed.collectionIds.some((collectionId) => !selectedCollectionIds.has(collectionId))
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      const created: BitwardenOrganizationCipher = {
+        ...parsed,
+        collectionIds: [...collectionIds],
+        edit: true,
+        viewPassword: true,
+        delete: false,
+        restore: false
+      }
+      this.organizationCiphers.set(created.id, created)
+      this.organizationCipherRaws.set(created.id, structuredClone(raw))
+      await this.captureSession()
+      return cloneOrganizationCipher(created)
+    } catch (error) {
+      throw this.mapError(error)
+    } finally {
+      itemKey.fill(0)
+    }
   }
 
   async editOrganizationCipher(

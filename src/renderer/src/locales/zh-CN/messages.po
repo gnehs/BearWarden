@@ -4794,6 +4794,10 @@ msgstr "个人 API 密钥"
 msgid "Personal API key operation failed."
 msgstr "个人 API 密钥操作失败。"
 
+#: src/renderer/src/components/LoginEditor.tsx
+msgid "Personal vault"
+msgstr "个人密码库"
+
 #: src/renderer/src/components/LoginEditor.tsx:545
 #: src/renderer/src/components/LoginEditor.tsx:2068
 #: src/renderer/src/components/VaultShell.tsx:335
@@ -5529,6 +5533,10 @@ msgstr "全选"
 #: src/renderer/src/components/VaultShell.tsx:4142
 msgid "Select an item to view and manage its secure data."
 msgstr "选择一个项目以查看和管理其安全数据。"
+
+#: src/renderer/src/components/LoginEditor.tsx
+msgid "Select at least one collection for the organization item."
+msgstr "请至少选择一个集合来创建组织项目。"
 
 #: src/renderer/src/components/VaultShell.tsx:2309
 msgid "Select at least one item first."

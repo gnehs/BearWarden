@@ -30,6 +30,7 @@ export const IPC_CHANNELS = {
   collectionList: 'collection:list',
   sharedLoginList: 'shared-login:list',
   sharedLoginGet: 'shared-login:get',
+  sharedLoginCreate: 'shared-login:create',
   sharedLoginUpdate: 'shared-login:update',
   sharedLoginRevealEditorSecrets: 'shared-login:reveal-editor-secrets',
   sharedLoginRevealSecret: 'shared-login:reveal-secret',
@@ -888,6 +889,14 @@ export interface SharedLoginView extends LoginView {
   viewPassword: boolean
   delete: boolean
   restore: boolean
+}
+
+export type SharedLoginCreateRequest = Omit<
+  LoginCreateRequest,
+  'folderId' | 'favorite' | 'reprompt'
+> & {
+  organizationId: string
+  collectionIds: string[]
 }
 
 export type SharedLoginUpdateRequest = Omit<
@@ -1935,6 +1944,7 @@ export interface BearWardenAPI {
   sharedLogins: {
     list: (request?: SharedLoginListRequest) => Promise<SharedLoginSummary[]>
     get: (request: LoginIdRequest) => Promise<SharedLoginView>
+    create: (request: SharedLoginCreateRequest) => Promise<SharedLoginView>
     update: (request: SharedLoginUpdateRequest) => Promise<SharedLoginView>
     revealEditorSecrets: (request: EditorSecretsRequest) => Promise<EditorSecretsView>
     revealSecret: (request: ItemFieldRequest) => Promise<string>

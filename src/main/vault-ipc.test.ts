@@ -1957,6 +1957,7 @@ describe('registerVaultIpc reprompt gate', () => {
       deletePasskey: vi.fn(async () => ({ id: 'item-a', passkeys: [] })),
       setLoginFavorite: vi.fn(async () => ({ id: 'item-a' })),
       moveLogin: vi.fn(async () => ({ id: 'item-a' })),
+      createSharedLogin: vi.fn(async () => ({ id: 'shared-created' })),
       updateSharedLogin: vi.fn(async () => ({ id: 'shared-item' })),
       revealSharedEditorSecrets: vi.fn(async () => ({ fields: {}, customFields: [] })),
       revealSharedSecret: vi.fn(async () => 'shared-secret'),
@@ -3469,6 +3470,15 @@ describe('registerVaultIpc reprompt gate', () => {
     const source = { index: 0, name: 'PIN', type: 'hidden', linkedId: null }
     const requests = [
       [
+        IPC_CHANNELS.sharedLoginCreate,
+        'createSharedLogin',
+        {
+          organizationId: '60000000-0000-4000-8000-000000000001',
+          collectionIds: ['70000000-0000-4000-8000-000000000001'],
+          name: 'New shared item'
+        }
+      ],
+      [
         IPC_CHANNELS.sharedLoginUpdate,
         'updateSharedLogin',
         { id, expectedUpdatedAt, name: 'Updated shared item' }
@@ -3500,7 +3510,7 @@ describe('registerVaultIpc reprompt gate', () => {
       expect(vault[method]).toHaveBeenCalledWith(request)
     }
     expect(vault.runAuthorizedOperation).not.toHaveBeenCalled()
-    expect(afterMutation).toHaveBeenCalledOnce()
+    expect(afterMutation).toHaveBeenCalledTimes(2)
   })
 
   it('rejects extra or personal-only shared payload data before invoking the service', async () => {
@@ -3524,6 +3534,14 @@ describe('registerVaultIpc reprompt gate', () => {
       { authorizationToken: 'personal-item-token' }
     ]) {
       await expect(
+        electronMock.handlers.get(IPC_CHANNELS.sharedLoginCreate)!(event, {
+          organizationId: '60000000-0000-4000-8000-000000000001',
+          collectionIds: ['70000000-0000-4000-8000-000000000001'],
+          name: 'New shared item',
+          ...forbidden
+        })
+      ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+      await expect(
         electronMock.handlers.get(IPC_CHANNELS.sharedLoginUpdate)!(event, {
           id,
           expectedUpdatedAt: '2026-07-16T00:00:00.000Z',
@@ -3532,8 +3550,16 @@ describe('registerVaultIpc reprompt gate', () => {
         })
       ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.sharedLoginCreate)!(event, {
+        organizationId: '60000000-0000-4000-8000-000000000001',
+        collectionIds: [],
+        name: 'New shared item'
+      })
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     expect(vault.getSharedTotp).not.toHaveBeenCalled()
     expect(vault.copySharedField).not.toHaveBeenCalled()
+    expect(vault.createSharedLogin).not.toHaveBeenCalled()
     expect(vault.updateSharedLogin).not.toHaveBeenCalled()
   })
 

@@ -64,6 +64,7 @@ import {
   type LoginListRequest,
   type SharedLoginListRequest,
   type SharedLoginUpdateRequest,
+  type SharedLoginCreateRequest,
   type LoginOpenUriRequest,
   type LoginPrefetchRequest,
   type PasskeyDeleteRequest,
@@ -1568,6 +1569,33 @@ function parseSharedLoginUpdate(value: unknown): SharedLoginUpdateRequest {
   return parseLoginUpdate(value)
 }
 
+function parseSharedLoginCreate(value: unknown): SharedLoginCreateRequest {
+  if (
+    !isRecord(value) ||
+    Object.hasOwn(value, 'folderId') ||
+    Object.hasOwn(value, 'favorite') ||
+    Object.hasOwn(value, 'reprompt')
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const parsed = parseLoginCreate(value, ['organizationId', 'collectionIds'])
+  const organizationId = value.organizationId
+  if (typeof organizationId !== 'string' || !UUID_PATTERN.test(organizationId)) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  if (!Array.isArray(value.collectionIds) || value.collectionIds.length < 1) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const collectionIds = value.collectionIds.map((collectionId) => {
+    if (typeof collectionId !== 'string' || !UUID_PATTERN.test(collectionId)) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    return collectionId
+  })
+  if (new Set(collectionIds).size !== collectionIds.length) throw new VaultError('INVALID_INPUT')
+  return { ...parsed, organizationId, collectionIds }
+}
+
 function parseSshKeyImportToken(value: unknown): string {
   if (
     typeof value !== 'string' ||
@@ -2912,6 +2940,9 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   )
   registerHandler(IPC_CHANNELS.loginCreate, getMainWindow, (_event, input) =>
     afterMutation(vault.createLogin(parseLoginCreate(input)))
+  )
+  registerHandler(IPC_CHANNELS.sharedLoginCreate, getMainWindow, (_event, input) =>
+    afterMutation(vault.createSharedLogin(parseSharedLoginCreate(input)))
   )
   for (const [channel, operation] of [
     [IPC_CHANNELS.loginClone, (request: LoginIdRequest) => vault.cloneLogin(request)],

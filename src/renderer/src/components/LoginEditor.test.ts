@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import type { LoginView } from '../../../shared/vault-contract'
+import type { CollectionView, LoginView, OrganizationView } from '../../../shared/vault-contract'
 import LoginEditor from './LoginEditor'
 import {
   canSelectCustomFieldType,
@@ -62,18 +62,44 @@ const loginFixture: LoginView = {
   fingerprint: ''
 }
 
+const organizationFixture: OrganizationView = {
+  id: 'organization-fixture',
+  name: 'Shared Team',
+  status: 2,
+  type: 0,
+  enabled: true,
+  identifier: null,
+  hasPublicAndPrivateKeys: true
+}
+
+const collectionFixture: CollectionView = {
+  id: 'collection-fixture',
+  organizationId: organizationFixture.id,
+  name: 'Shared Collection',
+  externalId: null,
+  readOnly: false,
+  hidePasswords: false,
+  manage: true,
+  type: 0,
+  assigned: true
+}
+
 function renderLoginEditor(
   login?: LoginView,
   sharedContext?: {
     organizationName: string
     collectionNames: string[]
     canEditSecrets: boolean
-  }
+  },
+  organizations: OrganizationView[] = [],
+  collections: CollectionView[] = []
 ): string {
   return renderToStaticMarkup(
     createElement(LoginEditor, {
       login,
       folders: [],
+      organizations,
+      collections,
       sharedContext,
       busy: false,
       onCancel: () => undefined,
@@ -143,6 +169,21 @@ describe('LoginEditor design language', () => {
     expect(markup).toContain('id="organization-section-title"')
     expect(markup).toContain('id="notes-section-title"')
     expect(markup).toContain('id="custom-fields-section-title"')
+  })
+
+  it('新增畫面有個人保管庫歸屬選項，不會顯示共享項目的唯讀組織欄位', () => {
+    const markup = renderLoginEditor(
+      undefined,
+      undefined,
+      [organizationFixture],
+      [collectionFixture]
+    )
+
+    expect(markup).toContain('id="editor-owner"')
+    expect(markup).toContain('個人保管庫')
+    expect(markup).toContain('id="editor-folder"')
+    expect(markup).not.toContain('id="editor-organization"')
+    expect(markup).not.toContain('id="editor-collections"')
   })
 
   it('新增模式不使用分頁，並同時呈現所有編輯器區段', () => {

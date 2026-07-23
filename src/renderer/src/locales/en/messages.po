@@ -4794,16 +4794,21 @@ msgstr "Personal API key"
 msgid "Personal API key operation failed."
 msgstr "Personal API key operation failed."
 
-#: src/renderer/src/components/LoginEditor.tsx:545
-#: src/renderer/src/components/LoginEditor.tsx:2068
-#: src/renderer/src/components/VaultShell.tsx:335
-#: src/renderer/src/components/VaultShell.tsx:366
+#: src/renderer/src/components/LoginEditor.tsx:1579
+#: src/renderer/src/components/LoginEditor.tsx:2397
+msgid "Personal vault"
+msgstr "Personal vault"
+
+#: src/renderer/src/components/LoginEditor.tsx:568
+#: src/renderer/src/components/LoginEditor.tsx:2155
+#: src/renderer/src/components/VaultShell.tsx:342
+#: src/renderer/src/components/VaultShell.tsx:373
 msgid "Phone"
 msgstr "Phone"
 
 #. placeholder {0}: position + 1
 #. placeholder {1}: draft.customFields.length
-#: src/renderer/src/components/LoginEditor.tsx:2434
+#: src/renderer/src/components/LoginEditor.tsx:2669
 msgid "Picked up custom field {0} of {1}."
 msgstr "Picked up custom field {0} of {1}."
 
@@ -5526,11 +5531,15 @@ msgstr "Select a verification method"
 msgid "Select all"
 msgstr "Select all"
 
-#: src/renderer/src/components/VaultShell.tsx:4142
+#: src/renderer/src/components/VaultShell.tsx:4284
 msgid "Select an item to view and manage its secure data."
 msgstr "Select an item to view and manage its secure data."
 
-#: src/renderer/src/components/VaultShell.tsx:2309
+#: src/renderer/src/components/LoginEditor.tsx:1477
+msgid "Select at least one collection for the organization item."
+msgstr "Select at least one collection for the organization item."
+
+#: src/renderer/src/components/VaultShell.tsx:2368
 msgid "Select at least one item first."
 msgstr "Select at least one item first."
 

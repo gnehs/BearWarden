@@ -2336,6 +2336,23 @@ describe('VaultService encrypted local data', () => {
           delete: true,
           restore: false
         }
+        const sharedItems = [shared]
+        fake.createOrganizationCipher = async (organizationId, collectionIds, draft) => {
+          const created = {
+            ...fake!.remoteLogins[0]!,
+            ...draft,
+            id: '80000000-0000-4000-8000-000000000002',
+            organizationId,
+            collectionIds: [...collectionIds],
+            edit: true,
+            viewPassword: true,
+            delete: true,
+            restore: false,
+            revisionDate: '2026-07-14T00:00:00.000Z'
+          }
+          sharedItems.push(created)
+          return structuredClone(created)
+        }
         fake.editOrganizationCipher = async (id, draft) => {
           editedSharedDrafts.push({ id, name: draft.name, password: draft.password })
           shared = {
@@ -2346,6 +2363,7 @@ describe('VaultService encrypted local data', () => {
             collectionIds: [collectionId],
             revisionDate: '2026-07-15T00:00:00.000Z'
           }
+          sharedItems[0] = shared
           return structuredClone(shared)
         }
         fake.listOrganizations = async () => [
@@ -2372,7 +2390,7 @@ describe('VaultService encrypted local data', () => {
             assigned: true
           }
         ]
-        fake.listOrganizationCiphers = async () => [structuredClone(shared)]
+        fake.listOrganizationCiphers = async () => sharedItems.map((item) => structuredClone(item))
         return fake
       }
     })
@@ -2406,6 +2424,28 @@ describe('VaultService encrypted local data', () => {
       username: 'remote@example.invalid',
       hasTotp: false
     })
+    await expect(
+      service.createSharedLogin({
+        organizationId: '60000000-0000-4000-8000-000000000001',
+        collectionIds: ['70000000-0000-4000-8000-000000000001'],
+        name: 'Created shared item',
+        username: 'created@example.invalid',
+        password: 'created-secret'
+      })
+    ).resolves.toMatchObject({
+      id: '80000000-0000-4000-8000-000000000002',
+      organizationId: '60000000-0000-4000-8000-000000000001',
+      collectionIds: ['70000000-0000-4000-8000-000000000001'],
+      shared: true,
+      username: 'created@example.invalid'
+    })
+    await expect(
+      service.createSharedLogin({
+        organizationId: '60000000-0000-4000-8000-000000000001',
+        collectionIds: ['70000000-0000-4000-8000-000000000099'],
+        name: 'Missing collection'
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
     await expect(
       service.revealSharedEditorSecrets({
         id: shared.id,

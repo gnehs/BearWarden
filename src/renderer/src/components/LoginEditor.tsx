@@ -40,8 +40,10 @@ import {
   X
 } from 'lucide-react'
 import type {
+  CollectionView,
   FolderView,
   LoginView,
+  OrganizationView,
   PasskeyView,
   VaultCustomFieldType,
   VaultCustomFieldUpdate,
@@ -154,7 +156,7 @@ import {
 } from './ssh-key-editor-state'
 
 type EditorSecretField = VaultEditorSecretField
-type EditorErrorKind = 'name' | 'password' | 'ssh' | 'uri' | 'reveal' | null
+type EditorErrorKind = 'name' | 'password' | 'ssh' | 'uri' | 'collection' | 'reveal' | null
 type SecretLoadState = 'loading' | 'ready' | 'error'
 
 export type EditorCustomField = VaultCustomFieldUpdate & {
@@ -280,6 +282,8 @@ function normalizeCustomFieldsForItemType(
 export interface LoginDraft extends VaultItemFields {
   type: VaultItemType
   expectedUpdatedAt: string | null
+  ownerOrganizationId: string | null
+  collectionIds: string[]
   name: string
   notes: string
   folderId: string | null
@@ -295,6 +299,8 @@ export interface LoginDraft extends VaultItemFields {
 interface LoginEditorProps {
   login?: LoginView
   folders: FolderView[]
+  organizations?: OrganizationView[]
+  collections?: CollectionView[]
   sharedContext?: {
     organizationName: string
     collectionNames: string[]
@@ -513,6 +519,8 @@ function SortableCustomFieldCard({
 function LoginEditor({
   login,
   folders,
+  organizations = [],
+  collections = [],
   sharedContext,
   busy,
   authorizationToken,
@@ -643,6 +651,8 @@ function LoginEditor({
     privateKey: '',
     type: login?.type ?? 'login',
     expectedUpdatedAt: login?.updatedAt ?? null,
+    ownerOrganizationId: null,
+    collectionIds: [],
     name: login?.name ?? '',
     notes: login?.notes ?? '',
     folderId: login?.folderId ?? null,
@@ -857,6 +867,46 @@ function LoginEditor({
   function update<K extends keyof LoginDraft>(key: K, value: LoginDraft[K]): void {
     setDirty(true)
     setDraft((current) => ({ ...current, [key]: value }))
+  }
+
+  function updateOwner(value: string | null): void {
+    const ownerOrganizationId = value === 'personal' ? null : value
+    setDirty(true)
+    setDraft((current) => ({
+      ...current,
+      ownerOrganizationId,
+      collectionIds: ownerOrganizationId
+        ? current.collectionIds.filter((collectionId) =>
+            collections.some(
+              (collection) =>
+                collection.id === collectionId &&
+                collection.organizationId === ownerOrganizationId &&
+                collection.assigned &&
+                !collection.readOnly
+            )
+          )
+        : []
+    }))
+    if (errorKind === 'collection') {
+      setError('')
+      setErrorKind(null)
+    }
+  }
+
+  function toggleCollection(collectionId: string, checked: boolean): void {
+    setDirty(true)
+    setDraft((current) => ({
+      ...current,
+      collectionIds: checked
+        ? current.collectionIds.includes(collectionId)
+          ? current.collectionIds
+          : [...current.collectionIds, collectionId]
+        : current.collectionIds.filter((id) => id !== collectionId)
+    }))
+    if (errorKind === 'collection') {
+      setError('')
+      setErrorKind(null)
+    }
   }
 
   function clearValidationError(kind: Exclude<EditorErrorKind, 'reveal' | null>): void {
@@ -1408,6 +1458,12 @@ function LoginEditor({
       requestAnimationFrame(() => document.getElementById('editor-password')?.focus())
       return
     }
+    if (!login && draft.ownerOrganizationId && draft.collectionIds.length === 0) {
+      setError(t`Select at least one collection for the organization item.`)
+      setErrorKind('collection')
+      requestAnimationFrame(() => document.getElementById('editor-collections')?.focus())
+      return
+    }
     const blankUriIndex =
       draft.type === 'login' ? draft.uris.findIndex((entry) => !entry.uri.trim()) : -1
     if (blankUriIndex >= 0) {
@@ -1491,6 +1547,22 @@ function LoginEditor({
   const folderSelectItems = [
     { value: '', label: t`Unfiled` },
     ...folders.map((folder) => ({ value: folder.id, label: folder.name }))
+  ]
+  const showOwnerSelector = !login && !sharedContext && organizations.length > 0
+  const writableCollections = collections.filter(
+    (collection) =>
+      collection.assigned &&
+      !collection.readOnly &&
+      collection.organizationId === draft.ownerOrganizationId
+  )
+  const writableOrganizationIds = new Set(
+    collections
+      .filter((collection) => collection.assigned && !collection.readOnly)
+      .map((collection) => collection.organizationId)
+  )
+  const ownerSelectItems = [
+    { value: 'personal', label: t`Personal vault` },
+    ...organizations.map((organization) => ({ value: organization.id, label: organization.name }))
   ]
 
   return (
@@ -2290,76 +2362,146 @@ function LoginEditor({
                   </>
                 ) : (
                   <>
-                    <Field>
-                      <FieldLabel htmlFor="editor-folder">
-                        <Trans>Folder</Trans>
-                      </FieldLabel>
-                      <Select
-                        items={folderSelectItems}
-                        value={draft.folderId ?? ''}
-                        disabled={busy}
-                        onValueChange={(value) => update('folderId', value || null)}
-                      >
-                        <SelectTrigger id="editor-folder" className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {folderSelectItems.map((folder) => (
-                              <SelectItem key={folder.value || 'unfiled'} value={folder.value}>
-                                {folder.label}
+                    {showOwnerSelector && (
+                      <Field>
+                        <FieldLabel htmlFor="editor-owner">
+                          <Trans>Owner</Trans>
+                        </FieldLabel>
+                        <Select
+                          items={ownerSelectItems}
+                          value={draft.ownerOrganizationId ?? 'personal'}
+                          disabled={busy}
+                          onValueChange={updateOwner}
+                        >
+                          <SelectTrigger id="editor-owner" className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              <SelectItem value="personal">
+                                <Trans>Personal vault</Trans>
                               </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Field
-                      className={checkFieldClassName}
-                      orientation="horizontal"
-                      data-disabled={busy || undefined}
-                    >
-                      <Checkbox
-                        id="editor-favorite"
-                        checked={draft.favorite}
-                        onCheckedChange={(checked) => update('favorite', checked)}
-                        disabled={busy}
-                      />
-                      <FieldContent>
-                        <FieldLabel htmlFor="editor-favorite">
-                          <FieldTitle>
-                            <Trans>Add to favorites</Trans>
-                          </FieldTitle>
+                              {organizations.map((organization) => (
+                                <SelectItem
+                                  key={organization.id}
+                                  value={organization.id}
+                                  disabled={!writableOrganizationIds.has(organization.id)}
+                                >
+                                  {organization.name}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                    )}
+                    {showOwnerSelector && draft.ownerOrganizationId && (
+                      <Field data-invalid={errorKind === 'collection' || undefined}>
+                        <FieldLabel id="editor-collections-label" htmlFor="editor-collections">
+                          <Trans>Collections</Trans>
                         </FieldLabel>
-                        <FieldDescription>
-                          <Trans>Find this item quickly from the sidebar</Trans>
-                        </FieldDescription>
-                      </FieldContent>
-                    </Field>
-                    <Field
-                      className={checkFieldClassName}
-                      orientation="horizontal"
-                      data-disabled={busy || undefined}
-                    >
-                      <Checkbox
-                        id="editor-reprompt"
-                        checked={draft.reprompt === 1}
-                        onCheckedChange={(checked) => update('reprompt', checked ? 1 : 0)}
-                        disabled={busy}
-                      />
-                      <FieldContent>
-                        <FieldLabel htmlFor="editor-reprompt">
-                          <FieldTitle>
-                            <Trans>Require master password reprompt</Trans>
-                          </FieldTitle>
-                        </FieldLabel>
-                        <FieldDescription>
-                          <Trans>
-                            Verify the master password again before viewing or changing this item
-                          </Trans>
-                        </FieldDescription>
-                      </FieldContent>
-                    </Field>
+                        <div
+                          id="editor-collections"
+                          role="group"
+                          aria-labelledby="editor-collections-label"
+                          aria-invalid={errorKind === 'collection'}
+                          aria-describedby={errorKind === 'collection' ? 'editor-error' : undefined}
+                          className="bg-muted grid gap-2 rounded-lg px-3 py-2"
+                        >
+                          {writableCollections.map((collection) => (
+                            <label
+                              key={collection.id}
+                              className="flex min-w-0 items-center gap-2 text-sm"
+                            >
+                              <Checkbox
+                                checked={draft.collectionIds.includes(collection.id)}
+                                disabled={busy}
+                                onCheckedChange={(checked) =>
+                                  toggleCollection(collection.id, checked === true)
+                                }
+                              />
+                              <span className="truncate">{collection.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                        {errorKind === 'collection' && <FieldError>{error}</FieldError>}
+                      </Field>
+                    )}
+                    {!draft.ownerOrganizationId && (
+                      <>
+                        <Field>
+                          <FieldLabel htmlFor="editor-folder">
+                            <Trans>Folder</Trans>
+                          </FieldLabel>
+                          <Select
+                            items={folderSelectItems}
+                            value={draft.folderId ?? ''}
+                            disabled={busy}
+                            onValueChange={(value) => update('folderId', value || null)}
+                          >
+                            <SelectTrigger id="editor-folder" className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectGroup>
+                                {folderSelectItems.map((folder) => (
+                                  <SelectItem key={folder.value || 'unfiled'} value={folder.value}>
+                                    {folder.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                        <Field
+                          className={checkFieldClassName}
+                          orientation="horizontal"
+                          data-disabled={busy || undefined}
+                        >
+                          <Checkbox
+                            id="editor-favorite"
+                            checked={draft.favorite}
+                            onCheckedChange={(checked) => update('favorite', checked)}
+                            disabled={busy}
+                          />
+                          <FieldContent>
+                            <FieldLabel htmlFor="editor-favorite">
+                              <FieldTitle>
+                                <Trans>Add to favorites</Trans>
+                              </FieldTitle>
+                            </FieldLabel>
+                            <FieldDescription>
+                              <Trans>Find this item quickly from the sidebar</Trans>
+                            </FieldDescription>
+                          </FieldContent>
+                        </Field>
+                        <Field
+                          className={checkFieldClassName}
+                          orientation="horizontal"
+                          data-disabled={busy || undefined}
+                        >
+                          <Checkbox
+                            id="editor-reprompt"
+                            checked={draft.reprompt === 1}
+                            onCheckedChange={(checked) => update('reprompt', checked ? 1 : 0)}
+                            disabled={busy}
+                          />
+                          <FieldContent>
+                            <FieldLabel htmlFor="editor-reprompt">
+                              <FieldTitle>
+                                <Trans>Require master password reprompt</Trans>
+                              </FieldTitle>
+                            </FieldLabel>
+                            <FieldDescription>
+                              <Trans>
+                                Verify the master password again before viewing or changing this
+                                item
+                              </Trans>
+                            </FieldDescription>
+                          </FieldContent>
+                        </Field>
+                      </>
+                    )}
                   </>
                 )}
               </FieldGroup>
