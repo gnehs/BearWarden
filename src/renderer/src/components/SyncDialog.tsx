@@ -16,14 +16,15 @@ import {
 import { plural, t } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useEffect, useRef, useState } from 'react'
-import type {
-  AccountSecurityProfile,
-  SyncErrorCode,
-  SyncInvalidResponseReason,
-  SyncInvalidResponseStage,
-  SyncResult,
-  SyncStatus,
-  SyncTwoFactorProvider
+import {
+  IPC_ERROR_PREFIX,
+  type AccountSecurityProfile,
+  type SyncErrorCode,
+  type SyncInvalidResponseReason,
+  type SyncInvalidResponseStage,
+  type SyncResult,
+  type SyncStatus,
+  type SyncTwoFactorProvider
 } from '../../../shared/vault-contract'
 import {
   AlertDialog,
@@ -174,9 +175,47 @@ export interface SyncErrorPresentation {
   description: string
 }
 
+const SYNC_ERROR_CODES: readonly SyncErrorCode[] = [
+  'SYNC_AUTH_REQUIRED',
+  'SYNC_NEW_DEVICE_REQUIRED',
+  'SYNC_SSO_REQUIRED',
+  'SYNC_DUO_UNSUPPORTED',
+  'SYNC_KEY_CONNECTOR_UNSUPPORTED',
+  'SYNC_TRUSTED_DEVICE_UNSUPPORTED',
+  'SYNC_UNSUPPORTED_ACCOUNT',
+  'SYNC_NETWORK',
+  'SYNC_INVALID_RESPONSE',
+  'SYNC_INVALID_SSH_KEY',
+  'SYNC_CONFLICT',
+  'SYNC_FAILED'
+]
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function syncErrorCodeFromThrown(error: unknown): SyncErrorCode | undefined {
+  if (!(error instanceof Error)) return undefined
+  return SYNC_ERROR_CODES.find((code) => {
+    const marker = `${IPC_ERROR_PREFIX}${code}`
+    const markerIndex = error.message.indexOf(marker)
+    if (markerIndex < 0) return false
+    const nextCharacter = error.message[markerIndex + marker.length]
+    return nextCharacter === undefined || !/[A-Z0-9_]/u.test(nextCharacter)
+  })
+}
+
 // eslint-disable-next-line react-refresh/only-export-components
 export function shouldOfferNewDeviceOtpResend(code?: SyncErrorCode): boolean {
   return code === 'SYNC_NEW_DEVICE_REQUIRED'
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function shouldAutoOpenSyncErrorDetails(
+  code: SyncErrorCode | undefined,
+  occurredAt: string | undefined,
+  previousOccurredAt: string | undefined,
+  initial = false
+): boolean {
+  if (code !== 'SYNC_INVALID_RESPONSE') return false
+  return initial || (!!occurredAt && occurredAt !== previousOccurredAt)
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -336,6 +375,35 @@ export function SyncFailureAlert({
   )
 }
 
+export function SyncOperationFailureAlert({
+  className,
+  message,
+  onShowDetails
+}: {
+  className?: string
+  message: string
+  onShowDetails?: () => void
+}): React.JSX.Element {
+  return (
+    <Alert
+      className={cn(
+        'mt-[-4px] rounded-lg bg-[var(--danger-soft)] px-[11px] py-[9px] text-[12px] leading-[1.45]',
+        className
+      )}
+      variant="destructive"
+    >
+      <AlertDescription className="flex flex-col items-start gap-1">
+        <span>{message}</span>
+        {onShowDetails && (
+          <Button variant="outline" size="xs" type="button" onClick={onShowDetails}>
+            <Trans>View details</Trans>
+          </Button>
+        )}
+      </AlertDescription>
+    </Alert>
+  )
+}
+
 function formatSyncTime(locale: string, value?: string): string {
   if (!value) return t`Never synced`
   const date = new Date(value)
@@ -376,7 +444,13 @@ function SyncDialog({
   const [showAdvanced, setShowAdvanced] = useState(shouldOfferNewDeviceOtpResend(status.lastError))
   const [showPassword, setShowPassword] = useState(false)
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false)
-  const [errorDetailsOpen, setErrorDetailsOpen] = useState(false)
+  const [errorDetailsOpen, setErrorDetailsOpen] = useState(() =>
+    shouldAutoOpenSyncErrorDetails(status.lastError, status.lastErrorAt, status.lastErrorAt, true)
+  )
+  const [operationErrorDiagnostic, setOperationErrorDiagnostic] = useState<{
+    code: SyncErrorCode
+    occurredAt: string
+  } | null>(null)
   const previousErrorAt = useRef(status.lastErrorAt)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -445,11 +519,7 @@ function SyncDialog({
   useEffect(() => {
     const previous = previousErrorAt.current
     previousErrorAt.current = status.lastErrorAt
-    if (
-      status.lastError === 'SYNC_INVALID_RESPONSE' &&
-      status.lastErrorAt &&
-      status.lastErrorAt !== previous
-    ) {
+    if (shouldAutoOpenSyncErrorDetails(status.lastError, status.lastErrorAt, previous)) {
       setErrorDetailsOpen(true)
     }
   }, [status.lastError, status.lastErrorAt])
@@ -503,10 +573,39 @@ function SyncDialog({
     result: SyncResult,
     formatMessage: (summary: string) => string
   ): Promise<void> {
+    setOperationErrorDiagnostic(null)
+    setErrorDetailsOpen(false)
     onStatusChange(result)
     clearSecrets()
     await onSynced()
     setSuccess(formatMessage(syncSummary(result)))
+  }
+
+  async function presentSyncOperationFailure(syncError: unknown): Promise<void> {
+    const fallbackCode = syncErrorCodeFromThrown(syncError)
+    let nextStatus: SyncStatus | null = null
+    try {
+      nextStatus = await window.bearwarden.sync.status()
+      onStatusChange(nextStatus)
+    } catch {
+      // The original operation failure remains authoritative if status refresh also fails.
+    }
+    if (fallbackCode && nextStatus?.lastError === fallbackCode) {
+      setOperationErrorDiagnostic(null)
+      setError('')
+      if (nextStatus.lastError === 'SYNC_INVALID_RESPONSE') setErrorDetailsOpen(true)
+      return
+    }
+    setError(describeSyncError(syncError))
+    if (!fallbackCode) {
+      setOperationErrorDiagnostic(null)
+      return
+    }
+    setOperationErrorDiagnostic({
+      code: fallbackCode,
+      occurredAt: new Date().toISOString()
+    })
+    if (fallbackCode === 'SYNC_INVALID_RESPONSE') setErrorDetailsOpen(true)
   }
 
   function applyTwoFactorChallenge(
@@ -588,6 +687,8 @@ function SyncDialog({
     }
     setBusy(true)
     setError('')
+    setOperationErrorDiagnostic(null)
+    setErrorDetailsOpen(false)
     setSuccess('')
     try {
       const response = await window.bearwarden.sync.connect({
@@ -607,7 +708,7 @@ function SyncDialog({
       if (connectError instanceof Error && connectError.message.includes('NEW_DEVICE_REQUIRED')) {
         setShowAdvanced(true)
       }
-      setError(describeSyncError(connectError))
+      await presentSyncOperationFailure(connectError)
     } finally {
       setBusy(false)
     }
@@ -620,6 +721,8 @@ function SyncDialog({
     }
     setBusy(true)
     setError('')
+    setOperationErrorDiagnostic(null)
+    setErrorDetailsOpen(false)
     setSuccess('')
     try {
       const response = await window.bearwarden.sync.unlock({
@@ -640,7 +743,7 @@ function SyncDialog({
       if (unlockError instanceof Error && unlockError.message.includes('NEW_DEVICE_REQUIRED')) {
         setShowAdvanced(true)
       }
-      setError(describeSyncError(unlockError))
+      await presentSyncOperationFailure(unlockError)
     } finally {
       setBusy(false)
     }
@@ -649,12 +752,14 @@ function SyncDialog({
   async function syncNow(): Promise<void> {
     setBusy(true)
     setError('')
+    setOperationErrorDiagnostic(null)
+    setErrorDetailsOpen(false)
     setSuccess('')
     try {
       const result = await window.bearwarden.sync.now()
       await refreshAfterSuccess(result, (summary) => t`Sync complete. ${summary}.`)
     } catch (syncError) {
-      setError(describeSyncError(syncError))
+      await presentSyncOperationFailure(syncError)
     } finally {
       setBusy(false)
     }
@@ -701,6 +806,10 @@ function SyncDialog({
 
   const lastErrorTime = formatSyncTime(i18n.locale, status.lastErrorAt)
   const lastSyncTime = formatSyncTime(i18n.locale, status.lastSyncAt)
+  const diagnosticCode = operationErrorDiagnostic?.code ?? status.lastError
+  const diagnosticOccurredAt = operationErrorDiagnostic?.occurredAt ?? status.lastErrorAt
+  const diagnosticDetail = operationErrorDiagnostic ? undefined : status.lastErrorDetail
+  const diagnosticReason = operationErrorDiagnostic ? undefined : status.lastErrorReason
 
   return (
     <Dialog
@@ -1062,12 +1171,13 @@ function SyncDialog({
                 </div>
               </div>
               {error && (
-                <Alert
-                  className="mx-[18px] mt-[-4px] rounded-lg bg-[var(--danger-soft)] px-[11px] py-[9px] text-[12px] leading-[1.45]"
-                  variant="destructive"
-                >
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
+                <SyncOperationFailureAlert
+                  className="mx-[18px]"
+                  message={error}
+                  onShowDetails={
+                    operationErrorDiagnostic ? () => setErrorDetailsOpen(true) : undefined
+                  }
+                />
               )}
               {success && (
                 <Alert
@@ -1203,12 +1313,12 @@ function SyncDialog({
                 </Alert>
               )}
               {error && (
-                <Alert
-                  className="mt-[-4px] rounded-lg bg-[var(--danger-soft)] px-[11px] py-[9px] text-[12px] leading-[1.45]"
-                  variant="destructive"
-                >
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
+                <SyncOperationFailureAlert
+                  message={error}
+                  onShowDetails={
+                    operationErrorDiagnostic ? () => setErrorDetailsOpen(true) : undefined
+                  }
+                />
               )}
               {success && (
                 <Alert
@@ -1277,25 +1387,23 @@ function SyncDialog({
           )}
         </ModalBody>
       </ModalContent>
-      {status.lastError && (
+      {diagnosticCode && (
         <SyncErrorDetailsDialog
           open={errorDetailsOpen}
           onOpenChange={setErrorDetailsOpen}
-          code={status.lastError}
-          detail={status.lastErrorDetail}
-          reason={status.lastError === 'SYNC_INVALID_RESPONSE' ? status.lastErrorReason : undefined}
-          occurredAt={status.lastErrorAt}
-          serverUrl={status.serverUrl}
-          title={syncErrorPresentation(status.lastError).title}
-          description={syncErrorPresentation(status.lastError).description}
+          code={diagnosticCode}
+          detail={diagnosticDetail}
+          reason={diagnosticCode === 'SYNC_INVALID_RESPONSE' ? diagnosticReason : undefined}
+          occurredAt={diagnosticOccurredAt}
+          serverUrl={status.serverUrl ?? serverUrl}
+          title={syncErrorPresentation(diagnosticCode).title}
+          description={syncErrorPresentation(diagnosticCode).description}
           detailLabel={
-            status.lastErrorDetail
-              ? syncInvalidResponseStageLabel(status.lastErrorDetail)
-              : undefined
+            diagnosticDetail ? syncInvalidResponseStageLabel(diagnosticDetail) : undefined
           }
           reasonLabel={
-            status.lastError === 'SYNC_INVALID_RESPONSE' && status.lastErrorReason
-              ? syncInvalidResponseReasonLabel(status.lastErrorReason)
+            diagnosticCode === 'SYNC_INVALID_RESPONSE' && diagnosticReason
+              ? syncInvalidResponseReasonLabel(diagnosticReason)
               : undefined
           }
         />

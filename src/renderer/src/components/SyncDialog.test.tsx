@@ -11,8 +11,11 @@ import {
   accountProfileStateForStatus,
   accountProfileIdentity,
   applyAccountProfileIfCurrent,
+  shouldAutoOpenSyncErrorDetails,
   SyncFailureAlert,
+  SyncOperationFailureAlert,
   syncErrorPresentation,
+  syncErrorCodeFromThrown,
   syncInvalidResponseReasonLabel,
   syncInvalidResponseStageLabel,
   shouldOfferNewDeviceOtpResend,
@@ -30,10 +33,15 @@ describe('SyncDialog error diagnostics', () => {
 
   it('shows only a coarse incompatible snapshot section', () => {
     const markup = renderToStaticMarkup(
-      <SyncFailureAlert code="SYNC_INVALID_RESPONSE" detail="cipher" />
+      <SyncFailureAlert
+        code="SYNC_INVALID_RESPONSE"
+        detail="cipher"
+        onShowDetails={() => undefined}
+      />
     )
 
     expect(markup).toContain('問題區段：保管庫項目資料')
+    expect(markup).toContain('檢視詳細資訊')
     expect(markup).not.toMatch(/uuid|credential|ciphertext/i)
     expect(syncInvalidResponseStageLabel('organization')).toBe('組織金鑰與成員資料')
     expect(syncInvalidResponseReasonLabel('provider-organization-key')).toBe(
@@ -111,6 +119,58 @@ describe('SyncDialog error diagnostics', () => {
     }
   })
 
+  it('opens diagnostics for an incompatible response already present when the dialog mounts', () => {
+    expect(
+      shouldAutoOpenSyncErrorDetails(
+        'SYNC_INVALID_RESPONSE',
+        '2026-07-23T01:02:03.000Z',
+        '2026-07-23T01:02:03.000Z',
+        true
+      )
+    ).toBe(true)
+    expect(
+      shouldAutoOpenSyncErrorDetails('SYNC_INVALID_RESPONSE', undefined, undefined, true)
+    ).toBe(true)
+  })
+
+  it('reopens diagnostics only for a newly recorded incompatible response', () => {
+    const previous = '2026-07-23T01:02:03.000Z'
+    expect(shouldAutoOpenSyncErrorDetails('SYNC_INVALID_RESPONSE', previous, previous)).toBe(false)
+    expect(
+      shouldAutoOpenSyncErrorDetails('SYNC_INVALID_RESPONSE', '2026-07-23T01:03:04.000Z', previous)
+    ).toBe(true)
+    expect(
+      shouldAutoOpenSyncErrorDetails('SYNC_NETWORK', '2026-07-23T01:03:04.000Z', previous, true)
+    ).toBe(false)
+  })
+
+  it('keeps a manual details action when an operation error has no status snapshot', () => {
+    const markup = renderToStaticMarkup(
+      <SyncOperationFailureAlert
+        message="The server returned an incompatible response."
+        onShowDetails={() => undefined}
+      />
+    )
+
+    expect(markup).toContain('The server returned an incompatible response.')
+    expect(markup).toContain('檢視詳細資訊')
+  })
+
+  it('accepts only fixed renderer-safe sync error codes from rejected operations', () => {
+    expect(
+      syncErrorCodeFromThrown(
+        new Error('Error invoking remote method: BEARWARDEN:SYNC_INVALID_RESPONSE')
+      )
+    ).toBe('SYNC_INVALID_RESPONSE')
+    expect(
+      syncErrorCodeFromThrown(new Error('server said SYNC_NOT_A_REAL_CODE for account@example.com'))
+    ).toBeUndefined()
+    expect(
+      syncErrorCodeFromThrown(new Error('BEARWARDEN:SYNC_INVALID_RESPONSE_WITH_RAW_SUFFIX'))
+    ).toBeUndefined()
+    expect(syncErrorCodeFromThrown('SYNC_INVALID_RESPONSE')).toBeUndefined()
+  })
+
   it('builds a copyable allowlisted report without account or server identifiers', () => {
     const report = buildSyncDiagnosticReport({
       appVersion: '0.1.10',
@@ -118,7 +178,8 @@ describe('SyncDialog error diagnostics', () => {
       detail: 'organization',
       reason: 'provider-organization-key',
       occurredAt: '2026-07-23T01:02:03.000Z',
-      serverUrl: 'https://private-vault.example.invalid'
+      serverUrl:
+        'https://person%40example.invalid:secret@private-vault.example.invalid/vault/item-id?access_token=token-secret#ciphertext-secret'
     })
 
     expect(report).toContain('App version: 0.1.10')
@@ -127,6 +188,7 @@ describe('SyncDialog error diagnostics', () => {
     expect(report).toContain('Safe reason: provider-organization-key')
     expect(report).toContain('Server kind: self-hosted')
     expect(report).not.toContain('private-vault.example.invalid')
+    expect(report).not.toMatch(/person%40|secret|item-id|access_token|token-secret/i)
     expect(report).not.toMatch(/email|password|credential|ciphertext|uuid/i)
   })
 })
