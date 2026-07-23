@@ -45,6 +45,7 @@ interface VaultItemListPaneList {
   scopeTitle: string
   itemCount: number
   groups: readonly VirtualizedItemGroup[]
+  cardCoverPreviews: ReadonlyMap<string, string>
   sortOptions: ReadonlyArray<{ label: string; value: VaultSortMode }>
   showWebsiteIcons: boolean
   totpCodes: ReadonlyMap<string, TotpCodeView | null>
@@ -154,6 +155,7 @@ export function VaultItemListPane({
       {list.itemCount ? (
         <VirtualizedItemList
           groups={list.groups}
+          cardCoverPreviews={list.cardCoverPreviews}
           scopeTitle={list.scopeTitle}
           activeId={activeId}
           selectedIds={selectedIds}

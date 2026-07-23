@@ -38,7 +38,7 @@ function PaymentCardBrandMark({
         role="img"
         aria-label={cardLabel}
       >
-        <img className="size-full object-cover" src={imageSrc} alt="" draggable={false} />
+        <img className="size-full object-contain" src={imageSrc} alt="" draggable={false} />
       </span>
     )
   }

@@ -5,7 +5,11 @@ import { describe, expect, it, vi } from 'vitest'
 import type { FolderView, LoginSummary, TotpCodeView } from '../../../shared/vault-contract'
 import { FolderRow, ItemRow } from './DndRows'
 
-vi.mock('./PaymentCardBrandMark', () => ({ default: () => <span /> }))
+vi.mock('./PaymentCardBrandMark', () => ({
+  default: ({ imageSrc }: { imageSrc?: string }) => (
+    <span data-card-cover-image-src={imageSrc ?? ''} />
+  )
+}))
 vi.mock('./WebsiteIcon', () => ({ default: () => <span /> }))
 
 const item: LoginSummary = {
@@ -97,6 +101,26 @@ describe('ItemRow status', () => {
     )
 
     expect(markup).toContain('已刪除的項目')
+  })
+})
+
+describe('ItemRow card cover', () => {
+  it('passes the cached card cover preview to the card brand mark', () => {
+    const markup = renderToStaticMarkup(
+      <DndContext>
+        <ItemRow
+          item={{ ...item, type: 'card', cardBrand: 'mastercard' }}
+          cardCoverImageSrc="data:image/webp;base64,UklGRg=="
+          selected={false}
+          onSelect={vi.fn()}
+          onFavorite={vi.fn()}
+          onContextMenu={vi.fn()}
+          showWebsiteIcons={false}
+        />
+      </DndContext>
+    )
+
+    expect(markup).toContain('data-card-cover-image-src="data:image/webp;base64,UklGRg=="')
   })
 })
 

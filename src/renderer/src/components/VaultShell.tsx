@@ -109,6 +109,7 @@ import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
 import { useEditorTransitionGuard } from '@renderer/hooks/use-editor-transition-guard'
 import { useVaultAccounts } from '@renderer/hooks/use-vault-accounts'
 import { useVaultSearch } from '@renderer/hooks/use-vault-search'
+import { useCardCoverPreviews } from '@renderer/hooks/use-card-cover-previews'
 import { resolveTotpRefreshTarget } from './totp-refresh-target'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
@@ -595,6 +596,12 @@ function VaultShellContent({
     attachmentId: string
     dataUrl: string
   } | null>(null)
+  const {
+    previews: cardCoverListPreviews,
+    clear: clearCardCoverListPreviews,
+    invalidate: invalidateCardCoverListPreview,
+    prefetch: prefetchCardCoverPreview
+  } = useCardCoverPreviews()
   const [attachmentDeleteTarget, setAttachmentDeleteTarget] =
     useState<AttachmentDeleteTarget | null>(null)
   const [repromptPrompt, setRepromptPrompt] = useState<RepromptPromptState | null>(null)
@@ -731,7 +738,8 @@ function VaultShellContent({
     detailPrefetchRequestsRef.current.clear()
     detailPrefetchQueueRef.current.clear()
     detailCacheRef.current.clear()
-  }, [])
+    clearCardCoverListPreviews()
+  }, [clearCardCoverListPreviews])
 
   const authorizationToken = useCallback(
     (id: string): string | undefined => {
@@ -1077,75 +1085,84 @@ function VaultShellContent({
     [authorizationToken, withReprompt]
   )
 
-  const prefetchLoginDetail = useCallback((id: string): void => {
-    const summary = itemsRef.current.find((item) => item.id === id)
-    // Never speculatively cross the authorization boundary or hydrate inactive items.
-    if (
-      !summary ||
-      isSharedLoginSummary(summary) ||
-      summary.reprompt !== 0 ||
-      summary.deletedAt !== null ||
-      summary.archivedAt !== null ||
-      detailCacheRef.current.has(id) ||
-      detailRequestsRef.current.has(id) ||
-      detailPrefetchRequestsRef.current.has(id)
-    ) {
-      return
-    }
-
-    detailPrefetchQueueRef.current.add(id)
-    if (detailPrefetchScheduledRef.current) return
-    detailPrefetchScheduledRef.current = true
-    queueMicrotask(() => {
-      detailPrefetchScheduledRef.current = false
-      const queuedIds = [...detailPrefetchQueueRef.current]
-      detailPrefetchQueueRef.current.clear()
-      const eligibleIds = queuedIds.filter((queuedId) => {
-        const queuedSummary = itemsRef.current.find((item) => item.id === queuedId)
-        return Boolean(
-          queuedSummary &&
-          queuedSummary.reprompt === 0 &&
-          queuedSummary.deletedAt === null &&
-          queuedSummary.archivedAt === null &&
-          !detailCacheRef.current.has(queuedId) &&
-          !detailRequestsRef.current.has(queuedId) &&
-          !detailPrefetchRequestsRef.current.has(queuedId)
-        )
-      })
-
-      for (let offset = 0; offset < eligibleIds.length; offset += MAX_LOGIN_PREFETCH_IDS) {
-        const ids = eligibleIds.slice(offset, offset + MAX_LOGIN_PREFETCH_IDS)
-        const requestGeneration = detailCacheGenerationRef.current
-        const batchPromise = window.bearwarden.logins.prefetch({ ids })
-        for (const queuedId of ids) {
-          const itemPromise = batchPromise
-            .then((logins) => {
-              const login = logins.find((candidate) => candidate.id === queuedId)
-              if (
-                !login ||
-                !isCurrentPrefetchedDetailResponse({
-                  requestGeneration,
-                  currentGeneration: detailCacheGenerationRef.current,
-                  response: login,
-                  summary: itemsRef.current.find((item) => item.id === queuedId)
-                })
-              ) {
-                return undefined
-              }
-              cacheLoginDetail(detailCacheRef.current, login)
-              return login
-            })
-            .catch(() => undefined)
-            .finally(() => {
-              if (detailPrefetchRequestsRef.current.get(queuedId) === itemPromise) {
-                detailPrefetchRequestsRef.current.delete(queuedId)
-              }
-            })
-          detailPrefetchRequestsRef.current.set(queuedId, itemPromise)
-        }
+  const prefetchLoginDetail = useCallback(
+    (id: string): void => {
+      const summary = itemsRef.current.find((item) => item.id === id)
+      const cached = detailCacheRef.current.get(id)
+      if (cached) {
+        prefetchCardCoverPreview(cached)
+        return
       }
-    })
-  }, [])
+      // Never speculatively cross the authorization boundary or hydrate inactive items.
+      if (
+        !summary ||
+        isSharedLoginSummary(summary) ||
+        summary.reprompt !== 0 ||
+        summary.deletedAt !== null ||
+        summary.archivedAt !== null ||
+        detailCacheRef.current.has(id) ||
+        detailRequestsRef.current.has(id) ||
+        detailPrefetchRequestsRef.current.has(id)
+      ) {
+        return
+      }
+
+      detailPrefetchQueueRef.current.add(id)
+      if (detailPrefetchScheduledRef.current) return
+      detailPrefetchScheduledRef.current = true
+      queueMicrotask(() => {
+        detailPrefetchScheduledRef.current = false
+        const queuedIds = [...detailPrefetchQueueRef.current]
+        detailPrefetchQueueRef.current.clear()
+        const eligibleIds = queuedIds.filter((queuedId) => {
+          const queuedSummary = itemsRef.current.find((item) => item.id === queuedId)
+          return Boolean(
+            queuedSummary &&
+            queuedSummary.reprompt === 0 &&
+            queuedSummary.deletedAt === null &&
+            queuedSummary.archivedAt === null &&
+            !detailCacheRef.current.has(queuedId) &&
+            !detailRequestsRef.current.has(queuedId) &&
+            !detailPrefetchRequestsRef.current.has(queuedId)
+          )
+        })
+
+        for (let offset = 0; offset < eligibleIds.length; offset += MAX_LOGIN_PREFETCH_IDS) {
+          const ids = eligibleIds.slice(offset, offset + MAX_LOGIN_PREFETCH_IDS)
+          const requestGeneration = detailCacheGenerationRef.current
+          const batchPromise = window.bearwarden.logins.prefetch({ ids })
+          for (const queuedId of ids) {
+            const itemPromise = batchPromise
+              .then((logins) => {
+                const login = logins.find((candidate) => candidate.id === queuedId)
+                if (
+                  !login ||
+                  !isCurrentPrefetchedDetailResponse({
+                    requestGeneration,
+                    currentGeneration: detailCacheGenerationRef.current,
+                    response: login,
+                    summary: itemsRef.current.find((item) => item.id === queuedId)
+                  })
+                ) {
+                  return undefined
+                }
+                cacheLoginDetail(detailCacheRef.current, login)
+                prefetchCardCoverPreview(login)
+                return login
+              })
+              .catch(() => undefined)
+              .finally(() => {
+                if (detailPrefetchRequestsRef.current.get(queuedId) === itemPromise) {
+                  detailPrefetchRequestsRef.current.delete(queuedId)
+                }
+              })
+            detailPrefetchRequestsRef.current.set(queuedId, itemPromise)
+          }
+        }
+      })
+    },
+    [prefetchCardCoverPreview]
+  )
 
   const activateLogin = useCallback(
     (id: string | null): void => {
@@ -1281,15 +1298,30 @@ function VaultShellContent({
     (
       itemId: string,
       update: (attachments: VaultAttachmentView[]) => VaultAttachmentView[]
-    ): void => {
-      if (selectedIdRef.current !== itemId) return
+    ): LoginView | null => {
+      const cached = detailCacheRef.current.get(itemId)
+      const updatedAttachments = cached ? update(cached.attachments) : null
+      const updatedCached =
+        cached && updatedAttachments
+          ? {
+              ...cached,
+              attachments: updatedAttachments,
+              attachmentCount: updatedAttachments.length
+            }
+          : null
+      if (updatedCached) {
+        cacheLoginDetail(detailCacheRef.current, updatedCached)
+      }
+      if (selectedIdRef.current !== itemId) return updatedCached
       setSelectedLogin((current) => {
         if (!current || current.id !== itemId) return current
+        if (updatedCached) return updatedCached
         const attachments = update(current.attachments)
         const next = { ...current, attachments, attachmentCount: attachments.length }
         cacheLoginDetail(detailCacheRef.current, next)
         return next
       })
+      return updatedCached
     },
     []
   )
@@ -3330,13 +3362,18 @@ function VaultShellContent({
         })
       )
       if (result.attachment) {
-        updateSelectedAttachments(itemId, (attachments) =>
+        const updatedLogin = updateSelectedAttachments(itemId, (attachments) =>
           attachments.some((entry) => entry.id === result.attachment!.id)
             ? attachments.map((entry) =>
                 entry.id === result.attachment!.id ? result.attachment! : entry
               )
             : [...attachments, result.attachment!]
         )
+        if (isCardCoverAttachment(result.attachment.fileName)) {
+          setCardCoverPreview(null)
+          invalidateCardCoverListPreview(itemId)
+          if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
+        }
         if (selectedIdRef.current === itemId) {
           announce(t`Uploaded “${result.attachment.fileName}”.`)
         }
@@ -3371,7 +3408,7 @@ function VaultShellContent({
         })
       )
       if (!result.attachment) return null
-      updateSelectedAttachments(itemId, (attachments) =>
+      const updatedLogin = updateSelectedAttachments(itemId, (attachments) =>
         attachments.some((entry) => entry.id === result.attachment!.id)
           ? attachments.map((entry) =>
               entry.id === result.attachment!.id ? result.attachment! : entry
@@ -3379,6 +3416,8 @@ function VaultShellContent({
           : [...attachments, result.attachment!]
       )
       setCardCoverPreview(null)
+      invalidateCardCoverListPreview(itemId)
+      if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
       await refreshItems().catch(() =>
         announceError(
           t`The card face was uploaded, but the list could not be refreshed. Sync again later.`
@@ -3409,9 +3448,14 @@ function VaultShellContent({
           ...(tokenFor(target.itemId) ? { authorizationToken: tokenFor(target.itemId) } : {})
         })
       )
-      updateSelectedAttachments(target.itemId, (attachments) =>
+      const updatedLogin = updateSelectedAttachments(target.itemId, (attachments) =>
         attachments.filter((entry) => entry.id !== result.attachmentId)
       )
+      if (isCardCoverAttachment(target.fileName)) {
+        setCardCoverPreview(null)
+        invalidateCardCoverListPreview(target.itemId)
+        if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
+      }
       if (selectedIdRef.current === target.itemId) announce(t`Deleted “${target.fileName}”.`)
       await refreshItems().catch(() =>
         announceError(
@@ -3445,13 +3489,18 @@ function VaultShellContent({
           ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
         })
       )
-      updateSelectedAttachments(itemId, (attachments) => {
+      const updatedLogin = updateSelectedAttachments(itemId, (attachments) => {
         const replacementIndex = attachments.findIndex((entry) => entry.id === attachmentId)
         if (replacementIndex < 0) return [...attachments, result.attachment]
         return attachments.map((entry, index) =>
           index === replacementIndex ? result.attachment : entry
         )
       })
+      if (isCardCoverAttachment(attachment.fileName)) {
+        setCardCoverPreview(null)
+        invalidateCardCoverListPreview(itemId)
+        if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
+      }
       if (selectedIdRef.current === itemId) announce(t`Repaired “${attachment.fileName}”.`)
       await refreshItems().catch(() =>
         announceError(
@@ -3890,6 +3939,7 @@ function VaultShellContent({
                     scopeTitle,
                     itemCount: scopedItems.length,
                     groups: itemGroups,
+                    cardCoverPreviews: cardCoverListPreviews,
                     sortOptions: sortItemsOptions,
                     showWebsiteIcons: settings?.showWebsiteIcons ?? false,
                     totpCodes: totpListCodes,

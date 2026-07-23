@@ -40,6 +40,7 @@ function RowIconButton({ label, children, ...props }: RowIconButtonProps): React
 
 interface ItemRowProps {
   item: LoginSummary
+  cardCoverImageSrc?: string
   selected: boolean
   onSelect: (id: string, modifiers: ItemSelectionModifiers) => void
   onPrefetch?: (id: string) => void
@@ -66,6 +67,7 @@ const itemTypeMeta = {
 
 export const ItemRow = memo(function ItemRow({
   item,
+  cardCoverImageSrc,
   selected,
   onSelect,
   onPrefetch,
@@ -186,7 +188,11 @@ export const ItemRow = memo(function ItemRow({
           aria-hidden="true"
         >
           {item.type === 'card' ? (
-            <PaymentCardBrandMark brand={normalizeBitwardenCardBrand(item.cardBrand)} compact />
+            <PaymentCardBrandMark
+              brand={normalizeBitwardenCardBrand(item.cardBrand)}
+              imageSrc={cardCoverImageSrc}
+              compact
+            />
           ) : item.type === 'login' && !readOnly ? (
             <WebsiteIcon id={item.id} uri={item.uri} enabled={showWebsiteIcons} />
           ) : (

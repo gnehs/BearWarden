@@ -19,6 +19,7 @@ export interface VirtualizedItemGroup {
 
 interface VirtualizedItemListProps {
   groups: readonly VirtualizedItemGroup[]
+  cardCoverPreviews: ReadonlyMap<string, string>
   scopeTitle: string
   activeId: string | null
   selectedIds: ReadonlySet<string>
@@ -49,6 +50,7 @@ type VirtualizedRow =
 
 export function VirtualizedItemList({
   groups,
+  cardCoverPreviews,
   scopeTitle,
   activeId,
   selectedIds,
@@ -252,6 +254,7 @@ export function VirtualizedItemList({
             >
               <ItemRow
                 item={row.item}
+                cardCoverImageSrc={cardCoverPreviews.get(row.item.id)}
                 selected={selectedIds.has(row.item.id)}
                 onSelect={onSelect}
                 onPrefetch={onPrefetch}
