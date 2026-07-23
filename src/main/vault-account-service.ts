@@ -74,6 +74,7 @@ function initialSyncData(serverUrl: string, email: string): PersistedSyncData {
       profileId: null,
       securityStamp: null
     },
+    unlockMaterial: null,
     lastSyncAt: null,
     folderMappings: [],
     loginMappings: [],
@@ -1719,6 +1720,18 @@ export class VaultAccountService extends VaultServiceBase {
         )
         const next = cloneData(current)
         sync.state = client.exportState()
+        const unlockMaterial = client.pinUnlockMaterial?.()
+        try {
+          sync.unlockMaterial = unlockMaterial
+            ? {
+                accountKey: unlockMaterial.accountKey.toString('base64'),
+                wrappedKeyFingerprint: unlockMaterial.wrappedKeyFingerprint.toString('base64')
+              }
+            : null
+        } finally {
+          unlockMaterial?.accountKey.fill(0)
+          unlockMaterial?.wrappedKeyFingerprint.fill(0)
+        }
         next.sync = sync
         next.updatedAt = this.nowIso()
         await this.persist(next)

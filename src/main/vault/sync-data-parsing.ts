@@ -19,9 +19,55 @@ import type {
   PendingLoginMutation,
   PendingPersonalVaultPurge,
   PersistedSyncData,
+  PersistedSyncUnlockMaterial,
   SyncEntityMapping,
   SyncTombstone
 } from './types'
+
+const MIN_SYNC_ACCOUNT_KEY_BYTES = 64
+const MAX_SYNC_ACCOUNT_KEY_BYTES = 4_096
+const SYNC_WRAPPED_KEY_FINGERPRINT_BYTES = 32
+
+function parseCanonicalBase64(value: unknown, minBytes: number, maxBytes: number): Buffer {
+  if (typeof value !== 'string') throw new VaultError('CORRUPT_VAULT')
+  const decoded = Buffer.from(value, 'base64')
+  if (
+    decoded.length < minBytes ||
+    decoded.length > maxBytes ||
+    decoded.toString('base64') !== value
+  ) {
+    decoded.fill(0)
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  return decoded
+}
+
+function parseSyncUnlockMaterial(value: unknown): PersistedSyncUnlockMaterial | null {
+  if (value === undefined || value === null) return null
+  if (!isRecord(value) || Reflect.ownKeys(value).length !== 2) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  const accountKey = parseCanonicalBase64(
+    value.accountKey,
+    MIN_SYNC_ACCOUNT_KEY_BYTES,
+    MAX_SYNC_ACCOUNT_KEY_BYTES
+  )
+  let fingerprint: Buffer | null = null
+  try {
+    fingerprint = parseCanonicalBase64(
+      value.wrappedKeyFingerprint,
+      SYNC_WRAPPED_KEY_FINGERPRINT_BYTES,
+      SYNC_WRAPPED_KEY_FINGERPRINT_BYTES
+    )
+    return {
+      accountKey: accountKey.toString('base64'),
+      wrappedKeyFingerprint: fingerprint.toString('base64')
+    }
+  } finally {
+    accountKey.fill(0)
+    fingerprint?.fill(0)
+  }
+}
 
 export function parseSyncMappings(
   value: unknown,
@@ -337,6 +383,7 @@ export function parseSyncData(
           policySet: { source: 'none', policies: [] }
         }
       : parseDirectState(value.state),
+    unlockMaterial: isCliData ? null : parseSyncUnlockMaterial(value.unlockMaterial),
     lastSyncAt: value.lastSyncAt,
     folderMappings,
     loginMappings,

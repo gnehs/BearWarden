@@ -743,6 +743,7 @@ export function cloneData(data: VaultData): VaultData {
     sync: data.sync
       ? {
           ...data.sync,
+          unlockMaterial: data.sync.unlockMaterial ? { ...data.sync.unlockMaterial } : null,
           state: {
             ...data.sync.state,
             session: data.sync.state.session ? { ...data.sync.state.session } : null,

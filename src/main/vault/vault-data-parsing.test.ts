@@ -132,3 +132,40 @@ describe('stored Bitwarden policy parsing', () => {
     )
   })
 })
+
+describe('stored sync unlock material parsing', () => {
+  it('migrates missing material and accepts bounded canonical account keys', () => {
+    expect(parseVaultData(vaultData({})).sync?.unlockMaterial).toBeNull()
+
+    const input = vaultData({})
+    const sync = input.sync as Record<string, unknown>
+    sync.unlockMaterial = {
+      accountKey: Buffer.alloc(64, 7).toString('base64'),
+      wrappedKeyFingerprint: Buffer.alloc(32, 9).toString('base64')
+    }
+    expect(parseVaultData(input).sync?.unlockMaterial).toEqual(sync.unlockMaterial)
+  })
+
+  it('rejects malformed, oversized, and non-canonical unlock material', () => {
+    for (const unlockMaterial of [
+      { accountKey: 'not-base64', wrappedKeyFingerprint: Buffer.alloc(32).toString('base64') },
+      {
+        accountKey: Buffer.alloc(4_097).toString('base64'),
+        wrappedKeyFingerprint: Buffer.alloc(32).toString('base64')
+      },
+      {
+        accountKey: Buffer.alloc(64).toString('base64'),
+        wrappedKeyFingerprint: Buffer.alloc(31).toString('base64')
+      },
+      {
+        accountKey: Buffer.alloc(64).toString('base64'),
+        wrappedKeyFingerprint: Buffer.alloc(32).toString('base64'),
+        extra: 'rejected'
+      }
+    ]) {
+      const input = vaultData({})
+      ;(input.sync as Record<string, unknown>).unlockMaterial = unlockMaterial
+      expect(() => parseVaultData(input)).toThrowError(VaultError)
+    }
+  })
+})

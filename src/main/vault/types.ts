@@ -104,6 +104,8 @@ export interface PersistedSyncData {
   serverUrl: string
   email: string
   state: BitwardenDirectState
+  /** Account key material protected at rest by the encrypted local vault. Never expose over IPC. */
+  unlockMaterial: PersistedSyncUnlockMaterial | null
   lastSyncAt: string | null
   folderMappings: SyncEntityMapping[]
   loginMappings: SyncEntityMapping[]
@@ -113,6 +115,11 @@ export interface PersistedSyncData {
   pendingLoginImport: PendingLoginImport | null
   pendingPersonalVaultPurge: PendingPersonalVaultPurge | null
   domainSettings: BitwardenEquivalentDomainSettings | null
+}
+
+export interface PersistedSyncUnlockMaterial {
+  accountKey: string
+  wrappedKeyFingerprint: string
 }
 
 export interface VaultData {

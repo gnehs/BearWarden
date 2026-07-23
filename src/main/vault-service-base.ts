@@ -837,7 +837,10 @@ export class VaultServiceBase {
         unlocked = null
         await this.recoverNativeAttachmentRestoreAfterUnlock(requiresMigration)
         if (material.sync && this.data.sync) {
-          this.getOrCreateSyncClient(this.data.sync).restorePinUnlockMaterial?.(material.sync)
+          this.syncClient ??= this.createSyncClient(this.data.sync)
+          this.syncClient.restorePinUnlockMaterial?.(material.sync)
+        } else if (this.data.sync) {
+          this.getOrCreateSyncClient(this.data.sync)
         }
         this.fastReadsBlocked = false
         return { state: 'unlocked' }
@@ -1161,6 +1164,7 @@ export class VaultServiceBase {
             profileId: null,
             securityStamp: null
           },
+          unlockMaterial: null,
           lastSyncAt: null,
           folderMappings: [],
           loginMappings: [],
@@ -1190,7 +1194,21 @@ export class VaultServiceBase {
 
   protected getOrCreateSyncClient(sync: PersistedSyncData): BitwardenSyncClient {
     if (this.sessionDeauthorizationInProgress) throw new VaultError('SYNC_FAILED')
-    this.syncClient ??= this.createSyncClient(sync)
+    if (!this.syncClient) {
+      const client = this.createSyncClient(sync)
+      const stored = sync.unlockMaterial
+      if (stored && client.restorePinUnlockMaterial) {
+        const accountKey = Buffer.from(stored.accountKey, 'base64')
+        const wrappedKeyFingerprint = Buffer.from(stored.wrappedKeyFingerprint, 'base64')
+        try {
+          client.restorePinUnlockMaterial({ accountKey, wrappedKeyFingerprint })
+        } finally {
+          accountKey.fill(0)
+          wrappedKeyFingerprint.fill(0)
+        }
+      }
+      this.syncClient = client
+    }
     return this.syncClient
   }
 
@@ -1874,10 +1892,25 @@ export class VaultServiceBase {
     const current = this.requireData()
     if (!client || !current.sync) return
     const state = client.exportState()
-    if (JSON.stringify(state) === JSON.stringify(current.sync.state)) return
+    const material = client.pinUnlockMaterial?.() ?? null
+    const unlockMaterial = material
+      ? {
+          accountKey: material.accountKey.toString('base64'),
+          wrappedKeyFingerprint: material.wrappedKeyFingerprint.toString('base64')
+        }
+      : null
+    material?.accountKey.fill(0)
+    material?.wrappedKeyFingerprint.fill(0)
+    if (
+      JSON.stringify(state) === JSON.stringify(current.sync.state) &&
+      JSON.stringify(unlockMaterial) === JSON.stringify(current.sync.unlockMaterial)
+    ) {
+      return
+    }
     const next = cloneData(current)
     if (!next.sync) return
     next.sync.state = state
+    next.sync.unlockMaterial = unlockMaterial
     next.updatedAt = this.nowIso()
     await this.persist(next)
     this.data = next

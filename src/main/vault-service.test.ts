@@ -31,6 +31,7 @@ import { VaultAttachmentFileService } from './vault-attachment-files'
 import { createPasskeyCredential } from './passkey-authenticator'
 import { hashPasswordForPwnedLookup } from './pwned-passwords'
 import { buildBitwardenJson } from './vault-portability-codec'
+import type { PersistedSyncData } from './vault/types'
 import { parseTwoFactorDirectoryTotpData } from './inactive-two-factor'
 import type { AccountWebAuthnAssertion, AccountWebAuthnChallenge } from './account-webauthn-codec'
 import type {
@@ -1397,6 +1398,76 @@ describe('VaultService encrypted local data', () => {
     await expect(service.getAccountSecurityProfile()).resolves.toMatchObject({ name: 'Sync User' })
     expect(clientCount).toBe(2)
     expect(restorePinUnlockMaterial).toHaveBeenCalledOnce()
+  })
+
+  it('restores persisted sync account keys when local and remote passwords differ', async () => {
+    const accountKey = Buffer.alloc(64, 7)
+    const wrappedKeyFingerprint = Buffer.alloc(32, 9)
+    const restoreSyncMaterial = vi.fn()
+    const remotePasswordUnlock = vi.fn()
+    const createSyncClient = (sync: PersistedSyncData): BitwardenSyncClient => {
+      const client = createSyncFake(sync.state)
+      let unlocked = false
+      return {
+        ...client,
+        status: async () => (unlocked ? { status: 'unlocked' as const } : await client.status()),
+        login: async (request) => {
+          await client.login(request)
+          unlocked = true
+        },
+        unlock: async (request) => {
+          remotePasswordUnlock(request.password)
+          await client.unlock(request)
+          unlocked = true
+        },
+        pinUnlockMaterial: () =>
+          unlocked
+            ? {
+                accountKey: Buffer.from(accountKey),
+                wrappedKeyFingerprint: Buffer.from(wrappedKeyFingerprint)
+              }
+            : null,
+        restorePinUnlockMaterial: (material) => {
+          expect(material.accountKey).toEqual(accountKey)
+          expect(material.wrappedKeyFingerprint).toEqual(wrappedKeyFingerprint)
+          unlocked = true
+          restoreSyncMaterial()
+        },
+        lock: async () => {
+          unlocked = false
+          await client.lock()
+        }
+      }
+    }
+    const { filePath, service } = await createHarness({ createSyncClient })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'different remote password'
+    })
+    const encryptedVault = await readFile(filePath, 'utf8')
+    expect(encryptedVault).not.toContain('different remote password')
+    expect(encryptedVault).not.toContain(accountKey.toString('base64'))
+
+    await service.lock()
+    await service.unlock(MASTER_PASSWORD)
+    await expect(service.unlockSyncWithLocalPassword(MASTER_PASSWORD)).resolves.toMatchObject({
+      state: 'ready'
+    })
+    expect(remotePasswordUnlock).not.toHaveBeenCalled()
+    expect(restoreSyncMaterial).toHaveBeenCalledOnce()
+
+    service.dispose()
+    const reopened = new VaultService(
+      new EncryptedVaultStore<unknown>(filePath),
+      { copyText: vi.fn(), openExternal: vi.fn() },
+      { createSyncClient }
+    )
+    await reopened.unlock(MASTER_PASSWORD)
+    await expect(reopened.syncStatus()).resolves.toMatchObject({ state: 'ready' })
+    expect(remotePasswordUnlock).not.toHaveBeenCalled()
+    expect(restoreSyncMaterial).toHaveBeenCalledTimes(2)
   })
 
   it('requires a correct master-password proof and destroys PIN capability after five failures', async () => {
