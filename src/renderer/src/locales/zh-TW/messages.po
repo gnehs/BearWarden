@@ -4323,6 +4323,10 @@ msgstr "沒有相符的保管庫項目"
 msgid "No organizations have been synced"
 msgstr "尚未同步任何組織"
 
+#: src/renderer/src/components/LoginEditor.tsx
+msgid "No Collections are available for this organization."
+msgstr "這個組織目前沒有可用的 Collection。"
+
 #: src/renderer/src/components/Dialogs.tsx:170
 #: src/renderer/src/components/Dialogs.tsx:170
 msgid "No parent folder"

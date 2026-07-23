@@ -2245,11 +2245,11 @@ describe('VaultService encrypted local data', () => {
             organizationId,
             name: 'Shared Collection',
             externalId: null,
-            readOnly: false,
+            readOnly: true,
             hidePasswords: false,
             manage: true,
             type: 0,
-            assigned: true
+            assigned: false
           }
         ]
         fake.listOrganizationCiphers = async () => []

@@ -186,6 +186,18 @@ describe('LoginEditor design language', () => {
     expect(markup).not.toContain('id="editor-collections"')
   })
 
+  it('新增畫面的組織歸屬選項不因沒有可寫集合而停用', () => {
+    const markup = renderLoginEditor(
+      undefined,
+      undefined,
+      [organizationFixture],
+      [{ ...collectionFixture, readOnly: true }]
+    )
+
+    expect(markup).toContain('id="editor-owner"')
+    expect(markup).not.toContain('data-disabled')
+  })
+
   it('新增模式不使用分頁，並同時呈現所有編輯器區段', () => {
     const markup = renderLoginEditor()
 

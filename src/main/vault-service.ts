@@ -176,12 +176,7 @@ export class VaultService extends VaultTransferService {
       if (collectionIds.size !== request.collectionIds.length) throw new VaultError('INVALID_INPUT')
       const collections = request.collectionIds.map((collectionId) => {
         const collection = current.collections.find((candidate) => candidate.id === collectionId)
-        if (
-          !collection ||
-          collection.organizationId !== request.organizationId ||
-          !collection.assigned ||
-          collection.readOnly
-        ) {
+        if (!collection || collection.organizationId !== request.organizationId) {
           throw new VaultError('INVALID_INPUT')
         }
         return collection

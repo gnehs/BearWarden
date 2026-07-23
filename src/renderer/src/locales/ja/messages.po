@@ -4323,6 +4323,10 @@ msgstr "一致する保管庫アイテムはありません"
 msgid "No organizations have been synced"
 msgstr "同期された組織はありません"
 
+#: src/renderer/src/components/LoginEditor.tsx
+msgid "No Collections are available for this organization."
+msgstr "この組織で利用可能な Collection はありません。"
+
 #: src/renderer/src/components/Dialogs.tsx:170
 #: src/renderer/src/components/Dialogs.tsx:170
 msgid "No parent folder"

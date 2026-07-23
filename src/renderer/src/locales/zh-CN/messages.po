@@ -4323,6 +4323,10 @@ msgstr "没有匹配的密码库项目"
 msgid "No organizations have been synced"
 msgstr "尚未同步任何组织"
 
+#: src/renderer/src/components/LoginEditor.tsx
+msgid "No Collections are available for this organization."
+msgstr "这个组织目前没有可用的 Collection。"
+
 #: src/renderer/src/components/Dialogs.tsx:170
 #: src/renderer/src/components/Dialogs.tsx:170
 msgid "No parent folder"

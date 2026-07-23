@@ -879,10 +879,7 @@ function LoginEditor({
         ? current.collectionIds.filter((collectionId) =>
             collections.some(
               (collection) =>
-                collection.id === collectionId &&
-                collection.organizationId === ownerOrganizationId &&
-                collection.assigned &&
-                !collection.readOnly
+                collection.id === collectionId && collection.organizationId === ownerOrganizationId
             )
           )
         : []
@@ -1549,16 +1546,8 @@ function LoginEditor({
     ...folders.map((folder) => ({ value: folder.id, label: folder.name }))
   ]
   const showOwnerSelector = !login && !sharedContext && organizations.length > 0
-  const writableCollections = collections.filter(
-    (collection) =>
-      collection.assigned &&
-      !collection.readOnly &&
-      collection.organizationId === draft.ownerOrganizationId
-  )
-  const writableOrganizationIds = new Set(
-    collections
-      .filter((collection) => collection.assigned && !collection.readOnly)
-      .map((collection) => collection.organizationId)
+  const organizationCollections = collections.filter(
+    (collection) => collection.organizationId === draft.ownerOrganizationId
   )
   const ownerSelectItems = [
     { value: 'personal', label: t`Personal vault` },
@@ -2382,11 +2371,7 @@ function LoginEditor({
                                 <Trans>Personal vault</Trans>
                               </SelectItem>
                               {organizations.map((organization) => (
-                                <SelectItem
-                                  key={organization.id}
-                                  value={organization.id}
-                                  disabled={!writableOrganizationIds.has(organization.id)}
-                                >
+                                <SelectItem key={organization.id} value={organization.id}>
                                   {organization.name}
                                 </SelectItem>
                               ))}
@@ -2408,21 +2393,27 @@ function LoginEditor({
                           aria-describedby={errorKind === 'collection' ? 'editor-error' : undefined}
                           className="bg-muted grid gap-2 rounded-lg px-3 py-2"
                         >
-                          {writableCollections.map((collection) => (
-                            <label
-                              key={collection.id}
-                              className="flex min-w-0 items-center gap-2 text-sm"
-                            >
-                              <Checkbox
-                                checked={draft.collectionIds.includes(collection.id)}
-                                disabled={busy}
-                                onCheckedChange={(checked) =>
-                                  toggleCollection(collection.id, checked === true)
-                                }
-                              />
-                              <span className="truncate">{collection.name}</span>
-                            </label>
-                          ))}
+                          {organizationCollections.length > 0 ? (
+                            organizationCollections.map((collection) => (
+                              <label
+                                key={collection.id}
+                                className="flex min-w-0 items-center gap-2 text-sm"
+                              >
+                                <Checkbox
+                                  checked={draft.collectionIds.includes(collection.id)}
+                                  disabled={busy}
+                                  onCheckedChange={(checked) =>
+                                    toggleCollection(collection.id, checked === true)
+                                  }
+                                />
+                                <span className="truncate">{collection.name}</span>
+                              </label>
+                            ))
+                          ) : (
+                            <p className="text-muted-foreground text-sm">
+                              <Trans>No Collections are available for this organization.</Trans>
+                            </p>
+                          )}
                         </div>
                         {errorKind === 'collection' && <FieldError>{error}</FieldError>}
                       </Field>
