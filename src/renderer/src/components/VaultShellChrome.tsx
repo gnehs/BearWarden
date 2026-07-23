@@ -263,6 +263,7 @@ export function VaultSearchDialog({
       onOpenChange={actions.onOpenChange}
       title={t`Search vault`}
       description={t`Search names, summaries, websites, and content. Start with > for advanced field-specific search.`}
+      className="top-4 translate-y-0 sm:top-8"
     >
       <Command
         className="max-h-[min(480px,70vh)] [&_[data-slot=command-input-wrapper]]:px-2 [&_[data-slot=command-input-wrapper]]:pt-2 [&_[data-slot=command-input-wrapper]]:pb-0"

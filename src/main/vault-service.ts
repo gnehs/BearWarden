@@ -21,6 +21,8 @@ import type {
   LoginSummary,
   LoginUpdateRequest,
   LoginView,
+  SharedLoginUpdateRequest,
+  SharedLoginView,
   VaultPasswordHistoryEntry,
   VaultReprompt,
   VaultSecretField,
@@ -64,7 +66,7 @@ import {
   normalizeNullableString
 } from './vault/parse-primitives'
 import { cloneData } from './vault/vault-data-parsing'
-import { toSummary, toView, compareText } from './vault/views'
+import { toSharedView, toSummary, toView, compareText } from './vault/views'
 import {
   recordSyncDeletion,
   assertNoPendingLoginImport,
@@ -106,6 +108,7 @@ import { parseSupportedSshAgentPublicKeyBlob, sshAgentFingerprint } from './vaul
 import { clonePasswordHistory } from './vault/password-history'
 import type {
   StoredLogin,
+  StoredSharedLogin,
   SshAgentVaultIdentity,
   SshAgentVaultSignRequest,
   SshAgentVaultSignResult,
@@ -158,6 +161,240 @@ export type {
 
 /** Stable public entry point for item, autofill, passkey, SSH, and generator operations. */
 export class VaultService extends VaultTransferService {
+  private findEditableSharedLogin(id: string): StoredSharedLogin {
+    assertUuid(id)
+    const login = this.requireData().sharedLogins.find((candidate) => candidate.id === id)
+    if (
+      !login ||
+      login.deletedAt !== null ||
+      login.archivedAt !== null ||
+      !login.edit ||
+      login.reprompt !== 0
+    ) {
+      throw new VaultError('NOT_FOUND')
+    }
+    return login
+  }
+
+  private findReadableSharedLogin(id: string): StoredSharedLogin {
+    assertUuid(id)
+    const login = this.requireData().sharedLogins.find((candidate) => candidate.id === id)
+    if (
+      !login ||
+      login.deletedAt !== null ||
+      login.archivedAt !== null ||
+      !login.viewPassword ||
+      login.reprompt !== 0
+    ) {
+      throw new VaultError('NOT_FOUND')
+    }
+    return login
+  }
+
+  revealSharedSecret(request: ItemFieldRequest): Promise<string> {
+    return this.exclusive(async () => {
+      const login = this.findReadableSharedLogin(request.id)
+      assertSecretField(login.type, request.field as VaultSecretField)
+      return login[request.field] as string
+    })
+  }
+
+  revealSharedEditorSecrets(request: EditorSecretsRequest): Promise<EditorSecretsView> {
+    return this.exclusive(async () => {
+      const login = this.findEditableSharedLogin(request.id)
+      if (request.expectedUpdatedAt !== login.updatedAt) throw new VaultError('INVALID_INPUT')
+      if (!login.viewPassword) return { fields: {}, customFields: [] }
+
+      const fields: EditorSecretsView['fields'] = {}
+      for (const field of EDITOR_SECRET_FIELDS_BY_TYPE[login.type]) {
+        Object.assign(fields, { [field]: login[field] })
+      }
+      const customFields = login.customFields.flatMap((field, index) =>
+        field.type === 'hidden'
+          ? [
+              {
+                source: {
+                  index,
+                  name: field.name,
+                  type: field.type,
+                  linkedId: field.linkedId
+                },
+                value: field.value
+              }
+            ]
+          : []
+      )
+      return { fields, customFields }
+    })
+  }
+
+  updateSharedLogin(request: SharedLoginUpdateRequest): Promise<SharedLoginView> {
+    return this.exclusive(async () => {
+      const current = this.requireData()
+      const login = this.findEditableSharedLogin(request.id)
+      if (
+        request.expectedUpdatedAt !== undefined &&
+        (typeof request.expectedUpdatedAt !== 'string' ||
+          request.expectedUpdatedAt !== login.updatedAt)
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      if (!current.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+      const client = this.getOrCreateSyncClient(current.sync)
+      if (!client.editOrganizationCipher) throw new VaultError('SYNC_FAILED')
+
+      const desired = structuredClone(login)
+      const previousPassword = desired.password
+      const previousHiddenFields = desired.customFields.filter((field) => field.type === 'hidden')
+      const nextCustomFields =
+        request.customFields === undefined
+          ? cloneCustomFields(desired.customFields)
+          : normalizeCustomFields(desired.customFields, request.customFields, desired.type)
+      if (!login.viewPassword) {
+        const secretFields = EDITOR_SECRET_FIELDS_BY_TYPE[login.type]
+        if (secretFields.some((field) => request[field] !== undefined)) {
+          throw new VaultError('INVALID_INPUT')
+        }
+        const nextHiddenFields = nextCustomFields.filter((field) => field.type === 'hidden')
+        if (
+          nextHiddenFields.length !== previousHiddenFields.length ||
+          nextHiddenFields.some(
+            (field, index) =>
+              field.name !== previousHiddenFields[index]?.name ||
+              field.value !== previousHiddenFields[index]?.value ||
+              field.linkedId !== previousHiddenFields[index]?.linkedId
+          )
+        ) {
+          throw new VaultError('INVALID_INPUT')
+        }
+      }
+
+      if (request.name !== undefined)
+        desired.name = normalizeRequiredString(request.name, MAX_NAME_LENGTH)
+      applyItemFields(desired, request, desired.type)
+      desired.uris = updateRequestUris(request, desired)
+      desired.uri = uriAlias(desired.uris)
+      if (request.notes !== undefined) {
+        desired.notes = normalizeNullableString(request.notes, MAX_NOTES_LENGTH)
+      }
+      if (request.customFields !== undefined) desired.customFields = nextCustomFields
+      if (
+        desired.type === 'login' &&
+        request.password !== undefined &&
+        previousPassword.length > 0 &&
+        desired.password !== previousPassword
+      ) {
+        desired.passwordHistory = [
+          { password: previousPassword, lastUsedDate: this.nowIso() },
+          ...desired.passwordHistory
+        ].slice(0, MAX_PASSWORD_HISTORY)
+        desired.passwordRevisionDate = this.nowIso()
+      }
+
+      const generation = this.generation
+      const abort = this.startSyncOperation()
+      let remote
+      try {
+        remote = await client.editOrganizationCipher(
+          login.id,
+          this.remoteDraft(desired, login.folderId),
+          abort.signal
+        )
+      } catch (error) {
+        if (abort.signal.aborted || generation !== this.generation || this.syncClient !== client) {
+          throw new VaultError('LOCKED')
+        }
+        throw this.mapSyncError(error)
+      } finally {
+        this.finishSyncOperation(abort)
+      }
+      if (generation !== this.generation || this.syncClient !== client) {
+        throw new VaultError('LOCKED')
+      }
+      const updated = this.sharedLoginFromRemote(remote)
+      updated.usageCount = login.usageCount
+      updated.lastUsedAt = login.lastUsedAt
+      const next = cloneData(current)
+      const index = next.sharedLogins.findIndex((candidate) => candidate.id === login.id)
+      if (index < 0) throw new VaultError('NOT_FOUND')
+      next.sharedLogins[index] = updated
+      next.updatedAt = this.nowIso()
+      await this.persist(next)
+      if (generation !== this.generation) throw new VaultError('LOCKED')
+      this.data = next
+      return toSharedView(updated)
+    })
+  }
+
+  copySharedField(request: ItemFieldRequest): Promise<void> {
+    return this.exclusive(async () => {
+      const login = this.findReadableSharedLogin(request.id)
+      assertCopyField(login.type, request.field)
+      const value =
+        request.field === 'uri'
+          ? loginUriAt(login, request.uriIndex)
+          : request.field === 'cardExpiration'
+            ? [login.expMonth, login.expYear].filter(Boolean).join(' / ')
+            : login[request.field]
+      if (typeof value !== 'string' || value.length === 0) throw new VaultError('INVALID_INPUT')
+      await this.platform.copyText(value)
+    })
+  }
+
+  revealSharedCustomField(request: CustomFieldRequest): Promise<string> {
+    return this.exclusive(async () => {
+      const login = this.findReadableSharedLogin(request.id)
+      if (request.expectedUpdatedAt !== login.updatedAt) throw new VaultError('INVALID_INPUT')
+      const field = customFieldFromSource(login, request.source)
+      if (field.type !== 'hidden') throw new VaultError('INVALID_INPUT')
+      return field.value
+    })
+  }
+
+  copySharedCustomField(request: CustomFieldRequest): Promise<void> {
+    return this.exclusive(async () => {
+      const login = this.findReadableSharedLogin(request.id)
+      if (request.expectedUpdatedAt !== login.updatedAt) throw new VaultError('INVALID_INPUT')
+      const value = customFieldValue(login, customFieldFromSource(login, request.source))
+      if (!value) throw new VaultError('INVALID_INPUT')
+      await this.platform.copyText(value)
+    })
+  }
+
+  getSharedTotp(request: LoginIdRequest): Promise<TotpCodeView> {
+    return this.exclusive(async () => {
+      const login = this.findReadableSharedLogin(request.id)
+      if (login.type !== 'login' || !login.totp) throw new VaultError('INVALID_INPUT')
+      return generateTotp(login.totp, this.now())
+    })
+  }
+
+  copySharedTotp(request: LoginIdRequest): Promise<void> {
+    return this.exclusive(async () => {
+      const login = this.findReadableSharedLogin(request.id)
+      if (login.type !== 'login' || !login.totp) throw new VaultError('INVALID_INPUT')
+      await this.platform.copyText(generateTotp(login.totp, this.now()).code)
+    })
+  }
+
+  openSharedLoginUri(request: LoginOpenUriRequest): Promise<void> {
+    return this.exclusive(async () => {
+      const login = this.findReadableSharedLogin(request.id)
+      assertCopyField(login.type, 'uri')
+      const selectedUri = loginUriAt(login, request.uriIndex)
+      let url: URL
+      try {
+        url = new URL(selectedUri)
+      } catch {
+        throw new VaultError('INVALID_URL')
+      }
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        throw new VaultError('INVALID_URL')
+      }
+      await this.platform.openExternal(url.toString())
+    })
+  }
+
   generateCredential(request: CredentialGeneratorRequest): Promise<CredentialGeneratorResult> {
     return this.generatorService.generateCredential(request)
   }

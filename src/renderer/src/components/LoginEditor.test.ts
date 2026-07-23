@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { LoginView } from '../../../shared/vault-contract'
 import LoginEditor from './LoginEditor'
 import {
+  canSelectCustomFieldType,
   editorHeaderContent,
   reorderEditorItemsByClientId,
   reorderEditorUris,
@@ -61,11 +62,19 @@ const loginFixture: LoginView = {
   fingerprint: ''
 }
 
-function renderLoginEditor(login?: LoginView): string {
+function renderLoginEditor(
+  login?: LoginView,
+  sharedContext?: {
+    organizationName: string
+    collectionNames: string[]
+    canEditSecrets: boolean
+  }
+): string {
   return renderToStaticMarkup(
     createElement(LoginEditor, {
       login,
       folders: [],
+      sharedContext,
       busy: false,
       onCancel: () => undefined,
       onDirtyChange: () => undefined,
@@ -94,6 +103,34 @@ describe('editorHeaderContent', () => {
 })
 
 describe('LoginEditor design language', () => {
+  it('共享項目顯示唯讀組織資訊並隱藏個人整理控制', () => {
+    const markup = renderLoginEditor(
+      {
+        ...loginFixture,
+        customFields: [{ name: 'Environment', type: 'text', value: 'production', linkedId: null }]
+      },
+      {
+        organizationName: 'Shared Team',
+        collectionNames: ['Production', 'Operations'],
+        canEditSecrets: false
+      }
+    )
+
+    expect(markup).toContain('id="editor-organization"')
+    expect(markup).toContain('value="Shared Team"')
+    expect(markup).toContain('id="editor-collections"')
+    expect(markup).toContain('value="Production · Operations"')
+    expect(markup).not.toContain('id="editor-folder"')
+    expect(markup).not.toContain('id="editor-favorite"')
+    expect(markup).not.toContain('id="editor-reprompt"')
+    expect(canSelectCustomFieldType('hidden', { canUseLinked: true, canEditSecrets: false })).toBe(
+      false
+    )
+    expect(canSelectCustomFieldType('text', { canUseLinked: true, canEditSecrets: false })).toBe(
+      true
+    )
+  })
+
   it('新增畫面沿用檢視頁的項目標題與卡片結構', () => {
     const markup = renderLoginEditor()
 

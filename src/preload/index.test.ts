@@ -234,6 +234,45 @@ describe('preload visible detail prefetch API', () => {
   })
 })
 
+describe('preload shared login read API', () => {
+  it('forwards read-only shared actions through dedicated channels', async () => {
+    electronMock.invoke.mockClear()
+    const api = electronMock.exposed() as BearWardenAPI
+    const id = '80000000-0000-4000-8000-000000000001'
+    const fieldRequest = { id, field: 'password' as const }
+    const customFieldRequest = {
+      id,
+      expectedUpdatedAt: '2026-07-16T00:00:00.000Z',
+      source: { index: 0, name: 'PIN', type: 'hidden' as const, linkedId: null }
+    }
+    const uriRequest = { id, uriIndex: 1 }
+    const editorRequest = { id, expectedUpdatedAt: '2026-07-16T00:00:00.000Z' }
+    const updateRequest = { ...editorRequest, name: 'Updated shared item' }
+
+    await api.sharedLogins.update(updateRequest)
+    await api.sharedLogins.revealEditorSecrets(editorRequest)
+    await api.sharedLogins.revealSecret(fieldRequest)
+    await api.sharedLogins.copyField(fieldRequest)
+    await api.sharedLogins.revealCustomField(customFieldRequest)
+    await api.sharedLogins.copyCustomField(customFieldRequest)
+    await api.sharedLogins.getTotp({ id })
+    await api.sharedLogins.copyTotp({ id })
+    await api.sharedLogins.openUri(uriRequest)
+
+    expect(electronMock.invoke.mock.calls).toEqual([
+      [IPC_CHANNELS.sharedLoginUpdate, updateRequest],
+      [IPC_CHANNELS.sharedLoginRevealEditorSecrets, editorRequest],
+      [IPC_CHANNELS.sharedLoginRevealSecret, fieldRequest],
+      [IPC_CHANNELS.sharedLoginCopyField, fieldRequest],
+      [IPC_CHANNELS.sharedLoginRevealCustomField, customFieldRequest],
+      [IPC_CHANNELS.sharedLoginCopyCustomField, customFieldRequest],
+      [IPC_CHANNELS.sharedLoginGetTotp, { id }],
+      [IPC_CHANNELS.sharedLoginCopyTotp, { id }],
+      [IPC_CHANNELS.sharedLoginOpenUri, uriRequest]
+    ])
+  })
+})
+
 describe('preload password history API', () => {
   it('forwards only narrow metadata, reveal, copy, and restore requests', async () => {
     electronMock.invoke.mockClear()

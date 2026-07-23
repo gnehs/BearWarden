@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, RefObject, SetStateAction } from 'react'
-import type { LoginSummary } from '../../../shared/vault-contract'
+import type { LoginSummary, SharedLoginSummary } from '../../../shared/vault-contract'
 import type { VaultCategoryFilter } from '@renderer/lib/vault-category'
 import {
   boundedVaultSearchQuery,
@@ -17,6 +17,7 @@ import { sortVaultItems, type VaultSortMode } from '@renderer/lib/vault-sort'
 
 interface UseVaultSearchOptions {
   items: LoginSummary[]
+  sharedItems: SharedLoginSummary[]
   scope: VaultSearchNavigationScope
   typeFilter: VaultCategoryFilter
   sortMode: VaultSortMode
@@ -36,6 +37,7 @@ interface VaultSearchState {
 
 export function useVaultSearch({
   items,
+  sharedItems,
   scope,
   typeFilter,
   sortMode,
@@ -73,9 +75,10 @@ export function useVaultSearch({
       void Promise.all([
         window.bearwarden.logins.list(activeRequest),
         window.bearwarden.logins.list(archivedRequest),
-        window.bearwarden.logins.list(deletedRequest)
+        window.bearwarden.logins.list(deletedRequest),
+        window.bearwarden.sharedLogins.list({ sort: 'name', query: searchQuery })
       ]).then(
-        ([activeItems, archivedItems, deletedItems]) => {
+        ([activeItems, archivedItems, deletedItems, matchingSharedItems]) => {
           if (
             !isCurrentVaultSearchResponse({
               requestId,
@@ -88,7 +91,11 @@ export function useVaultSearch({
           }
           setSearchMatches({
             query: searchQuery,
-            ids: new Set([...activeItems, ...archivedItems, ...deletedItems].map((item) => item.id))
+            ids: new Set(
+              [...activeItems, ...archivedItems, ...deletedItems, ...matchingSharedItems].map(
+                (item) => item.id
+              )
+            )
           })
         },
         (searchError) => {
@@ -109,15 +116,15 @@ export function useVaultSearch({
     }, VAULT_SEARCH_DEBOUNCE_MS)
 
     return () => window.clearTimeout(timeout)
-  }, [describeError, items, onError, query])
+  }, [describeError, items, onError, query, sharedItems])
 
   const scopedItems = useMemo(() => {
-    const matchedItems = filterVaultSearchMatches(items, query, searchMatches)
+    const matchedItems = filterVaultSearchMatches([...items, ...sharedItems], query, searchMatches)
     const scoped = matchedItems.filter((item) =>
       matchesVaultSearchNavigation(item, query, scope, typeFilter)
     )
     return sortVaultItems(scoped, sortMode)
-  }, [items, query, scope, searchMatches, sortMode, typeFilter])
+  }, [items, query, scope, searchMatches, sharedItems, sortMode, typeFilter])
 
   return { searchOpen, searchRef, scopedItems, updateQuery, setSearchOpen }
 }

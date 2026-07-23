@@ -36,6 +36,7 @@ import {
   Sparkles,
   TextCursorInput,
   Trash2,
+  UsersRound,
   X
 } from 'lucide-react'
 import type {
@@ -130,6 +131,7 @@ import { Textarea } from './ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import CredentialGeneratorDialog from './CredentialGeneratorDialog'
 import {
+  canSelectCustomFieldType,
   reorderEditorItemsByClientId,
   reorderEditorUris,
   uriMatchRecognizedParts,
@@ -293,6 +295,11 @@ export interface LoginDraft extends VaultItemFields {
 interface LoginEditorProps {
   login?: LoginView
   folders: FolderView[]
+  sharedContext?: {
+    organizationName: string
+    collectionNames: string[]
+    canEditSecrets: boolean
+  }
   busy: boolean
   authorizationToken?: string
   onCancel: () => void
@@ -506,6 +513,7 @@ function SortableCustomFieldCard({
 function LoginEditor({
   login,
   folders,
+  sharedContext,
   busy,
   authorizationToken,
   onCancel,
@@ -604,6 +612,7 @@ function LoginEditor({
     return messages[code]
   }
   const submittingRef = useRef(false)
+  const sharedEditor = sharedContext !== undefined
   const editorMountedRef = useRef(true)
   const sshKeyGenerationRequestRef = useRef(0)
   const sshKeyImportRequestRef = useRef(0)
@@ -701,8 +710,10 @@ function LoginEditor({
     if (!editorSnapshot) return
     let active = true
 
-    void window.bearwarden.logins
-      .revealEditorSecrets(editorSnapshot)
+    const editorSecrets = sharedEditor
+      ? window.bearwarden.sharedLogins.revealEditorSecrets
+      : window.bearwarden.logins.revealEditorSecrets
+    void editorSecrets(editorSnapshot)
       .then((secrets) => {
         if (!active) return
         const customSecrets = new Map(
@@ -743,7 +754,7 @@ function LoginEditor({
     return () => {
       active = false
     }
-  }, [editorSnapshot, t])
+  }, [editorSnapshot, sharedEditor, t])
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange])
   useEffect(() => () => onDirtyChange(false), [onDirtyChange])
   useEffect(() => {
@@ -1213,10 +1224,12 @@ function LoginEditor({
               <TextCursorInput />
               <Trans>Text</Trans>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => addCustomField('hidden')}>
-              <EyeOff />
-              <Trans>Hidden text</Trans>
-            </DropdownMenuItem>
+            {(!sharedContext || sharedContext.canEditSecrets) && (
+              <DropdownMenuItem onClick={() => addCustomField('hidden')}>
+                <EyeOff />
+                <Trans>Hidden text</Trans>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => addCustomField('boolean')}>
               <CheckSquare2 />
               <Trans>Checkbox</Trans>
@@ -1303,7 +1316,11 @@ function LoginEditor({
     const invalid =
       (field === 'password' && errorKind === 'password') ||
       (field === 'privateKey' && errorKind === 'ssh' && !draft.privateKey.trim())
-    const disabled = busy || secretsUnavailable || options?.disabled
+    const disabled =
+      busy ||
+      secretsUnavailable ||
+      (sharedContext ? !sharedContext.canEditSecrets : false) ||
+      options?.disabled
     const changeValue = (nextValue: string): void => {
       if (options?.onValueChange) {
         options.onValueChange(nextValue)
@@ -1789,10 +1806,14 @@ function LoginEditor({
                           <Trans>Passkeys</Trans>
                         </FieldLabel>
                         <FieldDescription>
-                          <Trans>
-                            Deletion syncs immediately without loading private keys into the editor.
-                            Other unsaved fields are preserved.
-                          </Trans>
+                          {sharedContext ? (
+                            <Trans>Passkeys on shared items cannot be changed here.</Trans>
+                          ) : (
+                            <Trans>
+                              Deletion syncs immediately without loading private keys into the
+                              editor. Other unsaved fields are preserved.
+                            </Trans>
+                          )}
                         </FieldDescription>
                         <div className="grid overflow-hidden rounded-md border">
                           {login.passkeys.map((passkey, index) => (
@@ -1815,16 +1836,18 @@ function LoginEditor({
                                 </span>
                                 <small>{passkey.rpId}</small>
                               </div>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                aria-label={t`Delete the passkey for ${passkey.rpName || passkey.rpId}`}
-                                disabled={busy}
-                                onClick={() => setPasskeyDeleteTarget(passkey)}
-                              >
-                                <Trash2 />
-                              </Button>
+                              {!sharedContext && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  aria-label={t`Delete the passkey for ${passkey.rpName || passkey.rpId}`}
+                                  disabled={busy}
+                                  onClick={() => setPasskeyDeleteTarget(passkey)}
+                                >
+                                  <Trash2 />
+                                </Button>
+                              )}
                             </article>
                           ))}
                         </div>
@@ -2080,52 +2103,54 @@ function LoginEditor({
 
                 {draft.type === 'sshKey' && (
                   <>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={regenerateSshKey}
-                        disabled={
-                          busy ||
-                          secretsUnavailable ||
-                          sshKeyGenerationState === 'generating' ||
-                          sshKeyImportPending
-                        }
-                      >
-                        {sshKeyGenerationState === 'generating' ? (
-                          <Spinner data-icon="inline-start" />
-                        ) : (
-                          <RefreshCw data-icon="inline-start" />
-                        )}
-                        {sshKeyGenerationState === 'generating' ? (
-                          <Trans>Generating…</Trans>
-                        ) : (
-                          <Trans>Generate again</Trans>
-                        )}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => void beginSshKeyImport()}
-                        disabled={
-                          busy ||
-                          secretsUnavailable ||
-                          sshKeyGenerationState === 'generating' ||
-                          sshKeyImportPending
-                        }
-                      >
-                        {sshKeyImportState === 'reading' ? (
-                          <Spinner data-icon="inline-start" />
-                        ) : (
-                          <ClipboardPaste data-icon="inline-start" />
-                        )}
-                        {sshKeyImportState === 'reading' ? (
-                          <Trans>Reading clipboard…</Trans>
-                        ) : (
-                          <Trans>Import from clipboard</Trans>
-                        )}
-                      </Button>
-                    </div>
+                    {!sharedContext && (
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={regenerateSshKey}
+                          disabled={
+                            busy ||
+                            secretsUnavailable ||
+                            sshKeyGenerationState === 'generating' ||
+                            sshKeyImportPending
+                          }
+                        >
+                          {sshKeyGenerationState === 'generating' ? (
+                            <Spinner data-icon="inline-start" />
+                          ) : (
+                            <RefreshCw data-icon="inline-start" />
+                          )}
+                          {sshKeyGenerationState === 'generating' ? (
+                            <Trans>Generating…</Trans>
+                          ) : (
+                            <Trans>Generate again</Trans>
+                          )}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => void beginSshKeyImport()}
+                          disabled={
+                            busy ||
+                            secretsUnavailable ||
+                            sshKeyGenerationState === 'generating' ||
+                            sshKeyImportPending
+                          }
+                        >
+                          {sshKeyImportState === 'reading' ? (
+                            <Spinner data-icon="inline-start" />
+                          ) : (
+                            <ClipboardPaste data-icon="inline-start" />
+                          )}
+                          {sshKeyImportState === 'reading' ? (
+                            <Trans>Reading clipboard…</Trans>
+                          ) : (
+                            <Trans>Import from clipboard</Trans>
+                          )}
+                        </Button>
+                      </div>
+                    )}
                     {draft.sshImportToken ? (
                       <Field data-disabled>
                         <FieldLabel htmlFor="editor-privateKey">
@@ -2211,85 +2236,132 @@ function LoginEditor({
 
           <EditorSection value="organize" className="flex flex-col">
             <EditorFormSection
-              title={t({
-                message: 'Organization',
-                comment:
-                  'Section heading in the login item editor for organizing the item into a folder and configuring item-level options.'
-              })}
+              title={
+                sharedContext
+                  ? t({
+                      message: 'Organization',
+                      context: 'shared-organization',
+                      comment:
+                        'Section heading in the shared item editor for the Bitwarden organization that owns the item.'
+                    })
+                  : t({
+                      message: 'Organization',
+                      comment:
+                        'Section heading in the login item editor for organizing the item into a folder and configuring item-level options.'
+                    })
+              }
               titleId="organization-section-title"
-              icon={<FolderOpen aria-hidden="true" />}
+              icon={
+                sharedContext ? (
+                  <UsersRound aria-hidden="true" />
+                ) : (
+                  <FolderOpen aria-hidden="true" />
+                )
+              }
             >
               <FieldGroup className="gap-3">
-                <Field>
-                  <FieldLabel htmlFor="editor-folder">
-                    <Trans>Folder</Trans>
-                  </FieldLabel>
-                  <Select
-                    items={folderSelectItems}
-                    value={draft.folderId ?? ''}
-                    disabled={busy}
-                    onValueChange={(value) => update('folderId', value || null)}
-                  >
-                    <SelectTrigger id="editor-folder" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {folderSelectItems.map((folder) => (
-                          <SelectItem key={folder.value || 'unfiled'} value={folder.value}>
-                            {folder.label}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field
-                  className={checkFieldClassName}
-                  orientation="horizontal"
-                  data-disabled={busy || undefined}
-                >
-                  <Checkbox
-                    id="editor-favorite"
-                    checked={draft.favorite}
-                    onCheckedChange={(checked) => update('favorite', checked)}
-                    disabled={busy}
-                  />
-                  <FieldContent>
-                    <FieldLabel htmlFor="editor-favorite">
-                      <FieldTitle>
-                        <Trans>Add to favorites</Trans>
-                      </FieldTitle>
-                    </FieldLabel>
-                    <FieldDescription>
-                      <Trans>Find this item quickly from the sidebar</Trans>
-                    </FieldDescription>
-                  </FieldContent>
-                </Field>
-                <Field
-                  className={checkFieldClassName}
-                  orientation="horizontal"
-                  data-disabled={busy || undefined}
-                >
-                  <Checkbox
-                    id="editor-reprompt"
-                    checked={draft.reprompt === 1}
-                    onCheckedChange={(checked) => update('reprompt', checked ? 1 : 0)}
-                    disabled={busy}
-                  />
-                  <FieldContent>
-                    <FieldLabel htmlFor="editor-reprompt">
-                      <FieldTitle>
-                        <Trans>Require master password reprompt</Trans>
-                      </FieldTitle>
-                    </FieldLabel>
-                    <FieldDescription>
-                      <Trans>
-                        Verify the master password again before viewing or changing this item
-                      </Trans>
-                    </FieldDescription>
-                  </FieldContent>
-                </Field>
+                {sharedContext ? (
+                  <>
+                    <Field>
+                      <FieldLabel htmlFor="editor-organization">
+                        <Trans
+                          context="shared-organization"
+                          comment="Read-only field label in the shared item editor for the Bitwarden organization that owns the item."
+                        >
+                          Organization
+                        </Trans>
+                      </FieldLabel>
+                      <Input
+                        id="editor-organization"
+                        value={sharedContext.organizationName}
+                        readOnly
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="editor-collections">
+                        <Trans>Collections</Trans>
+                      </FieldLabel>
+                      <Input
+                        id="editor-collections"
+                        value={sharedContext.collectionNames.join(' · ')}
+                        readOnly
+                      />
+                    </Field>
+                  </>
+                ) : (
+                  <>
+                    <Field>
+                      <FieldLabel htmlFor="editor-folder">
+                        <Trans>Folder</Trans>
+                      </FieldLabel>
+                      <Select
+                        items={folderSelectItems}
+                        value={draft.folderId ?? ''}
+                        disabled={busy}
+                        onValueChange={(value) => update('folderId', value || null)}
+                      >
+                        <SelectTrigger id="editor-folder" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {folderSelectItems.map((folder) => (
+                              <SelectItem key={folder.value || 'unfiled'} value={folder.value}>
+                                {folder.label}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field
+                      className={checkFieldClassName}
+                      orientation="horizontal"
+                      data-disabled={busy || undefined}
+                    >
+                      <Checkbox
+                        id="editor-favorite"
+                        checked={draft.favorite}
+                        onCheckedChange={(checked) => update('favorite', checked)}
+                        disabled={busy}
+                      />
+                      <FieldContent>
+                        <FieldLabel htmlFor="editor-favorite">
+                          <FieldTitle>
+                            <Trans>Add to favorites</Trans>
+                          </FieldTitle>
+                        </FieldLabel>
+                        <FieldDescription>
+                          <Trans>Find this item quickly from the sidebar</Trans>
+                        </FieldDescription>
+                      </FieldContent>
+                    </Field>
+                    <Field
+                      className={checkFieldClassName}
+                      orientation="horizontal"
+                      data-disabled={busy || undefined}
+                    >
+                      <Checkbox
+                        id="editor-reprompt"
+                        checked={draft.reprompt === 1}
+                        onCheckedChange={(checked) => update('reprompt', checked ? 1 : 0)}
+                        disabled={busy}
+                      />
+                      <FieldContent>
+                        <FieldLabel htmlFor="editor-reprompt">
+                          <FieldTitle>
+                            <Trans>Require master password reprompt</Trans>
+                          </FieldTitle>
+                        </FieldLabel>
+                        <FieldDescription>
+                          <Trans>
+                            Verify the master password again before viewing or changing this item
+                          </Trans>
+                        </FieldDescription>
+                      </FieldContent>
+                    </Field>
+                  </>
+                )}
               </FieldGroup>
             </EditorFormSection>
 
@@ -2392,7 +2464,12 @@ function LoginEditor({
                             [VaultCustomFieldType, string]
                           >
                         )
-                          .filter(([type]) => type !== 'linked' || linkedIds.length > 0)
+                          .filter(([type]) =>
+                            canSelectCustomFieldType(type, {
+                              canUseLinked: linkedIds.length > 0,
+                              canEditSecrets: !sharedContext || sharedContext.canEditSecrets
+                            })
+                          )
                           .map(([value, label]) => ({ value, label }))
                         const customFieldId = `editor-custom-field-${customField.clientId}`
                         const customFieldNameId = `${customFieldId}-name`
@@ -2405,6 +2482,11 @@ function LoginEditor({
                         const customFieldBusy =
                           busy ||
                           secretsUnavailable ||
+                          Boolean(
+                            sharedContext &&
+                            !sharedContext.canEditSecrets &&
+                            customField.source?.type === 'hidden'
+                          ) ||
                           Boolean(revealingCustomFields[customField.clientId])
 
                         return (

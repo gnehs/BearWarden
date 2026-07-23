@@ -6,6 +6,7 @@ import { cn } from '@renderer/lib/utils'
 import { adjacentItemIndex } from '@renderer/lib/item-selection'
 import { virtualRowScrollOffsets, visibleVirtualIndexes } from '@renderer/lib/virtualized-range'
 import { ItemRow, type ItemSelectionModifiers } from './DndRows'
+import { isSharedLoginSummary } from './organizations-ui'
 
 const GROUP_HEADER_HEIGHT = 31
 const ITEM_ROW_HEIGHT = 66
@@ -259,7 +260,7 @@ export function VirtualizedItemList({
                 showWebsiteIcons={showWebsiteIcons}
                 showTotpCode={showTotpCodes}
                 totpCodes={totpCodes}
-                readOnly={readOnly}
+                readOnly={readOnly || isSharedLoginSummary(row.item)}
               />
             </ul>
           )

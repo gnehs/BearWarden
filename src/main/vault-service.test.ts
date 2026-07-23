@@ -2320,12 +2320,13 @@ describe('VaultService encrypted local data', () => {
 
   it('persists organization collections and shared items without entering personal sync merge', async () => {
     let fake: ReturnType<typeof createSyncFake> | null = null
+    const editedSharedDrafts: Array<{ id: string; name: string; password?: string }> = []
     const { service } = await createHarness({
       createSyncClient: (sync) => {
         fake = createSyncFake(sync.state)
         const organizationId = '60000000-0000-4000-8000-000000000001'
         const collectionId = '70000000-0000-4000-8000-000000000001'
-        const shared = {
+        let shared = {
           ...fake.remoteLogins[0]!,
           id: '80000000-0000-4000-8000-000000000001',
           organizationId,
@@ -2334,6 +2335,18 @@ describe('VaultService encrypted local data', () => {
           viewPassword: false,
           delete: true,
           restore: false
+        }
+        fake.editOrganizationCipher = async (id, draft) => {
+          editedSharedDrafts.push({ id, name: draft.name, password: draft.password })
+          shared = {
+            ...shared,
+            ...draft,
+            id,
+            organizationId,
+            collectionIds: [collectionId],
+            revisionDate: '2026-07-15T00:00:00.000Z'
+          }
+          return structuredClone(shared)
         }
         fake.listOrganizations = async () => [
           {
@@ -2389,25 +2402,238 @@ describe('VaultService encrypted local data', () => {
     await expect(service.getSharedLogin({ id: shared.id })).resolves.toMatchObject({
       id: shared.id,
       viewPassword: false,
-      passwordUpdatedAt: null,
-      username: '',
+      passwordUpdatedAt: '2026-07-13T00:00:00.000Z',
+      username: 'remote@example.invalid',
       hasTotp: false
     })
+    await expect(
+      service.revealSharedEditorSecrets({
+        id: shared.id,
+        expectedUpdatedAt: shared.updatedAt
+      })
+    ).resolves.toEqual({ fields: {}, customFields: [] })
+    await expect(
+      service.updateSharedLogin({
+        id: shared.id,
+        expectedUpdatedAt: shared.updatedAt,
+        password: 'must-not-change-with-hidden-passwords'
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.updateSharedLogin({
+        id: shared.id,
+        expectedUpdatedAt: shared.updatedAt,
+        name: 'Edited shared item',
+        username: 'edited@example.invalid'
+      })
+    ).resolves.toMatchObject({
+      id: shared.id,
+      name: 'Edited shared item',
+      username: 'edited@example.invalid',
+      organizationId: '60000000-0000-4000-8000-000000000001',
+      collectionIds: ['70000000-0000-4000-8000-000000000001']
+    })
+    expect(editedSharedDrafts).toEqual([
+      expect.objectContaining({
+        id: shared.id,
+        name: 'Edited shared item',
+        password: 'remote-test-secret'
+      })
+    ])
 
     const [sharedRemote] = await fake!.listOrganizationCiphers!()
     if (!sharedRemote) throw new Error('Missing shared fixture')
     sharedRemote.viewPassword = true
     fake!.listOrganizationCiphers = async () => [structuredClone(sharedRemote)]
     await service.syncNow()
-    await expect(service.getSharedLogin({ id: shared.id })).resolves.toMatchObject({
+    const secretEditable = await service.getSharedLogin({ id: shared.id })
+    expect(secretEditable).toMatchObject({
       id: shared.id,
       viewPassword: true,
       passwordUpdatedAt: '2026-07-13T00:00:00.000Z'
     })
+    await expect(
+      service.revealSharedEditorSecrets({
+        id: shared.id,
+        expectedUpdatedAt: secretEditable.updatedAt
+      })
+    ).resolves.toMatchObject({ fields: { password: 'remote-test-secret' } })
+    fake!.editOrganizationCipher = async (id, draft) => {
+      editedSharedDrafts.push({ id, name: draft.name, password: draft.password })
+      Object.assign(sharedRemote, draft, {
+        id,
+        organizationId: sharedRemote.organizationId,
+        collectionIds: [...sharedRemote.collectionIds],
+        revisionDate: '2026-07-16T00:00:00.000Z'
+      })
+      return structuredClone(sharedRemote)
+    }
+    await expect(
+      service.updateSharedLogin({
+        id: shared.id,
+        expectedUpdatedAt: secretEditable.updatedAt,
+        password: 'updated-shared-secret'
+      })
+    ).resolves.toMatchObject({ id: shared.id, viewPassword: true })
+    expect(editedSharedDrafts.at(-1)).toMatchObject({
+      id: shared.id,
+      password: 'updated-shared-secret'
+    })
+    sharedRemote.edit = false
+    await service.syncNow()
+    const readOnlyShared = (await service.listSharedLogins())[0]!
+    await expect(
+      service.updateSharedLogin({
+        id: shared.id,
+        expectedUpdatedAt: readOnlyShared.updatedAt,
+        name: 'Must remain unchanged'
+      })
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' })
 
     await service.lock()
     await service.unlock(MASTER_PASSWORD)
     await expect(service.listSharedLogins()).resolves.toHaveLength(1)
+  })
+
+  it('keeps shared item access read-only and enforces organization visibility atomically', async () => {
+    const { service, copyText, openExternal } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const personal = await service.createLogin({
+      name: 'Personal boundary canary',
+      username: 'personal-user',
+      password: 'personal-secret',
+      totp: 'JBSWY3DPEHPK3PXP',
+      uris: [{ uri: 'https://personal.example.invalid/private', match: null }],
+      customFields: [
+        {
+          source: null,
+          name: 'PIN',
+          type: 'hidden',
+          value: 'shared-hidden-secret',
+          linkedId: null
+        },
+        {
+          source: null,
+          name: 'Label',
+          type: 'text',
+          value: 'shared-copy-value',
+          linkedId: null
+        }
+      ]
+    })
+    const data = (
+      service as unknown as {
+        data: {
+          logins: Array<Record<string, unknown> & { id: string }>
+          sharedLogins: Array<Record<string, unknown>>
+        } | null
+      }
+    ).data!
+    const storedPersonal = data.logins.find((candidate) => candidate.id === personal.id)!
+    const sharedId = '80000000-0000-4000-8000-000000000001'
+    const shared: Record<string, unknown> & {
+      viewPassword: boolean
+      reprompt: number
+      uris: Array<{ uri: string; match: null }>
+      archivedAt: string | null
+    } = {
+      ...structuredClone(storedPersonal),
+      id: sharedId,
+      organizationId: '60000000-0000-4000-8000-000000000001',
+      collectionIds: ['70000000-0000-4000-8000-000000000001'],
+      shared: true,
+      edit: false,
+      viewPassword: true,
+      reprompt: 0,
+      uris: [{ uri: 'https://personal.example.invalid/private', match: null }],
+      archivedAt: null,
+      delete: false,
+      restore: false
+    }
+    data.sharedLogins.push(shared)
+    const view = await service.getSharedLogin({ id: sharedId })
+    const hiddenRequest = customFieldRequest(view, 0)
+    const textRequest = customFieldRequest(view, 1)
+
+    await expect(service.revealSharedSecret({ id: sharedId, field: 'password' })).resolves.toBe(
+      'personal-secret'
+    )
+    const copySecretResult = await service.copySharedField({ id: sharedId, field: 'password' })
+    expect(copySecretResult).toBeUndefined()
+    expect(String(copySecretResult)).not.toContain('personal-secret')
+    expect(copyText).toHaveBeenCalledWith('personal-secret')
+    await expect(service.revealSharedCustomField(hiddenRequest)).resolves.toBe(
+      'shared-hidden-secret'
+    )
+    const copyCustomResult = await service.copySharedCustomField(textRequest)
+    expect(copyCustomResult).toBeUndefined()
+    expect(String(copyCustomResult)).not.toContain('shared-copy-value')
+    expect(copyText).toHaveBeenCalledWith('shared-copy-value')
+    await expect(service.getSharedTotp({ id: sharedId })).resolves.toMatchObject({
+      code: expect.stringMatching(/^\d{6}$/u),
+      period: 30
+    })
+    await expect(service.copySharedTotp({ id: sharedId })).resolves.toBeUndefined()
+    await expect(service.openSharedLoginUri({ id: sharedId })).resolves.toBeUndefined()
+    expect(openExternal).toHaveBeenCalledWith('https://personal.example.invalid/private')
+    shared.uris[0]!.uri = 'file:///private/shared-secret.txt'
+    await expect(service.openSharedLoginUri({ id: sharedId })).rejects.toMatchObject({
+      code: 'INVALID_URL'
+    })
+    shared.uris[0]!.uri = 'https://personal.example.invalid/private'
+
+    await expect(
+      service.revealSharedCustomField({
+        ...hiddenRequest,
+        expectedUpdatedAt: '2026-07-13T00:00:00.000Z'
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    await expect(
+      service.copySharedCustomField({
+        ...textRequest,
+        source: { ...textRequest.source, name: 'Stale label' }
+      })
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+
+    const sharedOperations = [
+      (id: string) => service.revealSharedSecret({ id, field: 'password' }),
+      (id: string) => service.copySharedField({ id, field: 'username' }),
+      (id: string) => service.revealSharedCustomField({ ...hiddenRequest, id }),
+      (id: string) => service.copySharedCustomField({ ...textRequest, id }),
+      (id: string) => service.getSharedTotp({ id }),
+      (id: string) => service.copySharedTotp({ id }),
+      (id: string) => service.openSharedLoginUri({ id })
+    ]
+    for (const operation of sharedOperations) {
+      await expect(operation(personal.id)).rejects.toMatchObject({ code: 'NOT_FOUND' })
+      await expect(operation('80000000-0000-4000-8000-000000000099')).rejects.toMatchObject({
+        code: 'NOT_FOUND'
+      })
+    }
+
+    copyText.mockClear()
+    openExternal.mockClear()
+    shared.viewPassword = false
+    for (const operation of sharedOperations) {
+      await expect(operation(sharedId)).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    }
+    shared.viewPassword = true
+    shared.reprompt = 1
+    for (const operation of sharedOperations) {
+      await expect(operation(sharedId)).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    }
+    shared.reprompt = 0
+    shared.archivedAt = '2026-07-14T00:00:00.000Z'
+    for (const operation of sharedOperations) {
+      await expect(operation(sharedId)).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    }
+    shared.archivedAt = null
+    shared.deletedAt = '2026-07-14T00:00:00.000Z'
+    for (const operation of sharedOperations) {
+      await expect(operation(sharedId)).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    }
+    expect(copyText).not.toHaveBeenCalled()
+    expect(openExternal).not.toHaveBeenCalled()
   })
 
   it('manages personal text Sends and keeps an existing password unless explicitly removed', async () => {

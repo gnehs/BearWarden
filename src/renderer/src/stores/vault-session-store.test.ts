@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import type { FolderView, LoginSummary } from '../../../shared/vault-contract'
+import type {
+  CollectionView,
+  FolderView,
+  LoginSummary,
+  OrganizationView,
+  SharedLoginSummary
+} from '../../../shared/vault-contract'
 import { createVaultSessionStore } from './vault-session-store'
 
 const folder: FolderView = {
@@ -31,12 +37,49 @@ const item: LoginSummary = {
   reprompt: 0
 }
 
+const organization: OrganizationView = {
+  id: 'organization-1',
+  name: 'Example team',
+  status: 2,
+  type: 2,
+  enabled: true,
+  identifier: null,
+  hasPublicAndPrivateKeys: false
+}
+
+const collection: CollectionView = {
+  id: 'collection-1',
+  organizationId: organization.id,
+  name: 'Shared',
+  externalId: null,
+  readOnly: true,
+  hidePasswords: false,
+  manage: false,
+  type: 0,
+  assigned: true
+}
+
+const sharedItem: SharedLoginSummary = {
+  ...item,
+  id: 'shared-item-1',
+  organizationId: organization.id,
+  collectionIds: [collection.id],
+  shared: true,
+  edit: false,
+  viewPassword: true,
+  delete: false,
+  restore: false
+}
+
 describe('createVaultSessionStore', () => {
   it('supports React SetStateAction functional updates', () => {
     const store = createVaultSessionStore()
 
     store.getState().setFolders((current) => [...current, folder])
     store.getState().setItems((current) => [...current, item])
+    store.getState().setOrganizations([organization])
+    store.getState().setCollections([collection])
+    store.getState().setSharedItems([sharedItem])
     store.getState().setScope({ kind: 'favorites' })
     store.getState().setSortMode('recent')
     store.getState().setTypeFilter('login')
@@ -50,6 +93,9 @@ describe('createVaultSessionStore', () => {
     expect(store.getState()).toMatchObject({
       folders: [folder],
       items: [item],
+      organizations: [organization],
+      collections: [collection],
+      sharedItems: [sharedItem],
       scope: { kind: 'favorites' },
       sortMode: 'recent',
       typeFilter: 'login',
@@ -100,6 +146,9 @@ describe('createVaultSessionStore', () => {
 
     store.getState().setFolders([folder])
     store.getState().setItems([item])
+    store.getState().setOrganizations([organization])
+    store.getState().setCollections([collection])
+    store.getState().setSharedItems([sharedItem])
     store.getState().setSelectedIds(new Set([item.id]))
     store.getState().setLoading(false)
     store.getState().setBusy(true)
@@ -110,6 +159,9 @@ describe('createVaultSessionStore', () => {
     expect(store.getState()).toMatchObject({
       folders: [],
       items: [],
+      organizations: [],
+      collections: [],
+      sharedItems: [],
       scope: { kind: 'all' },
       sortMode: 'title',
       typeFilter: 'all',
@@ -128,10 +180,17 @@ describe('createVaultSessionStore', () => {
     const staleSetItems = store.getState().setItems
 
     store.getState().setItems([item])
+    store.getState().setSharedItems([sharedItem])
     store.getState().setQuery('example')
     store.getState().dispose()
     staleSetItems([item])
 
-    expect(store.getState()).toMatchObject({ items: [], query: '', loading: true, busy: false })
+    expect(store.getState()).toMatchObject({
+      items: [],
+      sharedItems: [],
+      query: '',
+      loading: true,
+      busy: false
+    })
   })
 })

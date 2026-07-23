@@ -8,6 +8,7 @@ import {
   collectionPermissionLabel,
   collectionAssignmentLabel,
   createLatestRequestGuard,
+  isSharedLoginSummary,
   organizationRoleLabel,
   organizationStatusLabel,
   sharedItemPermissionLabels
@@ -73,6 +74,20 @@ describe('Organizations UI labels', () => {
     const labels = sharedItemPermissionLabels(item)
     expect(labels).toEqual(['唯讀', '可檢視密碼', '無法刪除', '可還原'])
     expect(labels.join('')).not.toContain(secretContent)
+  })
+
+  it('distinguishes shared summaries before routing item actions', () => {
+    const shared = {
+      id: 'shared',
+      shared: true,
+      organizationId: organization.id,
+      collectionIds: [collection.id]
+    } as SharedLoginSummary
+
+    expect(isSharedLoginSummary(shared)).toBe(true)
+    expect(
+      isSharedLoginSummary({ ...shared, shared: false } as unknown as SharedLoginSummary)
+    ).toBe(false)
   })
 })
 

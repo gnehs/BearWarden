@@ -625,6 +625,11 @@ export interface BitwardenSyncClient {
   listOrganizations?(): Promise<BitwardenOrganization[]>
   listCollections?(): Promise<BitwardenCollection[]>
   listOrganizationCiphers?(): Promise<BitwardenOrganizationCipher[]>
+  editOrganizationCipher?(
+    id: string,
+    draft: BitwardenLoginDraft,
+    signal?: AbortSignal
+  ): Promise<BitwardenOrganizationCipher>
   listEmergencyAccess?(signal?: AbortSignal): Promise<BitwardenEmergencyAccess[]>
   listSends?(signal?: AbortSignal): Promise<BitwardenSendItem[]>
   createFileSend?(draft: BitwardenFileSendDraft, signal?: AbortSignal): Promise<BitwardenSendItem>
@@ -2108,6 +2113,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   private organizations = new Map<string, BitwardenOrganization>()
   private collections = new Map<string, BitwardenCollection>()
   private organizationCiphers = new Map<string, BitwardenOrganizationCipher>()
+  private organizationCipherRaws = new Map<string, JsonObject>()
+  private organizationKeys = new Map<string, Buffer>()
   private sends = new Map<string, CachedSend>()
   private syncedUserDecryptionCapabilities: BitwardenUserDecryptionCapabilities = {
     hasWebAuthnPrfOptions: false,
@@ -3696,6 +3703,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       const nextOrganizations = new Map<string, BitwardenOrganization>()
       const nextCollections = new Map<string, BitwardenCollection>()
       const nextOrganizationCiphers = new Map<string, BitwardenOrganizationCipher>()
+      const nextOrganizationCipherRaws = new Map<string, JsonObject>()
+      const nextOrganizationKeys = new Map<string, Buffer>()
       const nextSends = new Map<string, CachedSend>()
       const organizationKeys = new Map<string, Buffer>()
       try {
@@ -3942,6 +3951,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
             const item = this.decryptLogin(value, organizationKey)
             const organizationCipher = this.organizationCipher(value, item, organizationId)
             nextOrganizationCiphers.set(organizationCipher.id, organizationCipher)
+            nextOrganizationCipherRaws.set(organizationCipher.id, structuredClone(value))
             aggregateRows = addAggregateRemoteRows(
               aggregateRows,
               item.uris.length +
@@ -3994,9 +4004,13 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
           const send = this.decryptSend(value, userKey)
           nextSends.set(send.item.id, send)
         }
+        for (const [organizationId, organizationKey] of organizationKeys) {
+          nextOrganizationKeys.set(organizationId, Buffer.from(organizationKey))
+        }
         invalidResponseStage = null
       } catch (error) {
         for (const organizationKey of organizationKeys.values()) organizationKey.fill(0)
+        for (const organizationKey of nextOrganizationKeys.values()) organizationKey.fill(0)
         clearBitwardenSymmetricKey(userKey)
         throw error
       }
@@ -4013,6 +4027,9 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       this.organizations = nextOrganizations
       this.collections = nextCollections
       this.organizationCiphers = nextOrganizationCiphers
+      this.organizationCipherRaws = nextOrganizationCipherRaws
+      for (const organizationKey of this.organizationKeys.values()) organizationKey.fill(0)
+      this.organizationKeys = nextOrganizationKeys
       this.sends = nextSends
       this.syncedUserDecryptionCapabilities = nextUserDecryptionCapabilities
       this.state.profileId = profileId
@@ -4071,6 +4088,70 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   async listOrganizationCiphers(): Promise<BitwardenOrganizationCipher[]> {
     this.requireUserKey()
     return [...this.organizationCiphers.values()].map(cloneOrganizationCipher)
+  }
+
+  async editOrganizationCipher(
+    id: string,
+    draft: BitwardenLoginDraft,
+    signal?: AbortSignal
+  ): Promise<BitwardenOrganizationCipher> {
+    this.requireUserKey()
+    const cached = this.organizationCiphers.get(id)
+    const raw = this.organizationCipherRaws.get(id)
+    if (!cached || !raw || !cached.edit) throw new BitwardenDirectError('INVALID_RESPONSE')
+    const organizationKey = this.organizationKeys.get(cached.organizationId)
+    if (!organizationKey) throw new BitwardenDirectError('INVALID_RESPONSE')
+    const itemKey = this.cipherKey(raw, organizationKey)
+    try {
+      const resolved = resolveDraft(
+        {
+          ...draft,
+          folderId: cached.folderId,
+          favorite: cached.favorite,
+          reprompt: cached.reprompt
+        },
+        { ...cached, organizationId: null }
+      )
+      const request = this.encryptLoginRequest(resolved, itemKey, raw)
+      request.organizationId = cached.organizationId
+      request.collectionIds = [...cached.collectionIds]
+      const response = await this.http.updateCipher(id, request, signal)
+      const nextRaw = responseEntity(response, 'cipher')
+      if (
+        property(nextRaw, 'organizationId') !== cached.organizationId ||
+        requiredStringProperty(nextRaw, 'id') !== id
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      const item = this.decryptLogin(nextRaw, organizationKey)
+      const parsed = this.organizationCipher(nextRaw, item, cached.organizationId)
+      const responseCollectionIds = property(nextRaw, 'collectionIds')
+      const cachedCollectionIds = new Set(cached.collectionIds)
+      if (
+        responseCollectionIds !== undefined &&
+        responseCollectionIds !== null &&
+        (parsed.collectionIds.length !== cached.collectionIds.length ||
+          parsed.collectionIds.some((collectionId) => !cachedCollectionIds.has(collectionId)))
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      const updated: BitwardenOrganizationCipher = {
+        ...parsed,
+        collectionIds: [...cached.collectionIds],
+        edit: cached.edit,
+        viewPassword: cached.viewPassword,
+        delete: cached.delete,
+        restore: cached.restore
+      }
+      this.organizationCiphers.set(id, updated)
+      this.organizationCipherRaws.set(id, structuredClone(nextRaw))
+      await this.captureSession()
+      return cloneOrganizationCipher(updated)
+    } catch (error) {
+      throw this.mapError(error)
+    } finally {
+      if (itemKey !== organizationKey) clearBitwardenSymmetricKey(itemKey)
+    }
   }
 
   async listEmergencyAccess(signal?: AbortSignal): Promise<BitwardenEmergencyAccess[]> {
@@ -6174,6 +6255,9 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     this.organizations.clear()
     this.collections.clear()
     this.organizationCiphers.clear()
+    this.organizationCipherRaws.clear()
+    for (const organizationKey of this.organizationKeys.values()) organizationKey.fill(0)
+    this.organizationKeys.clear()
     this.sends.clear()
     this.syncedUserDecryptionCapabilities = {
       hasWebAuthnPrfOptions: false,

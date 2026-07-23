@@ -12,6 +12,9 @@ export type Scope =
   | { kind: 'favorites' }
   | { kind: 'folder'; folderId: string }
   | { kind: 'unfiled' }
+  | { kind: 'shared' }
+  | { kind: 'organization'; organizationId: string }
+  | { kind: 'collection'; organizationId: string; collectionId: string }
   | { kind: 'archive' }
   | { kind: 'trash' }
 

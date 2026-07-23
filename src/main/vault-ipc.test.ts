@@ -1957,6 +1957,19 @@ describe('registerVaultIpc reprompt gate', () => {
       deletePasskey: vi.fn(async () => ({ id: 'item-a', passkeys: [] })),
       setLoginFavorite: vi.fn(async () => ({ id: 'item-a' })),
       moveLogin: vi.fn(async () => ({ id: 'item-a' })),
+      updateSharedLogin: vi.fn(async () => ({ id: 'shared-item' })),
+      revealSharedEditorSecrets: vi.fn(async () => ({ fields: {}, customFields: [] })),
+      revealSharedSecret: vi.fn(async () => 'shared-secret'),
+      copySharedField: vi.fn(async () => undefined),
+      revealSharedCustomField: vi.fn(async () => 'shared-custom-secret'),
+      copySharedCustomField: vi.fn(async () => undefined),
+      getSharedTotp: vi.fn(async () => ({
+        code: '654321',
+        period: 30,
+        remainingSeconds: 18
+      })),
+      copySharedTotp: vi.fn(async () => undefined),
+      openSharedLoginUri: vi.fn(async () => undefined),
       getTotp: vi.fn(async () => ({ code: '123456', period: 30, remainingSeconds: 12 })),
       copyTotp: vi.fn(async () => undefined),
       revealSecret: vi.fn(async () => 'secret'),
@@ -3447,6 +3460,81 @@ describe('registerVaultIpc reprompt gate', () => {
       expect(vault[method]).toHaveBeenCalledOnce()
       expect(vault[method]).toHaveBeenCalledWith({ id: 'item-a' })
     }
+  })
+
+  it('routes shared reads and edits through shared-only service methods without personal authorization', async () => {
+    const { event, vault, afterMutation } = harness()
+    const id = '80000000-0000-4000-8000-000000000001'
+    const expectedUpdatedAt = '2026-07-16T00:00:00.000Z'
+    const source = { index: 0, name: 'PIN', type: 'hidden', linkedId: null }
+    const requests = [
+      [
+        IPC_CHANNELS.sharedLoginUpdate,
+        'updateSharedLogin',
+        { id, expectedUpdatedAt, name: 'Updated shared item' }
+      ],
+      [
+        IPC_CHANNELS.sharedLoginRevealEditorSecrets,
+        'revealSharedEditorSecrets',
+        { id, expectedUpdatedAt }
+      ],
+      [IPC_CHANNELS.sharedLoginRevealSecret, 'revealSharedSecret', { id, field: 'password' }],
+      [IPC_CHANNELS.sharedLoginCopyField, 'copySharedField', { id, field: 'username' }],
+      [
+        IPC_CHANNELS.sharedLoginRevealCustomField,
+        'revealSharedCustomField',
+        { id, expectedUpdatedAt, source }
+      ],
+      [
+        IPC_CHANNELS.sharedLoginCopyCustomField,
+        'copySharedCustomField',
+        { id, expectedUpdatedAt, source }
+      ],
+      [IPC_CHANNELS.sharedLoginGetTotp, 'getSharedTotp', { id }],
+      [IPC_CHANNELS.sharedLoginCopyTotp, 'copySharedTotp', { id }],
+      [IPC_CHANNELS.sharedLoginOpenUri, 'openSharedLoginUri', { id, uriIndex: 1 }]
+    ] as const
+
+    for (const [channel, method, request] of requests) {
+      await electronMock.handlers.get(channel)!(event, request)
+      expect(vault[method]).toHaveBeenCalledWith(request)
+    }
+    expect(vault.runAuthorizedOperation).not.toHaveBeenCalled()
+    expect(afterMutation).toHaveBeenCalledOnce()
+  })
+
+  it('rejects extra or personal-only shared payload data before invoking the service', async () => {
+    const { event, vault } = harness()
+    const id = '80000000-0000-4000-8000-000000000001'
+
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.sharedLoginGetTotp)!(event, { id, extra: true })
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.sharedLoginCopyField)!(event, {
+        id,
+        field: 'password',
+        uriIndex: 0
+      })
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    for (const forbidden of [
+      { folderId: null },
+      { favorite: true },
+      { reprompt: 0 },
+      { authorizationToken: 'personal-item-token' }
+    ]) {
+      await expect(
+        electronMock.handlers.get(IPC_CHANNELS.sharedLoginUpdate)!(event, {
+          id,
+          expectedUpdatedAt: '2026-07-16T00:00:00.000Z',
+          name: 'Updated shared item',
+          ...forbidden
+        })
+      ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(vault.getSharedTotp).not.toHaveBeenCalled()
+    expect(vault.copySharedField).not.toHaveBeenCalled()
+    expect(vault.updateSharedLogin).not.toHaveBeenCalled()
   })
 
   it('validates and authorizes exact passkey deletion requests before notifying mutations', async () => {

@@ -82,13 +82,24 @@ describe('shared organization views', () => {
     if (summary.type === 'login') expect(summary.hasTotp).toBe(false)
   })
 
-  it('redacts the detail subtitle consistently with its sensitive fields', () => {
-    const view = toSharedView(sharedLogin())
+  it('keeps editable non-secret detail fields while redacting hidden custom fields', () => {
+    const view = toSharedView(
+      sharedLogin({
+        customFields: [
+          { name: 'Environment', value: 'production', type: 'text', linkedId: null },
+          { name: 'PIN', value: '1234', type: 'hidden', linkedId: null }
+        ]
+      })
+    )
 
-    expect(view.subtitle).toBe('')
-    expect(view.username).toBe('')
-    expect(view.notes).toBeNull()
-    expect(view.passwordUpdatedAt).toBeNull()
+    expect(view.subtitle).toBe('member@example.invalid')
+    expect(view.username).toBe('member@example.invalid')
+    expect(view.notes).toBe('private note preview')
+    expect(view.passwordUpdatedAt).toBe('2026-07-13T00:00:00.000Z')
+    expect(view.customFields).toEqual([
+      expect.objectContaining({ name: 'Environment', value: 'production' }),
+      expect.objectContaining({ name: 'PIN', value: null })
+    ])
   })
 
   it('keeps non-secret summary fields for general-view items', () => {

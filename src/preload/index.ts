@@ -90,7 +90,19 @@ const api: BearWardenAPI = {
   },
   sharedLogins: {
     list: (request = {}) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginList, request),
-    get: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginGet, request)
+    get: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginGet, request),
+    update: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginUpdate, request),
+    revealEditorSecrets: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.sharedLoginRevealEditorSecrets, request),
+    revealSecret: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginRevealSecret, request),
+    copyField: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginCopyField, request),
+    revealCustomField: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.sharedLoginRevealCustomField, request),
+    copyCustomField: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.sharedLoginCopyCustomField, request),
+    getTotp: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginGetTotp, request),
+    copyTotp: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginCopyTotp, request),
+    openUri: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginOpenUri, request)
   },
   emergencyAccess: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.emergencyAccessList)
@@ -110,6 +122,7 @@ const api: BearWardenAPI = {
     restorePasswordHistory: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.loginRestorePasswordHistory, request),
     downloadAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentDownload, request),
+    previewAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentPreview, request),
     uploadAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentUpload, request),
     deleteAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentDelete, request),
     fixLegacyAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentFixLegacy, request),

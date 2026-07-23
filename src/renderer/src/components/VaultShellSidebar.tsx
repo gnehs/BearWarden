@@ -15,17 +15,23 @@ import {
   Star,
   Trash2,
   UserRound,
-  UsersRound,
   type LucideIcon
 } from 'lucide-react'
 import { useMemo, useState, type ComponentProps, type JSX, type RefObject } from 'react'
-import type { FolderView, SyncStatus } from '../../../shared/vault-contract'
+import type {
+  CollectionView,
+  FolderView,
+  OrganizationView,
+  SharedLoginSummary,
+  SyncStatus
+} from '../../../shared/vault-contract'
 import type { VaultCategoryFilter } from '../lib/vault-category'
 import { useVaultSessionStore } from '../stores/vault-session-store'
 import type { Scope } from './VaultShell-model'
 import { folderRootDropId, quickAccessDropIds } from './VaultShell-dnd'
 import { SidebarLink, UnfiledRow, type SidebarTone } from './VaultShell-primitives'
 import { FolderRow } from './DndRows'
+import { VaultOrganizationSidebarSection } from './VaultOrganizationSidebarSection'
 import { Button } from '@renderer/components/ui/button'
 import {
   DropdownMenu,
@@ -69,6 +75,9 @@ interface VaultSidebarNavigation {
     trash: number
   }
   folderCounts: ReadonlyMap<string | null, number>
+  organizations: OrganizationView[]
+  collections: CollectionView[]
+  sharedItems: SharedLoginSummary[]
 }
 
 interface VaultSidebarAccount {
@@ -85,7 +94,6 @@ interface VaultSidebarActions {
   onAddFolder: () => void
   onEditFolder: (folder: FolderView) => void
   onOpenGenerator: () => void
-  onOpenOrganizations: () => void
   onOpenEmergencyAccess: () => void
   onOpenSends: () => void
   onOpenHealth: () => void
@@ -332,6 +340,22 @@ export function VaultShellSidebar({
             </SortableContext>
           </ul>
         </section>
+
+        {navigation.organizations.length > 0 && (
+          <VaultOrganizationSidebarSection
+            organizations={navigation.organizations}
+            collections={navigation.collections}
+            sharedItems={navigation.sharedItems}
+            scope={scope}
+            onSelectAllShared={() => actions.onSelectScope({ kind: 'shared' })}
+            onSelectOrganization={(organizationId) =>
+              actions.onSelectScope({ kind: 'organization', organizationId })
+            }
+            onSelectCollection={(organizationId, collectionId) =>
+              actions.onSelectScope({ kind: 'collection', organizationId, collectionId })
+            }
+          />
+        )}
       </div>
 
       <footer className="text-muted-foreground grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 border-t-0 bg-transparent px-[9px] pt-[7px] pb-[9px] text-[10px]">
@@ -389,10 +413,6 @@ export function VaultShellSidebar({
               <DropdownMenuItem onClick={actions.onOpenGenerator}>
                 <Sparkles data-icon="inline-start" />
                 <Trans>Generator</Trans>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={actions.onOpenOrganizations}>
-                <UsersRound data-icon="inline-start" />
-                <Trans>Organizations</Trans>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={actions.onOpenEmergencyAccess}>
                 <ShieldAlert data-icon="inline-start" />

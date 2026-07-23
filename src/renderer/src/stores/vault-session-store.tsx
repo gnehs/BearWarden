@@ -8,7 +8,13 @@ import {
 } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
-import type { FolderView, LoginSummary } from '../../../shared/vault-contract'
+import type {
+  CollectionView,
+  FolderView,
+  LoginSummary,
+  OrganizationView,
+  SharedLoginSummary
+} from '../../../shared/vault-contract'
 import type { Scope, TypeFilter } from '../components/VaultShell-model'
 import type { VaultSortMode } from '../lib/vault-sort'
 
@@ -17,6 +23,9 @@ export type VaultEditorMode = 'create' | 'edit' | null
 export interface VaultSessionState {
   folders: FolderView[]
   items: LoginSummary[]
+  organizations: OrganizationView[]
+  collections: CollectionView[]
+  sharedItems: SharedLoginSummary[]
   scope: Scope
   sortMode: VaultSortMode
   typeFilter: TypeFilter
@@ -31,6 +40,9 @@ export interface VaultSessionState {
 export interface VaultSessionActions {
   setFolders: (value: SetStateAction<FolderView[]>) => void
   setItems: (value: SetStateAction<LoginSummary[]>) => void
+  setOrganizations: (value: SetStateAction<OrganizationView[]>) => void
+  setCollections: (value: SetStateAction<CollectionView[]>) => void
+  setSharedItems: (value: SetStateAction<SharedLoginSummary[]>) => void
   setScope: (value: SetStateAction<Scope>) => void
   setSortMode: (value: SetStateAction<VaultSortMode>) => void
   setTypeFilter: (value: SetStateAction<TypeFilter>) => void
@@ -52,6 +64,9 @@ function createInitialState(): VaultSessionState {
   return {
     folders: [],
     items: [],
+    organizations: [],
+    collections: [],
+    sharedItems: [],
     scope: { kind: 'all' },
     sortMode: 'title',
     typeFilter: 'all',
@@ -83,6 +98,14 @@ export function createVaultSessionStore(): VaultSessionStoreApi {
       setFolders: (value) =>
         setIfActive((state) => ({ folders: resolveValue(value, state.folders) })),
       setItems: (value) => setIfActive((state) => ({ items: resolveValue(value, state.items) })),
+      setOrganizations: (value) =>
+        setIfActive((state) => ({
+          organizations: resolveValue(value, state.organizations)
+        })),
+      setCollections: (value) =>
+        setIfActive((state) => ({ collections: resolveValue(value, state.collections) })),
+      setSharedItems: (value) =>
+        setIfActive((state) => ({ sharedItems: resolveValue(value, state.sharedItems) })),
       setScope: (value) => setIfActive((state) => ({ scope: resolveValue(value, state.scope) })),
       setSortMode: (value) =>
         setIfActive((state) => ({ sortMode: resolveValue(value, state.sortMode) })),

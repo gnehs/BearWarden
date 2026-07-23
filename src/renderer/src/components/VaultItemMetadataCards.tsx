@@ -1,7 +1,12 @@
 import { Trans, useLingui } from '@lingui/react/macro'
-import { FolderOpen, History, KeyRound, NotebookPen, Pencil } from 'lucide-react'
+import { FolderOpen, History, KeyRound, NotebookPen, Pencil, UsersRound } from 'lucide-react'
 import type { JSX } from 'react'
-import type { FolderView, LoginView } from '../../../shared/vault-contract'
+import type {
+  CollectionView,
+  FolderView,
+  LoginView,
+  OrganizationView
+} from '../../../shared/vault-contract'
 import { cn } from '@renderer/lib/utils'
 import { Button } from '@renderer/components/ui/button'
 import { CardContent, CardHeader, CardTitle } from '@renderer/components/ui/card'
@@ -15,6 +20,10 @@ interface VaultItemMetadataCardsProps {
   busy: boolean
   onMoveToFolder: () => void
   onViewPasswordHistory: () => void
+  sharedContext?: {
+    organization: OrganizationView | null
+    collections: readonly CollectionView[]
+  }
 }
 
 export function VaultItemMetadataCards({
@@ -23,13 +32,14 @@ export function VaultItemMetadataCards({
   formatDate,
   busy,
   onMoveToFolder,
-  onViewPasswordHistory
+  onViewPasswordHistory,
+  sharedContext
 }: VaultItemMetadataCardsProps): JSX.Element {
   const { t } = useLingui()
 
   return (
     <>
-      {selectedLogin.type === 'login' && selectedLogin.passkeys.length > 0 && (
+      {!sharedContext && selectedLogin.type === 'login' && selectedLogin.passkeys.length > 0 && (
         <DetailCard role="region" aria-labelledby="passkeys-title" className="gap-1 pb-0">
           <CardHeader>
             <CardTitle id="passkeys-title">
@@ -95,38 +105,70 @@ export function VaultItemMetadataCards({
       <DetailCard role="region" aria-labelledby="organization-title" className="gap-1 pb-0">
         <CardHeader>
           <CardTitle id="organization-title">
-            <FolderOpen aria-hidden="true" />
-            <Trans comment="Section heading in a login item details view; groups the folder and the item usage timestamp, not calendar events.">
-              Organization and activity
-            </Trans>
+            {sharedContext ? <UsersRound aria-hidden="true" /> : <FolderOpen aria-hidden="true" />}
+            {sharedContext ? (
+              <Trans
+                context="shared-organization-activity"
+                comment="Section heading in a shared vault item details view; groups the owning Bitwarden organization, Collections, and usage timestamp."
+              >
+                Organization and activity
+              </Trans>
+            ) : (
+              <Trans comment="Section heading in a login item details view; groups the folder and the item usage timestamp, not calendar events.">
+                Organization and activity
+              </Trans>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent className="contents">
           <dl className="m-0 px-(--card-spacing) py-1">
-            <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
-              <dt className="text-muted-foreground text-[11px] leading-4">
-                <Trans comment="Field label for the folder that contains this login item.">
-                  Folder
-                </Trans>
-              </dt>
-              <dd className="m-0 flex min-w-0 items-center gap-2 text-xs leading-4">
-                <span className="min-w-0 flex-1 truncate">
-                  {folders.find((folder) => folder.id === selectedLogin.folderId)?.name ??
-                    t`Unfiled`}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="-my-1.5 ml-auto"
-                  type="button"
-                  aria-label={t`Move to folder`}
-                  disabled={busy}
-                  onClick={onMoveToFolder}
-                >
-                  <Pencil aria-hidden="true" />
-                </Button>
-              </dd>
-            </div>
+            {sharedContext ? (
+              <>
+                <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
+                  <dt className="text-muted-foreground text-[11px] leading-4">
+                    <Trans>Organization</Trans>
+                  </dt>
+                  <dd className="m-0 min-w-0 truncate text-xs leading-4">
+                    {sharedContext.organization?.name ?? t`Unavailable`}
+                  </dd>
+                </div>
+                <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
+                  <dt className="text-muted-foreground text-[11px] leading-4">
+                    <Trans>Collections</Trans>
+                  </dt>
+                  <dd className="m-0 min-w-0 text-xs leading-4">
+                    {sharedContext.collections.length > 0
+                      ? sharedContext.collections.map((collection) => collection.name).join(' · ')
+                      : t`Unavailable`}
+                  </dd>
+                </div>
+              </>
+            ) : (
+              <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
+                <dt className="text-muted-foreground text-[11px] leading-4">
+                  <Trans comment="Field label for the folder that contains this login item.">
+                    Folder
+                  </Trans>
+                </dt>
+                <dd className="m-0 flex min-w-0 items-center gap-2 text-xs leading-4">
+                  <span className="min-w-0 flex-1 truncate">
+                    {folders.find((folder) => folder.id === selectedLogin.folderId)?.name ??
+                      t`Unfiled`}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="-my-1.5 ml-auto"
+                    type="button"
+                    aria-label={t`Move to folder`}
+                    disabled={busy}
+                    onClick={onMoveToFolder}
+                  >
+                    <Pencil aria-hidden="true" />
+                  </Button>
+                </dd>
+              </div>
+            )}
             <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
               <dt className="text-muted-foreground text-[11px] leading-4">
                 <Trans
@@ -158,7 +200,7 @@ export function VaultItemMetadataCards({
             item={selectedLogin}
             formatDate={formatDate}
             busy={busy}
-            onViewPasswordHistory={onViewPasswordHistory}
+            onViewPasswordHistory={sharedContext ? undefined : onViewPasswordHistory}
           />
         </CardContent>
       </DetailCard>

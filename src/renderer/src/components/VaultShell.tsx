@@ -53,6 +53,7 @@ import type {
   LoginApprovalPrompt,
   PasswordHistoryEntryRequest,
   SyncStatus,
+  SharedLoginView,
   TotpCodeView,
   VaultCopyField,
   VaultCustomFieldSource,
@@ -113,6 +114,7 @@ import { resolveTotpRefreshTarget } from './totp-refresh-target'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
 import { VaultCustomFieldRows, VaultDetailFieldRows } from './VaultDetailFieldRows'
+import { canRevealSecretsOnHover } from './VaultDetailFieldRows-model'
 import { VaultItemMetadataCards } from './VaultItemMetadataCards'
 import { VaultItemListPane } from './VaultItemListPane'
 import { VaultItemAttachmentsCard, VaultItemTotpCard } from './VaultItemAccessCards'
@@ -195,6 +197,7 @@ import {
 } from './vault-detail-cache'
 import { describeError, isRepromptRequired } from './vault-error-ui'
 import { VaultSearchDialog, VaultShellLoading, VaultShellTitlebar } from './VaultShellChrome'
+import { isSharedLoginSummary } from './organizations-ui'
 
 interface ItemTypeMeta {
   label: string
@@ -442,6 +445,9 @@ function VaultShellContent({
   const {
     folders,
     items,
+    organizations,
+    collections,
+    sharedItems,
     scope,
     sortMode,
     typeFilter,
@@ -453,6 +459,9 @@ function VaultShellContent({
     busy,
     setFolders,
     setItems,
+    setOrganizations,
+    setCollections,
+    setSharedItems,
     setScope,
     setSortMode,
     setTypeFilter,
@@ -466,6 +475,9 @@ function VaultShellContent({
     useShallow((state) => ({
       folders: state.folders,
       items: state.items,
+      organizations: state.organizations,
+      collections: state.collections,
+      sharedItems: state.sharedItems,
       scope: state.scope,
       sortMode: state.sortMode,
       typeFilter: state.typeFilter,
@@ -477,6 +489,9 @@ function VaultShellContent({
       busy: state.busy,
       setFolders: state.setFolders,
       setItems: state.setItems,
+      setOrganizations: state.setOrganizations,
+      setCollections: state.setCollections,
+      setSharedItems: state.setSharedItems,
       setScope: state.setScope,
       setSortMode: state.setSortMode,
       setTypeFilter: state.setTypeFilter,
@@ -488,8 +503,10 @@ function VaultShellContent({
       setBusy: state.setBusy
     }))
   )
+  const allItems = useMemo<LoginSummary[]>(() => [...items, ...sharedItems], [items, sharedItems])
   const { searchOpen, searchRef, scopedItems, updateQuery, setSearchOpen } = useVaultSearch({
     items,
+    sharedItems,
     scope,
     typeFilter,
     sortMode,
@@ -498,9 +515,11 @@ function VaultShellContent({
     describeError: describeVaultError,
     onError: announceError
   })
-  const [selectedLogin, setSelectedLogin] = useState<LoginView | null>(null)
+  const [selectedLogin, setSelectedLogin] = useState<LoginView | SharedLoginView | null>(null)
   const { copiedKey, clearCopied, showCopied } = useCopyFeedback()
-  const selectedSummary = items.find((item) => item.id === selectedId) ?? null
+  const selectedSummary = allItems.find((item) => item.id === selectedId) ?? null
+  const selectedSharedSummary =
+    selectedSummary && isSharedLoginSummary(selectedSummary) ? selectedSummary : null
   const [totpCodeState, setTotpCodeState] = useState<{
     itemId: string
     code: TotpCodeView
@@ -518,7 +537,10 @@ function VaultShellContent({
       : null
   const totpRevealReady = totpCode !== null || totpGenerationError !== null
   const [showTotpSkeleton, setShowTotpSkeleton] = useState(false)
-  const totpRefreshTarget = resolveTotpRefreshTarget(selectedLogin, selectedId, editorMode !== null)
+  const totpRefreshTarget =
+    selectedSharedSummary && !selectedSharedSummary.viewPassword
+      ? null
+      : resolveTotpRefreshTarget(selectedLogin, selectedId, editorMode !== null)
   const [editorSessionId, setEditorSessionId] = useState(0)
   const {
     editorDirty,
@@ -718,7 +740,14 @@ function VaultShellContent({
       }
       return authorization.token
     },
-    [setEditorMode, setPasswordHistoryDialogOpen]
+    [
+      setEditorMode,
+      setPasswordHistoryDialogOpen,
+      setRevealedCustomFields,
+      setRevealedSecrets,
+      setSelectedLogin,
+      setTotpCodeState
+    ]
   )
 
   const invalidateProtectedDetails = useCallback(
@@ -740,7 +769,16 @@ function VaultShellContent({
         setRevealedCustomFields(emptyRevealedCustomFields)
       }
     },
-    [authorizationToken, clearEditorDirty, setEditorMode, setPasswordHistoryDialogOpen]
+    [
+      authorizationToken,
+      clearEditorDirty,
+      setEditorMode,
+      setPasswordHistoryDialogOpen,
+      setRevealedCustomFields,
+      setRevealedSecrets,
+      setSelectedLogin,
+      setTotpCodeState
+    ]
   )
 
   const discardAuthorizationToken = useCallback((id: string): void => {
@@ -866,27 +904,58 @@ function VaultShellContent({
     clearDetailCache()
     try {
       toast.dismiss(vaultErrorToastId)
-      const [folderList, activeItems, archivedItems, deletedItems] = await Promise.all([
+      const [
+        folderList,
+        activeItems,
+        archivedItems,
+        deletedItems,
+        organizationList,
+        collectionList,
+        sharedItemList
+      ] = await Promise.all([
         window.bearwarden.folders.list(),
         window.bearwarden.logins.list({ sort: 'name' }),
         window.bearwarden.logins.list({ sort: 'name', archived: true }),
-        window.bearwarden.logins.list({ sort: 'name', deleted: true })
+        window.bearwarden.logins.list({ sort: 'name', deleted: true }),
+        window.bearwarden.organizations.list(),
+        window.bearwarden.collections.list(),
+        window.bearwarden.sharedLogins.list({ sort: 'name' })
       ])
       const loginList = [...activeItems, ...archivedItems, ...deletedItems]
       if (!isCurrentVaultLoad(requestId, vaultLoadRequestIdRef.current)) return
       invalidateProtectedDetails(loginList)
       setFolders([...folderList].sort((left, right) => left.position - right.position))
       setItems(loginList)
+      setOrganizations(organizationList)
+      setCollections(collectionList)
+      setSharedItems(sharedItemList)
       setScope((current) =>
-        current.kind === 'folder' && !folderList.some((folder) => folder.id === current.folderId)
+        (current.kind === 'folder' &&
+          !folderList.some((folder) => folder.id === current.folderId)) ||
+        (current.kind === 'organization' &&
+          !organizationList.some((organization) => organization.id === current.organizationId)) ||
+        (current.kind === 'collection' &&
+          !collectionList.some(
+            (collection) =>
+              collection.id === current.collectionId &&
+              collection.organizationId === current.organizationId
+          ))
           ? { kind: 'all' }
           : current
       )
       setSelectedId((current) =>
-        current && !loginList.some((item) => item.id === current) ? null : current
+        current &&
+        !loginList.some((item) => item.id === current) &&
+        !sharedItemList.some((item) => item.id === current)
+          ? null
+          : current
       )
       setSelectedLogin((current) =>
-        current && !loginList.some((item) => item.id === current.id) ? null : current
+        current &&
+        !loginList.some((item) => item.id === current.id) &&
+        !sharedItemList.some((item) => item.id === current.id)
+          ? null
+          : current
       )
     } catch (loadError) {
       if (isCurrentVaultLoad(requestId, vaultLoadRequestIdRef.current)) {
@@ -901,6 +970,9 @@ function VaultShellContent({
     invalidateProtectedDetails,
     setFolders,
     setItems,
+    setOrganizations,
+    setCollections,
+    setSharedItems,
     setLoading,
     setScope,
     setSelectedId
@@ -910,6 +982,9 @@ function VaultShellContent({
     (id: string): Promise<LoginView> => {
       const summary = itemsRef.current.find((item) => item.id === id)
       if (summary?.deletedAt) return Promise.reject(new Error('INVALID_INPUT'))
+      if (summary && isSharedLoginSummary(summary)) {
+        return window.bearwarden.sharedLogins.get({ id })
+      }
       const cached = detailCacheRef.current.get(id)
       if (
         cached &&
@@ -985,6 +1060,7 @@ function VaultShellContent({
     // Never speculatively cross the authorization boundary or hydrate inactive items.
     if (
       !summary ||
+      isSharedLoginSummary(summary) ||
       summary.reprompt !== 0 ||
       summary.deletedAt !== null ||
       summary.archivedAt !== null ||
@@ -1224,8 +1300,8 @@ function VaultShellContent({
   )
 
   useEffect(() => {
-    itemsRef.current = items
-  }, [items])
+    itemsRef.current = allItems
+  }, [allItems])
 
   useEffect(
     () => () => {
@@ -1333,7 +1409,7 @@ function VaultShellContent({
       }
     }
 
-    const summary = items.find((item) => item.id === selectedId)
+    const summary = allItems.find((item) => item.id === selectedId)
     if (summary?.deletedAt) {
       queueMicrotask(() => {
         if (active) setSelectedLogin(null)
@@ -1357,7 +1433,7 @@ function VaultShellContent({
     return () => {
       active = false
     }
-  }, [clearItemSelection, describeVaultError, items, loadLoginDetail, selectedId])
+  }, [allItems, clearItemSelection, describeVaultError, loadLoginDetail, selectedId])
 
   useEffect(() => {
     let active = true
@@ -1380,11 +1456,11 @@ function VaultShellContent({
       if (stopped || refreshing) return
       refreshing = true
       const token = authorizationToken(itemId)
-      window.bearwarden.logins
-        .getTotp({
-          id: itemId,
-          ...(token ? { authorizationToken: token } : {})
-        })
+      const request = { id: itemId, ...(token ? { authorizationToken: token } : {}) }
+      const pendingCode = selectedSharedSummary
+        ? window.bearwarden.sharedLogins.getTotp({ id: itemId })
+        : window.bearwarden.logins.getTotp(request)
+      pendingCode
         .then(
           (nextCode) => {
             if (!active) return
@@ -1430,7 +1506,8 @@ function VaultShellContent({
     invalidateAuthorization,
     t,
     totpRefreshTarget?.itemId,
-    totpRefreshTarget?.sourceRevision
+    totpRefreshTarget?.sourceRevision,
+    selectedSharedSummary
   ])
 
   useEffect(() => {
@@ -1467,14 +1544,18 @@ function VaultShellContent({
   const totpListItemIds = useMemo(
     () =>
       scopedItems
-        .filter((item) => item.type === 'login' && Boolean(item.hasTotp))
+        .filter(
+          (item) => !isSharedLoginSummary(item) && item.type === 'login' && Boolean(item.hasTotp)
+        )
         .map((item) => item.id),
     [scopedItems]
   )
   const totpListRevision = useMemo(
     () =>
       scopedItems
-        .filter((item) => item.type === 'login' && Boolean(item.hasTotp))
+        .filter(
+          (item) => !isSharedLoginSummary(item) && item.type === 'login' && Boolean(item.hasTotp)
+        )
         .map((item) => `${item.id}:${item.updatedAt}`)
         .join('\0'),
     [scopedItems]
@@ -1617,6 +1698,13 @@ function VaultShellContent({
   const selectItems = useCallback(
     (id: string, modifiers: ItemSelectionModifiers): void => {
       requestEditorTransition(() => {
+        const target = itemsRef.current.find((item) => item.id === id)
+        if (target && isSharedLoginSummary(target)) {
+          updateSelectedIds(new Set([id]))
+          selectionAnchorIdRef.current = id
+          activateLogin(id)
+          return
+        }
         const nextSelection = updateItemSelection({
           selectedIds: selectedIdsRef.current,
           anchorId: selectionAnchorIdRef.current,
@@ -1626,9 +1714,14 @@ function VaultShellContent({
           toggle: modifiers.toggle,
           range: modifiers.range
         })
-        updateSelectedIds(nextSelection.selectedIds)
-        selectionAnchorIdRef.current = nextSelection.anchorId
-        activateLogin(nextSelection.activeId)
+        const containsSharedItem = [...nextSelection.selectedIds].some((selectedItemId) => {
+          const selectedItem = itemsRef.current.find((item) => item.id === selectedItemId)
+          return selectedItem ? isSharedLoginSummary(selectedItem) : false
+        })
+        const selectedIds = containsSharedItem ? new Set([id]) : nextSelection.selectedIds
+        updateSelectedIds(selectedIds)
+        selectionAnchorIdRef.current = containsSharedItem ? id : nextSelection.anchorId
+        activateLogin(containsSharedItem ? id : nextSelection.activeId)
       })
     },
     [activateLogin, requestEditorTransition, scopedItemIds, updateSelectedIds]
@@ -1678,17 +1771,17 @@ function VaultShellContent({
   }, [selectedId, selectedLogin])
 
   const selectedSummaries = useMemo(
-    () => items.filter((item) => selectedIds.has(item.id)),
-    [items, selectedIds]
+    () => allItems.filter((item) => selectedIds.has(item.id)),
+    [allItems, selectedIds]
   )
   const moveSummaries = useMemo(() => {
     if (!moveSnapshot) return []
-    const byId = new Map(items.map((item) => [item.id, item]))
+    const byId = new Map(allItems.map((item) => [item.id, item]))
     return moveSnapshot.ids.flatMap((id) => {
       const item = byId.get(id)
       return item ? [item] : []
     })
-  }, [items, moveSnapshot])
+  }, [allItems, moveSnapshot])
   const moveFolderId = useMemo(() => {
     const firstFolderId = moveSummaries[0]?.folderId
     if (firstFolderId === undefined) return undefined
@@ -1703,7 +1796,7 @@ function VaultShellContent({
     setMoveSnapshot({ ids, state: scope.kind === 'archive' ? 'archive' : 'active' })
   }, [busy, scope.kind, setMoveSnapshot])
   const activeDragItem = activeDragId
-    ? (items.find((item) => item.id === activeDragId) ?? null)
+    ? (allItems.find((item) => item.id === activeDragId) ?? null)
     : null
   const activeDragItemCount =
     activeDragItem && selectedIds.has(activeDragItem.id) ? selectedIds.size : 1
@@ -1719,6 +1812,21 @@ function VaultShellContent({
     () => (selectedLogin ? detailFields(selectedLogin, detailFieldLabels) : []),
     [detailFieldLabels, selectedLogin]
   )
+  const selectedSharedContext = useMemo(() => {
+    if (!selectedSharedSummary) return undefined
+    const collectionIds = new Set(selectedSharedSummary.collectionIds)
+    return {
+      organization:
+        organizations.find(
+          (organization) => organization.id === selectedSharedSummary.organizationId
+        ) ?? null,
+      collections: collections.filter(
+        (collection) =>
+          collection.organizationId === selectedSharedSummary.organizationId &&
+          collectionIds.has(collection.id)
+      )
+    }
+  }, [collections, organizations, selectedSharedSummary])
   const itemGroups = useMemo(() => {
     if (sortMode === 'title' || sortMode === 'frequency') {
       return [{ key: 'name', label: null, items: scopedItems }]
@@ -1733,8 +1841,8 @@ function VaultShellContent({
   }, [scopedItems, sortMode])
   const folderIds = useMemo(() => new Set(folders.map((folder) => folder.id)), [folders])
   const activeItems = useMemo(
-    () => items.filter((item) => !item.deletedAt && !item.archivedAt),
-    [items]
+    () => allItems.filter((item) => !item.deletedAt && !item.archivedAt),
+    [allItems]
   )
   const archivedItems = useMemo(
     () => items.filter((item) => !item.deletedAt && item.archivedAt),
@@ -1765,6 +1873,22 @@ function VaultShellContent({
   const scopeTitle = useMemo(() => {
     if (scope.kind === 'favorites') return t`Favorites`
     if (scope.kind === 'unfiled') return t`Unfiled`
+    if (scope.kind === 'shared') return t`Shared items`
+    if (scope.kind === 'organization')
+      return (
+        organizations.find((organization) => organization.id === scope.organizationId)?.name ??
+        t`Organization`
+      )
+    if (scope.kind === 'collection')
+      return (
+        collections.find((collection) => collection.id === scope.collectionId)?.name ??
+        t({
+          message: 'Collection',
+          context: 'organization-collection',
+          comment:
+            'Fallback vault list title for a Bitwarden organization Collection when its name is unavailable.'
+        })
+      )
     if (scope.kind === 'archive') return t`Archive`
     if (scope.kind === 'trash') return t`Trash`
     if (scope.kind === 'folder')
@@ -1773,7 +1897,9 @@ function VaultShellContent({
     if (typeFilter === 'passkey') return t`Passkeys`
     if (typeFilter !== 'all') return itemTypeMeta[typeFilter].label
     return t`All items`
-  }, [folders, itemTypeMeta, scope, t, typeFilter])
+  }, [collections, folders, itemTypeMeta, organizations, scope, t, typeFilter])
+  const sharedScope =
+    scope.kind === 'shared' || scope.kind === 'organization' || scope.kind === 'collection'
 
   const announce = useCallback((message: string): void => {
     toast.success(message)
@@ -2014,20 +2140,6 @@ function VaultShellContent({
 
   function closeSends(): void {
     setSendsOpen(false)
-  }
-
-  function openOrganizations(): void {
-    requestEditorTransition(() => {
-      rememberNavigationReturnFocus()
-      setOrganizationsOpen(true)
-      setSearchOpen(false)
-      setSidebarOpen(false)
-      setEditorMode(null)
-      setMoveSnapshot(null)
-      clearItemSelection()
-      setRevealedSecrets(emptyRevealedSecrets)
-      setRevealedCustomFields(emptyRevealedCustomFields)
-    })
   }
 
   function closeOrganizations(): void {
@@ -2526,34 +2638,64 @@ function VaultShellContent({
         announce(t`Created “${created.name}”.`)
       } else if (selectedLogin) {
         const itemId = selectedLogin.id
-        const updated = await withReprompt([itemId], (tokenFor) => {
-          const request = {
+        if (selectedSharedSummary) {
+          if (draft.sshImportToken) throw new Error('Shared SSH key imports are not supported.')
+          const updated = await window.bearwarden.sharedLogins.update({
             id: itemId,
             expectedUpdatedAt: draft.expectedUpdatedAt ?? undefined,
             name: draft.name,
             ...fields,
             notes: draft.notes || null,
-            folderId: draft.folderId,
-            favorite: draft.favorite,
-            reprompt: draft.reprompt,
-            ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {}),
             customFields
-          }
-          return updateLoginWithOptionalSshImport(request, draft.sshImportToken, {
-            update: window.bearwarden.logins.update,
-            updateImported: window.bearwarden.sshKeys.updateImported
           })
-        })
-        if (updated.reprompt === 0 || authorizationToken(itemId)) {
-          cacheLoginDetail(detailCacheRef.current, updated)
+          setSharedItems((current) =>
+            current.map((item) =>
+              item.id === updated.id
+                ? {
+                    ...toLoginSummary(updated),
+                    organizationId: updated.organizationId,
+                    collectionIds: updated.collectionIds,
+                    shared: true,
+                    edit: updated.edit,
+                    viewPassword: updated.viewPassword,
+                    delete: updated.delete,
+                    restore: updated.restore
+                  }
+                : item
+            )
+          )
+          setSelectedLogin(updated)
+          announce(t`Saved “${updated.name}”.`)
         } else {
-          detailCacheRef.current.delete(itemId)
+          const updated = await withReprompt([itemId], (tokenFor) => {
+            const request = {
+              id: itemId,
+              expectedUpdatedAt: draft.expectedUpdatedAt ?? undefined,
+              name: draft.name,
+              ...fields,
+              notes: draft.notes || null,
+              folderId: draft.folderId,
+              favorite: draft.favorite,
+              reprompt: draft.reprompt,
+              ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {}),
+              customFields
+            }
+            return updateLoginWithOptionalSshImport(request, draft.sshImportToken, {
+              update: window.bearwarden.logins.update,
+              updateImported: window.bearwarden.sshKeys.updateImported
+            })
+          })
+          if (updated.reprompt === 0 || authorizationToken(itemId)) {
+            cacheLoginDetail(detailCacheRef.current, updated)
+          } else {
+            detailCacheRef.current.delete(itemId)
+          }
+          setItems((current) =>
+            current.map((item) => (item.id === updated.id ? toLoginSummary(updated) : item))
+          )
+          setSelectedLogin(updated.reprompt === 0 || authorizationToken(itemId) ? updated : null)
+          announce(t`Saved “${updated.name}”.`)
         }
-        setItems((current) =>
-          current.map((item) => (item.id === updated.id ? toLoginSummary(updated) : item))
-        )
-        setSelectedLogin(updated.reprompt === 0 || authorizationToken(itemId) ? updated : null)
-        announce(t`Saved “${updated.name}”.`)
       }
       setRevealedCustomFields(emptyRevealedCustomFields)
       clearEditorDirty()
@@ -2778,6 +2920,7 @@ function VaultShellContent({
     options: { quiet?: boolean; forceShow?: boolean } = {}
   ): Promise<string | undefined> {
     if (!selectedSummary) return undefined
+    if (selectedSharedSummary && !canRevealSecretsOnHover(selectedSharedSummary)) return undefined
     const itemId = selectedSummary.id
     const revealedValue =
       revealedSecrets.itemId === itemId ? revealedSecrets.values[field] : undefined
@@ -2792,13 +2935,15 @@ function VaultShellContent({
       return undefined
     }
     try {
-      const value = await withReprompt([itemId], (tokenFor) =>
-        window.bearwarden.logins.revealSecret({
-          id: itemId,
-          field,
-          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
-        })
-      )
+      const value = selectedSharedSummary
+        ? await window.bearwarden.sharedLogins.revealSecret({ id: itemId, field })
+        : await withReprompt([itemId], (tokenFor) =>
+            window.bearwarden.logins.revealSecret({
+              id: itemId,
+              field,
+              ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+            })
+          )
       if (selectedIdRef.current !== itemId) return undefined
       if (
         options.quiet &&
@@ -2862,16 +3007,23 @@ function VaultShellContent({
     clearCopied()
     try {
       const itemId = selectedSummary.id
-      await withReprompt([itemId], (tokenFor) =>
-        window.bearwarden.logins.copyField({
-          id: itemId,
-          field,
-          ...(uriIndex === undefined ? {} : { uriIndex }),
-          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
-        })
-      )
+      const request = {
+        id: itemId,
+        field,
+        ...(uriIndex === undefined ? {} : { uriIndex })
+      }
+      if (selectedSharedSummary) {
+        await window.bearwarden.sharedLogins.copyField(request)
+      } else {
+        await withReprompt([itemId], (tokenFor) =>
+          window.bearwarden.logins.copyField({
+            ...request,
+            ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+          })
+        )
+      }
       showCopied(`field:${itemId}:${field}:${uriIndex ?? ''}`)
-      await refreshItems()
+      if (!selectedSharedSummary) await refreshItems()
     } catch (copyError) {
       announceError(describeVaultError(copyError))
     }
@@ -2903,14 +3055,15 @@ function VaultShellContent({
         type: field.type,
         linkedId: field.linkedId
       }
-      const value = await withReprompt([itemId], (tokenFor) =>
-        window.bearwarden.logins.revealCustomField({
-          id: itemId,
-          expectedUpdatedAt,
-          source,
-          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
-        })
-      )
+      const request = { id: itemId, expectedUpdatedAt, source }
+      const value = selectedSharedSummary
+        ? await window.bearwarden.sharedLogins.revealCustomField(request)
+        : await withReprompt([itemId], (tokenFor) =>
+            window.bearwarden.logins.revealCustomField({
+              ...request,
+              ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+            })
+          )
       if (selectedIdRef.current !== itemId) return
       setRevealedCustomFields((current) => ({
         itemId,
@@ -2930,16 +3083,23 @@ function VaultShellContent({
     clearCopied()
     try {
       const itemId = selectedLogin.id
-      await withReprompt([itemId], (tokenFor) =>
-        window.bearwarden.logins.copyCustomField({
-          id: itemId,
-          expectedUpdatedAt: selectedLogin.updatedAt,
-          source: { index, name: field.name, type: field.type, linkedId: field.linkedId },
-          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
-        })
-      )
+      const request = {
+        id: itemId,
+        expectedUpdatedAt: selectedLogin.updatedAt,
+        source: { index, name: field.name, type: field.type, linkedId: field.linkedId }
+      }
+      if (selectedSharedSummary) {
+        await window.bearwarden.sharedLogins.copyCustomField(request)
+      } else {
+        await withReprompt([itemId], (tokenFor) =>
+          window.bearwarden.logins.copyCustomField({
+            ...request,
+            ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+          })
+        )
+      }
       showCopied(customFieldCopyFeedbackKey(itemId, index, field))
-      await refreshItems()
+      if (!selectedSharedSummary) await refreshItems()
     } catch (copyError) {
       announceError(describeVaultError(copyError))
     }
@@ -3124,14 +3284,18 @@ function VaultShellContent({
     clearCopied()
     try {
       const itemId = selectedLogin.id
-      await withReprompt([itemId], (tokenFor) =>
-        window.bearwarden.logins.copyTotp({
-          id: itemId,
-          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
-        })
-      )
+      if (selectedSharedSummary) {
+        await window.bearwarden.sharedLogins.copyTotp({ id: itemId })
+      } else {
+        await withReprompt([itemId], (tokenFor) =>
+          window.bearwarden.logins.copyTotp({
+            id: itemId,
+            ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+          })
+        )
+      }
       showCopied(`totp:${itemId}`)
-      await refreshItems()
+      if (!selectedSharedSummary) await refreshItems()
     } catch (copyError) {
       announceError(describeVaultError(copyError))
     }
@@ -3141,15 +3305,19 @@ function VaultShellContent({
     if (!selectedSummary?.uris[uriIndex]?.uri) return
     try {
       const itemId = selectedSummary.id
-      await withReprompt([itemId], (tokenFor) =>
-        window.bearwarden.logins.openUri({
-          id: itemId,
-          uriIndex,
-          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
-        })
-      )
+      if (selectedSharedSummary) {
+        await window.bearwarden.sharedLogins.openUri({ id: itemId, uriIndex })
+      } else {
+        await withReprompt([itemId], (tokenFor) =>
+          window.bearwarden.logins.openUri({
+            id: itemId,
+            uriIndex,
+            ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+          })
+        )
+      }
       announce(t`Website opened.`)
-      await refreshItems()
+      if (!selectedSharedSummary) await refreshItems()
     } catch (openError) {
       announceError(describeVaultError(openError))
     }
@@ -3328,7 +3496,11 @@ function VaultShellContent({
             onClear: () => updateQuery('')
           }}
           itemCreation={{
-            visible: !auxiliaryPageOpen && scope.kind !== 'archive' && scope.kind !== 'trash',
+            visible:
+              !auxiliaryPageOpen &&
+              !sharedScope &&
+              scope.kind !== 'archive' &&
+              scope.kind !== 'trash',
             onCreate: () => openEditor('create')
           }}
           onLockVault={lockVault}
@@ -3387,7 +3559,10 @@ function VaultShellContent({
                 archive: archivedItems.length,
                 trash: trashItems.length
               },
-              folderCounts
+              folderCounts,
+              organizations,
+              collections,
+              sharedItems
             }}
             account={{
               name: sidebarAccountName,
@@ -3402,7 +3577,6 @@ function VaultShellContent({
               onAddFolder: () => setFolderDialog('new'),
               onEditFolder: setFolderDialog,
               onOpenGenerator: () => setGeneratorDialogOpen(true),
-              onOpenOrganizations: openOrganizations,
               onOpenEmergencyAccess: openEmergencyAccess,
               onOpenSends: openSends,
               onOpenHealth: openHealth,
@@ -3504,7 +3678,8 @@ function VaultShellContent({
                     showWebsiteIcons: settings?.showWebsiteIcons ?? false,
                     totpCodes: totpListCodes,
                     totpCountdown: totpListCountdown,
-                    trashItemCount: trashItems.length
+                    trashItemCount: trashItems.length,
+                    readOnly: sharedScope
                   }}
                   selection={{
                     selectedItemCount: selectedSummaries.length
@@ -3535,6 +3710,17 @@ function VaultShellContent({
                   key={`${editorSessionId}:${editorMode}:${selectedLogin?.id ?? 'new'}`}
                   login={editorMode === 'edit' ? (selectedLogin ?? undefined) : undefined}
                   folders={folders}
+                  sharedContext={
+                    selectedSharedSummary && selectedSharedContext
+                      ? {
+                          organizationName: selectedSharedContext.organization?.name ?? '',
+                          collectionNames: selectedSharedContext.collections.map(
+                            (collection) => collection.name
+                          ),
+                          canEditSecrets: selectedSharedSummary.viewPassword
+                        }
+                      : undefined
+                  }
                   busy={busy}
                   authorizationToken={
                     selectedLogin ? authorizationTokenState[selectedLogin.id] : undefined
@@ -3693,7 +3879,7 @@ function VaultShellContent({
                         <WebsiteIcon
                           id={selectedLogin.id}
                           uri={selectedLogin.uri}
-                          enabled={settings?.showWebsiteIcons ?? false}
+                          enabled={!selectedSharedSummary && (settings?.showWebsiteIcons ?? false)}
                         />
                       ) : selectedLogin.type === 'card' ? (
                         <PaymentCardBrandMark
@@ -3716,91 +3902,111 @@ function VaultShellContent({
                             : t`Securely stored item`)}
                       </span>
                     </div>
-                    <TooltipIconButton
-                      variant="outline"
-                      size="icon"
-                      className={cn(selectedLogin.favorite && 'text-chart-4')}
-                      type="button"
-                      label={
-                        selectedLogin.favorite ? t`Remove from favorites` : t`Add to favorites`
-                      }
-                      aria-pressed={selectedLogin.favorite}
-                      onClick={() => void toggleFavorite(selectedLogin)}
-                    >
-                      <Star fill={selectedLogin.favorite ? 'currentColor' : 'none'} />
-                    </TooltipIconButton>
-                    <DropdownMenu>
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <DropdownMenuTrigger
-                              render={
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-[34px] min-w-[34px] rounded-md shadow-(--control-highlight)"
-                                  type="button"
-                                  aria-label={t`More actions`}
-                                  disabled={busy}
-                                />
-                              }
-                            >
-                              <MoreHorizontal aria-hidden="true" />
-                            </DropdownMenuTrigger>
+                    {selectedSharedSummary?.edit && selectedSharedSummary.reprompt === 0 && (
+                      <TooltipIconButton
+                        variant="outline"
+                        size="icon"
+                        type="button"
+                        label={t`Edit`}
+                        disabled={busy}
+                        onClick={() => openEditor('edit')}
+                      >
+                        <Edit3 />
+                      </TooltipIconButton>
+                    )}
+                    {!selectedSharedSummary && (
+                      <>
+                        <TooltipIconButton
+                          variant="outline"
+                          size="icon"
+                          className={cn(selectedLogin.favorite && 'text-chart-4')}
+                          type="button"
+                          label={
+                            selectedLogin.favorite ? t`Remove from favorites` : t`Add to favorites`
                           }
-                        />
-                        <TooltipContent>
-                          <Trans>More actions</Trans>
-                        </TooltipContent>
-                      </Tooltip>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuGroup>
-                          <DropdownMenuItem disabled={busy} onClick={() => void cloneLogin()}>
-                            <Copy data-icon="inline-start" />
-                            <Trans>Duplicate item</Trans>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            disabled={busy}
-                            onClick={() =>
-                              void (selectedLogin.archivedAt ? unarchiveLogin() : archiveLogin())
-                            }
-                          >
-                            {selectedLogin.archivedAt ? (
-                              <ArchiveRestore data-icon="inline-start" />
-                            ) : (
-                              <Archive data-icon="inline-start" />
-                            )}
-                            {selectedLogin.archivedAt ? t`Unarchive` : t`Archive item`}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem disabled={busy} onClick={() => openEditor('edit')}>
-                            <Edit3 data-icon="inline-start" />
-                            <Trans>Edit</Trans>
-                          </DropdownMenuItem>
-                          {selectedLogin.attachments.length === 0 && (
-                            <DropdownMenuItem
-                              disabled={
-                                busy || attachmentOperation !== null || syncStatus.state !== 'ready'
+                          aria-pressed={selectedLogin.favorite}
+                          onClick={() => void toggleFavorite(selectedLogin)}
+                        >
+                          <Star fill={selectedLogin.favorite ? 'currentColor' : 'none'} />
+                        </TooltipIconButton>
+                        <DropdownMenu>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <DropdownMenuTrigger
+                                  render={
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-[34px] min-w-[34px] rounded-md shadow-(--control-highlight)"
+                                      type="button"
+                                      aria-label={t`More actions`}
+                                      disabled={busy}
+                                    />
+                                  }
+                                >
+                                  <MoreHorizontal aria-hidden="true" />
+                                </DropdownMenuTrigger>
                               }
-                              onClick={() => void uploadAttachment()}
-                            >
-                              <Upload data-icon="inline-start" />
-                              <Trans>Upload attachment</Trans>
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuGroup>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuGroup>
-                          <DropdownMenuItem
-                            variant="destructive"
-                            disabled={busy}
-                            onClick={() => setDeleteDialogOpen(true)}
-                          >
-                            <Trash2 data-icon="inline-start" />
-                            <Trans>Move to Trash</Trans>
-                          </DropdownMenuItem>
-                        </DropdownMenuGroup>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                            />
+                            <TooltipContent>
+                              <Trans>More actions</Trans>
+                            </TooltipContent>
+                          </Tooltip>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuGroup>
+                              <DropdownMenuItem disabled={busy} onClick={() => void cloneLogin()}>
+                                <Copy data-icon="inline-start" />
+                                <Trans>Duplicate item</Trans>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                disabled={busy}
+                                onClick={() =>
+                                  void (selectedLogin.archivedAt
+                                    ? unarchiveLogin()
+                                    : archiveLogin())
+                                }
+                              >
+                                {selectedLogin.archivedAt ? (
+                                  <ArchiveRestore data-icon="inline-start" />
+                                ) : (
+                                  <Archive data-icon="inline-start" />
+                                )}
+                                {selectedLogin.archivedAt ? t`Unarchive` : t`Archive item`}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem disabled={busy} onClick={() => openEditor('edit')}>
+                                <Edit3 data-icon="inline-start" />
+                                <Trans>Edit</Trans>
+                              </DropdownMenuItem>
+                              {selectedLogin.attachments.length === 0 && (
+                                <DropdownMenuItem
+                                  disabled={
+                                    busy ||
+                                    attachmentOperation !== null ||
+                                    syncStatus.state !== 'ready'
+                                  }
+                                  onClick={() => void uploadAttachment()}
+                                >
+                                  <Upload data-icon="inline-start" />
+                                  <Trans>Upload attachment</Trans>
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuGroup>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuGroup>
+                              <DropdownMenuItem
+                                variant="destructive"
+                                disabled={busy}
+                                onClick={() => setDeleteDialogOpen(true)}
+                              >
+                                <Trash2 data-icon="inline-start" />
+                                <Trans>Move to Trash</Trans>
+                              </DropdownMenuItem>
+                            </DropdownMenuGroup>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </>
+                    )}
                   </DetailHeader>
 
                   <div
@@ -3827,7 +4033,11 @@ function VaultShellContent({
                         <CardContent className="flex flex-col">
                           <VaultDetailFieldRows
                             fields={selectedDetailFields.filter(
-                              (field) => field.secret || Boolean(field.value)
+                              (field) =>
+                                (!selectedSharedSummary ||
+                                  selectedSharedSummary.viewPassword ||
+                                  !field.secret) &&
+                                (field.secret || Boolean(field.value))
                             )}
                             copy={{
                               copiedKey,
@@ -3842,7 +4052,8 @@ function VaultShellContent({
                               passwordZoomOpenRef,
                               reveal: revealSecret,
                               hide: hideRevealedSecret,
-                              openPasswordZoom
+                              openPasswordZoom,
+                              revealOnHover: canRevealSecretsOnHover(selectedSharedSummary)
                             }}
                             website={{ openWebsite }}
                           />
@@ -3874,19 +4085,21 @@ function VaultShellContent({
                       </DetailCard>
                     )}
 
-                    <VaultItemAttachmentsCard
-                      itemId={selectedLogin.id}
-                      attachments={selectedLogin.attachments}
-                      busy={busy}
-                      syncReady={syncStatus.state === 'ready'}
-                      operation={attachmentOperation}
-                      getOperationStageLabel={getAttachmentStageLabel}
-                      onUpload={uploadAttachment}
-                      onCancelOperation={cancelAttachmentOperation}
-                      onFixLegacy={fixLegacyAttachment}
-                      onDownload={downloadAttachment}
-                      onDelete={setAttachmentDeleteTarget}
-                    />
+                    {!selectedSharedSummary && (
+                      <VaultItemAttachmentsCard
+                        itemId={selectedLogin.id}
+                        attachments={selectedLogin.attachments}
+                        busy={busy}
+                        syncReady={syncStatus.state === 'ready'}
+                        operation={attachmentOperation}
+                        getOperationStageLabel={getAttachmentStageLabel}
+                        onUpload={uploadAttachment}
+                        onCancelOperation={cancelAttachmentOperation}
+                        onFixLegacy={fixLegacyAttachment}
+                        onDownload={downloadAttachment}
+                        onDelete={setAttachmentDeleteTarget}
+                      />
+                    )}
 
                     {selectedLogin.type === 'login' && selectedLogin.hasTotp && (
                       <VaultItemTotpCard
@@ -3909,6 +4122,7 @@ function VaultShellContent({
                       busy={busy}
                       onMoveToFolder={openMoveDialogForSelection}
                       onViewPasswordHistory={() => setPasswordHistoryDialogOpen(true)}
+                      sharedContext={selectedSharedContext}
                     />
                   </div>
                 </article>

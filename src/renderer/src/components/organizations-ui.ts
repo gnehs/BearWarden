@@ -2,6 +2,7 @@ import { i18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import type {
   CollectionView,
+  LoginSummary,
   OrganizationView,
   SharedLoginSummary
 } from '../../../shared/vault-contract'
@@ -53,6 +54,10 @@ export function sharedItemPermissionLabels(item: SharedLoginSummary): string[] {
     item.delete ? i18n._(msg`Can delete`) : i18n._(msg`Cannot delete`),
     item.restore ? i18n._(msg`Can restore`) : i18n._(msg`Cannot restore`)
   ]
+}
+
+export function isSharedLoginSummary(item: LoginSummary): item is SharedLoginSummary {
+  return 'shared' in item && item.shared === true
 }
 
 export interface LatestRequestGuard {

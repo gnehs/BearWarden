@@ -7,9 +7,10 @@ import { useLingui } from '@lingui/react/macro'
 import {
   ContactRound,
   CreditCard,
-  ChevronRight,
   FileKey2,
   Folder,
+  FolderOpen,
+  Folders,
   Globe2,
   MoreHorizontal,
   NotebookPen,
@@ -207,7 +208,7 @@ export const ItemRow = memo(function ItemRow({
               selected && 'text-primary-foreground/82'
             )}
           >
-            {readOnly
+            {item.deletedAt
               ? t`Deleted item`
               : item.subtitle || item.username || item.uri || t`No summary set`}
           </small>
@@ -350,11 +351,11 @@ export function FolderRow({
           disabled={toggleDisabled}
           onClick={onToggle}
         >
-          <ChevronRight
-            data-icon="inline-start"
-            className={cn('transition-transform duration-150', expanded && 'rotate-90')}
-            aria-hidden="true"
-          />
+          {expanded ? (
+            <FolderOpen data-icon="inline-start" aria-hidden="true" />
+          ) : (
+            <Folders data-icon="inline-start" aria-hidden="true" />
+          )}
         </RowIconButton>
       ) : (
         <span

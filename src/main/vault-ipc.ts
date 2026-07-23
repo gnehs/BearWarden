@@ -63,6 +63,7 @@ import {
   type LoginIdRequest,
   type LoginListRequest,
   type SharedLoginListRequest,
+  type SharedLoginUpdateRequest,
   type LoginOpenUriRequest,
   type LoginPrefetchRequest,
   type PasskeyDeleteRequest,
@@ -1554,6 +1555,19 @@ function parseLoginUpdate(
   return result
 }
 
+function parseSharedLoginUpdate(value: unknown): SharedLoginUpdateRequest {
+  if (
+    !isRecord(value) ||
+    Object.hasOwn(value, 'folderId') ||
+    Object.hasOwn(value, 'favorite') ||
+    Object.hasOwn(value, 'reprompt') ||
+    Object.hasOwn(value, 'authorizationToken')
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return parseLoginUpdate(value)
+}
+
 function parseSshKeyImportToken(value: unknown): string {
   if (
     typeof value !== 'string' ||
@@ -2662,6 +2676,33 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     }
     return vault.getSharedLogin({ id: input.id })
   })
+  registerHandler(IPC_CHANNELS.sharedLoginUpdate, getMainWindow, (_event, input) =>
+    afterMutation(vault.updateSharedLogin(parseSharedLoginUpdate(input)))
+  )
+  registerHandler(IPC_CHANNELS.sharedLoginRevealEditorSecrets, getMainWindow, (_event, input) =>
+    vault.revealSharedEditorSecrets(parseEditorSecretsRequest(input))
+  )
+  registerHandler(IPC_CHANNELS.sharedLoginRevealSecret, getMainWindow, (_event, input) =>
+    vault.revealSharedSecret(parseItemField(input))
+  )
+  registerHandler(IPC_CHANNELS.sharedLoginCopyField, getMainWindow, (_event, input) =>
+    vault.copySharedField(parseItemField(input))
+  )
+  registerHandler(IPC_CHANNELS.sharedLoginRevealCustomField, getMainWindow, (_event, input) =>
+    vault.revealSharedCustomField(parseCustomFieldRequest(input))
+  )
+  registerHandler(IPC_CHANNELS.sharedLoginCopyCustomField, getMainWindow, (_event, input) =>
+    vault.copySharedCustomField(parseCustomFieldRequest(input))
+  )
+  registerHandler(IPC_CHANNELS.sharedLoginGetTotp, getMainWindow, (_event, input) =>
+    vault.getSharedTotp(parseId(input))
+  )
+  registerHandler(IPC_CHANNELS.sharedLoginCopyTotp, getMainWindow, (_event, input) =>
+    vault.copySharedTotp(parseId(input))
+  )
+  registerHandler(IPC_CHANNELS.sharedLoginOpenUri, getMainWindow, (_event, input) =>
+    vault.openSharedLoginUri(parseOpenUri(input))
+  )
   registerHandler(IPC_CHANNELS.emergencyAccessList, getMainWindow, () =>
     vault.listEmergencyAccess()
   )

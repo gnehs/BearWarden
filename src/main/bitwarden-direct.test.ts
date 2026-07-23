@@ -1976,9 +1976,10 @@ describe('BitwardenDirectClient', () => {
     userKey.fill(0)
     organizationKey.fill(0)
 
+    let organizationUpdateRequest: JsonObject | null = null
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',
-      fetch: async (url) => {
+      fetch: async (url, init) => {
         if (url.endsWith('/identity/accounts/prelogin/password')) {
           return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
         }
@@ -1990,6 +1991,17 @@ describe('BitwardenDirectClient', () => {
           })
         }
         if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (init?.method === 'PUT' && url.endsWith(`/api/ciphers/${ORGANIZATION_CIPHER_ID}`)) {
+          organizationUpdateRequest = JSON.parse(String(init.body)) as JsonObject
+          return jsonResponse({
+            ...sharedCipher,
+            ...organizationUpdateRequest,
+            id: ORGANIZATION_CIPHER_ID,
+            organizationId: ORGANIZATION_ID,
+            collectionIds: [COLLECTION_ID],
+            revisionDate: '2026-07-14T00:00:00.000Z'
+          })
+        }
         return jsonResponse({ message: 'not found' }, 404)
       }
     })
@@ -2029,6 +2041,28 @@ describe('BitwardenDirectClient', () => {
         restore: false
       })
     ])
+    await expect(
+      client.editOrganizationCipher(ORGANIZATION_CIPHER_ID, {
+        name: 'Edited shared item',
+        username: 'edited@example.invalid'
+      })
+    ).resolves.toMatchObject({
+      id: ORGANIZATION_CIPHER_ID,
+      organizationId: ORGANIZATION_ID,
+      collectionIds: [COLLECTION_ID],
+      name: 'Edited shared item',
+      username: 'edited@example.invalid',
+      edit: true
+    })
+    expect(organizationUpdateRequest).toMatchObject({
+      organizationId: ORGANIZATION_ID,
+      collectionIds: [COLLECTION_ID],
+      folderId: null
+    })
+    await client.lock()
+    await expect(
+      client.editOrganizationCipher(ORGANIZATION_CIPHER_ID, { name: 'Locked edit' })
+    ).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
   })
 
   it('decrypts provider-managed organization keys through the provider key', async () => {

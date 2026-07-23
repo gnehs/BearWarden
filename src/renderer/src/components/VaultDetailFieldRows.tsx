@@ -38,6 +38,7 @@ interface DetailFieldRevealControls {
   ) => Promise<string | undefined>
   hide: (field: VaultSecretField) => void
   openPasswordZoom: () => void | Promise<void>
+  revealOnHover?: boolean
 }
 
 interface DetailFieldWebsiteControls {
@@ -106,22 +107,23 @@ function VaultDetailFieldRow({
     ) : (
       field.value || t`Not set`
     )
-  const secretHoverHandlers = field.secret
-    ? {
-        onMouseEnter: () => {
-          reveal.hoveringFieldsRef.current.add(secretField)
-          if (revealedValue !== undefined) return
-          reveal.hoverRevealedFieldsRef.current.add(secretField)
-          void reveal.reveal(secretField, { quiet: true, forceShow: true })
-        },
-        onMouseLeave: () => {
-          reveal.hoveringFieldsRef.current.delete(secretField)
-          if (secretField === 'password' && reveal.passwordZoomOpenRef.current) return
-          if (!reveal.hoverRevealedFieldsRef.current.delete(secretField)) return
-          reveal.hide(secretField)
+  const secretHoverHandlers =
+    field.secret && reveal.revealOnHover !== false
+      ? {
+          onMouseEnter: () => {
+            reveal.hoveringFieldsRef.current.add(secretField)
+            if (revealedValue !== undefined) return
+            reveal.hoverRevealedFieldsRef.current.add(secretField)
+            void reveal.reveal(secretField, { quiet: true, forceShow: true })
+          },
+          onMouseLeave: () => {
+            reveal.hoveringFieldsRef.current.delete(secretField)
+            if (secretField === 'password' && reveal.passwordZoomOpenRef.current) return
+            if (!reveal.hoverRevealedFieldsRef.current.delete(secretField)) return
+            reveal.hide(secretField)
+          }
         }
-      }
-    : undefined
+      : undefined
   const value = (
     <strong className={valueClassName} {...(canCopyFromValue ? undefined : secretHoverHandlers)}>
       {displayValue}

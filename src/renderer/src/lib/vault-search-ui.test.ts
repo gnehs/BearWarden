@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { LoginSummary } from '../../../shared/vault-contract'
+import type { LoginSummary, SharedLoginSummary } from '../../../shared/vault-contract'
 import {
   boundedVaultSearchQuery,
   filterVaultSearchMatches,
@@ -32,6 +32,23 @@ function summary(id: string, overrides: Partial<LoginSummary> = {}): LoginSummar
     archivedAt: null,
     reprompt: 0,
     ...overrides
+  }
+}
+
+function sharedSummary(
+  id: string,
+  organizationId: string,
+  collectionIds: string[]
+): SharedLoginSummary {
+  return {
+    ...summary(id),
+    organizationId,
+    collectionIds,
+    shared: true,
+    edit: false,
+    viewPassword: true,
+    delete: false,
+    restore: false
   }
 }
 
@@ -128,5 +145,45 @@ describe('vault search renderer policy', () => {
     ).toBe(false)
     expect(matchesVaultSearchNavigation(card, '   ', { kind: 'all' }, 'login')).toBe(false)
     expect(matchesVaultSearchNavigation(card, '   ', { kind: 'all' }, 'card')).toBe(true)
+  })
+
+  it('filters shared items by organization and multi-membership collections', () => {
+    const shared = sharedSummary('shared', 'org-a', ['collection-a', 'collection-b'])
+    const personal = summary('personal')
+
+    expect(matchesVaultSearchNavigation(shared, '', { kind: 'shared' }, 'all')).toBe(true)
+    expect(matchesVaultSearchNavigation(personal, '', { kind: 'shared' }, 'all')).toBe(false)
+    expect(
+      matchesVaultSearchNavigation(
+        shared,
+        '',
+        { kind: 'organization', organizationId: 'org-a' },
+        'all'
+      )
+    ).toBe(true)
+    expect(
+      matchesVaultSearchNavigation(
+        shared,
+        '',
+        {
+          kind: 'collection',
+          organizationId: 'org-a',
+          collectionId: 'collection-b'
+        },
+        'all'
+      )
+    ).toBe(true)
+    expect(
+      matchesVaultSearchNavigation(
+        shared,
+        '',
+        {
+          kind: 'collection',
+          organizationId: 'org-b',
+          collectionId: 'collection-b'
+        },
+        'all'
+      )
+    ).toBe(false)
   })
 })

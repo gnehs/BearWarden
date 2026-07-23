@@ -61,6 +61,45 @@ describe('ItemRow TOTP countdown', () => {
   })
 })
 
+describe('ItemRow status', () => {
+  it('does not describe a read-only shared item as deleted', () => {
+    const markup = renderToStaticMarkup(
+      <DndContext>
+        <ItemRow
+          item={item}
+          selected={false}
+          readOnly
+          onSelect={vi.fn()}
+          onFavorite={vi.fn()}
+          onContextMenu={vi.fn()}
+          showWebsiteIcons={false}
+        />
+      </DndContext>
+    )
+
+    expect(markup).toContain('>Account</')
+    expect(markup).not.toContain('已刪除的項目')
+  })
+
+  it('describes an item as deleted only when it has a deletion timestamp', () => {
+    const markup = renderToStaticMarkup(
+      <DndContext>
+        <ItemRow
+          item={{ ...item, deletedAt: '2026-07-23T00:00:00.000Z' }}
+          selected={false}
+          readOnly
+          onSelect={vi.fn()}
+          onFavorite={vi.fn()}
+          onContextMenu={vi.fn()}
+          showWebsiteIcons={false}
+        />
+      </DndContext>
+    )
+
+    expect(markup).toContain('已刪除的項目')
+  })
+})
+
 describe('FolderRow hierarchy', () => {
   it('shows the leaf label while retaining the complete path for assistive text and actions', () => {
     const folder: FolderView = {
@@ -135,7 +174,39 @@ describe('FolderRow hierarchy', () => {
     expect(parentMarkup).toContain('aria-expanded="false"')
     expect(parentMarkup).toContain('padding-inline-start:9px')
     expect(parentMarkup).toContain('>7</small>')
+    expect(parentMarkup).toContain('lucide-folders')
+    expect(parentMarkup).not.toContain('lucide-chevron-right')
     expect(leafMarkup).not.toContain('aria-expanded=')
     expect(leafMarkup).toContain('>2</small>')
+  })
+
+  it('uses an open folder icon for expanded parent folders', () => {
+    const folder: FolderView = {
+      id: 'finance',
+      name: '金融',
+      position: 0,
+      createdAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:00.000Z'
+    }
+    const markup = renderToStaticMarkup(
+      <DndContext>
+        <SortableContext items={[folder.id]}>
+          <FolderRow
+            folder={folder}
+            hasChildren
+            expanded
+            selected={false}
+            count={7}
+            onToggle={vi.fn()}
+            onSelect={vi.fn()}
+            onEdit={vi.fn()}
+          />
+        </SortableContext>
+      </DndContext>
+    )
+
+    expect(markup).toContain('aria-expanded="true"')
+    expect(markup).toContain('lucide-folder-open')
+    expect(markup).not.toContain('lucide-chevron-right')
   })
 })

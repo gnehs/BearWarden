@@ -2,7 +2,16 @@ import { i18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { arrayMove } from '@dnd-kit/sortable'
 import { parse } from 'tldts'
-import type { VaultLoginUri } from '../../../shared/vault-contract'
+import type { VaultCustomFieldType, VaultLoginUri } from '../../../shared/vault-contract'
+
+export function canSelectCustomFieldType(
+  type: VaultCustomFieldType,
+  options: { canUseLinked: boolean; canEditSecrets: boolean }
+): boolean {
+  return (
+    (type !== 'linked' || options.canUseLinked) && (type !== 'hidden' || options.canEditSecrets)
+  )
+}
 
 export type EditorLoginUri = VaultLoginUri & {
   /** Renderer-only identity for stable drag-and-drop keys. Removed before IPC submission. */

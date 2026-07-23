@@ -1,7 +1,8 @@
 import {
   MAX_LOGIN_SEARCH_QUERY_LENGTH,
   type LoginListRequest,
-  type LoginSummary
+  type LoginSummary,
+  type SharedLoginSummary
 } from '../../../shared/vault-contract'
 import { matchesVaultCategory, type VaultCategoryFilter } from './vault-category'
 
@@ -18,6 +19,9 @@ export type VaultSearchNavigationScope =
   | { kind: 'favorites' }
   | { kind: 'folder'; folderId: string }
   | { kind: 'unfiled' }
+  | { kind: 'shared' }
+  | { kind: 'organization'; organizationId: string }
+  | { kind: 'collection'; organizationId: string; collectionId: string }
   | { kind: 'archive' }
   | { kind: 'trash' }
 
@@ -66,6 +70,19 @@ export function matchesVaultSearchNavigation(
   }
 
   if (normalizedVaultSearchQuery(query)) return true
+  const sharedItem =
+    'shared' in item && item.shared === true && 'organizationId' in item && 'collectionIds' in item
+      ? (item as unknown as SharedLoginSummary)
+      : null
+  if (scope.kind === 'shared' && !sharedItem) return false
+  if (scope.kind === 'organization' && sharedItem?.organizationId !== scope.organizationId)
+    return false
+  if (
+    scope.kind === 'collection' &&
+    (sharedItem?.organizationId !== scope.organizationId ||
+      !sharedItem.collectionIds.includes(scope.collectionId))
+  )
+    return false
   if (scope.kind === 'favorites' && !item.favorite) return false
   if (scope.kind === 'folder' && item.folderId !== scope.folderId) return false
   if (scope.kind === 'unfiled' && item.folderId !== null) return false

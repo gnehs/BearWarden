@@ -50,6 +50,7 @@ interface VaultItemListPaneList {
   totpCodes: ReadonlyMap<string, TotpCodeView | null>
   totpCountdown: TotpCodeView | null
   trashItemCount: number
+  readOnly: boolean
 }
 
 interface VaultItemListPaneSelection {
@@ -163,7 +164,7 @@ export function VaultItemListPane({
           showWebsiteIcons={scope.kind !== 'trash' && list.showWebsiteIcons}
           showTotpCodes={typeFilter === 'totp'}
           totpCodes={list.totpCodes}
-          readOnly={scope.kind === 'trash'}
+          readOnly={list.readOnly || scope.kind === 'trash'}
           className={cn(typeFilter === 'totp' && 'pb-20')}
         />
       ) : (
@@ -186,14 +187,20 @@ export function VaultItemListPane({
                 ? t`No matching items`
                 : scope.kind === 'trash'
                   ? t`Trash is empty`
-                  : t`There are no vault items here yet`}
+                  : list.readOnly
+                    ? t`No shared items`
+                    : t`There are no vault items here yet`}
             </EmptyTitle>
             <EmptyDescription className="text-muted-foreground mb-4 max-w-[290px] leading-[1.55]">
               {query
                 ? t`Try a shorter search term or switch to All items.`
                 : scope.kind === 'trash'
                   ? t`Deleted items remain here until you restore or permanently delete them, or the server removes them according to its retention policy.`
-                  : t`Add your first item and BearWarden will keep it safe.`}
+                  : list.readOnly
+                    ? scope.kind === 'shared'
+                      ? t`After Bitwarden sync completes, shared items that you have permission to access will appear here.`
+                      : t`The current organization or Collection has no items you can read.`
+                    : t`Add your first item and BearWarden will keep it safe.`}
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
@@ -201,7 +208,7 @@ export function VaultItemListPane({
               <Button variant="outline" type="button" onClick={() => setQuery('')}>
                 <Trans>Clear search</Trans>
               </Button>
-            ) : scope.kind !== 'trash' && scope.kind !== 'archive' ? (
+            ) : !list.readOnly && scope.kind !== 'trash' && scope.kind !== 'archive' ? (
               <Button
                 className="before:ring-primary-foreground/20 relative h-[38px] gap-2 rounded-[9px] border-0 px-3.5 font-[680] shadow-[var(--subtle-primary-action-shadow)] before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:ring-1 before:ring-inset has-data-[icon=inline-start]:pl-3.5"
                 type="button"
@@ -228,118 +235,119 @@ export function VaultItemListPane({
           />
         </div>
       )}
-      {(selection.selectedItemCount >= 2 ||
-        (scope.kind === 'trash' && list.trashItemCount > 0)) && (
-        <footer
-          className="border-border bg-muted flex min-h-16 flex-none flex-wrap items-center justify-end gap-2 border-t px-5 py-1"
-          aria-label={t`List actions`}
-        >
-          {selection.selectedItemCount >= 2 && (
-            <div
-              className={cn(
-                'flex flex-wrap items-center gap-2',
-                scope.kind !== 'trash' && 'flex-1'
-              )}
-              role="toolbar"
-              aria-label={t`Bulk actions for selected items`}
-              aria-busy={busy}
-            >
-              <span className="sr-only" aria-live="polite">
-                <Trans>{selection.selectedItemCount} items selected</Trans>
-              </span>
-              {scope.kind === 'trash' ? (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      void actions.onPerformBulkAction(actions.snapshotBulkAction('restore'))
-                    }
-                  >
-                    <RotateCcw data-icon="inline-start" />
-                    <Trans>Restore</Trans>
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      actions.onSetPendingBulkAction(
-                        actions.snapshotBulkAction('deletePermanently')
-                      )
-                    }
-                  >
-                    <Trash2 data-icon="inline-start" />
-                    <Trans>Delete permanently</Trans>
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      actions.onSetPendingBulkAction(actions.snapshotBulkAction('delete'))
-                    }
-                  >
-                    <Trash2 data-icon="inline-start" />
-                    <Trans>Delete</Trans>
-                  </Button>
-                  <div className="ml-auto flex flex-wrap items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      type="button"
-                      disabled={busy}
-                      onClick={actions.onOpenMove}
-                    >
-                      <FolderOpen data-icon="inline-start" />
-                      <Trans>Move</Trans>
-                    </Button>
+      {!list.readOnly &&
+        (selection.selectedItemCount >= 2 ||
+          (scope.kind === 'trash' && list.trashItemCount > 0)) && (
+          <footer
+            className="border-border bg-muted flex min-h-16 flex-none flex-wrap items-center justify-end gap-2 border-t px-5 py-1"
+            aria-label={t`List actions`}
+          >
+            {selection.selectedItemCount >= 2 && (
+              <div
+                className={cn(
+                  'flex flex-wrap items-center gap-2',
+                  scope.kind !== 'trash' && 'flex-1'
+                )}
+                role="toolbar"
+                aria-label={t`Bulk actions for selected items`}
+                aria-busy={busy}
+              >
+                <span className="sr-only" aria-live="polite">
+                  <Trans>{selection.selectedItemCount} items selected</Trans>
+                </span>
+                {scope.kind === 'trash' ? (
+                  <>
                     <Button
                       variant="outline"
                       size="sm"
                       type="button"
                       disabled={busy}
                       onClick={() =>
-                        void actions.onPerformBulkAction(
-                          actions.snapshotBulkAction(
-                            scope.kind === 'archive' ? 'unarchive' : 'archive'
-                          )
+                        void actions.onPerformBulkAction(actions.snapshotBulkAction('restore'))
+                      }
+                    >
+                      <RotateCcw data-icon="inline-start" />
+                      <Trans>Restore</Trans>
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        actions.onSetPendingBulkAction(
+                          actions.snapshotBulkAction('deletePermanently')
                         )
                       }
                     >
-                      {scope.kind === 'archive' ? (
-                        <ArchiveRestore data-icon="inline-start" />
-                      ) : (
-                        <Archive data-icon="inline-start" />
-                      )}
-                      {scope.kind === 'archive' ? t`Unarchive` : t`Archive`}
+                      <Trash2 data-icon="inline-start" />
+                      <Trans>Delete permanently</Trans>
                     </Button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-          {scope.kind === 'trash' && list.trashItemCount > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              type="button"
-              disabled={busy}
-              onClick={actions.onEmptyTrash}
-            >
-              <Trash2 data-icon="inline-start" />
-              <Trans>Empty Trash</Trans>
-            </Button>
-          )}
-        </footer>
-      )}
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        actions.onSetPendingBulkAction(actions.snapshotBulkAction('delete'))
+                      }
+                    >
+                      <Trash2 data-icon="inline-start" />
+                      <Trans>Delete</Trans>
+                    </Button>
+                    <div className="ml-auto flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        type="button"
+                        disabled={busy}
+                        onClick={actions.onOpenMove}
+                      >
+                        <FolderOpen data-icon="inline-start" />
+                        <Trans>Move</Trans>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void actions.onPerformBulkAction(
+                            actions.snapshotBulkAction(
+                              scope.kind === 'archive' ? 'unarchive' : 'archive'
+                            )
+                          )
+                        }
+                      >
+                        {scope.kind === 'archive' ? (
+                          <ArchiveRestore data-icon="inline-start" />
+                        ) : (
+                          <Archive data-icon="inline-start" />
+                        )}
+                        {scope.kind === 'archive' ? t`Unarchive` : t`Archive`}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+            {scope.kind === 'trash' && list.trashItemCount > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                disabled={busy}
+                onClick={actions.onEmptyTrash}
+              >
+                <Trash2 data-icon="inline-start" />
+                <Trans>Empty Trash</Trans>
+              </Button>
+            )}
+          </footer>
+        )}
     </>
   )
 }

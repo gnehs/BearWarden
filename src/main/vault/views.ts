@@ -193,33 +193,10 @@ export function toSharedView(login: StoredSharedLogin): SharedLoginView {
     ? view
     : {
         ...view,
-        subtitle: '',
-        passwordUpdatedAt: null,
-        username: '',
-        notes: null,
         hasTotp: false,
-        customFields: view.customFields.map((field) => ({ ...field, value: null })),
-        cardholderName: '',
-        brand: '',
-        expMonth: '',
-        expYear: '',
-        title: '',
-        firstName: '',
-        middleName: '',
-        lastName: '',
-        address1: '',
-        address2: '',
-        address3: '',
-        city: '',
-        state: '',
-        postalCode: '',
-        country: '',
-        company: '',
-        email: '',
-        phone: '',
-        identityUsername: '',
-        publicKey: '',
-        fingerprint: ''
+        customFields: view.customFields.map((field) =>
+          field.type === 'hidden' ? { ...field, value: null } : field
+        )
       }
   return {
     ...safeView,

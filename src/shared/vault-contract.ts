@@ -30,6 +30,15 @@ export const IPC_CHANNELS = {
   collectionList: 'collection:list',
   sharedLoginList: 'shared-login:list',
   sharedLoginGet: 'shared-login:get',
+  sharedLoginUpdate: 'shared-login:update',
+  sharedLoginRevealEditorSecrets: 'shared-login:reveal-editor-secrets',
+  sharedLoginRevealSecret: 'shared-login:reveal-secret',
+  sharedLoginCopyField: 'shared-login:copy-field',
+  sharedLoginRevealCustomField: 'shared-login:reveal-custom-field',
+  sharedLoginCopyCustomField: 'shared-login:copy-custom-field',
+  sharedLoginGetTotp: 'shared-login:get-totp',
+  sharedLoginCopyTotp: 'shared-login:copy-totp',
+  sharedLoginOpenUri: 'shared-login:open-uri',
   emergencyAccessList: 'emergency-access:list',
   folderCreate: 'folder:create',
   folderUpdate: 'folder:update',
@@ -46,6 +55,7 @@ export const IPC_CHANNELS = {
   loginCopyPasswordHistory: 'login:copy-password-history',
   loginRestorePasswordHistory: 'login:restore-password-history',
   attachmentDownload: 'attachment:download',
+  attachmentPreview: 'attachment:preview',
   attachmentUpload: 'attachment:upload',
   attachmentDelete: 'attachment:delete',
   attachmentFixLegacy: 'attachment:fix-legacy',
@@ -691,7 +701,7 @@ export interface PasskeyDeleteRequest extends LoginIdRequest {
   expectedUpdatedAt?: string
 }
 
-export type AttachmentOperationKind = 'download' | 'upload' | 'delete' | 'fix-legacy'
+export type AttachmentOperationKind = 'download' | 'preview' | 'upload' | 'delete' | 'fix-legacy'
 
 export type AttachmentOperationStage =
   | 'choosing-file'
@@ -724,6 +734,15 @@ export type AttachmentDownloadRequest = AttachmentTargetRequest
 export interface AttachmentDownloadResult {
   canceled: boolean
   fileName: string
+}
+
+export type AttachmentPreviewRequest = AttachmentTargetRequest
+
+export interface AttachmentPreviewResult {
+  canceled: boolean
+  fileName: string
+  mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+  dataUrl: string
 }
 
 export type AttachmentUploadRequest = AttachmentOperationRequest
@@ -870,6 +889,11 @@ export interface SharedLoginView extends LoginView {
   delete: boolean
   restore: boolean
 }
+
+export type SharedLoginUpdateRequest = Omit<
+  LoginUpdateRequest,
+  'folderId' | 'favorite' | 'reprompt' | 'authorizationToken'
+>
 
 export type EmergencyAccessStatus = 0 | 1 | 2 | 3 | 4
 
@@ -1911,6 +1935,15 @@ export interface BearWardenAPI {
   sharedLogins: {
     list: (request?: SharedLoginListRequest) => Promise<SharedLoginSummary[]>
     get: (request: LoginIdRequest) => Promise<SharedLoginView>
+    update: (request: SharedLoginUpdateRequest) => Promise<SharedLoginView>
+    revealEditorSecrets: (request: EditorSecretsRequest) => Promise<EditorSecretsView>
+    revealSecret: (request: ItemFieldRequest) => Promise<string>
+    copyField: (request: ItemFieldRequest) => Promise<void>
+    revealCustomField: (request: CustomFieldRequest) => Promise<string>
+    copyCustomField: (request: CustomFieldRequest) => Promise<void>
+    getTotp: (request: LoginIdRequest) => Promise<TotpCodeView>
+    copyTotp: (request: LoginIdRequest) => Promise<void>
+    openUri: (request: LoginOpenUriRequest) => Promise<void>
   }
   emergencyAccess: {
     list: () => Promise<EmergencyAccessView[]>
@@ -1926,6 +1959,7 @@ export interface BearWardenAPI {
     copyPasswordHistory: (request: PasswordHistoryEntryRequest) => Promise<void>
     restorePasswordHistory: (request: PasswordHistoryRestoreRequest) => Promise<LoginView>
     downloadAttachment: (request: AttachmentDownloadRequest) => Promise<AttachmentDownloadResult>
+    previewAttachment: (request: AttachmentPreviewRequest) => Promise<AttachmentPreviewResult>
     uploadAttachment: (request: AttachmentUploadRequest) => Promise<AttachmentUploadResult>
     deleteAttachment: (request: AttachmentDeleteRequest) => Promise<AttachmentDeleteResult>
     fixLegacyAttachment: (request: AttachmentFixLegacyRequest) => Promise<AttachmentFixLegacyResult>
