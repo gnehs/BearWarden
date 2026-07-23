@@ -38,6 +38,8 @@ import {
   type AttachmentDeleteRequest,
   type AttachmentDownloadRequest,
   type AttachmentFixLegacyRequest,
+  type AttachmentPreviewRequest,
+  type AttachmentUploadCardCoverRequest,
   type AttachmentProgressEvent,
   type AttachmentUploadRequest,
   type CustomFieldRequest,
@@ -1317,6 +1319,19 @@ function parseAttachmentUpload(value: unknown): AttachmentUploadRequest {
   return {
     id: requiredString(record, 'id'),
     operationId: requiredOperationId(record),
+    ...(authorizationToken ? { authorizationToken } : {})
+  }
+}
+
+function parseAttachmentUploadCardCover(value: unknown): AttachmentUploadCardCoverRequest {
+  const record = exactRecord(value, ['id', 'operationId', 'sourceUrl', 'authorizationToken'])
+  const authorizationToken = optionalAuthorizationToken(record)
+  const sourceUrl = requiredString(record, 'sourceUrl')
+  if (sourceUrl.length === 0 || sourceUrl.length > 4096) throw new VaultError('INVALID_INPUT')
+  return {
+    id: requiredString(record, 'id'),
+    operationId: requiredOperationId(record),
+    sourceUrl,
     ...(authorizationToken ? { authorizationToken } : {})
   }
 }
@@ -2905,10 +2920,28 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       attachmentAuthorization(event, request)
     )
   })
+  registerHandler(IPC_CHANNELS.attachmentPreview, getMainWindow, (event, input) => {
+    const request = parseAttachmentTarget(input) as AttachmentPreviewRequest
+    return vault.previewAttachment(
+      request,
+      attachmentProgress(event),
+      attachmentAuthorization(event, request)
+    )
+  })
   registerHandler(IPC_CHANNELS.attachmentUpload, getMainWindow, (event, input) => {
     const request = parseAttachmentUpload(input)
     return afterMutation(
       vault.uploadAttachment(
+        request,
+        attachmentProgress(event),
+        attachmentAuthorization(event, request)
+      )
+    )
+  })
+  registerHandler(IPC_CHANNELS.attachmentUploadCardCover, getMainWindow, (event, input) => {
+    const request = parseAttachmentUploadCardCover(input)
+    return afterMutation(
+      vault.uploadCardCoverAttachment(
         request,
         attachmentProgress(event),
         attachmentAuthorization(event, request)

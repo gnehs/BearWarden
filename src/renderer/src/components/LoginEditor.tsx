@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { plural } from '@lingui/core/macro'
 import {
   closestCenter,
   DndContext,
@@ -26,20 +27,25 @@ import {
   FileKey2,
   FolderOpen,
   GripVertical,
+  ImageIcon,
   KeyRound,
   Link2,
   ListPlus,
   NotebookPen,
+  Paperclip,
   Plus,
   RefreshCw,
   Save,
+  Search,
   Sparkles,
   TextCursorInput,
   Trash2,
+  Upload,
   UsersRound,
   X
 } from 'lucide-react'
 import type {
+  AttachmentProgressEvent,
   CollectionView,
   FolderView,
   LoginView,
@@ -63,6 +69,11 @@ import {
   type PaymentCardBrand,
   type PaymentCardBrandOption
 } from '../lib/payment-card'
+import {
+  fetchCardCoverCatalog,
+  filterCardCoverCatalog,
+  type CardCoverCatalogEntry
+} from '../lib/card-cover-catalog'
 import { Button } from './ui/button'
 import {
   AlertDialog,
@@ -154,10 +165,16 @@ import {
   type SshKeyGenerationState,
   type SshKeyImportState
 } from './ssh-key-editor-state'
+import { attachmentProgressPercent, type AttachmentOperationState } from './vault-attachment-ui'
+import { Progress, ProgressLabel, ProgressValue } from './ui/progress'
 
 type EditorSecretField = VaultEditorSecretField
 type EditorErrorKind = 'name' | 'password' | 'ssh' | 'uri' | 'collection' | 'reveal' | null
 type SecretLoadState = 'loading' | 'ready' | 'error'
+type CardCoverCatalogState =
+  | { status: 'idle' | 'loading'; entries: CardCoverCatalogEntry[]; error: string }
+  | { status: 'ready'; entries: CardCoverCatalogEntry[]; error: string }
+  | { status: 'error'; entries: CardCoverCatalogEntry[]; error: string }
 
 export type EditorCustomField = VaultCustomFieldUpdate & {
   /** Renderer-only identity for stable React list keys. Removed before IPC submission. */
@@ -294,6 +311,10 @@ export interface LoginDraft extends VaultItemFields {
   customFields: EditorCustomField[]
   /** Renderer-only handle for main-process-only generated or imported private-key material. */
   sshImportToken?: string
+  /** Renderer-only card cover chosen from the public catalog. Uploaded after the item is saved. */
+  cardCoverSourceUrl?: string
+  cardCoverPreviewUrl?: string
+  cardCoverLabel?: string
 }
 
 interface LoginEditorProps {
@@ -308,6 +329,14 @@ interface LoginEditorProps {
   }
   busy: boolean
   authorizationToken?: string
+  attachmentUpload?: {
+    attachmentCount: number
+    operation: AttachmentOperationState | null
+    syncReady: boolean
+    getOperationStageLabel: (progress: AttachmentProgressEvent) => string
+    onUpload: () => void | Promise<void>
+    onCancelOperation: () => void | Promise<void>
+  }
   onCancel: () => void
   onDirtyChange: (dirty: boolean) => void
   onDeletePasskey: (credentialId: string, expectedUpdatedAt: string) => Promise<LoginView | null>
@@ -524,6 +553,7 @@ function LoginEditor({
   sharedContext,
   busy,
   authorizationToken,
+  attachmentUpload,
   onCancel,
   onDirtyChange,
   onDeletePasskey,
@@ -625,6 +655,7 @@ function LoginEditor({
   const sshKeyGenerationRequestRef = useRef(0)
   const sshKeyImportRequestRef = useRef(0)
   const activeSshImportTokenRef = useRef<string | null>(null)
+  const cardCoverCatalogAbortRef = useRef<AbortController | null>(null)
   const sshImportPassphraseRef = useRef<HTMLInputElement>(null)
   const [editorSnapshot] = useState(() =>
     login
@@ -660,7 +691,10 @@ function LoginEditor({
     reprompt: login?.reprompt ?? 0,
     uris: urisFromLogin(login),
     changedSecrets: [],
-    customFields: customFieldsFromLogin(login)
+    customFields: customFieldsFromLogin(login),
+    cardCoverSourceUrl: undefined,
+    cardCoverPreviewUrl: undefined,
+    cardCoverLabel: undefined
   }))
   const [selectedCardBrand, setSelectedCardBrand] = useState<PaymentCardBrandOption>(() =>
     paymentCardBrandOption(login?.brand)
@@ -685,6 +719,13 @@ function LoginEditor({
     expiresAt: number
   } | null>(null)
   const [sshKeyImportError, setSshKeyImportError] = useState('')
+  const [cardCoverCatalogOpen, setCardCoverCatalogOpen] = useState(false)
+  const [cardCoverCatalogQuery, setCardCoverCatalogQuery] = useState('')
+  const [cardCoverCatalog, setCardCoverCatalog] = useState<CardCoverCatalogState>({
+    status: 'idle',
+    entries: [],
+    error: ''
+  })
   const sortableSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -700,6 +741,10 @@ function LoginEditor({
     isSshKeyGenerationBlockingSave(draft.type, sshKeyGenerationState, draft.sshImportToken)
   const sshKeyFieldsDisabled =
     busy || secretsUnavailable || sshKeyGenerationState === 'generating' || sshKeyImportPending
+  const filteredCardCoverCatalog = filterCardCoverCatalog(
+    cardCoverCatalog.entries,
+    cardCoverCatalogQuery
+  )
 
   useEffect(() => nameRef.current?.focus(), [])
   useEffect(() => {
@@ -709,6 +754,7 @@ function LoginEditor({
     editorMountedRef.current = true
     return () => {
       editorMountedRef.current = false
+      cardCoverCatalogAbortRef.current?.abort()
       sshKeyImportRequestRef.current += 1
       const importToken = activeSshImportTokenRef.current
       activeSshImportTokenRef.current = null
@@ -866,12 +912,56 @@ function LoginEditor({
 
   function update<K extends keyof LoginDraft>(key: K, value: LoginDraft[K]): void {
     setDirty(true)
-    setDraft((current) => ({ ...current, [key]: value }))
+    if (key === 'type' && value !== 'card') setCardCoverCatalogOpen(false)
+    setDraft((current) => {
+      const next = { ...current, [key]: value }
+      if (key !== 'type' || value === 'card') return next
+      return {
+        ...next,
+        cardCoverSourceUrl: undefined,
+        cardCoverPreviewUrl: undefined,
+        cardCoverLabel: undefined
+      }
+    })
+  }
+
+  function openCardCoverCatalog(): void {
+    setCardCoverCatalogOpen(true)
+    if (cardCoverCatalog.status === 'ready' || cardCoverCatalog.status === 'loading') return
+    cardCoverCatalogAbortRef.current?.abort()
+    const abort = new AbortController()
+    cardCoverCatalogAbortRef.current = abort
+    setCardCoverCatalog((current) => ({ ...current, status: 'loading', error: '' }))
+    void fetchCardCoverCatalog(abort.signal)
+      .then((entries) => {
+        if (abort.signal.aborted) return
+        setCardCoverCatalog({ status: 'ready', entries, error: '' })
+      })
+      .catch((catalogError) => {
+        if (abort.signal.aborted) return
+        setCardCoverCatalog({
+          status: 'error',
+          entries: [],
+          error: catalogError instanceof Error ? catalogError.message : t`Card catalog unavailable`
+        })
+      })
+  }
+
+  function selectCardCover(entry: CardCoverCatalogEntry): void {
+    setDirty(true)
+    setDraft((current) => ({
+      ...current,
+      cardCoverSourceUrl: entry.sourceUrl,
+      cardCoverPreviewUrl: entry.imageUrl,
+      cardCoverLabel: entry.bankName ? `${entry.bankName} ${entry.cardName}` : entry.cardName
+    }))
+    setCardCoverCatalogOpen(false)
   }
 
   function updateOwner(value: string | null): void {
     const ownerOrganizationId = value === 'personal' ? null : value
     setDirty(true)
+    if (ownerOrganizationId) setCardCoverCatalogOpen(false)
     setDraft((current) => ({
       ...current,
       ownerOrganizationId,
@@ -882,7 +972,14 @@ function LoginEditor({
                 collection.id === collectionId && collection.organizationId === ownerOrganizationId
             )
           )
-        : []
+        : [],
+      ...(ownerOrganizationId
+        ? {
+            cardCoverSourceUrl: undefined,
+            cardCoverPreviewUrl: undefined,
+            cardCoverLabel: undefined
+          }
+        : {})
     }))
     if (errorKind === 'collection') {
       setError('')
@@ -1972,6 +2069,63 @@ function LoginEditor({
                         />
                       )}
                     </Field>
+                    {!sharedContext && !draft.ownerOrganizationId && (
+                      <Field>
+                        <FieldLabel>
+                          <Trans>Card face</Trans>
+                        </FieldLabel>
+                        <div className="bg-muted grid gap-3 rounded-lg border p-3 sm:grid-cols-[140px_minmax(0,1fr)]">
+                          <div className="bg-background grid aspect-[1.586/1] place-items-center overflow-hidden rounded-md border">
+                            {draft.cardCoverPreviewUrl ? (
+                              <img
+                                className="h-full w-full object-contain"
+                                src={draft.cardCoverPreviewUrl}
+                                alt={draft.cardCoverLabel || t`Selected card face`}
+                              />
+                            ) : (
+                              <ImageIcon className="text-muted-foreground size-8" aria-hidden />
+                            )}
+                          </div>
+                          <div className="flex min-w-0 flex-col justify-center gap-2">
+                            <span className="truncate text-sm font-medium">
+                              {draft.cardCoverLabel || t`No card face selected`}
+                            </span>
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={busy}
+                                onClick={openCardCoverCatalog}
+                              >
+                                <ImageIcon data-icon="inline-start" />
+                                <Trans>Choose card face</Trans>
+                              </Button>
+                              {draft.cardCoverSourceUrl && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={busy}
+                                  onClick={() => {
+                                    setDirty(true)
+                                    setDraft((current) => ({
+                                      ...current,
+                                      cardCoverSourceUrl: undefined,
+                                      cardCoverPreviewUrl: undefined,
+                                      cardCoverLabel: undefined
+                                    }))
+                                  }}
+                                >
+                                  <X data-icon="inline-start" />
+                                  <Trans>Clear</Trans>
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </Field>
+                    )}
                     {secretInput('number', t`Card number`, {
                       inputMode: 'numeric',
                       displayValue: formatPaymentCardNumber(draft.number),
@@ -2498,6 +2652,84 @@ function LoginEditor({
               </FieldGroup>
             </EditorFormSection>
 
+            {login && attachmentUpload && !sharedContext && (
+              <EditorFormSection
+                title={t`Attachments`}
+                titleId="attachments-section-title"
+                icon={<Paperclip aria-hidden="true" />}
+              >
+                <FieldGroup className="gap-3">
+                  <Field orientation="horizontal" className="items-center justify-between gap-3">
+                    <FieldContent>
+                      <FieldLabel>
+                        <FieldTitle>
+                          <Trans>Upload attachment</Trans>
+                        </FieldTitle>
+                      </FieldLabel>
+                      <FieldDescription>
+                        {t({
+                          message: plural(attachmentUpload.attachmentCount, {
+                            one: '# attachment',
+                            other: '# attachments'
+                          })
+                        })}
+                      </FieldDescription>
+                    </FieldContent>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={
+                        busy || attachmentUpload.operation !== null || !attachmentUpload.syncReady
+                      }
+                      onClick={() => void attachmentUpload.onUpload()}
+                    >
+                      {attachmentUpload.operation?.kind === 'upload' ? (
+                        <Spinner data-icon="inline-start" />
+                      ) : (
+                        <Upload data-icon="inline-start" />
+                      )}
+                      <Trans>Upload attachment</Trans>
+                    </Button>
+                  </Field>
+                  {attachmentUpload.operation && attachmentUpload.operation.kind === 'upload' && (
+                    <section className="flex flex-col gap-3" aria-live="polite">
+                      <Progress value={attachmentProgressPercent(attachmentUpload.operation)}>
+                        <ProgressLabel>
+                          {attachmentUpload.getOperationStageLabel(attachmentUpload.operation)}
+                          {attachmentUpload.operation.fileName
+                            ? `：${attachmentUpload.operation.fileName}`
+                            : ''}
+                        </ProgressLabel>
+                        <ProgressValue>
+                          {() =>
+                            attachmentProgressPercent(attachmentUpload.operation!) === null
+                              ? t`Processing`
+                              : `${attachmentProgressPercent(attachmentUpload.operation!)}%`
+                          }
+                        </ProgressValue>
+                      </Progress>
+                      <Button
+                        className="self-end"
+                        variant="outline"
+                        size="sm"
+                        type="button"
+                        disabled={attachmentUpload.operation.canceling}
+                        onClick={() => void attachmentUpload.onCancelOperation()}
+                      >
+                        {attachmentUpload.operation.canceling ? (
+                          <Spinner data-icon="inline-start" />
+                        ) : (
+                          <X data-icon="inline-start" />
+                        )}
+                        {attachmentUpload.operation.canceling ? t`Canceling` : t`Cancel`}
+                      </Button>
+                    </section>
+                  )}
+                </FieldGroup>
+              </EditorFormSection>
+            )}
+
             {draft.type !== 'secureNote' && (
               <EditorFormSection
                 title={t`Notes`}
@@ -2907,6 +3139,102 @@ function LoginEditor({
           )}
         </Button>
       </footer>
+      <Dialog
+        open={cardCoverCatalogOpen}
+        onOpenChange={(open) => {
+          setCardCoverCatalogOpen(open)
+          if (!open) setCardCoverCatalogQuery('')
+        }}
+      >
+        <DialogContent className="max-w-[min(980px,calc(100vw-32px))]">
+          <DialogHeader>
+            <DialogTitle>
+              <Trans>Choose card face</Trans>
+            </DialogTitle>
+            <DialogDescription>
+              <Trans>Select a card face from the Taiwan card catalog.</Trans>
+            </DialogDescription>
+          </DialogHeader>
+          <FieldGroup className="gap-3">
+            <Field>
+              <FieldLabel className="sr-only" htmlFor="card-cover-catalog-search">
+                <Trans>Search card faces</Trans>
+              </FieldLabel>
+              <InputGroup>
+                <InputGroupAddon>
+                  <Search aria-hidden="true" />
+                </InputGroupAddon>
+                <InputGroupInput
+                  id="card-cover-catalog-search"
+                  value={cardCoverCatalogQuery}
+                  onChange={(event) => setCardCoverCatalogQuery(event.target.value)}
+                  placeholder={t`Search bank or card name`}
+                  autoComplete="off"
+                />
+              </InputGroup>
+            </Field>
+            <div className="max-h-[min(68vh,680px)] overflow-auto rounded-md border">
+              {cardCoverCatalog.status === 'loading' || cardCoverCatalog.status === 'idle' ? (
+                <div className="grid min-h-48 place-items-center">
+                  <Spinner />
+                </div>
+              ) : cardCoverCatalog.status === 'error' ? (
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <ImageIcon />
+                    </EmptyMedia>
+                    <EmptyTitle>
+                      <Trans>Card catalog unavailable</Trans>
+                    </EmptyTitle>
+                    <EmptyDescription>{cardCoverCatalog.error}</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              ) : filteredCardCoverCatalog.length === 0 ? (
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <Search />
+                    </EmptyMedia>
+                    <EmptyTitle>
+                      <Trans>No card faces found</Trans>
+                    </EmptyTitle>
+                    <EmptyDescription>
+                      <Trans>Try another bank or card name.</Trans>
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              ) : (
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3 p-3">
+                  {filteredCardCoverCatalog.map((entry) => (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      className="focus-visible:ring-ring bg-background hover:bg-accent grid min-w-0 gap-2 rounded-md border p-2 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                      onClick={() => selectCardCover(entry)}
+                    >
+                      <span className="bg-muted grid aspect-[1.586/1] place-items-center overflow-hidden rounded-sm">
+                        <img
+                          className="h-full w-full object-contain"
+                          src={entry.imageUrl}
+                          alt={entry.faceName || entry.cardName}
+                          loading="lazy"
+                        />
+                      </span>
+                      <span className="grid min-w-0 gap-0.5">
+                        <span className="truncate text-xs font-semibold">{entry.cardName}</span>
+                        <span className="text-muted-foreground truncate text-[11px]">
+                          {[entry.bankName, entry.faceName].filter(Boolean).join(' · ')}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </FieldGroup>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={Boolean(sshKeyImportSession)}
         onOpenChange={(open) => {

@@ -34,8 +34,7 @@ import {
   RotateCcw,
   Settings2,
   Star,
-  Trash2,
-  Upload
+  Trash2
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -135,6 +134,13 @@ import {
   EmptyMedia,
   EmptyTitle
 } from '@renderer/components/ui/empty'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle
+} from '@renderer/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { cn } from '@renderer/lib/utils'
 import { activateLanguagePreference } from '@renderer/i18n'
@@ -179,6 +185,7 @@ import {
 } from './VaultShell-model'
 import {
   initialAttachmentStages,
+  isCardCoverAttachment,
   isAttachmentCanceled,
   type AttachmentDeleteTarget,
   type AttachmentOperationState
@@ -384,6 +391,9 @@ function VaultShellContent({
     if (progress.stage === 'choosing-file' && progress.kind === 'download') {
       return t`Waiting for a save location`
     }
+    if (progress.kind === 'preview') {
+      return t`Loading image preview`
+    }
     const labels: Record<AttachmentOperationStage, string> = {
       'choosing-file': t`Waiting for a file`,
       'reading-file': t`Safely reading the file`,
@@ -574,6 +584,17 @@ function VaultShellContent({
   const [attachmentOperation, setAttachmentOperation] = useState<AttachmentOperationState | null>(
     null
   )
+  const [attachmentPreview, setAttachmentPreview] = useState<{
+    itemId: string
+    attachmentId: string
+    fileName: string
+    dataUrl: string
+  } | null>(null)
+  const [cardCoverPreview, setCardCoverPreview] = useState<{
+    itemId: string
+    attachmentId: string
+    dataUrl: string
+  } | null>(null)
   const [attachmentDeleteTarget, setAttachmentDeleteTarget] =
     useState<AttachmentDeleteTarget | null>(null)
   const [repromptPrompt, setRepromptPrompt] = useState<RepromptPromptState | null>(null)
@@ -623,6 +644,7 @@ function VaultShellContent({
   const authorizationExpiryTimersRef = useRef(new Map<string, number>())
   const pendingRepromptRef = useRef<PendingReprompt | null>(null)
   const attachmentOperationRef = useRef<AttachmentOperationState | null>(null)
+  const cardCoverPreviewRequestRef = useRef<string | null>(null)
 
   const beginAttachmentOperation = useCallback(
     (kind: AttachmentOperationKind, itemId: string, fileName: string | null): string => {
@@ -1324,6 +1346,7 @@ function VaultShellContent({
       const operation = attachmentOperationRef.current
       if (operation && operation.itemId !== selectedId) cancelAndClearAttachmentOperation()
       setAttachmentDeleteTarget((current) => (current?.itemId === selectedId ? current : null))
+      setAttachmentPreview((current) => (current?.itemId === selectedId ? current : null))
     })
     return () => {
       active = false
@@ -1363,6 +1386,42 @@ function VaultShellContent({
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (
+      !selectedLogin ||
+      selectedLogin.type !== 'card' ||
+      selectedSharedSummary ||
+      selectedLogin.reprompt !== 0 ||
+      syncStatus.state !== 'ready' ||
+      attachmentOperationRef.current
+    ) {
+      return
+    }
+    const cover = selectedLogin.attachments.find((attachment) =>
+      isCardCoverAttachment(attachment.fileName)
+    )
+    if (!cover) return
+    if (
+      cardCoverPreview?.itemId === selectedLogin.id &&
+      cardCoverPreview.attachmentId === cover.id
+    ) {
+      return
+    }
+    const requestKey = `${selectedLogin.id}:${selectedLogin.updatedAt}:${cover.id}`
+    if (cardCoverPreviewRequestRef.current === requestKey) return
+    cardCoverPreviewRequestRef.current = requestKey
+    void previewAttachment(cover.id, { openDialog: false, quiet: true })
+    // This effect must call the preview function from the current selected item render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    attachmentOperation,
+    cardCoverPreview?.attachmentId,
+    cardCoverPreview?.itemId,
+    selectedLogin,
+    selectedSharedSummary,
+    syncStatus.state
+  ])
 
   useEffect(() => {
     return window.bearwarden.accountSecurity.onLoginApprovalRequested((prompt) => {
@@ -2660,14 +2719,27 @@ function VaultShellContent({
             create: window.bearwarden.logins.create,
             createImported: window.bearwarden.sshKeys.createImported
           })
-          if (created.reprompt === 0) cacheLoginDetail(detailCacheRef.current, created)
+          const cardCoverAttachment =
+            draft.type === 'card' && draft.cardCoverSourceUrl
+              ? await uploadSelectedCardCover(created.id, draft.cardCoverSourceUrl)
+              : null
+          const createdWithCardCover = cardCoverAttachment
+            ? {
+                ...created,
+                attachments: [...created.attachments, cardCoverAttachment],
+                attachmentCount: created.attachments.length + 1
+              }
+            : created
+          if (createdWithCardCover.reprompt === 0) {
+            cacheLoginDetail(detailCacheRef.current, createdWithCardCover)
+          }
           setItems((current) => [...current, toLoginSummary(created)])
           setScope({ kind: 'all' })
           updateSelectedIds(new Set([created.id]))
           selectionAnchorIdRef.current = created.id
           selectedIdRef.current = created.id
           setSelectedId(created.id)
-          setSelectedLogin(created.reprompt === 0 ? created : null)
+          setSelectedLogin(createdWithCardCover.reprompt === 0 ? createdWithCardCover : null)
           announce(t`Created “${created.name}”.`)
         }
       } else if (selectedLogin) {
@@ -2719,16 +2791,43 @@ function VaultShellContent({
               updateImported: window.bearwarden.sshKeys.updateImported
             })
           })
-          if (updated.reprompt === 0 || authorizationToken(itemId)) {
-            cacheLoginDetail(detailCacheRef.current, updated)
+          const cardCoverAttachment =
+            draft.type === 'card' && draft.cardCoverSourceUrl
+              ? await uploadSelectedCardCover(itemId, draft.cardCoverSourceUrl)
+              : null
+          const updatedWithCardCover = cardCoverAttachment
+            ? {
+                ...updated,
+                attachments: updated.attachments.some(
+                  (entry) => entry.id === cardCoverAttachment.id
+                )
+                  ? updated.attachments.map((entry) =>
+                      entry.id === cardCoverAttachment.id ? cardCoverAttachment : entry
+                    )
+                  : [...updated.attachments, cardCoverAttachment],
+                attachmentCount: updated.attachments.some(
+                  (entry) => entry.id === cardCoverAttachment.id
+                )
+                  ? updated.attachments.length
+                  : updated.attachments.length + 1
+              }
+            : updated
+          if (updatedWithCardCover.reprompt === 0 || authorizationToken(itemId)) {
+            cacheLoginDetail(detailCacheRef.current, updatedWithCardCover)
           } else {
             detailCacheRef.current.delete(itemId)
           }
           setItems((current) =>
-            current.map((item) => (item.id === updated.id ? toLoginSummary(updated) : item))
+            current.map((item) =>
+              item.id === updatedWithCardCover.id ? toLoginSummary(updatedWithCardCover) : item
+            )
           )
-          setSelectedLogin(updated.reprompt === 0 || authorizationToken(itemId) ? updated : null)
-          announce(t`Saved “${updated.name}”.`)
+          setSelectedLogin(
+            updatedWithCardCover.reprompt === 0 || authorizationToken(itemId)
+              ? updatedWithCardCover
+              : null
+          )
+          announce(t`Saved “${updatedWithCardCover.name}”.`)
         }
       }
       setRevealedCustomFields(emptyRevealedCustomFields)
@@ -3175,6 +3274,49 @@ function VaultShellContent({
     }
   }
 
+  async function previewAttachment(
+    attachmentId: string,
+    options: { openDialog?: boolean; quiet?: boolean } = {}
+  ): Promise<void> {
+    if (!selectedLogin || attachmentOperationRef.current) return
+    const openDialog = options.openDialog ?? true
+    const itemId = selectedLogin.id
+    const attachment = selectedLogin.attachments.find((entry) => entry.id === attachmentId)
+    if (!attachment) return
+    const operationId = beginAttachmentOperation('preview', itemId, attachment.fileName)
+    try {
+      const result = await withReprompt([itemId], (tokenFor) =>
+        window.bearwarden.logins.previewAttachment({
+          id: itemId,
+          attachmentId,
+          operationId,
+          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+        })
+      )
+      if (selectedIdRef.current !== itemId) return
+      const preview = {
+        itemId,
+        attachmentId,
+        fileName: result.fileName,
+        dataUrl: result.dataUrl
+      }
+      if (openDialog) setAttachmentPreview(preview)
+      if (selectedLogin.type === 'card' && isCardCoverAttachment(result.fileName)) {
+        setCardCoverPreview({ itemId, attachmentId, dataUrl: result.dataUrl })
+      }
+    } catch (previewError) {
+      if (
+        isCurrentAttachmentOperation(operationId, itemId) &&
+        !isAttachmentCanceled(previewError) &&
+        !options.quiet
+      ) {
+        announceError(describeVaultError(previewError))
+      }
+    } finally {
+      finishAttachmentOperation(operationId)
+    }
+  }
+
   async function uploadAttachment(): Promise<void> {
     if (!selectedLogin || attachmentOperationRef.current) return
     const itemId = selectedLogin.id
@@ -3208,6 +3350,46 @@ function VaultShellContent({
       if (isCurrentAttachmentOperation(operationId, itemId) && !isAttachmentCanceled(uploadError)) {
         announceError(describeVaultError(uploadError))
       }
+    } finally {
+      finishAttachmentOperation(operationId)
+    }
+  }
+
+  async function uploadSelectedCardCover(
+    itemId: string,
+    sourceUrl: string
+  ): Promise<VaultAttachmentView | null> {
+    if (attachmentOperationRef.current) return null
+    const operationId = beginAttachmentOperation('upload', itemId, 'cover.webp')
+    try {
+      const result = await withReprompt([itemId], (tokenFor) =>
+        window.bearwarden.logins.uploadCardCoverAttachment({
+          id: itemId,
+          operationId,
+          sourceUrl,
+          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+        })
+      )
+      if (!result.attachment) return null
+      updateSelectedAttachments(itemId, (attachments) =>
+        attachments.some((entry) => entry.id === result.attachment!.id)
+          ? attachments.map((entry) =>
+              entry.id === result.attachment!.id ? result.attachment! : entry
+            )
+          : [...attachments, result.attachment!]
+      )
+      setCardCoverPreview(null)
+      await refreshItems().catch(() =>
+        announceError(
+          t`The card face was uploaded, but the list could not be refreshed. Sync again later.`
+        )
+      )
+      return result.attachment
+    } catch (coverError) {
+      if (isCurrentAttachmentOperation(operationId, itemId) && !isAttachmentCanceled(coverError)) {
+        announceError(describeVaultError(coverError))
+      }
+      return null
     } finally {
       finishAttachmentOperation(operationId)
     }
@@ -3761,6 +3943,18 @@ function VaultShellContent({
                   authorizationToken={
                     selectedLogin ? authorizationTokenState[selectedLogin.id] : undefined
                   }
+                  attachmentUpload={
+                    editorMode === 'edit' && selectedLogin && !selectedSharedSummary
+                      ? {
+                          attachmentCount: selectedLogin.attachments.length,
+                          operation: attachmentOperation,
+                          syncReady: syncStatus.state === 'ready',
+                          getOperationStageLabel: getAttachmentStageLabel,
+                          onUpload: uploadAttachment,
+                          onCancelOperation: cancelAttachmentOperation
+                        }
+                      : undefined
+                  }
                   onCancel={() => requestEditorTransition(() => setEditorMode(null))}
                   onDirtyChange={handleEditorDirtyChange}
                   onDeletePasskey={deletePasskey}
@@ -3920,6 +4114,11 @@ function VaultShellContent({
                       ) : selectedLogin.type === 'card' ? (
                         <PaymentCardBrandMark
                           brand={normalizeBitwardenCardBrand(selectedLogin.brand)}
+                          imageSrc={
+                            cardCoverPreview?.itemId === selectedLogin.id
+                              ? cardCoverPreview.dataUrl
+                              : undefined
+                          }
                           compact
                         />
                       ) : (
@@ -4014,19 +4213,6 @@ function VaultShellContent({
                                 <Edit3 data-icon="inline-start" />
                                 <Trans>Edit</Trans>
                               </DropdownMenuItem>
-                              {selectedLogin.attachments.length === 0 && (
-                                <DropdownMenuItem
-                                  disabled={
-                                    busy ||
-                                    attachmentOperation !== null ||
-                                    syncStatus.state !== 'ready'
-                                  }
-                                  onClick={() => void uploadAttachment()}
-                                >
-                                  <Upload data-icon="inline-start" />
-                                  <Trans>Upload attachment</Trans>
-                                </DropdownMenuItem>
-                              )}
                             </DropdownMenuGroup>
                             <DropdownMenuSeparator />
                             <DropdownMenuGroup>
@@ -4129,9 +4315,9 @@ function VaultShellContent({
                         syncReady={syncStatus.state === 'ready'}
                         operation={attachmentOperation}
                         getOperationStageLabel={getAttachmentStageLabel}
-                        onUpload={uploadAttachment}
                         onCancelOperation={cancelAttachmentOperation}
                         onFixLegacy={fixLegacyAttachment}
+                        onPreview={previewAttachment}
                         onDownload={downloadAttachment}
                         onDelete={setAttachmentDeleteTarget}
                       />
@@ -4282,6 +4468,30 @@ function VaultShellContent({
             }
           }}
         />
+        <Dialog
+          open={attachmentPreview !== null}
+          onOpenChange={(open) => {
+            if (!open) setAttachmentPreview(null)
+          }}
+        >
+          <DialogContent className="max-w-[min(920px,calc(100vw-32px))] gap-4">
+            <DialogHeader>
+              <DialogTitle>{attachmentPreview?.fileName ?? t`Attachment preview`}</DialogTitle>
+              <DialogDescription>
+                <Trans>Image attachment preview</Trans>
+              </DialogDescription>
+            </DialogHeader>
+            {attachmentPreview && (
+              <div className="bg-muted grid max-h-[min(70vh,720px)] place-items-center overflow-auto rounded-md border p-2">
+                <img
+                  className="max-h-[min(66vh,680px)] max-w-full object-contain"
+                  src={attachmentPreview.dataUrl}
+                  alt={attachmentPreview.fileName}
+                />
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </main>
 
       <DragOverlay dropAnimation={null} style={{ pointerEvents: 'none' }}>

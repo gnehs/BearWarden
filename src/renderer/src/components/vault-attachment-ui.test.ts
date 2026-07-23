@@ -3,7 +3,9 @@ import type { AttachmentProgressEvent } from '../../../shared/vault-contract'
 import {
   attachmentProgressPercent,
   initialAttachmentStages,
-  isAttachmentCanceled
+  isCardCoverAttachment,
+  isAttachmentCanceled,
+  isPreviewableImageAttachment
 } from './vault-attachment-ui'
 
 function progress(overrides: Partial<AttachmentProgressEvent> = {}): AttachmentProgressEvent {
@@ -36,10 +38,20 @@ describe('attachment operation policy', () => {
   it('maps each operation to its initial stage', () => {
     expect(initialAttachmentStages).toEqual({
       download: 'choosing-file',
+      preview: 'downloading',
       upload: 'choosing-file',
       delete: 'deleting',
       'fix-legacy': 'downloading'
     })
+  })
+
+  it('classifies previewable images and card cover attachments by safe file name', () => {
+    expect(isPreviewableImageAttachment('receipt.PNG')).toBe(true)
+    expect(isPreviewableImageAttachment('cover.webp')).toBe(true)
+    expect(isPreviewableImageAttachment('diagram.svg')).toBe(false)
+    expect(isCardCoverAttachment('cover.jpg')).toBe(true)
+    expect(isCardCoverAttachment('cover.webp')).toBe(true)
+    expect(isCardCoverAttachment('front.webp')).toBe(false)
   })
 
   it('recognizes only Error instances with the attachment cancellation code', () => {

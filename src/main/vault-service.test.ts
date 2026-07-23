@@ -3962,6 +3962,115 @@ describe('VaultService encrypted local data', () => {
     if (process.platform !== 'win32') expect((await stat(destination)).mode & 0o777).toBe(0o600)
   })
 
+  it('previews image attachments from verified magic bytes or image extensions', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.remoteLogins[0]!.attachments = [
+          {
+            id: 'attachment-id',
+            fileName: 'receipt.jpg',
+            size: 3,
+            sizeName: '3 B',
+            legacy: false
+          }
+        ]
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = (await service.listLogins())[0]!
+    const clearText = Buffer.from('browser-decodable-jpeg-by-extension')
+    fake!.downloadAttachment = async () => ({
+      fileName: 'receipt.jpg',
+      data: clearText
+    })
+
+    await expect(
+      service.previewAttachment({
+        id: local.id,
+        attachmentId: 'attachment-id',
+        operationId: ATTACHMENT_OPERATION_ID
+      })
+    ).resolves.toEqual({
+      canceled: false,
+      fileName: 'receipt.jpg',
+      mediaType: 'image/jpeg',
+      dataUrl: 'data:image/jpeg;base64,YnJvd3Nlci1kZWNvZGFibGUtanBlZy1ieS1leHRlbnNpb24='
+    })
+    expect(clearText).toEqual(Buffer.alloc('browser-decodable-jpeg-by-extension'.length))
+  })
+
+  it('copies streamed preview chunks before producer-owned plaintext is cleared', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.remoteLogins[0]!.attachments = [
+          {
+            id: 'attachment-id',
+            fileName: 'cover.webp',
+            size: 12,
+            sizeName: '12 B',
+            legacy: false
+          }
+        ]
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = (await service.listLogins())[0]!
+    const dispose = vi.fn(async () => undefined)
+    const firstChunk = Buffer.from('RIFF')
+    const secondChunk = Buffer.from([0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50])
+    fake!.downloadAttachmentStream = vi.fn(async () => ({
+      fileName: 'cover.webp',
+      data: {
+        size: firstChunk.length + secondChunk.length,
+        async *chunks() {
+          try {
+            yield firstChunk
+          } finally {
+            firstChunk.fill(0)
+          }
+          try {
+            yield secondChunk
+          } finally {
+            secondChunk.fill(0)
+          }
+        }
+      },
+      dispose
+    }))
+
+    await expect(
+      service.previewAttachment({
+        id: local.id,
+        attachmentId: 'attachment-id',
+        operationId: ATTACHMENT_OPERATION_ID
+      })
+    ).resolves.toEqual({
+      canceled: false,
+      fileName: 'cover.webp',
+      mediaType: 'image/webp',
+      dataUrl: 'data:image/webp;base64,UklGRgAAAABXRUJQ'
+    })
+    expect(firstChunk).toEqual(Buffer.alloc(4))
+    expect(secondChunk).toEqual(Buffer.alloc(8))
+    expect(dispose).toHaveBeenCalledOnce()
+  })
+
   it('writes streamed attachment plaintext and disposes its encrypted spool', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'bearwarden-download-stream-test-'))
     temporaryDirectories.push(directory)

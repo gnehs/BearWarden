@@ -10,6 +10,7 @@ import { cn } from '../lib/utils'
 interface PaymentCardBrandMarkProps {
   brand: PaymentCardBrand
   compact?: boolean
+  imageSrc?: string
 }
 
 const paymentCardBrandLogos = {
@@ -21,9 +22,26 @@ const paymentCardBrandLogos = {
 
 function PaymentCardBrandMark({
   brand,
-  compact = false
+  compact = false,
+  imageSrc
 }: PaymentCardBrandMarkProps): React.JSX.Element {
   const { t } = useLingui()
+  const cardLabel = t`Card cover image`
+
+  if (imageSrc) {
+    return (
+      <span
+        className={cn(
+          'relative inline-flex size-7 min-w-7 items-center justify-center overflow-hidden rounded leading-none [[data-detail-icon]_>_&]:max-w-[calc(100%-8px)] [[data-detail-icon]_>_&]:min-w-[0px]',
+          compact && 'size-[22px] min-w-[22px]'
+        )}
+        role="img"
+        aria-label={cardLabel}
+      >
+        <img className="size-full object-cover" src={imageSrc} alt="" draggable={false} />
+      </span>
+    )
+  }
 
   if (brand === 'unknown') {
     return (

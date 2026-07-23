@@ -17,6 +17,7 @@ export interface AttachmentDeleteTarget {
 
 export const initialAttachmentStages: Record<AttachmentOperationKind, AttachmentOperationStage> = {
   download: 'choosing-file',
+  preview: 'downloading',
   upload: 'choosing-file',
   delete: 'deleting',
   'fix-legacy': 'downloading'
@@ -31,4 +32,12 @@ export function attachmentProgressPercent(progress: AttachmentProgressEvent): nu
 
 export function isAttachmentCanceled(error: unknown): boolean {
   return error instanceof Error && error.message.includes('ATTACHMENT_CANCELED')
+}
+
+export function isPreviewableImageAttachment(fileName: string): boolean {
+  return /\.(?:gif|jpe?g|png|webp)$/i.test(fileName)
+}
+
+export function isCardCoverAttachment(fileName: string): boolean {
+  return /^cover\.(?:jpe?g|webp)$/i.test(fileName)
 }

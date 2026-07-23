@@ -1,6 +1,6 @@
 import NumberFlow from '@number-flow/react'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { Clock3, Download, Paperclip, Trash2, Upload, Wrench, X } from 'lucide-react'
+import { Clock3, Download, Eye, Paperclip, Trash2, Wrench, X } from 'lucide-react'
 import type { JSX } from 'react'
 import type {
   AttachmentProgressEvent,
@@ -22,6 +22,7 @@ import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 import TotpCountdownIndicator from './TotpCountdownIndicator'
 import {
   attachmentProgressPercent,
+  isPreviewableImageAttachment,
   type AttachmentDeleteTarget,
   type AttachmentOperationState
 } from './vault-attachment-ui'
@@ -34,9 +35,9 @@ interface VaultItemAttachmentsCardProps {
   syncReady: boolean
   operation: AttachmentOperationState | null
   getOperationStageLabel: (progress: AttachmentProgressEvent) => string
-  onUpload: () => void | Promise<void>
   onCancelOperation: () => void | Promise<void>
   onFixLegacy: (attachmentId: string) => void | Promise<void>
+  onPreview: (attachmentId: string) => void | Promise<void>
   onDownload: (attachmentId: string) => void | Promise<void>
   onDelete: (target: AttachmentDeleteTarget) => void
 }
@@ -48,9 +49,9 @@ export function VaultItemAttachmentsCard({
   syncReady,
   operation,
   getOperationStageLabel,
-  onUpload,
   onCancelOperation,
   onFixLegacy,
+  onPreview,
   onDownload,
   onDelete
 }: VaultItemAttachmentsCardProps): JSX.Element | null {
@@ -70,22 +71,6 @@ export function VaultItemAttachmentsCard({
           <Paperclip aria-hidden="true" />
           <Trans>Attachments</Trans>
         </CardTitle>
-        <CardAction>
-          <Button
-            variant="outline"
-            size="sm"
-            type="button"
-            disabled={busy || operation !== null || !syncReady}
-            onClick={() => void onUpload()}
-          >
-            {operation?.kind === 'upload' ? (
-              <Spinner data-icon="inline-start" />
-            ) : (
-              <Upload data-icon="inline-start" />
-            )}
-            <Trans>Upload attachment</Trans>
-          </Button>
-        </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {operation?.itemId === itemId && (
@@ -155,6 +140,18 @@ export function VaultItemAttachmentsCard({
                       <Wrench data-icon="inline-start" />
                       <Trans>Repair</Trans>
                     </Button>
+                  )}
+                  {isPreviewableImageAttachment(attachment.fileName) && (
+                    <TooltipIconButton
+                      variant="outline"
+                      size="icon"
+                      type="button"
+                      label={t`Preview ${attachment.fileName}`}
+                      disabled={busy || operation !== null || !syncReady || attachment.legacy}
+                      onClick={() => void onPreview(attachment.id)}
+                    >
+                      <Eye data-icon="inline-start" />
+                    </TooltipIconButton>
                   )}
                   <TooltipIconButton
                     variant="outline"

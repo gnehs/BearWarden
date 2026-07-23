@@ -1770,6 +1770,15 @@ describe('registerVaultIpc reprompt gate', () => {
         requireAttachmentAuthorization(request, validate)
         return { canceled: false, fileName: 'document.txt' }
       }),
+      previewAttachment: vi.fn(async (request, _report, validate) => {
+        requireAttachmentAuthorization(request, validate)
+        return {
+          canceled: false,
+          fileName: 'cover.jpg',
+          mediaType: 'image/jpeg',
+          dataUrl: 'data:image/jpeg;base64,/9j/'
+        }
+      }),
       uploadAttachment: vi.fn(async (request, _report, validate) => {
         requireAttachmentAuthorization(request, validate)
         return {
@@ -3377,6 +3386,11 @@ describe('registerVaultIpc reprompt gate', () => {
     [
       IPC_CHANNELS.attachmentDownload,
       'downloadAttachment',
+      { id: 'item-a', attachmentId: 'attachment-a', operationId }
+    ],
+    [
+      IPC_CHANNELS.attachmentPreview,
+      'previewAttachment',
       { id: 'item-a', attachmentId: 'attachment-a', operationId }
     ],
     [IPC_CHANNELS.attachmentUpload, 'uploadAttachment', { id: 'item-a', operationId }],
