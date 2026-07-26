@@ -75,6 +75,7 @@ import {
   type PinUnlockRequest,
   type PasswordHistoryEntryRequest,
   type PasswordHistoryRestoreRequest,
+  type RendererErrorLogRequest,
   type LoginMoveRequest,
   type LoginMoveManyRequest,
   type LoginUpdateRequest,
@@ -160,6 +161,7 @@ const MAX_SYNC_RESOLUTION_MASTER_PASSWORD_LENGTH = 1_024
 const MAX_SYNC_SERVER_URL_LENGTH = 4_096
 const MAX_SYNC_EMAIL_LENGTH = 512
 const MAX_SYNC_SECRET_LENGTH = 16_384
+const MAX_ERROR_LOG_FIELD_LENGTH = 12_000
 
 interface RepromptAuthorizationEntry {
   senderId: number
@@ -258,6 +260,16 @@ export interface VaultIpcOptions {
   sshKeyImportSessions: SshKeyImportSessionStore
   /** Shared with other main-only authorization boundaries such as the SSH agent. */
   repromptAuthorizations?: RepromptAuthorizationStore
+  /** Main-only diagnostics sink; renderer receives no filesystem paths. */
+  errorLog?: {
+    recordRendererError: (request: RendererErrorLogRequest) => void
+    recordMainError: (
+      kind: 'ipc-error',
+      error: unknown,
+      metadata?: { channel?: string; code?: string }
+    ) => void
+    showInFileManager: () => Promise<void>
+  }
   twoFactorDirectory?: TwoFactorDirectoryCache
   afterSetup?: () => void | Promise<void>
   beforeLock?: () => void | Promise<void>
@@ -591,6 +603,52 @@ function parsePinUnlock(value: unknown): PinUnlockRequest {
 
 function parseNoInput(value: unknown): void {
   if (value !== undefined) throw new VaultError('INVALID_INPUT')
+}
+
+function optionalErrorLogText(record: RecordValue, key: string): string | undefined {
+  const value = record[key]
+  if (value === undefined) return undefined
+  if (typeof value !== 'string' || value.length > MAX_ERROR_LOG_FIELD_LENGTH) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return value
+}
+
+function optionalSafeInteger(record: RecordValue, key: string): number | undefined {
+  const value = record[key]
+  if (value === undefined) return undefined
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return value
+}
+
+function parseRendererErrorLog(value: unknown): RendererErrorLogRequest {
+  const record = exactDataRecord(value, ['kind', 'message', 'stack', 'filename', 'lineno', 'colno'])
+  const kind = record.kind
+  if (
+    kind !== 'renderer-console-error' &&
+    kind !== 'renderer-window-error' &&
+    kind !== 'renderer-unhandled-rejection'
+  ) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const message = requiredString(record, 'message')
+  if (message.length === 0 || message.length > MAX_ERROR_LOG_FIELD_LENGTH) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  const stack = optionalErrorLogText(record, 'stack')
+  const filename = optionalErrorLogText(record, 'filename')
+  const lineno = optionalSafeInteger(record, 'lineno')
+  const colno = optionalSafeInteger(record, 'colno')
+  return {
+    kind,
+    message,
+    ...(stack ? { stack } : {}),
+    ...(filename ? { filename } : {}),
+    ...(lineno !== undefined ? { lineno } : {}),
+    ...(colno !== undefined ? { colno } : {})
+  }
 }
 
 function parseAccountSwitch(value: unknown): string {
@@ -2346,23 +2404,28 @@ function publicError(code: VaultErrorCode): Error {
 function registerTrustedHandler<T>(
   channel: string,
   getMainWindow: () => BrowserWindow | null,
-  handler: (event: IpcMainInvokeEvent, input: unknown) => Promise<T>
+  handler: (event: IpcMainInvokeEvent, input: unknown) => Promise<T>,
+  errorLog?: VaultIpcOptions['errorLog']
 ): void {
   ipcMain.handle(channel, async (event, input) => {
     if (!isTrustedVaultSender(event, getMainWindow())) {
-      throw publicError('INVALID_INPUT')
+      const error = publicError('INVALID_INPUT')
+      errorLog?.recordMainError('ipc-error', error, { channel, code: 'INVALID_INPUT' })
+      throw error
     }
 
     try {
       return await handler(event, input)
     } catch (error) {
       if (isVaultError(error)) {
+        errorLog?.recordMainError('ipc-error', error, { channel, code: error.code })
         // Stage-tagged failures carry a static diagnostic label in their message (never paths,
         // secrets, or vault content). Surface it in the main-process log so intermittent faults
         // like CORRUPT_VAULT can be traced to their exact throw site.
         if (error.message !== error.code) console.error(`[vault-ipc] ${channel}: ${error.message}`)
         throw publicError(error.code)
       }
+      errorLog?.recordMainError('ipc-error', error, { channel, code: 'INTERNAL_ERROR' })
       throw publicError('INTERNAL_ERROR')
     }
   })
@@ -2379,7 +2442,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     windowProvider: () => BrowserWindow | null,
     handler: (event: IpcMainInvokeEvent, input: unknown) => Promise<T>
   ): void => {
-    registerTrustedHandler(channel, windowProvider, handler)
+    registerTrustedHandler(channel, windowProvider, handler, options.errorLog)
     registeredChannels.add(channel)
   }
   const sshKeyImportSessions = options.sshKeyImportSessions
@@ -3799,6 +3862,14 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     })
     settingsActivityCheck = sharedCheck
     return sharedCheck
+  })
+  registerHandler(IPC_CHANNELS.settingsShowErrorLog, getMainWindow, async (_event, input) => {
+    parseNoInput(input)
+    if (!options.errorLog) throw new VaultError('INTERNAL_ERROR')
+    await options.errorLog.showInFileManager()
+  })
+  registerHandler(IPC_CHANNELS.errorLogRecordRenderer, getMainWindow, async (_event, input) => {
+    options.errorLog?.recordRendererError(parseRendererErrorLog(input))
   })
 
   return () => {

@@ -123,6 +123,8 @@ export const IPC_CHANNELS = {
   settingsDisableTouchId: 'settings:disable-touch-id',
   settingsUnlockTouchId: 'settings:unlock-touch-id',
   settingsActivity: 'settings:activity',
+  settingsShowErrorLog: 'settings:show-error-log',
+  errorLogRecordRenderer: 'error-log:record-renderer',
   syncStatus: 'sync:status',
   syncConnect: 'sync:connect',
   syncUnlock: 'sync:unlock',
@@ -1870,6 +1872,15 @@ export interface TouchIdEnableRequest {
   masterPassword: string
 }
 
+export interface RendererErrorLogRequest {
+  kind: 'renderer-console-error' | 'renderer-window-error' | 'renderer-unhandled-rejection'
+  message: string
+  stack?: string
+  filename?: string
+  lineno?: number
+  colno?: number
+}
+
 export type AppUpdateStatus =
   'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error' | 'disabled'
 
@@ -2146,6 +2157,7 @@ export interface BearWardenAPI {
     disableTouchId: () => Promise<AppSettings>
     unlockTouchId: () => Promise<VaultStatus>
     activity: () => Promise<void>
+    showErrorLog: () => Promise<void>
   }
   applicationMenu: {
     execute: (command: ApplicationMenuCommand) => Promise<void>

@@ -863,6 +863,120 @@ describe('registerVaultIpc settings validation', () => {
   })
 })
 
+describe('registerVaultIpc diagnostics logging', () => {
+  function diagnosticsHarness(): {
+    event: unknown
+    webContents: {
+      id: number
+      mainFrame: { url: string }
+      getURL: () => string
+      isDestroyed: () => boolean
+    }
+    errorLog: {
+      recordRendererError: ReturnType<typeof vi.fn>
+      recordMainError: ReturnType<typeof vi.fn>
+      showInFileManager: ReturnType<typeof vi.fn>
+    }
+  } {
+    const mainFrame = { url: 'app://bearwarden/index.html' }
+    const webContents = {
+      id: 95,
+      mainFrame,
+      getURL: () => mainFrame.url,
+      isDestroyed: () => false
+    }
+    const errorLog = {
+      recordRendererError: vi.fn(),
+      recordMainError: vi.fn(),
+      showInFileManager: vi.fn(async () => undefined)
+    }
+    registerVaultIpc({
+      vault: {} as VaultService,
+      portability: {} as Parameters<typeof registerVaultIpc>[0]['portability'],
+      settings: {} as AppSettingsService,
+      sshKeyImportSessions: new SshKeyImportSessionStore({ readClipboard: () => '' }),
+      getMainWindow: () => ({ isDestroyed: () => false, webContents }) as never,
+      errorLog
+    })
+    return { event: { sender: webContents, senderFrame: mainFrame }, webContents, errorLog }
+  }
+
+  it('opens the error log only for the trusted renderer', async () => {
+    const harness = diagnosticsHarness()
+    const showErrorLog = electronMock.handlers.get(IPC_CHANNELS.settingsShowErrorLog)!
+
+    await expect(showErrorLog(harness.event, undefined)).resolves.toBeUndefined()
+    await expect(
+      showErrorLog(
+        { sender: harness.webContents, senderFrame: { url: harness.webContents.getURL() } },
+        undefined
+      )
+    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+
+    expect(harness.errorLog.showInFileManager).toHaveBeenCalledOnce()
+    expect(harness.errorLog.recordMainError).toHaveBeenCalledWith(
+      'ipc-error',
+      expect.objectContaining({ message: 'BEARWARDEN:INVALID_INPUT' }),
+      { channel: IPC_CHANNELS.settingsShowErrorLog, code: 'INVALID_INPUT' }
+    )
+  })
+
+  it('accepts only sanitized renderer error-log records', async () => {
+    const harness = diagnosticsHarness()
+    const record = electronMock.handlers.get(IPC_CHANNELS.errorLogRecordRenderer)!
+
+    await expect(
+      record(harness.event, {
+        kind: 'renderer-window-error',
+        message: 'Render failed',
+        stack: 'Error: Render failed',
+        filename: 'app://bearwarden/index.html',
+        lineno: 12,
+        colno: 4
+      })
+    ).resolves.toBeUndefined()
+    expect(harness.errorLog.recordRendererError).toHaveBeenCalledWith({
+      kind: 'renderer-window-error',
+      message: 'Render failed',
+      stack: 'Error: Render failed',
+      filename: 'app://bearwarden/index.html',
+      lineno: 12,
+      colno: 4
+    })
+
+    for (const invalid of [
+      { kind: 'renderer-window-error', message: '' },
+      { kind: 'main-error', message: 'nope' },
+      { kind: 'renderer-console-error', message: 'x', secret: 'nope' },
+      { kind: 'renderer-console-error', message: 'x', lineno: -1 }
+    ]) {
+      await expect(record(harness.event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(harness.errorLog.recordRendererError).toHaveBeenCalledTimes(1)
+    expect(harness.errorLog.recordMainError).toHaveBeenCalledTimes(4)
+    expect(harness.errorLog.recordMainError).toHaveBeenLastCalledWith(
+      'ipc-error',
+      expect.objectContaining({ code: 'INVALID_INPUT' }),
+      { channel: IPC_CHANNELS.errorLogRecordRenderer, code: 'INVALID_INPUT' }
+    )
+  })
+
+  it('records handled IPC operation failures without logging request payloads', async () => {
+    const harness = diagnosticsHarness()
+    const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!
+
+    await expect(update(harness.event, { theme: 'unknown' })).rejects.toThrow(
+      'BEARWARDEN:INVALID_INPUT'
+    )
+
+    expect(harness.errorLog.recordMainError).toHaveBeenCalledWith(
+      'ipc-error',
+      expect.objectContaining({ code: 'INVALID_INPUT' }),
+      { channel: IPC_CHANNELS.settingsUpdate, code: 'INVALID_INPUT' }
+    )
+  })
+})
+
 describe('registerVaultIpc settings activity', () => {
   function activityHarness(status: ReturnType<typeof vi.fn>): {
     event: unknown

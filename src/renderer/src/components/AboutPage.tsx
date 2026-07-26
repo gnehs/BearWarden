@@ -13,7 +13,7 @@ import {
 import { Progress, ProgressLabel, ProgressValue } from '@renderer/components/ui/progress'
 import { Separator } from '@renderer/components/ui/separator'
 import { Spinner } from '@renderer/components/ui/spinner'
-import { ExternalLink, GitFork, Info, RefreshCw } from 'lucide-react'
+import { ExternalLink, FolderOpen, GitFork, Info, RefreshCw } from 'lucide-react'
 import { SettingsCard, SettingsCardContent, SettingsCardHeading } from './SettingsPrimitives'
 
 const initialUpdateState: AppUpdateState = {
@@ -68,6 +68,26 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
     }
   }
 
+  async function showErrorLog(): Promise<void> {
+    setBusy(true)
+    setActionError('')
+    try {
+      await window.bearwarden.settings.showErrorLog()
+    } catch {
+      setActionError(t`Unable to show the error log. Please try again later.`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const isMac = navigator.userAgent.includes('Macintosh')
+  const isWindows = navigator.userAgent.includes('Windows')
+  const fileManagerName = isMac ? t`Finder` : isWindows ? t`File Explorer` : t`file manager`
+  const showErrorLogLabel = isMac
+    ? t`Show in Finder`
+    : isWindows
+      ? t`Show in File Explorer`
+      : t`Show in file manager`
   const currentVersion = updateState.currentVersion || t`Loading…`
   const availableVersion = updateState.availableVersion ?? t`a new version`
   const statusLabel = (() => {
@@ -202,6 +222,25 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
               <ProgressValue className="text-xs" />
             </Progress>
           )}
+          <Separator />
+          <div className="flex items-start justify-between gap-4 max-[680px]:flex-col">
+            <div className="grid min-w-0 gap-1">
+              <strong className="text-xs">{t`Diagnostic logs`}</strong>
+              <p className="text-muted-foreground m-0 text-xs leading-[1.5]">
+                {t`BearWarden stores local error logs for troubleshooting. Open the log in ${fileManagerName} when you need to inspect or share diagnostics.`}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              disabled={busy}
+              onClick={() => void showErrorLog()}
+            >
+              <FolderOpen data-icon="inline-start" aria-hidden="true" />
+              {showErrorLogLabel}
+            </Button>
+          </div>
           {actionError && (
             <p className="text-destructive m-0 text-xs" role="alert">
               {actionError}

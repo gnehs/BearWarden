@@ -46,6 +46,18 @@ describe('preload AutoFill settings API', () => {
   })
 })
 
+describe('preload diagnostic settings API', () => {
+  it('exposes a narrow error-log file-manager action', async () => {
+    electronMock.invoke.mockClear()
+    const api = electronMock.exposed() as BearWardenAPI
+
+    await api.settings.showErrorLog()
+
+    expect(electronMock.invoke).toHaveBeenCalledWith(IPC_CHANNELS.settingsShowErrorLog)
+    electronMock.invoke.mockClear()
+  })
+})
+
 describe('preload sync API', () => {
   it('passes only the typed email two-factor request through its dedicated channel', async () => {
     electronMock.invoke.mockClear()

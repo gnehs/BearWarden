@@ -33,6 +33,7 @@ import { AppSettingsService } from './app-settings'
 import { AutofillShortcutRegistration } from './autofill-shortcut-registration'
 import { AppUpdaterController } from './app-updater'
 import { EncryptedVaultStore } from './encrypted-vault-store'
+import { ErrorLogService } from './error-log'
 import { FocusTouchIdUnlockController } from './focus-touch-id-unlock'
 import { installApplicationMenu } from './application-menu'
 import { registerApplicationMenuIpc } from './application-menu-ipc'
@@ -74,6 +75,12 @@ if (!app.isPackaged) {
     '[BearWarden dev] Using isolated development data. Existing non-development data was not migrated.'
   )
 }
+
+const errorLog = new ErrorLogService(join(app.getPath('userData'), 'logs', 'errors.log'), {
+  showItemInFolder: (path) => shell.showItemInFolder(path),
+  openPath: (path) => shell.openPath(path)
+})
+errorLog.install()
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
 if (!hasSingleInstanceLock) app.quit()
@@ -1164,6 +1171,7 @@ if (hasSingleInstanceLock)
       sshKeyImportSessions,
       repromptAuthorizations,
       twoFactorDirectory,
+      errorLog,
       afterSetup: async () => {
         passkeyCeremonyService?.onVaultMutation()
         await refreshSshAgentAfterUnlock().catch(() => undefined)
