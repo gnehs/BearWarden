@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useLingui } from '@lingui/react/macro'
 import type { ApplicationMenuCommand } from '../../../shared/vault-contract'
+import { SELECTED_ITEM_COPY_SHORTCUTS } from '../../../shared/selected-item-shortcuts'
 import { shouldUseApplicationTitlebarMenu } from '../lib/application-titlebar-menu'
 import {
   Menubar,
@@ -48,6 +49,26 @@ export default function ApplicationTitlebarMenu({
       <MenubarItem disabled={!onLockVault} onClick={requestLock}>
         {t`Lock vault`}
         <MenubarShortcut>{shortcutPrefix}+L</MenubarShortcut>
+      </MenubarItem>
+    </MenubarGroup>
+  )
+  const itemItems = (
+    <MenubarGroup>
+      <MenubarItem onClick={() => execute('copy-selected-username')}>
+        {t`Copy username`}
+        <MenubarShortcut>{SELECTED_ITEM_COPY_SHORTCUTS.username.display}</MenubarShortcut>
+      </MenubarItem>
+      <MenubarItem onClick={() => execute('copy-selected-password')}>
+        {t`Copy password`}
+        <MenubarShortcut>{SELECTED_ITEM_COPY_SHORTCUTS.password.display}</MenubarShortcut>
+      </MenubarItem>
+      <MenubarItem onClick={() => execute('copy-selected-totp')}>
+        {t`Copy verification code`}
+        <MenubarShortcut>{SELECTED_ITEM_COPY_SHORTCUTS.totp.display}</MenubarShortcut>
+      </MenubarItem>
+      <MenubarItem onClick={() => execute('copy-selected-website')}>
+        {t`Copy website`}
+        <MenubarShortcut>{SELECTED_ITEM_COPY_SHORTCUTS.website.display}</MenubarShortcut>
       </MenubarItem>
     </MenubarGroup>
   )
@@ -128,6 +149,10 @@ export default function ApplicationTitlebarMenu({
           <MenubarContent>{editItems}</MenubarContent>
         </MenubarMenu>
         <MenubarMenu>
+          <MenubarTrigger>{t`Item`}</MenubarTrigger>
+          <MenubarContent>{itemItems}</MenubarContent>
+        </MenubarMenu>
+        <MenubarMenu>
           <MenubarTrigger>{t`View`}</MenubarTrigger>
           <MenubarContent>{viewItems}</MenubarContent>
         </MenubarMenu>
@@ -149,6 +174,8 @@ export default function ApplicationTitlebarMenu({
             {vaultItems}
             <MenubarSeparator />
             {editItems}
+            <MenubarSeparator />
+            {itemItems}
             <MenubarSeparator />
             {viewItems}
             <MenubarSeparator />

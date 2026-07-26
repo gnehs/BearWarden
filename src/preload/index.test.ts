@@ -331,16 +331,35 @@ describe('preload personal vault purge API', () => {
 })
 
 describe('preload application menu API', () => {
-  it('forwards only a typed application-menu command', async () => {
+  it('forwards typed application-menu commands and exposes a removable copy listener', async () => {
     electronMock.invoke.mockClear()
+    electronMock.on.mockClear()
+    electronMock.removeListener.mockClear()
     const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
+    const listener = vi.fn()
 
     await api.applicationMenu.execute('toggle-full-screen')
+    const unsubscribe = api.applicationMenu.onCopySelectedItem(listener)
+    const wrapped = electronMock.on.mock.calls.at(-1)?.[1] as (
+      event: unknown,
+      command: unknown
+    ) => void
+    wrapped({}, 'password')
+    unsubscribe()
 
-    expect(Object.keys(api.applicationMenu)).toEqual(['execute'])
+    expect(Object.keys(api.applicationMenu)).toEqual(['execute', 'onCopySelectedItem'])
     expect(electronMock.invoke).toHaveBeenCalledWith(
       IPC_CHANNELS.applicationMenuExecute,
       'toggle-full-screen'
+    )
+    expect(electronMock.on).toHaveBeenCalledWith(
+      IPC_EVENTS.applicationMenuCopySelectedItem,
+      expect.any(Function)
+    )
+    expect(listener).toHaveBeenCalledWith('password')
+    expect(electronMock.removeListener).toHaveBeenCalledWith(
+      IPC_EVENTS.applicationMenuCopySelectedItem,
+      wrapped
     )
   })
 })

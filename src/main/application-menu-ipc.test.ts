@@ -20,6 +20,7 @@ describe('application menu IPC', () => {
 
   it('accepts every supported command and rejects arbitrary input', () => {
     expect(isApplicationMenuCommand('copy')).toBe(true)
+    expect(isApplicationMenuCommand('copy-selected-password')).toBe(true)
     expect(isApplicationMenuCommand('toggle-developer-tools')).toBe(true)
     expect(isApplicationMenuCommand('toggle-maximize-window')).toBe(true)
     expect(isApplicationMenuCommand('open-devtools')).toBe(false)

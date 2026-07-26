@@ -1,5 +1,6 @@
 import { ipcMain, type BrowserWindow } from 'electron'
 import { IPC_CHANNELS, type ApplicationMenuCommand } from '../shared/vault-contract'
+import { SELECTED_ITEM_COPY_SHORTCUTS } from '../shared/selected-item-shortcuts'
 import { executeApplicationMenuCommand } from './application-menu'
 
 const applicationMenuCommands = new Set<ApplicationMenuCommand>([
@@ -14,7 +15,10 @@ const applicationMenuCommands = new Set<ApplicationMenuCommand>([
   'toggle-developer-tools',
   'toggle-full-screen',
   'minimize-window',
-  'toggle-maximize-window'
+  'toggle-maximize-window',
+  ...Object.keys(SELECTED_ITEM_COPY_SHORTCUTS).map(
+    (command) => `copy-selected-${command}` as ApplicationMenuCommand
+  )
 ])
 
 export interface ApplicationMenuIpcOptions {

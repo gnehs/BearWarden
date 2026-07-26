@@ -6,7 +6,9 @@ const { buildFromTemplate, setApplicationMenu } = vi.hoisted(() => ({
 }))
 
 vi.mock('electron', () => ({
-  BrowserWindow: class {},
+  BrowserWindow: class {
+    static getFocusedWindow = vi.fn()
+  },
   Menu: {
     buildFromTemplate,
     setApplicationMenu
@@ -53,6 +55,14 @@ describe('installApplicationMenu', () => {
     const lockItem = menuEntry(vaultMenu.submenu ?? [], 'vault-menu-lock')
     expect(lockItem.label).toBe('Lock')
     expect(lockItem.accelerator).toBe('CommandOrControl+L')
+    const itemMenu = menuEntry(template, 'item-menu')
+    const itemSubmenu = itemMenu.submenu ?? []
+    expect(menuEntry(itemSubmenu, 'item-menu-copy-username').accelerator).toBe('CommandOrControl+U')
+    expect(menuEntry(itemSubmenu, 'item-menu-copy-password').accelerator).toBe('CommandOrControl+P')
+    expect(menuEntry(itemSubmenu, 'item-menu-copy-totp').accelerator).toBe('CommandOrControl+T')
+    expect(menuEntry(itemSubmenu, 'item-menu-copy-website').accelerator).toBe(
+      'CommandOrControl+Shift+W'
+    )
 
     lockItem.click?.()
     expect(onLockVault).toHaveBeenCalledOnce()
@@ -79,7 +89,8 @@ describe('executeApplicationMenuCommand', () => {
       paste: vi.fn(),
       delete: vi.fn(),
       selectAll: vi.fn(),
-      toggleDevTools: vi.fn()
+      toggleDevTools: vi.fn(),
+      send: vi.fn()
     }
     const window = {
       webContents,
@@ -103,6 +114,7 @@ describe('executeApplicationMenuCommand', () => {
     executeApplicationMenuCommand(window as never, 'toggle-full-screen')
     executeApplicationMenuCommand(window as never, 'minimize-window')
     executeApplicationMenuCommand(window as never, 'toggle-maximize-window')
+    executeApplicationMenuCommand(window as never, 'copy-selected-username')
 
     expect(window.close).toHaveBeenCalledOnce()
     expect(webContents.undo).toHaveBeenCalledOnce()
@@ -117,6 +129,7 @@ describe('executeApplicationMenuCommand', () => {
     expect(window.minimize).toHaveBeenCalledOnce()
     expect(window.maximize).toHaveBeenCalledOnce()
     expect(window.unmaximize).not.toHaveBeenCalled()
+    expect(webContents.send).toHaveBeenCalledWith('application-menu:copy-selected-item', 'username')
   })
 
   it('restores an already maximized window', () => {

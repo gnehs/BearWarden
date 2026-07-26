@@ -8,6 +8,7 @@ export type MainLocale = (typeof mainLocales)[number]
 const en = {
   'applicationMenu.vault': 'Vault',
   'applicationMenu.lock': 'Lock',
+  'applicationMenu.item': 'Item',
   'applicationMenu.view': 'View',
   'itemContext.website': 'Website',
   'itemContext.unfiled': 'Unfiled',
@@ -16,6 +17,7 @@ const en = {
   'itemContext.copyWebsite': 'Copy Website',
   'itemContext.copyUsername': 'Copy Username',
   'itemContext.copyPassword': 'Copy Password',
+  'itemContext.copyTotp': 'Copy Verification Code',
   'itemContext.duplicateItem': 'Duplicate Item',
   'itemContext.unarchive': 'Unarchive',
   'itemContext.archiveItem': 'Archive Item',
@@ -64,6 +66,7 @@ export type MainMessageId = keyof typeof en
 const zhCN: Record<MainMessageId, string> = {
   'applicationMenu.vault': '密码库',
   'applicationMenu.lock': '锁定',
+  'applicationMenu.item': '项目',
   'applicationMenu.view': '显示',
   'itemContext.website': '网站',
   'itemContext.unfiled': '未分类',
@@ -72,6 +75,7 @@ const zhCN: Record<MainMessageId, string> = {
   'itemContext.copyWebsite': '复制网站',
   'itemContext.copyUsername': '复制用户名',
   'itemContext.copyPassword': '复制密码',
+  'itemContext.copyTotp': '复制验证码',
   'itemContext.duplicateItem': '复制项目',
   'itemContext.unarchive': '取消归档',
   'itemContext.archiveItem': '归档项目',
@@ -116,6 +120,7 @@ const zhCN: Record<MainMessageId, string> = {
 const zhTW: Record<MainMessageId, string> = {
   'applicationMenu.vault': '密碼庫',
   'applicationMenu.lock': '鎖定',
+  'applicationMenu.item': '項目',
   'applicationMenu.view': '顯示方式',
   'itemContext.website': '網站',
   'itemContext.unfiled': '未分類',
@@ -124,6 +129,7 @@ const zhTW: Record<MainMessageId, string> = {
   'itemContext.copyWebsite': '複製網站',
   'itemContext.copyUsername': '複製使用者名稱',
   'itemContext.copyPassword': '複製密碼',
+  'itemContext.copyTotp': '複製驗證碼',
   'itemContext.duplicateItem': '複製項目',
   'itemContext.unarchive': '取消封存',
   'itemContext.archiveItem': '封存項目',
@@ -168,6 +174,7 @@ const zhTW: Record<MainMessageId, string> = {
 const ja: Record<MainMessageId, string> = {
   'applicationMenu.vault': '保管庫',
   'applicationMenu.lock': 'ロック',
+  'applicationMenu.item': '項目',
   'applicationMenu.view': '表示',
   'itemContext.website': 'ウェブサイト',
   'itemContext.unfiled': '未分類',
@@ -176,6 +183,7 @@ const ja: Record<MainMessageId, string> = {
   'itemContext.copyWebsite': 'ウェブサイトをコピー',
   'itemContext.copyUsername': 'ユーザー名をコピー',
   'itemContext.copyPassword': 'パスワードをコピー',
+  'itemContext.copyTotp': '認証コードをコピー',
   'itemContext.duplicateItem': '項目を複製',
   'itemContext.unarchive': 'アーカイブを解除',
   'itemContext.archiveItem': '項目をアーカイブ',

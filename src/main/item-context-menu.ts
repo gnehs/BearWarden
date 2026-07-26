@@ -1,10 +1,12 @@
 import { Menu, type BrowserWindow, type MenuItemConstructorOptions } from 'electron'
+import { SELECTED_ITEM_COPY_SHORTCUTS } from '../shared/selected-item-shortcuts'
 import { translateMain } from './i18n'
 
 export interface ItemContextMenuItem {
   id: string
   hasUsername: boolean
   hasPassword: boolean
+  hasTotp: boolean
   /** Empty labels intentionally represent protected rows without retaining URI metadata. */
   uriLabels: string[]
   folderId: string | null
@@ -20,6 +22,7 @@ export interface ItemContextMenuCallbacks {
   openInNewWindow: (itemId: string, uriIndex: number) => void | Promise<void>
   copyUsername: (itemId: string) => void | Promise<void>
   copyPassword: (itemId: string) => void | Promise<void>
+  copyTotp: (itemId: string) => void | Promise<void>
   copyWebsite: (itemId: string, uriIndex: number) => void | Promise<void>
   moveToFolder: (itemId: string, folderId: string | null) => void | Promise<void>
   cloneItem: (itemId: string) => void | Promise<void>
@@ -114,12 +117,14 @@ export function showItemContextMenu(options: ItemContextMenuOptions): Menu {
       ? {
           id: 'item-context-copy-website',
           label: translateMain('itemContext.copyWebsite'),
+          accelerator: SELECTED_ITEM_COPY_SHORTCUTS.website.accelerator,
           enabled: itemEnabled && hasUris,
           click: () => invoke(() => callbacks.copyWebsite(item.id, 0), onError)
         }
       : {
           id: 'item-context-copy-website',
           label: translateMain('itemContext.copyWebsite'),
+          accelerator: SELECTED_ITEM_COPY_SHORTCUTS.website.accelerator,
           enabled: itemEnabled,
           submenu: item.uriLabels.map((label, index) => ({
             id: `item-context-copy-uri-${index}`,
@@ -133,14 +138,23 @@ export function showItemContextMenu(options: ItemContextMenuOptions): Menu {
     {
       id: 'item-context-copy-username',
       label: translateMain('itemContext.copyUsername'),
+      accelerator: SELECTED_ITEM_COPY_SHORTCUTS.username.accelerator,
       enabled: itemEnabled && item.hasUsername,
       click: () => invoke(() => callbacks.copyUsername(item.id), onError)
     },
     {
       id: 'item-context-copy-password',
       label: translateMain('itemContext.copyPassword'),
+      accelerator: SELECTED_ITEM_COPY_SHORTCUTS.password.accelerator,
       enabled: itemEnabled && item.hasPassword,
       click: () => invoke(() => callbacks.copyPassword(item.id), onError)
+    },
+    {
+      id: 'item-context-copy-totp',
+      label: translateMain('itemContext.copyTotp'),
+      accelerator: SELECTED_ITEM_COPY_SHORTCUTS.totp.accelerator,
+      enabled: itemEnabled && item.hasTotp,
+      click: () => invoke(() => callbacks.copyTotp(item.id), onError)
     },
     copyWebsite,
     { type: 'separator' },

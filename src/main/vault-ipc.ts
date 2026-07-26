@@ -1367,10 +1367,11 @@ function parseLoginAuthorizeMany(value: unknown): LoginAuthorizeManyRequest {
 }
 
 function parseContextMenu(value: unknown): LoginContextMenuRequest {
-  const record = exactRecord(value, ['id', 'x', 'y', 'authorizationToken'])
+  const record = exactRecord(value, ['id', 'x', 'y', 'authorizationToken', 'hasTotp'])
   const authorizationToken = optionalAuthorizationToken(record)
   const result: LoginContextMenuRequest = { id: requiredString(record, 'id') }
   if (authorizationToken) result.authorizationToken = authorizationToken
+  if (record.hasTotp !== undefined) result.hasTotp = optionalBoolean(record, 'hasTotp') ?? false
   for (const coordinate of ['x', 'y'] as const) {
     const candidate = record[coordinate]
     if (candidate === undefined) continue
@@ -3083,6 +3084,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     const itemName = item.reprompt === 1 ? translateMain('nativeDialog.protectedItem') : item.name
     const hasUsername = item.reprompt === 1 ? item.type === 'login' : Boolean(item.username)
     const hasPassword = item.type === 'login'
+    const hasTotp = item.type === 'login' && (request.hasTotp ?? item.hasTotp)
     const uriLabels =
       item.reprompt === 0
         ? item.uris.map(
@@ -3101,6 +3103,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
         // credential values or URI strings; every callback re-enters the authorization boundary.
         hasUsername,
         hasPassword,
+        hasTotp,
         uriLabels,
         folderId,
         archivedAt
@@ -3127,6 +3130,10 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
         },
         copyPassword: async () => {
           await runAuthorized(event, request, () => vault.copyPassword(request))
+          notifyChanged()
+        },
+        copyTotp: async () => {
+          await runAuthorized(event, request, () => vault.copyTotp(request))
           notifyChanged()
         },
         copyWebsite: async (_id, uriIndex) => {

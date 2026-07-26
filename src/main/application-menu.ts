@@ -1,5 +1,9 @@
 import { BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron'
-import type { ApplicationMenuCommand } from '../shared/vault-contract'
+import { IPC_EVENTS, type ApplicationMenuCommand } from '../shared/vault-contract'
+import {
+  SELECTED_ITEM_COPY_SHORTCUTS,
+  type SelectedItemCopyCommand
+} from '../shared/selected-item-shortcuts'
 import { translateMain } from './i18n'
 
 export interface ApplicationMenuOptions {
@@ -11,6 +15,12 @@ export function executeApplicationMenuCommand(
   window: BrowserWindow,
   command: ApplicationMenuCommand
 ): void {
+  if (command.startsWith('copy-selected-')) {
+    const copyCommand = command.slice('copy-selected-'.length) as SelectedItemCopyCommand
+    window.webContents.send(IPC_EVENTS.applicationMenuCopySelectedItem, copyCommand)
+    return
+  }
+
   switch (command) {
     case 'close-window':
       window.close()
@@ -52,6 +62,12 @@ export function executeApplicationMenuCommand(
 }
 
 export function installApplicationMenu(options: ApplicationMenuOptions): Menu {
+  const copySelectedItem = (command: SelectedItemCopyCommand): void => {
+    const window = BrowserWindow.getFocusedWindow()
+    if (!window || window.isDestroyed()) return
+    executeApplicationMenuCommand(window, `copy-selected-${command}`)
+  }
+
   const template: MenuItemConstructorOptions[] = [
     options.isMac ? { role: 'appMenu' } : { role: 'fileMenu' },
     {
@@ -67,6 +83,36 @@ export function installApplicationMenu(options: ApplicationMenuOptions): Menu {
       ]
     },
     { role: 'editMenu' },
+    {
+      id: 'item-menu',
+      label: translateMain('applicationMenu.item'),
+      submenu: [
+        {
+          id: 'item-menu-copy-username',
+          label: translateMain('itemContext.copyUsername'),
+          accelerator: SELECTED_ITEM_COPY_SHORTCUTS.username.accelerator,
+          click: () => copySelectedItem('username')
+        },
+        {
+          id: 'item-menu-copy-password',
+          label: translateMain('itemContext.copyPassword'),
+          accelerator: SELECTED_ITEM_COPY_SHORTCUTS.password.accelerator,
+          click: () => copySelectedItem('password')
+        },
+        {
+          id: 'item-menu-copy-totp',
+          label: translateMain('itemContext.copyTotp'),
+          accelerator: SELECTED_ITEM_COPY_SHORTCUTS.totp.accelerator,
+          click: () => copySelectedItem('totp')
+        },
+        {
+          id: 'item-menu-copy-website',
+          label: translateMain('itemContext.copyWebsite'),
+          accelerator: SELECTED_ITEM_COPY_SHORTCUTS.website.accelerator,
+          click: () => copySelectedItem('website')
+        }
+      ]
+    },
     {
       label: translateMain('applicationMenu.view'),
       submenu: [{ role: 'toggleDevTools' }, { role: 'togglefullscreen' }]

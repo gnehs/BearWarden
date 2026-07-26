@@ -40,6 +40,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useStore } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
+import {
+  SELECTED_ITEM_COPY_SHORTCUTS,
+  type SelectedItemCopyCommand
+} from '../../../shared/selected-item-shortcuts'
 import type {
   AppSettingsUpdate,
   AttachmentOperationKind,
@@ -1217,11 +1221,12 @@ function VaultShellContent({
         window.bearwarden.logins.showContextMenu({
           id,
           ...position,
+          hasTotp: items.find((item) => item.id === id)?.hasTotp ?? false,
           ...(tokenFor(id) ? { authorizationToken: tokenFor(id) } : {})
         })
       ).catch((menuError) => announceError(describeVaultError(menuError)))
     },
-    [describeVaultError, withReprompt]
+    [describeVaultError, items, withReprompt]
   )
 
   const loadPasswordHistory = useCallback(async () => {
@@ -2057,41 +2062,56 @@ function VaultShellContent({
   }, [lockVault])
 
   useEffect(() => {
+    function copySelectedItem(command: SelectedItemCopyCommand): boolean {
+      if (
+        editorMode ||
+        searchOpen ||
+        settingsOpen ||
+        healthOpen ||
+        sendsOpen ||
+        organizationsOpen ||
+        emergencyAccessOpen ||
+        !selectedLogin ||
+        selectedLogin.deletedAt
+      ) {
+        return false
+      }
+      if (command === 'username' && selectedLogin.type === 'login' && selectedLogin.username) {
+        void shortcutCopyFieldRef.current('username')
+        return true
+      }
+      if (command === 'password' && selectedLogin.type === 'login') {
+        void shortcutCopyFieldRef.current('password')
+        return true
+      }
+      if (command === 'totp' && selectedLogin.type === 'login' && selectedLogin.hasTotp) {
+        void shortcutCopyTotpRef.current()
+        return true
+      }
+      if (command === 'website' && selectedLogin.uris.length > 0) {
+        void shortcutCopyFieldRef.current('uri', 0)
+        return true
+      }
+      return false
+    }
+
     function handleShortcut(event: KeyboardEvent): void {
       const command = event.metaKey || event.ctrlKey
       if (!command) return
       const key = event.key.toLocaleLowerCase()
-      if (settingsOpen || healthOpen || sendsOpen || organizationsOpen || emergencyAccessOpen)
-        return
-      if (
-        event.shiftKey &&
-        !editorMode &&
-        !searchOpen &&
-        selectedLogin &&
-        !selectedLogin.deletedAt &&
-        !isEditableShortcutTarget(event.target)
-      ) {
-        if (key === 'u' && selectedLogin.type === 'login' && selectedLogin.username) {
+
+      if (!isEditableShortcutTarget(event.target)) {
+        const copyCommand = Object.entries(SELECTED_ITEM_COPY_SHORTCUTS).find(
+          ([, shortcut]) => shortcut.key === key && shortcut.shiftKey === event.shiftKey
+        )?.[0] as SelectedItemCopyCommand | undefined
+        if (copyCommand && copySelectedItem(copyCommand)) {
           event.preventDefault()
-          void shortcutCopyFieldRef.current('username')
-          return
-        }
-        if (key === 'p' && selectedLogin.type === 'login') {
-          event.preventDefault()
-          void shortcutCopyFieldRef.current('password')
-          return
-        }
-        if (key === 't' && selectedLogin.type === 'login' && selectedLogin.hasTotp) {
-          event.preventDefault()
-          void shortcutCopyTotpRef.current()
-          return
-        }
-        if (key === 'w' && selectedLogin.uris.length > 0) {
-          event.preventDefault()
-          void shortcutCopyFieldRef.current('uri', 0)
           return
         }
       }
+
+      if (settingsOpen || healthOpen || sendsOpen || organizationsOpen || emergencyAccessOpen)
+        return
       if (key === 'a' && !editorMode && !searchOpen && !isEditableShortcutTarget(event.target)) {
         event.preventDefault()
         const nextIds = new Set(scopedItemIds)
@@ -2124,8 +2144,13 @@ function VaultShellContent({
         openMoveDialogForSelection()
       }
     }
+    const unsubscribeCopySelectedItem =
+      window.bearwarden.applicationMenu.onCopySelectedItem(copySelectedItem)
     window.addEventListener('keydown', handleShortcut)
-    return () => window.removeEventListener('keydown', handleShortcut)
+    return () => {
+      unsubscribeCopySelectedItem()
+      window.removeEventListener('keydown', handleShortcut)
+    }
   }, [
     activateLogin,
     busy,

@@ -1,3 +1,5 @@
+import type { SelectedItemCopyCommand } from './selected-item-shortcuts'
+
 export const IPC_CHANNELS = {
   vaultStatus: 'vault:status',
   vaultSetup: 'vault:setup',
@@ -191,7 +193,8 @@ export const IPC_EVENTS = {
   autofillPromptChanged: 'autofill:prompt-changed',
   sshAgentApprovalRequested: 'ssh-agent:approval-requested',
   sshAgentStatusChanged: 'ssh-agent:status-changed',
-  appUpdateStateChanged: 'app-update:state-changed'
+  appUpdateStateChanged: 'app-update:state-changed',
+  applicationMenuCopySelectedItem: 'application-menu:copy-selected-item'
 } as const
 
 export const IPC_ERROR_PREFIX = 'BEARWARDEN:'
@@ -264,6 +267,7 @@ export type ApplicationMenuCommand =
   | 'toggle-full-screen'
   | 'minimize-window'
   | 'toggle-maximize-window'
+  | `copy-selected-${SelectedItemCopyCommand}`
 
 export interface VaultStatus {
   state: VaultState
@@ -1502,6 +1506,7 @@ export interface TotpCodeView {
 export interface LoginContextMenuRequest extends LoginIdRequest {
   x?: number
   y?: number
+  hasTotp?: boolean
 }
 
 export interface LoginOpenUriRequest extends LoginIdRequest {
@@ -2138,6 +2143,7 @@ export interface BearWardenAPI {
   }
   applicationMenu: {
     execute: (command: ApplicationMenuCommand) => Promise<void>
+    onCopySelectedItem: (listener: (command: SelectedItemCopyCommand) => void) => () => void
   }
   updater: {
     state: () => Promise<AppUpdateState>

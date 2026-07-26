@@ -16,6 +16,7 @@ import { showItemContextMenu, type ItemContextMenuOptions } from './item-context
 type TemplateEntry = {
   id?: string
   label?: string
+  accelerator?: string
   enabled?: boolean
   submenu?: TemplateEntry[]
   click?: () => void
@@ -35,6 +36,7 @@ function createOptions(): ItemContextMenuOptions {
       id: 'item-1',
       hasUsername: true,
       hasPassword: true,
+      hasTotp: true,
       uriLabels: ['https://example.test'],
       folderId: 'folder-1',
       archivedAt: null
@@ -47,6 +49,7 @@ function createOptions(): ItemContextMenuOptions {
       openInNewWindow: vi.fn(),
       copyUsername: vi.fn(),
       copyPassword: vi.fn(),
+      copyTotp: vi.fn(),
       copyWebsite: vi.fn(),
       moveToFolder: vi.fn(),
       cloneItem: vi.fn(),
@@ -71,8 +74,15 @@ describe('showItemContextMenu', () => {
     const template = buildFromTemplate.mock.calls[0]?.[0] as TemplateEntry[]
     expect(menuEntry(template, 'item-context-open-in-new-window').enabled).toBe(true)
     expect(menuEntry(template, 'item-context-copy-username').enabled).toBe(true)
+    expect(menuEntry(template, 'item-context-copy-username').accelerator).toBe('CommandOrControl+U')
     expect(menuEntry(template, 'item-context-copy-password').enabled).toBe(true)
+    expect(menuEntry(template, 'item-context-copy-password').accelerator).toBe('CommandOrControl+P')
+    expect(menuEntry(template, 'item-context-copy-totp').enabled).toBe(true)
+    expect(menuEntry(template, 'item-context-copy-totp').accelerator).toBe('CommandOrControl+T')
     expect(menuEntry(template, 'item-context-copy-website').enabled).toBe(true)
+    expect(menuEntry(template, 'item-context-copy-website').accelerator).toBe(
+      'CommandOrControl+Shift+W'
+    )
     expect(menuEntry(template, 'item-context-clone').enabled).toBe(true)
     expect(menuEntry(template, 'item-context-toggle-archive').label).toBe('Archive Item')
     expect(menuEntry(template, 'item-context-delete').enabled).toBe(true)
@@ -81,6 +91,7 @@ describe('showItemContextMenu', () => {
     menuEntry(template, 'item-context-open-in-new-window').click?.()
     menuEntry(template, 'item-context-copy-username').click?.()
     menuEntry(template, 'item-context-copy-password').click?.()
+    menuEntry(template, 'item-context-copy-totp').click?.()
     menuEntry(template, 'item-context-copy-website').click?.()
     menuEntry(template, 'item-context-clone').click?.()
     menuEntry(template, 'item-context-toggle-archive').click?.()
@@ -99,6 +110,7 @@ describe('showItemContextMenu', () => {
     expect(options.callbacks.openInNewWindow).toHaveBeenCalledWith('item-1', 0)
     expect(options.callbacks.copyUsername).toHaveBeenCalledWith('item-1')
     expect(options.callbacks.copyPassword).toHaveBeenCalledWith('item-1')
+    expect(options.callbacks.copyTotp).toHaveBeenCalledWith('item-1')
     expect(options.callbacks.copyWebsite).toHaveBeenCalledWith('item-1', 0)
     expect(options.callbacks.cloneItem).toHaveBeenCalledWith('item-1')
     expect(options.callbacks.toggleArchive).toHaveBeenCalledWith('item-1', false)
@@ -114,6 +126,7 @@ describe('showItemContextMenu', () => {
       id: '',
       hasUsername: false,
       hasPassword: false,
+      hasTotp: false,
       uriLabels: [],
       folderId: null,
       archivedAt: null
@@ -127,6 +140,7 @@ describe('showItemContextMenu', () => {
     expect(menuEntry(template, 'item-context-open-in-new-window').enabled).toBe(false)
     expect(menuEntry(template, 'item-context-copy-username').enabled).toBe(false)
     expect(menuEntry(template, 'item-context-copy-password').enabled).toBe(false)
+    expect(menuEntry(template, 'item-context-copy-totp').enabled).toBe(false)
     expect(menuEntry(template, 'item-context-copy-website').enabled).toBe(false)
     expect(menuEntry(template, 'item-context-clone').enabled).toBe(false)
     expect(menuEntry(template, 'item-context-toggle-archive').enabled).toBe(false)

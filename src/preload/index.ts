@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { IPC_CHANNELS, IPC_EVENTS, type BearWardenAPI } from '../shared/vault-contract'
+import type { SelectedItemCopyCommand } from '../shared/selected-item-shortcuts'
 
 const api: BearWardenAPI = {
   vault: {
@@ -344,7 +345,14 @@ const api: BearWardenAPI = {
     activity: () => ipcRenderer.invoke(IPC_CHANNELS.settingsActivity)
   },
   applicationMenu: {
-    execute: (command) => ipcRenderer.invoke(IPC_CHANNELS.applicationMenuExecute, command)
+    execute: (command) => ipcRenderer.invoke(IPC_CHANNELS.applicationMenuExecute, command),
+    onCopySelectedItem: (listener) => {
+      const wrappedListener = (_event: IpcRendererEvent, command: SelectedItemCopyCommand): void =>
+        listener(command)
+      ipcRenderer.on(IPC_EVENTS.applicationMenuCopySelectedItem, wrappedListener)
+      return () =>
+        ipcRenderer.removeListener(IPC_EVENTS.applicationMenuCopySelectedItem, wrappedListener)
+    }
   },
   updater: {
     state: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateState),
