@@ -140,6 +140,7 @@ import {
   SelectValue
 } from './ui/select'
 import { Spinner } from './ui/spinner'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 import { Textarea } from './ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import CredentialGeneratorDialog from './CredentialGeneratorDialog'
@@ -165,8 +166,13 @@ import {
   type SshKeyGenerationState,
   type SshKeyImportState
 } from './ssh-key-editor-state'
-import { attachmentProgressPercent, type AttachmentOperationState } from './vault-attachment-ui'
+import {
+  attachmentProgressPercent,
+  isCardCoverAttachment,
+  type AttachmentOperationState
+} from './vault-attachment-ui'
 import { Progress, ProgressLabel, ProgressValue } from './ui/progress'
+import { ScrollArea } from './ui/scroll-area'
 
 type EditorSecretField = VaultEditorSecretField
 type EditorErrorKind = 'name' | 'password' | 'ssh' | 'uri' | 'collection' | 'reveal' | null
@@ -335,6 +341,7 @@ interface LoginEditorProps {
     syncReady: boolean
     getOperationStageLabel: (progress: AttachmentProgressEvent) => string
     onUpload: () => void | Promise<void>
+    onUploadCardCover: (itemId: string) => void | Promise<void>
     onCancelOperation: () => void | Promise<void>
   }
   onCancel: () => void
@@ -720,6 +727,7 @@ function LoginEditor({
   } | null>(null)
   const [sshKeyImportError, setSshKeyImportError] = useState('')
   const [cardCoverCatalogOpen, setCardCoverCatalogOpen] = useState(false)
+  const [cardCoverCatalogTab, setCardCoverCatalogTab] = useState<'catalog' | 'upload'>('catalog')
   const [cardCoverCatalogQuery, setCardCoverCatalogQuery] = useState('')
   const [cardCoverCatalog, setCardCoverCatalog] = useState<CardCoverCatalogState>({
     status: 'idle',
@@ -745,6 +753,10 @@ function LoginEditor({
     cardCoverCatalog.entries,
     cardCoverCatalogQuery
   )
+  const existingCardCoverAttachment =
+    login?.type === 'card'
+      ? login.attachments.find((attachment) => isCardCoverAttachment(attachment.fileName))
+      : undefined
 
   useEffect(() => nameRef.current?.focus(), [])
   useEffect(() => {
@@ -927,6 +939,7 @@ function LoginEditor({
 
   function openCardCoverCatalog(): void {
     setCardCoverCatalogOpen(true)
+    setCardCoverCatalogTab('catalog')
     if (cardCoverCatalog.status === 'ready' || cardCoverCatalog.status === 'loading') return
     cardCoverCatalogAbortRef.current?.abort()
     const abort = new AbortController()
@@ -2074,22 +2087,48 @@ function LoginEditor({
                         <FieldLabel>
                           <Trans>Card face</Trans>
                         </FieldLabel>
-                        <div className="bg-muted grid gap-3 rounded-lg border p-3 sm:grid-cols-[140px_minmax(0,1fr)]">
-                          <div className="bg-background grid aspect-[1.586/1] place-items-center overflow-hidden rounded-md border">
-                            {draft.cardCoverPreviewUrl ? (
-                              <img
-                                className="h-full w-full object-contain"
-                                src={draft.cardCoverPreviewUrl}
-                                alt={draft.cardCoverLabel || t`Selected card face`}
-                              />
-                            ) : (
-                              <ImageIcon className="text-muted-foreground size-8" aria-hidden />
-                            )}
+                        <div
+                          id="editor-card-face"
+                          className="grid gap-3 sm:grid-cols-[96px_minmax(0,1fr)]"
+                        >
+                          <div className="grid min-w-0 gap-2">
+                            <div className="bg-muted grid aspect-[1.586/1] w-24 place-items-center overflow-hidden rounded-md">
+                              {draft.cardCoverPreviewUrl ? (
+                                <img
+                                  className="h-full w-full object-contain"
+                                  src={draft.cardCoverPreviewUrl}
+                                  alt={draft.cardCoverLabel || t`Selected card face`}
+                                />
+                              ) : (
+                                <div className="text-muted-foreground grid place-items-center gap-1.5 text-center text-xs">
+                                  <ImageIcon className="size-8" aria-hidden />
+                                  <span>
+                                    <Trans>No preview</Trans>
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            <span className="text-muted-foreground truncate text-xs">
+                              {draft.cardCoverLabel
+                                ? t`Selected from catalog`
+                                : existingCardCoverAttachment
+                                  ? t`Current attachment: ${existingCardCoverAttachment.fileName}`
+                                  : t`No card face selected`}
+                            </span>
                           </div>
                           <div className="flex min-w-0 flex-col justify-center gap-2">
-                            <span className="truncate text-sm font-medium">
-                              {draft.cardCoverLabel || t`No card face selected`}
-                            </span>
+                            <div className="grid gap-1">
+                              <span className="truncate text-sm font-semibold">
+                                {draft.cardCoverLabel ||
+                                  existingCardCoverAttachment?.fileName ||
+                                  t`Choose a card face`}
+                              </span>
+                              <FieldDescription>
+                                <Trans>
+                                  Choose from the catalog or upload a JPG, PNG, or WebP.
+                                </Trans>
+                              </FieldDescription>
+                            </div>
                             <div className="flex flex-wrap gap-2">
                               <Button
                                 type="button"
@@ -2101,6 +2140,26 @@ function LoginEditor({
                                 <ImageIcon data-icon="inline-start" />
                                 <Trans>Choose card face</Trans>
                               </Button>
+                              {login && attachmentUpload && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={
+                                    busy ||
+                                    attachmentUpload.operation !== null ||
+                                    !attachmentUpload.syncReady
+                                  }
+                                  onClick={() => void attachmentUpload.onUploadCardCover(login.id)}
+                                >
+                                  {attachmentUpload.operation?.kind === 'upload' ? (
+                                    <Spinner data-icon="inline-start" />
+                                  ) : (
+                                    <Upload data-icon="inline-start" />
+                                  )}
+                                  <Trans>Upload card face</Trans>
+                                </Button>
+                              )}
                               {draft.cardCoverSourceUrl && (
                                 <Button
                                   type="button"
@@ -3152,87 +3211,151 @@ function LoginEditor({
               <Trans>Choose card face</Trans>
             </DialogTitle>
             <DialogDescription>
-              <Trans>Select a card face from the Taiwan card catalog.</Trans>
+              <Trans>Select a catalog face or upload your own card image.</Trans>
             </DialogDescription>
           </DialogHeader>
-          <FieldGroup className="gap-3">
-            <Field>
-              <FieldLabel className="sr-only" htmlFor="card-cover-catalog-search">
-                <Trans>Search card faces</Trans>
-              </FieldLabel>
-              <InputGroup>
-                <InputGroupAddon>
-                  <Search aria-hidden="true" />
-                </InputGroupAddon>
-                <InputGroupInput
-                  id="card-cover-catalog-search"
-                  value={cardCoverCatalogQuery}
-                  onChange={(event) => setCardCoverCatalogQuery(event.target.value)}
-                  placeholder={t`Search bank or card name`}
-                  autoComplete="off"
-                />
-              </InputGroup>
-            </Field>
-            <div className="max-h-[min(68vh,680px)] overflow-auto rounded-md border">
-              {cardCoverCatalog.status === 'loading' || cardCoverCatalog.status === 'idle' ? (
-                <div className="grid min-h-48 place-items-center">
-                  <Spinner />
-                </div>
-              ) : cardCoverCatalog.status === 'error' ? (
-                <Empty>
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon">
-                      <ImageIcon />
-                    </EmptyMedia>
-                    <EmptyTitle>
-                      <Trans>Card catalog unavailable</Trans>
-                    </EmptyTitle>
-                    <EmptyDescription>{cardCoverCatalog.error}</EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              ) : filteredCardCoverCatalog.length === 0 ? (
-                <Empty>
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon">
-                      <Search />
-                    </EmptyMedia>
-                    <EmptyTitle>
-                      <Trans>No card faces found</Trans>
-                    </EmptyTitle>
-                    <EmptyDescription>
-                      <Trans>Try another bank or card name.</Trans>
-                    </EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              ) : (
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3 p-3">
-                  {filteredCardCoverCatalog.map((entry) => (
-                    <button
-                      key={entry.id}
-                      type="button"
-                      className="focus-visible:ring-ring bg-background hover:bg-accent grid min-w-0 gap-2 rounded-md border p-2 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
-                      onClick={() => selectCardCover(entry)}
-                    >
-                      <span className="bg-muted grid aspect-[1.586/1] place-items-center overflow-hidden rounded-sm">
-                        <img
-                          className="h-full w-full object-contain"
-                          src={entry.imageUrl}
-                          alt={entry.faceName || entry.cardName}
-                          loading="lazy"
-                        />
-                      </span>
-                      <span className="grid min-w-0 gap-0.5">
-                        <span className="truncate text-xs font-semibold">{entry.cardName}</span>
-                        <span className="text-muted-foreground truncate text-xs">
-                          {[entry.bankName, entry.faceName].filter(Boolean).join(' · ')}
+          <Tabs
+            value={cardCoverCatalogTab}
+            onValueChange={(value) => setCardCoverCatalogTab(value as 'catalog' | 'upload')}
+            className="min-h-0"
+          >
+            <TabsList sliding className="w-full">
+              <TabsTrigger value="catalog">
+                <ImageIcon data-icon="inline-start" />
+                <Trans>Catalog</Trans>
+              </TabsTrigger>
+              <TabsTrigger value="upload">
+                <Upload data-icon="inline-start" />
+                <Trans>Upload</Trans>
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="catalog" className="grid gap-3">
+              <Field>
+                <FieldLabel className="sr-only" htmlFor="card-cover-catalog-search">
+                  <Trans>Search card faces</Trans>
+                </FieldLabel>
+                <InputGroup>
+                  <InputGroupAddon>
+                    <Search aria-hidden="true" />
+                  </InputGroupAddon>
+                  <InputGroupInput
+                    id="card-cover-catalog-search"
+                    value={cardCoverCatalogQuery}
+                    onChange={(event) => setCardCoverCatalogQuery(event.target.value)}
+                    placeholder={t`Search bank or card name`}
+                    autoComplete="off"
+                  />
+                </InputGroup>
+              </Field>
+              <ScrollArea className="h-[min(58vh,620px)]">
+                {cardCoverCatalog.status === 'loading' || cardCoverCatalog.status === 'idle' ? (
+                  <div className="grid min-h-48 place-items-center">
+                    <Spinner />
+                  </div>
+                ) : cardCoverCatalog.status === 'error' ? (
+                  <Empty>
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <ImageIcon />
+                      </EmptyMedia>
+                      <EmptyTitle>
+                        <Trans>Card catalog unavailable</Trans>
+                      </EmptyTitle>
+                      <EmptyDescription>{cardCoverCatalog.error}</EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                ) : filteredCardCoverCatalog.length === 0 ? (
+                  <Empty>
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <Search />
+                      </EmptyMedia>
+                      <EmptyTitle>
+                        <Trans>No card faces found</Trans>
+                      </EmptyTitle>
+                      <EmptyDescription>
+                        <Trans>Try another bank or card name.</Trans>
+                      </EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                ) : (
+                  <div className="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2">
+                    {filteredCardCoverCatalog.map((entry) => (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        className="focus-visible:ring-ring hover:bg-muted/60 grid min-w-0 grid-cols-[80px_minmax(0,1fr)] items-center gap-2 rounded-md px-1 py-1 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                        onClick={() => selectCardCover(entry)}
+                      >
+                        <span className="bg-muted grid aspect-[1.586/1] w-20 place-items-center overflow-hidden rounded-sm">
+                          <img
+                            className="h-full w-full object-contain"
+                            src={entry.imageUrl}
+                            alt={entry.faceName || entry.cardName}
+                            loading="lazy"
+                          />
                         </span>
-                      </span>
-                    </button>
-                  ))}
+                        <span className="grid min-w-0 gap-0.5">
+                          <span className="line-clamp-2 text-xs leading-snug font-semibold">
+                            {entry.cardName}
+                          </span>
+                          <span className="text-muted-foreground line-clamp-2 text-xs leading-snug">
+                            {[entry.bankName, entry.faceName].filter(Boolean).join(' · ')}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </TabsContent>
+            <TabsContent value="upload">
+              <div className="border-border bg-muted/40 grid gap-4 rounded-lg border p-4 sm:grid-cols-[120px_minmax(0,1fr)]">
+                <div className="bg-background grid aspect-[1.586/1] place-items-center rounded-md border">
+                  <Upload className="text-muted-foreground size-8" aria-hidden />
                 </div>
-              )}
-            </div>
-          </FieldGroup>
+                <div className="grid min-w-0 gap-3">
+                  <div className="grid gap-1">
+                    <span className="text-sm font-semibold">
+                      <Trans>Upload a card face image</Trans>
+                    </span>
+                    <FieldDescription>
+                      <Trans>
+                        Choose a JPG, PNG, or WebP image. BearWarden stores it as an encrypted
+                        card-cover attachment.
+                      </Trans>
+                    </FieldDescription>
+                  </div>
+                  {login && attachmentUpload ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-fit"
+                      disabled={
+                        busy || attachmentUpload.operation !== null || !attachmentUpload.syncReady
+                      }
+                      onClick={() => {
+                        setCardCoverCatalogOpen(false)
+                        void attachmentUpload.onUploadCardCover(login.id)
+                      }}
+                    >
+                      {attachmentUpload.operation?.kind === 'upload' ? (
+                        <Spinner data-icon="inline-start" />
+                      ) : (
+                        <Upload data-icon="inline-start" />
+                      )}
+                      <Trans>Select image</Trans>
+                    </Button>
+                  ) : (
+                    <Badge variant="secondary" className="w-fit">
+                      <Trans>Save this card before uploading an image.</Trans>
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
       <Dialog

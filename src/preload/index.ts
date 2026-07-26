@@ -128,6 +128,8 @@ const api: BearWardenAPI = {
     uploadAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentUpload, request),
     uploadCardCoverAttachment: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.attachmentUploadCardCover, request),
+    uploadCardCoverFileAttachment: (request) =>
+      ipcRenderer.invoke(IPC_CHANNELS.attachmentUploadCardCoverFile, request),
     deleteAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentDelete, request),
     fixLegacyAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentFixLegacy, request),
     cancelAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentCancel, request),

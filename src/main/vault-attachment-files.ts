@@ -41,6 +41,7 @@ const selectedFilePaths = new WeakMap<
 export interface VaultAttachmentFilePlatform {
   chooseSavePath: (defaultName: string) => Promise<string | null>
   chooseOpenFile?: () => Promise<string | null>
+  chooseCardCoverFile?: () => Promise<string | null>
 }
 
 function attachmentEnvelopeLength(plaintextLength: number): number {
@@ -391,6 +392,12 @@ export class VaultAttachmentFileService {
   async chooseOpenFile(): Promise<VaultAttachmentFileSelection | null> {
     if (!this.platform.chooseOpenFile) throw new VaultError('INTERNAL_ERROR')
     const path = await this.platform.chooseOpenFile()
+    return path === null ? null : inspectSelectedFile(path)
+  }
+
+  async chooseCardCoverFile(): Promise<VaultAttachmentFileSelection | null> {
+    if (!this.platform.chooseCardCoverFile) throw new VaultError('INTERNAL_ERROR')
+    const path = await this.platform.chooseCardCoverFile()
     return path === null ? null : inspectSelectedFile(path)
   }
 

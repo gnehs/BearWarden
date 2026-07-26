@@ -40,6 +40,7 @@ import {
   type AttachmentFixLegacyRequest,
   type AttachmentPreviewRequest,
   type AttachmentUploadCardCoverRequest,
+  type AttachmentUploadCardCoverFileRequest,
   type AttachmentProgressEvent,
   type AttachmentUploadRequest,
   type CustomFieldRequest,
@@ -1334,6 +1335,10 @@ function parseAttachmentUploadCardCover(value: unknown): AttachmentUploadCardCov
     sourceUrl,
     ...(authorizationToken ? { authorizationToken } : {})
   }
+}
+
+function parseAttachmentUploadCardCoverFile(value: unknown): AttachmentUploadCardCoverFileRequest {
+  return parseAttachmentUpload(value)
 }
 
 function parseAttachmentCancel(value: unknown): AttachmentCancelRequest {
@@ -2943,6 +2948,16 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     const request = parseAttachmentUploadCardCover(input)
     return afterMutation(
       vault.uploadCardCoverAttachment(
+        request,
+        attachmentProgress(event),
+        attachmentAuthorization(event, request)
+      )
+    )
+  })
+  registerHandler(IPC_CHANNELS.attachmentUploadCardCoverFile, getMainWindow, (event, input) => {
+    const request = parseAttachmentUploadCardCoverFile(input)
+    return afterMutation(
+      vault.uploadCardCoverFileAttachment(
         request,
         attachmentProgress(event),
         attachmentAuthorization(event, request)

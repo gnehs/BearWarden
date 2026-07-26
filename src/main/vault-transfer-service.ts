@@ -63,7 +63,7 @@ const CARD_COVER_CATALOG_PATH_PREFIX = '/assets/cards/'
 type AttachmentPreviewMediaType = AttachmentPreviewResult['mediaType']
 
 interface CardCoverDownload {
-  fileName: 'cover.jpg' | 'cover.webp'
+  fileName: 'cover.jpg' | 'cover.png' | 'cover.webp'
   data: Buffer
 }
 
@@ -106,7 +106,7 @@ function extensionPreviewMediaType(fileName: string): AttachmentPreviewMediaType
 
 function parseCardCoverCatalogUrl(value: string): {
   url: URL
-  fileName: CardCoverDownload['fileName']
+  fileName: Extract<CardCoverDownload['fileName'], 'cover.jpg' | 'cover.webp'>
 } {
   let url: URL
   try {
@@ -123,6 +123,13 @@ function parseCardCoverCatalogUrl(value: string): {
   const extension = url.pathname.toLocaleLowerCase('en-US').split('.').pop()
   if (extension === 'webp') return { url, fileName: 'cover.webp' }
   if (extension === 'jpg' || extension === 'jpeg') return { url, fileName: 'cover.jpg' }
+  throw new VaultError('INVALID_INPUT')
+}
+
+function cardCoverFileName(mediaType: AttachmentPreviewMediaType): CardCoverDownload['fileName'] {
+  if (mediaType === 'image/jpeg') return 'cover.jpg'
+  if (mediaType === 'image/png') return 'cover.png'
+  if (mediaType === 'image/webp') return 'cover.webp'
   throw new VaultError('INVALID_INPUT')
 }
 
@@ -579,6 +586,136 @@ export class VaultTransferService extends VaultContentService {
     } finally {
       clearText?.fill(0)
       this.finishAttachmentOperation(preflight.operation)
+    }
+  }
+
+  async uploadCardCoverFileAttachment(
+    request: AttachmentUploadRequest,
+    reportProgress?: (progress: AttachmentProgressEvent) => void,
+    validateAuthorization?: AttachmentAuthorizationValidator
+  ): Promise<AttachmentUploadResult> {
+    const preflight = await this.exclusive(async () => {
+      assertUuid(request.id)
+      assertUuid(request.operationId)
+      const data = this.requireData()
+      assertNoPendingPersonalVaultPurge(data.sync)
+      const login = this.findLogin(data, request.id)
+      this.assertActiveLogin(login)
+      if (login.type !== 'card') throw new VaultError('INVALID_INPUT')
+      this.assertAttachmentAuthorized(login, validateAuthorization)
+      const files = this.attachmentFiles
+      if (!files) throw new VaultError('INTERNAL_ERROR')
+      const sync = this.requireSyncData()
+      if (!sync.loginMappings.some((entry) => entry.localId === login.id)) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      return { files, generation: this.generation }
+    })
+
+    this.reportAttachmentProgress(reportProgress, request, 'upload', 'choosing-file', 0, null)
+    const selection = await preflight.files.chooseCardCoverFile()
+    if (selection === null) return { canceled: true, attachment: null }
+    if (selection.size > MAX_CARD_COVER_BYTES) throw new VaultError('ATTACHMENT_TOO_LARGE')
+    const operationPreflight = await this.exclusive(async () => {
+      if (preflight.generation !== this.generation) throw new VaultError('LOCKED')
+      const data = this.requireData()
+      assertNoPendingPersonalVaultPurge(data.sync)
+      const login = this.findLogin(data, request.id)
+      this.assertActiveLogin(login)
+      if (login.type !== 'card') throw new VaultError('INVALID_INPUT')
+      this.assertAttachmentAuthorized(login, validateAuthorization)
+      return { operation: this.startAttachmentOperation(request.operationId) }
+    })
+    const { operation } = operationPreflight
+
+    let clearText: Buffer | undefined
+    try {
+      this.reportAttachmentProgress(
+        reportProgress,
+        request,
+        'upload',
+        'reading-file',
+        0,
+        selection.size
+      )
+      clearText = await preflight.files.readSelectedFile(selection, operation.abort.signal)
+      this.reportAttachmentProgress(
+        reportProgress,
+        request,
+        'upload',
+        'reading-file',
+        selection.size,
+        selection.size
+      )
+      if (clearText.length > MAX_CARD_COVER_BYTES) throw new VaultError('ATTACHMENT_TOO_LARGE')
+      const mediaType = previewMediaType(selection.fileName, clearText)
+      if (!mediaType || mediaType === 'image/gif') throw new VaultError('INVALID_INPUT')
+      const cover: CardCoverDownload = {
+        fileName: cardCoverFileName(mediaType),
+        data: clearText
+      }
+
+      return await this.exclusive(async () => {
+        if (preflight.generation !== this.generation) throw new VaultError('LOCKED')
+        const data = this.requireData()
+        assertNoPendingPersonalVaultPurge(data.sync)
+        const login = this.findLogin(data, request.id)
+        this.assertActiveLogin(login)
+        if (login.type !== 'card') throw new VaultError('INVALID_INPUT')
+        this.assertAttachmentAuthorized(login, validateAuthorization)
+        if (login.attachments.some((attachment) => attachment.fileName === cover.fileName)) {
+          throw new VaultError('DUPLICATE_NAME')
+        }
+        const sync = this.requireSyncData()
+        const mapping = sync.loginMappings.find((entry) => entry.localId === login.id)
+        if (!mapping) throw new VaultError('INVALID_INPUT')
+        const client = this.getOrCreateSyncClient(sync)
+        this.reportAttachmentProgress(
+          reportProgress,
+          request,
+          'upload',
+          'encrypting',
+          0,
+          cover.data.length
+        )
+        this.reportAttachmentProgress(
+          reportProgress,
+          request,
+          'upload',
+          'uploading',
+          0,
+          cover.data.length
+        )
+        const uploaded = await client.uploadAttachment(
+          mapping.remoteId,
+          cover.fileName,
+          cover.data,
+          operation.abort.signal,
+          () => this.commitAttachmentOperation(operation)
+        )
+        this.commitAttachmentOperation(operation)
+        this.reportAttachmentProgress(
+          reportProgress,
+          request,
+          'upload',
+          'uploading',
+          cover.data.length,
+          cover.data.length
+        )
+        this.reportAttachmentProgress(reportProgress, request, 'upload', 'syncing', 0, null)
+        await this.persistAttachmentMutation(data, client)
+        const updated = this.findLogin(this.requireData(), request.id)
+        const attachment = updated.attachments.find((entry) => entry.id === uploaded.id)
+        if (!attachment || attachment.fileName !== cover.fileName || attachment.legacy) {
+          throw new VaultError('ATTACHMENT_FAILED')
+        }
+        return { canceled: false, attachment: { ...attachment } }
+      })
+    } catch (error) {
+      throw this.mapAttachmentError(error, operation)
+    } finally {
+      clearText?.fill(0)
+      this.finishAttachmentOperation(operation)
     }
   }
 

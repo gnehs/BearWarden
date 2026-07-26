@@ -1,4 +1,4 @@
-import { createElement } from 'react'
+import { createElement, type ComponentProps } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { CollectionView, LoginView, OrganizationView } from '../../../shared/vault-contract'
@@ -92,7 +92,8 @@ function renderLoginEditor(
     canEditSecrets: boolean
   },
   organizations: OrganizationView[] = [],
-  collections: CollectionView[] = []
+  collections: CollectionView[] = [],
+  attachmentUpload?: ComponentProps<typeof LoginEditor>['attachmentUpload']
 ): string {
   return renderToStaticMarkup(
     createElement(LoginEditor, {
@@ -102,6 +103,7 @@ function renderLoginEditor(
       collections,
       sharedContext,
       busy: false,
+      attachmentUpload,
       onCancel: () => undefined,
       onDirtyChange: () => undefined,
       onDeletePasskey: async () => null,
@@ -207,6 +209,49 @@ describe('LoginEditor design language', () => {
     expect(markup).toContain('data-editor-section="details"')
     expect(markup).toContain('data-editor-section="custom"')
     expect(markup).toContain('data-editor-section="organize"')
+  })
+
+  it('個人卡片編輯顯示卡面選擇與手動上傳入口', () => {
+    const markup = renderLoginEditor(
+      {
+        ...loginFixture,
+        type: 'card',
+        attachments: [
+          { id: 'cover-id', fileName: 'cover.png', size: 123, sizeName: '123 B', legacy: false }
+        ]
+      },
+      undefined,
+      [],
+      [],
+      {
+        attachmentCount: 1,
+        operation: null,
+        syncReady: true,
+        getOperationStageLabel: () => 'Uploading',
+        onUpload: () => undefined,
+        onUploadCardCover: () => undefined,
+        onCancelOperation: () => undefined
+      }
+    )
+
+    expect(markup).toContain('卡面')
+    expect(markup).toContain('cover.png')
+    expect(markup).toContain('選擇卡面')
+    expect(markup).toContain('上傳卡面')
+  })
+
+  it('共享卡片不顯示個人卡面選擇入口', () => {
+    const markup = renderLoginEditor(
+      { ...loginFixture, type: 'card' },
+      {
+        organizationName: 'Shared Team',
+        collectionNames: ['Production'],
+        canEditSecrets: true
+      }
+    )
+
+    expect(markup).not.toContain('id="editor-card-face"')
+    expect(markup).not.toContain('上傳卡面')
   })
 
   it('編輯既有項目也不使用分頁，並同時呈現所有編輯器區段', () => {

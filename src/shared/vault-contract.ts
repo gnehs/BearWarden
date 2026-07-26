@@ -61,6 +61,7 @@ export const IPC_CHANNELS = {
   attachmentPreview: 'attachment:preview',
   attachmentUpload: 'attachment:upload',
   attachmentUploadCardCover: 'attachment:upload-card-cover',
+  attachmentUploadCardCoverFile: 'attachment:upload-card-cover-file',
   attachmentDelete: 'attachment:delete',
   attachmentFixLegacy: 'attachment:fix-legacy',
   attachmentCancel: 'attachment:cancel',
@@ -756,6 +757,8 @@ export type AttachmentUploadRequest = AttachmentOperationRequest
 export interface AttachmentUploadCardCoverRequest extends AttachmentOperationRequest {
   sourceUrl: string
 }
+
+export type AttachmentUploadCardCoverFileRequest = AttachmentOperationRequest
 
 export interface AttachmentUploadResult {
   canceled: boolean
@@ -1983,6 +1986,9 @@ export interface BearWardenAPI {
     uploadAttachment: (request: AttachmentUploadRequest) => Promise<AttachmentUploadResult>
     uploadCardCoverAttachment: (
       request: AttachmentUploadCardCoverRequest
+    ) => Promise<AttachmentUploadResult>
+    uploadCardCoverFileAttachment: (
+      request: AttachmentUploadCardCoverFileRequest
     ) => Promise<AttachmentUploadResult>
     deleteAttachment: (request: AttachmentDeleteRequest) => Promise<AttachmentDeleteResult>
     fixLegacyAttachment: (request: AttachmentFixLegacyRequest) => Promise<AttachmentFixLegacyResult>

@@ -3495,6 +3495,45 @@ function VaultShellContent({
     }
   }
 
+  async function uploadManualCardCover(itemId: string): Promise<void> {
+    if (attachmentOperationRef.current) return
+    const operationId = beginAttachmentOperation('upload', itemId, null)
+    try {
+      const result = await withReprompt([itemId], (tokenFor) =>
+        window.bearwarden.logins.uploadCardCoverFileAttachment({
+          id: itemId,
+          operationId,
+          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+        })
+      )
+      if (!result.attachment) return
+      const updatedLogin = updateSelectedAttachments(itemId, (attachments) =>
+        attachments.some((entry) => entry.id === result.attachment!.id)
+          ? attachments.map((entry) =>
+              entry.id === result.attachment!.id ? result.attachment! : entry
+            )
+          : [...attachments, result.attachment!]
+      )
+      setCardCoverPreview(null)
+      invalidateCardCoverListPreview(itemId)
+      if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
+      if (selectedIdRef.current === itemId) {
+        announce(t`Uploaded card face “${result.attachment.fileName}”.`)
+      }
+      await refreshItems().catch(() =>
+        announceError(
+          t`The card face was uploaded, but the list could not be refreshed. Sync again later.`
+        )
+      )
+    } catch (coverError) {
+      if (isCurrentAttachmentOperation(operationId, itemId) && !isAttachmentCanceled(coverError)) {
+        announceError(describeVaultError(coverError))
+      }
+    } finally {
+      finishAttachmentOperation(operationId)
+    }
+  }
+
   async function deleteSelectedAttachment(): Promise<void> {
     const target = attachmentDeleteTarget
     if (!target || target.itemId !== selectedIdRef.current || attachmentOperationRef.current) return
@@ -4062,6 +4101,7 @@ function VaultShellContent({
                           syncReady: syncStatus.state === 'ready',
                           getOperationStageLabel: getAttachmentStageLabel,
                           onUpload: uploadAttachment,
+                          onUploadCardCover: uploadManualCardCover,
                           onCancelOperation: cancelAttachmentOperation
                         }
                       : undefined

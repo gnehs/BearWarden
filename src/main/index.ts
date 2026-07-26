@@ -723,6 +723,25 @@ if (hasSingleInstanceLock)
           : await dialog.showOpenDialog(options)
         return result.canceled || result.filePaths.length !== 1 ? null : result.filePaths[0]!
       },
+      chooseCardCoverFile: async () => {
+        const options = {
+          title: translateMain('attachment.uploadCardCoverTitle'),
+          buttonLabel: translateMain('attachment.select'),
+          filters: [
+            {
+              name: translateMain('attachment.cardCoverImages'),
+              extensions: ['jpg', 'jpeg', 'png', 'webp']
+            }
+          ],
+          // Preserve macOS aliases so the main-only lstat boundary can reject
+          // them instead of silently accepting the resolved target.
+          properties: ['openFile' as const, 'noResolveAliases' as const]
+        }
+        const result = mainWindow
+          ? await dialog.showOpenDialog(mainWindow, options)
+          : await dialog.showOpenDialog(options)
+        return result.canceled || result.filePaths.length !== 1 ? null : result.filePaths[0]!
+      },
       chooseSavePath: async (defaultName) => {
         const options = {
           title: translateMain('attachment.downloadTitle'),

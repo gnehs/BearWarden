@@ -113,7 +113,7 @@ msgid "{0, plural, one {# access} other {# accesses}}"
 msgstr "{0, plural, one {# 次存取} other {# 次存取}}"
 
 #. placeholder {0}: attachmentUpload.attachmentCount
-#: src/renderer/src/components/LoginEditor.tsx:2670
+#: src/renderer/src/components/LoginEditor.tsx:2727
 msgid "{0, plural, one {# attachment} other {# attachments}}"
 msgstr "{0, plural, one {# 個附件} other {# 個附件}}"
 
@@ -184,7 +184,7 @@ msgid "{0} custom field types simplified to text"
 msgstr "{0} 種自訂欄位類型已簡化為文字"
 
 #. placeholder {0}: itemTypeMeta[selectedLogin.type].label
-#: src/renderer/src/components/VaultShell.tsx:4361
+#: src/renderer/src/components/VaultShell.tsx:4401
 msgid "{0} details"
 msgstr "{0}詳細資料"
 
@@ -246,7 +246,7 @@ msgid "{0} password revision dates"
 msgstr "{0} 個密碼修訂日期"
 
 #. placeholder {0}: selectedSummary.passwordHistoryCount
-#: src/renderer/src/components/VaultShell.tsx:4154
+#: src/renderer/src/components/VaultShell.tsx:4194
 msgid "{0} read-only records"
 msgstr "{0} 筆唯讀記錄"
 
@@ -278,7 +278,7 @@ msgstr "{0} 條 URI 比對規則"
 
 #. placeholder {0}: item.label
 #. placeholder {1}: item.description
-#: src/renderer/src/components/LoginEditor.tsx:623
+#: src/renderer/src/components/LoginEditor.tsx:630
 msgid "{0}: {1}"
 msgstr "{0}：{1}"
 
@@ -306,12 +306,12 @@ msgstr "{count, plural, one {此項目是否由伺服器建立仍不明。BearWa
 msgid "{count, plural, one {Permanently deleted # item.} other {Permanently deleted # items.}}"
 msgstr "{count, plural, one {已永久刪除 # 個項目。} other {已永久刪除 # 個項目。}}"
 
-#: src/renderer/src/components/DndRows.tsx:383
+#: src/renderer/src/components/DndRows.tsx:398
 #: src/renderer/src/components/VaultShell-primitives.tsx:273
 msgid "{count} items"
 msgstr "{count} 個項目"
 
-#: src/renderer/src/components/LoginEditor.tsx:1713
+#: src/renderer/src/components/LoginEditor.tsx:1726
 msgid "{currentTypeLabel} details"
 msgstr "{currentTypeLabel} 詳細資料"
 
@@ -528,7 +528,7 @@ msgstr "本機帳戶切換已在進行中。請等待 BearWarden 重新啟動。
 msgid "A new device verification code was sent by email."
 msgstr ""
 
-#: src/renderer/src/components/LoginEditor.tsx:2397
+#: src/renderer/src/components/LoginEditor.tsx:2454
 msgid "A new Ed25519 key is being created securely."
 msgstr "正在安全地建立新的 Ed25519 金鑰。"
 
@@ -536,7 +536,7 @@ msgstr "正在安全地建立新的 Ed25519 金鑰。"
 msgid "a new version"
 msgstr "新版本"
 
-#: src/renderer/src/components/LoginEditor.tsx:1550
+#: src/renderer/src/components/LoginEditor.tsx:1563
 msgid "A password is required when adding a login item."
 msgstr "新增登入項目時必須填寫密碼。"
 
@@ -706,11 +706,11 @@ msgstr "要新增本機帳戶嗎？"
 msgid "Add entries from a plaintext KeePass 2 XML export to the current vault. Existing items are not overwritten."
 msgstr "將純文字 KeePass 2 XML 匯出的項目加入目前保管庫。現有項目不會被覆寫。"
 
-#: src/renderer/src/components/LoginEditor.tsx:1363
+#: src/renderer/src/components/LoginEditor.tsx:1376
 msgid "Add field"
 msgstr "新增欄位"
 
-#: src/renderer/src/components/LoginEditor.tsx:2781
+#: src/renderer/src/components/LoginEditor.tsx:2838
 msgid "Add fields as needed to store data specific to this item."
 msgstr "依需要新增欄位，以儲存此項目專屬的資料。"
 
@@ -723,7 +723,7 @@ msgstr "新增資料夾"
 msgid "Add group"
 msgstr "新增群組"
 
-#: src/renderer/src/components/LoginEditor.tsx:1638
+#: src/renderer/src/components/LoginEditor.tsx:1651
 #: src/renderer/src/components/VaultItemListPane.tsx:217
 #: src/renderer/src/components/VaultShellChrome.tsx:221
 msgid "Add item"
@@ -737,7 +737,7 @@ msgstr "新增本機帳戶"
 msgid "Add security key"
 msgstr "新增安全金鑰"
 
-#: src/renderer/src/components/LoginEditor.tsx:2766
+#: src/renderer/src/components/LoginEditor.tsx:2823
 msgid "Add text, hidden text, checkboxes, or links to existing item data."
 msgstr "將文字、隱藏文字、核取方塊或連結加入現有項目資料。"
 
@@ -745,8 +745,8 @@ msgstr "將文字、隱藏文字、核取方塊或連結加入現有項目資料
 msgid "Add the key below to a compatible app such as 1Password, Bitwarden, or Google Authenticator."
 msgstr "將下方金鑰新增至相容的應用程式，例如 1Password、Bitwarden 或 Google Authenticator。"
 
-#: src/renderer/src/components/LoginEditor.tsx:2615
-#: src/renderer/src/components/VaultShell.tsx:4269
+#: src/renderer/src/components/LoginEditor.tsx:2672
+#: src/renderer/src/components/VaultShell.tsx:4309
 msgid "Add to favorites"
 msgstr "加入我的最愛"
 
@@ -754,7 +754,7 @@ msgstr "加入我的最愛"
 msgid "Add to Favorites"
 msgstr "加入我的最愛"
 
-#: src/renderer/src/components/LoginEditor.tsx:1815
+#: src/renderer/src/components/LoginEditor.tsx:1828
 msgid "Add website"
 msgstr "新增網站"
 
@@ -780,8 +780,8 @@ msgstr "已加入我的最愛。"
 msgid "Adding a key opens a system prompt. Depending on the key, you may need to touch it or enter a PIN."
 msgstr "新增金鑰會開啟系統提示。視金鑰而定，您可能需要觸碰金鑰或輸入 PIN。"
 
-#: src/renderer/src/components/LoginEditor.tsx:574
-#: src/renderer/src/components/LoginEditor.tsx:2223
+#: src/renderer/src/components/LoginEditor.tsx:581
+#: src/renderer/src/components/LoginEditor.tsx:2280
 #: src/renderer/src/components/VaultShell.tsx:355
 msgid "Address"
 msgstr "地址"
@@ -798,13 +798,13 @@ msgstr "地址 2"
 msgid "Address 3"
 msgstr "地址 3"
 
-#: src/renderer/src/components/LoginEditor.tsx:575
-#: src/renderer/src/components/LoginEditor.tsx:2230
+#: src/renderer/src/components/LoginEditor.tsx:582
+#: src/renderer/src/components/LoginEditor.tsx:2287
 msgid "Address line 2"
 msgstr "地址第 2 行"
 
-#: src/renderer/src/components/LoginEditor.tsx:576
-#: src/renderer/src/components/LoginEditor.tsx:2237
+#: src/renderer/src/components/LoginEditor.tsx:583
+#: src/renderer/src/components/LoginEditor.tsx:2294
 msgid "Address line 3"
 msgstr "地址第 3 行"
 
@@ -915,12 +915,12 @@ msgstr "僅當您正在另一台裝置登入，且兩台裝置都顯示完全相
 msgid "Already enabled but still not working?"
 msgstr "已開啟但仍無法使用？"
 
-#: src/renderer/src/components/LoginEditor.tsx:602
+#: src/renderer/src/components/LoginEditor.tsx:609
 #: src/renderer/src/components/PaymentCardBrandMark.tsx:62
 msgid "American Express"
 msgstr "美國運通"
 
-#: src/renderer/src/components/LoginEditor.tsx:876
+#: src/renderer/src/components/LoginEditor.tsx:888
 msgid "An Ed25519 SSH key could not be generated. Try again."
 msgstr "無法產生 Ed25519 SSH 金鑰。請再試一次。"
 
@@ -1023,7 +1023,7 @@ msgstr "Arc 回報焦點欄位不是可編輯的文字欄位。"
 msgid "Archive"
 msgstr "封存"
 
-#: src/renderer/src/components/VaultShell.tsx:4319
+#: src/renderer/src/components/VaultShell.tsx:4359
 msgid "Archive item"
 msgstr "封存項目"
 
@@ -1061,7 +1061,7 @@ msgstr "最多 {MAX_HINT_LENGTH} 個字元。請勿直接輸入主密碼。"
 msgid "Attachment actions for {0}"
 msgstr "{0} 的附件動作"
 
-#: src/renderer/src/components/VaultShell.tsx:4588
+#: src/renderer/src/components/VaultShell.tsx:4628
 msgid "Attachment preview"
 msgstr "附件預覽"
 
@@ -1069,7 +1069,7 @@ msgstr "附件預覽"
 msgid "Attachment size"
 msgstr "附件大小"
 
-#: src/renderer/src/components/LoginEditor.tsx:2657
+#: src/renderer/src/components/LoginEditor.tsx:2714
 #: src/renderer/src/components/VaultItemAccessCards.tsx:72
 msgid "Attachments"
 msgstr "附件"
@@ -1089,7 +1089,7 @@ msgstr "驗證碼剩餘時間"
 msgid "Authenticator app"
 msgstr "驗證器應用程式"
 
-#: src/renderer/src/components/LoginEditor.tsx:1798
+#: src/renderer/src/components/LoginEditor.tsx:1811
 msgid "Authenticator key (TOTP)"
 msgstr "驗證器金鑰（TOTP）"
 
@@ -1109,7 +1109,7 @@ msgstr "自動填入快速鍵已更新。"
 msgid "Autofill, SSH Agent, and backups"
 msgstr "自動填入、SSH Agent 與備份"
 
-#: src/renderer/src/components/LoginEditor.tsx:2399
+#: src/renderer/src/components/LoginEditor.tsx:2456
 msgid "Automatic generation failed. Try again, or change the item type to cancel."
 msgstr "自動產生失敗。請再試一次，或變更項目類型以取消。"
 
@@ -1141,7 +1141,7 @@ msgid "Back"
 msgstr "返回"
 
 #: src/renderer/src/components/VaultShell-primitives.tsx:305
-#: src/renderer/src/components/VaultShell.tsx:4207
+#: src/renderer/src/components/VaultShell.tsx:4247
 msgid "Back to item list"
 msgstr "返回項目清單"
 
@@ -1149,7 +1149,7 @@ msgstr "返回項目清單"
 msgid "Back to review"
 msgstr "返回檢閱"
 
-#: src/renderer/src/components/VaultShell.tsx:4083
+#: src/renderer/src/components/VaultShell.tsx:4123
 msgid "Back to Trash"
 msgstr "返回垃圾桶"
 
@@ -1165,11 +1165,11 @@ msgstr "備份格式"
 msgid "Backup password (optional)"
 msgstr "備份密碼（選填）"
 
-#: src/renderer/src/components/LoginEditor.tsx:627
+#: src/renderer/src/components/LoginEditor.tsx:634
 msgid "Base domain"
 msgstr "基礎網域"
 
-#: src/renderer/src/components/LoginEditor.tsx:1799
+#: src/renderer/src/components/LoginEditor.tsx:1812
 msgid "Base32, otpauth://…, or steam://…"
 msgstr "Base32、otpauth://… 或 steam://…"
 
@@ -1355,9 +1355,9 @@ msgstr "可檢視密碼"
 #: src/renderer/src/components/Dialogs.tsx:444
 #: src/renderer/src/components/Dialogs.tsx:539
 #: src/renderer/src/components/EquivalentDomainsDialog.tsx:448
-#: src/renderer/src/components/LoginEditor.tsx:2725
-#: src/renderer/src/components/LoginEditor.tsx:3116
-#: src/renderer/src/components/LoginEditor.tsx:3286
+#: src/renderer/src/components/LoginEditor.tsx:2782
+#: src/renderer/src/components/LoginEditor.tsx:3173
+#: src/renderer/src/components/LoginEditor.tsx:3407
 #: src/renderer/src/components/SendsPage.tsx:806
 #: src/renderer/src/components/SendsPage.tsx:833
 #: src/renderer/src/components/SyncDialog.tsx:1198
@@ -1371,7 +1371,7 @@ msgstr "取消"
 msgid "Cancel check"
 msgstr "取消檢查"
 
-#: src/renderer/src/components/LoginEditor.tsx:1695
+#: src/renderer/src/components/LoginEditor.tsx:1708
 msgid "Cancel editing"
 msgstr "取消編輯"
 
@@ -1379,7 +1379,7 @@ msgstr "取消編輯"
 msgid "Cancel query"
 msgstr "取消查詢"
 
-#: src/renderer/src/components/LoginEditor.tsx:2725
+#: src/renderer/src/components/LoginEditor.tsx:2782
 #: src/renderer/src/components/VaultItemAccessCards.tsx:104
 msgid "Canceling"
 msgstr "正在取消"
@@ -1404,43 +1404,43 @@ msgstr "每個字的首字母大寫"
 
 #. Vault item category label for payment card records.
 #: src/renderer/src/components/DragPreview.tsx:36
-#: src/renderer/src/components/LoginEditor.tsx:614
+#: src/renderer/src/components/LoginEditor.tsx:621
 #: src/renderer/src/components/VaultShell.tsx:279
 msgid "Card"
 msgstr "卡片"
 
-#: src/renderer/src/components/LoginEditor.tsx:570
-#: src/renderer/src/components/LoginEditor.tsx:2032
+#: src/renderer/src/components/LoginEditor.tsx:577
+#: src/renderer/src/components/LoginEditor.tsx:2045
 msgid "Card brand"
 msgstr "卡片品牌"
 
-#: src/renderer/src/components/LoginEditor.tsx:945
-#: src/renderer/src/components/LoginEditor.tsx:3188
+#: src/renderer/src/components/LoginEditor.tsx:958
+#: src/renderer/src/components/LoginEditor.tsx:3260
 msgid "Card catalog unavailable"
-msgstr ""
+msgstr "無法使用卡面目錄"
 
 #: src/renderer/src/components/PaymentCardBrandMark.tsx:29
 msgid "Card cover image"
 msgstr "卡片封面圖片"
 
-#: src/renderer/src/components/LoginEditor.tsx:2075
+#: src/renderer/src/components/LoginEditor.tsx:2088
 msgid "Card face"
-msgstr ""
+msgstr "卡面"
 
-#: src/renderer/src/components/LoginEditor.tsx:571
-#: src/renderer/src/components/LoginEditor.tsx:2129
+#: src/renderer/src/components/LoginEditor.tsx:578
+#: src/renderer/src/components/LoginEditor.tsx:2186
 #: src/renderer/src/components/VaultShell.tsx:339
 #: src/renderer/src/components/VaultShell.tsx:373
 msgid "Card number"
 msgstr "卡號"
 
 #. placeholder {0}: paymentCardBrandLabels[detectedCardBrand]
-#: src/renderer/src/components/LoginEditor.tsx:2145
+#: src/renderer/src/components/LoginEditor.tsx:2202
 msgid "Card number recognized as {0}"
 msgstr "已辨識卡號為 {0}"
 
-#: src/renderer/src/components/LoginEditor.tsx:566
-#: src/renderer/src/components/LoginEditor.tsx:2021
+#: src/renderer/src/components/LoginEditor.tsx:573
+#: src/renderer/src/components/LoginEditor.tsx:2034
 #: src/renderer/src/components/VaultShell.tsx:341
 #: src/renderer/src/components/VaultShell.tsx:368
 msgid "Cardholder"
@@ -1449,6 +1449,10 @@ msgstr "持卡人"
 #: src/renderer/src/components/VaultShell.tsx:305
 msgid "Cards"
 msgstr "卡片"
+
+#: src/renderer/src/components/LoginEditor.tsx:3223
+msgid "Catalog"
+msgstr "目錄"
 
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:184
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:767
@@ -1541,8 +1545,8 @@ msgstr "請檢查您的網路連線，稍後再試一次。"
 msgid "Check your network, server URL, and TLS certificate, and make sure the server is reachable."
 msgstr "請檢查網路、伺服器 URL 與 TLS 憑證，並確認可以連線至伺服器。"
 
-#: src/renderer/src/components/LoginEditor.tsx:595
-#: src/renderer/src/components/LoginEditor.tsx:1379
+#: src/renderer/src/components/LoginEditor.tsx:602
+#: src/renderer/src/components/LoginEditor.tsx:1392
 msgid "Checkbox"
 msgstr "核取方塊"
 
@@ -1567,6 +1571,10 @@ msgstr "正在向更新服務檢查是否有新版本。"
 msgid "Checks"
 msgstr "檢查項目"
 
+#: src/renderer/src/components/LoginEditor.tsx:2124
+msgid "Choose a card face"
+msgstr "選擇卡面"
+
 #: src/renderer/src/components/Dialogs.tsx:376
 msgid "Choose a folder"
 msgstr "選擇資料夾"
@@ -1574,6 +1582,10 @@ msgstr "選擇資料夾"
 #: src/renderer/src/components/SettingsPage.tsx:1546
 msgid "Choose a global shortcut that is not used by your browser or another password manager."
 msgstr "請選擇未被瀏覽器或其他密碼管理器使用的全域快速鍵。"
+
+#: src/renderer/src/components/LoginEditor.tsx:3321
+msgid "Choose a JPG, PNG, or WebP image. BearWarden stores it as an encrypted card-cover attachment."
+msgstr "選擇 JPG、PNG 或 WebP 圖片。BearWarden 會將它儲存為加密的卡面附件。"
 
 #: src/renderer/src/components/AutofillPicker.tsx:178
 msgid "Choose a login to autofill"
@@ -1616,10 +1628,14 @@ msgstr "請選擇可用的父資料夾。"
 msgid "Choose and import file"
 msgstr "選擇並匯入檔案"
 
-#: src/renderer/src/components/LoginEditor.tsx:2102
-#: src/renderer/src/components/LoginEditor.tsx:3152
+#: src/renderer/src/components/LoginEditor.tsx:2139
+#: src/renderer/src/components/LoginEditor.tsx:3209
 msgid "Choose card face"
-msgstr ""
+msgstr "選擇卡面"
+
+#: src/renderer/src/components/LoginEditor.tsx:2127
+msgid "Choose from the catalog or upload a JPG, PNG, or WebP."
+msgstr "從目錄選擇，或上傳 JPG、PNG 或 WebP。"
 
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:658
 msgid "Choose full backup"
@@ -1641,13 +1657,13 @@ msgstr "Chrome 擴充功能"
 msgid "Chrome web app"
 msgstr "Chrome 網頁應用程式"
 
-#: src/renderer/src/components/LoginEditor.tsx:577
-#: src/renderer/src/components/LoginEditor.tsx:2245
+#: src/renderer/src/components/LoginEditor.tsx:584
+#: src/renderer/src/components/LoginEditor.tsx:2302
 #: src/renderer/src/components/VaultShell.tsx:379
 msgid "City"
 msgstr "城市"
 
-#: src/renderer/src/components/LoginEditor.tsx:2121
+#: src/renderer/src/components/LoginEditor.tsx:2178
 msgid "Clear"
 msgstr "清除"
 
@@ -1705,7 +1721,7 @@ msgstr "關閉"
 msgid "Close notification"
 msgstr "關閉通知"
 
-#: src/renderer/src/components/VaultShell.tsx:3842
+#: src/renderer/src/components/VaultShell.tsx:3881
 #: src/renderer/src/components/VaultShellChrome.tsx:136
 msgid "Close sidebar"
 msgstr "關閉側邊欄"
@@ -1744,8 +1760,8 @@ msgstr "集合"
 msgid "Collection:"
 msgstr "收藏："
 
-#: src/renderer/src/components/LoginEditor.tsx:2497
-#: src/renderer/src/components/LoginEditor.tsx:2540
+#: src/renderer/src/components/LoginEditor.tsx:2554
+#: src/renderer/src/components/LoginEditor.tsx:2597
 #: src/renderer/src/components/OrganizationsPage.tsx:332
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:137
 msgid "Collections"
@@ -1764,8 +1780,8 @@ msgid "Command plus Option plus backslash"
 msgstr "Command 加 Option 加反斜線"
 
 #. Field label for the company name in an identity item.
-#: src/renderer/src/components/LoginEditor.tsx:581
-#: src/renderer/src/components/LoginEditor.tsx:2192
+#: src/renderer/src/components/LoginEditor.tsx:588
+#: src/renderer/src/components/LoginEditor.tsx:2249
 #: src/renderer/src/components/VaultShell.tsx:349
 #: src/renderer/src/components/VaultShell.tsx:383
 msgid "Company"
@@ -1889,9 +1905,9 @@ msgstr "已連線，保管庫已鎖定"
 msgid "Connected, vault unlocked"
 msgstr "已連線，保管庫已解鎖"
 
-#: src/renderer/src/components/LoginEditor.tsx:2306
-#: src/renderer/src/components/LoginEditor.tsx:2967
-#: src/renderer/src/components/LoginEditor.tsx:2987
+#: src/renderer/src/components/LoginEditor.tsx:2363
+#: src/renderer/src/components/LoginEditor.tsx:3024
+#: src/renderer/src/components/LoginEditor.tsx:3044
 #: src/renderer/src/components/SendsPage.tsx:605
 msgid "Content"
 msgstr "內容"
@@ -1904,7 +1920,7 @@ msgstr "內容會先在主程式中加密，再傳送至伺服器。"
 msgid "Continue editing"
 msgstr "繼續編輯"
 
-#: src/renderer/src/components/LoginEditor.tsx:3295
+#: src/renderer/src/components/LoginEditor.tsx:3416
 msgid "Continue import"
 msgstr "繼續匯入"
 
@@ -2117,8 +2133,8 @@ msgstr "無法拒絕此簽署要求。請等待要求逾時，或再次鎖定保
 msgid "Country"
 msgstr "國家"
 
-#: src/renderer/src/components/LoginEditor.tsx:580
-#: src/renderer/src/components/LoginEditor.tsx:2267
+#: src/renderer/src/components/LoginEditor.tsx:587
+#: src/renderer/src/components/LoginEditor.tsx:2324
 msgid "Country / Region"
 msgstr "國家／地區"
 
@@ -2226,6 +2242,11 @@ msgstr "CSV 不是完整備份。它只會匯出使用中及封存的登入資�
 #~ msgid "Ctrl plus backslash"
 #~ msgstr "Ctrl 加反斜線"
 
+#. placeholder {0}: existingCardCoverAttachment.fileName
+#: src/renderer/src/components/LoginEditor.tsx:2115
+msgid "Current attachment: {0}"
+msgstr "目前附件：{0}"
+
 #. placeholder {0}: current.avatarColor
 #: src/renderer/src/components/AccountProfileCard.tsx:242
 msgid "Current color: {0}"
@@ -2274,26 +2295,26 @@ msgstr "自訂等效網域"
 
 #. placeholder {0}: position + 1
 #. placeholder {1}: draft.customFields.length
-#: src/renderer/src/components/LoginEditor.tsx:2813
+#: src/renderer/src/components/LoginEditor.tsx:2870
 msgid "Custom field dropped at position {0} of {1}."
 msgstr "自訂欄位已放置於第 {0} 個位置，共 {1} 個。"
 
 #. placeholder {0}: position + 1
 #. placeholder {1}: draft.customFields.length
-#: src/renderer/src/components/LoginEditor.tsx:2806
+#: src/renderer/src/components/LoginEditor.tsx:2863
 msgid "Custom field moved to position {0} of {1}."
 msgstr "自訂欄位已移至第 {0} 個位置，共 {1} 個。"
 
-#: src/renderer/src/components/LoginEditor.tsx:2815
+#: src/renderer/src/components/LoginEditor.tsx:2872
 msgid "Custom field reordering cancelled."
 msgstr "已取消自訂欄位重新排序。"
 
-#: src/renderer/src/components/LoginEditor.tsx:2809
+#: src/renderer/src/components/LoginEditor.tsx:2866
 msgid "Custom field was not moved."
 msgstr "自訂欄位未移動。"
 
-#: src/renderer/src/components/LoginEditor.tsx:2760
-#: src/renderer/src/components/VaultShell.tsx:4404
+#: src/renderer/src/components/LoginEditor.tsx:2817
+#: src/renderer/src/components/VaultShell.tsx:4444
 msgid "Custom fields"
 msgstr "自訂欄位"
 
@@ -2352,7 +2373,7 @@ msgstr "取消所有工作階段的授權"
 msgid "Decrypting your items…"
 msgstr "正在解密您的項目…"
 
-#: src/renderer/src/components/LoginEditor.tsx:626
+#: src/renderer/src/components/LoginEditor.tsx:633
 msgid "Default"
 msgstr "預設"
 
@@ -2366,7 +2387,7 @@ msgstr "預設排序"
 
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:101
 #: src/renderer/src/components/Dialogs.tsx:255
-#: src/renderer/src/components/LoginEditor.tsx:2901
+#: src/renderer/src/components/LoginEditor.tsx:2958
 #: src/renderer/src/components/SendsPage.tsx:844
 #: src/renderer/src/components/VaultItemListPane.tsx:298
 msgid "Delete"
@@ -2377,7 +2398,7 @@ msgstr "刪除"
 msgid "Delete “{0}”?"
 msgstr "要刪除「{0}」嗎？"
 
-#: src/renderer/src/components/LoginEditor.tsx:2892
+#: src/renderer/src/components/LoginEditor.tsx:2949
 msgid "Delete “{customFieldLabel}”"
 msgstr "刪除「{customFieldLabel}」"
 
@@ -2398,12 +2419,12 @@ msgstr "要刪除附件嗎？"
 msgid "Delete folder"
 msgstr "刪除資料夾"
 
-#: src/renderer/src/components/LoginEditor.tsx:3338
+#: src/renderer/src/components/LoginEditor.tsx:3459
 msgid "Delete passkey"
 msgstr "刪除通行密鑰"
 
 #: src/renderer/src/components/VaultItemListPane.tsx:283
-#: src/renderer/src/components/VaultShell.tsx:4187
+#: src/renderer/src/components/VaultShell.tsx:4227
 #: src/renderer/src/components/VaultShellDialogs.tsx:236
 msgid "Delete permanently"
 msgstr "永久刪除"
@@ -2413,11 +2434,11 @@ msgid "Delete Send"
 msgstr "刪除 Send"
 
 #. placeholder {0}: passkey.rpName || passkey.rpId
-#: src/renderer/src/components/LoginEditor.tsx:2002
+#: src/renderer/src/components/LoginEditor.tsx:2015
 msgid "Delete the passkey for {0}"
 msgstr "刪除 {0} 的通行密鑰"
 
-#: src/renderer/src/components/LoginEditor.tsx:3314
+#: src/renderer/src/components/LoginEditor.tsx:3435
 msgid "Delete this passkey?"
 msgstr "要刪除此通行密鑰嗎？"
 
@@ -2425,12 +2446,12 @@ msgstr "要刪除此通行密鑰嗎？"
 msgid "Delete this Send?"
 msgstr "要刪除此 Send 嗎？"
 
-#: src/renderer/src/components/VaultShell.tsx:4122
+#: src/renderer/src/components/VaultShell.tsx:4162
 msgid "Deleted"
 msgstr "已刪除"
 
 #. placeholder {0}: target.fileName
-#: src/renderer/src/components/VaultShell.tsx:3520
+#: src/renderer/src/components/VaultShell.tsx:3559
 msgid "Deleted “{0}”."
 msgstr "已刪除「{0}」。"
 
@@ -2455,7 +2476,7 @@ msgstr "刪除次數"
 msgid "Deleting attachment"
 msgstr "正在刪除附件"
 
-#: src/renderer/src/components/LoginEditor.tsx:3338
+#: src/renderer/src/components/LoginEditor.tsx:3459
 msgid "Deleting…"
 msgstr "正在刪除…"
 
@@ -2463,7 +2484,7 @@ msgstr "正在刪除…"
 msgid "Deletion date"
 msgstr "刪除日期"
 
-#: src/renderer/src/components/LoginEditor.tsx:1970
+#: src/renderer/src/components/LoginEditor.tsx:1983
 msgid "Deletion syncs immediately without loading private keys into the editor. Other unsaved fields are preserved."
 msgstr "刪除會立即同步，不會將私密金鑰載入編輯器。其他未儲存的欄位會保留。"
 
@@ -2616,7 +2637,7 @@ msgstr "Duo"
 msgid "Duo verification is not supported"
 msgstr ""
 
-#: src/renderer/src/components/VaultShell.tsx:4304
+#: src/renderer/src/components/VaultShell.tsx:4344
 msgid "Duplicate item"
 msgstr "複製項目"
 
@@ -2642,12 +2663,12 @@ msgstr "Edge 網頁應用程式"
 
 #: src/renderer/src/components/AccountProfileCard.tsx:152
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:148
-#: src/renderer/src/components/VaultShell.tsx:4254
-#: src/renderer/src/components/VaultShell.tsx:4323
+#: src/renderer/src/components/VaultShell.tsx:4294
+#: src/renderer/src/components/VaultShell.tsx:4363
 msgid "Edit"
 msgstr "編輯"
 
-#: src/renderer/src/components/LoginEditor.tsx:1637
+#: src/renderer/src/components/LoginEditor.tsx:1650
 msgid "Edit {currentTypeLabel}"
 msgstr "編輯 {currentTypeLabel}"
 
@@ -2660,7 +2681,7 @@ msgid "Edit folder"
 msgstr "編輯資料夾"
 
 #. placeholder {0}: folder.name
-#: src/renderer/src/components/DndRows.tsx:390
+#: src/renderer/src/components/DndRows.tsx:391
 msgid "Edit folder {0}"
 msgstr "編輯資料夾 {0}"
 
@@ -2693,8 +2714,8 @@ msgstr "尚無法編輯檔案 Send。"
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:189
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:199
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:798
-#: src/renderer/src/components/LoginEditor.tsx:582
-#: src/renderer/src/components/LoginEditor.tsx:2275
+#: src/renderer/src/components/LoginEditor.tsx:589
+#: src/renderer/src/components/LoginEditor.tsx:2332
 #: src/renderer/src/components/SyncDialog.tsx:466
 #: src/renderer/src/components/SyncDialog.tsx:945
 #: src/renderer/src/components/VaultShell.tsx:353
@@ -2776,7 +2797,7 @@ msgstr "啟用 PIN 解鎖"
 msgid "Enable SSH Agent"
 msgstr "啟用 SSH Agent"
 
-#: src/renderer/src/components/LoginEditor.tsx:3053
+#: src/renderer/src/components/LoginEditor.tsx:3110
 #: src/renderer/src/components/SettingsPage.tsx:1119
 #: src/renderer/src/components/SettingsPage.tsx:1264
 msgid "Enabled"
@@ -2786,7 +2807,7 @@ msgstr "已啟用"
 msgid "Enabled two-factor authentication methods"
 msgstr "已啟用的雙因素驗證方式"
 
-#: src/renderer/src/components/LoginEditor.tsx:616
+#: src/renderer/src/components/LoginEditor.tsx:623
 msgid "Encrypted notes only"
 msgstr "僅加密備註"
 
@@ -2802,7 +2823,7 @@ msgstr "英文"
 msgid "Enter “{DEAUTHORIZE_SESSIONS_CONFIRMATION}” to confirm"
 msgstr "輸入「{DEAUTHORIZE_SESSIONS_CONFIRMATION}」以確認"
 
-#: src/renderer/src/components/LoginEditor.tsx:1800
+#: src/renderer/src/components/LoginEditor.tsx:1813
 msgid "Enter a Base32 key directly. Use an otpauth URI for SHA-1, SHA-256, SHA-512, custom 1–10 digit codes, or custom periods. Use steam:// for Steam codes."
 msgstr "直接輸入 Base32 金鑰。若要使用 SHA-1、SHA-256、SHA-512、自訂 1–10 位數驗證碼或自訂週期，請使用 otpauth URI。Steam 驗證碼請使用 steam://。"
 
@@ -2822,7 +2843,7 @@ msgstr "輸入 Send 名稱和內容。"
 msgid "Enter a Send name first."
 msgstr "請先輸入 Send 名稱。"
 
-#: src/renderer/src/components/LoginEditor.tsx:409
+#: src/renderer/src/components/LoginEditor.tsx:416
 msgid "Enter a URL to see a matching example"
 msgstr "輸入 URL 以查看相符範例"
 
@@ -2848,15 +2869,15 @@ msgstr "請輸入有效的 HTTPS 伺服器 URL。"
 msgid "Enter a valid private key passphrase."
 msgstr "請輸入有效的私密金鑰密碼片語。"
 
-#: src/renderer/src/components/LoginEditor.tsx:646
+#: src/renderer/src/components/LoginEditor.tsx:653
 msgid "Enter a valid private key password."
 msgstr "請輸入有效的私密金鑰密碼。"
 
-#: src/renderer/src/components/LoginEditor.tsx:1544
+#: src/renderer/src/components/LoginEditor.tsx:1557
 msgid "Enter an item name."
 msgstr "請輸入項目名稱。"
 
-#: src/renderer/src/components/LoginEditor.tsx:2067
+#: src/renderer/src/components/LoginEditor.tsx:2080
 msgid "Enter another card brand"
 msgstr "輸入其他信用卡品牌"
 
@@ -2914,7 +2935,7 @@ msgstr "輸入為此工作階段設定的 PIN。"
 msgid "Enter the Send access password"
 msgstr "輸入 Send 的存取密碼"
 
-#: src/renderer/src/components/LoginEditor.tsx:3248
+#: src/renderer/src/components/LoginEditor.tsx:3369
 msgid "Enter the SSH private key password"
 msgstr "請輸入 SSH 私密金鑰密碼"
 
@@ -2996,7 +3017,7 @@ msgstr "錯誤代碼：{code}"
 msgid "Every item is added with a new identifier. Trashed JSON items are skipped, and CSV does not include attachments or passkeys."
 msgstr "每個項目都會以新的識別碼加入。會略過垃圾桶中的 JSON 項目，且 CSV 不包含附件或通行密鑰。"
 
-#: src/renderer/src/components/LoginEditor.tsx:630
+#: src/renderer/src/components/LoginEditor.tsx:637
 msgid "Exact"
 msgstr "精確"
 
@@ -3012,7 +3033,7 @@ msgstr "example.com、example.net"
 msgid "Excludes 0, O, 1, l, and I"
 msgstr "不包含 0、O、1、l 和 I"
 
-#: src/renderer/src/components/LoginEditor.tsx:806
+#: src/renderer/src/components/LoginEditor.tsx:818
 msgid "Existing sensitive fields could not be loaded. Cancel editing and try again."
 msgstr "無法載入現有的敏感欄位。請取消編輯後再試一次。"
 
@@ -3027,14 +3048,14 @@ msgstr "展開 {0}"
 msgid "Expiration date"
 msgstr "到期日"
 
-#: src/renderer/src/components/LoginEditor.tsx:567
-#: src/renderer/src/components/LoginEditor.tsx:2153
+#: src/renderer/src/components/LoginEditor.tsx:574
+#: src/renderer/src/components/LoginEditor.tsx:2210
 #: src/renderer/src/components/VaultShell.tsx:369
 msgid "Expiration month"
 msgstr "到期月份"
 
-#: src/renderer/src/components/LoginEditor.tsx:568
-#: src/renderer/src/components/LoginEditor.tsx:2165
+#: src/renderer/src/components/LoginEditor.tsx:575
+#: src/renderer/src/components/LoginEditor.tsx:2222
 #: src/renderer/src/components/VaultShell.tsx:370
 msgid "Expiration year"
 msgstr "到期年份"
@@ -3089,13 +3110,13 @@ msgid "FIDO2 WebAuthn"
 msgstr "FIDO2 WebAuthn"
 
 #. placeholder {0}: index + 1
-#: src/renderer/src/components/LoginEditor.tsx:2843
-#: src/renderer/src/components/LoginEditor.tsx:2882
+#: src/renderer/src/components/LoginEditor.tsx:2900
+#: src/renderer/src/components/LoginEditor.tsx:2939
 msgid "Field {0}"
 msgstr "欄位 {0}"
 
-#: src/renderer/src/components/LoginEditor.tsx:3068
-#: src/renderer/src/components/LoginEditor.tsx:3091
+#: src/renderer/src/components/LoginEditor.tsx:3125
+#: src/renderer/src/components/LoginEditor.tsx:3148
 msgid "Field {linkedId}"
 msgstr "欄位 {linkedId}"
 
@@ -3130,7 +3151,7 @@ msgstr "檔案簽署"
 msgid "Filter shared items by Collection."
 msgstr "依集合篩選共用項目。"
 
-#: src/renderer/src/components/LoginEditor.tsx:2619
+#: src/renderer/src/components/LoginEditor.tsx:2676
 msgid "Find this item quickly from the sidebar"
 msgstr "從側邊欄快速找到此項目"
 
@@ -3154,15 +3175,15 @@ msgstr "Firefox 擴充功能"
 msgid "Firefox web app"
 msgstr "Firefox 網頁應用程式"
 
-#: src/renderer/src/components/LoginEditor.tsx:588
-#: src/renderer/src/components/LoginEditor.tsx:2201
+#: src/renderer/src/components/LoginEditor.tsx:595
+#: src/renderer/src/components/LoginEditor.tsx:2258
 #: src/renderer/src/components/VaultShell.tsx:390
 msgid "First name"
 msgstr "名字"
 
 #. Field label for the folder that contains this login item.
 #: src/renderer/src/components/Dialogs.tsx:367
-#: src/renderer/src/components/LoginEditor.tsx:2579
+#: src/renderer/src/components/LoginEditor.tsx:2636
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:149
 #: src/renderer/src/components/VaultShell.tsx:1999
 msgid "Folder"
@@ -3177,7 +3198,7 @@ msgstr "資料夾資料"
 msgid "Folder names can be up to {MAX_VAULT_FOLDER_NAME_LENGTH} characters."
 msgstr "資料夾名稱最多可有 {MAX_VAULT_FOLDER_NAME_LENGTH} 個字元。"
 
-#: src/renderer/src/components/VaultShell.tsx:3766
+#: src/renderer/src/components/VaultShell.tsx:3805
 msgid "Folder order updated."
 msgstr "資料夾順序已更新。"
 
@@ -3239,7 +3260,7 @@ msgstr "完整 BearWarden 備份（.bwbackup）"
 msgid "Full BearWarden backup (with attachments)"
 msgstr "完整 BearWarden 備份（含附件）"
 
-#: src/renderer/src/components/LoginEditor.tsx:590
+#: src/renderer/src/components/LoginEditor.tsx:597
 #: src/renderer/src/components/VaultShell.tsx:392
 msgid "Full name"
 msgstr "全名"
@@ -3253,15 +3274,15 @@ msgstr "一般"
 msgid "Generate {generateLabel}"
 msgstr "產生 {generateLabel}"
 
-#: src/renderer/src/components/LoginEditor.tsx:2342
+#: src/renderer/src/components/LoginEditor.tsx:2399
 msgid "Generate again"
 msgstr "再次產生"
 
-#: src/renderer/src/components/LoginEditor.tsx:1515
+#: src/renderer/src/components/LoginEditor.tsx:1528
 msgid "Generate password"
 msgstr "產生密碼"
 
-#: src/renderer/src/components/LoginEditor.tsx:1788
+#: src/renderer/src/components/LoginEditor.tsx:1801
 msgid "Generate username"
 msgstr "產生使用者名稱"
 
@@ -3286,11 +3307,11 @@ msgstr "正在產生驗證碼"
 msgid "Generating securely…"
 msgstr "正在安全地產生…"
 
-#: src/renderer/src/components/LoginEditor.tsx:3130
+#: src/renderer/src/components/LoginEditor.tsx:3187
 msgid "Generating SSH key…"
 msgstr "正在產生 SSH 金鑰…"
 
-#: src/renderer/src/components/LoginEditor.tsx:2340
+#: src/renderer/src/components/LoginEditor.tsx:2397
 #: src/renderer/src/components/VaultItemAccessCards.tsx:236
 msgid "Generating…"
 msgstr "正在產生…"
@@ -3358,8 +3379,8 @@ msgstr "健康報告"
 msgid "HIBP returned no known breaches for this account. This is only the result of the current query and does not mean the account will always be safe."
 msgstr "HIBP 未回報此帳戶已知的外洩事件。這僅為本次查詢結果，並不表示該帳戶永遠安全。"
 
-#: src/renderer/src/components/LoginEditor.tsx:594
-#: src/renderer/src/components/LoginEditor.tsx:1374
+#: src/renderer/src/components/LoginEditor.tsx:601
+#: src/renderer/src/components/LoginEditor.tsx:1387
 msgid "Hidden text"
 msgstr "隱藏文字"
 
@@ -3368,7 +3389,7 @@ msgstr "隱藏文字"
 msgid "Hide {0}"
 msgstr "隱藏 {0}"
 
-#: src/renderer/src/components/LoginEditor.tsx:1526
+#: src/renderer/src/components/LoginEditor.tsx:1539
 #: src/renderer/src/components/VaultDetailFieldRows.tsx:314
 msgid "Hide {label}"
 msgstr "隱藏 {label}"
@@ -3377,7 +3398,7 @@ msgstr "隱藏 {label}"
 msgid "Hide advanced options"
 msgstr "隱藏進階選項"
 
-#: src/renderer/src/components/LoginEditor.tsx:3011
+#: src/renderer/src/components/LoginEditor.tsx:3068
 msgid "Hide custom field contents"
 msgstr "隱藏自訂欄位內容"
 
@@ -3414,7 +3435,7 @@ msgstr "歷史記錄"
 msgid "History is shown in plaintext"
 msgstr "歷史記錄會以純文字顯示"
 
-#: src/renderer/src/components/LoginEditor.tsx:628
+#: src/renderer/src/components/LoginEditor.tsx:635
 msgid "Host"
 msgstr "主機"
 
@@ -3444,7 +3465,7 @@ msgid "Identities"
 msgstr "身分"
 
 #: src/renderer/src/components/DragPreview.tsx:37
-#: src/renderer/src/components/LoginEditor.tsx:615
+#: src/renderer/src/components/LoginEditor.tsx:622
 #: src/renderer/src/components/VaultShell.tsx:285
 msgid "Identity"
 msgstr "身分"
@@ -3470,7 +3491,7 @@ msgstr "若非您提出此要求，請拒絕並檢查帳戶安全性。"
 msgid "If you do not want to risk duplicates, disconnect instead. Your local vault data will be kept."
 msgstr "若不想承擔重複項目的風險，請改為中斷連線。您的本機保管庫資料將會保留。"
 
-#: src/renderer/src/components/VaultShell.tsx:4590
+#: src/renderer/src/components/VaultShell.tsx:4630
 msgid "Image attachment preview"
 msgstr "圖片附件預覽"
 
@@ -3484,7 +3505,7 @@ msgstr "匯入 Bitwarden JSON，或建立受密碼保護的可攜備份。"
 msgid "Import complete: {0} items and {1} folders added{skipped}{lossSummary}."
 msgstr "匯入完成：已新增 {0} 個項目和 {1} 個資料夾{skipped}{lossSummary}。"
 
-#: src/renderer/src/components/LoginEditor.tsx:2364
+#: src/renderer/src/components/LoginEditor.tsx:2421
 msgid "Import from clipboard"
 msgstr "從剪貼簿匯入"
 
@@ -3562,11 +3583,11 @@ msgid "It must match exactly. Spaces and characters will not be corrected automa
 msgstr "必須完全相符。系統不會自動修正空格或字元。"
 
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:152
-#: src/renderer/src/components/LoginEditor.tsx:620
+#: src/renderer/src/components/LoginEditor.tsx:627
 msgid "Item"
 msgstr "項目"
 
-#: src/renderer/src/components/VaultShell.tsx:4033
+#: src/renderer/src/components/VaultShell.tsx:4072
 msgid "Item details"
 msgstr "項目詳細資料"
 
@@ -3576,7 +3597,7 @@ msgstr "項目欄位"
 
 #. Section heading for the login item's creation, edit, password-change, and password-history metadata.
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:193
-#: src/renderer/src/components/VaultShell.tsx:4143
+#: src/renderer/src/components/VaultShell.tsx:4183
 msgid "Item history"
 msgstr "項目歷史記錄"
 
@@ -3608,7 +3629,7 @@ msgstr "其中的項目將移至未分類，且不會遭到刪除。"
 msgid "Japanese"
 msgstr "日文"
 
-#: src/renderer/src/components/LoginEditor.tsx:601
+#: src/renderer/src/components/LoginEditor.tsx:608
 #: src/renderer/src/components/PaymentCardBrandMark.tsx:61
 msgid "JCB"
 msgstr "JCB"
@@ -3621,7 +3642,7 @@ msgstr "至少保留一把安全金鑰；此處無法移除最後一把金鑰。
 msgid "Keep attachment"
 msgstr "保留附件"
 
-#: src/renderer/src/components/LoginEditor.tsx:3329
+#: src/renderer/src/components/LoginEditor.tsx:3450
 msgid "Keep passkey"
 msgstr "保留通行密鑰"
 
@@ -3649,12 +3670,12 @@ msgstr "金鑰"
 msgid "Key Connector accounts are not supported"
 msgstr ""
 
-#: src/renderer/src/components/LoginEditor.tsx:2430
+#: src/renderer/src/components/LoginEditor.tsx:2487
 #: src/renderer/src/components/VaultShell.tsx:361
 msgid "Key fingerprint"
 msgstr "金鑰指紋"
 
-#: src/renderer/src/components/LoginEditor.tsx:2400
+#: src/renderer/src/components/LoginEditor.tsx:2457
 msgid "Key material is read-only. Use the show button to view the private key temporarily."
 msgstr "金鑰資料為唯讀。請使用顯示按鈕暫時檢視私密金鑰。"
 
@@ -3679,8 +3700,8 @@ msgstr "上次活動"
 msgid "Last edited"
 msgstr "上次編輯"
 
-#: src/renderer/src/components/LoginEditor.tsx:589
-#: src/renderer/src/components/LoginEditor.tsx:2215
+#: src/renderer/src/components/LoginEditor.tsx:596
+#: src/renderer/src/components/LoginEditor.tsx:2272
 #: src/renderer/src/components/VaultShell.tsx:391
 msgid "Last name"
 msgstr "姓氏"
@@ -3721,8 +3742,8 @@ msgstr "讓終端機與 Git 透過本機 socket 使用保管庫中的 SSH 金鑰
 msgid "Let the server temporarily skip two-step verification on this device."
 msgstr "允許伺服器暫時略過此裝置的兩步驟驗證。"
 
-#: src/renderer/src/components/LoginEditor.tsx:587
-#: src/renderer/src/components/LoginEditor.tsx:2299
+#: src/renderer/src/components/LoginEditor.tsx:594
+#: src/renderer/src/components/LoginEditor.tsx:2356
 msgid "License number"
 msgstr "授權號碼"
 
@@ -3730,12 +3751,12 @@ msgstr "授權號碼"
 msgid "Light"
 msgstr "淺色"
 
-#: src/renderer/src/components/LoginEditor.tsx:3063
+#: src/renderer/src/components/LoginEditor.tsx:3120
 msgid "Link to"
 msgstr "連結至"
 
-#: src/renderer/src/components/LoginEditor.tsx:596
-#: src/renderer/src/components/LoginEditor.tsx:1384
+#: src/renderer/src/components/LoginEditor.tsx:603
+#: src/renderer/src/components/LoginEditor.tsx:1397
 msgid "Linked field"
 msgstr "已連結欄位"
 
@@ -3816,7 +3837,7 @@ msgid "Loading the 2fa.directory service list"
 msgstr "正在載入 2fa.directory 服務清單"
 
 #: src/renderer/src/components/AboutPage.tsx:71
-#: src/renderer/src/components/LoginEditor.tsx:3128
+#: src/renderer/src/components/LoginEditor.tsx:3185
 msgid "Loading…"
 msgstr "正在載入…"
 
@@ -3916,7 +3937,7 @@ msgid "Locking and unlocking"
 msgstr "鎖定與解鎖"
 
 #: src/renderer/src/components/DragPreview.tsx:35
-#: src/renderer/src/components/LoginEditor.tsx:613
+#: src/renderer/src/components/LoginEditor.tsx:620
 #: src/renderer/src/components/VaultShell.tsx:277
 msgid "Login"
 msgstr "登入"
@@ -4050,12 +4071,12 @@ msgstr "主密碼驗證失敗。請重新開始設定。"
 msgid "Master-password hint (optional)"
 msgstr "主密碼提示（選填）"
 
-#: src/renderer/src/components/LoginEditor.tsx:600
+#: src/renderer/src/components/LoginEditor.tsx:607
 #: src/renderer/src/components/PaymentCardBrandMark.tsx:60
 msgid "Mastercard"
 msgstr "萬事達卡"
 
-#: src/renderer/src/components/LoginEditor.tsx:441
+#: src/renderer/src/components/LoginEditor.tsx:448
 msgid "Match example"
 msgstr "比對範例"
 
@@ -4064,7 +4085,7 @@ msgid "Matches"
 msgstr "符合"
 
 #. placeholder {0}: index + 1
-#: src/renderer/src/components/LoginEditor.tsx:1916
+#: src/renderer/src/components/LoginEditor.tsx:1929
 msgid "Matching method for website {0}"
 msgstr "網站 {0} 的比對方式"
 
@@ -4093,8 +4114,8 @@ msgstr "已達最大存取次數"
 msgid "Menu"
 msgstr "選單"
 
-#: src/renderer/src/components/LoginEditor.tsx:573
-#: src/renderer/src/components/LoginEditor.tsx:2208
+#: src/renderer/src/components/LoginEditor.tsx:580
+#: src/renderer/src/components/LoginEditor.tsx:2265
 #: src/renderer/src/components/VaultShell.tsx:375
 msgid "Middle name"
 msgstr "中間名"
@@ -4135,8 +4156,8 @@ msgstr "分鐘"
 msgid "Minutes must be between 0 and 59."
 msgstr "分鐘必須介於 0 到 59 之間。"
 
-#: src/renderer/src/components/VaultShell.tsx:4287
-#: src/renderer/src/components/VaultShell.tsx:4297
+#: src/renderer/src/components/VaultShell.tsx:4327
+#: src/renderer/src/components/VaultShell.tsx:4337
 msgid "More actions"
 msgstr "更多操作"
 
@@ -4211,7 +4232,7 @@ msgid "Move to trash"
 msgstr "移至垃圾桶"
 
 #: src/renderer/src/components/VaultShell-dnd.ts:71
-#: src/renderer/src/components/VaultShell.tsx:4334
+#: src/renderer/src/components/VaultShell.tsx:4374
 #: src/renderer/src/components/VaultShellDialogs.tsx:237
 msgid "Move to Trash"
 msgstr "移至垃圾桶"
@@ -4230,12 +4251,12 @@ msgstr "移至垃圾桶"
 
 #. placeholder {0}: movedFolder.name
 #. placeholder {1}: parentFolder.name
-#: src/renderer/src/components/VaultShell.tsx:3750
+#: src/renderer/src/components/VaultShell.tsx:3789
 msgid "Moved “{0}” into “{1}”."
 msgstr "已將「{0}」移入「{1}」。"
 
 #. placeholder {0}: movedFolder.name
-#: src/renderer/src/components/VaultShell.tsx:3752
+#: src/renderer/src/components/VaultShell.tsx:3791
 msgid "Moved “{0}” to the top level."
 msgstr "已將「{0}」移至最上層。"
 
@@ -4258,8 +4279,8 @@ msgid "Moving with {0} other items"
 msgstr "正與其他 {0} 個項目一起移動"
 
 #: src/renderer/src/components/Dialogs.tsx:195
-#: src/renderer/src/components/LoginEditor.tsx:1751
-#: src/renderer/src/components/LoginEditor.tsx:2911
+#: src/renderer/src/components/LoginEditor.tsx:1764
+#: src/renderer/src/components/LoginEditor.tsx:2968
 #: src/renderer/src/components/SendsPage.tsx:594
 #: src/renderer/src/components/SettingsPage.tsx:498
 #: src/renderer/src/components/VaultShell.tsx:322
@@ -4267,8 +4288,8 @@ msgstr "正與其他 {0} 個項目一起移動"
 msgid "Name"
 msgstr "名稱"
 
-#: src/renderer/src/components/LoginEditor.tsx:584
-#: src/renderer/src/components/LoginEditor.tsx:2297
+#: src/renderer/src/components/LoginEditor.tsx:591
+#: src/renderer/src/components/LoginEditor.tsx:2354
 msgid "National ID / Social Security number"
 msgstr "國民身分證字號 / 社會安全號碼"
 
@@ -4276,7 +4297,7 @@ msgstr "國民身分證字號 / 社會安全號碼"
 msgid "Needs attention"
 msgstr "需要注意"
 
-#: src/renderer/src/components/LoginEditor.tsx:632
+#: src/renderer/src/components/LoginEditor.tsx:639
 #: src/renderer/src/components/SettingsPage.tsx:482
 msgid "Never"
 msgstr "從不"
@@ -4341,15 +4362,15 @@ msgstr "否"
 msgid "No Bitwarden account connected"
 msgstr "未連結 Bitwarden 帳戶"
 
-#: src/renderer/src/components/LoginEditor.tsx:2091
+#: src/renderer/src/components/LoginEditor.tsx:2116
 msgid "No card face selected"
-msgstr ""
+msgstr "尚未選擇卡面"
 
-#: src/renderer/src/components/LoginEditor.tsx:3200
+#: src/renderer/src/components/LoginEditor.tsx:3272
 msgid "No card faces found"
-msgstr ""
+msgstr "找不到卡面"
 
-#: src/renderer/src/components/LoginEditor.tsx:2568
+#: src/renderer/src/components/LoginEditor.tsx:2625
 msgid "No Collections are available for this organization."
 msgstr "這個組織目前沒有可用的 Collection。"
 
@@ -4357,7 +4378,7 @@ msgstr "這個組織目前沒有可用的 Collection。"
 msgid "No content yet"
 msgstr "尚無內容"
 
-#: src/renderer/src/components/LoginEditor.tsx:2778
+#: src/renderer/src/components/LoginEditor.tsx:2835
 msgid "No custom fields yet"
 msgstr "尚無自訂欄位"
 
@@ -4369,7 +4390,7 @@ msgstr "尚無自訂群組。"
 msgid "No generated entries yet."
 msgstr "尚無已產生的項目。"
 
-#: src/renderer/src/components/VaultShell.tsx:4470
+#: src/renderer/src/components/VaultShell.tsx:4510
 msgid "No item selected"
 msgstr "未選取項目"
 
@@ -4410,6 +4431,10 @@ msgstr "沒有可用的密碼金鑰"
 #: src/renderer/src/components/Dialogs.tsx:752
 msgid "No password history"
 msgstr "沒有密碼歷程記錄"
+
+#: src/renderer/src/components/LoginEditor.tsx:2106
+msgid "No preview"
+msgstr "無預覽"
 
 #: src/renderer/src/components/AccountDevicesDialog.tsx:244
 msgid "No record"
@@ -4468,7 +4493,7 @@ msgstr "沒有可用的驗證方式"
 msgid "No weak passwords"
 msgstr "沒有弱密碼"
 
-#: src/renderer/src/components/LoginEditor.tsx:1820
+#: src/renderer/src/components/LoginEditor.tsx:1833
 msgid "No websites are set. You can save only a username and password."
 msgstr "尚未設定網站。您只能儲存使用者名稱和密碼。"
 
@@ -4510,7 +4535,7 @@ msgstr "未直接指派"
 msgid "Not provided"
 msgstr "未提供"
 
-#: src/renderer/src/components/LoginEditor.tsx:608
+#: src/renderer/src/components/LoginEditor.tsx:615
 #: src/renderer/src/components/send-ui.ts:65
 #: src/renderer/src/components/SendsPage.tsx:153
 #: src/renderer/src/components/VaultDetailFieldRows.tsx:93
@@ -4527,8 +4552,8 @@ msgstr "未設定"
 msgid "Not trusted"
 msgstr "不受信任"
 
-#: src/renderer/src/components/LoginEditor.tsx:2735
-#: src/renderer/src/components/LoginEditor.tsx:2742
+#: src/renderer/src/components/LoginEditor.tsx:2792
+#: src/renderer/src/components/LoginEditor.tsx:2799
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:89
 #: src/renderer/src/components/VaultShell.tsx:309
 msgid "Notes"
@@ -4563,7 +4588,7 @@ msgstr "一次性驗證碼"
 msgid "One-time verification code copied"
 msgstr "一次性驗證碼已複製"
 
-#: src/renderer/src/components/LoginEditor.tsx:2384
+#: src/renderer/src/components/LoginEditor.tsx:2441
 msgid "Only a short-lived import token is used when saving. This field neither contains nor displays the private key."
 msgstr "儲存時只會使用短期有效的匯入權杖。此欄位不會包含或顯示私密金鑰。"
 
@@ -4621,7 +4646,7 @@ msgid "Optional; maximum 50 UTF-8 bytes."
 msgstr "選填；上限為 50 個 UTF-8 位元組。"
 
 #. Section heading in the login item editor for organizing the item into a folder and configuring item-level options.
-#: src/renderer/src/components/LoginEditor.tsx:2462
+#: src/renderer/src/components/LoginEditor.tsx:2519
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:129
 #: src/renderer/src/components/VaultShell.tsx:1984
 msgid "Organization"
@@ -4629,8 +4654,8 @@ msgstr "組織"
 
 #. Read-only field label in the shared item editor for the Bitwarden organization that owns the item.
 #. Section heading in the shared item editor for the Bitwarden organization that owns the item.
-#: src/renderer/src/components/LoginEditor.tsx:2456
-#: src/renderer/src/components/LoginEditor.tsx:2482
+#: src/renderer/src/components/LoginEditor.tsx:2513
+#: src/renderer/src/components/LoginEditor.tsx:2539
 msgctxt "shared-organization"
 msgid "Organization"
 msgstr "組織"
@@ -4679,7 +4704,7 @@ msgstr "組織設定檔資料"
 msgid "Organizations"
 msgstr "組織"
 
-#: src/renderer/src/components/VaultShell.tsx:4128
+#: src/renderer/src/components/VaultShell.tsx:4168
 msgid "Original folder"
 msgstr "原始資料夾"
 
@@ -4687,11 +4712,11 @@ msgstr "原始資料夾"
 msgid "Original master password"
 msgstr "原始主密碼"
 
-#: src/renderer/src/components/LoginEditor.tsx:610
+#: src/renderer/src/components/LoginEditor.tsx:617
 msgid "Other"
 msgstr "其他"
 
-#: src/renderer/src/components/LoginEditor.tsx:2064
+#: src/renderer/src/components/LoginEditor.tsx:2077
 msgid "Other card brand name"
 msgstr "其他卡片品牌名稱"
 
@@ -4699,7 +4724,7 @@ msgstr "其他卡片品牌名稱"
 msgid "Other card issuer"
 msgstr "其他卡片發卡機構"
 
-#: src/renderer/src/components/LoginEditor.tsx:2511
+#: src/renderer/src/components/LoginEditor.tsx:2568
 #: src/renderer/src/components/organizations-ui.ts:11
 #: src/renderer/src/components/OrganizationsPage.tsx:38
 msgid "Owner"
@@ -4721,14 +4746,14 @@ msgstr "通行密鑰"
 msgid "Passkey deleted."
 msgstr "通行密鑰已刪除。"
 
-#: src/renderer/src/components/LoginEditor.tsx:1964
+#: src/renderer/src/components/LoginEditor.tsx:1977
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:47
 #: src/renderer/src/components/VaultShell.tsx:301
 #: src/renderer/src/components/VaultShell.tsx:2001
 msgid "Passkeys"
 msgstr "通行密鑰"
 
-#: src/renderer/src/components/LoginEditor.tsx:1968
+#: src/renderer/src/components/LoginEditor.tsx:1981
 msgid "Passkeys on shared items cannot be changed here."
 msgstr "無法在此變更共享項目的通行密鑰。"
 
@@ -4738,8 +4763,8 @@ msgstr "無法在此變更共享項目的通行密鑰。"
 msgid "Passphrase"
 msgstr "密碼片語"
 
-#: src/renderer/src/components/LoginEditor.tsx:586
-#: src/renderer/src/components/LoginEditor.tsx:2298
+#: src/renderer/src/components/LoginEditor.tsx:593
+#: src/renderer/src/components/LoginEditor.tsx:2355
 #: src/renderer/src/components/VaultShell.tsx:357
 #: src/renderer/src/components/VaultShell.tsx:388
 msgid "Passport number"
@@ -4750,8 +4775,8 @@ msgstr "護照號碼"
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:195
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:460
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:582
-#: src/renderer/src/components/LoginEditor.tsx:565
-#: src/renderer/src/components/LoginEditor.tsx:1797
+#: src/renderer/src/components/LoginEditor.tsx:572
+#: src/renderer/src/components/LoginEditor.tsx:1810
 #: src/renderer/src/components/VaultShell.tsx:337
 #: src/renderer/src/components/VaultShell.tsx:367
 #: src/renderer/src/components/VaultShellDialogs.tsx:255
@@ -4760,7 +4785,7 @@ msgstr "密碼"
 
 #: src/renderer/src/components/Dialogs.tsx:631
 #: src/renderer/src/components/ItemHistoryRows.tsx:67
-#: src/renderer/src/components/VaultShell.tsx:4150
+#: src/renderer/src/components/VaultShell.tsx:4190
 msgid "Password history"
 msgstr "密碼歷程"
 
@@ -4799,7 +4824,7 @@ msgstr "密碼會保留在主程式中，絕不傳送至轉譯程式或外部服
 msgid "Paste"
 msgstr "貼上"
 
-#: src/renderer/src/components/LoginEditor.tsx:614
+#: src/renderer/src/components/LoginEditor.tsx:621
 msgid "Payment card and security code"
 msgstr "付款卡片與安全碼"
 
@@ -4857,7 +4882,7 @@ msgstr "需要權限"
 msgid "Permission:"
 msgstr "權限："
 
-#: src/renderer/src/components/LoginEditor.tsx:615
+#: src/renderer/src/components/LoginEditor.tsx:622
 msgid "Personal and contact information"
 msgstr "個人與聯絡資訊"
 
@@ -4870,21 +4895,25 @@ msgstr "個人 API 金鑰"
 msgid "Personal API key operation failed."
 msgstr "個人 API 金鑰操作失敗。"
 
-#: src/renderer/src/components/LoginEditor.tsx:1650
-#: src/renderer/src/components/LoginEditor.tsx:2525
+#: src/renderer/src/components/LoginEditor.tsx:1663
+#: src/renderer/src/components/LoginEditor.tsx:2582
 msgid "Personal vault"
 msgstr "個人保管庫"
 
-#: src/renderer/src/components/LoginEditor.tsx:583
-#: src/renderer/src/components/LoginEditor.tsx:2283
+#: src/renderer/src/components/LoginEditor.tsx:590
+#: src/renderer/src/components/LoginEditor.tsx:2340
 #: src/renderer/src/components/VaultShell.tsx:354
 #: src/renderer/src/components/VaultShell.tsx:385
 msgid "Phone"
 msgstr "電話"
 
+#: src/renderer/src/components/LoginEditor.tsx:2127
+#~ msgid "Pick a catalog face or upload a JPG, PNG, or WebP image for this card."
+#~ msgstr "從目錄選擇卡面，或為這張卡片上傳 JPG、PNG 或 WebP 圖片。"
+
 #. placeholder {0}: position + 1
 #. placeholder {1}: draft.customFields.length
-#: src/renderer/src/components/LoginEditor.tsx:2799
+#: src/renderer/src/components/LoginEditor.tsx:2856
 msgid "Picked up custom field {0} of {1}."
 msgstr "已選取第 {0} 個自訂欄位，共 {1} 個。"
 
@@ -4896,7 +4925,7 @@ msgstr "已選取第 {0} 個本機帳戶，共 {1} 個。"
 
 #. placeholder {0}: position + 1
 #. placeholder {1}: draft.uris.length
-#: src/renderer/src/components/LoginEditor.tsx:1837
+#: src/renderer/src/components/LoginEditor.tsx:1850
 msgid "Picked up website {0} of {1}."
 msgstr "已選取第 {0} 個網站，共 {1} 個。"
 
@@ -4949,8 +4978,8 @@ msgstr "加號"
 msgid "Plus Address"
 msgstr "加號地址"
 
-#: src/renderer/src/components/LoginEditor.tsx:579
-#: src/renderer/src/components/LoginEditor.tsx:2259
+#: src/renderer/src/components/LoginEditor.tsx:586
+#: src/renderer/src/components/LoginEditor.tsx:2316
 #: src/renderer/src/components/VaultShell.tsx:381
 msgid "Postal code"
 msgstr "郵遞區號"
@@ -4972,18 +5001,18 @@ msgstr "隱私"
 msgid "Privacy & clipboard"
 msgstr "隱私與剪貼簿"
 
-#: src/renderer/src/components/LoginEditor.tsx:2372
-#: src/renderer/src/components/LoginEditor.tsx:2391
+#: src/renderer/src/components/LoginEditor.tsx:2429
+#: src/renderer/src/components/LoginEditor.tsx:2448
 #: src/renderer/src/components/VaultShell.tsx:359
 #: src/renderer/src/components/VaultShell.tsx:3188
 msgid "Private key"
 msgstr "私密金鑰"
 
-#: src/renderer/src/components/LoginEditor.tsx:3260
+#: src/renderer/src/components/LoginEditor.tsx:3381
 msgid "Private key password"
 msgstr "私密金鑰密碼"
 
-#: src/renderer/src/components/LoginEditor.tsx:617
+#: src/renderer/src/components/LoginEditor.tsx:624
 msgid "Private key, public key, and fingerprint"
 msgstr "私密金鑰、公開金鑰與指紋"
 
@@ -5000,7 +5029,7 @@ msgstr "問題區段"
 msgid "Problem section: {detailLabel}"
 msgstr "問題區段：{detailLabel}"
 
-#: src/renderer/src/components/LoginEditor.tsx:2707
+#: src/renderer/src/components/LoginEditor.tsx:2764
 #: src/renderer/src/components/VaultItemAccessCards.tsx:86
 msgid "Processing"
 msgstr "處理中"
@@ -5043,7 +5072,7 @@ msgstr "服務提供者管理的組織金鑰"
 msgid "Provisioned"
 msgstr "已佈建"
 
-#: src/renderer/src/components/LoginEditor.tsx:2408
+#: src/renderer/src/components/LoginEditor.tsx:2465
 #: src/renderer/src/components/VaultShell.tsx:360
 msgid "Public key"
 msgstr "公開金鑰"
@@ -5082,8 +5111,8 @@ msgstr "僅在您按下快速鍵時讀取前景瀏覽器的 URL 與表單。多�
 msgid "Read-only"
 msgstr "唯讀"
 
-#: src/renderer/src/components/LoginEditor.tsx:2362
-#: src/renderer/src/components/LoginEditor.tsx:3132
+#: src/renderer/src/components/LoginEditor.tsx:2419
+#: src/renderer/src/components/LoginEditor.tsx:3189
 msgid "Reading clipboard…"
 msgstr "正在讀取剪貼簿…"
 
@@ -5166,7 +5195,7 @@ msgstr "已註冊，但您仍須在 macOS「系統設定」的「登入項目」
 msgid "Registration user"
 msgstr "註冊使用者"
 
-#: src/renderer/src/components/LoginEditor.tsx:631
+#: src/renderer/src/components/LoginEditor.tsx:638
 msgid "Regular expression"
 msgstr "正規表示式"
 
@@ -5243,7 +5272,7 @@ msgstr "要移除 {0} 嗎？"
 msgid "Remove current password"
 msgstr "移除目前密碼"
 
-#: src/renderer/src/components/VaultShell.tsx:4269
+#: src/renderer/src/components/VaultShell.tsx:4309
 msgid "Remove from favorites"
 msgstr "從最愛中移除"
 
@@ -5256,7 +5285,7 @@ msgstr "移除群組 {0}"
 msgid "Remove this security key?"
 msgstr "要移除此安全金鑰嗎？"
 
-#: src/renderer/src/components/LoginEditor.tsx:1874
+#: src/renderer/src/components/LoginEditor.tsx:1887
 msgid "Remove website"
 msgstr "移除網站"
 
@@ -5284,8 +5313,8 @@ msgstr "已重新命名為「{0}」。"
 #. placeholder {0}: `${presentation.label}`
 #. placeholder {0}: `${t`Website`} ${index + 1}`
 #: src/renderer/src/components/AccountSwitcherCard.tsx:438
-#: src/renderer/src/components/LoginEditor.tsx:1868
-#: src/renderer/src/components/LoginEditor.tsx:2862
+#: src/renderer/src/components/LoginEditor.tsx:1881
+#: src/renderer/src/components/LoginEditor.tsx:2919
 msgid "Reorder {0}"
 msgstr "重新排序 {0}"
 
@@ -5299,7 +5328,7 @@ msgid "Repair"
 msgstr "修復"
 
 #. placeholder {0}: attachment.fileName
-#: src/renderer/src/components/VaultShell.tsx:3565
+#: src/renderer/src/components/VaultShell.tsx:3604
 msgid "Repaired “{0}”."
 msgstr "已修復「{0}」。"
 
@@ -5319,7 +5348,7 @@ msgstr "提出請求的應用程式"
 msgid "Requesting device"
 msgstr "提出請求的裝置"
 
-#: src/renderer/src/components/LoginEditor.tsx:2637
+#: src/renderer/src/components/LoginEditor.tsx:2694
 msgid "Require master password reprompt"
 msgstr "要求再次輸入主密碼"
 
@@ -5360,7 +5389,7 @@ msgstr "還原完成"
 msgid "Restore full backup"
 msgstr "還原完整備份"
 
-#: src/renderer/src/components/VaultShell.tsx:4178
+#: src/renderer/src/components/VaultShell.tsx:4218
 msgid "Restore item"
 msgstr "還原項目"
 
@@ -5447,7 +5476,7 @@ msgstr "正在安全讀取檔案"
 
 #: src/renderer/src/components/AccountSwitcherCard.tsx:381
 #: src/renderer/src/components/Dialogs.tsx:291
-#: src/renderer/src/components/LoginEditor.tsx:3138
+#: src/renderer/src/components/LoginEditor.tsx:3195
 #: src/renderer/src/components/SendsPage.tsx:797
 msgid "Save"
 msgstr "儲存"
@@ -5463,6 +5492,10 @@ msgstr "儲存顯示名稱"
 #: src/renderer/src/components/EquivalentDomainsDialog.tsx:456
 msgid "Save domain rules"
 msgstr "儲存網域規則"
+
+#: src/renderer/src/components/LoginEditor.tsx:3350
+msgid "Save this card before uploading an image."
+msgstr "請先儲存這張卡片，再上傳圖片。"
 
 #. placeholder {0}: updated.name
 #. placeholder {0}: updatedWithCardCover.name
@@ -5506,17 +5539,17 @@ msgstr "搜尋「{query}」"
 msgid "Search account breaches"
 msgstr "搜尋帳戶外洩事件"
 
-#: src/renderer/src/components/LoginEditor.tsx:3171
+#: src/renderer/src/components/LoginEditor.tsx:3243
 msgid "Search bank or card name"
-msgstr ""
+msgstr "搜尋銀行或卡片名稱"
 
 #: src/renderer/src/components/AutofillPicker.tsx:181
 msgid "Search by name, username, or website…"
 msgstr "依名稱、使用者名稱或網站搜尋…"
 
-#: src/renderer/src/components/LoginEditor.tsx:3161
+#: src/renderer/src/components/LoginEditor.tsx:3233
 msgid "Search card faces"
-msgstr ""
+msgstr "搜尋卡面"
 
 #: src/renderer/src/components/EquivalentDomainsDialog.tsx:393
 msgid "Search domains"
@@ -5567,7 +5600,7 @@ msgid "Searching account breaches"
 msgstr "正在搜尋帳戶外洩事件"
 
 #: src/renderer/src/components/DragPreview.tsx:38
-#: src/renderer/src/components/LoginEditor.tsx:616
+#: src/renderer/src/components/LoginEditor.tsx:623
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:89
 #: src/renderer/src/components/VaultShell.tsx:286
 msgid "Secure note"
@@ -5578,7 +5611,7 @@ msgid "Securely removing local account"
 msgstr "正在安全移除本機帳戶"
 
 #: src/renderer/src/components/VaultShell-primitives.tsx:325
-#: src/renderer/src/components/VaultShell.tsx:4246
+#: src/renderer/src/components/VaultShell.tsx:4286
 msgid "Securely stored item"
 msgstr "安全儲存的項目"
 
@@ -5595,8 +5628,8 @@ msgstr "安全性"
 msgid "Security & unlock"
 msgstr "安全性與解鎖"
 
-#: src/renderer/src/components/LoginEditor.tsx:569
-#: src/renderer/src/components/LoginEditor.tsx:2176
+#: src/renderer/src/components/LoginEditor.tsx:576
+#: src/renderer/src/components/LoginEditor.tsx:2233
 #: src/renderer/src/components/VaultShell.tsx:340
 #: src/renderer/src/components/VaultShell.tsx:371
 msgid "Security code"
@@ -5615,8 +5648,12 @@ msgid "Select"
 msgstr "選取"
 
 #: src/renderer/src/components/LoginEditor.tsx:3155
-msgid "Select a card face from the Taiwan card catalog."
-msgstr ""
+#~ msgid "Select a card face from the Taiwan card catalog."
+#~ msgstr ""
+
+#: src/renderer/src/components/LoginEditor.tsx:3212
+msgid "Select a catalog face or upload your own card image."
+msgstr "選擇目錄卡面，或上傳自己的卡片圖片。"
 
 #: src/renderer/src/components/SyncDialog.tsx:1056
 msgid "Select a verification method"
@@ -5626,11 +5663,11 @@ msgstr "選取驗證方式"
 msgid "Select all"
 msgstr "全選"
 
-#: src/renderer/src/components/VaultShell.tsx:4473
+#: src/renderer/src/components/VaultShell.tsx:4513
 msgid "Select an item to view and manage its secure data."
 msgstr "選取項目以檢視及管理其安全資料。"
 
-#: src/renderer/src/components/LoginEditor.tsx:1556
+#: src/renderer/src/components/LoginEditor.tsx:1569
 msgid "Select at least one collection for the organization item."
 msgstr "請至少選取一個集合來建立組織項目。"
 
@@ -5642,9 +5679,17 @@ msgstr "請先至少選取一個項目。"
 msgid "Select avatar color"
 msgstr "選取大頭貼顏色"
 
-#: src/renderer/src/components/LoginEditor.tsx:2083
+#: src/renderer/src/components/LoginEditor.tsx:3346
+msgid "Select image"
+msgstr "選擇圖片"
+
+#: src/renderer/src/components/LoginEditor.tsx:2100
 msgid "Selected card face"
-msgstr ""
+msgstr "已選擇的卡面"
+
+#: src/renderer/src/components/LoginEditor.tsx:2113
+msgid "Selected from catalog"
+msgstr "已從目錄選擇"
 
 #: src/renderer/src/components/VaultShellDialogs.tsx:167
 msgid "Selected items"
@@ -5803,12 +5848,12 @@ msgstr "縮短網域內容，並以逗號或換行分隔各列。"
 msgid "Show {0}"
 msgstr "顯示 {0}"
 
-#: src/renderer/src/components/LoginEditor.tsx:1526
+#: src/renderer/src/components/LoginEditor.tsx:1539
 #: src/renderer/src/components/VaultDetailFieldRows.tsx:314
 msgid "Show {label}"
 msgstr "顯示 {label}"
 
-#: src/renderer/src/components/LoginEditor.tsx:3012
+#: src/renderer/src/components/LoginEditor.tsx:3069
 msgid "Show custom field contents"
 msgstr "顯示自訂欄位內容"
 
@@ -5880,7 +5925,7 @@ msgid "SSH authentication"
 msgstr "SSH 驗證"
 
 #: src/renderer/src/components/DragPreview.tsx:39
-#: src/renderer/src/components/LoginEditor.tsx:617
+#: src/renderer/src/components/LoginEditor.tsx:624
 #: src/renderer/src/components/VaultShell.tsx:287
 msgid "SSH key"
 msgstr "SSH 金鑰"
@@ -5915,12 +5960,12 @@ msgstr "已開始："
 msgid "Starting"
 msgstr "啟動中"
 
-#: src/renderer/src/components/LoginEditor.tsx:629
+#: src/renderer/src/components/LoginEditor.tsx:636
 msgid "Starts with"
 msgstr "開頭為"
 
-#: src/renderer/src/components/LoginEditor.tsx:578
-#: src/renderer/src/components/LoginEditor.tsx:2252
+#: src/renderer/src/components/LoginEditor.tsx:585
+#: src/renderer/src/components/LoginEditor.tsx:2309
 #: src/renderer/src/components/VaultShell.tsx:380
 msgid "State / Province"
 msgstr "州／省"
@@ -6052,8 +6097,8 @@ msgstr "接管"
 msgid "Terminal setup"
 msgstr "終端機設定"
 
-#: src/renderer/src/components/LoginEditor.tsx:593
-#: src/renderer/src/components/LoginEditor.tsx:1369
+#: src/renderer/src/components/LoginEditor.tsx:600
+#: src/renderer/src/components/LoginEditor.tsx:1382
 msgid "Text"
 msgstr "文字"
 
@@ -6069,7 +6114,7 @@ msgstr "分享連結不包含文字內容。"
 msgid "Text hidden by default"
 msgstr "預設隱藏文字"
 
-#: src/renderer/src/components/VaultShell.tsx:3735
+#: src/renderer/src/components/VaultShell.tsx:3774
 msgid "That folder can't be moved there."
 msgstr "無法將該資料夾移至此處。"
 
@@ -6119,7 +6164,7 @@ msgstr "附件操作失敗。伺服器內容可能已變更；請同步後再試
 msgid "The attachment operation was canceled."
 msgstr "附件操作已取消。"
 
-#: src/renderer/src/components/VaultShell.tsx:3523
+#: src/renderer/src/components/VaultShell.tsx:3562
 msgid "The attachment was deleted, but the list could not be refreshed. Sync again later."
 msgstr "附件已刪除，但無法重新整理清單。請稍後再次同步。"
 
@@ -6127,7 +6172,7 @@ msgstr "附件已刪除，但無法重新整理清單。請稍後再次同步。
 msgid "The attachment was downloaded, but the list could not be refreshed. Sync again later."
 msgstr "附件已下載，但無法重新整理清單。請稍後再次同步。"
 
-#: src/renderer/src/components/VaultShell.tsx:3568
+#: src/renderer/src/components/VaultShell.tsx:3607
 msgid "The attachment was repaired, but the list could not be refreshed. Sync again later."
 msgstr "附件已修復，但無法重新整理清單。請稍後再次同步。"
 
@@ -6172,6 +6217,7 @@ msgid "The browser tab or URL has changed. Return to the login field and try aga
 msgstr "瀏覽器分頁或 URL 已變更。請返回登入欄位後再試。"
 
 #: src/renderer/src/components/VaultShell.tsx:3484
+#: src/renderer/src/components/VaultShell.tsx:3525
 msgid "The card face was uploaded, but the list could not be refreshed. Sync again later."
 msgstr ""
 
@@ -6179,7 +6225,7 @@ msgstr ""
 msgid "The checked complete SHA-1 hashes did not appear in the HIBP response. This is only the result of the current query and does not mean the passwords will always be safe."
 msgstr "已檢查的完整 SHA-1 雜湊值未出現在 HIBP 回應中。這僅是目前查詢的結果，不代表密碼永遠安全。"
 
-#: src/renderer/src/components/LoginEditor.tsx:642
+#: src/renderer/src/components/LoginEditor.tsx:649
 msgid "The clipboard contents are too large to import safely as an SSH private key."
 msgstr "剪貼簿內容過大，無法安全地匯入為 SSH 私密金鑰。"
 
@@ -6187,7 +6233,7 @@ msgstr "剪貼簿內容過大，無法安全地匯入為 SSH 私密金鑰。"
 msgid "The clipboard contents are too large to safely import as an SSH private key."
 msgstr "剪貼簿內容過大，無法安全地匯入為 SSH 私密金鑰。"
 
-#: src/renderer/src/components/LoginEditor.tsx:641
+#: src/renderer/src/components/LoginEditor.tsx:648
 #: src/renderer/src/components/ssh-key-editor-state.ts:97
 msgid "The clipboard is empty. Copy an SSH private key and try again."
 msgstr "剪貼簿是空的。請複製 SSH 私密金鑰後再試。"
@@ -6225,7 +6271,7 @@ msgstr "目前的組織或 Collection 沒有您可讀取的項目。"
 msgid "The current server does not support account device lists."
 msgstr "目前伺服器不支援帳戶裝置清單。"
 
-#: src/renderer/src/components/LoginEditor.tsx:1436
+#: src/renderer/src/components/LoginEditor.tsx:1449
 msgid "The custom field contents could not be shown. Try again later."
 msgstr "無法顯示自訂欄位內容。請稍後再試。"
 
@@ -6378,7 +6424,7 @@ msgid "The other device shows the exact same phrase"
 msgstr "另一部裝置顯示完全相同的詞組"
 
 #. placeholder {0}: passkeyDeleteTarget.rpName || passkeyDeleteTarget.rpId
-#: src/renderer/src/components/LoginEditor.tsx:3318
+#: src/renderer/src/components/LoginEditor.tsx:3439
 msgid "The passkey for “{0}” will be removed from this login and synced immediately. This action cannot be undone."
 msgstr "「{0}」的通行密鑰將從此登入項目移除並立即同步。此動作無法復原。"
 
@@ -6404,7 +6450,7 @@ msgstr "PIN 不一致。"
 msgid "The previous uncertain operation did not change your remote account. This is not a retry; to start a new change, explicitly acknowledge it and reconnect first."
 msgstr "上次結果不確定的操作並未變更您的遠端帳戶。這不是重試；若要開始新的變更，請先明確確認並重新連線。"
 
-#: src/renderer/src/components/LoginEditor.tsx:3251
+#: src/renderer/src/components/LoginEditor.tsx:3372
 msgid "The private key in the clipboard is encrypted. The password is sent only to the main process to decrypt this import and is not stored in the editor draft."
 msgstr "剪貼簿中的私密金鑰已加密。密碼僅會傳送至主程序以解密此次匯入，不會儲存在編輯器草稿中。"
 
@@ -6412,15 +6458,15 @@ msgstr "剪貼簿中的私密金鑰已加密。密碼僅會傳送至主程序以
 msgid "The private key passphrase is incorrect. Enter it again."
 msgstr "私密金鑰密碼片語不正確。請再次輸入。"
 
-#: src/renderer/src/components/LoginEditor.tsx:1208
+#: src/renderer/src/components/LoginEditor.tsx:1221
 msgid "The private key password could not be verified. Try again."
 msgstr "無法驗證私密金鑰密碼。請再試一次。"
 
-#: src/renderer/src/components/LoginEditor.tsx:645
+#: src/renderer/src/components/LoginEditor.tsx:652
 msgid "The private key password is incorrect. Try again."
 msgstr "私密金鑰密碼不正確。請再試一次。"
 
-#: src/renderer/src/components/LoginEditor.tsx:2378
+#: src/renderer/src/components/LoginEditor.tsx:2435
 msgid "The private key remains in the secure main process and is not loaded into the editor."
 msgstr "私密金鑰會保留在安全的主程序中，不會載入編輯器。"
 
@@ -6596,19 +6642,19 @@ msgstr "簽署用途不在 BearWarden 可識別的 SSHSIG 命名空間中。"
 msgid "The signing purpose isn't in an SSHSIG namespace that BearWarden recognizes."
 msgstr "簽署用途不在 BearWarden 可識別的 SSHSIG 命名空間中。"
 
-#: src/renderer/src/components/LoginEditor.tsx:835
+#: src/renderer/src/components/LoginEditor.tsx:847
 msgid "The SSH key data is incomplete. Change the item type and generate it again."
 msgstr "SSH 金鑰資料不完整。請變更項目類型後重新產生。"
 
-#: src/renderer/src/components/LoginEditor.tsx:1581
+#: src/renderer/src/components/LoginEditor.tsx:1594
 msgid "The SSH key must include a private key, public key, and fingerprint."
 msgstr "SSH 金鑰必須包含私密金鑰、公開金鑰及指紋。"
 
-#: src/renderer/src/components/LoginEditor.tsx:1580
+#: src/renderer/src/components/LoginEditor.tsx:1593
 msgid "The SSH key staging session or public metadata is incomplete. Generate or import the key again."
 msgstr "SSH 金鑰暫存工作階段或公開中繼資料不完整。請重新產生或匯入金鑰。"
 
-#: src/renderer/src/components/LoginEditor.tsx:1145
+#: src/renderer/src/components/LoginEditor.tsx:1158
 msgid "The SSH private key could not be read from the clipboard. Try again later."
 msgstr "無法從剪貼簿讀取 SSH 私密金鑰。請稍後再試。"
 
@@ -6616,11 +6662,11 @@ msgstr "無法從剪貼簿讀取 SSH 私密金鑰。請稍後再試。"
 msgid "The SSH private key import session has expired. Import it from the clipboard again."
 msgstr "SSH 私密金鑰匯入工作階段已過期。請再次從剪貼簿匯入。"
 
-#: src/renderer/src/components/LoginEditor.tsx:647
+#: src/renderer/src/components/LoginEditor.tsx:654
 msgid "The SSH private key import session has expired. Import the key from the clipboard again."
 msgstr "SSH 私密金鑰匯入工作階段已過期。請再次從剪貼簿匯入金鑰。"
 
-#: src/renderer/src/components/LoginEditor.tsx:643
+#: src/renderer/src/components/LoginEditor.tsx:650
 msgid "The SSH private key in the clipboard could not be parsed. Make sure the key is complete."
 msgstr "無法剖析剪貼簿中的 SSH 私密金鑰。請確認金鑰完整。"
 
@@ -6839,7 +6885,7 @@ msgstr "這是您最後一種可用的個人雙因素驗證方式。停用後，
 msgid "This item"
 msgstr "此項目"
 
-#: src/renderer/src/components/VaultShell.tsx:4109
+#: src/renderer/src/components/VaultShell.tsx:4149
 msgid "This item is in Trash"
 msgstr "此項目位於垃圾桶"
 
@@ -6884,7 +6930,7 @@ msgstr ""
 msgid "This passkey is protected"
 msgstr "此通行密鑰受保護"
 
-#: src/renderer/src/components/LoginEditor.tsx:3323
+#: src/renderer/src/components/LoginEditor.tsx:3444
 msgid "This passkey will be removed from the login immediately."
 msgstr "此通行密鑰將立即從登入項目中移除。"
 
@@ -6959,11 +7005,11 @@ msgstr "此伺服器需要您再次輸入主密碼。"
 msgid "This signing request has expired. Run the original SSH operation again."
 msgstr "此簽署請求已過期。請再次執行原始 SSH 操作。"
 
-#: src/renderer/src/components/LoginEditor.tsx:1616
+#: src/renderer/src/components/LoginEditor.tsx:1629
 msgid "This SSH private key staging session has expired. Generate or import the key again before saving."
 msgstr "此 SSH 私密金鑰暫存工作階段已過期。請在儲存前重新產生或匯入金鑰。"
 
-#: src/renderer/src/components/LoginEditor.tsx:644
+#: src/renderer/src/components/LoginEditor.tsx:651
 #: src/renderer/src/components/ssh-key-editor-state.ts:100
 msgid "This SSH private key type is not supported. Use a supported key format."
 msgstr "不支援此 SSH 私密金鑰類型。請使用支援的金鑰格式。"
@@ -7012,8 +7058,8 @@ msgstr "這不會刪除您的本機保管庫，但它將不再與 Bitwarden 同�
 msgid "Time unavailable"
 msgstr "無法取得時間"
 
-#: src/renderer/src/components/LoginEditor.tsx:572
-#: src/renderer/src/components/LoginEditor.tsx:2185
+#: src/renderer/src/components/LoginEditor.tsx:579
+#: src/renderer/src/components/LoginEditor.tsx:2242
 #: src/renderer/src/components/VaultShell.tsx:374
 msgid "Title"
 msgstr "標題"
@@ -7022,11 +7068,11 @@ msgstr "標題"
 msgid "To prevent data loss, BearWarden stopped writing changes to the server. Update the app and try again."
 msgstr "為防止資料遺失，BearWarden 已停止將變更寫入伺服器。請更新應用程式後再試一次。"
 
-#: src/renderer/src/components/VaultShell.tsx:4112
+#: src/renderer/src/components/VaultShell.tsx:4152
 msgid "To protect deleted sensitive data, restore the item before viewing or editing its contents."
 msgstr "為保護已刪除的敏感資料，請先還原項目，再檢視或編輯其內容。"
 
-#: src/renderer/src/components/LoginEditor.tsx:2792
+#: src/renderer/src/components/LoginEditor.tsx:2849
 msgid "To reorder a custom field, press space or enter. Use the arrow keys to move it, then press space or enter again to drop it."
 msgstr "若要重新排序自訂欄位，請按空白鍵或 Enter。使用方向鍵移動，然後再次按空白鍵或 Enter 以放置。"
 
@@ -7034,7 +7080,7 @@ msgstr "若要重新排序自訂欄位，請按空白鍵或 Enter。使用方向
 msgid "To reorder a local account, press space or enter. Use the arrow keys to move it, then press space or enter again to drop it."
 msgstr "若要重新排序本機帳戶，請按空白鍵或 Enter。使用方向鍵移動，然後再次按空白鍵或 Enter 以放置。"
 
-#: src/renderer/src/components/LoginEditor.tsx:1830
+#: src/renderer/src/components/LoginEditor.tsx:1843
 msgid "To reorder a website, press space or enter. Use the arrow keys to move it, then press space or enter again to drop it."
 msgstr "若要重新排序網站，請按空白鍵或 Enter。使用方向鍵移動，然後再次按空白鍵或 Enter 以放置。"
 
@@ -7054,7 +7100,7 @@ msgstr "嘗試次數過多。請稍後再試。"
 msgid "Too many attempts. Try again later."
 msgstr "嘗試次數過多。請稍後再試。"
 
-#: src/renderer/src/components/LoginEditor.tsx:648
+#: src/renderer/src/components/LoginEditor.tsx:655
 msgid "Too many SSH private key import sessions are active. Try again later."
 msgstr "目前有過多 SSH 私密金鑰匯入工作階段處於啟用狀態。請稍後再試。"
 
@@ -7075,7 +7121,7 @@ msgid "Traditional Chinese"
 msgstr "繁體中文"
 
 #: src/renderer/src/components/VaultShell.tsx:1997
-#: src/renderer/src/components/VaultShell.tsx:4093
+#: src/renderer/src/components/VaultShell.tsx:4133
 #: src/renderer/src/components/VaultShellSidebar.tsx:290
 msgid "Trash"
 msgstr "垃圾桶"
@@ -7121,9 +7167,9 @@ msgstr "再試一次"
 msgid "Try again. If the problem persists, note the error code below for troubleshooting."
 msgstr "請再試一次。若問題持續發生，請記下下方的錯誤代碼以進行疑難排解。"
 
-#: src/renderer/src/components/LoginEditor.tsx:3203
+#: src/renderer/src/components/LoginEditor.tsx:3275
 msgid "Try another bank or card name."
-msgstr ""
+msgstr "請嘗試其他銀行或卡片名稱。"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:156
 msgid "two-factor authentication"
@@ -7179,13 +7225,13 @@ msgid "Type"
 msgstr "產生方式"
 
 #. Field label for choosing the data type of a custom field, such as text, hidden, or boolean.
-#: src/renderer/src/components/LoginEditor.tsx:2928
+#: src/renderer/src/components/LoginEditor.tsx:2985
 msgctxt "custom-field-type"
 msgid "Type"
 msgstr "自訂欄位類型"
 
 #. Field label for choosing the kind of vault item being edited, such as login, card, identity, or secure note.
-#: src/renderer/src/components/LoginEditor.tsx:1721
+#: src/renderer/src/components/LoginEditor.tsx:1734
 msgctxt "item-type"
 msgid "Type"
 msgstr "項目類型"
@@ -7418,7 +7464,7 @@ msgid "Unable to verify the master password. Try again."
 msgstr "無法驗證主密碼。請再試一次。"
 
 #: src/renderer/src/components/VaultItemListPane.tsx:329
-#: src/renderer/src/components/VaultShell.tsx:4319
+#: src/renderer/src/components/VaultShell.tsx:4359
 msgid "Unarchive"
 msgstr "取消封存"
 
@@ -7458,12 +7504,12 @@ msgid "Unencrypted connections"
 msgstr "未加密的連線"
 
 #: src/renderer/src/components/Dialogs.tsx:325
-#: src/renderer/src/components/LoginEditor.tsx:1642
+#: src/renderer/src/components/LoginEditor.tsx:1655
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:156
 #: src/renderer/src/components/VaultShell-primitives.tsx:271
 #: src/renderer/src/components/VaultShell.tsx:1979
 #: src/renderer/src/components/VaultShell.tsx:2591
-#: src/renderer/src/components/VaultShell.tsx:4132
+#: src/renderer/src/components/VaultShell.tsx:4172
 msgid "Unfiled"
 msgstr "未歸檔"
 
@@ -7560,7 +7606,7 @@ msgstr "請在 BearWarden 中解鎖保管庫，再回到瀏覽器使用自動填
 msgid "Unlocked and synced. {summary}."
 msgstr "已解鎖並同步。{summary}。"
 
-#: src/renderer/src/components/LoginEditor.tsx:2875
+#: src/renderer/src/components/LoginEditor.tsx:2932
 #: src/renderer/src/components/VaultDetailFieldRows.tsx:292
 msgid "Unnamed field"
 msgstr "未命名欄位"
@@ -7569,12 +7615,12 @@ msgstr "未命名欄位"
 msgid "Unnamed security key"
 msgstr "未命名的安全金鑰"
 
-#: src/renderer/src/components/LoginEditor.tsx:1992
+#: src/renderer/src/components/LoginEditor.tsx:2005
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:65
 msgid "Unnamed user"
 msgstr "未命名使用者"
 
-#: src/renderer/src/components/LoginEditor.tsx:1685
+#: src/renderer/src/components/LoginEditor.tsx:1698
 msgid "Unsaved"
 msgstr "未儲存"
 
@@ -7614,15 +7660,32 @@ msgstr "正在更新本機帳戶名稱"
 msgid "Updating local account order"
 msgstr "正在更新本機帳戶順序"
 
-#: src/renderer/src/components/LoginEditor.tsx:2666
-#: src/renderer/src/components/LoginEditor.tsx:2692
+#: src/renderer/src/components/LoginEditor.tsx:3227
+msgid "Upload"
+msgstr "上傳"
+
+#: src/renderer/src/components/LoginEditor.tsx:3318
+msgid "Upload a card face image"
+msgstr "上傳卡面圖片"
+
+#: src/renderer/src/components/LoginEditor.tsx:2723
+#: src/renderer/src/components/LoginEditor.tsx:2749
 msgid "Upload attachment"
 msgstr "上傳附件"
+
+#: src/renderer/src/components/LoginEditor.tsx:2158
+msgid "Upload card face"
+msgstr "上傳卡面"
 
 #. placeholder {0}: result.attachment.fileName
 #: src/renderer/src/components/VaultShell.tsx:3439
 msgid "Uploaded “{0}”."
 msgstr "已上傳「{0}」。"
+
+#. placeholder {0}: result.attachment.fileName
+#: src/renderer/src/components/VaultShell.tsx:3521
+msgid "Uploaded card face “{0}”."
+msgstr "已上傳卡面「{0}」。"
 
 #: src/renderer/src/components/VaultShell.tsx:414
 msgid "Uploading encrypted attachment"
@@ -7680,17 +7743,17 @@ msgstr "使用者驗證"
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:188
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:198
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:463
-#: src/renderer/src/components/LoginEditor.tsx:564
-#: src/renderer/src/components/LoginEditor.tsx:585
-#: src/renderer/src/components/LoginEditor.tsx:1772
-#: src/renderer/src/components/LoginEditor.tsx:2292
+#: src/renderer/src/components/LoginEditor.tsx:571
+#: src/renderer/src/components/LoginEditor.tsx:592
+#: src/renderer/src/components/LoginEditor.tsx:1785
+#: src/renderer/src/components/LoginEditor.tsx:2349
 #: src/renderer/src/components/VaultShell.tsx:336
 #: src/renderer/src/components/VaultShell.tsx:366
 #: src/renderer/src/components/VaultShell.tsx:387
 msgid "Username"
 msgstr "使用者名稱"
 
-#: src/renderer/src/components/LoginEditor.tsx:613
+#: src/renderer/src/components/LoginEditor.tsx:620
 msgid "Username, password, and websites"
 msgstr "使用者名稱、密碼和網站"
 
@@ -7775,15 +7838,15 @@ msgstr "驗證"
 msgid "Verify and read security keys"
 msgstr "驗證並讀取安全金鑰"
 
-#: src/renderer/src/components/LoginEditor.tsx:2641
+#: src/renderer/src/components/LoginEditor.tsx:2698
 msgid "Verify the master password again before viewing or changing this item"
 msgstr "瀏覽或變更此項目前，請再次驗證主密碼"
 
-#: src/renderer/src/components/LoginEditor.tsx:3136
+#: src/renderer/src/components/LoginEditor.tsx:3193
 msgid "Verifying private key password…"
 msgstr "正在驗證私密金鑰密碼…"
 
-#: src/renderer/src/components/LoginEditor.tsx:3293
+#: src/renderer/src/components/LoginEditor.tsx:3414
 msgid "Verifying…"
 msgstr "正在驗證…"
 
@@ -7853,7 +7916,7 @@ msgid "View items, hide passwords"
 msgstr "檢視項目，隱藏密碼"
 
 #: src/renderer/src/components/ItemHistoryRows.tsx:75
-#: src/renderer/src/components/VaultShell.tsx:4163
+#: src/renderer/src/components/VaultShell.tsx:4203
 msgid "View password history"
 msgstr "檢視密碼歷程"
 
@@ -7865,7 +7928,7 @@ msgstr "查看目前版本、更新狀態與專案資訊。"
 msgid "View the source code, report an issue, or get the latest release."
 msgstr "查看原始碼、回報問題，或取得最新版本。"
 
-#: src/renderer/src/components/LoginEditor.tsx:599
+#: src/renderer/src/components/LoginEditor.tsx:606
 #: src/renderer/src/components/PaymentCardBrandMark.tsx:59
 msgid "Visa"
 msgstr "Visa"
@@ -7886,7 +7949,7 @@ msgstr "等待檔案"
 msgid "Waiting for a save location"
 msgstr "等待儲存位置"
 
-#: src/renderer/src/components/LoginEditor.tsx:3134
+#: src/renderer/src/components/LoginEditor.tsx:3191
 msgid "Waiting for private key password…"
 msgstr "等待私密金鑰密碼…"
 
@@ -7903,7 +7966,7 @@ msgstr "弱"
 msgid "Weak passwords"
 msgstr "弱密碼"
 
-#: src/renderer/src/components/LoginEditor.tsx:1868
+#: src/renderer/src/components/LoginEditor.tsx:1881
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:252
 #: src/renderer/src/components/VaultShell.tsx:338
 msgid "Website"
@@ -7911,34 +7974,34 @@ msgstr "網站"
 
 #. placeholder {0}: position + 1
 #. placeholder {1}: draft.uris.length
-#: src/renderer/src/components/LoginEditor.tsx:1851
+#: src/renderer/src/components/LoginEditor.tsx:1864
 msgid "Website dropped at position {0} of {1}."
 msgstr "網站已放置在第 {0} 個位置，共 {1} 個。"
 
-#: src/renderer/src/components/LoginEditor.tsx:1564
+#: src/renderer/src/components/LoginEditor.tsx:1577
 msgid "Website fields cannot be blank. Remove any rows you do not need."
 msgstr "網站欄位不可空白。請移除不需要的資料列。"
 
 #. placeholder {0}: position + 1
 #. placeholder {1}: draft.uris.length
-#: src/renderer/src/components/LoginEditor.tsx:1844
+#: src/renderer/src/components/LoginEditor.tsx:1857
 msgid "Website moved to position {0} of {1}."
 msgstr "網站已移動到第 {0} 個位置，共 {1} 個。"
 
 #: src/renderer/src/components/VaultShell-primitives.tsx:324
-#: src/renderer/src/components/VaultShell.tsx:4245
+#: src/renderer/src/components/VaultShell.tsx:4285
 msgid "Website not set"
 msgstr "尚未設定網站"
 
-#: src/renderer/src/components/VaultShell.tsx:3645
+#: src/renderer/src/components/VaultShell.tsx:3684
 msgid "Website opened."
 msgstr "已開啟網站。"
 
-#: src/renderer/src/components/LoginEditor.tsx:1853
+#: src/renderer/src/components/LoginEditor.tsx:1866
 msgid "Website reordering cancelled."
 msgstr "已取消網站重新排序。"
 
-#: src/renderer/src/components/LoginEditor.tsx:1847
+#: src/renderer/src/components/LoginEditor.tsx:1860
 msgid "Website was not moved."
 msgstr "網站未移動。"
 
@@ -7947,7 +8010,7 @@ msgstr "網站未移動。"
 msgid "Website: {0}"
 msgstr "網站：{0}"
 
-#: src/renderer/src/components/LoginEditor.tsx:1805
+#: src/renderer/src/components/LoginEditor.tsx:1818
 msgid "Websites"
 msgstr "網站"
 

@@ -39,5 +39,5 @@ export function isPreviewableImageAttachment(fileName: string): boolean {
 }
 
 export function isCardCoverAttachment(fileName: string): boolean {
-  return /^cover\.(?:jpe?g|webp)$/i.test(fileName)
+  return /^cover\.(?:jpe?g|png|webp)$/i.test(fileName)
 }

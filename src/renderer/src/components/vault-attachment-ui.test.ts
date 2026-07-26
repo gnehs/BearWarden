@@ -50,6 +50,7 @@ describe('attachment operation policy', () => {
     expect(isPreviewableImageAttachment('cover.webp')).toBe(true)
     expect(isPreviewableImageAttachment('diagram.svg')).toBe(false)
     expect(isCardCoverAttachment('cover.jpg')).toBe(true)
+    expect(isCardCoverAttachment('cover.png')).toBe(true)
     expect(isCardCoverAttachment('cover.webp')).toBe(true)
     expect(isCardCoverAttachment('front.webp')).toBe(false)
   })
