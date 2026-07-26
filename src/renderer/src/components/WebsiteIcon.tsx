@@ -50,7 +50,7 @@ function WebsiteIcon({ id, uri, enabled }: WebsiteIconProps): React.JSX.Element 
   }
   if (label) {
     return (
-      <span className="text-[0.95em] font-[850] uppercase">
+      <span className="text-sm font-black uppercase">
         {label.slice(0, 1).toLocaleUpperCase('en-US')}
       </span>
     )

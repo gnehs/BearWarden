@@ -32,8 +32,8 @@ function PaymentCardBrandMark({
     return (
       <span
         className={cn(
-          'relative inline-flex size-7 min-w-7 items-center justify-center overflow-hidden rounded leading-none [[data-detail-icon]_>_&]:max-w-[calc(100%-8px)] [[data-detail-icon]_>_&]:min-w-[0px]',
-          compact && 'size-[22px] min-w-[22px]'
+          'relative inline-flex size-7 min-w-7 items-center justify-center overflow-hidden rounded leading-none [[data-detail-icon]_>_&]:max-w-[calc(100%-8px)] [[data-detail-icon]_>_&]:min-w-0',
+          compact && 'size-6 min-w-6'
         )}
         role="img"
         aria-label={cardLabel}
@@ -50,7 +50,7 @@ function PaymentCardBrandMark({
         role="img"
         aria-label={t`Other card issuer`}
       >
-        <CreditCard size={compact ? 17 : 20} aria-hidden="true" />
+        <CreditCard size={compact ? 16 : 20} aria-hidden="true" />
       </span>
     )
   }
@@ -65,8 +65,8 @@ function PaymentCardBrandMark({
   return (
     <span
       className={cn(
-        'relative inline-flex h-7 w-[58px] min-w-[58px] items-center justify-center leading-none [&>svg]:block [&>svg]:size-full [[data-detail-icon]_>_&]:max-w-[calc(100%-8px)] [[data-detail-icon]_>_&]:min-w-[0px]',
-        compact && 'h-[18px] w-[29px] min-w-[29px]'
+        'relative inline-flex h-7 w-14 min-w-14 items-center justify-center leading-none [&>svg]:block [&>svg]:size-full [[data-detail-icon]_>_&]:max-w-[calc(100%-8px)] [[data-detail-icon]_>_&]:min-w-0',
+        compact && 'h-5 w-8 min-w-8'
       )}
       role="img"
       aria-label={label}

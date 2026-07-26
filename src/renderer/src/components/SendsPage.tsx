@@ -22,7 +22,6 @@ import {
   CardAction,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle
 } from '@renderer/components/ui/card'
@@ -55,6 +54,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from '@renderer/components/ui/alert-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@renderer/components/ui/dialog'
 import AuxiliaryPageLayout, { AuxiliaryPageContent } from './AuxiliaryPageLayout'
 import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 import FeatureUnderConstructionNotice from './FeatureUnderConstructionNotice'
@@ -137,6 +144,8 @@ function SendsPage(): React.JSX.Element {
   const [loadError, setLoadError] = useState(false)
   const [busy, setBusy] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<SendView | null>(null)
+  const [sendDialogOpen, setSendDialogOpen] = useState(false)
+  const [createMode, setCreateMode] = useState<'text' | 'file'>('text')
 
   const selected = sends.find((send) => send.id === selectedId) ?? null
 
@@ -184,9 +193,11 @@ function SendsPage(): React.JSX.Element {
     }
   }, [])
 
-  function startCreate(): void {
+  function startCreate(mode: 'text' | 'file' = 'text'): void {
     setSelectedId(null)
     setDraft({ ...emptyDraft })
+    setCreateMode(mode)
+    setSendDialogOpen(true)
   }
 
   function startEdit(send: SendView): void {
@@ -201,9 +212,11 @@ function SendsPage(): React.JSX.Element {
       return
     }
     setSelectedId(send.id)
+    setCreateMode('text')
     setDraft(
       draftFromSend(send, t`File Sends are read-only until file transfer support is enabled`)
     )
+    setSendDialogOpen(true)
   }
 
   async function save(): Promise<void> {
@@ -235,6 +248,7 @@ function SendsPage(): React.JSX.Element {
       setDraft(
         draftFromSend(saved, t`File Sends are read-only until file transfer support is enabled`)
       )
+      setSendDialogOpen(false)
       toast.success(selected ? t`Send updated` : t`Send created`)
     } catch {
       toast.error(t`Could not save the Send. Confirm that sync is connected.`)
@@ -272,6 +286,7 @@ function SendsPage(): React.JSX.Element {
         ...current.filter((send) => send.id !== result.send!.id)
       ])
       setSelectedId(null)
+      setSendDialogOpen(false)
       toast.success(t`File Send created`)
     } catch {
       toast.error(t`Could not create the file Send. Confirm that sync is connected.`)
@@ -285,7 +300,11 @@ function SendsPage(): React.JSX.Element {
     try {
       await window.bearwarden.sends.delete({ id: send.id })
       setSends((current) => current.filter((entry) => entry.id !== send.id))
-      if (selectedId === send.id) startCreate()
+      if (selectedId === send.id) {
+        setSelectedId(null)
+        setDraft({ ...emptyDraft })
+        setSendDialogOpen(false)
+      }
       toast.success(t`Send deleted`)
     } catch {
       toast.error(t`Could not delete the Send.`)
@@ -352,11 +371,16 @@ function SendsPage(): React.JSX.Element {
       subtitle={t`Text and file Send metadata is decrypted in the main process first.`}
       headerActions={
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" type="button" onClick={() => void createFile()} disabled={busy}>
+          <Button
+            variant="outline"
+            type="button"
+            onClick={() => startCreate('file')}
+            disabled={busy}
+          >
             <FilePlus data-icon="inline-start" />
             <Trans>Create file Send</Trans>
           </Button>
-          <Button type="button" onClick={startCreate} disabled={busy}>
+          <Button type="button" onClick={() => startCreate()} disabled={busy}>
             <Plus data-icon="inline-start" />
             <Trans>Create text Send</Trans>
           </Button>
@@ -406,7 +430,7 @@ function SendsPage(): React.JSX.Element {
                   </EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
-                  <Button type="button" onClick={startCreate}>
+                  <Button type="button" onClick={() => startCreate()}>
                     <Plus data-icon="inline-start" />
                     <Trans>Create your first Send</Trans>
                   </Button>
@@ -545,19 +569,25 @@ function SendsPage(): React.JSX.Element {
             )}
           </main>
 
-          <aside className="col-start-2 flex min-w-0 flex-col gap-[18px] max-[880px]:col-start-1">
-            <Card>
-              <CardHeader>
-                <CardTitle>
+          <Dialog
+            open={sendDialogOpen}
+            onOpenChange={(open) => {
+              if (busy) return
+              setSendDialogOpen(open)
+            }}
+          >
+            <DialogContent className="max-h-[calc(100%-2rem)] max-w-2xl overflow-hidden p-0">
+              <DialogHeader className="border-b px-5 pt-5 pb-4">
+                <DialogTitle>
                   {selected ? <Trans>Edit Send</Trans> : <Trans>Create Send</Trans>}
-                </CardTitle>
-                <CardDescription>
+                </DialogTitle>
+                <DialogDescription>
                   <Trans>
                     Content is encrypted in the main process before it is sent to the server.
                   </Trans>
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
+                </DialogDescription>
+              </DialogHeader>
+              <div className="max-h-[min(68vh,640px)] overflow-auto px-5 py-4">
                 <FieldGroup>
                   <Field>
                     <FieldLabel htmlFor="send-name">
@@ -569,20 +599,22 @@ function SendsPage(): React.JSX.Element {
                       onChange={(event) => setDraft({ ...draft, name: event.target.value })}
                     />
                   </Field>
-                  <Field>
-                    <FieldLabel htmlFor="send-text">
-                      <Trans>Content</Trans>
-                    </FieldLabel>
-                    <Textarea
-                      id="send-text"
-                      rows={8}
-                      value={draft.text}
-                      onChange={(event) => setDraft({ ...draft, text: event.target.value })}
-                    />
-                    <FieldDescription>
-                      <Trans>Text content is not included in the sharing link.</Trans>
-                    </FieldDescription>
-                  </Field>
+                  {createMode === 'text' && (
+                    <Field>
+                      <FieldLabel htmlFor="send-text">
+                        <Trans>Content</Trans>
+                      </FieldLabel>
+                      <Textarea
+                        id="send-text"
+                        rows={8}
+                        value={draft.text}
+                        onChange={(event) => setDraft({ ...draft, text: event.target.value })}
+                      />
+                      <FieldDescription>
+                        <Trans>Text content is not included in the sharing link.</Trans>
+                      </FieldDescription>
+                    </Field>
+                  )}
                   <Field>
                     <FieldLabel htmlFor="send-password">
                       {selected ? (
@@ -745,18 +777,37 @@ function SendsPage(): React.JSX.Element {
                     />
                   </Field>
                 </FieldGroup>
-              </CardContent>
-              <CardFooter className="flex gap-2">
-                <Button type="button" onClick={() => void save()} disabled={busy}>
-                  <Save data-icon="inline-start" />
-                  {busy ? <Trans>Saving…</Trans> : <Trans>Save</Trans>}
+              </div>
+              <DialogFooter className="px-5 py-4">
+                <Button
+                  type="button"
+                  onClick={() => void (createMode === 'file' && !selected ? createFile() : save())}
+                  disabled={busy}
+                >
+                  {createMode === 'file' && !selected ? (
+                    <FilePlus data-icon="inline-start" />
+                  ) : (
+                    <Save data-icon="inline-start" />
+                  )}
+                  {busy ? (
+                    <Trans>Saving…</Trans>
+                  ) : createMode === 'file' && !selected ? (
+                    <Trans>Create file Send</Trans>
+                  ) : (
+                    <Trans>Save</Trans>
+                  )}
                 </Button>
-                <Button variant="outline" type="button" onClick={startCreate} disabled={busy}>
-                  <Trans>Clear</Trans>
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={() => setSendDialogOpen(false)}
+                  disabled={busy}
+                >
+                  <Trans>Cancel</Trans>
                 </Button>
-              </CardFooter>
-            </Card>
-          </aside>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </AuxiliaryPageContent>
       )}
       <AlertDialog

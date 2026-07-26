@@ -110,13 +110,13 @@ export function VaultItemAttachmentsCard({
             {attachments.map((attachment) => (
               <article
                 key={attachment.id}
-                className="border-border [&_small]:text-muted-foreground grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-2.5 border-b px-(--card-spacing) py-3 [&_small]:truncate [&_small]:text-[10px] [&_span]:truncate [&_span]:text-[11px] [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[3px]"
+                className="border-border [&_small]:text-muted-foreground grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 border-b px-(--card-spacing) py-3 [&_small]:truncate [&_small]:text-xs [&_span]:truncate [&_span]:text-xs [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-1"
               >
                 <span
                   className="text-primary grid size-8 place-items-center rounded-md bg-(--accent-soft)"
                   aria-hidden="true"
                 >
-                  <Paperclip size={17} />
+                  <Paperclip size={16} />
                 </span>
                 <div>
                   <strong>{attachment.fileName}</strong>
@@ -248,7 +248,7 @@ export function VaultItemTotpCard({
         )}
       </CardHeader>
       <CardContent className="contents">
-        <div className="grid grid-cols-[minmax(0,1fr)_34px] items-center gap-2 px-(--card-spacing) py-2.5 [&_strong]:font-mono [&_strong]:text-[25px] [&_strong]:tracking-[0.18em]">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-(--card-spacing) py-2.5 [&_strong]:font-mono [&_strong]:text-2xl [&_strong]:tracking-widest">
           <div className="flex h-8 min-w-0 items-center">
             {code ? (
               <strong>

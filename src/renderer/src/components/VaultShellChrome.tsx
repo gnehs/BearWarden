@@ -32,15 +32,15 @@ interface ItemTypePresentation {
 
 const titlebarClassName = cn(
   // Base titlebar layout and appearance.
-  'border-border relative z-20 flex h-[54px] min-h-[54px] items-center gap-3 border-b bg-[color-mix(in_oklch,var(--card)_86%,transparent)] py-0 pr-3.5 pl-[78px] shadow-[inset_0_1px_color-mix(in_oklch,var(--shadow-color)_5%,transparent)] backdrop-blur-xl backdrop-saturate-180 select-none [-webkit-app-region:drag]',
+  'border-border relative z-20 flex h-14 min-h-14 items-center gap-3 border-b bg-[color-mix(in_oklch,var(--card)_86%,transparent)] py-0 pr-3.5 pl-20 shadow-[inset_0_1px_color-mix(in_oklch,var(--shadow-color)_5%,transparent)] backdrop-blur-xl backdrop-saturate-180 select-none [-webkit-app-region:drag]',
   // Compact layouts.
-  'max-[1050px]:pl-[70px] max-[880px]:pl-3.5 max-[680px]:h-[52px] max-[680px]:min-h-[52px] max-[430px]:gap-2 max-[430px]:px-[9px]',
+  'max-[1050px]:pl-18 max-[880px]:pl-3.5 max-[680px]:h-13 max-[680px]:min-h-13 max-[430px]:gap-2 max-[430px]:px-3',
   // Leave space for the macOS traffic-light controls.
-  '[.platform-macos_&]:border-b-transparent [.platform-macos_&]:bg-transparent [.platform-macos_&]:pl-[94px] [.platform-macos_&]:shadow-none [.platform-macos_&]:backdrop-filter-none max-[880px]:[.platform-macos_&]:pl-[82px] max-[430px]:[.platform-macos_&]:py-0 max-[430px]:[.platform-macos_&]:pr-[9px] max-[430px]:[.platform-macos_&]:pl-[82px]',
+  '[.platform-macos_&]:border-b-transparent [.platform-macos_&]:bg-transparent [.platform-macos_&]:pl-24 [.platform-macos_&]:shadow-none [.platform-macos_&]:backdrop-filter-none max-[880px]:[.platform-macos_&]:pl-20 max-[430px]:[.platform-macos_&]:py-0 max-[430px]:[.platform-macos_&]:pr-3 max-[430px]:[.platform-macos_&]:pl-20',
   // Windows draws its native controls outside the titlebar content.
-  '[.platform-windows_&]:border-b-transparent [.platform-windows_&]:bg-transparent [.platform-windows_&]:pl-3.5 [.platform-windows_&]:shadow-none [.platform-windows_&]:backdrop-filter-none max-[430px]:[.platform-windows_&]:px-[9px]',
+  '[.platform-windows_&]:border-b-transparent [.platform-windows_&]:bg-transparent [.platform-windows_&]:pl-3.5 [.platform-windows_&]:shadow-none [.platform-windows_&]:backdrop-filter-none max-[430px]:[.platform-windows_&]:px-3',
   // Respect the browser-provided safe area when Window Controls Overlay is active.
-  '[.platform-window-controls-overlay_&]:h-[env(titlebar-area-height,54px)] [.platform-window-controls-overlay_&]:min-h-[env(titlebar-area-height,54px)] [.platform-window-controls-overlay_&]:pr-[calc(14px+100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw))] [.platform-window-controls-overlay_&]:pl-[calc(14px+env(titlebar-area-x,0px))] max-[430px]:[.platform-window-controls-overlay_&]:pr-[calc(9px+100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw))] max-[430px]:[.platform-window-controls-overlay_&]:pl-[calc(9px+env(titlebar-area-x,0px))]'
+  '[.platform-window-controls-overlay_&]:h-[env(titlebar-area-height,3.5rem)] [.platform-window-controls-overlay_&]:min-h-[env(titlebar-area-height,3.5rem)] [.platform-window-controls-overlay_&]:pr-[calc(1rem+100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw))] [.platform-window-controls-overlay_&]:pl-[calc(1rem+env(titlebar-area-x,0px))] max-[430px]:[.platform-window-controls-overlay_&]:pr-[calc(0.75rem+100vw-env(titlebar-area-x,0px)-env(titlebar-area-width,100vw))] max-[430px]:[.platform-window-controls-overlay_&]:pl-[calc(0.75rem+env(titlebar-area-x,0px))]'
 )
 
 interface VaultShellLoadingProps {
@@ -57,7 +57,7 @@ export function VaultShellLoading({ appearance }: VaultShellLoadingProps): React
         className="bg-background text-muted-foreground flex size-full items-center justify-center gap-3.5"
         role="status"
       >
-        <BrandMark className="absolute bottom-[25px] left-1/2 -translate-x-1/2" stacked />
+        <BrandMark className="absolute bottom-6 left-1/2 -translate-x-1/2" stacked />
         <Spinner className="size-6" aria-hidden="true" />
         <p>
           <Trans>Decrypting your items…</Trans>
@@ -170,7 +170,7 @@ export function VaultShellTitlebar({
       {!navigation.auxiliaryPageOpen && (
         <InputGroup
           className={cn(
-            'text-muted-foreground [@media(prefers-reduced-transparency:reduce)]:bg-card bg-card/50 hover:bg-muted hover:text-foreground absolute left-1/2 h-[38px] w-[clamp(300px,44vw,560px)] min-w-0 -translate-x-1/2 gap-[7px] rounded-[11px] border-0 py-0 pr-2 pl-2.5 focus-within:border-(--focus) max-[880px]:static max-[880px]:max-w-none max-[880px]:flex-1 max-[880px]:translate-x-0 max-[680px]:[&_kbd]:hidden',
+            'text-muted-foreground [@media(prefers-reduced-transparency:reduce)]:bg-card bg-card/50 hover:bg-muted hover:text-foreground absolute left-1/2 h-10 w-[clamp(300px,44vw,560px)] min-w-0 -translate-x-1/2 gap-2 rounded-xl border-0 py-0 pr-2 pl-2.5 focus-within:border-(--focus) max-[880px]:static max-[880px]:max-w-none max-[880px]:flex-1 max-[880px]:translate-x-0 max-[680px]:[&_kbd]:hidden',
             'shadow-(--control-highlight) hover:shadow-(--control-highlight)',
             '[-webkit-app-region:no-drag] **:[-webkit-app-region:no-drag]'
           )}
@@ -216,7 +216,7 @@ export function VaultShellTitlebar({
         <TooltipIconButton
           variant="outline"
           size="icon"
-          className="border-border text-foreground rounded-[10px] bg-[color-mix(in_oklch,var(--card)_32%,transparent)] shadow-[var(--control-highlight),0_1px_2px_color-mix(in_oklch,var(--shadow-color)_12%,transparent)]"
+          className="border-border text-foreground rounded-lg bg-[color-mix(in_oklch,var(--card)_32%,transparent)] shadow-[var(--control-highlight),0_1px_2px_color-mix(in_oklch,var(--shadow-color)_12%,transparent)]"
           type="button"
           label={t`Add item`}
           onClick={itemCreation.onCreate}
@@ -320,7 +320,7 @@ export function VaultSearchDialog({
                   >
                     <span
                       className={cn(
-                        'bg-foreground/5 text-muted-foreground grid size-[30px] flex-none place-items-center rounded',
+                        'bg-foreground/5 text-muted-foreground grid size-8 flex-none place-items-center rounded',
                         item.type === 'login' && !presentation.isTrash && 'overflow-hidden'
                       )}
                       aria-hidden="true"
@@ -342,11 +342,11 @@ export function VaultSearchDialog({
                     </span>
                     <span className="min-w-0 flex-1">
                       <strong className="block truncate">{item.name}</strong>
-                      <small className="text-muted-foreground block truncate text-[10px]">
+                      <small className="text-muted-foreground block truncate text-xs">
                         {item.subtitle || item.username || item.uri || t`No summary`}
                       </small>
                     </span>
-                    <span className="text-muted-foreground flex-none text-[10px]">
+                    <span className="text-muted-foreground flex-none text-xs">
                       {presentation.itemTypes[item.type].label}
                     </span>
                   </CommandItem>

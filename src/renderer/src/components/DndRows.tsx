@@ -125,11 +125,11 @@ export const ItemRow = memo(function ItemRow({
       data-item-row=""
       data-selected={selected ? 'true' : 'false'}
       className={cn(
-        'group/item border-border has-[[data-item-row-main]:focus-visible]:outline-ring/72 relative grid cursor-grab touch-none items-center rounded-none border-0 border-b has-[[data-item-row-main]:focus-visible]:rounded-lg has-[[data-item-row-main]:focus-visible]:outline-[3px] has-[[data-item-row-main]:focus-visible]:outline-offset-2',
-        shouldShowTotpCode ? 'grid-cols-1' : 'grid-cols-[minmax(0,1fr)_28px] pr-3',
+        'group/item border-border has-[[data-item-row-main]:focus-visible]:outline-ring/72 relative grid cursor-grab touch-none items-center rounded-none border-0 border-b has-[[data-item-row-main]:focus-visible]:rounded-lg has-[[data-item-row-main]:focus-visible]:outline-3 has-[[data-item-row-main]:focus-visible]:outline-offset-2',
+        shouldShowTotpCode ? 'grid-cols-1' : 'grid-cols-[minmax(0,1fr)_auto] pr-3',
         !selected && 'active:bg-accent/85 hover:bg-accent/50 hover:rounded-lg',
         selected &&
-          'active:bg-primary active:text-primary-foreground bg-primary text-primary-foreground hover:bg-primary rounded-[11px] border-b-transparent shadow-[0_4px_13px_color-mix(in_oklch,var(--shadow-color)_18%,transparent)] hover:rounded-[11px] has-[[data-item-row-main]:focus-visible]:rounded-[11px] forced-colors:outline-2 forced-colors:outline-offset-[-2px] forced-colors:outline-[Highlight]',
+          'active:bg-primary active:text-primary-foreground bg-primary text-primary-foreground hover:bg-primary rounded-xl border-b-transparent shadow-[0_4px_13px_color-mix(in_oklch,var(--shadow-color)_18%,transparent)] hover:rounded-xl has-[[data-item-row-main]:focus-visible]:rounded-xl forced-colors:outline-2 forced-colors:outline-offset-[-2px] forced-colors:outline-[Highlight]',
         isDragging && 'cursor-grabbing opacity-0'
       )}
       {...attributes}
@@ -143,10 +143,10 @@ export const ItemRow = memo(function ItemRow({
     >
       <button
         className={cn(
-          'grid h-[65px] min-w-0 items-center gap-3 px-3 text-left focus-visible:outline-none',
+          'grid h-16 min-w-0 items-center gap-3 px-3 text-left focus-visible:outline-none',
           shouldShowTotpCode
-            ? 'grid-cols-[42px_minmax(0,1fr)_auto]'
-            : 'grid-cols-[42px_minmax(0,1fr)]'
+            ? 'grid-cols-[auto_minmax(0,1fr)_auto]'
+            : 'grid-cols-[auto_minmax(0,1fr)]'
         )}
         data-item-row-main=""
         data-slot="item-row-main"
@@ -202,7 +202,7 @@ export const ItemRow = memo(function ItemRow({
         <span className="grid min-w-0 gap-1">
           <strong
             className={cn(
-              'text-foreground flex min-w-0 items-center gap-[5px] truncate text-[13px] font-medium',
+              'text-foreground flex min-w-0 items-center gap-1.5 truncate text-sm font-medium',
               selected && 'text-primary-foreground'
             )}
           >
@@ -210,7 +210,7 @@ export const ItemRow = memo(function ItemRow({
           </strong>
           <small
             className={cn(
-              'text-muted-foreground truncate text-[11px]',
+              'text-muted-foreground truncate text-xs',
               selected && 'text-primary-foreground/82'
             )}
           >
@@ -222,7 +222,7 @@ export const ItemRow = memo(function ItemRow({
         {shouldShowTotpCode && (
           <span
             className={cn(
-              'grid min-w-[84px] justify-items-end text-right',
+              'grid min-w-20 justify-items-end text-right',
               selected ? 'text-primary-foreground' : 'text-foreground'
             )}
             aria-label={
@@ -233,7 +233,7 @@ export const ItemRow = memo(function ItemRow({
                   : t`Generating authentication code`
             }
           >
-            <strong className="font-mono text-[20px] leading-none tracking-[0.12em]">
+            <strong className="font-mono text-xl leading-none tracking-widest">
               {totpCode && /^\d+$/.test(totpCode.code) ? (
                 <NumberFlow
                   className="tabular-nums"
@@ -331,7 +331,7 @@ export function FolderRow({
       {...attributes}
       {...listeners}
       className={cn(
-        'group/folder text-foreground relative grid min-h-[38px] cursor-grab touch-none grid-cols-[22px_minmax(0,1fr)] items-center gap-2 rounded-lg pe-[9px]',
+        'group/folder text-foreground relative grid min-h-10 cursor-grab touch-none grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-lg pe-10',
         !selected && !isOver && !isDragging && 'hover:bg-sidebar-overlay-hover',
         selected && !isDragging && 'bg-sidebar-overlay-active shadow-none',
         isDragging &&
@@ -343,29 +343,23 @@ export function FolderRow({
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
-        paddingInlineStart: `${9 + depth * 16}px`
+        paddingInlineStart: `${12 + depth * 16}px`
       }}
     >
       {hasChildren ? (
-        <RowIconButton
-          variant="ghost"
-          size="icon-sm"
-          className="text-muted-foreground hover:text-foreground grid size-[22px] place-items-center border-0 bg-transparent p-0 shadow-none hover:bg-transparent hover:shadow-none aria-expanded:bg-transparent aria-expanded:text-inherit aria-expanded:shadow-none"
-          type="button"
-          label={toggleLabel}
-          aria-expanded={expanded}
-          disabled={toggleDisabled}
-          onClick={onToggle}
+        <span
+          className="text-muted-foreground grid size-6 place-items-center [&>svg]:size-4"
+          aria-hidden="true"
         >
           {expanded ? (
             <FolderOpen data-icon="inline-start" aria-hidden="true" />
           ) : (
             <Folders data-icon="inline-start" aria-hidden="true" />
           )}
-        </RowIconButton>
+        </span>
       ) : (
         <span
-          className="text-muted-foreground grid size-[22px] place-items-center [&>svg]:size-4"
+          className="text-muted-foreground grid size-6 place-items-center [&>svg]:size-4"
           aria-hidden="true"
         >
           <Folder />
@@ -373,11 +367,17 @@ export function FolderRow({
       )}
       <Button
         variant="sidebar"
-        className="[&>small]:text-muted-foreground grid h-[34px] min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-0 bg-transparent p-0 text-left text-inherit shadow-none hover:bg-transparent hover:shadow-none aria-expanded:bg-transparent aria-expanded:shadow-none [&>small]:min-w-[3ch] [&>small]:text-right [&>small]:text-[10px] [&>small]:tabular-nums [&>small]:transition-opacity group-hover/folder:[&>small]:opacity-0 [&>span]:truncate [&>span]:text-xs [&>span]:font-[610]"
+        className="[&>small]:text-muted-foreground grid h-9 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-0 bg-transparent p-0 text-left text-inherit shadow-none hover:bg-transparent hover:shadow-none aria-expanded:bg-transparent aria-expanded:shadow-none [&>small]:min-w-[3ch] [&>small]:text-right [&>small]:text-xs [&>small]:tabular-nums [&>small]:transition-opacity group-hover/folder:[&>small]:opacity-0 [&>span]:truncate [&>span]:text-xs [&>span]:font-semibold"
         type="button"
         aria-label={folder.name}
         aria-current={selected ? 'page' : undefined}
-        onClick={onSelect}
+        aria-expanded={hasChildren ? expanded : undefined}
+        aria-disabled={hasChildren && toggleDisabled ? true : undefined}
+        title={hasChildren ? toggleLabel : undefined}
+        onClick={() => {
+          onSelect()
+          if (hasChildren && !toggleDisabled) onToggle?.()
+        }}
       >
         <span>{label}</span>
         <small aria-label={t`${count} items`}>{count}</small>
@@ -385,7 +385,7 @@ export function FolderRow({
       <RowIconButton
         variant="ghost"
         size="icon-sm"
-        className="text-muted-foreground focus-visible:text-muted-foreground hover:text-foreground absolute end-0 grid size-6 place-items-center border-0 bg-transparent p-0 opacity-0 shadow-none transition-opacity group-hover/folder:opacity-100 hover:bg-transparent hover:shadow-none focus-visible:opacity-100"
+        className="text-muted-foreground focus-visible:text-muted-foreground hover:text-foreground absolute end-1 grid size-8 place-items-center border-0 bg-transparent p-1 opacity-0 shadow-none transition-opacity group-hover/folder:opacity-100 hover:bg-transparent hover:shadow-none focus-visible:opacity-100"
         type="button"
         label={t`Edit folder ${folder.name}`}
         onClick={onEdit}

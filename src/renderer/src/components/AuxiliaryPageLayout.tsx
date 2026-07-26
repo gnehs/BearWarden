@@ -25,7 +25,7 @@ export function AuxiliaryPageContent({
   return (
     <div
       className={cn(
-        'mx-auto grid w-full max-w-[910px] grid-cols-[162px_minmax(0,720px)] items-start justify-center gap-[18px] max-[880px]:max-w-[720px] max-[880px]:grid-cols-[minmax(0,1fr)]',
+        'mx-auto grid w-full max-w-4xl grid-cols-[10rem_minmax(0,1fr)] items-start justify-center gap-5 max-[880px]:max-w-3xl max-[880px]:grid-cols-[minmax(0,1fr)]',
         className
       )}
     >
@@ -49,23 +49,23 @@ function AuxiliaryPageLayout({
     <div className="flex min-h-0 flex-1 flex-col" aria-labelledby={titleId}>
       <header
         className={cn(
-          'border-border min-h-[94px] border-b bg-[color-mix(in_oklch,var(--card)_94%,transparent)] px-[clamp(20px,3vw,38px)] backdrop-blur-[18px] max-[680px]:min-h-0',
+          'border-border min-h-24 border-b bg-[color-mix(in_oklch,var(--card)_94%,transparent)] px-[clamp(1.25rem,3vw,2.5rem)] backdrop-blur-lg max-[680px]:min-h-0',
           headerNavigation ? 'pt-4' : 'py-4'
         )}
       >
-        <div className="mx-auto grid w-full max-w-[910px] grid-cols-[minmax(0,1fr)] items-center justify-center gap-[18px]">
+        <div className="mx-auto grid w-full max-w-4xl grid-cols-[minmax(0,1fr)] items-center justify-center gap-5">
           <div className="flex min-w-0 items-center justify-between gap-6 max-[680px]:flex-col max-[680px]:items-start max-[680px]:gap-2.5">
-            <div className="flex min-w-0 items-center gap-[13px]">
+            <div className="flex min-w-0 items-center gap-3">
               {headerIcon && (
                 <span
-                  className="text-primary grid size-[42px] shrink-0 place-items-center rounded-[13px] bg-[var(--accent-soft)] [&>svg]:size-5"
+                  className="text-primary grid size-11 shrink-0 place-items-center rounded-xl bg-[var(--accent-soft)] [&>svg]:size-5"
                   aria-hidden="true"
                 >
                   {headerIcon}
                 </span>
               )}
               <div className="min-w-0">
-                <h1 id={titleId} className="m-0 text-[23px] leading-[1.2] tracking-[-0.035em]">
+                <h1 id={titleId} className="m-0 text-2xl leading-tight">
                   {title}
                 </h1>
                 <p className="text-muted-foreground mt-1 text-xs leading-[1.45]">{subtitle}</p>
@@ -79,7 +79,7 @@ function AuxiliaryPageLayout({
       <div
         ref={scrollRef}
         className={cn(
-          'min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] overflow-auto bg-[color-mix(in_oklch,var(--muted)_34%,var(--background))] p-[clamp(18px,3vw,32px)] max-[680px]:px-3 max-[680px]:pt-3.5 max-[680px]:pb-6',
+          'min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] overflow-auto bg-[color-mix(in_oklch,var(--muted)_34%,var(--background))] p-[clamp(1rem,3vw,2rem)] max-[680px]:px-3 max-[680px]:pt-3.5 max-[680px]:pb-6',
           scrollClassName
         )}
       >

@@ -52,13 +52,13 @@ export function VaultItemMetadataCards({
               {selectedLogin.passkeys.map((passkey) => (
                 <article
                   key={passkey.credentialId}
-                  className="border-border [&_small]:text-muted-foreground grid grid-cols-[34px_minmax(0,1fr)] items-start gap-2.5 border-b px-(--card-spacing) py-3 [&_small]:truncate [&_small]:text-[10px] [&_span]:truncate [&_span]:text-[11px] [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[3px]"
+                  className="border-border [&_small]:text-muted-foreground grid grid-cols-[auto_minmax(0,1fr)] items-start gap-2.5 border-b px-(--card-spacing) py-3 [&_small]:truncate [&_small]:text-xs [&_span]:truncate [&_span]:text-xs [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-1"
                 >
                   <span
                     className="text-primary grid size-8 place-items-center rounded-md bg-(--accent-soft)"
                     aria-hidden="true"
                   >
-                    <KeyRound size={17} />
+                    <KeyRound size={16} />
                   </span>
                   <div>
                     <strong>{passkey.rpName || passkey.rpId}</strong>
@@ -71,7 +71,7 @@ export function VaultItemMetadataCards({
                 </article>
               ))}
             </div>
-            <p className="text-muted-foreground m-0 px-(--card-spacing) pt-2.5 pb-[13px] text-[10px] leading-normal">
+            <p className="text-muted-foreground m-0 px-(--card-spacing) pt-2.5 pb-3 text-xs leading-normal">
               <Trans>
                 You can safely delete passkeys while editing the item. Private key material is never
                 sent to the renderer.
@@ -92,7 +92,7 @@ export function VaultItemMetadataCards({
           <CardContent className="contents">
             <p
               className={cn(
-                'm-0 px-(--card-spacing) pt-3.5 pb-[17px] text-xs leading-[1.65] whitespace-pre-wrap',
+                'm-0 px-(--card-spacing) pt-3.5 pb-4 text-xs leading-relaxed whitespace-pre-wrap',
                 !selectedLogin.notes?.trim() && 'text-muted-foreground'
               )}
             >
@@ -125,7 +125,7 @@ export function VaultItemMetadataCards({
             {sharedContext ? (
               <>
                 <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
-                  <dt className="text-muted-foreground text-[11px] leading-4">
+                  <dt className="text-muted-foreground text-xs leading-4">
                     <Trans>Organization</Trans>
                   </dt>
                   <dd className="m-0 min-w-0 truncate text-xs leading-4">
@@ -133,7 +133,7 @@ export function VaultItemMetadataCards({
                   </dd>
                 </div>
                 <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
-                  <dt className="text-muted-foreground text-[11px] leading-4">
+                  <dt className="text-muted-foreground text-xs leading-4">
                     <Trans>Collections</Trans>
                   </dt>
                   <dd className="m-0 min-w-0 text-xs leading-4">
@@ -145,7 +145,7 @@ export function VaultItemMetadataCards({
               </>
             ) : (
               <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
-                <dt className="text-muted-foreground text-[11px] leading-4">
+                <dt className="text-muted-foreground text-xs leading-4">
                   <Trans comment="Field label for the folder that contains this login item.">
                     Folder
                   </Trans>
@@ -170,7 +170,7 @@ export function VaultItemMetadataCards({
               </div>
             )}
             <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
-              <dt className="text-muted-foreground text-[11px] leading-4">
+              <dt className="text-muted-foreground text-xs leading-4">
                 <Trans
                   context="item-last-used"
                   comment="Field label for the last time this vault item was used; this is a usage timestamp, not a recent calendar event."

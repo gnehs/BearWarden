@@ -24,7 +24,7 @@ function Tabs({ className, orientation = 'horizontal', ...props }: TabsPrimitive
 }
 
 const tabsListVariants = cva(
-  'group/tabs-list text-muted-foreground inline-flex w-fit items-center justify-center rounded-lg p-[3px] group-data-horizontal/tabs:h-8 group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none',
+  'group/tabs-list text-muted-foreground inline-flex w-fit items-center justify-center rounded-lg p-1 group-data-horizontal/tabs:h-8 group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none',
   {
     variants: {
       variant: {
@@ -63,7 +63,7 @@ function TabsList({
         {motionEnabled && (
           <TabsPrimitive.Indicator
             data-slot="tabs-indicator"
-            className="group-data-[variant=line]/tabs-list:bg-foreground pointer-events-none absolute top-[3px] left-0 z-0 h-[calc(100%-6px)] w-[var(--active-tab-width,0px)] [transform:translateX(var(--active-tab-left,0px))] rounded-[var(--radius-md)] bg-[var(--tabs-pill-bg)] transition-[transform,width] duration-[var(--tabs-dur)] ease-[var(--tabs-ease)] will-change-[transform,width] group-data-[variant=line]/tabs-list:top-auto group-data-[variant=line]/tabs-list:bottom-0 group-data-[variant=line]/tabs-list:h-0.5 group-data-[variant=line]/tabs-list:rounded-none motion-reduce:!transition-none"
+            className="group-data-[variant=line]/tabs-list:bg-foreground pointer-events-none absolute top-1 left-0 z-0 h-[calc(100%-0.5rem)] w-[var(--active-tab-width,0px)] [transform:translateX(var(--active-tab-left,0px))] rounded-[var(--radius-md)] bg-[var(--tabs-pill-bg)] transition-[transform,width] duration-[var(--tabs-dur)] ease-[var(--tabs-ease)] will-change-[transform,width] group-data-[variant=line]/tabs-list:top-auto group-data-[variant=line]/tabs-list:bottom-0 group-data-[variant=line]/tabs-list:h-0.5 group-data-[variant=line]/tabs-list:rounded-none motion-reduce:!transition-none"
             aria-hidden="true"
           />
         )}

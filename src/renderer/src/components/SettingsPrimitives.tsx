@@ -12,7 +12,7 @@ function SettingsCard({
   return (
     <Card
       className={cn(
-        'outline-border gap-0 rounded-2xl py-0 shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_4%,transparent)] outline [--card-spacing:--spacing(5)] [&_[data-slot=card-description]]:mt-0.5 [&_[data-slot=card-description]]:text-xs [&_[data-slot=card-description]]:leading-[1.5] [&_[data-slot=card-footer]]:justify-end [&_[data-slot=card-title]]:scroll-mt-5 [&_[data-slot=card-title]]:text-sm [&_[data-slot=card-title]]:font-semibold [&_[data-slot=field-description]]:max-w-[64ch] [&_[data-slot=field-description]]:text-xs [&_[data-slot=field-description]]:leading-[1.5] [&_[data-slot=field-label]]:text-[13px] [&_[data-slot=field-label]]:font-semibold [&>[data-slot=card-header]]:items-center [&>[data-slot=card-header]]:py-(--card-spacing)',
+        'outline-border gap-0 rounded-2xl py-0 shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_4%,transparent)] outline [--card-spacing:--spacing(5)] [&_[data-slot=card-description]]:mt-0.5 [&_[data-slot=card-description]]:text-xs [&_[data-slot=card-description]]:leading-normal [&_[data-slot=card-footer]]:justify-end [&_[data-slot=card-title]]:scroll-mt-5 [&_[data-slot=card-title]]:text-sm [&_[data-slot=card-title]]:font-semibold [&_[data-slot=field-description]]:max-w-[64ch] [&_[data-slot=field-description]]:text-xs [&_[data-slot=field-description]]:leading-normal [&_[data-slot=field-label]]:text-sm [&_[data-slot=field-label]]:font-semibold [&>[data-slot=card-header]]:items-center [&>[data-slot=card-header]]:py-(--card-spacing)',
         className
       )}
       {...props}
@@ -96,7 +96,7 @@ function SettingsCardHeading({
   return (
     <div className="flex min-w-0 items-center gap-3">
       <span
-        className="text-primary grid size-9 shrink-0 place-items-center rounded-[11px] bg-[var(--accent-soft)] [&>svg]:size-[17px]"
+        className="text-primary grid size-9 shrink-0 place-items-center rounded-xl bg-[var(--accent-soft)] [&>svg]:size-4"
         aria-hidden="true"
       >
         <Icon />

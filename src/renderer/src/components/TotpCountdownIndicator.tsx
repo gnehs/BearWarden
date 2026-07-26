@@ -58,7 +58,7 @@ export default function TotpCountdownIndicator({
         />
       </svg>
       {!compact && (
-        <span className="absolute inset-0 grid place-items-center text-[11px] font-medium tracking-tight tabular-nums">
+        <span className="absolute inset-0 grid place-items-center text-xs font-medium tracking-tight tabular-nums">
           {value ?? '…'}
         </span>
       )}

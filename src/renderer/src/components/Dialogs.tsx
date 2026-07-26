@@ -84,9 +84,9 @@ export function Modal({
       <ModalContent showCloseButton={false}>
         <ModalHeader hasDescription={Boolean(description)}>
           <div>
-            <DialogTitle className="m-0 text-[17px]">{title}</DialogTitle>
+            <DialogTitle className="m-0 text-lg">{title}</DialogTitle>
             {description && (
-              <DialogDescription className="mt-[5px] mb-0 text-[11px] leading-[1.5]">
+              <DialogDescription className="mt-1.5 mb-0 text-xs leading-normal">
                 {description}
               </DialogDescription>
             )}
@@ -357,7 +357,7 @@ export function MoveDialog({
         >
           <ModalBody className="grid-cols-[auto_minmax(0,1fr)] items-end">
             <span
-              className="text-primary grid size-[42px] place-items-center rounded-[11px] bg-[var(--accent-soft)]"
+              className="text-primary grid size-11 place-items-center rounded-xl bg-[var(--accent-soft)]"
               aria-hidden="true"
             >
               <FolderInput />
@@ -508,7 +508,7 @@ export function RepromptDialog({
       >
         <ModalBody>
           <span
-            className="text-primary grid size-[42px] place-items-center rounded-[11px] bg-[var(--accent-soft)]"
+            className="text-primary grid size-11 place-items-center rounded-xl bg-[var(--accent-soft)]"
             aria-hidden="true"
           >
             <KeyRound />

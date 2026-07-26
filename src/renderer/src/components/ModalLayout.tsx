@@ -67,7 +67,7 @@ export function ModalHeader({
   return (
     <DialogHeader
       className={cn(
-        'flex flex-row justify-between gap-3.5 border-b px-[18px] pt-[18px] pb-3.5',
+        'flex flex-row justify-between gap-3.5 border-b px-5 pt-5 pb-3.5',
         hasDescription ? 'items-start' : 'items-center',
         className
       )}
@@ -77,7 +77,7 @@ export function ModalHeader({
 }
 
 export function ModalBody({ className, ...props }: React.ComponentProps<'div'>): React.JSX.Element {
-  return <div className={cn('grid gap-[13px] px-[18px] py-[17px]', className)} {...props} />
+  return <div className={cn('grid gap-3 px-5 py-4', className)} {...props} />
 }
 
 export function ModalFooter({
@@ -88,7 +88,7 @@ export function ModalFooter({
   return (
     <DialogFooter
       className={cn(
-        'mx-0 mb-0 items-center gap-2 border-t bg-[var(--panel-muted)] px-[18px] py-3',
+        'mx-0 mb-0 items-center gap-2 border-t bg-[var(--panel-muted)] px-5 py-3',
         split ? 'justify-between max-[430px]:flex-col max-[430px]:items-stretch' : 'justify-end',
         className
       )}

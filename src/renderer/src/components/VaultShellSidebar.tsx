@@ -115,7 +115,7 @@ interface SidebarTooltipIconButtonProps extends ComponentProps<typeof Button> {
 }
 
 const folderSectionClassName =
-  'flex flex-none flex-col [&>header]:flex [&>header]:items-center [&>header]:justify-between [&>header]:pt-0 [&>header]:pr-1.5 [&>header]:pb-1 [&>header]:pl-[9px] [&_h2]:m-0 [&_h2]:text-[10px] [&_h2]:font-[760] [&_h2]:tracking-[0.11em] [&_h2]:text-muted-foreground [&_h2]:uppercase'
+  'flex flex-none flex-col [&>header]:flex [&>header]:items-center [&>header]:justify-between [&>header]:pt-0 [&>header]:pr-1.5 [&>header]:pb-1 [&>header]:pl-3 [&_h2]:m-0 [&_h2]:text-xs [&_h2]:font-bold [&_h2]:tracking-wide [&_h2]:text-muted-foreground [&_h2]:uppercase'
 
 function SidebarTooltipIconButton({
   label,
@@ -132,7 +132,7 @@ function SidebarTooltipIconButton({
           <Button
             aria-label={label}
             className={cn(
-              'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-[34px] min-w-[34px] rounded-md shadow-(--control-highlight) transition-[background,color,border-color,transform] duration-[130ms] [-webkit-app-region:no-drag]',
+              'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-9 min-w-9 rounded-md shadow-(--control-highlight) transition-[background,color,border-color,transform] duration-150 [-webkit-app-region:no-drag]',
               className
             )}
             {...props}
@@ -211,7 +211,7 @@ export function VaultShellSidebar({
     >
       <div className="scroll-fade-y forced-colors:scroll-fade-none min-h-0 flex-1 [scrollbar-color:color-mix(in_oklch,var(--muted-foreground)_25%,transparent)_transparent] overflow-y-auto overscroll-contain max-[880px]:pt-2">
         <section
-          className={cn(folderSectionClassName, 'px-[11px] pb-1')}
+          className={cn(folderSectionClassName, 'px-3 pb-1')}
           aria-labelledby="categories-title"
         >
           <h2 className="hidden" id="categories-title">
@@ -237,7 +237,7 @@ export function VaultShellSidebar({
         </section>
 
         <section
-          className={cn(folderSectionClassName, 'px-[9px] py-1')}
+          className={cn(folderSectionClassName, 'px-3 py-1')}
           aria-labelledby="folders-title"
         >
           <header
@@ -358,21 +358,21 @@ export function VaultShellSidebar({
         )}
       </div>
 
-      <footer className="text-muted-foreground grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 border-t-0 bg-transparent px-[9px] pt-[7px] pb-[9px] text-[10px]">
+      <footer className="text-muted-foreground grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 border-t-0 bg-transparent px-3 pt-2 pb-3 text-xs">
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
               <Button
                 ref={accountMenuTriggerRef}
                 variant="sidebar"
-                className="text-sidebar-foreground hover:bg-sidebar-overlay-hover data-popup-open:bg-sidebar-overlay-active h-auto min-h-9 w-full justify-start gap-[7px] rounded-[9px] px-1.5 py-1"
+                className="text-sidebar-foreground hover:bg-sidebar-overlay-hover data-popup-open:bg-sidebar-overlay-active h-auto min-h-9 w-full justify-start gap-2 rounded-lg px-1.5 py-1"
                 type="button"
                 aria-label={t`Open ${sidebarAccountName} menu`}
               />
             }
           >
             <span
-              className="text-muted-foreground grid size-5 flex-none place-items-center [&>svg]:size-[18px]"
+              className="text-muted-foreground grid size-5 flex-none place-items-center [&>svg]:size-5"
               aria-hidden="true"
             >
               <UserRound />
@@ -388,12 +388,12 @@ export function VaultShellSidebar({
             side="top"
             align="start"
             sideOffset={8}
-            className="min-w-[220px] p-[5px] [&_[data-slot=dropdown-menu-item]]:min-h-[34px] [&_[data-slot=dropdown-menu-item]]:gap-2 [&_[data-slot=dropdown-menu-item]]:px-[9px]"
+            className="min-w-56 p-1.5 [&_[data-slot=dropdown-menu-item]]:min-h-9 [&_[data-slot=dropdown-menu-item]]:gap-2 [&_[data-slot=dropdown-menu-item]]:px-3"
           >
             <DropdownMenuGroup>
-              <DropdownMenuLabel className="flex items-center gap-[7px] p-[7px]">
+              <DropdownMenuLabel className="flex items-center gap-2 p-2">
                 <span
-                  className="text-muted-foreground grid size-5 flex-none place-items-center [&>svg]:size-[18px]"
+                  className="text-muted-foreground grid size-5 flex-none place-items-center [&>svg]:size-5"
                   aria-hidden="true"
                 >
                   <UserRound />
@@ -402,7 +402,7 @@ export function VaultShellSidebar({
                   <strong className="text-sidebar-foreground block truncate text-xs font-bold">
                     {account.name}
                   </strong>
-                  <small className="text-muted-foreground block truncate text-[10px] font-medium">
+                  <small className="text-muted-foreground block truncate text-xs font-medium">
                     {account.syncLabel}
                   </small>
                 </span>
@@ -449,7 +449,7 @@ export function VaultShellSidebar({
         <SidebarTooltipIconButton
           variant="sidebar"
           size="icon"
-          className="hover:bg-sidebar-overlay-hover hover:text-foreground size-[34px] rounded-[9px] border-transparent bg-transparent shadow-none hover:shadow-(--control-highlight) dark:bg-transparent"
+          className="hover:bg-sidebar-overlay-hover hover:text-foreground size-9 rounded-lg border-transparent bg-transparent shadow-none hover:shadow-(--control-highlight) dark:bg-transparent"
           type="button"
           label={t`Cloud sync: ${account.syncLabel}`}
           onClick={actions.onOpenSync}

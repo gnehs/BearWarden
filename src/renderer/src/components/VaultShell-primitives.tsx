@@ -5,7 +5,7 @@ import {
   ContactRound,
   CreditCard,
   FileKey2,
-  FolderOpen,
+  Folder,
   KeyRound,
   NotebookPen
 } from 'lucide-react'
@@ -50,7 +50,7 @@ export function TooltipIconButton({
           <Button
             aria-label={label}
             className={cn(
-              'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-[34px] min-w-[34px] rounded-md shadow-(--control-highlight) transition-[background,color,border-color,transform] duration-[130ms] [-webkit-app-region:no-drag]',
+              'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-9 min-w-9 rounded-md shadow-(--control-highlight) transition-[background,color,border-color,transform] duration-150 [-webkit-app-region:no-drag]',
               className
             )}
             {...props}
@@ -102,7 +102,7 @@ export function DetailHeader({ className, ...props }: ComponentProps<'header'>):
 }
 
 export const detailFieldClassName =
-  'border-border/60 grid min-h-12 grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)_repeat(2,34px)] items-center gap-2 border-b py-0.5 last:border-b-0 [&>span]:text-[11px] [&>span]:text-muted-foreground [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-medium [&>:nth-child(3):last-child]:col-start-[-2] max-[430px]:grid-cols-[1fr_auto_auto] max-[430px]:gap-1.5 max-[430px]:[&>span]:col-span-full max-[430px]:[&>strong]:col-start-1 max-[430px]:[&>[data-field-copy-value]]:col-start-1'
+  'border-border/60 grid min-h-12 grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)_repeat(2,auto)] items-center gap-2 border-b py-0.5 last:border-b-0 [&>span]:text-xs [&>span]:text-muted-foreground [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-medium [&>:nth-child(3):last-child]:col-start-[-2] max-[430px]:grid-cols-[1fr_auto_auto] max-[430px]:gap-1.5 max-[430px]:[&>span]:col-span-full max-[430px]:[&>strong]:col-start-1 max-[430px]:[&>[data-field-copy-value]]:col-start-1'
 
 export const detailScrollClassName =
   'bg-muted/30 min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] overflow-auto px-4 pt-4 pb-7 max-[680px]:px-3 max-[680px]:pt-3 max-[680px]:pb-5'
@@ -156,8 +156,8 @@ const sidebarToneClasses: Record<SidebarTone, string> = {
 
 const sidebarLinkClasses = {
   base: 'h-auto border-none text-left',
-  row: 'grid min-h-[38px] grid-cols-[22px_1fr_auto] items-center gap-2 rounded-lg border-0 bg-transparent px-[9px] py-1.5 shadow-[none] hover:shadow-[none]',
-  tile: 'bg-sidebar-overlay grid min-h-[72px] grid-cols-[1fr_auto] grid-rows-[31px_auto] items-center gap-2 rounded-[15px] px-3 pt-[11px] pb-2.5 shadow-[var(--sidebar-tile-highlight)] hover:shadow-[var(--sidebar-tile-highlight)]',
+  row: 'grid min-h-10 grid-cols-[auto_1fr_auto] items-center gap-2 rounded-lg border-0 bg-transparent px-3 py-1.5 shadow-[none] hover:shadow-[none]',
+  tile: 'bg-sidebar-overlay grid min-h-18 grid-cols-[1fr_auto] grid-rows-[auto_auto] items-center gap-2 rounded-2xl px-3 pt-3 pb-2.5 shadow-[var(--sidebar-tile-highlight)] hover:shadow-[var(--sidebar-tile-highlight)]',
   active: {
     row: 'bg-sidebar-overlay-active text-sidebar-foreground hover:bg-sidebar-overlay-active hover:text-sidebar-foreground',
     tile: 'bg-sidebar-primary text-sidebar-primary-foreground shadow-(--control-highlight) hover:bg-sidebar-primary hover:text-sidebar-primary-foreground hover:shadow-(--control-highlight)'
@@ -201,11 +201,11 @@ export function SidebarLink({
           'grid place-items-center',
           isTile
             ? [
-                'bg-sidebar-primary text-sidebar-primary-foreground col-start-1 row-start-1 size-[30px] rounded-full',
+                'bg-sidebar-primary text-sidebar-primary-foreground col-start-1 row-start-1 size-8 rounded-full',
                 tone && sidebarToneClasses[tone],
                 active && 'bg-sidebar-primary-foreground text-sidebar-primary'
               ]
-            : 'size-[22px]'
+            : 'size-6'
         )}
         aria-hidden="true"
       >
@@ -214,8 +214,8 @@ export function SidebarLink({
       <strong
         className={cn(
           isTile
-            ? 'col-span-2 row-start-2 self-end text-[13px] leading-[1.15] font-[720]'
-            : 'text-xs font-[610]'
+            ? 'col-span-2 row-start-2 self-end text-sm leading-tight font-bold'
+            : 'text-xs font-semibold'
         )}
       >
         {label}
@@ -224,8 +224,8 @@ export function SidebarLink({
         className={cn(
           'text-muted-foreground group-hover/button:text-sidebar-foreground',
           isTile
-            ? 'col-start-2 row-start-1 self-center justify-self-end text-[11px] font-[650]'
-            : 'text-[10px]',
+            ? 'col-start-2 row-start-1 self-center justify-self-end text-xs font-semibold'
+            : 'text-xs',
           active &&
             isTile &&
             'text-[color-mix(in_oklch,var(--sidebar-primary-foreground)_88%,transparent)] group-hover/button:text-[color-mix(in_oklch,var(--sidebar-primary-foreground)_88%,transparent)]'
@@ -251,18 +251,18 @@ export function UnfiledRow({ selected, count, onSelect }: UnfiledRowProps): JSX.
     <li
       ref={setNodeRef}
       className={cn(
-        'text-foreground hover:bg-sidebar-overlay-hover static grid min-h-[38px] grid-cols-[22px_minmax(0,1fr)] items-center gap-2 rounded-lg px-[9px]',
+        'text-foreground hover:bg-sidebar-overlay-hover static grid min-h-10 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-lg px-3',
         selected && 'bg-sidebar-overlay-active shadow-none',
         isOver &&
           'bg-sidebar-overlay-active text-foreground shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--sidebar-primary)_55%,transparent)] forced-colors:outline-2 forced-colors:-outline-offset-2 forced-colors:outline-[Highlight]'
       )}
     >
-      <span className="grid size-[22px] place-items-center" aria-hidden="true">
-        <FolderOpen size={16} />
+      <span className="grid size-6 place-items-center" aria-hidden="true">
+        <Folder size={16} />
       </span>
       <Button
         variant="sidebar"
-        className="[&>small]:text-muted-foreground grid h-[34px] min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-0 bg-transparent p-0 text-left text-inherit shadow-none hover:bg-transparent hover:shadow-none aria-expanded:bg-transparent aria-expanded:shadow-none [&>small]:min-w-[3ch] [&>small]:text-right [&>small]:text-[10px] [&>small]:tabular-nums [&>span]:truncate [&>span]:text-xs [&>span]:font-[610]"
+        className="[&>small]:text-muted-foreground grid h-9 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-0 bg-transparent p-0 text-left text-inherit shadow-none hover:bg-transparent hover:shadow-none aria-expanded:bg-transparent aria-expanded:shadow-none [&>small]:min-w-[3ch] [&>small]:text-right [&>small]:text-xs [&>small]:tabular-nums [&>span]:truncate [&>span]:text-xs [&>span]:font-semibold"
         type="button"
         aria-current={selected ? 'page' : undefined}
         onClick={onSelect}
@@ -316,7 +316,7 @@ export function DetailPlaceholder({
             <TypeIcon size={18} />
           )}
         </span>
-        <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-base [&>h2]:font-medium [&>h2]:tracking-[-0.015em] [&>span]:mt-0.5 [&>span]:block [&>span]:truncate [&>span]:text-[10px]">
+        <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-base [&>h2]:font-medium [&>span]:mt-0.5 [&>span]:block [&>span]:truncate [&>span]:text-xs">
           <h2>{item.name}</h2>
           <span>
             {item.subtitle ||
@@ -325,11 +325,8 @@ export function DetailPlaceholder({
                 : t`Securely stored item`)}
           </span>
         </div>
-        <Skeleton className="size-[34px] flex-none rounded-md" aria-hidden="true" />
-        <Skeleton
-          className="h-8 w-[68px] flex-none rounded-md max-[680px]:w-[34px]"
-          aria-hidden="true"
-        />
+        <Skeleton className="size-9 flex-none rounded-md" aria-hidden="true" />
+        <Skeleton className="h-8 w-16 flex-none rounded-md max-[680px]:w-9" aria-hidden="true" />
         <span className="sr-only" role="status">
           <Trans>Loading item details…</Trans>
         </span>

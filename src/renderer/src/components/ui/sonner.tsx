@@ -79,7 +79,7 @@ const Toaster = ({
         classNames: {
           toast:
             'cn-toast !items-center !gap-2.5 !px-3.5 !py-3 has-[.cn-toast-close-button]:!pr-10',
-          title: '!text-popover-foreground !text-[13px] !font-medium !leading-5',
+          title: '!text-popover-foreground !text-sm !font-medium !leading-5',
           description: '!text-muted-foreground !text-xs !leading-[1.45]',
           content: '!min-w-0 !gap-0.5',
           icon: 'cn-toast-icon !m-0 !shrink-0 !text-primary [&>svg]:block [&>svg]:size-4 [&>svg]:!m-0',

@@ -817,7 +817,7 @@ function SettingsPage({
         headerActions={
           settingsBusy ? (
             <span
-              className="text-muted-foreground inline-flex shrink-0 items-center gap-1.5 text-[11px]"
+              className="text-muted-foreground inline-flex shrink-0 items-center gap-1.5 text-xs"
               role="status"
             >
               <Spinner />
@@ -828,13 +828,13 @@ function SettingsPage({
       >
         {!settings ? (
           <div
-            className="text-muted-foreground flex min-h-0 flex-1 flex-row items-center justify-center gap-2.5 p-7 text-center text-[11px]"
+            className="text-muted-foreground flex min-h-0 flex-1 flex-row items-center justify-center gap-2.5 p-7 text-center text-xs"
             role="status"
           >
             <Spinner /> <Trans>Loading settings…</Trans>
           </div>
         ) : (
-          <AuxiliaryPageContent className="max-w-[910px] !grid-cols-[minmax(0,1fr)] gap-4">
+          <AuxiliaryPageContent className="max-w-4xl !grid-cols-[minmax(0,1fr)] gap-4">
             <SettingsCategoryContent value="general">
               <SettingsCard aria-labelledby="general-settings-title">
                 <CardHeader>
@@ -1457,14 +1457,14 @@ function SettingsPage({
                 <SettingsCardContent>
                   <div className="flex min-w-0 items-center gap-2.5">
                     <span
-                      className="text-primary grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-[var(--accent-soft)] [&>svg]:size-[17px]"
+                      className="text-primary grid size-9 shrink-0 place-items-center rounded-lg bg-[var(--accent-soft)] [&>svg]:size-4"
                       aria-hidden="true"
                     >
                       <Cloud />
                     </span>
                     <div className="grid min-w-0 gap-0.5">
                       <strong className="text-xs">{localizedSyncLabels[syncStatus.state]}</strong>
-                      <small className="text-muted-foreground truncate text-[11px]">
+                      <small className="text-muted-foreground truncate text-xs">
                         {syncStatus.email ??
                           syncStatus.serverUrl ??
                           t`No Bitwarden account connected`}

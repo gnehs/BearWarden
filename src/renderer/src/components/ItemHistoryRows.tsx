@@ -20,7 +20,7 @@ function HistoryRow({
 }): React.JSX.Element {
   return (
     <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
-      <dt className="text-muted-foreground text-[11px] leading-4">{label}</dt>
+      <dt className="text-muted-foreground text-xs leading-4">{label}</dt>
       <dd className="m-0 min-w-0 text-xs leading-4">{children}</dd>
     </div>
   )

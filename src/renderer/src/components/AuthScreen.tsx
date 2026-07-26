@@ -282,7 +282,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
     >
       <AuthMeshGradientBackground />
       <div
-        className="pointer-events-auto absolute inset-x-0 top-0 z-10 h-[52px] [-webkit-app-region:drag]"
+        className="pointer-events-auto absolute inset-x-0 top-0 z-10 h-12 [-webkit-app-region:drag]"
         aria-hidden="true"
       />
       {usesWindowControlsOverlay && (
@@ -293,13 +293,13 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
       <div className="relative z-10 mt-[20vh] mb-8 flex w-full max-w-[440px] shrink-0 flex-col items-center gap-4">
         <BrandMark stacked />
         <section
-          className="w-full max-w-[440px] rounded-[20px] bg-[color-mix(in_oklch,var(--card)_84%,transparent)] p-7 shadow-[var(--shadow)] outline outline-[color-mix(in_oklch,var(--foreground)_8%,transparent)] backdrop-blur-[28px]"
+          className="w-full max-w-[440px] rounded-2xl bg-[color-mix(in_oklch,var(--card)_84%,transparent)] p-7 shadow-[var(--shadow)] outline outline-[color-mix(in_oklch,var(--foreground)_8%,transparent)] backdrop-blur-[28px]"
           aria-labelledby="auth-title"
         >
           {state === 'loading' && (
             <div className="grid justify-items-start gap-3" role="status">
               <Spinner className="size-7" aria-hidden="true" />
-              <h1 className="m-0 text-[23px] leading-[1.2] tracking-[-0.025em]" id="auth-title">
+              <h1 className="m-0 text-2xl leading-tight" id="auth-title">
                 <Trans>Opening secure vault</Trans>
               </h1>
               <p className="text-muted-foreground m-0 leading-[1.6]">
@@ -311,12 +311,12 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
           {state === 'unavailable' && (
             <div className="grid justify-items-start gap-3" role="status">
               <span
-                className="bg-destructive/10 text-destructive grid size-11 place-items-center rounded-[13px]"
+                className="bg-destructive/10 text-destructive grid size-11 place-items-center rounded-xl"
                 aria-hidden="true"
               >
                 <ShieldAlert size={27} />
               </span>
-              <h1 className="m-0 text-[23px] leading-[1.2] tracking-[-0.025em]" id="auth-title">
+              <h1 className="m-0 text-2xl leading-tight" id="auth-title">
                 <Trans>Unable to connect to the security service</Trans>
               </h1>
               <p className="text-muted-foreground m-0 leading-[1.6]">
@@ -332,13 +332,13 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
           )}
 
           {(state === 'locked' || state === 'uninitialized') && (
-            <form className="grid gap-[18px]" onSubmit={handleSubmit}>
+            <form className="grid gap-5" onSubmit={handleSubmit}>
               <div className="grid grid-cols-[auto_1fr] items-start gap-3.5">
                 <div>
-                  <h1 className="m-0 text-[23px] leading-[1.2] tracking-[-0.025em]" id="auth-title">
+                  <h1 className="m-0 text-2xl leading-tight" id="auth-title">
                     {isSetup ? t`Create your vault` : t`Welcome back`}
                   </h1>
-                  <p className="text-muted-foreground mt-[7px] mb-0 leading-[1.6]">
+                  <p className="text-muted-foreground mt-2 mb-0 leading-relaxed">
                     {isSetup
                       ? t`Set a master password that only you know. BearWarden cannot recover it for you.`
                       : unlockMethod === 'pin'
@@ -515,7 +515,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
           )}
         </section>
       </div>
-      <p className="text-muted-foreground relative z-10 m-0 mt-auto mb-[18px] shrink-0 text-[11px]">
+      <p className="text-muted-foreground relative z-10 m-0 mt-auto mb-5 shrink-0 text-xs">
         <Trans>Your master password and decrypted data never leave this device.</Trans>
       </p>
     </main>

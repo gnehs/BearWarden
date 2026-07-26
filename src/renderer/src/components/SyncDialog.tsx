@@ -387,7 +387,7 @@ export function SyncOperationFailureAlert({
   return (
     <Alert
       className={cn(
-        'mt-[-4px] rounded-lg bg-[var(--danger-soft)] px-[11px] py-[9px] text-[12px] leading-[1.45]',
+        '-mt-1 rounded-lg bg-[var(--danger-soft)] px-3 py-2 text-xs leading-normal',
         className
       )}
       variant="destructive"
@@ -825,7 +825,7 @@ function SyncDialog({
         <ModalHeader className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start">
           <span
             className={cn(
-              'text-primary grid size-[42px] place-items-center rounded-xl bg-[var(--accent-soft)]',
+              'text-primary grid size-11 place-items-center rounded-xl bg-[var(--accent-soft)]',
               status.state === 'error' && 'bg-[var(--danger-soft)] text-[var(--danger)]'
             )}
             aria-hidden="true"
@@ -833,7 +833,7 @@ function SyncDialog({
             {status.state === 'error' ? <CircleAlert /> : <Cloud />}
           </span>
           <div>
-            <DialogTitle className="m-0 text-[17px]">
+            <DialogTitle className="m-0 text-lg">
               <Trans>Sync</Trans>
             </DialogTitle>
           </div>
@@ -849,9 +849,9 @@ function SyncDialog({
           </Button>
         </ModalHeader>
 
-        <ModalBody className="min-h-0 gap-[14px] overflow-y-auto overscroll-contain px-[18px] pt-4 pb-0">
+        <ModalBody className="min-h-0 gap-3.5 overflow-y-auto overscroll-contain px-5 pt-4 pb-0">
           <Alert
-            className="[&_small]:text-muted-foreground grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-[10px] bg-[var(--panel-muted)] p-[10px_11px] [&_small]:text-[10px] [&_small]:leading-[1.4] [&_strong]:text-[12px] [&>div]:grid [&>div]:gap-[3px]"
+            className="[&_small]:text-muted-foreground grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg bg-[var(--panel-muted)] px-3 py-2.5 [&_small]:text-xs [&_small]:leading-snug [&_strong]:text-xs [&>div]:grid [&>div]:gap-1"
             role="status"
             aria-live="polite"
           >
@@ -905,7 +905,7 @@ function SyncDialog({
 
           {requiresCredentials ? (
             <form
-              className="mx-[-18px] grid gap-[13px]"
+              className="-mx-5 grid gap-3"
               onSubmit={
                 configured
                   ? (event) => {
@@ -915,10 +915,10 @@ function SyncDialog({
                   : connect
               }
             >
-              <FieldGroup className="mx-[18px] w-auto">
+              <FieldGroup className="mx-5 w-auto">
                 {!configured && (
                   <>
-                    <Field className="grid gap-[7px]">
+                    <Field className="grid gap-2">
                       <FieldLabel htmlFor="server-url">
                         <Trans>Server URL</Trans>
                       </FieldLabel>
@@ -940,7 +940,7 @@ function SyncDialog({
                         </Trans>
                       </FieldDescription>
                     </Field>
-                    <Field className="grid gap-[7px]">
+                    <Field className="grid gap-2">
                       <FieldLabel htmlFor="sync-email">
                         <Trans>Email</Trans>
                       </FieldLabel>
@@ -958,14 +958,14 @@ function SyncDialog({
                 )}
                 {configured && (
                   <Alert
-                    className="text-primary m-0 flex items-center gap-[7px] rounded-[9px] border-0 bg-[color-mix(in_oklch,var(--primary)_10%,var(--background))] px-2.5 py-[9px] text-[11px] [&_[data-slot=alert-description]]:text-[11px]"
+                    className="text-primary m-0 flex items-center gap-2 rounded-lg border-0 bg-[color-mix(in_oklch,var(--primary)_10%,var(--background))] px-2.5 py-2 text-xs [&_[data-slot=alert-description]]:text-xs"
                     role="status"
                   >
                     <ShieldCheck aria-hidden="true" />
                     <AlertDescription>{status.email ?? t`Configured account`}</AlertDescription>
                   </Alert>
                 )}
-                <Field className="grid gap-[7px]">
+                <Field className="grid gap-2">
                   <FieldLabel htmlFor="sync-master-password">
                     <Trans>Master password</Trans>
                   </FieldLabel>
@@ -997,11 +997,11 @@ function SyncDialog({
                 </Field>
               </FieldGroup>
               <div
-                className="mx-[18px] [&[data-open=true]_[data-slot=sync-accordion-chevron]]:scale-y-[-1] [&[data-open=true]_[data-slot=sync-accordion-panel-inner]]:opacity-100 [&[data-open=true]_[data-slot=sync-accordion-panel-inner]]:blur-none [&[data-open=true]_[data-slot=sync-accordion-panel-inner]]:duration-[var(--acc-expand)] [&[data-open=true]_[data-slot=sync-accordion-panel]]:grid-rows-[1fr] [&[data-open=true]_[data-slot=sync-accordion-panel]]:duration-[var(--acc-expand)]"
+                className="mx-5 [&[data-open=true]_[data-slot=sync-accordion-chevron]]:scale-y-[-1] [&[data-open=true]_[data-slot=sync-accordion-panel-inner]]:opacity-100 [&[data-open=true]_[data-slot=sync-accordion-panel-inner]]:blur-none [&[data-open=true]_[data-slot=sync-accordion-panel-inner]]:duration-[var(--acc-expand)] [&[data-open=true]_[data-slot=sync-accordion-panel]]:grid-rows-[1fr] [&[data-open=true]_[data-slot=sync-accordion-panel]]:duration-[var(--acc-expand)]"
                 data-open={showAdvanced ? 'true' : 'false'}
               >
                 <Button
-                  className="gap-1 justify-self-start border-0 bg-transparent px-0 py-[3px] text-[11px] font-[680] text-[var(--accent-hover)] underline underline-offset-3"
+                  className="gap-1 justify-self-start border-0 bg-transparent px-0 py-1 text-xs font-bold text-[var(--accent-hover)] underline underline-offset-3"
                   variant="ghost"
                   type="button"
                   aria-expanded={showAdvanced}
@@ -1027,7 +1027,7 @@ function SyncDialog({
                     className="overflow-hidden pt-3 opacity-0 blur-[2px] transition-[opacity,filter] duration-[var(--acc-collapse)] ease-[var(--acc-ease)] motion-reduce:!transition-none"
                     inert={!showAdvanced}
                   >
-                    <FieldGroup className="grid w-auto gap-3 rounded-[10px] border bg-[var(--panel-muted)] p-3">
+                    <FieldGroup className="grid w-auto gap-3 rounded-lg border bg-[var(--panel-muted)] p-3">
                       <Field>
                         <FieldLabel htmlFor="two-factor-method">
                           {twoFactorProviders.length > 0 ? (
@@ -1172,7 +1172,7 @@ function SyncDialog({
               </div>
               {error && (
                 <SyncOperationFailureAlert
-                  className="mx-[18px]"
+                  className="mx-5"
                   message={error}
                   onShowDetails={
                     operationErrorDiagnostic ? () => setErrorDetailsOpen(true) : undefined
@@ -1181,7 +1181,7 @@ function SyncDialog({
               )}
               {success && (
                 <Alert
-                  className="text-primary m-0 mx-[18px] flex items-start gap-[7px] rounded-lg border-0 bg-[color-mix(in_oklch,var(--primary)_10%,var(--background))] px-2.5 py-[9px] text-[11px] leading-[1.45] [&_[data-slot=alert-description]]:text-[11px]"
+                  className="text-primary m-0 mx-5 flex items-start gap-2 rounded-lg border-0 bg-[color-mix(in_oklch,var(--primary)_10%,var(--background))] px-2.5 py-2 text-xs leading-normal [&_[data-slot=alert-description]]:text-xs"
                   role="status"
                 >
                   <CheckCircle2 aria-hidden="true" />
@@ -1206,7 +1206,7 @@ function SyncDialog({
           ) : (
             <>
               <section
-                className="[&_svg]:text-primary [&_span]:text-muted-foreground grid gap-px overflow-hidden rounded-[10px] border [&_strong]:truncate [&_strong]:text-right [&_strong]:font-semibold [&>div]:grid [&>div]:min-w-0 [&>div]:grid-cols-[16px_76px_minmax(0,1fr)] [&>div]:items-center [&>div]:gap-[6px] [&>div]:border-b [&>div]:p-2.5 [&>div]:text-[11px] [&>div:last-child]:border-b-0"
+                className="[&_svg]:text-primary [&_span]:text-muted-foreground grid gap-px overflow-hidden rounded-lg border [&_strong]:truncate [&_strong]:text-right [&_strong]:font-semibold [&>div]:grid [&>div]:min-w-0 [&>div]:grid-cols-[16px_76px_minmax(0,1fr)] [&>div]:items-center [&>div]:gap-1.5 [&>div]:border-b [&>div]:p-2.5 [&>div]:text-xs [&>div:last-child]:border-b-0"
                 aria-label={t`Sync connection information`}
               >
                 <div>
@@ -1322,14 +1322,14 @@ function SyncDialog({
               )}
               {success && (
                 <Alert
-                  className="text-primary m-0 flex items-start gap-[7px] rounded-lg border-0 bg-[color-mix(in_oklch,var(--primary)_10%,var(--background))] px-2.5 py-[9px] text-[11px] leading-[1.45] [&_[data-slot=alert-description]]:text-[11px]"
+                  className="text-primary m-0 flex items-start gap-2 rounded-lg border-0 bg-[color-mix(in_oklch,var(--primary)_10%,var(--background))] px-2.5 py-2 text-xs leading-normal [&_[data-slot=alert-description]]:text-xs"
                   role="status"
                 >
                   <CheckCircle2 aria-hidden="true" />
                   <AlertDescription>{success}</AlertDescription>
                 </Alert>
               )}
-              <ModalFooter split className="-mx-[18px]">
+              <ModalFooter split className="-mx-5">
                 <AlertDialog
                   open={confirmingDisconnect}
                   onOpenChange={(open) => {

@@ -17,7 +17,7 @@ function BrandMark({
   return (
     <div
       className={cn(
-        'inline-flex min-w-max items-center gap-[9px] font-semibold tracking-[-0.02em]',
+        'inline-flex min-w-max items-center gap-2 font-semibold',
         stacked && 'flex-col gap-1',
         className
       )}

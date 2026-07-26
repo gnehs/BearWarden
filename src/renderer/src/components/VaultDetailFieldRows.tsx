@@ -80,7 +80,7 @@ function VaultDetailFieldRow({
   const copyKey = `field:${copy.itemId}:${field.field}:${field.uriIndex ?? ''}`
   const valueClassName = field.secret
     ? revealedValue === undefined
-      ? 'tracking-[0.13em]'
+      ? 'tracking-widest'
       : isPasswordField
         ? 'min-w-0 select-text'
         : 'font-mono select-text'
@@ -88,7 +88,7 @@ function VaultDetailFieldRow({
   const displayValue =
     field.secret && revealedValue !== undefined && isPasswordField ? (
       revealedValue ? (
-        <ColoredPassword value={revealedValue} className="text-xs font-[590]" />
+        <ColoredPassword value={revealedValue} className="text-xs font-medium" />
       ) : (
         t`Not set`
       )
@@ -142,7 +142,7 @@ function VaultDetailFieldRow({
         <Button
           variant="ghost"
           size="sm"
-          className="-ml-2 w-[calc(100%+8px)] min-w-0 justify-start overflow-hidden px-2 [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-[590]"
+          className="-ml-2 w-[calc(100%+8px)] min-w-0 justify-start overflow-hidden px-2 [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-medium"
           data-field-copy-value=""
           type="button"
           aria-label={
@@ -297,7 +297,7 @@ function VaultCustomFieldRow({
       <span>{label}</span>
       <strong
         className={cn(
-          hidden && (revealedValue === undefined ? 'tracking-[0.13em]' : 'font-mono select-text')
+          hidden && (revealedValue === undefined ? 'tracking-widest' : 'font-mono select-text')
         )}
       >
         {hidden

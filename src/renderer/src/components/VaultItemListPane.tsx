@@ -100,21 +100,18 @@ export function VaultItemListPane({
 
   return (
     <>
-      <header className="flex min-h-[82px] items-center justify-between gap-3 px-[18px] pt-[15px] pb-[11px] max-[430px]:px-[11px]">
+      <header className="flex min-h-20 items-center justify-between gap-3 px-5 pt-4 pb-3 max-[430px]:px-3">
         <div className="grid gap-0.5">
-          <h1
-            className="m-0 text-[21px] leading-[1.2] font-[760] tracking-[-0.025em]"
-            id="list-title"
-          >
+          <h1 className="m-0 text-xl leading-tight font-bold" id="list-title">
             {list.scopeTitle}
           </h1>
-          <small className="text-muted-foreground text-[11px]">
+          <small className="text-muted-foreground text-xs">
             {selectedIds.size > 1
               ? t`${selectedIds.size} selected · ${list.itemCount} items total`
               : t`${list.itemCount} items`}
           </small>
         </div>
-        <div className="border-border flex items-center gap-[7px] rounded-[14px] border bg-[color-mix(in_oklch,var(--card)_78%,transparent)] p-1 shadow-none dark:bg-[color-mix(in_oklch,var(--card)_70%,transparent)]">
+        <div className="border-border flex items-center gap-2 rounded-2xl border bg-[color-mix(in_oklch,var(--card)_78%,transparent)] p-1 shadow-none dark:bg-[color-mix(in_oklch,var(--card)_70%,transparent)]">
           <div className="text-muted-foreground flex h-8 items-center gap-1 border-0 bg-transparent py-0 pr-1 pl-1.5 shadow-none">
             <ListFilter size={16} aria-hidden="true" />
             <Select
@@ -140,7 +137,7 @@ export function VaultItemListPane({
       </header>
       {query && (
         <div
-          className="text-muted-foreground flex min-h-7 items-center justify-between gap-2.5 px-[19px] pt-0 pb-[7px] text-[10px]"
+          className="text-muted-foreground flex min-h-7 items-center justify-between gap-2.5 px-5 pt-0 pb-2 text-xs"
           role="status"
         >
           <span>
@@ -174,7 +171,7 @@ export function VaultItemListPane({
           <EmptyHeader>
             <EmptyMedia
               variant="icon"
-              className="text-primary mb-[13px] size-[52px] rounded-2xl bg-(--accent-soft)"
+              className="text-primary mb-3 size-12 rounded-2xl bg-(--accent-soft)"
             >
               {query ? (
                 <Search className="size-8" />
@@ -212,7 +209,7 @@ export function VaultItemListPane({
               </Button>
             ) : !list.readOnly && scope.kind !== 'trash' && scope.kind !== 'archive' ? (
               <Button
-                className="before:ring-primary-foreground/20 relative h-[38px] gap-2 rounded-[9px] border-0 px-3.5 font-[680] shadow-[var(--subtle-primary-action-shadow)] before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:ring-1 before:ring-inset has-data-[icon=inline-start]:pl-3.5"
+                className="before:ring-primary-foreground/20 relative h-10 gap-2 rounded-lg border-0 px-3.5 font-bold shadow-[var(--subtle-primary-action-shadow)] before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:ring-1 before:ring-inset has-data-[icon=inline-start]:pl-3.5"
                 type="button"
                 onClick={actions.onOpenCreate}
               >

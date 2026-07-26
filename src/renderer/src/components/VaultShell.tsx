@@ -255,6 +255,13 @@ function announceError(message: string): void {
   })
 }
 
+function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    target.matches('input, textarea, select, [contenteditable="true"]')
+  )
+}
+
 function VaultShellContent({
   onLocked,
   promptSyncSetup,
@@ -600,7 +607,8 @@ function VaultShellContent({
     previews: cardCoverListPreviews,
     clear: clearCardCoverListPreviews,
     invalidate: invalidateCardCoverListPreview,
-    prefetch: prefetchCardCoverPreview
+    prefetch: prefetchCardCoverPreview,
+    remember: rememberCardCoverPreview
   } = useCardCoverPreviews()
   const [attachmentDeleteTarget, setAttachmentDeleteTarget] =
     useState<AttachmentDeleteTarget | null>(null)
@@ -2034,6 +2042,10 @@ function VaultShellContent({
     }
     await performLockVault()
   }, [isEditorDirty, performLockVault, requestEditorTransition])
+  const shortcutCopyFieldRef = useRef(copyField)
+  const shortcutCopyTotpRef = useRef(copyTotp)
+  shortcutCopyFieldRef.current = copyField
+  shortcutCopyTotpRef.current = copyTotp
 
   useEffect(() => {
     const unsubscribe = window.bearwarden.vault.onLockRequested(() => void lockVault())
@@ -2052,12 +2064,35 @@ function VaultShellContent({
       if (settingsOpen || healthOpen || sendsOpen || organizationsOpen || emergencyAccessOpen)
         return
       if (
-        key === 'a' &&
+        event.shiftKey &&
         !editorMode &&
         !searchOpen &&
-        event.target instanceof HTMLElement &&
-        !event.target.matches('input, textarea, select, [contenteditable="true"]')
+        selectedLogin &&
+        !selectedLogin.deletedAt &&
+        !isEditableShortcutTarget(event.target)
       ) {
+        if (key === 'u' && selectedLogin.type === 'login' && selectedLogin.username) {
+          event.preventDefault()
+          void shortcutCopyFieldRef.current('username')
+          return
+        }
+        if (key === 'p' && selectedLogin.type === 'login') {
+          event.preventDefault()
+          void shortcutCopyFieldRef.current('password')
+          return
+        }
+        if (key === 't' && selectedLogin.type === 'login' && selectedLogin.hasTotp) {
+          event.preventDefault()
+          void shortcutCopyTotpRef.current()
+          return
+        }
+        if (key === 'w' && selectedLogin.uris.length > 0) {
+          event.preventDefault()
+          void shortcutCopyFieldRef.current('uri', 0)
+          return
+        }
+      }
+      if (key === 'a' && !editorMode && !searchOpen && !isEditableShortcutTarget(event.target)) {
         event.preventDefault()
         const nextIds = new Set(scopedItemIds)
         updateSelectedIds(nextIds)
@@ -3335,6 +3370,7 @@ function VaultShellContent({
       if (openDialog) setAttachmentPreview(preview)
       if (selectedLogin.type === 'card' && isCardCoverAttachment(result.fileName)) {
         setCardCoverPreview({ itemId, attachmentId, dataUrl: result.dataUrl })
+        rememberCardCoverPreview(selectedLogin, attachmentId, result.dataUrl)
       }
     } catch (previewError) {
       if (
@@ -4027,8 +4063,8 @@ function VaultShellContent({
                     <span className={detailIconClassName()} aria-hidden="true">
                       <Trash2 />
                     </span>
-                    <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-base [&>h2]:font-medium [&>h2]:tracking-[-0.015em] [&>span]:mt-0.5 [&>span]:block [&>span]:truncate [&>span]:text-[10px]">
-                      <p className="text-primary m-0 mb-[3px] text-[9px] font-extrabold tracking-[0.11em] uppercase">
+                    <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-base [&>h2]:font-medium [&>span]:mt-0.5 [&>span]:block [&>span]:truncate [&>span]:text-xs">
+                      <p className="text-primary m-0 mb-1 text-xs font-bold tracking-wide uppercase">
                         <Trans>Trash</Trans>
                       </p>
                       <h2>{selectedSummary.name}</h2>
@@ -4057,18 +4093,16 @@ function VaultShellContent({
                       <CardContent>
                         <dl className="m-0 px-(--card-spacing) py-1">
                           <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_1fr] border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:gap-1">
-                            <dt className="text-muted-foreground text-[11px]">
+                            <dt className="text-muted-foreground text-xs">
                               <Trans>Deleted</Trans>
                             </dt>
-                            <dd className="m-0 text-[11px]">
-                              {formatDate(selectedSummary.deletedAt)}
-                            </dd>
+                            <dd className="m-0 text-xs">{formatDate(selectedSummary.deletedAt)}</dd>
                           </div>
                           <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_1fr] border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:gap-1">
-                            <dt className="text-muted-foreground text-[11px]">
+                            <dt className="text-muted-foreground text-xs">
                               <Trans>Original folder</Trans>
                             </dt>
-                            <dd className="m-0 text-[11px]">
+                            <dd className="m-0 text-xs">
                               {folders.find((folder) => folder.id === selectedSummary.folderId)
                                 ?.name ?? t`Unfiled`}
                             </dd>
@@ -4087,7 +4121,7 @@ function VaultShellContent({
                         <CardContent className="contents">
                           <dl className="m-0 px-(--card-spacing) py-1">
                             <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
-                              <dt className="text-muted-foreground text-[11px] leading-4">
+                              <dt className="text-muted-foreground text-xs leading-4">
                                 <Trans>Password history</Trans>
                               </dt>
                               <dd className="m-0 flex min-w-0 items-center gap-2 text-xs leading-4">
@@ -4167,7 +4201,7 @@ function VaultShellContent({
                           imageSrc={
                             cardCoverPreview?.itemId === selectedLogin.id
                               ? cardCoverPreview.dataUrl
-                              : undefined
+                              : cardCoverListPreviews.get(selectedLogin.id)
                           }
                           compact
                         />
@@ -4178,7 +4212,7 @@ function VaultShellContent({
                         })()
                       )}
                     </span>
-                    <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-base [&>h2]:font-medium [&>h2]:tracking-[-0.015em] [&>span]:mt-0.5 [&>span]:block [&>span]:truncate [&>span]:text-[10px]">
+                    <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-base [&>h2]:font-medium [&>span]:mt-0.5 [&>span]:block [&>span]:truncate [&>span]:text-xs">
                       <h2>{selectedLogin.name}</h2>
                       <span>
                         {selectedLogin.subtitle ||
@@ -4223,7 +4257,7 @@ function VaultShellContent({
                                     <Button
                                       variant="outline"
                                       size="icon"
-                                      className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-[34px] min-w-[34px] rounded-md shadow-(--control-highlight)"
+                                      className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-9 min-w-9 rounded-md shadow-(--control-highlight)"
                                       type="button"
                                       aria-label={t`More actions`}
                                       disabled={busy}
@@ -4407,10 +4441,10 @@ function VaultShellContent({
                     >
                       <img className="size-48 object-contain" src={bearCutUrl} alt="" />
                     </EmptyMedia>
-                    <EmptyTitle className="text-foreground m-0 text-xl font-[720]">
+                    <EmptyTitle className="text-foreground m-0 text-xl font-bold">
                       <Trans>No item selected</Trans>
                     </EmptyTitle>
-                    <EmptyDescription className="text-muted-foreground mt-[7px] mb-4 max-w-[290px] text-xs leading-[1.55]">
+                    <EmptyDescription className="text-muted-foreground mt-2 mb-4 max-w-[290px] text-xs leading-relaxed">
                       <Trans>Select an item to view and manage its secure data.</Trans>
                     </EmptyDescription>
                   </EmptyHeader>

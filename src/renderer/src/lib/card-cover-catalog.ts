@@ -1,5 +1,6 @@
 const CARD_COVER_CATALOG_BASE_URL = 'https://tw-card-catalog.gnehs.net'
 const CARD_COVER_CATALOG_ENDPOINT = `${CARD_COVER_CATALOG_BASE_URL}/data/v1/cards-expanded.json`
+const CATALOG_CACHE_TTL_MS = 10 * 60 * 1000
 
 interface CatalogBank {
   name?: unknown
@@ -32,6 +33,13 @@ export interface CardCoverCatalogEntry {
   imageUrl: string
   sourceUrl: string
 }
+
+let catalogCache:
+  | {
+      expiresAt: number
+      promise: Promise<CardCoverCatalogEntry[]>
+    }
+  | undefined
 
 function stringValue(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
@@ -85,28 +93,47 @@ function normalizeCatalogEntry(card: CatalogCard, face: CatalogFace): CardCoverC
 export async function fetchCardCoverCatalog(
   signal?: AbortSignal
 ): Promise<CardCoverCatalogEntry[]> {
-  const response = await fetch(CARD_COVER_CATALOG_ENDPOINT, { signal })
-  if (!response.ok) throw new Error(`Card catalog request failed: ${response.status}`)
-  const payload = (await response.json()) as unknown
-  if (!Array.isArray(payload)) return []
+  const now = Date.now()
+  if (!signal && catalogCache && catalogCache.expiresAt > now) return catalogCache.promise
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
 
-  const entries: CardCoverCatalogEntry[] = []
-  const seen = new Set<string>()
-  for (const card of payload) {
-    if (!card || typeof card !== 'object') continue
-    const catalogCard = card as CatalogCard
-    const faces = Array.isArray(catalogCard.faces)
-      ? catalogCard.faces
-      : [{ imageUrl: catalogCard.faceUrl }]
-    for (const face of faces) {
-      if (!face || typeof face !== 'object') continue
-      const entry = normalizeCatalogEntry(catalogCard, face as CatalogFace)
-      if (!entry || seen.has(entry.id)) continue
-      seen.add(entry.id)
-      entries.push(entry)
+  const request = fetch(CARD_COVER_CATALOG_ENDPOINT, { signal }).then(async (response) => {
+    if (!response.ok) throw new Error(`Card catalog request failed: ${response.status}`)
+    const payload = (await response.json()) as unknown
+    if (!Array.isArray(payload)) return []
+
+    const entries: CardCoverCatalogEntry[] = []
+    const seen = new Set<string>()
+    for (const card of payload) {
+      if (!card || typeof card !== 'object') continue
+      const catalogCard = card as CatalogCard
+      const faces = Array.isArray(catalogCard.faces)
+        ? catalogCard.faces
+        : [{ imageUrl: catalogCard.faceUrl }]
+      for (const face of faces) {
+        if (!face || typeof face !== 'object') continue
+        const entry = normalizeCatalogEntry(catalogCard, face as CatalogFace)
+        if (!entry || seen.has(entry.id)) continue
+        seen.add(entry.id)
+        entries.push(entry)
+      }
     }
+    return entries
+  })
+
+  if (!signal) {
+    const cachedPromise = request.catch((error) => {
+      if (catalogCache?.promise === cachedPromise) catalogCache = undefined
+      throw error
+    })
+    catalogCache = {
+      expiresAt: now + CATALOG_CACHE_TTL_MS,
+      promise: cachedPromise
+    }
+    return catalogCache.promise
   }
-  return entries
+
+  return request
 }
 
 export function filterCardCoverCatalog(

@@ -188,9 +188,9 @@ const paymentCardBrands: Exclude<PaymentCardBrand, 'unknown'>[] = [
   'american-express'
 ]
 
-const fieldGridClassName = 'grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-[13px]'
+const fieldGridClassName = 'grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3'
 const checkFieldClassName =
-  'flex items-start gap-2.5 rounded-lg border bg-muted p-2.5 [&_[data-slot=checkbox]]:size-[17px] [&_[data-slot=checkbox]]:accent-[var(--primary)] [&_[data-slot=field-content]]:grid [&_[data-slot=field-content]]:gap-[3px] [&_[data-slot=field-content]_[data-slot=field-label]]:text-xs [&_[data-slot=field-description]]:text-[10px]'
+  'flex items-start gap-2.5 rounded-lg border bg-muted p-2.5 [&_[data-slot=checkbox]]:size-4 [&_[data-slot=checkbox]]:accent-[var(--primary)] [&_[data-slot=field-content]]:grid [&_[data-slot=field-content]]:gap-1 [&_[data-slot=field-content]_[data-slot=field-label]]:text-xs [&_[data-slot=field-description]]:text-xs'
 
 const itemTypeIcons: Record<VaultItemType, typeof KeyRound> = {
   login: KeyRound,
@@ -405,7 +405,7 @@ function UriMatchExampleText({
   const parts = uriMatchRecognizedParts(value, rawUri)
   if (!rawUri.trim()) {
     return (
-      <span className={cn('text-muted-foreground text-[10px]', className)}>
+      <span className={cn('text-muted-foreground text-xs', className)}>
         <Trans>Enter a URL to see a matching example</Trans>
       </span>
     )
@@ -413,7 +413,7 @@ function UriMatchExampleText({
 
   return (
     <code
-      className={cn('min-w-0 font-mono text-[10px] break-all whitespace-pre-wrap', className)}
+      className={cn('min-w-0 font-mono text-xs break-all whitespace-pre-wrap', className)}
       data-uri-match-recognized={value}
     >
       {parts.leading}
@@ -434,7 +434,7 @@ function UriMatchExample({
 }): React.JSX.Element {
   return (
     <p
-      className="text-muted-foreground m-0 flex min-w-0 flex-wrap items-baseline gap-x-1.5 px-1 text-[10px] leading-4"
+      className="text-muted-foreground m-0 flex min-w-0 flex-wrap items-baseline gap-x-1.5 px-1 text-xs leading-4"
       data-uri-match-example={value}
     >
       <span className="shrink-0 font-medium">
@@ -932,7 +932,7 @@ function LoginEditor({
     const abort = new AbortController()
     cardCoverCatalogAbortRef.current = abort
     setCardCoverCatalog((current) => ({ ...current, status: 'loading', error: '' }))
-    void fetchCardCoverCatalog(abort.signal)
+    void fetchCardCoverCatalog()
       .then((entries) => {
         if (abort.signal.aborted) return
         setCardCoverCatalog({ status: 'ready', entries, error: '' })
@@ -1674,10 +1674,10 @@ function LoginEditor({
           <ItemTypeIcon />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="m-0 truncate text-base font-medium tracking-[-0.015em]" id="editor-title">
+          <h2 className="m-0 truncate text-base font-medium" id="editor-title">
             {headerContent.heading}
           </h2>
-          <p className="text-muted-foreground mt-[3px] mb-0 truncate text-[10px]">
+          <p className="text-muted-foreground mt-1 mb-0 truncate text-xs">
             {headerContent.eyebrow}
             {dirty && (
               <>
@@ -1690,7 +1690,7 @@ function LoginEditor({
         <Button
           variant="outline"
           size="icon"
-          className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-[34px] min-w-[34px] rounded-md shadow-(--control-highlight)"
+          className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-9 min-w-9 rounded-md shadow-(--control-highlight)"
           type="button"
           aria-label={t`Cancel editing`}
           onClick={requestCancel}
@@ -1977,13 +1977,13 @@ function LoginEditor({
                           {login.passkeys.map((passkey, index) => (
                             <article
                               key={`${passkey.credentialId}:${index}`}
-                              className="border-border [&_small]:text-muted-foreground grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-2.5 border-b px-(--card-spacing) py-3 last:border-b-0 [&_small]:truncate [&_small]:text-[10px] [&_span]:truncate [&_span]:text-[11px] [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[3px]"
+                              className="border-border [&_small]:text-muted-foreground grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 border-b px-(--card-spacing) py-3 last:border-b-0 [&_small]:truncate [&_small]:text-xs [&_span]:truncate [&_span]:text-xs [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-1"
                             >
                               <span
                                 className="text-primary grid size-8 place-items-center rounded-md bg-(--accent-soft)"
                                 aria-hidden="true"
                               >
-                                <KeyRound size={17} />
+                                <KeyRound size={16} />
                               </span>
                               <div>
                                 <strong>{passkey.rpName || passkey.rpId}</strong>
@@ -2141,7 +2141,7 @@ function LoginEditor({
                       }
                     })}
                     {cardBrandAutoDetected && detectedCardBrand !== 'unknown' && (
-                      <FieldDescription className="-mt-[5px] mb-0 justify-self-start rounded-full border bg-[var(--accent-soft)] px-[9px] py-[5px] text-[10px] font-bold text-[var(--accent-hover)]">
+                      <FieldDescription className="-mt-1.5 mb-0 justify-self-start rounded-full border bg-[var(--accent-soft)] px-2.5 py-1.5 text-xs font-bold text-[var(--accent-hover)]">
                         <Trans>
                           Card number recognized as {paymentCardBrandLabels[detectedCardBrand]}
                         </Trans>
@@ -3223,7 +3223,7 @@ function LoginEditor({
                       </span>
                       <span className="grid min-w-0 gap-0.5">
                         <span className="truncate text-xs font-semibold">{entry.cardName}</span>
-                        <span className="text-muted-foreground truncate text-[11px]">
+                        <span className="text-muted-foreground truncate text-xs">
                           {[entry.bankName, entry.faceName].filter(Boolean).join(' · ')}
                         </span>
                       </span>

@@ -44,13 +44,10 @@ export function VaultOrganizationSidebarSection({
   }, [collections])
 
   return (
-    <section
-      className="flex flex-none flex-col px-[9px] py-1"
-      aria-labelledby="organizations-title"
-    >
-      <header className="flex items-center justify-between pt-0 pr-1.5 pb-1 pl-[9px]">
+    <section className="flex flex-none flex-col px-3 py-1" aria-labelledby="organizations-title">
+      <header className="flex items-center justify-between pt-0 pr-1.5 pb-1 pl-3">
         <h2
-          className="text-muted-foreground m-0 text-[10px] font-[760] tracking-[0.11em] uppercase"
+          className="text-muted-foreground m-0 text-xs font-bold tracking-wide uppercase"
           id="organizations-title"
         >
           <Trans>Organizations</Trans>
@@ -79,7 +76,7 @@ export function VaultOrganizationSidebarSection({
               {(collectionsByOrganization.get(organization.id) ?? []).map((collection) => (
                 <li className="grid" key={collection.id}>
                   <SidebarLink
-                    icon={<Library size={15} />}
+                    icon={<Library size={16} />}
                     label={collection.name}
                     count={counts.byCollection.get(organization.id)?.get(collection.id) ?? 0}
                     active={

@@ -149,7 +149,7 @@ describe('FolderRow hierarchy', () => {
       </DndContext>
     )
 
-    expect(markup).toContain('padding-inline-start:25px')
+    expect(markup).toContain('padding-inline-start:28px')
     expect(markup).toContain('aria-label="金融/銀行"')
     expect(markup).toContain('cursor-grab')
     expect(markup).toContain('>銀行</span>')
@@ -157,7 +157,7 @@ describe('FolderRow hierarchy', () => {
     expect(markup).not.toContain('lucide-grip-vertical')
   })
 
-  it('exposes an independent expansion control only for folders with children', () => {
+  it('exposes expansion state on the full folder action only for folders with children', () => {
     const folder: FolderView = {
       id: 'finance',
       name: '金融',
@@ -196,7 +196,7 @@ describe('FolderRow hierarchy', () => {
     )
 
     expect(parentMarkup).toContain('aria-expanded="false"')
-    expect(parentMarkup).toContain('padding-inline-start:9px')
+    expect(parentMarkup).toContain('padding-inline-start:12px')
     expect(parentMarkup).toContain('>7</small>')
     expect(parentMarkup).toContain('lucide-folders')
     expect(parentMarkup).not.toContain('lucide-chevron-right')
