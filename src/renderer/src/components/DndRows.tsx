@@ -331,7 +331,7 @@ export function FolderRow({
       {...attributes}
       {...listeners}
       className={cn(
-        'group/folder text-foreground relative grid min-h-10 cursor-grab touch-none grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-lg pe-10',
+        'group/folder text-foreground relative grid min-h-10 cursor-grab touch-none grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg py-1 pe-3',
         !selected && !isOver && !isDragging && 'hover:bg-sidebar-overlay-hover',
         selected && !isDragging && 'bg-sidebar-overlay-active shadow-none',
         isDragging &&
@@ -346,28 +346,9 @@ export function FolderRow({
         paddingInlineStart: `${12 + depth * 16}px`
       }}
     >
-      {hasChildren ? (
-        <span
-          className="text-muted-foreground grid size-6 place-items-center [&>svg]:size-4"
-          aria-hidden="true"
-        >
-          {expanded ? (
-            <FolderOpen data-icon="inline-start" aria-hidden="true" />
-          ) : (
-            <Folders data-icon="inline-start" aria-hidden="true" />
-          )}
-        </span>
-      ) : (
-        <span
-          className="text-muted-foreground grid size-6 place-items-center [&>svg]:size-4"
-          aria-hidden="true"
-        >
-          <Folder />
-        </span>
-      )}
       <Button
         variant="sidebar"
-        className="[&>small]:text-muted-foreground grid h-9 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-0 bg-transparent p-0 text-left text-inherit shadow-none hover:bg-transparent hover:shadow-none aria-expanded:bg-transparent aria-expanded:shadow-none [&>small]:min-w-[3ch] [&>small]:text-right [&>small]:text-xs [&>small]:tabular-nums [&>small]:transition-opacity group-hover/folder:[&>small]:opacity-0 [&>span]:truncate [&>span]:text-xs [&>span]:font-semibold"
+        className="absolute inset-0 z-0 h-auto border-0 bg-transparent p-0 text-left text-inherit shadow-none hover:bg-transparent hover:shadow-none aria-expanded:bg-transparent aria-expanded:shadow-none"
         type="button"
         aria-label={folder.name}
         aria-current={selected ? 'page' : undefined}
@@ -378,20 +359,47 @@ export function FolderRow({
           onSelect()
           if (hasChildren && !toggleDisabled) onToggle?.()
         }}
-      >
+      />
+      {hasChildren ? (
+        <span
+          className="text-muted-foreground pointer-events-none z-10 grid size-6 place-items-center [&>svg]:size-4"
+          aria-hidden="true"
+        >
+          {expanded ? (
+            <FolderOpen data-icon="inline-start" aria-hidden="true" />
+          ) : (
+            <Folders data-icon="inline-start" aria-hidden="true" />
+          )}
+        </span>
+      ) : (
+        <span
+          className="text-muted-foreground pointer-events-none z-10 grid size-6 place-items-center [&>svg]:size-4"
+          aria-hidden="true"
+        >
+          <Folder />
+        </span>
+      )}
+      <strong className="pointer-events-none z-10 min-w-0 truncate text-xs font-semibold">
         <span>{label}</span>
-        <small aria-label={t`${count} items`}>{count}</small>
-      </Button>
-      <RowIconButton
-        variant="ghost"
-        size="icon-sm"
-        className="text-muted-foreground focus-visible:text-muted-foreground hover:text-foreground absolute end-1 grid size-8 place-items-center border-0 bg-transparent p-1 opacity-0 shadow-none transition-opacity group-hover/folder:opacity-100 hover:bg-transparent hover:shadow-none focus-visible:opacity-100"
-        type="button"
-        label={t`Edit folder ${folder.name}`}
-        onClick={onEdit}
-      >
-        <MoreHorizontal aria-hidden="true" />
-      </RowIconButton>
+      </strong>
+      <span className="relative z-10 grid size-8 justify-self-end">
+        <RowIconButton
+          variant="ghost"
+          size="icon-sm"
+          className="peer/edit text-muted-foreground focus-visible:text-muted-foreground hover:text-foreground absolute inset-y-0 -end-2 z-10 grid size-8 place-items-center border-0 bg-transparent p-1 opacity-0 shadow-none transition-opacity group-hover/folder:opacity-100 hover:bg-transparent hover:shadow-none focus-visible:opacity-100"
+          type="button"
+          label={t`Edit folder ${folder.name}`}
+          onClick={onEdit}
+        >
+          <MoreHorizontal aria-hidden="true" />
+        </RowIconButton>
+        <small
+          className="text-muted-foreground pointer-events-none absolute inset-0 grid size-8 items-center justify-items-end text-xs transition-opacity group-hover/folder:opacity-0 peer-focus-visible/edit:opacity-0"
+          aria-label={t`${count} items`}
+        >
+          {count}
+        </small>
+      </span>
     </li>
   )
 }
