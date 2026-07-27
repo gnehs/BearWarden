@@ -3747,7 +3747,7 @@ function parseEquivalentDomainUpdate(value: unknown): BitwardenEquivalentDomainU
   }
 }
 
-function parseEquivalentDomainSettings(value: JsonValue): BitwardenEquivalentDomainSettings {
+export function parseEquivalentDomainSettings(value: JsonValue): BitwardenEquivalentDomainSettings {
   if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
   const object = domainSettingsProperty(value, 'object', 'Object')
   if (object !== undefined && object !== 'domains') {

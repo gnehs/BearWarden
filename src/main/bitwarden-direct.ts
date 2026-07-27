@@ -37,6 +37,7 @@ import {
 import {
   BitwardenHttpClient,
   BitwardenHttpError,
+  parseEquivalentDomainSettings,
   type BitwardenAccountBreachReport,
   type BitwardenAuthRequest,
   type BitwardenAccountDevice,
@@ -1091,10 +1092,39 @@ function draftReprompt(value: unknown): VaultReprompt {
   return value
 }
 
-function bitwardenCipherType(record: JsonObject): BitwardenCipherType {
+function remoteCipherType(record: JsonObject): number {
   const value = property(record, 'type')
-  if (value !== 1 && value !== 2 && value !== 3 && value !== 4 && value !== 5) {
-    throw new BitwardenDirectError('INVALID_RESPONSE')
+  if (
+    typeof value !== 'number' ||
+    !Number.isSafeInteger(value) ||
+    value < 1 ||
+    value > 2_147_483_647
+  ) {
+    throw new BitwardenDirectError(
+      'INVALID_RESPONSE',
+      undefined,
+      undefined,
+      undefined,
+      'unsupported-cipher-type'
+    )
+  }
+  return value
+}
+
+function isSupportedCipherType(value: number): value is BitwardenCipherType {
+  return value === 1 || value === 2 || value === 3 || value === 4 || value === 5
+}
+
+function bitwardenCipherType(record: JsonObject): BitwardenCipherType {
+  const value = remoteCipherType(record)
+  if (!isSupportedCipherType(value)) {
+    throw new BitwardenDirectError(
+      'INVALID_RESPONSE',
+      undefined,
+      undefined,
+      undefined,
+      'unsupported-cipher-type'
+    )
   }
   return value
 }
@@ -2122,6 +2152,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   private organizationCipherRaws = new Map<string, JsonObject>()
   private organizationKeys = new Map<string, Buffer>()
   private sends = new Map<string, CachedSend>()
+  private syncedEquivalentDomainSettings: BitwardenEquivalentDomainSettings | null = null
   private syncedUserDecryptionCapabilities: BitwardenUserDecryptionCapabilities = {
     hasWebAuthnPrfOptions: false,
     hasV2UpgradeToken: false,
@@ -3161,6 +3192,9 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   async getEquivalentDomainSettings(
     signal?: AbortSignal
   ): Promise<BitwardenEquivalentDomainSettings> {
+    if (this.syncedEquivalentDomainSettings) {
+      return structuredClone(this.syncedEquivalentDomainSettings)
+    }
     try {
       return await this.http.getEquivalentDomainSettings(signal)
     } catch (error) {
@@ -3172,6 +3206,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     update: BitwardenEquivalentDomainUpdate,
     signal?: AbortSignal
   ): Promise<void> {
+    // The following read must be authoritative even if the mutation fails after dispatch.
+    this.syncedEquivalentDomainSettings = null
     try {
       await this.http.updateEquivalentDomainSettings(update, signal)
     } catch (error) {
@@ -3657,6 +3693,11 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     let wrappedKeyFingerprint: Buffer | null = null
     try {
       const payload = await this.http.sync(signal)
+      const domains = property(payload, 'domains')
+      const nextEquivalentDomainSettings =
+        domains === undefined || domains === null
+          ? { equivalentDomains: [], globalEquivalentDomains: [] }
+          : parseEquivalentDomainSettings(domains)
       invalidResponseStage = 'account'
       const profile = recordProperty(payload, 'profile')
       if (!profile) throw new BitwardenDirectError('INVALID_RESPONSE')
@@ -3814,6 +3855,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         for (const value of cipherRows) {
           invalidResponseStage = 'cipher'
           if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+          if (!isSupportedCipherType(remoteCipherType(value))) continue
           const organizationId = property(value, 'organizationId')
           if (organizationId === undefined || organizationId === null) continue
           if (typeof organizationId !== 'string' || !UUID_PATTERN.test(organizationId)) {
@@ -3931,7 +3973,10 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         for (const value of cipherRows) {
           invalidResponseStage = 'cipher'
           if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
-          const type = property(value, 'type')
+          const type = remoteCipherType(value)
+          // New Bitwarden/Vaultwarden cipher kinds can ship before BearWarden has an editor for
+          // them. Keep those opaque rows isolated instead of rejecting every supported item.
+          if (!isSupportedCipherType(type)) continue
           const organizationId = property(value, 'organizationId')
           if (organizationId !== null && organizationId !== undefined) {
             if (typeof organizationId !== 'string' || !UUID_PATTERN.test(organizationId)) {
@@ -3944,15 +3989,6 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
                 !providerOrganizationRowsById.has(organizationId))
             ) {
               throw new BitwardenDirectError('INVALID_RESPONSE')
-            }
-            if (type !== 1 && type !== 2 && type !== 3 && type !== 4 && type !== 5) {
-              throw new BitwardenDirectError(
-                'INVALID_RESPONSE',
-                undefined,
-                undefined,
-                undefined,
-                'unsupported-cipher-type'
-              )
             }
             const item = this.decryptLogin(value, organizationKey)
             const organizationCipher = this.organizationCipher(value, item, organizationId)
@@ -3967,15 +4003,6 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
                 item.attachments.length
             )
             continue
-          }
-          if (type !== 1 && type !== 2 && type !== 3 && type !== 4 && type !== 5) {
-            throw new BitwardenDirectError(
-              'INVALID_RESPONSE',
-              undefined,
-              undefined,
-              undefined,
-              'unsupported-cipher-type'
-            )
           }
           const item = this.decryptLogin(value, userKey)
           aggregateRows = addAggregateRemoteRows(
@@ -4037,6 +4064,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       for (const organizationKey of this.organizationKeys.values()) organizationKey.fill(0)
       this.organizationKeys = nextOrganizationKeys
       this.sends = nextSends
+      this.syncedEquivalentDomainSettings = structuredClone(nextEquivalentDomainSettings)
       this.syncedUserDecryptionCapabilities = nextUserDecryptionCapabilities
       this.state.profileId = profileId
       this.state.securityStamp = securityStamp
@@ -5091,7 +5119,17 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       stretched.combinedKey = Buffer.alloc(0)
       await this.notifyStateChanged()
     } catch (error) {
-      throw this.mapError(error)
+      const mapped = this.mapError(error)
+      if (mapped.code === 'INVALID_RESPONSE' && !mapped.syncInvalidResponseStage) {
+        throw new BitwardenDirectError(
+          'INVALID_RESPONSE',
+          undefined,
+          'response',
+          undefined,
+          mapped.syncInvalidResponseReason ?? 'response-shape'
+        )
+      }
+      throw mapped
     } finally {
       // JavaScript strings are immutable; release the local assertion/token reference promptly.
       twoFactorToken = undefined
@@ -6314,6 +6352,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     for (const organizationKey of this.organizationKeys.values()) organizationKey.fill(0)
     this.organizationKeys.clear()
     this.sends.clear()
+    this.syncedEquivalentDomainSettings = null
     this.syncedUserDecryptionCapabilities = {
       hasWebAuthnPrfOptions: false,
       hasV2UpgradeToken: false,

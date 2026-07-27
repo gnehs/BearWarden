@@ -2098,6 +2098,41 @@ describe('VaultService encrypted local data', () => {
     expect(Number.isFinite(Date.parse(status.lastErrorAt!))).toBe(true)
   })
 
+  it('publishes response diagnostics when an initial connection fails before configuration', async () => {
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        const fake = createSyncFake(sync.state)
+        fake.login = async () => {
+          throw new BitwardenDirectError(
+            'INVALID_RESPONSE',
+            undefined,
+            'response',
+            undefined,
+            'response-shape'
+          )
+        }
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+
+    await expect(
+      service.connectSync({
+        serverUrl: 'https://vault.example.invalid',
+        email: 'sync@example.invalid',
+        masterPassword: 'remote master password'
+      })
+    ).rejects.toMatchObject({ code: 'SYNC_INVALID_RESPONSE' })
+    await expect(service.syncStatus()).resolves.toMatchObject({
+      configured: false,
+      state: 'error',
+      lastError: 'SYNC_INVALID_RESPONSE',
+      lastErrorAt: expect.any(String),
+      lastErrorDetail: 'response',
+      lastErrorReason: 'response-shape'
+    })
+  })
+
   it('reports Duo-only two-factor challenges as an unsupported login flow', async () => {
     let fake: ReturnType<typeof createSyncFake> | null = null
     const { service } = await createHarness({

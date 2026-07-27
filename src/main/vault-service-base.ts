@@ -928,7 +928,11 @@ export class VaultServiceBase {
 
   protected async currentSyncStatus(checkConnection: boolean): Promise<SyncStatus> {
     const data = this.requireData()
-    if (!data.sync) return { configured: false, state: 'unconfigured' }
+    if (!data.sync) {
+      return this.syncLastError
+        ? { configured: false, state: 'error', ...this.syncErrorStatusFields() }
+        : { configured: false, state: 'unconfigured' }
+    }
     if (this.syncInProgress) return this.baseSyncStatus(data.sync, 'syncing')
     if (this.syncLastError) return this.baseSyncStatus(data.sync, 'error')
     if (!checkConnection) return this.baseSyncStatus(data.sync, 'locked')
@@ -949,14 +953,7 @@ export class VaultServiceBase {
       serverUrl: sync.serverUrl,
       email: sync.email,
       ...(sync.lastSyncAt ? { lastSyncAt: sync.lastSyncAt } : {}),
-      ...(this.syncLastError ? { lastError: this.syncLastError } : {}),
-      ...(this.syncLastError && this.syncLastErrorAt ? { lastErrorAt: this.syncLastErrorAt } : {}),
-      ...(this.syncLastError === 'SYNC_INVALID_RESPONSE' && this.syncLastErrorDetail
-        ? { lastErrorDetail: this.syncLastErrorDetail }
-        : {}),
-      ...(this.syncLastError === 'SYNC_INVALID_RESPONSE' && this.syncLastErrorReason
-        ? { lastErrorReason: this.syncLastErrorReason }
-        : {}),
+      ...this.syncErrorStatusFields(),
       ...(sync.pendingLoginImport?.phase === 'dispatched'
         ? {
             pendingImport: {
@@ -973,6 +970,19 @@ export class VaultServiceBase {
               startedAt: sync.pendingPersonalVaultPurge.startedAt
             }
           }
+        : {})
+    }
+  }
+
+  protected syncErrorStatusFields(): Partial<SyncStatus> {
+    return {
+      ...(this.syncLastError ? { lastError: this.syncLastError } : {}),
+      ...(this.syncLastError && this.syncLastErrorAt ? { lastErrorAt: this.syncLastErrorAt } : {}),
+      ...(this.syncLastError === 'SYNC_INVALID_RESPONSE' && this.syncLastErrorDetail
+        ? { lastErrorDetail: this.syncLastErrorDetail }
+        : {}),
+      ...(this.syncLastError === 'SYNC_INVALID_RESPONSE' && this.syncLastErrorReason
+        ? { lastErrorReason: this.syncLastErrorReason }
         : {})
     }
   }

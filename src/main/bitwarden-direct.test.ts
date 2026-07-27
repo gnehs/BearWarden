@@ -1028,6 +1028,26 @@ async function clientForSync(sync: JsonObject): Promise<BitwardenDirectClient> {
 }
 
 describe('BitwardenDirectClient', () => {
+  it('annotates incompatible sign-in responses with a safe response stage', async () => {
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: new BitwardenHttpClient({
+        server: 'https://vault.example.invalid',
+        fetch: async (url) =>
+          url.endsWith('/identity/accounts/prelogin/password')
+            ? jsonResponse({ kdf: 'unexpected' })
+            : jsonResponse({ message: 'not found' }, 404)
+      })
+    })
+
+    await expect(client.login({ email: EMAIL, password: PASSWORD })).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+      syncInvalidResponseStage: 'response',
+      syncInvalidResponseReason: 'response-shape'
+    })
+  })
+
   it('persists remembered two-factor tokens separately and retries with provider 5', async () => {
     const tokenBodies: URLSearchParams[] = []
     const http = new BitwardenHttpClient({
@@ -4176,6 +4196,7 @@ describe('BitwardenDirectClient', () => {
     const sync = await encryptedSync()
     delete sync.folders
     delete sync.ciphers
+    delete sync.domains
     sync.collections = null
     sync.sends = null
 
@@ -4184,13 +4205,56 @@ describe('BitwardenDirectClient', () => {
     await expect(client.listPersonalLogins()).resolves.toEqual([])
     await expect(client.listCollections()).resolves.toEqual([])
     await expect(client.listSends()).resolves.toEqual([])
+    await expect(client.getEquivalentDomainSettings()).resolves.toEqual({
+      equivalentDomains: [],
+      globalEquivalentDomains: []
+    })
   })
 
-  it('fails atomically with a value-free reason for an unsupported cipher type', async () => {
+  it('uses equivalent domains embedded in the atomic sync snapshot', async () => {
+    const sync = await encryptedSync()
+    sync.domains = {
+      object: 'domains',
+      equivalentDomains: [['first.example', 'second.example']],
+      globalEquivalentDomains: [{ type: 4, domains: ['global.example'], excluded: false }]
+    }
+
+    const client = await clientForSync(sync)
+    await expect(client.getEquivalentDomainSettings()).resolves.toEqual({
+      equivalentDomains: [['first.example', 'second.example']],
+      globalEquivalentDomains: [{ type: 4, domains: ['global.example'], excluded: false }]
+    })
+  })
+
+  it('isolates unsupported future cipher types without rejecting supported vault data', async () => {
     const sync = await encryptedSync()
     const cipher = (sync.ciphers as JsonObject[])[0]!
-    cipher.type = 99
-    cipher.id = 'sensitive-identifier-must-not-be-reported'
+    const unsupportedPersonal = {
+      ...cipher,
+      id: '90000000-0000-4000-8000-000000000006',
+      type: 6,
+      bankAccount: { accountNumber: 'opaque-encrypted-bank-account' }
+    }
+    const unsupportedOrganization = {
+      ...cipher,
+      id: '90000000-0000-4000-8000-000000000007',
+      type: 7,
+      organizationId: '90000000-0000-4000-8000-000000000099',
+      driversLicense: { number: 'opaque-encrypted-license' }
+    }
+    sync.ciphers = [cipher, unsupportedPersonal, unsupportedOrganization]
+
+    const client = await clientForSync(sync)
+    await expect(client.listPersonalLogins()).resolves.toEqual([
+      expect.objectContaining({ id: LOGIN_ID, name: 'Example' })
+    ])
+    await expect(client.listOrganizationCiphers?.()).resolves.toEqual([])
+  })
+
+  it('rejects malformed cipher type values instead of treating them as future types', async () => {
+    const sync = await encryptedSync()
+    const cipher = (sync.ciphers as JsonObject[])[0]!
+    cipher.type = 0
 
     await expectInvalidSync(sync, 'INVALID_RESPONSE', 'cipher', 'unsupported-cipher-type')
   })
