@@ -37,7 +37,7 @@ import {
   type BitwardenTwoFactor,
   type BitwardenWebAuthnRegistrationSetup
 } from './bitwarden-direct'
-import { resolveBitwardenUrls } from './bitwarden-http'
+import { resolveBitwardenUrls, type BitwardenEquivalentDomainSettings } from './bitwarden-http'
 import {
   BITWARDEN_POLICY_TYPE,
   policyEnforcementDecision,
@@ -428,8 +428,7 @@ export class VaultServiceBase {
       clearSyncError: () => this.clearSyncErrorState(),
       mapSyncError: (error) => this.mapSyncError(error),
       copyText: (text) => this.platform.copyText(text),
-      assertMutationAllowed: () =>
-        this.assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.DisableSend)
+      assertMutationAllowed: () => this.assertSendMutationAllowed()
     })
   }
 
@@ -1022,6 +1021,24 @@ export class VaultServiceBase {
   ): void {
     const decision = this.bitwardenPolicyDecision(type, data)
     if (decision.state !== 'not-applicable') throw new VaultError(errorCode)
+  }
+
+  protected assertSendMutationAllowed(data: VaultData = this.requireData()): void {
+    this.assertBitwardenPolicyDoesNotBlock(
+      BITWARDEN_POLICY_TYPE.DisableSend,
+      'POLICY_RESTRICTED',
+      data
+    )
+    const controls = this.bitwardenPolicyDecision(BITWARDEN_POLICY_TYPE.SendControls, data)
+    if (controls.state === 'fail-closed') throw new VaultError('POLICY_RESTRICTED')
+    if (
+      controls.state === 'enforce' &&
+      controls.policies.some(
+        (policy) => policy.data?.kind !== 'sendControls' || policy.data.disableSend
+      )
+    ) {
+      throw new VaultError('POLICY_RESTRICTED')
+    }
   }
 
   protected assertPersonalItemTypeAllowed(type: VaultItemType, data: VaultData): void {
@@ -1970,17 +1987,23 @@ export class VaultServiceBase {
       // Do not reuse the mutation signal: cancellation after dispatch must not suppress the
       // authoritative read that distinguishes a completed purge from an unknown partial result.
       await client.sync()
+      const isolatedPersonalCipherIds = this.isolatedPersonalCipherIds(client)
       const [remoteFolders, remoteLogins] = await Promise.all([
         client.listFolders(),
         client.listPersonalLogins()
       ])
-      if (remoteFolders.length === 0 && remoteLogins.length === 0) {
+      if (
+        remoteFolders.length === 0 &&
+        remoteLogins.length === 0 &&
+        isolatedPersonalCipherIds.size === 0
+      ) {
         return await this.finalizePersonalVaultPurge(current, client)
       }
       const pending = cloneData(current)
       if (!pending.sync?.pendingPersonalVaultPurge) throw new VaultError('SYNC_FAILED')
       pending.sync.pendingPersonalVaultPurge.phase = 'dispatched'
-      pending.sync.pendingPersonalVaultPurge.remainingItems = remoteLogins.length
+      pending.sync.pendingPersonalVaultPurge.remainingItems =
+        remoteLogins.length + isolatedPersonalCipherIds.size
       pending.sync.pendingPersonalVaultPurge.remainingFolders = remoteFolders.length
       pending.sync.state = client.exportState()
       pending.sync.lastSyncAt = this.nowIso()
@@ -1990,7 +2013,7 @@ export class VaultServiceBase {
       this.clearSyncErrorState()
       return {
         status: 'pending',
-        remainingItems: remoteLogins.length,
+        remainingItems: remoteLogins.length + isolatedPersonalCipherIds.size,
         remainingFolders: remoteFolders.length,
         startedAt: journal.startedAt
       }
@@ -2064,11 +2087,16 @@ export class VaultServiceBase {
     const unchanged = await this.skipUnchangedRemoteSync(source, client, signal, syncStartedAt)
     if (unchanged) return unchanged
     await client.sync(signal)
+    this.assertNoIsolatedMappedLogins(client, [...sync.loginMappings, ...sync.loginTombstones])
     const sharedSnapshot = await this.fetchSharedSnapshot(client)
     const initialRemote = await Promise.all([
       client.listFolders(signal),
       client.listPersonalLogins(signal),
-      client.getEquivalentDomainSettings(signal),
+      this.getSyncEquivalentDomainSettings(
+        client,
+        sync.domainSettings ?? { equivalentDomains: [], globalEquivalentDomains: [] },
+        signal
+      ),
       client.listSends?.(signal) ?? Promise.resolve([] as BitwardenSendItem[])
     ])
     let remoteFolders = initialRemote[0]
@@ -2084,6 +2112,10 @@ export class VaultServiceBase {
     if (next.sync?.pendingLoginMutation) {
       await this.resumePendingLoginMutation(next, client, remoteFolders, remoteLogins, signal)
       await client.sync(signal)
+      this.assertNoIsolatedMappedLogins(client, [
+        ...(next.sync?.loginMappings ?? []),
+        ...(next.sync?.loginTombstones ?? [])
+      ])
       const refreshed = await Promise.all([
         client.listFolders(signal),
         client.listPersonalLogins(signal),
@@ -2220,10 +2252,11 @@ export class VaultServiceBase {
 
     const metadata = completeSyncMetadata(plan, results)
     await client.sync(signal)
+    this.assertNoIsolatedMappedLogins(client, metadata.loginLinks)
     const [finalRemoteFolders, finalRemoteLogins, finalDomainSettings] = await Promise.all([
       client.listFolders(signal),
       client.listPersonalLogins(signal),
-      client.getEquivalentDomainSettings(signal)
+      this.getSyncEquivalentDomainSettings(client, initialRemote[2], signal)
     ])
     const finalSharedSnapshot = await this.fetchSharedSnapshot(client)
     const finalRemoteSends = client.listSends ? await client.listSends(signal) : remoteSends
@@ -2616,6 +2649,53 @@ export class VaultServiceBase {
         remoteId: entry.remoteId,
         baseFingerprint: entry.baseFingerprint
       }))
+    }
+  }
+
+  protected getAuthoritativeEquivalentDomainSettings(
+    client: BitwardenSyncClient,
+    signal?: AbortSignal
+  ): Promise<BitwardenEquivalentDomainSettings> {
+    const getter =
+      client.getAuthoritativeEquivalentDomainSettings ?? client.getEquivalentDomainSettings
+    return getter.call(client, signal)
+  }
+
+  protected async getSyncEquivalentDomainSettings(
+    client: BitwardenSyncClient,
+    lastKnownGood: BitwardenEquivalentDomainSettings,
+    signal?: AbortSignal
+  ): Promise<BitwardenEquivalentDomainSettings> {
+    try {
+      return await this.getAuthoritativeEquivalentDomainSettings(client, signal)
+    } catch (error) {
+      if (
+        error instanceof BitwardenDirectError &&
+        (error.code === 'INVALID_RESPONSE' ||
+          error.code === 'TOO_LARGE' ||
+          error.code === 'NOT_FOUND')
+      ) {
+        // Equivalent-domain rules are ancillary matching hints. A malformed self-hosted setting
+        // must not block vault data, but it also must not replace the last authoritative snapshot.
+        return cloneEquivalentDomainSettings(lastKnownGood)
+      }
+      throw error
+    }
+  }
+
+  protected isolatedPersonalCipherIds(client: BitwardenSyncClient): ReadonlySet<string> {
+    return new Set(client.isolatedPersonalCipherIds?.() ?? [])
+  }
+
+  protected assertNoIsolatedMappedLogins(
+    client: BitwardenSyncClient,
+    links: readonly { remoteId: string }[]
+  ): void {
+    const isolated = this.isolatedPersonalCipherIds(client)
+    if (links.some((link) => isolated.has(link.remoteId))) {
+      // Absence from the decrypted snapshot is not proof of remote deletion when the connector
+      // deliberately isolated a future cipher kind. Refuse mutations and preserve last-good data.
+      throw new VaultError('SYNC_FAILED')
     }
   }
 

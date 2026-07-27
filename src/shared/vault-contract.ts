@@ -923,7 +923,8 @@ export type EmergencyAccessStatus = 0 | 1 | 2 | 3 | 4
 export interface EmergencyAccessView {
   id: string
   role: 'trusted' | 'granted'
-  subjectId: string
+  /** Null while a trusted-contact invitation is still pending acceptance. */
+  subjectId: string | null
   name: string | null
   email: string
   type: number

@@ -619,6 +619,15 @@ export interface BitwardenSyncClient {
   /** Authenticated Vaultwarden HIBP account-breach report; it does not require vault decryption. */
   getAccountBreachReport(email: string, signal?: AbortSignal): Promise<BitwardenAccountBreachReport>
   getEquivalentDomainSettings(signal?: AbortSignal): Promise<BitwardenEquivalentDomainSettings>
+  /**
+   * Fetches the complete settings document instead of the filtered matching hints embedded in
+   * `/sync`. Callers must use this for revision checks and replacement writes.
+   */
+  getAuthoritativeEquivalentDomainSettings?(
+    signal?: AbortSignal
+  ): Promise<BitwardenEquivalentDomainSettings>
+  /** Secret-free IDs of personal cipher rows isolated from the latest committed snapshot. */
+  isolatedPersonalCipherIds?(): readonly string[]
   updateEquivalentDomainSettings(
     update: BitwardenEquivalentDomainUpdate,
     signal?: AbortSignal
@@ -835,6 +844,11 @@ function isSafePersistedPolicyData(value: JsonObject): boolean {
   ) {
     return hasOnlyPolicyKeys(value, ['kind'])
   }
+  if (kind === 'sendControls') {
+    return (
+      hasOnlyPolicyKeys(value, ['kind', 'disableSend']) && typeof value.disableSend === 'boolean'
+    )
+  }
   if (kind === 'maximumVaultTimeout') {
     return (
       hasOnlyPolicyKeys(value, ['kind', 'minutes', 'timeoutType', 'action']) &&
@@ -1034,6 +1048,37 @@ function optionalRemoteArrayProperty(record: JsonObject, name: string): JsonValu
     throw new BitwardenDirectError('INVALID_RESPONSE')
   }
   return value
+}
+
+function requiredRemoteArrayProperty(record: JsonObject, name: string): JsonValue[] {
+  const value = property(record, name)
+  if (!Array.isArray(value) || value.length > MAX_REMOTE_ENTITIES) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+  return value
+}
+
+function emptyEquivalentDomainSettings(): BitwardenEquivalentDomainSettings {
+  return { equivalentDomains: [], globalEquivalentDomains: [] }
+}
+
+function parseSyncEquivalentDomainSettings(
+  value: JsonValue | undefined
+): BitwardenEquivalentDomainSettings {
+  if (value === undefined || value === null) return emptyEquivalentDomainSettings()
+  try {
+    return parseEquivalentDomainSettings(value)
+  } catch (error) {
+    if (
+      error instanceof BitwardenHttpError &&
+      (error.code === 'INVALID_RESPONSE' || error.code === 'TOO_LARGE')
+    ) {
+      // Equivalent domains are ancillary matching hints. Invalid server-stored values must not
+      // block vault data, and disabling every equivalence is the fail-closed matching fallback.
+      return emptyEquivalentDomainSettings()
+    }
+    throw error
+  }
 }
 
 function stringProperty(record: JsonObject, name: string): string | null {
@@ -2152,6 +2197,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   private organizationCipherRaws = new Map<string, JsonObject>()
   private organizationKeys = new Map<string, Buffer>()
   private sends = new Map<string, CachedSend>()
+  private isolatedPersonalCiphers = new Set<string>()
   private syncedEquivalentDomainSettings: BitwardenEquivalentDomainSettings | null = null
   private syncedUserDecryptionCapabilities: BitwardenUserDecryptionCapabilities = {
     hasWebAuthnPrfOptions: false,
@@ -3202,6 +3248,20 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     }
   }
 
+  async getAuthoritativeEquivalentDomainSettings(
+    signal?: AbortSignal
+  ): Promise<BitwardenEquivalentDomainSettings> {
+    try {
+      return await this.http.getEquivalentDomainSettings(signal)
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  isolatedPersonalCipherIds(): readonly string[] {
+    return [...this.isolatedPersonalCiphers]
+  }
+
   async updateEquivalentDomainSettings(
     update: BitwardenEquivalentDomainUpdate,
     signal?: AbortSignal
@@ -3694,10 +3754,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     try {
       const payload = await this.http.sync(signal)
       const domains = property(payload, 'domains')
-      const nextEquivalentDomainSettings =
-        domains === undefined || domains === null
-          ? { equivalentDomains: [], globalEquivalentDomains: [] }
-          : parseEquivalentDomainSettings(domains)
+      const nextEquivalentDomainSettings = parseSyncEquivalentDomainSettings(domains)
       invalidResponseStage = 'account'
       const profile = recordProperty(payload, 'profile')
       if (!profile) throw new BitwardenDirectError('INVALID_RESPONSE')
@@ -3753,24 +3810,29 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       const nextOrganizationCipherRaws = new Map<string, JsonObject>()
       const nextOrganizationKeys = new Map<string, Buffer>()
       const nextSends = new Map<string, CachedSend>()
+      const nextIsolatedPersonalCiphers = new Set<string>()
       const organizationKeys = new Map<string, Buffer>()
       try {
         invalidResponseStage = 'folder'
-        const folderRows = optionalRemoteArrayProperty(payload, 'folders')
+        const folderRows = requiredRemoteArrayProperty(payload, 'folders')
         invalidResponseStage = 'cipher'
-        const cipherRows = optionalRemoteArrayProperty(payload, 'ciphers')
+        const cipherRows = requiredRemoteArrayProperty(payload, 'ciphers')
         invalidResponseStage = 'collection'
         const collectionRows = optionalRemoteArrayProperty(payload, 'collections')
         invalidResponseStage = 'send'
         const sendRows = optionalRemoteArrayProperty(payload, 'sends')
         invalidResponseStage = 'organization'
-        const organizationsValue = property(profile, 'organizationsNew')
+        const profileOrganizationsValue = property(profile, 'organizationsNew')
+        const rootOrganizationsValue = property(payload, 'organizationsNew')
         const legacyOrganizationsValue = property(profile, 'organizations')
         const organizationRows = (() => {
           if (
-            (organizationsValue !== undefined &&
-              organizationsValue !== null &&
-              !Array.isArray(organizationsValue)) ||
+            (profileOrganizationsValue !== undefined &&
+              profileOrganizationsValue !== null &&
+              !Array.isArray(profileOrganizationsValue)) ||
+            (rootOrganizationsValue !== undefined &&
+              rootOrganizationsValue !== null &&
+              !Array.isArray(rootOrganizationsValue)) ||
             (legacyOrganizationsValue !== undefined &&
               legacyOrganizationsValue !== null &&
               !Array.isArray(legacyOrganizationsValue))
@@ -3778,9 +3840,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
             throw new BitwardenDirectError('INVALID_RESPONSE')
           }
           const rows =
-            Array.isArray(organizationsValue) && organizationsValue.length > 0
-              ? organizationsValue
-              : (legacyOrganizationsValue ?? organizationsValue)
+            profileOrganizationsValue ?? rootOrganizationsValue ?? legacyOrganizationsValue
           if (rows === undefined || rows === null) return []
           if (!Array.isArray(rows) || rows.length > MAX_REMOTE_ENTITIES) {
             throw new BitwardenDirectError('INVALID_RESPONSE')
@@ -3852,15 +3912,26 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
           }
         }
         const requiredOrganizationIds = new Set<string>()
+        const cipherIds = new Set<string>()
         for (const value of cipherRows) {
           invalidResponseStage = 'cipher'
           if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
-          if (!isSupportedCipherType(remoteCipherType(value))) continue
+          const id = assertUuidValue(requiredStringProperty(value, 'id'))
+          if (cipherIds.has(id)) throw new BitwardenDirectError('INVALID_RESPONSE')
+          cipherIds.add(id)
+          const type = remoteCipherType(value)
           const organizationId = property(value, 'organizationId')
+          if (!isSupportedCipherType(type)) {
+            if (organizationId === undefined || organizationId === null) {
+              nextIsolatedPersonalCiphers.add(id)
+              continue
+            }
+          }
           if (organizationId === undefined || organizationId === null) continue
           if (typeof organizationId !== 'string' || !UUID_PATTERN.test(organizationId)) {
             throw new BitwardenDirectError('INVALID_RESPONSE')
           }
+          if (!isSupportedCipherType(type)) continue
           requiredOrganizationIds.add(organizationId)
         }
         for (const value of collectionRows) {
@@ -3968,6 +4039,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
           invalidResponseStage = 'folder'
           if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
           const item = this.decryptFolder(value, userKey)
+          if (nextFolders.has(item.id)) throw new BitwardenDirectError('INVALID_RESPONSE')
           nextFolders.set(item.id, { raw: structuredClone(value), item })
         }
         for (const value of cipherRows) {
@@ -4064,6 +4136,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       for (const organizationKey of this.organizationKeys.values()) organizationKey.fill(0)
       this.organizationKeys = nextOrganizationKeys
       this.sends = nextSends
+      this.isolatedPersonalCiphers = nextIsolatedPersonalCiphers
       this.syncedEquivalentDomainSettings = structuredClone(nextEquivalentDomainSettings)
       this.syncedUserDecryptionCapabilities = nextUserDecryptionCapabilities
       this.state.profileId = profileId
@@ -5162,9 +5235,22 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     const masterPasswordUnlock = userDecryption
       ? recordProperty(userDecryption, 'masterPasswordUnlock')
       : null
-    const modern = masterPasswordUnlock
+    const encryptedName = masterPasswordUnlock
       ? stringProperty(masterPasswordUnlock, 'masterKeyEncryptedUserKey')
       : null
+    const wrappedName = masterPasswordUnlock
+      ? stringProperty(masterPasswordUnlock, 'masterKeyWrappedUserKey')
+      : null
+    if (encryptedName && wrappedName && encryptedName !== wrappedName) {
+      throw new BitwardenDirectError(
+        'INVALID_RESPONSE',
+        undefined,
+        undefined,
+        undefined,
+        'user-decryption-data'
+      )
+    }
+    const modern = encryptedName ?? wrappedName
     const legacy = stringProperty(profile, 'key')
     const wrapped = modern ?? legacy
     if (!wrapped) {
@@ -5326,9 +5412,14 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   }
 
   private decryptFolder(raw: JsonObject, userKey: BitwardenSymmetricKey): BitwardenFolder {
+    const id = assertUuidValue(requiredStringProperty(raw, 'id'))
+    const name = decryptBitwardenString(requiredStringProperty(raw, 'name'), userKey)
+    if (!name || name.length > MAX_NAME_LENGTH) {
+      throw new BitwardenDirectError('INVALID_RESPONSE')
+    }
     return {
-      id: requiredStringProperty(raw, 'id'),
-      name: decryptBitwardenString(requiredStringProperty(raw, 'name'), userKey)
+      id,
+      name
     }
   }
 
@@ -6352,6 +6443,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     for (const organizationKey of this.organizationKeys.values()) organizationKey.fill(0)
     this.organizationKeys.clear()
     this.sends.clear()
+    this.isolatedPersonalCiphers.clear()
     this.syncedEquivalentDomainSettings = null
     this.syncedUserDecryptionCapabilities = {
       hasWebAuthnPrfOptions: false,

@@ -86,6 +86,23 @@ describe('Bitwarden organization policy parser', () => {
     expect(JSON.stringify(result)).not.toContain('deeply')
   })
 
+  it('retains the current SendControls disable flag for enforcement', () => {
+    const disabled = parseBitwardenPolicySync({
+      PoliciesNew: [policy(BITWARDEN_POLICY_TYPE.SendControls, { disableSend: true })]
+    })
+    expect(disabled.policies).toMatchObject([
+      {
+        execution: 'actionable',
+        data: { kind: 'sendControls', disableSend: true }
+      }
+    ])
+
+    const enabled = parseBitwardenPolicySync({
+      PoliciesNew: [policy(BITWARDEN_POLICY_TYPE.SendControls, { disableSend: false })]
+    })
+    expect(enabled.policies[0]?.data).toEqual({ kind: 'sendControls', disableSend: false })
+  })
+
   it('uses the official legacy Card restriction and normalizes bounded cipher types', () => {
     const result = parseBitwardenPolicySync({
       Policies: [

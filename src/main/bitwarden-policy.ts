@@ -73,11 +73,17 @@ export interface BooleanPolicyMetadata {
     | 'removeUnlockWithPin'
 }
 
+export interface SendControlsPolicyMetadata {
+  kind: 'sendControls'
+  disableSend: boolean
+}
+
 export type ActionablePolicyMetadata =
   | PasswordGeneratorPolicyMetadata
   | MaximumVaultTimeoutPolicyMetadata
   | RestrictedItemTypesPolicyMetadata
   | BooleanPolicyMetadata
+  | SendControlsPolicyMetadata
 
 /** Safe to persist: it contains no server policy payload, banner text, domains, or secrets. */
 export interface BitwardenPolicyMetadata {
@@ -319,6 +325,9 @@ function actionableData(type: number, data: unknown): ActionablePolicyMetadata |
       return { kind: 'removeUnlockWithPin' }
     case BITWARDEN_POLICY_TYPE.RestrictedItemTypes:
       return parseRestrictedItemTypes(data)
+    case BITWARDEN_POLICY_TYPE.SendControls:
+      if (!isRecord(data) || typeof data.disableSend !== 'boolean') return null
+      return { kind: 'sendControls', disableSend: data.disableSend }
     default:
       return undefined
   }

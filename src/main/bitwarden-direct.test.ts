@@ -999,7 +999,10 @@ async function expectInvalidSync(
   await expect(client.listPersonalLogins()).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
 }
 
-async function clientForSync(sync: JsonObject): Promise<BitwardenDirectClient> {
+async function clientForSync(
+  sync: JsonObject,
+  authoritativeDomains?: JsonObject
+): Promise<BitwardenDirectClient> {
   const http = new BitwardenHttpClient({
     server: 'https://vault.example.invalid',
     fetch: async (url) => {
@@ -1014,6 +1017,9 @@ async function clientForSync(sync: JsonObject): Promise<BitwardenDirectClient> {
         })
       }
       if (url.includes('/api/sync?')) return jsonResponse(sync)
+      if (url.endsWith('/api/settings/domains') && authoritativeDomains) {
+        return jsonResponse(authoritativeDomains)
+      }
       return jsonResponse({ message: 'not found' }, 404)
     }
   })
@@ -2164,7 +2170,7 @@ describe('BitwardenDirectClient', () => {
     itemKey.fill(0)
   })
 
-  it('falls back from an empty OrganizationsNew list to legacy organizations', async () => {
+  it('treats an empty OrganizationsNew list as authoritative', async () => {
     const sync = await encryptedSync()
     const profile = sync.profile as JsonObject
     profile.organizationsNew = []
@@ -2181,8 +2187,25 @@ describe('BitwardenDirectClient', () => {
     ]
 
     const client = await clientForSync(sync)
+    await expect(client.listOrganizations()).resolves.toEqual([])
+  })
+
+  it('accepts the legacy sync-root location for OrganizationsNew', async () => {
+    const sync = await encryptedSync()
+    const profile = sync.profile as JsonObject
+    delete profile.organizationsNew
+    profile.organizations = []
+    sync.organizationsNew = [
+      {
+        id: ORGANIZATION_ID,
+        name: 'Root organization',
+        usePolicies: true
+      }
+    ]
+
+    const client = await clientForSync(sync)
     await expect(client.listOrganizations()).resolves.toEqual([
-      expect.objectContaining({ id: ORGANIZATION_ID, name: 'Legacy fallback team' })
+      expect.objectContaining({ id: ORGANIZATION_ID, name: 'Root organization' })
     ])
   })
 
@@ -4192,7 +4215,7 @@ describe('BitwardenDirectClient', () => {
     }
   })
 
-  it('accepts omitted optional sync entity arrays as empty snapshots', async () => {
+  it('rejects omitted core sync entity arrays instead of inferring remote deletion', async () => {
     const sync = await encryptedSync()
     delete sync.folders
     delete sync.ciphers
@@ -4200,15 +4223,26 @@ describe('BitwardenDirectClient', () => {
     sync.collections = null
     sync.sends = null
 
+    await expectInvalidSync(sync, 'INVALID_RESPONSE', 'folder')
+
+    const nullCiphers = await encryptedSync()
+    nullCiphers.ciphers = null
+    await expectInvalidSync(nullCiphers, 'INVALID_RESPONSE', 'cipher')
+  })
+
+  it('preserves the last committed snapshot after a later incomplete core response', async () => {
+    const sync = await encryptedSync()
     const client = await clientForSync(sync)
-    await expect(client.listFolders()).resolves.toEqual([])
-    await expect(client.listPersonalLogins()).resolves.toEqual([])
-    await expect(client.listCollections()).resolves.toEqual([])
-    await expect(client.listSends()).resolves.toEqual([])
-    await expect(client.getEquivalentDomainSettings()).resolves.toEqual({
-      equivalentDomains: [],
-      globalEquivalentDomains: []
+    const foldersBefore = await client.listFolders()
+    const loginsBefore = await client.listPersonalLogins()
+
+    delete sync.folders
+    await expect(client.sync()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+      syncInvalidResponseStage: 'folder'
     })
+    await expect(client.listFolders()).resolves.toEqual(foldersBefore)
+    await expect(client.listPersonalLogins()).resolves.toEqual(loginsBefore)
   })
 
   it('uses equivalent domains embedded in the atomic sync snapshot', async () => {
@@ -4219,10 +4253,50 @@ describe('BitwardenDirectClient', () => {
       globalEquivalentDomains: [{ type: 4, domains: ['global.example'], excluded: false }]
     }
 
-    const client = await clientForSync(sync)
+    const client = await clientForSync(sync, {
+      equivalentDomains: [['authoritative.example']],
+      globalEquivalentDomains: [{ type: 4, domains: ['global.example'], excluded: true }]
+    })
     await expect(client.getEquivalentDomainSettings()).resolves.toEqual({
       equivalentDomains: [['first.example', 'second.example']],
       globalEquivalentDomains: [{ type: 4, domains: ['global.example'], excluded: false }]
+    })
+    await expect(client.getAuthoritativeEquivalentDomainSettings()).resolves.toEqual({
+      equivalentDomains: [['authoritative.example']],
+      globalEquivalentDomains: [{ type: 4, domains: ['global.example'], excluded: true }]
+    })
+  })
+
+  it('accepts nullable equivalent-domain lists from an official sync response', async () => {
+    const sync = await encryptedSync()
+    sync.domains = {
+      object: 'domains',
+      equivalentDomains: null,
+      globalEquivalentDomains: [{ type: 4, domains: ['global.example'], excluded: false }]
+    }
+
+    const client = await clientForSync(sync)
+    await expect(client.getEquivalentDomainSettings()).resolves.toEqual({
+      equivalentDomains: [],
+      globalEquivalentDomains: [{ type: 4, domains: ['global.example'], excluded: false }]
+    })
+  })
+
+  it('isolates incompatible equivalent domains without rejecting vault data', async () => {
+    const sync = await encryptedSync()
+    sync.domains = {
+      object: 'domains',
+      equivalentDomains: [['valid.example', ' leading-space.example']],
+      globalEquivalentDomains: []
+    }
+
+    const client = await clientForSync(sync)
+    await expect(client.listPersonalLogins()).resolves.toEqual([
+      expect.objectContaining({ id: LOGIN_ID, name: 'Example' })
+    ])
+    await expect(client.getEquivalentDomainSettings()).resolves.toEqual({
+      equivalentDomains: [],
+      globalEquivalentDomains: []
     })
   })
 
@@ -4249,6 +4323,7 @@ describe('BitwardenDirectClient', () => {
       expect.objectContaining({ id: LOGIN_ID, name: 'Example' })
     ])
     await expect(client.listOrganizationCiphers?.()).resolves.toEqual([])
+    expect(client.isolatedPersonalCipherIds()).toEqual(['90000000-0000-4000-8000-000000000006'])
   })
 
   it('rejects malformed cipher type values instead of treating them as future types', async () => {
@@ -4277,6 +4352,23 @@ describe('BitwardenDirectClient', () => {
     const malformed = await encryptedSync()
     malformed.userDecryption = { webAuthnPrfOptions: ['opaque-secret'] }
     await expectInvalidSync(malformed, 'INVALID_RESPONSE', 'account', 'user-decryption-data')
+  })
+
+  it('accepts the cross-client masterKeyWrappedUserKey alias', async () => {
+    const sync = await encryptedSync()
+    const profile = sync.profile as JsonObject
+    const userDecryption = {
+      masterPasswordUnlock: {
+        masterKeyWrappedUserKey: profile.key
+      }
+    }
+    delete profile.key
+    sync.userDecryption = userDecryption
+
+    const client = await clientForSync(sync)
+    await expect(client.listPersonalLogins()).resolves.toEqual([
+      expect.objectContaining({ id: LOGIN_ID, name: 'Example' })
+    ])
   })
 
   it('commits PoliciesNew with explicit policy membership and exports an isolated snapshot', async () => {

@@ -1203,6 +1203,29 @@ describe('BitwardenHttpClient', () => {
     )
   })
 
+  it.each([404, 405])(
+    'falls back to the legacy Vaultwarden prelogin route after %s',
+    async (status) => {
+      const fetch = vi
+        .fn<FetchLike>()
+        .mockResolvedValueOnce(json({ message: 'unsupported route' }, status))
+        .mockResolvedValueOnce(json({ Kdf: 0, KdfIterations: 100000 }))
+      const client = new BitwardenHttpClient({
+        server: 'https://vault.example.invalid',
+        fetch
+      })
+
+      await expect(client.prelogin('person@example.test')).resolves.toMatchObject({
+        kdfType: 0,
+        iterations: 100000
+      })
+      expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+        'https://vault.example.invalid/identity/accounts/prelogin/password',
+        'https://vault.example.invalid/identity/accounts/prelogin'
+      ])
+    }
+  )
+
   it('sends OAuth form tokens with 2FA and parses the rotated session', async () => {
     const fetch = vi
       .fn<FetchLike>()
@@ -1750,7 +1773,7 @@ describe('BitwardenHttpClient', () => {
     expect(JSON.stringify(fetch.mock.calls)).not.toContain('must-not-escape')
   })
 
-  it('accepts Vaultwarden Emergency Access details with nullable or omitted display metadata', async () => {
+  it('accepts a pending Emergency Access invitation with no grantee ID', async () => {
     const fetch = vi
       .fn<FetchLike>()
       .mockResolvedValueOnce(
@@ -1758,7 +1781,7 @@ describe('BitwardenHttpClient', () => {
           data: [
             {
               id: '61000000-0000-4000-8000-000000000001',
-              granteeId: '61000000-0000-4000-8000-000000000002',
+              granteeId: null,
               name: '',
               email: 'trusted@example.invalid',
               type: 0,
@@ -1790,6 +1813,7 @@ describe('BitwardenHttpClient', () => {
     await expect(client.listEmergencyAccess()).resolves.toEqual([
       expect.objectContaining({
         role: 'trusted',
+        subjectId: null,
         name: '',
         creationDate: null,
         avatarColor: null
@@ -1981,6 +2005,38 @@ describe('BitwardenHttpClient', () => {
     expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
       equivalentDomains: [['one.example'], ['first.example', 'second.example']],
       excludedGlobalEquivalentDomains: [7]
+    })
+  })
+
+  it('normalizes nullable official equivalent-domain lists to empty settings', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        json({
+          object: 'domains',
+          equivalentDomains: null,
+          globalEquivalentDomains: [
+            { type: 1, domains: ['google.com', 'gmail.com'], excluded: false }
+          ]
+        })
+      )
+      .mockResolvedValueOnce(
+        json({
+          object: 'domains',
+          equivalentDomains: [],
+          globalEquivalentDomains: null
+        })
+      )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 1 })
+
+    await expect(client.getEquivalentDomainSettings()).resolves.toEqual({
+      equivalentDomains: [],
+      globalEquivalentDomains: [{ type: 1, domains: ['google.com', 'gmail.com'], excluded: false }]
+    })
+    await expect(client.getEquivalentDomainSettings()).resolves.toEqual({
+      equivalentDomains: [],
+      globalEquivalentDomains: []
     })
   })
 

@@ -265,7 +265,8 @@ export type BitwardenEmergencyAccessStatus = 0 | 1 | 2 | 3 | 4
 export interface BitwardenEmergencyAccess {
   id: string
   role: 'trusted' | 'granted'
-  subjectId: string
+  /** Pending trusted invitations do not have a grantee user ID until acceptance. */
+  subjectId: string | null
   name: string | null
   email: string
   type: number
@@ -3714,6 +3715,10 @@ function parseEquivalentDomainGroups(value: JsonValue | undefined): string[][] {
   })
 }
 
+function parseNullableEquivalentDomainGroups(value: JsonValue | undefined): string[][] {
+  return value === undefined || value === null ? [] : parseEquivalentDomainGroups(value)
+}
+
 function parseEquivalentDomainTypes(value: JsonValue | undefined): number[] {
   if (!Array.isArray(value) || value.length > MAX_EQUIVALENT_DOMAIN_GROUPS) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
@@ -3753,14 +3758,15 @@ export function parseEquivalentDomainSettings(value: JsonValue): BitwardenEquiva
   if (object !== undefined && object !== 'domains') {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
-  const equivalentDomains = parseEquivalentDomainGroups(
+  const equivalentDomains = parseNullableEquivalentDomainGroups(
     domainSettingsProperty(value, 'equivalentDomains', 'EquivalentDomains')
   )
-  const rawGlobals = domainSettingsProperty(
+  const globalValue = domainSettingsProperty(
     value,
     'globalEquivalentDomains',
     'GlobalEquivalentDomains'
   )
+  const rawGlobals = globalValue === undefined || globalValue === null ? [] : globalValue
   if (!Array.isArray(rawGlobals) || rawGlobals.length > MAX_EQUIVALENT_DOMAIN_GROUPS) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
@@ -3887,11 +3893,10 @@ function parseEmergencyAccessList(
   return rows.map((candidate) => {
     if (!isRecord(candidate)) throw new BitwardenHttpError('INVALID_RESPONSE')
     const id = emergencyStringProperty(candidate, 'id', 'Id')
-    const subjectId = emergencyStringProperty(
-      candidate,
-      role === 'trusted' ? 'granteeId' : 'grantorId',
-      role === 'trusted' ? 'GranteeId' : 'GrantorId'
-    )
+    const subjectId =
+      role === 'trusted'
+        ? emergencyNullableStringProperty(candidate, 'granteeId', 'GranteeId')
+        : emergencyStringProperty(candidate, 'grantorId', 'GrantorId')
     const name = emergencyNullableStringProperty(candidate, 'name', 'Name')
     const email = emergencyStringProperty(candidate, 'email', 'Email')
     const type = finiteInteger(emergencyProperty(candidate, 'type', 'Type'))
@@ -3902,8 +3907,8 @@ function parseEmergencyAccessList(
     if (
       !id ||
       !UUID_PATTERN.test(id) ||
-      !subjectId ||
-      !UUID_PATTERN.test(subjectId) ||
+      (role === 'granted' && !subjectId) ||
+      (subjectId !== null && !UUID_PATTERN.test(subjectId)) ||
       (name !== null && Buffer.byteLength(name, 'utf8') > 256) ||
       !email ||
       Buffer.byteLength(email, 'utf8') > 512 ||

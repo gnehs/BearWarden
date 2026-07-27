@@ -11,7 +11,8 @@ import {
   derivePasswordKey,
   encryptBitwardenBytes,
   encryptBitwardenString,
-  stretchMasterKey
+  stretchMasterKey,
+  type BitwardenKdf
 } from './bitwarden-crypto'
 import { BitwardenDirectClient } from './bitwarden-direct'
 
@@ -20,7 +21,23 @@ const EMAIL = 'bearwarden-integration@example.invalid'
 const PASSWORD = 'fake integration master password'
 const GRANTEE_EMAIL = 'bearwarden-emergency-contact@example.invalid'
 const GRANTEE_PASSWORD = 'fake emergency contact master password'
-const KDF_ITERATIONS = 100_000
+const PBKDF2_KDF: BitwardenKdf = { type: 'pbkdf2', iterations: 100_000 }
+const ARGON2_KDF: BitwardenKdf = {
+  type: 'argon2id',
+  iterations: 3,
+  memoryMiB: 64,
+  parallelism: 4
+}
+const requestedOwnerKdf = process.env.BEARWARDEN_VAULTWARDEN_KDF
+if (
+  requestedOwnerKdf !== undefined &&
+  requestedOwnerKdf !== 'pbkdf2' &&
+  requestedOwnerKdf !== 'argon2id'
+) {
+  throw new Error('BEARWARDEN_VAULTWARDEN_KDF must be pbkdf2 or argon2id')
+}
+const OWNER_KDF = requestedOwnerKdf === 'pbkdf2' ? PBKDF2_KDF : ARGON2_KDF
+const GRANTEE_KDF = OWNER_KDF.type === 'pbkdf2' ? ARGON2_KDF : PBKDF2_KDF
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 
 interface TemporaryAccountKeys {
@@ -28,16 +45,29 @@ interface TemporaryAccountKeys {
   publicKey: Buffer
 }
 
+function responseUuid(value: unknown, operation: string): string {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`Vaultwarden ${operation} returned an invalid response`)
+  }
+  const record = value as Record<string, unknown>
+  if (record.id !== undefined && record.Id !== undefined && record.id !== record.Id) {
+    throw new Error(`Vaultwarden ${operation} returned conflicting ids`)
+  }
+  const id = record.id ?? record.Id
+  if (typeof id !== 'string' || !UUID_PATTERN.test(id)) {
+    throw new Error(`Vaultwarden ${operation} returned an invalid id`)
+  }
+  return id
+}
+
 async function registerTemporaryAccount(
   server: string,
   email: string,
   password: string,
-  name: string
+  name: string,
+  kdf: BitwardenKdf
 ): Promise<TemporaryAccountKeys> {
-  const masterKey = await deriveMasterKey(password, email, {
-    type: 'pbkdf2',
-    iterations: KDF_ITERATIONS
-  })
+  const masterKey = await deriveMasterKey(password, email, kdf)
   const passwordKey = await derivePasswordKey(masterKey, password)
   const stretched = stretchMasterKey(masterKey)
   const userKey = randomBytes(64)
@@ -53,10 +83,10 @@ async function registerTemporaryAccount(
         email,
         name,
         masterPasswordHint: null,
-        kdf: 0,
-        kdfIterations: KDF_ITERATIONS,
-        kdfMemory: null,
-        kdfParallelism: null,
+        kdf: kdf.type === 'pbkdf2' ? 0 : 1,
+        kdfIterations: kdf.iterations,
+        kdfMemory: kdf.type === 'argon2id' ? kdf.memoryMiB : null,
+        kdfParallelism: kdf.type === 'argon2id' ? kdf.parallelism : null,
         key: encryptBitwardenBytes(userKey, stretched.combinedKey),
         masterPasswordHash: passwordKey.toString('base64'),
         keys: {
@@ -88,13 +118,20 @@ async function registerTemporaryAccount(
 async function registerTemporaryAccounts(
   server: string
 ): Promise<{ owner: TemporaryAccountKeys; grantee: TemporaryAccountKeys }> {
-  const owner = await registerTemporaryAccount(server, EMAIL, PASSWORD, 'BearWarden integration')
+  const owner = await registerTemporaryAccount(
+    server,
+    EMAIL,
+    PASSWORD,
+    'BearWarden integration',
+    OWNER_KDF
+  )
   try {
     const grantee = await registerTemporaryAccount(
       server,
       GRANTEE_EMAIL,
       GRANTEE_PASSWORD,
-      'BearWarden emergency contact'
+      'BearWarden emergency contact',
+      GRANTEE_KDF
     )
     return { owner, grantee }
   } catch (error) {
@@ -131,12 +168,9 @@ async function createTemporaryOrganization(
         `Vaultwarden organization creation failed (${response.status}): ${await response.text()}`
       )
     }
-    const result = (await response.json()) as { id?: unknown }
-    if (typeof result.id !== 'string' || !UUID_PATTERN.test(result.id)) {
-      throw new Error('Vaultwarden organization creation returned an invalid id')
-    }
+    const id = responseUuid(await response.json(), 'organization creation')
     retained = true
-    return { id: result.id, key: organizationKey }
+    return { id, key: organizationKey }
   } finally {
     if (!retained) organizationKey.fill(0)
   }
@@ -199,11 +233,7 @@ async function createTemporaryOrganizationCipher(
         `Vaultwarden organization cipher creation failed (${response.status}): ${await response.text()}`
       )
     }
-    const result = (await response.json()) as { id?: unknown }
-    if (typeof result.id !== 'string' || !UUID_PATTERN.test(result.id)) {
-      throw new Error('Vaultwarden organization cipher creation returned an invalid id')
-    }
-    return result.id
+    return responseUuid(await response.json(), 'organization cipher creation')
   } finally {
     itemKey.fill(0)
   }

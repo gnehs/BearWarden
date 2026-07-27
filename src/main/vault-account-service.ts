@@ -2063,7 +2063,7 @@ export class VaultAccountService extends VaultServiceBase {
       const abort = this.startSyncOperation()
       try {
         const settings = validateRemoteEquivalentDomainSettings(
-          await client.getEquivalentDomainSettings(abort.signal)
+          await this.getAuthoritativeEquivalentDomainSettings(client, abort.signal)
         )
         if (abort.signal.aborted) throw new BitwardenDirectError('ABORTED')
         const next = cloneData(current)
@@ -2098,7 +2098,7 @@ export class VaultAccountService extends VaultServiceBase {
       const abort = this.startSyncOperation()
       try {
         const serverSettings = validateRemoteEquivalentDomainSettings(
-          await client.getEquivalentDomainSettings(abort.signal)
+          await this.getAuthoritativeEquivalentDomainSettings(client, abort.signal)
         )
         if (equivalentDomainRevision(serverSettings) !== request.expectedRevision) {
           throw new VaultError('SYNC_CONFLICT')
@@ -2109,7 +2109,7 @@ export class VaultAccountService extends VaultServiceBase {
         }
         await client.updateEquivalentDomainSettings(update, abort.signal)
         const confirmed = validateRemoteEquivalentDomainSettings(
-          await client.getEquivalentDomainSettings(abort.signal)
+          await this.getAuthoritativeEquivalentDomainSettings(client, abort.signal)
         )
         if (abort.signal.aborted) throw new BitwardenDirectError('ABORTED')
         const next = cloneData(current)

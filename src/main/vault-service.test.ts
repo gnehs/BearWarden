@@ -229,6 +229,7 @@ async function createVaultPasskey(
 function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient & {
   remoteFolders: Array<{ id: string; name: string }>
   remoteLogins: BitwardenLoginItem[]
+  isolatedPersonalIds: string[]
   purgeCalls: string[]
   softDeletedIds: string[]
   restoredIds: string[]
@@ -297,6 +298,7 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
       reprompt: 0
     }
   ]
+  const isolatedPersonalIds: string[] = []
   const fromDraft = (id: string, draft: BitwardenLoginDraft): BitwardenLoginItem => ({
     ...emptyItemFields,
     id,
@@ -366,6 +368,7 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
   return {
     remoteFolders,
     remoteLogins,
+    isolatedPersonalIds,
     purgeCalls,
     softDeletedIds,
     restoredIds,
@@ -413,6 +416,7 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
         securityStamp: 'test-security-stamp'
       }
     },
+    isolatedPersonalCipherIds: () => [...isolatedPersonalIds],
     notificationAccessToken: async () => {
       if (!state.session) throw new Error('missing fake session')
       return state.session.accessToken
@@ -1272,6 +1276,64 @@ describe('VaultService encrypted local data', () => {
     )
     await reopened.unlock('replacement horse battery staple')
     await expect(reopened.masterPasswordChangeStatus()).resolves.toMatchObject({ phase: null })
+  })
+
+  it('preserves mapped local data when a remote cipher becomes an isolated future type', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+
+    const local = (await service.listLogins())[0]!
+    const remoteId = fake!.remoteLogins[0]!.id
+    fake!.remoteLogins.splice(0)
+    fake!.isolatedPersonalIds.push(remoteId)
+
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    await expect(service.getLogin({ id: local.id })).resolves.toMatchObject({
+      id: local.id,
+      name: local.name
+    })
+    expect(fake!.hardDeletedIds).toEqual([])
+    expect(fake!.editedLoginIds).toEqual([])
+
+    await service.updateLogin({ id: local.id, name: 'Locally edited while isolated' })
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(fake!.remoteLogins).toEqual([])
+  })
+
+  it('keeps core vault sync available when self-hosted domain settings are malformed', async () => {
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        const fake = createSyncFake(sync.state)
+        fake.getEquivalentDomainSettings = async () => {
+          throw new BitwardenDirectError('INVALID_RESPONSE')
+        }
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+
+    await expect(
+      service.connectSync({
+        serverUrl: 'https://vault.example.invalid',
+        email: 'sync@example.invalid',
+        masterPassword: 'remote master password'
+      })
+    ).resolves.toMatchObject({ state: 'ready', pulled: 2 })
+    await expect(service.listLogins()).resolves.toHaveLength(1)
+    await expect(service.getEquivalentDomainSettings()).rejects.toMatchObject({
+      code: 'SYNC_INVALID_RESPONSE'
+    })
   })
 
   it.each([
