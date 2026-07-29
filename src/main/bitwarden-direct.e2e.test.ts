@@ -421,9 +421,7 @@ describe('BitwardenDirectClient loopback V1 protocol', () => {
         'refresh-token-1'
       )
 
-      const syncRequests = vault.requests.filter(
-        (request) => request.path === '/api/sync?excludeDomains=false'
-      )
+      const syncRequests = vault.requests.filter((request) => request.path === '/api/sync')
       expect(syncRequests.map((request) => request.authorization)).toEqual([
         'Bearer access-token-1',
         'Bearer access-token-2'

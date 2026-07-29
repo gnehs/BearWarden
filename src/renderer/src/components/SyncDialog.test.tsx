@@ -52,6 +52,10 @@ describe('SyncDialog error diagnostics', () => {
   it('maps every invalid-response reason to a fixed non-sensitive label', () => {
     const reasons = [
       'response-shape',
+      'empty-response',
+      'invalid-json',
+      'non-object-response',
+      'session-response',
       'account-profile',
       'user-decryption-data',
       'organization-profile',

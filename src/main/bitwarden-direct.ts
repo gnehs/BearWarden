@@ -222,6 +222,10 @@ export type BitwardenSyncInvalidResponseStage =
 /** Value-free, closed reasons safe to surface in sync diagnostics. */
 export type BitwardenSyncInvalidResponseReason =
   | 'response-shape'
+  | 'empty-response'
+  | 'invalid-json'
+  | 'non-object-response'
+  | 'session-response'
   | 'account-profile'
   | 'user-decryption-data'
   | 'organization-profile'
@@ -6490,7 +6494,15 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       if (error.code === 'USER_VERIFICATION_FAILED') {
         return new BitwardenDirectError('USER_VERIFICATION_FAILED')
       }
-      if (error.code === 'INVALID_RESPONSE') return new BitwardenDirectError('INVALID_RESPONSE')
+      if (error.code === 'INVALID_RESPONSE') {
+        return new BitwardenDirectError(
+          'INVALID_RESPONSE',
+          undefined,
+          undefined,
+          undefined,
+          error.invalidResponseReason
+        )
+      }
       return new BitwardenDirectError('NETWORK')
     }
     return new BitwardenDirectError('INVALID_RESPONSE')

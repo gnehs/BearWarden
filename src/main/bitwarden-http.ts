@@ -374,6 +374,10 @@ export type BitwardenHttpErrorCode =
   | 'ATTACHMENT_REJECTED'
   | 'USER_VERIFICATION_FAILED'
 
+/** Fixed, value-free response failures safe to propagate into sync diagnostics. */
+export type BitwardenHttpInvalidResponseReason =
+  'empty-response' | 'invalid-json' | 'non-object-response' | 'session-response'
+
 export class BitwardenHttpError extends Error {
   constructor(
     readonly code: BitwardenHttpErrorCode,
@@ -383,7 +387,9 @@ export class BitwardenHttpError extends Error {
     /** Strictly normalized provider-7 request options; the raw token error is not retained. */
     readonly webAuthnChallenge?: AccountWebAuthnChallenge,
     /** Main-process-only, bounded provider ids; raw provider metadata is never retained. */
-    readonly twoFactorProviders?: readonly BitwardenTwoFactorProviderId[]
+    readonly twoFactorProviders?: readonly BitwardenTwoFactorProviderId[],
+    /** Fixed, value-free response failure; raw response data is never retained. */
+    readonly invalidResponseReason?: BitwardenHttpInvalidResponseReason
   ) {
     super(`Bitwarden HTTP request failed (${code})`)
     this.name = 'BitwardenHttpError'
@@ -406,6 +412,9 @@ const RETRYABLE_METHODS = new Set(['GET', 'PUT', 'DELETE'])
 const DEFAULT_MAX_RETRIES = 5
 const ACCESS_TOKEN_REFRESH_LEEWAY_MS = 60_000
 const MAX_RESPONSE_BYTES = 128 * 1024 * 1024
+// Sync snapshots can legitimately be much larger than ordinary JSON API responses. Keep a
+// finite process-safety boundary while avoiding the previous 128 MiB compatibility cliff.
+const MAX_SYNC_RESPONSE_BYTES = 512 * 1024 * 1024
 const MAX_HIBP_BREACH_RESPONSE_BYTES = 4 * 1024 * 1024
 const MAX_ACCOUNT_PROFILE_RESPONSE_BYTES = 256 * 1024
 const MAX_ACCOUNT_DEVICES_RESPONSE_BYTES = 4 * 1024 * 1024
@@ -661,7 +670,14 @@ function parseJson(text: string): JsonValue {
   try {
     return JSON.parse(text) as JsonValue
   } catch {
-    throw new BitwardenHttpError('INVALID_RESPONSE')
+    throw new BitwardenHttpError(
+      'INVALID_RESPONSE',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'invalid-json'
+    )
   }
 }
 
@@ -1730,12 +1746,33 @@ export class BitwardenHttpClient {
   }
 
   async sync(signal?: AbortSignal): Promise<JsonObject> {
-    const response = await this.requestJson(
-      'GET',
-      `${this.urls.apiUrl}/sync?excludeDomains=false`,
-      { signal }
-    )
-    if (!isRecord(response)) throw new BitwardenHttpError('INVALID_RESPONSE')
+    // Match the official clients. Both Bitwarden and Vaultwarden default excludeDomains to false
+    // when omitted, and the query-free route avoids proxy/cache rules that special-case queries.
+    const response = await this.requestJson('GET', `${this.urls.apiUrl}/sync`, {
+      signal,
+      maxResponseBytes: MAX_SYNC_RESPONSE_BYTES,
+      tooLargeCode: 'TOO_LARGE'
+    })
+    if (response === null) {
+      throw new BitwardenHttpError(
+        'INVALID_RESPONSE',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'empty-response'
+      )
+    }
+    if (!isRecord(response)) {
+      throw new BitwardenHttpError(
+        'INVALID_RESPONSE',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'non-object-response'
+      )
+    }
     return response
   }
 
@@ -2317,6 +2354,7 @@ export class BitwardenHttpClient {
       throw error
     }
     const updated = parseSession(payload, this.now(), {
+      refreshToken,
       clientId: retainedClientId,
       twoFactorToken: previousSession?.twoFactorToken
     })
@@ -2336,6 +2374,16 @@ export class BitwardenHttpClient {
       return new BitwardenHttpError('ABORTED')
     }
     return new BitwardenHttpError('NETWORK')
+  }
+
+  private mapResponseReadFailure(
+    error: unknown,
+    signal: AbortSignal | undefined
+  ): BitwardenHttpError {
+    if (error instanceof BitwardenHttpError) return error
+    // A body stream can independently surface AbortError when the peer, proxy, decompressor, or
+    // socket terminates. Only an explicitly aborted caller is a user cancellation.
+    return new BitwardenHttpError(signal?.aborted ? 'ABORTED' : 'NETWORK')
   }
 
   private async requestMultipart(
@@ -2378,7 +2426,12 @@ export class BitwardenHttpClient {
         if (this.session?.accessToken === attemptedAccessToken) await this.refresh(signal)
         continue
       }
-      const text = await boundedResponseText(response)
+      let text: string
+      try {
+        text = await boundedResponseText(response)
+      } catch (error) {
+        throw this.mapResponseReadFailure(error, signal)
+      }
       if (!response.ok) throw toHttpError(response.status, parseErrorJson(text))
       return
     }
@@ -2573,6 +2626,7 @@ export class BitwardenHttpClient {
       if (request.signal?.aborted) throw new BitwardenHttpError('ABORTED')
       const initHeaders = headers(request.headers)
       initHeaders.set('cache-control', 'no-store')
+      if (!initHeaders.has('accept')) initHeaders.set('accept', 'application/json')
       initHeaders.set('bitwarden-client-name', this.options.clientName ?? 'desktop')
       initHeaders.set('bitwarden-client-version', this.options.clientVersion ?? '1.0.0')
       if (request.form)
@@ -2626,11 +2680,12 @@ export class BitwardenHttpClient {
         if (delay > 0) await this.sleep(delay, request.signal)
         continue
       }
-      const text = await boundedResponseText(
-        response,
-        request.maxResponseBytes,
-        request.tooLargeCode
-      )
+      let text: string
+      try {
+        text = await boundedResponseText(response, request.maxResponseBytes, request.tooLargeCode)
+      } catch (error) {
+        throw this.mapResponseReadFailure(error, request.signal)
+      }
       const payload =
         text.length === 0 ? null : response.ok ? parseJson(text) : parseErrorJson(text)
       if (!response.ok) throw toHttpError(response.status, payload)
@@ -4142,13 +4197,16 @@ function hasInvalidGrant(details: JsonObject | undefined): boolean {
 function parseSession(
   value: JsonValue,
   now: number,
-  inherited: { clientId?: string; twoFactorToken?: string } = {}
+  inherited: { refreshToken?: string; clientId?: string; twoFactorToken?: string } = {}
 ): BitwardenSession {
-  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const accessToken = string(value.access_token ?? value.accessToken)
-  const refreshToken = string(value.refresh_token ?? value.refreshToken)
-  const expiresAt = normalizeExpiresAt(value.expires_in ?? value.expiresAt, now)
-  if (!accessToken || !refreshToken || !expiresAt) throw new BitwardenHttpError('INVALID_RESPONSE')
+  if (!isRecord(value)) throw invalidSessionResponse()
+  const accessToken = optionalOpaqueAuthToken(value.access_token ?? value.accessToken)
+  const responseRefreshToken = optionalOpaqueAuthToken(value.refresh_token ?? value.refreshToken)
+  const refreshToken = responseRefreshToken ?? optionalOpaqueAuthToken(inherited.refreshToken)
+  const expiresAt =
+    normalizeExpiresAt(value.expires_in ?? value.expiresAt, now) ??
+    expiresAtFromAccessToken(accessToken)
+  if (!accessToken || !refreshToken || !expiresAt) throw invalidSessionResponse()
   const responseTwoFactorToken = optionalOpaqueAuthToken(
     value.TwoFactorToken ?? value.twoFactorToken
   )
@@ -4164,6 +4222,47 @@ function parseSession(
     expiresAt,
     ...(twoFactorToken ? { twoFactorToken } : {}),
     ...(clientId ? { clientId } : {})
+  }
+}
+
+function invalidSessionResponse(): BitwardenHttpError {
+  return new BitwardenHttpError(
+    'INVALID_RESPONSE',
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    'session-response'
+  )
+}
+
+function expiresAtFromAccessToken(accessToken: string | undefined): number | undefined {
+  if (!accessToken) return undefined
+  const parts = accessToken.split('.')
+  if (parts.length !== 3 || !/^[A-Za-z0-9_-]+$/u.test(parts[1] ?? '')) return undefined
+  try {
+    const payloadBytes = Buffer.from(parts[1]!, 'base64url')
+    if (
+      payloadBytes.length === 0 ||
+      payloadBytes.length > MAX_JWT_PAYLOAD_BYTES ||
+      payloadBytes.toString('base64url') !== parts[1]
+    ) {
+      return undefined
+    }
+    const payload: unknown = JSON.parse(payloadBytes.toString('utf8'))
+    if (!isRecord(payload)) return undefined
+    const expiresAtSeconds = payload.exp
+    if (
+      typeof expiresAtSeconds !== 'number' ||
+      !Number.isSafeInteger(expiresAtSeconds) ||
+      expiresAtSeconds <= 0 ||
+      !Number.isSafeInteger(expiresAtSeconds * 1000)
+    ) {
+      return undefined
+    }
+    return expiresAtSeconds * 1000
+  } catch {
+    return undefined
   }
 }
 

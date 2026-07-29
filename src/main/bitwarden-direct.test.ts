@@ -673,7 +673,7 @@ async function loginRequestHarness(
           expires_in: 3_600
         })
       }
-      if (url.includes('/api/sync?')) return jsonResponse(sync)
+      if (url.endsWith('/api/sync')) return jsonResponse(sync)
       if (url.endsWith('/api/auth-requests/pending')) {
         return jsonResponse({ data: [request], object: 'list', continuationToken: null })
       }
@@ -748,7 +748,7 @@ async function syncedAttachmentClient(
           expires_in: 3_600
         })
       }
-      if (url.includes('/api/sync?')) return jsonResponse(sync)
+      if (url.endsWith('/api/sync')) return jsonResponse(sync)
       if (url.endsWith(`/api/ciphers/${LOGIN_ID}/attachment/${attachmentId}`)) {
         return jsonResponse(fresh)
       }
@@ -824,7 +824,7 @@ async function attachmentMutationHarness(
         expires_in: 3_600
       })
     }
-    if (url.includes('/api/sync?')) {
+    if (url.endsWith('/api/sync')) {
       events.push('sync')
       return jsonResponse(sync)
     }
@@ -981,7 +981,7 @@ async function expectInvalidSync(
           expires_in: 3_600
         })
       }
-      if (url.includes('/api/sync?')) return jsonResponse(sync)
+      if (url.endsWith('/api/sync')) return jsonResponse(sync)
       return jsonResponse({ message: 'not found' }, 404)
     }
   })
@@ -1016,7 +1016,7 @@ async function clientForSync(
           expires_in: 3_600
         })
       }
-      if (url.includes('/api/sync?')) return jsonResponse(sync)
+      if (url.endsWith('/api/sync')) return jsonResponse(sync)
       if (url.endsWith('/api/settings/domains') && authoritativeDomains) {
         return jsonResponse(authoritativeDomains)
       }
@@ -1052,6 +1052,30 @@ describe('BitwardenDirectClient', () => {
       syncInvalidResponseStage: 'response',
       syncInvalidResponseReason: 'response-shape'
     })
+  })
+
+  it('preserves a value-free invalid JSON reason across the direct-client boundary', async () => {
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: new BitwardenHttpClient({
+        server: 'https://vault.example.invalid',
+        fetch: async () =>
+          new Response('<html>proxy response with private deployment details</html>', {
+            status: 200
+          })
+      })
+    })
+
+    const error = await client
+      .login({ email: EMAIL, password: PASSWORD })
+      .catch((caught: unknown) => caught)
+    expect(error).toMatchObject({
+      code: 'INVALID_RESPONSE',
+      syncInvalidResponseStage: 'response',
+      syncInvalidResponseReason: 'invalid-json'
+    })
+    expect(JSON.stringify(error)).not.toContain('private deployment details')
   })
 
   it('persists remembered two-factor tokens separately and retries with provider 5', async () => {
@@ -1635,7 +1659,7 @@ describe('BitwardenDirectClient', () => {
             refresh_token: 'refresh',
             expires_in: 3600
           })
-        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
         if (url.endsWith('/api/accounts/password')) {
           bodies.push(JSON.parse(String(init?.body)) as JsonObject)
           return new Response(null, { status: 200 })
@@ -1686,7 +1710,7 @@ describe('BitwardenDirectClient', () => {
             refresh_token: 'refresh',
             expires_in: 3600
           })
-        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
         if (url.endsWith('/api/accounts/password')) {
           body = JSON.parse(String(init?.body)) as JsonObject
           return new Response(null, { status: 200 })
@@ -1736,7 +1760,7 @@ describe('BitwardenDirectClient', () => {
             refresh_token: 'refresh',
             expires_in: 3600
           })
-        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
         if (url.endsWith('/api/accounts/password')) {
           mutationCalls += 1
           throw new TypeError('connection dropped after upload')
@@ -1777,7 +1801,7 @@ describe('BitwardenDirectClient', () => {
             refresh_token: 'refresh',
             expires_in: 3600
           })
-        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
         if (url.endsWith('/api/accounts/password')) {
           mutationCalls += 1
           return jsonResponse({ message: 'Invalid password' }, 400)
@@ -1835,7 +1859,7 @@ describe('BitwardenDirectClient', () => {
                 expires_in: 3600
               })
             }
-            if (url.includes('/api/sync?')) return jsonResponse(sync)
+            if (url.endsWith('/api/sync')) return jsonResponse(sync)
             return jsonResponse({ message: 'not found' }, 404)
           }
         })
@@ -1883,7 +1907,7 @@ describe('BitwardenDirectClient', () => {
             expires_in: 3600
           })
         }
-        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
         return jsonResponse({ message: 'not found' }, 404)
       }
     })
@@ -2016,7 +2040,7 @@ describe('BitwardenDirectClient', () => {
             expires_in: 3_600
           })
         }
-        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
         if (init?.method === 'PUT' && url.endsWith(`/api/ciphers/${ORGANIZATION_CIPHER_ID}`)) {
           organizationUpdateRequest = JSON.parse(String(init.body)) as JsonObject
           return jsonResponse({
@@ -2245,7 +2269,7 @@ describe('BitwardenDirectClient', () => {
           expires_in: 3_600
         })
       }
-      if (url.includes('/api/sync?')) return jsonResponse(sync)
+      if (url.endsWith('/api/sync')) return jsonResponse(sync)
       if (url.endsWith('/api/sends')) return jsonResponse(send)
       if (url.endsWith('/api/sends/' + SEND_ID) && init?.method === 'PUT') {
         updateBody = JSON.parse(String(init.body)) as JsonObject
@@ -2333,7 +2357,7 @@ describe('BitwardenDirectClient', () => {
           expires_in: 3_600
         })
       }
-      if (url.includes('/api/sync?')) return jsonResponse(sync)
+      if (url.endsWith('/api/sync')) return jsonResponse(sync)
       if (url.endsWith(`/api/sends/${SEND_ID}`) && init?.method === 'PUT') {
         updateBody = JSON.parse(String(init.body)) as JsonObject
         return jsonResponse(send)
@@ -2413,7 +2437,7 @@ describe('BitwardenDirectClient', () => {
           expires_in: 3_600
         })
       }
-      if (url.includes('/api/sync?')) return jsonResponse(sync)
+      if (url.endsWith('/api/sync')) return jsonResponse(sync)
       if (url.endsWith('/api/sends')) return jsonResponse(send)
       return jsonResponse({ message: 'not found' }, 404)
     })
@@ -2464,7 +2488,7 @@ describe('BitwardenDirectClient', () => {
           expires_in: 3_600
         })
       }
-      if (url.includes('/api/sync?'))
+      if (url.endsWith('/api/sync'))
         return jsonResponse({ ...sync, sends: created ? [created] : [] })
       if (url.endsWith('/api/sends/file/v2')) {
         const request = JSON.parse(String(init?.body)) as JsonObject
@@ -2592,7 +2616,7 @@ describe('BitwardenDirectClient', () => {
           expires_in: 3_600
         })
       }
-      if (url.includes('/api/sync?')) return jsonResponse(sync)
+      if (url.endsWith('/api/sync')) return jsonResponse(sync)
       if (url.endsWith('/api/sends')) return jsonResponse(send)
       if (url.endsWith(`/api/sends/access/${send.accessId}`)) {
         expect(init?.method).toBe('POST')
@@ -2820,7 +2844,7 @@ describe('BitwardenDirectClient', () => {
             expires_in: 3_600
           })
         }
-        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
         return jsonResponse({ message: 'not found' }, 404)
       }
     })
@@ -2974,7 +2998,7 @@ describe('BitwardenDirectClient', () => {
             expires_in: 3600
           })
         }
-        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
         if (url.endsWith('/api/accounts/security-stamp')) {
           requestBodies.push(JSON.parse(String(init?.body)) as JsonObject)
           return new Response(null, { status: 204 })
@@ -5131,7 +5155,7 @@ describe('BitwardenDirectClient', () => {
             expires_in: 3600
           })
         }
-        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
         if (url.endsWith(`/api/ciphers/${LOGIN_ID}`) && init?.method === 'PUT') {
           const body = String(init.body)
           writes.push(body)
@@ -5183,7 +5207,7 @@ describe('BitwardenDirectClient', () => {
             expires_in: 3600
           })
         }
-        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
         if (url.endsWith('/api/folders') && init?.method === 'POST') {
           const body = String(init.body)
           writes.push(body)
@@ -5398,7 +5422,7 @@ describe('BitwardenDirectClient', () => {
             expires_in: 3600
           })
         }
-        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
         return jsonResponse({ message: 'not found' }, 404)
       }
     })
@@ -5430,7 +5454,7 @@ describe('BitwardenDirectClient', () => {
             expires_in: 3600
           })
         }
-        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
         requests.push(`${init?.method} ${url}`)
         if (url.endsWith(`/api/ciphers/${LOGIN_ID}/restore`) && init?.method === 'PUT') {
           return jsonResponse({
@@ -5536,7 +5560,7 @@ describe('BitwardenDirectClient', () => {
             expires_in: 3600
           })
         }
-        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
         requests.push(`${init?.method} ${url}`)
         if (url.endsWith('/api/ciphers/restore')) {
           return jsonResponse({ data: rowsFor('restore'), object: 'list', continuationToken: null })
@@ -5636,7 +5660,7 @@ describe('BitwardenDirectClient', () => {
             expires_in: 3_600
           })
         }
-        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
         return jsonResponse({ message: 'not found' }, 404)
       }
     })
@@ -5755,7 +5779,7 @@ describe('BitwardenDirectClient', () => {
             expires_in: 3_600
           })
         }
-        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
         return jsonResponse({ message: 'not found' }, 404)
       }
     })
@@ -5820,7 +5844,7 @@ describe('BitwardenDirectClient', () => {
             expires_in: 3600
           })
         }
-        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
         if (url.endsWith(`/api/ciphers/${CARD_ID}`) && init?.method === 'PUT') {
           const request = JSON.parse(String(init.body)) as JsonObject
           writes.push(request)
@@ -5955,7 +5979,7 @@ describe('BitwardenDirectClient', () => {
             expires_in: 3600
           })
         }
-        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
         if (init?.method === 'POST' || init?.method === 'PUT' || init?.method === 'DELETE') {
           writeCount += 1
         }
@@ -5993,7 +6017,7 @@ describe('BitwardenDirectClient', () => {
             expires_in: 3600
           })
         }
-        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
         if (url.endsWith('/api/folders') && init?.method === 'POST') {
           const body = String(init.body)
           folderWrites.push(body)
@@ -6313,7 +6337,7 @@ describe('BitwardenDirectClient', () => {
             expires_in: 3600
           })
         }
-        if (url.includes('/api/sync?')) return jsonResponse(sync)
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
         return jsonResponse({ message: 'not found' }, 404)
       }
     })

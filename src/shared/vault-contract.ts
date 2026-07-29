@@ -1088,6 +1088,10 @@ export type SyncInvalidResponseStage =
 /** Value-free, closed reasons safe to surface in renderer sync diagnostics. */
 export type SyncInvalidResponseReason =
   | 'response-shape'
+  | 'empty-response'
+  | 'invalid-json'
+  | 'non-object-response'
+  | 'session-response'
   | 'account-profile'
   | 'user-decryption-data'
   | 'organization-profile'

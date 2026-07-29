@@ -1590,6 +1590,66 @@ describe('BitwardenHttpClient', () => {
     expect(client.exportSession()?.accessToken).toBe('new-access')
   })
 
+  it('keeps the previous refresh token when a refresh response omits rotation', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(json({ access_token: 'new-access', expires_in: 60 }))
+    const changed = vi.fn()
+    const client = new BitwardenHttpClient({
+      server: 'us',
+      fetch,
+      onSessionChanged: changed,
+      now: () => 0
+    })
+    client.setSession({
+      accessToken: 'old-access',
+      refreshToken: 'old-refresh',
+      expiresAt: 1
+    })
+
+    await expect(client.refresh()).resolves.toEqual({
+      accessToken: 'new-access',
+      refreshToken: 'old-refresh',
+      expiresAt: 60_000
+    })
+    expect(changed).toHaveBeenCalledWith({
+      accessToken: 'new-access',
+      refreshToken: 'old-refresh',
+      expiresAt: 60_000
+    })
+  })
+
+  it('uses the access-token expiry when a refresh response omits expires_in', async () => {
+    const accessToken = unsignedAccessToken({ exp: 4_000 })
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(json({ access_token: accessToken }))
+    const client = new BitwardenHttpClient({ server: 'us', fetch, now: () => 0 })
+    client.setSession({
+      accessToken: 'old-access',
+      refreshToken: 'old-refresh',
+      expiresAt: 1
+    })
+
+    await expect(client.refresh()).resolves.toEqual({
+      accessToken,
+      refreshToken: 'old-refresh',
+      expiresAt: 4_000_000
+    })
+  })
+
+  it('still requires a refresh token for the initial password grant', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(json({ access_token: 'access', expires_in: 60 }))
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+
+    await expect(
+      client.passwordToken({ email: 'person@example.test', password: 'derived-secret' })
+    ).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+      invalidResponseReason: 'session-response'
+    })
+  })
+
   it('uses the session or access-token OAuth client id when refreshing', async () => {
     const fetch = vi
       .fn<FetchLike>()
@@ -2672,6 +2732,68 @@ describe('BitwardenHttpClient', () => {
     await expect(client.prelogin('person@example.test')).rejects.toMatchObject({
       code: 'INVALID_RESPONSE'
     })
+  })
+
+  it('matches the official query-free sync request and asks proxies for JSON', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(json({}))
+    const client = new BitwardenHttpClient({ server: 'https://vault.example.test', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(client.sync()).resolves.toEqual({})
+    expect(fetch.mock.calls[0]?.[0]).toBe('https://vault.example.test/api/sync')
+    expect(new Headers(fetch.mock.calls[0]?.[1]?.headers).get('accept')).toBe('application/json')
+  })
+
+  it.each([
+    ['empty', () => new Response(null, { status: 200 }), 'empty-response'],
+    ['non-JSON', () => new Response('<html>not json</html>', { status: 200 }), 'invalid-json'],
+    ['non-object JSON', () => json([]), 'non-object-response']
+  ] as const)(
+    'classifies a %s sync envelope without retaining its body',
+    async (_, response, reason) => {
+      const fetch = vi.fn<FetchLike>().mockResolvedValue(response())
+      const client = new BitwardenHttpClient({ server: 'us', fetch })
+      client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+      const error = await client.sync().catch((caught: unknown) => caught)
+      expect(error).toMatchObject({ code: 'INVALID_RESPONSE', invalidResponseReason: reason })
+      expect(JSON.stringify(error)).not.toContain('not json')
+    }
+  )
+
+  it.each([
+    new Error('truncated response containing deployment details'),
+    new DOMException('remote stream aborted with deployment details', 'AbortError')
+  ])('maps a truncated sync response stream to a network failure', async (streamError) => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"profile":'))
+            controller.error(streamError)
+          }
+        }),
+        { headers: { 'content-type': 'application/json' } }
+      )
+    )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    const error = await client.sync().catch((caught: unknown) => caught)
+    expect(error).toMatchObject({ code: 'NETWORK' })
+    expect(JSON.stringify(error)).not.toContain('deployment details')
+  })
+
+  it('reports a sync snapshot above the compatibility boundary as too large', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      new Response('{}', {
+        headers: { 'content-length': String(512 * 1024 * 1024 + 1) }
+      })
+    )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(client.sync()).rejects.toMatchObject({ code: 'TOO_LARGE' })
   })
 
   it('fetches fresh attachment metadata, then downloads relative encrypted bytes without auth', async () => {

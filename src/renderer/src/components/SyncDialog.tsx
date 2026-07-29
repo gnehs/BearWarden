@@ -247,6 +247,29 @@ export function syncInvalidResponseReasonLabel(reason: SyncInvalidResponseReason
   switch (reason) {
     case 'response-shape':
       return t`Sync response structure`
+    case 'empty-response':
+      return t({
+        message: 'Empty server response',
+        comment: 'Privacy-safe sync diagnostic reason shown when a successful response has no body.'
+      })
+    case 'invalid-json':
+      return t({
+        message: 'Server response is not valid JSON',
+        comment:
+          'Privacy-safe sync diagnostic reason shown when a successful server or proxy response cannot be parsed as JSON.'
+      })
+    case 'non-object-response':
+      return t({
+        message: 'Server response is not a JSON object',
+        comment:
+          'Privacy-safe sync diagnostic reason shown when JSON was returned but the top-level sync value has the wrong type.'
+      })
+    case 'session-response':
+      return t({
+        message: 'Session refresh response',
+        comment:
+          'Privacy-safe sync diagnostic reason for incompatible sign-in or access-token refresh metadata.'
+      })
     case 'account-profile':
       return t`Account profile data`
     case 'user-decryption-data':
