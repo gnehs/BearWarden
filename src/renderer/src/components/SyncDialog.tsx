@@ -288,6 +288,24 @@ export function syncInvalidResponseReasonLabel(reason: SyncInvalidResponseReason
         comment:
           'Privacy-safe sync diagnostic reason for incompatible sign-in or access-token refresh metadata.'
       })
+    case 'prelogin-route-response':
+      return t({
+        message: 'Account key derivation endpoint response',
+        comment:
+          'Privacy-safe sync diagnostic reason shown when a prelogin endpoint returns an error envelope instead of KDF fields.'
+      })
+    case 'kdf-settings':
+      return t({
+        message: 'Account key derivation settings',
+        comment:
+          'Privacy-safe sync diagnostic reason shown when prelogin KDF fields are missing or have incompatible types.'
+      })
+    case 'kdf-parameters':
+      return t({
+        message: 'Account key derivation parameters',
+        comment:
+          'Privacy-safe sync diagnostic reason shown when parsed account KDF parameters exceed supported security or resource bounds.'
+      })
     case 'account-profile':
       return t`Account profile data`
     case 'user-decryption-data':

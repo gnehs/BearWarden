@@ -1090,7 +1090,25 @@ describe('BitwardenDirectClient', () => {
     await expect(client.login({ email: EMAIL, password: PASSWORD })).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
       syncInvalidResponseStage: 'prelogin',
-      syncInvalidResponseReason: 'response-shape'
+      syncInvalidResponseReason: 'kdf-settings'
+    })
+  })
+
+  it('distinguishes unsafe or excessive KDF parameters from prelogin schema errors', async () => {
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async () => jsonResponse({ kdf: 0, kdfIterations: 4_999 })
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+
+    await expect(client.login({ email: EMAIL, password: PASSWORD })).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+      syncInvalidResponseStage: 'prelogin',
+      syncInvalidResponseReason: 'kdf-parameters'
     })
   })
 

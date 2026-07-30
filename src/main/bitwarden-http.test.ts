@@ -1232,6 +1232,153 @@ describe('BitwardenHttpClient', () => {
     )
   })
 
+  it('parses the official PascalCase nested prelogin aliases', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      json({
+        KdfSettings: {
+          KdfType: 1,
+          Iterations: 3,
+          Memory: 64,
+          Parallelism: 4
+        },
+        Salt: 'account-salt'
+      })
+    )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+
+    await expect(client.prelogin('person@example.test')).resolves.toMatchObject({
+      kdfType: 1,
+      iterations: 3,
+      memory: 64,
+      parallelism: 4,
+      salt: 'account-salt'
+    })
+  })
+
+  it('parses the current Vaultwarden dual flat and nested prelogin payload', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      json({
+        kdf: 1,
+        kdfIterations: 3,
+        kdfMemory: 64,
+        kdfParallelism: 4,
+        kdfSettings: { kdfType: 1, iterations: 3, memory: 64, parallelism: 4 },
+        salt: null
+      })
+    )
+    const client = new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
+
+    await expect(client.prelogin('person@example.test')).resolves.toMatchObject({
+      kdfType: 1,
+      iterations: 3,
+      memory: 64,
+      parallelism: 4,
+      salt: null
+    })
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    {
+      kdf: 0,
+      kdfIterations: 600_000,
+      kdfSettings: { kdfType: 1, iterations: 3, memory: 64, parallelism: 4 }
+    },
+    {
+      kdfSettings: { kdfType: 0, iterations: 600_000 },
+      kdf: { type: 1, iterations: 3, memory: 64, parallelism: 4 }
+    },
+    { kdf: 0, kdfIterations: 600_000, kdfMemory: 'unexpected' }
+  ])('rejects conflicting or malformed prelogin KDF fields', async (response) => {
+    const client = new BitwardenHttpClient({
+      server: 'us',
+      fetch: vi.fn<FetchLike>().mockResolvedValue(json(response))
+    })
+
+    await expect(client.prelogin('person@example.test')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+      invalidResponseReason: 'kdf-settings'
+    })
+  })
+
+  it('falls back to legacy prelogin after a self-hosted proxy returns a 200 error envelope', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(json({ message: 'route not found' }))
+      .mockResolvedValueOnce(json({ kdf: 0, kdfIterations: 100000 }))
+    const client = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch
+    })
+
+    await expect(client.prelogin('person@example.test')).resolves.toMatchObject({
+      kdfType: 0,
+      iterations: 100000
+    })
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+      'https://vault.example.invalid/identity/accounts/prelogin/password',
+      'https://vault.example.invalid/identity/accounts/prelogin'
+    ])
+  })
+
+  it('falls back to legacy prelogin after a self-hosted proxy returns HTML for the modern route', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(new Response('<html>route not found</html>', { status: 200 }))
+      .mockResolvedValueOnce(json({ kdf: 0, kdfIterations: 100000 }))
+    const client = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch
+    })
+
+    await expect(client.prelogin('person@example.test')).resolves.toMatchObject({
+      kdfType: 0,
+      iterations: 100000
+    })
+  })
+
+  it.each([
+    ['empty response', new Response(null, { status: 200 }), 'empty-response'],
+    ['non-object response', json([]), 'non-object-response']
+  ] as const)(
+    'preserves the modern %s diagnosis when the self-hosted legacy route is absent',
+    async (_, modernResponse, reason) => {
+      const fetch = vi
+        .fn<FetchLike>()
+        .mockResolvedValueOnce(modernResponse)
+        .mockResolvedValueOnce(json({ message: 'not found' }, 404))
+      const client = new BitwardenHttpClient({
+        server: 'https://vault.example.invalid',
+        fetch
+      })
+
+      await expect(client.prelogin('person@example.test')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+        invalidResponseReason: reason
+      })
+    }
+  )
+
+  it('does not fall back when the modern route contains conflicting KDF settings', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      json({
+        kdf: 0,
+        kdfIterations: 600_000,
+        kdfSettings: { kdfType: 0, iterations: 5_000 }
+      })
+    )
+    const client = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch
+    })
+
+    await expect(client.prelogin('person@example.test')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+      invalidResponseReason: 'kdf-settings'
+    })
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
   it.each([404, 405])(
     'falls back to the legacy Vaultwarden prelogin route after %s',
     async (status) => {

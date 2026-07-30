@@ -239,6 +239,9 @@ export type BitwardenSyncInvalidResponseReason =
   | 'invalid-json'
   | 'non-object-response'
   | 'session-response'
+  | 'prelogin-route-response'
+  | 'kdf-settings'
+  | 'kdf-parameters'
   | 'account-profile'
   | 'user-decryption-data'
   | 'organization-profile'
@@ -5364,14 +5367,28 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     let installedRuntimeGeneration: number | null = null
     try {
       const prelogin = await this.http.prelogin(this.email, signal)
-      masterKey = await deriveMasterKey(
-        password,
-        prelogin.salt ?? this.email,
-        kdfFromPrelogin(prelogin)
-      )
+      try {
+        masterKey = await deriveMasterKey(
+          password,
+          prelogin.salt ?? this.email,
+          kdfFromPrelogin(prelogin)
+        )
+      } catch (error) {
+        if (error instanceof BitwardenCryptoError && error.code === 'INVALID_INPUT') {
+          throw new BitwardenDirectError(
+            'INVALID_RESPONSE',
+            undefined,
+            'prelogin',
+            undefined,
+            'kdf-parameters'
+          )
+        }
+        throw error
+      }
       passwordKey = await derivePasswordKey(masterKey, password)
       stretched = stretchMasterKey(masterKey)
       if (requestToken) {
+        invalidResponseStage = 'authentication'
         let twoFactorRemember: boolean | undefined
         const rememberedTwoFactorToken = twoFactor ? undefined : this.state.rememberedTwoFactorToken
         if (twoFactor) {
@@ -5393,7 +5410,6 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
             twoFactorRemember = twoFactor.remember ?? true
           }
         }
-        invalidResponseStage = 'authentication'
         let session: BitwardenSession
         try {
           session = await this.http.passwordToken(

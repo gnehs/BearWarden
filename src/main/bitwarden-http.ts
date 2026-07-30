@@ -376,7 +376,12 @@ export type BitwardenHttpErrorCode =
 
 /** Fixed, value-free response failures safe to propagate into sync diagnostics. */
 export type BitwardenHttpInvalidResponseReason =
-  'empty-response' | 'invalid-json' | 'non-object-response' | 'session-response'
+  | 'empty-response'
+  | 'invalid-json'
+  | 'non-object-response'
+  | 'session-response'
+  | 'prelogin-route-response'
+  | 'kdf-settings'
 
 export class BitwardenHttpError extends Error {
   constructor(
@@ -877,23 +882,49 @@ export class BitwardenHttpClient {
       authenticate: false as const,
       headers: { 'auth-email': base64Url(email), 'cache-control': 'no-store' }
     }
-    let response: JsonValue
+    let modernError: unknown
     try {
-      response = await this.requestJson(
-        'POST',
-        `${this.urls.identityUrl}/accounts/prelogin/password`,
-        request
+      return parsePrelogin(
+        await this.requestJson(
+          'POST',
+          `${this.urls.identityUrl}/accounts/prelogin/password`,
+          request
+        )
       )
     } catch (error) {
-      if (!(error instanceof BitwardenHttpError) || (error.status !== 404 && error.status !== 405))
+      const unsupportedRoute =
+        error instanceof BitwardenHttpError && (error.status === 404 || error.status === 405)
+      const selfHostedShapeFailure =
+        this.options.server !== 'us' &&
+        this.options.server !== 'eu' &&
+        error instanceof BitwardenHttpError &&
+        error.code === 'INVALID_RESPONSE' &&
+        (error.invalidResponseReason === 'empty-response' ||
+          error.invalidResponseReason === 'invalid-json' ||
+          error.invalidResponseReason === 'non-object-response' ||
+          error.invalidResponseReason === 'prelogin-route-response')
+      if (!unsupportedRoute && !selfHostedShapeFailure) {
         throw error
-      response = await this.requestJson(
-        'POST',
-        `${this.urls.identityUrl}/accounts/prelogin`,
-        request
-      )
+      }
+      modernError = error
     }
-    return parsePrelogin(response)
+    try {
+      return parsePrelogin(
+        await this.requestJson('POST', `${this.urls.identityUrl}/accounts/prelogin`, request)
+      )
+    } catch (error) {
+      // A proxy can turn an unknown modern route into a successful error envelope. If the
+      // legacy route is then genuinely absent, preserve the precise modern schema diagnosis.
+      if (
+        modernError instanceof BitwardenHttpError &&
+        modernError.code === 'INVALID_RESPONSE' &&
+        error instanceof BitwardenHttpError &&
+        (error.status === 404 || error.status === 405)
+      ) {
+        throw modernError
+      }
+      throw error
+    }
   }
 
   async passwordChangeContract(signal?: AbortSignal): Promise<BitwardenPasswordChangeContract> {
@@ -4283,34 +4314,158 @@ function parseAttachmentDownload(
 }
 
 function parsePrelogin(value: JsonValue): BitwardenPrelogin {
-  if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const nested = isRecord(value.kdfSettings)
-    ? value.kdfSettings
-    : isRecord(value.kdf)
-      ? value.kdf
-      : value
-  const kdfType = finiteInteger(nested.kdfType ?? nested.type ?? value.kdf ?? value.Kdf)
-  const iterations = finiteInteger(
-    nested.iterations ?? nested.kdfIterations ?? value.kdfIterations ?? value.KdfIterations
+  if (value === null) {
+    throw new BitwardenHttpError(
+      'INVALID_RESPONSE',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'empty-response'
+    )
+  }
+  if (!isRecord(value)) {
+    throw new BitwardenHttpError(
+      'INVALID_RESPONSE',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'non-object-response'
+    )
+  }
+  if (
+    ![
+      'kdfSettings',
+      'KdfSettings',
+      'kdf',
+      'Kdf',
+      'kdfIterations',
+      'KdfIterations',
+      'kdfMemory',
+      'KdfMemory',
+      'kdfParallelism',
+      'KdfParallelism'
+    ].some((key) => key in value)
+  ) {
+    throw invalidPreloginRouteResponse()
+  }
+  if (value.kdfSettings !== undefined && value.KdfSettings !== undefined) {
+    throw invalidKdfSettings()
+  }
+  const kdfSettings = value.kdfSettings ?? value.KdfSettings
+  if (kdfSettings !== undefined && kdfSettings !== null && !isRecord(kdfSettings)) {
+    throw invalidKdfSettings()
+  }
+  if (isRecord(kdfSettings) && (isRecord(value.kdf) || isRecord(value.Kdf))) {
+    throw invalidKdfSettings()
+  }
+  const nested = isRecord(kdfSettings) ? kdfSettings : isRecord(value.kdf) ? value.kdf : value
+  const kdfType = consistentPreloginInteger(
+    [
+      nested.kdfType,
+      nested.KdfType,
+      nested.type,
+      nested.Type,
+      isRecord(value.kdf) ? undefined : value.kdf,
+      value.Kdf
+    ],
+    true
   )
-  const memory = finiteInteger(
-    nested.memory ?? nested.kdfMemory ?? value.kdfMemory ?? value.KdfMemory
+  const iterations = consistentPreloginInteger(
+    [
+      nested.iterations,
+      nested.Iterations,
+      nested.kdfIterations,
+      nested.KdfIterations,
+      value.kdfIterations,
+      value.KdfIterations
+    ],
+    true
   )
-  const parallelism = finiteInteger(
-    nested.parallelism ?? nested.kdfParallelism ?? value.kdfParallelism ?? value.KdfParallelism
-  )
-  const salt = string(nested.salt ?? value.salt ?? value.Salt)
-  if (kdfType === undefined || iterations === undefined || iterations === 0) {
-    throw new BitwardenHttpError('INVALID_RESPONSE')
+  const memory = consistentPreloginInteger([
+    nested.memory,
+    nested.Memory,
+    nested.kdfMemory,
+    nested.KdfMemory,
+    value.kdfMemory,
+    value.KdfMemory
+  ])
+  const parallelism = consistentPreloginInteger([
+    nested.parallelism,
+    nested.Parallelism,
+    nested.kdfParallelism,
+    nested.KdfParallelism,
+    value.kdfParallelism,
+    value.KdfParallelism
+  ])
+  const salt = consistentPreloginSalt([nested.salt, nested.Salt, value.salt, value.Salt])
+  if (kdfType === null || iterations === null || iterations === 0) {
+    throw invalidKdfSettings()
+  }
+  if (kdfType === 1 && (memory === null || parallelism === null)) {
+    throw invalidKdfSettings()
   }
   return {
     kdfType,
     iterations,
-    memory: memory ?? null,
-    parallelism: parallelism ?? null,
-    salt: salt ?? null,
+    memory,
+    parallelism,
+    salt,
     raw: value
   }
+}
+
+function consistentPreloginInteger(values: readonly unknown[], required = false): number | null {
+  const provided = values.filter((value) => value !== undefined)
+  if (provided.length === 0) {
+    if (required) throw invalidKdfSettings()
+    return null
+  }
+  const canonical = provided.map((value) => {
+    if (value === null) return null
+    const parsed = finiteInteger(value)
+    if (parsed === undefined) throw invalidKdfSettings()
+    return parsed
+  })
+  if (required && canonical.includes(null)) throw invalidKdfSettings()
+  if (new Set(canonical).size !== 1) throw invalidKdfSettings()
+  return canonical[0] ?? null
+}
+
+function consistentPreloginSalt(values: readonly unknown[]): string | null {
+  const provided = values.filter((value) => value !== undefined)
+  if (provided.length === 0) return null
+  const canonical = provided.map((value) => {
+    if (value === null) return null
+    const parsed = string(value)
+    if (parsed === undefined) throw invalidKdfSettings()
+    return parsed
+  })
+  if (new Set(canonical).size !== 1) throw invalidKdfSettings()
+  return canonical[0] ?? null
+}
+
+function invalidKdfSettings(): BitwardenHttpError {
+  return new BitwardenHttpError(
+    'INVALID_RESPONSE',
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    'kdf-settings'
+  )
+}
+
+function invalidPreloginRouteResponse(): BitwardenHttpError {
+  return new BitwardenHttpError(
+    'INVALID_RESPONSE',
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    'prelogin-route-response'
+  )
 }
 
 function optionalOpaqueAuthToken(value: unknown): string | undefined {
