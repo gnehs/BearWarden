@@ -1303,6 +1303,30 @@ describe('BitwardenHttpClient', () => {
     })
   })
 
+  it.each([
+    ['a non-bearer access token', { access_token: 'access token' }],
+    ['an invalid refresh token', { refresh_token: 'refresh\nsecret' }],
+    ['an invalid remembered 2FA token', { TwoFactorToken: 'remembered\u0000secret' }],
+    ['an invalid OAuth client id', { client_id: 'not an oauth client id' }]
+  ])('classifies a session with %s as a session response', async (_label, override) => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      json({
+        access_token: 'access',
+        refresh_token: 'refresh',
+        expires_in: 3_600,
+        ...override
+      })
+    )
+    const client = new BitwardenHttpClient({ server: 'us', fetch, now: () => 1 })
+
+    await expect(
+      client.passwordToken({ email: 'person@example.test', password: 'derived-secret' })
+    ).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+      invalidResponseReason: 'session-response'
+    })
+  })
+
   it('accepts only positive safe integer epochs when restoring a session', () => {
     const client = new BitwardenHttpClient({
       server: 'us',
@@ -1856,7 +1880,8 @@ describe('BitwardenHttpClient', () => {
 
     await expect(client.refresh()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
     expect(client.exportSession()).toBeNull()
-    expect(changed).not.toHaveBeenCalled()
+    expect(changed).toHaveBeenCalledOnce()
+    expect(changed).toHaveBeenCalledWith(null)
   })
 
   it('does not revive a cleared session when an ignored-abort refresh response arrives late', async () => {

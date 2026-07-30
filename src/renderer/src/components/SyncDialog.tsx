@@ -221,6 +221,24 @@ export function shouldAutoOpenSyncErrorDetails(
 // eslint-disable-next-line react-refresh/only-export-components
 export function syncInvalidResponseStageLabel(stage: SyncInvalidResponseStage): string {
   switch (stage) {
+    case 'prelogin':
+      return t({
+        message: 'Account key derivation settings',
+        comment:
+          'Privacy-safe sync diagnostic stage for the prelogin KDF settings response, before credentials are submitted.'
+      })
+    case 'authentication':
+      return t({
+        message: 'Sign-in token response',
+        comment:
+          'Privacy-safe sync diagnostic stage for the password or two-factor token exchange response.'
+      })
+    case 'access-token':
+      return t({
+        message: 'Access token refresh',
+        comment:
+          'Privacy-safe sync diagnostic stage for refreshing an expired access token before downloading vault data.'
+      })
     case 'response':
       return t`Server sync response`
     case 'account':

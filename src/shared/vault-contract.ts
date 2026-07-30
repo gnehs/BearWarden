@@ -1083,7 +1083,17 @@ export type SyncErrorCode =
   | 'SYNC_FAILED'
 
 export type SyncInvalidResponseStage =
-  'response' | 'account' | 'organization' | 'folder' | 'cipher' | 'collection' | 'send' | 'snapshot'
+  | 'prelogin'
+  | 'authentication'
+  | 'access-token'
+  | 'response'
+  | 'account'
+  | 'organization'
+  | 'folder'
+  | 'cipher'
+  | 'collection'
+  | 'send'
+  | 'snapshot'
 
 /** Value-free, closed reasons safe to surface in renderer sync diagnostics. */
 export type SyncInvalidResponseReason =

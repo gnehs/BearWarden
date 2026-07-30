@@ -193,7 +193,7 @@ describe('Bitwarden fresh-login compatibility', () => {
 
     await expect(client.login({ email: EMAIL, password: PASSWORD })).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
-      syncInvalidResponseStage: 'response',
+      syncInvalidResponseStage: 'authentication',
       syncInvalidResponseReason: 'response-shape'
     })
     expect(requested.some((url) => url.endsWith('/api/sync'))).toBe(false)

@@ -345,7 +345,7 @@ export interface BitwardenHttpOptions {
   clientVersion?: string
   /** HTTP is allowed only for localhost/loopback, which keeps local test servers usable. */
   allowHttpLoopback?: boolean
-  onSessionChanged?: (session: BitwardenSession) => void | Promise<void>
+  onSessionChanged?: (session: BitwardenSession | null) => void | Promise<void>
   now?: () => number
   sleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>
   maxRetryAfterMs?: number
@@ -2438,6 +2438,11 @@ export class BitwardenHttpClient {
     }
     if (signal.aborted) {
       this.clearSession()
+      try {
+        await this.options.onSessionChanged?.(null)
+      } catch {
+        throw new BitwardenHttpError('AUTH')
+      }
       throw new BitwardenHttpError('ABORTED')
     }
     let updated: BitwardenSession
@@ -2451,6 +2456,11 @@ export class BitwardenHttpClient {
     } catch (error) {
       if (this.sessionGeneration === generation && this.session === previousSession) {
         this.clearSession()
+        try {
+          await this.options.onSessionChanged?.(null)
+        } catch {
+          throw new BitwardenHttpError('AUTH')
+        }
       }
       if (error instanceof BitwardenHttpError) throw error
       throw new BitwardenHttpError('AUTH')
@@ -4372,6 +4382,25 @@ function parseSession(
   value: JsonValue,
   now: number,
   inherited: { refreshToken?: string; clientId?: string; twoFactorToken?: string } = {}
+): BitwardenSession {
+  try {
+    return parseSessionValue(value, now, inherited)
+  } catch (error) {
+    if (
+      error instanceof BitwardenHttpError &&
+      error.code === 'INVALID_RESPONSE' &&
+      error.invalidResponseReason === undefined
+    ) {
+      throw invalidSessionResponse()
+    }
+    throw error
+  }
+}
+
+function parseSessionValue(
+  value: JsonValue,
+  now: number,
+  inherited: { refreshToken?: string; clientId?: string; twoFactorToken?: string }
 ): BitwardenSession {
   if (!isRecord(value)) throw invalidSessionResponse()
   const accessToken = requiredBearerAccessToken(value.access_token ?? value.accessToken)

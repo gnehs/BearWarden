@@ -286,7 +286,7 @@ msgstr "{0}：{1}"
 msgid "{breachCount, plural, one {# known breach found} other {# known breaches found}}"
 msgstr "{breachCount, plural, one {既知の侵害 # 件を検出} other {既知の侵害 # 件を検出}}"
 
-#: src/renderer/src/components/SyncDialog.tsx:445
+#: src/renderer/src/components/SyncDialog.tsx:463
 msgid "{conflicts, plural, one {# conflict} other {# conflicts}}"
 msgstr "{conflicts, plural, one {競合 # 件} other {競合 # 件}}"
 
@@ -315,7 +315,7 @@ msgstr "アイテム {count} 件"
 msgid "{currentTypeLabel} details"
 msgstr "{currentTypeLabel} の詳細"
 
-#: src/renderer/src/components/SyncDialog.tsx:442
+#: src/renderer/src/components/SyncDialog.tsx:460
 msgid "{deleted, plural, one {Deleted # item} other {Deleted # items}}"
 msgstr "{deleted, plural, one {アイテム # 件を削除} other {アイテム # 件を削除}}"
 
@@ -395,11 +395,11 @@ msgstr "{protectedSkippedCount, plural, one {マスターパスワードの再�
 msgid "{providerName} has been disabled."
 msgstr "{providerName} を無効にしました。"
 
-#: src/renderer/src/components/SyncDialog.tsx:440
+#: src/renderer/src/components/SyncDialog.tsx:458
 msgid "{pulled, plural, one {Pulled # item} other {Pulled # items}}"
 msgstr "{pulled, plural, one {アイテム # 件を取得} other {アイテム # 件を取得}}"
 
-#: src/renderer/src/components/SyncDialog.tsx:441
+#: src/renderer/src/components/SyncDialog.tsx:459
 msgid "{pushed, plural, one {Pushed # item} other {Pushed # items}}"
 msgstr "{pushed, plural, one {アイテム # 件を送信} other {アイテム # 件を送信}}"
 
@@ -524,7 +524,7 @@ msgstr "60 分"
 msgid "A local account switch is already in progress. Wait for BearWarden to restart."
 msgstr "ローカルアカウントの切り替えはすでに進行中です。BearWarden が再起動するまでお待ちください。"
 
-#: src/renderer/src/components/SyncDialog.tsx:692
+#: src/renderer/src/components/SyncDialog.tsx:714
 msgid "A new device verification code was sent by email."
 msgstr ""
 
@@ -544,11 +544,11 @@ msgstr "ログインアイテムを追加するにはパスワードが必要で
 msgid "A read-only mirror of shared items. The server determines permissions and password visibility."
 msgstr "共有アイテムの読み取り専用ミラーです。権限とパスワードの表示可否はサーバーによって決まります。"
 
-#: src/renderer/src/components/SyncDialog.tsx:905
+#: src/renderer/src/components/SyncDialog.tsx:927
 msgid "A sync issue needs attention"
 msgstr "同期の問題に対応が必要です"
 
-#: src/renderer/src/components/SyncDialog.tsx:666
+#: src/renderer/src/components/SyncDialog.tsx:688
 msgid "A two-step verification code was sent by email."
 msgstr "2 段階認証コードをメールで送信しました。"
 
@@ -586,6 +586,11 @@ msgstr "アクセスパスワード（任意）"
 msgid "Access requested"
 msgstr "アクセスがリクエストされました"
 
+#. Privacy-safe sync diagnostic stage for refreshing an expired access token before downloading vault data.
+#: src/renderer/src/components/SyncDialog.tsx:237
+msgid "Access token refresh"
+msgstr "アクセストークンの更新"
+
 #: src/renderer/src/components/SettingsPage.tsx:695
 msgid "Accessibility and shortcut status checked again."
 msgstr "アクセシビリティとショートカットの状態を再確認しました。"
@@ -610,7 +615,7 @@ msgstr "アクセシビリティの許可が与えられていません"
 msgid "Accessibility permission required"
 msgstr "アクセシビリティの許可が必要です"
 
-#: src/renderer/src/components/SyncDialog.tsx:1245
+#: src/renderer/src/components/SyncDialog.tsx:1266
 msgid "Account"
 msgstr "アカウント"
 
@@ -618,7 +623,7 @@ msgstr "アカウント"
 msgid "Account {slot}"
 msgstr "アカウント {slot}"
 
-#: src/renderer/src/components/SyncDialog.tsx:227
+#: src/renderer/src/components/SyncDialog.tsx:245
 msgid "Account and encryption information"
 msgstr "アカウントと暗号化の情報"
 
@@ -626,7 +631,7 @@ msgstr "アカウントと暗号化の情報"
 msgid "Account breaches"
 msgstr "アカウントの漏えい"
 
-#: src/renderer/src/components/SyncDialog.tsx:276
+#: src/renderer/src/components/SyncDialog.tsx:294
 msgid "Account decryption options"
 msgstr "アカウントの復号オプション"
 
@@ -639,7 +644,12 @@ msgstr "アカウントの復号オプション"
 msgid "Account devices"
 msgstr "アカウントのデバイス"
 
-#: src/renderer/src/components/SyncDialog.tsx:1272
+#. Privacy-safe sync diagnostic stage for the prelogin KDF settings response, before credentials are submitted.
+#: src/renderer/src/components/SyncDialog.tsx:225
+msgid "Account key derivation settings"
+msgstr "アカウントキー導出設定"
+
+#: src/renderer/src/components/SyncDialog.tsx:1293
 msgid "Account management"
 msgstr "アカウント管理"
 
@@ -654,11 +664,11 @@ msgctxt "local-account-name"
 msgid "Account name"
 msgstr ""
 
-#: src/renderer/src/components/SyncDialog.tsx:274
+#: src/renderer/src/components/SyncDialog.tsx:292
 msgid "Account profile data"
 msgstr "アカウントプロフィールデータ"
 
-#: src/renderer/src/components/SyncDialog.tsx:1291
+#: src/renderer/src/components/SyncDialog.tsx:1312
 msgid "Account security status"
 msgstr "アカウントのセキュリティ状態"
 
@@ -1085,7 +1095,7 @@ msgid "Authentication code time remaining"
 msgstr "認証コードの残り時間"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:112
-#: src/renderer/src/components/SyncDialog.tsx:488
+#: src/renderer/src/components/SyncDialog.tsx:507
 msgid "Authenticator app"
 msgstr "認証アプリ"
 
@@ -1185,11 +1195,11 @@ msgstr "BearWarden は現在のブラウザーを操作して自動入力でき�
 msgid "BearWarden can't safely determine the remote outcome on the current connection. No new action will be submitted now to prevent duplicate changes."
 msgstr "BearWarden は現在の接続ではリモート側の結果を安全に判断できません。変更の重複を防ぐため、新しい操作は送信されません。"
 
-#: src/renderer/src/components/SyncDialog.tsx:329
+#: src/renderer/src/components/SyncDialog.tsx:347
 msgid "BearWarden cannot unlock this account safely without its trusted-device keys. Use the official Bitwarden client."
 msgstr ""
 
-#: src/renderer/src/components/SyncDialog.tsx:324
+#: src/renderer/src/components/SyncDialog.tsx:342
 msgid "BearWarden cannot unlock this organization's account safely. Use the official Bitwarden client."
 msgstr ""
 
@@ -1364,7 +1374,7 @@ msgstr "パスワードを表示可能"
 #: src/renderer/src/components/LoginEditor.tsx:3409
 #: src/renderer/src/components/SendsPage.tsx:806
 #: src/renderer/src/components/SendsPage.tsx:833
-#: src/renderer/src/components/SyncDialog.tsx:1221
+#: src/renderer/src/components/SyncDialog.tsx:1242
 #: src/renderer/src/components/VaultItemAccessCards.tsx:104
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:623
 #: src/renderer/src/components/VaultShellDialogs.tsx:221
@@ -1545,7 +1555,7 @@ msgstr "入力内容を確認してください。"
 msgid "Check your network connection and try again later."
 msgstr "ネットワーク接続を確認して、後でもう一度お試しください。"
 
-#: src/renderer/src/components/SyncDialog.tsx:339
+#: src/renderer/src/components/SyncDialog.tsx:357
 msgid "Check your network, server URL, and TLS certificate, and make sure the server is reachable."
 msgstr "ネットワーク、サーバー URL、TLS 証明書を確認し、サーバーに到達できることを確認してください。"
 
@@ -1713,8 +1723,8 @@ msgstr "クリップボードとウェブサイトのアイコン"
 #: src/renderer/src/components/Dialogs.tsx:100
 #: src/renderer/src/components/Dialogs.tsx:783
 #: src/renderer/src/components/MasterPasswordChangeDialog.tsx:433
-#: src/renderer/src/components/SyncDialog.tsx:867
-#: src/renderer/src/components/SyncDialog.tsx:1401
+#: src/renderer/src/components/SyncDialog.tsx:889
+#: src/renderer/src/components/SyncDialog.tsx:1422
 #: src/renderer/src/components/SyncErrorDetailsDialog.tsx:137
 #: src/renderer/src/components/ui/dialog.tsx:81
 #: src/renderer/src/components/ui/dialog.tsx:118
@@ -1804,7 +1814,7 @@ msgstr "確認済みのローカルのマスターパスワード変更を完了
 msgid "Complete the locally pending change confirmed by the server"
 msgstr "サーバーで確認されたローカル保留中の変更を完了"
 
-#: src/renderer/src/components/SyncDialog.tsx:988
+#: src/renderer/src/components/SyncDialog.tsx:1010
 msgid "Configured account"
 msgstr "設定済みのアカウント"
 
@@ -1880,7 +1890,7 @@ msgstr "確認中…"
 msgid "Conflict requires attention"
 msgstr "競合に対応が必要です"
 
-#: src/renderer/src/components/SyncDialog.tsx:1225
+#: src/renderer/src/components/SyncDialog.tsx:1246
 msgid "Connect and sync"
 msgstr "接続して同期"
 
@@ -1897,15 +1907,15 @@ msgstr "接続済み"
 msgid "Connected account"
 msgstr "接続済みアカウント"
 
-#: src/renderer/src/components/SyncDialog.tsx:729
+#: src/renderer/src/components/SyncDialog.tsx:751
 msgid "Connected and synced. {summary}."
 msgstr "接続して同期しました。{summary}。"
 
-#: src/renderer/src/components/SyncDialog.tsx:903
+#: src/renderer/src/components/SyncDialog.tsx:925
 msgid "Connected, vault locked"
 msgstr "接続済み、保管庫はロック中"
 
-#: src/renderer/src/components/SyncDialog.tsx:901
+#: src/renderer/src/components/SyncDialog.tsx:923
 msgid "Connected, vault unlocked"
 msgstr "接続済み、保管庫はロック解除済み"
 
@@ -2036,7 +2046,7 @@ msgstr "基本的なテキストおよびファイル Send のワークフロー
 msgid "Could not clear the completion record. The backup data itself was not deleted."
 msgstr "完了記録をクリアできませんでした。バックアップデータ自体は削除されていません。"
 
-#: src/renderer/src/components/SyncDialog.tsx:338
+#: src/renderer/src/components/SyncDialog.tsx:356
 msgid "Could not connect to the sync server"
 msgstr "同期サーバーに接続できませんでした"
 
@@ -2101,7 +2111,7 @@ msgstr "Send を読み込めませんでした"
 msgid "Could not load shared item"
 msgstr "共有アイテムを読み込めませんでした"
 
-#: src/renderer/src/components/SyncDialog.tsx:532
+#: src/renderer/src/components/SyncDialog.tsx:552
 msgid "Could not load the account security status."
 msgstr "アカウントのセキュリティ状態を読み込めませんでした。"
 
@@ -2113,7 +2123,7 @@ msgstr "Send のパスワードを削除できませんでした。"
 msgid "Could not save the Send. Confirm that sync is connected."
 msgstr "Send を保存できませんでした。同期が接続されていることを確認してください。"
 
-#: src/renderer/src/components/SyncDialog.tsx:560
+#: src/renderer/src/components/SyncDialog.tsx:580
 msgid "Could not send the verification email. Make sure email is configured in Vaultwarden."
 msgstr "検証メールを送信できませんでした。Vaultwarden でメールが設定されていることを確認してください。"
 
@@ -2555,16 +2565,16 @@ msgstr "変更を破棄"
 msgid "Discard unsaved changes?"
 msgstr "保存されていない変更を破棄しますか？"
 
-#: src/renderer/src/components/SyncDialog.tsx:1366
-#: src/renderer/src/components/SyncDialog.tsx:1394
+#: src/renderer/src/components/SyncDialog.tsx:1387
+#: src/renderer/src/components/SyncDialog.tsx:1415
 msgid "Disconnect"
 msgstr "切断"
 
-#: src/renderer/src/components/SyncDialog.tsx:1374
+#: src/renderer/src/components/SyncDialog.tsx:1395
 msgid "Disconnect sync?"
 msgstr "同期を切断しますか？"
 
-#: src/renderer/src/components/SyncDialog.tsx:822
+#: src/renderer/src/components/SyncDialog.tsx:844
 msgid "Disconnected from Bitwarden sync."
 msgstr "Bitwarden同期から切断しました。"
 
@@ -2641,7 +2651,7 @@ msgstr "DuckDuckGoウェブアプリ"
 msgid "Duo"
 msgstr "Duo"
 
-#: src/renderer/src/components/SyncDialog.tsx:318
+#: src/renderer/src/components/SyncDialog.tsx:336
 msgid "Duo verification is not supported"
 msgstr ""
 
@@ -2724,8 +2734,8 @@ msgstr "ファイルSendの編集はまだ利用できません。"
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:798
 #: src/renderer/src/components/LoginEditor.tsx:589
 #: src/renderer/src/components/LoginEditor.tsx:2334
-#: src/renderer/src/components/SyncDialog.tsx:489
-#: src/renderer/src/components/SyncDialog.tsx:968
+#: src/renderer/src/components/SyncDialog.tsx:508
+#: src/renderer/src/components/SyncDialog.tsx:990
 #: src/renderer/src/components/VaultShell.tsx:353
 #: src/renderer/src/components/VaultShell.tsx:384
 msgid "Email"
@@ -2743,7 +2753,7 @@ msgstr "確認コード用メールアドレス"
 msgid "Email cannot be changed here."
 msgstr "ここではメールアドレスを変更できません。"
 
-#: src/renderer/src/components/SyncDialog.tsx:1300
+#: src/renderer/src/components/SyncDialog.tsx:1321
 msgid "Email not verified"
 msgstr "メールアドレス未確認"
 
@@ -2760,7 +2770,7 @@ msgstr "メールアドレスの確認"
 msgid "Email verification code"
 msgstr "メール確認コード"
 
-#: src/renderer/src/components/SyncDialog.tsx:1299
+#: src/renderer/src/components/SyncDialog.tsx:1320
 msgid "Email verified"
 msgstr "メールアドレス確認済み"
 
@@ -2778,7 +2788,7 @@ msgid "Emergency Access is not configured"
 msgstr "緊急アクセスが設定されていません"
 
 #. Privacy-safe sync diagnostic reason shown when a successful response has no body.
-#: src/renderer/src/components/SyncDialog.tsx:251
+#: src/renderer/src/components/SyncDialog.tsx:269
 msgid "Empty server response"
 msgstr "サーバーの応答が空です"
 
@@ -2873,8 +2883,8 @@ msgid "Enter a valid email address."
 msgstr "有効なメールアドレスを入力してください。"
 
 #: src/renderer/src/components/SyncDialog.tsx:169
-#: src/renderer/src/components/SyncDialog.tsx:679
-#: src/renderer/src/components/SyncDialog.tsx:704
+#: src/renderer/src/components/SyncDialog.tsx:701
+#: src/renderer/src/components/SyncDialog.tsx:726
 msgid "Enter a valid HTTPS server URL."
 msgstr "有効なHTTPSサーバーURLを入力してください。"
 
@@ -2964,11 +2974,11 @@ msgstr "この保管庫への復元を確認するには、現在のマスター
 msgid "Enter your current master password."
 msgstr "現在のマスターパスワードを入力してください。"
 
-#: src/renderer/src/components/SyncDialog.tsx:708
+#: src/renderer/src/components/SyncDialog.tsx:730
 msgid "Enter your email and master password."
 msgstr "メールアドレスとマスターパスワードを入力してください。"
 
-#: src/renderer/src/components/SyncDialog.tsx:304
+#: src/renderer/src/components/SyncDialog.tsx:322
 msgid "Enter your master password again and complete two-step verification if the server requests it."
 msgstr "マスターパスワードを再入力し、サーバーから求められた場合は二段階認証を完了してください。"
 
@@ -3008,8 +3018,8 @@ msgstr "このデバイスに保存されたアイテムのロックを解除す
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:514
 #: src/renderer/src/components/AuthScreen.tsx:220
 #: src/renderer/src/components/Dialogs.tsx:489
-#: src/renderer/src/components/SyncDialog.tsx:742
-#: src/renderer/src/components/SyncDialog.tsx:793
+#: src/renderer/src/components/SyncDialog.tsx:764
+#: src/renderer/src/components/SyncDialog.tsx:815
 msgid "Enter your master password."
 msgstr "マスターパスワードを入力してください。"
 
@@ -3022,7 +3032,7 @@ msgstr "同等のドメイン"
 msgid "Error code"
 msgstr "エラーコード"
 
-#: src/renderer/src/components/SyncDialog.tsx:376
+#: src/renderer/src/components/SyncDialog.tsx:394
 msgid "Error code: {code}"
 msgstr "エラーコード: {code}"
 
@@ -3214,8 +3224,8 @@ msgstr "名"
 msgid "Folder"
 msgstr "フォルダー"
 
-#: src/renderer/src/components/SyncDialog.tsx:231
-#: src/renderer/src/components/SyncDialog.tsx:284
+#: src/renderer/src/components/SyncDialog.tsx:249
+#: src/renderer/src/components/SyncDialog.tsx:302
 msgid "Folder data"
 msgstr "フォルダーデータ"
 
@@ -3350,7 +3360,7 @@ msgstr "ジェネレーター"
 msgid "Generator history"
 msgstr "ジェネレーター履歴"
 
-#: src/renderer/src/components/SyncDialog.tsx:309
+#: src/renderer/src/components/SyncDialog.tsx:327
 msgid "Get the verification code from the email sent by Bitwarden and enter it under advanced options."
 msgstr "Bitwarden から送信されたメールの確認コードを取得し、詳細オプションに入力してください。"
 
@@ -3363,7 +3373,7 @@ msgstr "Git 署名"
 msgid "GitHub"
 msgstr "GitHub"
 
-#: src/renderer/src/components/SyncDialog.tsx:1385
+#: src/renderer/src/components/SyncDialog.tsx:1406
 msgid "Go back"
 msgstr "戻る"
 
@@ -3419,7 +3429,7 @@ msgstr "{0} を非表示"
 msgid "Hide {label}"
 msgstr "{label} を非表示"
 
-#: src/renderer/src/components/SyncDialog.tsx:1034
+#: src/renderer/src/components/SyncDialog.tsx:1056
 msgid "Hide advanced options"
 msgstr "詳細オプションを非表示"
 
@@ -3429,7 +3439,7 @@ msgstr "カスタムフィールドの内容を非表示"
 
 #: src/renderer/src/components/PendingImportWarning.tsx:82
 #: src/renderer/src/components/PersonalVaultPurgeDialog.tsx:151
-#: src/renderer/src/components/SyncDialog.tsx:1010
+#: src/renderer/src/components/SyncDialog.tsx:1032
 msgid "Hide master password"
 msgstr "マスターパスワードを非表示"
 
@@ -3691,7 +3701,7 @@ msgstr "KeePass 2 XML は、パスワードを直接読み取れる暗号化さ�
 msgid "Key"
 msgstr "キー"
 
-#: src/renderer/src/components/SyncDialog.tsx:323
+#: src/renderer/src/components/SyncDialog.tsx:341
 msgid "Key Connector accounts are not supported"
 msgstr ""
 
@@ -3735,11 +3745,11 @@ msgstr "姓"
 msgid "Last revised"
 msgstr "最終更新"
 
-#: src/renderer/src/components/SyncDialog.tsx:1252
+#: src/renderer/src/components/SyncDialog.tsx:1273
 msgid "Last sync"
 msgstr "最終同期"
 
-#: src/renderer/src/components/SyncDialog.tsx:914
+#: src/renderer/src/components/SyncDialog.tsx:936
 msgid "Last synced: {lastSyncTime}"
 msgstr "最終同期: {lastSyncTime}"
 
@@ -3763,7 +3773,7 @@ msgstr "長さ"
 msgid "Let terminals and Git use SSH keys from the vault through a local socket."
 msgstr "ローカルソケットを介して、ターミナルと Git で保管庫内の SSH キーを使用できるようにします。"
 
-#: src/renderer/src/components/SyncDialog.tsx:1114
+#: src/renderer/src/components/SyncDialog.tsx:1135
 msgid "Let the server temporarily skip two-step verification on this device."
 msgstr "サーバーがこのデバイスで二段階認証を一時的に省略できるようにします。"
 
@@ -3916,7 +3926,7 @@ msgstr "ローカルアカウントとクラウド接続"
 msgid "Local generator"
 msgstr "ローカルジェネレーター"
 
-#: src/renderer/src/components/SyncDialog.tsx:294
+#: src/renderer/src/components/SyncDialog.tsx:312
 msgid "Local sync snapshot limit"
 msgstr "ローカル同期スナップショットの上限"
 
@@ -4058,7 +4068,7 @@ msgstr "手動更新"
 #: src/renderer/src/components/Dialogs.tsx:518
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:96
 #: src/renderer/src/components/PendingImportWarning.tsx:67
-#: src/renderer/src/components/SyncDialog.tsx:993
+#: src/renderer/src/components/SyncDialog.tsx:1015
 msgid "Master password"
 msgstr "マスターパスワード"
 
@@ -4335,8 +4345,8 @@ msgstr "確認しない（自動的に承認）"
 #~ msgid "Never match"
 #~ msgstr "一致させない"
 
-#: src/renderer/src/components/SyncDialog.tsx:431
-#: src/renderer/src/components/SyncDialog.tsx:433
+#: src/renderer/src/components/SyncDialog.tsx:449
+#: src/renderer/src/components/SyncDialog.tsx:451
 msgid "Never synced"
 msgstr "同期されたことがありません"
 
@@ -4349,11 +4359,11 @@ msgstr "未使用"
 msgid "New backup password"
 msgstr "新しいバックアップパスワード"
 
-#: src/renderer/src/components/SyncDialog.tsx:1164
+#: src/renderer/src/components/SyncDialog.tsx:1185
 msgid "New device verification code (optional)"
 msgstr "新しいデバイスの確認コード（任意）"
 
-#: src/renderer/src/components/SyncDialog.tsx:308
+#: src/renderer/src/components/SyncDialog.tsx:326
 msgid "New device verification code required"
 msgstr "新しいデバイスの確認コードが必要です"
 
@@ -4534,7 +4544,7 @@ msgstr "分析対象のログインアイテムに同一のパスワードを共
 msgid "None of the valid personal login items use an http:// URI."
 msgstr "有効な個人ログインアイテムで http:// URI を使用しているものはありません。"
 
-#: src/renderer/src/components/SyncDialog.tsx:1094
+#: src/renderer/src/components/SyncDialog.tsx:1115
 msgid "None of the verification methods offered by this server are supported by BearWarden."
 msgstr "このサーバーが提供する認証方法は、BearWarden ではサポートされていません。"
 
@@ -4556,7 +4566,7 @@ msgstr "未設定"
 msgid "Not directly assigned"
 msgstr "直接割り当てられていません"
 
-#: src/renderer/src/components/SyncDialog.tsx:1247
+#: src/renderer/src/components/SyncDialog.tsx:1268
 msgid "Not provided"
 msgstr "指定されていません"
 
@@ -4696,11 +4706,11 @@ msgctxt "shared-organization-activity"
 msgid "Organization and activity"
 msgstr "組織とアクティビティ"
 
-#: src/renderer/src/components/SyncDialog.tsx:290
+#: src/renderer/src/components/SyncDialog.tsx:308
 msgid "Organization collection data"
 msgstr "組織コレクションデータ"
 
-#: src/renderer/src/components/SyncDialog.tsx:235
+#: src/renderer/src/components/SyncDialog.tsx:253
 msgid "Organization collection relationships"
 msgstr "組織コレクションの関連付け"
 
@@ -4708,7 +4718,7 @@ msgstr "組織コレクションの関連付け"
 msgid "Organization Duo"
 msgstr "組織の Duo"
 
-#: src/renderer/src/components/SyncDialog.tsx:280
+#: src/renderer/src/components/SyncDialog.tsx:298
 msgid "Organization encryption key"
 msgstr "組織の暗号化キー"
 
@@ -4716,11 +4726,11 @@ msgstr "組織の暗号化キー"
 msgid "Organization items"
 msgstr "組織アイテム"
 
-#: src/renderer/src/components/SyncDialog.tsx:229
+#: src/renderer/src/components/SyncDialog.tsx:247
 msgid "Organization keys and member data"
 msgstr "組織キーとメンバーデータ"
 
-#: src/renderer/src/components/SyncDialog.tsx:278
+#: src/renderer/src/components/SyncDialog.tsx:296
 msgid "Organization profile data"
 msgstr "組織プロフィールデータ"
 
@@ -5050,7 +5060,7 @@ msgstr "プライベートメモ"
 msgid "Problem section"
 msgstr "問題のセクション"
 
-#: src/renderer/src/components/SyncDialog.tsx:375
+#: src/renderer/src/components/SyncDialog.tsx:393
 msgid "Problem section: {detailLabel}"
 msgstr "問題箇所：{detailLabel}"
 
@@ -5088,7 +5098,7 @@ msgstr "保護された項目は照会されませんでした"
 msgid "Provider {providerType}"
 msgstr "プロバイダー {providerType}"
 
-#: src/renderer/src/components/SyncDialog.tsx:282
+#: src/renderer/src/components/SyncDialog.tsx:300
 msgid "Provider-managed organization key"
 msgstr "プロバイダー管理の組織キー"
 
@@ -5246,7 +5256,7 @@ msgid "Remember approvals until locked"
 msgstr "ロックされるまで承認を記憶する"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:117
-#: src/renderer/src/components/SyncDialog.tsx:1111
+#: src/renderer/src/components/SyncDialog.tsx:1132
 msgid "Remember this device"
 msgstr "このデバイスを記憶する"
 
@@ -5381,19 +5391,19 @@ msgstr "マスターパスワードの再入力を必須にする"
 msgid "Required for password-protected JSON. Leave blank for unencrypted JSON or CSV."
 msgstr "パスワードで保護された JSON では必須です。暗号化されていない JSON または CSV の場合は空欄のままにしてください。"
 
-#: src/renderer/src/components/SyncDialog.tsx:1154
+#: src/renderer/src/components/SyncDialog.tsx:1175
 msgid "Resend email code"
 msgstr "メールコードを再送信"
 
-#: src/renderer/src/components/SyncDialog.tsx:1188
+#: src/renderer/src/components/SyncDialog.tsx:1209
 msgid "Resend verification code"
 msgstr ""
 
-#: src/renderer/src/components/SyncDialog.tsx:1321
+#: src/renderer/src/components/SyncDialog.tsx:1342
 msgid "Resend verification email"
 msgstr "確認メールを再送信"
 
-#: src/renderer/src/components/SyncDialog.tsx:806
+#: src/renderer/src/components/SyncDialog.tsx:828
 msgid "Resending is now allowed. Select “Sync now” to retry."
 msgstr "再送信できるようになりました。もう一度試すには「今すぐ同期」を選択してください。"
 
@@ -5660,7 +5670,7 @@ msgstr "セキュリティとロック解除"
 msgid "Security code"
 msgstr "セキュリティコード"
 
-#: src/renderer/src/components/SyncDialog.tsx:491
+#: src/renderer/src/components/SyncDialog.tsx:510
 msgid "Security key"
 msgstr "セキュリティキー"
 
@@ -5680,7 +5690,7 @@ msgstr "選択"
 msgid "Select a catalog face or upload your own card image."
 msgstr "カタログの券面を選択するか、自分のカード画像をアップロードしてください。"
 
-#: src/renderer/src/components/SyncDialog.tsx:1079
+#: src/renderer/src/components/SyncDialog.tsx:1101
 msgid "Select a verification method"
 msgstr "確認方法を選択"
 
@@ -5724,8 +5734,8 @@ msgstr "選択した項目"
 msgid "Send created"
 msgstr "Send を作成しました"
 
-#: src/renderer/src/components/SyncDialog.tsx:237
-#: src/renderer/src/components/SyncDialog.tsx:292
+#: src/renderer/src/components/SyncDialog.tsx:255
+#: src/renderer/src/components/SyncDialog.tsx:310
 msgid "Send data"
 msgstr "Send データ"
 
@@ -5733,7 +5743,7 @@ msgstr "Send データ"
 msgid "Send deleted"
 msgstr "Send を削除しました"
 
-#: src/renderer/src/components/SyncDialog.tsx:1156
+#: src/renderer/src/components/SyncDialog.tsx:1177
 msgid "Send email code"
 msgstr "メールコードを送信"
 
@@ -5767,7 +5777,7 @@ msgid "Separator"
 msgstr "区切り文字"
 
 #: src/renderer/src/components/AccountDevicesDialog.tsx:229
-#: src/renderer/src/components/SyncDialog.tsx:1238
+#: src/renderer/src/components/SyncDialog.tsx:1259
 msgid "Server"
 msgstr "サーバー"
 
@@ -5776,20 +5786,20 @@ msgid "Server confirms master password was not changed"
 msgstr "サーバーはマスターパスワードが変更されていないことを確認しました"
 
 #. Privacy-safe sync diagnostic reason shown when JSON was returned but the top-level sync value has the wrong type.
-#: src/renderer/src/components/SyncDialog.tsx:262
+#: src/renderer/src/components/SyncDialog.tsx:280
 msgid "Server response is not a JSON object"
 msgstr "サーバーの応答が JSON オブジェクトではありません"
 
 #. Privacy-safe sync diagnostic reason shown when a successful server or proxy response cannot be parsed as JSON.
-#: src/renderer/src/components/SyncDialog.tsx:256
+#: src/renderer/src/components/SyncDialog.tsx:274
 msgid "Server response is not valid JSON"
 msgstr "サーバーの応答が有効な JSON ではありません"
 
-#: src/renderer/src/components/SyncDialog.tsx:225
+#: src/renderer/src/components/SyncDialog.tsx:243
 msgid "Server sync response"
 msgstr "サーバー同期の応答"
 
-#: src/renderer/src/components/SyncDialog.tsx:946
+#: src/renderer/src/components/SyncDialog.tsx:968
 msgid "Server URL"
 msgstr "サーバー URL"
 
@@ -5798,7 +5808,7 @@ msgid "Service domains are compared with the static list only on this device."
 msgstr "サービスドメインは、このデバイス上でのみ静的リストと照合されます。"
 
 #. Privacy-safe sync diagnostic reason for incompatible sign-in or access-token refresh metadata.
-#: src/renderer/src/components/SyncDialog.tsx:268
+#: src/renderer/src/components/SyncDialog.tsx:286
 msgid "Session refresh response"
 msgstr "セッション更新応答"
 
@@ -5915,7 +5925,7 @@ msgstr "Finder で表示"
 
 #: src/renderer/src/components/PendingImportWarning.tsx:82
 #: src/renderer/src/components/PersonalVaultPurgeDialog.tsx:151
-#: src/renderer/src/components/SyncDialog.tsx:1010
+#: src/renderer/src/components/SyncDialog.tsx:1032
 msgid "Show master password"
 msgstr "マスターパスワードを表示"
 
@@ -5927,7 +5937,7 @@ msgstr "パスワードを大きな文字で表示"
 msgid "Show this historical password"
 msgstr "この履歴パスワードを表示"
 
-#: src/renderer/src/components/SyncDialog.tsx:1034
+#: src/renderer/src/components/SyncDialog.tsx:1056
 msgid "Show two-step verification"
 msgstr "二段階認証を表示"
 
@@ -5939,6 +5949,11 @@ msgstr "Web サイトのアイコンを表示"
 msgid "Sign in with a passkey"
 msgstr "パスキーでサインイン"
 
+#. Privacy-safe sync diagnostic stage for the password or two-factor token exchange response.
+#: src/renderer/src/components/SyncDialog.tsx:231
+msgid "Sign-in token response"
+msgstr "サインイントークンの応答"
+
 #: src/renderer/src/components/SettingsPage.tsx:1696
 msgid "Signature approval"
 msgstr "署名の承認"
@@ -5947,7 +5962,7 @@ msgstr "署名の承認"
 msgid "Simplified Chinese"
 msgstr "簡体字中国語"
 
-#: src/renderer/src/components/SyncDialog.tsx:313
+#: src/renderer/src/components/SyncDialog.tsx:331
 msgid "Single sign-on is required"
 msgstr ""
 
@@ -6069,7 +6084,7 @@ msgstr "このローカルアカウントに切り替え · ローカルコー�
 msgid "Symbols, numbers, and letters use different colors to make them easier to distinguish."
 msgstr "記号、数字、文字は区別しやすいように異なる色で表示されます。"
 
-#: src/renderer/src/components/SyncDialog.tsx:860
+#: src/renderer/src/components/SyncDialog.tsx:882
 msgid "Sync"
 msgstr "同期"
 
@@ -6077,15 +6092,15 @@ msgstr "同期"
 msgid "Sync & accounts"
 msgstr "同期とアカウント"
 
-#: src/renderer/src/components/SyncDialog.tsx:783
+#: src/renderer/src/components/SyncDialog.tsx:805
 msgid "Sync complete. {summary}."
 msgstr "同期が完了しました。{summary}。"
 
-#: src/renderer/src/components/SyncDialog.tsx:1233
+#: src/renderer/src/components/SyncDialog.tsx:1254
 msgid "Sync connection information"
 msgstr "同期接続情報"
 
-#: src/renderer/src/components/SyncDialog.tsx:358
+#: src/renderer/src/components/SyncDialog.tsx:376
 msgid "Sync did not complete"
 msgstr "同期が完了しませんでした"
 
@@ -6101,27 +6116,27 @@ msgstr "同期が完了しませんでした。後でもう一度お試しくだ
 msgid "Sync error details"
 msgstr "同期エラーの詳細"
 
-#: src/renderer/src/components/SyncDialog.tsx:911
+#: src/renderer/src/components/SyncDialog.tsx:933
 msgid "Sync failed: {lastErrorTime}"
 msgstr "同期に失敗しました: {lastErrorTime}"
 
-#: src/renderer/src/components/SyncDialog.tsx:906
+#: src/renderer/src/components/SyncDialog.tsx:928
 msgid "Sync is not configured"
 msgstr "同期が設定されていません"
 
-#: src/renderer/src/components/SyncDialog.tsx:1405
+#: src/renderer/src/components/SyncDialog.tsx:1426
 msgid "Sync now"
 msgstr "今すぐ同期"
 
-#: src/renderer/src/components/SyncDialog.tsx:249
+#: src/renderer/src/components/SyncDialog.tsx:267
 msgid "Sync response structure"
 msgstr "同期レスポンスの構造"
 
-#: src/renderer/src/components/SyncDialog.tsx:239
+#: src/renderer/src/components/SyncDialog.tsx:257
 msgid "Sync state commit"
 msgstr "同期状態のコミット"
 
-#: src/renderer/src/components/SyncDialog.tsx:918
+#: src/renderer/src/components/SyncDialog.tsx:940
 msgid "Syncing"
 msgstr "同期中"
 
@@ -6130,7 +6145,7 @@ msgid "Syncing attachment list"
 msgstr "添付ファイル一覧を同期中"
 
 #: src/renderer/src/components/SettingsPage.tsx:527
-#: src/renderer/src/components/SyncDialog.tsx:899
+#: src/renderer/src/components/SyncDialog.tsx:921
 #: src/renderer/src/components/VaultShell.tsx:318
 msgid "Syncing…"
 msgstr "同期中…"
@@ -6335,7 +6350,7 @@ msgstr "カスタムの非アクティブタイムアウトは 8,760 時間を�
 msgid "The custom inactivity timeout must be at least 1 minute."
 msgstr "カスタムの非アクティブタイムアウトは 1 分以上にする必要があります。"
 
-#: src/renderer/src/components/SyncDialog.tsx:344
+#: src/renderer/src/components/SyncDialog.tsx:362
 msgid "The data returned by the server cannot be processed safely. Check the Bitwarden or Vaultwarden version and compatibility."
 msgstr "サーバーから返されたデータを安全に処理できません。Bitwarden または Vaultwarden のバージョンと互換性を確認してください。"
 
@@ -6383,7 +6398,7 @@ msgstr "アイテムは暗号化されたゴミ箱に残り、後で復元でき
 msgid "The key is shown only during this short-lived setup session."
 msgstr "キーはこの短時間の設定セッション中にのみ表示されます。"
 
-#: src/renderer/src/components/SyncDialog.tsx:912
+#: src/renderer/src/components/SyncDialog.tsx:934
 msgid "The last sync encountered a problem."
 msgstr "前回の同期で問題が発生しました。"
 
@@ -6608,7 +6623,7 @@ msgstr "サーバーでパスワード非表示の権限が適用されている
 msgid "The server cannot currently report this provider’s actual status. Forcing it off may remove a sign-in method that is still in use. If it is the last method, your account will no longer be protected by two-factor authentication."
 msgstr "現在、サーバーはこのプロバイダーの実際の状態を報告できません。強制的に無効化すると、まだ使用中のサインイン方法が削除される可能性があります。これが最後の方法の場合、アカウントは二要素認証で保護されなくなります。"
 
-#: src/renderer/src/components/SyncDialog.tsx:348
+#: src/renderer/src/components/SyncDialog.tsx:366
 msgid "The server contains an incomplete SSH key"
 msgstr "サーバーに不完全な SSH キーが含まれています"
 
@@ -6620,7 +6635,7 @@ msgstr "サーバーに不完全な SSH キーが含まれています。先に 
 msgid "The server data changed, so this sync was not applied. Sync again to get the latest version."
 msgstr "サーバーデータが変更されたため、この同期は適用されませんでした。最新バージョンを取得するには、もう一度同期してください。"
 
-#: src/renderer/src/components/SyncDialog.tsx:353
+#: src/renderer/src/components/SyncDialog.tsx:371
 msgid "The server data has changed"
 msgstr "サーバーデータが変更されました"
 
@@ -6644,7 +6659,7 @@ msgstr "サーバー上に同名の添付ファイルが複数あるか、その
 msgid "The server requires a new device verification code. Get the code from the email sent by Bitwarden, then enter it under advanced options."
 msgstr "サーバーで新しいデバイス確認コードが必要です。Bitwarden から送信されたメールでコードを取得し、詳細オプションに入力してください。"
 
-#: src/renderer/src/components/SyncDialog.tsx:343
+#: src/renderer/src/components/SyncDialog.tsx:361
 msgid "The server response is incompatible"
 msgstr "サーバーの応答に互換性がありません"
 
@@ -6792,7 +6807,7 @@ msgstr "確認コードを {emailAddress} に送信しました。"
 msgid "The verification code will be sent to the specified address. The email address is retained only during this short-lived setup flow."
 msgstr "確認コードは指定したアドレスに送信されます。メールアドレスはこの短時間のセットアップフロー中にのみ保持されます。"
 
-#: src/renderer/src/components/SyncDialog.tsx:556
+#: src/renderer/src/components/SyncDialog.tsx:576
 msgid "The verification email request was sent. If email is configured on the server, check your inbox to complete verification."
 msgstr "確認メールのリクエストを送信しました。サーバーでメールが設定されている場合は、受信トレイを確認して検証を完了してください。"
 
@@ -6832,7 +6847,7 @@ msgstr "これらの値はこのデバイスの暗号化された保管庫にの
 msgid "Third-party email forwarding integrations that require API credentials are not available."
 msgstr "API 認証情報を必要とするサードパーティのメール転送連携は利用できません。"
 
-#: src/renderer/src/components/SyncDialog.tsx:647
+#: src/renderer/src/components/SyncDialog.tsx:669
 msgid "This account requires a two-step verification method that BearWarden does not support."
 msgstr "このアカウントでは、BearWarden がサポートしていない 2 段階認証方法が必要です。"
 
@@ -6848,7 +6863,7 @@ msgstr ""
 msgid "This account uses a newer account encryption or sign-in method that is not yet supported. To prevent data loss, BearWarden will not write any changes to the server."
 msgstr "このアカウントでは、まだサポートされていない新しいアカウント暗号化方式またはサインイン方法が使用されています。データ損失を防ぐため、BearWarden はサーバーに変更を書き込みません。"
 
-#: src/renderer/src/components/SyncDialog.tsx:333
+#: src/renderer/src/components/SyncDialog.tsx:351
 msgid "This account's encryption method is not supported"
 msgstr "このアカウントの暗号化方式はサポートされていません"
 
@@ -6892,7 +6907,7 @@ msgstr "このアプリケーションは Git の内容に署名するため SSH
 msgid "This attachment"
 msgstr "この添付ファイル"
 
-#: src/renderer/src/components/SyncDialog.tsx:354
+#: src/renderer/src/components/SyncDialog.tsx:372
 msgid "This change was not applied. Sync again to get the latest version, then retry."
 msgstr "この変更は適用されませんでした。最新バージョンを取得するにはもう一度同期してから、再試行してください。"
 
@@ -6970,7 +6985,7 @@ msgstr "この操作は組織のポリシーにより制限されています。
 msgid "This organization requires single sign-on. Sign in with the official Bitwarden client because BearWarden does not support SSO sign-in yet."
 msgstr ""
 
-#: src/renderer/src/components/SyncDialog.tsx:314
+#: src/renderer/src/components/SyncDialog.tsx:332
 msgid "This organization requires SSO sign-in, which BearWarden does not support yet. Use the official Bitwarden client to sign in."
 msgstr ""
 
@@ -7102,7 +7117,7 @@ msgstr "今週"
 msgid "This will deauthorize all sessions"
 msgstr "すべてのセッションの認可を解除します"
 
-#: src/renderer/src/components/SyncDialog.tsx:1377
+#: src/renderer/src/components/SyncDialog.tsx:1398
 msgid "This will not delete your local vault, but it will no longer sync with Bitwarden."
 msgstr "ローカル保管庫は削除されませんが、Bitwarden とは同期されなくなります。"
 
@@ -7116,7 +7131,7 @@ msgstr "時刻を利用できません"
 msgid "Title"
 msgstr "タイトル"
 
-#: src/renderer/src/components/SyncDialog.tsx:334
+#: src/renderer/src/components/SyncDialog.tsx:352
 msgid "To prevent data loss, BearWarden stopped writing changes to the server. Update the app and try again."
 msgstr "データ損失を防ぐため、BearWarden はサーバーへの変更の書き込みを停止しました。アプリを更新してから、もう一度お試しください。"
 
@@ -7199,7 +7214,7 @@ msgstr "信頼状態"
 msgid "Trusted"
 msgstr "信頼済み"
 
-#: src/renderer/src/components/SyncDialog.tsx:328
+#: src/renderer/src/components/SyncDialog.tsx:346
 msgid "Trusted-device encryption is not supported"
 msgstr ""
 
@@ -7215,7 +7230,7 @@ msgstr "検索語を短くするか、「すべてのアイテム」に切り替
 msgid "Try again"
 msgstr "もう一度試す"
 
-#: src/renderer/src/components/SyncDialog.tsx:359
+#: src/renderer/src/components/SyncDialog.tsx:377
 msgid "Try again. If the problem persists, note the error code below for troubleshooting."
 msgstr "もう一度お試しください。問題が解消しない場合は、トラブルシューティングのために以下のエラーコードを記録してください。"
 
@@ -7236,31 +7251,31 @@ msgstr "二要素認証"
 msgid "Two-factor authentication not enabled"
 msgstr "二要素認証が有効になっていません"
 
-#: src/renderer/src/components/SyncDialog.tsx:1125
+#: src/renderer/src/components/SyncDialog.tsx:1146
 msgid "Two-step verification code"
 msgstr "2 段階認証コード"
 
-#: src/renderer/src/components/SyncDialog.tsx:1127
+#: src/renderer/src/components/SyncDialog.tsx:1148
 msgid "Two-step verification code (optional)"
 msgstr "二段階認証コード（任意）"
 
-#: src/renderer/src/components/SyncDialog.tsx:1306
+#: src/renderer/src/components/SyncDialog.tsx:1327
 msgid "Two-step verification enabled"
 msgstr "二段階認証が有効です"
 
-#: src/renderer/src/components/SyncDialog.tsx:644
+#: src/renderer/src/components/SyncDialog.tsx:666
 msgid "Two-step verification is required. Enter a current verification code to continue."
 msgstr "2 段階認証が必要です。続行するには、現在の認証コードを入力してください。"
 
-#: src/renderer/src/components/SyncDialog.tsx:1057
+#: src/renderer/src/components/SyncDialog.tsx:1079
 msgid "Two-step verification method"
 msgstr "2 段階認証方法"
 
-#: src/renderer/src/components/SyncDialog.tsx:1059
+#: src/renderer/src/components/SyncDialog.tsx:1081
 msgid "Two-step verification method (optional)"
 msgstr "二段階認証方法（任意）"
 
-#: src/renderer/src/components/SyncDialog.tsx:1307
+#: src/renderer/src/components/SyncDialog.tsx:1328
 msgid "Two-step verification not enabled"
 msgstr "二段階認証が有効になっていません"
 
@@ -7624,7 +7639,7 @@ msgstr "不明な種類（{0}）"
 msgid "Unknown type ({type})"
 msgstr "不明な種類（{type}）"
 
-#: src/renderer/src/components/SyncDialog.tsx:1225
+#: src/renderer/src/components/SyncDialog.tsx:1246
 msgid "Unlock and sync"
 msgstr "ロック解除して同期"
 
@@ -7658,7 +7673,7 @@ msgstr "PIN でロック解除"
 msgid "Unlock your vault in BearWarden, then return to the browser to use autofill."
 msgstr "BearWarden で保管庫のロックを解除してから、ブラウザーに戻って自動入力を使用してください。"
 
-#: src/renderer/src/components/SyncDialog.tsx:764
+#: src/renderer/src/components/SyncDialog.tsx:786
 msgid "Unlocked and synced. {summary}."
 msgstr "ロックを解除して同期しました。{summary}。"
 
@@ -7688,7 +7703,7 @@ msgstr "保護されていない Web サイト"
 msgid "Unsupported key format"
 msgstr "サポートされていないキー形式"
 
-#: src/renderer/src/components/SyncDialog.tsx:286
+#: src/renderer/src/components/SyncDialog.tsx:304
 msgid "Unsupported vault item type"
 msgstr "未対応の保管庫アイテムタイプ"
 
@@ -7751,7 +7766,7 @@ msgstr "暗号化された添付ファイルをアップロード中"
 msgid "Uppercase letters"
 msgstr "大文字"
 
-#: src/renderer/src/components/SyncDialog.tsx:319
+#: src/renderer/src/components/SyncDialog.tsx:337
 msgid "Use another enabled two-step verification method, or sign in with the official Bitwarden client."
 msgstr ""
 
@@ -7759,7 +7774,7 @@ msgstr ""
 msgid "Use at least 4 characters and avoid numbers that are easy to guess."
 msgstr "4 文字以上を使用し、推測されやすい数字は避けてください。"
 
-#: src/renderer/src/components/SyncDialog.tsx:961
+#: src/renderer/src/components/SyncDialog.tsx:983
 msgid "Use bitwarden.com for Bitwarden Cloud. For Vaultwarden, use an HTTPS URL."
 msgstr "Bitwarden Cloud には bitwarden.com を使用してください。Vaultwarden には HTTPS URL を使用してください。"
 
@@ -7771,7 +7786,7 @@ msgstr "代わりに、パスワードジェネレーターで作成した長い
 msgid "Use master password"
 msgstr "マスターパスワードを使用"
 
-#: src/renderer/src/components/SyncDialog.tsx:1175
+#: src/renderer/src/components/SyncDialog.tsx:1196
 msgid "Use only when Bitwarden asks you to verify a new device."
 msgstr "Bitwarden から新しいデバイスの確認を求められた場合にのみ使用してください。"
 
@@ -7839,8 +7854,8 @@ msgstr "保管庫のカテゴリ"
 msgid "Vault health report"
 msgstr "保管庫のセキュリティレポート"
 
-#: src/renderer/src/components/SyncDialog.tsx:233
-#: src/renderer/src/components/SyncDialog.tsx:288
+#: src/renderer/src/components/SyncDialog.tsx:251
+#: src/renderer/src/components/SyncDialog.tsx:306
 msgid "Vault item data"
 msgstr "保管庫アイテムのデータ"
 
@@ -7856,7 +7871,7 @@ msgstr "保管庫ナビゲーション"
 msgid "Vaultwarden does not have an HIBP API key configured"
 msgstr "Vaultwarden に HIBP API キーが設定されていません"
 
-#: src/renderer/src/components/SyncDialog.tsx:349
+#: src/renderer/src/components/SyncDialog.tsx:367
 msgid "Vaultwarden returned an SSH key that is missing required key fields. Repair or delete it in the official web vault, then sync again."
 msgstr "Vaultwarden から返された SSH キーには必須のキーフィールドがありません。公式 Web 保管庫で修復または削除してから、もう一度同期してください。"
 
@@ -7948,8 +7963,8 @@ msgstr "{findingName} を表示"
 msgid "View {title}"
 msgstr "{title} を表示"
 
-#: src/renderer/src/components/SyncDialog.tsx:393
-#: src/renderer/src/components/SyncDialog.tsx:422
+#: src/renderer/src/components/SyncDialog.tsx:411
+#: src/renderer/src/components/SyncDialog.tsx:440
 msgid "View details"
 msgstr "詳細を表示"
 
@@ -8189,7 +8204,7 @@ msgstr "現在のセッションは期限切れです。もう一度サインイ
 msgid "Your master password and decrypted data never leave this device."
 msgstr "マスターパスワードと復号されたデータがこのデバイスから送信されることはありません。"
 
-#: src/renderer/src/components/SyncDialog.tsx:915
+#: src/renderer/src/components/SyncDialog.tsx:937
 msgid "Your master password and verification codes are used only for this operation and are not stored on this device."
 msgstr "マスターパスワードと認証コードはこの操作にのみ使用され、このデバイスには保存されません。"
 
@@ -8225,7 +8240,7 @@ msgstr "新しいマスターパスワードは現在のマスターパスワー
 msgid "Your remote account and local encrypted vault have been updated. Reconnect using your new master password."
 msgstr "リモートアカウントとローカルの暗号化された保管庫を更新しました。新しいマスターパスワードで再接続してください。"
 
-#: src/renderer/src/components/SyncDialog.tsx:303
+#: src/renderer/src/components/SyncDialog.tsx:321
 msgid "Your sign-in has expired"
 msgstr "サインインの有効期限が切れました"
 
@@ -8238,6 +8253,6 @@ msgid "Your sync session has expired. Sign in again first."
 msgstr "同期セッションの有効期限が切れました。まずもう一度サインインしてください。"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:115
-#: src/renderer/src/components/SyncDialog.tsx:490
+#: src/renderer/src/components/SyncDialog.tsx:509
 msgid "YubiKey OTP"
 msgstr "YubiKey OTP"

@@ -43,6 +43,9 @@ describe('SyncDialog error diagnostics', () => {
     expect(markup).toContain('問題區段：保管庫項目資料')
     expect(markup).toContain('檢視詳細資訊')
     expect(markup).not.toMatch(/uuid|credential|ciphertext/i)
+    expect(syncInvalidResponseStageLabel('prelogin')).toBe('帳戶金鑰衍生設定')
+    expect(syncInvalidResponseStageLabel('authentication')).toBe('登入權杖回應')
+    expect(syncInvalidResponseStageLabel('access-token')).toBe('存取權杖更新')
     expect(syncInvalidResponseStageLabel('organization')).toBe('組織金鑰與成員資料')
     expect(syncInvalidResponseReasonLabel('provider-organization-key')).toBe(
       '服務提供者管理的組織金鑰'
