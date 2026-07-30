@@ -2370,6 +2370,11 @@ describe('registerVaultIpc reprompt gate', () => {
       kind: 'two-factor-required',
       providers: ['3', '8']
     })
+    vault.connectSync.mockRejectedValueOnce(new SyncTwoFactorRequiredError([]))
+    await expect(connect(event, connectRequest)).resolves.toEqual({
+      kind: 'two-factor-required',
+      providers: []
+    })
     expect(afterSyncChanged).not.toHaveBeenCalled()
 
     vault.connectSync.mockRejectedValueOnce(new VaultError('SYNC_NETWORK'))

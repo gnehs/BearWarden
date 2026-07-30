@@ -16,6 +16,7 @@ import {
   decryptBitwardenAttachmentBuffer,
   decryptBitwardenBytes,
   decryptBitwardenCipherBlob,
+  decryptBitwardenMasterKeyWrappedUserKey,
   decryptBitwardenString,
   decryptBitwardenWrappedKey,
   decryptRsaPrivateKey,
@@ -35,6 +36,10 @@ const TYPE_2_VECTOR =
 const TYPE_1_VECTOR =
   '1.ABEiM0RVZneImaq7zN3u/w==|SlyzY8ruQp1TEkLizfIzli8PM+0v7xKMbdwfl57UfUE=|XRD3eKrm9IDGMjIxN0db6mI4vqM6FZfQbViEkYP/cIE='
 const VECTOR_PLAINTEXT = 'Bitwarden fixed AES vector'
+const OFFICIAL_LEGACY_USER_KEY_TYPE_0 =
+  '0.8UClLa8IPE1iZT7chy5wzQ==|6PVfHnVk5S3XqEtQemnM5yb4JodxmPkkWzmDRdfyHtjORmvxqlLX40tBJZ+CKxQWmS8tpEB5w39rbgHg/gqs0haGdZG4cPbywsgGzxZ7uNI='
+const OFFICIAL_LEGACY_USER_KEY_HEX =
+  '0c5f97cb2504ec4389615a3a067ff21cd1a87d1d7618d52c75ca027384a57d94bad7ea8918a9e31dda39b4ed495bbd33fd1a1134e204864bc2d0b28580e08ca7'
 
 function attachmentEnvelope(type: 0 | 2, plaintext: Buffer, key: Buffer): Buffer {
   const iv = Buffer.from([...Array(16).keys()])
@@ -130,6 +135,32 @@ describe('Bitwarden KDF compatibility', () => {
 })
 
 describe('Bitwarden EncString compatibility', () => {
+  it('unwraps the official type 0 and headerless user-key vector only at the master-key boundary', async () => {
+    const masterKey = await deriveMasterKey('asdfasdfasdf', 'legacy@bitwarden.com', {
+      type: 'pbkdf2',
+      iterations: 600_000
+    })
+    const masterKeyBefore = Buffer.from(masterKey)
+    try {
+      const expected = Buffer.from(OFFICIAL_LEGACY_USER_KEY_HEX, 'hex')
+      expect(
+        decryptBitwardenMasterKeyWrappedUserKey(OFFICIAL_LEGACY_USER_KEY_TYPE_0, masterKey)
+      ).toEqual(expected)
+      expect(
+        decryptBitwardenMasterKeyWrappedUserKey(OFFICIAL_LEGACY_USER_KEY_TYPE_0.slice(2), masterKey)
+      ).toEqual(expected)
+      expect(masterKey).toEqual(masterKeyBefore)
+      expect(() => decryptBitwardenBytes(OFFICIAL_LEGACY_USER_KEY_TYPE_0, masterKey)).toThrowError(
+        expect.objectContaining({
+          code: 'INVALID_CIPHERSTRING' satisfies BitwardenCryptoError['code']
+        })
+      )
+    } finally {
+      masterKey.fill(0)
+      masterKeyBefore.fill(0)
+    }
+  })
+
   it('decrypts independent fixed AES type 2 and legacy type 1 vectors', () => {
     expect(decryptBitwardenString(TYPE_2_VECTOR, COMBINED_KEY)).toBe(VECTOR_PLAINTEXT)
     expect(decryptBitwardenString(TYPE_1_VECTOR, COMBINED_KEY.subarray(0, 32))).toBe(
@@ -471,6 +502,11 @@ describe('Bitwarden RSA EncString compatibility', () => {
 
   it('decrypts type 3 SHA-256 and type 4 SHA-1 OAEP payloads', () => {
     const { privateKey, publicKey } = makeRsaKeys()
+    const v2UserKey = {
+      algorithm: 'xchacha20-poly1305' as const,
+      keyId: Buffer.from([...Array(16).keys()]),
+      encryptionKey: Buffer.from([...Array(32).keys()])
+    }
     for (const [type, oaepHash] of [
       [3, 'sha256'],
       [4, 'sha1']
@@ -482,7 +518,29 @@ describe('Bitwarden RSA EncString compatibility', () => {
       expect(
         decryptBitwardenString(`${type}.${ciphertext.toString('base64')}`, COMBINED_KEY, privateKey)
       ).toBe('RSA fixed behavior')
+      expect(
+        decryptBitwardenString(`${type}.${ciphertext.toString('base64')}`, v2UserKey, privateKey)
+      ).toBe('RSA fixed behavior')
     }
+  })
+
+  it('keeps symmetric cipher key validation independent from RSA decryption', () => {
+    const v2UserKey = {
+      algorithm: 'xchacha20-poly1305' as const,
+      keyId: Buffer.from([...Array(16).keys()]),
+      encryptionKey: Buffer.from([...Array(32).keys()])
+    }
+
+    expect(() => decryptBitwardenBytes(TYPE_2_VECTOR, v2UserKey)).toThrowError(
+      expect.objectContaining({
+        code: 'INVALID_KEY' satisfies BitwardenCryptoError['code']
+      })
+    )
+    expect(() => decryptBitwardenBytes(TYPE_7_VECTOR, COMBINED_KEY)).toThrowError(
+      expect.objectContaining({
+        code: 'INVALID_KEY' satisfies BitwardenCryptoError['code']
+      })
+    )
   })
 
   it('accepts PEM, DER, and base64 DER PKCS#8 private-key payloads', () => {

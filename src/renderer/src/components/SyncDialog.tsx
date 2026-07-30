@@ -459,6 +459,7 @@ function SyncDialog({
   const [twoFactorMethod, setTwoFactorMethod] = useState<SyncTwoFactorFormMethod>('0')
   const [twoFactorCode, setTwoFactorCode] = useState('')
   const [twoFactorProviders, setTwoFactorProviders] = useState<readonly SyncTwoFactorProvider[]>([])
+  const [twoFactorChallengeActive, setTwoFactorChallengeActive] = useState(false)
   const [emailCodeBusy, setEmailCodeBusy] = useState(false)
   const [emailCodeSent, setEmailCodeSent] = useState(false)
   const [webAuthnRemember, setWebAuthnRemember] = useState(false)
@@ -490,12 +491,13 @@ function SyncDialog({
     { label: t`YubiKey OTP`, value: '3' },
     { label: t`Security key`, value: WEB_AUTHN_TWO_FACTOR_METHOD }
   ]
-  const availableTwoFactorMethods =
-    twoFactorProviders.length === 0
-      ? twoFactorMethods
-      : twoFactorMethods.filter(({ value }) =>
-          twoFactorProviders.includes(syncTwoFactorProviderForMethod(value))
-        )
+  const availableTwoFactorMethods = twoFactorChallengeActive
+    ? twoFactorMethods.filter(({ value }) =>
+        twoFactorProviders.includes(syncTwoFactorProviderForMethod(value))
+      )
+    : twoFactorMethods
+  const unsupportedTwoFactorChallenge =
+    twoFactorChallengeActive && availableTwoFactorMethods.length === 0
 
   const configured = status.configured
   const requiresCredentials =
@@ -569,6 +571,7 @@ function SyncDialog({
     setTwoFactorMethod('0')
     setTwoFactorCode('')
     setTwoFactorProviders([])
+    setTwoFactorChallengeActive(false)
     setEmailCodeBusy(false)
     setEmailCodeSent(false)
     setWebAuthnRemember(false)
@@ -636,6 +639,7 @@ function SyncDialog({
   ): SyncTwoFactorFormMethod | null {
     const method = resolveSyncTwoFactorMethod(twoFactorMethod, providers)
     setTwoFactorProviders(providers)
+    setTwoFactorChallengeActive(true)
     setShowAdvanced(true)
     setTwoFactorCode('')
     setEmailCodeSent(false)
@@ -1053,7 +1057,7 @@ function SyncDialog({
                     <FieldGroup className="grid w-auto gap-3 rounded-lg border bg-[var(--panel-muted)] p-3">
                       <Field>
                         <FieldLabel htmlFor="two-factor-method">
-                          {twoFactorProviders.length > 0 ? (
+                          {twoFactorChallengeActive ? (
                             <Trans>Two-step verification method</Trans>
                           ) : (
                             <Trans>Two-step verification method (optional)</Trans>
@@ -1073,7 +1077,7 @@ function SyncDialog({
                               }
                             }
                           }}
-                          disabled={busy}
+                          disabled={busy || unsupportedTwoFactorChallenge}
                         >
                           <SelectTrigger id="two-factor-method" className="w-full">
                             <SelectValue placeholder={t`Select a verification method`} />
@@ -1088,15 +1092,14 @@ function SyncDialog({
                             </SelectGroup>
                           </SelectContent>
                         </Select>
-                        {twoFactorProviders.length > 0 &&
-                          availableTwoFactorMethods.length === 0 && (
-                            <FieldDescription>
-                              <Trans>
-                                None of the verification methods offered by this server are
-                                supported by BearWarden.
-                              </Trans>
-                            </FieldDescription>
-                          )}
+                        {unsupportedTwoFactorChallenge && (
+                          <FieldDescription>
+                            <Trans>
+                              None of the verification methods offered by this server are supported
+                              by BearWarden.
+                            </Trans>
+                          </FieldDescription>
+                        )}
                       </Field>
                       {twoFactorMethod === WEB_AUTHN_TWO_FACTOR_METHOD ? (
                         <Field orientation="horizontal" data-disabled={busy || undefined}>
@@ -1121,7 +1124,7 @@ function SyncDialog({
                       ) : (
                         <Field>
                           <FieldLabel htmlFor="two-factor-code">
-                            {twoFactorProviders.length > 0 ? (
+                            {twoFactorChallengeActive ? (
                               <Trans>Two-step verification code</Trans>
                             ) : (
                               <Trans>Two-step verification code (optional)</Trans>
@@ -1133,7 +1136,7 @@ function SyncDialog({
                             autoCapitalize="none"
                             value={twoFactorCode}
                             onChange={(event) => setTwoFactorCode(event.target.value)}
-                            disabled={busy}
+                            disabled={busy || unsupportedTwoFactorChallenge}
                           />
                           {twoFactorMethod === '1' && twoFactorProviders.includes('1') && (
                             <Button
@@ -1220,7 +1223,7 @@ function SyncDialog({
                 >
                   <Trans>Cancel</Trans>
                 </Button>
-                <Button type="submit" disabled={isSyncing}>
+                <Button type="submit" disabled={isSyncing || unsupportedTwoFactorChallenge}>
                   {isSyncing && <Spinner data-icon="inline-start" aria-hidden="true" />}
                   {configured ? t`Unlock and sync` : t`Connect and sync`}
                 </Button>

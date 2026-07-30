@@ -129,6 +129,7 @@ import type {
   StoredLogin,
   StoredSharedLogin,
   SyncEntityMapping,
+  SyncTombstone,
   PersistedSyncData,
   VaultData,
   VaultMasterPasswordChangeStatus,
@@ -1193,6 +1194,7 @@ export class VaultServiceBase {
           },
           unlockMaterial: null,
           lastSyncAt: null,
+          requiresFullSyncAfterCipherIsolation: false,
           folderMappings: [],
           loginMappings: [],
           folderTombstones: [],
@@ -2020,6 +2022,7 @@ export class VaultServiceBase {
     } catch (error) {
       // The dispatched journal remains the sole source of truth when the authoritative read fails.
       if (error instanceof VaultError) throw error
+      if (error instanceof BitwardenDirectError) throw error
       throw new VaultError('SYNC_FAILED')
     }
   }
@@ -2045,6 +2048,7 @@ export class VaultServiceBase {
     complete.sync.pendingLoginMutation = null
     complete.sync.pendingLoginImport = null
     complete.sync.pendingPersonalVaultPurge = null
+    complete.sync.requiresFullSyncAfterCipherIsolation = false
     complete.sync.state = client.exportState()
     complete.sync.lastSyncAt = this.nowIso()
     complete.updatedAt = complete.sync.lastSyncAt
@@ -2082,12 +2086,33 @@ export class VaultServiceBase {
         conflicts: 0
       }
     }
-    const sync = source.sync
+    let sync = source.sync
     if (!sync) throw new VaultError('SYNC_AUTH_REQUIRED')
     const unchanged = await this.skipUnchangedRemoteSync(source, client, signal, syncStartedAt)
     if (unchanged) return unchanged
     await client.sync(signal)
-    this.assertNoIsolatedMappedLogins(client, [...sync.loginMappings, ...sync.loginTombstones])
+    const initialIsolatedPersonalCipherIds = this.isolatedPersonalCipherIds(client)
+    if (initialIsolatedPersonalCipherIds.size > 0) {
+      // Persist the full-sync requirement before any later parsing, shared-vault read, or mutation
+      // can fail. Otherwise a revision fast path could hide the quarantined personal ciphers.
+      await this.persistCipherIsolationRecovery([], initialIsolatedPersonalCipherIds)
+      source = this.requireData()
+      sync = source.sync
+      if (!sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+    }
+    const protectedLoginMappings = sync.loginMappings.filter((entry) =>
+      initialIsolatedPersonalCipherIds.has(entry.remoteId)
+    )
+    const protectedLoginTombstones = sync.loginTombstones.filter((entry) =>
+      initialIsolatedPersonalCipherIds.has(entry.remoteId)
+    )
+    const protectedLocalLoginIds = new Set(
+      [...protectedLoginMappings, ...protectedLoginTombstones].map((entry) => entry.localId)
+    )
+    const protectedRemoteLoginIds = new Set(
+      [...protectedLoginMappings, ...protectedLoginTombstones].map((entry) => entry.remoteId)
+    )
+    const mappedLoginLinksBeforeActions = [...sync.loginMappings, ...sync.loginTombstones]
     const sharedSnapshot = await this.fetchSharedSnapshot(client)
     const initialRemote = await Promise.all([
       client.listFolders(signal),
@@ -2109,13 +2134,30 @@ export class VaultServiceBase {
       next.collections = sharedSnapshot.collections
       next.sharedLogins = sharedSnapshot.sharedLogins
     }
+    if (
+      next.sync?.pendingLoginMutation &&
+      initialIsolatedPersonalCipherIds.has(next.sync.pendingLoginMutation.remoteId)
+    ) {
+      // A pending mutation is an unresolved remote operation, so quarantine leaves its outcome
+      // ambiguous. Keep the durable journal intact and retry only after the cipher is readable.
+      throw new VaultError('SYNC_FAILED')
+    }
     if (next.sync?.pendingLoginMutation) {
       await this.resumePendingLoginMutation(next, client, remoteFolders, remoteLogins, signal)
       await client.sync(signal)
-      this.assertNoIsolatedMappedLogins(client, [
-        ...(next.sync?.loginMappings ?? []),
-        ...(next.sync?.loginTombstones ?? [])
-      ])
+      const refreshedIsolatedPersonalCipherIds = this.isolatedPersonalCipherIds(client)
+      if (refreshedIsolatedPersonalCipherIds.size > 0) {
+        await this.persistCipherIsolationRecovery([], refreshedIsolatedPersonalCipherIds)
+        if (next.sync) next.sync.requiresFullSyncAfterCipherIsolation = true
+      }
+      const newlyIsolatedPendingRemoteIds = this.newlyIsolatedMappedRemoteIds(
+        refreshedIsolatedPersonalCipherIds,
+        [...(next.sync?.loginMappings ?? []), ...(next.sync?.loginTombstones ?? [])],
+        protectedRemoteLoginIds
+      )
+      if (newlyIsolatedPendingRemoteIds.size > 0) {
+        throw new VaultError('SYNC_FAILED')
+      }
       const refreshed = await Promise.all([
         client.listFolders(signal),
         client.listPersonalLogins(signal),
@@ -2144,8 +2186,11 @@ export class VaultServiceBase {
     }
     const remoteSnapshot = this.remoteSyncSnapshot(remoteFolders, remoteLogins)
     const syncMetadata = this.syncMetadata(next.sync ?? sync)
+    syncMetadata.loginLinks = syncMetadata.loginLinks.filter(
+      (entry) => !initialIsolatedPersonalCipherIds.has(entry.remoteId)
+    )
     for (const upgrade of legacyCustomFieldBaselineUpgrades(
-      this.localSyncSnapshot(next),
+      this.withoutProtectedLoginSnapshot(this.localSyncSnapshot(next), protectedLocalLoginIds),
       remoteSnapshot,
       syncMetadata
     )) {
@@ -2174,7 +2219,11 @@ export class VaultServiceBase {
       )
       if (metadataLink) metadataLink.baseFingerprint = upgrade.baseFingerprint
     }
-    const plan = planSync(this.localSyncSnapshot(next), remoteSnapshot, syncMetadata)
+    const plan = planSync(
+      this.withoutProtectedLoginSnapshot(this.localSyncSnapshot(next), protectedLocalLoginIds),
+      remoteSnapshot,
+      syncMetadata
+    )
     const results: SyncActionResult[] = []
     const completed = new Map<string, SyncActionResult>()
     const counts = { pulled: 0, pushed: 0, deleted: 0, conflicts: 0 }
@@ -2251,8 +2300,32 @@ export class VaultServiceBase {
     }
 
     const metadata = completeSyncMetadata(plan, results)
+    const completedLoginLinks = this.reattachProtectedLoginLinks(
+      metadata.loginLinks,
+      protectedLoginMappings,
+      protectedLoginTombstones
+    )
     await client.sync(signal)
-    this.assertNoIsolatedMappedLogins(client, metadata.loginLinks)
+    const finalIsolatedPersonalCipherIds = this.isolatedPersonalCipherIds(client)
+    const newlyIsolatedMappedRemoteIds = this.newlyIsolatedMappedRemoteIds(
+      finalIsolatedPersonalCipherIds,
+      [
+        ...mappedLoginLinksBeforeActions,
+        ...completedLoginLinks.loginMappings,
+        ...completedLoginLinks.loginTombstones
+      ],
+      protectedRemoteLoginIds
+    )
+    if (
+      finalIsolatedPersonalCipherIds.size > 0 &&
+      (initialIsolatedPersonalCipherIds.size === 0 || newlyIsolatedMappedRemoteIds.size > 0)
+    ) {
+      await this.persistCipherIsolationRecovery(metadata.loginLinks, newlyIsolatedMappedRemoteIds)
+      if (next.sync) next.sync.requiresFullSyncAfterCipherIsolation = true
+    }
+    if (newlyIsolatedMappedRemoteIds.size > 0) {
+      throw new VaultError('SYNC_FAILED')
+    }
     const [finalRemoteFolders, finalRemoteLogins, finalDomainSettings] = await Promise.all([
       client.listFolders(signal),
       client.listPersonalLogins(signal),
@@ -2277,11 +2350,13 @@ export class VaultServiceBase {
       ...sync,
       state: client.exportState(),
       lastSyncAt: syncedAt,
+      requiresFullSyncAfterCipherIsolation:
+        initialIsolatedPersonalCipherIds.size > 0 || finalIsolatedPersonalCipherIds.size > 0,
       folderMappings: metadata.folderLinks.map((link) => ({ ...link })),
-      loginMappings: metadata.loginLinks.map((link) => ({ ...link })),
+      loginMappings: completedLoginLinks.loginMappings,
       folderTombstones: [],
-      loginTombstones: [],
-      pendingLoginMutation: null,
+      loginTombstones: completedLoginLinks.loginTombstones,
+      pendingLoginMutation: next.sync?.pendingLoginMutation ?? null,
       pendingLoginImport: null,
       pendingPersonalVaultPurge: null,
       domainSettings: cloneEquivalentDomainSettings(
@@ -2344,6 +2419,7 @@ export class VaultServiceBase {
     const sync = data.sync
     if (!sync) return true
     if (
+      sync.requiresFullSyncAfterCipherIsolation === true ||
       sync.pendingLoginMutation ||
       sync.pendingLoginImport ||
       sync.pendingPersonalVaultPurge ||
@@ -2652,6 +2728,64 @@ export class VaultServiceBase {
     }
   }
 
+  protected withoutProtectedLoginSnapshot(
+    snapshot: SyncSnapshot,
+    protectedLocalIds: ReadonlySet<string>
+  ): SyncSnapshot {
+    if (protectedLocalIds.size === 0) return snapshot
+    return {
+      ...snapshot,
+      logins: snapshot.logins.filter((login) => !protectedLocalIds.has(login.id)),
+      tombstones: {
+        ...snapshot.tombstones,
+        logins: snapshot.tombstones.logins.filter(
+          (tombstone) => !protectedLocalIds.has(tombstone.id)
+        )
+      }
+    }
+  }
+
+  protected reattachProtectedLoginLinks(
+    completedLinks: readonly SyncLink[],
+    protectedMappings: readonly SyncEntityMapping[],
+    protectedTombstones: readonly SyncTombstone[]
+  ): { loginMappings: SyncEntityMapping[]; loginTombstones: SyncTombstone[] } {
+    const loginMappings: SyncEntityMapping[] = []
+    const loginTombstones: SyncTombstone[] = []
+    const attached: Array<{
+      kind: 'mapping' | 'tombstone'
+      link: SyncEntityMapping | SyncTombstone
+    }> = []
+    const attach = (
+      kind: 'mapping' | 'tombstone',
+      link: SyncEntityMapping | SyncTombstone
+    ): void => {
+      const duplicate = attached.find(
+        (entry) => entry.link.localId === link.localId || entry.link.remoteId === link.remoteId
+      )
+      if (duplicate) {
+        if (
+          duplicate.kind === kind &&
+          duplicate.link.localId === link.localId &&
+          duplicate.link.remoteId === link.remoteId &&
+          duplicate.link.baseFingerprint === link.baseFingerprint
+        ) {
+          return
+        }
+        throw new VaultError('SYNC_FAILED')
+      }
+      const cloned = { ...link }
+      attached.push({ kind, link: cloned })
+      if (kind === 'mapping') loginMappings.push(cloned)
+      else loginTombstones.push(cloned)
+    }
+
+    for (const link of completedLinks) attach('mapping', link)
+    for (const link of protectedMappings) attach('mapping', link)
+    for (const link of protectedTombstones) attach('tombstone', link)
+    return { loginMappings, loginTombstones }
+  }
+
   protected getAuthoritativeEquivalentDomainSettings(
     client: BitwardenSyncClient,
     signal?: AbortSignal
@@ -2687,16 +2821,49 @@ export class VaultServiceBase {
     return new Set(client.isolatedPersonalCipherIds?.() ?? [])
   }
 
-  protected assertNoIsolatedMappedLogins(
-    client: BitwardenSyncClient,
-    links: readonly { remoteId: string }[]
-  ): void {
-    const isolated = this.isolatedPersonalCipherIds(client)
-    if (links.some((link) => isolated.has(link.remoteId))) {
-      // Absence from the decrypted snapshot is not proof of remote deletion when the connector
-      // deliberately isolated a future cipher kind. Refuse mutations and preserve last-good data.
-      throw new VaultError('SYNC_FAILED')
+  protected newlyIsolatedMappedRemoteIds(
+    isolatedRemoteIds: ReadonlySet<string>,
+    links: readonly { remoteId: string }[],
+    protectedRemoteIds: ReadonlySet<string>
+  ): ReadonlySet<string> {
+    return new Set(
+      links.flatMap((link) =>
+        isolatedRemoteIds.has(link.remoteId) && !protectedRemoteIds.has(link.remoteId)
+          ? [link.remoteId]
+          : []
+      )
+    )
+  }
+
+  protected async persistCipherIsolationRecovery(
+    completedLinks: readonly SyncLink[],
+    newlyIsolatedRemoteIds: ReadonlySet<string>
+  ): Promise<void> {
+    const recovery = cloneData(this.requireData())
+    if (!recovery.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+    recovery.sync.requiresFullSyncAfterCipherIsolation = true
+
+    for (const link of completedLinks) {
+      if (
+        !newlyIsolatedRemoteIds.has(link.remoteId) ||
+        !recovery.logins.some((login) => login.id === link.localId)
+      ) {
+        continue
+      }
+      const duplicate = [...recovery.sync.loginMappings, ...recovery.sync.loginTombstones].find(
+        (entry) => entry.localId === link.localId || entry.remoteId === link.remoteId
+      )
+      if (duplicate) {
+        if (duplicate.localId === link.localId && duplicate.remoteId === link.remoteId) continue
+        throw new VaultError('SYNC_FAILED')
+      }
+      // A create reached the server before its final authoritative snapshot quarantined the new
+      // cipher. Persisting the assigned remote ID prevents retry from creating a duplicate.
+      recovery.sync.loginMappings.push({ ...link })
     }
+    recovery.updatedAt = this.nowIso()
+    await this.persist(recovery)
+    this.data = recovery
   }
 
   protected loginImportCandidate(
@@ -3031,6 +3198,7 @@ export class VaultServiceBase {
       throw new VaultError('SYNC_FAILED')
     }
     const ids = batch.map((candidate) => candidate.remoteId)
+    let isolatedDuringReconciliation = new Set<string>()
     try {
       if (mutation === 'soft-delete') await client.softDeleteLogins!(ids, signal)
       else if (mutation === 'restore') await client.restoreLogins!(ids, signal)
@@ -3042,17 +3210,40 @@ export class VaultServiceBase {
       if (signal.aborted) throw error
       try {
         await client.sync(signal)
+        const isolated = this.isolatedPersonalCipherIds(client)
+        isolatedDuringReconciliation = new Set(
+          batch.flatMap((candidate) =>
+            isolated.has(candidate.remoteId) ? [candidate.remoteId] : []
+          )
+        )
         const remote = new Map(
           (await client.listPersonalLogins(signal)).map((login) => [login.id, login])
         )
-        if (batch.every((candidate) => this.bulkRemoteLoginMutationApplied(candidate, remote))) {
+        if (
+          batch.every(
+            (candidate) =>
+              !isolated.has(candidate.remoteId) &&
+              this.bulkRemoteLoginMutationApplied(candidate, remote)
+          )
+        ) {
           return
         }
-      } catch {
+      } catch (reconciliationError) {
+        if (
+          reconciliationError instanceof BitwardenDirectError &&
+          (reconciliationError.code === 'AUTH_REQUIRED' ||
+            reconciliationError.code === 'ACCOUNT_CHANGED' ||
+            reconciliationError.code === 'ABORTED')
+        ) {
+          throw reconciliationError
+        }
         // The original mutation error is the most useful failure. A later sync retries safely
         // from the server's authoritative state instead of assuming this batch was atomic.
       }
       if (signal.aborted) throw new BitwardenDirectError('ABORTED')
+      if (isolatedDuringReconciliation.size > 0) {
+        await this.persistCipherIsolationRecovery([], isolatedDuringReconciliation)
+      }
       throw error
     }
   }

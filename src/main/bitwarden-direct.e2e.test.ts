@@ -426,7 +426,7 @@ describe('BitwardenDirectClient loopback V1 protocol', () => {
         'Bearer access-token-1',
         'Bearer access-token-2'
       ])
-      expect(syncRequests.every((request) => request.clientVersion === '2024.12.0')).toBe(true)
+      expect(syncRequests.every((request) => request.clientVersion === '2025.5.0')).toBe(true)
       expect(client.exportState().session).toMatchObject({
         accessToken: 'access-token-2',
         refreshToken: 'refresh-token-2'

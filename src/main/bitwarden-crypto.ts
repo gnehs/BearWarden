@@ -237,6 +237,52 @@ function parseCipherString(value: string): ParsedCipherString {
   return { type, iv, ciphertext, mac }
 }
 
+function isLegacyMasterKeyWrappedUserKey(value: string): boolean {
+  if (typeof value !== 'string' || value.length === 0) return false
+  if (value.startsWith('0.')) return true
+  return !value.includes('.') && value.split('|').length === 2
+}
+
+function parseLegacyMasterKeyWrappedUserKey(value: string): {
+  iv: Buffer
+  ciphertext: Buffer
+} {
+  if (!isLegacyMasterKeyWrappedUserKey(value)) {
+    throw new BitwardenCryptoError(
+      'INVALID_CIPHERSTRING',
+      'legacy master-key user-key envelope must use type 0'
+    )
+  }
+  if (value.length > Math.ceil((MAX_CIPHERTEXT_BYTES * 4) / 3) + 256) {
+    throw new BitwardenCryptoError('INVALID_CIPHERSTRING', 'cipher string exceeds the maximum size')
+  }
+  const serialized = value.startsWith('0.') ? value.slice(2) : value
+  const parts = serialized.split('|')
+  if (parts.length !== 2) {
+    throw new BitwardenCryptoError(
+      'INVALID_CIPHERSTRING',
+      'legacy master-key user-key envelope has invalid fields'
+    )
+  }
+  let iv: Buffer | undefined
+  let ciphertext: Buffer | undefined
+  try {
+    iv = decodeBase64(parts[0]!, 'IV', IV_BYTES)
+    ciphertext = decodeBase64(parts[1]!, 'ciphertext')
+    if (ciphertext.length === 0 || ciphertext.length % IV_BYTES !== 0) {
+      throw new BitwardenCryptoError(
+        'INVALID_CIPHERSTRING',
+        'ciphertext has an invalid AES-CBC length'
+      )
+    }
+    return { iv, ciphertext }
+  } catch (error) {
+    iv?.fill(0)
+    ciphertext?.fill(0)
+    throw error
+  }
+}
+
 function hmacSha256(key: Buffer, ...parts: Buffer[]): Buffer {
   const hmac = createHmac('sha256', key)
   for (const part of parts) hmac.update(part)
@@ -1081,13 +1127,16 @@ function decryptBitwardenPayload(
       }
       return decryptXChaCha(parsed.ciphertext, key)
     }
+    if (parsed.type === 3 || parsed.type === 4) {
+      return { plaintext: decryptRsa(parsed, privateKey), contentType: null }
+    }
     if (isXChaChaKey(key)) {
       throw new BitwardenCryptoError('INVALID_KEY', 'legacy encryption requires an AES key')
     }
     if (parsed.type === 1 || parsed.type === 2) {
       return { plaintext: decryptAes(parsed, key), contentType: null }
     }
-    return { plaintext: decryptRsa(parsed, privateKey), contentType: null }
+    throw new BitwardenCryptoError('UNSUPPORTED_CIPHER_TYPE')
   } finally {
     parsed.iv?.fill(0)
     parsed.ciphertext.fill(0)
@@ -1102,6 +1151,59 @@ export function decryptBitwardenBytes(
   privateKey?: string | KeyObject
 ): Buffer {
   return decryptBitwardenPayload(cipherString, key, privateKey).plaintext
+}
+
+/** Identifies the historical unauthenticated user-key envelope accepted only during master unlock. */
+export function isBitwardenLegacyMasterKeyWrappedUserKey(cipherString: string): boolean {
+  return isLegacyMasterKeyWrappedUserKey(cipherString)
+}
+
+/**
+ * Decrypts the account user key with the raw 32-byte master key.
+ *
+ * This compatibility boundary intentionally accepts unauthenticated AES-256-CBC type 0 only here.
+ * Current type 2 envelopes are authenticated with the stretched master key. General vault
+ * ciphertext must continue through decryptBitwardenBytes, which rejects type 0.
+ */
+export function decryptBitwardenMasterKeyWrappedUserKey(
+  cipherString: string,
+  masterKey: Buffer
+): BitwardenSymmetricKey {
+  requireBuffer(masterKey, 'master key', KEY_BYTES)
+  let encodedUserKey: Buffer | undefined
+  let stretched: ReturnType<typeof stretchMasterKey> | undefined
+  try {
+    if (isLegacyMasterKeyWrappedUserKey(cipherString)) {
+      const parsed = parseLegacyMasterKeyWrappedUserKey(cipherString)
+      try {
+        const decipher = createDecipheriv('aes-256-cbc', masterKey, parsed.iv)
+        encodedUserKey = Buffer.concat([decipher.update(parsed.ciphertext), decipher.final()])
+      } catch {
+        throw new BitwardenCryptoError(
+          'DECRYPTION_FAILED',
+          'legacy master-key user-key decryption failed'
+        )
+      } finally {
+        parsed.iv.fill(0)
+        parsed.ciphertext.fill(0)
+      }
+    } else {
+      if (!cipherString.startsWith('2.')) {
+        throw new BitwardenCryptoError(
+          'UNSUPPORTED_CIPHER_TYPE',
+          'master-key user-key envelope type is unsupported'
+        )
+      }
+      stretched = stretchMasterKey(masterKey)
+      encodedUserKey = decryptBitwardenBytes(cipherString, stretched.combinedKey)
+    }
+    return decodeBitwardenUserKey(encodedUserKey)
+  } finally {
+    encodedUserKey?.fill(0)
+    stretched?.encKey.fill(0)
+    stretched?.macKey.fill(0)
+    stretched?.combinedKey.fill(0)
+  }
 }
 
 /** Decrypts an item key and verifies the V2 COSE legacy-key content type. */

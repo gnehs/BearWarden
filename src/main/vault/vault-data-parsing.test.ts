@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { BITWARDEN_POLICY_TYPE, type BitwardenPolicySet } from '../bitwarden-policy'
 import { VaultError } from '../vault-errors'
+import { MAX_OAUTH_CLIENT_ID_BYTES, MAX_OPAQUE_AUTH_TOKEN_BYTES } from './limits'
 import { cloneData, parseStoredBitwardenPolicySet, parseVaultData } from './vault-data-parsing'
 
 const POLICY_ID = '11111111-1111-4111-8111-111111111111'
@@ -167,5 +168,138 @@ describe('stored sync unlock material parsing', () => {
       ;(input.sync as Record<string, unknown>).unlockMaterial = unlockMaterial
       expect(() => parseVaultData(input)).toThrowError(VaultError)
     }
+  })
+})
+
+describe('stored Bitwarden Direct state parsing', () => {
+  it('roundtrips the canonical persisted session and remembered two-factor token', () => {
+    const session = {
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      expiresAt: 1_800_000_000_000,
+      clientId: 'user.11111111-1111-4111-8111-111111111111'
+    }
+    const parsed = parseVaultData(
+      vaultData({
+        session,
+        rememberedTwoFactorToken: 'remembered-device-token'
+      })
+    )
+
+    expect(parsed.sync?.state).toMatchObject({
+      session,
+      rememberedTwoFactorToken: 'remembered-device-token',
+      deviceIdentifier: DEVICE_ID,
+      profileId: null,
+      securityStamp: null
+    })
+  })
+
+  it('canonicalizes a legacy session two-factor token without retaining a duplicate secret', () => {
+    const input = vaultData({
+      session: {
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+        expiresAt: 1_800_000_000_000,
+        clientId: 'desktop',
+        twoFactorToken: 'legacy-remembered-token'
+      }
+    })
+    const parsed = parseVaultData(input)
+
+    expect(parsed.sync?.state.rememberedTwoFactorToken).toBe('legacy-remembered-token')
+    expect(parsed.sync?.state.session).toEqual({
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      expiresAt: 1_800_000_000_000,
+      clientId: 'desktop'
+    })
+    expect(parsed.sync?.state.session).not.toHaveProperty('twoFactorToken')
+  })
+
+  it('accepts the HTTP token and OAuth client ID boundaries', () => {
+    const boundaryToken = 't'.repeat(MAX_OPAQUE_AUTH_TOKEN_BYTES)
+    const boundaryClientId = `u${'x'.repeat(MAX_OAUTH_CLIENT_ID_BYTES - 1)}`
+    const parsed = parseVaultData(
+      vaultData({
+        session: {
+          accessToken: boundaryToken,
+          refreshToken: boundaryToken,
+          expiresAt: 1,
+          clientId: boundaryClientId
+        },
+        rememberedTwoFactorToken: boundaryToken
+      })
+    )
+
+    expect(parsed.sync?.state.session?.accessToken).toHaveLength(MAX_OPAQUE_AUTH_TOKEN_BYTES)
+    expect(parsed.sync?.state.session?.refreshToken).toHaveLength(MAX_OPAQUE_AUTH_TOKEN_BYTES)
+    expect(parsed.sync?.state.session?.clientId).toHaveLength(MAX_OAUTH_CLIENT_ID_BYTES)
+    expect(parsed.sync?.state.rememberedTwoFactorToken).toHaveLength(MAX_OPAQUE_AUTH_TOKEN_BYTES)
+  })
+
+  it('rejects oversized, control-bearing, or malformed persisted authentication values', () => {
+    const oversizedToken = 't'.repeat(MAX_OPAQUE_AUTH_TOKEN_BYTES + 1)
+    const oversizedClientId = `u${'x'.repeat(MAX_OAUTH_CLIENT_ID_BYTES)}`
+    const cases = [
+      { session: { accessToken: oversizedToken, refreshToken: 'refresh', expiresAt: 1 } },
+      { session: { accessToken: 'access', refreshToken: oversizedToken, expiresAt: 1 } },
+      {
+        session: {
+          accessToken: 'access',
+          refreshToken: 'refresh',
+          expiresAt: 1,
+          clientId: oversizedClientId
+        }
+      },
+      {
+        session: {
+          accessToken: 'access',
+          refreshToken: 'refresh',
+          expiresAt: 1,
+          clientId: 'invalid client'
+        }
+      },
+      {
+        session: {
+          accessToken: 'access\nheader',
+          refreshToken: 'refresh',
+          expiresAt: 1
+        }
+      },
+      {
+        session: {
+          accessToken: ' access',
+          refreshToken: 'refresh',
+          expiresAt: 1
+        }
+      },
+      {
+        session: {
+          accessToken: 'access\u2028token',
+          refreshToken: 'refresh',
+          expiresAt: 1
+        }
+      },
+      { rememberedTwoFactorToken: oversizedToken },
+      { rememberedTwoFactorToken: 'remembered\u007f-token' }
+    ]
+
+    for (const state of cases) {
+      expect(() => parseVaultData(vaultData(state))).toThrowError(VaultError)
+    }
+  })
+
+  it('applies token limits in UTF-8 bytes instead of JavaScript code units', () => {
+    const withinBoundary = 'é'.repeat(MAX_OPAQUE_AUTH_TOKEN_BYTES / 2)
+    const overBoundary = `${withinBoundary}é`
+
+    expect(
+      parseVaultData(vaultData({ rememberedTwoFactorToken: withinBoundary })).sync?.state
+        .rememberedTwoFactorToken
+    ).toBe(withinBoundary)
+    expect(() =>
+      parseVaultData(vaultData({ rememberedTwoFactorToken: overBoundary }))
+    ).toThrowError(VaultError)
   })
 })

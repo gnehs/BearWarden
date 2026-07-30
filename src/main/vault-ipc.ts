@@ -2329,7 +2329,7 @@ function syncTwoFactorChallenge(error: unknown): {
   providers: readonly SyncTwoFactorProvider[]
 } | null {
   if (!(error instanceof SyncTwoFactorRequiredError)) return null
-  if (error.providers.length === 0 || !error.providers.every(isSyncTwoFactorProvider)) {
+  if (!error.providers.every(isSyncTwoFactorProvider)) {
     throw new VaultError('SYNC_INVALID_RESPONSE')
   }
   return { kind: 'two-factor-required', providers: [...new Set(error.providers)] }

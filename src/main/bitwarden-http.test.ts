@@ -16,6 +16,35 @@ function json(body: unknown, status = 200, headers?: HeadersInit): Response {
   })
 }
 
+function deferred<T>(): {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (reason?: unknown) => void
+} {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
+function cancelableResponse(
+  status: number,
+  headers?: HeadersInit,
+  cancelResult?: Promise<void>
+): { response: Response; cancel: ReturnType<typeof vi.fn> } {
+  const cancel = vi.fn(() => cancelResult)
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      cancel
+    }),
+    { status, headers }
+  )
+  return { response, cancel }
+}
+
 function unsignedAccessToken(payload: Record<string, unknown>): string {
   return `${Buffer.from('{"alg":"none"}').toString('base64url')}.${Buffer.from(
     JSON.stringify(payload)
@@ -1253,6 +1282,50 @@ describe('BitwardenHttpClient', () => {
     expect(requestHeaders.get('bitwarden-client-version')).toBe('1.0.0')
   })
 
+  it.each([
+    ['zero duration', { expires_in: 0 }],
+    ['fractional duration', { expires_in: 1.5 }],
+    ['overflowing duration', { expires_in: Number.MAX_SAFE_INTEGER }],
+    ['fractional epoch', { expiresAt: 1.5 }],
+    ['unsafe epoch', { expiresAt: Number.MAX_SAFE_INTEGER + 1 }],
+    ['non-positive date epoch', { expiresAt: '1969-12-31T23:59:59.999Z' }]
+  ])('rejects a session with %s', async (_label, expiry) => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(json({ access_token: 'access', refresh_token: 'refresh', ...expiry }))
+    const client = new BitwardenHttpClient({ server: 'us', fetch, now: () => 1 })
+
+    await expect(
+      client.passwordToken({ email: 'person@example.test', password: 'derived-secret' })
+    ).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+      invalidResponseReason: 'session-response'
+    })
+  })
+
+  it('accepts only positive safe integer epochs when restoring a session', () => {
+    const client = new BitwardenHttpClient({
+      server: 'us',
+      fetch: vi.fn<FetchLike>()
+    })
+    const original = { accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 }
+    client.setSession(original)
+
+    for (const expiresAt of [0, -1, 1.5, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() => client.setSession({ ...original, expiresAt })).toThrowError(
+        expect.objectContaining({ code: 'INVALID_RESPONSE' })
+      )
+      expect(client.exportSession()).toEqual(original)
+    }
+
+    for (const accessToken of [' access', 'access ', 'access\u2028token', 'access\u0085token']) {
+      expect(() => client.setSession({ ...original, accessToken })).toThrowError(
+        expect.objectContaining({ code: 'INVALID_RESPONSE' })
+      )
+      expect(client.exportSession()).toEqual(original)
+    }
+  })
+
   it('keeps a bounded remembered 2FA token in the main-process session contract', async () => {
     const fetch = vi.fn<FetchLike>().mockResolvedValue(
       json({
@@ -1516,12 +1589,114 @@ describe('BitwardenHttpClient', () => {
     })
   })
 
+  it.each([
+    {
+      label: 'legacy array without a provider map',
+      providers: { TwoFactorProviders: ['0', '1'] },
+      expected: [0, 1]
+    },
+    {
+      label: 'legacy array with a null provider map',
+      providers: { TwoFactorProviders: ['7'], TwoFactorProviders2: null },
+      expected: []
+    },
+    {
+      label: 'provider map with a null legacy array',
+      providers: { TwoFactorProviders: null, TwoFactorProviders2: { '1': null } },
+      expected: [1]
+    }
+  ])('recognizes $label and treats null metadata as absent', async ({ providers, expected }) => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      json(
+        {
+          error: 'invalid_grant',
+          error_description: 'Mehrstufige Anmeldung erforderlich.',
+          ...providers
+        },
+        400
+      )
+    )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+
+    await expect(
+      client.passwordToken({ email: 'person@example.test', password: 'derived-secret' })
+    ).rejects.toMatchObject({
+      code: 'TWO_FACTOR',
+      details: undefined,
+      twoFactorProviders: expected,
+      webAuthnChallenge: undefined
+    })
+  })
+
+  it('ignores future providers when a known login alternative remains available', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      json(
+        {
+          error: 'invalid_grant',
+          error_description: 'Mehrstufige Anmeldung erforderlich.',
+          TwoFactorProviders: ['0', '9', 42],
+          TwoFactorProviders2: { '0': null, '9': null, '42': { future: true } }
+        },
+        400
+      )
+    )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+
+    await expect(
+      client.passwordToken({ email: 'person@example.test', password: 'derived-secret' })
+    ).rejects.toMatchObject({
+      code: 'TWO_FACTOR',
+      details: undefined,
+      twoFactorProviders: [0],
+      webAuthnChallenge: undefined
+    })
+  })
+
+  it('returns an unsupported challenge when only unknown future providers remain', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      json(
+        {
+          error: 'invalid_grant',
+          error_description: 'Mehrstufige Anmeldung erforderlich.',
+          TwoFactorProviders2: { '9': null, '42': { future: true } }
+        },
+        400
+      )
+    )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+
+    await expect(
+      client.passwordToken({ email: 'person@example.test', password: 'derived-secret' })
+    ).rejects.toMatchObject({
+      code: 'TWO_FACTOR',
+      details: undefined,
+      twoFactorProviders: [],
+      webAuthnChallenge: undefined
+    })
+  })
+
+  it('does not infer a two-factor challenge from English error text alone', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(
+        json({ error: 'invalid_grant', error_description: 'Two factor required.' }, 400)
+      )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+
+    await expect(
+      client.passwordToken({ email: 'person@example.test', password: 'derived-secret' })
+    ).rejects.toMatchObject({ code: 'AUTH' })
+  })
+
   it('rejects malformed or unbounded login provider metadata without retry', async () => {
     const malformedProviders = [
-      { TwoFactorProviders: ['01'] },
-      { TwoFactorProviders: [9] },
-      { TwoFactorProviders: Array.from({ length: 33 }, () => 0) },
-      { TwoFactorProviders2: { '9': null } },
+      { TwoFactorProviders: ['01'], TwoFactorProviders2: { '0': null } },
+      { TwoFactorProviders: [-1], TwoFactorProviders2: { '0': null } },
+      {
+        TwoFactorProviders: Array.from({ length: 33 }, () => 0),
+        TwoFactorProviders2: { '0': null }
+      },
+      { TwoFactorProviders2: { '99999999999999999999999999999999': null } },
       { TwoFactorProviders2: [] }
     ]
 
@@ -1588,6 +1763,243 @@ describe('BitwardenHttpClient', () => {
       expiresAt: 60_000
     })
     expect(client.exportSession()?.accessToken).toBe('new-access')
+  })
+
+  it('keeps a shared refresh running when its first waiter aborts', async () => {
+    const refreshResponse = deferred<Response>()
+    let refreshSignal: AbortSignal | null | undefined
+    const fetch = vi.fn<FetchLike>().mockImplementation(async (_url, init) => {
+      refreshSignal = init?.signal
+      return refreshResponse.promise
+    })
+    const changed = vi.fn()
+    const client = new BitwardenHttpClient({
+      server: 'us',
+      fetch,
+      onSessionChanged: changed,
+      now: () => 0
+    })
+    client.setSession({ accessToken: 'old-access', refreshToken: 'old-refresh', expiresAt: 1 })
+    const firstController = new AbortController()
+
+    const first = client.refresh(firstController.signal)
+    const second = client.refresh()
+    const firstResult = expect(first).rejects.toMatchObject({ code: 'ABORTED' })
+    firstController.abort()
+
+    await firstResult
+    expect(refreshSignal?.aborted).toBe(false)
+    expect(fetch).toHaveBeenCalledOnce()
+
+    refreshResponse.resolve(
+      json({ access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 60 })
+    )
+    await expect(second).resolves.toEqual({
+      accessToken: 'new-access',
+      refreshToken: 'new-refresh',
+      expiresAt: 60_000
+    })
+    expect(changed).toHaveBeenCalledOnce()
+  })
+
+  it('finishes a dispatched refresh after its only waiter abandons it', async () => {
+    const refreshResponse = deferred<Response>()
+    let refreshSignal: AbortSignal | null | undefined
+    const fetch = vi.fn<FetchLike>().mockImplementation(async (_url, init) => {
+      refreshSignal = init?.signal
+      return refreshResponse.promise
+    })
+    const changed = vi.fn()
+    const client = new BitwardenHttpClient({
+      server: 'us',
+      fetch,
+      onSessionChanged: changed,
+      now: () => 0
+    })
+    client.setSession({ accessToken: 'old-access', refreshToken: 'old-refresh', expiresAt: 1 })
+    const controller = new AbortController()
+
+    const refresh = client.refresh(controller.signal)
+    const refreshResult = expect(refresh).rejects.toMatchObject({ code: 'ABORTED' })
+    controller.abort()
+
+    await refreshResult
+    expect(refreshSignal?.aborted).toBe(false)
+    expect(fetch).toHaveBeenCalledOnce()
+    refreshResponse.resolve(
+      json({ access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 60 })
+    )
+    await vi.waitFor(() =>
+      expect(client.exportSession()).toEqual({
+        accessToken: 'new-access',
+        refreshToken: 'new-refresh',
+        expiresAt: 60_000
+      })
+    )
+    expect(changed).toHaveBeenCalledOnce()
+  })
+
+  it('invalidates the session when a successful refresh response cannot be parsed', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(
+        json({ access_token: 'bad token', refresh_token: 'rotated-refresh', expires_in: 60 })
+      )
+    const changed = vi.fn()
+    const client = new BitwardenHttpClient({
+      server: 'us',
+      fetch,
+      onSessionChanged: changed,
+      now: () => 0
+    })
+    client.setSession({ accessToken: 'old-access', refreshToken: 'old-refresh', expiresAt: 1 })
+
+    await expect(client.refresh()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    expect(client.exportSession()).toBeNull()
+    expect(changed).not.toHaveBeenCalled()
+  })
+
+  it('does not revive a cleared session when an ignored-abort refresh response arrives late', async () => {
+    const refreshResponse = deferred<Response>()
+    let refreshSignal: AbortSignal | null | undefined
+    const fetch = vi.fn<FetchLike>().mockImplementation(async (_url, init) => {
+      refreshSignal = init?.signal
+      return refreshResponse.promise
+    })
+    const changed = vi.fn()
+    const client = new BitwardenHttpClient({
+      server: 'us',
+      fetch,
+      onSessionChanged: changed,
+      now: () => 0
+    })
+    client.setSession({ accessToken: 'old-access', refreshToken: 'old-refresh', expiresAt: 1 })
+
+    const refresh = client.refresh()
+    const refreshResult = expect(refresh).rejects.toMatchObject({ code: 'AUTH' })
+    client.clearSession()
+    expect(refreshSignal?.aborted).toBe(true)
+    refreshResponse.resolve(
+      json({ access_token: 'stale-access', refresh_token: 'stale-refresh', expires_in: 60 })
+    )
+
+    await refreshResult
+    expect(client.exportSession()).toBeNull()
+    expect(changed).not.toHaveBeenCalled()
+  })
+
+  it('invalidates a rotated session when its persistence callback fails', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(
+        json({ access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 60 })
+      )
+    const changed = vi.fn().mockRejectedValue(new Error('state persistence failed'))
+    const client = new BitwardenHttpClient({
+      server: 'us',
+      fetch,
+      onSessionChanged: changed,
+      now: () => 0
+    })
+    client.setSession({ accessToken: 'old-access', refreshToken: 'old-refresh', expiresAt: 1 })
+
+    await expect(client.refresh()).rejects.toMatchObject({ code: 'AUTH' })
+    expect(changed).toHaveBeenCalledWith({
+      accessToken: 'new-access',
+      refreshToken: 'new-refresh',
+      expiresAt: 60_000
+    })
+    expect(client.exportSession()).toBeNull()
+  })
+
+  it('does not expose or commit a rotated session before persistence completes', async () => {
+    const persistence = deferred<void>()
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(
+        json({ access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 60 })
+      )
+    const changed = vi.fn(async () => persistence.promise)
+    const client = new BitwardenHttpClient({
+      server: 'us',
+      fetch,
+      onSessionChanged: changed,
+      now: () => 0
+    })
+    client.setSession({ accessToken: 'old-access', refreshToken: 'old-refresh', expiresAt: 1 })
+
+    const refresh = client.refresh()
+    const refreshResult = expect(refresh).rejects.toMatchObject({ code: 'AUTH' })
+    await vi.waitFor(() => expect(changed).toHaveBeenCalledOnce())
+    expect(client.exportSession()).toEqual({
+      accessToken: 'old-access',
+      refreshToken: 'old-refresh',
+      expiresAt: 1
+    })
+
+    client.clearSession()
+    persistence.resolve()
+    await refreshResult
+    expect(client.exportSession()).toBeNull()
+  })
+
+  it('isolates a new session refresh from an older generation still in flight', async () => {
+    const oldRefreshResponse = deferred<Response>()
+    const newRefreshResponse = deferred<Response>()
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockImplementationOnce(async () => oldRefreshResponse.promise)
+      .mockImplementationOnce(async () => newRefreshResponse.promise)
+    const changed = vi.fn()
+    const client = new BitwardenHttpClient({
+      server: 'us',
+      fetch,
+      onSessionChanged: changed,
+      now: () => 0
+    })
+    client.setSession({ accessToken: 'old-access', refreshToken: 'old-refresh', expiresAt: 1 })
+    const oldRefresh = client.refresh()
+    const oldRefreshResult = expect(oldRefresh).rejects.toMatchObject({ code: 'AUTH' })
+
+    client.setSession({
+      accessToken: 'new-session-original-access',
+      refreshToken: 'new-session-refresh',
+      expiresAt: 1
+    })
+    const newRefresh = client.refresh()
+    oldRefreshResponse.resolve(
+      json({ access_token: 'stale-access', refresh_token: 'stale-refresh', expires_in: 60 })
+    )
+
+    await oldRefreshResult
+    expect(fetch).toHaveBeenCalledTimes(2)
+    const secondNewRefreshWaiter = client.refresh()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    newRefreshResponse.resolve(
+      json({
+        access_token: 'new-session-access',
+        refresh_token: 'new-session-refresh-rotated',
+        expires_in: 60
+      })
+    )
+    await expect(Promise.all([newRefresh, secondNewRefreshWaiter])).resolves.toEqual([
+      {
+        accessToken: 'new-session-access',
+        refreshToken: 'new-session-refresh-rotated',
+        expiresAt: 60_000
+      },
+      {
+        accessToken: 'new-session-access',
+        refreshToken: 'new-session-refresh-rotated',
+        expiresAt: 60_000
+      }
+    ])
+    expect(client.exportSession()).toEqual({
+      accessToken: 'new-session-access',
+      refreshToken: 'new-session-refresh-rotated',
+      expiresAt: 60_000
+    })
+    expect(changed).toHaveBeenCalledTimes(1)
   })
 
   it('keeps the previous refresh token when a refresh response omits rotation', async () => {
@@ -1776,6 +2188,38 @@ describe('BitwardenHttpClient', () => {
     expect(sleep).toHaveBeenCalledWith(2000, undefined)
     expect(fetch.mock.calls[2]?.[1]?.body).toBe(JSON.stringify({ name: '2.encrypted', type: 1 }))
   })
+
+  it('cancels a rejected authenticated response body before refreshing and retrying', async () => {
+    const rejected = cancelableResponse(401, undefined, new Promise<void>(() => undefined))
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(rejected.response)
+      .mockResolvedValueOnce(
+        json({ access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 60 })
+      )
+      .mockResolvedValueOnce(json({ revisionDate: '2026-01-01T00:00:00.000Z' }))
+    const client = new BitwardenHttpClient({ server: 'us', fetch, now: () => 0 })
+    client.setSession({ accessToken: 'old-access', refreshToken: 'old-refresh', expiresAt: 1 })
+
+    await expect(client.revisionDate()).resolves.toBe('2026-01-01T00:00:00.000Z')
+    expect(rejected.cancel).toHaveBeenCalledOnce()
+  })
+
+  it.each([429, 503])(
+    'cancels a retryable %i response body before dispatching the next attempt',
+    async (status) => {
+      const rejected = cancelableResponse(status, undefined, new Promise<void>(() => undefined))
+      const fetch = vi
+        .fn<FetchLike>()
+        .mockResolvedValueOnce(rejected.response)
+        .mockResolvedValueOnce(json({ revisionDate: '2026-01-01T00:00:00.000Z' }))
+      const client = new BitwardenHttpClient({ server: 'us', fetch })
+      client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 1 })
+
+      await expect(client.revisionDate()).resolves.toBe('2026-01-01T00:00:00.000Z')
+      expect(rejected.cancel).toHaveBeenCalledOnce()
+    }
+  )
 
   it('parses trusted and granted Emergency Access metadata without exposing encrypted keys', async () => {
     const fetch = vi
@@ -3133,9 +3577,10 @@ describe('BitwardenHttpClient', () => {
   })
 
   it('refreshes a rejected Direct upload once without using a server-issued external URL', async () => {
+    const rejected = cancelableResponse(401, undefined, new Promise<void>(() => undefined))
     const fetch = vi
       .fn<FetchLike>()
-      .mockResolvedValueOnce(json({ error: 'invalid_token' }, 401))
+      .mockResolvedValueOnce(rejected.response)
       .mockResolvedValueOnce(
         json({ access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 60 })
       )
@@ -3161,6 +3606,7 @@ describe('BitwardenHttpClient', () => {
     expect(new Headers(fetch.mock.calls[2]?.[1]?.headers).get('authorization')).toBe(
       'Bearer new-access'
     )
+    expect(rejected.cancel).toHaveBeenCalledOnce()
   })
 
   it('uploads Azure blobs only to public HTTPS signed URLs without authentication leakage', async () => {

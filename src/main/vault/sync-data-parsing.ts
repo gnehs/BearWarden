@@ -5,10 +5,13 @@ import { VaultError } from '../vault-errors'
 import {
   MAX_PENDING_LOGIN_IMPORT_ENTRIES,
   MAX_PENDING_LOGIN_IMPORT_MARKER_LENGTH,
+  MAX_OAUTH_CLIENT_ID_BYTES,
+  MAX_OPAQUE_AUTH_TOKEN_BYTES,
   MAX_REMOTE_ENTITIES,
   MAX_SYNC_SECRET_LENGTH,
   MAX_URI_LENGTH,
   MAX_USERNAME_LENGTH,
+  OAUTH_CLIENT_ID_PATTERN,
   UUID_PATTERN
 } from './limits'
 import { assertIsoDate, isRecord } from './parse-primitives'
@@ -27,6 +30,45 @@ import type {
 const MIN_SYNC_ACCOUNT_KEY_BYTES = 64
 const MAX_SYNC_ACCOUNT_KEY_BYTES = 4_096
 const SYNC_WRAPPED_KEY_FINGERPRINT_BYTES = 32
+
+function parseOptionalOpaqueAuthToken(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined
+  if (
+    typeof value !== 'string' ||
+    Buffer.byteLength(value, 'utf8') > MAX_OPAQUE_AUTH_TOKEN_BYTES ||
+    [...value].some((character) => {
+      const codePoint = character.codePointAt(0)!
+      return codePoint < 0x20 || codePoint === 0x7f
+    })
+  ) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  return value
+}
+
+function parseRequiredOpaqueAuthToken(value: unknown): string {
+  const parsed = parseOptionalOpaqueAuthToken(value)
+  if (!parsed) throw new VaultError('CORRUPT_VAULT')
+  return parsed
+}
+
+function parseRequiredBearerAccessToken(value: unknown): string {
+  const parsed = parseRequiredOpaqueAuthToken(value)
+  if (!/^[\x21-\x7e]+$/u.test(parsed)) throw new VaultError('CORRUPT_VAULT')
+  return parsed
+}
+
+function parseOptionalOAuthClientId(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined
+  if (
+    typeof value !== 'string' ||
+    Buffer.byteLength(value, 'utf8') > MAX_OAUTH_CLIENT_ID_BYTES ||
+    !OAUTH_CLIENT_ID_PATTERN.test(value)
+  ) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  return value
+}
 
 function parseCanonicalBase64(value: unknown, minBytes: number, maxBytes: number): Buffer {
   if (typeof value !== 'string') throw new VaultError('CORRUPT_VAULT')
@@ -114,6 +156,9 @@ export function parseDirectState(value: unknown): BitwardenDirectState {
   const deviceIdentifier = value.deviceIdentifier
   const profileId = value.profileId
   const securityStamp = value.securityStamp
+  const storedRememberedTwoFactorToken = parseOptionalOpaqueAuthToken(
+    value.rememberedTwoFactorToken
+  )
   if (
     typeof deviceIdentifier !== 'string' ||
     !UUID_PATTERN.test(deviceIdentifier) ||
@@ -125,29 +170,31 @@ export function parseDirectState(value: unknown): BitwardenDirectState {
   }
 
   let session: BitwardenDirectState['session'] = null
+  let legacyRememberedTwoFactorToken: string | undefined
   if (value.session !== null) {
     if (!isRecord(value.session)) throw new VaultError('CORRUPT_VAULT')
-    const { accessToken, refreshToken, expiresAt } = value.session
-    if (
-      typeof accessToken !== 'string' ||
-      accessToken.length === 0 ||
-      accessToken.length > MAX_SYNC_SECRET_LENGTH ||
-      typeof refreshToken !== 'string' ||
-      refreshToken.length === 0 ||
-      refreshToken.length > MAX_SYNC_SECRET_LENGTH ||
-      typeof expiresAt !== 'number' ||
-      !Number.isSafeInteger(expiresAt) ||
-      expiresAt <= 0
-    ) {
+    const { expiresAt } = value.session
+    if (typeof expiresAt !== 'number' || !Number.isSafeInteger(expiresAt) || expiresAt <= 0) {
       throw new VaultError('CORRUPT_VAULT')
     }
-    session = { accessToken, refreshToken, expiresAt }
+    const accessToken = parseRequiredBearerAccessToken(value.session.accessToken)
+    const refreshToken = parseRequiredOpaqueAuthToken(value.session.refreshToken)
+    const clientId = parseOptionalOAuthClientId(value.session.clientId)
+    legacyRememberedTwoFactorToken = parseOptionalOpaqueAuthToken(value.session.twoFactorToken)
+    session = {
+      accessToken,
+      refreshToken,
+      expiresAt,
+      ...(clientId ? { clientId } : {})
+    }
   }
+  const rememberedTwoFactorToken = storedRememberedTwoFactorToken ?? legacyRememberedTwoFactorToken
 
   // parseVaultData replaces this migration-safe default with the strictly parsed stored policy
   // snapshot. Keeping the default here also covers legacy and CLI-imported state.
   return {
     session,
+    ...(rememberedTwoFactorToken ? { rememberedTwoFactorToken } : {}),
     deviceIdentifier,
     profileId,
     securityStamp,
@@ -369,6 +416,13 @@ export function parseSyncData(
       : value.domainSettings === null
         ? null
         : parseStoredEquivalentDomainSettings(value.domainSettings)
+  const requiresFullSyncAfterCipherIsolation =
+    value.requiresFullSyncAfterCipherIsolation === undefined
+      ? true
+      : value.requiresFullSyncAfterCipherIsolation
+  if (typeof requiresFullSyncAfterCipherIsolation !== 'boolean') {
+    throw new VaultError('CORRUPT_VAULT')
+  }
 
   return {
     provider: 'bitwarden',
@@ -385,6 +439,7 @@ export function parseSyncData(
       : parseDirectState(value.state),
     unlockMaterial: isCliData ? null : parseSyncUnlockMaterial(value.unlockMaterial),
     lastSyncAt: value.lastSyncAt,
+    requiresFullSyncAfterCipherIsolation,
     folderMappings,
     loginMappings,
     folderTombstones,

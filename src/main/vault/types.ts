@@ -107,6 +107,11 @@ export interface PersistedSyncData {
   /** Account key material protected at rest by the encrypted local vault. Never expose over IPC. */
   unlockMaterial: PersistedSyncUnlockMaterial | null
   lastSyncAt: string | null
+  /**
+   * Forces an authoritative sync after personal ciphers were quarantined, including one recovery
+   * pass after the connector can decrypt them again. Optional for vaults written before this flag.
+   */
+  requiresFullSyncAfterCipherIsolation?: boolean
   folderMappings: SyncEntityMapping[]
   loginMappings: SyncEntityMapping[]
   folderTombstones: SyncTombstone[]

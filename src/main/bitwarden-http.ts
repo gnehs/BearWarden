@@ -723,12 +723,32 @@ async function boundedResponseText(
   }
 }
 
-function normalizeExpiresAt(value: unknown, now: number): number | undefined {
-  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-    // OAuth returns expires_in seconds. setSession may receive a Unix timestamp.
-    return value < 10_000_000 ? now + value * 1000 : value
+function normalizeExpiresAt(
+  value: unknown,
+  now: number,
+  kind: 'duration-seconds' | 'epoch'
+): number | undefined {
+  if (kind === 'duration-seconds') {
+    if (
+      typeof value !== 'number' ||
+      !Number.isSafeInteger(value) ||
+      value <= 0 ||
+      !Number.isSafeInteger(now) ||
+      now < 0
+    ) {
+      return undefined
+    }
+    const durationMs = value * 1000
+    const expiresAt = now + durationMs
+    return Number.isSafeInteger(durationMs) && Number.isSafeInteger(expiresAt) && expiresAt > 0
+      ? expiresAt
+      : undefined
   }
-  if (typeof value === 'string' && Number.isFinite(Date.parse(value))) return Date.parse(value)
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return value
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value)
+    if (Number.isSafeInteger(parsed) && parsed > 0) return parsed
+  }
   return undefined
 }
 
@@ -742,6 +762,10 @@ function retryAfter(response: Response, now: number, maximum: number): number {
   const seconds = Number(value)
   const delay = Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : Date.parse(value) - now
   return Number.isFinite(delay) && delay > 0 ? Math.min(delay, maximum) : 0
+}
+
+function cancelResponseBodyForRetry(response: Response): void {
+  void response.body?.cancel().catch(() => undefined)
 }
 
 function defaultSleep(milliseconds: number, signal?: AbortSignal): Promise<void> {
@@ -763,10 +787,24 @@ function base64Url(value: string): string {
   return Buffer.from(value, 'utf8').toString('base64url')
 }
 
+interface RefreshInFlight {
+  generation: number
+  controller: AbortController
+  promise: Promise<BitwardenSession>
+  waiters: number
+  lifecycle: {
+    dispatched: boolean
+    settled: boolean
+    transportPending: boolean
+  }
+}
+
 export class BitwardenHttpClient {
   readonly urls: BitwardenUrls
   private session: BitwardenSession | null = null
-  private refreshInFlight: Promise<BitwardenSession> | null = null
+  private sessionGeneration = 0
+  private sessionController = new AbortController()
+  private refreshInFlight: RefreshInFlight | null = null
   private readonly fetchFn: FetchLike
   private readonly now: () => number
   private readonly sleep: (milliseconds: number, signal?: AbortSignal) => Promise<void>
@@ -799,22 +837,25 @@ export class BitwardenHttpClient {
   }
 
   setSession(session: BitwardenSession): void {
-    if (
-      !string(session.accessToken) ||
-      !string(session.refreshToken) ||
-      !Number.isFinite(session.expiresAt)
-    ) {
+    if (!Number.isSafeInteger(session.expiresAt) || session.expiresAt <= 0) {
       throw new BitwardenHttpError('INVALID_RESPONSE')
     }
+    const accessToken = requiredBearerAccessToken(session.accessToken)
+    const refreshToken = optionalOpaqueAuthToken(session.refreshToken)
+    if (!refreshToken) throw new BitwardenHttpError('INVALID_RESPONSE')
     const twoFactorToken = optionalOpaqueAuthToken(session.twoFactorToken)
     const clientId = optionalOAuthClientId(session.clientId)
-    this.session = {
-      accessToken: session.accessToken,
-      refreshToken: session.refreshToken,
+    const nextSession = {
+      accessToken,
+      refreshToken,
       expiresAt: session.expiresAt,
       ...(twoFactorToken ? { twoFactorToken } : {}),
       ...(clientId ? { clientId } : {})
     }
+    this.sessionController.abort()
+    this.sessionGeneration += 1
+    this.sessionController = new AbortController()
+    this.session = nextSession
   }
 
   exportSession(): BitwardenSession | null {
@@ -822,6 +863,9 @@ export class BitwardenHttpClient {
   }
 
   clearSession(): void {
+    this.sessionController.abort()
+    this.sessionGeneration += 1
+    this.sessionController = new AbortController()
     this.session = null
   }
 
@@ -1042,14 +1086,38 @@ export class BitwardenHttpClient {
   }
 
   async refresh(signal?: AbortSignal): Promise<BitwardenSession> {
+    if (signal?.aborted) throw new BitwardenHttpError('ABORTED')
     if (!this.session) throw new BitwardenHttpError('AUTH')
-    if (!this.refreshInFlight) {
+    const generation = this.sessionGeneration
+    if (!this.refreshInFlight || this.refreshInFlight.generation !== generation) {
       const refreshToken = this.session.refreshToken
-      this.refreshInFlight = this.refreshToken(refreshToken, signal).finally(() => {
-        this.refreshInFlight = null
+      const sessionSignal = this.sessionController.signal
+      const controller = new AbortController()
+      const refreshSignal = AbortSignal.any([sessionSignal, controller.signal])
+      const lifecycle = { dispatched: false, settled: false, transportPending: true }
+      const promise = this.refreshToken(
+        refreshToken,
+        generation,
+        refreshSignal,
+        () => {
+          lifecycle.dispatched = true
+        },
+        () => {
+          lifecycle.transportPending = false
+        }
+      ).finally(() => {
+        lifecycle.settled = true
+        if (this.refreshInFlight?.promise === promise) this.refreshInFlight = null
       })
+      this.refreshInFlight = {
+        generation,
+        controller,
+        promise,
+        waiters: 0,
+        lifecycle
+      }
     }
-    return this.refreshInFlight
+    return this.waitForRefresh(this.refreshInFlight, signal)
   }
 
   /** Returns a token suitable for a new long-lived connection, refreshing it near expiry. */
@@ -2326,7 +2394,10 @@ export class BitwardenHttpClient {
 
   private async refreshToken(
     refreshToken: string,
-    signal?: AbortSignal
+    generation: number,
+    signal: AbortSignal,
+    markDispatched: () => void,
+    markTransportComplete: () => void
   ): Promise<BitwardenSession> {
     const previousSession = this.session
     const retainedClientId =
@@ -2344,9 +2415,13 @@ export class BitwardenHttpClient {
         form,
         signal,
         authenticate: false,
+        onDispatch: markDispatched,
         headers: { 'cache-control': 'no-store' }
       })
     } catch (error) {
+      if (this.sessionGeneration !== generation || this.session !== previousSession) {
+        throw new BitwardenHttpError('AUTH')
+      }
       if (
         error instanceof BitwardenHttpError &&
         error.status === 400 &&
@@ -2357,14 +2432,78 @@ export class BitwardenHttpClient {
       }
       throw error
     }
-    const updated = parseSession(payload, this.now(), {
-      refreshToken,
-      clientId: retainedClientId,
-      twoFactorToken: previousSession?.twoFactorToken
-    })
+    markTransportComplete()
+    if (this.sessionGeneration !== generation || this.session !== previousSession) {
+      throw new BitwardenHttpError('AUTH')
+    }
+    if (signal.aborted) {
+      this.clearSession()
+      throw new BitwardenHttpError('ABORTED')
+    }
+    let updated: BitwardenSession
+    try {
+      updated = parseSession(payload, this.now(), {
+        refreshToken,
+        clientId: retainedClientId,
+        twoFactorToken: previousSession?.twoFactorToken
+      })
+      await this.options.onSessionChanged?.({ ...updated })
+    } catch (error) {
+      if (this.sessionGeneration === generation && this.session === previousSession) {
+        this.clearSession()
+      }
+      if (error instanceof BitwardenHttpError) throw error
+      throw new BitwardenHttpError('AUTH')
+    }
+    if (this.sessionGeneration !== generation || this.session !== previousSession) {
+      throw new BitwardenHttpError('AUTH')
+    }
     this.session = updated
-    await this.options.onSessionChanged?.({ ...updated })
     return updated
+  }
+
+  private waitForRefresh(
+    inFlight: RefreshInFlight,
+    signal?: AbortSignal
+  ): Promise<BitwardenSession> {
+    inFlight.waiters += 1
+    return new Promise((resolve, reject) => {
+      let settled = false
+      const release = (aborted: boolean): void => {
+        if (settled) return
+        settled = true
+        signal?.removeEventListener('abort', onAbort)
+        inFlight.waiters -= 1
+        if (
+          aborted &&
+          inFlight.waiters === 0 &&
+          !inFlight.lifecycle.settled &&
+          !inFlight.lifecycle.dispatched &&
+          inFlight.lifecycle.transportPending
+        ) {
+          inFlight.controller.abort()
+        }
+      }
+      const onAbort = (): void => {
+        if (settled) return
+        release(true)
+        reject(new BitwardenHttpError('ABORTED'))
+      }
+      signal?.addEventListener('abort', onAbort, { once: true })
+      if (signal?.aborted) onAbort()
+      void inFlight.promise.then(
+        (session) => {
+          if (settled) return
+          release(false)
+          resolve(session)
+        },
+        (error: unknown) => {
+          if (settled) return
+          release(false)
+          reject(error)
+        }
+      )
+    })
   }
 
   private mapFetchFailure(
@@ -2426,7 +2565,7 @@ export class BitwardenHttpClient {
 
       if (response.status === 401 && !refreshed) {
         refreshed = true
-        await response.body?.cancel().catch(() => undefined)
+        cancelResponseBodyForRetry(response)
         if (this.session?.accessToken === attemptedAccessToken) await this.refresh(signal)
         continue
       }
@@ -2677,6 +2816,7 @@ export class BitwardenHttpClient {
 
       if (response.status === 401 && authenticate && !refreshed && request.retry !== false) {
         refreshed = true
+        cancelResponseBodyForRetry(response)
         // A different request may already have rotated this account's token.
         // In that case retry with the current token instead of spending the
         // refresh token a second time.
@@ -2689,6 +2829,7 @@ export class BitwardenHttpClient {
         retries < this.maxRetries
       ) {
         retries += 1
+        cancelResponseBodyForRetry(response)
         const delay = retryAfter(response, this.now(), this.maxRetryAfterMs)
         if (delay > 0) await this.sleep(delay, request.signal)
         continue
@@ -4177,6 +4318,14 @@ function optionalOpaqueAuthToken(value: unknown): string | undefined {
   return value
 }
 
+function requiredBearerAccessToken(value: unknown): string {
+  const token = optionalOpaqueAuthToken(value)
+  if (!token || !/^[\x21-\x7e]+$/u.test(token)) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return token
+}
+
 function optionalOAuthClientId(value: unknown): string | undefined {
   if (value === undefined || value === null || value === '') return undefined
   if (
@@ -4225,13 +4374,22 @@ function parseSession(
   inherited: { refreshToken?: string; clientId?: string; twoFactorToken?: string } = {}
 ): BitwardenSession {
   if (!isRecord(value)) throw invalidSessionResponse()
-  const accessToken = optionalOpaqueAuthToken(value.access_token ?? value.accessToken)
+  const accessToken = requiredBearerAccessToken(value.access_token ?? value.accessToken)
   const responseRefreshToken = optionalOpaqueAuthToken(value.refresh_token ?? value.refreshToken)
   const refreshToken = responseRefreshToken ?? optionalOpaqueAuthToken(inherited.refreshToken)
-  const expiresAt =
-    normalizeExpiresAt(value.expires_in ?? value.expiresAt, now) ??
-    expiresAtFromAccessToken(accessToken)
-  if (!accessToken || !refreshToken || !expiresAt) throw invalidSessionResponse()
+  const rawExpiresIn = value.expires_in
+  const rawExpiresAt = value.expiresAt
+  let expiresAt: number | undefined
+  if (rawExpiresIn !== undefined && rawExpiresIn !== null) {
+    expiresAt = normalizeExpiresAt(rawExpiresIn, now, 'duration-seconds')
+    if (expiresAt === undefined) throw invalidSessionResponse()
+  } else if (rawExpiresAt !== undefined && rawExpiresAt !== null) {
+    expiresAt = normalizeExpiresAt(rawExpiresAt, now, 'epoch')
+    if (expiresAt === undefined) throw invalidSessionResponse()
+  } else {
+    expiresAt = expiresAtFromAccessToken(accessToken)
+  }
+  if (!refreshToken || !expiresAt) throw invalidSessionResponse()
   const responseTwoFactorToken = optionalOpaqueAuthToken(
     value.TwoFactorToken ?? value.twoFactorToken
   )
@@ -4291,17 +4449,51 @@ function expiresAtFromAccessToken(accessToken: string | undefined): number | und
   }
 }
 
-function parseTwoFactorProviderId(value: JsonValue): BitwardenTwoFactorProviderId {
+function parseTwoFactorProviderId(value: JsonValue): BitwardenTwoFactorProviderId | undefined {
   const normalized = typeof value === 'number' ? value : typeof value === 'string' ? value : NaN
   if (
-    (typeof normalized === 'number' && !Number.isSafeInteger(normalized)) ||
-    (typeof normalized === 'string' && !/^[0-8]$/u.test(normalized))
+    (typeof normalized === 'number' && (!Number.isSafeInteger(normalized) || normalized < 0)) ||
+    (typeof normalized === 'string' && !/^(?:0|[1-9]\d*)$/u.test(normalized))
   ) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
   const provider = Number(normalized)
-  if (provider < 0 || provider > 8) throw new BitwardenHttpError('INVALID_RESPONSE')
+  if (!Number.isSafeInteger(provider)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  if (provider > 8) return undefined
   return provider as BitwardenTwoFactorProviderId
+}
+
+function hasLoginTwoFactorChallenge(payload: JsonValue): boolean {
+  if (!isRecord(payload)) return false
+  let hasProviders = false
+  for (const key of ['TwoFactorProviders', 'twoFactorProviders'] as const) {
+    if (!(key in payload)) continue
+    const value = payload[key]
+    if (value === null) continue
+    if (!Array.isArray(value) || value.length > MAX_TWO_FACTOR_PROVIDER_ENTRIES) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    hasProviders ||= value.length > 0
+  }
+  for (const key of ['TwoFactorProviders2', 'twoFactorProviders2'] as const) {
+    if (!(key in payload)) continue
+    const value = payload[key]
+    if (value === null) continue
+    if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+    const providerCount = Object.keys(value).length
+    if (providerCount > MAX_TWO_FACTOR_PROVIDER_ENTRIES) {
+      throw new BitwardenHttpError('INVALID_RESPONSE')
+    }
+    hasProviders ||= providerCount > 0
+  }
+  return hasProviders
+}
+
+function hasLoginTwoFactorProviderMap(payload: JsonValue): boolean {
+  if (!isRecord(payload)) return false
+  return (['TwoFactorProviders2', 'twoFactorProviders2'] as const).some(
+    (key) => key in payload && payload[key] !== null
+  )
 }
 
 function parseLoginTwoFactorProviders(payload: JsonValue): readonly BitwardenTwoFactorProviderId[] {
@@ -4311,21 +4503,29 @@ function parseLoginTwoFactorProviders(payload: JsonValue): readonly BitwardenTwo
   for (const key of arrayKeys) {
     if (!(key in payload)) continue
     const value = payload[key]
+    if (value === null) continue
     if (!Array.isArray(value) || value.length > MAX_TWO_FACTOR_PROVIDER_ENTRIES) {
       throw new BitwardenHttpError('INVALID_RESPONSE')
     }
-    for (const provider of value) providers.add(parseTwoFactorProviderId(provider))
+    for (const rawProvider of value) {
+      const provider = parseTwoFactorProviderId(rawProvider)
+      if (provider !== undefined) providers.add(provider)
+    }
   }
   const objectKeys = ['TwoFactorProviders2', 'twoFactorProviders2'] as const
   for (const key of objectKeys) {
     if (!(key in payload)) continue
     const value = payload[key]
+    if (value === null) continue
     if (!isRecord(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
     const keys = Object.keys(value)
     if (keys.length > MAX_TWO_FACTOR_PROVIDER_ENTRIES) {
       throw new BitwardenHttpError('INVALID_RESPONSE')
     }
-    for (const provider of keys) providers.add(parseTwoFactorProviderId(provider))
+    for (const rawProvider of keys) {
+      const provider = parseTwoFactorProviderId(rawProvider)
+      if (provider !== undefined) providers.add(provider)
+    }
   }
   return Object.freeze([...providers].sort((left, right) => left - right))
 }
@@ -4358,17 +4558,33 @@ function toHttpError(status: number, payload: JsonValue): BitwardenHttpError {
   if (status === 400 && message.includes('user verification failed')) {
     return new BitwardenHttpError('USER_VERIFICATION_FAILED', status)
   }
-  if (message.includes('two factor')) {
+  let hasTwoFactorChallenge = false
+  try {
+    hasTwoFactorChallenge = status === 400 && hasLoginTwoFactorChallenge(payload)
+  } catch (error) {
+    if (error instanceof BitwardenHttpError && error.code === 'INVALID_RESPONSE') {
+      return new BitwardenHttpError('INVALID_RESPONSE', status)
+    }
+    throw error
+  }
+  if (hasTwoFactorChallenge) {
     try {
       const twoFactorProviders = parseLoginTwoFactorProviders(payload)
       try {
-        const webAuthnChallenge = parseAccountWebAuthnChallengeFromTokenError(payload)
+        const hasWebAuthnProviderMap = hasLoginTwoFactorProviderMap(payload)
+        const actionableProviders = hasWebAuthnProviderMap
+          ? twoFactorProviders
+          : twoFactorProviders.filter((provider) => provider !== 7)
+        const webAuthnChallenge =
+          actionableProviders.includes(7) && hasWebAuthnProviderMap
+            ? parseAccountWebAuthnChallengeFromTokenError(payload)
+            : undefined
         return new BitwardenHttpError(
           'TWO_FACTOR',
           status,
           undefined,
           webAuthnChallenge ?? undefined,
-          twoFactorProviders
+          actionableProviders
         )
       } catch (error) {
         if (error instanceof AccountWebAuthnCodecError) {

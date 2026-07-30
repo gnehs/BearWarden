@@ -1278,7 +1278,7 @@ describe('VaultService encrypted local data', () => {
     await expect(reopened.masterPasswordChangeStatus()).resolves.toMatchObject({ phase: null })
   })
 
-  it('preserves mapped local data when a remote cipher becomes an isolated future type', async () => {
+  it('preserves and later resumes a mapped login while its remote cipher is isolated', async () => {
     let fake: ReturnType<typeof createSyncFake> | null = null
     const { service } = await createHarness({
       createSyncClient: (sync) => {
@@ -1295,10 +1295,16 @@ describe('VaultService encrypted local data', () => {
 
     const local = (await service.listLogins())[0]!
     const remoteId = fake!.remoteLogins[0]!.id
+    const retainedRemote = structuredClone(fake!.remoteLogins[0]!)
     fake!.remoteLogins.splice(0)
     fake!.isolatedPersonalIds.push(remoteId)
 
-    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    await expect(service.syncNow()).resolves.toMatchObject({
+      pulled: 0,
+      pushed: 0,
+      deleted: 0,
+      conflicts: 0
+    })
     await expect(service.getLogin({ id: local.id })).resolves.toMatchObject({
       id: local.id,
       name: local.name
@@ -1306,8 +1312,226 @@ describe('VaultService encrypted local data', () => {
     expect(fake!.hardDeletedIds).toEqual([])
     expect(fake!.editedLoginIds).toEqual([])
 
+    ;(
+      fake! as ReturnType<typeof createSyncFake> & {
+        revisionDate: (signal?: AbortSignal) => Promise<string>
+      }
+    ).revisionDate = async () => '2026-07-13T00:00:00.000Z'
+    const fullSync = vi.spyOn(fake!, 'sync')
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 0 })
+    expect(fullSync).toHaveBeenCalledTimes(2)
+    fullSync.mockClear()
+
     await service.updateLogin({ id: local.id, name: 'Locally edited while isolated' })
+    await expect(service.syncNow()).resolves.toMatchObject({
+      pulled: 0,
+      pushed: 0,
+      deleted: 0,
+      conflicts: 0
+    })
+    expect(fake!.remoteLogins).toEqual([])
+    expect(fake!.editedLoginIds).toEqual([])
+    await expect(service.getLogin({ id: local.id })).resolves.toMatchObject({
+      id: local.id,
+      name: 'Locally edited while isolated'
+    })
+
+    fullSync.mockClear()
+    fake!.isolatedPersonalIds.splice(0)
+    fake!.remoteLogins.push(retainedRemote)
+
+    await expect(service.syncNow()).resolves.toMatchObject({
+      pulled: 0,
+      pushed: 1,
+      deleted: 0,
+      conflicts: 0
+    })
+    expect(fake!.editedLoginIds).toEqual([remoteId])
+    expect(fake!.hardDeletedIds).toEqual([])
+    expect(fake!.remoteLogins).toMatchObject([
+      { id: remoteId, name: 'Locally edited while isolated' }
+    ])
+    expect(fullSync).toHaveBeenCalledTimes(2)
+    await expect(service.getLogin({ id: local.id })).resolves.toMatchObject({
+      id: local.id,
+      name: 'Locally edited while isolated'
+    })
+  })
+
+  it('preserves a mapped tombstone while its remote cipher is isolated', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+
+    const local = (await service.listLogins())[0]!
+    const retainedRemote = structuredClone(fake!.remoteLogins[0]!)
+    const remoteId = retainedRemote.id
+    await service.deleteLogin({ id: local.id })
+    await service.deleteLoginPermanently({ id: local.id })
+    fake!.remoteLogins.splice(0)
+    fake!.isolatedPersonalIds.push(remoteId)
+
+    await expect(service.syncNow()).resolves.toMatchObject({
+      pulled: 0,
+      pushed: 0,
+      deleted: 0,
+      conflicts: 0
+    })
+    expect(fake!.hardDeletedIds).toEqual([])
+    await expect(service.getLogin({ id: local.id })).rejects.toMatchObject({ code: 'NOT_FOUND' })
+
+    fake!.isolatedPersonalIds.splice(0)
+    fake!.remoteLogins.push(retainedRemote)
+
+    await expect(service.syncNow()).resolves.toMatchObject({ deleted: 1 })
+    expect(fake!.hardDeletedIds).toEqual([remoteId])
+    expect(fake!.remoteLogins).toEqual([])
+    await expect(service.getLogin({ id: local.id })).rejects.toMatchObject({ code: 'NOT_FOUND' })
+  })
+
+  it('persists a new mapping when final reconciliation isolates the created remote cipher', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { filePath, service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = await service.createLogin({ name: 'Created before final quarantine' })
+    const baseSync = fake!.sync.bind(fake)
+    let syncCalls = 0
+    let retainedRemote: BitwardenLoginItem | null = null
+    fake!.sync = async () => {
+      await baseSync()
+      syncCalls += 1
+      if (syncCalls !== 2) return
+      const remoteIndex = fake!.remoteLogins.findIndex((login) => login.name === local.name)
+      retainedRemote = structuredClone(fake!.remoteLogins[remoteIndex]!)
+      fake!.remoteLogins.splice(remoteIndex, 1)
+      fake!.isolatedPersonalIds.push(retainedRemote.id)
+    }
+
     await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(retainedRemote).not.toBeNull()
+    await expect(service.getLogin({ id: local.id })).resolves.toMatchObject({
+      id: local.id,
+      name: local.name
+    })
+    service.dispose()
+
+    fake!.sync = baseSync
+    ;(
+      fake! as ReturnType<typeof createSyncFake> & {
+        revisionDate: (signal?: AbortSignal) => Promise<string>
+      }
+    ).revisionDate = async () => '2026-07-13T00:00:00.000Z'
+    const fullSync = vi.spyOn(fake!, 'sync')
+    const reopened = new VaultService(
+      new EncryptedVaultStore(filePath),
+      { copyText: vi.fn(), openExternal: vi.fn() },
+      { createSyncClient: () => fake! }
+    )
+    await reopened.unlock(MASTER_PASSWORD)
+
+    await expect(reopened.syncNow()).resolves.toMatchObject({
+      pulled: 0,
+      pushed: 0,
+      deleted: 0,
+      conflicts: 0
+    })
+    expect(fullSync).toHaveBeenCalledTimes(2)
+    expect(fake!.remoteLogins.filter((login) => login.name === local.name)).toEqual([])
+
+    fake!.isolatedPersonalIds.splice(0)
+    fake!.remoteLogins.push(retainedRemote!)
+    fullSync.mockClear()
+
+    await expect(reopened.syncNow()).resolves.toMatchObject({
+      pulled: 0,
+      pushed: 0,
+      deleted: 0,
+      conflicts: 0
+    })
+    expect(fullSync).toHaveBeenCalledTimes(2)
+    expect(fake!.remoteLogins.filter((login) => login.name === local.name)).toMatchObject([
+      { id: retainedRemote!.id }
+    ])
+
+    fullSync.mockClear()
+    await expect(reopened.syncNow()).resolves.toMatchObject({ pushed: 0 })
+    expect(fullSync).not.toHaveBeenCalled()
+  })
+
+  it('retains a tombstone when final reconciliation newly isolates its remote cipher', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const local = (await service.listLogins())[0]!
+    const retainedRemote = structuredClone(fake!.remoteLogins[0]!)
+    const remoteId = retainedRemote.id
+    await service.deleteLogin({ id: local.id })
+    await service.deleteLoginPermanently({ id: local.id })
+    const baseSync = fake!.sync.bind(fake)
+    let syncCalls = 0
+    fake!.sync = async () => {
+      await baseSync()
+      syncCalls += 1
+      if (syncCalls === 2) fake!.isolatedPersonalIds.push(remoteId)
+    }
+
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(fake!.hardDeletedIds).toEqual([remoteId])
+
+    fake!.sync = baseSync
+    ;(
+      fake! as ReturnType<typeof createSyncFake> & {
+        revisionDate: (signal?: AbortSignal) => Promise<string>
+      }
+    ).revisionDate = async () => '2026-07-13T00:00:00.000Z'
+    const fullSync = vi.spyOn(fake!, 'sync')
+
+    await expect(service.syncNow()).resolves.toMatchObject({
+      pulled: 0,
+      pushed: 0,
+      deleted: 0,
+      conflicts: 0
+    })
+    expect(fullSync).toHaveBeenCalledTimes(2)
+    expect(fake!.hardDeletedIds).toEqual([remoteId])
+
+    fake!.isolatedPersonalIds.splice(0)
+    fake!.remoteLogins.push(retainedRemote)
+    fullSync.mockClear()
+
+    await expect(service.syncNow()).resolves.toMatchObject({ deleted: 1 })
+    expect(fullSync).toHaveBeenCalledTimes(2)
+    expect(fake!.hardDeletedIds).toEqual([remoteId, remoteId])
     expect(fake!.remoteLogins).toEqual([])
   })
 
@@ -2280,6 +2504,64 @@ describe('VaultService encrypted local data', () => {
     expect(fullSync).toHaveBeenCalledTimes(2)
   })
 
+  it('accepts legacy sync data without the cipher-isolation flag and rejects invalid values', async () => {
+    const { filePath, service, store } = await createHarness({
+      createSyncClient: (sync) => createSyncFake(sync.state)
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.lock()
+
+    const legacy = await store.unlock(MASTER_PASSWORD)
+    const legacyData = legacy.data as {
+      sync: Record<string, unknown>
+    }
+    delete legacyData.sync.requiresFullSyncAfterCipherIsolation
+    await store.write(legacyData, legacy.key, legacy.salt)
+    legacy.key.fill(0)
+    legacy.salt.fill(0)
+
+    let reopenedFake: ReturnType<typeof createSyncFake> | null = null
+    const reopened = new VaultService(
+      new EncryptedVaultStore(filePath),
+      { copyText: vi.fn(), openExternal: vi.fn() },
+      {
+        createSyncClient: (sync) => {
+          reopenedFake = createSyncFake(sync.state)
+          vi.spyOn(reopenedFake, 'sync')
+          return reopenedFake
+        }
+      }
+    )
+    await expect(reopened.unlock(MASTER_PASSWORD)).resolves.toEqual({ state: 'unlocked' })
+    await expect(reopened.syncNow()).resolves.toMatchObject({ state: 'ready' })
+    expect(reopenedFake).not.toBeNull()
+    expect(vi.mocked(reopenedFake!.sync)).toHaveBeenCalledTimes(2)
+    await reopened.lock()
+
+    const corruptStore = new EncryptedVaultStore<unknown>(filePath)
+    const corrupt = await corruptStore.unlock(MASTER_PASSWORD)
+    const corruptData = corrupt.data as {
+      sync: Record<string, unknown>
+    }
+    corruptData.sync.requiresFullSyncAfterCipherIsolation = 'yes'
+    await corruptStore.write(corruptData, corrupt.key, corrupt.salt)
+    corrupt.key.fill(0)
+    corrupt.salt.fill(0)
+
+    const rejected = new VaultService(corruptStore, {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await expect(rejected.unlock(MASTER_PASSWORD)).rejects.toMatchObject({
+      code: 'CORRUPT_VAULT'
+    })
+  })
+
   it('persists equivalent domains fetched after the final authoritative sync', async () => {
     let fake: ReturnType<typeof createSyncFake> | null = null
     let domainRead = 0
@@ -2789,6 +3071,7 @@ describe('VaultService encrypted local data', () => {
     })
 
     const sendId = '50000000-0000-4000-8000-000000000001'
+    const deletionDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
     let remote: BitwardenSendItem = {
       id: sendId,
       accessId: 'UAAAAAAAQABAAAAAAAAAAQ',
@@ -2801,7 +3084,7 @@ describe('VaultService encrypted local data', () => {
       accessCount: 0,
       revisionDate: '2026-07-16T00:00:00.000Z',
       expirationDate: null,
-      deletionDate: '2026-07-30T00:00:00.000Z',
+      deletionDate,
       disabled: false,
       hideEmail: true,
       authType: 1,
@@ -2871,6 +3154,7 @@ describe('VaultService encrypted local data', () => {
       email: 'sync@example.invalid',
       masterPassword: 'remote master password'
     })
+    const deletionDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
     const remote: BitwardenSendItem = {
       id: '50000000-0000-4000-8000-000000000002',
       accessId: 'UAAAAAAAQABAAAAAAAAAAQ',
@@ -2889,7 +3173,7 @@ describe('VaultService encrypted local data', () => {
       accessCount: 0,
       revisionDate: '2026-07-16T00:00:00.000Z',
       expirationDate: null,
-      deletionDate: '2026-07-30T00:00:00.000Z',
+      deletionDate,
       disabled: false,
       hideEmail: true,
       authType: 2,
@@ -5412,6 +5696,51 @@ describe('VaultService encrypted local data', () => {
     expect(fake.purgeCalls).toEqual(['remote master password', 'fresh remote proof'])
   })
 
+  it('keeps a purge pending until an unmapped isolated personal cipher disappears', async () => {
+    let fake!: ReturnType<typeof createSyncFake>
+    const { service } = await createHarness({
+      createSyncClient: (sync) => (fake = createSyncFake(sync.state))
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    fake.isolatedPersonalIds.push('90000000-0000-4000-8000-000000000006')
+
+    await expect(
+      service.purgePersonalVault({
+        masterPassword: 'remote master password',
+        confirmation: 'PURGE',
+        confirmPurge: true
+      })
+    ).resolves.toMatchObject({
+      status: 'pending',
+      remainingItems: 1,
+      remainingFolders: 0
+    })
+    await expect(service.syncStatus()).resolves.toMatchObject({
+      pendingPurge: { remainingItems: 1, remainingFolders: 0 }
+    })
+    await expect(service.listLogins()).resolves.toHaveLength(1)
+    await expect(service.listFolders()).resolves.toHaveLength(1)
+    expect(fake.purgeCalls).toEqual(['remote master password'])
+
+    fake.isolatedPersonalIds.splice(0)
+
+    await expect(service.syncNow()).resolves.toMatchObject({
+      state: 'ready',
+      pulled: 0,
+      pushed: 0,
+      deleted: 2,
+      conflicts: 0
+    })
+    await expect(service.listLogins()).resolves.toEqual([])
+    await expect(service.listFolders()).resolves.toEqual([])
+    expect(fake.purgeCalls).toEqual(['remote master password'])
+  })
+
   it('restores the prior purge journal for rejected proof and scrubs invalid requests', async () => {
     let fake!: ReturnType<typeof createSyncFake>
     const { service } = await createHarness({
@@ -6038,6 +6367,39 @@ describe('VaultService encrypted local data', () => {
     const locking = service.lock()
     await expect(syncing).rejects.toMatchObject({ code: 'LOCKED' })
     await locking
+  })
+
+  it('preserves authentication failure while reconciling an unknown bulk mutation result', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        fake.remoteLogins.push({
+          ...structuredClone(fake.remoteLogins[0]!),
+          id: '90000000-0000-4000-8000-000000000005',
+          name: 'Second remote login'
+        })
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const ids = (await service.listLogins()).map((login) => login.id)
+    await service.archiveLogins({ ids })
+    fake!.archiveLogins = async () => {
+      throw new Error('injected unknown result')
+    }
+    let syncCalls = 0
+    fake!.sync = async () => {
+      syncCalls += 1
+      if (syncCalls === 2) throw new BitwardenDirectError('AUTH_REQUIRED')
+    }
+
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_AUTH_REQUIRED' })
   })
 
   it('batches pure folder moves but keeps content-and-folder edits on the ordinary route', async () => {
@@ -9274,6 +9636,64 @@ describe('VaultService encrypted local data', () => {
 
     expect(fake!.hardDeletedIds).toEqual(expect.arrayContaining(remoteIds))
     expect(fake!.hardDeletedIds).toHaveLength(2)
+    expect(fake!.remoteLogins).toEqual([])
+  })
+
+  it('does not reconcile an isolated bulk hard-delete as authoritative absence', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake ??= createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const first = (await service.listLogins())[0]!
+    const second = await service.createLogin({ name: 'Second quarantined batch deletion' })
+    await service.syncNow()
+    const retainedRemote = structuredClone(fake!.remoteLogins)
+    const remoteIds = retainedRemote.map((login) => login.id)
+    await service.deleteLogins({ ids: [first.id, second.id] })
+    await service.deleteLoginsPermanently({ ids: [first.id, second.id] })
+    const hardDeleteLogins = fake!.hardDeleteLogins!.bind(fake)
+    fake!.hardDeleteLogins = async (ids, signal) => {
+      await hardDeleteLogins(ids, signal)
+      fake!.isolatedPersonalIds.push(...ids)
+      throw new Error('injected ambiguous bulk hard-delete')
+    }
+
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_FAILED' })
+    expect(fake!.hardDeletedIds).toEqual(expect.arrayContaining(remoteIds))
+
+    fake!.hardDeleteLogins = hardDeleteLogins
+    ;(
+      fake! as ReturnType<typeof createSyncFake> & {
+        revisionDate: (signal?: AbortSignal) => Promise<string>
+      }
+    ).revisionDate = async () => '2026-07-13T00:00:00.000Z'
+    const fullSync = vi.spyOn(fake!, 'sync')
+
+    await expect(service.syncNow()).resolves.toMatchObject({
+      pulled: 0,
+      pushed: 0,
+      deleted: 0,
+      conflicts: 0
+    })
+    expect(fullSync).toHaveBeenCalledTimes(2)
+    expect(fake!.hardDeletedIds).toHaveLength(2)
+
+    fake!.isolatedPersonalIds.splice(0)
+    fake!.remoteLogins.push(...retainedRemote)
+    fullSync.mockClear()
+
+    await expect(service.syncNow()).resolves.toMatchObject({ deleted: 2 })
+    expect(fullSync).toHaveBeenCalledTimes(2)
+    expect(fake!.hardDeletedIds).toHaveLength(4)
     expect(fake!.remoteLogins).toEqual([])
   })
 

@@ -3,6 +3,7 @@ import {
   createHash,
   createCipheriv,
   createHmac,
+  createPublicKey,
   generateKeyPairSync,
   privateDecrypt,
   publicEncrypt,
@@ -69,6 +70,24 @@ const ACCOUNT_WEBAUTHN_ATTESTATION_OBJECT = Buffer.alloc(128, 0x34).toString('ba
 const AUTH_REQUEST_ID = '90000000-0000-4000-8000-000000000001'
 const LOGIN_REQUEST_FINGERPRINT_VECTOR_PUBLIC_KEY =
   'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7r0ep8ZLpe6cXqYz7IJutnhTdd8YqxAM1y7sh/dth1qR5LvBYg3H9GusCI4EXl+L9dfUoYGHFC+92bS3jTWsqLHEbIWcT41POqnZkgy1FPC2AxxB72diFqnyRP4yq33uP7YmvwBNZDi8A/QbUn9eTQKfrhJd5GcO1cWY9sQOj6G0D0ZnMBcgHMYwNy2e8dXKzC+S9AUcYprzR7W5uEdiqGE0gn6wILcGSZaIgisrwoG8Y6cy3W6Su8lW5dZOwMMl+8utkXx7vP4wZ+ChDPPJOFloauA1Rjju5FgFnH/eiiWN7it0C0XRSdDmVtQYKnjqst94uQGyG50CQjTaJTtE8QIDAQAB'
+
+function legacyMasterKeyWrappedUserKey(
+  userKey: Buffer,
+  masterKey: Buffer,
+  header: 'type0' | 'headerless'
+): string {
+  const iv = Buffer.from([...Array(16).keys()])
+  let ciphertext: Buffer | undefined
+  try {
+    const cipher = createCipheriv('aes-256-cbc', masterKey, iv)
+    ciphertext = Buffer.concat([cipher.update(userKey), cipher.final()])
+    const payload = `${iv.toString('base64')}|${ciphertext.toString('base64')}`
+    return header === 'type0' ? `0.${payload}` : payload
+  } finally {
+    iv.fill(0)
+    ciphertext?.fill(0)
+  }
+}
 
 function accountWebAuthnAssertion(): AccountWebAuthnAssertion {
   return {
@@ -147,18 +166,30 @@ async function encryptedSync(
     allTypes?: boolean
     passkeyCredentialId?: string
     totp?: string
+    legacyMasterKeyWrap?: 'type0' | 'headerless'
   } = {}
 ): Promise<JsonObject> {
   const masterKey = await deriveMasterKey(PASSWORD, EMAIL, { type: 'pbkdf2', iterations: 5_000 })
   const stretched = stretchMasterKey(masterKey)
   const userKey = Buffer.alloc(64, 7)
   const itemKey = Buffer.alloc(64, 9)
+  const legacyAccountPrivateKey = options.legacyMasterKeyWrap
+    ? generateKeyPairSync('rsa', { modulusLength: 2_048 }).privateKey.export({
+        format: 'der',
+        type: 'pkcs8'
+      })
+    : null
   try {
     return {
       profile: {
         id: PROFILE_ID,
         securityStamp: 'test-security-stamp',
-        key: encryptBitwardenBytes(userKey, stretched.combinedKey),
+        key: options.legacyMasterKeyWrap
+          ? legacyMasterKeyWrappedUserKey(userKey, masterKey, options.legacyMasterKeyWrap)
+          : encryptBitwardenBytes(userKey, stretched.combinedKey),
+        ...(legacyAccountPrivateKey
+          ? { privateKey: encryptBitwardenBytes(legacyAccountPrivateKey, userKey) }
+          : {}),
         ...(options.v2
           ? {
               accountKeys: {
@@ -366,6 +397,7 @@ async function encryptedSync(
     stretched.combinedKey.fill(0)
     userKey.fill(0)
     itemKey.fill(0)
+    legacyAccountPrivateKey?.fill(0)
   }
 }
 
@@ -1033,6 +1065,14 @@ async function clientForSync(
   return client
 }
 
+async function expectIsolatedPersonalCipherSync(sync: JsonObject, id = LOGIN_ID): Promise<void> {
+  const client = await clientForSync(sync)
+  await expect(client.listPersonalLogins()).resolves.not.toEqual(
+    expect.arrayContaining([expect.objectContaining({ id })])
+  )
+  expect(client.isolatedPersonalCipherIds()).toContain(id)
+}
+
 describe('BitwardenDirectClient', () => {
   it('annotates incompatible sign-in responses with a safe response stage', async () => {
     const client = new BitwardenDirectClient({
@@ -1366,6 +1406,336 @@ describe('BitwardenDirectClient', () => {
     })
 
     await expect(client.sync()).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
+    expect(client.exportState().session).toBeNull()
+    await expect(client.status()).resolves.toEqual({ status: 'unauthenticated' })
+  })
+
+  it('refreshes a known-expiring session before requesting the sync snapshot', async () => {
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async () => jsonResponse({ message: 'not found' }, 404)
+    })
+    const activeAccessToken = vi
+      .spyOn(http, 'activeAccessToken')
+      .mockResolvedValueOnce('refreshed-access')
+    const sync = vi.spyOn(http, 'sync').mockRejectedValueOnce(new BitwardenHttpError('NETWORK'))
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: {
+          accessToken: 'expiring-access',
+          refreshToken: 'refresh',
+          expiresAt: Date.now() + 1_000
+        },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'security-stamp'
+      }
+    })
+
+    await expect(client.sync()).rejects.toMatchObject({ code: 'NETWORK' })
+    expect(activeAccessToken).toHaveBeenCalledOnce()
+    expect(sync).toHaveBeenCalledOnce()
+    expect(activeAccessToken.mock.invocationCallOrder[0]).toBeLessThan(
+      sync.mock.invocationCallOrder[0]!
+    )
+  })
+
+  it('persists the rotated refresh candidate instead of the previous HTTP session', async () => {
+    const persisted: Array<ReturnType<BitwardenDirectClient['exportState']>> = []
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      state: {
+        session: {
+          accessToken: 'old-access',
+          refreshToken: 'old-refresh',
+          expiresAt: 1
+        },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'test-security-stamp'
+      },
+      onStateChanged: (state) => {
+        persisted.push(structuredClone(state))
+      }
+    })
+    type DirectHttpProbe = { http: BitwardenHttpClient }
+    type RequestJsonProbe = {
+      requestJson(): Promise<JsonObject>
+    }
+    const http = (client as unknown as DirectHttpProbe).http
+    vi.spyOn(http as unknown as RequestJsonProbe, 'requestJson').mockResolvedValueOnce({
+      access_token: 'new-access',
+      refresh_token: 'new-refresh',
+      expires_in: 3_600
+    })
+
+    await expect(client.notificationAccessToken()).resolves.toBe('new-access')
+    expect(persisted.length).toBeGreaterThan(0)
+    expect(persisted.every((state) => state.session?.refreshToken === 'new-refresh')).toBe(true)
+    expect(client.exportState().session).toMatchObject({
+      accessToken: 'new-access',
+      refreshToken: 'new-refresh'
+    })
+  })
+
+  it('clears a security-stamp-changed session while retaining the account binding', async () => {
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async () => jsonResponse({ message: 'not found' }, 404)
+    })
+    vi.spyOn(http, 'sync').mockResolvedValueOnce(await encryptedSync())
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: {
+          accessToken: 'accepted-but-stale-access',
+          refreshToken: 'refresh',
+          expiresAt: Date.now() + 3_600_000
+        },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'old-security-stamp'
+      }
+    })
+
+    await expect(client.sync()).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
+    expect(client.exportState()).toMatchObject({
+      session: null,
+      profileId: PROFILE_ID,
+      securityStamp: null
+    })
+    await expect(client.status()).resolves.toEqual({ status: 'unauthenticated' })
+  })
+
+  it('does not turn a different account profile into a reauthentication loop', async () => {
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async () => jsonResponse({ message: 'not found' }, 404)
+    })
+    const sync = await encryptedSync()
+    ;(sync.profile as JsonObject).id = '10000000-0000-4000-8000-000000000099'
+    vi.spyOn(http, 'sync').mockResolvedValueOnce(sync)
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      state: {
+        session: {
+          accessToken: 'different-account-access',
+          refreshToken: 'refresh',
+          expiresAt: Date.now() + 3_600_000
+        },
+        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+        profileId: PROFILE_ID,
+        securityStamp: 'test-security-stamp'
+      }
+    })
+
+    await expect(client.sync()).rejects.toMatchObject({ code: 'ACCOUNT_CHANGED' })
+    expect(client.exportState()).toMatchObject({
+      session: { accessToken: 'different-account-access' },
+      profileId: PROFILE_ID,
+      securityStamp: 'test-security-stamp'
+    })
+  })
+
+  it('does not publish a sync snapshot after the vault is locked', async () => {
+    const sync = await encryptedSync()
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          return jsonResponse({
+            access_token: 'access-token',
+            refresh_token: 'refresh-token',
+            expires_in: 3_600
+          })
+        }
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+
+    let resolveSync!: (value: JsonObject) => void
+    const delayedSync = new Promise<JsonObject>((resolve) => {
+      resolveSync = resolve
+    })
+    const syncRequest = vi.spyOn(http, 'sync').mockReturnValueOnce(delayedSync)
+    const pendingSync = client.sync()
+    await vi.waitFor(() => expect(syncRequest).toHaveBeenCalledOnce())
+    await client.lock()
+    resolveSync(sync)
+
+    await expect(pendingSync).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
+    await expect(client.listPersonalLogins()).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
+  })
+
+  it('keeps later syncs queued when an intermediate waiter is canceled', async () => {
+    const sync = await encryptedSync()
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          return jsonResponse({
+            access_token: 'access-token',
+            refresh_token: 'refresh-token',
+            expires_in: 3_600
+          })
+        }
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+
+    let releaseFirst!: (value: JsonObject) => void
+    const firstResponse = new Promise<JsonObject>((resolve) => {
+      releaseFirst = resolve
+    })
+    const syncRequest = vi
+      .spyOn(http, 'sync')
+      .mockReturnValueOnce(firstResponse)
+      .mockResolvedValueOnce(sync)
+    const first = client.sync()
+    await vi.waitFor(() => expect(syncRequest).toHaveBeenCalledTimes(1))
+    const controller = new AbortController()
+    const canceled = client.sync(controller.signal)
+    controller.abort()
+    await expect(canceled).rejects.toMatchObject({ code: 'ABORTED' })
+    const third = client.sync()
+    await Promise.resolve()
+    expect(syncRequest).toHaveBeenCalledTimes(1)
+
+    releaseFirst(sync)
+    await Promise.all([first, third])
+    expect(syncRequest).toHaveBeenCalledTimes(2)
+  })
+
+  it('serializes persisted state snapshots so logout wins over an older sync write', async () => {
+    const sync = await encryptedSync()
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          return jsonResponse({
+            access_token: 'access-token',
+            refresh_token: 'refresh-token',
+            expires_in: 3_600
+          })
+        }
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    let blockAuthenticatedSnapshot = false
+    let releaseAuthenticatedSnapshot!: () => void
+    const authenticatedSnapshotGate = new Promise<void>((resolve) => {
+      releaseAuthenticatedSnapshot = resolve
+    })
+    let authenticatedSnapshotStarted!: () => void
+    const authenticatedSnapshotStart = new Promise<void>((resolve) => {
+      authenticatedSnapshotStarted = resolve
+    })
+    const persistedSessions: Array<string | null> = []
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http,
+      onStateChanged: async (state) => {
+        if (blockAuthenticatedSnapshot && state.session) {
+          authenticatedSnapshotStarted()
+          await authenticatedSnapshotGate
+        }
+        persistedSessions.push(state.session?.accessToken ?? null)
+      }
+    })
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+    persistedSessions.splice(0)
+    blockAuthenticatedSnapshot = true
+
+    const pendingSync = client.sync()
+    await authenticatedSnapshotStart
+    const pendingLogout = client.logout()
+    await Promise.resolve()
+    expect(persistedSessions).toEqual([])
+    releaseAuthenticatedSnapshot()
+    await Promise.all([pendingSync, pendingLogout])
+
+    expect(persistedSessions).toEqual(['access-token', null])
+    expect(client.exportState().session).toBeNull()
+  })
+
+  it('does not let a late password login revive a logged-out session', async () => {
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async () => jsonResponse({ message: 'not found' }, 404)
+    })
+    vi.spyOn(http, 'prelogin').mockResolvedValue({
+      kdfType: 0,
+      iterations: 5_000,
+      memory: null,
+      parallelism: null,
+      salt: EMAIL,
+      raw: {}
+    })
+    let resolveSession!: (session: {
+      accessToken: string
+      refreshToken: string
+      expiresAt: number
+    }) => void
+    const delayedSession = new Promise<{
+      accessToken: string
+      refreshToken: string
+      expiresAt: number
+    }>((resolve) => {
+      resolveSession = resolve
+    })
+    const passwordToken = vi.spyOn(http, 'passwordToken').mockReturnValueOnce(delayedSession)
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+
+    const login = client.login({ email: EMAIL, password: PASSWORD })
+    await vi.waitFor(() => expect(passwordToken).toHaveBeenCalledOnce())
+    await client.logout()
+    resolveSession({
+      accessToken: 'late-access',
+      refreshToken: 'late-refresh',
+      expiresAt: Date.now() + 60_000
+    })
+
+    await expect(login).rejects.toMatchObject({ code: 'ABORTED' })
     expect(client.exportState().session).toBeNull()
     await expect(client.status()).resolves.toEqual({ status: 'unauthenticated' })
   })
@@ -2113,6 +2483,140 @@ describe('BitwardenDirectClient', () => {
     await expect(
       client.editOrganizationCipher(ORGANIZATION_CIPHER_ID, { name: 'Locked edit' })
     ).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
+  })
+
+  it('completes an Account Encryption V2 sync with an RSA-wrapped organization key', async () => {
+    const sync = await encryptedV2Sync()
+    const profile = sync.profile as JsonObject
+    const accountKeys = profile.accountKeys as JsonObject
+    const publicKeyPair = accountKeys.publicKeyEncryptionKeyPair as JsonObject
+    const accountPublicKeyBytes = Buffer.from(String(publicKeyPair.publicKey), 'base64')
+    const organizationKey = Buffer.alloc(64, 11)
+    const itemKey = Buffer.alloc(64, 9)
+    let encryptedOrganizationKey: Buffer | undefined
+    try {
+      const accountPublicKey = createPublicKey({
+        key: accountPublicKeyBytes,
+        format: 'der',
+        type: 'spki'
+      })
+      encryptedOrganizationKey = publicEncrypt(
+        {
+          key: accountPublicKey,
+          padding: constants.RSA_PKCS1_OAEP_PADDING,
+          oaepHash: 'sha1'
+        },
+        organizationKey
+      )
+      profile.organizationsNew = [
+        {
+          id: ORGANIZATION_ID,
+          name: 'V2 Shared Team',
+          key: `4.${encryptedOrganizationKey.toString('base64')}`,
+          status: 0,
+          type: 0,
+          enabled: true,
+          identifier: 'v2-shared-team',
+          hasPublicAndPrivateKeys: false
+        }
+      ]
+      sync.collections = [
+        {
+          id: COLLECTION_ID,
+          organizationId: ORGANIZATION_ID,
+          name: encryptBitwardenString('V2 Shared Collection', organizationKey),
+          externalId: null,
+          readOnly: false,
+          hidePasswords: false,
+          manage: true,
+          type: 0,
+          assigned: true
+        }
+      ]
+      const personalCipher = (sync.ciphers as JsonObject[])[0]!
+      sync.ciphers = [
+        ...(sync.ciphers as JsonObject[]),
+        {
+          ...personalCipher,
+          id: ORGANIZATION_CIPHER_ID,
+          organizationId: ORGANIZATION_ID,
+          collectionIds: [COLLECTION_ID],
+          folderId: null,
+          key: encryptBitwardenBytes(itemKey, organizationKey),
+          edit: true,
+          viewPassword: true,
+          permissions: { delete: false, restore: false }
+        }
+      ]
+    } finally {
+      accountPublicKeyBytes.fill(0)
+      encryptedOrganizationKey?.fill(0)
+      organizationKey.fill(0)
+      itemKey.fill(0)
+    }
+
+    const client = await clientForSync(sync)
+    await expect(client.listOrganizations()).resolves.toEqual([
+      expect.objectContaining({ id: ORGANIZATION_ID, name: 'V2 Shared Team' })
+    ])
+    await expect(client.listCollections()).resolves.toEqual([
+      expect.objectContaining({
+        id: COLLECTION_ID,
+        organizationId: ORGANIZATION_ID,
+        name: 'V2 Shared Collection'
+      })
+    ])
+    await expect(client.listOrganizationCiphers()).resolves.toEqual([
+      expect.objectContaining({
+        id: ORGANIZATION_CIPHER_ID,
+        organizationId: ORGANIZATION_ID,
+        collectionIds: [COLLECTION_ID],
+        name: 'V2 Example',
+        username: 'v2-user@example.invalid'
+      })
+    ])
+
+    const organization = (profile.organizationsNew as JsonObject[])[0]!
+    const validOrganizationKey = organization.key
+    organization.key = String(validOrganizationKey).replace(/^4\./u, '7.')
+    await expect(client.sync()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+      syncInvalidResponseStage: 'organization'
+    })
+    organization.key = validOrganizationKey
+
+    const organizationCipher = (sync.ciphers as JsonObject[]).find(
+      (cipher) => cipher.id === ORGANIZATION_CIPHER_ID
+    )!
+    organizationCipher.data = 'not-a-supported-blob'
+    await expect(client.sync()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+      syncInvalidResponseStage: 'cipher'
+    })
+    expect(client.isolatedPersonalCipherIds()).toEqual([])
+  })
+
+  it('rejects a non-RSA Account Encryption V2 private key before accepting vault data', async () => {
+    const sync = await encryptedV2Sync()
+    const accountKeys = (sync.profile as JsonObject).accountKeys as JsonObject
+    const publicKeyPair = accountKeys.publicKeyEncryptionKeyPair as JsonObject
+    const incompatible = generateKeyPairSync('ed25519').privateKey.export({
+      format: 'der',
+      type: 'pkcs8'
+    })
+    const userKey: BitwardenXChaCha20Poly1305Key = {
+      algorithm: 'xchacha20-poly1305',
+      keyId: Buffer.from([...Array(16).keys()]),
+      encryptionKey: Buffer.from([...Array(32).keys()].map((value) => value + 1))
+    }
+    try {
+      publicKeyPair.wrappedPrivateKey = encryptBitwardenBytes(incompatible, userKey, 'pkcs8')
+      await expectInvalidSync(sync, 'INVALID_RESPONSE', 'account')
+    } finally {
+      incompatible.fill(0)
+      userKey.keyId.fill(0)
+      userKey.encryptionKey.fill(0)
+    }
   })
 
   it('decrypts provider-managed organization keys through the provider key', async () => {
@@ -4324,7 +4828,7 @@ describe('BitwardenDirectClient', () => {
     })
   })
 
-  it('isolates unsupported future cipher types without rejecting supported vault data', async () => {
+  it('isolates unsupported future personal cipher types without rejecting supported vault data', async () => {
     const sync = await encryptedSync()
     const cipher = (sync.ciphers as JsonObject[])[0]!
     const unsupportedPersonal = {
@@ -4333,14 +4837,7 @@ describe('BitwardenDirectClient', () => {
       type: 6,
       bankAccount: { accountNumber: 'opaque-encrypted-bank-account' }
     }
-    const unsupportedOrganization = {
-      ...cipher,
-      id: '90000000-0000-4000-8000-000000000007',
-      type: 7,
-      organizationId: '90000000-0000-4000-8000-000000000099',
-      driversLicense: { number: 'opaque-encrypted-license' }
-    }
-    sync.ciphers = [cipher, unsupportedPersonal, unsupportedOrganization]
+    sync.ciphers = [cipher, unsupportedPersonal]
 
     const client = await clientForSync(sync)
     await expect(client.listPersonalLogins()).resolves.toEqual([
@@ -4348,6 +4845,103 @@ describe('BitwardenDirectClient', () => {
     ])
     await expect(client.listOrganizationCiphers?.()).resolves.toEqual([])
     expect(client.isolatedPersonalCipherIds()).toEqual(['90000000-0000-4000-8000-000000000006'])
+  })
+
+  it('rejects unsupported future organization cipher types', async () => {
+    const sync = await encryptedSync()
+    const cipher = (sync.ciphers as JsonObject[])[0]!
+    const unsupportedOrganization = {
+      ...cipher,
+      id: '90000000-0000-4000-8000-000000000007',
+      type: 7,
+      organizationId: '90000000-0000-4000-8000-000000000099',
+      driversLicense: { number: 'opaque-encrypted-license' }
+    }
+    sync.ciphers = [cipher, unsupportedOrganization]
+
+    await expectInvalidSync(sync, 'INVALID_RESPONSE', 'cipher')
+  })
+
+  it('isolates a personal cipher whose item MAC does not authenticate', async () => {
+    const sync = await encryptedSync()
+    const cipher = (sync.ciphers as JsonObject[])[0]!
+    const corruptId = '90000000-0000-4000-8000-000000000008'
+    const corruptCipher = {
+      ...cipher,
+      id: corruptId,
+      name: `2.${Buffer.alloc(16).toString('base64')}|${Buffer.alloc(16).toString('base64')}|${Buffer.alloc(32).toString('base64')}`
+    }
+    sync.ciphers = [cipher, corruptCipher]
+
+    const client = await clientForSync(sync)
+    await expect(client.listPersonalLogins()).resolves.toEqual([
+      expect.objectContaining({ id: LOGIN_ID, name: 'Example' })
+    ])
+    expect(client.isolatedPersonalCipherIds()).toEqual([corruptId])
+  })
+
+  it('isolates a supported personal cipher with an invalid item schema', async () => {
+    const sync = await encryptedSync({ allTypes: true })
+    const secureNote = (sync.ciphers as JsonObject[]).find((cipher) => cipher.id === NOTE_ID)!
+    secureNote.secureNote = { type: 'invalid' }
+
+    const client = await clientForSync(sync)
+    await expect(client.listPersonalLogins()).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: LOGIN_ID, name: 'Example' })])
+    )
+    expect(client.isolatedPersonalCipherIds()).toEqual([NOTE_ID])
+  })
+
+  it('continues treating an omitted organizationId as a legacy personal cipher', async () => {
+    const sync = await encryptedSync()
+    const cipher = (sync.ciphers as JsonObject[])[0]!
+    const legacyPersonalId = '90000000-0000-4000-8000-000000000009'
+    const legacyPersonal: JsonObject = { ...cipher, id: legacyPersonalId }
+    delete legacyPersonal.organizationId
+    sync.ciphers = [cipher, legacyPersonal]
+
+    const client = await clientForSync(sync)
+    await expect(client.listPersonalLogins()).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: LOGIN_ID }),
+        expect.objectContaining({ id: legacyPersonalId })
+      ])
+    )
+    expect(client.isolatedPersonalCipherIds()).toEqual([])
+  })
+
+  it.each([
+    {
+      label: 'a non-object row',
+      mutate: (ciphers: unknown[]) => ciphers.push(null)
+    },
+    {
+      label: 'a duplicate id',
+      mutate: (ciphers: unknown[]) => ciphers.push(structuredClone(ciphers[0]))
+    },
+    {
+      label: 'a non-UUID id',
+      mutate: (ciphers: unknown[]) => {
+        ;(ciphers[0] as JsonObject).id = 'not-a-uuid'
+      }
+    },
+    {
+      label: 'an invalid organizationId',
+      mutate: (ciphers: unknown[]) => {
+        ;(ciphers[0] as JsonObject).organizationId = 'not-a-uuid'
+      }
+    },
+    {
+      label: 'an ambiguous non-string organizationId',
+      mutate: (ciphers: unknown[]) => {
+        ;(ciphers[0] as JsonObject).organizationId = false
+      }
+    }
+  ])('rejects $label during the cipher structural pre-pass', async ({ mutate }) => {
+    const sync = await encryptedSync()
+    mutate(sync.ciphers as unknown[])
+
+    await expectInvalidSync(sync, 'INVALID_RESPONSE', 'cipher')
   })
 
   it('rejects malformed cipher type values instead of treating them as future types', async () => {
@@ -4557,29 +5151,34 @@ describe('BitwardenDirectClient', () => {
     }
   )
 
-  it('rejects more than 1,000 legacy passkeys on one item', async () => {
+  it('isolates an item with more than 1,000 legacy passkeys', async () => {
     const sync = await encryptedSync()
     const cipher = (sync.ciphers as JsonObject[])[0]!
     const login = cipher.login as JsonObject
     const passkey = (login.fido2Credentials as JsonObject[])[0]!
     login.fido2Credentials = Array.from({ length: 1_001 }, () => passkey)
 
-    await expectInvalidSync(sync, 'INVALID_RESPONSE', 'cipher')
+    await expectIsolatedPersonalCipherSync(sync)
   })
 
-  it('rejects more than 1,000 V2 blob passkeys on one item', async () => {
-    await expectInvalidSync(await encryptedV2Sync({ passkeyCount: 1_001 }))
+  it('isolates an item with more than 1,000 V2 blob passkeys', async () => {
+    await expectIsolatedPersonalCipherSync(await encryptedV2Sync({ passkeyCount: 1_001 }))
   })
 
-  it('identifies Vaultwarden SSH rows whose required type payload is null', async () => {
+  it('isolates a deleted personal Vaultwarden SSH row whose required payload is null', async () => {
     const sync = await encryptedSync({ allTypes: true })
     const sshKey = (sync.ciphers as JsonObject[]).find((cipher) => cipher.type === 5)!
     sshKey.sshKey = null
+    sshKey.deletedDate = DELETED_AT
 
-    await expectInvalidSync(sync, 'INVALID_SSH_KEY')
+    const client = await clientForSync(sync)
+    await expect(client.listPersonalLogins()).resolves.not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: SSH_ID })])
+    )
+    expect(client.isolatedPersonalCipherIds()).toEqual([SSH_ID])
   })
 
-  it('rejects more than 1,000 attachments on one cipher', async () => {
+  it('isolates a cipher with more than 1,000 attachments', async () => {
     const sync = await encryptedSync()
     const cipher = (sync.ciphers as JsonObject[])[0]!
     const attachment = (cipher.attachments as JsonObject[])[0]!
@@ -4588,17 +5187,17 @@ describe('BitwardenDirectClient', () => {
       id: `attachment-${index}`
     }))
 
-    await expectInvalidSync(sync)
+    await expectIsolatedPersonalCipherSync(sync)
   })
 
-  it('rejects non-canonical attachment sizes', async () => {
+  it('isolates ciphers with non-canonical attachment sizes', async () => {
     for (const malformedSize of [12, '01', '-1']) {
       const sync = await encryptedSync()
       const cipher = (sync.ciphers as JsonObject[])[0]!
       const attachment = (cipher.attachments as JsonObject[])[0]!
       attachment.size = malformedSize
 
-      await expectInvalidSync(sync)
+      await expectIsolatedPersonalCipherSync(sync)
     }
   })
 
@@ -5128,12 +5727,16 @@ describe('BitwardenDirectClient', () => {
     clearText.fill(0)
   })
 
-  it('rejects a decrypted passkey field longer than the local schema allows', async () => {
-    await expectInvalidSync(await encryptedSync({ passkeyCredentialId: 'x'.repeat(4_097) }))
+  it('isolates a decrypted passkey field longer than the local schema allows', async () => {
+    await expectIsolatedPersonalCipherSync(
+      await encryptedSync({ passkeyCredentialId: 'x'.repeat(4_097) })
+    )
   })
 
-  it('rejects an invalid passkey calendar date', async () => {
-    await expectInvalidSync(await encryptedV2Sync({ passkeyCreationDate: '2026-02-30T00:00:00Z' }))
+  it('isolates an invalid passkey calendar date', async () => {
+    await expectIsolatedPersonalCipherSync(
+      await encryptedV2Sync({ passkeyCreationDate: '2026-02-30T00:00:00Z' })
+    )
   })
 
   it.each([
@@ -5406,34 +6009,61 @@ describe('BitwardenDirectClient', () => {
     expect(changedUris[2]).toMatchObject({ uriChecksum: 'opaque-future-checksum' })
   })
 
-  it('rejects invalid reprompt metadata instead of weakening it to disabled', async () => {
+  it('rejects invalid reprompt metadata before personal-cipher quarantine', async () => {
     const sync = await encryptedSync()
     ;(sync.ciphers as JsonObject[])[0]!.reprompt = 2
-    const http = new BitwardenHttpClient({
-      server: 'https://vault.example.invalid',
-      fetch: async (url) => {
-        if (url.endsWith('/identity/accounts/prelogin/password')) {
-          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-        }
-        if (url.endsWith('/identity/connect/token')) {
-          return jsonResponse({
-            access_token: 'access-token',
-            refresh_token: 'refresh-token',
-            expires_in: 3600
-          })
-        }
-        if (url.endsWith('/api/sync')) return jsonResponse(sync)
-        return jsonResponse({ message: 'not found' }, 404)
-      }
-    })
-    const client = new BitwardenDirectClient({
-      serverUrl: 'https://vault.example.invalid',
-      email: EMAIL,
-      httpClient: http
-    })
+    await expectInvalidSync(sync, 'INVALID_RESPONSE', 'cipher')
+  })
 
-    await client.login({ email: EMAIL, password: PASSWORD })
-    await expect(client.sync()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  it('rejects invalid favorite visibility metadata before personal-cipher quarantine', async () => {
+    const sync = await encryptedSync()
+    ;(sync.ciphers as JsonObject[])[0]!.favorite = 'true'
+    await expectInvalidSync(sync, 'INVALID_RESPONSE', 'cipher')
+  })
+
+  it.each(['deletedDate', 'archivedDate'] as const)(
+    'rejects invalid %s visibility metadata before personal-cipher quarantine',
+    async (field) => {
+      const sync = await encryptedSync()
+      ;(sync.ciphers as JsonObject[])[0]![field] = '2026-02-30T00:00:00Z'
+
+      await expectInvalidSync(sync, 'INVALID_RESPONSE', 'cipher')
+    }
+  )
+
+  it('rejects a quarantined cipher whose raw nested rows exceed the aggregate budget', async () => {
+    const sync = await encryptedSync()
+    const cipher = (sync.ciphers as JsonObject[])[0]!
+    cipher.fields = Array.from({ length: 1_000_001 }, () => null)
+    cipher.name = 'not-a-valid-cipherstring'
+
+    await expectInvalidSync(sync, 'INVALID_RESPONSE', 'cipher')
+  })
+
+  it('counts decoded V2 blob rows even when later schema validation quarantines the cipher', async () => {
+    const sync = await encryptedV2Sync()
+    const cipher = (sync.ciphers as JsonObject[])[0]!
+    const itemKey = Buffer.alloc(64, 9)
+    try {
+      const oversizedPart = encryptBitwardenCipherBlob(
+        {
+          name: 'Oversized decoded blob',
+          notes: null,
+          fields: Array.from({ length: 170_000 }, () => null),
+          typeData: { type: 'future-login' }
+        },
+        itemKey
+      )
+      sync.ciphers = Array.from({ length: 6 }, (_, index) => ({
+        ...cipher,
+        id: `30000000-0000-4000-8000-${String(index + 100).padStart(12, '0')}`,
+        data: oversizedPart
+      }))
+    } finally {
+      itemKey.fill(0)
+    }
+
+    await expectInvalidSync(sync, 'INVALID_RESPONSE', 'cipher')
   })
 
   it('syncs trashed ciphers and keeps deletedAt coherent across restore, soft delete, and purge', async () => {
@@ -5961,6 +6591,100 @@ describe('BitwardenDirectClient', () => {
     await expect(client.listPersonalLogins()).resolves.not.toEqual(
       expect.arrayContaining([expect.objectContaining({ id: CREATED_ID })])
     )
+  })
+
+  it.each(['type0', 'headerless'] as const)(
+    'authenticates and syncs a legacy %s master-key-wrapped user key',
+    async (legacyMasterKeyWrap) => {
+      const sync = await encryptedSync({ legacyMasterKeyWrap })
+      const client = await clientForSync(sync)
+
+      await expect(client.listFolders()).resolves.toEqual([{ id: FOLDER_ID, name: 'Personal' }])
+      await expect(client.listPersonalLogins()).resolves.toEqual([
+        expect.objectContaining({
+          id: LOGIN_ID,
+          name: 'Example',
+          username: EMAIL,
+          password: 'remote-secret'
+        })
+      ])
+
+      // The raw master key is cleared after the first sync. An unchanged wrapped-key
+      // fingerprint must allow later syncs to reuse only the already-validated user key.
+      await expect(client.sync()).resolves.toBeUndefined()
+
+      const replacementMasterKey = await deriveMasterKey(PASSWORD, EMAIL, {
+        type: 'pbkdf2',
+        iterations: 5_000
+      })
+      const replacementUserKey = Buffer.alloc(64, 13)
+      try {
+        ;(sync.profile as JsonObject).key = legacyMasterKeyWrappedUserKey(
+          replacementUserKey,
+          replacementMasterKey,
+          legacyMasterKeyWrap
+        )
+      } finally {
+        replacementMasterKey.fill(0)
+        replacementUserKey.fill(0)
+      }
+      await expect(client.sync()).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
+    }
+  )
+
+  it('rejects a malleated legacy type 0 user key before quarantining personal data', async () => {
+    const sync = await encryptedSync({ legacyMasterKeyWrap: 'type0' })
+    const profile = sync.profile as JsonObject
+    const [encodedIv, ciphertext] = String(profile.key).slice(2).split('|')
+    const iv = Buffer.from(encodedIv!, 'base64')
+    try {
+      iv[0] = iv[0]! ^ 1
+      profile.key = `0.${iv.toString('base64')}|${ciphertext}`
+    } finally {
+      iv.fill(0)
+    }
+
+    await expectInvalidSync(sync, 'INVALID_RESPONSE', 'account')
+  })
+
+  it('clears a pending raw master key after a failed legacy type 0 sync', async () => {
+    const sync = await encryptedSync({ legacyMasterKeyWrap: 'type0' })
+    const validFolders = sync.folders
+    sync.folders = null
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          return jsonResponse({
+            access_token: 'access-token',
+            refresh_token: 'refresh-token',
+            expires_in: 3_600
+          })
+        }
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await expect(client.sync()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+      syncInvalidResponseStage: 'folder'
+    })
+    sync.folders = validFolders
+    await expect(client.sync()).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
+
+    await client.unlock({ password: PASSWORD })
+    await expect(client.sync()).resolves.toBeUndefined()
+    await expect(client.listFolders()).resolves.toEqual([{ id: FOLDER_ID, name: 'Personal' }])
   })
 
   it('rejects inconsistent V1 user keys mixed with V2 account keys', async () => {

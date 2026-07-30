@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BitwardenDirectClient } from './bitwarden-direct'
 import { BitwardenHttpClient } from './bitwarden-http'
 
@@ -27,6 +27,80 @@ function provider7(overrides: Record<string, unknown>): Record<string, unknown> 
 }
 
 describe('Bitwarden fresh-login compatibility', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('advertises explicit Email 2FA sending and recognizes a localized Email-only challenge', async () => {
+    let tokenClientVersion: string | null = null
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = input.toString()
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return response({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          tokenClientVersion = new Headers(init?.headers).get('bitwarden-client-version')
+          return response(
+            {
+              error: 'invalid_grant',
+              error_description: 'Se requiere autenticación en dos pasos.',
+              TwoFactorProviders2: {
+                '1': { Email: 'w***@example.test' }
+              }
+            },
+            400
+          )
+        }
+        return response({ message: 'not found' }, 404)
+      })
+    )
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.test',
+      email: EMAIL
+    })
+
+    await expect(client.login({ email: EMAIL, password: PASSWORD })).rejects.toMatchObject({
+      code: 'TWO_FACTOR_REQUIRED',
+      twoFactorProviders: [1]
+    })
+    expect(tokenClientVersion).toBe('2025.5.0')
+  })
+
+  it.each([
+    ['a legacy provider array', { TwoFactorProviders: ['1'], TwoFactorProviders2: null }, [1]],
+    ['only a future provider', { TwoFactorProviders2: { '9': { future: true } } }, []]
+  ])('preserves %s as a two-factor challenge', async (_label, providers, expected) => {
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.test',
+      fetch: async (url) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return response({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          return response(
+            {
+              error: 'invalid_grant',
+              error_description: 'Mehrstufige Anmeldung erforderlich.',
+              ...providers
+            },
+            400
+          )
+        }
+        return response({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.test',
+      email: EMAIL,
+      httpClient: http
+    })
+
+    await expect(client.login({ email: EMAIL, password: PASSWORD })).rejects.toMatchObject({
+      code: 'TWO_FACTOR_REQUIRED',
+      twoFactorProviders: expected
+    })
+  })
+
   it.each([
     ['localhost RP ID', { rpId: 'localhost', extensions: {} }],
     ['IP RP ID', { rpId: '127.0.0.1', extensions: {} }],
@@ -53,10 +127,11 @@ describe('Bitwarden fresh-login compatibility', () => {
             {
               error: 'invalid_grant',
               error_description: 'Two factor required.',
-              TwoFactorProviders: ['0', '7'],
+              TwoFactorProviders: ['0', '7', '9'],
               TwoFactorProviders2: {
                 '0': null,
-                '7': provider7(overrides)
+                '7': provider7(overrides),
+                '9': { future: true }
               }
             },
             400

@@ -55,6 +55,8 @@ export const MAX_SEND_FILE_SIZE = 550_502_400
 export const MAX_SEND_FILE_SIZE_NAME_LENGTH = 64
 export const MAX_SSH_PRIVATE_KEY_LENGTH = 1024 * 1024
 export const MAX_SYNC_SECRET_LENGTH = 16_384
+export const MAX_OPAQUE_AUTH_TOKEN_BYTES = 64 * 1024
+export const MAX_OAUTH_CLIENT_ID_BYTES = 256
 export const MAX_EQUIVALENT_DOMAIN_GROUPS = 10_000
 export const MAX_EQUIVALENT_DOMAINS_PER_GROUP = 1_000
 export const MAX_EQUIVALENT_DOMAIN_TOTAL = 100_000
@@ -70,3 +72,4 @@ export const UUID_PATTERN =
 export const PASSKEY_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u
 export const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/u
+export const OAUTH_CLIENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u
