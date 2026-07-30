@@ -2784,6 +2784,51 @@ describe('BitwardenHttpClient', () => {
     expect(JSON.stringify(error)).not.toContain('deployment details')
   })
 
+  it('retries one interrupted successful sync response and then returns the snapshot', async () => {
+    const interrupted = new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"profile":'))
+          controller.error(new Error('transient proxy stream failure'))
+        }
+      }),
+      { headers: { 'content-type': 'application/json' } }
+    )
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(interrupted)
+      .mockResolvedValueOnce(json({}))
+    const client = new BitwardenHttpClient({ server: 'us', fetch, maxRetries: 0 })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    await expect(client.sync()).resolves.toEqual({})
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('uses the bounded two-minute transport window only for sync snapshots', async () => {
+    const timeoutValues: number[] = []
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation((milliseconds) => {
+      timeoutValues.push(milliseconds)
+      return new AbortController().signal
+    })
+    const fetch = vi.fn<FetchLike>(async (url) =>
+      url.endsWith('/accounts/revision-date')
+        ? json({ revisionDate: '2026-07-30T00:00:00.000Z' })
+        : json({})
+    )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 60_000 })
+
+    try {
+      await client.sync()
+      await client.revisionDate()
+    } finally {
+      timeout.mockRestore()
+    }
+
+    expect(timeoutValues).toEqual([120_000, 30_000])
+  })
+
   it('reports a sync snapshot above the compatibility boundary as too large', async () => {
     const fetch = vi.fn<FetchLike>().mockResolvedValue(
       new Response('{}', {

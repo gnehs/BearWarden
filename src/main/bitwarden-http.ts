@@ -410,6 +410,8 @@ const EU_URLS: BitwardenUrls = {
 }
 const RETRYABLE_METHODS = new Set(['GET', 'PUT', 'DELETE'])
 const DEFAULT_MAX_RETRIES = 5
+const MAX_REQUEST_TIMEOUT_MS = 120_000
+const SYNC_REQUEST_TIMEOUT_MS = MAX_REQUEST_TIMEOUT_MS
 const ACCESS_TOKEN_REFRESH_LEEWAY_MS = 60_000
 const MAX_RESPONSE_BYTES = 128 * 1024 * 1024
 // Sync snapshots can legitimately be much larger than ordinary JSON API responses. Keep a
@@ -785,7 +787,7 @@ export class BitwardenHttpClient {
       0,
       Math.min(options.maxRetries ?? DEFAULT_MAX_RETRIES, DEFAULT_MAX_RETRIES)
     )
-    this.timeoutMs = Math.max(1_000, Math.min(options.timeoutMs ?? 30_000, 120_000))
+    this.timeoutMs = Math.max(1_000, Math.min(options.timeoutMs ?? 30_000, MAX_REQUEST_TIMEOUT_MS))
     const attachmentDownloadOrigins = new Set<string>([
       new URL(this.urls.apiUrl).origin,
       new URL(this.urls.webVaultUrl).origin
@@ -1751,7 +1753,9 @@ export class BitwardenHttpClient {
     const response = await this.requestJson('GET', `${this.urls.apiUrl}/sync`, {
       signal,
       maxResponseBytes: MAX_SYNC_RESPONSE_BYTES,
-      tooLargeCode: 'TOO_LARGE'
+      tooLargeCode: 'TOO_LARGE',
+      timeoutMs: SYNC_REQUEST_TIMEOUT_MS,
+      retryResponseReadFailure: true
     })
     if (response === null) {
       throw new BitwardenHttpError(
@@ -2613,6 +2617,10 @@ export class BitwardenHttpClient {
       tooLargeCode?: BitwardenHttpErrorCode
       /** Overrides method-based retry safety. Mutating one-time 2FA capabilities set this false. */
       retry?: boolean
+      /** Extends only a bounded, known-safe request such as a large sync snapshot. */
+      timeoutMs?: number
+      /** Retries one successful GET whose body stream fails before it can be decoded. */
+      retryResponseReadFailure?: boolean
       /** Narrows otherwise-successful HTTP statuses for strict compatibility endpoints. */
       acceptedStatuses?: readonly number[]
       /** Called immediately before each transport attempt. */
@@ -2622,6 +2630,7 @@ export class BitwardenHttpClient {
     const authenticate = request.authenticate ?? true
     let refreshed = false
     let retries = 0
+    let responseReadRetried = false
     for (;;) {
       if (request.signal?.aborted) throw new BitwardenHttpError('ABORTED')
       const initHeaders = headers(request.headers)
@@ -2639,7 +2648,11 @@ export class BitwardenHttpClient {
         initHeaders.set('authorization', `Bearer ${attemptedAccessToken}`)
       }
       let response: Response
-      const timeoutSignal = AbortSignal.timeout(this.timeoutMs)
+      const timeoutMs = Math.max(
+        1_000,
+        Math.min(request.timeoutMs ?? this.timeoutMs, MAX_REQUEST_TIMEOUT_MS)
+      )
+      const timeoutSignal = AbortSignal.timeout(timeoutMs)
       const fetchSignal = request.signal
         ? AbortSignal.any([request.signal, timeoutSignal])
         : timeoutSignal
@@ -2684,7 +2697,19 @@ export class BitwardenHttpClient {
       try {
         text = await boundedResponseText(response, request.maxResponseBytes, request.tooLargeCode)
       } catch (error) {
-        throw this.mapResponseReadFailure(error, request.signal)
+        const mapped = this.mapResponseReadFailure(error, request.signal)
+        if (
+          response.ok &&
+          method === 'GET' &&
+          request.retryResponseReadFailure === true &&
+          !responseReadRetried &&
+          !timeoutSignal.aborted &&
+          mapped.code === 'NETWORK'
+        ) {
+          responseReadRetried = true
+          continue
+        }
+        throw mapped
       }
       const payload =
         text.length === 0 ? null : response.ok ? parseJson(text) : parseErrorJson(text)
@@ -4336,14 +4361,32 @@ function toHttpError(status: number, payload: JsonValue): BitwardenHttpError {
   if (message.includes('two factor')) {
     try {
       const twoFactorProviders = parseLoginTwoFactorProviders(payload)
-      const webAuthnChallenge = parseAccountWebAuthnChallengeFromTokenError(payload)
-      return new BitwardenHttpError(
-        'TWO_FACTOR',
-        status,
-        undefined,
-        webAuthnChallenge ?? undefined,
-        twoFactorProviders
-      )
+      try {
+        const webAuthnChallenge = parseAccountWebAuthnChallengeFromTokenError(payload)
+        return new BitwardenHttpError(
+          'TWO_FACTOR',
+          status,
+          undefined,
+          webAuthnChallenge ?? undefined,
+          twoFactorProviders
+        )
+      } catch (error) {
+        if (error instanceof AccountWebAuthnCodecError) {
+          // A stale or future provider-7 challenge must not hide independent TOTP, email, or
+          // YubiKey options. Keep rejecting an unusable WebAuthn-only response.
+          const fallbackProviders = twoFactorProviders.filter((provider) => provider !== 7)
+          if (fallbackProviders.length > 0) {
+            return new BitwardenHttpError(
+              'TWO_FACTOR',
+              status,
+              undefined,
+              undefined,
+              Object.freeze(fallbackProviders)
+            )
+          }
+        }
+        throw error
+      }
     } catch (error) {
       if (
         error instanceof AccountWebAuthnCodecError ||
