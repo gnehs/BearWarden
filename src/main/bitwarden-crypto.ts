@@ -17,10 +17,11 @@ import {
 } from 'node:crypto'
 import { promisify } from 'node:util'
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js'
+import { argon2idAsync as portableArgon2idAsync } from '@noble/hashes/argon2.js'
 import { Decoder, Encoder } from 'cbor-x'
 
 const pbkdf2Async = promisify(pbkdf2)
-const argon2Async = promisify(argon2)
+const nativeArgon2Async = promisify(argon2)
 
 const KEY_BYTES = 32
 const COMBINED_KEY_BYTES = 64
@@ -73,6 +74,10 @@ const DATA_ENVELOPE_OBJECT_NAMESPACE = 2
 const VAULT_ITEM_CONTENT_NAMESPACE = 1
 const SEND_SEED_BYTES = 16
 const SEND_KDF_ITERATIONS = 100_000
+
+// @noble/hashes uses a shared Argon2 permutation scratch buffer. Serialize only
+// the portable fallback so concurrent account operations cannot interleave it.
+let portableArgon2Tail: Promise<void> = Promise.resolve()
 
 const cborEncoder = new Encoder({
   mapsAsObjects: false,
@@ -137,6 +142,80 @@ interface ParsedCipherString {
 
 function invalidInput(message: string): never {
   throw new BitwardenCryptoError('INVALID_INPUT', message)
+}
+
+function hasErrorCode(error: unknown, code: string): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === code
+  )
+}
+
+async function withPortableArgon2Lock<T>(operation: () => Promise<T>): Promise<T> {
+  const previous = portableArgon2Tail
+  let release: () => void = () => undefined
+  portableArgon2Tail = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await previous
+  try {
+    return await operation()
+  } finally {
+    release()
+  }
+}
+
+async function deriveArgon2id(
+  password: Buffer,
+  salt: Buffer,
+  iterations: number,
+  memoryKiB: number,
+  parallelism: number
+): Promise<Buffer> {
+  try {
+    const result = new Uint8Array(
+      await nativeArgon2Async('argon2id', {
+        message: password,
+        nonce: salt,
+        parallelism,
+        memory: memoryKiB,
+        passes: iterations,
+        tagLength: KEY_BYTES
+      })
+    )
+    try {
+      return Buffer.from(result)
+    } finally {
+      result.fill(0)
+    }
+  } catch (error) {
+    // Electron 43 exposes crypto.argon2 but its embedded Node build rejects
+    // every operation with this capability error. Other native failures may
+    // indicate resource exhaustion and must not silently repeat the allocation.
+    if (!hasErrorCode(error, 'ERR_CRYPTO_ARGON2_NOT_SUPPORTED')) {
+      throw new BitwardenCryptoError('ARGON2_UNAVAILABLE')
+    }
+  }
+
+  try {
+    const result = await withPortableArgon2Lock(() =>
+      portableArgon2idAsync(password, salt, {
+        t: iterations,
+        m: memoryKiB,
+        p: parallelism,
+        dkLen: KEY_BYTES
+      })
+    )
+    try {
+      return Buffer.from(result)
+    } finally {
+      result.fill(0)
+    }
+  } catch {
+    throw new BitwardenCryptoError('ARGON2_UNAVAILABLE')
+  }
 }
 
 function requireString(value: unknown, name: string, allowEmpty = false): string {
@@ -395,16 +474,7 @@ export async function deriveMasterKey(
   const saltHash = createHash('sha256').update(salt, 'utf8').digest()
   const passwordBytes = Buffer.from(password, 'utf8')
   try {
-    return Buffer.from(
-      await argon2Async('argon2id', {
-        message: passwordBytes,
-        nonce: saltHash,
-        parallelism,
-        memory: memoryMiB * 1024,
-        passes: iterations,
-        tagLength: KEY_BYTES
-      })
-    )
+    return await deriveArgon2id(passwordBytes, saltHash, iterations, memoryMiB * 1024, parallelism)
   } finally {
     saltHash.fill(0)
     passwordBytes.fill(0)

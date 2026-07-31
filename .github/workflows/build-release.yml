@@ -73,6 +73,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Verify Argon2 in Electron runtime
+        run: pnpm run test:electron-argon2
+
       - name: Use tag as application version
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
