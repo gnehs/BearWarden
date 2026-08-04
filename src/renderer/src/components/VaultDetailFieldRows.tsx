@@ -73,10 +73,7 @@ function VaultDetailFieldRow({
       ? reveal.state.values[secretField]
       : undefined
   const hasExtraAction = Boolean(field.copyable) && Boolean(field.openUri)
-  const canCopyFromValue =
-    field.field === 'username' ||
-    field.field === 'password' ||
-    Boolean(field.copyable && !field.secret && !field.openUri)
+  const canCopyFromValue = Boolean(field.secret || field.copyable)
   const copyKey = `field:${copy.itemId}:${field.field}:${field.uriIndex ?? ''}`
   const valueClassName = field.secret
     ? revealedValue === undefined
@@ -291,21 +288,36 @@ function VaultCustomFieldRow({
   const hidden = field.type === 'hidden'
   const label = field.name || t`Unnamed field`
   const copyFeedbackKey = customFieldCopyFeedbackKey(item.id, index, field)
+  const copyDisabled = field.type !== 'linked' && !field.value && !hidden
+  const value = (
+    <strong
+      className={cn(
+        hidden && (revealedValue === undefined ? 'tracking-widest' : 'font-mono select-text')
+      )}
+    >
+      {hidden
+        ? revealedValue === undefined
+          ? '••••••••••••'
+          : revealedValue || t`Not set`
+        : customFieldDisplayValue(field, labels)}
+    </strong>
+  )
 
   return (
     <div className={cn(detailFieldClassName, !hidden && 'max-[430px]:grid-cols-[1fr_auto]')}>
       <span>{label}</span>
-      <strong
-        className={cn(
-          hidden && (revealedValue === undefined ? 'tracking-widest' : 'font-mono select-text')
-        )}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="-ml-2 w-[calc(100%+8px)] min-w-0 justify-start overflow-hidden px-2 [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-medium"
+        data-field-copy-value=""
+        type="button"
+        aria-label={copy.copiedKey === copyFeedbackKey ? t`${label} copied` : t`Copy ${label}`}
+        disabled={copyDisabled}
+        onClick={() => void copy.copyField(index, field)}
       >
-        {hidden
-          ? revealedValue === undefined
-            ? '••••••••••••'
-            : revealedValue || t`Not set`
-          : customFieldDisplayValue(field, labels)}
-      </strong>
+        {value}
+      </Button>
       {hidden && (
         <TooltipIconButton
           variant="outline"
@@ -323,7 +335,7 @@ function VaultCustomFieldRow({
         size="icon"
         type="button"
         label={copy.copiedKey === copyFeedbackKey ? t`${label} copied` : t`Copy ${label}`}
-        disabled={field.type !== 'linked' && !field.value && !hidden}
+        disabled={copyDisabled}
         onClick={() => void copy.copyField(index, field)}
       >
         <CopyFeedbackIcon copied={copy.copiedKey === copyFeedbackKey} />
