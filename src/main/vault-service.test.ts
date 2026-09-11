@@ -7373,6 +7373,51 @@ describe('VaultService encrypted local data', () => {
     await expect(service.getLogin({ id: second.id })).resolves.toMatchObject({ name: 'Second' })
   })
 
+  it('lists detached vault-shell snapshots without waiting behind the operation queue', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const folder = await service.createFolder({ name: 'Fast reads' })
+    const login = await service.createLogin({ name: 'Visible item', folderId: folder.id })
+
+    let releaseBlocker!: () => void
+    let blockerEntered = false
+    const blocker = service.runAuthorizedOperation(
+      () => true,
+      async (authorize) => {
+        authorize([])
+        blockerEntered = true
+        await new Promise<void>((resolve) => {
+          releaseBlocker = resolve
+        })
+      }
+    )
+    await vi.waitFor(() => expect(blockerEntered).toBe(true))
+
+    const [folders, logins, organizations, collections, sharedLogins] = await Promise.all([
+      service.listFolders(),
+      service.listLogins({ sort: 'name' }),
+      service.listOrganizations(),
+      service.listCollections(),
+      service.listSharedLogins({ sort: 'name' })
+    ])
+    expect(folders).toMatchObject([{ id: folder.id, name: 'Fast reads' }])
+    expect(logins).toMatchObject([{ id: login.id, name: 'Visible item' }])
+    expect(organizations).toEqual([])
+    expect(collections).toEqual([])
+    expect(sharedLogins).toEqual([])
+    folders[0]!.name = 'renderer-only mutation'
+    logins[0]!.name = 'renderer-only mutation'
+
+    releaseBlocker()
+    await blocker
+    await expect(service.listFolders()).resolves.toMatchObject([
+      { id: folder.id, name: 'Fast reads' }
+    ])
+    await expect(service.listLogins({ sort: 'name' })).resolves.toMatchObject([
+      { id: login.id, name: 'Visible item' }
+    ])
+  })
+
   it('rejects malformed prefetch batches and blocks fast reads as soon as locking starts', async () => {
     const { service } = await createHarness()
     await service.setup(MASTER_PASSWORD)
@@ -7402,6 +7447,11 @@ describe('VaultService encrypted local data', () => {
     await expect(service.prefetchLogins({ ids: [login.id] })).rejects.toMatchObject({
       code: 'LOCKED'
     })
+    await expect(service.listFolders()).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(service.listLogins()).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(service.listOrganizations()).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(service.listCollections()).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(service.listSharedLogins()).rejects.toMatchObject({ code: 'LOCKED' })
     releaseBlocker()
     await blocker
     await locking

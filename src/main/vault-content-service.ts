@@ -100,12 +100,10 @@ export class VaultContentService extends VaultAccountService {
     return this.sendService.copyLink(request)
   }
 
-  listFolders(): Promise<FolderView[]> {
-    return this.exclusive(async () =>
-      this.requireData()
-        .folders.map((folder) => ({ ...folder }))
-        .sort((left, right) => left.position - right.position || compareText(left.name, right.name))
-    )
+  async listFolders(): Promise<FolderView[]> {
+    return this.requireFastReadData()
+      .folders.map((folder) => ({ ...folder }))
+      .sort((left, right) => left.position - right.position || compareText(left.name, right.name))
   }
 
   createFolder(request: FolderCreateRequest): Promise<FolderView> {
@@ -650,134 +648,122 @@ export class VaultContentService extends VaultAccountService {
     })
   }
 
-  listLogins(request: LoginListRequest = {}): Promise<LoginSummary[]> {
-    return this.exclusive(async () => {
-      const data = this.requireData()
-      const sort = request.sort ?? 'recent'
-      if (sort !== 'recent' && sort !== 'name' && sort !== 'frequency') {
-        throw new VaultError('INVALID_INPUT')
-      }
-      if (
-        request.query !== undefined &&
-        (typeof request.query !== 'string' || request.query.length > MAX_LOGIN_SEARCH_QUERY_LENGTH)
-      ) {
-        throw new VaultError('INVALID_INPUT')
-      }
-      if (request.deleted !== undefined && typeof request.deleted !== 'boolean') {
-        throw new VaultError('INVALID_INPUT')
-      }
-      if (request.archived !== undefined && typeof request.archived !== 'boolean') {
-        throw new VaultError('INVALID_INPUT')
-      }
-      if (request.deleted === true && request.archived === true)
-        throw new VaultError('INVALID_INPUT')
-      if (request.folderId !== undefined && request.folderId !== null) {
-        assertUuid(request.folderId)
-        this.findFolder(data, request.folderId)
-      }
+  async listLogins(request: LoginListRequest = {}): Promise<LoginSummary[]> {
+    const data = this.requireFastReadData()
+    const sort = request.sort ?? 'recent'
+    if (sort !== 'recent' && sort !== 'name' && sort !== 'frequency') {
+      throw new VaultError('INVALID_INPUT')
+    }
+    if (
+      request.query !== undefined &&
+      (typeof request.query !== 'string' || request.query.length > MAX_LOGIN_SEARCH_QUERY_LENGTH)
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    if (request.deleted !== undefined && typeof request.deleted !== 'boolean') {
+      throw new VaultError('INVALID_INPUT')
+    }
+    if (request.archived !== undefined && typeof request.archived !== 'boolean') {
+      throw new VaultError('INVALID_INPUT')
+    }
+    if (request.deleted === true && request.archived === true) throw new VaultError('INVALID_INPUT')
+    if (request.folderId !== undefined && request.folderId !== null) {
+      assertUuid(request.folderId)
+      this.findFolder(data, request.folderId)
+    }
 
-      const scoped = data.logins.filter(
-        (login) =>
-          (request.deleted === true
-            ? login.deletedAt !== null
-            : request.archived === true
-              ? login.deletedAt === null && login.archivedAt !== null
-              : login.deletedAt === null && login.archivedAt === null) &&
-          (request.folderId === undefined || login.folderId === request.folderId)
-      )
-      const filtered =
-        request.query === undefined
-          ? scoped
-          : (() => {
-              const matchingIds = new Set(
-                searchVaultItems(scoped.map(toVaultSearchItem), request.query).map(
-                  (searchable) => searchable.id
-                )
+    const scoped = data.logins.filter(
+      (login) =>
+        (request.deleted === true
+          ? login.deletedAt !== null
+          : request.archived === true
+            ? login.deletedAt === null && login.archivedAt !== null
+            : login.deletedAt === null && login.archivedAt === null) &&
+        (request.folderId === undefined || login.folderId === request.folderId)
+    )
+    const filtered =
+      request.query === undefined
+        ? scoped
+        : (() => {
+            const matchingIds = new Set(
+              searchVaultItems(scoped.map(toVaultSearchItem), request.query).map(
+                (searchable) => searchable.id
               )
-              return scoped.filter((login) => matchingIds.has(login.id))
-            })()
-      return filtered.map(toSummary).sort((left, right) => {
-        if (sort === 'frequency' && left.usageCount !== right.usageCount) {
-          return right.usageCount - left.usageCount
-        }
-        if (sort === 'recent' || sort === 'frequency') {
-          if (left.lastUsedAt && right.lastUsedAt && left.lastUsedAt !== right.lastUsedAt) {
-            return right.lastUsedAt.localeCompare(left.lastUsedAt)
-          }
-          if (left.lastUsedAt && !right.lastUsedAt) return -1
-          if (!left.lastUsedAt && right.lastUsedAt) return 1
-        }
-        return compareText(left.name, right.name) || left.id.localeCompare(right.id)
-      })
-    })
-  }
-
-  listOrganizations(): Promise<OrganizationView[]> {
-    return this.exclusive(async () => {
-      const data = this.requireData()
-      return data.organizations.map((organization) => ({ ...organization }))
-    })
-  }
-
-  listCollections(organizationId?: string): Promise<CollectionView[]> {
-    return this.exclusive(async () => {
-      const data = this.requireData()
-      if (organizationId !== undefined) assertUuid(organizationId)
-      return data.collections
-        .filter(
-          (collection) =>
-            organizationId === undefined || collection.organizationId === organizationId
-        )
-        .map((collection) => ({ ...collection }))
-    })
-  }
-
-  listSharedLogins(request: SharedLoginListRequest = {}): Promise<SharedLoginSummary[]> {
-    return this.exclusive(async () => {
-      const data = this.requireData()
-      if (
-        request.sort !== undefined &&
-        request.sort !== 'recent' &&
-        request.sort !== 'name' &&
-        request.sort !== 'frequency'
-      ) {
-        throw new VaultError('INVALID_INPUT')
+            )
+            return scoped.filter((login) => matchingIds.has(login.id))
+          })()
+    return filtered.map(toSummary).sort((left, right) => {
+      if (sort === 'frequency' && left.usageCount !== right.usageCount) {
+        return right.usageCount - left.usageCount
       }
-      if (
-        request.query !== undefined &&
-        (typeof request.query !== 'string' || request.query.length > MAX_LOGIN_SEARCH_QUERY_LENGTH)
-      ) {
-        throw new VaultError('INVALID_INPUT')
+      if (sort === 'recent' || sort === 'frequency') {
+        if (left.lastUsedAt && right.lastUsedAt && left.lastUsedAt !== right.lastUsedAt) {
+          return right.lastUsedAt.localeCompare(left.lastUsedAt)
+        }
+        if (left.lastUsedAt && !right.lastUsedAt) return -1
+        if (!left.lastUsedAt && right.lastUsedAt) return 1
       }
-      if (request.organizationId !== undefined) assertUuid(request.organizationId)
-      if (request.collectionId !== undefined) assertUuid(request.collectionId)
-      const scoped = data.sharedLogins.filter(
-        (login) =>
-          login.deletedAt === null &&
-          login.archivedAt === null &&
-          (request.organizationId === undefined ||
-            login.organizationId === request.organizationId) &&
-          (request.collectionId === undefined || login.collectionIds.includes(request.collectionId))
+      return compareText(left.name, right.name) || left.id.localeCompare(right.id)
+    })
+  }
+
+  async listOrganizations(): Promise<OrganizationView[]> {
+    return this.requireFastReadData().organizations.map((organization) => ({ ...organization }))
+  }
+
+  async listCollections(organizationId?: string): Promise<CollectionView[]> {
+    const data = this.requireFastReadData()
+    if (organizationId !== undefined) assertUuid(organizationId)
+    return data.collections
+      .filter(
+        (collection) => organizationId === undefined || collection.organizationId === organizationId
       )
-      const filtered =
-        request.query === undefined
-          ? scoped
-          : (() => {
-              const matchingIds = new Set(
-                searchVaultItems(scoped.map(toVaultSearchItem), request.query).map(
-                  (searchable) => searchable.id
-                )
+      .map((collection) => ({ ...collection }))
+  }
+
+  async listSharedLogins(request: SharedLoginListRequest = {}): Promise<SharedLoginSummary[]> {
+    const data = this.requireFastReadData()
+    if (
+      request.sort !== undefined &&
+      request.sort !== 'recent' &&
+      request.sort !== 'name' &&
+      request.sort !== 'frequency'
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    if (
+      request.query !== undefined &&
+      (typeof request.query !== 'string' || request.query.length > MAX_LOGIN_SEARCH_QUERY_LENGTH)
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    if (request.organizationId !== undefined) assertUuid(request.organizationId)
+    if (request.collectionId !== undefined) assertUuid(request.collectionId)
+    const scoped = data.sharedLogins.filter(
+      (login) =>
+        login.deletedAt === null &&
+        login.archivedAt === null &&
+        (request.organizationId === undefined || login.organizationId === request.organizationId) &&
+        (request.collectionId === undefined || login.collectionIds.includes(request.collectionId))
+    )
+    const filtered =
+      request.query === undefined
+        ? scoped
+        : (() => {
+            const matchingIds = new Set(
+              searchVaultItems(scoped.map(toVaultSearchItem), request.query).map(
+                (searchable) => searchable.id
               )
-              return scoped.filter((login) => matchingIds.has(login.id))
-            })()
-      return filtered.map(toSharedSummary).sort((left, right) => {
-        if (request.sort === 'frequency' && left.usageCount !== right.usageCount) {
-          return right.usageCount - left.usageCount
-        }
-        return request.sort === 'name' || request.sort === 'frequency'
-          ? compareText(left.name, right.name) || left.id.localeCompare(right.id)
-          : right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id)
-      })
+            )
+            return scoped.filter((login) => matchingIds.has(login.id))
+          })()
+    return filtered.map(toSharedSummary).sort((left, right) => {
+      if (request.sort === 'frequency' && left.usageCount !== right.usageCount) {
+        return right.usageCount - left.usageCount
+      }
+      return request.sort === 'name' || request.sort === 'frequency'
+        ? compareText(left.name, right.name) || left.id.localeCompare(right.id)
+        : right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id)
     })
   }
 
