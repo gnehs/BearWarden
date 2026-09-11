@@ -668,6 +668,45 @@ describe('AppSettingsService', () => {
     service.dispose()
   })
 
+  it.each(['sensor', 'keychain'] as const)(
+    'preserves biometric enrollment while the %s is temporarily unavailable and allows retry',
+    async (unavailable) => {
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      const { service, runtime, touchIdPath } = createService()
+      await service.initialize()
+      await service.enableTouchId('fake-master-password')
+      const capsule = await readFile(touchIdPath)
+      vi.mocked(systemPreferences.promptTouchID).mockClear()
+      vi.mocked(safeStorage.decryptStringAsync).mockClear()
+
+      if (unavailable === 'sensor') {
+        vi.mocked(systemPreferences.canPromptTouchID).mockReturnValue(false)
+      } else {
+        vi.mocked(safeStorage.isAsyncEncryptionAvailable).mockResolvedValue(false)
+      }
+
+      await expect(service.get()).resolves.toMatchObject({
+        touchIdAvailable: false,
+        touchIdEnabled: true
+      })
+      await expect(service.unlockTouchId()).rejects.toMatchObject({
+        code: 'TOUCH_ID_UNAVAILABLE'
+      })
+      expect(systemPreferences.promptTouchID).not.toHaveBeenCalled()
+      expect(safeStorage.decryptStringAsync).not.toHaveBeenCalled()
+      expect(runtime.unlockVault).not.toHaveBeenCalled()
+      expect(await readFile(touchIdPath)).toEqual(capsule)
+
+      vi.mocked(systemPreferences.canPromptTouchID).mockReturnValue(true)
+      vi.mocked(safeStorage.isAsyncEncryptionAvailable).mockResolvedValue(true)
+      await expect(service.unlockTouchId()).resolves.toEqual({ state: 'unlocked' })
+      expect(systemPreferences.promptTouchID).toHaveBeenCalledOnce()
+      expect(runtime.unlockVault).toHaveBeenCalledWith('fake-master-password')
+      expect(await readFile(touchIdPath)).toEqual(capsule)
+      service.dispose()
+    }
+  )
+
   it('does not apply a settings update when its atomic write fails', async () => {
     const failedWrite = vi
       .fn<(path: string, data: string | Buffer) => Promise<void>>()

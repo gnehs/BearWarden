@@ -3,6 +3,40 @@ import { msg } from '@lingui/core/macro'
 import type { AccountStatus } from '../../../shared/vault-contract'
 import { localAccountDisplayLabel } from './account-switcher-ui'
 
+export interface AuthSettingsRefreshTargets {
+  window: Pick<Window, 'addEventListener' | 'removeEventListener'>
+  document: Pick<Document, 'addEventListener' | 'removeEventListener' | 'visibilityState'>
+}
+
+/**
+ * Refreshes settings while the lock screen is active so a transient Touch ID outage can recover
+ * when the app regains focus or becomes visible again. The settings store owns stale-load ordering;
+ * this helper only owns the browser subscriptions and their lifecycle.
+ */
+export function subscribeToAuthSettingsRefresh(
+  loadSettings: () => Promise<unknown>,
+  targets: AuthSettingsRefreshTargets = { window, document }
+): () => void {
+  let active = true
+  const refresh = (): void => {
+    if (!active) return
+    void loadSettings().catch(() => undefined)
+  }
+  const refreshWhenVisible = (): void => {
+    if (targets.document.visibilityState === 'visible') refresh()
+  }
+
+  refresh()
+  targets.window.addEventListener('focus', refresh)
+  targets.document.addEventListener('visibilitychange', refreshWhenVisible)
+
+  return () => {
+    active = false
+    targets.window.removeEventListener('focus', refresh)
+    targets.document.removeEventListener('visibilitychange', refreshWhenVisible)
+  }
+}
+
 export function authAccountItems(
   status: AccountStatus | null
 ): readonly { readonly value: string; readonly label: string }[] {

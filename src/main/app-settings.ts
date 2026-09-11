@@ -340,7 +340,8 @@ export class AppSettingsService {
       startAtLoginAvailable: startAtLoginStatus.available,
       startAtLoginNeedsApproval: startAtLoginStatus.available && startAtLoginStatus.needsApproval,
       touchIdAvailable,
-      touchIdEnabled: touchIdAvailable && (await exists(this.touchIdPath))
+      // A temporary sensor or Keychain outage must not erase the enrolled unlock method.
+      touchIdEnabled: await exists(this.touchIdPath)
     }
   }
 

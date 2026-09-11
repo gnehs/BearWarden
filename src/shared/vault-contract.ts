@@ -1875,7 +1875,9 @@ export interface AppSettings {
   sshAgentEnabled: boolean
   /** Controls whether individual SSH signing requests require user approval. */
   sshAgentPromptBehavior: SshAgentPromptBehavior
+  /** Whether the OS can currently perform biometric unlock; availability can change. */
   touchIdAvailable: boolean
+  /** Whether this account has an enrolled unlock secret, even during a temporary OS outage. */
   touchIdEnabled: boolean
 }
 

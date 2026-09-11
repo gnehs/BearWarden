@@ -1,5 +1,37 @@
-import { describe, expect, it } from 'vitest'
-import { authAccountItems, describeError, touchIdUnlockFallback } from './auth-screen-ui'
+import { describe, expect, it, vi } from 'vitest'
+import {
+  authAccountItems,
+  describeError,
+  subscribeToAuthSettingsRefresh,
+  touchIdUnlockFallback,
+  type AuthSettingsRefreshTargets
+} from './auth-screen-ui'
+
+function authSettingsRefreshTargets(): {
+  targets: AuthSettingsRefreshTargets
+  setVisibility: (visibility: Document['visibilityState']) => void
+  dispatchFocus: () => void
+  dispatchVisibilityChange: () => void
+} {
+  const windowTarget = new EventTarget()
+  const documentTarget = new EventTarget()
+  let visibility: Document['visibilityState'] = 'hidden'
+  Object.defineProperty(documentTarget, 'visibilityState', {
+    configurable: true,
+    get: () => visibility
+  })
+  return {
+    targets: {
+      window: windowTarget as AuthSettingsRefreshTargets['window'],
+      document: documentTarget as unknown as AuthSettingsRefreshTargets['document']
+    },
+    setVisibility: (nextVisibility) => {
+      visibility = nextVisibility
+    },
+    dispatchFocus: () => windowTarget.dispatchEvent(new Event('focus')),
+    dispatchVisibilityChange: () => documentTarget.dispatchEvent(new Event('visibilitychange'))
+  }
+}
 
 describe('AuthScreen local accounts', () => {
   it('shows only user-defined local labels with a slot fallback', () => {
@@ -85,4 +117,43 @@ describe('AuthScreen biometric fallback', () => {
       expect(touchIdUnlockFallback(error).error).not.toContain('secret internal detail')
     }
   )
+})
+
+describe('AuthScreen settings recovery', () => {
+  it('refreshes settings on entry, focus, and visible transitions only', () => {
+    const loadSettings = vi.fn().mockResolvedValue(undefined)
+    const { targets, setVisibility, dispatchFocus, dispatchVisibilityChange } =
+      authSettingsRefreshTargets()
+    const cleanup = subscribeToAuthSettingsRefresh(loadSettings, targets)
+
+    expect(loadSettings).toHaveBeenCalledOnce()
+
+    dispatchFocus()
+    expect(loadSettings).toHaveBeenCalledTimes(2)
+
+    dispatchVisibilityChange()
+    expect(loadSettings).toHaveBeenCalledTimes(2)
+
+    setVisibility('visible')
+    dispatchVisibilityChange()
+    expect(loadSettings).toHaveBeenCalledTimes(3)
+
+    cleanup()
+    dispatchFocus()
+    setVisibility('visible')
+    dispatchVisibilityChange()
+    expect(loadSettings).toHaveBeenCalledTimes(3)
+  })
+
+  it('swallows settings refresh failures', () => {
+    const loadSettings = vi.fn().mockRejectedValue(new Error('settings unavailable'))
+    const { targets, dispatchFocus } = authSettingsRefreshTargets()
+
+    expect(() => {
+      const cleanup = subscribeToAuthSettingsRefresh(loadSettings, targets)
+      dispatchFocus()
+      cleanup()
+    }).not.toThrow()
+    expect(loadSettings).toHaveBeenCalledTimes(2)
+  })
 })

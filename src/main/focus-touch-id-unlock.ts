@@ -20,6 +20,7 @@ export class FocusTouchIdUnlockController {
   constructor(private readonly runtime: FocusTouchIdUnlockRuntime) {}
 
   focus(): Promise<void> {
+    if (!this.canInteract()) return this.inFlight ?? Promise.resolve()
     if (!this.armed || this.blockedUntilBlur || this.inFlight) {
       return this.inFlight ?? Promise.resolve()
     }
@@ -30,7 +31,14 @@ export class FocusTouchIdUnlockController {
         // Cancellation and unavailable biometrics leave the vault locked without noisy UI.
       })
       .finally(() => {
-        if (this.inFlight === operation) this.inFlight = null
+        if (this.inFlight !== operation) return
+        this.inFlight = null
+        // A prompt-owned blur/focus cycle must not reopen a canceled prompt. If the user
+        // is still away when it settles, however, the next focus is a fresh attempt.
+        if (!this.canInteract()) {
+          this.armed = true
+          this.blockedUntilBlur = false
+        }
       })
     this.inFlight = operation
     return operation

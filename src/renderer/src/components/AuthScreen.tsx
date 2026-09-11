@@ -23,7 +23,7 @@ import { cn } from '@renderer/lib/utils'
 import { shouldUseApplicationTitlebarMenu } from '../lib/application-titlebar-menu'
 import { useSettingsStore } from '../stores/settings-runtime'
 import { accountMutationError, accountMutationKeepsBusy } from './account-switcher-ui'
-import { authAccountItems } from './auth-screen-ui'
+import { authAccountItems, subscribeToAuthSettingsRefresh } from './auth-screen-ui'
 
 const usesWindowControlsOverlay = shouldUseApplicationTitlebarMenu(navigator.userAgent)
 const isMac = navigator.userAgent.includes('Mac')
@@ -113,11 +113,9 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
   }, [state])
 
   useEffect(() => {
-    if (state !== 'locked' || settings) return
-    void loadSettings().catch(() => {
-      // A missing settings service must not block master-password unlock.
-    })
-  }, [loadSettings, settings, state])
+    if (state !== 'locked') return
+    return subscribeToAuthSettingsRefresh(loadSettings)
+  }, [loadSettings, state])
 
   useEffect(() => {
     if (state !== 'locked' && state !== 'uninitialized') return
@@ -495,7 +493,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                   {unlockMethod === 'pin' ? t`Use master password` : t`Unlock with PIN`}
                 </Button>
               )}
-              {!isSetup && settings?.touchIdAvailable && settings.touchIdEnabled && (
+              {!isSetup && isMac && settings?.touchIdEnabled && (
                 <Button
                   className="h-10 w-full"
                   variant="secondary"
