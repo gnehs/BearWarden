@@ -504,6 +504,23 @@ async function unlockSyncWithLocalPassword(masterPassword: string): Promise<void
   if (status.state === 'ready' || status.state === 'error') autoSync?.requestImmediate()
 }
 
+/**
+ * Finishes unlock-only integrations without extending the renderer's local-vault unlock IPC.
+ * A lock invalidates the continuation before it can republish SSH Agent state or lifecycle work.
+ */
+function continueAfterVaultUnlock(masterPassword?: string): void {
+  const lockGeneration = vaultLockGeneration
+  void (async () => {
+    if (masterPassword !== undefined) {
+      await unlockSyncWithLocalPassword(masterPassword).catch(() => undefined)
+    }
+    if (lockGeneration !== vaultLockGeneration) return
+    await refreshSshAgentAfterUnlock().catch(() => undefined)
+    if (lockGeneration !== vaultLockGeneration) return
+    scheduleSshAgentLifecycle()
+  })().catch(() => undefined)
+}
+
 async function beforeVaultLock(): Promise<void> {
   vaultLockGeneration += 1
   vaultTimeoutCoordinator?.cancel()
@@ -1031,9 +1048,7 @@ if (hasSingleInstanceLock)
         unlockVault: async (masterPassword) => {
           if (!vault) throw new Error('Vault service unavailable')
           const status = await vault.unlock(masterPassword)
-          await unlockSyncWithLocalPassword(masterPassword).catch(() => undefined)
-          await refreshSshAgentAfterUnlock().catch(() => undefined)
-          scheduleSshAgentLifecycle()
+          continueAfterVaultUnlock(masterPassword)
           return status
         },
         constrainVaultTimeoutPolicy: async (policy) =>
@@ -1184,15 +1199,12 @@ if (hasSingleInstanceLock)
         notifyVaultLocked()
       },
       afterLockAttempt: () => vaultTimeoutCoordinator?.cancel(),
-      afterUnlock: async (masterPassword) => {
-        await unlockSyncWithLocalPassword(masterPassword).catch(() => undefined)
-        await refreshSshAgentAfterUnlock().catch(() => undefined)
-        scheduleSshAgentLifecycle()
+      afterUnlock: (masterPassword) => {
+        continueAfterVaultUnlock(masterPassword)
       },
-      afterPinUnlock: async () => {
+      afterPinUnlock: () => {
         autoSync?.requestImmediate()
-        await refreshSshAgentAfterUnlock().catch(() => undefined)
-        scheduleSshAgentLifecycle()
+        continueAfterVaultUnlock()
       },
       afterMasterPasswordChanged: (status) => {
         passkeyCeremonyService?.onVaultMutation()

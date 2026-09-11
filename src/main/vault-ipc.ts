@@ -2495,6 +2495,13 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       // A background sync scheduling failure must not invalidate a persisted local change.
     }
   }
+  const runUnlockFollowup = (operation: () => void | Promise<void>): void => {
+    try {
+      void Promise.resolve(operation()).catch(() => undefined)
+    } catch {
+      // Local unlock is already authoritative; auxiliary integrations remain best-effort.
+    }
+  }
   const afterMutation = async <T>(operation: Promise<T>): Promise<T> => {
     const result = await operation
     notifyMutation()
@@ -2593,13 +2600,16 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     await Promise.resolve(options.afterSetup?.()).catch(() => undefined)
     return status
   })
-  registerHandler(IPC_CHANNELS.vaultUnlock, getMainWindow, (_event, input) => {
+  registerHandler(IPC_CHANNELS.vaultUnlock, getMainWindow, async (_event, input) => {
     const request = parseUnlock(input)
     authorizations.clear()
-    return vault.unlock(request.masterPassword).then(async (status) => {
-      await Promise.resolve(options.afterUnlock?.(request.masterPassword)).catch(() => undefined)
+    try {
+      const status = await vault.unlock(request.masterPassword)
+      runUnlockFollowup(() => options.afterUnlock?.(request.masterPassword))
       return status
-    })
+    } finally {
+      request.masterPassword = ''
+    }
   })
   registerHandler(IPC_CHANNELS.vaultPinStatus, getMainWindow, async (_event, input) => {
     parseNoInput(input)
@@ -2623,7 +2633,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     authorizations.clear()
     try {
       const status = await vault.unlockWithPin(request)
-      await Promise.resolve(options.afterPinUnlock?.()).catch(() => undefined)
+      runUnlockFollowup(() => options.afterPinUnlock?.())
       return status
     } finally {
       request.pin = ''

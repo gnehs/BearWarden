@@ -43,6 +43,15 @@ const harness = vi.hoisted(() => {
   const autoSyncRequestImmediate = vi.fn()
   const autoSyncUpdateStatus = vi.fn()
   const autoSyncCancel = vi.fn()
+  const vaultUnlockSyncWithLocalPassword = vi.fn<
+    () => Promise<import('../shared/vault-contract').SyncStatus>
+  >(() =>
+    Promise.resolve({
+      configured: true,
+      state: 'ready',
+      serverUrl: 'https://vault.example.invalid'
+    })
+  )
   const vaultTimeoutCancel = vi.fn()
   const vaultTimeoutDispose = vi.fn()
   const vaultTimeoutResume = vi.fn()
@@ -290,6 +299,7 @@ const harness = vi.hoisted(() => {
     autoSyncRequestImmediate,
     autoSyncUpdateStatus,
     autoSyncCancel,
+    vaultUnlockSyncWithLocalPassword,
     vaultTimeoutCancel,
     vaultTimeoutDispose,
     vaultTimeoutResume,
@@ -517,11 +527,7 @@ vi.mock('./vault-service', () => ({
       return Promise.resolve({ state: harness.vaultState })
     }
     unlockSyncWithLocalPassword(): Promise<import('../shared/vault-contract').SyncStatus> {
-      return Promise.resolve({
-        configured: true,
-        state: 'ready',
-        serverUrl: 'https://vault.example.invalid'
-      })
+      return harness.vaultUnlockSyncWithLocalPassword()
     }
     constrainVaultTimeoutPolicy(
       policy: import('../shared/vault-contract').VaultTimeoutPolicy
@@ -919,6 +925,30 @@ describe('main WebAuthn lifecycle wiring', () => {
     }
     ;(harness.vaultIpcOptions!.afterSyncChanged as (status: typeof ready) => void)(ready)
     expect(harness.autoSyncUpdateStatus).toHaveBeenCalledWith(ready)
+  })
+
+  it('does not keep local unlock waiting for remote sync completion', async () => {
+    harness.autoSyncRequestImmediate.mockClear()
+    harness.vaultUnlockSyncWithLocalPassword.mockClear()
+    let finishSync!: (status: import('../shared/vault-contract').SyncStatus) => void
+    harness.vaultUnlockSyncWithLocalPassword.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishSync = resolve
+        })
+    )
+
+    const afterUnlock = harness.vaultIpcOptions!.afterUnlock as (masterPassword: string) => void
+    expect(afterUnlock('test-master-password')).toBeUndefined()
+    expect(harness.vaultUnlockSyncWithLocalPassword).toHaveBeenCalledOnce()
+    expect(harness.autoSyncRequestImmediate).not.toHaveBeenCalled()
+
+    finishSync({
+      configured: true,
+      state: 'ready',
+      serverUrl: 'https://vault.example.invalid'
+    })
+    await vi.waitFor(() => expect(harness.autoSyncRequestImmediate).toHaveBeenCalledOnce())
   })
 
   it('recreates and focuses the main window when a second instance arrives after close', () => {

@@ -1253,6 +1253,7 @@ describe('registerVaultIpc shared main-process hooks', () => {
     vault: Partial<VaultService>
     repromptAuthorizations?: RepromptAuthorizationStore
     afterSetup?: () => void | Promise<void>
+    afterUnlock?: (masterPassword: string) => void | Promise<void>
   }): { event: unknown } {
     const mainFrame = { url: 'app://bearwarden/index.html' }
     const webContents = {
@@ -1271,7 +1272,8 @@ describe('registerVaultIpc shared main-process hooks', () => {
       ...(options.repromptAuthorizations === undefined
         ? {}
         : { repromptAuthorizations: options.repromptAuthorizations }),
-      ...(options.afterSetup === undefined ? {} : { afterSetup: options.afterSetup })
+      ...(options.afterSetup === undefined ? {} : { afterSetup: options.afterSetup }),
+      ...(options.afterUnlock === undefined ? {} : { afterUnlock: options.afterUnlock })
     })
     return { event: { sender: webContents, senderFrame: mainFrame } }
   }
@@ -1302,6 +1304,42 @@ describe('registerVaultIpc shared main-process hooks', () => {
     ).resolves.toEqual({ state: 'unlocked' })
     expect(setup).toHaveBeenCalledWith('test-only')
     expect(afterSetup).toHaveBeenCalledOnce()
+  })
+
+  it('returns local unlock before its remote follow-up settles', async () => {
+    let finishFollowup!: () => void
+    let receivedPassword = ''
+    const afterUnlock = vi.fn(
+      (masterPassword: string) =>
+        new Promise<void>((resolve) => {
+          receivedPassword = masterPassword
+          finishFollowup = resolve
+        })
+    )
+    const unlock = vi.fn().mockResolvedValue({ state: 'unlocked' })
+    const { event } = registerHarness({ vault: { unlock }, afterUnlock })
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.vaultUnlock)!(event, { masterPassword: 'test-only' })
+    ).resolves.toEqual({ state: 'unlocked' })
+    expect(afterUnlock).toHaveBeenCalledOnce()
+    expect(receivedPassword).toBe('test-only')
+
+    finishFollowup()
+  })
+
+  it('keeps local unlock authoritative when its follow-up throws synchronously', async () => {
+    const unlock = vi.fn().mockResolvedValue({ state: 'unlocked' })
+    const afterUnlock = vi.fn(() => {
+      throw new Error('integration unavailable')
+    })
+    const { event } = registerHarness({ vault: { unlock }, afterUnlock })
+
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.vaultUnlock)!(event, {
+        masterPassword: 'test-only'
+      })
+    ).resolves.toEqual({ state: 'unlocked' })
+    expect(afterUnlock).toHaveBeenCalledOnce()
   })
 })
 
