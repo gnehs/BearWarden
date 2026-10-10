@@ -131,7 +131,7 @@ SSO／Trusted Device Encryption 仍會保持同步鎖定，且不會降級使用
 
 ## 開發
 
-需求：Node.js 24.13.1 以上、pnpm 11.12.0。
+需求：Node.js 24.13.1 以上、pnpm 11.28.2。
 
 ```bash
 pnpm install --frozen-lockfile

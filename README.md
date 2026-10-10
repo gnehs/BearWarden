@@ -122,7 +122,7 @@ V1 AES-CBC-HMAC and Account Encryption V2 personal vaults are currently supporte
 
 ## Development
 
-Requirements: Node.js 24.13.1 or later and pnpm 11.12.0.
+Requirements: Node.js 24.13.1 or later and pnpm 11.28.2.
 
 ```bash
 pnpm install --frozen-lockfile

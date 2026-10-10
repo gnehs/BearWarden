@@ -40,7 +40,7 @@
 
 ## 驗證與提交
 
-- 本專案使用 `pnpm@11.12.0`；新增套件或執行 script 前先確認 `package.json` 與 lockfile，不要混用 npm、yarn 或 bun。
+- 本專案使用 `pnpm@11.28.2`；新增套件或執行 script 前先確認 `package.json` 與 lockfile，不要混用 npm、yarn 或 bun。
 - 一般程式碼變更至少執行 `pnpm run typecheck`、`pnpm run lint` 與相關測試；涉及 i18n 時額外執行 `pnpm run i18n:extract` 與 `pnpm run i18n:compile`；涉及跨層或使用者流程時執行 `pnpm build`。
 - 測試失敗時要區分本次回歸、既有失敗與 sandbox 限制；若與 socket/listen 權限有關，必要時用受控權限重跑相關測試，不要直接略過。
 - 提交前用 `git status` 與 diff 確認只納入本次任務相關檔案；若工作樹有使用者或其他 agent 的變更，不要一起 stage，也不要復原。
