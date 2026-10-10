@@ -1,6 +1,5 @@
 import type {
   LoginAuthorization,
-  SyncStatus,
   TotpCodeView,
   VaultCustomFieldSource,
   VaultSecretField
@@ -20,7 +19,6 @@ export type Scope =
 
 export type TypeFilter = VaultCategoryFilter
 
-export const initialSyncStatus: SyncStatus = { configured: false, state: 'unconfigured' }
 export const totpListCountdownPeriodSeconds = 30
 
 export interface RevealedSecretsState {

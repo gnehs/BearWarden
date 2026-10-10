@@ -1,17 +1,18 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const detectedLocale = vi.hoisted(() => ({ value: 'en-US' as string | undefined }))
-
-vi.mock('@lingui/detect-locale', () => ({
-  fromNavigator: () => detectedLocale.value
-}))
-
 import { activateLanguagePreference, handleSystemLanguageChange, i18n } from './i18n'
+
+const detectedLocale = { value: 'en-US' }
 
 describe('runtime language preference', () => {
   beforeEach(() => {
     detectedLocale.value = 'en-US'
     vi.stubGlobal('document', { documentElement: { lang: '' } })
+    vi.stubGlobal('navigator', {
+      get language() {
+        return detectedLocale.value
+      }
+    })
   })
 
   afterAll(() => {

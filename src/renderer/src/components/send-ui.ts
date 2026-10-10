@@ -64,7 +64,7 @@ export function sendStatuses(
 export function formatSendDate(value: string | null, locale = i18n.locale || 'en'): string {
   if (!value) return i18n._(msg`Not set`)
   const date = new Date(value)
-  if (!Number.isFinite(date.getTime())) return i18n._(msg`Invalid date format`)
+  if (!Number.isFinite(date.getTime())) return i18n._(msg`Invalid date`)
   return new Intl.DateTimeFormat(locale, {
     year: 'numeric',
     month: '2-digit',
@@ -91,5 +91,5 @@ export function maxAccessCountValidationMessage(value: number | null | undefined
   if (value === null || value === undefined) return null
   return Number.isSafeInteger(value) && value > 0 && value <= 2_147_483_647
     ? null
-    : i18n._(msg`Maximum access count must be an integer between 1 and 2,147,483,647`)
+    : i18n._(msg`Maximum access count must be an integer between 1 and 2,147,483,647.`)
 }

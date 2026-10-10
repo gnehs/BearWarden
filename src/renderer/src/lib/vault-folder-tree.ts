@@ -44,6 +44,10 @@ function hasCompleteParentChain(name: string, folderNames: ReadonlySet<string>):
   )
 }
 
+export function sortFoldersByPosition(folders: readonly FolderView[]): FolderView[] {
+  return folders.toSorted((left, right) => left.position - right.position)
+}
+
 /** Applies Bitwarden's slash-path convention and returns a tree in pre-order. */
 export function vaultFolderHierarchyRows(
   folders: readonly FolderView[]

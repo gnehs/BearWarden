@@ -96,9 +96,6 @@ const vaultTimeoutPresetMinutes = [1, 5, 15, 30, 60, 240] as const
 const maxVaultTimeoutMinutes = MAX_VAULT_TIMEOUT_MINUTES
 const maxVaultTimeoutHours = Math.floor(maxVaultTimeoutMinutes / 60)
 
-export const contentProtectionDescription =
-  'When enabled, BearWarden may be hidden in Windows Remote Desktop, screen sharing, and recordings. If only the taskbar icon remains visible, turn this option off in a local session.'
-
 // eslint-disable-next-line react-refresh/only-export-components
 export function autofillStatusPresentation(
   enabled: boolean,
@@ -155,18 +152,6 @@ export const vaultTimeoutItems = [
   { label: 'Custom', value: 'custom' }
 ] as const
 
-// eslint-disable-next-line react-refresh/only-export-components
-export const languageItems: ReadonlyArray<{
-  label: string
-  value: AppLanguagePreference
-}> = [
-  { label: 'System', value: 'system' },
-  { label: 'English', value: 'en' },
-  { label: 'Simplified Chinese', value: 'zh-CN' },
-  { label: 'Traditional Chinese', value: 'zh-TW' },
-  { label: 'Japanese', value: 'ja' }
-]
-
 type VaultTimeoutSelectValue = (typeof vaultTimeoutItems)[number]['value']
 
 // These presentation helpers are exported solely for focused renderer tests.
@@ -212,40 +197,6 @@ export function vaultTimeoutPolicyFromCustomFields(
   const totalMinutes = parsedHours * 60 + parsedMinutes
   if (totalMinutes < 1 || totalMinutes > maxVaultTimeoutMinutes) return null
   return { type: 'appInactivity', minutes: totalMinutes }
-}
-
-// eslint-disable-next-line react-refresh/only-export-components
-export function vaultTimeoutCustomValidationMessage(hours: string, minutes: string): string | null {
-  if (!/^\d+$/.test(hours) || !/^\d+$/.test(minutes)) {
-    return 'Enter whole numbers for hours and minutes.'
-  }
-  const parsedHours = Number(hours)
-  const parsedMinutes = Number(minutes)
-  if (parsedMinutes > 59) return 'Minutes must be between 0 and 59.'
-  if (
-    parsedHours > maxVaultTimeoutHours ||
-    parsedHours * 60 + parsedMinutes > maxVaultTimeoutMinutes
-  ) {
-    return 'The custom inactivity timeout cannot exceed 8,760 hours.'
-  }
-  if (!vaultTimeoutPolicyFromCustomFields(hours, minutes)) {
-    return 'The custom inactivity timeout must be at least 1 minute.'
-  }
-  return null
-}
-
-// eslint-disable-next-line react-refresh/only-export-components
-export function applyVaultTimeoutCustomFields(
-  hours: string,
-  minutes: string,
-  onUpdate: (update: AppSettingsUpdate) => Promise<unknown>
-): string | null {
-  const validationMessage = vaultTimeoutCustomValidationMessage(hours, minutes)
-  if (validationMessage) return validationMessage
-  const policy = vaultTimeoutPolicyFromCustomFields(hours, minutes)
-  if (!policy) return 'Check the custom inactivity timeout.'
-  void onUpdate({ vaultTimeoutPolicy: policy })
-  return null
 }
 
 interface VaultTimeoutCustomFieldsProps {
@@ -645,15 +596,6 @@ function SettingsPage({
     settings?.sshAgentEnabled ?? false,
     sshAgentStatus
   )
-  const sshAgentStatusLabel = !(settings?.sshAgentEnabled ?? false)
-    ? t`Disabled`
-    : sshAgentStatus.state === 'ready'
-      ? t`Ready`
-      : sshAgentStatus.state === 'starting'
-        ? t`Starting`
-        : sshAgentStatus.state === 'error'
-          ? t`Action required`
-          : t`Stopped`
   const autofillStatusPresentationValue = autofillStatusPresentation(
     settings?.autofillEnabled ?? false,
     autofillStatus
@@ -1663,7 +1605,7 @@ function SettingsPage({
                   />
                   <CardAction>
                     <Badge variant={sshAgentStatusPresentationValue.variant}>
-                      {sshAgentStatusLabel}
+                      {sshAgentStatusPresentationValue.label}
                     </Badge>
                   </CardAction>
                 </CardHeader>

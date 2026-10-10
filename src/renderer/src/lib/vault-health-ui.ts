@@ -6,6 +6,7 @@ import type {
   VaultHealthWeakFinding
 } from '../../../shared/vault-contract'
 import { i18n } from '../i18n'
+import { isPlainRecord } from './utils'
 
 const MAX_EXPOSED_FINDINGS = 50_000
 const MAX_ACCOUNT_BREACH_FINDINGS = 10_000
@@ -57,16 +58,6 @@ export function vaultHealthRevision(items: readonly LoginSummary[]): string {
     )
     .sort()
     .join('\n')
-}
-
-function isPlainRecord(value: unknown): value is PlainRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
-  try {
-    const prototype = Object.getPrototypeOf(value)
-    return prototype === Object.prototype || prototype === null
-  } catch {
-    return false
-  }
 }
 
 function hasExactKeys(record: PlainRecord, expected: readonly string[]): boolean {

@@ -213,7 +213,7 @@ export function VirtualizedItemList({
     <div
       ref={scrollElementRef}
       className={cn(
-        'scroll-fade-y forced-colors:scroll-fade-none relative m-0 min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] list-none overflow-auto px-4 pb-6',
+        'scroll-fade-y forced-colors:scroll-fade-none relative m-0 min-h-0 flex-1 [scrollbar-color:var(--ring)_transparent] list-none overflow-auto px-4 pb-6',
         className
       )}
       aria-label={t`${scopeTitle} vault items`}

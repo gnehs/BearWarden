@@ -4,22 +4,12 @@ import { CSS, useCombinedRefs } from '@dnd-kit/utilities'
 import NumberFlow from '@number-flow/react'
 import { memo, useEffect, useRef } from 'react'
 import { useLingui } from '@lingui/react/macro'
-import {
-  ContactRound,
-  CreditCard,
-  FileKey2,
-  Folder,
-  FolderOpen,
-  Folders,
-  Globe2,
-  MoreHorizontal,
-  NotebookPen,
-  Star
-} from 'lucide-react'
+import { Folder, FolderOpen, Folders, MoreHorizontal, Star } from 'lucide-react'
 import type { FolderView, LoginSummary, TotpCodeView } from '../../../shared/vault-contract'
 import { normalizeBitwardenCardBrand } from '../lib/payment-card'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
+import { itemListIcons } from './vault-item-type-icons'
 import { Button } from '@renderer/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { cn } from '@renderer/lib/utils'
@@ -56,14 +46,6 @@ export interface ItemSelectionModifiers {
   toggle: boolean
   range: boolean
 }
-
-const itemTypeMeta = {
-  login: { icon: Globe2 },
-  card: { icon: CreditCard },
-  identity: { icon: ContactRound },
-  secureNote: { icon: NotebookPen },
-  sshKey: { icon: FileKey2 }
-} as const
 
 export const ItemRow = memo(function ItemRow({
   item,
@@ -111,8 +93,7 @@ export const ItemRow = memo(function ItemRow({
     }, 80)
   }
 
-  const meta = itemTypeMeta[item.type]
-  const ItemIcon = meta.icon
+  const ItemIcon = itemListIcons[item.type]
   const shouldShowTotpCode =
     showTotpCode && !readOnly && item.type === 'login' && Boolean(item.hasTotp)
   const totpCode = shouldShowTotpCode ? totpCodes?.get(item.id) : undefined
@@ -191,7 +172,6 @@ export const ItemRow = memo(function ItemRow({
             <PaymentCardBrandMark
               brand={normalizeBitwardenCardBrand(item.cardBrand)}
               imageSrc={cardCoverImageSrc}
-              compact
             />
           ) : item.type === 'login' && !readOnly ? (
             <WebsiteIcon id={item.id} uri={item.uri} enabled={showWebsiteIcons} />

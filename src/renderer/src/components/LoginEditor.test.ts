@@ -5,11 +5,8 @@ import type { CollectionView, LoginView, OrganizationView } from '../../../share
 import LoginEditor from './LoginEditor'
 import {
   canSelectCustomFieldType,
-  editorHeaderContent,
   reorderEditorItemsByClientId,
   reorderEditorUris,
-  uriMatchExample,
-  uriMatchOptionValues,
   uriMatchRecognizedParts,
   type EditorLoginUri
 } from './login-editor-ui'
@@ -111,24 +108,6 @@ function renderLoginEditor(
     })
   )
 }
-
-describe('editorHeaderContent', () => {
-  it('新增時只顯示一次項目類型', () => {
-    expect(editorHeaderContent('安全備註', null)).toEqual({
-      eyebrow: '新項目',
-      heading: '安全備註',
-      typeBadge: null
-    })
-  })
-
-  it('編輯時保留項目名稱與類型資訊', () => {
-    expect(editorHeaderContent('安全備註', '離線復原程序')).toEqual({
-      eyebrow: '編輯 安全備註',
-      heading: '離線復原程序',
-      typeBadge: '安全備註'
-    })
-  })
-})
 
 describe('LoginEditor design language', () => {
   it('共享項目顯示唯讀組織資訊並隱藏個人整理控制', () => {
@@ -263,17 +242,6 @@ describe('LoginEditor design language', () => {
     expect(markup).toContain('data-editor-section="details"')
     expect(markup).toContain('data-editor-section="custom"')
     expect(markup).toContain('data-editor-section="organize"')
-  })
-
-  it('所有網站匹配選項都能以使用者網址產生符號範例', () => {
-    const uri = 'https://vault.example.invalid/account'
-
-    expect(uriMatchOptionValues).toHaveLength(7)
-    for (const value of uriMatchOptionValues) {
-      expect(uriMatchExample(value, uri)).toContain(uri)
-      expect(uriMatchExample(value, uri)).toMatch(/[○△]/)
-    }
-    expect(uriMatchExample('1', '   ')).toBe('輸入 URL 以顯示相符範例')
   })
 
   it('網站匹配範例會標示實際參與辨識的網址片段', () => {

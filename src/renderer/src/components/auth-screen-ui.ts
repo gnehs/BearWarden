@@ -54,24 +54,28 @@ export function authAccountItems(
  * master password was not rejected, so the message must invite a retry instead of alarming.
  */
 export function describeError(error: unknown): string {
-  if (!(error instanceof Error)) return i18n._(msg`An unknown error occurred. Try again later.`)
+  if (!(error instanceof Error))
+    return i18n._(msg`An unknown error occurred. Please try again later.`)
   if (error.message.includes('INVALID_MASTER_PASSWORD'))
     return i18n._(msg`The master password is incorrect.`)
   if (error.message.includes('INVALID_PIN')) return i18n._(msg`The PIN is incorrect.`)
   if (error.message.includes('PIN_DISABLED'))
-    return i18n._(msg`PIN unlock is disabled. Use your master password instead.`)
+    return i18n._(msg`PIN unlock is disabled. Enter your master password instead.`)
   if (error.message.includes('RATE_LIMITED'))
-    return i18n._(msg`Too many attempts. Try again later.`)
-  if (error.message.includes('INVALID_INPUT')) return i18n._(msg`Check your input.`)
-  if (error.message.includes('LOCKED')) return i18n._(msg`The vault is locked. Try again.`)
+    return i18n._(msg`Too many attempts. Please try again later.`)
+  if (error.message.includes('INVALID_INPUT')) return i18n._(msg`Check your input and try again.`)
+  if (error.message.includes('LOCKED')) return i18n._(msg`The vault is locked. Please try again.`)
   if (error.message.includes('CORRUPT_VAULT')) {
     return i18n._(
-      msg`Unable to read vault data. Try again. If this continues, the vault file may be corrupted.`
+      msg`The vault data could not be read. Try again; if this continues, the vault file may be corrupted.`
     )
   }
-  if (error.message.includes('NOT_INITIALIZED'))
-    return i18n._(msg`The vault file was not found. Check that it has not been moved or deleted.`)
-  return i18n._(msg`Unable to open the vault right now. Try again later.`)
+  if (error.message.includes('NOT_INITIALIZED')) {
+    return i18n._(
+      msg`The vault file could not be found. Check that it has not been moved or deleted.`
+    )
+  }
+  return i18n._(msg`The vault cannot be opened right now. Please try again later.`)
 }
 
 export function touchIdUnlockFallback(error: unknown): {
@@ -82,11 +86,7 @@ export function touchIdUnlockFallback(error: unknown): {
     unlockMethod: 'master-password',
     error:
       error instanceof Error && error.message.includes('TOUCH_ID_UNAVAILABLE')
-        ? i18n._(
-            msg`Biometric authentication is currently unavailable. Enter your master password.`
-          )
-        : i18n._(
-            msg`Unable to open the vault with biometric authentication. Enter your master password.`
-          )
+        ? i18n._(msg`Biometric unlock is unavailable right now. Enter your master password.`)
+        : i18n._(msg`The vault could not be unlocked with biometrics. Enter your master password.`)
   }
 }

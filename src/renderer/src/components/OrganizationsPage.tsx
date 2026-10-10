@@ -1,6 +1,6 @@
 import { FolderOpen, LockKeyhole, RefreshCw, TriangleAlert, UsersRound } from 'lucide-react'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type {
   CollectionView,
   OrganizationView,
@@ -144,31 +144,19 @@ function OrganizationsPage(): React.JSX.Element {
   const [selectedError, setSelectedError] = useState(false)
   const selectedRequest = useRef(createLatestRequestGuard())
 
-  const visibleCollections = useMemo(
-    () =>
-      collections.filter(
-        (collection) => organizationId === null || collection.organizationId === organizationId
-      ),
-    [collections, organizationId]
+  const visibleCollections = collections.filter(
+    (collection) => organizationId === null || collection.organizationId === organizationId
   )
 
-  const visibleItems = useMemo(
-    () =>
-      items.filter(
-        (item) =>
-          (organizationId === null || item.organizationId === organizationId) &&
-          (collectionId === null || item.collectionIds.includes(collectionId))
-      ),
-    [collectionId, items, organizationId]
+  const visibleItems = items.filter(
+    (item) =>
+      (organizationId === null || item.organizationId === organizationId) &&
+      (collectionId === null || item.collectionIds.includes(collectionId))
   )
 
-  const selectedCollections = useMemo(
-    () =>
-      selected
-        ? collections.filter((collection) => selected.collectionIds.includes(collection.id))
-        : [],
-    [collections, selected]
-  )
+  const selectedCollections = selected
+    ? collections.filter((collection) => selected.collectionIds.includes(collection.id))
+    : []
 
   useEffect(() => {
     let active = true

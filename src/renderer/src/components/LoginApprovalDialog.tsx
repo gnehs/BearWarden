@@ -21,31 +21,21 @@ import {
   FieldTitle
 } from '@renderer/components/ui/field'
 import { Spinner } from '@renderer/components/ui/spinner'
+import { formatDateTime } from '@renderer/lib/vault-date'
 
 interface LoginApprovalDialogProps {
   prompt: LoginApprovalPrompt
   onClose: () => void
-  onSettled?: (approved: boolean) => void | Promise<void>
 }
 
 export default function LoginApprovalDialog({
   prompt,
-  onClose,
-  onSettled
+  onClose
 }: LoginApprovalDialogProps): React.JSX.Element {
-  const { i18n, t } = useLingui()
+  const { t } = useLingui()
   const [fingerprintMatches, setFingerprintMatches] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-
-  function formatRequestTime(value: string): string {
-    const date = new Date(value)
-    if (!Number.isFinite(date.getTime())) return t`Time unavailable`
-    return new Intl.DateTimeFormat(i18n.locale, {
-      dateStyle: 'medium',
-      timeStyle: 'short'
-    }).format(date)
-  }
 
   function loginApprovalError(responseError: unknown): string {
     if (responseError instanceof Error && responseError.message.includes('INVALID_INPUT')) {
@@ -67,7 +57,6 @@ export default function LoginApprovalDialog({
         fingerprint: prompt.fingerprint,
         approved
       })
-      await onSettled?.(approved)
       onClose()
     } catch (responseError) {
       setError(loginApprovalError(responseError))
@@ -90,9 +79,9 @@ export default function LoginApprovalDialog({
             <dt className="text-muted-foreground">{t`Requesting device`}</dt>
             <dd>{prompt.requestDeviceType || t`Unknown device`}</dd>
             <dt className="text-muted-foreground">{t`Requested at`}</dt>
-            <dd>{formatRequestTime(prompt.createdAt)}</dd>
+            <dd>{formatDateTime(prompt.createdAt) ?? t`Time unavailable`}</dd>
             <dt className="text-muted-foreground">{t`Expires at`}</dt>
-            <dd>{formatRequestTime(prompt.expiresAt)}</dd>
+            <dd>{formatDateTime(prompt.expiresAt) ?? t`Time unavailable`}</dd>
           </dl>
           <Alert>
             <Fingerprint aria-hidden="true" />

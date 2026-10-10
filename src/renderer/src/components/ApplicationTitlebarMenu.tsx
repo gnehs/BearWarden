@@ -2,7 +2,7 @@ import { useCallback } from 'react'
 import { useLingui } from '@lingui/react/macro'
 import type { ApplicationMenuCommand } from '../../../shared/vault-contract'
 import { SELECTED_ITEM_COPY_SHORTCUTS } from '../../../shared/selected-item-shortcuts'
-import { shouldUseApplicationTitlebarMenu } from '../lib/application-titlebar-menu'
+import { usesWindowControlsOverlay } from '../lib/platform'
 import {
   Menubar,
   MenubarContent,
@@ -19,8 +19,6 @@ interface ApplicationTitlebarMenuProps {
 }
 
 const shortcutPrefix = 'Ctrl'
-
-const usesWindowControlsOverlay = shouldUseApplicationTitlebarMenu(navigator.userAgent)
 
 export default function ApplicationTitlebarMenu({
   onLockVault

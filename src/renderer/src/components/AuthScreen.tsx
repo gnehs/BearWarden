@@ -20,14 +20,15 @@ import {
 } from '@renderer/components/ui/select'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { cn } from '@renderer/lib/utils'
-import { shouldUseApplicationTitlebarMenu } from '../lib/application-titlebar-menu'
+import { isMac, isWindows, usesWindowControlsOverlay } from '../lib/platform'
 import { useSettingsStore } from '../stores/settings-runtime'
 import { accountMutationError, accountMutationKeepsBusy } from './account-switcher-ui'
-import { authAccountItems, subscribeToAuthSettingsRefresh } from './auth-screen-ui'
-
-const usesWindowControlsOverlay = shouldUseApplicationTitlebarMenu(navigator.userAgent)
-const isMac = navigator.userAgent.includes('Mac')
-const isWindows = navigator.userAgent.includes('Windows')
+import {
+  authAccountItems,
+  describeError,
+  subscribeToAuthSettingsRefresh,
+  touchIdUnlockFallback
+} from './auth-screen-ui'
 
 interface AuthScreenProps {
   state: 'loading' | 'unavailable' | 'uninitialized' | 'locked'
@@ -59,25 +60,6 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
   const accountStatusRequestRef = useRef(0)
   const isSetup = state === 'uninitialized'
   const accountItems = authAccountItems(accountStatus)
-
-  function describeError(error: unknown): string {
-    if (!(error instanceof Error)) return t`An unknown error occurred. Please try again later.`
-    if (error.message.includes('INVALID_MASTER_PASSWORD'))
-      return t`The master password is incorrect.`
-    if (error.message.includes('INVALID_PIN')) return t`The PIN is incorrect.`
-    if (error.message.includes('PIN_DISABLED'))
-      return t`PIN unlock is disabled. Enter your master password instead.`
-    if (error.message.includes('RATE_LIMITED')) return t`Too many attempts. Please try again later.`
-    if (error.message.includes('INVALID_INPUT')) return t`Check your input and try again.`
-    if (error.message.includes('LOCKED')) return t`The vault is locked. Please try again.`
-    if (error.message.includes('CORRUPT_VAULT')) {
-      return t`The vault data could not be read. Try again; if this continues, the vault file may be corrupted.`
-    }
-    if (error.message.includes('NOT_INITIALIZED')) {
-      return t`The vault file could not be found. Check that it has not been moved or deleted.`
-    }
-    return t`The vault cannot be opened right now. Please try again later.`
-  }
 
   useEffect(() => {
     if (!submitting && (state === 'locked' || state === 'uninitialized')) {
@@ -255,14 +237,11 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
       const status = await window.bearwarden.settings.unlockTouchId()
       if (status.state === 'unlocked') onAuthenticated('unlock')
     } catch (touchIdError) {
+      const fallback = touchIdUnlockFallback(touchIdError)
       focusPasswordAfterTouchIdRef.current = true
       setPin('')
-      setUnlockMethod('master-password')
-      setError(
-        touchIdError instanceof Error && touchIdError.message.includes('TOUCH_ID_UNAVAILABLE')
-          ? t`Biometric unlock is unavailable right now. Enter your master password.`
-          : t`The vault could not be unlocked with biometrics. Enter your master password.`
-      )
+      setUnlockMethod(fallback.unlockMethod)
+      setError(fallback.error)
     } finally {
       authOperationRef.current = false
       setSubmitting(false)

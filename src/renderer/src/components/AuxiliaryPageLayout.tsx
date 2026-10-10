@@ -79,7 +79,7 @@ function AuxiliaryPageLayout({
       <div
         ref={scrollRef}
         className={cn(
-          'min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] overflow-auto bg-[color-mix(in_oklch,var(--muted)_34%,var(--background))] p-[clamp(1rem,3vw,2rem)] max-[680px]:px-3 max-[680px]:pt-3.5 max-[680px]:pb-6',
+          'min-h-0 flex-1 [scrollbar-color:var(--ring)_transparent] overflow-auto bg-[color-mix(in_oklch,var(--muted)_34%,var(--background))] p-[clamp(1rem,3vw,2rem)] max-[680px]:px-3 max-[680px]:pt-3.5 max-[680px]:pb-6',
           scrollClassName
         )}
       >

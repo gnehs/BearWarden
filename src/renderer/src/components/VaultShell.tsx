@@ -94,7 +94,11 @@ import {
   precisePointerCollisionDetection,
   quickAccessDropAction
 } from './VaultShell-dnd'
-import { planVaultFolderMove, vaultFolderHierarchyRows } from '@renderer/lib/vault-folder-tree'
+import {
+  planVaultFolderMove,
+  sortFoldersByPosition,
+  vaultFolderHierarchyRows
+} from '@renderer/lib/vault-folder-tree'
 import SettingsPage from './SettingsPage'
 import SendsPage from './SendsPage'
 import OrganizationsPage from './OrganizationsPage'
@@ -108,6 +112,8 @@ import { matchesVaultCategory } from '../lib/vault-category'
 import { normalizeBitwardenCardBrand } from '../lib/payment-card'
 import { shouldShowSyncSetupPrompt } from '../lib/sync-setup-prompt'
 import { normalizeItemSelection, updateItemSelection } from '../lib/item-selection'
+import { isMac, isWindows, usesWindowControlsOverlay } from '../lib/platform'
+import { formatVaultDate } from '../lib/vault-date'
 import { vaultHealthRevision } from '../lib/vault-health-ui'
 import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
 import { useEditorTransitionGuard } from '@renderer/hooks/use-editor-transition-guard'
@@ -121,6 +127,7 @@ import { VaultCustomFieldRows, VaultDetailFieldRows } from './VaultDetailFieldRo
 import { canRevealSecretsOnHover } from './VaultDetailFieldRows-model'
 import { VaultItemMetadataCards } from './VaultItemMetadataCards'
 import { VaultItemListPane } from './VaultItemListPane'
+import type { VirtualizedItemGroup } from './VirtualizedItemList'
 import { VaultItemAttachmentsCard, VaultItemTotpCard } from './VaultItemAccessCards'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -208,6 +215,7 @@ import {
   toLoginSummary
 } from './vault-detail-cache'
 import { describeError, isRepromptRequired } from './vault-error-ui'
+import { itemTypeIcons } from './vault-item-type-icons'
 import { VaultSearchDialog, VaultShellLoading, VaultShellTitlebar } from './VaultShellChrome'
 import { isSharedLoginSummary } from './organizations-ui'
 
@@ -239,9 +247,6 @@ const syncStateIcons = {
   error: CloudAlert
 } satisfies Record<SyncStatus['state'], typeof CloudCheck>
 
-const isMac = navigator.userAgent.includes('Mac')
-const isWindows = navigator.userAgent.includes('Windows')
-const usesWindowControlsOverlay = !isMac
 const commandLabel = isMac ? '⌘' : 'Ctrl'
 
 interface VaultShellProps {
@@ -259,6 +264,10 @@ function announceError(message: string): void {
   })
 }
 
+function isTotpListItem(item: LoginSummary): boolean {
+  return !isSharedLoginSummary(item) && item.type === 'login' && Boolean(item.hasTotp)
+}
+
 function isEditableShortcutTarget(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement &&
@@ -271,20 +280,20 @@ function VaultShellContent({
   promptSyncSetup,
   onSyncSetupPromptHandled
 }: VaultShellProps): React.JSX.Element {
-  const { i18n, t } = useLingui()
+  const { t } = useLingui()
   const itemTypeMeta = useMemo<Record<VaultItemType, ItemTypeMeta>>(
     () => ({
-      login: { label: t`Login`, icon: KeyRound },
+      login: { label: t`Login`, icon: itemTypeIcons.login },
       card: {
         label: t({
           message: 'Card',
           comment: 'Vault item category label for payment card records.'
         }),
-        icon: CreditCard
+        icon: itemTypeIcons.card
       },
-      identity: { label: t`Identity`, icon: ContactRound },
-      secureNote: { label: t`Secure note`, icon: NotebookPen },
-      sshKey: { label: t`SSH key`, icon: FileKey2 }
+      identity: { label: t`Identity`, icon: itemTypeIcons.identity },
+      secureNote: { label: t`Secure note`, icon: itemTypeIcons.secureNote },
+      sshKey: { label: t`SSH key`, icon: itemTypeIcons.sshKey }
     }),
     [t]
   )
@@ -443,15 +452,6 @@ function VaultShellContent({
       ),
     [errorMessages, t]
   )
-  const formatDate = (value: string | null): string => {
-    if (!value) return t`Never used`
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return t`Unknown`
-    return new Intl.DateTimeFormat(i18n.locale, {
-      dateStyle: 'medium',
-      timeStyle: 'short'
-    }).format(date)
-  }
   const {
     settingsOpen,
     setSettingsOpen,
@@ -874,10 +874,10 @@ function VaultShellContent({
 
   const requestReprompt = useCallback(
     (ids: readonly string[]): Promise<LoginAuthorization> => {
-      const normalizedIds = [...ids].sort()
+      const normalizedIds = ids.toSorted()
       if (normalizedIds.length === 1) {
-        const cached = authorizationCacheRef.current.get(normalizedIds[0]!)
-        if (cached && authorizationToken(normalizedIds[0]!)) return Promise.resolve(cached)
+        const cached = authorizationCacheRef.current.get(normalizedIds[0])
+        if (cached && authorizationToken(normalizedIds[0])) return Promise.resolve(cached)
       }
       const key = normalizedIds.join('\n')
       const pending = pendingRepromptRef.current
@@ -966,7 +966,7 @@ function VaultShellContent({
       const loginList = [...activeItems, ...archivedItems, ...deletedItems]
       if (!isCurrentVaultLoad(requestId, vaultLoadRequestIdRef.current)) return
       invalidateProtectedDetails(loginList)
-      setFolders([...folderList].sort((left, right) => left.position - right.position))
+      setFolders(sortFoldersByPosition(folderList))
       setItems(loginList)
       setOrganizations(organizationList)
       setCollections(collectionList)
@@ -1646,20 +1646,13 @@ function VaultShellContent({
 
   const scopedItemIds = useMemo(() => scopedItems.map((item) => item.id), [scopedItems])
   const totpListItemIds = useMemo(
-    () =>
-      scopedItems
-        .filter(
-          (item) => !isSharedLoginSummary(item) && item.type === 'login' && Boolean(item.hasTotp)
-        )
-        .map((item) => item.id),
+    () => scopedItems.filter(isTotpListItem).map((item) => item.id),
     [scopedItems]
   )
   const totpListRevision = useMemo(
     () =>
       scopedItems
-        .filter(
-          (item) => !isSharedLoginSummary(item) && item.type === 'login' && Boolean(item.hasTotp)
-        )
+        .filter(isTotpListItem)
         .map((item) => `${item.id}:${item.updatedAt}`)
         .join('\0'),
     [scopedItems]
@@ -1931,7 +1924,7 @@ function VaultShellContent({
       )
     }
   }, [collections, organizations, selectedSharedSummary])
-  const itemGroups = useMemo(() => {
+  const itemGroups = useMemo<VirtualizedItemGroup[]>(() => {
     if (sortMode === 'title' || sortMode === 'frequency') {
       return [{ key: 'name', label: null, items: scopedItems }]
     }
@@ -1939,9 +1932,7 @@ function VaultShellContent({
       scopedItems,
       new Date(),
       sortMode === 'modified' ? 'updatedAt' : 'activity'
-    )
-      .filter((group) => group.items.length > 0)
-      .map((group) => ({ ...group, label: group.label as string | null }))
+    ).filter((group) => group.items.length > 0)
   }, [scopedItems, sortMode])
   const folderIds = useMemo(() => new Set(folders.map((folder) => folder.id)), [folders])
   const activeItems = useMemo(
@@ -2332,7 +2323,7 @@ function VaultShellContent({
         ids: pending.ids,
         masterPassword
       })
-      if (pending.ids.length === 1) cacheAuthorization(pending.ids[0]!, authorization)
+      if (pending.ids.length === 1) cacheAuthorization(pending.ids[0], authorization)
       pending.resolve(authorization)
       pendingRepromptRef.current = null
       setRepromptPrompt(null)
@@ -2662,14 +2653,14 @@ function VaultShellContent({
     try {
       if (folderDialog === 'new') {
         const created = await window.bearwarden.folders.create({ name })
-        setFolders((current) => [...current, created].sort((a, b) => a.position - b.position))
+        setFolders((current) => sortFoldersByPosition([...current, created]))
         announce(t`Created folder “${created.name}”.`)
       } else if (folderDialog) {
         const updatedFolders = await window.bearwarden.folders.update({
           id: folderDialog.id,
           name
         })
-        setFolders([...updatedFolders].sort((left, right) => left.position - right.position))
+        setFolders(sortFoldersByPosition(updatedFolders))
         const updated = updatedFolders.find((folder) => folder.id === folderDialog.id)
         if (updated) announce(t`Renamed to “${updated.name}”.`)
       }
@@ -3779,7 +3770,7 @@ function VaultShellContent({
           id: activeId,
           parentId: hierarchyIntent.parentId
         })
-        setFolders([...saved].sort((left, right) => left.position - right.position))
+        setFolders(sortFoldersByPosition(saved))
         const movedFolder = saved.find((folder) => folder.id === activeId)
         const parentFolder =
           hierarchyIntent.parentId === null
@@ -3801,7 +3792,7 @@ function VaultShellContent({
     if (orderedIds.every((id, index) => id === previousFolders[index]?.id)) return
     try {
       const saved = await window.bearwarden.folders.reorder({ orderedIds })
-      setFolders([...saved].sort((left, right) => left.position - right.position))
+      setFolders(sortFoldersByPosition(saved))
       announce(t`Folder order updated.`)
     } catch (reorderError) {
       setFolders(previousFolders)
@@ -4161,7 +4152,9 @@ function VaultShellContent({
                             <dt className="text-muted-foreground text-xs">
                               <Trans>Deleted</Trans>
                             </dt>
-                            <dd className="m-0 text-xs">{formatDate(selectedSummary.deletedAt)}</dd>
+                            <dd className="m-0 text-xs">
+                              {formatVaultDate(selectedSummary.deletedAt)}
+                            </dd>
                           </div>
                           <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_1fr] border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:gap-1">
                             <dt className="text-muted-foreground text-xs">
@@ -4268,7 +4261,6 @@ function VaultShellContent({
                               ? cardCoverPreview.dataUrl
                               : cardCoverListPreviews.get(selectedLogin.id)
                           }
-                          compact
                         />
                       ) : (
                         (() => {
@@ -4489,7 +4481,7 @@ function VaultShellContent({
                     <VaultItemMetadataCards
                       selectedLogin={selectedLogin}
                       folders={folders}
-                      formatDate={formatDate}
+                      formatDate={formatVaultDate}
                       busy={busy}
                       onMoveToFolder={openMoveDialogForSelection}
                       onViewPasswordHistory={() => setPasswordHistoryDialogOpen(true)}

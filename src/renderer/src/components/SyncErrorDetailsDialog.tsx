@@ -15,7 +15,7 @@ import { buildSyncDiagnosticReport, type SyncDiagnosticInput } from './sync-erro
 
 type CopyState = 'idle' | 'copied' | 'error'
 
-interface SyncErrorDetailsDialogProps extends SyncDiagnosticInput {
+interface SyncErrorDetailsDialogProps extends Omit<SyncDiagnosticInput, 'appVersion'> {
   description: string
   detailLabel?: string
   reasonLabel?: string
@@ -25,7 +25,6 @@ interface SyncErrorDetailsDialogProps extends SyncDiagnosticInput {
 }
 
 export function SyncErrorDetailsDialog({
-  appVersion: initialAppVersion,
   code,
   description,
   detail,
@@ -39,7 +38,7 @@ export function SyncErrorDetailsDialog({
   title
 }: SyncErrorDetailsDialogProps): React.JSX.Element {
   const { t } = useLingui()
-  const [appVersion, setAppVersion] = useState(initialAppVersion ?? '')
+  const [appVersion, setAppVersion] = useState('')
   const [copyState, setCopyState] = useState<CopyState>('idle')
 
   useEffect(() => {

@@ -141,10 +141,5 @@ function findLastSelectedId(
   selectedIds: ReadonlySet<string>,
   orderedIds: readonly string[]
 ): string | null {
-  for (let index = orderedIds.length - 1; index >= 0; index -= 1) {
-    const id = orderedIds[index]
-    if (selectedIds.has(id)) return id
-  }
-
-  return null
+  return orderedIds.findLast((id) => selectedIds.has(id)) ?? null
 }

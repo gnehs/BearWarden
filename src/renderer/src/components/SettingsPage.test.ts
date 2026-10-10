@@ -1,12 +1,8 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
-  applyVaultTimeoutCustomFields,
   autofillStatusPresentation,
-  contentProtectionDescription,
-  languageItems,
   settingsCategories,
   vaultTimeoutCustomFields,
-  vaultTimeoutCustomValidationMessage,
   vaultTimeoutItems,
   vaultTimeoutSelectValue
 } from './SettingsPage'
@@ -39,14 +35,6 @@ describe('AutoFill setup status', () => {
   })
 })
 
-describe('content protection guidance', () => {
-  it('warns that enabling capture protection can hide the window in remote sessions', () => {
-    expect(contentProtectionDescription).toMatch(/Windows Remote Desktop/i)
-    expect(contentProtectionDescription).toMatch(/taskbar icon/i)
-    expect(contentProtectionDescription).toMatch(/turn this option off/i)
-  })
-})
-
 describe('settings category navigation', () => {
   it('groups related settings into focused pages', () => {
     expect(settingsCategories.map(({ id }) => id)).toEqual([
@@ -58,18 +46,6 @@ describe('settings category navigation', () => {
       'about'
     ])
     expect(settingsCategories.every(({ label }) => label.length > 0)).toBe(true)
-  })
-})
-
-describe('language settings UI', () => {
-  it('offers system and every shipped catalog using English source labels', () => {
-    expect(languageItems).toEqual([
-      { label: 'System', value: 'system' },
-      { label: 'English', value: 'en' },
-      { label: 'Simplified Chinese', value: 'zh-CN' },
-      { label: 'Traditional Chinese', value: 'zh-TW' },
-      { label: 'Japanese', value: 'ja' }
-    ])
   })
 })
 
@@ -92,37 +68,5 @@ describe('vault timeout settings UI', () => {
   it('offers the fixed five-minute system-idle policy without custom fields', () => {
     expect(vaultTimeoutSelectValue({ type: 'systemIdle' })).toBe('systemIdle')
     expect(vaultTimeoutItems.find((item) => item.value === 'systemIdle')?.label).toMatch(/5/)
-  })
-
-  it.each([
-    ['0', '0', /at least 1 minute/i],
-    ['0', '60', /0 and 59/i],
-    ['8760', '1', /8,?760 hours/i]
-  ])('shows an error for invalid %s:%s and does not update settings', (hours, minutes, message) => {
-    const onUpdate = vi.fn(async () => undefined)
-
-    expect(applyVaultTimeoutCustomFields(hours, minutes, onUpdate)).toMatch(message)
-    expect(onUpdate).not.toHaveBeenCalled()
-  })
-
-  it.each([
-    ['0', '1', 1],
-    ['0', '59', 59],
-    ['8760', '0', 525_600]
-  ])(
-    'applies valid custom timeout %s:%s only when explicitly requested',
-    (hours, minutes, total) => {
-      const onUpdate = vi.fn(async () => undefined)
-
-      expect(applyVaultTimeoutCustomFields(hours, minutes, onUpdate)).toBeNull()
-      expect(onUpdate).toHaveBeenCalledOnce()
-      expect(onUpdate).toHaveBeenCalledWith({
-        vaultTimeoutPolicy: { type: 'appInactivity', minutes: total }
-      })
-    }
-  )
-
-  it('has no validation message for the 240-minute preset value', () => {
-    expect(vaultTimeoutCustomValidationMessage('4', '0')).toBeNull()
   })
 })

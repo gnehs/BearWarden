@@ -1,6 +1,5 @@
 import { msg } from '@lingui/core/macro'
 import { toast } from 'sonner'
-import { match, P } from 'ts-pattern'
 import type { AppUpdateState } from '../../../shared/vault-contract'
 import { i18n } from '../i18n'
 
@@ -17,8 +16,8 @@ function runUpdateAction(action: () => Promise<unknown>): void {
 export function presentAppUpdateState(state: AppUpdateState, showError = false): void {
   const version = state.availableVersion ? ` ${state.availableVersion}` : ''
 
-  match(state.status)
-    .with('available', () => {
+  switch (state.status) {
+    case 'available':
       toast.info(i18n._(msg`BearWarden${version} update available`), {
         id: updateToastId,
         duration: Infinity,
@@ -41,16 +40,15 @@ export function presentAppUpdateState(state: AppUpdateState, showError = false):
             )
         }
       })
-    })
-    .with('downloading', () => {
-      const progress = Math.round(state.progress ?? 0)
+      return
+    case 'downloading':
       toast.loading(i18n._(msg`Downloading BearWarden${version}`), {
         id: updateToastId,
         duration: Infinity,
-        description: `${progress}%`
+        description: `${Math.round(state.progress ?? 0)}%`
       })
-    })
-    .with('downloaded', () => {
+      return
+    case 'downloaded':
       toast.success(i18n._(msg`BearWarden${version} is ready`), {
         id: updateToastId,
         duration: Infinity,
@@ -60,18 +58,22 @@ export function presentAppUpdateState(state: AppUpdateState, showError = false):
           onClick: () => runUpdateAction(() => window.bearwarden.updater.install())
         }
       })
-    })
-    .with('error', () => {
+      return
+    case 'error':
       if (showError) {
         toast.error(i18n._(msg`Unable to download update`), {
           id: updateToastId,
           description: i18n._(msg`Check your network connection and try again later.`)
         })
       }
-    })
-    .with(P.union('disabled', 'idle'), () => {
+      return
+    case 'disabled':
+    case 'idle':
       toast.dismiss(updateToastId)
-    })
-    .with('checking', () => undefined)
-    .exhaustive()
+      return
+    case 'checking':
+      return
+    default:
+      state.status satisfies never
+  }
 }

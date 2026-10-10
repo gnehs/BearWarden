@@ -54,8 +54,10 @@ import {
   failAccountBreachCheck,
   failExposedPasswordCheck,
   invalidateAccountBreachCheck,
+  invalidateExposedPasswordCheck,
   resolveAccountBreachCheck,
   resolveExposedPasswordCheck,
+  weakPasswordLabel,
   type AccountBreachCheckState,
   type ExposedPasswordCheckState
 } from '../lib/vault-health-ui'
@@ -266,7 +268,7 @@ function WeakFindingCard({
       description={finding.subtitle || t`Login item`}
       status={
         <Badge variant={finding.score <= 1 ? 'destructive' : 'outline'}>
-          {finding.score <= 1 ? t`Very weak` : t`Weak`}
+          {weakPasswordLabel(finding.score)}
         </Badge>
       }
       onOpen={() => onOpenItem(finding.id)}
@@ -1298,8 +1300,7 @@ export default function VaultHealthPage({
     []
   )
 
-  const visibleExposedState =
-    exposedState.revision === revision ? exposedState : createExposedPasswordIdleState(revision)
+  const visibleExposedState = invalidateExposedPasswordCheck(exposedState, revision)
   const visibleInactiveTwoFactorState =
     inactiveTwoFactorState.revision === revision
       ? inactiveTwoFactorState

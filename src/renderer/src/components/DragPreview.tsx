@@ -1,4 +1,3 @@
-import { ContactRound, CreditCard, FileKey2, Globe2, NotebookPen } from 'lucide-react'
 import { useLingui } from '@lingui/react/macro'
 import type { LoginSummary } from '../../../shared/vault-contract'
 import { Badge } from '@renderer/components/ui/badge'
@@ -6,6 +5,7 @@ import { cn } from '@renderer/lib/utils'
 import { normalizeBitwardenCardBrand } from '../lib/payment-card'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
+import { itemListIcons } from './vault-item-type-icons'
 
 interface ItemDragPreviewProps {
   item: LoginSummary
@@ -14,14 +14,6 @@ interface ItemDragPreviewProps {
   destinationDescription?: string | null
 }
 
-const itemTypeMeta = {
-  login: { icon: Globe2 },
-  card: { icon: CreditCard },
-  identity: { icon: ContactRound },
-  secureNote: { icon: NotebookPen },
-  sshKey: { icon: FileKey2 }
-} as const
-
 export function ItemDragPreview({
   item,
   count,
@@ -29,8 +21,7 @@ export function ItemDragPreview({
   destinationDescription
 }: ItemDragPreviewProps): React.JSX.Element {
   const { t } = useLingui()
-  const meta = itemTypeMeta[item.type]
-  const ItemIcon = meta.icon
+  const ItemIcon = itemListIcons[item.type]
   const itemTypeLabel = {
     login: t`Login`,
     card: t`Card`,
@@ -60,7 +51,7 @@ export function ItemDragPreview({
       <div className="bg-popover/95 text-foreground relative grid min-h-14 w-full grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border px-2.5 py-2 shadow-lg backdrop-blur-md forced-colors:outline-2 forced-colors:outline-[CanvasText]">
         <span className="bg-muted text-primary outline-foreground/5 grid size-9 shrink-0 place-items-center overflow-hidden rounded-md shadow-(--control-highlight) outline">
           {item.type === 'card' ? (
-            <PaymentCardBrandMark brand={normalizeBitwardenCardBrand(item.cardBrand)} compact />
+            <PaymentCardBrandMark brand={normalizeBitwardenCardBrand(item.cardBrand)} />
           ) : item.type === 'login' ? (
             <WebsiteIcon id={item.id} uri={item.uri} enabled={showWebsiteIcons} />
           ) : (

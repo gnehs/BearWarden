@@ -62,11 +62,11 @@ export function customFieldCopyFeedbackKey(
 export function detailFields(login: LoginView, labels: Record<string, string>): DetailField[] {
   if (login.type === 'login') {
     return [
-      { field: 'username', label: labels.username!, value: login.username, copyable: true },
-      { field: 'password', label: labels.password!, secret: true },
+      { field: 'username', label: labels.username, value: login.username, copyable: true },
+      { field: 'password', label: labels.password, secret: true },
       ...login.uris.map((entry, uriIndex) => ({
         field: 'uri' as const,
-        label: uriIndex === 0 ? labels.website! : `${labels.website} ${uriIndex + 1}`,
+        label: uriIndex === 0 ? labels.website : `${labels.website} ${uriIndex + 1}`,
         value: entry.uri,
         copyable: true,
         openUri: true,
@@ -76,18 +76,18 @@ export function detailFields(login: LoginView, labels: Record<string, string>): 
   }
   if (login.type === 'card') {
     return [
-      { field: 'number', label: labels.cardNumber!, secret: true },
-      { field: 'code', label: labels.securityCode!, secret: true },
+      { field: 'number', label: labels.cardNumber, secret: true },
+      { field: 'code', label: labels.securityCode, secret: true },
       {
         field: 'cardholderName',
-        label: labels.cardholder!,
+        label: labels.cardholder,
         value: login.cardholderName,
         copyable: true
       },
-      { field: 'brand', label: labels.brand!, value: login.brand, copyable: true },
+      { field: 'brand', label: labels.brand, value: login.brand, copyable: true },
       {
         field: 'cardExpiration',
-        label: labels.expirationDate!,
+        label: labels.expirationDate,
         value: [login.expMonth, login.expYear].filter(Boolean).join(' / '),
         copyable: true
       }
@@ -97,23 +97,23 @@ export function detailFields(login: LoginView, labels: Record<string, string>): 
     return [
       {
         field: 'username',
-        label: labels.name!,
+        label: labels.name,
         value: [login.title, login.firstName, login.middleName, login.lastName]
           .filter(Boolean)
           .join(' ')
       },
-      { field: 'username', label: labels.company!, value: login.company },
-      { field: 'email', label: labels.email!, value: login.email, copyable: true },
-      { field: 'phone', label: labels.phone!, value: login.phone, copyable: true },
+      { field: 'username', label: labels.company, value: login.company },
+      { field: 'email', label: labels.email, value: login.email, copyable: true },
+      { field: 'phone', label: labels.phone, value: login.phone, copyable: true },
       {
         field: 'identityUsername',
-        label: labels.username!,
+        label: labels.username,
         value: login.identityUsername,
         copyable: true
       },
       {
         field: 'username',
-        label: labels.address!,
+        label: labels.address,
         value: [
           login.address1,
           login.address2,
@@ -126,18 +126,18 @@ export function detailFields(login: LoginView, labels: Record<string, string>): 
           .filter(Boolean)
           .join('，')
       },
-      { field: 'ssn', label: labels.ssn!, secret: true },
-      { field: 'passportNumber', label: labels.passportNumber!, secret: true },
-      { field: 'licenseNumber', label: labels.licenseNumber!, secret: true }
+      { field: 'ssn', label: labels.ssn, secret: true },
+      { field: 'passportNumber', label: labels.passportNumber, secret: true },
+      { field: 'licenseNumber', label: labels.licenseNumber, secret: true }
     ]
   }
   if (login.type === 'sshKey') {
     return [
-      { field: 'privateKey', label: labels.privateKey!, secret: true },
-      { field: 'publicKey', label: labels.publicKey!, value: login.publicKey, copyable: true },
+      { field: 'privateKey', label: labels.privateKey, secret: true },
+      { field: 'publicKey', label: labels.publicKey, value: login.publicKey, copyable: true },
       {
         field: 'fingerprint',
-        label: labels.keyFingerprint!,
+        label: labels.keyFingerprint,
         value: login.fingerprint,
         copyable: true
       }

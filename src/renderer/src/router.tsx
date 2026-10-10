@@ -17,7 +17,7 @@ const indexRoute = createRoute({
   }
 })
 
-export const unlockRoute = createRoute({
+const unlockRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'unlock'
 })
@@ -59,8 +59,6 @@ const routeTree = rootRoute.addChildren([
     emergencyAccessRoute
   ])
 ])
-
-export type { VaultPagePath } from './lib/vault-paths'
 
 export const router = createRouter({
   routeTree,

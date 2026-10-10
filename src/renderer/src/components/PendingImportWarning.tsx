@@ -1,5 +1,4 @@
 import { Eye, EyeOff } from 'lucide-react'
-import { i18n } from '@lingui/core'
 import { plural, t } from '@lingui/core/macro'
 
 import { Alert, AlertDescription, AlertTitle } from '@renderer/components/ui/alert'
@@ -12,6 +11,7 @@ import {
   InputGroupInput
 } from '@renderer/components/ui/input-group'
 import { Spinner } from '@renderer/components/ui/spinner'
+import { formatDateTime } from '@renderer/lib/vault-date'
 
 interface PendingImportWarningProps {
   count: number
@@ -22,12 +22,6 @@ interface PendingImportWarningProps {
   onMasterPasswordChange: (value: string) => void
   onTogglePassword: () => void
   onConfirm: () => void
-}
-
-function formatStartedAt(value: string, locale: string, unknownDate: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return unknownDate
-  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
 }
 
 export function PendingImportWarning({
@@ -54,7 +48,7 @@ export function PendingImportWarning({
         </p>
         <p>
           {t`Started:`}
-          {formatStartedAt(startedAt, i18n.locale, t`Unknown time`)}
+          {formatDateTime(startedAt) ?? t`Unknown time`}
         </p>
         <p>
           {t`After you enter your master password and explicitly confirm, the next sync will resend unconfirmed items. This may create duplicates on the server.`}

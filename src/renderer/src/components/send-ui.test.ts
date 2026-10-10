@@ -83,7 +83,7 @@ describe('Send dates', () => {
 
   it('handles missing and malformed dates without throwing', () => {
     expect(formatSendDate(null)).toBe('未設定')
-    expect(formatSendDate('not-a-date')).toBe('無效的日期格式')
+    expect(formatSendDate('not-a-date')).toBe('無效日期')
     expect(dateTimeLocalValue('not-a-date')).toBe('')
     expect(dateTimeLocalToIso('')).toBeNull()
   })

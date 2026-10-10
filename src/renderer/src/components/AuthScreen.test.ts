@@ -64,12 +64,12 @@ describe('AuthScreen unlock errors', () => {
   it.each([
     ['BEARWARDEN:INVALID_MASTER_PASSWORD', '主密碼不正確。'],
     ['BEARWARDEN:INVALID_PIN', 'PIN 不正確。'],
-    ['BEARWARDEN:PIN_DISABLED', 'PIN 解鎖已停用。請改用主密碼。'],
+    ['BEARWARDEN:PIN_DISABLED', 'PIN 解鎖已停用。請改輸入主密碼。'],
     ['BEARWARDEN:RATE_LIMITED', '嘗試次數過多。請稍後再試。'],
-    ['BEARWARDEN:INVALID_INPUT', '請檢查您的輸入。'],
+    ['BEARWARDEN:INVALID_INPUT', '請檢查您的輸入，然後再試一次。'],
     [
       'BEARWARDEN:CORRUPT_VAULT',
-      '無法讀取保管庫資料。請再試一次。若問題持續發生，保管庫檔案可能已損毀。'
+      '無法讀取保管庫資料。請再試一次；若問題持續，保管庫檔案可能已毀損。'
     ],
     ['BEARWARDEN:NOT_INITIALIZED', '找不到保管庫檔案。請確認檔案未被移動或刪除。']
   ])('describes %s without blaming the vault', (code, message) => {
@@ -100,14 +100,14 @@ describe('AuthScreen biometric fallback', () => {
   it('directs the user to the master password after a biometric failure', () => {
     expect(touchIdUnlockFallback(new Error('TOUCH_ID_FAILED'))).toEqual({
       unlockMethod: 'master-password',
-      error: '無法使用生物辨識驗證開啟保管庫。請輸入主密碼。'
+      error: '無法使用生物辨識解鎖保管庫。請輸入您的主密碼。'
     })
   })
 
   it('directs the user to the master password when biometrics are unavailable', () => {
     expect(touchIdUnlockFallback(new Error('TOUCH_ID_UNAVAILABLE'))).toEqual({
       unlockMethod: 'master-password',
-      error: '目前無法使用生物辨識驗證。請輸入您的主密碼。'
+      error: '目前無法使用生物辨識解鎖。請輸入您的主密碼。'
     })
   })
 

@@ -170,7 +170,7 @@ export function VaultShellTitlebar({
       {!navigation.auxiliaryPageOpen && (
         <InputGroup
           className={cn(
-            'text-muted-foreground [@media(prefers-reduced-transparency:reduce)]:bg-card bg-card/50 hover:bg-muted hover:text-foreground absolute left-1/2 h-10 w-[clamp(300px,44vw,560px)] min-w-0 -translate-x-1/2 gap-2 rounded-xl border-0 py-0 pr-2 pl-2.5 focus-within:border-(--focus) max-[880px]:static max-[880px]:max-w-none max-[880px]:flex-1 max-[880px]:translate-x-0 max-[680px]:[&_kbd]:hidden',
+            'text-muted-foreground [@media(prefers-reduced-transparency:reduce)]:bg-card bg-card/50 hover:bg-muted hover:text-foreground focus-within:border-ring absolute left-1/2 h-10 w-[clamp(300px,44vw,560px)] min-w-0 -translate-x-1/2 gap-2 rounded-xl border-0 py-0 pr-2 pl-2.5 max-[880px]:static max-[880px]:max-w-none max-[880px]:flex-1 max-[880px]:translate-x-0 max-[680px]:[&_kbd]:hidden',
             'shadow-(--control-highlight) hover:shadow-(--control-highlight)',
             '[-webkit-app-region:no-drag] **:[-webkit-app-region:no-drag]'
           )}
@@ -326,10 +326,7 @@ export function VaultSearchDialog({
                       aria-hidden="true"
                     >
                       {item.type === 'card' ? (
-                        <PaymentCardBrandMark
-                          brand={normalizeBitwardenCardBrand(item.cardBrand)}
-                          compact
-                        />
+                        <PaymentCardBrandMark brand={normalizeBitwardenCardBrand(item.cardBrand)} />
                       ) : item.type === 'login' && !presentation.isTrash ? (
                         <WebsiteIcon
                           id={item.id}

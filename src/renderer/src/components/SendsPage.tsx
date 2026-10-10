@@ -68,6 +68,8 @@ import FeatureUnderConstructionNotice from './FeatureUnderConstructionNotice'
 import {
   dateTimeLocalToIso,
   dateTimeLocalValue,
+  formatSendDate,
+  maxAccessCountValidationMessage,
   sendStatuses,
   type SendStatus,
   usesEmailVerification
@@ -102,14 +104,6 @@ function draftFromSend(send: SendView, fileSendErrorMessage: string): SendCreate
     disabled: send.disabled,
     hideEmail: send.hideEmail
   }
-}
-
-function isValidMaxAccessCount(value: number | null | undefined): boolean {
-  return (
-    value === null ||
-    value === undefined ||
-    (Number.isSafeInteger(value) && value > 0 && value <= 2_147_483_647)
-  )
 }
 
 function SendStatusBadge({ status }: { status: SendStatus }): React.JSX.Element {
@@ -148,19 +142,6 @@ function SendsPage(): React.JSX.Element {
   const [createMode, setCreateMode] = useState<'text' | 'file'>('text')
 
   const selected = sends.find((send) => send.id === selectedId) ?? null
-
-  function formatDate(value: string | null): string {
-    if (!value) return t`Not set`
-    const date = new Date(value)
-    if (!Number.isFinite(date.getTime())) return t`Invalid date`
-    return new Intl.DateTimeFormat(i18n.locale, {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(date)
-  }
 
   async function retryLoad(): Promise<void> {
     setLoading(true)
@@ -234,8 +215,9 @@ function SendsPage(): React.JSX.Element {
       )
       return
     }
-    if (!isValidMaxAccessCount(draft.maxAccessCount)) {
-      toast.error(t`Maximum access count must be an integer between 1 and 2,147,483,647.`)
+    const maxAccessCountError = maxAccessCountValidationMessage(draft.maxAccessCount)
+    if (maxAccessCountError) {
+      toast.error(maxAccessCountError)
       return
     }
     setBusy(true)
@@ -263,8 +245,9 @@ function SendsPage(): React.JSX.Element {
       toast.error(t`Enter a Send name first.`)
       return
     }
-    if (!isValidMaxAccessCount(draft.maxAccessCount)) {
-      toast.error(t`Maximum access count must be an integer between 1 and 2,147,483,647.`)
+    const maxAccessCountError = maxAccessCountValidationMessage(draft.maxAccessCount)
+    if (maxAccessCountError) {
+      toast.error(maxAccessCountError)
       return
     }
     setBusy(true)
@@ -548,19 +531,19 @@ function SendsPage(): React.JSX.Element {
                         <dt>
                           <Trans>Expires</Trans>
                         </dt>
-                        <dd>{formatDate(send.expirationDate)}</dd>
+                        <dd>{formatSendDate(send.expirationDate)}</dd>
                       </div>
                       <div className="flex justify-between gap-2">
                         <dt>
                           <Trans>Deletes</Trans>
                         </dt>
-                        <dd>{formatDate(send.deletionDate)}</dd>
+                        <dd>{formatSendDate(send.deletionDate)}</dd>
                       </div>
                       <div className="flex justify-between gap-2 sm:col-span-2">
                         <dt>
                           <Trans>Last revised</Trans>
                         </dt>
-                        <dd>{formatDate(send.revisionDate)}</dd>
+                        <dd>{formatSendDate(send.revisionDate)}</dd>
                       </div>
                     </dl>
                   </CardContent>

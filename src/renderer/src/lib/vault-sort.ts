@@ -15,7 +15,7 @@ export function sortVaultItems(items: LoginSummary[], mode: VaultSortMode): Logi
     numeric: true,
     sensitivity: 'base'
   })
-  return [...items].sort((left, right) => {
+  return items.toSorted((left, right) => {
     let result = 0
     if (mode === 'frequency') {
       result = right.usageCount - left.usageCount

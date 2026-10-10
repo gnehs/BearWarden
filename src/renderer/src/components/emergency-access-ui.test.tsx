@@ -1,11 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import type { EmergencyAccessStatus, EmergencyAccessView } from '../../../shared/vault-contract'
+import type { EmergencyAccessView } from '../../../shared/vault-contract'
 import { EmergencyAccessContent } from './EmergencyAccessPage'
 import {
   emergencyAccessCreationLabel,
   emergencyAccessDisplayName,
-  emergencyAccessStatusLabel,
   safeEmergencyAccessAvatarColor
 } from './emergency-access-ui'
 
@@ -29,10 +28,7 @@ describe('Emergency Access UI', () => {
     expect(emergencyAccessDisplayName({ ...entry, name: '   ' })).toBe('trusted@example.invalid')
   })
 
-  it('uses the official status labels and only accepts safe avatar colors', () => {
-    expect(
-      [0, 1, 2, 3, 4].map((status) => emergencyAccessStatusLabel(status as EmergencyAccessStatus))
-    ).toEqual(['已受邀', '已接受邀請', '已確認', '已請求存取', '已核准存取'])
+  it('only accepts safe avatar colors and omits a missing creation date', () => {
     expect(safeEmergencyAccessAvatarColor('#12abEF')).toBe('#12abEF')
     expect(safeEmergencyAccessAvatarColor('url(example.invalid)')).toBeUndefined()
     expect(emergencyAccessCreationLabel(null)).toBeNull()

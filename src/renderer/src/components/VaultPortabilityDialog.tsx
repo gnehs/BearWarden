@@ -26,6 +26,7 @@ import { Input } from '@renderer/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@renderer/components/ui/native-select'
 import { Progress, ProgressLabel, ProgressValue } from '@renderer/components/ui/progress'
 import { Spinner } from '@renderer/components/ui/spinner'
+import { formatDateTime } from '../lib/vault-date'
 import { createVaultImportRequest, executeVaultExport } from '../lib/vault-portability-ui'
 
 export type VaultPortabilityMode = 'export' | 'import'
@@ -61,15 +62,6 @@ function FormattedBackupBytes({ bytes }: { bytes: number }): React.JSX.Element {
 
   const formattedMegabytes = formatter.format(normalizedBytes / 1024 / 1024)
   return <Trans>{formattedMegabytes} MB</Trans>
-}
-
-function formatBackupCreatedAt(value: string, locale: string): string | null {
-  const date = new Date(value)
-  if (!Number.isFinite(date.getTime())) return null
-  return new Intl.DateTimeFormat(locale, {
-    dateStyle: 'medium',
-    timeStyle: 'short'
-  }).format(date)
 }
 
 export function VaultCsvExportWarning(): React.JSX.Element {
@@ -286,7 +278,7 @@ function VaultPortabilityDialog({
       ? 100
       : 0
   const numberFormatter = new Intl.NumberFormat(i18n.locale)
-  const backupCreatedAt = preview ? formatBackupCreatedAt(preview.createdAt, i18n.locale) : null
+  const backupCreatedAt = preview ? formatDateTime(preview.createdAt) : null
   const formattedItemCount = numberFormatter.format(preview?.itemCount ?? 0)
   const formattedAttachmentCount = numberFormatter.format(preview?.attachmentCount ?? 0)
   const formattedUploadedAttachments = numberFormatter.format(progress?.uploadedAttachments ?? 0)

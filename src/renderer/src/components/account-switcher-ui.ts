@@ -108,7 +108,7 @@ export function accountMutationError(error: unknown): string {
   const message = error instanceof Error ? error.message : ''
   if (message.includes('ACCOUNT_LIMIT_REACHED'))
     return i18n._(msg`The local account limit has been reached. You can keep up to 5 accounts.`)
-  if (message.includes('ACCOUNT_NOT_FOUND') || message.includes('NOT_FOUND')) {
+  if (message.includes('NOT_FOUND')) {
     return i18n._(msg`The requested local account was not found. Refresh and try again.`)
   }
   if (message.includes('ACCOUNT_ACTIVE_REMOVAL_FORBIDDEN')) {
@@ -117,15 +117,15 @@ export function accountMutationError(error: unknown): string {
   if (message.includes('ACCOUNT_STALE_STATE')) {
     return i18n._(msg`The local account list has changed. Refresh and try again.`)
   }
-  if (message.includes('ACCOUNT_SWITCH_UNAVAILABLE') || message.includes('SWITCH_UNAVAILABLE')) {
+  if (message.includes('SWITCH_UNAVAILABLE')) {
     return i18n._(msg`Local account management is currently unavailable. Try again later.`)
   }
-  if (message.includes('ACCOUNT_SWITCH_IN_PROGRESS') || message.includes('IN_PROGRESS')) {
+  if (message.includes('IN_PROGRESS')) {
     return i18n._(
       msg`A local account switch is already in progress. Wait for BearWarden to restart.`
     )
   }
-  if (message.includes('ACCOUNT_SWITCH_RESULT_UNKNOWN') || message.includes('RESULT_UNKNOWN')) {
+  if (message.includes('RESULT_UNKNOWN')) {
     return i18n._(
       msg`The account operation result could not be confirmed. Restart BearWarden and verify the current status.`
     )

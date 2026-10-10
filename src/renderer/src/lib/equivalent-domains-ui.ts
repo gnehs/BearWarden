@@ -4,21 +4,12 @@ import type {
   GlobalEquivalentDomainView
 } from '../../../shared/vault-contract'
 import { i18n } from '../i18n'
+import { isPlainRecord } from './utils'
 
 const MAX_GROUPS = 10_000
 const MAX_DOMAINS_PER_GROUP = 1_000
 const MAX_TOTAL_DOMAINS = 100_000
 const MAX_DOMAIN_LENGTH = 1_024
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
-  try {
-    const prototype = Object.getPrototypeOf(value)
-    return prototype === Object.prototype || prototype === null
-  } catch {
-    return false
-  }
-}
 
 function isDomain(value: unknown): value is string {
   return (
@@ -122,21 +113,21 @@ export function equivalentDomainRows(settings: EquivalentDomainSettingsView): st
 
 export function equivalentDomainErrorMessage(error: unknown): string {
   if (!(error instanceof Error)) {
-    return i18n._(msg`Unable to read equivalent domain settings. Please try again later.`)
+    return i18n._(msg`Unable to read equivalent domain settings. Try again later.`)
   }
   if (error.message.includes('SYNC_CONFLICT')) {
     return i18n._(
-      msg`Settings were changed on another device. The server version has been reloaded; review it before saving.`
+      msg`Settings changed on another device. The server version has been reloaded; review it before saving.`
     )
   }
   if (error.message.includes('SYNC_AUTH_REQUIRED')) {
-    return i18n._(msg`Your Bitwarden account needs to be signed in or unlocked again.`)
+    return i18n._(msg`Your Bitwarden account needs to sign in again or unlock.`)
   }
   if (error.message.includes('LOCKED')) {
     return i18n._(msg`The vault is locked. Unlock it and try again.`)
   }
   if (error.message.includes('INVALID_INPUT')) {
-    return i18n._(msg`Check the domain format; separate domains with commas or new lines.`)
+    return i18n._(msg`Check the domain format. Use commas or line breaks to separate each row.`)
   }
   return i18n._(
     msg`Unable to save equivalent domain settings. Check your connection and try again.`

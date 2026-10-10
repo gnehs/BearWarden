@@ -2,14 +2,12 @@ import bearIconUrl from '../../../../resources/icon.svg'
 import { cn } from '@renderer/lib/utils'
 
 interface BrandMarkProps {
-  compact?: boolean
   hideMark?: boolean
   stacked?: boolean
   className?: string
 }
 
 function BrandMark({
-  compact = false,
   hideMark = false,
   stacked = false,
   className
@@ -25,18 +23,12 @@ function BrandMark({
       aria-label="BearWarden"
     >
       <span
-        className={cn('grid size-10 place-items-center', compact && 'size-8', hideMark && 'hidden')}
+        className={cn('grid size-10 place-items-center', hideMark && 'hidden')}
         aria-hidden="true"
       >
-        <img
-          className="block size-full"
-          src={bearIconUrl}
-          alt=""
-          width={compact ? 32 : 40}
-          height={compact ? 32 : 40}
-        />
+        <img className="block size-full" src={bearIconUrl} alt="" width={40} height={40} />
       </span>
-      {!compact && <span className="text-base">BearWarden</span>}
+      <span className="text-base">BearWarden</span>
     </div>
   )
 }

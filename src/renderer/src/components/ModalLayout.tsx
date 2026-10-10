@@ -48,7 +48,7 @@ export function ModalContent({
   return (
     <DialogContent
       className={cn(
-        'border-border m-auto max-h-[calc(100%-48px)] w-[min(calc(100%-32px),470px)] max-w-[min(calc(100%-32px),470px)] gap-0 overflow-hidden rounded-2xl border bg-[var(--panel)] p-0 text-[var(--text)] shadow-[var(--shadow)] max-[680px]:w-[min(calc(100%-20px),470px)] max-[680px]:max-w-[min(calc(100%-20px),470px)]',
+        'border-border bg-card text-foreground m-auto max-h-[calc(100%-48px)] w-[min(calc(100%-32px),470px)] max-w-[min(calc(100%-32px),470px)] gap-0 overflow-hidden rounded-2xl border p-0 shadow-[var(--shadow)] max-[680px]:w-[min(calc(100%-20px),470px)] max-[680px]:max-w-[min(calc(100%-20px),470px)]',
         className
       )}
       {...props}
@@ -88,7 +88,7 @@ export function ModalFooter({
   return (
     <DialogFooter
       className={cn(
-        'mx-0 mb-0 items-center gap-2 border-t bg-[var(--panel-muted)] px-5 py-3',
+        'bg-muted mx-0 mb-0 items-center gap-2 border-t px-5 py-3',
         split ? 'justify-between max-[430px]:flex-col max-[430px]:items-stretch' : 'justify-end',
         className
       )}

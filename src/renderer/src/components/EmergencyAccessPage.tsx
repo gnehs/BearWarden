@@ -24,7 +24,11 @@ import {
 import { Spinner } from '@renderer/components/ui/spinner'
 import AuxiliaryPageLayout from './AuxiliaryPageLayout'
 import FeatureUnderConstructionNotice from './FeatureUnderConstructionNotice'
-import { emergencyAccessDisplayName, safeEmergencyAccessAvatarColor } from './emergency-access-ui'
+import {
+  emergencyAccessCreationLabel,
+  emergencyAccessDisplayName,
+  safeEmergencyAccessAvatarColor
+} from './emergency-access-ui'
 
 interface EmergencyAccessContentProps {
   entries: EmergencyAccessView[]
@@ -94,14 +98,7 @@ export function EmergencyAccessContent({
       {entries.map((entry) => {
         const displayName = emergencyAccessDisplayName(entry)
         const initial = Array.from(displayName)[0]?.toLocaleUpperCase(i18n.locale) ?? '?'
-        const creationDate = entry.creationDate ? new Date(entry.creationDate) : null
-        const creationLabel =
-          creationDate && Number.isFinite(creationDate.getTime())
-            ? new Intl.DateTimeFormat(i18n.locale, {
-                dateStyle: 'medium',
-                timeStyle: 'short'
-              }).format(creationDate)
-            : null
+        const creationLabel = emergencyAccessCreationLabel(entry.creationDate)
         const avatarColor = safeEmergencyAccessAvatarColor(entry.avatarColor)
         const waitTimeLabel = t({
           message: plural(entry.waitTimeDays, { one: 'Wait # day', other: 'Wait # days' })

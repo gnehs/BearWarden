@@ -5,14 +5,12 @@ interface TotpCountdownIndicatorProps {
   remainingSeconds: number | null
   period: number
   compact?: boolean
-  className?: string
 }
 
 export default function TotpCountdownIndicator({
   remainingSeconds,
   period,
-  compact = false,
-  className
+  compact = false
 }: TotpCountdownIndicatorProps): React.JSX.Element {
   const { t } = useLingui()
   const value = remainingSeconds === null ? null : Math.min(period, Math.max(0, remainingSeconds))
@@ -24,8 +22,7 @@ export default function TotpCountdownIndicator({
         'relative grid place-items-center rounded-full',
         compact
           ? 'size-4'
-          : 'bg-card text-foreground size-11 shadow-[0_6px_18px_color-mix(in_oklch,var(--shadow-color)_24%,transparent)] ring-2 ring-white',
-        className
+          : 'bg-card text-foreground size-11 shadow-[0_6px_18px_color-mix(in_oklch,var(--shadow-color)_24%,transparent)] ring-2 ring-white'
       )}
       data-slot="totp-countdown-indicator"
       role="progressbar"

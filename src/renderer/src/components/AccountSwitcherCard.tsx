@@ -427,7 +427,6 @@ function AccountRow({
       )}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       data-account-sortable-row=""
-      data-dragging={isDragging ? 'true' : undefined}
     >
       <Button
         ref={setActivatorNodeRef}

@@ -1,20 +1,13 @@
 import { useDndContext, useDroppable } from '@dnd-kit/core'
 import { Trans, useLingui } from '@lingui/react/macro'
-import {
-  ArrowLeft,
-  ContactRound,
-  CreditCard,
-  FileKey2,
-  Folder,
-  KeyRound,
-  NotebookPen
-} from 'lucide-react'
+import { ArrowLeft, Folder } from 'lucide-react'
 import type { ComponentProps, JSX, ReactNode } from 'react'
 import type { LoginSummary, VaultItemType } from '../../../shared/vault-contract'
 import { normalizeBitwardenCardBrand } from '../lib/payment-card'
 import { cn } from '../lib/utils'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
+import { itemTypeIcons } from './vault-item-type-icons'
 import { Button } from './ui/button'
 import { Card, CardContent, CardHeader } from './ui/card'
 import { Skeleton } from './ui/skeleton'
@@ -22,14 +15,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 export type SidebarTone =
   'blue' | 'indigo' | 'green' | 'yellow' | 'cyan' | 'red' | 'orange' | 'gray'
-
-const itemTypeIcons: Record<VaultItemType, typeof KeyRound> = {
-  login: KeyRound,
-  card: CreditCard,
-  identity: ContactRound,
-  secureNote: NotebookPen,
-  sshKey: FileKey2
-}
 
 interface TooltipIconButtonProps extends ComponentProps<typeof Button> {
   label: string
@@ -105,7 +90,7 @@ export const detailFieldClassName =
   'border-border/60 grid min-h-12 grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)_repeat(2,auto)] items-center gap-2 border-b py-0.5 last:border-b-0 [&>span]:text-xs [&>span]:text-muted-foreground [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-medium [&>:nth-child(3):last-child]:col-start-[-2] max-[430px]:grid-cols-[1fr_auto_auto] max-[430px]:gap-1.5 max-[430px]:[&>span]:col-span-full max-[430px]:[&>strong]:col-start-1 max-[430px]:[&>[data-field-copy-value]]:col-start-1'
 
 export const detailScrollClassName =
-  'bg-muted/30 min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] overflow-auto px-4 pt-4 pb-7 max-[680px]:px-3 max-[680px]:pt-3 max-[680px]:pb-5'
+  'bg-muted/30 min-h-0 flex-1 [scrollbar-color:var(--ring)_transparent] overflow-auto px-4 pt-4 pb-7 max-[680px]:px-3 max-[680px]:pt-3 max-[680px]:pb-5'
 
 // This colocated helper keeps the shared item-type presentation mapping consistent.
 // eslint-disable-next-line react-refresh/only-export-components
@@ -193,7 +178,6 @@ export function SidebarLink({
       )}
       type="button"
       aria-current={active ? 'page' : undefined}
-      data-sidebar-active={active ? '' : undefined}
       onClick={onClick}
     >
       <span
@@ -311,7 +295,7 @@ export function DetailPlaceholder({
           {item.type === 'login' ? (
             <WebsiteIcon id={item.id} uri={item.uri} enabled={showWebsiteIcons} />
           ) : item.type === 'card' ? (
-            <PaymentCardBrandMark brand={normalizeBitwardenCardBrand(item.cardBrand)} compact />
+            <PaymentCardBrandMark brand={normalizeBitwardenCardBrand(item.cardBrand)} />
           ) : (
             <TypeIcon size={18} />
           )}

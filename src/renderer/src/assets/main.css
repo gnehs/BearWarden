@@ -62,15 +62,11 @@
   --icon-swap-ease: ease-in-out;
   --pulse-dur: 1000ms;
   --pulse-count: 1;
-  --pulse-min: 0.5;
   --reveal-dur: 400ms;
   --reveal-blur: 2px;
   --reveal-ease: ease-in-out;
   --tabs-dur: 250ms;
   --tabs-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --tabs-text-muted: var(--muted-foreground);
-  --tabs-text-active: var(--foreground);
-  --tabs-bar-bg: var(--muted);
   --tabs-pill-bg: var(--background);
   --acc-expand: 250ms;
   --acc-collapse: 250ms;
@@ -124,22 +120,11 @@
   --sidebar-overlay-hover: oklch(0 0 0 / 7%);
   --sidebar-overlay-active: oklch(0 0 0 / 11%);
   --sidebar-overlay-border: oklch(0 0 0 / 8%);
-  --sidebar-status-success: var(--success);
+  --sidebar-status-success: var(--primary);
   --category-light-foreground: oklch(0.218 0.008 223.9);
-  --search-field-background: oklch(1 0 0 / 55%);
-  --bg: var(--background);
-  --panel: var(--card);
-  --panel-muted: var(--muted);
-  --text: var(--foreground);
-  --subtle: var(--muted-foreground);
-  --border-strong: var(--ring);
   --accent-hover: color-mix(in oklch, var(--primary) 88%, black);
   --accent-soft: color-mix(in oklch, var(--primary) 12%, var(--background));
-  --gold: var(--chart-4);
-  --danger: var(--destructive);
   --danger-soft: color-mix(in oklch, var(--destructive) 10%, var(--background));
-  --success: var(--primary);
-  --focus: var(--ring);
   --shadow-color: oklch(0 0 0);
   --control-highlight: inset 0 1px rgb(255 255 255 / 50%);
   --subtle-primary-action-shadow:
@@ -252,7 +237,6 @@
   --sidebar-overlay-active: oklch(1 0 0 / 12%);
   --sidebar-overlay-border: oklch(1 0 0 / 10%);
   --sidebar-status-success: var(--sidebar-primary);
-  --search-field-background: oklch(0 0 0 / 22%);
   --native-window-material: color-mix(in oklch, var(--background) 72%, transparent);
   --native-material-shadow:
     0 1px 0 color-mix(in oklch, var(--shadow-color) 18%, transparent) inset,
@@ -320,8 +304,6 @@ body:not([data-window-mode='autofill']) #root::before {
 }
 
 body {
-  color: var(--text);
-  background: var(--bg);
   font-size: 14px;
 }
 
@@ -351,7 +333,7 @@ input:not([data-slot]):focus-visible,
 select:not([data-slot]):focus-visible,
 textarea:not([data-slot]):focus-visible,
 [tabindex]:not([data-slot]):focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--focus), transparent 28%);
+  outline: 3px solid color-mix(in srgb, var(--ring), transparent 28%);
   outline-offset: 2px;
 }
 

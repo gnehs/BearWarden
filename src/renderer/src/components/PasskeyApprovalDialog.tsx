@@ -29,6 +29,7 @@ import {
 } from '@renderer/components/ui/select'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@renderer/components/ui/toggle-group'
+import { approvalExpiryMessage } from '@renderer/lib/approval-expiry'
 import {
   canApprovePasskeyApproval,
   initialPasskeyApprovalChoice,
@@ -59,7 +60,7 @@ export default function PasskeyApprovalDialog({
   onRespond,
   onSettled
 }: PasskeyApprovalDialogProps): React.JSX.Element {
-  const { i18n, t } = useLingui()
+  const { t } = useLingui()
   const [renderedAt] = useState(() => Date.now())
   const [selectedChoiceId, setSelectedChoiceId] = useState<string | undefined>(() =>
     initialPasskeyApprovalChoice(request)
@@ -116,12 +117,7 @@ export default function PasskeyApprovalDialog({
     { label: t`Choose a passkey`, value: null },
     ...request.choices.map((choice) => ({ label: choice.label, value: choice.id }))
   ]
-  const remainingSeconds = Math.max(0, Math.ceil((request.expiresAt - renderedAt) / 1_000))
-  const formattedRemainingSeconds = new Intl.NumberFormat(i18n.locale).format(remainingSeconds)
-  const expiryMessage =
-    remainingSeconds > 0
-      ? t`This request expires in about ${formattedRemainingSeconds} seconds.`
-      : t`This request has expired.`
+  const expiryMessage = approvalExpiryMessage(request.expiresAt, renderedAt)
 
   function clearPassword(): void {
     passwordRef.current = ''

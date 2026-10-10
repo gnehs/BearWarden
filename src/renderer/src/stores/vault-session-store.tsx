@@ -16,6 +16,7 @@ import type {
   SharedLoginSummary
 } from '../../../shared/vault-contract'
 import type { Scope, TypeFilter } from '../components/VaultShell-model'
+import { resolveValue } from '../lib/utils'
 import type { VaultSortMode } from '../lib/vault-sort'
 
 export type VaultEditorMode = 'create' | 'edit' | null
@@ -77,10 +78,6 @@ function createInitialState(): VaultSessionState {
     loading: true,
     busy: false
   }
-}
-
-function resolveValue<T>(value: SetStateAction<T>, current: T): T {
-  return typeof value === 'function' ? (value as (current: T) => T)(current) : value
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

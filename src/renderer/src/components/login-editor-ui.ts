@@ -1,5 +1,3 @@
-import { i18n } from '@lingui/core'
-import { msg } from '@lingui/core/macro'
 import { arrayMove } from '@dnd-kit/sortable'
 import { parse } from 'tldts'
 import type { VaultCustomFieldType, VaultLoginUri } from '../../../shared/vault-contract'
@@ -37,15 +35,6 @@ export function reorderEditorUris(
 ): { uri: string | null; uris: EditorLoginUri[] } {
   const reordered = reorderEditorItemsByClientId(uris, activeId, overId)
   return { uris: reordered, uri: reordered[0]?.uri ?? null }
-}
-
-export function editorHeaderContent(
-  typeLabel: string,
-  itemName: string | null
-): { eyebrow: string; heading: string; typeBadge: string | null } {
-  return itemName === null
-    ? { eyebrow: i18n._(msg`New item`), heading: typeLabel, typeBadge: null }
-    : { eyebrow: i18n._(msg`Edit ${typeLabel}`), heading: itemName, typeBadge: typeLabel }
 }
 
 // Keep module initialization locale-independent. Labels are created inside LoginEditor after
@@ -104,27 +93,5 @@ export function uriMatchRecognizedParts(
     leading: uri.slice(0, start),
     recognized: uri.slice(start, end),
     trailing: uri.slice(end)
-  }
-}
-
-export function uriMatchExample(value: UriMatchOptionValue, rawUri: string): string {
-  const uri = rawUri.trim()
-  if (!uri) return i18n._(msg`Enter a URL to show a matching example`)
-
-  switch (value) {
-    case 'default':
-      return i18n._(msg`${uri} → Determined by account settings ○URL△`)
-    case '0':
-      return i18n._(msg`${uri} ≈ ○URL△ with the same base domain`)
-    case '1':
-      return i18n._(msg`${uri} ≈ ○path△ on the same host`)
-    case '2':
-      return i18n._(msg`${uri} ≈ ${uri}○△`)
-    case '3':
-      return i18n._(msg`${uri} = ${uri}; ○△ does not match`)
-    case '4':
-      return i18n._(msg`${uri} → Matches ○URL△ that satisfies the rule`)
-    case '5':
-      return i18n._(msg`${uri} ≠ every ○URL△`)
   }
 }

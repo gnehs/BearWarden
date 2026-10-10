@@ -23,6 +23,7 @@ import {
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@renderer/components/ui/field'
 import { Input } from '@renderer/components/ui/input'
 import { Spinner } from '@renderer/components/ui/spinner'
+import { formatDateTime } from '@renderer/lib/vault-date'
 import LoginApprovalDialog from './LoginApprovalDialog'
 
 export const DEAUTHORIZE_SESSIONS_CONFIRMATION = ACCOUNT_SESSION_DEAUTHORIZATION_CONFIRMATION
@@ -240,18 +241,13 @@ function deviceTypeName(type: number): string {
   }
 }
 
-function formatDeviceDate(value: string | null, locale: string): string {
+function formatDeviceDate(value: string | null): string {
   if (value === null) return t`No record`
-  const date = new Date(value)
-  if (!Number.isFinite(date.getTime())) return t`Date unavailable`
-  return new Intl.DateTimeFormat(locale, {
-    dateStyle: 'medium',
-    timeStyle: 'short'
-  }).format(date)
+  return formatDateTime(value) ?? t`Date unavailable`
 }
 
 function AccountDevicesDialog(): React.JSX.Element {
-  const { i18n, t: translate } = useLingui()
+  const { t: translate } = useLingui()
   const [open, setOpen] = useState(false)
   const [result, setResult] = useState<AccountDevicesResult | null>(null)
   const [busy, setBusy] = useState(false)
@@ -401,7 +397,7 @@ function AccountDevicesDialog(): React.JSX.Element {
                           {approval.requestDeviceType || translate`Unknown device`}
                         </p>
                         <p className="text-muted-foreground">
-                          {formatDeviceDate(approval.createdAt, i18n.locale)}
+                          {formatDeviceDate(approval.createdAt)}
                         </p>
                       </div>
                       <Button
@@ -477,11 +473,11 @@ function AccountDevicesDialog(): React.JSX.Element {
                             Created
                           </Trans>
                         </dt>
-                        <dd>{formatDeviceDate(device.createdAt, i18n.locale)}</dd>
+                        <dd>{formatDeviceDate(device.createdAt)}</dd>
                         <dt className="text-muted-foreground">
                           <Trans>Last activity</Trans>
                         </dt>
-                        <dd>{formatDeviceDate(device.lastActivityAt, i18n.locale)}</dd>
+                        <dd>{formatDeviceDate(device.lastActivityAt)}</dd>
                         <dt className="text-muted-foreground">
                           <Trans>Current device</Trans>
                         </dt>

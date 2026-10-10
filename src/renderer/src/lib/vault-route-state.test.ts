@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { VaultPagePath } from '../router'
-import { nextVaultPagePath, vaultPagePathFromPathname } from './vault-route-state'
+import { vaultPagePathFromPathname, type VaultPagePath } from './vault-paths'
+import { nextVaultPagePath } from './vault-route-state'
 
 vi.mock('../router', () => ({ vaultRoute: {} }))
 

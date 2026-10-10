@@ -20,11 +20,8 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import {
   CheckSquare2,
   ClipboardPaste,
-  ContactRound,
-  CreditCard,
   Eye,
   EyeOff,
-  FileKey2,
   FolderOpen,
   GripVertical,
   ImageIcon,
@@ -144,6 +141,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 import { Textarea } from './ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import CredentialGeneratorDialog from './CredentialGeneratorDialog'
+import { itemTypeIcons } from './vault-item-type-icons'
 import {
   canSelectCustomFieldType,
   reorderEditorItemsByClientId,
@@ -160,6 +158,7 @@ import {
   invalidateFailedSshImport,
   isValidSshImportPassphrase,
   isSshKeyGenerationBlockingSave,
+  sshKeyImportErrorMessage,
   sshKeyImportResultAction,
   sshKeyGenerationAction,
   sshKeyMaterialState,
@@ -197,14 +196,6 @@ const paymentCardBrands: Exclude<PaymentCardBrand, 'unknown'>[] = [
 const fieldGridClassName = 'grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3'
 const checkFieldClassName =
   'flex items-start gap-2.5 rounded-lg border bg-muted p-2.5 [&_[data-slot=checkbox]]:size-4 [&_[data-slot=checkbox]]:accent-[var(--primary)] [&_[data-slot=field-content]]:grid [&_[data-slot=field-content]]:gap-1 [&_[data-slot=field-content]_[data-slot=field-label]]:text-xs [&_[data-slot=field-description]]:text-xs'
-
-const itemTypeIcons: Record<VaultItemType, typeof KeyRound> = {
-  login: KeyRound,
-  card: CreditCard,
-  identity: ContactRound,
-  secureNote: NotebookPen,
-  sshKey: FileKey2
-}
 
 const emptyFields: VaultItemFields = {
   username: '',
@@ -419,10 +410,7 @@ function UriMatchExampleText({
   }
 
   return (
-    <code
-      className={cn('min-w-0 font-mono text-xs break-all whitespace-pre-wrap', className)}
-      data-uri-match-recognized={value}
-    >
+    <code className={cn('min-w-0 font-mono text-xs break-all whitespace-pre-wrap', className)}>
       {parts.leading}
       {parts.recognized && (
         <strong className="text-foreground font-semibold">{parts.recognized}</strong>
@@ -484,7 +472,6 @@ function SortableUriRow({
       )}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       data-uri-sortable-row=""
-      data-dragging={isDragging ? 'true' : undefined}
     >
       <Button
         ref={setActivatorNodeRef}
@@ -532,7 +519,6 @@ function SortableCustomFieldCard({
       className={cn('grid grid-cols-[auto_minmax(0,1fr)] gap-1', isDragging && 'opacity-60')}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       data-custom-field-sortable-row=""
-      data-dragging={isDragging ? 'true' : undefined}
     >
       <Button
         ref={setActivatorNodeRef}
@@ -638,24 +624,6 @@ function LoginEditor({
     { value: '4', label: t`Regular expression` },
     { value: '5', label: t`Never` }
   ]
-  const sshImportErrorMessage = (
-    code: Extract<
-      Awaited<ReturnType<typeof window.bearwarden.sshKeys.beginImport>>,
-      { status: 'error' }
-    >['code']
-  ): string => {
-    const messages = {
-      EmptyClipboard: t`The clipboard is empty. Copy an SSH private key and try again.`,
-      ClipboardTooLarge: t`The clipboard contents are too large to import safely as an SSH private key.`,
-      ParsingError: t`The SSH private key in the clipboard could not be parsed. Make sure the key is complete.`,
-      UnsupportedKeyType: t`This SSH private key type is not supported. Use a supported key format.`,
-      WrongPassword: t`The private key password is incorrect. Try again.`,
-      InvalidPassphrase: t`Enter a valid private key password.`,
-      SessionUnavailable: t`The SSH private key import session has expired. Import the key from the clipboard again.`,
-      SessionLimitReached: t`Too many SSH private key import sessions are active. Try again later.`
-    }
-    return messages[code]
-  }
   const submittingRef = useRef(false)
   const sharedEditor = sharedContext !== undefined
   const editorMountedRef = useRef(true)
@@ -1150,7 +1118,7 @@ function LoginEditor({
       }
 
       setSshKeyImportState('idle')
-      setError(sshImportErrorMessage(result.code))
+      setError(sshKeyImportErrorMessage(result.code))
       setErrorKind('ssh')
     } catch {
       if (!editorMountedRef.current || requestId !== sshKeyImportRequestRef.current) return
@@ -1170,7 +1138,7 @@ function LoginEditor({
     let passphrase = input.value
     input.value = ''
     if (!isValidSshImportPassphrase(passphrase)) {
-      setSshKeyImportError(sshImportErrorMessage('InvalidPassphrase'))
+      setSshKeyImportError(sshKeyImportErrorMessage('InvalidPassphrase'))
       setSshKeyImportState('awaitingPassphrase')
       requestAnimationFrame(() => sshImportPassphraseRef.current?.focus())
       return
@@ -1207,14 +1175,14 @@ function LoginEditor({
         return
       }
       if (sshKeyImportResultAction(result) === 'retryPassphrase') {
-        setSshKeyImportError(sshImportErrorMessage(result.code))
+        setSshKeyImportError(sshKeyImportErrorMessage(result.code))
         setSshKeyImportState('awaitingPassphrase')
         requestAnimationFrame(() => sshImportPassphraseRef.current?.focus())
         return
       }
 
       cancelActiveSshImport(false)
-      setError(sshImportErrorMessage(result.code))
+      setError(sshKeyImportErrorMessage(result.code))
       setErrorKind('ssh')
     } catch {
       if (!editorMountedRef.current || requestId !== sshKeyImportRequestRef.current) return
@@ -1713,7 +1681,7 @@ function LoginEditor({
         </Button>
       </header>
 
-      <div className="scroll-fade-y forced-colors:scroll-fade-none bg-muted/30 grid min-h-0 flex-1 [scrollbar-color:var(--border-strong)_transparent] content-start gap-3 overflow-auto px-4 pt-4 pb-7 max-[680px]:px-3 max-[680px]:pt-3 max-[680px]:pb-5">
+      <div className="scroll-fade-y forced-colors:scroll-fade-none bg-muted/30 grid min-h-0 flex-1 [scrollbar-color:var(--ring)_transparent] content-start gap-3 overflow-auto px-4 pt-4 pb-7 max-[680px]:px-3 max-[680px]:pt-3 max-[680px]:pb-5">
         <div className="flex w-full flex-col">
           {error && (
             <FieldError id="editor-error" role="alert" className="mt-2">

@@ -9,5 +9,4 @@ export function applyThemePreference(
   root.dataset.themePreference = preference
   root.dataset.theme = resolvedTheme
   root.classList.toggle('dark', resolvedTheme === 'dark')
-  root.classList.toggle('light', resolvedTheme === 'light')
 }

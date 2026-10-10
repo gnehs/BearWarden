@@ -68,6 +68,7 @@ import {
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Separator } from '@renderer/components/ui/separator'
 import { cn } from '@renderer/lib/utils'
+import { formatDateTime } from '@renderer/lib/vault-date'
 import AccountApiKeyDialog from './AccountApiKeyDialog'
 import AccountDevicesDialog from './AccountDevicesDialog'
 import AccountProfileCard from './AccountProfileCard'
@@ -463,11 +464,8 @@ export function SyncOperationFailureAlert({
   )
 }
 
-function formatSyncTime(locale: string, value?: string): string {
-  if (!value) return t`Never synced`
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return t`Never synced`
-  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+function formatSyncTime(value?: string): string {
+  return formatDateTime(value) ?? t`Never synced`
 }
 
 function syncSummary(result: SyncResult): string {
@@ -488,7 +486,7 @@ function SyncDialog({
   onStatusChange,
   onSynced
 }: SyncDialogProps): React.JSX.Element {
-  const { i18n, t } = useLingui()
+  const { t } = useLingui()
   const [serverUrl, setServerUrl] = useState(status.serverUrl ?? BITWARDEN_CLOUD_URL)
   const [email, setEmail] = useState(status.email ?? '')
   const [masterPassword, setMasterPassword] = useState('')
@@ -867,8 +865,8 @@ function SyncDialog({
     }
   }
 
-  const lastErrorTime = formatSyncTime(i18n.locale, status.lastErrorAt)
-  const lastSyncTime = formatSyncTime(i18n.locale, status.lastSyncAt)
+  const lastErrorTime = formatSyncTime(status.lastErrorAt)
+  const lastSyncTime = formatSyncTime(status.lastSyncAt)
   const diagnosticCode = operationErrorDiagnostic?.code ?? status.lastError
   const diagnosticOccurredAt = operationErrorDiagnostic?.occurredAt ?? status.lastErrorAt
   const diagnosticDetail = operationErrorDiagnostic ? undefined : status.lastErrorDetail
@@ -889,7 +887,7 @@ function SyncDialog({
           <span
             className={cn(
               'text-primary grid size-11 place-items-center rounded-xl bg-[var(--accent-soft)]',
-              status.state === 'error' && 'bg-[var(--danger-soft)] text-[var(--danger)]'
+              status.state === 'error' && 'text-destructive bg-[var(--danger-soft)]'
             )}
             aria-hidden="true"
           >
@@ -914,21 +912,21 @@ function SyncDialog({
 
         <ModalBody className="min-h-0 gap-3.5 overflow-y-auto overscroll-contain px-5 pt-4 pb-0">
           <Alert
-            className="[&_small]:text-muted-foreground grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg bg-[var(--panel-muted)] px-3 py-2.5 [&_small]:text-xs [&_small]:leading-snug [&_strong]:text-xs [&>div]:grid [&>div]:gap-1"
+            className="[&_small]:text-muted-foreground bg-muted grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg px-3 py-2.5 [&_small]:text-xs [&_small]:leading-snug [&_strong]:text-xs [&>div]:grid [&>div]:gap-1"
             role="status"
             aria-live="polite"
           >
             <span
               className={cn(
-                'size-2 rounded-full bg-[var(--subtle)]',
+                'bg-muted-foreground size-2 rounded-full',
                 isSyncing
-                  ? 'animate-[pulse_1.1s_ease-in-out_infinite] bg-[var(--focus)]'
+                  ? 'bg-ring animate-[pulse_1.1s_ease-in-out_infinite]'
                   : status.state === 'ready'
-                    ? 'bg-[var(--success)] shadow-[0_0_0_3px_color-mix(in_srgb,var(--success),transparent_80%)]'
+                    ? 'bg-primary shadow-[0_0_0_3px_color-mix(in_srgb,var(--primary),transparent_80%)]'
                     : status.state === 'locked' || status.state === 'unconfigured'
-                      ? 'bg-[var(--gold)]'
+                      ? 'bg-chart-4'
                       : status.state === 'error'
-                        ? 'bg-[var(--danger)]'
+                        ? 'bg-destructive'
                         : undefined
               )}
               aria-hidden="true"
@@ -1090,7 +1088,7 @@ function SyncDialog({
                     className="overflow-hidden pt-3 opacity-0 blur-[2px] transition-[opacity,filter] duration-[var(--acc-collapse)] ease-[var(--acc-ease)] motion-reduce:!transition-none"
                     inert={!showAdvanced}
                   >
-                    <FieldGroup className="grid w-auto gap-3 rounded-lg border bg-[var(--panel-muted)] p-3">
+                    <FieldGroup className="bg-muted grid w-auto gap-3 rounded-lg border p-3">
                       <Field>
                         <FieldLabel htmlFor="two-factor-method">
                           {twoFactorChallengeActive ? (

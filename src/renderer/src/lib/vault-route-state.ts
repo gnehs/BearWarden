@@ -1,8 +1,7 @@
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import type { Dispatch, SetStateAction } from 'react'
+import { resolveValue } from './utils'
 import { vaultPagePathFromPathname, type VaultPagePath } from './vault-paths'
-
-export { vaultPagePathFromPathname } from './vault-paths'
 
 interface VaultRouteState {
   settingsOpen: boolean
@@ -18,10 +17,6 @@ interface VaultRouteState {
 }
 
 type AuxiliaryVaultPagePath = Exclude<VaultPagePath, '/vault'>
-
-function resolveValue<T>(value: SetStateAction<T>, current: T): T {
-  return typeof value === 'function' ? (value as (current: T) => T)(current) : value
-}
 
 export function nextVaultPagePath(
   currentPath: VaultPagePath,

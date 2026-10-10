@@ -2,19 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   canApproveSshAgentApproval,
   isWindowsSshAgentEndpoint,
-  shouldDenySshAgentApproval,
   sshAgentSocketExportCommand,
   sshAgentStatusPresentation
 } from './ssh-agent-ui'
 
 describe('SSH Agent renderer policy', () => {
-  it('fails closed for locked, unavailable, and concurrent approval events', () => {
-    expect(shouldDenySshAgentApproval('locked', false)).toBe(true)
-    expect(shouldDenySshAgentApproval('unavailable', false)).toBe(true)
-    expect(shouldDenySshAgentApproval('unlocked', true)).toBe(true)
-    expect(shouldDenySshAgentApproval('unlocked', false)).toBe(false)
-  })
-
   it('requires a current master password only for reprompt-protected keys', () => {
     const request = { expiresAt: 2_000, requiresReprompt: true }
     expect(canApproveSshAgentApproval(request, '', 1_000)).toBe(false)

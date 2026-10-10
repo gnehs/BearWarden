@@ -19,6 +19,7 @@ import {
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@renderer/components/ui/field'
 import { Input } from '@renderer/components/ui/input'
 import { Spinner } from '@renderer/components/ui/spinner'
+import { approvalExpiryMessage } from '@renderer/lib/approval-expiry'
 import { canApproveSshAgentApproval } from '@renderer/lib/ssh-agent-ui'
 
 export type SshAgentApprovalView = SshAgentApprovalPrompt
@@ -38,7 +39,7 @@ export default function SshAgentApprovalDialog({
   onRespond,
   onSettled
 }: SshAgentApprovalDialogProps): React.JSX.Element {
-  const { i18n, t } = useLingui()
+  const { t } = useLingui()
   const [renderedAt] = useState(() => Date.now())
   const [masterPassword, setMasterPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -72,12 +73,7 @@ export default function SshAgentApprovalDialog({
         }
     }
   })()
-  const remainingSeconds = Math.max(0, Math.ceil((request.expiresAt - renderedAt) / 1_000))
-  const formattedRemainingSeconds = new Intl.NumberFormat(i18n.locale).format(remainingSeconds)
-  const expiryMessage =
-    remainingSeconds > 0
-      ? t`This request expires in about ${formattedRemainingSeconds} seconds.`
-      : t`This request has expired.`
+  const expiryMessage = approvalExpiryMessage(request.expiresAt, renderedAt)
 
   useEffect(() => {
     onSettledRef.current = onSettled

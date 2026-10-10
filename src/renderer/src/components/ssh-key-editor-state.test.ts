@@ -166,9 +166,7 @@ describe('SSH key editor state', () => {
   it('keeps a wrong-password import in the same retryable session', () => {
     const wrongPassword = { status: 'error' as const, code: 'WrongPassword' as const }
     expect(sshKeyImportResultAction(wrongPassword)).toBe('retryPassphrase')
-    expect(sshKeyImportErrorMessage(wrongPassword.code)).toBe(
-      '私密金鑰密碼片語不正確。請再次輸入。'
-    )
+    expect(sshKeyImportErrorMessage(wrongPassword.code)).toBe('私密金鑰密碼不正確。請再試一次。')
     expect(sshKeyImportResultAction({ status: 'error', code: 'SessionUnavailable' })).toBe('fail')
   })
 

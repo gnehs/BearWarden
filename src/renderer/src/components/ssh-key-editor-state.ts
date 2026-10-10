@@ -95,13 +95,13 @@ export function sshKeyImportErrorMessage(
 ): string {
   const messages = {
     EmptyClipboard: msg`The clipboard is empty. Copy an SSH private key and try again.`,
-    ClipboardTooLarge: msg`The clipboard contents are too large to safely import as an SSH private key.`,
-    ParsingError: msg`The SSH private key in the clipboard could not be parsed. Verify that its contents are complete.`,
+    ClipboardTooLarge: msg`The clipboard contents are too large to import safely as an SSH private key.`,
+    ParsingError: msg`The SSH private key in the clipboard could not be parsed. Make sure the key is complete.`,
     UnsupportedKeyType: msg`This SSH private key type is not supported. Use a supported key format.`,
-    WrongPassword: msg`The private key passphrase is incorrect. Enter it again.`,
-    InvalidPassphrase: msg`Enter a valid private key passphrase.`,
-    SessionUnavailable: msg`The SSH private key import session has expired. Import it from the clipboard again.`,
-    SessionLimitReached: msg`Too many SSH private key import sessions are in progress. Try again later.`
+    WrongPassword: msg`The private key password is incorrect. Try again.`,
+    InvalidPassphrase: msg`Enter a valid private key password.`,
+    SessionUnavailable: msg`The SSH private key import session has expired. Import the key from the clipboard again.`,
+    SessionLimitReached: msg`Too many SSH private key import sessions are active. Try again later.`
   } satisfies Record<
     Extract<SshKeyImportResult, { status: 'error' }>['code'],
     ReturnType<typeof msg>

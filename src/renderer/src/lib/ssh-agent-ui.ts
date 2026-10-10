@@ -1,19 +1,8 @@
 import { msg } from '@lingui/core/macro'
-import type {
-  SshAgentApprovalPrompt,
-  SshAgentStatus,
-  VaultState
-} from '../../../shared/vault-contract'
+import type { SshAgentApprovalPrompt, SshAgentStatus } from '../../../shared/vault-contract'
 import { i18n } from '../i18n'
 
 const DEFAULT_UNIX_SOCKET = '$HOME/.bearwarden-ssh-agent.sock'
-
-export function shouldDenySshAgentApproval(
-  state: VaultState | 'loading' | 'unavailable',
-  hasPendingApproval: boolean
-): boolean {
-  return state !== 'unlocked' || hasPendingApproval
-}
 
 export function canApproveSshAgentApproval(
   request: Pick<SshAgentApprovalPrompt, 'expiresAt' | 'requiresReprompt'>,
@@ -21,45 +10,6 @@ export function canApproveSshAgentApproval(
   now = Date.now()
 ): boolean {
   return request.expiresAt > now && (!request.requiresReprompt || masterPassword.length > 0)
-}
-
-export function sshAgentSigningPurpose(namespace: SshAgentApprovalPrompt['namespace']): {
-  label: string
-  detail: string
-} {
-  switch (namespace) {
-    case 'git':
-      return {
-        label: i18n._(msg`Git signing`),
-        detail: i18n._(msg`This application is requesting an SSH key to sign Git content.`)
-      }
-    case 'file':
-      return {
-        label: i18n._(msg`File signing`),
-        detail: i18n._(msg`This application is requesting an SSH key to sign file content.`)
-      }
-    case 'unsupported':
-      return {
-        label: i18n._(msg`Unknown SSHSIG`),
-        detail: i18n._(
-          msg`The signing purpose is not in an SSHSIG namespace recognized by BearWarden.`
-        )
-      }
-    default:
-      return {
-        label: i18n._(msg`SSH authentication`),
-        detail: i18n._(
-          msg`This application is requesting an SSH key for authentication or signing.`
-        )
-      }
-  }
-}
-
-export function formatSshAgentExpiry(expiresAt: number, now = Date.now()): string {
-  const remainingSeconds = Math.max(0, Math.ceil((expiresAt - now) / 1_000))
-  return remainingSeconds > 0
-    ? i18n._(msg`This request expires in about ${remainingSeconds} seconds.`)
-    : i18n._(msg`This request has expired.`)
 }
 
 export function sshAgentStatusPresentation(

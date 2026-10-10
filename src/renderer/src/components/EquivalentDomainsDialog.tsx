@@ -31,6 +31,7 @@ import { Spinner } from '@renderer/components/ui/spinner'
 import { Switch } from '@renderer/components/ui/switch'
 import { Textarea } from '@renderer/components/ui/textarea'
 import {
+  equivalentDomainErrorMessage,
   equivalentDomainRows,
   isEquivalentDomainSettingsView,
   parseEquivalentDomainDraft
@@ -59,26 +60,6 @@ function EquivalentDomainsDialog(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [showUpdateMessage, setShowUpdateMessage] = useState(false)
   const [open, setOpen] = useState(false)
-
-  const errorMessage = useCallback(
-    (loadError: unknown): string => {
-      if (!(loadError instanceof Error))
-        return t`Unable to read equivalent domain settings. Try again later.`
-      if (loadError.message.includes('SYNC_CONFLICT')) {
-        return t`Settings changed on another device. The server version has been reloaded; review it before saving.`
-      }
-      if (loadError.message.includes('SYNC_AUTH_REQUIRED')) {
-        return t`Your Bitwarden account needs to sign in again or unlock.`
-      }
-      if (loadError.message.includes('LOCKED'))
-        return t`The vault is locked. Unlock it and try again.`
-      if (loadError.message.includes('INVALID_INPUT')) {
-        return t`Check the domain format. Use commas or line breaks to separate each row.`
-      }
-      return t`Unable to save equivalent domain settings. Check your connection and try again.`
-    },
-    [t]
-  )
 
   useEffect(
     () => () => {
@@ -117,13 +98,13 @@ function EquivalentDomainsDialog(): React.JSX.Element {
       } catch (loadError) {
         if (currentRequest === requestId.current) {
           setSettings(null)
-          setError(errorMessage(loadError))
+          setError(equivalentDomainErrorMessage(loadError))
         }
       } finally {
         if (currentRequest === requestId.current) setLoading(false)
       }
     },
-    [errorMessage, hydrate]
+    [hydrate]
   )
 
   const parsedDraft = useMemo(() => {
@@ -193,12 +174,10 @@ function EquivalentDomainsDialog(): React.JSX.Element {
       void loadSettings()
       return
     }
-    if (!nextOpen) {
-      requestId.current += 1
-      setSearch('')
-      setError(null)
-      setShowUpdateMessage(false)
-    }
+    requestId.current += 1
+    setSearch('')
+    setError(null)
+    setShowUpdateMessage(false)
   }
 
   async function save(): Promise<void> {
@@ -219,10 +198,10 @@ function EquivalentDomainsDialog(): React.JSX.Element {
       setOpen(false)
     } catch (saveError) {
       if (saveError instanceof Error && saveError.message.includes('SYNC_CONFLICT')) {
-        await loadSettings(errorMessage(saveError))
+        await loadSettings(equivalentDomainErrorMessage(saveError))
         setShowUpdateMessage(true)
       } else {
-        setError(errorMessage(saveError))
+        setError(equivalentDomainErrorMessage(saveError))
       }
     } finally {
       setSaving(false)
