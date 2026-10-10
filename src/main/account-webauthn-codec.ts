@@ -9,7 +9,7 @@ const MAX_RP_ID_LENGTH = 253
 const MAX_UVM_ENTRIES = 16
 const MAX_UVM_VALUES = 3
 
-type PlainRecord = Record<string, unknown>
+export type PlainRecord = Record<string, unknown>
 
 export class AccountWebAuthnCodecError extends Error {
   constructor() {
@@ -50,11 +50,11 @@ export interface AccountWebAuthnAssertion {
   authenticatorAttachment?: 'platform' | 'cross-platform' | null
 }
 
-function invalid(): never {
+export function invalid(): never {
   throw new AccountWebAuthnCodecError()
 }
 
-function record(value: unknown): PlainRecord {
+export function record(value: unknown): PlainRecord {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) invalid()
   try {
     const prototype = Object.getPrototypeOf(value)
@@ -66,7 +66,7 @@ function record(value: unknown): PlainRecord {
   }
 }
 
-function data(recordValue: PlainRecord, key: PropertyKey): unknown {
+export function data(recordValue: PlainRecord, key: PropertyKey): unknown {
   try {
     const descriptor = Object.getOwnPropertyDescriptor(recordValue, key)
     if (!descriptor || !('value' in descriptor)) invalid()
@@ -77,7 +77,7 @@ function data(recordValue: PlainRecord, key: PropertyKey): unknown {
   }
 }
 
-function optionalData(recordValue: PlainRecord, key: PropertyKey): unknown {
+export function optionalData(recordValue: PlainRecord, key: PropertyKey): unknown {
   try {
     const descriptor = Object.getOwnPropertyDescriptor(recordValue, key)
     if (!descriptor) return undefined
@@ -89,7 +89,7 @@ function optionalData(recordValue: PlainRecord, key: PropertyKey): unknown {
   }
 }
 
-function keys(recordValue: PlainRecord): string[] {
+export function keys(recordValue: PlainRecord): string[] {
   try {
     const ownKeys = Reflect.ownKeys(recordValue)
     if (ownKeys.some((key) => typeof key !== 'string')) invalid()
@@ -100,7 +100,7 @@ function keys(recordValue: PlainRecord): string[] {
   }
 }
 
-function exact(
+export function exact(
   recordValue: PlainRecord,
   required: readonly string[],
   optional: readonly string[]
@@ -115,7 +115,11 @@ function exact(
   for (const key of ownKeys) data(recordValue, key)
 }
 
-function alias(recordValue: PlainRecord, names: readonly string[], required = true): unknown {
+export function alias(
+  recordValue: PlainRecord,
+  names: readonly string[],
+  required = true
+): unknown {
   let present: string[]
   try {
     present = names.filter((name) => Object.hasOwn(recordValue, name))
@@ -126,7 +130,7 @@ function alias(recordValue: PlainRecord, names: readonly string[], required = tr
   return present.length === 0 ? undefined : data(recordValue, present[0]!)
 }
 
-function strictArray(value: unknown, maximum: number): unknown[] {
+export function strictArray(value: unknown, maximum: number): unknown[] {
   try {
     if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) invalid()
     if (value.length > maximum) invalid()
@@ -144,7 +148,7 @@ function strictArray(value: unknown, maximum: number): unknown[] {
   }
 }
 
-function canonicalBase64Url(value: unknown, minimum: number, maximum: number): string {
+export function canonicalBase64Url(value: unknown, minimum: number, maximum: number): string {
   if (typeof value !== 'string' || !/^[A-Za-z0-9_-]+$/u.test(value)) invalid()
   const bytes = Buffer.from(value, 'base64url')
   if (bytes.length < minimum || bytes.length > maximum || bytes.toString('base64url') !== value) {
@@ -153,7 +157,7 @@ function canonicalBase64Url(value: unknown, minimum: number, maximum: number): s
   return value
 }
 
-function canonicalRpId(value: unknown): string {
+export function canonicalRpId(value: unknown): string {
   if (typeof value !== 'string' || value.length === 0 || value.length > MAX_RP_ID_LENGTH) invalid()
   const ascii = domainToASCII(value).toLowerCase()
   if (ascii !== value || ascii.includes('..')) invalid()
@@ -309,7 +313,7 @@ export function parseAccountWebAuthnChallengeFromTokenError(
   return parseAccountWebAuthnChallenge(provider)
 }
 
-function assertionUvm(value: unknown): readonly (readonly number[])[] {
+export function assertionUvm(value: unknown): readonly (readonly number[])[] {
   const rows = strictArray(value, MAX_UVM_ENTRIES)
   return Object.freeze(
     rows.map((row) => {

@@ -19,6 +19,7 @@ import {
   type AccountRegistry
 } from './account-registry'
 import { hasPendingInitializationMarker } from './account-storage-initialization-marker'
+import { exactKeys, plainRecord } from './plain-record'
 
 const JOURNAL_FORMAT = 'bearwarden-account-storage-migration'
 const JOURNAL_VERSION = 1
@@ -86,37 +87,6 @@ export interface AccountStorageMigrationOptions {
   readonly failAfter?: (stage: MigrationFailureStage) => void | Promise<void>
   readonly afterCopyChunk?: () => void | Promise<void>
   readonly registryStore?: AccountRegistryStore
-}
-
-type PlainRecord = Record<string, unknown>
-
-function plainRecord(value: unknown): value is PlainRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
-  const prototype = Object.getPrototypeOf(value)
-  if (prototype !== Object.prototype && prototype !== null) return false
-  const descriptors = Object.getOwnPropertyDescriptors(value)
-  return Reflect.ownKeys(descriptors).every((key) => {
-    if (typeof key !== 'string') return false
-    const descriptor = descriptors[key]!
-    return (
-      descriptor.enumerable === true &&
-      'value' in descriptor &&
-      descriptor.get === undefined &&
-      descriptor.set === undefined
-    )
-  })
-}
-
-function exactKeys(
-  value: PlainRecord,
-  required: readonly string[],
-  optional: readonly string[] = []
-): boolean {
-  const allowed = new Set([...required, ...optional])
-  return (
-    required.every((key) => Object.hasOwn(value, key)) &&
-    Object.keys(value).every((key) => allowed.has(key))
-  )
 }
 
 function parseFingerprint(value: unknown): OpaqueFileFingerprint {

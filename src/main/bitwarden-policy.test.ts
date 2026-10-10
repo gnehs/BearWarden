@@ -3,8 +3,7 @@ import {
   BITWARDEN_POLICY_TYPE,
   BitwardenPolicyParseError,
   parseBitwardenPolicySync,
-  policyEnforcementDecision,
-  unenforcedEnabledPolicies
+  policyEnforcementDecision
 } from './bitwarden-policy'
 
 const POLICY_ID = '11111111-1111-4111-8111-111111111111'
@@ -141,7 +140,6 @@ describe('Bitwarden organization policy parser', () => {
     ])
     expect(JSON.stringify(result)).not.toContain('private organization announcement')
     expect(JSON.stringify(result)).not.toContain('future secret data')
-    expect(unenforcedEnabledPolicies(result)).toHaveLength(2)
     expect(
       policyEnforcementDecision(result, BITWARDEN_POLICY_TYPE.OrganizationUserNotification)
     ).toMatchObject({ state: 'fail-closed', reason: 'unsupported-policy' })

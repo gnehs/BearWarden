@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { constants, type BigIntStats } from 'node:fs'
 import { lstat, open, rename, unlink } from 'node:fs/promises'
 import { basename, dirname, isAbsolute } from 'node:path'
+import { syncDirectoryBestEffort } from './account-paths'
 import { VaultError } from './vault-errors'
 import type { BitwardenAttachmentByteSource } from './bitwarden-attachment-stream'
 
@@ -273,21 +274,6 @@ function selectedAttachmentSource(
   }
 }
 
-async function syncDirectory(path: string): Promise<void> {
-  let handle: Awaited<ReturnType<typeof open>> | undefined
-  try {
-    handle = await open(path, 'r')
-    await handle.sync()
-  } catch {
-    // Directory fsync is not supported on every Electron target, notably Windows.
-  } finally {
-    // The file rename is already the commit point. A directory-handle close
-    // failure must not turn a successfully saved plaintext file into a false
-    // failure report.
-    await handle?.close().catch(() => undefined)
-  }
-}
-
 export function safeAttachmentFileName(fileName: string): string {
   if (typeof fileName !== 'string' || fileName.length === 0) {
     throw new VaultError('INVALID_INPUT')
@@ -332,7 +318,7 @@ export async function atomicWritePrivateAttachment(
     // rename preserves the temporary file's 0600 mode. Avoid a post-commit chmod that
     // could fail after plaintext is already visible and incorrectly report no saved file.
     await rename(temporaryPath, path)
-    await syncDirectory(directory)
+    await syncDirectoryBestEffort(directory)
   } catch (error) {
     await handle?.close()
     await unlink(temporaryPath).catch(() => undefined)
@@ -378,7 +364,7 @@ export async function atomicWritePrivateAttachmentStream(
     handle = undefined
     throwIfAborted(signal)
     await rename(temporaryPath, path)
-    await syncDirectory(directory)
+    await syncDirectoryBestEffort(directory)
   } catch (error) {
     await handle?.close().catch(() => undefined)
     await unlink(temporaryPath).catch(() => undefined)

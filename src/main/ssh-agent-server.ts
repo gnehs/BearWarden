@@ -26,8 +26,8 @@ export const BEARWARDEN_SSH_AUTH_SOCK = 'BEARWARDEN_SSH_AUTH_SOCK'
 export const BEARWARDEN_SSH_AGENT_SOCKET_NAME = '.bearwarden-ssh-agent.sock'
 export const OPENSSH_AGENT_PIPE_NAME = '\\\\.\\pipe\\openssh-ssh-agent'
 
-const DEFAULT_MAX_CONNECTIONS = 32
-const DEFAULT_IDLE_TIMEOUT_MS = 60_000
+const MAX_CONNECTIONS = 32
+const IDLE_TIMEOUT_MS = 60_000
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000
 const MAX_MESSAGES_PER_READ = 64
 const SOCKET_PROBE_TIMEOUT_MS = 500
@@ -95,7 +95,6 @@ export interface SshAgentConnectionHandlerOptions {
   provider: SshAgentProvider
   approvalHandler: SshAgentApprovalHandler
   requestTimeoutMs?: number
-  idleTimeoutMs?: number
 }
 
 export interface SshAgentServerOptions extends SshAgentConnectionHandlerOptions {
@@ -104,7 +103,6 @@ export interface SshAgentServerOptions extends SshAgentConnectionHandlerOptions 
   environment?: NodeJS.ProcessEnv
   getHomeDirectory?: () => string
   platform?: NodeJS.Platform
-  maxConnections?: number
   /** Main-process-only lifecycle signal. Callers must map raw OS errors before publishing. */
   onRuntimeError?: (error: Error) => void
   /** @internal Deterministic lifecycle seam for transport race-condition tests. */
@@ -282,7 +280,6 @@ function defaultSessionState(): SshAgentSessionBindState {
 export class SshAgentConnectionHandler {
   private readonly abortController = new AbortController()
   private readonly requestTimeoutMs: number
-  private readonly idleTimeoutMs: number
   private readonly decoder = new SshAgentFrameDecoder()
   private started = false
   private handling = false
@@ -293,12 +290,8 @@ export class SshAgentConnectionHandler {
     private readonly options: SshAgentConnectionHandlerOptions
   ) {
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
-    this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS
     if (!Number.isSafeInteger(this.requestTimeoutMs) || this.requestTimeoutMs < 1) {
       throw new Error('INVALID_SSH_AGENT_REQUEST_TIMEOUT')
-    }
-    if (!Number.isSafeInteger(this.idleTimeoutMs) || this.idleTimeoutMs < 1) {
-      throw new Error('INVALID_SSH_AGENT_IDLE_TIMEOUT')
     }
   }
 
@@ -307,7 +300,7 @@ export class SshAgentConnectionHandler {
     this.started = true
     this.socket.on('error', () => undefined)
     this.socket.once('close', () => this.abortController.abort())
-    this.socket.setTimeout?.(this.idleTimeoutMs, () => this.socket.destroy())
+    this.socket.setTimeout?.(IDLE_TIMEOUT_MS, () => this.socket.destroy())
     this.socket.on('data', (chunk: Buffer) => this.receive(chunk))
   }
 
@@ -457,7 +450,6 @@ function isValidSignature(value: SshAgentSignature): boolean {
 
 export class SshAgentServer {
   private readonly platform: NodeJS.Platform
-  private readonly maxConnections: number
   private readonly handlers = new Set<SshAgentConnectionHandler>()
   private lifecycle = Promise.resolve()
   private server: Server | undefined
@@ -468,10 +460,6 @@ export class SshAgentServer {
 
   constructor(private readonly options: SshAgentServerOptions) {
     this.platform = resolvedPlatform(options)
-    this.maxConnections = options.maxConnections ?? DEFAULT_MAX_CONNECTIONS
-    if (!Number.isInteger(this.maxConnections) || this.maxConnections < 1) {
-      throw new Error('INVALID_SSH_AGENT_MAX_CONNECTIONS')
-    }
   }
 
   get status(): SshAgentServerStatus {
@@ -492,13 +480,6 @@ export class SshAgentServer {
 
   stop(): Promise<void> {
     return this.schedule(() => this.stopCurrent())
-  }
-
-  restart(): Promise<SshAgentServerStatus> {
-    return this.schedule(async () => {
-      await this.stopCurrent()
-      return this.startCurrent()
-    })
   }
 
   private schedule<T>(operation: () => Promise<T>): Promise<T> {
@@ -524,7 +505,7 @@ export class SshAgentServer {
     const server =
       this.options.testHooks?.createServer?.(connectionListener) ??
       createServer({ allowHalfOpen: false }, connectionListener)
-    server.maxConnections = this.maxConnections
+    server.maxConnections = MAX_CONNECTIONS
     this.server = server
     this.endpoint = endpoint
     this.running = true

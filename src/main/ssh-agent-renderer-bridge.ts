@@ -1,7 +1,6 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import {
   IPC_CHANNELS,
-  IPC_ERROR_PREFIX,
   IPC_EVENTS,
   type SshAgentApprovalPrompt,
   type SshAgentApprovalResponse,
@@ -11,6 +10,7 @@ import type {
   SshAgentRendererApprovalRequest,
   SshAgentRendererApprovalResult
 } from './ssh-agent-coordinator'
+import { exactRecord, publicInvalidInput } from './renderer-bridge-input'
 import { isTrustedVaultSender } from './vault-ipc'
 
 const DEFAULT_APPROVAL_TIMEOUT_MS = 60_000
@@ -43,19 +43,6 @@ function abortError(): Error {
   const error = new Error('SSH_AGENT_RENDERER_REQUEST_ABORTED')
   error.name = 'AbortError'
   return error
-}
-
-function publicInvalidInput(): Error {
-  return new Error(`${IPC_ERROR_PREFIX}INVALID_INPUT`)
-}
-
-function exactRecord(value: unknown, allowed: readonly string[]): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw publicInvalidInput()
-  }
-  const record = value as Record<string, unknown>
-  if (Object.keys(record).some((key) => !allowed.includes(key))) throw publicInvalidInput()
-  return record
 }
 
 function parseApprovalResponse(value: unknown): SshAgentApprovalResponse {
@@ -158,10 +145,6 @@ export class SshAgentRendererBridge {
     })
   }
 
-  get status(): SshAgentStatus {
-    return cloneStatus(this.statusValue)
-  }
-
   attachWindow(window: BrowserWindow): void {
     if (this.attachedWindow === window) return
     if (this.attachedWindow) this.cancelAll()
@@ -199,12 +182,9 @@ export class SshAgentRendererBridge {
     this.attachWindow(window)
 
     return new Promise<SshAgentRendererApprovalResult>((resolve, reject) => {
-      const onAbort = (): void => this.rejectPending(request.requestId, abortError())
+      const onAbort = (): void => this.rejectPending(request.requestId)
       const expiresAt = Date.now() + this.approvalTimeoutMs
-      const timer = setTimeout(
-        () => this.rejectPending(request.requestId, abortError()),
-        this.approvalTimeoutMs
-      )
+      const timer = setTimeout(() => this.rejectPending(request.requestId), this.approvalTimeoutMs)
       timer.unref()
       this.pending.set(request.requestId, { resolve, reject, timer, signal, onAbort })
       signal.addEventListener('abort', onAbort, { once: true })
@@ -217,7 +197,7 @@ export class SshAgentRendererBridge {
             rendererSafePrompt(request, expiresAt)
           )
         })
-        .catch(() => this.rejectPending(request.requestId, abortError()))
+        .catch(() => this.rejectPending(request.requestId))
     })
   }
 
@@ -240,7 +220,7 @@ export class SshAgentRendererBridge {
 
   cancelAll(): void {
     for (const requestId of [...this.pending.keys()]) {
-      this.rejectPending(requestId, abortError())
+      this.rejectPending(requestId)
     }
     for (const waiter of [...this.unlockWaiters]) this.finishUnlockWaiter(waiter, false)
   }
@@ -274,13 +254,13 @@ export class SshAgentRendererBridge {
     })
   }
 
-  private rejectPending(requestId: string, error: Error): void {
+  private rejectPending(requestId: string): void {
     const pending = this.pending.get(requestId)
     if (!pending) return
     this.pending.delete(requestId)
     clearTimeout(pending.timer)
     pending.signal.removeEventListener('abort', pending.onAbort)
-    pending.reject(error)
+    pending.reject(abortError())
   }
 
   private finishUnlockWaiter(waiter: UnlockWaiter, result: boolean): void {

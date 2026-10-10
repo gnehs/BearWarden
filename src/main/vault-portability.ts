@@ -19,6 +19,7 @@ import {
   parseBitwardenOrChromiumCsv
 } from './vault-portability-codec'
 import { VaultError } from './vault-errors'
+import { isRecord } from './vault/parse-primitives'
 import {
   openNativeAttachmentBackup,
   writeNativeAttachmentBackup,
@@ -50,10 +51,6 @@ export interface VaultPortabilityPicker {
   chooseImportPath: (
     format: 'portable' | 'keepass-xml' | 'bearwarden-native'
   ) => Promise<string | null>
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function exportFileName(now: Date): string {

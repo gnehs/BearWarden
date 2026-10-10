@@ -142,6 +142,16 @@ export async function ensurePrivateDirectory(
   }
 }
 
+export async function requireMissing(path: string): Promise<void> {
+  try {
+    await lstat(path)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    throw error
+  }
+  throw new Error('ACCOUNT_STORAGE_INITIALIZATION_COLLISION')
+}
+
 export async function openNoFollow(
   path: string,
   flags: number,
@@ -201,6 +211,19 @@ export async function syncDirectory(
       const info = await lstat(path)
       if (!info.isDirectory() || info.isSymbolicLink()) throw error
     }
+  } finally {
+    await handle?.close().catch(() => undefined)
+  }
+}
+
+/** Durability hint for writes whose rename already committed; every failure is ignored. */
+export async function syncDirectoryBestEffort(path: string): Promise<void> {
+  let handle: FileHandle | undefined
+  try {
+    handle = await open(path, 'r')
+    await handle.sync()
+  } catch {
+    // Directory fsync is not supported on every Electron target, notably Windows.
   } finally {
     await handle?.close().catch(() => undefined)
   }

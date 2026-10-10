@@ -90,7 +90,7 @@ function initialSyncData(serverUrl: string, email: string): PersistedSyncData {
 /** Account security, authentication, and public synchronization operations. */
 export class VaultAccountService extends VaultServiceBase {
   syncStatus(): Promise<SyncStatus> {
-    return this.exclusive(async () => this.currentSyncStatus(true))
+    return this.exclusive(async () => this.currentSyncStatus())
   }
 
   async getAccountSecurityProfile(): Promise<
@@ -814,19 +814,7 @@ export class VaultAccountService extends VaultServiceBase {
       })
     } catch (error) {
       await this.exclusive(async () => this.accountSecurityAborts.delete(lease.abort))
-      if (lease.abort.signal.aborted || lease.generation !== this.generation) {
-        throw new VaultError('LOCKED')
-      }
-      if (error instanceof BitwardenDirectError) {
-        if (error.code === 'USER_VERIFICATION_FAILED') {
-          throw new VaultError('INVALID_MASTER_PASSWORD')
-        }
-        if (error.code === 'TWO_FACTOR_MUTATION_UNKNOWN') {
-          throw new VaultError('TWO_FACTOR_MUTATION_UNKNOWN')
-        }
-      }
-      if (error instanceof VaultError) throw error
-      throw this.mapSyncError(error)
+      this.throwTwoFactorMutationError(error, lease)
     } finally {
       request.masterPassword = ''
       mutation.type = -1 as 0 | 1 | 2 | 3 | 7
@@ -1098,19 +1086,7 @@ export class VaultAccountService extends VaultServiceBase {
       await this.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
       })
-      if (lease.abort.signal.aborted || lease.generation !== this.generation) {
-        throw new VaultError('LOCKED')
-      }
-      if (error instanceof BitwardenDirectError) {
-        if (error.code === 'USER_VERIFICATION_FAILED') {
-          throw new VaultError('INVALID_MASTER_PASSWORD')
-        }
-        if (error.code === 'TWO_FACTOR_MUTATION_UNKNOWN') {
-          throw new VaultError('TWO_FACTOR_MUTATION_UNKNOWN')
-        }
-      }
-      if (error instanceof VaultError) throw error
-      throw this.mapSyncError(error)
+      this.throwTwoFactorMutationError(error, lease)
     } finally {
       request.token = ''
       if (request.masterPassword !== undefined) request.masterPassword = ''
@@ -1303,7 +1279,7 @@ export class VaultAccountService extends VaultServiceBase {
       })
     } catch (error) {
       await this.exclusive(async () => this.accountSecurityAborts.delete(lease.abort))
-      this.throwEmailTwoFactorSetupError(error, lease)
+      this.throwTwoFactorMutationError(error, lease)
     } finally {
       request.email = ''
       if (request.masterPassword !== undefined) request.masterPassword = ''
@@ -1381,7 +1357,7 @@ export class VaultAccountService extends VaultServiceBase {
       })
     } catch (error) {
       await this.exclusive(async () => this.accountSecurityAborts.delete(lease.abort))
-      this.throwEmailTwoFactorSetupError(error, lease)
+      this.throwTwoFactorMutationError(error, lease)
     } finally {
       request.token = ''
       if (request.masterPassword !== undefined) request.masterPassword = ''
@@ -1425,7 +1401,7 @@ export class VaultAccountService extends VaultServiceBase {
       setup = await lease.begin(masterPassword, lease.abort.signal)
       masterPassword = ''
       const keys = setup.keys.map(({ id, name, migrated }) => ({ id, name, migrated }))
-      await this.finishAccountWebAuthnOperation(lease, true)
+      await this.finishAccountWebAuthnOperation(lease)
       lease = null
       return keys
     } catch (error) {
@@ -1507,7 +1483,7 @@ export class VaultAccountService extends VaultServiceBase {
         ...(setup.verificationMode === 'master-password' ? { masterPassword } : {})
       }
       await lease.complete(mutation, lease.abort.signal)
-      await this.finishAccountWebAuthnOperation(lease, true)
+      await this.finishAccountWebAuthnOperation(lease)
       lease = null
     } catch (error) {
       if (lease) {
@@ -1566,7 +1542,7 @@ export class VaultAccountService extends VaultServiceBase {
         }
       })
       await lease.remove(id, masterPassword, lease.abort.signal)
-      await this.finishAccountWebAuthnOperation(lease, true)
+      await this.finishAccountWebAuthnOperation(lease)
       lease = null
     } catch (error) {
       if (lease) {
@@ -1915,7 +1891,7 @@ export class VaultAccountService extends VaultServiceBase {
       await this.persist(next)
       this.data = next
       this.syncLastError = null
-      return await this.currentSyncStatus(true)
+      return await this.currentSyncStatus()
     })
   }
 

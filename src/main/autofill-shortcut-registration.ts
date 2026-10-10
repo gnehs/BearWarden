@@ -26,10 +26,6 @@ export class AutofillShortcutRegistration {
     return this.activeShortcut === this.desiredShortcut
   }
 
-  get shortcut(): AutofillShortcut {
-    return this.desiredShortcut
-  }
-
   apply(enabled: boolean, shortcut: AutofillShortcut): boolean {
     this.desiredEnabled = enabled
     this.desiredShortcut = shortcut

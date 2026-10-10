@@ -143,38 +143,6 @@ import type {
   VaultNativeAttachmentRestoreSummary
 } from './vault/types'
 
-export type {
-  PersistedSyncData,
-  VaultMasterPasswordChangeStatus,
-  VaultMasterPasswordChangeRequest,
-  VaultMasterPasswordChangeResolutionRequest,
-  VaultMasterPasswordChangeResolution,
-  VaultPlatform,
-  VaultAccountWebAuthnRequest,
-  VaultAccountWebAuthnAssertionRequester,
-  VaultAccountWebAuthnRegistrationRequest,
-  VaultAccountWebAuthnRegistrationRequester,
-  VaultServiceOptions,
-  VaultExportSnapshot,
-  VaultNativeAttachmentBackupSource,
-  VaultNativeAttachmentRestoreSummary,
-  SshAgentVaultIdentity,
-  SshAgentVaultSignRequest,
-  SshAgentVaultSignResult,
-  SshAgentVaultAuthorizationValidator,
-  PasskeyVaultAuthorizationValidator,
-  PasskeyVaultCredentialCandidate,
-  PasskeyVaultDiscoveryRequest,
-  PasskeyVaultDiscoveryResult,
-  PasskeyVaultCreationTarget,
-  PasskeyVaultCreationTargetDiscoveryResult,
-  PasskeyVaultCreationTargetDiscoveryRequest,
-  PasskeyVaultCreateRequest,
-  PasskeyVaultCreateResult,
-  PasskeyVaultAssertionRequest,
-  PasskeyVaultAssertionResult
-} from './vault/types'
-
 type BulkRemoteLoginMutation =
   'soft-delete' | 'restore' | 'move' | 'archive' | 'unarchive' | 'hard-delete'
 const MAX_REMOTE_LOGIN_BATCH_IDS = 500
@@ -546,11 +514,7 @@ export class VaultServiceBase {
           throw new VaultError('LOCKED')
         }
         const data = this.requireData()
-        this.assertBitwardenPolicyDoesNotBlock(
-          BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin,
-          'POLICY_RESTRICTED',
-          data
-        )
+        this.assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin, data)
         if (
           typeof request.pin !== 'string' ||
           request.pin.normalize('NFC').length < 4 ||
@@ -827,11 +791,7 @@ export class VaultServiceBase {
         }
         const requiresMigration = isRecord(unlocked.data) && unlocked.data.version !== DATA_VERSION
         this.data = parseVaultDataTagged(unlocked.data)
-        this.assertBitwardenPolicyDoesNotBlock(
-          BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin,
-          'POLICY_RESTRICTED',
-          this.data
-        )
+        this.assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin, this.data)
         this.key = unlocked.key
         this.salt = unlocked.salt
         unlocked = null
@@ -926,7 +886,7 @@ export class VaultServiceBase {
     this.websiteIconRequests.clear()
   }
 
-  protected async currentSyncStatus(checkConnection: boolean): Promise<SyncStatus> {
+  protected async currentSyncStatus(): Promise<SyncStatus> {
     const data = this.requireData()
     if (!data.sync) {
       return this.syncLastError
@@ -935,7 +895,6 @@ export class VaultServiceBase {
     }
     if (this.syncInProgress) return this.baseSyncStatus(data.sync, 'syncing')
     if (this.syncLastError) return this.baseSyncStatus(data.sync, 'error')
-    if (!checkConnection) return this.baseSyncStatus(data.sync, 'locked')
     try {
       const client = this.getOrCreateSyncClient(data.sync)
       const status = await client.status()
@@ -1017,19 +976,15 @@ export class VaultServiceBase {
 
   protected assertBitwardenPolicyDoesNotBlock(
     type: number,
-    errorCode: import('../shared/vault-contract').VaultErrorCode = 'POLICY_RESTRICTED',
     data: VaultData = this.requireData()
   ): void {
     const decision = this.bitwardenPolicyDecision(type, data)
-    if (decision.state !== 'not-applicable') throw new VaultError(errorCode)
+    if (decision.state !== 'not-applicable') throw new VaultError('POLICY_RESTRICTED')
   }
 
-  protected assertSendMutationAllowed(data: VaultData = this.requireData()): void {
-    this.assertBitwardenPolicyDoesNotBlock(
-      BITWARDEN_POLICY_TYPE.DisableSend,
-      'POLICY_RESTRICTED',
-      data
-    )
+  protected assertSendMutationAllowed(): void {
+    const data = this.requireData()
+    this.assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.DisableSend, data)
     const controls = this.bitwardenPolicyDecision(BITWARDEN_POLICY_TYPE.SendControls, data)
     if (controls.state === 'fail-closed') throw new VaultError('POLICY_RESTRICTED')
     if (
@@ -1316,10 +1271,7 @@ export class VaultServiceBase {
     })
   }
 
-  protected finishAccountWebAuthnOperation(
-    lease: AccountWebAuthnOperationLease,
-    persistClientState: boolean
-  ): Promise<void> {
+  protected finishAccountWebAuthnOperation(lease: AccountWebAuthnOperationLease): Promise<void> {
     return this.exclusive(async () => {
       this.requireData()
       if (lease.abort.signal.aborted || lease.generation !== this.generation) {
@@ -1328,7 +1280,7 @@ export class VaultServiceBase {
       if (this.syncClient !== lease.client || !lease.client.exportState().session) {
         throw new VaultError('SYNC_AUTH_REQUIRED')
       }
-      if (persistClientState) await this.persistCurrentClientState()
+      await this.persistCurrentClientState()
       if (lease.abort.signal.aborted || lease.generation !== this.generation) {
         throw new VaultError('LOCKED')
       }
@@ -1686,7 +1638,7 @@ export class VaultServiceBase {
     }
   }
 
-  protected throwEmailTwoFactorSetupError(
+  protected throwTwoFactorMutationError(
     error: unknown,
     lease: { abort: AbortController; generation: number }
   ): never {
@@ -3964,14 +3916,9 @@ export class VaultServiceBase {
     return folderId
   }
 
-  protected assertUniqueFolderName(data: VaultData, name: string, excludedId?: string): void {
+  protected assertUniqueFolderName(data: VaultData, name: string): void {
     const normalized = name.toLocaleLowerCase('en-US')
-    if (
-      data.folders.some(
-        (folder) =>
-          folder.id !== excludedId && folder.name.toLocaleLowerCase('en-US') === normalized
-      )
-    ) {
+    if (data.folders.some((folder) => folder.name.toLocaleLowerCase('en-US') === normalized)) {
       throw new VaultError('DUPLICATE_NAME')
     }
   }

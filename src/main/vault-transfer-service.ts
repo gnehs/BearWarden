@@ -525,62 +525,14 @@ export class VaultTransferService extends VaultContentService {
         clearText.length
       )
 
-      return await this.exclusive(async () => {
-        if (preflight.generation !== this.generation) throw new VaultError('LOCKED')
-        const data = this.requireData()
-        assertNoPendingPersonalVaultPurge(data.sync)
-        const login = this.findLogin(data, request.id)
-        this.assertActiveLogin(login)
-        if (login.type !== 'card') throw new VaultError('INVALID_INPUT')
-        this.assertAttachmentAuthorized(login, validateAuthorization)
-        if (login.attachments.some((attachment) => attachment.fileName === cover.fileName)) {
-          throw new VaultError('DUPLICATE_NAME')
-        }
-        const sync = this.requireSyncData()
-        const mapping = sync.loginMappings.find((entry) => entry.localId === login.id)
-        if (!mapping) throw new VaultError('INVALID_INPUT')
-        const client = this.getOrCreateSyncClient(sync)
-        this.reportAttachmentProgress(
-          reportProgress,
-          request,
-          'upload',
-          'encrypting',
-          0,
-          cover.data.length
-        )
-        this.reportAttachmentProgress(
-          reportProgress,
-          request,
-          'upload',
-          'uploading',
-          0,
-          cover.data.length
-        )
-        const uploaded = await client.uploadAttachment(
-          mapping.remoteId,
-          cover.fileName,
-          cover.data,
-          preflight.operation.abort.signal,
-          () => this.commitAttachmentOperation(preflight.operation)
-        )
-        this.commitAttachmentOperation(preflight.operation)
-        this.reportAttachmentProgress(
-          reportProgress,
-          request,
-          'upload',
-          'uploading',
-          cover.data.length,
-          cover.data.length
-        )
-        this.reportAttachmentProgress(reportProgress, request, 'upload', 'syncing', 0, null)
-        await this.persistAttachmentMutation(data, client)
-        const updated = this.findLogin(this.requireData(), request.id)
-        const attachment = updated.attachments.find((entry) => entry.id === uploaded.id)
-        if (!attachment || attachment.fileName !== cover.fileName || attachment.legacy) {
-          throw new VaultError('ATTACHMENT_FAILED')
-        }
-        return { canceled: false, attachment: { ...attachment } }
-      })
+      return await this.commitCardCoverUpload(
+        request,
+        cover,
+        preflight.generation,
+        preflight.operation,
+        reportProgress,
+        validateAuthorization
+      )
     } catch (error) {
       throw this.mapAttachmentError(error, preflight.operation)
     } finally {
@@ -655,68 +607,86 @@ export class VaultTransferService extends VaultContentService {
         data: clearText
       }
 
-      return await this.exclusive(async () => {
-        if (preflight.generation !== this.generation) throw new VaultError('LOCKED')
-        const data = this.requireData()
-        assertNoPendingPersonalVaultPurge(data.sync)
-        const login = this.findLogin(data, request.id)
-        this.assertActiveLogin(login)
-        if (login.type !== 'card') throw new VaultError('INVALID_INPUT')
-        this.assertAttachmentAuthorized(login, validateAuthorization)
-        if (login.attachments.some((attachment) => attachment.fileName === cover.fileName)) {
-          throw new VaultError('DUPLICATE_NAME')
-        }
-        const sync = this.requireSyncData()
-        const mapping = sync.loginMappings.find((entry) => entry.localId === login.id)
-        if (!mapping) throw new VaultError('INVALID_INPUT')
-        const client = this.getOrCreateSyncClient(sync)
-        this.reportAttachmentProgress(
-          reportProgress,
-          request,
-          'upload',
-          'encrypting',
-          0,
-          cover.data.length
-        )
-        this.reportAttachmentProgress(
-          reportProgress,
-          request,
-          'upload',
-          'uploading',
-          0,
-          cover.data.length
-        )
-        const uploaded = await client.uploadAttachment(
-          mapping.remoteId,
-          cover.fileName,
-          cover.data,
-          operation.abort.signal,
-          () => this.commitAttachmentOperation(operation)
-        )
-        this.commitAttachmentOperation(operation)
-        this.reportAttachmentProgress(
-          reportProgress,
-          request,
-          'upload',
-          'uploading',
-          cover.data.length,
-          cover.data.length
-        )
-        this.reportAttachmentProgress(reportProgress, request, 'upload', 'syncing', 0, null)
-        await this.persistAttachmentMutation(data, client)
-        const updated = this.findLogin(this.requireData(), request.id)
-        const attachment = updated.attachments.find((entry) => entry.id === uploaded.id)
-        if (!attachment || attachment.fileName !== cover.fileName || attachment.legacy) {
-          throw new VaultError('ATTACHMENT_FAILED')
-        }
-        return { canceled: false, attachment: { ...attachment } }
-      })
+      return await this.commitCardCoverUpload(
+        request,
+        cover,
+        preflight.generation,
+        operation,
+        reportProgress,
+        validateAuthorization
+      )
     } catch (error) {
       throw this.mapAttachmentError(error, operation)
     } finally {
       clearText?.fill(0)
       this.finishAttachmentOperation(operation)
     }
+  }
+
+  private commitCardCoverUpload(
+    request: { id: string; operationId: string },
+    cover: CardCoverDownload,
+    generation: number,
+    operation: { operationId: string; abort: AbortController; committed: boolean },
+    reportProgress: ((progress: AttachmentProgressEvent) => void) | undefined,
+    validateAuthorization: AttachmentAuthorizationValidator | undefined
+  ): Promise<AttachmentUploadResult> {
+    return this.exclusive(async () => {
+      if (generation !== this.generation) throw new VaultError('LOCKED')
+      const data = this.requireData()
+      assertNoPendingPersonalVaultPurge(data.sync)
+      const login = this.findLogin(data, request.id)
+      this.assertActiveLogin(login)
+      if (login.type !== 'card') throw new VaultError('INVALID_INPUT')
+      this.assertAttachmentAuthorized(login, validateAuthorization)
+      if (login.attachments.some((attachment) => attachment.fileName === cover.fileName)) {
+        throw new VaultError('DUPLICATE_NAME')
+      }
+      const sync = this.requireSyncData()
+      const mapping = sync.loginMappings.find((entry) => entry.localId === login.id)
+      if (!mapping) throw new VaultError('INVALID_INPUT')
+      const client = this.getOrCreateSyncClient(sync)
+      this.reportAttachmentProgress(
+        reportProgress,
+        request,
+        'upload',
+        'encrypting',
+        0,
+        cover.data.length
+      )
+      this.reportAttachmentProgress(
+        reportProgress,
+        request,
+        'upload',
+        'uploading',
+        0,
+        cover.data.length
+      )
+      const uploaded = await client.uploadAttachment(
+        mapping.remoteId,
+        cover.fileName,
+        cover.data,
+        operation.abort.signal,
+        () => this.commitAttachmentOperation(operation)
+      )
+      this.commitAttachmentOperation(operation)
+      this.reportAttachmentProgress(
+        reportProgress,
+        request,
+        'upload',
+        'uploading',
+        cover.data.length,
+        cover.data.length
+      )
+      this.reportAttachmentProgress(reportProgress, request, 'upload', 'syncing', 0, null)
+      await this.persistAttachmentMutation(data, client)
+      const updated = this.findLogin(this.requireData(), request.id)
+      const attachment = updated.attachments.find((entry) => entry.id === uploaded.id)
+      if (!attachment || attachment.fileName !== cover.fileName || attachment.legacy) {
+        throw new VaultError('ATTACHMENT_FAILED')
+      }
+      return { canceled: false, attachment: { ...attachment } }
+    })
   }
 
   deleteAttachment(
@@ -822,11 +792,7 @@ export class VaultTransferService extends VaultContentService {
     return this.exclusive(async () => {
       await this.assertMasterPassword(masterPassword)
       const data = this.requireData()
-      this.assertBitwardenPolicyDoesNotBlock(
-        BITWARDEN_POLICY_TYPE.DisablePersonalVaultExport,
-        'POLICY_RESTRICTED',
-        data
-      )
+      this.assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.DisablePersonalVaultExport, data)
       const snapshot = this.localSyncSnapshot(data)
       const items = snapshot.logins.filter((item) => item.deletedAt === null)
       return {
@@ -858,11 +824,7 @@ export class VaultTransferService extends VaultContentService {
     const prepared = await this.exclusive(async () => {
       await this.assertMasterPassword(masterPassword)
       const data = this.requireData()
-      this.assertBitwardenPolicyDoesNotBlock(
-        BITWARDEN_POLICY_TYPE.DisablePersonalVaultExport,
-        'POLICY_RESTRICTED',
-        data
-      )
+      this.assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.DisablePersonalVaultExport, data)
       assertNoPendingPersonalVaultPurge(data.sync)
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
@@ -1113,7 +1075,6 @@ export class VaultTransferService extends VaultContentService {
       const current = this.requireData()
       this.assertBitwardenPolicyDoesNotBlock(
         BITWARDEN_POLICY_TYPE.OrganizationDataOwnership,
-        'POLICY_RESTRICTED',
         current
       )
       assertNoPendingPersonalVaultPurge(current.sync)
@@ -1243,7 +1204,7 @@ export class VaultTransferService extends VaultContentService {
           attachment.sourceAttachmentId === key.sourceAttachmentId
       )
       const item = journal.items.find((candidate) => candidate.sourceItemId === key.sourceItemId)
-      if (!target || !item?.remoteItemId || source?.size !== target.size) {
+      if (!target || !item?.remoteItemId || source.size !== target.size) {
         throw new VaultError('INVALID_INPUT')
       }
       if (!client.uploadAttachmentStream) throw new VaultError('ATTACHMENT_FAILED')
@@ -1437,7 +1398,6 @@ export class VaultTransferService extends VaultContentService {
       const current = this.requireData()
       this.assertBitwardenPolicyDoesNotBlock(
         BITWARDEN_POLICY_TYPE.OrganizationDataOwnership,
-        'POLICY_RESTRICTED',
         current
       )
       assertNoPendingPersonalVaultPurge(current.sync)

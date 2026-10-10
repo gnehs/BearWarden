@@ -12,9 +12,11 @@ import type {
   VaultStatus,
   VaultTimeoutPolicy
 } from '../shared/vault-contract'
+import { syncDirectoryBestEffort } from './account-paths'
 import type { EncryptedVaultStore } from './encrypted-vault-store'
 import { translateMain } from './i18n'
 import { VaultError } from './vault-errors'
+import { isRecord } from './vault/parse-primitives'
 import type { VaultTimeoutCoordinator } from './vault-timeout-coordinator'
 
 const SETTINGS_VERSION = 9
@@ -84,10 +86,6 @@ function defaultSettings(): StoredSettings {
     sshAgentEnabled: false,
     sshAgentPromptBehavior: 'always'
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 const vaultTimeoutPolicySchema = z.discriminatedUnion('type', [
@@ -251,25 +249,11 @@ async function atomicWrite(path: string, data: string | Buffer): Promise<void> {
     // after rename has already made the new settings authoritative.
     await chmod(temporaryPath, 0o600)
     await rename(temporaryPath, path)
-    await syncDirectory(directory)
+    await syncDirectoryBestEffort(directory)
   } catch (error) {
     await handle?.close()
     await unlink(temporaryPath).catch(() => undefined)
     throw error
-  }
-}
-
-async function syncDirectory(path: string): Promise<void> {
-  let handle: Awaited<ReturnType<typeof open>> | undefined
-  try {
-    handle = await open(path, 'r')
-    await handle.sync()
-  } catch {
-    // Directory fsync is not supported on every Electron target, notably Windows.
-  } finally {
-    // The rename is already authoritative; durability hints must not make callers believe it
-    // failed to commit if a directory close is unsupported or transiently rejected.
-    await handle?.close().catch(() => undefined)
   }
 }
 

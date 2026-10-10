@@ -108,13 +108,7 @@ async function readBodyWithLimit(
     await reader.cancel().catch(() => undefined)
   }
 
-  const result = new Uint8Array(length)
-  let offset = 0
-  for (const chunk of chunks) {
-    result.set(chunk, offset)
-    offset += chunk.length
-  }
-  return result
+  return Buffer.concat(chunks, length)
 }
 
 export async function fetchWebsiteIconDataUrl(

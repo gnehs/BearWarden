@@ -461,7 +461,7 @@ const MAX_OAUTH_CLIENT_ID_BYTES = 256
 const MAX_JWT_PAYLOAD_BYTES = 16 * 1024
 const OAUTH_CLIENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u
 
-function isRecord(value: unknown): value is JsonObject {
+export function isRecord(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
@@ -480,11 +480,10 @@ function normalizeBaseUrl(value: string, allowHttpLoopback: boolean): URL {
   } catch {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
-  const loopback =
-    url.hostname === 'localhost' ||
-    url.hostname === '::1' ||
-    /^127(?:\.\d{1,3}){3}$/.test(url.hostname)
-  if (url.protocol !== 'https:' && !(allowHttpLoopback && loopback && url.protocol === 'http:')) {
+  if (
+    url.protocol !== 'https:' &&
+    !(allowHttpLoopback && isLoopbackHostname(url.hostname) && url.protocol === 'http:')
+  ) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
   if (url.username || url.password || url.search || url.hash)
@@ -1439,13 +1438,7 @@ export class BitwardenHttpClient {
     const key = assertTotpSetupKey(request.key)
     const token = assertTotpToken(request.token)
     const body: JsonObject = { key, token }
-    if (request.verificationMode === 'server-token') {
-      body.userVerificationToken = assertVerificationToken(request.userVerificationToken)
-    } else if (request.verificationMode === 'master-password') {
-      body.masterPasswordHash = assertMasterPasswordHash(request.masterPasswordHash)
-    } else {
-      throw new BitwardenHttpError('INVALID_RESPONSE')
-    }
+    appendUserVerification(body, request)
     try {
       const response = await this.requestJson(
         'PUT',
@@ -1527,7 +1520,7 @@ export class BitwardenHttpClient {
   ): Promise<void> {
     const body: JsonObject = { email: assertTwoFactorEmail(request.email) }
     try {
-      appendEmailVerification(body, request)
+      appendUserVerification(body, request)
       await this.requestJson('POST', `${this.urls.apiUrl}/two-factor/send-email`, {
         body,
         signal,
@@ -1555,7 +1548,7 @@ export class BitwardenHttpClient {
     const email = assertTwoFactorEmail(request.email)
     const body: JsonObject = { email, token: assertEmailVerificationCode(request.token) }
     try {
-      appendEmailVerification(body, request)
+      appendUserVerification(body, request)
       const response = await this.requestJson('PUT', `${this.urls.apiUrl}/two-factor/email`, {
         body,
         signal,
@@ -1602,13 +1595,7 @@ export class BitwardenHttpClient {
     signal?: AbortSignal
   ): Promise<AccountWebAuthnRegistrationChallenge> {
     const body: JsonObject = {}
-    if (request.verificationMode === 'server-token') {
-      body.userVerificationToken = assertVerificationToken(request.userVerificationToken)
-    } else if (request.verificationMode === 'master-password') {
-      body.masterPasswordHash = assertMasterPasswordHash(request.masterPasswordHash)
-    } else {
-      throw new BitwardenHttpError('INVALID_RESPONSE')
-    }
+    appendUserVerification(body, request)
     try {
       const response = await this.requestJson(
         'POST',
@@ -1650,13 +1637,7 @@ export class BitwardenHttpClient {
     }
     const body: JsonObject = { id, name, deviceResponse }
     try {
-      if (request.verificationMode === 'server-token') {
-        body.userVerificationToken = assertVerificationToken(request.userVerificationToken)
-      } else if (request.verificationMode === 'master-password') {
-        body.masterPasswordHash = assertMasterPasswordHash(request.masterPasswordHash)
-      } else {
-        throw new BitwardenHttpError('INVALID_RESPONSE')
-      }
+      appendUserVerification(body, request)
       const response = await this.requestJson('PUT', `${this.urls.apiUrl}/two-factor/webauthn`, {
         body,
         signal,
@@ -1685,13 +1666,7 @@ export class BitwardenHttpClient {
   ): Promise<BitwardenWebAuthnKey[]> {
     const id = assertWebAuthnKeyId(request.id)
     const body: JsonObject = { id }
-    if (request.verificationMode === 'server-token') {
-      body.userVerificationToken = assertVerificationToken(request.userVerificationToken)
-    } else if (request.verificationMode === 'master-password') {
-      body.masterPasswordHash = assertMasterPasswordHash(request.masterPasswordHash)
-    } else {
-      throw new BitwardenHttpError('INVALID_RESPONSE')
-    }
+    appendUserVerification(body, request)
     try {
       const response = await this.requestJson('DELETE', `${this.urls.apiUrl}/two-factor/webauthn`, {
         body,
@@ -1951,7 +1926,6 @@ export class BitwardenHttpClient {
       assertEncryptedAttachmentValue(encryptedFileName)
     )
     await this.requestMultipart(
-      'POST',
       `${this.urls.apiUrl}/sends/${encodeURIComponent(assertId(sendId))}/file/${encodeURIComponent(assertId(fileId))}`,
       form,
       signal
@@ -2146,7 +2120,6 @@ export class BitwardenHttpClient {
     const form = new FormData()
     form.append('data', body, assertEncryptedAttachmentValue(encryptedFileName))
     await this.requestMultipart(
-      'POST',
       `${this.urls.apiUrl}/ciphers/${encodeURIComponent(assertId(cipherId))}/attachment/${encodeURIComponent(assertId(attachmentId))}`,
       form,
       signal
@@ -2364,9 +2337,6 @@ export class BitwardenHttpClient {
   async bulkHardDeleteCiphers(ids: readonly string[], signal?: AbortSignal): Promise<void> {
     await this.bulkEmptyCipherMutation('POST', '/ciphers/delete', ids, undefined, signal)
   }
-  async deleteCipher(id: string, signal?: AbortSignal): Promise<void> {
-    await this.hardDeleteCipher(id, signal)
-  }
 
   private async bulkCipherListMutation(
     operation: 'restore' | 'archive' | 'unarchive',
@@ -2570,12 +2540,7 @@ export class BitwardenHttpClient {
     return new BitwardenHttpError(signal?.aborted ? 'ABORTED' : 'NETWORK')
   }
 
-  private async requestMultipart(
-    method: 'POST',
-    url: string,
-    form: FormData,
-    signal?: AbortSignal
-  ): Promise<void> {
+  private async requestMultipart(url: string, form: FormData, signal?: AbortSignal): Promise<void> {
     let refreshed = false
     for (;;) {
       if (signal?.aborted) throw new BitwardenHttpError('ABORTED')
@@ -2592,7 +2557,7 @@ export class BitwardenHttpClient {
       let response: Response
       try {
         response = await this.fetchFn(url, {
-          method,
+          method: 'POST',
           headers: requestHeaders,
           body: form,
           cache: 'no-store',
@@ -3742,7 +3707,7 @@ function assertEmailVerificationCode(value: unknown): string {
   return value
 }
 
-function appendEmailVerification(
+function appendUserVerification(
   body: JsonObject,
   request: {
     verificationMode: BitwardenEmailTwoFactorSetup['verificationMode']
@@ -4831,8 +4796,4 @@ function toHttpError(status: number, payload: JsonValue): BitwardenHttpError {
     return new BitwardenHttpError('AUTH', status, details)
   }
   return new BitwardenHttpError('NETWORK', status, details)
-}
-
-export function createBitwardenHttpClient(options: BitwardenHttpOptions): BitwardenHttpClient {
-  return new BitwardenHttpClient(options)
 }

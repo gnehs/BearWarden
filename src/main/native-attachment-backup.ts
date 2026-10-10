@@ -9,7 +9,9 @@ import {
 import { constants } from 'node:fs'
 import { chmod, lstat, mkdir, open, rename, unlink } from 'node:fs/promises'
 import { dirname, isAbsolute } from 'node:path'
+import { syncDirectoryBestEffort } from './account-paths'
 import { VaultError } from './vault-errors'
+import { isRecord } from './vault/parse-primitives'
 
 const MAGIC = Buffer.from('BWAB0001', 'ascii')
 const HEADER_LENGTH_BYTES = 4
@@ -159,10 +161,6 @@ interface ScannedArchive {
 
 function invalidInput(): never {
   throw new VaultError('INVALID_INPUT')
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function decodeBase64(value: unknown, bytes: number): Buffer {
@@ -608,18 +606,6 @@ function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new VaultError('ATTACHMENT_CANCELED')
 }
 
-async function syncDirectory(path: string): Promise<void> {
-  let handle: Awaited<ReturnType<typeof open>> | undefined
-  try {
-    handle = await open(path, 'r')
-    await handle.sync()
-  } catch {
-    // Directory fsync is unavailable on some Electron targets.
-  } finally {
-    await handle?.close().catch(() => undefined)
-  }
-}
-
 async function openExistingPartial(path: string): Promise<Awaited<ReturnType<typeof open>> | null> {
   try {
     const stats = await lstat(path)
@@ -719,7 +705,7 @@ export async function writeNativeAttachmentBackup(
       handle = undefined
       await rename(stagingPath, partialPath)
       stagingPath = undefined
-      await syncDirectory(dirname(path))
+      await syncDirectoryBestEffort(dirname(path))
       handle = (await openExistingPartial(partialPath)) ?? undefined
       if (!handle) throw new VaultError('ATTACHMENT_FAILED')
       scanned = {
@@ -743,7 +729,7 @@ export async function writeNativeAttachmentBackup(
         handle = undefined
         await rename(partialPath, path)
         await chmod(path, 0o600)
-        await syncDirectory(dirname(path))
+        await syncDirectoryBestEffort(dirname(path))
         return {
           path,
           attachmentCount: attachments.length,
@@ -820,7 +806,7 @@ export async function writeNativeAttachmentBackup(
     handle = undefined
     await rename(partialPath, path)
     await chmod(path, 0o600)
-    await syncDirectory(dirname(path))
+    await syncDirectoryBestEffort(dirname(path))
     return { path, attachmentCount: attachments.length, attachmentBytes: totalBytes, resumed }
   } catch (error) {
     if (error instanceof VaultError) throw error

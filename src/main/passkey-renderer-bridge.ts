@@ -1,7 +1,6 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import {
   IPC_CHANNELS,
-  IPC_ERROR_PREFIX,
   IPC_EVENTS,
   type PasskeyApprovalPrompt,
   type PasskeyApprovalResponse,
@@ -9,6 +8,7 @@ import {
   type PasskeyVerificationMethod
 } from '../shared/vault-contract'
 import type { PasskeyRendererSafePrompt } from './passkey-request-coordinator'
+import { exactRecord, publicInvalidInput } from './renderer-bridge-input'
 import { isTrustedVaultSender } from './vault-ipc'
 
 const DEFAULT_APPROVAL_TIMEOUT_MS = 60_000
@@ -63,19 +63,6 @@ function abortError(): Error {
   const error = new Error('PASSKEY_RENDERER_REQUEST_ABORTED')
   error.name = 'AbortError'
   return error
-}
-
-function publicInvalidInput(): Error {
-  return new Error(`${IPC_ERROR_PREFIX}INVALID_INPUT`)
-}
-
-function exactRecord(value: unknown, allowed: readonly string[]): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw publicInvalidInput()
-  }
-  const record = value as Record<string, unknown>
-  if (Object.keys(record).some((key) => !allowed.includes(key))) throw publicInvalidInput()
-  return record
 }
 
 function boundedString(value: unknown, maximumLength: number): value is string {
@@ -285,8 +272,8 @@ export class PasskeyRendererBridge {
     const prompt = rendererSafePrompt(request, expiresAt, methods)
 
     return new Promise<PasskeyApprovalResponse>((resolve, reject) => {
-      const onAbort = (): void => this.rejectPending(request.requestId, abortError())
-      const timer = setTimeout(() => this.rejectPending(request.requestId, abortError()), timeoutMs)
+      const onAbort = (): void => this.rejectPending(request.requestId)
+      const timer = setTimeout(() => this.rejectPending(request.requestId), timeoutMs)
       timer.unref()
       this.pending.set(request.requestId, {
         prompt,
@@ -304,7 +291,7 @@ export class PasskeyRendererBridge {
           if (!this.pending.has(request.requestId) || window.webContents.isDestroyed()) return
           window.webContents.send(IPC_EVENTS.passkeyApprovalRequested, prompt)
         })
-        .catch(() => this.rejectPending(request.requestId, abortError()))
+        .catch(() => this.rejectPending(request.requestId))
     })
   }
 
@@ -345,7 +332,7 @@ export class PasskeyRendererBridge {
   cancelAll(): void {
     this.rendererEpoch += 1
     for (const requestId of [...this.pending.keys()]) {
-      this.rejectPending(requestId, abortError())
+      this.rejectPending(requestId)
     }
     for (const requestId of [...this.passwordProofs.keys()]) this.deleteProof(requestId)
   }
@@ -502,14 +489,14 @@ export class PasskeyRendererBridge {
     pending.resolve(response)
   }
 
-  private rejectPending(requestId: string, error: Error): void {
+  private rejectPending(requestId: string): void {
     const pending = this.pending.get(requestId)
     if (!pending) return
     this.pending.delete(requestId)
     clearTimeout(pending.timer)
     pending.signal.removeEventListener('abort', pending.onAbort)
     this.deleteProof(requestId)
-    pending.reject(error)
+    pending.reject(abortError())
   }
 
   private deleteProof(requestId: string): void {

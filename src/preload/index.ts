@@ -5,7 +5,6 @@ import {
   type BearWardenAPI,
   type RendererErrorLogRequest
 } from '../shared/vault-contract'
-import type { SelectedItemCopyCommand } from '../shared/selected-item-shortcuts'
 
 const MAX_RENDERER_LOG_FIELD_LENGTH = 12_000
 
@@ -73,6 +72,12 @@ function installRendererErrorReporting(): void {
   })
 }
 
+function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
+  const wrappedListener = (_event: IpcRendererEvent, payload: T): void => listener(payload)
+  ipcRenderer.on(channel, wrappedListener)
+  return () => ipcRenderer.removeListener(channel, wrappedListener)
+}
+
 const api: BearWardenAPI = {
   vault: {
     status: () => ipcRenderer.invoke(IPC_CHANNELS.vaultStatus),
@@ -90,29 +95,10 @@ const api: BearWardenAPI = {
       ipcRenderer.invoke(IPC_CHANNELS.vaultMasterPasswordChangeResolve, request),
     lock: () => ipcRenderer.invoke(IPC_CHANNELS.vaultLock),
     setLockRequestReady: (ready) => ipcRenderer.send(IPC_CHANNELS.vaultLockRequestReady, ready),
-    onLocked: (listener) => {
-      const wrappedListener = (): void => listener()
-      ipcRenderer.on(IPC_EVENTS.vaultLocked, wrappedListener)
-
-      return () => ipcRenderer.removeListener(IPC_EVENTS.vaultLocked, wrappedListener)
-    },
-    onLockRequested: (listener) => {
-      const wrappedListener = (): void => listener()
-      ipcRenderer.on(IPC_EVENTS.vaultLockRequested, wrappedListener)
-
-      return () => ipcRenderer.removeListener(IPC_EVENTS.vaultLockRequested, wrappedListener)
-    },
-    onUnlocked: (listener) => {
-      const wrappedListener = (): void => listener()
-      ipcRenderer.on(IPC_EVENTS.vaultUnlocked, wrappedListener)
-
-      return () => ipcRenderer.removeListener(IPC_EVENTS.vaultUnlocked, wrappedListener)
-    },
-    onChanged: (listener) => {
-      const wrappedListener = (): void => listener()
-      ipcRenderer.on(IPC_EVENTS.vaultChanged, wrappedListener)
-      return () => ipcRenderer.removeListener(IPC_EVENTS.vaultChanged, wrappedListener)
-    }
+    onLocked: (listener) => subscribe(IPC_EVENTS.vaultLocked, () => listener()),
+    onLockRequested: (listener) => subscribe(IPC_EVENTS.vaultLockRequested, () => listener()),
+    onUnlocked: (listener) => subscribe(IPC_EVENTS.vaultUnlocked, () => listener()),
+    onChanged: (listener) => subscribe(IPC_EVENTS.vaultChanged, () => listener())
   },
   portability: {
     export: (request) => ipcRenderer.invoke(IPC_CHANNELS.vaultExport, request),
@@ -123,14 +109,7 @@ const api: BearWardenAPI = {
     cancelNativeRestore: (request) => ipcRenderer.invoke(IPC_CHANNELS.nativeRestoreCancel, request),
     clearCompletedNativeRestore: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.nativeRestoreClearCompleted, request),
-    onNativeRestoreProgress: (listener) => {
-      const wrappedListener = (
-        _event: IpcRendererEvent,
-        progress: Parameters<typeof listener>[0]
-      ): void => listener(progress)
-      ipcRenderer.on(IPC_EVENTS.nativeRestoreProgress, wrappedListener)
-      return () => ipcRenderer.removeListener(IPC_EVENTS.nativeRestoreProgress, wrappedListener)
-    }
+    onNativeRestoreProgress: (listener) => subscribe(IPC_EVENTS.nativeRestoreProgress, listener)
   },
   health: {
     report: () => ipcRenderer.invoke(IPC_CHANNELS.vaultHealthReport, {}),
@@ -204,14 +183,7 @@ const api: BearWardenAPI = {
     deleteAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentDelete, request),
     fixLegacyAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentFixLegacy, request),
     cancelAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentCancel, request),
-    onAttachmentProgress: (listener) => {
-      const wrappedListener = (
-        _event: IpcRendererEvent,
-        progress: Parameters<typeof listener>[0]
-      ): void => listener(progress)
-      ipcRenderer.on(IPC_EVENTS.attachmentProgress, wrappedListener)
-      return () => ipcRenderer.removeListener(IPC_EVENTS.attachmentProgress, wrappedListener)
-    },
+    onAttachmentProgress: (listener) => subscribe(IPC_EVENTS.attachmentProgress, listener),
     create: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginCreate, request),
     clone: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginClone, request),
     archive: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginArchive, request),
@@ -251,14 +223,7 @@ const api: BearWardenAPI = {
     verifyApproval: (request) => ipcRenderer.invoke(IPC_CHANNELS.passkeyVerifyApproval, request),
     respondApproval: (response) =>
       ipcRenderer.invoke(IPC_CHANNELS.passkeyRespondApproval, response),
-    onApprovalRequested: (listener) => {
-      const wrappedListener = (
-        _event: IpcRendererEvent,
-        request: Parameters<typeof listener>[0]
-      ): void => listener(request)
-      ipcRenderer.on(IPC_EVENTS.passkeyApprovalRequested, wrappedListener)
-      return () => ipcRenderer.removeListener(IPC_EVENTS.passkeyApprovalRequested, wrappedListener)
-    }
+    onApprovalRequested: (listener) => subscribe(IPC_EVENTS.passkeyApprovalRequested, listener)
   },
   autofill: {
     status: () => ipcRenderer.invoke(IPC_CHANNELS.autofillStatus),
@@ -267,14 +232,7 @@ const api: BearWardenAPI = {
     select: (request) => ipcRenderer.invoke(IPC_CHANNELS.autofillSelect, request),
     cancel: (request) => ipcRenderer.invoke(IPC_CHANNELS.autofillCancel, request),
     openMain: (request) => ipcRenderer.invoke(IPC_CHANNELS.autofillOpenMain, request),
-    onPromptChanged: (listener) => {
-      const wrappedListener = (
-        _event: IpcRendererEvent,
-        prompt: Parameters<typeof listener>[0]
-      ): void => listener(prompt)
-      ipcRenderer.on(IPC_EVENTS.autofillPromptChanged, wrappedListener)
-      return () => ipcRenderer.removeListener(IPC_EVENTS.autofillPromptChanged, wrappedListener)
-    }
+    onPromptChanged: (listener) => subscribe(IPC_EVENTS.autofillPromptChanged, listener)
   },
   generator: {
     generate: (request) => ipcRenderer.invoke(IPC_CHANNELS.generatorGenerate, request),
@@ -296,22 +254,8 @@ const api: BearWardenAPI = {
     status: () => ipcRenderer.invoke(IPC_CHANNELS.sshAgentStatus),
     respondApproval: (response) =>
       ipcRenderer.invoke(IPC_CHANNELS.sshAgentRespondApproval, response),
-    onApprovalRequested: (listener) => {
-      const wrappedListener = (
-        _event: IpcRendererEvent,
-        request: Parameters<typeof listener>[0]
-      ): void => listener(request)
-      ipcRenderer.on(IPC_EVENTS.sshAgentApprovalRequested, wrappedListener)
-      return () => ipcRenderer.removeListener(IPC_EVENTS.sshAgentApprovalRequested, wrappedListener)
-    },
-    onStatusChanged: (listener) => {
-      const wrappedListener = (
-        _event: IpcRendererEvent,
-        status: Parameters<typeof listener>[0]
-      ): void => listener(status)
-      ipcRenderer.on(IPC_EVENTS.sshAgentStatusChanged, wrappedListener)
-      return () => ipcRenderer.removeListener(IPC_EVENTS.sshAgentStatusChanged, wrappedListener)
-    }
+    onApprovalRequested: (listener) => subscribe(IPC_EVENTS.sshAgentApprovalRequested, listener),
+    onStatusChanged: (listener) => subscribe(IPC_EVENTS.sshAgentStatusChanged, listener)
   },
   sync: {
     status: () => ipcRenderer.invoke(IPC_CHANNELS.syncStatus),
@@ -327,15 +271,7 @@ const api: BearWardenAPI = {
     purgePersonalVault: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.syncPurgePersonalVault, request),
     disconnect: () => ipcRenderer.invoke(IPC_CHANNELS.syncDisconnect),
-    onChanged: (listener) => {
-      const wrappedListener = (
-        _event: IpcRendererEvent,
-        status: Parameters<typeof listener>[0]
-      ): void => listener(status)
-      ipcRenderer.on(IPC_EVENTS.syncChanged, wrappedListener)
-
-      return () => ipcRenderer.removeListener(IPC_EVENTS.syncChanged, wrappedListener)
-    }
+    onChanged: (listener) => subscribe(IPC_EVENTS.syncChanged, listener)
   },
   accounts: {
     status: () => ipcRenderer.invoke(IPC_CHANNELS.accountStatus),
@@ -357,15 +293,7 @@ const api: BearWardenAPI = {
     pendingLoginApprovals: () => ipcRenderer.invoke(IPC_CHANNELS.accountPendingLoginApprovals),
     respondLoginApproval: (response) =>
       ipcRenderer.invoke(IPC_CHANNELS.accountRespondLoginApproval, response),
-    onLoginApprovalRequested: (listener) => {
-      const wrappedListener = (
-        _event: IpcRendererEvent,
-        prompt: Parameters<typeof listener>[0]
-      ): void => listener(prompt)
-      ipcRenderer.on(IPC_EVENTS.loginApprovalRequested, wrappedListener)
-
-      return () => ipcRenderer.removeListener(IPC_EVENTS.loginApprovalRequested, wrappedListener)
-    },
+    onLoginApprovalRequested: (listener) => subscribe(IPC_EVENTS.loginApprovalRequested, listener),
     deauthorizeSessions: (request) =>
       ipcRenderer.invoke(IPC_CHANNELS.accountDeauthorizeSessions, request),
     resendVerification: () => ipcRenderer.invoke(IPC_CHANNELS.accountResendVerification),
@@ -420,13 +348,8 @@ const api: BearWardenAPI = {
   },
   applicationMenu: {
     execute: (command) => ipcRenderer.invoke(IPC_CHANNELS.applicationMenuExecute, command),
-    onCopySelectedItem: (listener) => {
-      const wrappedListener = (_event: IpcRendererEvent, command: SelectedItemCopyCommand): void =>
-        listener(command)
-      ipcRenderer.on(IPC_EVENTS.applicationMenuCopySelectedItem, wrappedListener)
-      return () =>
-        ipcRenderer.removeListener(IPC_EVENTS.applicationMenuCopySelectedItem, wrappedListener)
-    }
+    onCopySelectedItem: (listener) =>
+      subscribe(IPC_EVENTS.applicationMenuCopySelectedItem, listener)
   },
   updater: {
     state: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateState),
@@ -435,14 +358,7 @@ const api: BearWardenAPI = {
     install: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateInstall),
     openReleasePage: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateOpenReleasePage),
     openRepositoryPage: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateOpenRepositoryPage),
-    onStateChanged: (listener) => {
-      const wrappedListener = (
-        _event: IpcRendererEvent,
-        state: Parameters<typeof listener>[0]
-      ): void => listener(state)
-      ipcRenderer.on(IPC_EVENTS.appUpdateStateChanged, wrappedListener)
-      return () => ipcRenderer.removeListener(IPC_EVENTS.appUpdateStateChanged, wrappedListener)
-    }
+    onStateChanged: (listener) => subscribe(IPC_EVENTS.appUpdateStateChanged, listener)
   }
 }
 

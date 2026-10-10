@@ -269,7 +269,6 @@ export function normalizeMainLocale(locale: string | null | undefined): MainLoca
     return 'zh-TW'
   }
   if (normalized.startsWith('ja')) return 'ja'
-  if (normalized.startsWith('en')) return 'en'
   return 'en'
 }
 

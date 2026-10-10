@@ -1,9 +1,9 @@
 import { lstat } from 'node:fs/promises'
-import { match } from 'ts-pattern'
 import {
   createAccountId,
   createAccountPathLayout,
   ensurePrivateDirectory,
+  requireMissing,
   type AccountStoragePaths
 } from './account-paths'
 import { AccountRegistryStore, createInitialAccountRegistry } from './account-registry'
@@ -11,10 +11,7 @@ import {
   clearPendingInitializationMarker,
   createPendingInitializationMarker
 } from './account-storage-initialization-marker'
-import {
-  migrateLegacyAccountStorage,
-  type AccountStorageMigrationOptions
-} from './account-storage-migration'
+import { migrateLegacyAccountStorage } from './account-storage-migration'
 
 export type ActiveAccountStorage =
   | {
@@ -32,7 +29,6 @@ export type ActiveAccountStorage =
 export interface AccountStorageBootstrapOptions {
   readonly createUuid?: () => string
   readonly registryStore?: AccountRegistryStore
-  readonly migrationOptions?: Omit<AccountStorageMigrationOptions, 'createUuid' | 'registryStore'>
 }
 
 function accountStorage(
@@ -51,16 +47,6 @@ async function vaultFileExists(path: string): Promise<boolean> {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
     throw error
   }
-}
-
-async function requireMissing(path: string): Promise<void> {
-  try {
-    await lstat(path)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
-    throw error
-  }
-  throw new Error('ACCOUNT_STORAGE_INITIALIZATION_COLLISION')
 }
 
 async function initializeAccountStorage(
@@ -99,13 +85,13 @@ export async function bootstrapAccountStorage(
   const registryStore =
     options.registryStore ?? new AccountRegistryStore(userDataDirectory, { createUuid })
   const migration = await migrateLegacyAccountStorage(userDataDirectory, {
-    ...options.migrationOptions,
     createUuid,
     registryStore
   })
 
-  return match(migration)
-    .with({ kind: 'account' }, async ({ accountId, accountPaths }) => {
+  switch (migration.kind) {
+    case 'account': {
+      const { accountId, accountPaths } = migration
       // A crash after the vault rename can leave the marker behind. The vault is already committed,
       // so repair is deliberately best effort and must not make startup fail.
       if (await vaultFileExists(accountPaths.vaultPath)) {
@@ -114,25 +100,21 @@ export async function bootstrapAccountStorage(
         )
       }
       return accountStorage(accountId, accountPaths)
-    })
-    .with(
-      { kind: 'legacy-fallback' },
-      ({ legacyVaultPath, legacySettingsPath, legacyTouchIdPath, reason }) => ({
-        mode: 'legacy-fallback' as const,
+    }
+    case 'legacy-fallback':
+      return {
+        mode: 'legacy-fallback',
         activeAccountId: null,
         paths: {
-          vaultPath: legacyVaultPath,
-          settingsPath: legacySettingsPath,
-          touchIdPath: legacyTouchIdPath
+          vaultPath: migration.legacyVaultPath,
+          settingsPath: migration.legacySettingsPath,
+          touchIdPath: migration.legacyTouchIdPath
         },
-        fallbackReason: reason
-      })
-    )
-    .with({ kind: 'storage-unavailable' }, ({ reason }) => {
-      throw new Error(`ACCOUNT_STORAGE_${reason.toUpperCase().replaceAll('-', '_')}`)
-    })
-    .with({ kind: 'no-legacy-vault' }, () =>
-      initializeAccountStorage(userDataDirectory, registryStore, createUuid)
-    )
-    .exhaustive()
+        fallbackReason: migration.reason
+      }
+    case 'storage-unavailable':
+      throw new Error(`ACCOUNT_STORAGE_${migration.reason.toUpperCase().replaceAll('-', '_')}`)
+    case 'no-legacy-vault':
+      return initializeAccountStorage(userDataDirectory, registryStore, createUuid)
+  }
 }

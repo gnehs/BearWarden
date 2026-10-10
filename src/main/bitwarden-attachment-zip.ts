@@ -443,7 +443,6 @@ export async function writeBitwardenAttachmentZip(
   const attachments = validateSource(source)
   const names = itemNamesById(source.vaultJson)
   const { foldersByItemId, paths } = attachmentPaths(attachments, names)
-  if (!attachments.every((_attachment, index) => paths[index] !== undefined)) invalidInput()
   let declaredBytes = 0
   for (const attachment of attachments) {
     declaredBytes += attachment.size

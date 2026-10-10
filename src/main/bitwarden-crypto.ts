@@ -316,7 +316,8 @@ function parseCipherString(value: string): ParsedCipherString {
   return { type, iv, ciphertext, mac }
 }
 
-function isLegacyMasterKeyWrappedUserKey(value: string): boolean {
+/** Identifies the historical unauthenticated user-key envelope accepted only during master unlock. */
+export function isBitwardenLegacyMasterKeyWrappedUserKey(value: string): boolean {
   if (typeof value !== 'string' || value.length === 0) return false
   if (value.startsWith('0.')) return true
   return !value.includes('.') && value.split('|').length === 2
@@ -326,7 +327,7 @@ function parseLegacyMasterKeyWrappedUserKey(value: string): {
   iv: Buffer
   ciphertext: Buffer
 } {
-  if (!isLegacyMasterKeyWrappedUserKey(value)) {
+  if (!isBitwardenLegacyMasterKeyWrappedUserKey(value)) {
     throw new BitwardenCryptoError(
       'INVALID_CIPHERSTRING',
       'legacy master-key user-key envelope must use type 0'
@@ -1223,11 +1224,6 @@ export function decryptBitwardenBytes(
   return decryptBitwardenPayload(cipherString, key, privateKey).plaintext
 }
 
-/** Identifies the historical unauthenticated user-key envelope accepted only during master unlock. */
-export function isBitwardenLegacyMasterKeyWrappedUserKey(cipherString: string): boolean {
-  return isLegacyMasterKeyWrappedUserKey(cipherString)
-}
-
 /**
  * Decrypts the account user key with the raw 32-byte master key.
  *
@@ -1243,7 +1239,7 @@ export function decryptBitwardenMasterKeyWrappedUserKey(
   let encodedUserKey: Buffer | undefined
   let stretched: ReturnType<typeof stretchMasterKey> | undefined
   try {
-    if (isLegacyMasterKeyWrappedUserKey(cipherString)) {
+    if (isBitwardenLegacyMasterKeyWrappedUserKey(cipherString)) {
       const parsed = parseLegacyMasterKeyWrappedUserKey(cipherString)
       try {
         const decipher = createDecipheriv('aes-256-cbc', masterKey, parsed.iv)

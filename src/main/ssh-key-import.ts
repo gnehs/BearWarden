@@ -4,7 +4,7 @@ import { createPrivateKey, timingSafeEqual, type KeyObject } from 'node:crypto'
 import { utils, type ParsedKey } from 'ssh2'
 import { pbkdf } from 'bcrypt-pbkdf'
 import type { SshKeyMaterial } from '../shared/vault-contract'
-import { formatSshKeyMaterial } from './ssh-key-format'
+import { formatSshKeyMaterial, sshString } from './ssh-key-format'
 
 export type SshKeyImportErrorCode =
   'ParsingError' | 'UnsupportedKeyType' | 'PasswordRequired' | 'WrongPassword'
@@ -269,16 +269,6 @@ function parseOpenSshEnvelope(der: Buffer): OpenSshEnvelope {
     }
   }
   return result
-}
-
-function sshString(value: string | Buffer, owned: Buffer[]): Buffer {
-  const bytes = typeof value === 'string' ? Buffer.from(value, 'ascii') : value
-  if (typeof value === 'string') owned.push(bytes)
-  const encoded = Buffer.allocUnsafe(4 + bytes.length)
-  encoded.writeUInt32BE(bytes.length, 0)
-  bytes.copy(encoded, 4)
-  owned.push(encoded)
-  return encoded
 }
 
 function wrapOpenSshBinary(binary: Buffer, owned: Buffer[]): Buffer {

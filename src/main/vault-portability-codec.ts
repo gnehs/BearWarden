@@ -19,6 +19,8 @@ import {
 import type { StoredPasskeyCredential } from './passkey'
 import type { SyncLogin } from './sync-merge'
 import { VaultError } from './vault-errors'
+import { emptyItemFields } from './vault/item-fields'
+import { isRecord } from './vault/parse-primitives'
 
 export interface PortableVaultFolder {
   id: string
@@ -99,10 +101,6 @@ function invalidInput(): never {
   throw new VaultError('INVALID_INPUT')
 }
 
-function isRecord(value: unknown): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 function record(value: unknown): JsonObject {
   if (!isRecord(value)) invalidInput()
   return value
@@ -156,42 +154,6 @@ function reprompt(value: unknown): VaultReprompt {
   if (value === undefined || value === null) return 0
   if (value !== 0 && value !== 1) invalidInput()
   return value
-}
-
-function emptyItemFields(): VaultItemFields {
-  return {
-    username: '',
-    password: '',
-    totp: '',
-    uri: null,
-    cardholderName: '',
-    brand: '',
-    number: '',
-    expMonth: '',
-    expYear: '',
-    code: '',
-    title: '',
-    firstName: '',
-    middleName: '',
-    lastName: '',
-    address1: '',
-    address2: '',
-    address3: '',
-    city: '',
-    state: '',
-    postalCode: '',
-    country: '',
-    company: '',
-    email: '',
-    phone: '',
-    ssn: '',
-    identityUsername: '',
-    passportNumber: '',
-    licenseNumber: '',
-    privateKey: '',
-    publicKey: '',
-    fingerprint: ''
-  }
 }
 
 function parseUris(value: unknown): VaultLoginUri[] {

@@ -1,6 +1,17 @@
-import { domainToASCII } from 'node:url'
-import { parse as parseDomain } from 'tldts'
-import { AccountWebAuthnCodecError } from './account-webauthn-codec'
+import {
+  alias,
+  assertionUvm as uvmResult,
+  canonicalBase64Url,
+  canonicalRpId,
+  data,
+  exact,
+  invalid,
+  keys,
+  optionalData,
+  record,
+  strictArray,
+  type PlainRecord
+} from './account-webauthn-codec'
 
 const MAX_CHALLENGE_BYTES = 1_024
 const MAX_CREDENTIAL_ID_BYTES = 1_023
@@ -8,15 +19,10 @@ const MAX_USER_ID_BYTES = 64
 const MAX_CREDENTIALS = 64
 const MAX_PARAMETERS = 32
 const MAX_TIMEOUT_MS = 10 * 60 * 1_000
-const MAX_RP_ID_LENGTH = 253
 const MAX_ENTITY_NAME_LENGTH = 256
 const MAX_CLIENT_DATA_BYTES = 64 * 1_024
 const MAX_ATTESTATION_OBJECT_BYTES = 1024 * 1_024
 const MAX_EXTENSION_BYTES = 4 * 1_024
-const MAX_UVM_ENTRIES = 16
-const MAX_UVM_VALUES = 3
-
-type PlainRecord = Record<string, unknown>
 
 type AuthenticatorTransport = 'usb' | 'nfc' | 'ble' | 'smart-card' | 'hybrid' | 'internal'
 
@@ -72,82 +78,6 @@ export interface AccountWebAuthnAttestation {
   authenticatorAttachment?: 'platform' | 'cross-platform' | null
 }
 
-function invalid(): never {
-  throw new AccountWebAuthnCodecError()
-}
-
-function record(value: unknown): PlainRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) invalid()
-  try {
-    const prototype = Object.getPrototypeOf(value)
-    if (prototype !== Object.prototype && prototype !== null) invalid()
-    return value as PlainRecord
-  } catch (error) {
-    if (error instanceof AccountWebAuthnCodecError) throw error
-    invalid()
-  }
-}
-
-function data(recordValue: PlainRecord, key: PropertyKey): unknown {
-  try {
-    const descriptor = Object.getOwnPropertyDescriptor(recordValue, key)
-    if (!descriptor || !('value' in descriptor)) invalid()
-    return descriptor.value
-  } catch (error) {
-    if (error instanceof AccountWebAuthnCodecError) throw error
-    invalid()
-  }
-}
-
-function optionalData(recordValue: PlainRecord, key: PropertyKey): unknown {
-  try {
-    const descriptor = Object.getOwnPropertyDescriptor(recordValue, key)
-    if (!descriptor) return undefined
-    if (!('value' in descriptor)) invalid()
-    return descriptor.value
-  } catch (error) {
-    if (error instanceof AccountWebAuthnCodecError) throw error
-    invalid()
-  }
-}
-
-function keys(recordValue: PlainRecord): string[] {
-  try {
-    const ownKeys = Reflect.ownKeys(recordValue)
-    if (ownKeys.some((key) => typeof key !== 'string')) invalid()
-    return ownKeys as string[]
-  } catch (error) {
-    if (error instanceof AccountWebAuthnCodecError) throw error
-    invalid()
-  }
-}
-
-function exact(
-  recordValue: PlainRecord,
-  required: readonly string[],
-  optional: readonly string[]
-): void {
-  const ownKeys = keys(recordValue)
-  if (
-    required.some((key) => !ownKeys.includes(key)) ||
-    ownKeys.some((key) => !required.includes(key) && !optional.includes(key))
-  ) {
-    invalid()
-  }
-  for (const key of ownKeys) data(recordValue, key)
-}
-
-function alias(recordValue: PlainRecord, names: readonly string[], required = true): unknown {
-  let present: string[]
-  try {
-    present = names.filter((name) => Object.hasOwn(recordValue, name))
-  } catch {
-    invalid()
-  }
-  if (present.length > 1 || (required && present.length !== 1)) invalid()
-  return present.length === 0 ? undefined : data(recordValue, present[0]!)
-}
-
 function aliasedShape(
   recordValue: PlainRecord,
   allowed: readonly string[],
@@ -164,24 +94,6 @@ function aliasedShape(
   for (const key of keys(recordValue)) data(recordValue, key)
 }
 
-function strictArray(value: unknown, maximum: number): unknown[] {
-  try {
-    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) invalid()
-    if (value.length > maximum) invalid()
-    const descriptors = Object.getOwnPropertyDescriptors(value)
-    if (Reflect.ownKeys(descriptors).filter((key) => key !== 'length').length !== value.length)
-      invalid()
-    for (let index = 0; index < value.length; index += 1) {
-      const descriptor = descriptors[String(index)]
-      if (!descriptor || !('value' in descriptor)) invalid()
-    }
-    return value
-  } catch (error) {
-    if (error instanceof AccountWebAuthnCodecError) throw error
-    invalid()
-  }
-}
-
 function boundedString(value: unknown, minimum: number, maximum: number): string {
   if (
     typeof value !== 'string' ||
@@ -193,34 +105,6 @@ function boundedString(value: unknown, minimum: number, maximum: number): string
     invalid()
   }
   return value
-}
-
-function canonicalBase64Url(value: unknown, minimum: number, maximum: number): string {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]+$/u.test(value)) invalid()
-  const bytes = Buffer.from(value, 'base64url')
-  if (bytes.length < minimum || bytes.length > maximum || bytes.toString('base64url') !== value) {
-    invalid()
-  }
-  return value
-}
-
-function canonicalRpId(value: unknown): string {
-  if (typeof value !== 'string' || value.length === 0 || value.length > MAX_RP_ID_LENGTH) invalid()
-  const ascii = domainToASCII(value).toLowerCase()
-  if (ascii !== value || ascii.includes('..')) invalid()
-  const labels = ascii.split('.')
-  if (
-    labels.length < 2 ||
-    labels.some(
-      (label) =>
-        label.length === 0 || label.length > 63 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u.test(label)
-    )
-  ) {
-    invalid()
-  }
-  const parsed = parseDomain(ascii, { allowPrivateDomains: true })
-  if (parsed.isIp || parsed.domain === null) invalid()
-  return ascii
 }
 
 function rpEntity(value: unknown): AccountWebAuthnRegistrationChallenge['rp'] {
@@ -523,28 +407,6 @@ export function parseAccountWebAuthnRegistrationChallengeFromResponse(
   const object = alias(payload, ['object', 'Object'], false)
   if (object !== undefined && typeof object !== 'string') invalid()
   return parseAccountWebAuthnRegistrationChallenge(options)
-}
-
-function uvmResult(value: unknown): readonly (readonly number[])[] {
-  const rows = strictArray(value, MAX_UVM_ENTRIES)
-  return Object.freeze(
-    rows.map((row) => {
-      const values = strictArray(row, MAX_UVM_VALUES)
-      if (
-        values.length !== MAX_UVM_VALUES ||
-        values.some(
-          (entry) =>
-            typeof entry !== 'number' ||
-            !Number.isSafeInteger(entry) ||
-            entry < 0 ||
-            entry > 0xffff_ffff
-        )
-      ) {
-        invalid()
-      }
-      return Object.freeze(values as number[])
-    })
-  )
 }
 
 function booleanResultObject(value: unknown, key: string): Readonly<Record<string, boolean>> {

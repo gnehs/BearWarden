@@ -29,9 +29,6 @@ export const BITWARDEN_POLICY_TYPE = {
   SendControls: 21
 } as const
 
-export type KnownBitwardenPolicyType =
-  (typeof BITWARDEN_POLICY_TYPE)[keyof typeof BITWARDEN_POLICY_TYPE]
-
 /**
  * `actionable` means this parser retained all data needed to enforce the policy. The caller must
  * still wire the corresponding product behavior and resolve official membership exemptions.
@@ -392,13 +389,6 @@ export function parseBitwardenPolicySync(response: unknown): BitwardenPolicySet 
   const policies = readAliased(response, 'policies', 'Policies')
   if (policies === undefined || policies === null) return { source: 'none', policies: [] }
   return { source: 'policies', policies: parsePolicyArray(policies) }
-}
-
-/** Returns enabled policies that need an explicit compatibility decision before use. */
-export function unenforcedEnabledPolicies(
-  policySet: BitwardenPolicySet
-): BitwardenPolicyMetadata[] {
-  return policySet.policies.filter((policy) => policy.enabled && policy.execution !== 'actionable')
 }
 
 /**

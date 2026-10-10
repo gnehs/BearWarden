@@ -337,6 +337,7 @@ vi.mock('electron', () => ({
     getVersion: () => 'test',
     isPackaged: false,
     setPath: harness.appSetPath,
+    setAppUserModelId: vi.fn(),
     setAboutPanelOptions: vi.fn()
   },
   BrowserWindow: harness.FakeWindow,
@@ -363,10 +364,6 @@ vi.mock('electron', () => ({
   shell: { openExternal: vi.fn() }
 }))
 
-vi.mock('@electron-toolkit/utils', () => ({
-  electronApp: { setAppUserModelId: vi.fn() },
-  is: { dev: false }
-}))
 vi.mock('../../resources/icon.png?asset', () => ({ default: 'icon' }))
 vi.mock('./bitwarden-direct', () => ({ BitwardenDirectClient: class {} }))
 vi.mock('./auto-sync-coordinator', () => ({

@@ -60,7 +60,7 @@ function readSshString(buffer: Buffer, offset: number): { value: Buffer; offset:
   return { value: buffer.subarray(start, end), offset: end }
 }
 
-function encodeSshString(value: Buffer | string): Buffer {
+export function encodeSshString(value: Buffer | string): Buffer {
   const bytes = typeof value === 'string' ? Buffer.from(value, 'utf8') : value
   const result = Buffer.allocUnsafe(4 + bytes.length)
   result.writeUInt32BE(bytes.length, 0)

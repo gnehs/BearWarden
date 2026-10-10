@@ -9,6 +9,7 @@ import {
   type AccountWebAuthnRegistrationWindowConfiguration,
   type AccountWebAuthnRegistrationWindowIdentity
 } from '../main/account-webauthn-registration-window-protocol'
+import { strictRecord } from '../main/account-webauthn-window-primitives'
 
 const CONNECTOR_PATH = '/webauthn-connector.html'
 
@@ -20,29 +21,6 @@ export interface AccountWebAuthnRegistrationIpc {
 export interface AccountWebAuthnRegistrationWindow {
   readonly location: { readonly href: string }
   readonly navigator: Pick<Navigator, 'credentials'>
-}
-
-function strictRecord(value: unknown, keys: readonly string[]): Record<string, unknown> | null {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
-  try {
-    const prototype = Object.getPrototypeOf(value)
-    if (prototype !== Object.prototype && prototype !== null) return null
-    const descriptors = Object.getOwnPropertyDescriptors(value)
-    const ownKeys = Reflect.ownKeys(descriptors)
-    if (
-      ownKeys.length !== keys.length ||
-      ownKeys.some(
-        (key) => typeof key !== 'string' || !keys.includes(key) || !('value' in descriptors[key]!)
-      )
-    ) {
-      return null
-    }
-    const snapshot = Object.create(null) as Record<string, unknown>
-    for (const key of keys) snapshot[key] = descriptors[key]!.value
-    return snapshot
-  } catch {
-    return null
-  }
 }
 
 function parseConfiguration(

@@ -59,7 +59,7 @@ import {
 import { recordSyncDeletion } from './vault/sync-data-parsing'
 import { emergencyAccessViewFromRemote } from './vault/org-collection-parsing'
 import { clonePasswordHistory } from './vault/password-history'
-import type { StoredLogin } from './vault/types'
+import type { StoredLogin, VaultData } from './vault/types'
 import {
   type ItemReadAuthorizationValidator,
   type ExposedPasswordSnapshot
@@ -129,33 +129,7 @@ export class VaultContentService extends VaultAccountService {
       const name = normalizeRequiredString(request.name, MAX_NAME_LENGTH)
       if (name === folder.name) return data.folders.map((candidate) => ({ ...candidate }))
 
-      const sourcePrefix = `${folder.name}/`
-      const affected = data.folders.filter(
-        (candidate) => candidate.id === folder.id || candidate.name.startsWith(sourcePrefix)
-      )
-      const affectedIds = new Set(affected.map((candidate) => candidate.id))
-      const occupiedNames = new Set(
-        data.folders
-          .filter((candidate) => !affectedIds.has(candidate.id))
-          .map((candidate) => candidate.name.toLocaleLowerCase('en-US'))
-      )
-      const nextNames = new Map<string, string>()
-
-      for (const candidate of affected) {
-        const suffix = candidate.id === folder.id ? '' : candidate.name.slice(folder.name.length)
-        const nextName = normalizeRequiredString(`${name}${suffix}`, MAX_NAME_LENGTH)
-        const normalizedName = nextName.toLocaleLowerCase('en-US')
-        if (occupiedNames.has(normalizedName)) throw new VaultError('DUPLICATE_NAME')
-        occupiedNames.add(normalizedName)
-        nextNames.set(candidate.id, nextName)
-      }
-
-      data.folders = data.folders.map((candidate) =>
-        nextNames.has(candidate.id)
-          ? { ...candidate, name: nextNames.get(candidate.id)!, updatedAt: now }
-          : candidate
-      )
-      return data.folders.map((candidate) => ({ ...candidate }))
+      return this.renameFolderSubtree(data, folder, name, now)
     })
   }
 
@@ -196,34 +170,43 @@ export class VaultContentService extends VaultAccountService {
         return data.folders.map((candidate) => ({ ...candidate }))
       }
 
-      const sourcePrefix = `${folder.name}/`
-      const affected = data.folders.filter(
-        (candidate) => candidate.id === folder.id || candidate.name.startsWith(sourcePrefix)
-      )
-      const affectedIds = new Set(affected.map((candidate) => candidate.id))
-      const occupiedNames = new Set(
-        data.folders
-          .filter((candidate) => !affectedIds.has(candidate.id))
-          .map((candidate) => candidate.name.toLocaleLowerCase('en-US'))
-      )
-      const nextNames = new Map<string, string>()
-
-      for (const candidate of affected) {
-        const suffix = candidate.id === folder.id ? '' : candidate.name.slice(folder.name.length)
-        const nextName = normalizeRequiredString(`${nextRootName}${suffix}`, MAX_NAME_LENGTH)
-        const normalizedName = nextName.toLocaleLowerCase('en-US')
-        if (occupiedNames.has(normalizedName)) throw new VaultError('DUPLICATE_NAME')
-        occupiedNames.add(normalizedName)
-        nextNames.set(candidate.id, nextName)
-      }
-
-      data.folders = data.folders.map((candidate) =>
-        nextNames.has(candidate.id)
-          ? { ...candidate, name: nextNames.get(candidate.id)!, updatedAt: now }
-          : candidate
-      )
-      return data.folders.map((candidate) => ({ ...candidate }))
+      return this.renameFolderSubtree(data, folder, nextRootName, now)
     })
+  }
+
+  private renameFolderSubtree(
+    data: VaultData,
+    folder: FolderView,
+    nextRootName: string,
+    now: string
+  ): FolderView[] {
+    const sourcePrefix = `${folder.name}/`
+    const affected = data.folders.filter(
+      (candidate) => candidate.id === folder.id || candidate.name.startsWith(sourcePrefix)
+    )
+    const affectedIds = new Set(affected.map((candidate) => candidate.id))
+    const occupiedNames = new Set(
+      data.folders
+        .filter((candidate) => !affectedIds.has(candidate.id))
+        .map((candidate) => candidate.name.toLocaleLowerCase('en-US'))
+    )
+    const nextNames = new Map<string, string>()
+
+    for (const candidate of affected) {
+      const suffix = candidate.id === folder.id ? '' : candidate.name.slice(folder.name.length)
+      const nextName = normalizeRequiredString(`${nextRootName}${suffix}`, MAX_NAME_LENGTH)
+      const normalizedName = nextName.toLocaleLowerCase('en-US')
+      if (occupiedNames.has(normalizedName)) throw new VaultError('DUPLICATE_NAME')
+      occupiedNames.add(normalizedName)
+      nextNames.set(candidate.id, nextName)
+    }
+
+    data.folders = data.folders.map((candidate) =>
+      nextNames.has(candidate.id)
+        ? { ...candidate, name: nextNames.get(candidate.id)!, updatedAt: now }
+        : candidate
+    )
+    return data.folders.map((candidate) => ({ ...candidate }))
   }
 
   deleteFolder(request: FolderDeleteRequest): Promise<void> {

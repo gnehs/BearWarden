@@ -1,5 +1,5 @@
 import { utils, type ParsedKey } from 'ssh2'
-import type { SshAgentRsaHash } from './ssh-agent-protocol'
+import { encodeSshString, type SshAgentRsaHash } from './ssh-agent-protocol'
 
 export interface SshAgentSignature {
   algorithm: string
@@ -37,12 +37,6 @@ function readDerInteger(buffer: Buffer, offset: number): { value: Buffer; offset
     throw new SshAgentSigningError('Non-canonical DER integer')
   }
   return { value, offset: end }
-}
-
-function encodeSshString(value: Buffer): Buffer {
-  const length = Buffer.allocUnsafe(4)
-  length.writeUInt32BE(value.length)
-  return Buffer.concat([length, value])
 }
 
 function ecdsaDerToSsh(signature: Buffer): Buffer {

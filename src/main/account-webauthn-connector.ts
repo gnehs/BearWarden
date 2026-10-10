@@ -4,6 +4,7 @@ import {
   type AccountWebAuthnAssertion,
   type AccountWebAuthnChallenge
 } from './account-webauthn-codec'
+import { containsUnsafePathSyntax } from './account-webauthn-window-primitives'
 
 const CONNECTOR_PATH = '/webauthn-connector.html'
 const MAX_WEB_VAULT_URL_LENGTH = 4_096
@@ -142,10 +143,6 @@ function parseWebVaultTarget(value: unknown): { origin: string; pageUrl: string 
     failConfiguration()
   }
   return { origin: url.origin, pageUrl: `${url.origin}${CONNECTOR_PATH}` }
-}
-
-function containsUnsafePathSyntax(raw: string): boolean {
-  return /(?:^|\/)(?:\.{1,2})(?:\/|$)|%2e|%2f|%5c|\\/iu.test(raw)
 }
 
 function parseParentUrl(value: unknown): string {

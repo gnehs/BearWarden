@@ -239,15 +239,7 @@ export class MacOSAutofillAdapter {
         forceTermination.unref()
         finish(() => reject(new MacOSAutofillError('UNAVAILABLE')))
       }
-      const timeout = setTimeout(() => {
-        child.kill()
-        const forceTermination = setTimeout(
-          () => child.kill('SIGKILL'),
-          HELPER_TERMINATION_GRACE_MS
-        )
-        forceTermination.unref()
-        finish(() => reject(new MacOSAutofillError('UNAVAILABLE')))
-      }, HELPER_TIMEOUT_MS)
+      const timeout = setTimeout(abort, HELPER_TIMEOUT_MS)
       signal.addEventListener('abort', abort, { once: true })
       child.stdout.setEncoding('utf8')
       child.stderr.setEncoding('utf8')

@@ -1,11 +1,12 @@
 import * as sax from 'sax'
-import type { VaultCustomField, VaultItemFields } from '../shared/vault-contract'
+import type { VaultCustomField } from '../shared/vault-contract'
 import type {
   PortableVaultFolder,
   PortableVaultItem,
   PortableVaultSnapshot
 } from './vault-portability-codec'
 import { VaultError } from './vault-errors'
+import { emptyItemFields } from './vault/item-fields'
 
 export const KEEPASS_XML_LIMITS = {
   maximumDocumentBytes: 64 * 1024 * 1024,
@@ -409,42 +410,6 @@ function keepassTotp(
       ? base32
       : `otpauth://totp/${encodeURIComponent(title.trim() || 'KeePass Import')}?secret=${base32}&algorithm=${algorithm}&digits=${digits}&period=${period}`
   return { value: result, consumed: new Set(['otp', ...modernKeys]) }
-}
-
-function emptyItemFields(): VaultItemFields {
-  return {
-    username: '',
-    password: '',
-    totp: '',
-    uri: null,
-    cardholderName: '',
-    brand: '',
-    number: '',
-    expMonth: '',
-    expYear: '',
-    code: '',
-    title: '',
-    firstName: '',
-    middleName: '',
-    lastName: '',
-    address1: '',
-    address2: '',
-    address3: '',
-    city: '',
-    state: '',
-    postalCode: '',
-    country: '',
-    company: '',
-    email: '',
-    phone: '',
-    ssn: '',
-    identityUsername: '',
-    passportNumber: '',
-    licenseNumber: '',
-    privateKey: '',
-    publicKey: '',
-    fingerprint: ''
-  }
 }
 
 function preScanXml(input: string): void {

@@ -25,7 +25,6 @@ import type {
   SharedLoginUpdateRequest,
   SharedLoginView,
   VaultPasswordHistoryEntry,
-  VaultReprompt,
   VaultSecretField,
   TotpCodeView
 } from '../shared/vault-contract'
@@ -520,17 +519,6 @@ export class VaultService extends VaultTransferService {
     return this.generatorService.copyHistory(request)
   }
 
-  loginAuthorizationState(request: LoginIdRequest): Promise<{
-    reprompt: VaultReprompt
-    generation: number
-  }> {
-    return this.exclusive(async () => {
-      assertUuid(request.id)
-      const login = this.findLogin(this.requireData(), request.id)
-      return { reprompt: login.reprompt, generation: this.generation }
-    })
-  }
-
   /**
    * Returns a point-in-time public identity snapshot for the main-process SSH Agent. Invalid or
    * unsupported public keys are omitted rather than allowing unusable identities onto the wire.
@@ -692,11 +680,7 @@ export class VaultService extends VaultTransferService {
     return this.mutate((data, now) => {
       const folderId = this.normalizeFolderId(data, request.folderId)
       const type = normalizeItemType(request.type ?? 'login')
-      this.assertBitwardenPolicyDoesNotBlock(
-        BITWARDEN_POLICY_TYPE.OrganizationDataOwnership,
-        'POLICY_RESTRICTED',
-        data
-      )
+      this.assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.OrganizationDataOwnership, data)
       this.assertPersonalItemTypeAllowed(type, data)
       const fields = emptyItemFields()
       applyItemFields(fields, request, type)
@@ -737,11 +721,7 @@ export class VaultService extends VaultTransferService {
       assertUuid(request.id)
       const source = this.findLogin(data, request.id)
       this.assertActiveLogin(source)
-      this.assertBitwardenPolicyDoesNotBlock(
-        BITWARDEN_POLICY_TYPE.OrganizationDataOwnership,
-        'POLICY_RESTRICTED',
-        data
-      )
+      this.assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.OrganizationDataOwnership, data)
       this.assertPersonalItemTypeAllowed(source.type, data)
       const clone: StoredLogin = {
         id: this.validatedNewId(),

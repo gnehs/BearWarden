@@ -25,8 +25,11 @@ import {
   type AccountWebAuthnWrapperEvent,
   type AccountWebAuthnWrapperIdentity
 } from './account-webauthn-window-protocol'
+import {
+  ACCOUNT_WEBAUTHN_CAPABILITY_PATTERN,
+  strictRecord
+} from './account-webauthn-window-primitives'
 
-const CAPABILITY_PATTERN = /^[A-Za-z0-9_-]{32,128}$/u
 const CHILD_FRAME_NAME = 'bearwarden-account-webauthn-connector'
 const WRAPPER_CSP_BASE =
   "default-src 'none'; script-src 'none'; connect-src 'none'; img-src 'none'; media-src 'none'; font-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'"
@@ -63,29 +66,6 @@ interface ActiveWindowSession {
   readonly handleDownload: (event: Electron.Event) => void
 }
 
-function strictRecord(value: unknown, keys: readonly string[]): Record<string, unknown> | null {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
-  try {
-    const prototype = Object.getPrototypeOf(value)
-    if (prototype !== Object.prototype && prototype !== null) return null
-    const descriptors = Object.getOwnPropertyDescriptors(value)
-    const ownKeys = Reflect.ownKeys(descriptors)
-    if (
-      ownKeys.length !== keys.length ||
-      ownKeys.some(
-        (key) => typeof key !== 'string' || !keys.includes(key) || !('value' in descriptors[key]!)
-      )
-    ) {
-      return null
-    }
-    const snapshot = Object.create(null) as Record<string, unknown>
-    for (const key of keys) snapshot[key] = descriptors[key]!.value
-    return snapshot
-  } catch {
-    return null
-  }
-}
-
 function parseIdentity(value: unknown): AccountWebAuthnWrapperIdentity | null {
   const record = strictRecord(value, ['epoch', 'capability'])
   if (
@@ -94,7 +74,7 @@ function parseIdentity(value: unknown): AccountWebAuthnWrapperIdentity | null {
     !Number.isSafeInteger(record.epoch) ||
     record.epoch < 0 ||
     typeof record.capability !== 'string' ||
-    !CAPABILITY_PATTERN.test(record.capability)
+    !ACCOUNT_WEBAUTHN_CAPABILITY_PATTERN.test(record.capability)
   ) {
     return null
   }
@@ -121,7 +101,7 @@ function parseWrapperEvent(value: unknown): AccountWebAuthnWrapperEvent | null {
     !Number.isSafeInteger(record.epoch) ||
     record.epoch < 0 ||
     typeof record.capability !== 'string' ||
-    !CAPABILITY_PATTERN.test(record.capability)
+    !ACCOUNT_WEBAUTHN_CAPABILITY_PATTERN.test(record.capability)
   ) {
     return null
   }
@@ -212,7 +192,7 @@ export class AccountWebAuthnWindowController {
     }
 
     const ipcCapability = this.randomToken()
-    if (!CAPABILITY_PATTERN.test(ipcCapability)) {
+    if (!ACCOUNT_WEBAUTHN_CAPABILITY_PATTERN.test(ipcCapability)) {
       return Promise.reject(new AccountWebAuthnConnectorError('INVALID_CONFIGURATION'))
     }
     const epoch = ++this.epoch

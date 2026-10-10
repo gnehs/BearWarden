@@ -12,7 +12,6 @@ import {
   session,
   shell
 } from 'electron'
-import { electronApp, is } from '@electron-toolkit/utils'
 import { DEFAULT_AUTOFILL_SHORTCUT } from '../shared/autofill-shortcuts'
 import {
   IPC_CHANNELS,
@@ -77,8 +76,7 @@ if (!app.isPackaged) {
 }
 
 const errorLog = new ErrorLogService(join(app.getPath('userData'), 'logs', 'errors.log'), {
-  showItemInFolder: (path) => shell.showItemInFolder(path),
-  openPath: (path) => shell.openPath(path)
+  showItemInFolder: (path) => shell.showItemInFolder(path)
 })
 errorLog.install()
 
@@ -128,18 +126,33 @@ let shutdownPending: Promise<void> | null = null
 let shutdownComplete = false
 let servicesDisposed = false
 const SHUTDOWN_GRACE_PERIOD_MS = 3_000
-const sshAgentRuntime = {
-  applySettings(settings: { enabled: boolean; promptBehavior: SshAgentPromptBehavior }): void {
-    sshAgentEnabled = settings.enabled
-    sshAgentPromptBehavior = settings.promptBehavior
-    sshAgentLifecycleEpoch += 1
-    if (!settings.enabled) {
-      sshAgentBridge?.cancelAll()
-      sshAgentCoordinator?.reset()
-    }
-    publishSshAgentStatus()
-    scheduleSshAgentLifecycle()
+const rendererWebPreferences: Electron.WebPreferences = {
+  preload: join(__dirname, '../preload/index.js'),
+  sandbox: true,
+  contextIsolation: true,
+  nodeIntegration: false,
+  nodeIntegrationInWorker: false,
+  nodeIntegrationInSubFrames: false,
+  webSecurity: true,
+  allowRunningInsecureContent: false,
+  webviewTag: false,
+  navigateOnDragDrop: false,
+  spellcheck: false
+}
+
+function applySshAgentSettings(settings: {
+  enabled: boolean
+  promptBehavior: SshAgentPromptBehavior
+}): void {
+  sshAgentEnabled = settings.enabled
+  sshAgentPromptBehavior = settings.promptBehavior
+  sshAgentLifecycleEpoch += 1
+  if (!settings.enabled) {
+    sshAgentBridge?.cancelAll()
+    sshAgentCoordinator?.reset()
   }
+  publishSshAgentStatus()
+  scheduleSshAgentLifecycle()
 }
 
 function applyAutofillSettings({
@@ -351,23 +364,11 @@ function getOrCreateAutofillWindow(): BrowserWindow {
     skipTaskbar: true,
     alwaysOnTop: true,
     hasShadow: true,
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-      nodeIntegrationInWorker: false,
-      nodeIntegrationInSubFrames: false,
-      webSecurity: true,
-      allowRunningInsecureContent: false,
-      webviewTag: false,
-      navigateOnDragDrop: false,
-      spellcheck: false
-    }
+    webPreferences: rendererWebPreferences
   })
   window.setAlwaysOnTop(true, 'floating')
   window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-  window.setContentProtection(!is.dev && contentProtectionEnabled)
+  window.setContentProtection(app.isPackaged && contentProtectionEnabled)
   window.webContents.on('will-navigate', (event) => event.preventDefault())
   window.webContents.on('will-attach-webview', (event) => event.preventDefault())
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
@@ -377,7 +378,7 @@ function getOrCreateAutofillWindow(): BrowserWindow {
   window.on('closed', () => {
     if (autofillWindow === window) autofillWindow = null
   })
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+  if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
     const url = new URL(process.env['ELECTRON_RENDERER_URL'])
     url.searchParams.set('mode', 'autofill')
     void window.loadURL(url.toString())
@@ -388,6 +389,20 @@ function getOrCreateAutofillWindow(): BrowserWindow {
   }
   autofillWindow = window
   return window
+}
+
+async function chooseOpenPath(options: Electron.OpenDialogOptions): Promise<string | null> {
+  const result = mainWindow
+    ? await dialog.showOpenDialog(mainWindow, options)
+    : await dialog.showOpenDialog(options)
+  return result.canceled || result.filePaths.length !== 1 ? null : result.filePaths[0]!
+}
+
+async function chooseSavePath(options: Electron.SaveDialogOptions): Promise<string | null> {
+  const result = mainWindow
+    ? await dialog.showSaveDialog(mainWindow, options)
+    : await dialog.showSaveDialog(options)
+  return result.canceled || !result.filePath ? null : result.filePath
 }
 
 const sensitiveClipboard = new SensitiveClipboard(clipboard)
@@ -616,29 +631,17 @@ function createWindow(): BrowserWindow {
     minWidth: 800,
     // Development must stay visible even when Windows never emits ready-to-show. Production
     // remains hidden until the renderer is ready to avoid a white startup flash.
-    show: is.dev,
+    show: !app.isPackaged,
     autoHideMenuBar: isMac,
     ...(!isMac ? { icon } : {}),
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-      nodeIntegrationInWorker: false,
-      nodeIntegrationInSubFrames: false,
-      webSecurity: true,
-      allowRunningInsecureContent: false,
-      webviewTag: false,
-      navigateOnDragDrop: false,
-      spellcheck: false
-    },
+    webPreferences: rendererWebPreferences,
     ...windowChromeOptions(process.platform)
   })
   if (!isMac) window.setMenuBarVisibility(false)
 
   // WDA_EXCLUDEFROMCAPTURE can make a window disappear entirely in captured or virtualized
   // Windows development sessions. Keep the production protection while leaving dev inspectable.
-  window.setContentProtection(!is.dev && contentProtectionEnabled)
+  window.setContentProtection(app.isPackaged && contentProtectionEnabled)
   sshAgentBridge?.attachWindow(window)
   passkeyRendererBridge?.attachWindow(window)
   window.webContents.on('did-start-loading', () => {
@@ -686,7 +689,7 @@ function createWindow(): BrowserWindow {
   window.on('focus', () => void focusTouchIdUnlock.focus())
   window.on('blur', () => focusTouchIdUnlock.blur())
 
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+  if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
     void window.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
     void window.loadFile(join(__dirname, '../renderer/index.html'))
@@ -698,7 +701,10 @@ function createWindow(): BrowserWindow {
 if (hasSingleInstanceLock)
   app.whenReady().then(async () => {
     initializeMainI18n(app.getLocale())
-    electronApp.setAppUserModelId('com.bearwarden.app')
+    if (process.platform === 'win32') {
+      // Windows only shows development notifications when the AUMID is the Electron executable.
+      app.setAppUserModelId(app.isPackaged ? 'com.bearwarden.app' : process.execPath)
+    }
     if (process.platform === 'darwin' && !app.isPackaged) app.dock?.setIcon(icon)
     session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
       callback(false)
@@ -742,10 +748,7 @@ if (hasSingleInstanceLock)
           // them instead of silently accepting the resolved target.
           properties: ['openFile' as const, 'noResolveAliases' as const]
         }
-        const result = mainWindow
-          ? await dialog.showOpenDialog(mainWindow, options)
-          : await dialog.showOpenDialog(options)
-        return result.canceled || result.filePaths.length !== 1 ? null : result.filePaths[0]!
+        return chooseOpenPath(options)
       },
       chooseCardCoverFile: async () => {
         const options = {
@@ -761,10 +764,7 @@ if (hasSingleInstanceLock)
           // them instead of silently accepting the resolved target.
           properties: ['openFile' as const, 'noResolveAliases' as const]
         }
-        const result = mainWindow
-          ? await dialog.showOpenDialog(mainWindow, options)
-          : await dialog.showOpenDialog(options)
-        return result.canceled || result.filePaths.length !== 1 ? null : result.filePaths[0]!
+        return chooseOpenPath(options)
       },
       chooseSavePath: async (defaultName) => {
         const options = {
@@ -774,10 +774,7 @@ if (hasSingleInstanceLock)
           filters: [{ name: translateMain('attachment.allFiles'), extensions: ['*'] }],
           properties: ['showOverwriteConfirmation' as const]
         }
-        const result = mainWindow
-          ? await dialog.showSaveDialog(mainWindow, options)
-          : await dialog.showSaveDialog(options)
-        return result.canceled || !result.filePath ? null : result.filePath
+        return chooseSavePath(options)
       }
     })
 
@@ -939,10 +936,7 @@ if (hasSingleInstanceLock)
           ],
           properties: ['showOverwriteConfirmation' as const]
         }
-        const result = mainWindow
-          ? await dialog.showSaveDialog(mainWindow, options)
-          : await dialog.showSaveDialog(options)
-        return result.canceled || !result.filePath ? null : result.filePath
+        return chooseSavePath(options)
       },
       chooseImportPath: async (format) => {
         const native = format === 'bearwarden-native'
@@ -969,10 +963,7 @@ if (hasSingleInstanceLock)
                 ],
           properties: ['openFile' as const]
         }
-        const result = mainWindow
-          ? await dialog.showOpenDialog(mainWindow, options)
-          : await dialog.showOpenDialog(options)
-        return result.canceled || result.filePaths.length !== 1 ? null : result.filePaths[0]!
+        return chooseOpenPath(options)
       }
     })
     autoSync = new AutoSyncCoordinator({
@@ -1004,21 +995,16 @@ if (hasSingleInstanceLock)
         applyContentProtection: (enabled) => {
           contentProtectionEnabled = enabled
           if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.setContentProtection(!is.dev && enabled)
+            mainWindow.setContentProtection(app.isPackaged && enabled)
           }
         },
         applyClipboardTimeout: (seconds) => sensitiveClipboard.setClearDelay(seconds),
         applyAutofillSettings,
         applyLanguage: (language) => {
-          initializeMainI18nFromPreference(
-            language,
-            language === 'system' ? app.getLocale() : undefined
-          )
+          initializeMainI18nFromPreference(language, app.getLocale())
           if (mainInitializationComplete) installCurrentApplicationMenu()
         },
-        applySshAgentSettings: (next) => {
-          sshAgentRuntime.applySettings(next)
-        },
+        applySshAgentSettings,
         getStartAtLoginStatus: () => {
           const available =
             app.isPackaged && (process.platform === 'darwin' || process.platform === 'win32')

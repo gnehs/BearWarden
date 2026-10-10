@@ -24,8 +24,12 @@ import {
   type AccountWebAuthnRegistrationWindowEvent,
   type AccountWebAuthnRegistrationWindowIdentity
 } from './account-webauthn-registration-window-protocol'
+import {
+  ACCOUNT_WEBAUTHN_CAPABILITY_PATTERN,
+  containsUnsafePathSyntax,
+  strictRecord
+} from './account-webauthn-window-primitives'
 
-const CAPABILITY_PATTERN = /^[A-Za-z0-9_-]{32,128}$/u
 const CONNECTOR_PATH = '/webauthn-connector.html'
 const MAX_WEB_VAULT_URL_LENGTH = 4_096
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1_000
@@ -77,29 +81,6 @@ interface ActiveRegistration {
   cleaning: boolean
 }
 
-function strictRecord(value: unknown, keys: readonly string[]): Record<string, unknown> | null {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
-  try {
-    const prototype = Object.getPrototypeOf(value)
-    if (prototype !== Object.prototype && prototype !== null) return null
-    const descriptors = Object.getOwnPropertyDescriptors(value)
-    const ownKeys = Reflect.ownKeys(descriptors)
-    if (
-      ownKeys.length !== keys.length ||
-      ownKeys.some(
-        (key) => typeof key !== 'string' || !keys.includes(key) || !('value' in descriptors[key]!)
-      )
-    ) {
-      return null
-    }
-    const snapshot = Object.create(null) as Record<string, unknown>
-    for (const key of keys) snapshot[key] = descriptors[key]!.value
-    return snapshot
-  } catch {
-    return null
-  }
-}
-
 function parseIdentity(value: unknown): AccountWebAuthnRegistrationWindowIdentity | null {
   const record = strictRecord(value, ['epoch', 'capability'])
   if (
@@ -108,7 +89,7 @@ function parseIdentity(value: unknown): AccountWebAuthnRegistrationWindowIdentit
     !Number.isSafeInteger(record.epoch) ||
     record.epoch < 0 ||
     typeof record.capability !== 'string' ||
-    !CAPABILITY_PATTERN.test(record.capability)
+    !ACCOUNT_WEBAUTHN_CAPABILITY_PATTERN.test(record.capability)
   ) {
     return null
   }
@@ -157,10 +138,6 @@ function parseWindowEvent(value: unknown): AccountWebAuthnRegistrationWindowEven
     type: 'failure',
     reason: record.reason as AccountWebAuthnRegistrationFailureReason
   }
-}
-
-function containsUnsafePathSyntax(raw: string): boolean {
-  return /(?:^|\/)(?:\.{1,2})(?:\/|$)|%2e|%2f|%5c|\\/iu.test(raw)
 }
 
 function connectorUrlFor(value: unknown): string {
@@ -294,7 +271,7 @@ export class AccountWebAuthnRegistrationWindowController {
       challenge = parseAccountWebAuthnRegistrationChallenge(options.challenge)
       connectorUrl = connectorUrlFor(options.webVaultUrl)
       ipcCapability = this.randomToken()
-      if (!CAPABILITY_PATTERN.test(ipcCapability)) {
+      if (!ACCOUNT_WEBAUTHN_CAPABILITY_PATTERN.test(ipcCapability)) {
         throw new AccountWebAuthnRegistrationWindowError('INVALID_CONFIGURATION')
       }
     } catch {

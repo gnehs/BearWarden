@@ -10,6 +10,7 @@ import {
   type AccountPathLayout
 } from './account-paths'
 import { MAX_LOCAL_ACCOUNT_NAME_BYTES } from '../shared/vault-contract'
+import { exactKeys, plainRecord } from './plain-record'
 
 const REGISTRY_FORMAT = 'bearwarden-account-registry'
 const REGISTRY_VERSION = 1
@@ -37,35 +38,6 @@ export interface AccountRegistryStoreOptions {
   readonly afterWriteStage?: (
     stage: 'backup' | 'before-primary' | 'primary'
   ) => void | Promise<void>
-}
-
-type PlainRecord = Record<string, unknown>
-
-function plainRecord(value: unknown): value is PlainRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
-  const prototype = Object.getPrototypeOf(value)
-  if (prototype !== Object.prototype && prototype !== null) return false
-  const descriptors = Object.getOwnPropertyDescriptors(value)
-  return Reflect.ownKeys(descriptors).every((key) => {
-    if (typeof key !== 'string') return false
-    const descriptor = descriptors[key]!
-    return (
-      descriptor.enumerable === true &&
-      'value' in descriptor &&
-      descriptor.get === undefined &&
-      descriptor.set === undefined
-    )
-  })
-}
-
-function exactKeys(
-  value: PlainRecord,
-  required: readonly string[],
-  optional: readonly string[] = []
-): boolean {
-  const keys = Object.keys(value)
-  const allowed = new Set([...required, ...optional])
-  return required.every((key) => Object.hasOwn(value, key)) && keys.every((key) => allowed.has(key))
 }
 
 function safeArray(value: unknown): readonly unknown[] | null {
@@ -182,7 +154,7 @@ function serializeRegistry(registry: AccountRegistry): string {
   return `${JSON.stringify(parseAccountRegistry(registry))}\n`
 }
 
-function registryEqual(left: AccountRegistry, right: AccountRegistry): boolean {
+export function registryEqual(left: AccountRegistry, right: AccountRegistry): boolean {
   return (
     left.format === right.format &&
     left.version === right.version &&

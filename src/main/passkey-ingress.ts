@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { validatePasskeyOrigin } from './passkey-origin-validation'
+import { plainRecord, type PlainRecord } from './plain-record'
 
 const MAX_PROVIDER_LENGTH = 128
 const MAX_PEER_BINDING_LENGTH = 256
@@ -143,31 +144,12 @@ export interface PasskeyIngressGetSnapshot extends PasskeyIngressSnapshotBase {
 /** Main-process-only ceremony input. It is intentionally unsuitable for renderer IPC. */
 export type PasskeyIngressSnapshot = PasskeyIngressCreateSnapshot | PasskeyIngressGetSnapshot
 
-type PlainRecord = Record<string, unknown>
-
 function fail(code: PasskeyIngressErrorCode): never {
   throw new PasskeyIngressError(code)
 }
 
-function isPlainRecord(value: unknown): value is PlainRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
-  const prototype = Object.getPrototypeOf(value)
-  if (prototype !== Object.prototype && prototype !== null) return false
-  const descriptors = Object.getOwnPropertyDescriptors(value)
-  return Reflect.ownKeys(descriptors).every((key) => {
-    if (typeof key !== 'string') return false
-    const descriptor = descriptors[key]!
-    return (
-      descriptor.enumerable === true &&
-      'value' in descriptor &&
-      descriptor.get === undefined &&
-      descriptor.set === undefined
-    )
-  })
-}
-
 function record(value: unknown, code: PasskeyIngressErrorCode = 'INVALID_PAYLOAD'): PlainRecord {
-  if (!isPlainRecord(value)) fail(code)
+  if (!plainRecord(value)) fail(code)
   return value
 }
 

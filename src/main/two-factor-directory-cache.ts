@@ -9,7 +9,7 @@ import {
 } from './inactive-two-factor'
 
 const MAX_DATASET_BYTES = 4 * 1024 * 1024
-const DEFAULT_FRESH_MS = 7 * 24 * 60 * 60 * 1_000
+const FRESH_MS = 7 * 24 * 60 * 60 * 1_000
 const DEFAULT_TIMEOUT_MS = 10_000
 const JSON_CONTENT_TYPE = /^application\/(?:[a-z0-9.+-]+\+)?json(?:\s*;|$)/iu
 
@@ -26,7 +26,6 @@ export class TwoFactorDirectoryCacheError extends Error {
 export interface TwoFactorDirectoryCacheOptions {
   fetch?: typeof fetch
   now?: () => number
-  freshMs?: number
   timeoutMs?: number
   openExternal?: (url: string) => void | Promise<void>
 }
@@ -133,7 +132,6 @@ async function readBoundedResponse(response: Response, abort: AbortController): 
 export class TwoFactorDirectoryCache {
   private readonly fetchImpl: typeof fetch
   private readonly now: () => number
-  private readonly freshMs: number
   private readonly timeoutMs: number
   private readonly openExternal?: (url: string) => void | Promise<void>
   private active: { abort: AbortController; promise: Promise<TwoFactorDirectoryDataset> } | null =
@@ -147,7 +145,6 @@ export class TwoFactorDirectoryCache {
   ) {
     this.fetchImpl = options.fetch ?? fetch
     this.now = options.now ?? Date.now
-    this.freshMs = options.freshMs ?? DEFAULT_FRESH_MS
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
     this.openExternal = options.openExternal
   }
@@ -190,7 +187,7 @@ export class TwoFactorDirectoryCache {
     const cached = this.memory ?? (await readBoundedDataset(this.cachePath))
     if (this.disposed) cacheError('DISPOSED')
     if (cached) this.memory = cached
-    if (cached && this.now() - cached.modifiedAt <= this.freshMs) return cached.dataset
+    if (cached && this.now() - cached.modifiedAt <= FRESH_MS) return cached.dataset
 
     try {
       const { dataset, serialized } = await this.fetchDataset(abort)

@@ -39,6 +39,7 @@ import {
 import {
   BitwardenHttpClient,
   BitwardenHttpError,
+  isRecord,
   parseEquivalentDomainSettings,
   type BitwardenAccountBreachReport,
   type BitwardenAuthRequest,
@@ -97,6 +98,9 @@ import type {
   AccountWebAuthnAttestation,
   AccountWebAuthnRegistrationChallenge
 } from './account-webauthn-registration-codec'
+import { cloneCustomFields } from './vault/custom-fields'
+import { emptyItemFields, ITEM_FIELD_NAMES } from './vault/item-fields'
+import { clonePasswordHistory } from './vault/password-history'
 
 const USER_KEY_BYTES = 64
 const MAX_REMOTE_ENTITIES = 100_000
@@ -151,14 +155,6 @@ const ITEM_TYPE_BY_WIRE_TYPE: Record<BitwardenCipherType, VaultItemType> = {
   4: 'identity',
   5: 'sshKey'
 }
-
-const BLOB_TAG_BY_ITEM_TYPE = {
-  login: 'login',
-  secureNote: 'secureNote',
-  card: 'card',
-  identity: 'identity',
-  sshKey: 'sshKey'
-} as const satisfies Record<VaultItemType, string>
 
 function protocolClientVersion(value: string | undefined): string {
   if (!value) return MINIMUM_CLIENT_VERSION
@@ -323,9 +319,6 @@ export interface BitwardenLoginApprovalRequest {
   requestDeviceType: string
   createdAt: string
 }
-
-/** @deprecated Use BitwardenLoginApprovalRequest. */
-export type BitwardenLoginRequestMetadata = BitwardenLoginApprovalRequest
 
 export interface BitwardenStreamedAttachment {
   fileName: string
@@ -819,10 +812,6 @@ interface ResolvedBitwardenDraft extends VaultItemFields {
   passwordHistoryChanged: boolean
 }
 
-function isRecord(value: unknown): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 const EMPTY_POLICY_SET: BitwardenPolicySet = { source: 'none', policies: [] }
 
 function invalidPersistedPolicySet(): BitwardenPolicySet {
@@ -1124,6 +1113,12 @@ function assertUuidValue(value: string): string {
   return value
 }
 
+function assertSyncSecret(value: unknown): asserts value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > MAX_SYNC_SECRET_LENGTH) {
+    throw new BitwardenDirectError('INVALID_RESPONSE')
+  }
+}
+
 function booleanProperty(record: JsonObject, name: string, fallback = false): boolean {
   const value = property(record, name)
   if (value === undefined || value === null) return fallback
@@ -1223,42 +1218,6 @@ function bitwardenCipherType(record: JsonObject): BitwardenCipherType {
     )
   }
   return value
-}
-
-function emptyVaultItemFields(): VaultItemFields {
-  return {
-    username: '',
-    password: '',
-    totp: '',
-    uri: null,
-    cardholderName: '',
-    brand: '',
-    number: '',
-    expMonth: '',
-    expYear: '',
-    code: '',
-    title: '',
-    firstName: '',
-    middleName: '',
-    lastName: '',
-    address1: '',
-    address2: '',
-    address3: '',
-    city: '',
-    state: '',
-    postalCode: '',
-    country: '',
-    company: '',
-    email: '',
-    phone: '',
-    ssn: '',
-    identityUsername: '',
-    passportNumber: '',
-    licenseNumber: '',
-    privateKey: '',
-    publicKey: '',
-    fingerprint: ''
-  }
 }
 
 const CUSTOM_FIELD_TYPE_BY_WIRE_TYPE: Record<number, VaultCustomFieldType> = {
@@ -1372,10 +1331,6 @@ function validateDraftCustomFields(value: unknown): VaultCustomField[] {
   })
 }
 
-function cloneCustomFields(fields: VaultCustomField[]): VaultCustomField[] {
-  return fields.map((field) => ({ ...field }))
-}
-
 function customFieldsEqual(
   left: readonly VaultCustomField[],
   right: readonly VaultCustomField[]
@@ -1442,10 +1397,6 @@ function normalizedBitwardenTimestamp(value: unknown): string {
   return canonical
 }
 
-function passwordHistoryDate(value: unknown): string {
-  return normalizedBitwardenTimestamp(value)
-}
-
 function draftNullableBoolean(value: unknown): boolean | null {
   if (value === null || typeof value === 'boolean') return value
   throw new BitwardenDirectError('INVALID_RESPONSE')
@@ -1467,7 +1418,7 @@ function decryptLegacyPasswordHistory(
     const encrypted = requiredStringProperty(raw, 'password')
     return {
       password: checkedHistoryPassword(decryptBitwardenString(encrypted, key)),
-      lastUsedDate: passwordHistoryDate(property(raw, 'lastUsedDate'))
+      lastUsedDate: normalizedBitwardenTimestamp(property(raw, 'lastUsedDate'))
     }
   })
 }
@@ -1477,7 +1428,7 @@ function decryptBlobPasswordHistory(value: JsonValue | undefined): VaultPassword
     if (!isRecord(raw)) throw new BitwardenDirectError('INVALID_RESPONSE')
     return {
       password: checkedHistoryPassword(property(raw, 'password')),
-      lastUsedDate: passwordHistoryDate(property(raw, 'lastUsedDate'))
+      lastUsedDate: normalizedBitwardenTimestamp(property(raw, 'lastUsedDate'))
     }
   })
 }
@@ -1490,15 +1441,9 @@ function validateDraftPasswordHistory(value: unknown): VaultPasswordHistoryEntry
     if (!isRecord(entry)) throw new BitwardenDirectError('INVALID_RESPONSE')
     return {
       password: checkedHistoryPassword(property(entry, 'password')),
-      lastUsedDate: passwordHistoryDate(property(entry, 'lastUsedDate'))
+      lastUsedDate: normalizedBitwardenTimestamp(property(entry, 'lastUsedDate'))
     }
   })
-}
-
-function clonePasswordHistory(
-  entries: readonly VaultPasswordHistoryEntry[]
-): VaultPasswordHistoryEntry[] {
-  return entries.map((entry) => ({ ...entry }))
 }
 
 function passwordHistoryEqual(
@@ -1534,9 +1479,8 @@ function resolveDraft(
   draft: BitwardenLoginDraft,
   previous: BitwardenLoginItem | null
 ): ResolvedBitwardenDraft {
-  const fields = { ...emptyVaultItemFields(), ...(previous ?? {}) }
-  const fieldNames = Object.keys(emptyVaultItemFields()) as (keyof VaultItemFields)[]
-  for (const name of fieldNames) {
+  const fields = { ...emptyItemFields(), ...(previous ?? {}) }
+  for (const name of ITEM_FIELD_NAMES) {
     const value = draft[name]
     if (value !== undefined) {
       Object.assign(fields, { [name]: value })
@@ -1555,7 +1499,7 @@ function resolveDraft(
       ? (previous?.passwordRevisionDate ?? null)
       : draft.passwordRevisionDate === null
         ? null
-        : passwordHistoryDate(draft.passwordRevisionDate)
+        : normalizedBitwardenTimestamp(draft.passwordRevisionDate)
   const autofillOnPageLoad =
     draft.autofillOnPageLoad === undefined
       ? (previous?.autofillOnPageLoad ?? null)
@@ -2137,10 +2081,6 @@ function decryptOptionalNullableString(
   return encrypted === null ? null : decryptBitwardenString(encrypted, key)
 }
 
-function assertCreationDate(value: string | null): string {
-  return normalizedBitwardenTimestamp(value)
-}
-
 function assertPasskeyField(value: string): string {
   if (value.length > MAX_PASSKEY_FIELD_LENGTH) {
     throw new BitwardenDirectError('INVALID_RESPONSE')
@@ -2166,7 +2106,7 @@ function validatePasskey(passkey: StoredPasskeyCredential): StoredPasskeyCredent
     rpName: assertNullablePasskeyField(passkey.rpName),
     userDisplayName: assertNullablePasskeyField(passkey.userDisplayName),
     discoverable: passkey.discoverable,
-    creationDate: assertCreationDate(passkey.creationDate)
+    creationDate: normalizedBitwardenTimestamp(passkey.creationDate)
   }
 }
 
@@ -2488,21 +2428,11 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     let masterPasswordHash = ''
     let mutationStarted = false
     try {
-      if (
-        typeof masterPassword !== 'string' ||
-        masterPassword.length === 0 ||
-        masterPassword.length > MAX_SYNC_SECRET_LENGTH
-      ) {
-        throw new BitwardenDirectError('INVALID_RESPONSE')
-      }
+      assertSyncSecret(masterPassword)
       this.requireProfileId()
-      const prelogin = await this.http.prelogin(this.email, signal)
-      masterKey = await deriveMasterKey(
-        masterPassword,
-        prelogin.salt ?? this.email,
-        kdfFromPrelogin(prelogin)
-      )
-      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
+      masterKey = keys.masterKey
+      passwordKey = keys.passwordKey
       masterPasswordHash = passwordKey.toString('base64')
       if (signal?.aborted) throw new BitwardenDirectError('ABORTED')
       mutationStarted = true
@@ -2527,21 +2457,11 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     let masterPasswordHash = ''
     let mutationStarted = false
     try {
-      if (
-        typeof masterPassword !== 'string' ||
-        masterPassword.length === 0 ||
-        masterPassword.length > MAX_SYNC_SECRET_LENGTH
-      ) {
-        throw new BitwardenDirectError('INVALID_RESPONSE')
-      }
+      assertSyncSecret(masterPassword)
       this.requireProfileId()
-      const prelogin = await this.http.prelogin(this.email, signal)
-      masterKey = await deriveMasterKey(
-        masterPassword,
-        prelogin.salt ?? this.email,
-        kdfFromPrelogin(prelogin)
-      )
-      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
+      masterKey = keys.masterKey
+      passwordKey = keys.passwordKey
       masterPasswordHash = passwordKey.toString('base64')
       if (signal?.aborted) throw new BitwardenDirectError('ABORTED')
       await this.http.deauthorizeAllSessions(masterPasswordHash, signal, () => {
@@ -2577,21 +2497,11 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     let result: BitwardenPersonalApiKey | null = null
     let rotationRequestStarted = false
     try {
-      if (
-        typeof masterPassword !== 'string' ||
-        masterPassword.length === 0 ||
-        masterPassword.length > MAX_SYNC_SECRET_LENGTH
-      ) {
-        throw new BitwardenDirectError('INVALID_RESPONSE')
-      }
+      assertSyncSecret(masterPassword)
       const profileId = this.requireProfileId()
-      const prelogin = await this.http.prelogin(this.email, signal)
-      masterKey = await deriveMasterKey(
-        masterPassword,
-        prelogin.salt ?? this.email,
-        kdfFromPrelogin(prelogin)
-      )
-      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
+      masterKey = keys.masterKey
+      passwordKey = keys.passwordKey
       rotationRequestStarted = rotate
       result = await this.http.getPersonalApiKey(passwordKey.toString('base64'), rotate, signal)
       await this.captureSession()
@@ -2724,21 +2634,11 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     let masterKey: Buffer | null = null
     let passwordKey: Buffer | null = null
     try {
-      if (
-        typeof masterPassword !== 'string' ||
-        masterPassword.length === 0 ||
-        masterPassword.length > MAX_SYNC_SECRET_LENGTH
-      ) {
-        throw new BitwardenDirectError('INVALID_RESPONSE')
-      }
+      assertSyncSecret(masterPassword)
       this.requireProfileId()
-      const prelogin = await this.http.prelogin(this.email, signal)
-      masterKey = await deriveMasterKey(
-        masterPassword,
-        prelogin.salt ?? this.email,
-        kdfFromPrelogin(prelogin)
-      )
-      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
+      masterKey = keys.masterKey
+      passwordKey = keys.passwordKey
       const code = await this.http.getTwoFactorRecoveryCode(passwordKey.toString('base64'), signal)
       await this.captureSession()
       return code
@@ -2775,13 +2675,9 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         throw new BitwardenDirectError('INVALID_RESPONSE')
       }
       this.requireProfileId()
-      const prelogin = await this.http.prelogin(this.email, signal)
-      masterKey = await deriveMasterKey(
-        masterPassword,
-        prelogin.salt ?? this.email,
-        kdfFromPrelogin(prelogin)
-      )
-      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
+      masterKey = keys.masterKey
+      passwordKey = keys.passwordKey
       masterPasswordHash = passwordKey.toString('base64')
       if (type === 0) {
         authenticatorSetup = await this.http.getAuthenticatorSetup(masterPasswordHash, signal)
@@ -2933,21 +2829,11 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     let masterKey: Buffer | null = null
     let passwordKey: Buffer | null = null
     try {
-      if (
-        typeof masterPassword !== 'string' ||
-        masterPassword.length === 0 ||
-        masterPassword.length > MAX_SYNC_SECRET_LENGTH
-      ) {
-        throw new BitwardenDirectError('INVALID_RESPONSE')
-      }
+      assertSyncSecret(masterPassword)
       this.requireProfileId()
-      const prelogin = await this.http.prelogin(this.email, signal)
-      masterKey = await deriveMasterKey(
-        masterPassword,
-        prelogin.salt ?? this.email,
-        kdfFromPrelogin(prelogin)
-      )
-      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
+      masterKey = keys.masterKey
+      passwordKey = keys.passwordKey
       const setup = await this.http.getAuthenticatorSetup(passwordKey.toString('base64'), signal)
       await this.captureSession()
       return setup
@@ -2976,20 +2862,10 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       let masterPasswordHash: string | undefined
       if (request.verificationMode === 'master-password') {
         const password = request.masterPassword
-        if (
-          typeof password !== 'string' ||
-          password.length === 0 ||
-          password.length > MAX_SYNC_SECRET_LENGTH
-        ) {
-          throw new BitwardenDirectError('INVALID_RESPONSE')
-        }
-        const prelogin = await this.http.prelogin(this.email, signal)
-        masterKey = await deriveMasterKey(
-          password,
-          prelogin.salt ?? this.email,
-          kdfFromPrelogin(prelogin)
-        )
-        passwordKey = await derivePasswordKey(masterKey, password)
+        assertSyncSecret(password)
+        const keys = await this.deriveMasterPasswordKeys(password, signal)
+        masterKey = keys.masterKey
+        passwordKey = keys.passwordKey
         masterPasswordHash = passwordKey.toString('base64')
       }
       mutationStarted = true
@@ -3027,21 +2903,11 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     let masterKey: Buffer | null = null
     let passwordKey: Buffer | null = null
     try {
-      if (
-        typeof masterPassword !== 'string' ||
-        masterPassword.length === 0 ||
-        masterPassword.length > MAX_SYNC_SECRET_LENGTH
-      ) {
-        throw new BitwardenDirectError('INVALID_RESPONSE')
-      }
+      assertSyncSecret(masterPassword)
       this.requireProfileId()
-      const prelogin = await this.http.prelogin(this.email, signal)
-      masterKey = await deriveMasterKey(
-        masterPassword,
-        prelogin.salt ?? this.email,
-        kdfFromPrelogin(prelogin)
-      )
-      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
+      masterKey = keys.masterKey
+      passwordKey = keys.passwordKey
       const setup = await this.http.getEmailTwoFactorSetup(passwordKey.toString('base64'), signal)
       await this.captureSession()
       return setup
@@ -3069,20 +2935,10 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       let masterPasswordHash: string | undefined
       if (request.verificationMode === 'master-password') {
         const password = request.masterPassword
-        if (
-          typeof password !== 'string' ||
-          password.length === 0 ||
-          password.length > MAX_SYNC_SECRET_LENGTH
-        ) {
-          throw new BitwardenDirectError('INVALID_RESPONSE')
-        }
-        const prelogin = await this.http.prelogin(this.email, signal)
-        masterKey = await deriveMasterKey(
-          password,
-          prelogin.salt ?? this.email,
-          kdfFromPrelogin(prelogin)
-        )
-        passwordKey = await derivePasswordKey(masterKey, password)
+        assertSyncSecret(password)
+        const keys = await this.deriveMasterPasswordKeys(password, signal)
+        masterKey = keys.masterKey
+        passwordKey = keys.passwordKey
         masterPasswordHash = passwordKey.toString('base64')
       }
       mutationStarted = true
@@ -3129,20 +2985,10 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       let masterPasswordHash: string | undefined
       if (request.verificationMode === 'master-password') {
         const password = request.masterPassword
-        if (
-          typeof password !== 'string' ||
-          password.length === 0 ||
-          password.length > MAX_SYNC_SECRET_LENGTH
-        ) {
-          throw new BitwardenDirectError('INVALID_RESPONSE')
-        }
-        const prelogin = await this.http.prelogin(this.email, signal)
-        masterKey = await deriveMasterKey(
-          password,
-          prelogin.salt ?? this.email,
-          kdfFromPrelogin(prelogin)
-        )
-        passwordKey = await derivePasswordKey(masterKey, password)
+        assertSyncSecret(password)
+        const keys = await this.deriveMasterPasswordKeys(password, signal)
+        masterKey = keys.masterKey
+        passwordKey = keys.passwordKey
         masterPasswordHash = passwordKey.toString('base64')
       }
       mutationStarted = true
@@ -3183,21 +3029,11 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     let masterPasswordHash = ''
     let setup: BitwardenWebAuthnSetup | null = null
     try {
-      if (
-        typeof masterPassword !== 'string' ||
-        masterPassword.length === 0 ||
-        masterPassword.length > MAX_SYNC_SECRET_LENGTH
-      ) {
-        throw new BitwardenDirectError('INVALID_RESPONSE')
-      }
+      assertSyncSecret(masterPassword)
       this.requireProfileId()
-      const prelogin = await this.http.prelogin(this.email, signal)
-      masterKey = await deriveMasterKey(
-        masterPassword,
-        prelogin.salt ?? this.email,
-        kdfFromPrelogin(prelogin)
-      )
-      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
+      masterKey = keys.masterKey
+      passwordKey = keys.passwordKey
       masterPasswordHash = passwordKey.toString('base64')
       setup = await this.http.getWebAuthnSetup(masterPasswordHash, signal)
       const registrationChallenge = await this.http.getWebAuthnRegistrationChallenge(
@@ -3250,20 +3086,10 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       this.requireProfileId()
       if (request.verificationMode === 'master-password') {
         const password = request.masterPassword
-        if (
-          typeof password !== 'string' ||
-          password.length === 0 ||
-          password.length > MAX_SYNC_SECRET_LENGTH
-        ) {
-          throw new BitwardenDirectError('INVALID_RESPONSE')
-        }
-        const prelogin = await this.http.prelogin(this.email, signal)
-        masterKey = await deriveMasterKey(
-          password,
-          prelogin.salt ?? this.email,
-          kdfFromPrelogin(prelogin)
-        )
-        passwordKey = await derivePasswordKey(masterKey, password)
+        assertSyncSecret(password)
+        const keys = await this.deriveMasterPasswordKeys(password, signal)
+        masterKey = keys.masterKey
+        passwordKey = keys.passwordKey
         masterPasswordHash = passwordKey.toString('base64')
       }
       mutationStarted = true
@@ -3314,13 +3140,9 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         throw new BitwardenDirectError('INVALID_RESPONSE')
       }
       this.requireProfileId()
-      const prelogin = await this.http.prelogin(this.email, signal)
-      masterKey = await deriveMasterKey(
-        masterPassword,
-        prelogin.salt ?? this.email,
-        kdfFromPrelogin(prelogin)
-      )
-      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
+      masterKey = keys.masterKey
+      passwordKey = keys.passwordKey
       masterPasswordHash = passwordKey.toString('base64')
       setup = await this.http.getWebAuthnSetup(masterPasswordHash, signal)
       if (!setup.keys.some((key) => key.id === id)) throw new BitwardenDirectError('NOT_FOUND')
@@ -3505,7 +3327,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       }
       return {
         ...confirmed.item,
-        ...(confirmed.item.file ? { file: { ...confirmed.item.file } } : {})
+        file: { ...confirmed.item.file }
       }
     } catch (error) {
       if (createdId && !uploaded) {
@@ -3771,20 +3593,10 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     let passwordKey: Buffer | null = null
     let masterPasswordHash = ''
     try {
-      if (
-        typeof masterPassword !== 'string' ||
-        masterPassword.length === 0 ||
-        masterPassword.length > MAX_SYNC_SECRET_LENGTH
-      ) {
-        throw new BitwardenDirectError('INVALID_RESPONSE')
-      }
-      const prelogin = await this.http.prelogin(this.email, signal)
-      masterKey = await deriveMasterKey(
-        masterPassword,
-        prelogin.salt ?? this.email,
-        kdfFromPrelogin(prelogin)
-      )
-      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      assertSyncSecret(masterPassword)
+      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
+      masterKey = keys.masterKey
+      passwordKey = keys.passwordKey
       masterPasswordHash = passwordKey.toString('base64')
       if (signal?.aborted) throw new BitwardenDirectError('ABORTED')
       await this.http.sendEmailTwoFactorLoginCode(
@@ -3811,20 +3623,10 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     let passwordKey: Buffer | null = null
     let masterPasswordHash = ''
     try {
-      if (
-        typeof masterPassword !== 'string' ||
-        masterPassword.length === 0 ||
-        masterPassword.length > MAX_SYNC_SECRET_LENGTH
-      ) {
-        throw new BitwardenDirectError('INVALID_RESPONSE')
-      }
-      const prelogin = await this.http.prelogin(this.email, signal)
-      masterKey = await deriveMasterKey(
-        masterPassword,
-        prelogin.salt ?? this.email,
-        kdfFromPrelogin(prelogin)
-      )
-      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      assertSyncSecret(masterPassword)
+      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
+      masterKey = keys.masterKey
+      passwordKey = keys.passwordKey
       masterPasswordHash = passwordKey.toString('base64')
       if (signal?.aborted) throw new BitwardenDirectError('ABORTED')
       await this.http.resendNewDeviceOtp({ email: this.email, masterPasswordHash }, signal)
@@ -5350,6 +5152,24 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     await this.notifyStateChanged()
   }
 
+  private async deriveMasterPasswordKeys(
+    masterPassword: string,
+    signal?: AbortSignal
+  ): Promise<{ masterKey: Buffer; passwordKey: Buffer }> {
+    const prelogin = await this.http.prelogin(this.email, signal)
+    const masterKey = await deriveMasterKey(
+      masterPassword,
+      prelogin.salt ?? this.email,
+      kdfFromPrelogin(prelogin)
+    )
+    try {
+      return { masterKey, passwordKey: await derivePasswordKey(masterKey, masterPassword) }
+    } catch (error) {
+      masterKey.fill(0)
+      throw error
+    }
+  }
+
   private async deriveAndAuthenticate(
     password: string,
     twoFactor: BitwardenLoginTwoFactor | undefined,
@@ -6159,7 +5979,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       }
       const notes = nullableStringProperty(raw, 'notes')
       const item: BitwardenLoginItem = {
-        ...emptyVaultItemFields(),
+        ...emptyItemFields(),
         id: requiredStringProperty(raw, 'id'),
         type: itemType,
         organizationId: null,
@@ -6269,11 +6089,11 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   ): BitwardenLoginItem {
     const itemType = ITEM_TYPE_BY_WIRE_TYPE[wireType]
     const typeData = recordProperty(content, 'typeData')
-    if (!typeData || stringProperty(typeData, 'type') !== BLOB_TAG_BY_ITEM_TYPE[itemType]) {
+    if (!typeData || stringProperty(typeData, 'type') !== itemType) {
       throw new BitwardenDirectError('INVALID_RESPONSE')
     }
     const item: BitwardenLoginItem = {
-      ...emptyVaultItemFields(),
+      ...emptyItemFields(),
       id: requiredStringProperty(raw, 'id'),
       type: itemType,
       organizationId: null,
@@ -6380,7 +6200,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     if (useBlob) return this.encryptBlobLoginRequest(draft, key, existing)
 
     const wireType = WIRE_TYPE_BY_ITEM_TYPE[draft.type]
-    const nestedName = BLOB_TAG_BY_ITEM_TYPE[draft.type]
+    const nestedName = draft.type
     const previousType = existing ? property(existing, 'type') : null
     const previousTypeData =
       existing && previousType === wireType ? recordProperty(existing, nestedName) : null
@@ -6497,7 +6317,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         passwordHistory: []
       }
     }
-    const expectedTag = BLOB_TAG_BY_ITEM_TYPE[draft.type]
+    const expectedTag = draft.type
     const existingTypeData = recordProperty(content, 'typeData')
     const typeData: JsonObject =
       existingTypeData && stringProperty(existingTypeData, 'type') === expectedTag

@@ -29,7 +29,6 @@ interface ErrorLogRecord {
 interface ErrorLogOptions {
   now?: () => Date
   showItemInFolder?: (path: string) => void
-  openPath?: (path: string) => Promise<string>
 }
 
 function boundedText(value: string): string {
@@ -134,12 +133,7 @@ export class ErrorLogService {
 
   async showInFileManager(): Promise<void> {
     this.ensureFile()
-    if (this.options.showItemInFolder) {
-      this.options.showItemInFolder(this.filePath)
-      return
-    }
-    const result = await this.options.openPath?.(dirname(this.filePath))
-    if (result) throw new Error(result)
+    this.options.showItemInFolder?.(this.filePath)
   }
 
   private record(

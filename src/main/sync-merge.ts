@@ -8,6 +8,7 @@ import type {
   VaultReprompt
 } from '../shared/vault-contract'
 import type { StoredPasskeyCredential } from './passkey'
+import { cloneCustomFields } from './vault/custom-fields'
 
 export interface SyncFolder {
   id: string
@@ -335,16 +336,8 @@ function uniqueFingerprintPairs<T>(
   fingerprintLocal: (value: T) => string,
   fingerprintRemote: (value: T) => string
 ): Array<{ local: T; remote: T; fingerprint: string }> {
-  const localGroups = new Map<string, T[]>()
-  const remoteGroups = new Map<string, T[]>()
-  for (const value of local) {
-    const fingerprint = fingerprintLocal(value)
-    localGroups.set(fingerprint, [...(localGroups.get(fingerprint) ?? []), value])
-  }
-  for (const value of remote) {
-    const fingerprint = fingerprintRemote(value)
-    remoteGroups.set(fingerprint, [...(remoteGroups.get(fingerprint) ?? []), value])
-  }
+  const localGroups = Map.groupBy(local, (value) => fingerprintLocal(value))
+  const remoteGroups = Map.groupBy(remote, (value) => fingerprintRemote(value))
   return [...localGroups.entries()].flatMap(([fingerprint, localValues]) => {
     const remoteValues = remoteGroups.get(fingerprint)
     return localValues.length === 1 && remoteValues?.length === 1
@@ -621,7 +614,7 @@ export function legacyCustomFieldBaselineUpgrades(
       upgrades.push({
         localId: link.localId,
         remoteId: link.remoteId,
-        customFields: cloneCustomFieldsForUpgrade(localLogin.customFields),
+        customFields: cloneCustomFields(localLogin.customFields),
         baseFingerprint: fingerprintLogin(localLogin, localCanonicalFolder)
       })
       continue
@@ -643,8 +636,8 @@ export function legacyCustomFieldBaselineUpgrades(
       remoteId: link.remoteId,
       customFields:
         localLogin.customFields.length === 0 && remoteLogin.customFields.length > 0
-          ? cloneCustomFieldsForUpgrade(remoteLogin.customFields)
-          : cloneCustomFieldsForUpgrade(localLogin.customFields),
+          ? cloneCustomFields(remoteLogin.customFields)
+          : cloneCustomFields(localLogin.customFields),
       baseFingerprint: remoteHash
     }
     // A migrated pre-V11 local row has exactly the primary alias. Remote-only additional rows
@@ -673,10 +666,6 @@ export function legacyCustomFieldBaselineUpgrades(
     upgrades.push(upgrade)
   }
   return upgrades
-}
-
-function cloneCustomFieldsForUpgrade(fields: readonly VaultCustomField[]): VaultCustomField[] {
-  return fields.map((field) => ({ ...field }))
 }
 
 export function planSync(

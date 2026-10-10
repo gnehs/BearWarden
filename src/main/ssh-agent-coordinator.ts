@@ -15,7 +15,7 @@ import type {
 } from './ssh-agent-server'
 import type { SshAgentIdentity } from './ssh-agent-protocol'
 
-const DEFAULT_GRANT_TTL_MS = 60_000
+const GRANT_TTL_MS = 60_000
 const MAX_PENDING_GRANTS = 128
 
 export interface SshAgentCoordinatorVault {
@@ -63,7 +63,6 @@ export interface SshAgentCoordinatorOptions {
   ) => Promise<SshAgentRendererApprovalResult>
   validateAuthorizationToken: (token: string, itemId: string, generation: number) => boolean
   now?: () => number
-  grantTtlMs?: number
 }
 
 interface CachedIdentity extends SshAgentVaultIdentity {
@@ -106,10 +105,6 @@ function cloneIdentity(identity: SshAgentVaultIdentity): CachedIdentity {
   return { ...identity, publicKeyBlob: Buffer.from(identity.publicKeyBlob) }
 }
 
-function sameOptional(left: string | undefined, right: string | undefined): boolean {
-  return left === right
-}
-
 /**
  * Joins the SSH wire server to the vault without allowing private key material into either the
  * coordinator or renderer. Approval creates a short-lived, one-use grant; the vault revalidates
@@ -120,7 +115,6 @@ export class SshAgentCoordinator {
   readonly approvalHandler: SshAgentApprovalHandler
 
   private readonly now: () => number
-  private readonly grantTtlMs: number
   private identities: CachedIdentity[] = []
   private readonly rememberedApprovals = new Set<string>()
   private readonly grants = new Map<string, SigningGrant>()
@@ -133,10 +127,6 @@ export class SshAgentCoordinator {
 
   constructor(private readonly options: SshAgentCoordinatorOptions) {
     this.now = options.now ?? Date.now
-    this.grantTtlMs = options.grantTtlMs ?? DEFAULT_GRANT_TTL_MS
-    if (!Number.isSafeInteger(this.grantTtlMs) || this.grantTtlMs < 1) {
-      throw new Error('INVALID_SSH_AGENT_GRANT_TTL')
-    }
     this.provider = {
       listIdentities: (request) => this.listIdentities(request),
       sign: (request) => this.sign(request)
@@ -281,7 +271,7 @@ export class SshAgentCoordinator {
         generation: identity.generation,
         lockEpoch: this.lockEpoch,
         cacheEpoch: this.cacheEpoch,
-        expiresAt: this.now() + this.grantTtlMs,
+        expiresAt: this.now() + GRANT_TTL_MS,
         authorizationToken,
         flags: request.flags,
         rsaHash: request.rsaHash,
@@ -315,9 +305,9 @@ export class SshAgentCoordinator {
       grant.flags !== request.flags ||
       grant.rsaHash !== request.rsaHash ||
       grant.namespace !== request.namespace ||
-      !sameOptional(grant.processName, request.connection.processName) ||
+      grant.processName !== request.connection.processName ||
       grant.forwarded !== request.connection.session.forwarded ||
-      !sameOptional(grant.hostFingerprint, request.connection.session.hostFingerprint)
+      grant.hostFingerprint !== request.connection.session.hostFingerprint
     ) {
       return undefined
     }

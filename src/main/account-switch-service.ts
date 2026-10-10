@@ -4,12 +4,14 @@ import {
   assertAccountId,
   createAccountId,
   createAccountPathLayout,
-  ensurePrivateDirectory
+  ensurePrivateDirectory,
+  requireMissing
 } from './account-paths'
 import {
   ACCOUNT_REGISTRY_MAX_ACCOUNTS,
   AccountRegistryStore,
   parseAccountRegistry,
+  registryEqual,
   type AccountRegistry,
   type AccountRegistryEntry
 } from './account-registry'
@@ -174,32 +176,6 @@ function safeAccountIdArray(value: unknown): readonly string[] | null {
   }
   if (Object.keys(descriptors).some((key) => !allowedKeys.has(key))) return null
   return Object.freeze(accountIds)
-}
-
-function registryEqual(left: AccountRegistry, right: AccountRegistry): boolean {
-  return (
-    left.format === right.format &&
-    left.version === right.version &&
-    left.revision === right.revision &&
-    left.activeAccountId === right.activeAccountId &&
-    left.accounts.length === right.accounts.length &&
-    left.accounts.every(
-      (account, index) =>
-        account.id === right.accounts[index]?.id &&
-        account.identityHash === right.accounts[index]?.identityHash &&
-        account.displayName === right.accounts[index]?.displayName
-    )
-  )
-}
-
-async function requireMissing(path: string): Promise<void> {
-  try {
-    await lstat(path)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
-    throw error
-  }
-  throw new Error('ACCOUNT_STORAGE_INITIALIZATION_COLLISION')
 }
 
 /**
@@ -509,10 +485,7 @@ export class AccountSwitchService {
     return this.commitRegistryUpdate(current, next)
   }
 
-  private async commitRegistryUpdate(
-    current: AccountRegistry,
-    next: AccountRegistry
-  ): Promise<Extract<AccountSwitchMutationResult, { kind: 'updated' }>> {
+  private async saveRegistry(current: AccountRegistry, next: AccountRegistry): Promise<void> {
     try {
       await this.registryStore.save(next, current.revision)
     } catch {
@@ -533,6 +506,13 @@ export class AccountSwitchService {
         throw new AccountSwitchServiceError('ACCOUNT_REGISTRY_UPDATE_RESULT_UNKNOWN')
       }
     }
+  }
+
+  private async commitRegistryUpdate(
+    current: AccountRegistry,
+    next: AccountRegistry
+  ): Promise<Extract<AccountSwitchMutationResult, { kind: 'updated' }>> {
+    await this.saveRegistry(current, next)
     return {
       kind: 'updated',
       status: rendererSafeStatus(next, this.accountRemovalCleanupPending)
@@ -604,26 +584,7 @@ export class AccountSwitchService {
     // target replaced while teardown was in progress is never made active.
     await this.preflightAccountStorage(accountId)
 
-    try {
-      await this.registryStore.save(next, current.revision)
-    } catch {
-      let observed: AccountRegistry
-      try {
-        const loaded = await this.registryStore.load()
-        if (!loaded) throw new Error('ACCOUNT_REGISTRY_MISSING')
-        observed = parseAccountRegistry(loaded)
-      } catch {
-        this.relaunchPending = true
-        throw new AccountSwitchServiceError('ACCOUNT_REGISTRY_UPDATE_RESULT_UNKNOWN')
-      }
-      if (registryEqual(observed, current)) {
-        throw new AccountSwitchServiceError('ACCOUNT_REGISTRY_UPDATE_FAILED')
-      }
-      if (!registryEqual(observed, next)) {
-        this.relaunchPending = true
-        throw new AccountSwitchServiceError('ACCOUNT_REGISTRY_UPDATE_RESULT_UNKNOWN')
-      }
-    }
+    await this.saveRegistry(current, next)
 
     const status = rendererSafeStatus(next, this.accountRemovalCleanupPending)
     this.relaunchPending = true

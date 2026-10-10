@@ -23,7 +23,7 @@ function uint32(value: number, owned: Buffer[]): Buffer {
   return encoded
 }
 
-function sshString(value: string | Buffer, owned: Buffer[]): Buffer {
+export function sshString(value: string | Buffer, owned: Buffer[]): Buffer {
   const bytes = typeof value === 'string' ? Buffer.from(value, 'utf8') : value
   if (typeof value === 'string') owned.push(bytes)
   const encoded = Buffer.allocUnsafe(4 + bytes.length)

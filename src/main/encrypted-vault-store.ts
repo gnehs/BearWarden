@@ -7,7 +7,9 @@ import {
 } from 'node:crypto'
 import { mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { syncDirectoryBestEffort } from './account-paths'
 import { VaultError } from './vault-errors'
+import { isRecord } from './vault/parse-primitives'
 
 const FORMAT = 'bearwarden-vault'
 const ENVELOPE_VERSION = 1
@@ -90,10 +92,6 @@ function deriveKey(masterPassword: string, salt: Buffer): Promise<Buffer> {
   })
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 function decodeBase64(value: unknown, expectedLength?: number, stage?: string): Buffer {
   if (
     typeof value !== 'string' ||
@@ -154,18 +152,6 @@ function authenticatedMetadata(envelope: VaultEnvelopeV1): Buffer {
     }),
     'utf8'
   )
-}
-
-async function syncDirectory(path: string): Promise<void> {
-  let directoryHandle: Awaited<ReturnType<typeof open>> | undefined
-  try {
-    directoryHandle = await open(path, 'r')
-    await directoryHandle.sync()
-  } catch {
-    // Directory fsync is not supported on every Electron target, notably Windows.
-  } finally {
-    await directoryHandle?.close().catch(() => undefined)
-  }
 }
 
 export class EncryptedVaultStore<T> {
@@ -599,7 +585,7 @@ export class EncryptedVaultStore<T> {
       // durability is attempted below, but an unsupported/failed directory fsync cannot be reported
       // as a failed rekey because the old destination can no longer be restored safely.
       await rename(temporaryPath, this.filePath)
-      await syncDirectory(directory)
+      await syncDirectoryBestEffort(directory)
       try {
         await this.options.afterAtomicCommit?.()
       } catch {

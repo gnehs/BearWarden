@@ -12,10 +12,9 @@ import {
   type AccountPathLayout
 } from './account-paths'
 import { parseAccountRegistry, type AccountRegistry } from './account-registry'
+import { plainRecord } from './plain-record'
 
 const MAX_JOURNAL_BYTES = 512
-
-type PlainRecord = Record<string, unknown>
 
 export interface AccountRemovalJournalEntry {
   readonly accountId: string
@@ -36,23 +35,6 @@ export interface AccountRemovalJournalOptions {
 }
 
 export type AccountRemovalRecoveryResult = 'none' | 'preserved' | 'deleted'
-
-function plainRecord(value: unknown): value is PlainRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
-  const prototype = Object.getPrototypeOf(value)
-  if (prototype !== Object.prototype && prototype !== null) return false
-  const descriptors = Object.getOwnPropertyDescriptors(value)
-  return Reflect.ownKeys(descriptors).every((key) => {
-    if (typeof key !== 'string') return false
-    const descriptor = descriptors[key]!
-    return (
-      descriptor.enumerable === true &&
-      'value' in descriptor &&
-      descriptor.get === undefined &&
-      descriptor.set === undefined
-    )
-  })
-}
 
 export function parseAccountRemovalJournal(value: unknown): AccountRemovalJournalEntry {
   if (!plainRecord(value)) throw new Error('INVALID_ACCOUNT_REMOVAL_JOURNAL')
@@ -326,11 +308,4 @@ export class AccountRemovalJournal {
     await unlink(this.paths.removalJournalPath)
     await this.syncDirectoryEntry(dirname(this.paths.removalJournalPath))
   }
-}
-
-export async function completeCommittedAccountRemoval(
-  journal: AccountRemovalJournal,
-  callbacks: AccountRemovalRecoveryCallbacks
-): Promise<AccountRemovalRecoveryResult> {
-  return journal.finish(callbacks)
 }

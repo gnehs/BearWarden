@@ -4,6 +4,7 @@ import {
   type AccountWebAuthnWrapperConfiguration,
   type AccountWebAuthnWrapperIdentity
 } from '../main/account-webauthn-window-protocol'
+import { strictRecord } from '../main/account-webauthn-window-primitives'
 
 const MAX_CONNECTOR_URL_LENGTH = 128 * 1_024
 const MAX_MESSAGE_LENGTH = 128 * 1_024
@@ -21,29 +22,6 @@ interface WrapperWindow {
   addEventListener(type: 'message', listener: (event: MessageEvent) => void): void
   removeEventListener(type: 'message', listener: (event: MessageEvent) => void): void
   open(url: string, target: string, features: string): Window | null
-}
-
-function strictRecord(value: unknown, keys: readonly string[]): Record<string, unknown> | null {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
-  try {
-    const prototype = Object.getPrototypeOf(value)
-    if (prototype !== Object.prototype && prototype !== null) return null
-    const descriptors = Object.getOwnPropertyDescriptors(value)
-    const ownKeys = Reflect.ownKeys(descriptors)
-    if (
-      ownKeys.length !== keys.length ||
-      ownKeys.some(
-        (key) => typeof key !== 'string' || !keys.includes(key) || !('value' in descriptors[key]!)
-      )
-    ) {
-      return null
-    }
-    const snapshot = Object.create(null) as Record<string, unknown>
-    for (const key of keys) snapshot[key] = descriptors[key]!.value
-    return snapshot
-  } catch {
-    return null
-  }
 }
 
 function parseConfiguration(

@@ -233,11 +233,8 @@ export class AutoSyncCoordinator {
     } finally {
       this.running = false
       if (!this.disposed) {
-        if (runEpoch !== this.epoch) {
-          // A new lifecycle epoch may have queued work while the cancelled run was settling.
-          if (this.requested) this.scheduleRequest()
-          else this.scheduleFallback()
-        } else if (this.requested) this.scheduleRequest()
+        // A new lifecycle epoch may have queued work while the cancelled run was settling.
+        if (this.requested) this.scheduleRequest()
         else this.scheduleFallback()
       }
     }

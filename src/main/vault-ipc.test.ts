@@ -1869,7 +1869,6 @@ describe('registerVaultIpc reprompt gate', () => {
         if (request.pin !== 'bear-2026') throw new Error('missing PIN')
         return { state: 'unlocked' }
       }),
-      loginAuthorizationState: vi.fn(async () => authorizationState),
       authorizeLogin: vi.fn(async ({ masterPassword }: { masterPassword: string }) => {
         if (masterPassword !== 'correct horse battery staple') {
           throw new VaultError('INVALID_MASTER_PASSWORD')

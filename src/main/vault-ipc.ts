@@ -40,7 +40,6 @@ import {
   type AttachmentFixLegacyRequest,
   type AttachmentPreviewRequest,
   type AttachmentUploadCardCoverRequest,
-  type AttachmentUploadCardCoverFileRequest,
   type AttachmentProgressEvent,
   type AttachmentUploadRequest,
   type CustomFieldRequest,
@@ -92,12 +91,9 @@ import {
   type VaultCustomFieldSource,
   type VaultCustomFieldType,
   type VaultCustomFieldUpdate,
-  type VaultItemFields,
   type VaultLoginUri,
   type VaultItemType,
   type SyncConnectRequest,
-  type SyncEmailTwoFactorCodeRequest,
-  type SyncResendNewDeviceOtpRequest,
   type SyncPurgePersonalVaultRequest,
   type SyncResolvePendingImportRequest,
   type SyncStatus,
@@ -113,7 +109,6 @@ import {
   type VaultImportRequest,
   type TouchIdEnableRequest,
   type VaultSetupRequest,
-  type VaultUnlockRequest,
   type SendCreateRequest,
   type SendFileCreateRequest,
   type SendFileDownloadRequest,
@@ -139,28 +134,31 @@ import {
   TwoFactorDirectoryCacheError,
   type TwoFactorDirectoryCache
 } from './two-factor-directory-cache'
+import { ITEM_FIELD_NAMES } from './vault/item-fields'
+import {
+  MAX_CUSTOM_FIELDS,
+  MAX_EQUIVALENT_DOMAIN_GROUPS,
+  MAX_EQUIVALENT_DOMAIN_LENGTH,
+  MAX_EQUIVALENT_DOMAIN_TOTAL,
+  MAX_EQUIVALENT_DOMAINS_PER_GROUP,
+  MAX_LOGIN_URIS,
+  MAX_SYNC_SECRET_LENGTH,
+  MAX_URI_LENGTH,
+  UUID_PATTERN
+} from './vault/limits'
 
 type RecordValue = Record<string, unknown>
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-const MAX_CUSTOM_FIELDS = 1_000
 const MAX_CUSTOM_FIELD_STRING_LENGTH = 5_000
 const REPROMPT_TOKEN_TTL_MS = 60_000
 const MAX_REPROMPT_TOKENS = 128
-const MAX_LOGIN_URIS = 1_000
-const MAX_URI_LENGTH = 4_096
 const MAX_PASSKEY_CREDENTIAL_ID_LENGTH = 4_096
 const MAX_ISO_TIMESTAMP_LENGTH = 64
 const MAX_SSH_KEY_IMPORT_TOKEN_LENGTH = 128
 const MAX_SSH_KEY_IMPORT_PASSPHRASE_BYTES = 1_024
-const MAX_EQUIVALENT_DOMAIN_GROUPS = 10_000
-const MAX_EQUIVALENT_DOMAINS_PER_GROUP = 1_000
-const MAX_EQUIVALENT_DOMAIN_TOTAL = 100_000
-const MAX_EQUIVALENT_DOMAIN_LENGTH = 1_024
 const MAX_SYNC_RESOLUTION_MASTER_PASSWORD_LENGTH = 1_024
 const MAX_SYNC_SERVER_URL_LENGTH = 4_096
 const MAX_SYNC_EMAIL_LENGTH = 512
-const MAX_SYNC_SECRET_LENGTH = 16_384
 const MAX_ERROR_LOG_FIELD_LENGTH = 12_000
 
 interface RepromptAuthorizationEntry {
@@ -1262,10 +1260,6 @@ function parseSetup(value: unknown): VaultSetupRequest {
   return { masterPassword: requiredString(record, 'masterPassword') }
 }
 
-function parseUnlock(value: unknown): VaultUnlockRequest {
-  return parseSetup(value)
-}
-
 function parseFolderCreate(value: unknown): FolderCreateRequest {
   const record = exactRecord(value, ['name'])
   return { name: requiredString(record, 'name') }
@@ -1395,10 +1389,6 @@ function parseAttachmentUploadCardCover(value: unknown): AttachmentUploadCardCov
   }
 }
 
-function parseAttachmentUploadCardCoverFile(value: unknown): AttachmentUploadCardCoverFileRequest {
-  return parseAttachmentUpload(value)
-}
-
 function parseAttachmentCancel(value: unknown): AttachmentCancelRequest {
   const record = exactRecord(value, ['operationId'])
   return { operationId: requiredOperationId(record) }
@@ -1470,43 +1460,34 @@ function parseFolderReorder(value: unknown): FolderReorderRequest {
   return { orderedIds: [...record.orderedIds] as string[] }
 }
 
+function applyItemDraftFields(
+  record: RecordValue,
+  result: LoginCreateRequest | LoginUpdateRequest
+): void {
+  for (const key of ITEM_FIELD_NAMES) {
+    const field = optionalStringOrNull(record, key)
+    if (field !== undefined) Object.assign(result, { [key]: field ?? '' })
+  }
+  const notes = optionalStringOrNull(record, 'notes')
+  const folderId = optionalStringOrNull(record, 'folderId')
+  const favorite = optionalBoolean(record, 'favorite')
+  const customFields =
+    record.customFields === undefined ? undefined : parseCustomFields(record.customFields)
+  if (notes !== undefined) result.notes = notes
+  if (folderId !== undefined) result.folderId = folderId
+  if (favorite !== undefined) result.favorite = favorite
+  if (record.reprompt !== undefined) {
+    if (record.reprompt !== 0 && record.reprompt !== 1) throw new VaultError('INVALID_INPUT')
+    result.reprompt = record.reprompt
+  }
+  if (customFields !== undefined) result.customFields = customFields
+  if (record.uris !== undefined) result.uris = parseLoginUris(record.uris)
+}
+
 function parseLoginCreate(
   value: unknown,
   allowedAdditionalKeys: readonly string[] = []
 ): LoginCreateRequest {
-  const fieldKeys = [
-    'username',
-    'password',
-    'totp',
-    'uri',
-    'cardholderName',
-    'brand',
-    'number',
-    'expMonth',
-    'expYear',
-    'code',
-    'title',
-    'firstName',
-    'middleName',
-    'lastName',
-    'address1',
-    'address2',
-    'address3',
-    'city',
-    'state',
-    'postalCode',
-    'country',
-    'company',
-    'email',
-    'phone',
-    'ssn',
-    'identityUsername',
-    'passportNumber',
-    'licenseNumber',
-    'privateKey',
-    'publicKey',
-    'fingerprint'
-  ] as const satisfies readonly (keyof VaultItemFields)[]
   const record = exactRecord(value, [
     'type',
     'name',
@@ -1516,7 +1497,7 @@ function parseLoginCreate(
     'reprompt',
     'customFields',
     'uris',
-    ...fieldKeys,
+    ...ITEM_FIELD_NAMES,
     ...allowedAdditionalKeys
   ])
   const result: LoginCreateRequest = {
@@ -1533,24 +1514,7 @@ function parseLoginCreate(
   )
     throw new VaultError('INVALID_INPUT')
   if (type !== undefined) result.type = type as VaultItemType
-  for (const key of fieldKeys) {
-    const field = optionalStringOrNull(record, key)
-    if (field !== undefined) Object.assign(result, { [key]: field ?? '' })
-  }
-  const notes = optionalStringOrNull(record, 'notes')
-  const folderId = optionalStringOrNull(record, 'folderId')
-  const favorite = optionalBoolean(record, 'favorite')
-  const customFields =
-    record.customFields === undefined ? undefined : parseCustomFields(record.customFields)
-  if (notes !== undefined) result.notes = notes
-  if (folderId !== undefined) result.folderId = folderId
-  if (favorite !== undefined) result.favorite = favorite
-  if (record.reprompt !== undefined) {
-    if (record.reprompt !== 0 && record.reprompt !== 1) throw new VaultError('INVALID_INPUT')
-    result.reprompt = record.reprompt
-  }
-  if (customFields !== undefined) result.customFields = customFields
-  if (record.uris !== undefined) result.uris = parseLoginUris(record.uris)
+  applyItemDraftFields(record, result)
   return result
 }
 
@@ -1558,39 +1522,6 @@ function parseLoginUpdate(
   value: unknown,
   allowedAdditionalKeys: readonly string[] = []
 ): LoginUpdateRequest {
-  const fieldKeys = [
-    'username',
-    'password',
-    'totp',
-    'uri',
-    'cardholderName',
-    'brand',
-    'number',
-    'expMonth',
-    'expYear',
-    'code',
-    'title',
-    'firstName',
-    'middleName',
-    'lastName',
-    'address1',
-    'address2',
-    'address3',
-    'city',
-    'state',
-    'postalCode',
-    'country',
-    'company',
-    'email',
-    'phone',
-    'ssn',
-    'identityUsername',
-    'passportNumber',
-    'licenseNumber',
-    'privateKey',
-    'publicKey',
-    'fingerprint'
-  ] as const satisfies readonly (keyof VaultItemFields)[]
   const record = exactRecord(value, [
     'id',
     'expectedUpdatedAt',
@@ -1602,7 +1533,7 @@ function parseLoginUpdate(
     'authorizationToken',
     'customFields',
     'uris',
-    ...fieldKeys,
+    ...ITEM_FIELD_NAMES,
     ...allowedAdditionalKeys
   ])
   const result: LoginUpdateRequest = { id: requiredString(record, 'id') }
@@ -1611,27 +1542,8 @@ function parseLoginUpdate(
   if (record.expectedUpdatedAt !== undefined) {
     result.expectedUpdatedAt = requiredString(record, 'expectedUpdatedAt')
   }
-  for (const key of ['name'] as const) {
-    if (record[key] !== undefined) result[key] = requiredString(record, key)
-  }
-  for (const key of fieldKeys) {
-    const field = optionalStringOrNull(record, key)
-    if (field !== undefined) Object.assign(result, { [key]: field ?? '' })
-  }
-  const notes = optionalStringOrNull(record, 'notes')
-  const folderId = optionalStringOrNull(record, 'folderId')
-  const favorite = optionalBoolean(record, 'favorite')
-  const customFields =
-    record.customFields === undefined ? undefined : parseCustomFields(record.customFields)
-  if (notes !== undefined) result.notes = notes
-  if (folderId !== undefined) result.folderId = folderId
-  if (favorite !== undefined) result.favorite = favorite
-  if (record.reprompt !== undefined) {
-    if (record.reprompt !== 0 && record.reprompt !== 1) throw new VaultError('INVALID_INPUT')
-    result.reprompt = record.reprompt
-  }
-  if (customFields !== undefined) result.customFields = customFields
-  if (record.uris !== undefined) result.uris = parseLoginUris(record.uris)
+  if (record.name !== undefined) result.name = requiredString(record, 'name')
+  applyItemDraftFields(record, result)
   return result
 }
 
@@ -2094,6 +2006,38 @@ function parseSendId(value: unknown): SendIdRequest {
   return { id: record.id }
 }
 
+function applySendOptions(
+  record: RecordValue,
+  result: Omit<SendCreateRequest, 'name' | 'text'>,
+  booleanKeys: readonly ('hidden' | 'disabled' | 'hideEmail')[]
+): void {
+  const notes = optionalStringOrNull(record, 'notes')
+  const expirationDate = optionalStringOrNull(record, 'expirationDate')
+  const deletionDate = optionalStringOrNull(record, 'deletionDate')
+  const password = optionalStringOrNull(record, 'password')
+  if (notes !== undefined) result.notes = notes
+  if (expirationDate !== undefined) result.expirationDate = expirationDate
+  if (deletionDate !== undefined) result.deletionDate = deletionDate
+  if (password !== undefined) result.password = password
+  for (const key of booleanKeys) {
+    if (record[key] !== undefined) {
+      if (typeof record[key] !== 'boolean') throw new VaultError('INVALID_INPUT')
+      result[key] = record[key]
+    }
+  }
+  if (record.maxAccessCount !== undefined) {
+    if (
+      record.maxAccessCount !== null &&
+      (typeof record.maxAccessCount !== 'number' ||
+        !Number.isSafeInteger(record.maxAccessCount) ||
+        record.maxAccessCount < 1)
+    ) {
+      throw new VaultError('INVALID_INPUT')
+    }
+    result.maxAccessCount = record.maxAccessCount as number | null
+  }
+}
+
 function parseSendCreate(value: unknown): SendCreateRequest {
   const record = exactRecord(value, [
     'name',
@@ -2111,31 +2055,7 @@ function parseSendCreate(value: unknown): SendCreateRequest {
     name: requiredString(record, 'name'),
     text: requiredString(record, 'text')
   }
-  const notes = optionalStringOrNull(record, 'notes')
-  const expirationDate = optionalStringOrNull(record, 'expirationDate')
-  const deletionDate = optionalStringOrNull(record, 'deletionDate')
-  const password = optionalStringOrNull(record, 'password')
-  if (notes !== undefined) result.notes = notes
-  if (expirationDate !== undefined) result.expirationDate = expirationDate
-  if (deletionDate !== undefined) result.deletionDate = deletionDate
-  if (password !== undefined) result.password = password
-  for (const key of ['hidden', 'disabled', 'hideEmail'] as const) {
-    if (record[key] !== undefined) {
-      if (typeof record[key] !== 'boolean') throw new VaultError('INVALID_INPUT')
-      result[key] = record[key]
-    }
-  }
-  if (record.maxAccessCount !== undefined) {
-    if (
-      record.maxAccessCount !== null &&
-      (typeof record.maxAccessCount !== 'number' ||
-        !Number.isSafeInteger(record.maxAccessCount) ||
-        record.maxAccessCount < 1)
-    ) {
-      throw new VaultError('INVALID_INPUT')
-    }
-    result.maxAccessCount = record.maxAccessCount as number | null
-  }
+  applySendOptions(record, result, ['hidden', 'disabled', 'hideEmail'])
   return result
 }
 
@@ -2158,31 +2078,7 @@ function parseSendFileCreate(value: unknown): SendFileCreateRequest {
     operationId: record.operationId,
     name: requiredString(record, 'name')
   }
-  const notes = optionalStringOrNull(record, 'notes')
-  const expirationDate = optionalStringOrNull(record, 'expirationDate')
-  const deletionDate = optionalStringOrNull(record, 'deletionDate')
-  const password = optionalStringOrNull(record, 'password')
-  if (notes !== undefined) result.notes = notes
-  if (expirationDate !== undefined) result.expirationDate = expirationDate
-  if (deletionDate !== undefined) result.deletionDate = deletionDate
-  if (password !== undefined) result.password = password
-  for (const key of ['disabled', 'hideEmail'] as const) {
-    if (record[key] !== undefined) {
-      if (typeof record[key] !== 'boolean') throw new VaultError('INVALID_INPUT')
-      result[key] = record[key]
-    }
-  }
-  if (record.maxAccessCount !== undefined) {
-    if (
-      record.maxAccessCount !== null &&
-      (typeof record.maxAccessCount !== 'number' ||
-        !Number.isSafeInteger(record.maxAccessCount) ||
-        record.maxAccessCount < 1)
-    ) {
-      throw new VaultError('INVALID_INPUT')
-    }
-    result.maxAccessCount = record.maxAccessCount as number | null
-  }
+  applySendOptions(record, result, ['disabled', 'hideEmail'])
   return result
 }
 
@@ -2216,11 +2112,8 @@ function parseSendUpdate(value: unknown): SendUpdateRequest {
   return { ...parseSendCreate(draft), id }
 }
 
-function optionalTwoFactorMethod(
-  record: RecordValue,
-  key: string
-): SyncTwoFactorMethod | undefined {
-  const value = record[key]
+function optionalTwoFactorMethod(record: RecordValue): SyncTwoFactorMethod | undefined {
+  const value = record.twoFactorMethod
   if (value === undefined) return undefined
   if (value === '0' || value === '1' || value === '3') return value
   throw new VaultError('INVALID_INPUT')
@@ -2257,7 +2150,7 @@ function parseSyncConnect(value: unknown): SyncConnectRequest {
   }
   const twoFactorCode = optionalStringOrNull(record, 'twoFactorCode')
   const newDeviceOtp = optionalStringOrNull(record, 'newDeviceOtp')
-  const twoFactorMethod = optionalTwoFactorMethod(record, 'twoFactorMethod')
+  const twoFactorMethod = optionalTwoFactorMethod(record)
   const webAuthnRemember = optionalBoolean(record, 'webAuthnRemember')
   if (twoFactorCode) result.twoFactorCode = twoFactorCode
   if (twoFactorMethod) result.twoFactorMethod = twoFactorMethod
@@ -2278,7 +2171,7 @@ function parseSyncUnlock(value: unknown): SyncUnlockRequest {
     masterPassword: requiredString(record, 'masterPassword')
   }
   const twoFactorCode = optionalStringOrNull(record, 'twoFactorCode')
-  const twoFactorMethod = optionalTwoFactorMethod(record, 'twoFactorMethod')
+  const twoFactorMethod = optionalTwoFactorMethod(record)
   const newDeviceOtp = optionalStringOrNull(record, 'newDeviceOtp')
   const webAuthnRemember = optionalBoolean(record, 'webAuthnRemember')
   if (twoFactorCode) result.twoFactorCode = twoFactorCode
@@ -2288,25 +2181,11 @@ function parseSyncUnlock(value: unknown): SyncUnlockRequest {
   return result
 }
 
-function parseSyncEmailTwoFactorCode(value: unknown): SyncEmailTwoFactorCodeRequest {
-  const record = exactDataRecord(value, ['serverUrl', 'email', 'masterPassword'])
-  const serverUrl = requiredString(record, 'serverUrl')
-  const email = requiredString(record, 'email')
-  const masterPassword = requiredString(record, 'masterPassword')
-  if (
-    serverUrl.length === 0 ||
-    serverUrl.length > MAX_SYNC_SERVER_URL_LENGTH ||
-    email.length === 0 ||
-    email.length > MAX_SYNC_EMAIL_LENGTH ||
-    masterPassword.length === 0 ||
-    masterPassword.length > MAX_SYNC_SECRET_LENGTH
-  ) {
-    throw new VaultError('INVALID_INPUT')
-  }
-  return { serverUrl, email, masterPassword }
-}
-
-function parseSyncResendNewDeviceOtp(value: unknown): SyncResendNewDeviceOtpRequest {
+function parseSyncCredentials(value: unknown): {
+  serverUrl: string
+  email: string
+  masterPassword: string
+} {
   const record = exactDataRecord(value, ['serverUrl', 'email', 'masterPassword'])
   const serverUrl = requiredString(record, 'serverUrl')
   const email = requiredString(record, 'email')
@@ -2601,7 +2480,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     return status
   })
   registerHandler(IPC_CHANNELS.vaultUnlock, getMainWindow, async (_event, input) => {
-    const request = parseUnlock(input)
+    const request = parseSetup(input)
     authorizations.clear()
     try {
       const status = await vault.unlock(request.masterPassword)
@@ -3028,7 +2907,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     )
   })
   registerHandler(IPC_CHANNELS.attachmentUploadCardCoverFile, getMainWindow, (event, input) => {
-    const request = parseAttachmentUploadCardCoverFile(input)
+    const request = parseAttachmentUpload(input)
     return afterMutation(
       vault.uploadCardCoverFileAttachment(
         request,
@@ -3454,10 +3333,10 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     }
   })
   registerHandler(IPC_CHANNELS.syncSendEmailTwoFactorCode, getMainWindow, (_event, input) =>
-    vault.sendSyncEmailTwoFactorCode(parseSyncEmailTwoFactorCode(input))
+    vault.sendSyncEmailTwoFactorCode(parseSyncCredentials(input))
   )
   registerHandler(IPC_CHANNELS.syncResendNewDeviceOtp, getMainWindow, async (_event, input) => {
-    const request = parseSyncResendNewDeviceOtp(input)
+    const request = parseSyncCredentials(input)
     try {
       await vault.resendSyncNewDeviceOtp(request)
     } finally {
@@ -3862,7 +3741,6 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     const check = (async () => {
       // VaultService.status is exclusive with lock/unlock, so renderer activity is accepted only
       // after the authoritative main-process state has been observed as unlocked.
-      if (disposed) return
       const status = await vault.status()
       if (disposed || status.state !== 'unlocked') return
       settings.activity()

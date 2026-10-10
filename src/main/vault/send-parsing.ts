@@ -4,11 +4,7 @@ import type {
   SendUpdateRequest,
   SendView
 } from '../../shared/vault-contract'
-import type {
-  BitwardenFileSendDraft,
-  BitwardenSendDraft,
-  BitwardenSendItem
-} from '../bitwarden-direct'
+import type { BitwardenSendDraft, BitwardenSendItem } from '../bitwarden-direct'
 import { VaultError } from '../vault-errors'
 import {
   MAX_NAME_LENGTH,
@@ -230,10 +226,4 @@ export function normalizeSendDraft(
     text: normalizeString(request.text, MAX_SEND_TEXT_LENGTH),
     hidden
   }
-}
-
-export function normalizeFileSendDraft(
-  request: SendFileCreateRequest
-): Omit<BitwardenFileSendDraft, 'fileName' | 'data'> {
-  return normalizeSendOptions(request)
 }

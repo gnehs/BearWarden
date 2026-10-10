@@ -13,7 +13,7 @@ import type { VaultAttachmentFileService } from '../vault-attachment-files'
 import { VaultError } from '../vault-errors'
 import { MAX_SYNC_SECRET_LENGTH } from './limits'
 import { assertUuid, normalizeNullableString } from './parse-primitives'
-import { normalizeFileSendDraft, normalizeSendDraft, sendViewFromRemote } from './send-parsing'
+import { normalizeSendDraft, normalizeSendOptions, sendViewFromRemote } from './send-parsing'
 import type { PersistedSyncData, VaultData } from './types'
 import { cloneData } from './vault-data-parsing'
 import { compareText } from './views'
@@ -98,7 +98,7 @@ export class VaultSendService {
       const current = this.dependencies.readData()
       const client = this.syncClient()
       if (!client.createFileSend) throw new VaultError('SYNC_FAILED')
-      const normalized = normalizeFileSendDraft(request)
+      const normalized = normalizeSendOptions(request)
       const abort = this.dependencies.startSyncOperation()
       let plaintext: Buffer | null = null
       try {
