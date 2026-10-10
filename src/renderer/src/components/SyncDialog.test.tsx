@@ -96,15 +96,13 @@ describe('SyncDialog error diagnostics', () => {
   })
 
   it('presents unsupported sign-in capabilities as stable safe categories', () => {
-    expect(syncErrorPresentation('SYNC_SSO_REQUIRED').title).toBe('Single sign-on is required')
-    expect(syncErrorPresentation('SYNC_DUO_UNSUPPORTED').title).toBe(
-      'Duo verification is not supported'
-    )
+    expect(syncErrorPresentation('SYNC_SSO_REQUIRED').title).toBe('需要單一登入')
+    expect(syncErrorPresentation('SYNC_DUO_UNSUPPORTED').title).toBe('不支援 Duo 驗證')
     expect(syncErrorPresentation('SYNC_KEY_CONNECTOR_UNSUPPORTED').title).toBe(
-      'Key Connector accounts are not supported'
+      '不支援 Key Connector 帳戶'
     )
     expect(syncErrorPresentation('SYNC_TRUSTED_DEVICE_UNSUPPORTED').title).toBe(
-      'Trusted-device encryption is not supported'
+      '不支援受信任裝置加密'
     )
     expect(
       JSON.stringify([
