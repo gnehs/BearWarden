@@ -1,4 +1,0 @@
-provider: github
-owner: gnehs
-repo: BearWarden
-updaterCacheDirName: bearwarden-updater

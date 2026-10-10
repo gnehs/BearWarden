@@ -16,24 +16,6 @@ importers:
 
   .:
     dependencies:
-      '@base-ui/react':
-        specifier: ^1.6.0
-        version: 1.6.0(@types/react@19.2.17)(date-fns@4.4.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      '@electron-toolkit/utils':
-        specifier: ^4.0.0
-        version: 4.0.0(electron@43.1.0)
-      '@fontsource/inter':
-        specifier: ^5.2.8
-        version: 5.2.8
-      '@lingui/core':
-        specifier: ^6.5.0
-        version: 6.5.0
-      '@lingui/detect-locale':
-        specifier: ^6.5.0
-        version: 6.5.0
-      '@lingui/react':
-        specifier: ^6.5.0
-        version: 6.5.0(react@19.2.7)
       '@microsoft/signalr':
         specifier: 10.0.0
         version: 10.0.0
@@ -46,36 +28,12 @@ importers:
       '@noble/hashes':
         specifier: 2.2.0
         version: 2.2.0
-      '@number-flow/react':
-        specifier: ^0.6.1
-        version: 0.6.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      '@paper-design/shaders-react':
-        specifier: 0.0.77
-        version: 0.0.77(@types/react@19.2.17)(react@19.2.7)
-      '@tanstack/react-router':
-        specifier: ^1.170.18
-        version: 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      '@tanstack/react-virtual':
-        specifier: ^3.14.6
-        version: 3.14.6(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       bcrypt-pbkdf:
         specifier: 1.0.2
         version: 1.0.2
       cbor-x:
         specifier: ^1.6.4
         version: 1.6.4
-      class-variance-authority:
-        specifier: ^0.7.1
-        version: 0.7.1
-      clsx:
-        specifier: ^2.1.1
-        version: 2.1.1
-      cmdk:
-        specifier: ^1.1.1
-        version: 1.1.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      date-fns:
-        specifier: ^4.4.0
-        version: 4.4.0
       electron-updater:
         specifier: ^6.8.9
         version: 6.8.9
@@ -85,31 +43,22 @@ importers:
       sax:
         specifier: 1.6.0
         version: 1.6.0
-      sonner:
-        specifier: ^2.0.7
-        version: 2.0.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       ssh2:
         specifier: 1.17.0
         version: 1.17.0
-      tailwind-merge:
-        specifier: ^3.6.0
-        version: 3.6.0
       tldts:
         specifier: ^7.4.8
         version: 7.4.8
-      ts-pattern:
-        specifier: ^5.9.0
-        version: 5.9.0
       zod:
         specifier: ^4.4.3
         version: 4.4.3
-      zustand:
-        specifier: ^5.0.14
-        version: 5.0.14(@types/react@19.2.17)(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
       zxcvbn:
         specifier: 4.4.2
         version: 4.4.2
     devDependencies:
+      '@base-ui/react':
+        specifier: ^1.6.0
+        version: 1.6.0(@types/react@19.2.17)(date-fns@4.4.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -128,6 +77,9 @@ importers:
       '@electron-toolkit/tsconfig':
         specifier: ^2.0.0
         version: 2.0.0(@types/node@24.13.3)
+      '@fontsource/inter':
+        specifier: ^5.2.8
+        version: 5.2.8
       '@iconify-json/logos':
         specifier: 1.2.11
         version: 1.2.11
@@ -137,9 +89,21 @@ importers:
       '@lingui/cli':
         specifier: ^6.5.0
         version: 6.5.0(esbuild@0.28.1)
+      '@lingui/core':
+        specifier: ^6.5.0
+        version: 6.5.0
+      '@lingui/react':
+        specifier: ^6.5.0
+        version: 6.5.0(react@19.2.7)
       '@lingui/vite-plugin':
         specifier: ^6.5.0
         version: 6.5.0(@babel/core@7.29.7)(@lingui/babel-plugin-lingui-macro@6.5.0)(esbuild@0.28.1)(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0))
+      '@number-flow/react':
+        specifier: ^0.6.1
+        version: 0.6.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@paper-design/shaders-react':
+        specifier: 0.0.77
+        version: 0.0.77(@types/react@19.2.17)(react@19.2.7)
       '@svgr/core':
         specifier: ^8.1.0
         version: 8.1.0(typescript@6.0.3)
@@ -149,6 +113,12 @@ importers:
       '@tailwindcss/vite':
         specifier: ^4.3.2
         version: 4.3.2(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0))
+      '@tanstack/react-router':
+        specifier: ^1.170.18
+        version: 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@tanstack/react-virtual':
+        specifier: ^3.14.6
+        version: 3.14.6(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@types/lunr':
         specifier: ^2.3.7
         version: 2.3.7
@@ -176,6 +146,18 @@ importers:
       '@zip.js/zip.js':
         specifier: 2.8.31
         version: 2.8.31
+      class-variance-authority:
+        specifier: ^0.7.1
+        version: 0.7.1
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
+      cmdk:
+        specifier: ^1.1.1
+        version: 1.1.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      date-fns:
+        specifier: ^4.4.0
+        version: 4.4.0
       electron:
         specifier: 43.1.0
         version: 43.1.0
@@ -215,6 +197,12 @@ importers:
       shadcn:
         specifier: ^4.13.0
         version: 4.13.0(typescript@6.0.3)
+      sonner:
+        specifier: ^2.0.7
+        version: 2.0.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      tailwind-merge:
+        specifier: ^3.6.0
+        version: 3.6.0
       tailwindcss:
         specifier: ^4.3.2
         version: 4.3.2
@@ -236,6 +224,9 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@types/node@24.13.3)(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0))
+      zustand:
+        specifier: ^5.0.14
+        version: 5.0.14(@types/react@19.2.17)(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
 
 packages:
 
@@ -506,11 +497,6 @@ packages:
     resolution: {integrity: sha512-AdPsP770WhW7b260h13SHMdmjEEHJL6xFtgi3jwgdsSQbJOkJLeNnnpZW9qxTPCvmRI6vmdzWz5K3gibFS6SNg==}
     peerDependencies:
       '@types/node': '*'
-
-  '@electron-toolkit/utils@4.0.0':
-    resolution: {integrity: sha512-qXSntwEzluSzKl4z5yFNBknmPGjPa3zFhE4mp9+h0cgokY5ornAeP+CJQDBhKsL1S58aOQfcwkD3NwLZCl+64g==}
-    peerDependencies:
-      electron: '>=13.0.0'
 
   '@electron/asar@3.4.1':
     resolution: {integrity: sha512-i4/rNPRS84t0vSRa2HorerGRXWyF4vThfHesw0dmcWHp+cspK743UanA0suA5Q5y8kzY2y6YKrvbIUn69BCAiA==}
@@ -1016,10 +1002,6 @@ packages:
     peerDependenciesMeta:
       babel-plugin-macros:
         optional: true
-
-  '@lingui/detect-locale@6.5.0':
-    resolution: {integrity: sha512-8ZEcF/sMzxwlzoqqciYj7YHubodc7mo0NAF9aQp/QJOlwegtMbXncawOgGd3wiHeP5GbIsPyuMEC4v8FmsT2NQ==}
-    engines: {node: '>=22.19.0'}
 
   '@lingui/format-po@6.5.0':
     resolution: {integrity: sha512-jK2JhYpKuDMG3VP8T0W6X5SL0GYRkeaTOlX3EiRggDWNJqc6wFxJP0vTZScMlyBXHC+v0OUxy+4Ja+9kVJwKsQ==}
@@ -1942,6 +1924,7 @@ packages:
   '@xmldom/xmldom@0.8.13':
     resolution: {integrity: sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==}
     engines: {node: '>=10.0.0'}
+    deprecated: this version has critical issues, please update to the latest version
 
   '@zip.js/zip.js@2.8.31':
     resolution: {integrity: sha512-2NLmow9ax/5IdBbJKxNQp3Ur9mNxmgLfN2Yp/FKNh1ZIGs3OYkiC3AIUfIZouTPSgeW5+F1bzTAZAyD2Y4ZfFA==}
@@ -2745,6 +2728,7 @@ packages:
   eslint@9.39.5:
     resolution: {integrity: sha512-DgZS62aPLXKlnxILS/AYCoRvHaZeXceIzlXPkkGGzJWSow1aEk0lbTlxUSlyjC8jcaKxAdOnTDz+o1JFSBsyjw==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
@@ -4670,9 +4654,6 @@ packages:
   ts-morph@26.0.0:
     resolution: {integrity: sha512-ztMO++owQnz8c/gIENcM9XfCEzgoGphTv+nKpYNM1bgsdOVC/jRZuEBf6N+mLLDNg68Kl+GgUZfOySaRiG1/Ug==}
 
-  ts-pattern@5.9.0:
-    resolution: {integrity: sha512-6s5V71mX8qBUmlgbrfL33xDUwO0fq48rxAu2LBE11WBeGdpCPOsXksQbZJHvHwhrd3QjUusd3mAOM5Gg0mFBLg==}
-
   tsconfig-paths@4.2.0:
     resolution: {integrity: sha512-NoZ4roiN7LnbKn9QqE1amc9DJfzvZXxF4xDavcOWt1BPkdx+m+0gJuPM+S0vCe7zTJMYUP0R8pO2XMr+Y8oLIg==}
     engines: {node: '>=6'}
@@ -5406,10 +5387,6 @@ snapshots:
     dependencies:
       '@types/node': 24.13.3
 
-  '@electron-toolkit/utils@4.0.0(electron@43.1.0)':
-    dependencies:
-      electron: 43.1.0
-
   '@electron/asar@3.4.1':
     dependencies:
       commander: 5.1.0
@@ -5846,8 +5823,6 @@ snapshots:
       '@lingui/message-utils': 6.5.0
     transitivePeerDependencies:
       - supports-color
-
-  '@lingui/detect-locale@6.5.0': {}
 
   '@lingui/format-po@6.5.0':
     dependencies:
@@ -9704,8 +9679,6 @@ snapshots:
     dependencies:
       '@ts-morph/common': 0.27.0
       code-block-writer: 13.0.3
-
-  ts-pattern@5.9.0: {}
 
   tsconfig-paths@4.2.0:
     dependencies:
