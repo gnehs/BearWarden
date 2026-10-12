@@ -245,7 +245,7 @@ describe('FocusTouchIdUnlockController', () => {
       isActive: vi.fn(() => active),
       unlock: vi.fn(() => pending.promise)
     })
-    const controller = new FocusTouchIdUnlockController(runtime)
+    const controller = new FocusTouchIdUnlockController(runtime, 10)
 
     const focus = controller.focus()
     await vi.waitFor(() => expect(runtime.unlock).toHaveBeenCalledTimes(1))
@@ -303,7 +303,7 @@ describe('FocusTouchIdUnlockController', () => {
         .mockImplementationOnce(() => pending.promise)
         .mockResolvedValueOnce({ state: 'unlocked' })
     })
-    const controller = new FocusTouchIdUnlockController(runtime)
+    const controller = new FocusTouchIdUnlockController(runtime, 10)
 
     const firstAttempt = controller.focus()
     await vi.waitFor(() => expect(runtime.unlock).toHaveBeenCalledOnce())
@@ -326,7 +326,7 @@ describe('FocusTouchIdUnlockController', () => {
       isFocused: vi.fn(() => focused),
       unlock: vi.fn(() => pending.promise)
     })
-    const controller = new FocusTouchIdUnlockController(runtime)
+    const controller = new FocusTouchIdUnlockController(runtime, 10)
 
     const firstAttempt = controller.focus()
     await vi.waitFor(() => expect(runtime.unlock).toHaveBeenCalledOnce())
@@ -342,6 +342,57 @@ describe('FocusTouchIdUnlockController', () => {
     await controller.focus()
 
     expect(runtime.unlock).toHaveBeenCalledTimes(2)
+    expect(runtime.notifyUnlocked).toHaveBeenCalledOnce()
+  })
+
+  it('does not reopen a canceled prompt when focus returns after the prompt settles', async () => {
+    let focused = true
+    const pending = deferred<VaultStatus>()
+    const runtime = createRuntime({
+      isFocused: vi.fn(() => focused),
+      unlock: vi.fn(() => pending.promise)
+    })
+    const controller = new FocusTouchIdUnlockController(runtime)
+
+    const attempt = controller.focus()
+    await vi.waitFor(() => expect(runtime.unlock).toHaveBeenCalledOnce())
+    // macOS order: the prompt takes focus, settles, and only then hands focus back.
+    focused = false
+    controller.blur()
+    pending.reject(new Error('cancelled'))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    focused = true
+    await Promise.all([attempt, controller.focus()])
+    await controller.focus()
+
+    expect(runtime.unlock).toHaveBeenCalledOnce()
+    expect(runtime.notifyUnlocked).not.toHaveBeenCalled()
+
+    controller.blur()
+    await controller.focus()
+    expect(runtime.unlock).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps a successful unlock when focus returns after the prompt settles', async () => {
+    let focused = true
+    const pending = deferred<VaultStatus>()
+    const runtime = createRuntime({
+      isFocused: vi.fn(() => focused),
+      unlock: vi.fn(() => pending.promise)
+    })
+    const controller = new FocusTouchIdUnlockController(runtime)
+
+    const attempt = controller.focus()
+    await vi.waitFor(() => expect(runtime.unlock).toHaveBeenCalledOnce())
+    focused = false
+    controller.blur()
+    pending.resolve({ state: 'unlocked' })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    focused = true
+    await Promise.all([attempt, controller.focus()])
+
+    expect(runtime.lock).not.toHaveBeenCalled()
+    expect(runtime.unlock).toHaveBeenCalledOnce()
     expect(runtime.notifyUnlocked).toHaveBeenCalledOnce()
   })
 })
