@@ -72,6 +72,7 @@ const harness = vi.hoisted(() => {
     return Promise.resolve()
   })
   const appQuit = vi.fn(() => lifecycleEvents.push('app.quit'))
+  const appExit = vi.fn()
   const appRelaunch = vi.fn(() => lifecycleEvents.push('app.relaunch'))
   const controller = {
     cancel: vi.fn(),
@@ -311,6 +312,7 @@ const harness = vi.hoisted(() => {
     vaultLock,
     lifecycleEvents,
     appQuit,
+    appExit,
     appRelaunch,
     appSetPath,
     requestSingleInstanceLock,
@@ -326,6 +328,7 @@ vi.mock('electron', () => ({
   app: {
     requestSingleInstanceLock: harness.requestSingleInstanceLock,
     quit: harness.appQuit,
+    exit: harness.appExit,
     relaunch: harness.appRelaunch,
     enableSandbox: vi.fn(),
     whenReady: () => Promise.resolve(),
@@ -878,6 +881,14 @@ describe('main WebAuthn lifecycle wiring', () => {
     beforeQuit(finalQuitEvent as never)
     expect(finalQuitEvent.preventDefault).not.toHaveBeenCalled()
     expect(harness.appQuit).toHaveBeenCalledOnce()
+
+    // A canceled quit must not leave the process alive with disposed services.
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    expect(harness.appExit).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(harness.appExit).toHaveBeenCalledExactlyOnceWith(0)
+    expect(consoleError).toHaveBeenCalledOnce()
+    consoleError.mockRestore()
     vi.useRealTimers()
   })
 

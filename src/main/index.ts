@@ -126,6 +126,11 @@ let shutdownPending: Promise<void> | null = null
 let shutdownComplete = false
 let servicesDisposed = false
 const SHUTDOWN_GRACE_PERIOD_MS = 3_000
+/**
+ * Services are disposed before the final quit, so a quit that Electron or the OS cancels afterwards
+ * would leave a running process whose settings, updater and vault services reject every request.
+ */
+const SHUTDOWN_EXIT_DEADLINE_MS = 5_000
 const rendererWebPreferences: Electron.WebPreferences = {
   preload: join(__dirname, '../preload/index.js'),
   sandbox: true,
@@ -1311,6 +1316,12 @@ function finishShutdown(): void {
   } finally {
     shutdownComplete = true
     app.quit()
+    setTimeout(() => {
+      console.error(
+        `Quit did not finish after services were disposed; forcing exit with ${BrowserWindow.getAllWindows().length} open window(s)`
+      )
+      app.exit(0)
+    }, SHUTDOWN_EXIT_DEADLINE_MS)
   }
 }
 
