@@ -127,8 +127,8 @@ let shutdownComplete = false
 let servicesDisposed = false
 const SHUTDOWN_GRACE_PERIOD_MS = 3_000
 /**
- * Services are disposed before the final quit, so a quit that Electron or the OS cancels afterwards
- * would leave a running process whose settings, updater and vault services reject every request.
+ * Services are disposed before the final quit, so a quit that does not complete would leave a
+ * running process whose settings, updater and vault services reject every request.
  */
 const SHUTDOWN_EXIT_DEADLINE_MS = 5_000
 const rendererWebPreferences: Electron.WebPreferences = {
@@ -1315,7 +1315,10 @@ function finishShutdown(): void {
     // Teardown is best-effort once the deadline has elapsed; never trap the process in before-quit.
   } finally {
     shutdownComplete = true
-    app.quit()
+    // The shutdown tasks can settle within the microtask checkpoint of the very before-quit
+    // dispatch that started them. Quitting re-entrantly there lets the outer, prevented quit clear
+    // Electron's quitting flag afterwards, so the windows close but the process never exits.
+    setImmediate(() => app.quit())
     setTimeout(() => {
       console.error(
         `Quit did not finish after services were disposed; forcing exit with ${BrowserWindow.getAllWindows().length} open window(s)`
