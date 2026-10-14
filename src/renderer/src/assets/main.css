@@ -133,7 +133,7 @@
   --sidebar-tile-highlight: var(--control-highlight);
   --website-icon-background: oklch(1 0 0);
   --shadow: 0 18px 48px color-mix(in oklch, var(--shadow-color) 14%, transparent);
-  --native-window-material: color-mix(in oklch, var(--background) 34%, transparent);
+  --native-window-material: color-mix(in oklch, var(--background) 78%, transparent);
   --native-panel-material: color-mix(in oklch, var(--card) 88%, transparent);
   --native-material-border: color-mix(in oklch, var(--foreground) 9%, transparent);
   --native-material-shadow:
