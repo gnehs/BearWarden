@@ -6,6 +6,7 @@ import {
   dialog,
   globalShortcut,
   ipcMain,
+  nativeTheme,
   Notification,
   powerMonitor,
   screen,
@@ -1008,6 +1009,9 @@ if (hasSingleInstanceLock)
         applyLanguage: (language) => {
           initializeMainI18nFromPreference(language, app.getLocale())
           if (mainInitializationComplete) installCurrentApplicationMenu()
+        },
+        applyTheme: (theme) => {
+          nativeTheme.themeSource = theme
         },
         applySshAgentSettings,
         getStartAtLoginStatus: () => {

@@ -349,6 +349,7 @@ vi.mock('electron', () => ({
   dialog: {},
   globalShortcut: { register: vi.fn(() => true), unregister: vi.fn() },
   ipcMain: { on: vi.fn(), handle: vi.fn() },
+  nativeTheme: { themeSource: 'system' },
   powerMonitor: {
     getSystemIdleTime: () => harness.systemIdleTime,
     on: (event: string, listener: (...args: never[]) => void) =>

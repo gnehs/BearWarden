@@ -9,6 +9,7 @@ import type {
   AppLanguagePreference,
   AppSettings,
   AppSettingsUpdate,
+  AppTheme,
   VaultStatus,
   VaultTimeoutPolicy
 } from '../shared/vault-contract'
@@ -52,6 +53,8 @@ export interface AppSettingsRuntime {
     shortcut: AppSettings['autofillShortcut']
   }) => boolean
   applyLanguage: (language: AppLanguagePreference) => void
+  /** Keeps native window materials and `prefers-color-scheme` aligned with the app theme. */
+  applyTheme: (theme: AppTheme) => void
   /**
    * Synchronously publishes persisted SSH-agent preferences to the main-process owner.
    * The runtime owns any asynchronous socket lifecycle work.
@@ -578,6 +581,7 @@ export class AppSettingsService {
       shortcut: this.settings.autofillShortcut
     })
     this.runtime.applyLanguage(this.settings.language)
+    this.runtime.applyTheme(this.settings.theme)
     this.runtime.applySshAgentSettings({
       enabled: this.settings.sshAgentEnabled,
       promptBehavior: this.settings.sshAgentPromptBehavior

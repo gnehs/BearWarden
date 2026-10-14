@@ -42,6 +42,7 @@ interface TestRuntime {
   applyClipboardTimeout: TestMock
   applyAutofillSettings: TestMock
   applyLanguage: TestMock
+  applyTheme: TestMock
   applySshAgentSettings: TestMock
   getStartAtLoginStatus: TestMock
   setStartAtLogin: TestMock
@@ -99,6 +100,7 @@ describe('AppSettingsService', () => {
       applyClipboardTimeout: vi.fn(),
       applyAutofillSettings: vi.fn(() => true),
       applyLanguage: vi.fn(),
+      applyTheme: vi.fn(),
       applySshAgentSettings: vi.fn(),
       getStartAtLoginStatus: vi.fn(() => ({
         available: false,
@@ -187,6 +189,7 @@ describe('AppSettingsService', () => {
       shortcut: 'Command+Control+K'
     })
     expect(runtime.applyLanguage).toHaveBeenLastCalledWith('ja')
+    expect(runtime.applyTheme).toHaveBeenLastCalledWith('dark')
     expect(runtime.applySshAgentSettings).toHaveBeenLastCalledWith({
       enabled: true,
       promptBehavior: 'rememberUntilLock'
