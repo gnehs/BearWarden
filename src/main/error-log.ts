@@ -1,4 +1,4 @@
-import { mkdirSync, appendFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, appendFileSync, chmodSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { RendererErrorLogRequest } from '../shared/vault-contract'
 
@@ -31,8 +31,26 @@ interface ErrorLogOptions {
   showItemInFolder?: (path: string) => void
 }
 
+// Library errors can echo request URLs or bodies, so strip token-shaped values before they reach
+// the plaintext log on disk.
+const SECRET_PATTERNS: readonly [RegExp, string][] = [
+  [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 [redacted]'],
+  [
+    /\b(access_token|refresh_token|id_token|client_secret|password)(["']?\s*[:=]\s*["']?)[^\s"'&,}]+/gi,
+    '$1$2[redacted]'
+  ],
+  [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*/g, '[redacted-jwt]']
+]
+
+function redactSecrets(value: string): string {
+  return SECRET_PATTERNS.reduce(
+    (text, [pattern, replacement]) => text.replace(pattern, replacement),
+    value
+  )
+}
+
 function boundedText(value: string): string {
-  const normalized = value.replace(/\0/g, '\\0')
+  const normalized = redactSecrets(value.replace(/\0/g, '\\0'))
   return normalized.length > MAX_FIELD_LENGTH
     ? `${normalized.slice(0, MAX_FIELD_LENGTH)}...[truncated]`
     : normalized
@@ -150,8 +168,9 @@ export class ErrorLogService {
   }
 
   private ensureFile(): void {
-    mkdirSync(dirname(this.filePath), { recursive: true })
-    writeFileSync(this.filePath, '', { flag: 'a' })
+    mkdirSync(dirname(this.filePath), { recursive: true, mode: 0o700 })
+    writeFileSync(this.filePath, '', { flag: 'a', mode: 0o600 })
+    if (process.platform !== 'win32') chmodSync(this.filePath, 0o600)
   }
 
   private append(record: ErrorLogRecord): void {

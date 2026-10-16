@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, it, vi } from 'vitest'
@@ -55,6 +55,27 @@ describe('ErrorLogService', () => {
       channel: 'sync:now',
       code: 'SYNC_NETWORK'
     })
+  })
+
+  it('redacts token-shaped values and keeps the log private to the user', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'bearwarden-error-log-'))
+    const filePath = join(directory, 'logs', 'errors.log')
+    const log = new ErrorLogService(filePath)
+    const jwt = 'eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyLWlkIn0.c2lnbmF0dXJlLXZhbHVl'
+
+    log.recordMainError(
+      'ipc-error',
+      new Error(
+        `request failed: Authorization: Bearer abc.def https://hub/notifications?access_token=${jwt}&x=1 {"refresh_token":"r3fr3sh"}`
+      )
+    )
+
+    const contents = await readFile(filePath, 'utf8')
+    expect(contents).not.toContain('abc.def')
+    expect(contents).not.toContain(jwt)
+    expect(contents).not.toContain('r3fr3sh')
+    expect(contents).toContain('Bearer [redacted]')
+    if (process.platform !== 'win32') expect((await stat(filePath)).mode & 0o777).toBe(0o600)
   })
 
   it('creates the log file before showing it in the platform file manager', async () => {
