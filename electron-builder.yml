@@ -38,6 +38,15 @@ linux:
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
+# The packaged app never needs Node CLI entry points; disabling them stops another local
+# process from launching the signed binary as a plain Node runtime or attaching a debugger.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableCookieEncryption: true
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
 publish:
   provider: github
   owner: gnehs
