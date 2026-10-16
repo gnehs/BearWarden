@@ -311,7 +311,15 @@ describe('Bitwarden attachment EncArrayBuffer compatibility', () => {
 
     expect(decryptBitwardenAttachmentBuffer(type2, COMBINED_KEY)).toEqual(plaintext)
     expect(decryptBitwardenAttachmentBuffer(type0, legacyKey)).toEqual(plaintext)
-    expect(decryptBitwardenAttachmentBuffer(type0, COMBINED_KEY)).toEqual(plaintext)
+  })
+
+  it('rejects an unauthenticated type 0 envelope for a key that carries a MAC key', () => {
+    const plaintext = Buffer.from('downgraded attachment')
+    const type0 = attachmentEnvelope(0, plaintext, Buffer.from(COMBINED_KEY.subarray(0, 32)))
+
+    expect(() => decryptBitwardenAttachmentBuffer(type0, COMBINED_KEY)).toThrowError(
+      expect.objectContaining({ code: 'INVALID_KEY' })
+    )
   })
 
   it('authenticates type 2 before decryption and rejects malformed envelopes', () => {

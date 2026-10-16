@@ -270,6 +270,14 @@ export async function authenticatedAttachmentPlaintext(
     header.fill(0)
     throw new BitwardenCryptoError('INVALID_CIPHERSTRING', 'attachment ciphertext size is invalid')
   }
+  if (type === 0 && key.length !== KEY_BYTES) {
+    header.fill(0)
+    // A key that carries a MAC key must never accept the unauthenticated envelope.
+    throw new BitwardenCryptoError(
+      'INVALID_KEY',
+      'attachment key requires an authenticated envelope'
+    )
+  }
   const iv = Buffer.from(header.subarray(1, 1 + IV_BYTES))
   try {
     if (type === 2) {

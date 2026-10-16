@@ -1330,7 +1330,9 @@ export function decryptBitwardenAttachmentBuffer(envelope: Buffer, key: Buffer):
   requireBuffer(key, 'attachment key')
   if (
     (type === 2 && key.length !== COMBINED_KEY_BYTES) ||
-    (type === 0 && key.length !== KEY_BYTES && key.length !== COMBINED_KEY_BYTES)
+    // A key that carries a MAC key must never accept the unauthenticated envelope; otherwise a
+    // server could strip the MAC and tamper with the CBC ciphertext.
+    (type === 0 && key.length !== KEY_BYTES)
   ) {
     throw new BitwardenCryptoError('INVALID_KEY', 'attachment key has an invalid length')
   }
