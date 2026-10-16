@@ -2262,7 +2262,7 @@ function parseSyncPurgePersonalVault(value: unknown): SyncPurgePersonalVaultRequ
 }
 
 export function isTrustedVaultSender(
-  event: IpcMainInvokeEvent,
+  event: Pick<IpcMainInvokeEvent, 'sender' | 'senderFrame'>,
   mainWindow: BrowserWindow | null
 ): boolean {
   if (!mainWindow || mainWindow.isDestroyed()) return false
@@ -2270,7 +2270,7 @@ export function isTrustedVaultSender(
   const senderFrame = event.senderFrame
   return (
     event.sender === webContents &&
-    senderFrame !== null &&
+    senderFrame != null &&
     senderFrame === webContents.mainFrame &&
     senderFrame.url === webContents.getURL()
   )

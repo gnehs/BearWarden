@@ -2,6 +2,7 @@ import { ipcMain, type BrowserWindow } from 'electron'
 import { IPC_CHANNELS, type ApplicationMenuCommand } from '../shared/vault-contract'
 import { SELECTED_ITEM_COPY_SHORTCUTS } from '../shared/selected-item-shortcuts'
 import { executeApplicationMenuCommand } from './application-menu'
+import { isTrustedVaultSender } from './vault-ipc'
 
 const applicationMenuCommands = new Set<ApplicationMenuCommand>([
   'close-window',
@@ -32,12 +33,7 @@ export function isApplicationMenuCommand(value: unknown): value is ApplicationMe
 export function registerApplicationMenuIpc(options: ApplicationMenuIpcOptions): void {
   ipcMain.handle(IPC_CHANNELS.applicationMenuExecute, (event, command: unknown) => {
     const window = options.getMainWindow()
-    if (
-      !window ||
-      window.isDestroyed() ||
-      event.sender !== window.webContents ||
-      !isApplicationMenuCommand(command)
-    ) {
+    if (!window || !isTrustedVaultSender(event, window) || !isApplicationMenuCommand(command)) {
       throw new Error('Invalid application menu request')
     }
     executeApplicationMenuCommand(window, command)

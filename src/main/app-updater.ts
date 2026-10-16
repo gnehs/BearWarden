@@ -12,6 +12,7 @@ import {
   type AppUpdateStatus,
   type AppManualUpdateSource
 } from '../shared/vault-contract'
+import { isTrustedVaultSender } from './vault-ipc'
 
 // electron-updater is CommonJS. Its documented TypeScript ESM interop uses a default import.
 const { autoUpdater } = electronUpdater
@@ -187,8 +188,7 @@ export class AppUpdaterController {
   }
 
   private assertAttachedRenderer(event: IpcMainInvokeEvent): void {
-    const window = this.attachedWindow
-    if (!window || window.isDestroyed() || event.sender !== window.webContents) {
+    if (!isTrustedVaultSender(event, this.attachedWindow)) {
       throw new Error('Invalid app update request')
     }
   }

@@ -40,7 +40,7 @@ import { installApplicationMenu } from './application-menu'
 import { registerApplicationMenuIpc } from './application-menu-ipc'
 import { initializeMainI18n, initializeMainI18nFromPreference, translateMain } from './i18n'
 import { windowChromeOptions } from './window-chrome'
-import { registerVaultIpc, RepromptAuthorizationStore } from './vault-ipc'
+import { isTrustedVaultSender, registerVaultIpc, RepromptAuthorizationStore } from './vault-ipc'
 import { VaultService } from './vault-service'
 import { VaultAttachmentFileService } from './vault-attachment-files'
 import { VaultPortabilityService } from './vault-portability'
@@ -1230,8 +1230,7 @@ if (hasSingleInstanceLock)
       getMainWindow: () => mainWindow
     })
     ipcMain.on(IPC_CHANNELS.vaultLockRequestReady, (event, ready: unknown) => {
-      const window = mainWindow
-      if (!window || event.sender !== window.webContents || typeof ready !== 'boolean') return
+      if (!isTrustedVaultSender(event, mainWindow) || typeof ready !== 'boolean') return
       rendererHandlesLockRequests = ready
     })
 

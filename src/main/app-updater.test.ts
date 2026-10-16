@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const harness = vi.hoisted(() => {
-  const ipcHandlers = new Map<string, (event: { sender: unknown }) => unknown>()
+  const ipcHandlers = new Map<
+    string,
+    (event: { sender: unknown; senderFrame?: unknown }) => unknown
+  >()
   const updaterListeners = new Map<string, (...args: never[]) => void>()
   const updater = {
     autoDownload: true,
@@ -24,9 +27,14 @@ const harness = vi.hoisted(() => {
     updaterListeners,
     updater,
     app: { isPackaged: true, getVersion: vi.fn(() => '0.1.1') },
-    handle: vi.fn((channel: string, handler: (event: { sender: unknown }) => unknown) => {
-      ipcHandlers.set(channel, handler)
-    }),
+    handle: vi.fn(
+      (
+        channel: string,
+        handler: (event: { sender: unknown; senderFrame?: unknown }) => unknown
+      ) => {
+        ipcHandlers.set(channel, handler)
+      }
+    ),
     removeHandler: vi.fn((channel: string) => ipcHandlers.delete(channel))
   }
 })
@@ -58,12 +66,18 @@ function createWindow(): {
       send: ReturnType<typeof vi.fn>
     }
   }
-  sender: unknown
+  sender: { sender: unknown; senderFrame: unknown }
 } {
-  const webContents = { isDestroyed: vi.fn(() => false), send: vi.fn() }
+  const mainFrame = { url: 'file:///index.html' }
+  const webContents = {
+    isDestroyed: vi.fn(() => false),
+    send: vi.fn(),
+    mainFrame,
+    getURL: () => mainFrame.url
+  }
   return {
     window: { isDestroyed: vi.fn(() => false), webContents },
-    sender: webContents
+    sender: { sender: webContents, senderFrame: mainFrame }
   }
 }
 
@@ -88,7 +102,7 @@ describe('AppUpdaterController', () => {
     controller.attachWindow(window as never)
 
     const check = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateCheck)
-    expect(await check?.({ sender })).toEqual({
+    expect(await check?.(sender)).toEqual({
       status: 'disabled',
       currentVersion: '0.1.1',
       availableVersion: null,
@@ -174,11 +188,11 @@ describe('AppUpdaterController', () => {
     const check = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateCheck)
     const download = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateDownload)
     const install = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateInstall)
-    await check?.({ sender })
+    await check?.(sender)
     expect(harness.updater.checkForUpdates).toHaveBeenCalledOnce()
 
     emitUpdaterEvent('update-available', { version: '0.2.0' })
-    await download?.({ sender })
+    await download?.(sender)
     expect(harness.updater.downloadUpdate).toHaveBeenCalledOnce()
     expect(controller.state.status).toBe('downloading')
 
@@ -186,7 +200,7 @@ describe('AppUpdaterController', () => {
       version: '0.2.0',
       downloadedFile: '/private/update.pkg'
     })
-    await install?.({ sender })
+    await install?.(sender)
     expect(harness.updater.quitAndInstall).toHaveBeenCalledOnce()
   })
 
@@ -219,7 +233,7 @@ describe('AppUpdaterController', () => {
     )
 
     const check = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateCheck)
-    expect(await check?.({ sender })).toEqual({
+    expect(await check?.(sender)).toEqual({
       status: 'error',
       currentVersion: '0.1.1',
       availableVersion: null,
@@ -251,7 +265,7 @@ describe('AppUpdaterController', () => {
     const openReleasePage = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateOpenReleasePage)
     const openRepositoryPage = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateOpenRepositoryPage)
 
-    await check?.({ sender })
+    await check?.(sender)
     expect(harness.updater.checkForUpdates).toHaveBeenCalledOnce()
     expect(controller.state.canAutoInstall).toBe(false)
     expect(controller.state.manualUpdateSource).toBe('homebrew')
@@ -259,18 +273,16 @@ describe('AppUpdaterController', () => {
     expect(harness.updater.autoInstallOnAppQuit).toBe(false)
 
     emitUpdaterEvent('update-available', { version: '0.2.0' })
-    await expect(download?.({ sender })).rejects.toThrow(
+    await expect(download?.(sender)).rejects.toThrow(
       'Automatic updates are unavailable on this platform'
     )
-    expect(() => install?.({ sender })).toThrow(
-      'Automatic updates are unavailable on this platform'
-    )
+    expect(() => install?.(sender)).toThrow('Automatic updates are unavailable on this platform')
     expect(harness.updater.downloadUpdate).not.toHaveBeenCalled()
     expect(harness.updater.quitAndInstall).not.toHaveBeenCalled()
 
-    await openReleasePage?.({ sender })
+    await openReleasePage?.(sender)
     expect(openExternal).toHaveBeenCalledWith('https://github.com/gnehs/BearWarden/releases/latest')
-    await openRepositoryPage?.({ sender })
+    await openRepositoryPage?.(sender)
     expect(openExternal).toHaveBeenCalledWith('https://github.com/gnehs/BearWarden')
   })
 

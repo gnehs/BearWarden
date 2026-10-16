@@ -28,7 +28,8 @@ describe('application menu IPC', () => {
   })
 
   it('executes a command only for the current main renderer', () => {
-    const sender = { id: 1 }
+    const mainFrame = { url: 'file:///index.html' }
+    const sender = { id: 1, mainFrame, getURL: () => mainFrame.url }
     const window = { isDestroyed: () => false, webContents: sender }
     registerApplicationMenuIpc({ getMainWindow: () => window as never })
     expect(electronMock.handle).toHaveBeenCalledWith(
@@ -36,14 +37,19 @@ describe('application menu IPC', () => {
       expect.any(Function)
     )
     const handler = electronMock.handle.mock.calls[0]?.[1] as (
-      event: { sender: unknown },
+      event: { sender: unknown; senderFrame?: unknown },
       command: unknown
     ) => void
 
-    handler({ sender }, 'copy')
+    handler({ sender, senderFrame: mainFrame }, 'copy')
 
     expect(executeApplicationMenuCommand).toHaveBeenCalledWith(window, 'copy')
     expect(() => handler({ sender: { id: 2 } }, 'copy')).toThrow('Invalid application menu request')
-    expect(() => handler({ sender }, 'open-devtools')).toThrow('Invalid application menu request')
+    expect(() => handler({ sender, senderFrame: { url: mainFrame.url } }, 'copy')).toThrow(
+      'Invalid application menu request'
+    )
+    expect(() => handler({ sender, senderFrame: mainFrame }, 'open-devtools')).toThrow(
+      'Invalid application menu request'
+    )
   })
 })
