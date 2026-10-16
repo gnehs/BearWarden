@@ -13,8 +13,12 @@ import type {
   AttachmentUploadCardCoverRequest,
   AttachmentUploadRequest,
   AttachmentUploadResult,
+  CardCoverPreviewResult,
+  LoginIdRequest,
   VaultImportResult
 } from '../shared/vault-contract'
+import { isCardCoverAttachment } from '../shared/card-cover'
+import { clearImageCacheKeys } from './encrypted-image-cache'
 import { type BitwardenSyncClient } from './bitwarden-direct'
 import { BITWARDEN_POLICY_TYPE } from './bitwarden-policy'
 import {
@@ -53,10 +57,12 @@ import type {
   VaultNativeAttachmentRestoreSummary
 } from './vault/types'
 import { type AttachmentAuthorizationValidator } from './vault-service-base'
+import type { PersistedSyncData } from './vault/types'
 import { VaultContentService } from './vault-content-service'
 
 const MAX_ATTACHMENT_PREVIEW_BYTES = 10 * 1024 * 1024
 const MAX_CARD_COVER_BYTES = 10 * 1024 * 1024
+const CARD_COVER_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000
 const CARD_COVER_CATALOG_ORIGIN = 'https://tw-card-catalog.gnehs.net'
 const CARD_COVER_CATALOG_PATH_PREFIX = '/assets/cards/'
 
@@ -280,6 +286,162 @@ export class VaultTransferService extends VaultContentService {
         this.finishAttachmentOperation(operation)
       }
     })
+  }
+
+  /**
+   * Returns the card face shown in the vault list and card details. Unlike `previewAttachment`,
+   * this never holds the vault mutex across the network: cache hits are served from a fast read,
+   * and misses download through a small concurrency pool that a lock aborts.
+   */
+  async getCardCoverPreview(
+    request: LoginIdRequest,
+    validateAuthorization?: AttachmentAuthorizationValidator
+  ): Promise<CardCoverPreviewResult | null> {
+    const target = (() => {
+      assertUuid(request.id)
+      const data = this.requireFastReadData()
+      const login = this.findLogin(data, request.id)
+      this.assertActiveLogin(login)
+      this.assertAttachmentAuthorized(login, validateAuthorization)
+      if (login.type !== 'card' || !data.sync) return null
+      const cover = login.attachments.find((attachment) =>
+        isCardCoverAttachment(attachment.fileName)
+      )
+      const mapping = data.sync.loginMappings.find((entry) => entry.localId === login.id)
+      if (!cover || !mapping) return null
+      return {
+        sync: data.sync,
+        remoteId: mapping.remoteId,
+        attachmentId: cover.id,
+        fileName: cover.fileName,
+        size: cover.size,
+        // Attachment ids are immutable; a replaced cover gets a new id and therefore a new key.
+        cacheKey: `${data.sync.serverUrl}\0${mapping.remoteId}\0${cover.id}`
+      }
+    })()
+    if (!target) return null
+
+    const cached = this.cardCoverCache.get(target.cacheKey)
+    if (cached) return cached.value
+    const existingRequest = this.cardCoverRequests.get(target.cacheKey)
+    if (existingRequest) return existingRequest
+
+    const pendingRequest = this.loadCardCover(target).finally(() => {
+      if (this.cardCoverRequests.get(target.cacheKey) === pendingRequest) {
+        this.cardCoverRequests.delete(target.cacheKey)
+      }
+    })
+    this.cardCoverRequests.set(target.cacheKey, pendingRequest)
+    return pendingRequest
+  }
+
+  /** Forgets a cover that was replaced or deleted so its plaintext does not linger on disk. */
+  protected forgetCardCover(sync: PersistedSyncData, remoteId: string, attachmentId: string): void {
+    const cacheKey = `${sync.serverUrl}\0${remoteId}\0${attachmentId}`
+    this.cardCoverCache.delete(cacheKey)
+    const keys = this.imageCacheKeys()
+    if (!keys) return
+    void this.imageCache
+      ?.remove(keys, 'card-cover', cacheKey)
+      .finally(() => clearImageCacheKeys(keys))
+  }
+
+  private async loadCardCover(target: {
+    sync: PersistedSyncData
+    remoteId: string
+    attachmentId: string
+    fileName: string
+    size: number
+    cacheKey: string
+  }): Promise<CardCoverPreviewResult | null> {
+    const generation = this.generation
+    const keys = this.imageCacheKeys()
+    const abort = new AbortController()
+    this.imageRequestAborts.add(abort)
+    let clearText: Buffer | undefined
+    try {
+      const stored = keys ? await this.imageCache?.read(keys, 'card-cover', target.cacheKey) : null
+      if (generation !== this.generation) throw new VaultError('LOCKED')
+      if (
+        stored?.mediaType &&
+        stored.data &&
+        stored.storedAt + CARD_COVER_CACHE_TTL_MS > this.now().getTime()
+      ) {
+        clearText = stored.data
+        const mediaType =
+          previewMediaType(target.fileName, clearText) ?? extensionPreviewMediaType(target.fileName)
+        if (mediaType) return this.rememberCardCover(target, mediaType, clearText)
+      }
+      stored?.data?.fill(0)
+
+      clearText = await this.cardCoverDownloads.run(async () => {
+        // Only borrow the mutex long enough to obtain the shared sync client.
+        const client = await this.exclusive(async () => {
+          if (generation !== this.generation) throw new VaultError('LOCKED')
+          return this.getOrCreateSyncClient(this.requireSyncData())
+        })
+        const downloaded = client.downloadAttachmentStream
+          ? await client.downloadAttachmentStream(
+              target.remoteId,
+              target.attachmentId,
+              abort.signal
+            )
+          : await client.downloadAttachment(target.remoteId, target.attachmentId, abort.signal)
+        try {
+          if (downloaded.fileName !== target.fileName) throw new VaultError('ATTACHMENT_FAILED')
+          if ('dispose' in downloaded) {
+            return await collectPreviewBytes(
+              downloaded.data.chunks(abort.signal),
+              target.size,
+              abort.signal
+            )
+          }
+          if (downloaded.data.length > MAX_ATTACHMENT_PREVIEW_BYTES) {
+            downloaded.data.fill(0)
+            throw new VaultError('ATTACHMENT_TOO_LARGE')
+          }
+          return downloaded.data
+        } finally {
+          if ('dispose' in downloaded) await downloaded.dispose().catch(() => undefined)
+        }
+      }, abort.signal)
+      if (generation !== this.generation) throw new VaultError('LOCKED')
+      const mediaType =
+        previewMediaType(target.fileName, clearText) ?? extensionPreviewMediaType(target.fileName)
+      if (!mediaType) throw new VaultError('INVALID_INPUT')
+      if (keys) {
+        void this.imageCache?.write(keys, 'card-cover', target.cacheKey, {
+          mediaType,
+          data: clearText,
+          storedAt: this.now().getTime()
+        })
+      }
+      return this.rememberCardCover(target, mediaType, clearText)
+    } catch (error) {
+      if (error instanceof VaultError) throw error
+      throw abort.signal.aborted ? new VaultError('LOCKED') : new VaultError('ATTACHMENT_FAILED')
+    } finally {
+      clearText?.fill(0)
+      this.imageRequestAborts.delete(abort)
+      if (keys) clearImageCacheKeys(keys)
+    }
+  }
+
+  private rememberCardCover(
+    target: { cacheKey: string; attachmentId: string },
+    mediaType: CardCoverPreviewResult['mediaType'],
+    clearText: Buffer
+  ): CardCoverPreviewResult {
+    const result: CardCoverPreviewResult = {
+      attachmentId: target.attachmentId,
+      mediaType,
+      dataUrl: `data:${mediaType};base64,${clearText.toString('base64')}`
+    }
+    this.cardCoverCache.set(target.cacheKey, result, {
+      size: result.dataUrl.length,
+      ttlMs: CARD_COVER_CACHE_TTL_MS
+    })
+    return result
   }
 
   async previewAttachment(
@@ -706,6 +868,9 @@ export class VaultTransferService extends VaultContentService {
           this.commitAttachmentOperation(operation)
         )
         this.commitAttachmentOperation(operation)
+        if (isCardCoverAttachment(attachment.fileName)) {
+          this.forgetCardCover(this.requireSyncData(), mapping.remoteId, attachment.id)
+        }
         this.reportAttachmentProgress(reportProgress, request, 'delete', 'syncing', 0, null)
         await this.persistAttachmentMutation(data, client)
         const updated = this.findLogin(this.requireData(), request.id)

@@ -1882,6 +1882,14 @@ describe('registerVaultIpc reprompt gate', () => {
         requireAttachmentAuthorization(request, validate)
         return 'data:image/png;base64,aWNvbg=='
       }),
+      getCardCoverPreview: vi.fn(async (request, validate) => {
+        requireAttachmentAuthorization(request, validate)
+        return {
+          attachmentId: 'cover-a',
+          mediaType: 'image/jpeg',
+          dataUrl: 'data:image/jpeg;base64,Y292ZXI='
+        }
+      }),
       getPasswordHistoryView: vi.fn(
         async (
           request: { id: string },
@@ -3513,6 +3521,22 @@ describe('registerVaultIpc reprompt gate', () => {
     await expect(
       handler(event, { id: 'item-a', authorizationToken: authorization.token })
     ).resolves.toBe('data:image/png;base64,aWNvbg==')
+  })
+
+  it('validates card cover authorization inside the service fast read', async () => {
+    const { event, vault } = harness()
+    const handler = electronMock.handlers.get(IPC_CHANNELS.attachmentCardCoverPreview)!
+
+    await expect(handler(event, { id: 'item-a' })).rejects.toThrow('BEARWARDEN:REPROMPT_REQUIRED')
+    expect(vault.getCardCoverPreview).toHaveBeenCalledWith({ id: 'item-a' }, expect.any(Function))
+
+    const authorization = (await electronMock.handlers.get(IPC_CHANNELS.loginAuthorize)!(event, {
+      id: 'item-a',
+      masterPassword: 'correct horse battery staple'
+    })) as { token: string }
+    await expect(
+      handler(event, { id: 'item-a', authorizationToken: authorization.token })
+    ).resolves.toMatchObject({ attachmentId: 'cover-a' })
   })
 
   it('lets the service enforce deleted-history authorization inside the atomic read', async () => {

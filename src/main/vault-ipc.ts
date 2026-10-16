@@ -2886,6 +2886,10 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       attachmentAuthorization(event, request)
     )
   })
+  registerHandler(IPC_CHANNELS.attachmentCardCoverPreview, getMainWindow, (event, input) => {
+    const request = parseId(input)
+    return vault.getCardCoverPreview(request, attachmentAuthorization(event, request))
+  })
   registerHandler(IPC_CHANNELS.attachmentUpload, getMainWindow, (event, input) => {
     const request = parseAttachmentUpload(input)
     return afterMutation(

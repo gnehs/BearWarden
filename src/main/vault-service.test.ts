@@ -18,6 +18,7 @@ import type {
   VaultItemFields
 } from '../shared/vault-contract'
 import { EncryptedVaultStore } from './encrypted-vault-store'
+import { EncryptedImageCache } from './encrypted-image-cache'
 import {
   VaultService,
   type PasskeyVaultAuthorizationValidator,
@@ -1870,6 +1871,198 @@ describe('VaultService encrypted local data', () => {
     )
     await service.getWebsiteIcon({ id: login.id })
     expect(fetcher).toHaveBeenCalledOnce()
+  })
+
+  it('retries transient website icon failures but caches a definitive missing icon', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(new Response(null, { status: 404 }))
+    const { service } = await createHarness({
+      createSyncClient: (sync) => createSyncFake(sync.state),
+      fetch: fetcher
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const login = (await service.listLogins())[0]!
+
+    await expect(service.getWebsiteIcon({ id: login.id })).resolves.toBeNull()
+    await expect(service.getWebsiteIcon({ id: login.id })).resolves.toBeNull()
+    await expect(service.getWebsiteIcon({ id: login.id })).resolves.toBeNull()
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+
+  it('serves icons and card covers from the encrypted disk cache after relocking', async () => {
+    const cacheDirectory = await mkdtemp(join(tmpdir(), 'bearwarden-image-cache-test-'))
+    temporaryDirectories.push(cacheDirectory)
+    const iconBytes = Uint8Array.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+      0x52, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x20
+    ])
+    const coverMarker = 'card-face-plaintext-marker'
+    const fetcher = vi.fn<typeof fetch>(
+      async () => new Response(iconBytes, { headers: { 'content-type': 'image/png' } })
+    )
+    const download = vi.fn(async () => ({
+      fileName: 'cover.jpg',
+      data: Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.from(coverMarker)])
+    }))
+    const { service } = await createHarness({
+      imageCache: new EncryptedImageCache(cacheDirectory),
+      fetch: fetcher,
+      createSyncClient: (sync) => {
+        const fake = createSyncFake(sync.state)
+        const card = structuredClone(fake.remoteLogins[0]!)
+        card.id = '90000000-0000-4000-8000-000000000020'
+        card.type = 'card'
+        card.uris = []
+        card.uri = null
+        card.attachments = [
+          {
+            id: 'cover-attachment',
+            fileName: 'cover.jpg',
+            size: 3 + coverMarker.length,
+            sizeName: '29 B',
+            legacy: false
+          }
+        ]
+        fake.remoteLogins.push(card)
+        fake.downloadAttachment = download
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const logins = await service.listLogins()
+    const login = logins.find((item) => item.type === 'login')!
+    const card = logins.find((item) => item.type === 'card')!
+
+    const icon = await service.getWebsiteIcon({ id: login.id })
+    const cover = await service.getCardCoverPreview({ id: card.id })
+    expect(icon).toMatch(/^data:image\/png;base64,/)
+    expect(cover).toMatchObject({ attachmentId: 'cover-attachment', mediaType: 'image/jpeg' })
+
+    const cachedFiles = async (): Promise<string[]> => {
+      const names: string[] = []
+      for (const namespace of ['website-icon', 'card-cover']) {
+        const directory = join(cacheDirectory, namespace)
+        const entries = await readdir(directory).catch(() => [] as string[])
+        names.push(...entries.map((entry) => join(directory, entry)))
+      }
+      return names.filter((name) => name.endsWith('.bin'))
+    }
+    await vi.waitFor(async () => expect(await cachedFiles()).toHaveLength(2))
+    for (const path of await cachedFiles()) {
+      expect(path).not.toContain('example.invalid')
+      const contents = await readFile(path)
+      expect(contents.includes(Buffer.from(coverMarker))).toBe(false)
+      expect(contents.includes(Buffer.from('example.invalid'))).toBe(false)
+    }
+
+    await service.lock()
+    await service.unlock(MASTER_PASSWORD)
+    await expect(service.getWebsiteIcon({ id: login.id })).resolves.toBe(icon)
+    await expect(service.getCardCoverPreview({ id: card.id })).resolves.toEqual(cover)
+    expect(fetcher).toHaveBeenCalledOnce()
+    expect(download).toHaveBeenCalledOnce()
+  })
+
+  it('downloads card covers concurrently without holding the vault mutex', async () => {
+    let releaseDownloads!: () => void
+    const downloadsReleased = new Promise<void>((resolve) => {
+      releaseDownloads = resolve
+    })
+    const download = vi.fn(async () => {
+      await downloadsReleased
+      return { fileName: 'cover.jpg', data: Buffer.from([0xff, 0xd8, 0xff, 0x00]) }
+    })
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        const fake = createSyncFake(sync.state)
+        for (const suffix of ['21', '22']) {
+          const card = structuredClone(fake.remoteLogins[0]!)
+          card.id = `90000000-0000-4000-8000-0000000000${suffix}`
+          card.type = 'card'
+          card.uris = []
+          card.uri = null
+          card.attachments = [
+            {
+              id: `cover-${suffix}`,
+              fileName: 'cover.jpg',
+              size: 4,
+              sizeName: '4 B',
+              legacy: false
+            }
+          ]
+          fake.remoteLogins.push(card)
+        }
+        fake.downloadAttachment = download
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const cards = (await service.listLogins()).filter((item) => item.type === 'card')
+    expect(cards).toHaveLength(2)
+
+    const pending = cards.map((card) => service.getCardCoverPreview({ id: card.id }))
+    await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(2))
+    await expect(service.status()).resolves.toEqual({ state: 'unlocked' })
+    releaseDownloads()
+    await expect(Promise.all(pending)).resolves.toEqual([
+      expect.objectContaining({ attachmentId: 'cover-21' }),
+      expect.objectContaining({ attachmentId: 'cover-22' })
+    ])
+  })
+
+  it('aborts a pending card cover download when the vault locks', async () => {
+    const download = vi.fn(
+      (_id: string, _attachmentId: string, signal?: AbortSignal) =>
+        new Promise<never>((_resolve, reject) => {
+          signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+        })
+    )
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        const fake = createSyncFake(sync.state)
+        const card = structuredClone(fake.remoteLogins[0]!)
+        card.id = '90000000-0000-4000-8000-000000000023'
+        card.type = 'card'
+        card.uris = []
+        card.uri = null
+        card.attachments = [
+          { id: 'cover-23', fileName: 'cover.jpg', size: 4, sizeName: '4 B', legacy: false }
+        ]
+        fake.remoteLogins.push(card)
+        fake.downloadAttachment = download
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const card = (await service.listLogins()).find((item) => item.type === 'card')!
+
+    const pending = service.getCardCoverPreview({ id: card.id })
+    await vi.waitFor(() => expect(download).toHaveBeenCalledOnce())
+    const rejected = expect(pending).rejects.toMatchObject({ code: 'LOCKED' })
+    await service.lock()
+    await rejected
   })
 
   it.each([true, false])(

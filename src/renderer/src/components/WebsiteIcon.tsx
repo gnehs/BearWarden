@@ -1,5 +1,6 @@
 import { Globe2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import { useWebsiteIconDataUrl } from '../stores/vault-image-store'
 
 interface WebsiteIconProps {
   id: string
@@ -7,43 +8,33 @@ interface WebsiteIconProps {
   enabled: boolean
 }
 
-function websiteLabel(uri: string | null): string {
-  if (!uri) return ''
+function parseWebsite(uri: string | null): { hostname: string; label: string } {
+  if (!uri) return { hostname: '', label: '' }
   try {
-    return new URL(uri).hostname.replace(/^www\./i, '')
+    const url = new URL(uri)
+    const label = url.hostname.replace(/^www\./i, '')
+    // Mirrors the main process icon lookup so items on the same site share one cache entry.
+    const hostname =
+      url.protocol === 'http:' || url.protocol === 'https:'
+        ? url.hostname.toLocaleLowerCase('en-US').replace(/\.$/, '')
+        : ''
+    return { hostname, label }
   } catch {
-    return ''
+    return { hostname: '', label: '' }
   }
 }
 
 function WebsiteIcon({ id, uri, enabled }: WebsiteIconProps): React.JSX.Element {
-  const label = useMemo(() => websiteLabel(uri), [uri])
-  const requestKey = `${id}:${label}`
-  const [loaded, setLoaded] = useState<{ key: string; dataUrl: string | null } | null>(null)
+  const { hostname, label } = useMemo(() => parseWebsite(uri), [uri])
+  const dataUrl = useWebsiteIconDataUrl(id, hostname, enabled)
 
-  useEffect(() => {
-    if (!enabled || !label) return
-    let active = true
-    void window.bearwarden.logins.getWebsiteIcon({ id }).then(
-      (dataUrl) => {
-        if (active) setLoaded({ key: requestKey, dataUrl })
-      },
-      () => {
-        if (active) setLoaded({ key: requestKey, dataUrl: null })
-      }
-    )
-    return () => {
-      active = false
-    }
-  }, [enabled, id, label, requestKey])
-
-  const dataUrl = enabled && loaded?.key === requestKey ? loaded.dataUrl : null
   if (dataUrl) {
     return (
       <img
         className="block size-full bg-[var(--website-icon-background)] object-contain"
         src={dataUrl}
         alt=""
+        decoding="async"
         draggable={false}
       />
     )

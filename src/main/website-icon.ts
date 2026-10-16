@@ -88,7 +88,7 @@ function hasImageSignature(bytes: Uint8Array, mimeType: string): boolean {
 async function readBodyWithLimit(
   response: Response,
   abort: AbortController
-): Promise<Uint8Array | null> {
+): Promise<Uint8Array | 'too-large' | null> {
   const reader = response.body?.getReader()
   if (!reader) return null
   const chunks: Uint8Array[] = []
@@ -100,7 +100,7 @@ async function readBodyWithLimit(
       length += value.length
       if (length > MAX_ICON_BYTES) {
         abort.abort()
-        return null
+        return 'too-large'
       }
       chunks.push(value)
     }
@@ -111,13 +111,24 @@ async function readBodyWithLimit(
   return Buffer.concat(chunks, length)
 }
 
-export async function fetchWebsiteIconDataUrl(
+export type WebsiteIconFetchResult =
+  | { kind: 'icon'; mediaType: string; data: Buffer }
+  /** The server answered definitively that there is no usable icon (safe to cache). */
+  | { kind: 'missing' }
+  /** Timeout, network or server error. Must not be cached as "no icon". */
+  | { kind: 'failed' }
+
+export async function fetchWebsiteIcon(
   iconUrl: URL,
-  fetcher: typeof fetch = fetch
-): Promise<string | null> {
+  fetcher: typeof fetch = fetch,
+  signal?: AbortSignal
+): Promise<WebsiteIconFetchResult> {
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), ICON_TIMEOUT_MS)
   timer.unref?.()
+  const forwardAbort = (): void => abort.abort()
+  signal?.addEventListener('abort', forwardAbort, { once: true })
+  if (signal?.aborted) abort.abort()
 
   try {
     const response = await fetcher(iconUrl, {
@@ -128,22 +139,48 @@ export async function fetchWebsiteIconDataUrl(
       headers: { Accept: 'image/png,image/x-icon;q=0.8' },
       signal: abort.signal
     })
-    if (!response.ok || response.status < 200 || response.status >= 300) return null
+    if (response.status === 408 || response.status === 429 || response.status >= 500) {
+      return { kind: 'failed' }
+    }
+    if (!response.ok || response.status < 200 || response.status >= 300) {
+      return { kind: 'missing' }
+    }
 
     const mimeType = response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase()
-    if (!mimeType || !SUPPORTED_IMAGE_TYPES.has(mimeType)) return null
+    if (!mimeType || !SUPPORTED_IMAGE_TYPES.has(mimeType)) return { kind: 'missing' }
 
     const declaredLength = Number(response.headers.get('content-length'))
-    if (Number.isFinite(declaredLength) && declaredLength > MAX_ICON_BYTES) return null
-
-    const bytes = await readBodyWithLimit(response, abort)
-    if (!bytes || bytes.length === 0 || !hasImageSignature(bytes, mimeType)) {
-      return null
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_ICON_BYTES) {
+      return { kind: 'missing' }
     }
-    return `data:${mimeType};base64,${Buffer.from(bytes).toString('base64')}`
+
+    // A timeout or cancellation while reading rejects and is reported as `failed` below.
+    const bytes = await readBodyWithLimit(response, abort)
+    if (
+      !bytes ||
+      bytes === 'too-large' ||
+      bytes.length === 0 ||
+      !hasImageSignature(bytes, mimeType)
+    ) {
+      return { kind: 'missing' }
+    }
+    return { kind: 'icon', mediaType: mimeType, data: Buffer.from(bytes) }
   } catch {
-    return null
+    return { kind: 'failed' }
   } finally {
     clearTimeout(timer)
+    signal?.removeEventListener('abort', forwardAbort)
   }
+}
+
+export function websiteIconDataUrl(mediaType: string, data: Buffer): string {
+  return `data:${mediaType};base64,${data.toString('base64')}`
+}
+
+export async function fetchWebsiteIconDataUrl(
+  iconUrl: URL,
+  fetcher: typeof fetch = fetch
+): Promise<string | null> {
+  const result = await fetchWebsiteIcon(iconUrl, fetcher)
+  return result.kind === 'icon' ? websiteIconDataUrl(result.mediaType, result.data) : null
 }

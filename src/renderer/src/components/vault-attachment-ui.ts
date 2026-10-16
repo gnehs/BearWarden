@@ -38,6 +38,4 @@ export function isPreviewableImageAttachment(fileName: string): boolean {
   return /\.(?:gif|jpe?g|png|webp)$/i.test(fileName)
 }
 
-export function isCardCoverAttachment(fileName: string): boolean {
-  return /^cover\.(?:jpe?g|png|webp)$/i.test(fileName)
-}
+export { isCardCoverAttachment } from '../../../shared/card-cover'

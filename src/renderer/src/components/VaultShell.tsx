@@ -161,6 +161,7 @@ import {
   VaultSessionStoreProvider,
   useVaultSessionStore
 } from '@renderer/stores/vault-session-store'
+import { VaultImageStoreProvider } from '@renderer/stores/vault-image-store'
 import {
   createSyncStatusStore,
   startSyncStatusSubscription
@@ -602,11 +603,6 @@ function VaultShellContent({
     fileName: string
     dataUrl: string
   } | null>(null)
-  const [cardCoverPreview, setCardCoverPreview] = useState<{
-    itemId: string
-    attachmentId: string
-    dataUrl: string
-  } | null>(null)
   const {
     previews: cardCoverListPreviews,
     clear: clearCardCoverListPreviews,
@@ -663,7 +659,6 @@ function VaultShellContent({
   const authorizationExpiryTimersRef = useRef(new Map<string, number>())
   const pendingRepromptRef = useRef<PendingReprompt | null>(null)
   const attachmentOperationRef = useRef<AttachmentOperationState | null>(null)
-  const cardCoverPreviewRequestRef = useRef<string | null>(null)
 
   const beginAttachmentOperation = useCallback(
     (kind: AttachmentOperationKind, itemId: string, fileName: string | null): string => {
@@ -750,8 +745,7 @@ function VaultShellContent({
     detailPrefetchRequestsRef.current.clear()
     detailPrefetchQueueRef.current.clear()
     detailCacheRef.current.clear()
-    clearCardCoverListPreviews()
-  }, [clearCardCoverListPreviews])
+  }, [])
 
   const authorizationToken = useCallback(
     (id: string): string | undefined => {
@@ -1432,41 +1426,12 @@ function VaultShellContent({
     }
   }, [])
 
+  const syncState = syncStatus.state
   useEffect(() => {
-    if (
-      !selectedLogin ||
-      selectedLogin.type !== 'card' ||
-      selectedSharedSummary ||
-      selectedLogin.reprompt !== 0 ||
-      syncStatus.state !== 'ready' ||
-      attachmentOperationRef.current
-    ) {
-      return
-    }
-    const cover = selectedLogin.attachments.find((attachment) =>
-      isCardCoverAttachment(attachment.fileName)
-    )
-    if (!cover) return
-    if (
-      cardCoverPreview?.itemId === selectedLogin.id &&
-      cardCoverPreview.attachmentId === cover.id
-    ) {
-      return
-    }
-    const requestKey = `${selectedLogin.id}:${selectedLogin.updatedAt}:${cover.id}`
-    if (cardCoverPreviewRequestRef.current === requestKey) return
-    cardCoverPreviewRequestRef.current = requestKey
-    void previewAttachment(cover.id, { openDialog: false, quiet: true })
-    // This effect must call the preview function from the current selected item render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    attachmentOperation,
-    cardCoverPreview?.attachmentId,
-    cardCoverPreview?.itemId,
-    selectedLogin,
-    selectedSharedSummary,
-    syncStatus.state
-  ])
+    // Re-runs once a sync settles, so a cover that failed while syncing is retried.
+    if (!selectedLogin || selectedSharedSummary || syncState === 'syncing') return
+    prefetchCardCoverPreview(selectedLogin)
+  }, [prefetchCardCoverPreview, selectedLogin, selectedSharedSummary, syncState])
 
   useEffect(() => {
     return window.bearwarden.accountSecurity.onLoginApprovalRequested((prompt) => {
@@ -2018,6 +1983,7 @@ function VaultShellContent({
   const performLockVault = useCallback(async (): Promise<void> => {
     cancelAndClearAttachmentOperation()
     clearDetailCache()
+    clearCardCoverListPreviews()
     setRevealedSecrets(emptyRevealedSecrets)
     setRevealedCustomFields(emptyRevealedCustomFields)
     setTouchIdPassword('')
@@ -2029,7 +1995,14 @@ function VaultShellContent({
     } catch (lockError) {
       announceError(describeVaultError(lockError))
     }
-  }, [cancelAndClearAttachmentOperation, clearDetailCache, describeVaultError, onLocked, t])
+  }, [
+    cancelAndClearAttachmentOperation,
+    clearCardCoverListPreviews,
+    clearDetailCache,
+    describeVaultError,
+    onLocked,
+    t
+  ])
 
   const lockVault = useCallback(async (): Promise<void> => {
     if (isEditorDirty()) {
@@ -2040,8 +2013,10 @@ function VaultShellContent({
   }, [isEditorDirty, performLockVault, requestEditorTransition])
   const shortcutCopyFieldRef = useRef(copyField)
   const shortcutCopyTotpRef = useRef(copyTotp)
-  shortcutCopyFieldRef.current = copyField
-  shortcutCopyTotpRef.current = copyTotp
+  useEffect(() => {
+    shortcutCopyFieldRef.current = copyField
+    shortcutCopyTotpRef.current = copyTotp
+  })
 
   useEffect(() => {
     const unsubscribe = window.bearwarden.vault.onLockRequested(() => void lockVault())
@@ -3385,7 +3360,6 @@ function VaultShellContent({
       }
       if (openDialog) setAttachmentPreview(preview)
       if (selectedLogin.type === 'card' && isCardCoverAttachment(result.fileName)) {
-        setCardCoverPreview({ itemId, attachmentId, dataUrl: result.dataUrl })
         rememberCardCoverPreview(selectedLogin, attachmentId, result.dataUrl)
       }
     } catch (previewError) {
@@ -3422,7 +3396,6 @@ function VaultShellContent({
             : [...attachments, result.attachment!]
         )
         if (isCardCoverAttachment(result.attachment.fileName)) {
-          setCardCoverPreview(null)
           invalidateCardCoverListPreview(itemId)
           if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
         }
@@ -3467,7 +3440,6 @@ function VaultShellContent({
             )
           : [...attachments, result.attachment!]
       )
-      setCardCoverPreview(null)
       invalidateCardCoverListPreview(itemId)
       if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
       await refreshItems().catch(() =>
@@ -3505,7 +3477,6 @@ function VaultShellContent({
             )
           : [...attachments, result.attachment!]
       )
-      setCardCoverPreview(null)
       invalidateCardCoverListPreview(itemId)
       if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
       if (selectedIdRef.current === itemId) {
@@ -3543,7 +3514,6 @@ function VaultShellContent({
         attachments.filter((entry) => entry.id !== result.attachmentId)
       )
       if (isCardCoverAttachment(target.fileName)) {
-        setCardCoverPreview(null)
         invalidateCardCoverListPreview(target.itemId)
         if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
       }
@@ -3588,7 +3558,6 @@ function VaultShellContent({
         )
       })
       if (isCardCoverAttachment(attachment.fileName)) {
-        setCardCoverPreview(null)
         invalidateCardCoverListPreview(itemId)
         if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
       }
@@ -4256,11 +4225,7 @@ function VaultShellContent({
                       ) : selectedLogin.type === 'card' ? (
                         <PaymentCardBrandMark
                           brand={normalizeBitwardenCardBrand(selectedLogin.brand)}
-                          imageSrc={
-                            cardCoverPreview?.itemId === selectedLogin.id
-                              ? cardCoverPreview.dataUrl
-                              : cardCoverListPreviews.get(selectedLogin.id)
-                          }
+                          imageSrc={cardCoverListPreviews.get(selectedLogin.id)}
                         />
                       ) : (
                         (() => {
@@ -4652,7 +4617,9 @@ function VaultShellContent({
 function VaultShell(props: VaultShellProps): React.JSX.Element {
   return (
     <VaultSessionStoreProvider>
-      <VaultShellContent {...props} />
+      <VaultImageStoreProvider>
+        <VaultShellContent {...props} />
+      </VaultImageStoreProvider>
     </VaultSessionStoreProvider>
   )
 }

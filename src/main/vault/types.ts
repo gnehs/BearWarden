@@ -19,6 +19,7 @@ import type { StoredPasskeyCredential } from '../passkey'
 import type { SshAgentSignature } from '../ssh-agent-crypto'
 import type { SshAgentRsaHash } from '../ssh-agent-protocol'
 import type { VaultAttachmentFileService } from '../vault-attachment-files'
+import type { EncryptedImageCache } from '../encrypted-image-cache'
 import type { PortableVaultSnapshot } from '../vault-portability-codec'
 import type { AccountWebAuthnAssertion, AccountWebAuthnChallenge } from '../account-webauthn-codec'
 import type {
@@ -210,6 +211,8 @@ export interface VaultServiceOptions {
   fetch?: typeof fetch
   randomInt?: RandomInt
   attachmentFiles?: VaultAttachmentFileService
+  /** Persistent, vault-key-encrypted cache for website icons and card covers. */
+  imageCache?: EncryptedImageCache
   /** Main-process-only bridge to the one-shot Web Vault provider-7 connector. */
   requestAccountWebAuthnAssertion?: VaultAccountWebAuthnAssertionRequester
   /** Main-process-only bridge to the isolated WebAuthn credential-creation window. */

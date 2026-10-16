@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import {
   app,
   BrowserWindow,
@@ -33,6 +33,7 @@ import { AppSettingsService } from './app-settings'
 import { AutofillShortcutRegistration } from './autofill-shortcut-registration'
 import { AppUpdaterController } from './app-updater'
 import { EncryptedVaultStore } from './encrypted-vault-store'
+import { EncryptedImageCache } from './encrypted-image-cache'
 import { ErrorLogService } from './error-log'
 import { FocusTouchIdUnlockController } from './focus-touch-id-unlock'
 import { installApplicationMenu } from './application-menu'
@@ -821,6 +822,9 @@ if (hasSingleInstanceLock)
             state: sync.state
           }),
         attachmentFiles,
+        imageCache: new EncryptedImageCache(
+          join(dirname(activeStorage.paths.vaultPath), 'image-cache')
+        ),
         requestAccountWebAuthnAssertion: ({ webVaultUrl, challenge, signal }) => {
           const controller = capturedAccountWebAuthnController
           if (!controller) return Promise.reject(new Error('ACCOUNT_WEBAUTHN_UNAVAILABLE'))

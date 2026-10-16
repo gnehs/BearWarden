@@ -59,6 +59,7 @@ export const IPC_CHANNELS = {
   loginRestorePasswordHistory: 'login:restore-password-history',
   attachmentDownload: 'attachment:download',
   attachmentPreview: 'attachment:preview',
+  attachmentCardCoverPreview: 'attachment:card-cover-preview',
   attachmentUpload: 'attachment:upload',
   attachmentUploadCardCover: 'attachment:upload-card-cover',
   attachmentUploadCardCoverFile: 'attachment:upload-card-cover-file',
@@ -751,6 +752,13 @@ export interface AttachmentPreviewResult {
   canceled: boolean
   fileName: string
   mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+  dataUrl: string
+}
+
+/** Cached, read-only card face image shown in the vault list and card details. */
+export interface CardCoverPreviewResult {
+  attachmentId: string
+  mediaType: AttachmentPreviewResult['mediaType']
   dataUrl: string
 }
 
@@ -2014,6 +2022,7 @@ export interface BearWardenAPI {
     restorePasswordHistory: (request: PasswordHistoryRestoreRequest) => Promise<LoginView>
     downloadAttachment: (request: AttachmentDownloadRequest) => Promise<AttachmentDownloadResult>
     previewAttachment: (request: AttachmentPreviewRequest) => Promise<AttachmentPreviewResult>
+    getCardCoverPreview: (request: LoginIdRequest) => Promise<CardCoverPreviewResult | null>
     uploadAttachment: (request: AttachmentUploadRequest) => Promise<AttachmentUploadResult>
     uploadCardCoverAttachment: (
       request: AttachmentUploadCardCoverRequest

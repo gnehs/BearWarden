@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  fetchWebsiteIcon,
   fetchWebsiteIconDataUrl,
   parseWebsiteHostname,
   resolveWebsiteIconUrl
@@ -58,5 +59,49 @@ describe('website icons', () => {
     await expect(
       fetchWebsiteIconDataUrl(new URL('https://icons.example.invalid/icon.png'), oversizedFetch)
     ).resolves.toBeNull()
+  })
+
+  it('separates definitive missing icons from transient failures', async () => {
+    const url = new URL('https://icons.example.invalid/icon.png')
+    const respond = (response: Response): typeof fetch =>
+      vi.fn<typeof fetch>().mockResolvedValue(response)
+
+    await expect(
+      fetchWebsiteIcon(url, respond(new Response(null, { status: 404 })))
+    ).resolves.toEqual({ kind: 'missing' })
+    await expect(
+      fetchWebsiteIcon(
+        url,
+        respond(new Response('<html>', { headers: { 'content-type': 'text/html' } }))
+      )
+    ).resolves.toEqual({ kind: 'missing' })
+    await expect(
+      fetchWebsiteIcon(
+        url,
+        respond(
+          new Response(new Uint8Array(600 * 1024), {
+            headers: { 'content-type': 'image/png' }
+          })
+        )
+      )
+    ).resolves.toEqual({ kind: 'missing' })
+    for (const status of [408, 429, 500, 503]) {
+      await expect(fetchWebsiteIcon(url, respond(new Response(null, { status })))).resolves.toEqual(
+        {
+          kind: 'failed'
+        }
+      )
+    }
+    await expect(
+      fetchWebsiteIcon(url, vi.fn<typeof fetch>().mockRejectedValue(new TypeError('offline')))
+    ).resolves.toEqual({ kind: 'failed' })
+
+    const abort = new AbortController()
+    abort.abort()
+    const aborted = vi.fn<typeof fetch>(async (_input, init) => {
+      if (init?.signal?.aborted) throw new DOMException('aborted', 'AbortError')
+      return new Response(PNG_HEADER, { headers: { 'content-type': 'image/png' } })
+    })
+    await expect(fetchWebsiteIcon(url, aborted, abort.signal)).resolves.toEqual({ kind: 'failed' })
   })
 })

@@ -5,6 +5,7 @@ import type {
   AttachmentOperationStage,
   AttachmentProgressEvent,
   AttachmentTargetRequest,
+  CardCoverPreviewResult,
   LoginApprovalPrompt,
   FolderView,
   LoginBatchRequest,
@@ -46,6 +47,12 @@ import {
   type PolicyEnforcementDecision
 } from './bitwarden-policy'
 import { EncryptedVaultStore } from './encrypted-vault-store'
+import {
+  deriveImageCacheKeys,
+  type EncryptedImageCache,
+  type ImageCacheKeys
+} from './encrypted-image-cache'
+import { ConcurrencyLimiter, ImageMemoryCache } from './image-memory-cache'
 import {
   PinUnlockCapability,
   PinUnlockError,
@@ -337,8 +344,21 @@ export class VaultServiceBase {
   protected readonly attachmentFiles: VaultAttachmentFileService | null
   protected readonly requestAccountWebAuthnAssertion: VaultAccountWebAuthnAssertionRequester | null
   protected readonly requestAccountWebAuthnRegistration: VaultAccountWebAuthnRegistrationRequester | null
-  protected readonly websiteIconCache = new Map<string, string | null>()
+  protected readonly imageCache: EncryptedImageCache | null
+  protected readonly websiteIconCache = new ImageMemoryCache<string | null>({
+    maxEntries: 512,
+    maxSize: 32 * 1024 * 1024
+  })
   protected readonly websiteIconRequests = new Map<string, Promise<string | null>>()
+  protected readonly websiteIconFetches = new ConcurrencyLimiter(6)
+  protected readonly cardCoverCache = new ImageMemoryCache<CardCoverPreviewResult>({
+    maxEntries: 256,
+    maxSize: 64 * 1024 * 1024
+  })
+  protected readonly cardCoverRequests = new Map<string, Promise<CardCoverPreviewResult | null>>()
+  protected readonly cardCoverDownloads = new ConcurrencyLimiter(3)
+  /** Aborted on lock so detached image downloads stop as soon as the vault key is gone. */
+  protected readonly imageRequestAborts = new Set<AbortController>()
   protected activeExposedPasswordOperation: ActiveExposedPasswordOperation | null = null
   protected activeAccountBreachOperation: ActiveAccountBreachOperation | null = null
 
@@ -351,6 +371,7 @@ export class VaultServiceBase {
     this.createId = options.createId ?? randomUUID
     this.fetch = options.fetch ?? fetch
     this.attachmentFiles = options.attachmentFiles ?? null
+    this.imageCache = options.imageCache ?? null
     this.requestAccountWebAuthnAssertion = options.requestAccountWebAuthnAssertion ?? null
     this.requestAccountWebAuthnRegistration = options.requestAccountWebAuthnRegistration ?? null
     this.createSyncClient =
@@ -836,6 +857,7 @@ export class VaultServiceBase {
   lock(): Promise<VaultStatus> {
     this.fastReadsBlocked = true
     this.generation += 1
+    this.abortImageRequests()
     this.syncAbort?.abort()
     this.abortNotificationTokenLeases()
     this.abortAccountSecurityRequests()
@@ -882,8 +904,25 @@ export class VaultServiceBase {
     this.salt = null
     this.data = null
     this.generatorService.clearRuntimeState()
+    this.abortImageRequests()
     this.websiteIconCache.clear()
     this.websiteIconRequests.clear()
+    this.cardCoverCache.clear()
+    this.cardCoverRequests.clear()
+  }
+
+  protected abortImageRequests(): void {
+    for (const abort of this.imageRequestAborts) abort.abort()
+    this.imageRequestAborts.clear()
+  }
+
+  /**
+   * Derives per-operation image cache subkeys from the unlocked vault key. Callers must zero the
+   * result with `clearImageCacheKeys`, and must re-check `generation` before every cache write.
+   */
+  protected imageCacheKeys(): ImageCacheKeys | null {
+    if (!this.imageCache || !this.key || !this.salt || this.fastReadsBlocked) return null
+    return deriveImageCacheKeys(this.key, this.salt)
   }
 
   protected async currentSyncStatus(): Promise<SyncStatus> {
