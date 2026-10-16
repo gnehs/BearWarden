@@ -1814,6 +1814,7 @@ describe('registerVaultIpc reprompt gate', () => {
   function harness(): {
     event: unknown
     vault: Record<string, ReturnType<typeof vi.fn>>
+    settings: { disableTouchId: ReturnType<typeof vi.fn> }
     portability: {
       exportVault: ReturnType<typeof vi.fn>
       importVault: ReturnType<typeof vi.fn>
@@ -2226,10 +2227,14 @@ describe('registerVaultIpc reprompt gate', () => {
     const afterMutation = vi.fn()
     const beforeSyncReconfigure = vi.fn(async () => undefined)
     const afterSyncChanged = vi.fn()
+    const settings = {
+      websiteIconsEnabled: () => true,
+      disableTouchId: vi.fn(async () => ({ touchIdEnabled: false }))
+    }
     registerVaultIpc({
       vault: vault as unknown as VaultService,
       portability: portability as unknown as Parameters<typeof registerVaultIpc>[0]['portability'],
-      settings: { websiteIconsEnabled: () => true } as AppSettingsService,
+      settings: settings as unknown as AppSettingsService,
       sshKeyImportSessions: new SshKeyImportSessionStore({ readClipboard: () => '' }),
       getMainWindow: () =>
         ({ isDestroyed: () => false, webContents }) as unknown as ReturnType<
@@ -2244,6 +2249,7 @@ describe('registerVaultIpc reprompt gate', () => {
     return {
       event,
       vault,
+      settings,
       portability,
       afterMutation,
       beforeSyncReconfigure,
@@ -2255,7 +2261,7 @@ describe('registerVaultIpc reprompt gate', () => {
   }
 
   it('invalidates the old notification lease before connect and disconnect reconfiguration', async () => {
-    const { event, vault, beforeSyncReconfigure } = harness()
+    const { event, vault, settings, beforeSyncReconfigure } = harness()
     const order: string[] = []
     beforeSyncReconfigure.mockImplementation(async () => {
       order.push('before')
@@ -2278,6 +2284,8 @@ describe('registerVaultIpc reprompt gate', () => {
 
     expect(order).toEqual(['before', 'connect', 'before', 'disconnect'])
     expect(beforeSyncReconfigure).toHaveBeenCalledTimes(2)
+    // The Touch ID capsule holds the disconnected account key and must not outlive the connection.
+    expect(settings.disableTouchId).toHaveBeenCalledOnce()
   })
 
   it('validates and clears the master password before resolving an unknown import result', async () => {

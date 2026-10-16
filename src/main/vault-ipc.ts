@@ -3402,6 +3402,8 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   registerHandler(IPC_CHANNELS.syncDisconnect, getMainWindow, async () => {
     await Promise.resolve(options.beforeSyncReconfigure?.())
     const status = await vault.disconnectSync()
+    // The Touch ID capsule carries the disconnected account's key; never keep it at rest.
+    await settings.disableTouchId().catch(() => undefined)
     options.afterSyncChanged?.(status)
     return status
   })

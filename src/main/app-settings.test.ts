@@ -17,7 +17,7 @@ vi.mock('electron', () => ({
 
 import { safeStorage, systemPreferences } from 'electron'
 import { AppSettingsService } from './app-settings'
-import type { EncryptedVaultStore } from './encrypted-vault-store'
+import { isTouchIdCapsule, type TouchIdUnlockMaterial } from './touch-id-unlock-capsule'
 import { VaultError } from './vault-errors'
 import type { VaultTimeoutCoordinator } from './vault-timeout-coordinator'
 
@@ -46,8 +46,31 @@ interface TestRuntime {
   applySshAgentSettings: TestMock
   getStartAtLoginStatus: TestMock
   setStartAtLogin: TestMock
+  exportUnlockMaterial: TestMock
+  unlockVaultWithKeyMaterial: TestMock
   unlockVault: TestMock
   constrainVaultTimeoutPolicy: TestMock
+}
+
+function testUnlockMaterial(): TouchIdUnlockMaterial {
+  return {
+    key: Buffer.alloc(32, 7),
+    salt: Buffer.alloc(16, 9),
+    sync: { accountKey: Buffer.alloc(64, 3), wrappedKeyFingerprint: Buffer.alloc(32, 5) }
+  }
+}
+
+function copyUnlockMaterial(material: TouchIdUnlockMaterial): TouchIdUnlockMaterial {
+  return {
+    key: Buffer.from(material.key),
+    salt: Buffer.from(material.salt),
+    sync: material.sync
+      ? {
+          accountKey: Buffer.from(material.sync.accountKey),
+          wrappedKeyFingerprint: Buffer.from(material.sync.wrappedKeyFingerprint)
+        }
+      : null
+  }
 }
 
 interface TestTimeoutCoordinator {
@@ -87,14 +110,12 @@ describe('AppSettingsService', () => {
     writeSettings?: (path: string, data: string | Buffer) => Promise<void>
   ): {
     service: AppSettingsService
-    store: EncryptedVaultStore<unknown>
     runtime: TestRuntime
     timeoutCoordinator: TestTimeoutCoordinator
     touchIdPath: string
+    receivedMaterial: TouchIdUnlockMaterial[]
   } {
-    const store = {
-      unlock: vi.fn().mockResolvedValue({ data: {}, key: Buffer.alloc(32), salt: Buffer.alloc(16) })
-    } as unknown as EncryptedVaultStore<unknown>
+    const receivedMaterial: TouchIdUnlockMaterial[] = []
     const runtime = {
       applyContentProtection: vi.fn(),
       applyClipboardTimeout: vi.fn(),
@@ -108,6 +129,12 @@ describe('AppSettingsService', () => {
         needsApproval: false
       })),
       setStartAtLogin: vi.fn(() => false),
+      exportUnlockMaterial: vi.fn(async () => testUnlockMaterial()),
+      unlockVaultWithKeyMaterial: vi.fn(async (material: TouchIdUnlockMaterial) => {
+        // The service zeroes material after use; keep a copy for assertions.
+        receivedMaterial.push(copyUnlockMaterial(material))
+        return { state: 'unlocked' as const }
+      }),
       unlockVault: vi.fn().mockResolvedValue({ state: 'unlocked' as const }),
       constrainVaultTimeoutPolicy: vi.fn(async (policy) => policy)
     }
@@ -120,17 +147,16 @@ describe('AppSettingsService', () => {
     const service = new AppSettingsService(
       settingsPath,
       join(directory, 'vault', 'touch-id.bin'),
-      store,
       runtime,
       timeoutCoordinator as unknown as VaultTimeoutCoordinator,
       writeSettings
     )
     return {
       service,
-      store,
       runtime,
       timeoutCoordinator,
-      touchIdPath: join(directory, 'vault', 'touch-id.bin')
+      touchIdPath: join(directory, 'vault', 'touch-id.bin'),
+      receivedMaterial
     }
   }
 
@@ -656,18 +682,152 @@ describe('AppSettingsService', () => {
     service.dispose()
   })
 
-  it('gates the encrypted local unlock secret behind Touch ID', async () => {
+  it('gates vault and sync key material, never the master password, behind Touch ID', async () => {
     Object.defineProperty(process, 'platform', { value: 'darwin' })
-    const { service, store, runtime } = createService()
+    const { service, runtime, touchIdPath, receivedMaterial } = createService()
     await service.initialize()
 
     expect((await service.get()).touchIdAvailable).toBe(true)
     expect((await service.enableTouchId('fake-master-password')).touchIdEnabled).toBe(true)
-    expect(store.unlock).toHaveBeenCalledWith('fake-master-password')
+    expect(runtime.exportUnlockMaterial).toHaveBeenCalledWith('fake-master-password')
+    const capsule = await readFile(touchIdPath)
+    expect(isTouchIdCapsule(capsule)).toBe(true)
+    expect(capsule.includes(Buffer.from('fake-master-password'))).toBe(false)
+    expect(
+      vi
+        .mocked(safeStorage.encryptStringAsync)
+        .mock.calls.some(([value]) => value.includes('fake-master-password'))
+    ).toBe(false)
+
     expect(await service.unlockTouchId()).toEqual({ state: 'unlocked' })
-    expect(runtime.unlockVault).toHaveBeenCalledWith('fake-master-password')
+    expect(runtime.unlockVault).not.toHaveBeenCalled()
+    expect(receivedMaterial).toEqual([testUnlockMaterial()])
 
     expect((await service.disableTouchId()).touchIdEnabled).toBe(false)
+    await expect(readFile(touchIdPath)).rejects.toMatchObject({ code: 'ENOENT' })
+    service.dispose()
+  })
+
+  it('discards a capsule whose vault or account key is stale and requires the password', async () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    const { service, runtime, touchIdPath } = createService()
+    await service.initialize()
+    await service.enableTouchId('fake-master-password')
+    runtime.unlockVaultWithKeyMaterial.mockRejectedValueOnce(
+      new VaultError('TOUCH_ID_UNAVAILABLE', 'TOUCH_ID_UNAVAILABLE:stale-account-key')
+    )
+
+    await expect(service.unlockTouchId()).rejects.toMatchObject({ code: 'TOUCH_ID_UNAVAILABLE' })
+    await expect(readFile(touchIdPath)).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(service.get()).resolves.toMatchObject({ touchIdEnabled: false })
+    expect(runtime.unlockVault).not.toHaveBeenCalled()
+    service.dispose()
+  })
+
+  it('discards a tampered capsule without unlocking', async () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    const { service, runtime, touchIdPath } = createService()
+    await service.initialize()
+    await service.enableTouchId('fake-master-password')
+    const capsule = await readFile(touchIdPath)
+    capsule[capsule.length - 1] ^= 1
+    await writeFile(touchIdPath, capsule)
+
+    await expect(service.unlockTouchId()).rejects.toMatchObject({ code: 'TOUCH_ID_UNAVAILABLE' })
+    expect(runtime.unlockVaultWithKeyMaterial).not.toHaveBeenCalled()
+    await expect(readFile(touchIdPath)).rejects.toMatchObject({ code: 'ENOENT' })
+    service.dispose()
+  })
+
+  it('keeps a stale capsule removal from deleting a concurrent re-enrollment', async () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    const { service, runtime, touchIdPath } = createService()
+    await service.initialize()
+    await service.enableTouchId('fake-master-password')
+    const unlockStarted = deferred<void>()
+    const unlockResult = deferred<never>()
+    runtime.unlockVaultWithKeyMaterial.mockImplementationOnce(() => {
+      unlockStarted.resolve()
+      return unlockResult.promise
+    })
+
+    const pending = service.unlockTouchId()
+    await unlockStarted.promise
+    await service.enableTouchId('fake-master-password')
+    const reenrolled = await readFile(touchIdPath)
+    unlockResult.reject(new VaultError('TOUCH_ID_UNAVAILABLE'))
+
+    await expect(pending).rejects.toMatchObject({ code: 'TOUCH_ID_UNAVAILABLE' })
+    expect(await readFile(touchIdPath)).toEqual(reenrolled)
+    service.dispose()
+  })
+
+  it('migrates a legacy master-password file to a key capsule after a Touch ID unlock', async () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    const { service, runtime, touchIdPath, receivedMaterial } = createService()
+    await service.initialize()
+    await mkdir(join(directory, 'vault'), { recursive: true })
+    await writeFile(touchIdPath, Buffer.from('encrypted:fake-master-password', 'utf8'))
+
+    await expect(service.unlockTouchId()).resolves.toEqual({ state: 'unlocked' })
+    expect(runtime.unlockVault).toHaveBeenCalledWith('fake-master-password')
+    expect(runtime.exportUnlockMaterial).toHaveBeenCalledWith('fake-master-password')
+    const migrated = await readFile(touchIdPath)
+    expect(isTouchIdCapsule(migrated)).toBe(true)
+    expect(migrated.includes(Buffer.from('fake-master-password'))).toBe(false)
+
+    await expect(service.unlockTouchId()).resolves.toEqual({ state: 'unlocked' })
+    expect(runtime.unlockVault).toHaveBeenCalledOnce()
+    expect(receivedMaterial).toEqual([testUnlockMaterial()])
+    service.dispose()
+  })
+
+  it('keeps a legacy file for retry when migration fails after a successful unlock', async () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    const { service, runtime, touchIdPath } = createService()
+    await service.initialize()
+    await mkdir(join(directory, 'vault'), { recursive: true })
+    const legacy = Buffer.from('encrypted:fake-master-password', 'utf8')
+    await writeFile(touchIdPath, legacy)
+    runtime.exportUnlockMaterial.mockRejectedValueOnce(new VaultError('LOCKED'))
+
+    await expect(service.unlockTouchId()).resolves.toEqual({ state: 'unlocked' })
+    expect(await readFile(touchIdPath)).toEqual(legacy)
+
+    await expect(service.unlockTouchId()).resolves.toEqual({ state: 'unlocked' })
+    expect(isTouchIdCapsule(await readFile(touchIdPath))).toBe(true)
+    service.dispose()
+  })
+
+  it('migrates a legacy file after a master-password unlock and never re-creates a removed one', async () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    const { service, runtime, touchIdPath } = createService()
+    await service.initialize()
+
+    await service.migrateLegacyTouchId('fake-master-password')
+    expect(runtime.exportUnlockMaterial).not.toHaveBeenCalled()
+    await expect(readFile(touchIdPath)).rejects.toMatchObject({ code: 'ENOENT' })
+
+    await mkdir(join(directory, 'vault'), { recursive: true })
+    await writeFile(touchIdPath, Buffer.from('encrypted:fake-master-password', 'utf8'))
+    await service.migrateLegacyTouchId('fake-master-password')
+    const migrated = await readFile(touchIdPath)
+    expect(isTouchIdCapsule(migrated)).toBe(true)
+    expect(systemPreferences.promptTouchID).not.toHaveBeenCalled()
+
+    await service.migrateLegacyTouchId('fake-master-password')
+    expect(runtime.exportUnlockMaterial).toHaveBeenCalledOnce()
+    expect(await readFile(touchIdPath)).toEqual(migrated)
+
+    await writeFile(touchIdPath, Buffer.from('encrypted:fake-master-password', 'utf8'))
+    const exported = deferred<TouchIdUnlockMaterial>()
+    runtime.exportUnlockMaterial.mockImplementationOnce(() => exported.promise)
+    const migration = service.migrateLegacyTouchId('fake-master-password')
+    await vi.waitFor(() => expect(runtime.exportUnlockMaterial).toHaveBeenCalledTimes(2))
+    await service.disableTouchId()
+    exported.resolve(testUnlockMaterial())
+    await migration
+    await expect(readFile(touchIdPath)).rejects.toMatchObject({ code: 'ENOENT' })
     service.dispose()
   })
 
@@ -697,14 +857,14 @@ describe('AppSettingsService', () => {
       })
       expect(systemPreferences.promptTouchID).not.toHaveBeenCalled()
       expect(safeStorage.decryptStringAsync).not.toHaveBeenCalled()
-      expect(runtime.unlockVault).not.toHaveBeenCalled()
+      expect(runtime.unlockVaultWithKeyMaterial).not.toHaveBeenCalled()
       expect(await readFile(touchIdPath)).toEqual(capsule)
 
       vi.mocked(systemPreferences.canPromptTouchID).mockReturnValue(true)
       vi.mocked(safeStorage.isAsyncEncryptionAvailable).mockResolvedValue(true)
       await expect(service.unlockTouchId()).resolves.toEqual({ state: 'unlocked' })
       expect(systemPreferences.promptTouchID).toHaveBeenCalledOnce()
-      expect(runtime.unlockVault).toHaveBeenCalledWith('fake-master-password')
+      expect(runtime.unlockVaultWithKeyMaterial).toHaveBeenCalledOnce()
       expect(await readFile(touchIdPath)).toEqual(capsule)
       service.dispose()
     }
@@ -755,12 +915,11 @@ describe('AppSettingsService', () => {
     service.dispose()
   })
 
-  it('maps rejected Touch ID and stale local secrets to a generic failure', async () => {
+  it('maps rejected Touch ID and transient unlock failures to a generic failure', async () => {
     Object.defineProperty(process, 'platform', { value: 'darwin' })
-    const { service, store, runtime, touchIdPath } = createService()
-    const key = Buffer.alloc(32, 7)
-    const salt = Buffer.alloc(16, 9)
-    vi.mocked(store.unlock).mockResolvedValue({ data: {}, key, salt })
+    const { service, runtime, touchIdPath } = createService()
+    const material = testUnlockMaterial()
+    runtime.exportUnlockMaterial.mockResolvedValueOnce(material)
     await service.initialize()
 
     vi.mocked(systemPreferences.promptTouchID).mockRejectedValueOnce(new Error('cancelled'))
@@ -768,12 +927,20 @@ describe('AppSettingsService', () => {
       code: 'TOUCH_ID_FAILED'
     })
     await expect(readFile(touchIdPath)).rejects.toMatchObject({ code: 'ENOENT' })
-    expect(key.every((value) => value === 0)).toBe(true)
-    expect(salt.every((value) => value === 0)).toBe(true)
+    expect(material.key.every((value) => value === 0)).toBe(true)
+    expect(material.salt.every((value) => value === 0)).toBe(true)
+    expect(material.sync?.accountKey.every((value) => value === 0)).toBe(true)
+
+    runtime.exportUnlockMaterial.mockRejectedValueOnce(new VaultError('INVALID_MASTER_PASSWORD'))
+    await expect(service.enableTouchId('wrong-password')).rejects.toMatchObject({
+      code: 'INVALID_MASTER_PASSWORD'
+    })
+    expect(systemPreferences.promptTouchID).toHaveBeenCalledOnce()
 
     await service.enableTouchId('fake-master-password')
-    vi.mocked(runtime.unlockVault).mockRejectedValue(new VaultError('INVALID_MASTER_PASSWORD'))
+    runtime.unlockVaultWithKeyMaterial.mockRejectedValue(new VaultError('CORRUPT_VAULT'))
     await expect(service.unlockTouchId()).rejects.toMatchObject({ code: 'TOUCH_ID_FAILED' })
+    expect(isTouchIdCapsule(await readFile(touchIdPath))).toBe(true)
     service.dispose()
   })
 
@@ -802,7 +969,7 @@ describe('AppSettingsService', () => {
       { state: 'unlocked' },
       { state: 'unlocked' }
     ])
-    expect(runtime.unlockVault).toHaveBeenCalledTimes(1)
+    expect(runtime.unlockVaultWithKeyMaterial).toHaveBeenCalledTimes(1)
     service.dispose()
   })
 
@@ -826,27 +993,29 @@ describe('AppSettingsService', () => {
     await expect(automatic).rejects.toMatchObject({ code: 'TOUCH_ID_FAILED' })
     await expect(interactive).resolves.toEqual({ state: 'unlocked' })
     expect(systemPreferences.promptTouchID).toHaveBeenCalledTimes(2)
-    expect(runtime.unlockVault).toHaveBeenCalledOnce()
+    expect(runtime.unlockVaultWithKeyMaterial).toHaveBeenCalledOnce()
     service.dispose()
   })
 
   it('retries decryption to complete safe storage key rotation without rewriting the capsule', async () => {
     Object.defineProperty(process, 'platform', { value: 'darwin' })
-    const { service, runtime, touchIdPath } = createService()
+    const { service, touchIdPath, receivedMaterial } = createService()
     await service.initialize()
     await service.enableTouchId('fake-master-password')
     const originalCapsule = await readFile(touchIdPath)
     vi.mocked(safeStorage.encryptStringAsync).mockClear()
-    vi.mocked(safeStorage.decryptStringAsync)
-      .mockResolvedValueOnce({ result: '', shouldReEncrypt: true })
-      .mockResolvedValueOnce({ result: 'fake-master-password', shouldReEncrypt: false })
+    vi.mocked(safeStorage.decryptStringAsync).mockClear()
+    vi.mocked(safeStorage.decryptStringAsync).mockResolvedValueOnce({
+      result: '',
+      shouldReEncrypt: true
+    })
 
     await expect(service.unlockTouchId()).resolves.toEqual({ state: 'unlocked' })
 
     expect(safeStorage.decryptStringAsync).toHaveBeenCalledTimes(2)
     expect(safeStorage.encryptStringAsync).not.toHaveBeenCalled()
     expect(await readFile(touchIdPath)).toEqual(originalCapsule)
-    expect(runtime.unlockVault).toHaveBeenCalledWith('fake-master-password')
+    expect(receivedMaterial).toEqual([testUnlockMaterial()])
     service.dispose()
   })
 
@@ -874,17 +1043,17 @@ describe('AppSettingsService', () => {
 
     await expect(pending).rejects.toMatchObject({ code: 'TOUCH_ID_FAILED' })
     expect(safeStorage.decryptStringAsync).not.toHaveBeenCalled()
-    expect(runtime.unlockVault).not.toHaveBeenCalled()
+    expect(runtime.unlockVaultWithKeyMaterial).not.toHaveBeenCalled()
   })
 
   it('verifies one passkey operation without decrypting the stored unlock secret', async () => {
     Object.defineProperty(process, 'platform', { value: 'darwin' })
-    const { service, store, runtime } = createService()
+    const { service, runtime } = createService()
     await service.initialize()
     await service.enableTouchId('fake-master-password')
     vi.mocked(systemPreferences.promptTouchID).mockClear()
     vi.mocked(safeStorage.decryptStringAsync).mockClear()
-    vi.mocked(store.unlock).mockClear()
+    runtime.exportUnlockMaterial.mockClear()
 
     await expect(service.verifyTouchIdOperation('createPasskey')).resolves.toBeUndefined()
     await expect(service.verifyTouchIdOperation('usePasskey')).resolves.toBeUndefined()
@@ -898,8 +1067,8 @@ describe('AppSettingsService', () => {
       'Sign in with a BearWarden passkey'
     )
     expect(safeStorage.decryptStringAsync).not.toHaveBeenCalled()
-    expect(store.unlock).not.toHaveBeenCalled()
-    expect(runtime.unlockVault).not.toHaveBeenCalled()
+    expect(runtime.exportUnlockMaterial).not.toHaveBeenCalled()
+    expect(runtime.unlockVaultWithKeyMaterial).not.toHaveBeenCalled()
     service.dispose()
   })
 

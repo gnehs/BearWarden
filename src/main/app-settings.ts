@@ -14,8 +14,16 @@ import type {
   VaultTimeoutPolicy
 } from '../shared/vault-contract'
 import { syncDirectoryBestEffort } from './account-paths'
-import type { EncryptedVaultStore } from './encrypted-vault-store'
 import { translateMain } from './i18n'
+import {
+  clearTouchIdUnlockMaterial,
+  isTouchIdCapsule,
+  openTouchIdCapsule,
+  sealTouchIdCapsule,
+  TouchIdCapsuleError,
+  type TouchIdDataKeyProtector,
+  type TouchIdUnlockMaterial
+} from './touch-id-unlock-capsule'
 import { VaultError } from './vault-errors'
 import { isRecord } from './vault/parse-primitives'
 import type { VaultTimeoutCoordinator } from './vault-timeout-coordinator'
@@ -66,6 +74,14 @@ export interface AppSettingsRuntime {
   getStartAtLoginStatus: () => StartAtLoginStatus
   /** Applies the preference and confirms the OS reports the requested state. */
   setStartAtLogin: (enabled: boolean) => boolean
+  /**
+   * Verifies the master password against the unlocked vault and returns copies of the local
+   * vault key and sync account key for a Touch ID capsule.
+   */
+  exportUnlockMaterial: (masterPassword: string) => Promise<TouchIdUnlockMaterial>
+  /** Opens the vault and restores sync keys from Touch ID capsule material. */
+  unlockVaultWithKeyMaterial: (material: TouchIdUnlockMaterial) => Promise<VaultStatus>
+  /** Legacy migration only: unlocks with a master password read from a pre-capsule file. */
   unlockVault: (masterPassword: string) => Promise<VaultStatus>
   /** Applies the encrypted active-account organization timeout constraint in main. */
   constrainVaultTimeoutPolicy: (policy: VaultTimeoutPolicy) => Promise<VaultTimeoutPolicy>
@@ -237,6 +253,81 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
+type FileHandle = Awaited<ReturnType<typeof open>>
+
+async function openExisting(path: string): Promise<FileHandle | undefined> {
+  try {
+    return await open(path, 'r+')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw error
+  }
+}
+
+/**
+ * Best-effort secure erase of a detached inode: overwrite its bytes in place and flush so a
+ * legacy master-password ciphertext does not linger in the file's data blocks. Copy-on-write
+ * file systems may still retain older blocks; the platform key remains the real protection.
+ */
+async function overwriteWithZeros(handle: FileHandle): Promise<void> {
+  const { size } = await handle.stat()
+  const zeros = Buffer.alloc(Math.min(size, MAX_TOUCH_ID_BYTES))
+  for (let offset = 0; offset < size; offset += zeros.length) {
+    await handle.write(zeros, 0, Math.min(zeros.length, size - offset), offset)
+  }
+  await handle.sync()
+}
+
+/** Commits the replacement first, then erases the previous inode through a retained handle. */
+async function replaceTouchIdFile(path: string, data: Buffer): Promise<void> {
+  const previous = await openExisting(path)
+  try {
+    await atomicWrite(path, data)
+    if (previous) await overwriteWithZeros(previous)
+  } finally {
+    await previous?.close()
+  }
+}
+
+async function removeTouchIdFile(path: string): Promise<void> {
+  const previous = await openExisting(path)
+  if (!previous) return
+  try {
+    await unlink(path).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error
+    })
+    await syncDirectoryBestEffort(dirname(path))
+    await overwriteWithZeros(previous)
+  } finally {
+    await previous.close()
+  }
+}
+
+async function readTouchIdFile(path: string): Promise<Buffer | null> {
+  try {
+    return await readFile(path)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw error
+  }
+}
+
+async function safeStorageDecrypt(encrypted: Buffer): Promise<string> {
+  let decrypted = await safeStorage.decryptStringAsync(encrypted)
+  if (decrypted.shouldReEncrypt) {
+    // Electron instructs callers to repeat decryption before using a key-rotation result.
+    // Do not replace the persisted capsule using the first, provisional result.
+    decrypted = await safeStorage.decryptStringAsync(encrypted)
+  }
+  if (decrypted.shouldReEncrypt) throw new VaultError('TOUCH_ID_FAILED')
+  return decrypted.result
+}
+
+const safeStorageDataKeyProtector: TouchIdDataKeyProtector = {
+  wrap: (dataKey) => safeStorage.encryptStringAsync(dataKey),
+  unwrap: safeStorageDecrypt
+}
+
 async function atomicWrite(path: string, data: string | Buffer): Promise<void> {
   const directory = dirname(path)
   await mkdir(directory, { recursive: true, mode: 0o700 })
@@ -264,6 +355,8 @@ export class AppSettingsService {
   private settings: StoredSettings = defaultSettings()
   private touchIdUnlock: TouchIdUnlockOperation | null = null
   private touchIdOperationInProgress = false
+  /** Serializes every Touch ID file mutation so enroll, disable, migrate and invalidate never race. */
+  private touchIdFileTail: Promise<void> = Promise.resolve()
   private settingsUpdateTail: Promise<void> = Promise.resolve()
   private disposed = false
   private lifecycleEpoch = 0
@@ -273,7 +366,6 @@ export class AppSettingsService {
   constructor(
     private readonly settingsPath: string,
     private readonly touchIdPath: string,
-    private readonly vaultStore: EncryptedVaultStore<unknown>,
     private readonly runtime: AppSettingsRuntime,
     private readonly vaultTimeoutCoordinator: VaultTimeoutCoordinator,
     /** Test seam; production persists settings through durable copy-on-write replacement. */
@@ -430,29 +522,66 @@ export class AppSettingsService {
     ) {
       throw new VaultError('INVALID_INPUT')
     }
-    const verified = await this.vaultStore.unlock(masterPassword)
+    const operationEpoch = this.lifecycleEpoch
+    const material = await this.runtime.exportUnlockMaterial(masterPassword)
     try {
       await systemPreferences.promptTouchID(translateMain('touchId.enableUnlock'))
-      const encrypted = await safeStorage.encryptStringAsync(masterPassword)
+      this.assertCurrent(operationEpoch)
+      const capsule = await sealTouchIdCapsule(material, safeStorageDataKeyProtector)
       try {
-        await atomicWrite(this.touchIdPath, encrypted)
+        await this.mutateTouchIdFile(async () => {
+          this.assertCurrent(operationEpoch)
+          // Replacing a legacy file must not leave its master-password ciphertext behind.
+          await replaceTouchIdFile(this.touchIdPath, capsule)
+        })
       } finally {
-        encrypted.fill(0)
+        capsule.fill(0)
       }
     } catch {
       throw new VaultError('TOUCH_ID_FAILED')
     } finally {
-      verified.key.fill(0)
-      verified.salt.fill(0)
+      clearTouchIdUnlockMaterial(material)
     }
     return this.get()
   }
 
   async disableTouchId(): Promise<AppSettings> {
-    await unlink(this.touchIdPath).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== 'ENOENT') throw error
-    })
+    await this.mutateTouchIdFile(() => removeTouchIdFile(this.touchIdPath))
     return this.get()
+  }
+
+  /**
+   * Re-seals a legacy master-password Touch ID file as a key capsule after the user proved the
+   * master password. No-op when Touch ID is not enrolled or already uses the capsule format.
+   */
+  async migrateLegacyTouchId(masterPassword: string): Promise<void> {
+    const operationEpoch = this.lifecycleEpoch
+    const current = await readTouchIdFile(this.touchIdPath)
+    if (!current) return
+    const legacy = !isTouchIdCapsule(current)
+    current.fill(0)
+    if (!legacy || !(await this.touchIdAvailable())) return
+    this.assertCurrent(operationEpoch)
+    const material = await this.runtime.exportUnlockMaterial(masterPassword)
+    let capsule: Buffer | undefined
+    try {
+      this.assertCurrent(operationEpoch)
+      capsule = await sealTouchIdCapsule(material, safeStorageDataKeyProtector)
+      const sealed = capsule
+      await this.mutateTouchIdFile(async () => {
+        this.assertCurrent(operationEpoch)
+        // Disable or re-enrollment may have run meanwhile; only replace a file that is still legacy.
+        const latest = await readTouchIdFile(this.touchIdPath)
+        if (!latest) return
+        const stillLegacy = !isTouchIdCapsule(latest)
+        latest.fill(0)
+        if (!stillLegacy) return
+        await replaceTouchIdFile(this.touchIdPath, sealed)
+      })
+    } finally {
+      capsule?.fill(0)
+      clearTouchIdUnlockMaterial(material)
+    }
   }
 
   unlockTouchId(origin: TouchIdUnlockOrigin = 'interactive'): Promise<VaultStatus> {
@@ -506,35 +635,91 @@ export class AppSettingsService {
     this.assertCurrent(operationEpoch)
     if (!(await exists(this.touchIdPath))) throw new VaultError('TOUCH_ID_UNAVAILABLE')
     this.assertCurrent(operationEpoch)
-    let encrypted: Buffer | undefined
-    let masterPassword: string | undefined
+    let file: Buffer | undefined
     try {
       await systemPreferences.promptTouchID(translateMain('touchId.unlock'))
       this.assertCurrent(operationEpoch)
-      encrypted = await readFile(this.touchIdPath)
+      file = await readFile(this.touchIdPath)
       this.assertCurrent(operationEpoch)
-      if (encrypted.length === 0 || encrypted.length > MAX_TOUCH_ID_BYTES) {
+      if (file.length === 0 || file.length > MAX_TOUCH_ID_BYTES) {
         throw new VaultError('TOUCH_ID_FAILED')
       }
-      let decrypted = await safeStorage.decryptStringAsync(encrypted)
-      this.assertCurrent(operationEpoch)
-      if (decrypted.shouldReEncrypt) {
-        // Electron instructs callers to repeat decryption before using a key-rotation result.
-        // Do not replace the persisted capsule using the first, provisional result.
-        decrypted = await safeStorage.decryptStringAsync(encrypted)
+      return isTouchIdCapsule(file)
+        ? await this.unlockWithCapsule(file, operationEpoch)
+        : await this.unlockWithLegacyFile(file, operationEpoch)
+    } catch (error) {
+      if (error instanceof VaultError && error.code === 'TOUCH_ID_UNAVAILABLE') throw error
+      throw new VaultError('TOUCH_ID_FAILED')
+    } finally {
+      file?.fill(0)
+    }
+  }
+
+  private async unlockWithCapsule(file: Buffer, operationEpoch: number): Promise<VaultStatus> {
+    let material: TouchIdUnlockMaterial | null = null
+    try {
+      try {
+        material = await openTouchIdCapsule(file, safeStorageDataKeyProtector)
+      } catch (error) {
+        if (error instanceof TouchIdCapsuleError) {
+          await this.invalidateTouchIdFile(file)
+          throw new VaultError('TOUCH_ID_UNAVAILABLE')
+        }
+        throw error
       }
-      if (decrypted.shouldReEncrypt) throw new VaultError('TOUCH_ID_FAILED')
-      masterPassword = decrypted.result
+      this.assertCurrent(operationEpoch)
+      let status: VaultStatus
+      try {
+        status = await this.runtime.unlockVaultWithKeyMaterial(material)
+      } catch (error) {
+        if (error instanceof VaultError && error.code === 'TOUCH_ID_UNAVAILABLE') {
+          // Stale vault or account key: fail closed and require the master password from now on.
+          await this.invalidateTouchIdFile(file)
+        }
+        throw error
+      }
+      this.assertCurrent(operationEpoch)
+      return status
+    } finally {
+      clearTouchIdUnlockMaterial(material)
+    }
+  }
+
+  private async unlockWithLegacyFile(file: Buffer, operationEpoch: number): Promise<VaultStatus> {
+    let masterPassword: string | undefined = await safeStorageDecrypt(file)
+    try {
       this.assertCurrent(operationEpoch)
       const status = await this.runtime.unlockVault(masterPassword)
       this.assertCurrent(operationEpoch)
+      // Migration failure must not fail the unlock; the legacy file is retried next time.
+      await this.migrateLegacyTouchId(masterPassword).catch(() => undefined)
       return status
-    } catch {
-      throw new VaultError('TOUCH_ID_FAILED')
     } finally {
-      encrypted?.fill(0)
       masterPassword = undefined
     }
+  }
+
+  /** Removes the enrolled file only if it still holds the bytes this operation found stale. */
+  private invalidateTouchIdFile(expected: Buffer): Promise<void> {
+    const snapshot = Buffer.from(expected)
+    return this.mutateTouchIdFile(async () => {
+      const current = await readTouchIdFile(this.touchIdPath)
+      try {
+        if (current?.equals(snapshot)) await removeTouchIdFile(this.touchIdPath)
+      } finally {
+        current?.fill(0)
+        snapshot.fill(0)
+      }
+    })
+  }
+
+  private mutateTouchIdFile(mutation: () => Promise<void>): Promise<void> {
+    const operation = this.touchIdFileTail.then(mutation)
+    this.touchIdFileTail = operation.then(
+      () => undefined,
+      () => undefined
+    )
+    return operation
   }
 
   activity(): void {

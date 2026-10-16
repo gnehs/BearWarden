@@ -415,17 +415,15 @@ vi.mock('./bitwarden-notifications', () => ({
 }))
 vi.mock('./app-settings', () => ({
   AppSettingsService: class {
-    constructor(
-      settingsPath: string,
-      touchIdPath: string,
-      _store: unknown,
-      runtime: Record<string, unknown>
-    ) {
+    constructor(settingsPath: string, touchIdPath: string, runtime: Record<string, unknown>) {
       harness.setSettingsPaths({ settingsPath, touchIdPath })
       harness.setSettingsRuntime(runtime)
     }
 
     initialize(): Promise<void> {
+      return Promise.resolve()
+    }
+    migrateLegacyTouchId(): Promise<void> {
       return Promise.resolve()
     }
     refreshVaultTimeoutPolicyConstraint(): Promise<void> {

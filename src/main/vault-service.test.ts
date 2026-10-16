@@ -1687,6 +1687,158 @@ describe('VaultService encrypted local data', () => {
     expect(restorePinUnlockMaterial).toHaveBeenCalledOnce()
   })
 
+  function createKeyBoundSyncClientFactory(): {
+    createSyncClient: (sync: PersistedSyncData) => BitwardenSyncClient
+    remote: { fingerprint: Buffer; passwordUnlocks: number; syncs: number }
+  } {
+    const accountKey = Buffer.alloc(64, 7)
+    const remote = { fingerprint: Buffer.alloc(32, 9), passwordUnlocks: 0, syncs: 0 }
+    const createSyncClient = (sync: PersistedSyncData): BitwardenSyncClient => {
+      const client = createSyncFake(sync.state)
+      // Mirrors the real connector: the account key is only usable for the server-wrapped-key
+      // generation it was captured from.
+      let fingerprint: Buffer | null = null
+      return {
+        ...client,
+        status: async () => (fingerprint ? { status: 'unlocked' as const } : await client.status()),
+        login: async (request) => {
+          await client.login(request)
+          fingerprint = Buffer.from(remote.fingerprint)
+        },
+        unlock: async (request) => {
+          remote.passwordUnlocks += 1
+          await client.unlock(request)
+          fingerprint = Buffer.from(remote.fingerprint)
+        },
+        sync: async (signal) => {
+          if (!fingerprint?.equals(remote.fingerprint)) {
+            fingerprint = null
+            throw new BitwardenDirectError('AUTH_REQUIRED')
+          }
+          remote.syncs += 1
+          await client.sync(signal)
+        },
+        pinUnlockMaterial: () =>
+          fingerprint
+            ? {
+                accountKey: Buffer.from(accountKey),
+                wrappedKeyFingerprint: Buffer.from(fingerprint)
+              }
+            : null,
+        restorePinUnlockMaterial: (material) => {
+          expect(material.accountKey).toEqual(accountKey)
+          fingerprint = Buffer.from(material.wrappedKeyFingerprint)
+        },
+        lock: async () => {
+          fingerprint = null
+          await client.lock()
+        }
+      }
+    }
+    return { createSyncClient, remote }
+  }
+
+  it('syncs after a Touch ID key-material unlock without the master password', async () => {
+    const { createSyncClient, remote } = createKeyBoundSyncClientFactory()
+    const { filePath, service } = await createHarness({ createSyncClient })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: MASTER_PASSWORD
+    })
+    await expect(service.exportTouchIdUnlockMaterial('wrong horse')).rejects.toMatchObject({
+      code: 'INVALID_MASTER_PASSWORD'
+    })
+    const material = await service.exportTouchIdUnlockMaterial(MASTER_PASSWORD)
+    expect(material.sync?.wrappedKeyFingerprint).toEqual(remote.fingerprint)
+    await service.lock()
+
+    // A fresh process has no persisted connector key in memory; only the capsule material.
+    service.dispose()
+    const reopened = new VaultService(
+      new EncryptedVaultStore<unknown>(filePath),
+      { copyText: vi.fn(), openExternal: vi.fn() },
+      { createSyncClient }
+    )
+    await expect(reopened.unlockWithTouchIdMaterial(material)).resolves.toEqual({
+      state: 'unlocked'
+    })
+    await expect(reopened.syncStatus()).resolves.toMatchObject({ state: 'ready' })
+    const syncsBefore = remote.syncs
+    await expect(reopened.syncNow()).resolves.toBeDefined()
+    expect(remote.syncs).toBeGreaterThan(syncsBefore)
+    expect(remote.passwordUnlocks).toBe(0)
+  })
+
+  it('fails closed when the server re-wraps the account key after a Touch ID unlock', async () => {
+    const { createSyncClient, remote } = createKeyBoundSyncClientFactory()
+    const { service } = await createHarness({ createSyncClient })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: MASTER_PASSWORD
+    })
+    const material = await service.exportTouchIdUnlockMaterial(MASTER_PASSWORD)
+    await service.lock()
+    remote.fingerprint = Buffer.alloc(32, 10)
+
+    await service.unlockWithTouchIdMaterial(material)
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_AUTH_REQUIRED' })
+    expect(remote.passwordUnlocks).toBe(0)
+  })
+
+  it('rejects Touch ID material older than the persisted account-key generation', async () => {
+    const { createSyncClient, remote } = createKeyBoundSyncClientFactory()
+    const { service } = await createHarness({ createSyncClient })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: MASTER_PASSWORD
+    })
+    const material = await service.exportTouchIdUnlockMaterial(MASTER_PASSWORD)
+    // The user re-authenticates sync with the master password after a server-side rotation.
+    remote.fingerprint = Buffer.alloc(32, 10)
+    await service.lock()
+    await service.unlock(MASTER_PASSWORD)
+    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_AUTH_REQUIRED' })
+    await service.unlockSyncWithLocalPassword(MASTER_PASSWORD)
+    expect(remote.passwordUnlocks).toBe(1)
+    await service.syncNow()
+    await service.lock()
+
+    await expect(service.unlockWithTouchIdMaterial(material)).rejects.toMatchObject({
+      code: 'TOUCH_ID_UNAVAILABLE'
+    })
+    await expect(service.status()).resolves.toEqual({ state: 'locked' })
+    await expect(service.listLogins()).rejects.toMatchObject({ code: 'LOCKED' })
+  })
+
+  it('rejects Touch ID material whose local vault key no longer opens the vault', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const material = await service.exportTouchIdUnlockMaterial(MASTER_PASSWORD)
+    expect(material.sync).toBeNull()
+    await service.lock()
+
+    const wrongKey = { ...material, key: Buffer.from(material.key).fill(1) }
+    await expect(service.unlockWithTouchIdMaterial(wrongKey)).rejects.toMatchObject({
+      code: 'TOUCH_ID_UNAVAILABLE'
+    })
+    const wrongSalt = { ...material, salt: Buffer.from(material.salt).fill(1) }
+    await expect(service.unlockWithTouchIdMaterial(wrongSalt)).rejects.toMatchObject({
+      code: 'TOUCH_ID_UNAVAILABLE'
+    })
+    await expect(service.listLogins()).rejects.toMatchObject({ code: 'LOCKED' })
+
+    await expect(service.unlockWithTouchIdMaterial(material)).resolves.toEqual({
+      state: 'unlocked'
+    })
+    await expect(service.listLogins()).resolves.toEqual([])
+  })
+
   it('restores persisted sync account keys when local and remote passwords differ', async () => {
     const accountKey = Buffer.alloc(64, 7)
     const wrappedKeyFingerprint = Buffer.alloc(32, 9)

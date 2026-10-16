@@ -59,6 +59,7 @@ import {
   type PinSyncKeyMaterial,
   type PinVaultKeyMaterial
 } from './pin-unlock'
+import type { TouchIdUnlockMaterial } from './touch-id-unlock-capsule'
 import { type PortableVaultSnapshot } from './vault-portability-codec'
 import {
   assertNativeAttachmentRestoreBinding,
@@ -585,6 +586,109 @@ export class VaultServiceBase {
   disablePinUnlock(): import('../shared/vault-contract').PinUnlockStatus {
     this.invalidatePinUnlockCapability()
     return this.pinUnlockStatus()
+  }
+
+  /**
+   * Verifies the master password against the open vault and returns copies of the local vault
+   * key and, when the connector holds one, the Bitwarden account key bound to its current
+   * server-wrapped-key fingerprint. The master password itself is never part of the result.
+   * Callers own the returned buffers and must zero them.
+   */
+  exportTouchIdUnlockMaterial(masterPassword: string): Promise<TouchIdUnlockMaterial> {
+    const generation = this.generation
+    return this.exclusive(async () => {
+      let sync: PinSyncKeyMaterial | null = null
+      try {
+        if (generation !== this.generation) throw new VaultError('LOCKED')
+        const data = this.requireData()
+        await this.assertMasterPassword(masterPassword)
+        if (generation !== this.generation || !this.data || !this.key || !this.salt) {
+          throw new VaultError('LOCKED')
+        }
+        const client = data.sync ? this.getOrCreateSyncClient(data.sync) : null
+        sync = client?.pinUnlockMaterial?.() ?? null
+        const material = { key: Buffer.from(this.key), salt: Buffer.from(this.salt), sync }
+        sync = null
+        return material
+      } finally {
+        sync?.accountKey.fill(0)
+        sync?.wrappedKeyFingerprint.fill(0)
+      }
+    })
+  }
+
+  /**
+   * Opens the local vault with Touch ID capsule material and restores the sync account key so
+   * the connector can sync without the master password. Material that no longer matches the
+   * vault key or the persisted server-wrapped-key fingerprint fails closed with
+   * `TOUCH_ID_UNAVAILABLE`, which tells the caller to discard the capsule.
+   */
+  unlockWithTouchIdMaterial(material: TouchIdUnlockMaterial): Promise<VaultStatus> {
+    const generation = this.generation
+    return this.exclusive(async () => {
+      let unlocked: Awaited<ReturnType<EncryptedVaultStore<unknown>['unlockWithKey']>> | null = null
+      let committed = false
+      try {
+        if (generation !== this.generation) throw new VaultError('LOCKED')
+        if (this.data && this.key && this.salt) return { state: 'unlocked' }
+        try {
+          unlocked = await this.store.unlockWithKey(material.key, material.salt)
+        } catch (error) {
+          if (
+            error instanceof VaultError &&
+            error.code === 'CORRUPT_VAULT' &&
+            (error.message === 'CORRUPT_VAULT:salt-mismatch' ||
+              error.message === 'CORRUPT_VAULT:decrypt')
+          ) {
+            // A local re-key replaces both the salt and the key; the capsule is permanently stale.
+            throw new VaultError('TOUCH_ID_UNAVAILABLE', 'TOUCH_ID_UNAVAILABLE:stale-vault-key')
+          }
+          throw error
+        }
+        if (generation !== this.generation) throw new VaultError('LOCKED')
+        const requiresMigration = isRecord(unlocked.data) && unlocked.data.version !== DATA_VERSION
+        const data = parseVaultDataTagged(unlocked.data)
+        const persisted = data.sync?.unlockMaterial ?? null
+        if (
+          material.sync &&
+          persisted &&
+          !material.sync.wrappedKeyFingerprint.equals(
+            Buffer.from(persisted.wrappedKeyFingerprint, 'base64')
+          )
+        ) {
+          // The account key was re-wrapped (rotation or remote password change) after Touch ID
+          // was enrolled. Never restore an older account-key generation; require the password.
+          throw new VaultError('TOUCH_ID_UNAVAILABLE', 'TOUCH_ID_UNAVAILABLE:stale-account-key')
+        }
+        committed = true
+        this.data = data
+        this.key = unlocked.key
+        this.salt = unlocked.salt
+        unlocked = null
+        await this.recoverNativeAttachmentRestoreAfterUnlock(requiresMigration)
+        if (material.sync && this.data.sync) {
+          this.syncClient ??= this.createSyncClient(this.data.sync)
+          this.syncClient.restorePinUnlockMaterial?.(material.sync)
+        } else if (this.data.sync) {
+          this.getOrCreateSyncClient(this.data.sync)
+        }
+        this.fastReadsBlocked = false
+        return { state: 'unlocked' }
+      } catch (error) {
+        if (committed) {
+          this.key?.fill(0)
+          this.salt?.fill(0)
+          this.key = null
+          this.salt = null
+          this.data = null
+          this.syncClient = null
+        }
+        throw error
+      } finally {
+        unlocked?.key.fill(0)
+        unlocked?.salt.fill(0)
+      }
+    })
   }
 
   masterPasswordChangeStatus(): Promise<VaultMasterPasswordChangeStatus> {

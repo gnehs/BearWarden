@@ -1000,7 +1000,6 @@ if (hasSingleInstanceLock)
     settings = new AppSettingsService(
       activeStorage.paths.settingsPath,
       activeStorage.paths.touchIdPath,
-      store,
       {
         applyContentProtection: (enabled) => {
           contentProtectionEnabled = enabled
@@ -1043,6 +1042,18 @@ if (hasSingleInstanceLock)
           } catch {
             return false
           }
+        },
+        exportUnlockMaterial: (masterPassword) => {
+          if (!vault) return Promise.reject(new Error('Vault service unavailable'))
+          return vault.exportTouchIdUnlockMaterial(masterPassword)
+        },
+        unlockVaultWithKeyMaterial: async (material) => {
+          if (!vault) throw new Error('Vault service unavailable')
+          const status = await vault.unlockWithTouchIdMaterial(material)
+          // The capsule restored the sync account key, so sync proceeds without the password.
+          autoSync?.requestImmediate()
+          continueAfterVaultUnlock()
+          return status
         },
         unlockVault: async (masterPassword) => {
           if (!vault) throw new Error('Vault service unavailable')
@@ -1200,6 +1211,7 @@ if (hasSingleInstanceLock)
       afterLockAttempt: () => vaultTimeoutCoordinator?.cancel(),
       afterUnlock: (masterPassword) => {
         continueAfterVaultUnlock(masterPassword)
+        void settings?.migrateLegacyTouchId(masterPassword).catch(() => undefined)
       },
       afterPinUnlock: () => {
         autoSync?.requestImmediate()
