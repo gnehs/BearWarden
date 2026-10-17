@@ -178,8 +178,7 @@ export function vaultTimeoutCustomFields(policy: VaultTimeoutPolicy): {
   }
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
-export function vaultTimeoutPolicyFromCustomFields(
+function vaultTimeoutPolicyFromCustomFields(
   hours: string,
   minutes: string
 ): VaultTimeoutPolicy | null {

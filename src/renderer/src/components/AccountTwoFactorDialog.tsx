@@ -53,7 +53,7 @@ interface AccountWebAuthnKeyListProps {
   onRemove: (key: AccountWebAuthnKeyView) => void
 }
 
-export function AccountWebAuthnKeyList({
+function AccountWebAuthnKeyList({
   keys,
   busy,
   onRemove

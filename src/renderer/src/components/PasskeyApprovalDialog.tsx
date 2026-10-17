@@ -41,10 +41,8 @@ import {
   type PasskeyApprovalUiVerificationMethod
 } from '@renderer/lib/passkey-approval-ui'
 
-export type PasskeyApprovalView = PasskeyApprovalPrompt
-
 interface PasskeyApprovalDialogProps {
-  request: PasskeyApprovalView
+  request: PasskeyApprovalPrompt
   onVerifyPassword: (request: PasskeyApprovalVerificationRequest) => Promise<void>
   onRespond: (response: PasskeyApprovalResponse) => Promise<void>
   onSettled: () => void

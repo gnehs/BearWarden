@@ -120,6 +120,13 @@ function VaultPortabilityDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
+  const exporting = mode === 'export'
+  const plaintextZip = exporting && exportFormat === 'bitwarden-zip'
+  const plaintextCsv = exporting && exportFormat === 'bitwarden-csv'
+  const passwordlessExport = plaintextZip || plaintextCsv
+  const nativeImport = !exporting && importFormat === 'bearwarden-native'
+  const keepassImport = !exporting && importFormat === 'keepass-xml'
+
   const scrubPasswords = (): void => {
     setMasterPassword('')
     setBackupPassword('')
@@ -150,23 +157,15 @@ function VaultPortabilityDialog({
   async function submit(event: React.FormEvent<HTMLFormElement>, close: () => void): Promise<void> {
     event.preventDefault()
     if (busy || submittingRef.current) return
-    const nativeImport = mode === 'import' && importFormat === 'bearwarden-native'
-    const keepassImport = mode === 'import' && importFormat === 'keepass-xml'
-    const plaintextZip = mode === 'export' && exportFormat === 'bitwarden-zip'
-    const plaintextCsv = mode === 'export' && exportFormat === 'bitwarden-csv'
-    const passwordlessExport = plaintextZip || plaintextCsv
     if (!nativeImport && !masterPassword) {
       setError(t`Enter your current master password.`)
       return
     }
-    if (
-      ((mode === 'export' && !passwordlessExport) || nativeImport) &&
-      backupPassword.length < 12
-    ) {
+    if (((exporting && !passwordlessExport) || nativeImport) && backupPassword.length < 12) {
       setError(t`The backup password must be at least 12 characters.`)
       return
     }
-    if (mode === 'export' && !passwordlessExport && backupPassword !== confirmPassword) {
+    if (exporting && !passwordlessExport && backupPassword !== confirmPassword) {
       setError(t`The backup passwords do not match.`)
       return
     }
@@ -175,7 +174,7 @@ function VaultPortabilityDialog({
     setBusy(true)
     submittingRef.current = true
     try {
-      if (mode === 'export') {
+      if (exporting) {
         const exportRequest: VaultExportRequest = passwordlessExport
           ? { masterPassword, format: plaintextZip ? 'bitwarden-zip' : 'bitwarden-csv' }
           : {
@@ -226,7 +225,7 @@ function VaultPortabilityDialog({
       scrubPasswords()
       if (mountedRef.current) {
         setError(
-          mode === 'export'
+          exporting
             ? plaintextZip &&
               portabilityFailure instanceof Error &&
               portabilityFailure.message.includes('EXPORT_RESULT_UNKNOWN')
@@ -265,12 +264,6 @@ function VaultPortabilityDialog({
     }
   }
 
-  const exporting = mode === 'export'
-  const plaintextZip = exporting && exportFormat === 'bitwarden-zip'
-  const plaintextCsv = exporting && exportFormat === 'bitwarden-csv'
-  const passwordlessExport = plaintextZip || plaintextCsv
-  const nativeImport = !exporting && importFormat === 'bearwarden-native'
-  const keepassImport = !exporting && importFormat === 'keepass-xml'
   const completed = restoreResult?.state === 'complete'
   const progressPercent = progress?.totalBytes
     ? Math.min(100, Math.round((progress.completedBytes / progress.totalBytes) * 100))
@@ -330,15 +323,10 @@ function VaultPortabilityDialog({
                   value={exporting ? exportFormat : importFormat}
                   onChange={(event) => {
                     setError('')
-                    if (exporting) {
-                      setExportFormat(event.target.value as ExportFormat)
-                      setBackupPassword('')
-                      setConfirmPassword('')
-                    } else {
-                      setImportFormat(event.target.value as ImportFormat)
-                      setBackupPassword('')
-                      setConfirmPassword('')
-                    }
+                    setBackupPassword('')
+                    setConfirmPassword('')
+                    if (exporting) setExportFormat(event.target.value as ExportFormat)
+                    else setImportFormat(event.target.value as ImportFormat)
                   }}
                 >
                   {exporting ? (

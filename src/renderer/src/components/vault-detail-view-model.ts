@@ -59,6 +59,14 @@ export function customFieldCopyFeedbackKey(
   return JSON.stringify(['custom', itemId, index, field.name, field.type, field.linkedId])
 }
 
+export function detailFieldCopyFeedbackKey(
+  itemId: string | undefined,
+  field: VaultCopyField,
+  uriIndex: number | undefined
+): string {
+  return `field:${itemId}:${field}:${uriIndex ?? ''}`
+}
+
 export function detailFields(login: LoginView, labels: Record<string, string>): DetailField[] {
   if (login.type === 'login') {
     return [

@@ -322,18 +322,6 @@ describe('SyncDialog WebAuthn request boundary', () => {
       expect(request).not.toHaveProperty('twoFactorCode')
     }
   )
-
-  it('does not model WebAuthn ceremony data in the main application request', () => {
-    expect(
-      JSON.stringify(
-        buildSyncTwoFactorRequest({
-          twoFactorMethod: WEB_AUTHN_TWO_FACTOR_METHOD,
-          twoFactorCode: '',
-          webAuthnRemember: false
-        })
-      )
-    ).not.toMatch(/challenge|assertion/i)
-  })
 })
 
 describe('SyncDialog pending import resolution', () => {

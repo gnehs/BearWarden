@@ -23,16 +23,6 @@ describe('vaultPagePathFromPathname', () => {
   it('accepts a trailing slash on a deep link', () => {
     expect(vaultPagePathFromPathname('/vault/emergency-access/')).toBe('/vault/emergency-access')
   })
-
-  it('reflects back-forward pathname changes without retained local state', () => {
-    const history = ['/vault/settings', '/vault/health', '/vault/settings']
-
-    expect(history.map(vaultPagePathFromPathname)).toEqual([
-      '/vault/settings',
-      '/vault/health',
-      '/vault/settings'
-    ])
-  })
 })
 
 describe('nextVaultPagePath', () => {

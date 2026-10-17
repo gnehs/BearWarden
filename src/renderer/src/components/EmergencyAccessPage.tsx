@@ -7,6 +7,7 @@ import type { EmergencyAccessView } from '../../../shared/vault-contract'
 import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
 import { cn } from '@renderer/lib/utils'
+import { formatDateTime } from '@renderer/lib/vault-date'
 import {
   Card,
   CardContent,
@@ -24,11 +25,7 @@ import {
 import { Spinner } from '@renderer/components/ui/spinner'
 import AuxiliaryPageLayout from './AuxiliaryPageLayout'
 import FeatureUnderConstructionNotice from './FeatureUnderConstructionNotice'
-import {
-  emergencyAccessCreationLabel,
-  emergencyAccessDisplayName,
-  safeEmergencyAccessAvatarColor
-} from './emergency-access-ui'
+import { emergencyAccessDisplayName, safeEmergencyAccessAvatarColor } from './emergency-access-ui'
 
 interface EmergencyAccessContentProps {
   entries: EmergencyAccessView[]
@@ -98,7 +95,7 @@ export function EmergencyAccessContent({
       {entries.map((entry) => {
         const displayName = emergencyAccessDisplayName(entry)
         const initial = Array.from(displayName)[0]?.toLocaleUpperCase(i18n.locale) ?? '?'
-        const creationLabel = emergencyAccessCreationLabel(entry.creationDate)
+        const creationLabel = formatDateTime(entry.creationDate)
         const avatarColor = safeEmergencyAccessAvatarColor(entry.avatarColor)
         const waitTimeLabel = t({
           message: plural(entry.waitTimeDays, { one: 'Wait # day', other: 'Wait # days' })

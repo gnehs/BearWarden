@@ -146,6 +146,7 @@ import {
   canSelectCustomFieldType,
   reorderEditorItemsByClientId,
   reorderEditorUris,
+  uriMatchOptionValue,
   uriMatchRecognizedParts,
   type EditorLoginUri,
   type UriMatchOptionValue
@@ -176,10 +177,11 @@ import { ScrollArea } from './ui/scroll-area'
 type EditorSecretField = VaultEditorSecretField
 type EditorErrorKind = 'name' | 'password' | 'ssh' | 'uri' | 'collection' | 'reveal' | null
 type SecretLoadState = 'loading' | 'ready' | 'error'
-type CardCoverCatalogState =
-  | { status: 'idle' | 'loading'; entries: CardCoverCatalogEntry[]; error: string }
-  | { status: 'ready'; entries: CardCoverCatalogEntry[]; error: string }
-  | { status: 'error'; entries: CardCoverCatalogEntry[]; error: string }
+interface CardCoverCatalogState {
+  status: 'idle' | 'loading' | 'ready' | 'error'
+  entries: CardCoverCatalogEntry[]
+  error: string
+}
 
 export type EditorCustomField = VaultCustomFieldUpdate & {
   /** Renderer-only identity for stable React list keys. Removed before IPC submission. */
@@ -230,6 +232,12 @@ const emptyFields: VaultItemFields = {
   publicKey: '',
   fingerprint: ''
 }
+
+const noCardCoverSelection = {
+  cardCoverSourceUrl: undefined,
+  cardCoverPreviewUrl: undefined,
+  cardCoverLabel: undefined
+} satisfies Partial<LoginDraft>
 
 function newCustomFieldClientId(): string {
   return `custom-field-${crypto.randomUUID()}`
@@ -339,6 +347,40 @@ interface LoginEditorProps {
   onDirtyChange: (dirty: boolean) => void
   onDeletePasskey: (credentialId: string, expectedUpdatedAt: string) => Promise<LoginView | null>
   onSave: (draft: LoginDraft) => Promise<boolean>
+}
+
+function useCardCoverCatalog(): { catalog: CardCoverCatalogState; load: () => void } {
+  const { t } = useLingui()
+  const [catalog, setCatalog] = useState<CardCoverCatalogState>({
+    status: 'idle',
+    entries: [],
+    error: ''
+  })
+  const abortRef = useRef<AbortController | null>(null)
+  useEffect(() => () => abortRef.current?.abort(), [])
+
+  function load(): void {
+    if (catalog.status === 'ready' || catalog.status === 'loading') return
+    abortRef.current?.abort()
+    const abort = new AbortController()
+    abortRef.current = abort
+    setCatalog((current) => ({ ...current, status: 'loading', error: '' }))
+    void fetchCardCoverCatalog()
+      .then((entries) => {
+        if (abort.signal.aborted) return
+        setCatalog({ status: 'ready', entries, error: '' })
+      })
+      .catch((catalogError) => {
+        if (abort.signal.aborted) return
+        setCatalog({
+          status: 'error',
+          entries: [],
+          error: catalogError instanceof Error ? catalogError.message : t`Card catalog unavailable`
+        })
+      })
+  }
+
+  return { catalog, load }
 }
 
 function EditorFormSection({
@@ -630,7 +672,6 @@ function LoginEditor({
   const sshKeyGenerationRequestRef = useRef(0)
   const sshKeyImportRequestRef = useRef(0)
   const activeSshImportTokenRef = useRef<string | null>(null)
-  const cardCoverCatalogAbortRef = useRef<AbortController | null>(null)
   const sshImportPassphraseRef = useRef<HTMLInputElement>(null)
   const [editorSnapshot] = useState(() =>
     login
@@ -667,9 +708,7 @@ function LoginEditor({
     uris: urisFromLogin(login),
     changedSecrets: [],
     customFields: customFieldsFromLogin(login),
-    cardCoverSourceUrl: undefined,
-    cardCoverPreviewUrl: undefined,
-    cardCoverLabel: undefined
+    ...noCardCoverSelection
   }))
   const [selectedCardBrand, setSelectedCardBrand] = useState<PaymentCardBrandOption>(() =>
     paymentCardBrandOption(login?.brand)
@@ -697,11 +736,7 @@ function LoginEditor({
   const [cardCoverCatalogOpen, setCardCoverCatalogOpen] = useState(false)
   const [cardCoverCatalogTab, setCardCoverCatalogTab] = useState<'catalog' | 'upload'>('catalog')
   const [cardCoverCatalogQuery, setCardCoverCatalogQuery] = useState('')
-  const [cardCoverCatalog, setCardCoverCatalog] = useState<CardCoverCatalogState>({
-    status: 'idle',
-    entries: [],
-    error: ''
-  })
+  const { catalog: cardCoverCatalog, load: loadCardCoverCatalog } = useCardCoverCatalog()
   const sortableSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -734,7 +769,6 @@ function LoginEditor({
     editorMountedRef.current = true
     return () => {
       editorMountedRef.current = false
-      cardCoverCatalogAbortRef.current?.abort()
       sshKeyImportRequestRef.current += 1
       const importToken = activeSshImportTokenRef.current
       activeSshImportTokenRef.current = null
@@ -880,7 +914,7 @@ function LoginEditor({
 
     setDraft((current) => {
       if (current.sshImportToken !== token) return current
-      return { ...clearSshKeyMaterial(current), sshImportToken: undefined }
+      return clearSshKeyMaterial(current)
     })
   }
 
@@ -890,42 +924,16 @@ function LoginEditor({
     onCancel()
   }
 
-  function update<K extends keyof LoginDraft>(key: K, value: LoginDraft[K]): void {
+  /** Item type changes go through updateItemType, which also resets type-specific state. */
+  function update<K extends Exclude<keyof LoginDraft, 'type'>>(key: K, value: LoginDraft[K]): void {
     setDirty(true)
-    if (key === 'type' && value !== 'card') setCardCoverCatalogOpen(false)
-    setDraft((current) => {
-      const next = { ...current, [key]: value }
-      if (key !== 'type' || value === 'card') return next
-      return {
-        ...next,
-        cardCoverSourceUrl: undefined,
-        cardCoverPreviewUrl: undefined,
-        cardCoverLabel: undefined
-      }
-    })
+    setDraft((current) => ({ ...current, [key]: value }))
   }
 
   function openCardCoverCatalog(): void {
     setCardCoverCatalogOpen(true)
     setCardCoverCatalogTab('catalog')
-    if (cardCoverCatalog.status === 'ready' || cardCoverCatalog.status === 'loading') return
-    cardCoverCatalogAbortRef.current?.abort()
-    const abort = new AbortController()
-    cardCoverCatalogAbortRef.current = abort
-    setCardCoverCatalog((current) => ({ ...current, status: 'loading', error: '' }))
-    void fetchCardCoverCatalog()
-      .then((entries) => {
-        if (abort.signal.aborted) return
-        setCardCoverCatalog({ status: 'ready', entries, error: '' })
-      })
-      .catch((catalogError) => {
-        if (abort.signal.aborted) return
-        setCardCoverCatalog({
-          status: 'error',
-          entries: [],
-          error: catalogError instanceof Error ? catalogError.message : t`Card catalog unavailable`
-        })
-      })
+    loadCardCoverCatalog()
   }
 
   function selectCardCover(entry: CardCoverCatalogEntry): void {
@@ -954,18 +962,9 @@ function LoginEditor({
             )
           )
         : [],
-      ...(ownerOrganizationId
-        ? {
-            cardCoverSourceUrl: undefined,
-            cardCoverPreviewUrl: undefined,
-            cardCoverLabel: undefined
-          }
-        : {})
+      ...(ownerOrganizationId ? noCardCoverSelection : {})
     }))
-    if (errorKind === 'collection') {
-      setError('')
-      setErrorKind(null)
-    }
+    clearValidationError('collection')
   }
 
   function toggleCollection(collectionId: string, checked: boolean): void {
@@ -978,10 +977,7 @@ function LoginEditor({
           : [...current.collectionIds, collectionId]
         : current.collectionIds.filter((id) => id !== collectionId)
     }))
-    if (errorKind === 'collection') {
-      setError('')
-      setErrorKind(null)
-    }
+    clearValidationError('collection')
   }
 
   function clearValidationError(kind: Exclude<EditorErrorKind, 'reveal' | null>): void {
@@ -1009,10 +1005,7 @@ function LoginEditor({
       sshKeyGenerationRequestRef.current += 1
       setSshKeyGenerationState('idle')
       setVisibleSecrets((current) => ({ ...current, privateKey: false }))
-      if (errorKind === 'ssh') {
-        setError('')
-        setErrorKind(null)
-      }
+      clearValidationError('ssh')
     } else if (type === 'sshKey' && draftRef.current.type !== 'sshKey') {
       setSshKeyGenerationState('idle')
     }
@@ -1022,7 +1015,6 @@ function LoginEditor({
       const cleared = leavingSshKey ? clearSshKeyMaterial(current) : current
       return {
         ...cleared,
-        ...(leavingSshKey ? { sshImportToken: undefined } : {}),
         type,
         ...(type === 'login' ? { uri: current.uris[0]?.uri ?? null } : { uri: null, uris: [] }),
         customFields: normalizeCustomFieldsForItemType(current.customFields, type)
@@ -1034,7 +1026,7 @@ function LoginEditor({
     if (busy || secretsUnavailable || sshKeyGenerationState === 'generating') return
     cancelActiveSshImport(false)
     sshKeyGenerationRequestRef.current += 1
-    setDraft((current) => ({ ...clearSshKeyMaterial(current), sshImportToken: undefined }))
+    setDraft(clearSshKeyMaterial)
     setVisibleSecrets((current) => ({ ...current, privateKey: false }))
     setError('')
     setErrorKind(null)
@@ -1086,7 +1078,7 @@ function LoginEditor({
     sshKeyGenerationRequestRef.current += 1
     const requestId = ++sshKeyImportRequestRef.current
     if (replacingImport) {
-      setDraft((current) => ({ ...clearSshKeyMaterial(current), sshImportToken: undefined }))
+      setDraft(clearSshKeyMaterial)
       setSshKeyGenerationState('error')
     }
     setSshKeyImportError('')
@@ -1882,7 +1874,7 @@ function LoginEditor({
                                   <div className="col-start-2 row-start-2 flex min-w-0 flex-col gap-1.5">
                                     <Select
                                       items={uriMatchOptions}
-                                      value={entry.match === null ? 'default' : String(entry.match)}
+                                      value={uriMatchOptionValue(entry.match)}
                                       disabled={busy}
                                       onValueChange={(value) =>
                                         updateUri(index, {
@@ -1924,11 +1916,7 @@ function LoginEditor({
                                       </SelectContent>
                                     </Select>
                                     <UriMatchExample
-                                      value={
-                                        (entry.match === null
-                                          ? 'default'
-                                          : String(entry.match)) as UriMatchOptionValue
-                                      }
+                                      value={uriMatchOptionValue(entry.match)}
                                       rawUri={entry.uri}
                                     />
                                   </div>
@@ -2138,9 +2126,7 @@ function LoginEditor({
                                     setDirty(true)
                                     setDraft((current) => ({
                                       ...current,
-                                      cardCoverSourceUrl: undefined,
-                                      cardCoverPreviewUrl: undefined,
-                                      cardCoverLabel: undefined
+                                      ...noCardCoverSelection
                                     }))
                                   }}
                                 >

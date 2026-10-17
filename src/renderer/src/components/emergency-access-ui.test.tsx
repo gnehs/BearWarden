@@ -2,11 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import type { EmergencyAccessView } from '../../../shared/vault-contract'
 import { EmergencyAccessContent } from './EmergencyAccessPage'
-import {
-  emergencyAccessCreationLabel,
-  emergencyAccessDisplayName,
-  safeEmergencyAccessAvatarColor
-} from './emergency-access-ui'
+import { emergencyAccessDisplayName, safeEmergencyAccessAvatarColor } from './emergency-access-ui'
 
 const entry: EmergencyAccessView = {
   id: '60000000-0000-4000-8000-000000000001',
@@ -28,10 +24,9 @@ describe('Emergency Access UI', () => {
     expect(emergencyAccessDisplayName({ ...entry, name: '   ' })).toBe('trusted@example.invalid')
   })
 
-  it('only accepts safe avatar colors and omits a missing creation date', () => {
+  it('only accepts safe avatar colors', () => {
     expect(safeEmergencyAccessAvatarColor('#12abEF')).toBe('#12abEF')
     expect(safeEmergencyAccessAvatarColor('url(example.invalid)')).toBeUndefined()
-    expect(emergencyAccessCreationLabel(null)).toBeNull()
   })
 
   it('renders a visible error state with retry instead of an empty result', () => {

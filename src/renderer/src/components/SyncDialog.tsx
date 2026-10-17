@@ -171,7 +171,7 @@ function describeSyncError(error: unknown): string {
   return t`Sync did not complete. Check your connection and sign-in information, then try again.`
 }
 
-export interface SyncErrorPresentation {
+interface SyncErrorPresentation {
   title: string
   description: string
 }

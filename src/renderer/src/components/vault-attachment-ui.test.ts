@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import type { AttachmentProgressEvent } from '../../../shared/vault-contract'
 import {
   attachmentProgressPercent,
-  initialAttachmentStages,
   isCardCoverAttachment,
   isAttachmentCanceled,
   isPreviewableImageAttachment
@@ -35,16 +34,6 @@ describe('attachmentProgressPercent', () => {
 })
 
 describe('attachment operation policy', () => {
-  it('maps each operation to its initial stage', () => {
-    expect(initialAttachmentStages).toEqual({
-      download: 'choosing-file',
-      preview: 'downloading',
-      upload: 'choosing-file',
-      delete: 'deleting',
-      'fix-legacy': 'downloading'
-    })
-  })
-
   it('classifies previewable images and card cover attachments by safe file name', () => {
     expect(isPreviewableImageAttachment('receipt.PNG')).toBe(true)
     expect(isPreviewableImageAttachment('cover.webp')).toBe(true)

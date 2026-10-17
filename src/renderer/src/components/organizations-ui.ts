@@ -4,7 +4,7 @@ export function isSharedLoginSummary(item: LoginSummary): item is SharedLoginSum
   return 'shared' in item && item.shared === true
 }
 
-export interface LatestRequestGuard {
+interface LatestRequestGuard {
   next(): number
   invalidate(): void
   isCurrent(requestId: number): boolean

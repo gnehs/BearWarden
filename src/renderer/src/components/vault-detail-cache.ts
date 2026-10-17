@@ -1,4 +1,9 @@
-import type { LoginSummary, LoginView } from '../../../shared/vault-contract'
+import type {
+  LoginSummary,
+  LoginView,
+  SharedLoginSummary,
+  SharedLoginView
+} from '../../../shared/vault-contract'
 
 const detailCacheLimit = 48
 
@@ -49,6 +54,12 @@ export function firstAuthorizationToken(
   return undefined
 }
 
+export function authorizationTokenField(token: string | undefined): {
+  authorizationToken?: string
+} {
+  return token ? { authorizationToken: token } : {}
+}
+
 export function toLoginSummary(login: LoginView): LoginSummary {
   return {
     id: login.id,
@@ -72,5 +83,18 @@ export function toLoginSummary(login: LoginView): LoginSummary {
     deletedAt: login.deletedAt,
     archivedAt: login.archivedAt,
     reprompt: login.reprompt
+  }
+}
+
+export function toSharedLoginSummary(login: SharedLoginView): SharedLoginSummary {
+  return {
+    ...toLoginSummary(login),
+    organizationId: login.organizationId,
+    collectionIds: login.collectionIds,
+    shared: true,
+    edit: login.edit,
+    viewPassword: login.viewPassword,
+    delete: login.delete,
+    restore: login.restore
   }
 }

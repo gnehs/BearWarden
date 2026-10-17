@@ -45,7 +45,7 @@ describe('sendStatuses', () => {
           passwordProtected: true
         },
         new Date('2026-07-20T00:00:00.000Z')
-      ).map(({ key }) => key)
+      )
     ).toEqual([
       'password',
       'disabled',
@@ -71,7 +71,7 @@ describe('email-verified Send safety', () => {
   it('recognizes a forward-compatible email auth type without weakening it', () => {
     const emailSend = { ...baseSend, authType: 'email' }
     expect(usesEmailVerification(emailSend)).toBe(true)
-    expect(sendStatuses(emailSend).map(({ key }) => key)).toContain('email-verification')
+    expect(sendStatuses(emailSend)).toContain('email-verification')
   })
 })
 

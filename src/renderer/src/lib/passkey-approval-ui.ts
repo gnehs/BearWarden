@@ -8,7 +8,7 @@ export type PasskeyApprovalUiVerificationMethod = Exclude<PasskeyVerificationMet
 
 const MAX_MASTER_PASSWORD_LENGTH = 1_024
 
-export interface PasskeyApprovalUiSelection {
+interface PasskeyApprovalUiSelection {
   selectedChoiceId?: string
   verificationMethod?: PasskeyApprovalUiVerificationMethod
   masterPassword: string

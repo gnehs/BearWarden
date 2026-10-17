@@ -160,8 +160,7 @@ export function useVaultSessionStore<T>(selector: (state: VaultSessionStore) => 
   return useStore(store, selector)
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
-export function useVaultSessionStoreApi(): VaultSessionStoreApi {
+function useVaultSessionStoreApi(): VaultSessionStoreApi {
   const store = useContext(VaultSessionStoreContext)
 
   if (!store) {

@@ -58,68 +58,32 @@ describe('protectedDetailInvalidationIds', () => {
 })
 
 describe('isCurrentVaultLoad', () => {
-  it('does not couple list freshness to protected-detail cache invalidation', () => {
-    const requestId = 4
-    let currentRequestId = requestId
-    let detailCacheGeneration = 8
-
-    detailCacheGeneration += 1
-
-    expect(detailCacheGeneration).toBe(9)
-    expect(isCurrentVaultLoad(requestId, currentRequestId)).toBe(true)
-
-    currentRequestId += 1
-    expect(isCurrentVaultLoad(requestId, currentRequestId)).toBe(false)
+  it('accepts only the latest list request', () => {
+    expect(isCurrentVaultLoad(4, 4)).toBe(true)
+    expect(isCurrentVaultLoad(4, 5)).toBe(false)
   })
 })
 
 describe('isCurrentSelectedDetailResponse', () => {
-  it('discards a deferred protected response after its capability expires', async () => {
-    let resolve!: (value: { reprompt: 0 | 1 }) => void
-    const deferred = new Promise<{ reprompt: 0 | 1 }>((done) => {
-      resolve = done
-    })
-    let generation = 7
-    let token: string | undefined = 'short-lived'
-    const guarded = deferred.then((login) =>
-      isCurrentSelectedDetailResponse({
-        id: 'protected',
-        selectedId: 'protected',
-        requestGeneration: 7,
-        currentGeneration: generation,
-        reprompt: login.reprompt,
-        authorizationToken: token
-      })
-    )
+  const current = {
+    id: 'protected',
+    selectedId: 'protected',
+    requestGeneration: 7,
+    currentGeneration: 7,
+    reprompt: 1 as const,
+    authorizationToken: 'short-lived' as string | undefined
+  }
 
-    token = undefined
-    generation += 1
-    resolve({ reprompt: 1 })
-
-    await expect(guarded).resolves.toBe(false)
+  it('accepts an authorized response for the selected item in the current generation', () => {
+    expect(isCurrentSelectedDetailResponse(current)).toBe(true)
   })
 
-  it('discards a deferred response after a remote summary enables reprompt', async () => {
-    let resolve!: (value: { reprompt: 0 | 1 }) => void
-    const deferred = new Promise<{ reprompt: 0 | 1 }>((done) => {
-      resolve = done
-    })
-    let generation = 3
-    const guarded = deferred.then((login) =>
-      isCurrentSelectedDetailResponse({
-        id: 'remote-change',
-        selectedId: 'remote-change',
-        requestGeneration: 3,
-        currentGeneration: generation,
-        reprompt: login.reprompt,
-        authorizationToken: undefined
-      })
-    )
-
-    generation += 1
-    resolve({ reprompt: 1 })
-
-    await expect(guarded).resolves.toBe(false)
+  it.each([
+    ['the selection changed', { selectedId: 'other' }],
+    ['the detail generation advanced', { currentGeneration: 8 }],
+    ['the reprompt capability expired', { authorizationToken: undefined }]
+  ])('discards a deferred response after %s', (_reason, change) => {
+    expect(isCurrentSelectedDetailResponse({ ...current, ...change })).toBe(false)
   })
 })
 

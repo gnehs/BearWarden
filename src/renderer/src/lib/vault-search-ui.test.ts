@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import type { LoginSummary, SharedLoginSummary } from '../../../shared/vault-contract'
+import {
+  MAX_LOGIN_SEARCH_QUERY_LENGTH,
+  type LoginSummary,
+  type SharedLoginSummary
+} from '../../../shared/vault-contract'
 import {
   boundedVaultSearchQuery,
   filterVaultSearchMatches,
   isCurrentVaultSearchResponse,
-  MAX_VAULT_SEARCH_QUERY_LENGTH,
   matchesVaultSearchNavigation,
   vaultSearchListRequests
 } from './vault-search-ui'
@@ -92,8 +95,8 @@ describe('vault search renderer policy', () => {
   })
 
   it('bounds renderer input to the main-process contract limit', () => {
-    expect(boundedVaultSearchQuery('x'.repeat(MAX_VAULT_SEARCH_QUERY_LENGTH + 10))).toHaveLength(
-      MAX_VAULT_SEARCH_QUERY_LENGTH
+    expect(boundedVaultSearchQuery('x'.repeat(MAX_LOGIN_SEARCH_QUERY_LENGTH + 10))).toHaveLength(
+      MAX_LOGIN_SEARCH_QUERY_LENGTH
     )
   })
 

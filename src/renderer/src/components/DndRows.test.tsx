@@ -58,8 +58,7 @@ describe('ItemRow TOTP countdown', () => {
       </DndContext>
     )
 
-    expect(markup).toContain('grid-cols-1')
-    expect(markup).not.toContain('grid-cols-[minmax(0,1fr)_28px]')
+    expect(markup).toContain('310622')
     expect(markup).not.toContain('role="progressbar"')
     expect(markup).not.toContain('>8s<')
   })
@@ -124,15 +123,19 @@ describe('ItemRow card cover', () => {
   })
 })
 
+function folderView(id: string, name: string): FolderView {
+  return {
+    id,
+    name,
+    position: 0,
+    createdAt: '2026-07-22T00:00:00.000Z',
+    updatedAt: '2026-07-22T00:00:00.000Z'
+  }
+}
+
 describe('FolderRow hierarchy', () => {
   it('shows the leaf label while retaining the complete path for assistive text and actions', () => {
-    const folder: FolderView = {
-      id: 'bank',
-      name: '金融/銀行',
-      position: 0,
-      createdAt: '2026-07-22T00:00:00.000Z',
-      updatedAt: '2026-07-22T00:00:00.000Z'
-    }
+    const folder = folderView('bank', '金融/銀行')
     const markup = renderToStaticMarkup(
       <DndContext>
         <SortableContext items={[folder.id]}>
@@ -158,13 +161,7 @@ describe('FolderRow hierarchy', () => {
   })
 
   it('exposes expansion state on the full folder action only for folders with children', () => {
-    const folder: FolderView = {
-      id: 'finance',
-      name: '金融',
-      position: 0,
-      createdAt: '2026-07-22T00:00:00.000Z',
-      updatedAt: '2026-07-22T00:00:00.000Z'
-    }
+    const folder = folderView('finance', '金融')
     const parentMarkup = renderToStaticMarkup(
       <DndContext>
         <SortableContext items={[folder.id]}>
@@ -205,13 +202,7 @@ describe('FolderRow hierarchy', () => {
   })
 
   it('uses an open folder icon for expanded parent folders', () => {
-    const folder: FolderView = {
-      id: 'finance',
-      name: '金融',
-      position: 0,
-      createdAt: '2026-07-22T00:00:00.000Z',
-      updatedAt: '2026-07-22T00:00:00.000Z'
-    }
+    const folder = folderView('finance', '金融')
     const markup = renderToStaticMarkup(
       <DndContext>
         <SortableContext items={[folder.id]}>

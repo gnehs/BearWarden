@@ -15,7 +15,7 @@ export { i18n }
 let activeLanguagePreference: AppLanguagePreference = 'system'
 let activationEpoch = 0
 
-export async function activateLocale(locale: SupportedLocale): Promise<void> {
+async function activateLocale(locale: SupportedLocale): Promise<void> {
   const epoch = ++activationEpoch
   const { messages } = await catalogLoaders[locale]()
   if (epoch !== activationEpoch) return

@@ -19,12 +19,7 @@ export interface ItemDateFields {
 
 export type ItemDateSource = 'activity' | 'updatedAt'
 
-const GROUP_DEFINITIONS: ReadonlyArray<Pick<ItemDateGroup<never>, 'key'>> = [
-  { key: 'today' },
-  { key: 'yesterday' },
-  { key: 'thisWeek' },
-  { key: 'older' }
-]
+const GROUP_KEYS: readonly ItemDateGroupKey[] = ['today', 'yesterday', 'thisWeek', 'older']
 
 function itemDateGroupLabel(key: ItemDateGroupKey): string {
   switch (key) {
@@ -79,13 +74,13 @@ export function groupItemsByDate<T extends ItemDateFields>(
   source: ItemDateSource = 'activity'
 ): ItemDateGroup<T>[] {
   const groups = new Map<ItemDateGroupKey, T[]>()
-  for (const definition of GROUP_DEFINITIONS) groups.set(definition.key, [])
+  for (const key of GROUP_KEYS) groups.set(key, [])
 
   for (const item of items) {
     groups.get(groupKeyForDate(parseItemDate(item, source), now))?.push(item)
   }
 
-  return GROUP_DEFINITIONS.map(({ key }) => ({
+  return GROUP_KEYS.map((key) => ({
     key,
     label: itemDateGroupLabel(key),
     items: groups.get(key) ?? []

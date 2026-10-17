@@ -67,11 +67,7 @@ import type {
   VaultSecretField,
   VaultAttachmentView
 } from '../../../shared/vault-contract'
-import {
-  MAX_LOGIN_BATCH_IDS,
-  MAX_LOGIN_MOVE_MANY_IDS,
-  MAX_LOGIN_PREFETCH_IDS
-} from '../../../shared/vault-contract'
+import { MAX_LOGIN_BATCH_IDS, MAX_LOGIN_PREFETCH_IDS } from '../../../shared/vault-contract'
 import bearCutUrl from '../assets/bear-cut.svg'
 import { ItemDragPreview } from './DragPreview'
 import { type ItemSelectionModifiers } from './DndRows'
@@ -205,15 +201,18 @@ import {
 } from './vault-attachment-ui'
 import {
   customFieldCopyFeedbackKey,
+  detailFieldCopyFeedbackKey,
   detailFields,
   matchesCustomFieldSource
 } from './vault-detail-view-model'
 import {
+  authorizationTokenField,
   cacheLoginDetail,
   firstAuthorizationToken,
   mergeCachedSummary,
   mergeLoginSummary,
-  toLoginSummary
+  toLoginSummary,
+  toSharedLoginSummary
 } from './vault-detail-cache'
 import { describeError, isRepromptRequired } from './vault-error-ui'
 import { itemTypeIcons } from './vault-item-type-icons'
@@ -269,6 +268,15 @@ function isTotpListItem(item: LoginSummary): boolean {
   return !isSharedLoginSummary(item) && item.type === 'login' && Boolean(item.hasTotp)
 }
 
+function upsertAttachment(
+  attachments: readonly VaultAttachmentView[],
+  attachment: VaultAttachmentView
+): VaultAttachmentView[] {
+  return attachments.some((entry) => entry.id === attachment.id)
+    ? attachments.map((entry) => (entry.id === attachment.id ? attachment : entry))
+    : [...attachments, attachment]
+}
+
 function isEditableShortcutTarget(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement &&
@@ -298,29 +306,19 @@ function VaultShellContent({
     }),
     [t]
   )
-  const categoryMeta = useMemo(
-    () =>
-      categoryDefinitions.map((category) => ({
-        ...category,
-        label:
-          category.id === 'all'
-            ? t`All`
-            : category.id === 'login'
-              ? t`Logins`
-              : category.id === 'passkey'
-                ? t`Passkeys`
-                : category.id === 'totp'
-                  ? t`Codes`
-                  : category.id === 'card'
-                    ? t`Cards`
-                    : category.id === 'identity'
-                      ? t`Identities`
-                      : category.id === 'secureNote'
-                        ? t`Notes`
-                        : t`SSH keys`
-      })),
-    [t]
-  )
+  const categoryMeta = useMemo(() => {
+    const labels: Record<TypeFilter, string> = {
+      all: t`All`,
+      login: t`Logins`,
+      passkey: t`Passkeys`,
+      totp: t`Codes`,
+      card: t`Cards`,
+      identity: t`Identities`,
+      secureNote: t`Notes`,
+      sshKey: t`SSH keys`
+    }
+    return categoryDefinitions.map((category) => ({ ...category, label: labels[category.id] }))
+  }, [t])
   const syncStateMeta = {
     unconfigured: { label: t`Not configured`, icon: syncStateIcons.unconfigured },
     locked: { label: t`Unlock required`, icon: syncStateIcons.locked },
@@ -747,6 +745,19 @@ function VaultShellContent({
     detailCacheRef.current.clear()
   }, [])
 
+  const discardAuthorizationToken = useCallback((id: string): void => {
+    authorizationCacheRef.current.delete(id)
+    setAuthorizationTokenState((current) => {
+      if (!(id in current)) return current
+      const next = { ...current }
+      delete next[id]
+      return next
+    })
+    const timer = authorizationExpiryTimersRef.current.get(id)
+    if (timer !== undefined) window.clearTimeout(timer)
+    authorizationExpiryTimersRef.current.delete(id)
+  }, [])
+
   const authorizationToken = useCallback(
     (id: string): string | undefined => {
       const authorization = authorizationCacheRef.current.get(id)
@@ -754,16 +765,8 @@ function VaultShellContent({
       if (authorization.expiresAt <= Date.now()) {
         detailCacheGenerationRef.current += 1
         detailRequestsRef.current.clear()
-        authorizationCacheRef.current.delete(id)
+        discardAuthorizationToken(id)
         detailCacheRef.current.delete(id)
-        const timer = authorizationExpiryTimersRef.current.get(id)
-        if (timer !== undefined) window.clearTimeout(timer)
-        authorizationExpiryTimersRef.current.delete(id)
-        setAuthorizationTokenState((current) => {
-          const next = { ...current }
-          delete next[id]
-          return next
-        })
         if (selectedIdRef.current === id) {
           setPasswordHistoryDialogOpen(false)
           setSelectedLogin(null)
@@ -777,6 +780,7 @@ function VaultShellContent({
       return authorization.token
     },
     [
+      discardAuthorizationToken,
       setEditorMode,
       setPasswordHistoryDialogOpen,
       setRevealedCustomFields,
@@ -816,19 +820,6 @@ function VaultShellContent({
       setTotpCodeState
     ]
   )
-
-  const discardAuthorizationToken = useCallback((id: string): void => {
-    authorizationCacheRef.current.delete(id)
-    setAuthorizationTokenState((current) => {
-      if (!(id in current)) return current
-      const next = { ...current }
-      delete next[id]
-      return next
-    })
-    const timer = authorizationExpiryTimersRef.current.get(id)
-    if (timer !== undefined) window.clearTimeout(timer)
-    authorizationExpiryTimersRef.current.delete(id)
-  }, [])
 
   const invalidateAuthorization = useCallback(
     (id: string, preservePasswordHistoryDialog = false): void => {
@@ -920,10 +911,9 @@ function VaultShellContent({
       } catch (error) {
         if (!isRepromptRequired(error) || ids.length === 0) throw error
         for (const id of ids) invalidateAuthorization(id, preservePasswordHistoryDialog)
-        const retryIds = ids
-        const retryAuthorization = await requestReprompt(retryIds)
+        const retryAuthorization = await requestReprompt(ids)
         return operation((id) =>
-          retryIds.includes(id) ? retryAuthorization.token : authorizationToken(id)
+          ids.includes(id) ? retryAuthorization.token : authorizationToken(id)
         )
       }
     },
@@ -1040,7 +1030,7 @@ function VaultShellContent({
           requestGeneration = detailCacheGenerationRef.current
           return window.bearwarden.logins.get({
             id,
-            ...(tokenFor(id) ? { authorizationToken: tokenFor(id) } : {})
+            ...authorizationTokenField(tokenFor(id))
           })
         }).then((login) => {
           if (
@@ -1216,7 +1206,7 @@ function VaultShellContent({
           id,
           ...position,
           hasTotp: items.find((item) => item.id === id)?.hasTotp ?? false,
-          ...(tokenFor(id) ? { authorizationToken: tokenFor(id) } : {})
+          ...authorizationTokenField(tokenFor(id))
         })
       ).catch((menuError) => announceError(describeVaultError(menuError)))
     },
@@ -1232,7 +1222,7 @@ function VaultShellContent({
       (tokenFor) =>
         window.bearwarden.logins.getPasswordHistory({
           id: itemId,
-          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+          ...authorizationTokenField(tokenFor(itemId))
         }),
       true
     )
@@ -1251,7 +1241,7 @@ function VaultShellContent({
           window.bearwarden.logins.revealPasswordHistory({
             id: itemId,
             ...locator,
-            ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+            ...authorizationTokenField(tokenFor(itemId))
           }),
         true
       )
@@ -1272,7 +1262,7 @@ function VaultShellContent({
           window.bearwarden.logins.copyPasswordHistory({
             id: itemId,
             ...locator,
-            ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+            ...authorizationTokenField(tokenFor(itemId))
           }),
         true
       )
@@ -1525,7 +1515,7 @@ function VaultShellContent({
       if (stopped || refreshing) return
       refreshing = true
       const token = authorizationToken(itemId)
-      const request = { id: itemId, ...(token ? { authorizationToken: token } : {}) }
+      const request = { id: itemId, ...authorizationTokenField(token) }
       const pendingCode = selectedSharedSummary
         ? window.bearwarden.sharedLogins.getTotp({ id: itemId })
         : window.bearwarden.logins.getTotp(request)
@@ -1657,7 +1647,7 @@ function VaultShellContent({
           try {
             const code = await window.bearwarden.logins.getTotp({
               id,
-              ...(tokenFor(id) ? { authorizationToken: tokenFor(id) } : {})
+              ...authorizationTokenField(tokenFor(id))
             })
             return { id, code, fetchedAt: Date.now() }
           } catch (error) {
@@ -2165,25 +2155,9 @@ function VaultShellContent({
     }
   }, [settingsOpen, t])
 
-  function selectScope(nextScope: Scope): void {
+  function showVaultList(nextScope: Scope, type: TypeFilter): void {
     requestEditorTransition(() => {
       setScope(nextScope)
-      setTypeFilter('all')
-      setSidebarOpen(false)
-      setSettingsOpen(false)
-      setHealthOpen(false)
-      setSendsOpen(false)
-      setOrganizationsOpen(false)
-      setEmergencyAccessOpen(false)
-      setTouchIdPassword('')
-      setEditorMode(null)
-      setMoveSnapshot(null)
-    })
-  }
-
-  function selectType(type: TypeFilter): void {
-    requestEditorTransition(() => {
-      setScope({ kind: 'all' })
       setTypeFilter(type)
       setSidebarOpen(false)
       setSettingsOpen(false)
@@ -2197,12 +2171,34 @@ function VaultShellContent({
     })
   }
 
+  function selectScope(nextScope: Scope): void {
+    showVaultList(nextScope, 'all')
+  }
+
+  function selectType(type: TypeFilter): void {
+    showVaultList({ kind: 'all' }, type)
+  }
+
   function rememberNavigationReturnFocus(): void {
     const activeElement =
       document.activeElement instanceof HTMLElement ? document.activeElement : null
     settingsReturnFocusRef.current = activeElement?.closest('[data-slot="dropdown-menu-content"]')
       ? sidebarMenuTriggerRef.current
       : activeElement
+  }
+
+  function openAuxiliaryPage(setPageOpen: (open: boolean) => void): void {
+    requestEditorTransition(() => {
+      rememberNavigationReturnFocus()
+      setPageOpen(true)
+      setSearchOpen(false)
+      setSidebarOpen(false)
+      setEditorMode(null)
+      setMoveSnapshot(null)
+      clearItemSelection()
+      setRevealedSecrets(emptyRevealedSecrets)
+      setRevealedCustomFields(emptyRevealedCustomFields)
+    })
   }
 
   function openSettings(): void {
@@ -2224,17 +2220,7 @@ function VaultShellContent({
   }
 
   function openHealth(): void {
-    requestEditorTransition(() => {
-      rememberNavigationReturnFocus()
-      setHealthOpen(true)
-      setSearchOpen(false)
-      setSidebarOpen(false)
-      setEditorMode(null)
-      setMoveSnapshot(null)
-      clearItemSelection()
-      setRevealedSecrets(emptyRevealedSecrets)
-      setRevealedCustomFields(emptyRevealedCustomFields)
-    })
+    openAuxiliaryPage(setHealthOpen)
   }
 
   function closeHealth(): void {
@@ -2242,17 +2228,7 @@ function VaultShellContent({
   }
 
   function openSends(): void {
-    requestEditorTransition(() => {
-      rememberNavigationReturnFocus()
-      setSendsOpen(true)
-      setSearchOpen(false)
-      setSidebarOpen(false)
-      setEditorMode(null)
-      setMoveSnapshot(null)
-      clearItemSelection()
-      setRevealedSecrets(emptyRevealedSecrets)
-      setRevealedCustomFields(emptyRevealedCustomFields)
-    })
+    openAuxiliaryPage(setSendsOpen)
   }
 
   function closeSends(): void {
@@ -2264,17 +2240,7 @@ function VaultShellContent({
   }
 
   function openEmergencyAccess(): void {
-    requestEditorTransition(() => {
-      rememberNavigationReturnFocus()
-      setEmergencyAccessOpen(true)
-      setSearchOpen(false)
-      setSidebarOpen(false)
-      setEditorMode(null)
-      setMoveSnapshot(null)
-      clearItemSelection()
-      setRevealedSecrets(emptyRevealedSecrets)
-      setRevealedCustomFields(emptyRevealedCustomFields)
-    })
+    openAuxiliaryPage(setEmergencyAccessOpen)
   }
 
   function closeEmergencyAccess(): void {
@@ -2364,6 +2330,25 @@ function VaultShellContent({
     announce(formatVaultImportResult(result))
   }
 
+  function selectSavedItem(id: string, login: LoginView | SharedLoginView | null): void {
+    updateSelectedIds(new Set([id]))
+    selectionAnchorIdRef.current = id
+    selectedIdRef.current = id
+    setSelectedId(id)
+    setSelectedLogin(login)
+  }
+
+  function applyUpdatedSummaries(updated: readonly LoginSummary[]): void {
+    const updatedById = new Map(updated.map((item) => [item.id, item]))
+    for (const item of updated) mergeCachedSummary(detailCacheRef.current, item)
+    setItems((current) => current.map((item) => updatedById.get(item.id) ?? item))
+    setSelectedLogin((current) => {
+      if (!current) return current
+      const summary = updatedById.get(current.id)
+      return summary ? mergeLoginSummary(current, summary) : current
+    })
+  }
+
   const toggleFavorite = useCallback(
     async (item: LoginSummary): Promise<void> => {
       try {
@@ -2371,7 +2356,7 @@ function VaultShellContent({
           window.bearwarden.logins.setFavorite({
             id: item.id,
             favorite: !item.favorite,
-            ...(tokenFor(item.id) ? { authorizationToken: tokenFor(item.id) } : {})
+            ...authorizationTokenField(tokenFor(item.id))
           })
         )
         mergeCachedSummary(detailCacheRef.current, updated)
@@ -2443,10 +2428,9 @@ function VaultShellContent({
       let updated: LoginSummary[] = []
       try {
         await withReprompt(snapshot.ids, async (tokenFor) => {
-          const authorizationToken = firstAuthorizationToken(snapshot.ids, tokenFor)
           const request = {
             ids: snapshot.ids,
-            ...(authorizationToken ? { authorizationToken } : {})
+            ...authorizationTokenField(firstAuthorizationToken(snapshot.ids, tokenFor))
           }
           if (snapshot.action === 'archive') {
             updated = await window.bearwarden.logins.archiveMany(request)
@@ -2481,14 +2465,7 @@ function VaultShellContent({
         setItems((current) => current.filter((item) => !deletedIds.has(item.id)))
         clearItemSelection()
       } else {
-        const updatedById = new Map(updated.map((item) => [item.id, item]))
-        for (const item of updated) mergeCachedSummary(detailCacheRef.current, item)
-        setItems((current) => current.map((item) => updatedById.get(item.id) ?? item))
-        setSelectedLogin((current) => {
-          if (!current) return current
-          const summary = updatedById.get(current.id)
-          return summary ? mergeLoginSummary(current, summary) : current
-        })
+        applyUpdatedSummaries(updated)
       }
       const message =
         snapshot.action === 'archive'
@@ -2525,8 +2502,8 @@ function VaultShellContent({
     if (movable.length === 0) {
       return true
     }
-    if (movable.length > MAX_LOGIN_MOVE_MANY_IDS) {
-      announceError(t`You can move up to ${MAX_LOGIN_MOVE_MANY_IDS} items at a time.`)
+    if (movable.length > MAX_LOGIN_BATCH_IDS) {
+      announceError(t`You can move up to ${MAX_LOGIN_BATCH_IDS} items at a time.`)
       return false
     }
     const movableIds = new Set(movable.map((item) => item.id))
@@ -2541,19 +2518,10 @@ function VaultShellContent({
         window.bearwarden.logins.moveMany({
           ids: movableItemIds,
           folderId,
-          ...(firstAuthorizationToken(movableItemIds, tokenFor)
-            ? { authorizationToken: firstAuthorizationToken(movableItemIds, tokenFor) }
-            : {})
+          ...authorizationTokenField(firstAuthorizationToken(movableItemIds, tokenFor))
         })
       )
-      const updatedById = new Map(updated.map((item) => [item.id, item]))
-      for (const item of updated) mergeCachedSummary(detailCacheRef.current, item)
-      setItems((current) => current.map((item) => updatedById.get(item.id) ?? item))
-      setSelectedLogin((current) => {
-        if (!current) return current
-        const summary = updatedById.get(current.id)
-        return summary ? mergeLoginSummary(current, summary) : current
-      })
+      applyUpdatedSummaries(updated)
       const destination = folders.find((folder) => folder.id === folderId)?.name ?? t`Unfiled`
       announce(
         updated.length > 1
@@ -2597,19 +2565,12 @@ function VaultShellContent({
             window.bearwarden.logins.setFavorite({
               id,
               favorite: true,
-              ...(tokenFor(id) ? { authorizationToken: tokenFor(id) } : {})
+              ...authorizationTokenField(tokenFor(id))
             })
           )
         )
       )
-      const updatedById = new Map(updated.map((item) => [item.id, item]))
-      for (const item of updated) mergeCachedSummary(detailCacheRef.current, item)
-      setItems((current) => current.map((item) => updatedById.get(item.id) ?? item))
-      setSelectedLogin((current) => {
-        if (!current) return current
-        const summary = updatedById.get(current.id)
-        return summary ? mergeLoginSummary(current, summary) : current
-      })
+      applyUpdatedSummaries(updated)
       announce(
         updated.length > 1 ? t`Added ${updated.length} items to favorites.` : t`Added to favorites.`
       )
@@ -2657,9 +2618,7 @@ function VaultShellContent({
       await withReprompt(containedIds, (tokenFor) =>
         window.bearwarden.folders.delete({
           id: folderDialog.id,
-          ...(firstAuthorizationToken(containedIds, tokenFor)
-            ? { authorizationToken: firstAuthorizationToken(containedIds, tokenFor) }
-            : {})
+          ...authorizationTokenField(firstAuthorizationToken(containedIds, tokenFor))
         })
       )
       for (const [id, cached] of detailCacheRef.current) {
@@ -2752,25 +2711,9 @@ function VaultShellContent({
             customFields
           })
           cacheLoginDetail(detailCacheRef.current, created)
-          setSharedItems((current) => [
-            ...current,
-            {
-              ...toLoginSummary(created),
-              organizationId: created.organizationId,
-              collectionIds: created.collectionIds,
-              shared: true,
-              edit: created.edit,
-              viewPassword: created.viewPassword,
-              delete: created.delete,
-              restore: created.restore
-            }
-          ])
+          setSharedItems((current) => [...current, toSharedLoginSummary(created)])
           setScope({ kind: 'organization', organizationId: created.organizationId })
-          updateSelectedIds(new Set([created.id]))
-          selectionAnchorIdRef.current = created.id
-          selectedIdRef.current = created.id
-          setSelectedId(created.id)
-          setSelectedLogin(created)
+          selectSavedItem(created.id, created)
           announce(t`Created “${created.name}”.`)
         } else {
           const created = await createLoginWithOptionalSshImport(request, draft.sshImportToken, {
@@ -2793,11 +2736,10 @@ function VaultShellContent({
           }
           setItems((current) => [...current, toLoginSummary(created)])
           setScope({ kind: 'all' })
-          updateSelectedIds(new Set([created.id]))
-          selectionAnchorIdRef.current = created.id
-          selectedIdRef.current = created.id
-          setSelectedId(created.id)
-          setSelectedLogin(createdWithCardCover.reprompt === 0 ? createdWithCardCover : null)
+          selectSavedItem(
+            created.id,
+            createdWithCardCover.reprompt === 0 ? createdWithCardCover : null
+          )
           announce(t`Created “${created.name}”.`)
         }
       } else if (selectedLogin) {
@@ -2813,20 +2755,7 @@ function VaultShellContent({
             customFields
           })
           setSharedItems((current) =>
-            current.map((item) =>
-              item.id === updated.id
-                ? {
-                    ...toLoginSummary(updated),
-                    organizationId: updated.organizationId,
-                    collectionIds: updated.collectionIds,
-                    shared: true,
-                    edit: updated.edit,
-                    viewPassword: updated.viewPassword,
-                    delete: updated.delete,
-                    restore: updated.restore
-                  }
-                : item
-            )
+            current.map((item) => (item.id === updated.id ? toSharedLoginSummary(updated) : item))
           )
           setSelectedLogin(updated)
           announce(t`Saved “${updated.name}”.`)
@@ -2841,7 +2770,7 @@ function VaultShellContent({
               folderId: draft.folderId,
               favorite: draft.favorite,
               reprompt: draft.reprompt,
-              ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {}),
+              ...authorizationTokenField(tokenFor(itemId)),
               customFields
             }
             return updateLoginWithOptionalSshImport(request, draft.sshImportToken, {
@@ -2853,21 +2782,14 @@ function VaultShellContent({
             draft.type === 'card' && draft.cardCoverSourceUrl
               ? await uploadSelectedCardCover(itemId, draft.cardCoverSourceUrl)
               : null
-          const updatedWithCardCover = cardCoverAttachment
+          const updatedAttachments = cardCoverAttachment
+            ? upsertAttachment(updated.attachments, cardCoverAttachment)
+            : null
+          const updatedWithCardCover = updatedAttachments
             ? {
                 ...updated,
-                attachments: updated.attachments.some(
-                  (entry) => entry.id === cardCoverAttachment.id
-                )
-                  ? updated.attachments.map((entry) =>
-                      entry.id === cardCoverAttachment.id ? cardCoverAttachment : entry
-                    )
-                  : [...updated.attachments, cardCoverAttachment],
-                attachmentCount: updated.attachments.some(
-                  (entry) => entry.id === cardCoverAttachment.id
-                )
-                  ? updated.attachments.length
-                  : updated.attachments.length + 1
+                attachments: updatedAttachments,
+                attachmentCount: updatedAttachments.length
               }
             : updated
           if (updatedWithCardCover.reprompt === 0 || authorizationToken(itemId)) {
@@ -2915,9 +2837,7 @@ function VaultShellContent({
           id: itemId,
           credentialId,
           expectedUpdatedAt,
-          ...(operationAuthorizationToken
-            ? { authorizationToken: operationAuthorizationToken }
-            : {})
+          ...authorizationTokenField(operationAuthorizationToken)
         })
       })
       const canRetainDetail = updated.reprompt === 0 || operationAuthorizationToken !== undefined
@@ -2948,17 +2868,13 @@ function VaultShellContent({
       const cloned = await withReprompt([itemId], (tokenFor) =>
         window.bearwarden.logins.clone({
           id: itemId,
-          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+          ...authorizationTokenField(tokenFor(itemId))
         })
       )
       if (cloned.reprompt === 0) cacheLoginDetail(detailCacheRef.current, cloned)
       setItems((current) => [...current, toLoginSummary(cloned)])
       setScope(cloned.archivedAt ? { kind: 'archive' } : { kind: 'all' })
-      updateSelectedIds(new Set([cloned.id]))
-      selectionAnchorIdRef.current = cloned.id
-      selectedIdRef.current = cloned.id
-      setSelectedId(cloned.id)
-      setSelectedLogin(cloned.reprompt === 0 ? cloned : null)
+      selectSavedItem(cloned.id, cloned.reprompt === 0 ? cloned : null)
       setRevealedSecrets(emptyRevealedSecrets)
       setRevealedCustomFields(emptyRevealedCustomFields)
       announce(t`Created “${cloned.name}”.`)
@@ -2977,17 +2893,13 @@ function VaultShellContent({
       const archived = await withReprompt([itemId], (tokenFor) =>
         window.bearwarden.logins.archive({
           id: itemId,
-          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+          ...authorizationTokenField(tokenFor(itemId))
         })
       )
       cacheLoginDetail(detailCacheRef.current, archived)
       await refreshItems()
       setScope({ kind: 'archive' })
-      updateSelectedIds(new Set([archived.id]))
-      selectionAnchorIdRef.current = archived.id
-      selectedIdRef.current = archived.id
-      setSelectedId(archived.id)
-      setSelectedLogin(archived)
+      selectSavedItem(archived.id, archived)
       announce(t`Archived “${archived.name}”.`)
     } catch (archiveError) {
       announceError(describeVaultError(archiveError))
@@ -3004,17 +2916,13 @@ function VaultShellContent({
       const restored = await withReprompt([itemId], (tokenFor) =>
         window.bearwarden.logins.unarchive({
           id: itemId,
-          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+          ...authorizationTokenField(tokenFor(itemId))
         })
       )
       cacheLoginDetail(detailCacheRef.current, restored)
       await refreshItems()
       setScope({ kind: 'all' })
-      updateSelectedIds(new Set([restored.id]))
-      selectionAnchorIdRef.current = restored.id
-      selectedIdRef.current = restored.id
-      setSelectedId(restored.id)
-      setSelectedLogin(restored)
+      selectSavedItem(restored.id, restored)
       announce(t`Unarchived “${restored.name}”.`)
     } catch (unarchiveError) {
       announceError(describeVaultError(unarchiveError))
@@ -3031,7 +2939,7 @@ function VaultShellContent({
       await withReprompt([itemId], (tokenFor) => {
         const request = {
           id: itemId,
-          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+          ...authorizationTokenField(tokenFor(itemId))
         }
         return selectedSummary.deletedAt
           ? window.bearwarden.logins.deletePermanently(request)
@@ -3057,17 +2965,13 @@ function VaultShellContent({
       const restored = await withReprompt([itemId], (tokenFor) =>
         window.bearwarden.logins.restore({
           id: itemId,
-          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+          ...authorizationTokenField(tokenFor(itemId))
         })
       )
       cacheLoginDetail(detailCacheRef.current, restored)
       await refreshItems()
       setScope(restored.archivedAt ? { kind: 'archive' } : { kind: 'all' })
-      updateSelectedIds(new Set([restored.id]))
-      selectionAnchorIdRef.current = restored.id
-      selectedIdRef.current = restored.id
-      setSelectedId(restored.id)
-      setSelectedLogin(restored)
+      selectSavedItem(restored.id, restored)
       announce(t`Restored “${restored.name}”.`)
     } catch (restoreError) {
       announceError(describeVaultError(restoreError))
@@ -3082,9 +2986,7 @@ function VaultShellContent({
       const trashIds = trashItems.map((item) => item.id)
       const count = await withReprompt(trashIds, (tokenFor) =>
         window.bearwarden.logins.emptyTrash({
-          ...(firstAuthorizationToken(trashIds, tokenFor)
-            ? { authorizationToken: firstAuthorizationToken(trashIds, tokenFor) }
-            : {})
+          ...authorizationTokenField(firstAuthorizationToken(trashIds, tokenFor))
         })
       )
       clearDetailCache()
@@ -3132,7 +3034,7 @@ function VaultShellContent({
             window.bearwarden.logins.revealSecret({
               id: itemId,
               field,
-              ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+              ...authorizationTokenField(tokenFor(itemId))
             })
           )
       if (selectedIdRef.current !== itemId) return undefined
@@ -3209,11 +3111,11 @@ function VaultShellContent({
         await withReprompt([itemId], (tokenFor) =>
           window.bearwarden.logins.copyField({
             ...request,
-            ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+            ...authorizationTokenField(tokenFor(itemId))
           })
         )
       }
-      showCopied(`field:${itemId}:${field}:${uriIndex ?? ''}`)
+      showCopied(detailFieldCopyFeedbackKey(itemId, field, uriIndex))
       if (!selectedSharedSummary) await refreshItems()
     } catch (copyError) {
       announceError(describeVaultError(copyError))
@@ -3252,7 +3154,7 @@ function VaultShellContent({
         : await withReprompt([itemId], (tokenFor) =>
             window.bearwarden.logins.revealCustomField({
               ...request,
-              ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+              ...authorizationTokenField(tokenFor(itemId))
             })
           )
       if (selectedIdRef.current !== itemId) return
@@ -3285,7 +3187,7 @@ function VaultShellContent({
         await withReprompt([itemId], (tokenFor) =>
           window.bearwarden.logins.copyCustomField({
             ...request,
-            ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+            ...authorizationTokenField(tokenFor(itemId))
           })
         )
       }
@@ -3307,7 +3209,7 @@ function VaultShellContent({
           id: itemId,
           attachmentId,
           operationId,
-          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+          ...authorizationTokenField(tokenFor(itemId))
         })
       )
       if (!result.canceled && selectedIdRef.current === itemId) {
@@ -3348,7 +3250,7 @@ function VaultShellContent({
           id: itemId,
           attachmentId,
           operationId,
-          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+          ...authorizationTokenField(tokenFor(itemId))
         })
       )
       if (selectedIdRef.current !== itemId) return
@@ -3384,16 +3286,12 @@ function VaultShellContent({
         window.bearwarden.logins.uploadAttachment({
           id: itemId,
           operationId,
-          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+          ...authorizationTokenField(tokenFor(itemId))
         })
       )
       if (result.attachment) {
         const updatedLogin = updateSelectedAttachments(itemId, (attachments) =>
-          attachments.some((entry) => entry.id === result.attachment!.id)
-            ? attachments.map((entry) =>
-                entry.id === result.attachment!.id ? result.attachment! : entry
-              )
-            : [...attachments, result.attachment!]
+          upsertAttachment(attachments, result.attachment!)
         )
         if (isCardCoverAttachment(result.attachment.fileName)) {
           invalidateCardCoverListPreview(itemId)
@@ -3429,16 +3327,12 @@ function VaultShellContent({
           id: itemId,
           operationId,
           sourceUrl,
-          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+          ...authorizationTokenField(tokenFor(itemId))
         })
       )
       if (!result.attachment) return null
       const updatedLogin = updateSelectedAttachments(itemId, (attachments) =>
-        attachments.some((entry) => entry.id === result.attachment!.id)
-          ? attachments.map((entry) =>
-              entry.id === result.attachment!.id ? result.attachment! : entry
-            )
-          : [...attachments, result.attachment!]
+        upsertAttachment(attachments, result.attachment!)
       )
       invalidateCardCoverListPreview(itemId)
       if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
@@ -3466,16 +3360,12 @@ function VaultShellContent({
         window.bearwarden.logins.uploadCardCoverFileAttachment({
           id: itemId,
           operationId,
-          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+          ...authorizationTokenField(tokenFor(itemId))
         })
       )
       if (!result.attachment) return
       const updatedLogin = updateSelectedAttachments(itemId, (attachments) =>
-        attachments.some((entry) => entry.id === result.attachment!.id)
-          ? attachments.map((entry) =>
-              entry.id === result.attachment!.id ? result.attachment! : entry
-            )
-          : [...attachments, result.attachment!]
+        upsertAttachment(attachments, result.attachment!)
       )
       invalidateCardCoverListPreview(itemId)
       if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
@@ -3507,7 +3397,7 @@ function VaultShellContent({
           id: target.itemId,
           attachmentId: target.attachmentId,
           operationId,
-          ...(tokenFor(target.itemId) ? { authorizationToken: tokenFor(target.itemId) } : {})
+          ...authorizationTokenField(tokenFor(target.itemId))
         })
       )
       const updatedLogin = updateSelectedAttachments(target.itemId, (attachments) =>
@@ -3547,7 +3437,7 @@ function VaultShellContent({
           id: itemId,
           attachmentId,
           operationId,
-          ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+          ...authorizationTokenField(tokenFor(itemId))
         })
       )
       const updatedLogin = updateSelectedAttachments(itemId, (attachments) => {
@@ -3615,7 +3505,7 @@ function VaultShellContent({
         await withReprompt([itemId], (tokenFor) =>
           window.bearwarden.logins.copyTotp({
             id: itemId,
-            ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+            ...authorizationTokenField(tokenFor(itemId))
           })
         )
       }
@@ -3637,7 +3527,7 @@ function VaultShellContent({
           window.bearwarden.logins.openUri({
             id: itemId,
             uriIndex,
-            ...(tokenFor(itemId) ? { authorizationToken: tokenFor(itemId) } : {})
+            ...authorizationTokenField(tokenFor(itemId))
           })
         )
       }

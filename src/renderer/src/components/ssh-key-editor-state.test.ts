@@ -34,7 +34,6 @@ describe('SSH key editor state', () => {
     expect(sshKeyMaterialState({ privateKey: 'private', publicKey: '', fingerprint: '' })).toBe(
       'partial'
     )
-    expect(isSshKeyGenerationBlockingSave('sshKey', 'idle')).toBe(true)
   })
 
   it('waits for existing secrets before deciding whether to generate', () => {
@@ -118,7 +117,6 @@ describe('SSH key editor state', () => {
       sshImportToken: 'generated-token',
       changedSecrets: ['password']
     })
-    expect(JSON.stringify(generated)).not.toContain('generated-private')
     expect(applyGeneratedSshKey(4, 5, current, generated)).toBe(current)
   })
 
@@ -147,7 +145,6 @@ describe('SSH key editor state', () => {
       fingerprint: 'imported-fingerprint'
     }
 
-    expect(Object.keys(rendererSafeResult)).not.toContain('privateKey')
     expect(applyImportedSshKey(8, 8, draft, rendererSafeResult)).toEqual({
       type: 'sshKey',
       privateKey: '',

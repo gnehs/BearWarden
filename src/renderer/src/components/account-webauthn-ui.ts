@@ -37,9 +37,9 @@ export function hiddenProviderEscapeTargets(
   )
 }
 
-export type AccountWebAuthnAction = 'list' | 'enroll' | 'remove'
+type AccountWebAuthnAction = 'list' | 'enroll' | 'remove'
 
-export interface AccountWebAuthnKeyPresentation {
+interface AccountWebAuthnKeyPresentation {
   /** Server-selected numeric slot, used only for React's local list identity. */
   id: number
   name: string

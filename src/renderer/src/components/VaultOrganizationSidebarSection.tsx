@@ -10,7 +10,7 @@ import { vaultOrganizationSidebarCounts } from '../lib/vault-organization-sideba
 import type { Scope } from './VaultShell-model'
 import { SidebarLink } from './VaultShell-primitives'
 
-export interface VaultOrganizationSidebarSectionProps {
+interface VaultOrganizationSidebarSectionProps {
   organizations: OrganizationView[]
   collections: CollectionView[]
   sharedItems: SharedLoginSummary[]

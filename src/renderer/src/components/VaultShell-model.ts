@@ -5,17 +5,9 @@ import type {
   VaultSecretField
 } from '../../../shared/vault-contract'
 import type { VaultCategoryFilter } from '../lib/vault-category'
+import type { VaultSearchNavigationScope } from '../lib/vault-search-ui'
 
-export type Scope =
-  | { kind: 'all' }
-  | { kind: 'favorites' }
-  | { kind: 'folder'; folderId: string }
-  | { kind: 'unfiled' }
-  | { kind: 'shared' }
-  | { kind: 'organization'; organizationId: string }
-  | { kind: 'collection'; organizationId: string; collectionId: string }
-  | { kind: 'archive' }
-  | { kind: 'trash' }
+export type Scope = VaultSearchNavigationScope
 
 export type TypeFilter = VaultCategoryFilter
 

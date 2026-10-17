@@ -5,7 +5,7 @@ interface TotpRefreshSource {
   deletedAt: string | null
 }
 
-export interface TotpRefreshTarget {
+interface TotpRefreshTarget {
   itemId: string
   sourceRevision: string
 }

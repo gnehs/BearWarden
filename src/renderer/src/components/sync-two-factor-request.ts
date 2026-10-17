@@ -9,7 +9,7 @@ export const WEB_AUTHN_TWO_FACTOR_METHOD = 'webauthn' as const
 
 export type SyncTwoFactorFormMethod = SyncTwoFactorMethod | typeof WEB_AUTHN_TWO_FACTOR_METHOD
 
-export interface SyncTwoFactorFormValues {
+interface SyncTwoFactorFormValues {
   twoFactorMethod: SyncTwoFactorFormMethod
   twoFactorCode: string
   webAuthnRemember: boolean

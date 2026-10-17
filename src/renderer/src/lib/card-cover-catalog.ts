@@ -90,50 +90,43 @@ function normalizeCatalogEntry(card: CatalogCard, face: CatalogFace): CardCoverC
   }
 }
 
-export async function fetchCardCoverCatalog(
-  signal?: AbortSignal
-): Promise<CardCoverCatalogEntry[]> {
-  const now = Date.now()
-  if (!signal && catalogCache && catalogCache.expiresAt > now) return catalogCache.promise
-  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+function parseCatalog(payload: unknown): CardCoverCatalogEntry[] {
+  if (!Array.isArray(payload)) return []
 
-  const request = fetch(CARD_COVER_CATALOG_ENDPOINT, { signal }).then(async (response) => {
-    if (!response.ok) throw new Error(`Card catalog request failed: ${response.status}`)
-    const payload = (await response.json()) as unknown
-    if (!Array.isArray(payload)) return []
-
-    const entries: CardCoverCatalogEntry[] = []
-    const seen = new Set<string>()
-    for (const card of payload) {
-      if (!card || typeof card !== 'object') continue
-      const catalogCard = card as CatalogCard
-      const faces = Array.isArray(catalogCard.faces)
-        ? catalogCard.faces
-        : [{ imageUrl: catalogCard.faceUrl }]
-      for (const face of faces) {
-        if (!face || typeof face !== 'object') continue
-        const entry = normalizeCatalogEntry(catalogCard, face as CatalogFace)
-        if (!entry || seen.has(entry.id)) continue
-        seen.add(entry.id)
-        entries.push(entry)
-      }
+  const entries: CardCoverCatalogEntry[] = []
+  const seen = new Set<string>()
+  for (const card of payload) {
+    if (!card || typeof card !== 'object') continue
+    const catalogCard = card as CatalogCard
+    const faces = Array.isArray(catalogCard.faces)
+      ? catalogCard.faces
+      : [{ imageUrl: catalogCard.faceUrl }]
+    for (const face of faces) {
+      if (!face || typeof face !== 'object') continue
+      const entry = normalizeCatalogEntry(catalogCard, face as CatalogFace)
+      if (!entry || seen.has(entry.id)) continue
+      seen.add(entry.id)
+      entries.push(entry)
     }
-    return entries
-  })
+  }
+  return entries
+}
 
-  if (!signal) {
-    const cachedPromise = request.catch((error) => {
-      if (catalogCache?.promise === cachedPromise) catalogCache = undefined
+export function fetchCardCoverCatalog(): Promise<CardCoverCatalogEntry[]> {
+  const now = Date.now()
+  if (catalogCache && catalogCache.expiresAt > now) return catalogCache.promise
+
+  const promise: Promise<CardCoverCatalogEntry[]> = fetch(CARD_COVER_CATALOG_ENDPOINT)
+    .then(async (response) => {
+      if (!response.ok) throw new Error(`Card catalog request failed: ${response.status}`)
+      return parseCatalog(await response.json())
+    })
+    .catch((error) => {
+      if (catalogCache?.promise === promise) catalogCache = undefined
       throw error
     })
-    catalogCache = {
-      expiresAt: now + CATALOG_CACHE_TTL_MS,
-      promise: cachedPromise
-    }
-    return catalogCache.promise
-  }
-
-  return request
+  catalogCache = { expiresAt: now + CATALOG_CACHE_TTL_MS, promise }
+  return promise
 }
 
 export function filterCardCoverCatalog(

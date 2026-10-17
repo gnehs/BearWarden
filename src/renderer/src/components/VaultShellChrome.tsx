@@ -1,8 +1,12 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { ArrowLeft, Menu, Plus, Search, X, type LucideIcon } from 'lucide-react'
 import type { RefObject } from 'react'
-import type { LoginSummary, VaultItemType } from '../../../shared/vault-contract'
-import { MAX_VAULT_SEARCH_QUERY_LENGTH, normalizedVaultSearchQuery } from '../lib/vault-search-ui'
+import {
+  MAX_LOGIN_SEARCH_QUERY_LENGTH,
+  type LoginSummary,
+  type VaultItemType
+} from '../../../shared/vault-contract'
+import { normalizedVaultSearchQuery } from '../lib/vault-search-ui'
 import { normalizeBitwardenCardBrand } from '../lib/payment-card'
 import { cn } from '../lib/utils'
 import ApplicationTitlebarMenu from './ApplicationTitlebarMenu'
@@ -31,9 +35,7 @@ interface ItemTypePresentation {
 }
 
 const titlebarClassName = cn(
-  // Base titlebar layout and appearance.
   'border-border relative z-20 flex h-14 min-h-14 items-center gap-3 border-b bg-[color-mix(in_oklch,var(--card)_86%,transparent)] py-0 pr-3.5 pl-20 shadow-[inset_0_1px_color-mix(in_oklch,var(--shadow-color)_5%,transparent)] backdrop-blur-xl backdrop-saturate-180 select-none [-webkit-app-region:drag]',
-  // Compact layouts.
   'max-[1050px]:pl-18 max-[880px]:pl-3.5 max-[680px]:h-13 max-[680px]:min-h-13 max-[430px]:gap-2 max-[430px]:px-3',
   // Leave space for the macOS traffic-light controls.
   '[.platform-macos_&]:border-b-transparent [.platform-macos_&]:bg-transparent [.platform-macos_&]:pl-24 [.platform-macos_&]:shadow-none [.platform-macos_&]:backdrop-filter-none max-[880px]:[.platform-macos_&]:pl-20 max-[430px]:[.platform-macos_&]:py-0 max-[430px]:[.platform-macos_&]:pr-3 max-[430px]:[.platform-macos_&]:pl-20',
@@ -274,7 +276,7 @@ export function VaultSearchDialog({
         <CommandInput
           ref={inputRef}
           placeholder={t`Search vault; for example, >name:github`}
-          maxLength={MAX_VAULT_SEARCH_QUERY_LENGTH}
+          maxLength={MAX_LOGIN_SEARCH_QUERY_LENGTH}
           value={state.query}
           onValueChange={actions.onQueryChange}
           endAdornment={

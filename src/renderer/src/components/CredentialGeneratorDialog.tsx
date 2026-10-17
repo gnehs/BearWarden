@@ -144,8 +144,10 @@ export default function CredentialGeneratorDialog({
   useCategories
 }: CredentialGeneratorDialogProps): React.JSX.Element {
   const { i18n, t } = useLingui()
-  const mountedRef = useRef(true)
+  // Every async result is applied only if no newer request, tab change, close, or unmount happened.
   const requestGenerationRef = useRef(0)
+  const isCurrentRequest = (generation: number): boolean =>
+    requestGenerationRef.current === generation
   const [tab, setTab] = useState<GeneratorTab>(initialTab)
   const [passwordAlgorithm, setPasswordAlgorithm] = useState<PasswordAlgorithm>('password')
   const [usernameAlgorithm, setUsernameAlgorithm] = useState<UsernameAlgorithm>('username')
@@ -188,6 +190,8 @@ export default function CredentialGeneratorDialog({
     username: t`Username`,
     email: t`Email`
   }
+
+  const invalidSettingsError = t`The settings cannot generate a valid value. Check the length, minimum characters, and email or domain.`
 
   const generateLabel =
     tab === 'password'
@@ -256,55 +260,45 @@ export default function CredentialGeneratorDialog({
     wordCount
   ])
 
-  useEffect(() => {
-    mountedRef.current = true
-    return () => {
-      mountedRef.current = false
+  useEffect(
+    () => () => {
       requestGenerationRef.current += 1
-    }
-  }, [])
+    },
+    []
+  )
 
   useEffect(() => {
     if (!generatorRequest) return
-    let ignore = false
     const generation = ++requestGenerationRef.current
     const delay =
       generatorRequest.algorithm === 'subaddress' || generatorRequest.algorithm === 'catchall'
         ? 250
         : 0
 
+    const isCurrent = (): boolean => requestGenerationRef.current === generation
     const timer = window.setTimeout(() => {
-      if (ignore || !mountedRef.current || requestGenerationRef.current !== generation) return
+      if (!isCurrent()) return
       setBusy(true)
       setError('')
       setResult(null)
       clearCopied()
       void onGenerate(generatorRequest)
         .then((generated) => {
-          if (!ignore && mountedRef.current && requestGenerationRef.current === generation) {
-            setResult(generated)
-          }
+          if (isCurrent()) setResult(generated)
         })
         .catch(() => {
-          if (!ignore && mountedRef.current && requestGenerationRef.current === generation) {
-            setError(
-              t`The settings cannot generate a valid value. Check the length, minimum characters, and email or domain.`
-            )
-          }
+          if (isCurrent()) setError(invalidSettingsError)
         })
         .finally(() => {
-          if (!ignore && mountedRef.current && requestGenerationRef.current === generation) {
-            setBusy(false)
-          }
+          if (isCurrent()) setBusy(false)
         })
     }, delay)
 
     return () => {
-      ignore = true
       window.clearTimeout(timer)
-      if (requestGenerationRef.current === generation) requestGenerationRef.current += 1
+      if (isCurrent()) requestGenerationRef.current += 1
     }
-  }, [clearCopied, generatorRequest, onGenerate, t, tab])
+  }, [clearCopied, generatorRequest, invalidSettingsError, onGenerate, tab])
 
   function invalidatePlaintext(): void {
     requestGenerationRef.current += 1
@@ -331,15 +325,15 @@ export default function CredentialGeneratorDialog({
     setError('')
     try {
       const entries = await onListHistory()
-      if (!mountedRef.current || requestGenerationRef.current !== generation) return
+      if (!isCurrentRequest(generation)) return
       setHistory(entries)
       setHistoryLoaded(true)
     } catch {
-      if (mountedRef.current && requestGenerationRef.current === generation) {
+      if (isCurrentRequest(generation)) {
         setError(t`Unable to read generator history.`)
       }
     } finally {
-      if (mountedRef.current && requestGenerationRef.current === generation) setBusy(false)
+      if (isCurrentRequest(generation)) setBusy(false)
     }
   }
 
@@ -354,9 +348,7 @@ export default function CredentialGeneratorDialog({
 
   async function generate(): Promise<void> {
     if (!generatorRequest) {
-      setError(
-        t`The settings cannot generate a valid value. Check the length, minimum characters, and email or domain.`
-      )
+      setError(invalidSettingsError)
       return
     }
     const generation = ++requestGenerationRef.current
@@ -367,16 +359,12 @@ export default function CredentialGeneratorDialog({
     clearCopied()
     try {
       const generated = await onGenerate(generatorRequest)
-      if (!mountedRef.current || requestGenerationRef.current !== generation) return
+      if (!isCurrentRequest(generation)) return
       setResult(generated)
     } catch {
-      if (mountedRef.current && requestGenerationRef.current === generation) {
-        setError(
-          t`The settings cannot generate a valid value. Check the length, minimum characters, and email or domain.`
-        )
-      }
+      if (isCurrentRequest(generation)) setError(invalidSettingsError)
     } finally {
-      if (mountedRef.current && requestGenerationRef.current === generation) setBusy(false)
+      if (isCurrentRequest(generation)) setBusy(false)
     }
   }
 
@@ -387,15 +375,15 @@ export default function CredentialGeneratorDialog({
     clearCopied()
     try {
       await onCopyGenerated(token)
-      if (mountedRef.current && requestGenerationRef.current === generation) {
+      if (isCurrentRequest(generation)) {
         showCopied(generatedCopyFeedbackKey)
       }
     } catch {
-      if (mountedRef.current && requestGenerationRef.current === generation) {
+      if (isCurrentRequest(generation)) {
         setError(t`Unable to copy the generated result. Generate it again and try once more.`)
       }
     } finally {
-      if (mountedRef.current && requestGenerationRef.current === generation) setBusy(false)
+      if (isCurrentRequest(generation)) setBusy(false)
     }
   }
 
@@ -407,15 +395,15 @@ export default function CredentialGeneratorDialog({
     clearCopied()
     try {
       await onCopyHistory(locator)
-      if (mountedRef.current && requestGenerationRef.current === generation) {
+      if (isCurrentRequest(generation)) {
         showCopied(feedbackKey)
       }
     } catch {
-      if (mountedRef.current && requestGenerationRef.current === generation) {
+      if (isCurrentRequest(generation)) {
         setError(t`Unable to copy. This history entry may have changed.`)
       }
     } finally {
-      if (mountedRef.current && requestGenerationRef.current === generation) setBusy(false)
+      if (isCurrentRequest(generation)) setBusy(false)
     }
   }
 
@@ -425,16 +413,16 @@ export default function CredentialGeneratorDialog({
     setError('')
     try {
       await onClearHistory()
-      if (!mountedRef.current || requestGenerationRef.current !== generation) return
+      if (!isCurrentRequest(generation)) return
       setHistory([])
       setHistoryLoaded(true)
       setResult(null)
     } catch {
-      if (mountedRef.current && requestGenerationRef.current === generation) {
+      if (isCurrentRequest(generation)) {
         setError(t`Unable to clear generator history.`)
       }
     } finally {
-      if (mountedRef.current && requestGenerationRef.current === generation) setBusy(false)
+      if (isCurrentRequest(generation)) setBusy(false)
     }
   }
 

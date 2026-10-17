@@ -4,7 +4,7 @@ export const supportedLocales = ['en', 'zh-CN', 'zh-TW', 'ja'] as const
 
 export type SupportedLocale = (typeof supportedLocales)[number]
 
-export const defaultLocale: SupportedLocale = 'en'
+const defaultLocale: SupportedLocale = 'en'
 
 /** Reads the persisted preference without allowing settings IPC failure to block application boot. */
 export async function initialLanguagePreference(

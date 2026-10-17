@@ -34,7 +34,7 @@ import type { ItemSelectionModifiers } from './DndRows'
 import { useShallow } from 'zustand/react/shallow'
 import { useVaultSessionStore } from '@renderer/stores/vault-session-store'
 import TotpCountdownIndicator from './TotpCountdownIndicator'
-import VirtualizedItemList, { type VirtualizedItemGroup } from './VirtualizedItemList'
+import { VirtualizedItemList, type VirtualizedItemGroup } from './VirtualizedItemList'
 import {
   totpListCountdownPeriodSeconds,
   type BulkActionKind,

@@ -221,7 +221,11 @@ function OrganizationsPage(): React.JSX.Element {
 
   function selectOrganization(id: string | null): void {
     setOrganizationId(id)
-    setCollectionId(null)
+    selectCollection(null)
+  }
+
+  function selectCollection(id: string | null): void {
+    setCollectionId(id)
     clearSelected()
   }
 
@@ -328,10 +332,7 @@ function OrganizationsPage(): React.JSX.Element {
                   variant={collectionId === null ? 'secondary' : 'outline'}
                   type="button"
                   aria-pressed={collectionId === null}
-                  onClick={() => {
-                    setCollectionId(null)
-                    clearSelected()
-                  }}
+                  onClick={() => selectCollection(null)}
                 >
                   <Trans>All</Trans>
                 </Button>
@@ -342,10 +343,7 @@ function OrganizationsPage(): React.JSX.Element {
                     className="h-auto whitespace-normal"
                     type="button"
                     aria-pressed={collectionId === collection.id}
-                    onClick={() => {
-                      setCollectionId(collection.id)
-                      clearSelected()
-                    }}
+                    onClick={() => selectCollection(collection.id)}
                   >
                     <FolderOpen data-icon="inline-start" />
                     {collection.name}

@@ -9,7 +9,8 @@ import {
   Save,
   Trash2
 } from 'lucide-react'
-import { plural } from '@lingui/core/macro'
+import type { MessageDescriptor } from '@lingui/core'
+import { msg, plural } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
@@ -71,7 +72,7 @@ import {
   formatSendDate,
   maxAccessCountValidationMessage,
   sendStatuses,
-  type SendStatus,
+  type SendStatusKey,
   usesEmailVerification
 } from './send-ui'
 
@@ -106,26 +107,20 @@ function draftFromSend(send: SendView, fileSendErrorMessage: string): SendCreate
   }
 }
 
-function SendStatusBadge({ status }: { status: SendStatus }): React.JSX.Element {
-  const { t } = useLingui()
-  const label =
-    status.key === 'password'
-      ? t`Password required`
-      : status.key === 'email-verification'
-        ? t`Email verification`
-        : status.key === 'disabled'
-          ? t`Disabled`
-          : status.key === 'expired'
-            ? t`Expired`
-            : status.key === 'max-access-reached'
-              ? t`Access limit reached`
-              : status.key === 'pending-deletion'
-                ? t`Pending deletion`
-                : status.key === 'hidden-text'
-                  ? t`Hide text by default`
-                  : t`Hide sender email`
+const sendStatusLabels: Record<SendStatusKey, MessageDescriptor> = {
+  password: msg`Password required`,
+  'email-verification': msg`Email verification`,
+  disabled: msg`Disabled`,
+  expired: msg`Expired`,
+  'max-access-reached': msg`Access limit reached`,
+  'pending-deletion': msg`Pending deletion`,
+  'hidden-text': msg`Hide text by default`,
+  'hidden-email': msg`Hide sender email`
+}
 
-  return <Badge variant="outline">{label}</Badge>
+function SendStatusBadge({ status }: { status: SendStatusKey }): React.JSX.Element {
+  const { i18n } = useLingui()
+  return <Badge variant="outline">{i18n._(sendStatusLabels[status])}</Badge>
 }
 
 function SendsPage(): React.JSX.Element {
@@ -263,11 +258,9 @@ function SendsPage(): React.JSX.Element {
         disabled: draft.disabled,
         hideEmail: draft.hideEmail
       })
-      if (result.canceled || !result.send) return
-      setSends((current) => [
-        result.send!,
-        ...current.filter((send) => send.id !== result.send!.id)
-      ])
+      const created = result.send
+      if (result.canceled || !created) return
+      setSends((current) => [created, ...current.filter((send) => send.id !== created.id)])
       setSelectedId(null)
       setSendDialogOpen(false)
       toast.success(t`File Send created`)
@@ -430,7 +423,7 @@ function SendsPage(): React.JSX.Element {
                       {send.type === 'file' && <FileText aria-hidden="true" />}
                       {send.name}
                       {sendStatuses(send).map((status) => (
-                        <SendStatusBadge key={status.key} status={status} />
+                        <SendStatusBadge key={status} status={status} />
                       ))}
                     </CardTitle>
                     <CardDescription>

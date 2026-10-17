@@ -70,6 +70,14 @@ export function useVaultSearch({
     const requestId = ++searchRequestIdRef.current
     if (!searchQuery) return
 
+    const isCurrentResponse = (): boolean =>
+      isCurrentVaultSearchResponse({
+        requestId,
+        currentRequestId: searchRequestIdRef.current,
+        query: searchQuery,
+        currentQuery: queryRef.current
+      })
+
     const timeout = window.setTimeout(() => {
       const [activeRequest, archivedRequest, deletedRequest] = vaultSearchListRequests(searchQuery)
       void Promise.all([
@@ -79,16 +87,7 @@ export function useVaultSearch({
         window.bearwarden.sharedLogins.list({ sort: 'name', query: searchQuery })
       ]).then(
         ([activeItems, archivedItems, deletedItems, matchingSharedItems]) => {
-          if (
-            !isCurrentVaultSearchResponse({
-              requestId,
-              currentRequestId: searchRequestIdRef.current,
-              query: searchQuery,
-              currentQuery: queryRef.current
-            })
-          ) {
-            return
-          }
+          if (!isCurrentResponse()) return
           setSearchMatches({
             query: searchQuery,
             ids: new Set(
@@ -99,16 +98,7 @@ export function useVaultSearch({
           })
         },
         (searchError) => {
-          if (
-            !isCurrentVaultSearchResponse({
-              requestId,
-              currentRequestId: searchRequestIdRef.current,
-              query: searchQuery,
-              currentQuery: queryRef.current
-            })
-          ) {
-            return
-          }
+          if (!isCurrentResponse()) return
           setSearchMatches({ query: searchQuery, ids: new Set() })
           onError(describeError(searchError))
         }

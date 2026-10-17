@@ -30,13 +30,11 @@ const item: LoginSummary = {
 }
 
 describe('ItemDragPreview', () => {
-  it('renders a compact, standalone preview for every drop destination', () => {
+  it('describes the dragged item when no destination is active', () => {
     const markup = renderToStaticMarkup(
       <ItemDragPreview item={item} count={1} showWebsiteIcons={false} />
     )
 
-    expect(markup).toContain('w-full')
-    expect(markup).toContain('max-w-[calc(100vw-24px)]')
     expect(markup).toContain('安全筆記 · 拖曳以移動')
     expect(markup).toContain('aria-hidden="true"')
     expect(markup).not.toContain('data-drag-preview-layer')
@@ -54,19 +52,6 @@ describe('ItemDragPreview', () => {
 
     expect(markup).toContain('移動到「工作」')
     expect(markup).not.toContain('拖曳以移動')
-  })
-
-  it('shows an explicit cancel action outside a destination', () => {
-    const markup = renderToStaticMarkup(
-      <ItemDragPreview
-        item={item}
-        count={1}
-        showWebsiteIcons={false}
-        destinationDescription="放開以取消移動"
-      />
-    )
-
-    expect(markup).toContain('放開以取消移動')
   })
 
   it('stacks card layers behind the active item when multiple items are dragged', () => {

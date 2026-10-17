@@ -6,7 +6,6 @@ import {
 } from '../../../shared/vault-contract'
 import { matchesVaultCategory, type VaultCategoryFilter } from './vault-category'
 
-export const MAX_VAULT_SEARCH_QUERY_LENGTH = MAX_LOGIN_SEARCH_QUERY_LENGTH
 export const VAULT_SEARCH_DEBOUNCE_MS = 100
 
 export interface VaultSearchMatches {
@@ -26,7 +25,7 @@ export type VaultSearchNavigationScope =
   | { kind: 'trash' }
 
 export function boundedVaultSearchQuery(value: string): string {
-  return value.slice(0, MAX_VAULT_SEARCH_QUERY_LENGTH)
+  return value.slice(0, MAX_LOGIN_SEARCH_QUERY_LENGTH)
 }
 
 export function normalizedVaultSearchQuery(value: string): string {
@@ -70,10 +69,7 @@ export function matchesVaultSearchNavigation(
   }
 
   if (normalizedVaultSearchQuery(query)) return true
-  const sharedItem =
-    'shared' in item && item.shared === true && 'organizationId' in item && 'collectionIds' in item
-      ? (item as unknown as SharedLoginSummary)
-      : null
+  const sharedItem = 'shared' in item && item.shared === true ? (item as SharedLoginSummary) : null
   if (scope.kind === 'shared' && !sharedItem) return false
   if (scope.kind === 'organization' && sharedItem?.organizationId !== scope.organizationId)
     return false

@@ -272,5 +272,3 @@ export function VirtualizedItemList({
     </div>
   )
 }
-
-export default VirtualizedItemList

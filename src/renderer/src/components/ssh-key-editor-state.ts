@@ -13,16 +13,21 @@ import type {
 } from '../../../shared/vault-contract'
 
 export type SshKeyGenerationState = 'idle' | 'generating' | 'ready' | 'error'
-export type SshKeyMaterialState = 'blank' | 'complete' | 'partial'
-export type SshKeyGenerationAction = 'wait' | 'generate' | 'ready' | 'error'
+type SshKeyMaterialState = 'blank' | 'complete' | 'partial'
+type SshKeyGenerationAction = 'wait' | 'generate' | 'ready' | 'error'
 export type SshKeyImportState =
   'idle' | 'reading' | 'awaitingPassphrase' | 'submittingPassphrase' | 'ready'
-export type SshKeyImportResultAction = 'awaitPassphrase' | 'ready' | 'retryPassphrase' | 'fail'
+type SshKeyImportResultAction = 'awaitPassphrase' | 'ready' | 'retryPassphrase' | 'fail'
 
 interface SshKeyMaterial {
   privateKey: string
   publicKey: string
   fingerprint: string
+}
+
+type SshKeyDraft = SshKeyMaterial & {
+  changedSecrets: VaultEditorSecretField[]
+  sshImportToken?: string
 }
 
 export function sshKeyMaterialState(material: SshKeyMaterial): SshKeyMaterialState {
@@ -44,50 +49,43 @@ export function sshKeyGenerationAction(
   return materialState === 'complete' ? 'ready' : 'error'
 }
 
-export function clearSshKeyMaterial<
-  T extends SshKeyMaterial & { changedSecrets: VaultEditorSecretField[] }
->(draft: T): T {
+/** Clearing the material also drops the staging token that refers to main-process key material. */
+export function clearSshKeyMaterial<T extends SshKeyDraft>(draft: T): T {
   return {
     ...draft,
     privateKey: '',
     publicKey: '',
     fingerprint: '',
+    sshImportToken: undefined,
     changedSecrets: draft.changedSecrets.filter((field) => field !== 'privateKey')
   }
 }
 
-export function applyImportedSshKey<
-  T extends SshKeyMaterial & {
-    type: VaultItemType
-    changedSecrets: VaultEditorSecretField[]
-    sshImportToken?: string
+/** The private key stays in the main process; the draft keeps only its public metadata and token. */
+function withStagedSshKey<T extends SshKeyDraft>(
+  draft: T,
+  staged: { token: string; publicKey: string; fingerprint: string }
+): T {
+  return {
+    ...clearSshKeyMaterial(draft),
+    publicKey: staged.publicKey,
+    fingerprint: staged.fingerprint,
+    sshImportToken: staged.token
   }
->(
+}
+
+export function applyImportedSshKey<T extends SshKeyDraft & { type: VaultItemType }>(
   requestId: number,
   currentRequestId: number,
   draft: T,
   result: Extract<SshKeyImportResult, { status: 'ready' }>
 ): T {
   if (requestId !== currentRequestId || draft.type !== 'sshKey') return draft
-
-  return {
-    ...draft,
-    privateKey: '',
-    publicKey: result.publicKey,
-    fingerprint: result.fingerprint,
-    sshImportToken: result.token,
-    changedSecrets: draft.changedSecrets.filter((field) => field !== 'privateKey')
-  }
+  return withStagedSshKey(draft, result)
 }
 
-export function invalidateFailedSshImport<
-  T extends SshKeyMaterial & {
-    changedSecrets: VaultEditorSecretField[]
-    sshImportToken?: string
-  }
->(draft: T, failedToken: string): T {
-  if (draft.sshImportToken !== failedToken) return draft
-  return { ...clearSshKeyMaterial(draft), sshImportToken: undefined }
+export function invalidateFailedSshImport<T extends SshKeyDraft>(draft: T, failedToken: string): T {
+  return draft.sshImportToken === failedToken ? clearSshKeyMaterial(draft) : draft
 }
 
 export function sshKeyImportErrorMessage(
@@ -172,28 +170,14 @@ export function canApplyGeneratedSshKey(
   )
 }
 
-export function applyGeneratedSshKey<
-  T extends SshKeyMaterial & {
-    type: VaultItemType
-    changedSecrets: VaultEditorSecretField[]
-    sshImportToken?: string
-  }
->(
+export function applyGeneratedSshKey<T extends SshKeyDraft & { type: VaultItemType }>(
   requestId: number,
   currentRequestId: number,
   draft: T,
   generated: Extract<SshKeyGenerationResult, { status: 'ready' }>
 ): T {
   if (!canApplyGeneratedSshKey(requestId, currentRequestId, draft)) return draft
-
-  return {
-    ...draft,
-    privateKey: '',
-    publicKey: generated.publicKey,
-    fingerprint: generated.fingerprint,
-    sshImportToken: generated.token,
-    changedSecrets: draft.changedSecrets.filter((field) => field !== 'privateKey')
-  }
+  return withStagedSshKey(draft, generated)
 }
 
 export function isSshKeyGenerationBlockingSave(

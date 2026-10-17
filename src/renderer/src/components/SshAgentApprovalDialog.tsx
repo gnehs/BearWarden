@@ -22,10 +22,8 @@ import { Spinner } from '@renderer/components/ui/spinner'
 import { approvalExpiryMessage } from '@renderer/lib/approval-expiry'
 import { canApproveSshAgentApproval } from '@renderer/lib/ssh-agent-ui'
 
-export type SshAgentApprovalView = SshAgentApprovalPrompt
-
 interface SshAgentApprovalDialogProps {
-  request: SshAgentApprovalView
+  request: SshAgentApprovalPrompt
   onRespond: (response: SshAgentApprovalResponse) => Promise<void>
   onSettled: () => void
 }

@@ -1,4 +1,4 @@
-export type AuthenticationSource = 'setup' | 'unlock'
+type AuthenticationSource = 'setup' | 'unlock'
 
 export function shouldPromptSyncSetup(source: AuthenticationSource): boolean {
   return source === 'setup'

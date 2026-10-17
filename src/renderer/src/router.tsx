@@ -22,7 +22,7 @@ const unlockRoute = createRoute({
   path: 'unlock'
 })
 
-export const vaultRoute = createRoute({
+const vaultRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'vault'
 })

@@ -10,7 +10,7 @@ export const quickAccessDropIds = {
 
 export type QuickAccessDropAction = keyof typeof quickAccessDropIds
 export type DraggableItemState = 'active' | 'archive'
-export const FOLDER_HIERARCHY_DRAG_THRESHOLD = 18
+const FOLDER_HIERARCHY_DRAG_THRESHOLD = 18
 export const folderRootDropId = 'folder:root'
 
 export interface FolderHierarchyDragIntent {

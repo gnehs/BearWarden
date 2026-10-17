@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { LoginSummary } from '../../../shared/vault-contract'
 import {
+  authorizationTokenField,
   cacheLoginDetail,
   firstAuthorizationToken,
   mergeCachedSummary,
@@ -98,5 +99,11 @@ describe('summary and authorization projections', () => {
       'second-token'
     )
     expect(firstAuthorizationToken(['first'], (id) => tokens.get(id))).toBeUndefined()
+  })
+
+  it('omits the authorization field entirely when no token is available', () => {
+    expect(authorizationTokenField('token')).toEqual({ authorizationToken: 'token' })
+    expect(Object.keys(authorizationTokenField(undefined))).toEqual([])
+    expect(Object.keys(authorizationTokenField(''))).toEqual([])
   })
 })

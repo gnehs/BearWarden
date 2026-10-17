@@ -31,6 +31,12 @@ interface UsePasswordHistoryResult {
   copyEntry: (index: number, lastUsedDate: string) => Promise<void>
 }
 
+function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
+  const next = { ...record }
+  delete next[key]
+  return next
+}
+
 export function usePasswordHistory({
   onLoad,
   onReveal,
@@ -108,11 +114,7 @@ export function usePasswordHistory({
       const key = `${index}:${lastUsedDate}`
       if (revealedValues[key] !== undefined) {
         clearRevealTimer(key)
-        setRevealedValues((current) => {
-          const next = { ...current }
-          delete next[key]
-          return next
-        })
+        setRevealedValues((current) => withoutKey(current, key))
         return
       }
       setRevealing((current) => ({ ...current, [key]: true }))
@@ -126,11 +128,7 @@ export function usePasswordHistory({
           key,
           window.setTimeout(() => {
             revealTimersRef.current.delete(key)
-            setRevealedValues((current) => {
-              const next = { ...current }
-              delete next[key]
-              return next
-            })
+            setRevealedValues((current) => withoutKey(current, key))
           }, 30_000)
         )
       } catch {
@@ -139,11 +137,7 @@ export function usePasswordHistory({
         }
       } finally {
         if (mountedRef.current) {
-          setRevealing((current) => {
-            const next = { ...current }
-            delete next[key]
-            return next
-          })
+          setRevealing((current) => withoutKey(current, key))
         }
       }
     },
@@ -164,11 +158,7 @@ export function usePasswordHistory({
         }
       } finally {
         if (mountedRef.current) {
-          setCopying((current) => {
-            const next = { ...current }
-            delete next[key]
-            return next
-          })
+          setCopying((current) => withoutKey(current, key))
         }
       }
     },

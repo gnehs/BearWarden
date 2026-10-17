@@ -1,6 +1,10 @@
 import { arrayMove } from '@dnd-kit/sortable'
 import { parse } from 'tldts'
-import type { VaultCustomFieldType, VaultLoginUri } from '../../../shared/vault-contract'
+import type {
+  VaultCustomFieldType,
+  VaultLoginUri,
+  VaultUriMatch
+} from '../../../shared/vault-contract'
 
 export function canSelectCustomFieldType(
   type: VaultCustomFieldType,
@@ -37,13 +41,13 @@ export function reorderEditorUris(
   return { uris: reordered, uri: reordered[0]?.uri ?? null }
 }
 
-// Keep module initialization locale-independent. Labels are created inside LoginEditor after
-// Lingui has activated the selected catalog, while these values remain safe to import at startup.
-export const uriMatchOptionValues = ['default', '0', '1', '2', '3', '4', '5'] as const
+export type UriMatchOptionValue = 'default' | `${VaultUriMatch}`
 
-export type UriMatchOptionValue = (typeof uriMatchOptionValues)[number]
+export function uriMatchOptionValue(match: VaultUriMatch | null): UriMatchOptionValue {
+  return match === null ? 'default' : `${match}`
+}
 
-export interface UriMatchRecognizedParts {
+interface UriMatchRecognizedParts {
   leading: string
   recognized: string | null
   trailing: string
@@ -74,16 +78,16 @@ export function uriMatchRecognizedParts(
 ): UriMatchRecognizedParts {
   const trimmedUri = rawUri.trim()
   if (!trimmedUri) return { leading: '', recognized: null, trailing: '' }
-  const uri = value === '2' || value === '3' || value === '4' ? rawUri : trimmedUri
+  const matchesWholeUri = value === '2' || value === '3' || value === '4'
+  const uri = matchesWholeUri ? rawUri : trimmedUri
 
-  const recognized =
-    value === 'default' || value === '0'
-      ? recognizedBaseDomain(trimmedUri)
-      : value === '1'
-        ? recognizedHost(trimmedUri)
-        : value === '2' || value === '3' || value === '4'
-          ? uri
-          : null
+  const recognized = matchesWholeUri
+    ? uri
+    : value === '1'
+      ? recognizedHost(trimmedUri)
+      : value === '5'
+        ? null
+        : recognizedBaseDomain(trimmedUri)
   if (!recognized) return { leading: uri, recognized: null, trailing: '' }
 
   const start = uri.toLocaleLowerCase('en-US').indexOf(recognized.toLocaleLowerCase('en-US'))

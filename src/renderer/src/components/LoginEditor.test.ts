@@ -179,10 +179,12 @@ describe('LoginEditor design language', () => {
     expect(markup).not.toContain('data-disabled')
   })
 
-  it('新增模式不使用分頁，並同時呈現所有編輯器區段', () => {
-    const markup = renderLoginEditor()
+  it.each([
+    ['新增模式', undefined],
+    ['編輯既有項目', loginFixture]
+  ])('%s不使用分頁，並同時呈現所有編輯器區段', (_mode, login) => {
+    const markup = renderLoginEditor(login)
 
-    expect(markup).not.toContain('aria-label="編輯器區段"')
     expect(markup).not.toContain('role="tablist"')
     expect(markup).not.toContain('data-slot="tabs"')
     expect(markup).toContain('data-editor-section="details"')
@@ -231,17 +233,6 @@ describe('LoginEditor design language', () => {
 
     expect(markup).not.toContain('id="editor-card-face"')
     expect(markup).not.toContain('上傳卡面')
-  })
-
-  it('編輯既有項目也不使用分頁，並同時呈現所有編輯器區段', () => {
-    const markup = renderLoginEditor(loginFixture)
-
-    expect(markup).not.toContain('aria-label="編輯器區段"')
-    expect(markup).not.toContain('role="tablist"')
-    expect(markup).not.toContain('data-slot="tabs"')
-    expect(markup).toContain('data-editor-section="details"')
-    expect(markup).toContain('data-editor-section="custom"')
-    expect(markup).toContain('data-editor-section="organize"')
   })
 
   it('網站匹配範例會標示實際參與辨識的網址片段', () => {

@@ -71,8 +71,7 @@ export type InactiveTwoFactorCheckState =
   | { status: 'success'; revision: string; report: InactiveTwoFactorReport }
 
 // Exported for security-state regression tests; this file otherwise remains the page boundary.
-// eslint-disable-next-line react-refresh/only-export-components
-export function createInactiveTwoFactorIdleState(revision: string): InactiveTwoFactorCheckState {
+function createInactiveTwoFactorIdleState(revision: string): InactiveTwoFactorCheckState {
   return { status: 'idle', revision }
 }
 

@@ -16,6 +16,7 @@ import type { RevealedCustomFieldsState, RevealedSecretsState } from './VaultShe
 import {
   customFieldCopyFeedbackKey,
   customFieldDisplayValue,
+  detailFieldCopyFeedbackKey,
   matchesCustomFieldSource,
   type DetailField
 } from './vault-detail-view-model'
@@ -74,7 +75,7 @@ function VaultDetailFieldRow({
       : undefined
   const hasExtraAction = Boolean(field.copyable) && Boolean(field.openUri)
   const canCopyFromValue = Boolean(field.secret || field.copyable)
-  const copyKey = `field:${copy.itemId}:${field.field}:${field.uriIndex ?? ''}`
+  const copyKey = detailFieldCopyFeedbackKey(copy.itemId, field.field, field.uriIndex)
   const valueClassName = field.secret
     ? revealedValue === undefined
       ? 'tracking-widest'
@@ -121,11 +122,7 @@ function VaultDetailFieldRow({
           }
         }
       : undefined
-  const value = (
-    <strong className={valueClassName} {...(canCopyFromValue ? undefined : secretHoverHandlers)}>
-      {displayValue}
-    </strong>
-  )
+  const value = <strong className={valueClassName}>{displayValue}</strong>
 
   return (
     <div

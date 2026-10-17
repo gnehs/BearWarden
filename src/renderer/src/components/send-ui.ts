@@ -3,18 +3,15 @@ import { msg } from '@lingui/core/macro'
 import { format } from 'date-fns'
 import type { SendView } from '../../../shared/vault-contract'
 
-export interface SendStatus {
-  key:
-    | 'password'
-    | 'email-verification'
-    | 'disabled'
-    | 'expired'
-    | 'max-access-reached'
-    | 'pending-deletion'
-    | 'hidden-text'
-    | 'hidden-email'
-  label: string
-}
+export type SendStatusKey =
+  | 'password'
+  | 'email-verification'
+  | 'disabled'
+  | 'expired'
+  | 'max-access-reached'
+  | 'pending-deletion'
+  | 'hidden-text'
+  | 'hidden-email'
 
 type SendWithForwardCompatibleAuth = Omit<SendView, 'authType'> & { authType: string }
 
@@ -33,30 +30,19 @@ export function usesEmailVerification(
 export function sendStatuses(
   send: SendWithForwardCompatibleAuth,
   now: Date = new Date()
-): SendStatus[] {
-  const statuses: SendStatus[] = []
+): SendStatusKey[] {
+  const statuses: SendStatusKey[] = []
 
-  if (send.passwordProtected || send.authType === 'password') {
-    statuses.push({ key: 'password', label: i18n._(msg`Password required`) })
-  }
-  if (usesEmailVerification(send)) {
-    statuses.push({ key: 'email-verification', label: i18n._(msg`Email verification`) })
-  }
-  if (send.disabled) statuses.push({ key: 'disabled', label: i18n._(msg`Disabled`) })
-  if (hasElapsed(send.expirationDate, now)) {
-    statuses.push({ key: 'expired', label: i18n._(msg`Expired`) })
-  }
+  if (send.passwordProtected || send.authType === 'password') statuses.push('password')
+  if (usesEmailVerification(send)) statuses.push('email-verification')
+  if (send.disabled) statuses.push('disabled')
+  if (hasElapsed(send.expirationDate, now)) statuses.push('expired')
   if (send.maxAccessCount !== null && send.accessCount >= send.maxAccessCount) {
-    statuses.push({ key: 'max-access-reached', label: i18n._(msg`Maximum access count reached`) })
+    statuses.push('max-access-reached')
   }
-  if (hasElapsed(send.deletionDate, now)) {
-    statuses.push({ key: 'pending-deletion', label: i18n._(msg`Pending deletion`) })
-  }
-  if (send.type === 'text' && send.hidden) {
-    statuses.push({ key: 'hidden-text', label: i18n._(msg`Text hidden by default`) })
-  }
-  if (send.hideEmail)
-    statuses.push({ key: 'hidden-email', label: i18n._(msg`Sender email hidden`) })
+  if (hasElapsed(send.deletionDate, now)) statuses.push('pending-deletion')
+  if (send.type === 'text' && send.hidden) statuses.push('hidden-text')
+  if (send.hideEmail) statuses.push('hidden-email')
 
   return statuses
 }
