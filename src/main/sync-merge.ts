@@ -534,6 +534,13 @@ function planFolders(
   return { localToRemote, remoteToLocal }
 }
 
+function folderReference(
+  mapping: ReadonlyMap<string, SyncFolderReference>,
+  folderId: string | null
+): SyncFolderReference {
+  return (folderId === null ? undefined : mapping.get(folderId)) ?? { id: null }
+}
+
 function folderName(folderId: string | null, folders: Map<string, SyncFolder>): string | null {
   if (folderId === null) return null
   return folders.get(folderId)?.name ?? `missing:${folderId}`
@@ -715,10 +722,7 @@ export function planSync(
           actionId: `login:pull-update:${link.localId}`,
           localId: link.localId,
           remote: remoteLogin,
-          localFolder:
-            remoteLogin.folderId === null
-              ? { id: null }
-              : (folderMapping.remoteToLocal.get(remoteLogin.folderId) ?? { id: null }),
+          localFolder: folderReference(folderMapping.remoteToLocal, remoteLogin.folderId),
           baseFingerprint: remoteHash
         })
         loginLinks.push({ ...link, baseFingerprint: remoteHash })
@@ -733,23 +737,14 @@ export function planSync(
         let remoteStage = remoteLogin
         if (currentDeleted && (!desiredDeleted || contentChanged)) {
           remoteStage = { ...remoteStage, deletedAt: null }
-          resumeFingerprints.add(
-            fingerprintLogin(remoteStage, folderName(remoteLogin.folderId, remoteFolders))
-          )
+          resumeFingerprints.add(remoteFingerprint(remoteStage))
         }
         if (currentArchived && !desiredArchived) {
           remoteStage = { ...remoteStage, archivedAt: null }
-          resumeFingerprints.add(
-            fingerprintLogin(remoteStage, folderName(remoteLogin.folderId, remoteFolders))
-          )
+          resumeFingerprints.add(remoteFingerprint(remoteStage))
         }
         if (contentChanged) {
-          resumeFingerprints.add(
-            fingerprintLogin(
-              { ...localLogin, deletedAt: null },
-              folderName(localLogin.folderId, localFolders)
-            )
-          )
+          resumeFingerprints.add(localFingerprint({ ...localLogin, deletedAt: null }))
         }
         resumeFingerprints.add(localHash)
         actions.push({
@@ -759,10 +754,7 @@ export function planSync(
           local: localLogin,
           remote: remoteLogin,
           remoteId: link.remoteId,
-          remoteFolder:
-            localLogin.folderId === null
-              ? { id: null }
-              : (folderMapping.localToRemote.get(localLogin.folderId) ?? { id: null }),
+          remoteFolder: folderReference(folderMapping.localToRemote, localLogin.folderId),
           contentChanged,
           resumeFingerprints: [...resumeFingerprints],
           baseFingerprint: localHash
@@ -780,14 +772,8 @@ export function planSync(
           remote: remoteLogin,
           conflictName: copyName,
           conflictFingerprint: localFingerprint({ ...localLogin, name: copyName }),
-          localFolder:
-            remoteLogin.folderId === null
-              ? { id: null }
-              : (folderMapping.remoteToLocal.get(remoteLogin.folderId) ?? { id: null }),
-          remoteFolder:
-            localLogin.folderId === null
-              ? { id: null }
-              : (folderMapping.localToRemote.get(localLogin.folderId) ?? { id: null }),
+          localFolder: folderReference(folderMapping.remoteToLocal, remoteLogin.folderId),
+          remoteFolder: folderReference(folderMapping.localToRemote, localLogin.folderId),
           baseFingerprint: remoteHash
         })
         loginLinks.push({ ...link, baseFingerprint: remoteHash })
@@ -821,10 +807,7 @@ export function planSync(
           conflictName: copyName,
           conflictFingerprint: localFingerprint({ ...localLogin, name: copyName }),
           localFolder: { id: null },
-          remoteFolder:
-            localLogin.folderId === null
-              ? { id: null }
-              : (folderMapping.localToRemote.get(localLogin.folderId) ?? { id: null })
+          remoteFolder: folderReference(folderMapping.localToRemote, localLogin.folderId)
         })
       }
       local.delete(link.localId)
@@ -854,10 +837,7 @@ export function planSync(
           remote: remoteLogin,
           conflictName: copyName,
           conflictFingerprint: remoteFingerprint({ ...remoteLogin, name: copyName }),
-          localFolder:
-            remoteLogin.folderId === null
-              ? { id: null }
-              : (folderMapping.remoteToLocal.get(remoteLogin.folderId) ?? { id: null }),
+          localFolder: folderReference(folderMapping.remoteToLocal, remoteLogin.folderId),
           remoteFolder: { id: null }
         })
       } else {
@@ -868,10 +848,7 @@ export function planSync(
           actionId,
           pendingKey: actionId,
           remote: remoteLogin,
-          localFolder:
-            remoteLogin.folderId === null
-              ? { id: null }
-              : (folderMapping.remoteToLocal.get(remoteLogin.folderId) ?? { id: null }),
+          localFolder: folderReference(folderMapping.remoteToLocal, remoteLogin.folderId),
           baseFingerprint: hash
         })
       }
@@ -906,10 +883,7 @@ export function planSync(
       actionId,
       pendingKey: actionId,
       local: login,
-      remoteFolder:
-        login.folderId === null
-          ? { id: null }
-          : (folderMapping.localToRemote.get(login.folderId) ?? { id: null }),
+      remoteFolder: folderReference(folderMapping.localToRemote, login.folderId),
       baseFingerprint: localFingerprint(login)
     })
   }
@@ -922,10 +896,7 @@ export function planSync(
       actionId,
       pendingKey: actionId,
       remote: login,
-      localFolder:
-        login.folderId === null
-          ? { id: null }
-          : (folderMapping.remoteToLocal.get(login.folderId) ?? { id: null }),
+      localFolder: folderReference(folderMapping.remoteToLocal, login.folderId),
       baseFingerprint: remoteFingerprint(login)
     })
   }

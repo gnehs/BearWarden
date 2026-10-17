@@ -46,11 +46,6 @@ const XCHACHA_NONCE_BYTES = 24
 const XCHACHA_TAG_BYTES = 16
 const XCHACHA20_POLY1305_ALGORITHM = -70_000
 const COSE_KEY_TYPE_SYMMETRIC = 4
-const COSE_CONTENT_TYPE_OCTET_STREAM = 42
-const COSE_CONTENT_TYPE_COSE_KEY = 101
-const COSE_CONTENT_TYPE_PKCS8 = 284
-const COSE_CONTENT_TYPE_UTF8 = 'application/x.bitwarden.utf8-padded'
-const COSE_CONTENT_TYPE_LEGACY_KEY = 'application/x.bitwarden.legacy-key'
 const COSE_KEY_OPERATIONS = [3, 4, 5, 6] as const
 const TEXT_PADDING_BLOCK_BYTES = 32
 const COSE_KEY_TYPE_OKP = 1
@@ -96,6 +91,14 @@ export type BitwardenSymmetricKey = Buffer | BitwardenXChaCha20Poly1305Key
 
 export type BitwardenCoseContentType = 'octet-stream' | 'utf8' | 'legacy-key' | 'cose-key' | 'pkcs8'
 
+const COSE_CONTENT_TYPES: Record<BitwardenCoseContentType, string | number> = {
+  'octet-stream': 42,
+  'cose-key': 101,
+  pkcs8: 284,
+  utf8: 'application/x.bitwarden.utf8-padded',
+  'legacy-key': 'application/x.bitwarden.legacy-key'
+}
+
 export interface BitwardenV2AccountState {
   wrappedPrivateKey?: string | null
   wrappedSigningKey: string
@@ -133,12 +136,10 @@ export class BitwardenCryptoError extends Error {
   }
 }
 
-interface ParsedCipherString {
-  type: 1 | 2 | 3 | 4 | 7
-  iv?: Buffer
-  ciphertext: Buffer
-  mac?: Buffer
-}
+type ParsedAesCipherString = { type: 1 | 2; iv: Buffer; ciphertext: Buffer; mac: Buffer }
+type ParsedRsaCipherString = { type: 3 | 4; ciphertext: Buffer }
+type ParsedCipherString =
+  ParsedAesCipherString | ParsedRsaCipherString | { type: 7; ciphertext: Buffer }
 
 function invalidInput(message: string): never {
   throw new BitwardenCryptoError('INVALID_INPUT', message)
@@ -377,12 +378,11 @@ function hkdfExpandSha256(prk: Buffer, info: string, outputLength: number): Buff
   const blocks: Buffer[] = []
   let previous: Buffer<ArrayBufferLike> = Buffer.alloc(0)
   try {
-    for (let counter = 1; Buffer.concat(blocks).length < outputLength; counter += 1) {
+    for (let counter = 1; blocks.length * MAC_BYTES < outputLength; counter += 1) {
       previous = hmacSha256(prk, previous, infoBytes, Buffer.from([counter]))
       blocks.push(previous)
     }
-    const result = Buffer.concat(blocks, outputLength)
-    return result
+    return Buffer.concat(blocks, outputLength)
   } finally {
     previous.fill(0)
     infoBytes.fill(0)
@@ -391,7 +391,7 @@ function hkdfExpandSha256(prk: Buffer, info: string, outputLength: number): Buff
 }
 
 /** Bitwarden's purpose-bound HKDF: HKDF-Extract(salt, material), then Expand(purpose). */
-export function deriveBitwardenPurposeKey(
+function deriveBitwardenPurposeKey(
   material: Buffer,
   salt: string,
   purpose: string,
@@ -529,6 +529,10 @@ function asBuffer(value: unknown, length: number, name: string): Buffer {
     throw new BitwardenCryptoError('INVALID_KEY', `${name} has an invalid length`)
   }
   return Buffer.from(value)
+}
+
+function bytesField(value: unknown, name: string): Buffer {
+  return asBuffer(value, value instanceof Uint8Array ? value.byteLength : -1, name)
 }
 
 function cborArgument(
@@ -716,49 +720,12 @@ export function clearBitwardenSymmetricKey(key: BitwardenSymmetricKey | null): v
   key.encryptionKey.fill(0)
 }
 
-function coseContentType(value: BitwardenCoseContentType): string | number {
-  switch (value) {
-    case 'octet-stream':
-      return COSE_CONTENT_TYPE_OCTET_STREAM
-    case 'cose-key':
-      return COSE_CONTENT_TYPE_COSE_KEY
-    case 'pkcs8':
-      return COSE_CONTENT_TYPE_PKCS8
-    case 'utf8':
-      return COSE_CONTENT_TYPE_UTF8
-    case 'legacy-key':
-      return COSE_CONTENT_TYPE_LEGACY_KEY
-  }
-}
-
 function parseCoseContentType(value: unknown): BitwardenCoseContentType {
-  if (value === COSE_CONTENT_TYPE_OCTET_STREAM) return 'octet-stream'
-  if (value === COSE_CONTENT_TYPE_COSE_KEY) return 'cose-key'
-  if (value === COSE_CONTENT_TYPE_PKCS8) return 'pkcs8'
-  if (value === COSE_CONTENT_TYPE_UTF8) return 'utf8'
-  if (value === COSE_CONTENT_TYPE_LEGACY_KEY) return 'legacy-key'
-  throw new BitwardenCryptoError('INVALID_CIPHERSTRING', 'COSE content type is unsupported')
-}
-
-function padUtf8(value: Buffer): Buffer {
-  const minimum =
-    TEXT_PADDING_BLOCK_BYTES * (1 + Math.floor(value.length / TEXT_PADDING_BLOCK_BYTES))
-  const padding = Math.max(1, minimum - value.length)
-  if (padding > 255) throw new BitwardenCryptoError('INVALID_INPUT', 'UTF-8 padding is invalid')
-  return Buffer.concat([value, Buffer.alloc(padding, padding)])
-}
-
-function unpadUtf8(value: Buffer): Buffer {
-  const padding = value.at(-1) ?? 0
-  if (padding < 1 || padding > value.length) {
-    throw new BitwardenCryptoError('DECRYPTION_FAILED', 'UTF-8 padding is invalid')
+  const entry = Object.entries(COSE_CONTENT_TYPES).find(([, wire]) => wire === value)
+  if (!entry) {
+    throw new BitwardenCryptoError('INVALID_CIPHERSTRING', 'COSE content type is unsupported')
   }
-  for (let index = value.length - padding; index < value.length; index += 1) {
-    if (value[index] !== padding) {
-      throw new BitwardenCryptoError('DECRYPTION_FAILED', 'UTF-8 padding is invalid')
-    }
-  }
-  return value.subarray(0, value.length - padding)
+  return entry[0] as BitwardenCoseContentType
 }
 
 function decryptXChaCha(
@@ -769,11 +736,7 @@ function decryptXChaCha(
   if (!Array.isArray(outer) || outer.length !== 3) {
     throw new BitwardenCryptoError('INVALID_CIPHERSTRING', 'COSE_Encrypt0 has invalid fields')
   }
-  const protectedBytes = asBuffer(
-    outer[0],
-    (outer[0] as Uint8Array | undefined)?.byteLength ?? -1,
-    'COSE protected header'
-  )
+  const protectedBytes = bytesField(outer[0], 'COSE protected header')
   if (protectedBytes.length === 0 || protectedBytes.length > 1_024) {
     throw new BitwardenCryptoError('INVALID_CIPHERSTRING', 'COSE protected header is invalid')
   }
@@ -791,11 +754,7 @@ function decryptXChaCha(
   }
   const keyId = asBuffer(protectedHeader.get(4), XCHACHA_KEY_ID_BYTES, 'COSE key id')
   const nonce = asBuffer(unprotectedHeader.get(5), XCHACHA_NONCE_BYTES, 'COSE nonce')
-  const ciphertext = asBuffer(
-    outer[2],
-    (outer[2] as Uint8Array | undefined)?.byteLength ?? -1,
-    'COSE ciphertext'
-  )
+  const ciphertext = bytesField(outer[2], 'COSE ciphertext')
   if (ciphertext.length < XCHACHA_TAG_BYTES || ciphertext.length > MAX_CIPHERTEXT_BYTES) {
     throw new BitwardenCryptoError('INVALID_CIPHERSTRING', 'COSE ciphertext has an invalid length')
   }
@@ -809,7 +768,7 @@ function decryptXChaCha(
       xchacha20poly1305(key.encryptionKey, nonce, aad).decrypt(ciphertext)
     )
     if (contentType !== 'utf8') return { plaintext, contentType }
-    const unpadded = Buffer.from(unpadUtf8(plaintext))
+    const unpadded = Buffer.from(unpadStrict(plaintext, 'UTF-8'))
     plaintext.fill(0)
     return { plaintext: unpadded, contentType }
   } catch (error) {
@@ -831,13 +790,19 @@ function encryptXChaCha(
   const protectedHeader = cborEncoder.encode(
     new Map<unknown, unknown>([
       [1, XCHACHA20_POLY1305_ALGORITHM],
-      [3, coseContentType(contentType)],
+      [3, COSE_CONTENT_TYPES[contentType]],
       [4, key.keyId]
     ])
   )
   const nonce = randomBytes(XCHACHA_NONCE_BYTES)
   const aad = cborEncoder.encode(['Encrypt0', protectedHeader, Buffer.alloc(0)])
-  const padded = contentType === 'utf8' ? padUtf8(plaintext) : Buffer.from(plaintext)
+  const padded =
+    contentType === 'utf8'
+      ? padToMinimum(
+          plaintext,
+          TEXT_PADDING_BLOCK_BYTES * (1 + Math.floor(plaintext.length / TEXT_PADDING_BLOCK_BYTES))
+        )
+      : Buffer.from(plaintext)
   let ciphertext: Buffer | null = null
   try {
     ciphertext = Buffer.from(xchacha20poly1305(key.encryptionKey, nonce, aad).encrypt(padded))
@@ -935,11 +900,7 @@ async function verifySignedObject(
     if (!Array.isArray(outer) || outer.length !== 4) {
       throw new BitwardenCryptoError('INVALID_CIPHERSTRING', 'COSE_Sign1 has invalid fields')
     }
-    protectedBytes = asBuffer(
-      outer[0],
-      (outer[0] as Uint8Array | undefined)?.byteLength ?? -1,
-      'COSE signature protected header'
-    )
+    protectedBytes = bytesField(outer[0], 'COSE signature protected header')
     const protectedHeader = requireMap(
       decodeCbor(protectedBytes, 'COSE signature protected header'),
       'COSE signature protected header'
@@ -962,16 +923,8 @@ async function verifySignedObject(
     } finally {
       keyId.fill(0)
     }
-    payload = asBuffer(
-      outer[2],
-      (outer[2] as Uint8Array | undefined)?.byteLength ?? -1,
-      'COSE signature payload'
-    )
-    signature = asBuffer(
-      outer[3],
-      (outer[3] as Uint8Array | undefined)?.byteLength ?? -1,
-      'COSE signature'
-    )
+    payload = bytesField(outer[2], 'COSE signature payload')
+    signature = bytesField(outer[3], 'COSE signature')
     structure = cborEncoder.encode(['Signature1', protectedBytes, Buffer.alloc(0), payload])
     let valid: boolean
     if (verifyingKey.algorithm === COSE_ALGORITHM_EDDSA) {
@@ -1132,10 +1085,7 @@ export async function verifyBitwardenV2AccountState(
   }
 }
 
-function decryptAes(parsed: ParsedCipherString, key: Buffer): Buffer {
-  if (!parsed.iv || !parsed.mac || (parsed.type !== 1 && parsed.type !== 2)) {
-    throw new BitwardenCryptoError('INVALID_CIPHERSTRING')
-  }
+function decryptAes(parsed: ParsedAesCipherString, key: Buffer): Buffer {
   const expectedKeyLength = parsed.type === 1 ? KEY_BYTES : COMBINED_KEY_BYTES
   requireBuffer(key, 'symmetric key', expectedKeyLength)
   const encryptionKey = parsed.type === 1 ? key.subarray(0, 16) : key.subarray(0, KEY_BYTES)
@@ -1165,10 +1115,10 @@ function decryptAes(parsed: ParsedCipherString, key: Buffer): Buffer {
 }
 
 function decryptRsa(
-  parsed: ParsedCipherString,
+  parsed: ParsedRsaCipherString,
   privateKey: string | KeyObject | undefined
 ): Buffer {
-  if (!privateKey || (parsed.type !== 3 && parsed.type !== 4)) {
+  if (!privateKey) {
     throw new BitwardenCryptoError('UNSUPPORTED_CIPHER_TYPE', 'an RSA private key is required')
   }
   try {
@@ -1192,26 +1142,27 @@ function decryptBitwardenPayload(
 ): { plaintext: Buffer; contentType: BitwardenCoseContentType | null } {
   const parsed = parseCipherString(cipherString)
   try {
-    if (parsed.type === 7) {
-      if (!isXChaChaKey(key)) {
-        throw new BitwardenCryptoError('INVALID_KEY', 'COSE encryption requires a V2 user key')
-      }
-      return decryptXChaCha(parsed.ciphertext, key)
+    switch (parsed.type) {
+      case 7:
+        if (!isXChaChaKey(key)) {
+          throw new BitwardenCryptoError('INVALID_KEY', 'COSE encryption requires a V2 user key')
+        }
+        return decryptXChaCha(parsed.ciphertext, key)
+      case 3:
+      case 4:
+        return { plaintext: decryptRsa(parsed, privateKey), contentType: null }
+      default:
+        if (isXChaChaKey(key)) {
+          throw new BitwardenCryptoError('INVALID_KEY', 'legacy encryption requires an AES key')
+        }
+        return { plaintext: decryptAes(parsed, key), contentType: null }
     }
-    if (parsed.type === 3 || parsed.type === 4) {
-      return { plaintext: decryptRsa(parsed, privateKey), contentType: null }
-    }
-    if (isXChaChaKey(key)) {
-      throw new BitwardenCryptoError('INVALID_KEY', 'legacy encryption requires an AES key')
-    }
-    if (parsed.type === 1 || parsed.type === 2) {
-      return { plaintext: decryptAes(parsed, key), contentType: null }
-    }
-    throw new BitwardenCryptoError('UNSUPPORTED_CIPHER_TYPE')
   } finally {
-    parsed.iv?.fill(0)
     parsed.ciphertext.fill(0)
-    parsed.mac?.fill(0)
+    if ('iv' in parsed) {
+      parsed.iv.fill(0)
+      parsed.mac.fill(0)
+    }
   }
 }
 
@@ -1413,7 +1364,8 @@ export function decryptBitwardenString(
       throw new BitwardenCryptoError('INVALID_CIPHERSTRING', 'string has the wrong content type')
     }
     return new TextDecoder('utf-8', { fatal: true }).decode(plaintext)
-  } catch {
+  } catch (error) {
+    if (error instanceof BitwardenCryptoError) throw error
     throw new BitwardenCryptoError('DECRYPTION_FAILED', 'plaintext is not valid UTF-8')
   } finally {
     plaintext.fill(0)
@@ -1557,11 +1509,7 @@ function decryptDataEnvelope(envelope: string, key: BitwardenDataEnvelopeKey): B
     if (!Array.isArray(outer) || outer.length !== 3) {
       throw new BitwardenCryptoError('INVALID_CIPHERSTRING', 'data envelope has invalid fields')
     }
-    protectedBytes = asBuffer(
-      outer[0],
-      (outer[0] as Uint8Array | undefined)?.byteLength ?? -1,
-      'data-envelope protected header'
-    )
+    protectedBytes = bytesField(outer[0], 'data-envelope protected header')
     const protectedHeader = requireMap(
       decodeCbor(protectedBytes, 'data-envelope protected header'),
       'data-envelope protected header'
@@ -1592,11 +1540,7 @@ function decryptDataEnvelope(envelope: string, key: BitwardenDataEnvelopeKey): B
       key.algorithm === 'aes-256-gcm' ? AES_GCM_NONCE_BYTES : XCHACHA_NONCE_BYTES,
       'data-envelope nonce'
     )
-    ciphertext = asBuffer(
-      outer[2],
-      (outer[2] as Uint8Array | undefined)?.byteLength ?? -1,
-      'data-envelope ciphertext'
-    )
+    ciphertext = bytesField(outer[2], 'data-envelope ciphertext')
     if (ciphertext.length < XCHACHA_TAG_BYTES || ciphertext.length > MAX_CIPHERTEXT_BYTES) {
       throw new BitwardenCryptoError(
         'INVALID_CIPHERSTRING',

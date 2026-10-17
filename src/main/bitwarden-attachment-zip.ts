@@ -254,7 +254,7 @@ interface ZipWriteState {
   entries: CentralDirectoryEntry[]
 }
 
-function localHeader(nameBytes: Buffer, directory: boolean): Buffer {
+function localHeader(nameBytes: Buffer): Buffer {
   const header = Buffer.alloc(30 + nameBytes.length)
   header.writeUInt32LE(0x04034b50, 0)
   header.writeUInt16LE(ZIP_VERSION_DEFAULT, 4)
@@ -268,7 +268,6 @@ function localHeader(nameBytes: Buffer, directory: boolean): Buffer {
   header.writeUInt16LE(nameBytes.length, 26)
   header.writeUInt16LE(0, 28)
   nameBytes.copy(header, 30)
-  if (directory) header.writeUInt32LE(0, 14)
   return header
 }
 
@@ -295,7 +294,7 @@ async function appendStoredEntry(
 ): Promise<void> {
   const nameBytes = Buffer.from(name, 'utf8')
   const offset = state.position
-  await appendBytes(state, localHeader(nameBytes, directory))
+  await appendBytes(state, localHeader(nameBytes))
   const iterator = chunks[Symbol.asyncIterator]()
   let size = 0
   let checksum = 0
@@ -443,11 +442,6 @@ export async function writeBitwardenAttachmentZip(
   const attachments = validateSource(source)
   const names = itemNamesById(source.vaultJson)
   const { foldersByItemId, paths } = attachmentPaths(attachments, names)
-  let declaredBytes = 0
-  for (const attachment of attachments) {
-    declaredBytes += attachment.size
-    if (!Number.isSafeInteger(declaredBytes)) invalidInput()
-  }
   const directory = dirname(path)
   await mkdir(directory, { recursive: true, mode: 0o700 })
   throwIfAborted(options.signal)
@@ -477,11 +471,9 @@ export async function writeBitwardenAttachmentZip(
       throwIfAborted(options.signal)
       const attachment = attachments[index]!
       if (!writtenItemFolders.has(attachment.itemId)) {
-        const folder = foldersByItemId.get(attachment.itemId)
-        if (folder === undefined) invalidInput()
         await appendStoredEntry(
           state,
-          `attachments/${folder}/`,
+          `attachments/${foldersByItemId.get(attachment.itemId)!}/`,
           0,
           emptyChunks(),
           options.signal,

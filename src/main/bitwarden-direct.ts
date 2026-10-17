@@ -99,31 +99,34 @@ import type {
   AccountWebAuthnRegistrationChallenge
 } from './account-webauthn-registration-codec'
 import { cloneCustomFields } from './vault/custom-fields'
-import { emptyItemFields, ITEM_FIELD_NAMES } from './vault/item-fields'
+import { emptyItemFields, ITEM_FIELD_NAMES, type ItemFieldName } from './vault/item-fields'
+import {
+  MAX_ATTACHMENTS,
+  MAX_ATTACHMENT_FILE_NAME_LENGTH,
+  MAX_ATTACHMENT_ID_LENGTH,
+  MAX_ATTACHMENT_SIZE_NAME_LENGTH,
+  MAX_CUSTOM_FIELDS,
+  MAX_LOGIN_URIS,
+  MAX_NAME_LENGTH,
+  MAX_PASSWORD_HISTORY,
+  MAX_PASSWORD_LENGTH,
+  MAX_REMOTE_ENTITIES,
+  MAX_SEND_FILE_ID_LENGTH,
+  MAX_SEND_FILE_NAME_LENGTH,
+  MAX_SEND_FILE_SIZE,
+  MAX_SEND_FILE_SIZE_NAME_LENGTH,
+  MAX_SYNC_SECRET_LENGTH,
+  MAX_URI_LENGTH,
+  UUID_PATTERN
+} from './vault/limits'
 import { clonePasswordHistory } from './vault/password-history'
 
 const USER_KEY_BYTES = 64
-const MAX_REMOTE_ENTITIES = 100_000
-const MAX_CUSTOM_FIELDS = 1_000
 const MAX_CUSTOM_FIELD_STRING_LENGTH = 5_000
-const MAX_NAME_LENGTH = 256
-const MAX_LOGIN_URIS = 1_000
 const MAX_PASSKEYS_PER_ITEM = 1_000
-const MAX_ATTACHMENTS_PER_ITEM = 1_000
-const MAX_ATTACHMENT_ID_LENGTH = 256
-const MAX_ATTACHMENT_FILE_NAME_LENGTH = 255
-const MAX_ATTACHMENT_SIZE_NAME_LENGTH = 64
 const MAX_PASSKEY_FIELD_LENGTH = 4_096
-const MAX_URI_LENGTH = 4_096
-const MAX_PASSWORD_LENGTH = 16_384
-const MAX_PASSWORD_HISTORY = 5
 const MAX_AGGREGATE_REMOTE_ROWS = 1_000_000
-const MAX_SEND_FILE_ID_LENGTH = 256
-const MAX_SEND_FILE_NAME_LENGTH = 255
-const MAX_SEND_FILE_SIZE = 550_502_400
-const MAX_SEND_FILE_SIZE_NAME_LENGTH = 64
 const MAX_SEND_FILE_PLAINTEXT_BYTES = 128 * 1024 * 1024 - 65
-const MAX_SYNC_SECRET_LENGTH = 16_384
 const MAX_WEBAUTHN_REGISTRATION_SLOTS = 10
 const MIN_PERSONAL_IMPORT_CIPHERS = 2
 const MAX_PERSONAL_IMPORT_CIPHERS = 500
@@ -131,7 +134,6 @@ const MIN_IMPORT_RECONCILIATION_MARKERS = 1
 const PREPARED_IMPORT_TOKEN_BYTES = 32
 const MAX_IMPORT_MARKER_LENGTH = 1_024
 const MINIMUM_CLIENT_VERSION = '2025.5.0'
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 const userKeyEncoder = new Encoder({
   mapsAsObjects: false,
   tagUint8Array: false,
@@ -154,6 +156,41 @@ const ITEM_TYPE_BY_WIRE_TYPE: Record<BitwardenCipherType, VaultItemType> = {
   3: 'card',
   4: 'identity',
   5: 'sshKey'
+}
+
+/** Plain string fields of card and identity payloads, as item field and wire property. */
+const TYPED_STRING_FIELDS: Record<
+  'card' | 'identity',
+  ReadonlyArray<readonly [Exclude<ItemFieldName, 'uri'>, string]>
+> = {
+  card: [
+    ['cardholderName', 'cardholderName'],
+    ['brand', 'brand'],
+    ['number', 'number'],
+    ['expMonth', 'expMonth'],
+    ['expYear', 'expYear'],
+    ['code', 'code']
+  ],
+  identity: [
+    ['title', 'title'],
+    ['firstName', 'firstName'],
+    ['middleName', 'middleName'],
+    ['lastName', 'lastName'],
+    ['address1', 'address1'],
+    ['address2', 'address2'],
+    ['address3', 'address3'],
+    ['city', 'city'],
+    ['state', 'state'],
+    ['postalCode', 'postalCode'],
+    ['country', 'country'],
+    ['company', 'company'],
+    ['email', 'email'],
+    ['phone', 'phone'],
+    ['ssn', 'ssn'],
+    ['identityUsername', 'username'],
+    ['passportNumber', 'passportNumber'],
+    ['licenseNumber', 'licenseNumber']
+  ]
 }
 
 function protocolClientVersion(value: string | undefined): string {
@@ -250,6 +287,23 @@ export type BitwardenSyncInvalidResponseReason =
   | 'send-data'
   | 'snapshot-limit'
 
+const DEFAULT_SYNC_INVALID_REASON: Record<
+  BitwardenSyncInvalidResponseStage,
+  BitwardenSyncInvalidResponseReason
+> = {
+  prelogin: 'response-shape',
+  authentication: 'response-shape',
+  'access-token': 'response-shape',
+  response: 'response-shape',
+  account: 'account-profile',
+  organization: 'organization-profile',
+  folder: 'folder-data',
+  cipher: 'cipher-data',
+  collection: 'collection-data',
+  send: 'send-data',
+  snapshot: 'snapshot-limit'
+}
+
 export class BitwardenDirectError extends Error {
   constructor(
     readonly code: BitwardenDirectErrorCode,
@@ -265,6 +319,15 @@ export class BitwardenDirectError extends Error {
     super(`Bitwarden direct sync failed (${code})`)
     this.name = 'BitwardenDirectError'
   }
+}
+
+/** A dispatched mutation that fails with one of these codes may still have committed. */
+function isUnknownMutationOutcome(error: BitwardenDirectError): boolean {
+  return error.code === 'NETWORK' || error.code === 'ABORTED' || error.code === 'INVALID_RESPONSE'
+}
+
+function invalidResponse(reason: BitwardenSyncInvalidResponseReason): BitwardenDirectError {
+  return new BitwardenDirectError('INVALID_RESPONSE', undefined, undefined, undefined, reason)
 }
 
 export interface BitwardenTwoFactor {
@@ -812,6 +875,15 @@ interface ResolvedBitwardenDraft extends VaultItemFields {
   passwordHistoryChanged: boolean
 }
 
+function noUserDecryptionCapabilities(): BitwardenUserDecryptionCapabilities {
+  return {
+    hasWebAuthnPrfOptions: false,
+    hasV2UpgradeToken: false,
+    webAuthnPrfUnlockSupported: false,
+    v2AccountUpgradeSupported: false
+  }
+}
+
 const EMPTY_POLICY_SET: BitwardenPolicySet = { source: 'none', policies: [] }
 
 function invalidPersistedPolicySet(): BitwardenPolicySet {
@@ -1172,13 +1244,7 @@ function remoteCipherType(record: JsonObject): number {
     value < 1 ||
     value > 2_147_483_647
   ) {
-    throw new BitwardenDirectError(
-      'INVALID_RESPONSE',
-      undefined,
-      undefined,
-      undefined,
-      'unsupported-cipher-type'
-    )
+    throw invalidResponse('unsupported-cipher-type')
   }
   return value
 }
@@ -1209,13 +1275,7 @@ function isQuarantinablePersonalCipherError(error: unknown): boolean {
 function bitwardenCipherType(record: JsonObject): BitwardenCipherType {
   const value = remoteCipherType(record)
   if (!isSupportedCipherType(value)) {
-    throw new BitwardenDirectError(
-      'INVALID_RESPONSE',
-      undefined,
-      undefined,
-      undefined,
-      'unsupported-cipher-type'
-    )
+    throw invalidResponse('unsupported-cipher-type')
   }
   return value
 }
@@ -1275,31 +1335,18 @@ function customFieldArray(value: JsonValue | undefined): JsonValue[] {
   return value
 }
 
-function decryptLegacyCustomFields(
+/** `decode` decrypts legacy per-field strings, or is the identity for V2 blob content. */
+function parseRemoteCustomFields(
   rawFields: JsonValue | undefined,
-  key: BitwardenSymmetricKey
+  decode: (value: string) => string
 ): VaultCustomField[] {
   return customFieldArray(rawFields).map((rawField) => {
     if (!isRecord(rawField)) throw new BitwardenDirectError('INVALID_RESPONSE')
     const name = nullableCustomFieldString(rawField, 'name')
     const value = nullableCustomFieldString(rawField, 'value')
     return {
-      name: name === null ? '' : decryptBitwardenString(name, key),
-      value: value === null ? '' : decryptBitwardenString(value, key),
-      type: customFieldType(property(rawField, 'type')),
-      linkedId: customFieldLinkedId(rawField)
-    }
-  })
-}
-
-function decryptBlobCustomFields(rawFields: JsonValue | undefined): VaultCustomField[] {
-  return customFieldArray(rawFields).map((rawField) => {
-    if (!isRecord(rawField)) throw new BitwardenDirectError('INVALID_RESPONSE')
-    const name = nullableCustomFieldString(rawField, 'name')
-    const value = nullableCustomFieldString(rawField, 'value')
-    return {
-      name: name ?? '',
-      value: value ?? '',
+      name: name === null ? '' : decode(name),
+      value: value === null ? '' : decode(value),
       type: customFieldType(property(rawField, 'type')),
       linkedId: customFieldLinkedId(rawField)
     }
@@ -1350,22 +1397,13 @@ function customFieldsEqual(
   )
 }
 
-function encryptLegacyCustomFields(
+function customFieldsToWire(
   fields: VaultCustomField[],
-  key: BitwardenSymmetricKey
+  encode: (value: string) => string
 ): JsonValue[] {
   return fields.map((field) => ({
-    name: encryptBitwardenString(field.name, key),
-    value: field.type === 'linked' ? null : encryptBitwardenString(field.value, key),
-    type: WIRE_TYPE_BY_CUSTOM_FIELD_TYPE[field.type],
-    linkedId: field.linkedId
-  }))
-}
-
-function customFieldsToBlob(fields: VaultCustomField[]): JsonValue[] {
-  return fields.map((field) => ({
-    name: field.name,
-    value: field.type === 'linked' ? null : field.value,
+    name: encode(field.name),
+    value: field.type === 'linked' ? null : encode(field.value),
     type: WIRE_TYPE_BY_CUSTOM_FIELD_TYPE[field.type],
     linkedId: field.linkedId
   }))
@@ -1409,41 +1447,27 @@ function checkedHistoryPassword(value: unknown): string {
   return value
 }
 
-function decryptLegacyPasswordHistory(
+/** `password` reads, and for legacy rows decrypts, the plaintext password of one entry. */
+function parsePasswordHistory(
   value: JsonValue | undefined,
-  key: BitwardenSymmetricKey
+  password: (entry: JsonObject) => unknown
 ): VaultPasswordHistoryEntry[] {
   return passwordHistoryArray(value).map((raw) => {
     if (!isRecord(raw)) throw new BitwardenDirectError('INVALID_RESPONSE')
-    const encrypted = requiredStringProperty(raw, 'password')
     return {
-      password: checkedHistoryPassword(decryptBitwardenString(encrypted, key)),
+      password: checkedHistoryPassword(password(raw)),
       lastUsedDate: normalizedBitwardenTimestamp(property(raw, 'lastUsedDate'))
     }
   })
 }
 
-function decryptBlobPasswordHistory(value: JsonValue | undefined): VaultPasswordHistoryEntry[] {
-  return passwordHistoryArray(value).map((raw) => {
-    if (!isRecord(raw)) throw new BitwardenDirectError('INVALID_RESPONSE')
-    return {
-      password: checkedHistoryPassword(property(raw, 'password')),
-      lastUsedDate: normalizedBitwardenTimestamp(property(raw, 'lastUsedDate'))
-    }
-  })
+function plainHistoryPassword(entry: JsonObject): unknown {
+  return property(entry, 'password')
 }
 
 function validateDraftPasswordHistory(value: unknown): VaultPasswordHistoryEntry[] {
-  if (!Array.isArray(value) || value.length > MAX_PASSWORD_HISTORY) {
-    throw new BitwardenDirectError('INVALID_RESPONSE')
-  }
-  return value.map((entry) => {
-    if (!isRecord(entry)) throw new BitwardenDirectError('INVALID_RESPONSE')
-    return {
-      password: checkedHistoryPassword(property(entry, 'password')),
-      lastUsedDate: normalizedBitwardenTimestamp(property(entry, 'lastUsedDate'))
-    }
-  })
+  if (!Array.isArray(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+  return parsePasswordHistory(value as JsonValue[], plainHistoryPassword)
 }
 
 function passwordHistoryEqual(
@@ -1670,7 +1694,7 @@ function decryptAttachments(raw: JsonObject, key: BitwardenSymmetricKey): Bitwar
     }
   }
   if (Array.isArray(value)) {
-    if (value.length > MAX_ATTACHMENTS_PER_ITEM) throw new BitwardenDirectError('INVALID_RESPONSE')
+    if (value.length > MAX_ATTACHMENTS) throw new BitwardenDirectError('INVALID_RESPONSE')
     const attachments = value.map((entry) => {
       if (!isRecord(entry)) throw new BitwardenDirectError('INVALID_RESPONSE')
       return decryptAttachment(
@@ -1691,7 +1715,7 @@ function decryptAttachments(raw: JsonObject, key: BitwardenSymmetricKey): Bitwar
     throw new BitwardenDirectError('INVALID_RESPONSE')
   }
   const entries = Object.entries(value)
-  if (entries.length > MAX_ATTACHMENTS_PER_ITEM) throw new BitwardenDirectError('INVALID_RESPONSE')
+  if (entries.length > MAX_ATTACHMENTS) throw new BitwardenDirectError('INVALID_RESPONSE')
   const attachments = entries.map(([id, encryptedFileName]) => {
     if (!id || typeof encryptedFileName !== 'string' || !encryptedFileName) {
       throw new BitwardenDirectError('INVALID_RESPONSE')
@@ -1717,39 +1741,24 @@ interface FreshAttachmentMetadata {
 }
 
 /**
- * The HTTP layer resolves the short-lived attachment URL and deliberately does
- * not return it.  This layer still authenticates every fresh metadata field
- * against the cached personal item before it accepts the downloaded bytes.
+ * The HTTP layer validates the fresh metadata shape and id, resolves the short-lived URL, and
+ * keeps that URL private. This layer binds each field to the cached personal item before it
+ * accepts the downloaded bytes.
  */
 function freshAttachmentMetadata(
   response: BitwardenAttachmentDownload,
-  attachmentId: string,
   expected: BitwardenAttachment,
   cipherKey: BitwardenSymmetricKey
 ): FreshAttachmentMetadata {
-  if (response.id !== attachmentId) {
-    throw new BitwardenDirectError('INVALID_RESPONSE')
-  }
-  if (!Number.isSafeInteger(response.size) || response.size < 0) {
-    throw new BitwardenDirectError('INVALID_RESPONSE')
-  }
-
   const fileName = decryptBitwardenString(response.fileName, cipherKey)
-  if (fileName !== expected.fileName) throw new BitwardenDirectError('INVALID_RESPONSE')
-
-  if (response.key !== null && typeof response.key !== 'string') {
+  if (
+    fileName !== expected.fileName ||
+    (response.key === null) !== expected.legacy ||
+    response.size !== expected.size
+  ) {
     throw new BitwardenDirectError('INVALID_RESPONSE')
   }
-  if (response.key === '') throw new BitwardenDirectError('INVALID_RESPONSE')
-  const encryptedKey = response.key
-  if ((encryptedKey === null) !== expected.legacy) {
-    throw new BitwardenDirectError('INVALID_RESPONSE')
-  }
-
-  const size = response.size
-  if (size !== expected.size) throw new BitwardenDirectError('INVALID_RESPONSE')
-
-  return { encryptedKey, size }
+  return { encryptedKey: response.key, size: response.size }
 }
 
 export function addAggregateRemoteRows(
@@ -1764,13 +1773,7 @@ export function addAggregateRemoteRows(
     additional < 0 ||
     additional > maximum - current
   ) {
-    throw new BitwardenDirectError(
-      'INVALID_RESPONSE',
-      undefined,
-      undefined,
-      undefined,
-      'snapshot-limit'
-    )
+    throw invalidResponse('snapshot-limit')
   }
   return current + additional
 }
@@ -1824,6 +1827,13 @@ function decodedBlobNestedRows(content: JsonObject): number {
     addArray(property(typeData, 'fido2Credentials'))
   }
   return rows
+}
+
+/** Send file sizes arrive as a decimal string or a number. NaN marks an invalid value. */
+function sendFileSize(value: JsonValue | undefined): number {
+  if (typeof value === 'string' && /^\d+$/u.test(value)) return Number(value)
+  if (typeof value === 'number' && Number.isSafeInteger(value)) return value
+  return NaN
 }
 
 function normalizeEmail(value: string): string {
@@ -1945,12 +1955,16 @@ function setOptional(target: JsonObject, name: string, value: JsonValue | undefi
   if (value !== undefined) target[name] = value
 }
 
-function encryptLegacyUris(
+/**
+ * Reuses each unchanged previous URI row verbatim, because a row checksum is valid only for its
+ * exact plaintext. New or changed rows come from `newRow` and deliberately omit a checksum.
+ */
+function preservedUriRows(
+  previous: JsonValue | undefined,
   uris: readonly VaultLoginUri[],
-  previousLogin: JsonObject | null,
-  key: BitwardenSymmetricKey
+  decode: (value: string) => string,
+  newRow: (entry: VaultLoginUri) => JsonObject
 ): JsonValue[] {
-  const previous = previousLogin ? property(previousLogin, 'uris') : null
   if (
     previous !== null &&
     previous !== undefined &&
@@ -1958,14 +1972,14 @@ function encryptLegacyUris(
   ) {
     throw new BitwardenDirectError('INVALID_RESPONSE')
   }
-  const previousUris = Array.isArray(previous) ? previous : []
   const preserved = new Map<string, { rows: JsonObject[]; next: number }>()
-  for (const value of previousUris) {
+  for (const value of Array.isArray(previous) ? previous : []) {
     if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
-    const encrypted = nullableStringProperty(value, 'uri')
-    const plaintext = encrypted === null ? '' : decryptBitwardenString(encrypted, key)
-    const match = validateUriMatch(property(value, 'match'))
-    const matchKey = uriRowKey(plaintext, match)
+    const uri = nullableStringProperty(value, 'uri')
+    const matchKey = uriRowKey(
+      uri === null ? '' : decode(uri),
+      validateUriMatch(property(value, 'match'))
+    )
     const group = preserved.get(matchKey) ?? { rows: [], next: 0 }
     group.rows.push(value)
     preserved.set(matchKey, group)
@@ -1977,38 +1991,28 @@ function encryptLegacyUris(
       group.next += 1
       return structuredClone(previousEntry)
     }
-    // A checksum is valid only for its exact plaintext. New or changed rows deliberately omit it.
-    return { uri: encryptBitwardenString(entry.uri, key), match: entry.match }
+    return newRow(entry)
   })
 }
 
-function blobUris(uris: readonly VaultLoginUri[], previous: JsonValue | undefined): JsonValue[] {
+/** `decode` decrypts legacy URI strings, or is the identity for V2 blob content. */
+function parseRemoteUris(
+  value: JsonValue | undefined,
+  decode: (value: string) => string
+): VaultLoginUri[] {
   if (
-    previous !== null &&
-    previous !== undefined &&
-    (!Array.isArray(previous) || previous.length > MAX_LOGIN_URIS)
+    value !== undefined &&
+    value !== null &&
+    (!Array.isArray(value) || value.length > MAX_LOGIN_URIS)
   ) {
     throw new BitwardenDirectError('INVALID_RESPONSE')
   }
-  const previousUris = Array.isArray(previous) ? previous : []
-  const preserved = new Map<string, { rows: JsonObject[]; next: number }>()
-  for (const value of previousUris) {
-    if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
-    const uri = nullableStringProperty(value, 'uri') ?? ''
-    const match = validateUriMatch(property(value, 'match'))
-    const matchKey = uriRowKey(uri, match)
-    const group = preserved.get(matchKey) ?? { rows: [], next: 0 }
-    group.rows.push(value)
-    preserved.set(matchKey, group)
-  }
-  return uris.map((entry) => {
-    const group = preserved.get(uriRowKey(entry.uri, entry.match))
-    const previousEntry = group?.rows[group.next]
-    if (group && previousEntry) {
-      group.next += 1
-      return structuredClone(previousEntry)
-    }
-    return { uri: entry.uri, match: entry.match }
+  return (Array.isArray(value) ? value : []).map((row) => {
+    if (!isRecord(row)) throw new BitwardenDirectError('INVALID_RESPONSE')
+    const encoded = nullableStringProperty(row, 'uri')
+    const uri = encoded === null ? '' : decode(encoded)
+    if (uri.length > MAX_URI_LENGTH) throw new BitwardenDirectError('INVALID_RESPONSE')
+    return { uri, match: validateUriMatch(property(row, 'match')) }
   })
 }
 
@@ -2041,10 +2045,8 @@ function preservedAttachments(existing: JsonObject, request: JsonObject): void {
 }
 
 function opaqueCipherBlob(record: JsonObject): string | null {
-  const value = property(record, 'data')
-  if (value === null || value === undefined || typeof value !== 'string') return null
-  const data = value
-  if (!data) return null
+  const data = property(record, 'data')
+  if (typeof data !== 'string' || !data) return null
   if (data.trimStart().startsWith('{')) {
     let container: unknown
     try {
@@ -2228,6 +2230,45 @@ function validateUriMatch(value: JsonValue | undefined): VaultUriMatch | null {
   return value as VaultUriMatch
 }
 
+/** Accepts a raw 64-byte organization key or the legacy Base64 text encoding of one. */
+function unwrapOrganizationKey(
+  decrypt: () => Buffer,
+  reason: 'organization-key' | 'provider-organization-key'
+): Buffer {
+  try {
+    const plaintext = decrypt()
+    try {
+      if (plaintext.length === USER_KEY_BYTES) return Buffer.from(plaintext)
+      if (
+        plaintext.length !== Math.ceil(USER_KEY_BYTES / 3) * 4 ||
+        plaintext.some((byte) => byte > 0x7f)
+      ) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      const encoded = plaintext.toString('ascii')
+      if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(encoded)) {
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      const key = Buffer.from(encoded, 'base64')
+      if (key.length !== USER_KEY_BYTES || key.toString('base64') !== encoded) {
+        key.fill(0)
+        throw new BitwardenDirectError('INVALID_RESPONSE')
+      }
+      return key
+    } finally {
+      plaintext.fill(0)
+    }
+  } catch (error) {
+    if (
+      (error instanceof BitwardenDirectError && error.code === 'INVALID_RESPONSE') ||
+      error instanceof BitwardenCryptoError
+    ) {
+      throw invalidResponse(reason)
+    }
+    throw error
+  }
+}
+
 export class BitwardenDirectClient implements BitwardenSyncClient {
   private readonly email: string
   private readonly http: BitwardenHttpClient
@@ -2251,12 +2292,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   private stateChangeQueue: Promise<void> = Promise.resolve()
   private syncQueue: Promise<void> = Promise.resolve()
   private syncedEquivalentDomainSettings: BitwardenEquivalentDomainSettings | null = null
-  private syncedUserDecryptionCapabilities: BitwardenUserDecryptionCapabilities = {
-    hasWebAuthnPrfOptions: false,
-    hasV2UpgradeToken: false,
-    webAuthnPrfUnlockSupported: false,
-    v2AccountUpgradeSupported: false
-  }
+  private syncedUserDecryptionCapabilities = noUserDecryptionCapabilities()
   private preparedLoginImports = new Map<string, PreparedLoginImportPayload>()
 
   constructor(private readonly options: BitwardenDirectOptions) {
@@ -2423,17 +2459,12 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   }
 
   async purgePersonalVault(masterPassword: string, signal?: AbortSignal): Promise<void> {
-    let masterKey: Buffer | null = null
-    let passwordKey: Buffer | null = null
     let masterPasswordHash = ''
     let mutationStarted = false
     try {
       assertSyncSecret(masterPassword)
       this.requireProfileId()
-      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
-      masterKey = keys.masterKey
-      passwordKey = keys.passwordKey
-      masterPasswordHash = passwordKey.toString('base64')
+      masterPasswordHash = await this.deriveMasterPasswordHash(masterPassword, signal)
       if (signal?.aborted) throw new BitwardenDirectError('ABORTED')
       mutationStarted = true
       await this.http.purgePersonalVault(masterPasswordHash, signal)
@@ -2445,24 +2476,17 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       }
       throw mapped
     } finally {
-      masterKey?.fill(0)
-      passwordKey?.fill(0)
       masterPasswordHash = ''
     }
   }
 
   async deauthorizeAllSessions(masterPassword: string, signal?: AbortSignal): Promise<void> {
-    let masterKey: Buffer | null = null
-    let passwordKey: Buffer | null = null
     let masterPasswordHash = ''
     let mutationStarted = false
     try {
       assertSyncSecret(masterPassword)
       this.requireProfileId()
-      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
-      masterKey = keys.masterKey
-      passwordKey = keys.passwordKey
-      masterPasswordHash = passwordKey.toString('base64')
+      masterPasswordHash = await this.deriveMasterPasswordHash(masterPassword, signal)
       if (signal?.aborted) throw new BitwardenDirectError('ABORTED')
       await this.http.deauthorizeAllSessions(masterPasswordHash, signal, () => {
         mutationStarted = true
@@ -2470,19 +2494,12 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       await this.clearDeauthorizedSession()
     } catch (error) {
       const mapped = this.mapError(error)
-      if (
-        mutationStarted &&
-        (mapped.code === 'NETWORK' ||
-          mapped.code === 'ABORTED' ||
-          mapped.code === 'INVALID_RESPONSE')
-      ) {
+      if (mutationStarted && isUnknownMutationOutcome(mapped)) {
         await this.clearDeauthorizedSession().catch(() => undefined)
         throw new BitwardenDirectError('SESSION_DEAUTHORIZATION_UNKNOWN')
       }
       throw mapped
     } finally {
-      masterKey?.fill(0)
-      passwordKey?.fill(0)
       masterPasswordHash = ''
     }
   }
@@ -2492,18 +2509,14 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     rotate: boolean,
     signal?: AbortSignal
   ): Promise<{ clientId: string; clientSecret: string; revisionDate: string }> {
-    let masterKey: Buffer | null = null
-    let passwordKey: Buffer | null = null
     let result: BitwardenPersonalApiKey | null = null
     let rotationRequestStarted = false
     try {
       assertSyncSecret(masterPassword)
       const profileId = this.requireProfileId()
-      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
-      masterKey = keys.masterKey
-      passwordKey = keys.passwordKey
+      const masterPasswordHash = await this.deriveMasterPasswordHash(masterPassword, signal)
       rotationRequestStarted = rotate
-      result = await this.http.getPersonalApiKey(passwordKey.toString('base64'), rotate, signal)
+      result = await this.http.getPersonalApiKey(masterPasswordHash, rotate, signal)
       await this.captureSession()
       return {
         clientId: `user.${profileId}`,
@@ -2517,8 +2530,6 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       }
       throw mapped
     } finally {
-      masterKey?.fill(0)
-      passwordKey?.fill(0)
       if (result) result.apiKey = ''
     }
   }
@@ -2596,12 +2607,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       await this.notifyStateChanged()
     } catch (error) {
       const mapped = this.mapError(error)
-      if (
-        mutationStarted &&
-        (mapped.code === 'NETWORK' ||
-          mapped.code === 'ABORTED' ||
-          mapped.code === 'INVALID_RESPONSE')
-      ) {
+      if (mutationStarted && isUnknownMutationOutcome(mapped)) {
         this.clearDecryptedState()
         this.state.session = null
         this.http.clearSession()
@@ -2631,22 +2637,15 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   }
 
   async getTwoFactorRecoveryCode(masterPassword: string, signal?: AbortSignal): Promise<string> {
-    let masterKey: Buffer | null = null
-    let passwordKey: Buffer | null = null
     try {
       assertSyncSecret(masterPassword)
       this.requireProfileId()
-      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
-      masterKey = keys.masterKey
-      passwordKey = keys.passwordKey
-      const code = await this.http.getTwoFactorRecoveryCode(passwordKey.toString('base64'), signal)
+      const masterPasswordHash = await this.deriveMasterPasswordHash(masterPassword, signal)
+      const code = await this.http.getTwoFactorRecoveryCode(masterPasswordHash, signal)
       await this.captureSession()
       return code
     } catch (error) {
       throw this.mapError(error)
-    } finally {
-      masterKey?.fill(0)
-      passwordKey?.fill(0)
     }
   }
 
@@ -2655,8 +2654,6 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     masterPassword: string,
     signal?: AbortSignal
   ): Promise<void> {
-    let masterKey: Buffer | null = null
-    let passwordKey: Buffer | null = null
     let masterPasswordHash = ''
     let authenticatorSetup: BitwardenAuthenticatorSetup | null = null
     let emailSetup: BitwardenEmailTwoFactorSetup | null = null
@@ -2675,10 +2672,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         throw new BitwardenDirectError('INVALID_RESPONSE')
       }
       this.requireProfileId()
-      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
-      masterKey = keys.masterKey
-      passwordKey = keys.passwordKey
-      masterPasswordHash = passwordKey.toString('base64')
+      masterPasswordHash = await this.deriveMasterPasswordHash(masterPassword, signal)
       if (type === 0) {
         authenticatorSetup = await this.http.getAuthenticatorSetup(masterPasswordHash, signal)
         if (!authenticatorSetup.enabled) throw new BitwardenDirectError('INVALID_RESPONSE')
@@ -2761,29 +2755,18 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       await this.captureSession()
     } catch (error) {
       const mapped = this.mapError(error)
-      if (
-        mutationStarted &&
-        (mapped.code === 'NETWORK' ||
-          mapped.code === 'ABORTED' ||
-          mapped.code === 'INVALID_RESPONSE') &&
-        !usedUnverifiableProviderEscape &&
-        (await this.isTwoFactorProviderAuthoritativelyDisabled(type, masterPasswordHash, signal))
-      ) {
-        await this.captureSession()
-        return
-      }
-      if (
-        mutationStarted &&
-        (mapped.code === 'NETWORK' ||
-          mapped.code === 'ABORTED' ||
-          mapped.code === 'INVALID_RESPONSE')
-      ) {
+      if (mutationStarted && isUnknownMutationOutcome(mapped)) {
+        if (
+          !usedUnverifiableProviderEscape &&
+          (await this.isTwoFactorProviderAuthoritativelyDisabled(type, masterPasswordHash, signal))
+        ) {
+          await this.captureSession()
+          return
+        }
         throw new BitwardenDirectError('TWO_FACTOR_MUTATION_UNKNOWN')
       }
       throw mapped
     } finally {
-      masterKey?.fill(0)
-      passwordKey?.fill(0)
       masterPasswordHash = ''
       if (authenticatorSetup) {
         authenticatorSetup.key = ''
@@ -2826,22 +2809,15 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     masterPassword: string,
     signal?: AbortSignal
   ): Promise<BitwardenAuthenticatorSetup> {
-    let masterKey: Buffer | null = null
-    let passwordKey: Buffer | null = null
     try {
       assertSyncSecret(masterPassword)
       this.requireProfileId()
-      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
-      masterKey = keys.masterKey
-      passwordKey = keys.passwordKey
-      const setup = await this.http.getAuthenticatorSetup(passwordKey.toString('base64'), signal)
+      const masterPasswordHash = await this.deriveMasterPasswordHash(masterPassword, signal)
+      const setup = await this.http.getAuthenticatorSetup(masterPasswordHash, signal)
       await this.captureSession()
       return setup
     } catch (error) {
       throw this.mapError(error)
-    } finally {
-      masterKey?.fill(0)
-      passwordKey?.fill(0)
     }
   }
 
@@ -2855,18 +2831,13 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     },
     signal?: AbortSignal
   ): Promise<void> {
-    let masterKey: Buffer | null = null
-    let passwordKey: Buffer | null = null
     let mutationStarted = false
     try {
       let masterPasswordHash: string | undefined
       if (request.verificationMode === 'master-password') {
         const password = request.masterPassword
         assertSyncSecret(password)
-        const keys = await this.deriveMasterPasswordKeys(password, signal)
-        masterKey = keys.masterKey
-        passwordKey = keys.passwordKey
-        masterPasswordHash = passwordKey.toString('base64')
+        masterPasswordHash = await this.deriveMasterPasswordHash(password, signal)
       }
       mutationStarted = true
       await this.http.enableAuthenticator(
@@ -2889,8 +2860,6 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       }
       throw mapped
     } finally {
-      masterKey?.fill(0)
-      passwordKey?.fill(0)
       if (request.masterPassword !== undefined) request.masterPassword = ''
       if (request.userVerificationToken !== undefined) request.userVerificationToken = ''
     }
@@ -2900,22 +2869,15 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     masterPassword: string,
     signal?: AbortSignal
   ): Promise<BitwardenEmailTwoFactorSetup> {
-    let masterKey: Buffer | null = null
-    let passwordKey: Buffer | null = null
     try {
       assertSyncSecret(masterPassword)
       this.requireProfileId()
-      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
-      masterKey = keys.masterKey
-      passwordKey = keys.passwordKey
-      const setup = await this.http.getEmailTwoFactorSetup(passwordKey.toString('base64'), signal)
+      const masterPasswordHash = await this.deriveMasterPasswordHash(masterPassword, signal)
+      const setup = await this.http.getEmailTwoFactorSetup(masterPasswordHash, signal)
       await this.captureSession()
       return setup
     } catch (error) {
       throw this.mapError(error)
-    } finally {
-      masterKey?.fill(0)
-      passwordKey?.fill(0)
     }
   }
 
@@ -2928,18 +2890,13 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     },
     signal?: AbortSignal
   ): Promise<void> {
-    let masterKey: Buffer | null = null
-    let passwordKey: Buffer | null = null
     let mutationStarted = false
     try {
       let masterPasswordHash: string | undefined
       if (request.verificationMode === 'master-password') {
         const password = request.masterPassword
         assertSyncSecret(password)
-        const keys = await this.deriveMasterPasswordKeys(password, signal)
-        masterKey = keys.masterKey
-        passwordKey = keys.passwordKey
-        masterPasswordHash = passwordKey.toString('base64')
+        masterPasswordHash = await this.deriveMasterPasswordHash(password, signal)
       }
       mutationStarted = true
       await this.http.sendEmailTwoFactorSetup(
@@ -2961,8 +2918,6 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       }
       throw mapped
     } finally {
-      masterKey?.fill(0)
-      passwordKey?.fill(0)
       if (request.masterPassword !== undefined) request.masterPassword = ''
       if (request.userVerificationToken !== undefined) request.userVerificationToken = ''
     }
@@ -2978,18 +2933,13 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     },
     signal?: AbortSignal
   ): Promise<void> {
-    let masterKey: Buffer | null = null
-    let passwordKey: Buffer | null = null
     let mutationStarted = false
     try {
       let masterPasswordHash: string | undefined
       if (request.verificationMode === 'master-password') {
         const password = request.masterPassword
         assertSyncSecret(password)
-        const keys = await this.deriveMasterPasswordKeys(password, signal)
-        masterKey = keys.masterKey
-        passwordKey = keys.passwordKey
-        masterPasswordHash = passwordKey.toString('base64')
+        masterPasswordHash = await this.deriveMasterPasswordHash(password, signal)
       }
       mutationStarted = true
       await this.http.enableEmailTwoFactor(
@@ -3012,8 +2962,6 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       }
       throw mapped
     } finally {
-      masterKey?.fill(0)
-      passwordKey?.fill(0)
       request.token = ''
       if (request.masterPassword !== undefined) request.masterPassword = ''
       if (request.userVerificationToken !== undefined) request.userVerificationToken = ''
@@ -3024,17 +2972,12 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     masterPassword: string,
     signal?: AbortSignal
   ): Promise<BitwardenWebAuthnRegistrationSetup> {
-    let masterKey: Buffer | null = null
-    let passwordKey: Buffer | null = null
     let masterPasswordHash = ''
     let setup: BitwardenWebAuthnSetup | null = null
     try {
       assertSyncSecret(masterPassword)
       this.requireProfileId()
-      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
-      masterKey = keys.masterKey
-      passwordKey = keys.passwordKey
-      masterPasswordHash = passwordKey.toString('base64')
+      masterPasswordHash = await this.deriveMasterPasswordHash(masterPassword, signal)
       setup = await this.http.getWebAuthnSetup(masterPasswordHash, signal)
       const registrationChallenge = await this.http.getWebAuthnRegistrationChallenge(
         setup.verificationMode === 'server-token'
@@ -3057,8 +3000,6 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     } catch (error) {
       throw this.mapError(error)
     } finally {
-      masterKey?.fill(0)
-      passwordKey?.fill(0)
       masterPasswordHash = ''
       if (setup) {
         setup.userVerificationToken = null
@@ -3071,8 +3012,6 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     request: BitwardenWebAuthnRegistrationRequest,
     signal?: AbortSignal
   ): Promise<void> {
-    let masterKey: Buffer | null = null
-    let passwordKey: Buffer | null = null
     let masterPasswordHash = ''
     let mutationStarted = false
     try {
@@ -3087,10 +3026,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       if (request.verificationMode === 'master-password') {
         const password = request.masterPassword
         assertSyncSecret(password)
-        const keys = await this.deriveMasterPasswordKeys(password, signal)
-        masterKey = keys.masterKey
-        passwordKey = keys.passwordKey
-        masterPasswordHash = passwordKey.toString('base64')
+        masterPasswordHash = await this.deriveMasterPasswordHash(password, signal)
       }
       mutationStarted = true
       await this.http.enableWebAuthn(
@@ -3114,8 +3050,6 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       }
       throw mapped
     } finally {
-      masterKey?.fill(0)
-      passwordKey?.fill(0)
       masterPasswordHash = ''
       if (request.masterPassword !== undefined) request.masterPassword = ''
       if (request.userVerificationToken !== undefined) request.userVerificationToken = ''
@@ -3124,8 +3058,6 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   }
 
   async deleteWebAuthnKey(id: number, masterPassword: string, signal?: AbortSignal): Promise<void> {
-    let masterKey: Buffer | null = null
-    let passwordKey: Buffer | null = null
     let masterPasswordHash = ''
     let setup: BitwardenWebAuthnSetup | null = null
     let mutationStarted = false
@@ -3140,10 +3072,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         throw new BitwardenDirectError('INVALID_RESPONSE')
       }
       this.requireProfileId()
-      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
-      masterKey = keys.masterKey
-      passwordKey = keys.passwordKey
-      masterPasswordHash = passwordKey.toString('base64')
+      masterPasswordHash = await this.deriveMasterPasswordHash(masterPassword, signal)
       setup = await this.http.getWebAuthnSetup(masterPasswordHash, signal)
       if (!setup.keys.some((key) => key.id === id)) throw new BitwardenDirectError('NOT_FOUND')
       mutationStarted = true
@@ -3165,8 +3094,6 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       }
       throw mapped
     } finally {
-      masterKey?.fill(0)
-      passwordKey?.fill(0)
       masterPasswordHash = ''
       if (setup) {
         setup.userVerificationToken = null
@@ -3384,13 +3311,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       const fileId = requiredStringProperty(accessFile, 'id')
       const encryptedFileName = requiredStringProperty(accessFile, 'fileName')
       const fileName = decryptBitwardenString(encryptedFileName, sendKey)
-      const sizeValue = property(accessFile, 'size')
-      const size =
-        typeof sizeValue === 'string' && /^\d+$/u.test(sizeValue)
-          ? Number(sizeValue)
-          : typeof sizeValue === 'number' && Number.isSafeInteger(sizeValue)
-            ? sizeValue
-            : NaN
+      const size = sendFileSize(property(accessFile, 'size'))
       if (
         fileId !== cached.item.file.id ||
         fileName !== cached.item.file.fileName ||
@@ -3589,15 +3510,10 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   }
 
   async sendEmailTwoFactorLoginCode(masterPassword: string, signal?: AbortSignal): Promise<void> {
-    let masterKey: Buffer | null = null
-    let passwordKey: Buffer | null = null
     let masterPasswordHash = ''
     try {
       assertSyncSecret(masterPassword)
-      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
-      masterKey = keys.masterKey
-      passwordKey = keys.passwordKey
-      masterPasswordHash = passwordKey.toString('base64')
+      masterPasswordHash = await this.deriveMasterPasswordHash(masterPassword, signal)
       if (signal?.aborted) throw new BitwardenDirectError('ABORTED')
       await this.http.sendEmailTwoFactorLoginCode(
         {
@@ -3612,30 +3528,21 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       throw this.mapError(error)
     } finally {
       masterPassword = ''
-      masterKey?.fill(0)
-      passwordKey?.fill(0)
       masterPasswordHash = ''
     }
   }
 
   async resendNewDeviceOtp(masterPassword: string, signal?: AbortSignal): Promise<void> {
-    let masterKey: Buffer | null = null
-    let passwordKey: Buffer | null = null
     let masterPasswordHash = ''
     try {
       assertSyncSecret(masterPassword)
-      const keys = await this.deriveMasterPasswordKeys(masterPassword, signal)
-      masterKey = keys.masterKey
-      passwordKey = keys.passwordKey
-      masterPasswordHash = passwordKey.toString('base64')
+      masterPasswordHash = await this.deriveMasterPasswordHash(masterPassword, signal)
       if (signal?.aborted) throw new BitwardenDirectError('ABORTED')
       await this.http.resendNewDeviceOtp({ email: this.email, masterPasswordHash }, signal)
     } catch (error) {
       throw this.mapError(error)
     } finally {
       masterPassword = ''
-      masterKey?.fill(0)
-      passwordKey?.fill(0)
       masterPasswordHash = ''
     }
   }
@@ -3827,23 +3734,11 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         const providerOrganizationRowsById = new Map<string, JsonObject>()
         for (const value of providerOrganizationRows) {
           if (!isRecord(value)) {
-            throw new BitwardenDirectError(
-              'INVALID_RESPONSE',
-              undefined,
-              undefined,
-              undefined,
-              'organization-profile'
-            )
+            throw invalidResponse('organization-profile')
           }
           const organization = this.parseOrganization(value)
           if (providerOrganizationRowsById.has(organization.id)) {
-            throw new BitwardenDirectError(
-              'INVALID_RESPONSE',
-              undefined,
-              undefined,
-              undefined,
-              'organization-profile'
-            )
+            throw invalidResponse('organization-profile')
           }
           providerOrganizationRowsById.set(organization.id, value)
           if (!nextOrganizations.has(organization.id)) {
@@ -3898,13 +3793,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
             // Shared rows are server-authoritative and replace the prior shared snapshot. Until
             // shared-item quarantine can preserve that snapshot by ID, an unknown organization
             // cipher kind must remain fail-closed instead of silently disappearing.
-            throw new BitwardenDirectError(
-              'INVALID_RESPONSE',
-              undefined,
-              undefined,
-              undefined,
-              'unsupported-cipher-type'
-            )
+            throw invalidResponse('unsupported-cipher-type')
           }
           if (organizationId === null || organizationId === undefined) continue
           requiredOrganizationIds.add(organizationId)
@@ -3938,13 +3827,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         try {
           if (providerOrganizationRowsById.size > 0 && hasOrganizationEncryptedData) {
             if (!accountPrivateKey) {
-              throw new BitwardenDirectError(
-                'INVALID_RESPONSE',
-                undefined,
-                undefined,
-                undefined,
-                'provider-organization-key'
-              )
+              throw invalidResponse('provider-organization-key')
             }
             const requiredProviderIds = new Set<string>()
             for (const [organizationId, rawOrganization] of providerOrganizationRowsById) {
@@ -3955,24 +3838,12 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
             }
             for (const value of providerRows) {
               if (!isRecord(value)) {
-                throw new BitwardenDirectError(
-                  'INVALID_RESPONSE',
-                  undefined,
-                  undefined,
-                  undefined,
-                  'provider-organization-key'
-                )
+                throw invalidResponse('provider-organization-key')
               }
               const providerId = assertUuidValue(requiredStringProperty(value, 'id'))
               if (!requiredProviderIds.has(providerId)) continue
               if (providerKeys.has(providerId)) {
-                throw new BitwardenDirectError(
-                  'INVALID_RESPONSE',
-                  undefined,
-                  undefined,
-                  undefined,
-                  'provider-organization-key'
-                )
+                throw invalidResponse('provider-organization-key')
               }
               const encryptedProviderKey = requiredStringProperty(value, 'key')
               providerKeys.set(
@@ -3994,13 +3865,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
               )
               const providerKey = providerKeys.get(providerId)
               if (!providerKey) {
-                throw new BitwardenDirectError(
-                  'INVALID_RESPONSE',
-                  undefined,
-                  undefined,
-                  undefined,
-                  'provider-organization-key'
-                )
+                throw invalidResponse('provider-organization-key')
               }
               const organizationKey = this.decryptSymmetricWrappedKey(encryptedKey, providerKey)
               const previousKey = organizationKeys.get(organizationId)
@@ -4030,22 +3895,10 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
           const organizationId = property(value, 'organizationId')
           const rawNestedRows = rawCipherNestedRows(value)
           aggregateRows = addAggregateRemoteRows(aggregateRows, rawNestedRows)
-          if (!isSupportedCipherType(type)) {
-            if (organizationId !== null && organizationId !== undefined) {
-              throw new BitwardenDirectError(
-                'INVALID_RESPONSE',
-                undefined,
-                undefined,
-                undefined,
-                'unsupported-cipher-type'
-              )
-            }
-            continue
-          }
-          if (organizationId !== null && organizationId !== undefined) {
-            if (typeof organizationId !== 'string' || !UUID_PATTERN.test(organizationId)) {
-              throw new BitwardenDirectError('INVALID_RESPONSE')
-            }
+          // The first pass validated organization ids, isolated unsupported personal rows, and
+          // rejected unsupported shared rows.
+          if (!isSupportedCipherType(type)) continue
+          if (typeof organizationId === 'string') {
             const organizationKey = organizationKeys.get(organizationId)
             if (
               !organizationKey ||
@@ -4188,7 +4041,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
           undefined,
           diagnosticStage,
           undefined,
-          mapped.syncInvalidResponseReason ?? this.defaultSyncInvalidReason(invalidResponseStage)
+          mapped.syncInvalidResponseReason ?? DEFAULT_SYNC_INVALID_REASON[invalidResponseStage]
         )
       }
       throw mapped
@@ -4361,7 +4214,11 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
 
   async listEmergencyAccess(signal?: AbortSignal): Promise<BitwardenEmergencyAccess[]> {
     this.requireUserKey()
-    return this.http.listEmergencyAccess(signal)
+    try {
+      return await this.http.listEmergencyAccess(signal)
+    } catch (error) {
+      throw this.mapError(error)
+    }
   }
 
   async downloadAttachment(
@@ -4393,7 +4250,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       // layer resolves a fresh short-lived capability immediately before the
       // binary request and keeps that URL private to itself.
       const response = await this.http.prepareAttachmentDownload(id, attachmentId, signal)
-      const metadata = freshAttachmentMetadata(response, attachmentId, expected, itemKey)
+      const metadata = freshAttachmentMetadata(response, expected, itemKey)
 
       if (metadata.encryptedKey === null) {
         attachmentKey = itemKey
@@ -4466,7 +4323,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         throw new BitwardenDirectError('UNSUPPORTED_ACCOUNT_ENCRYPTION')
       }
       const response = await this.http.prepareAttachmentDownload(id, attachmentId, signal)
-      const metadata = freshAttachmentMetadata(response, attachmentId, expected, itemKey)
+      const metadata = freshAttachmentMetadata(response, expected, itemKey)
       attachmentKey =
         metadata.encryptedKey === null
           ? itemKey
@@ -4633,7 +4490,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     }
 
     const cached = this.logins.get(id)
-    if (!cached || cached.item.attachments.length >= MAX_ATTACHMENTS_PER_ITEM) {
+    if (!cached || cached.item.attachments.length >= MAX_ATTACHMENTS) {
       throw new BitwardenDirectError('INVALID_RESPONSE')
     }
     const duplicates = cached.item.attachments.filter(
@@ -4877,9 +4734,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         }
       }
 
-      let token: string
-      do token = randomBytes(PREPARED_IMPORT_TOKEN_BYTES).toString('base64url')
-      while (this.preparedLoginImports.has(token))
+      const token = randomBytes(PREPARED_IMPORT_TOKEN_BYTES).toString('base64url')
       this.preparedLoginImports.set(token, {
         request: { folders, ciphers, folderRelationships }
       })
@@ -5152,21 +5007,24 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     await this.notifyStateChanged()
   }
 
-  private async deriveMasterPasswordKeys(
+  /** Derives the base64 server proof and zeroes the intermediate key buffers before returning. */
+  private async deriveMasterPasswordHash(
     masterPassword: string,
     signal?: AbortSignal
-  ): Promise<{ masterKey: Buffer; passwordKey: Buffer }> {
+  ): Promise<string> {
     const prelogin = await this.http.prelogin(this.email, signal)
     const masterKey = await deriveMasterKey(
       masterPassword,
       prelogin.salt ?? this.email,
       kdfFromPrelogin(prelogin)
     )
+    let passwordKey: Buffer | null = null
     try {
-      return { masterKey, passwordKey: await derivePasswordKey(masterKey, masterPassword) }
-    } catch (error) {
+      passwordKey = await derivePasswordKey(masterKey, masterPassword)
+      return passwordKey.toString('base64')
+    } finally {
       masterKey.fill(0)
-      throw error
+      passwordKey?.fill(0)
     }
   }
 
@@ -5339,13 +5197,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       masterPasswordUnlockValue !== null &&
       !isRecord(masterPasswordUnlockValue)
     ) {
-      throw new BitwardenDirectError(
-        'INVALID_RESPONSE',
-        undefined,
-        undefined,
-        undefined,
-        'user-decryption-data'
-      )
+      throw invalidResponse('user-decryption-data')
     }
     const masterPasswordUnlock = userDecryption
       ? recordProperty(userDecryption, 'masterPasswordUnlock')
@@ -5357,13 +5209,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       ? stringProperty(masterPasswordUnlock, 'masterKeyWrappedUserKey')
       : null
     if (encryptedName && wrappedName && encryptedName !== wrappedName) {
-      throw new BitwardenDirectError(
-        'INVALID_RESPONSE',
-        undefined,
-        undefined,
-        undefined,
-        'user-decryption-data'
-      )
+      throw invalidResponse('user-decryption-data')
     }
     const modern = encryptedName ?? wrappedName
     const legacy = stringProperty(profile, 'key')
@@ -5406,22 +5252,9 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     payload: JsonObject
   ): BitwardenUserDecryptionCapabilities {
     const raw = property(payload, 'userDecryption')
-    if (raw === undefined || raw === null) {
-      return {
-        hasWebAuthnPrfOptions: false,
-        hasV2UpgradeToken: false,
-        webAuthnPrfUnlockSupported: false,
-        v2AccountUpgradeSupported: false
-      }
-    }
+    if (raw === undefined || raw === null) return noUserDecryptionCapabilities()
     if (!isRecord(raw)) {
-      throw new BitwardenDirectError(
-        'INVALID_RESPONSE',
-        undefined,
-        undefined,
-        undefined,
-        'user-decryption-data'
-      )
+      throw invalidResponse('user-decryption-data')
     }
     const prfOptions = property(raw, 'webAuthnPrfOptions')
     if (
@@ -5431,55 +5264,17 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         prfOptions.length > MAX_REMOTE_ENTITIES ||
         prfOptions.some((option) => !isRecord(option)))
     ) {
-      throw new BitwardenDirectError(
-        'INVALID_RESPONSE',
-        undefined,
-        undefined,
-        undefined,
-        'user-decryption-data'
-      )
+      throw invalidResponse('user-decryption-data')
     }
     const v2UpgradeToken = property(raw, 'v2UpgradeToken')
     if (v2UpgradeToken !== undefined && v2UpgradeToken !== null && !isRecord(v2UpgradeToken)) {
-      throw new BitwardenDirectError(
-        'INVALID_RESPONSE',
-        undefined,
-        undefined,
-        undefined,
-        'user-decryption-data'
-      )
+      throw invalidResponse('user-decryption-data')
     }
     return {
       hasWebAuthnPrfOptions: Array.isArray(prfOptions) && prfOptions.length > 0,
       hasV2UpgradeToken: isRecord(v2UpgradeToken),
       webAuthnPrfUnlockSupported: false,
       v2AccountUpgradeSupported: false
-    }
-  }
-
-  private defaultSyncInvalidReason(
-    stage: BitwardenSyncInvalidResponseStage
-  ): BitwardenSyncInvalidResponseReason {
-    switch (stage) {
-      case 'prelogin':
-      case 'authentication':
-      case 'access-token':
-      case 'response':
-        return 'response-shape'
-      case 'account':
-        return 'account-profile'
-      case 'organization':
-        return 'organization-profile'
-      case 'folder':
-        return 'folder-data'
-      case 'cipher':
-        return 'cipher-data'
-      case 'collection':
-        return 'collection-data'
-      case 'send':
-        return 'send-data'
-      case 'snapshot':
-        return 'snapshot-limit'
     }
   }
 
@@ -5623,88 +5418,19 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     privateKey: KeyObject,
     reason: 'organization-key' | 'provider-organization-key'
   ): Buffer {
-    try {
+    return unwrapOrganizationKey(() => {
       if (!encryptedKey.startsWith('3.') && !encryptedKey.startsWith('4.')) {
         throw new BitwardenDirectError('INVALID_RESPONSE')
       }
-      const plaintext = decryptBitwardenBytes(encryptedKey, userKey, privateKey)
-      try {
-        // Current Bitwarden clients wrap the encoded organization key as raw bytes.
-        if (plaintext.length === USER_KEY_BYTES) return Buffer.from(plaintext)
-
-        // Retain compatibility with legacy payloads that wrapped the same key as Base64 text.
-        if (
-          plaintext.length !== Math.ceil(USER_KEY_BYTES / 3) * 4 ||
-          plaintext.some((byte) => byte > 0x7f)
-        ) {
-          throw new BitwardenDirectError('INVALID_RESPONSE')
-        }
-        const encoded = plaintext.toString('ascii')
-        if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(encoded)) {
-          throw new BitwardenDirectError('INVALID_RESPONSE')
-        }
-        const organizationKey = Buffer.from(encoded, 'base64')
-        if (
-          organizationKey.length !== USER_KEY_BYTES ||
-          organizationKey.toString('base64') !== encoded
-        ) {
-          organizationKey.fill(0)
-          throw new BitwardenDirectError('INVALID_RESPONSE')
-        }
-        return organizationKey
-      } finally {
-        plaintext.fill(0)
-      }
-    } catch (error) {
-      if (
-        (error instanceof BitwardenDirectError && error.code === 'INVALID_RESPONSE') ||
-        error instanceof BitwardenCryptoError
-      ) {
-        throw new BitwardenDirectError('INVALID_RESPONSE', undefined, undefined, undefined, reason)
-      }
-      throw error
-    }
+      return decryptBitwardenBytes(encryptedKey, userKey, privateKey)
+    }, reason)
   }
 
   private decryptSymmetricWrappedKey(encryptedKey: string, wrappingKey: Buffer): Buffer {
-    try {
-      const plaintext = decryptBitwardenBytes(encryptedKey, wrappingKey)
-      try {
-        if (plaintext.length === USER_KEY_BYTES) return Buffer.from(plaintext)
-        if (
-          plaintext.length !== Math.ceil(USER_KEY_BYTES / 3) * 4 ||
-          plaintext.some((byte) => byte > 0x7f)
-        ) {
-          throw new BitwardenDirectError('INVALID_RESPONSE')
-        }
-        const encoded = plaintext.toString('ascii')
-        if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(encoded)) {
-          throw new BitwardenDirectError('INVALID_RESPONSE')
-        }
-        const key = Buffer.from(encoded, 'base64')
-        if (key.length !== USER_KEY_BYTES || key.toString('base64') !== encoded) {
-          key.fill(0)
-          throw new BitwardenDirectError('INVALID_RESPONSE')
-        }
-        return key
-      } finally {
-        plaintext.fill(0)
-      }
-    } catch (error) {
-      if (
-        (error instanceof BitwardenDirectError && error.code === 'INVALID_RESPONSE') ||
-        error instanceof BitwardenCryptoError
-      ) {
-        throw new BitwardenDirectError(
-          'INVALID_RESPONSE',
-          undefined,
-          undefined,
-          undefined,
-          'provider-organization-key'
-        )
-      }
-      throw error
-    }
+    return unwrapOrganizationKey(
+      () => decryptBitwardenBytes(encryptedKey, wrappingKey),
+      'provider-organization-key'
+    )
   }
 
   private decryptCollection(
@@ -5844,13 +5570,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       } else if (file) {
         const fileId = requiredStringProperty(file, 'id')
         const fileName = decryptBitwardenString(requiredStringProperty(file, 'fileName'), sendKey)
-        const sizeValue = property(file, 'size')
-        const size =
-          typeof sizeValue === 'string' && /^\d+$/u.test(sizeValue)
-            ? Number(sizeValue)
-            : typeof sizeValue === 'number' && Number.isSafeInteger(sizeValue)
-              ? sizeValue
-              : NaN
+        const size = sendFileSize(property(file, 'size'))
         const sizeName = nullableStringProperty(file, 'sizeName')
         if (
           fileId.length === 0 ||
@@ -5988,9 +5708,13 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         notes: notes === null ? null : decryptBitwardenString(notes, key),
         favorite: booleanProperty(raw, 'favorite'),
         uris: [],
-        customFields: decryptLegacyCustomFields(property(raw, 'fields'), key),
+        customFields: parseRemoteCustomFields(property(raw, 'fields'), (value) =>
+          decryptBitwardenString(value, key)
+        ),
         passkeys: [],
-        passwordHistory: decryptLegacyPasswordHistory(property(raw, 'passwordHistory'), key),
+        passwordHistory: parsePasswordHistory(property(raw, 'passwordHistory'), (entry) =>
+          decryptBitwardenString(requiredStringProperty(entry, 'password'), key)
+        ),
         passwordRevisionDate: null,
         autofillOnPageLoad: null,
         attachments,
@@ -6010,55 +5734,16 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         item.autofillOnPageLoad = nullableBooleanProperty(login, 'autofillOnPageLoad')
         item.totp = decryptOptionalString(login, 'totp', key)
         item.passkeys = decryptFido2Credentials(login, key)
-        const urisValue = property(login, 'uris')
-        if (
-          urisValue !== undefined &&
-          urisValue !== null &&
-          (!Array.isArray(urisValue) || urisValue.length > MAX_LOGIN_URIS)
-        ) {
-          throw new BitwardenDirectError('INVALID_RESPONSE')
-        }
-        item.uris = (Array.isArray(urisValue) ? urisValue : []).map((value) => {
-          if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
-          const encryptedUri = nullableStringProperty(value, 'uri')
-          const uri = encryptedUri === null ? '' : decryptBitwardenString(encryptedUri, key)
-          if (uri.length > MAX_URI_LENGTH) throw new BitwardenDirectError('INVALID_RESPONSE')
-          return {
-            uri,
-            match: validateUriMatch(property(value, 'match'))
-          }
-        })
+        item.uris = parseRemoteUris(property(login, 'uris'), (value) =>
+          decryptBitwardenString(value, key)
+        )
         item.uri = item.uris[0]?.uri ?? null
-      } else if (itemType === 'card') {
-        const card = recordProperty(raw, 'card')
-        if (!card) throw new BitwardenDirectError('INVALID_RESPONSE')
-        item.cardholderName = decryptOptionalString(card, 'cardholderName', key)
-        item.brand = decryptOptionalString(card, 'brand', key)
-        item.number = decryptOptionalString(card, 'number', key)
-        item.expMonth = decryptOptionalString(card, 'expMonth', key)
-        item.expYear = decryptOptionalString(card, 'expYear', key)
-        item.code = decryptOptionalString(card, 'code', key)
-      } else if (itemType === 'identity') {
-        const identity = recordProperty(raw, 'identity')
-        if (!identity) throw new BitwardenDirectError('INVALID_RESPONSE')
-        item.title = decryptOptionalString(identity, 'title', key)
-        item.firstName = decryptOptionalString(identity, 'firstName', key)
-        item.middleName = decryptOptionalString(identity, 'middleName', key)
-        item.lastName = decryptOptionalString(identity, 'lastName', key)
-        item.address1 = decryptOptionalString(identity, 'address1', key)
-        item.address2 = decryptOptionalString(identity, 'address2', key)
-        item.address3 = decryptOptionalString(identity, 'address3', key)
-        item.city = decryptOptionalString(identity, 'city', key)
-        item.state = decryptOptionalString(identity, 'state', key)
-        item.postalCode = decryptOptionalString(identity, 'postalCode', key)
-        item.country = decryptOptionalString(identity, 'country', key)
-        item.company = decryptOptionalString(identity, 'company', key)
-        item.email = decryptOptionalString(identity, 'email', key)
-        item.phone = decryptOptionalString(identity, 'phone', key)
-        item.ssn = decryptOptionalString(identity, 'ssn', key)
-        item.identityUsername = decryptOptionalString(identity, 'username', key)
-        item.passportNumber = decryptOptionalString(identity, 'passportNumber', key)
-        item.licenseNumber = decryptOptionalString(identity, 'licenseNumber', key)
+      } else if (itemType === 'card' || itemType === 'identity') {
+        const typed = recordProperty(raw, itemType)
+        if (!typed) throw new BitwardenDirectError('INVALID_RESPONSE')
+        for (const [field, wireName] of TYPED_STRING_FIELDS[itemType]) {
+          item[field] = decryptOptionalString(typed, wireName, key)
+        }
       } else if (itemType === 'secureNote') {
         const secureNote = recordProperty(raw, 'secureNote')
         const secureNoteType = secureNote ? property(secureNote, 'type') : undefined
@@ -6102,9 +5787,12 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       notes: nullableStringProperty(content, 'notes'),
       favorite: booleanProperty(raw, 'favorite'),
       uris: [],
-      customFields: decryptBlobCustomFields(property(content, 'fields')),
+      customFields: parseRemoteCustomFields(property(content, 'fields'), (value) => value),
       passkeys: [],
-      passwordHistory: decryptBlobPasswordHistory(property(content, 'passwordHistory')),
+      passwordHistory: parsePasswordHistory(
+        property(content, 'passwordHistory'),
+        plainHistoryPassword
+      ),
       passwordRevisionDate: null,
       autofillOnPageLoad: null,
       attachments,
@@ -6122,50 +5810,12 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       item.autofillOnPageLoad = nullableBooleanProperty(typeData, 'autofillOnPageLoad')
       item.totp = nullableStringProperty(typeData, 'totp') ?? ''
       item.passkeys = parseBlobFido2Credentials(typeData)
-      const urisValue = property(typeData, 'uris')
-      if (
-        urisValue !== undefined &&
-        urisValue !== null &&
-        (!Array.isArray(urisValue) || urisValue.length > MAX_LOGIN_URIS)
-      ) {
-        throw new BitwardenDirectError('INVALID_RESPONSE')
-      }
-      item.uris = (Array.isArray(urisValue) ? urisValue : []).map((value) => {
-        if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
-        const uri = nullableStringProperty(value, 'uri') ?? ''
-        if (uri.length > MAX_URI_LENGTH) throw new BitwardenDirectError('INVALID_RESPONSE')
-        return {
-          uri,
-          match: validateUriMatch(property(value, 'match'))
-        }
-      })
+      item.uris = parseRemoteUris(property(typeData, 'uris'), (value) => value)
       item.uri = item.uris[0]?.uri ?? null
-    } else if (itemType === 'card') {
-      item.cardholderName = nullableStringProperty(typeData, 'cardholderName') ?? ''
-      item.brand = nullableStringProperty(typeData, 'brand') ?? ''
-      item.number = nullableStringProperty(typeData, 'number') ?? ''
-      item.expMonth = nullableStringProperty(typeData, 'expMonth') ?? ''
-      item.expYear = nullableStringProperty(typeData, 'expYear') ?? ''
-      item.code = nullableStringProperty(typeData, 'code') ?? ''
-    } else if (itemType === 'identity') {
-      item.title = nullableStringProperty(typeData, 'title') ?? ''
-      item.firstName = nullableStringProperty(typeData, 'firstName') ?? ''
-      item.middleName = nullableStringProperty(typeData, 'middleName') ?? ''
-      item.lastName = nullableStringProperty(typeData, 'lastName') ?? ''
-      item.address1 = nullableStringProperty(typeData, 'address1') ?? ''
-      item.address2 = nullableStringProperty(typeData, 'address2') ?? ''
-      item.address3 = nullableStringProperty(typeData, 'address3') ?? ''
-      item.city = nullableStringProperty(typeData, 'city') ?? ''
-      item.state = nullableStringProperty(typeData, 'state') ?? ''
-      item.postalCode = nullableStringProperty(typeData, 'postalCode') ?? ''
-      item.country = nullableStringProperty(typeData, 'country') ?? ''
-      item.company = nullableStringProperty(typeData, 'company') ?? ''
-      item.email = nullableStringProperty(typeData, 'email') ?? ''
-      item.phone = nullableStringProperty(typeData, 'phone') ?? ''
-      item.ssn = nullableStringProperty(typeData, 'ssn') ?? ''
-      item.identityUsername = nullableStringProperty(typeData, 'username') ?? ''
-      item.passportNumber = nullableStringProperty(typeData, 'passportNumber') ?? ''
-      item.licenseNumber = nullableStringProperty(typeData, 'licenseNumber') ?? ''
+    } else if (itemType === 'card' || itemType === 'identity') {
+      for (const [field, wireName] of TYPED_STRING_FIELDS[itemType]) {
+        item[field] = nullableStringProperty(typeData, wireName) ?? ''
+      }
     } else if (itemType === 'secureNote') {
       if (!Number.isSafeInteger(property(typeData, 'secureNoteType'))) {
         throw new BitwardenDirectError('INVALID_RESPONSE')
@@ -6222,7 +5872,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
           ? previousFields === undefined
             ? []
             : previousFields
-          : encryptLegacyCustomFields(draft.customFields, key),
+          : customFieldsToWire(draft.customFields, (value) => encryptBitwardenString(value, key)),
       login: null,
       secureNote: null,
       card: null,
@@ -6250,33 +5900,16 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       } else if (!Object.hasOwn(typeData, 'fido2Credentials')) {
         typeData.fido2Credentials = []
       }
-      typeData.uris = encryptLegacyUris(draft.uris, previousTypeData, key)
-    } else if (draft.type === 'card') {
-      typeData.cardholderName = encryptBitwardenString(draft.cardholderName, key)
-      typeData.brand = encryptBitwardenString(draft.brand, key)
-      typeData.number = encryptBitwardenString(draft.number, key)
-      typeData.expMonth = encryptBitwardenString(draft.expMonth, key)
-      typeData.expYear = encryptBitwardenString(draft.expYear, key)
-      typeData.code = encryptBitwardenString(draft.code, key)
-    } else if (draft.type === 'identity') {
-      typeData.title = encryptBitwardenString(draft.title, key)
-      typeData.firstName = encryptBitwardenString(draft.firstName, key)
-      typeData.middleName = encryptBitwardenString(draft.middleName, key)
-      typeData.lastName = encryptBitwardenString(draft.lastName, key)
-      typeData.address1 = encryptBitwardenString(draft.address1, key)
-      typeData.address2 = encryptBitwardenString(draft.address2, key)
-      typeData.address3 = encryptBitwardenString(draft.address3, key)
-      typeData.city = encryptBitwardenString(draft.city, key)
-      typeData.state = encryptBitwardenString(draft.state, key)
-      typeData.postalCode = encryptBitwardenString(draft.postalCode, key)
-      typeData.country = encryptBitwardenString(draft.country, key)
-      typeData.company = encryptBitwardenString(draft.company, key)
-      typeData.email = encryptBitwardenString(draft.email, key)
-      typeData.phone = encryptBitwardenString(draft.phone, key)
-      typeData.ssn = encryptBitwardenString(draft.ssn, key)
-      typeData.username = encryptBitwardenString(draft.identityUsername, key)
-      typeData.passportNumber = encryptBitwardenString(draft.passportNumber, key)
-      typeData.licenseNumber = encryptBitwardenString(draft.licenseNumber, key)
+      typeData.uris = preservedUriRows(
+        previousTypeData ? property(previousTypeData, 'uris') : null,
+        draft.uris,
+        (value) => decryptBitwardenString(value, key),
+        (entry) => ({ uri: encryptBitwardenString(entry.uri, key), match: entry.match })
+      )
+    } else if (draft.type === 'card' || draft.type === 'identity') {
+      for (const [field, wireName] of TYPED_STRING_FIELDS[draft.type]) {
+        typeData[wireName] = encryptBitwardenString(draft[field], key)
+      }
     } else if (draft.type === 'secureNote') {
       typeData.type = 0
     } else {
@@ -6335,35 +5968,18 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       if (draft.passkeysChanged) {
         typeData.fido2Credentials = draft.passkeys.map(passkeyToBlob)
       }
-      typeData.uris = blobUris(draft.uris, previousUris)
+      typeData.uris = preservedUriRows(
+        previousUris,
+        draft.uris,
+        (value) => value,
+        (entry) => ({ uri: entry.uri, match: entry.match })
+      )
       if (!Object.hasOwn(typeData, 'totp')) typeData.totp = null
       if (!Object.hasOwn(typeData, 'fido2Credentials')) typeData.fido2Credentials = []
-    } else if (draft.type === 'card') {
-      typeData.cardholderName = draft.cardholderName
-      typeData.brand = draft.brand
-      typeData.number = draft.number
-      typeData.expMonth = draft.expMonth
-      typeData.expYear = draft.expYear
-      typeData.code = draft.code
-    } else if (draft.type === 'identity') {
-      typeData.title = draft.title
-      typeData.firstName = draft.firstName
-      typeData.middleName = draft.middleName
-      typeData.lastName = draft.lastName
-      typeData.address1 = draft.address1
-      typeData.address2 = draft.address2
-      typeData.address3 = draft.address3
-      typeData.city = draft.city
-      typeData.state = draft.state
-      typeData.postalCode = draft.postalCode
-      typeData.country = draft.country
-      typeData.company = draft.company
-      typeData.email = draft.email
-      typeData.phone = draft.phone
-      typeData.ssn = draft.ssn
-      typeData.username = draft.identityUsername
-      typeData.passportNumber = draft.passportNumber
-      typeData.licenseNumber = draft.licenseNumber
+    } else if (draft.type === 'card' || draft.type === 'identity') {
+      for (const [field, wireName] of TYPED_STRING_FIELDS[draft.type]) {
+        typeData[wireName] = draft[field]
+      }
     } else if (draft.type === 'secureNote') {
       typeData.secureNoteType = 0
     } else {
@@ -6374,7 +5990,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     content.typeData = typeData
     content.name = draft.name
     content.notes = draft.notes
-    if (draft.customFieldsChanged) content.fields = customFieldsToBlob(draft.customFields)
+    if (draft.customFieldsChanged)
+      content.fields = customFieldsToWire(draft.customFields, (value) => value)
     if (draft.passwordHistoryChanged) {
       content.passwordHistory = passwordHistoryToBlob(draft.passwordHistory)
     }
@@ -6617,12 +6234,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     this.sends.clear()
     this.isolatedPersonalCiphers.clear()
     this.syncedEquivalentDomainSettings = null
-    this.syncedUserDecryptionCapabilities = {
-      hasWebAuthnPrfOptions: false,
-      hasV2UpgradeToken: false,
-      webAuthnPrfUnlockSupported: false,
-      v2AccountUpgradeSupported: false
-    }
+    this.syncedUserDecryptionCapabilities = noUserDecryptionCapabilities()
   }
 
   private clearPendingMasterKey(): void {

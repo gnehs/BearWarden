@@ -31,6 +31,7 @@ import {
   addAggregateRemoteRows,
   BitwardenDirectClient,
   type BitwardenDirectErrorCode,
+  type BitwardenDirectState,
   type BitwardenSyncInvalidResponseReason,
   type BitwardenSyncInvalidResponseStage,
   type BitwardenTwoFactor
@@ -41,6 +42,7 @@ import {
   BitwardenHttpClient,
   BitwardenHttpError,
   type BitwardenAttachmentUploadRequest,
+  type BitwardenPrelogin,
   type FetchLike,
   type JsonObject
 } from './bitwarden-http'
@@ -653,6 +655,35 @@ function jsonResponse(value: unknown, status = 200): Response {
   })
 }
 
+/** Answers the prelogin and password-token requests that precede every synced test client. */
+function passwordLoginResponse(url: string): Response | null {
+  if (url.endsWith('/identity/accounts/prelogin/password')) {
+    return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+  }
+  if (url.endsWith('/identity/connect/token')) {
+    return jsonResponse({
+      access_token: 'access-token',
+      refresh_token: 'refresh-token',
+      expires_in: 3_600
+    })
+  }
+  return null
+}
+
+function pbkdf2Prelogin(): BitwardenPrelogin {
+  return { kdfType: 0, iterations: 5_000, memory: null, parallelism: null, salt: EMAIL, raw: {} }
+}
+
+/** Persisted state of a signed-in account whose vault has not been unlocked in this process. */
+function lockedAccountState(): BitwardenDirectState {
+  return {
+    session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
+    deviceIdentifier: '00000000-0000-4000-8000-000000000000',
+    profileId: PROFILE_ID,
+    securityStamp: 'security-stamp'
+  }
+}
+
 function expectedLoginRequestFingerprint(publicKey: Buffer): string {
   const prk = createHash('sha256').update(publicKey).digest()
   const expanded = createHmac('sha256', prk)
@@ -695,16 +726,8 @@ async function loginRequestHarness(
     server: 'https://vault.example.invalid',
     now: () => Date.parse('2026-07-20T04:00:00.000Z'),
     fetch: async (url, init) => {
-      if (url.endsWith('/identity/accounts/prelogin/password')) {
-        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-      }
-      if (url.endsWith('/identity/connect/token')) {
-        return jsonResponse({
-          access_token: 'access-token',
-          refresh_token: 'refresh-token',
-          expires_in: 3_600
-        })
-      }
+      const auth = passwordLoginResponse(url)
+      if (auth) return auth
       if (url.endsWith('/api/sync')) return jsonResponse(sync)
       if (url.endsWith('/api/auth-requests/pending')) {
         return jsonResponse({ data: [request], object: 'list', continuationToken: null })
@@ -770,16 +793,8 @@ async function syncedAttachmentClient(
   const http = new BitwardenHttpClient({
     server: 'https://vault.example.invalid',
     fetch: async (url) => {
-      if (url.endsWith('/identity/accounts/prelogin/password')) {
-        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-      }
-      if (url.endsWith('/identity/connect/token')) {
-        return jsonResponse({
-          access_token: 'access-token',
-          refresh_token: 'refresh-token',
-          expires_in: 3_600
-        })
-      }
+      const auth = passwordLoginResponse(url)
+      if (auth) return auth
       if (url.endsWith('/api/sync')) return jsonResponse(sync)
       if (url.endsWith(`/api/ciphers/${LOGIN_ID}/attachment/${attachmentId}`)) {
         return jsonResponse(fresh)
@@ -846,16 +861,8 @@ async function attachmentMutationHarness(
     cipher.revisionDate = '2026-07-14T00:00:00.000Z'
   }
   const fetch = async (url: string): Promise<Response> => {
-    if (url.endsWith('/identity/accounts/prelogin/password')) {
-      return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-    }
-    if (url.endsWith('/identity/connect/token')) {
-      return jsonResponse({
-        access_token: 'access-token',
-        refresh_token: 'refresh-token',
-        expires_in: 3_600
-      })
-    }
+    const auth = passwordLoginResponse(url)
+    if (auth) return auth
     if (url.endsWith('/api/sync')) {
       events.push('sync')
       return jsonResponse(sync)
@@ -1003,16 +1010,8 @@ async function expectInvalidSync(
   const http = new BitwardenHttpClient({
     server: 'https://vault.example.invalid',
     fetch: async (url) => {
-      if (url.endsWith('/identity/accounts/prelogin/password')) {
-        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-      }
-      if (url.endsWith('/identity/connect/token')) {
-        return jsonResponse({
-          access_token: 'access-token',
-          refresh_token: 'refresh-token',
-          expires_in: 3_600
-        })
-      }
+      const auth = passwordLoginResponse(url)
+      if (auth) return auth
       if (url.endsWith('/api/sync')) return jsonResponse(sync)
       return jsonResponse({ message: 'not found' }, 404)
     }
@@ -1035,19 +1034,19 @@ async function clientForSync(
   sync: JsonObject,
   authoritativeDomains?: JsonObject
 ): Promise<BitwardenDirectClient> {
+  return (await syncedClient(sync, authoritativeDomains)).client
+}
+
+/** Logs in and completes one sync against `sync`, which tests may mutate between syncs. */
+async function syncedClient(
+  sync: JsonObject,
+  authoritativeDomains?: JsonObject
+): Promise<{ client: BitwardenDirectClient; http: BitwardenHttpClient }> {
   const http = new BitwardenHttpClient({
     server: 'https://vault.example.invalid',
     fetch: async (url) => {
-      if (url.endsWith('/identity/accounts/prelogin/password')) {
-        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-      }
-      if (url.endsWith('/identity/connect/token')) {
-        return jsonResponse({
-          access_token: 'access-token',
-          refresh_token: 'refresh-token',
-          expires_in: 3_600
-        })
-      }
+      const auth = passwordLoginResponse(url)
+      if (auth) return auth
       if (url.endsWith('/api/sync')) return jsonResponse(sync)
       if (url.endsWith('/api/settings/domains') && authoritativeDomains) {
         return jsonResponse(authoritativeDomains)
@@ -1062,7 +1061,7 @@ async function clientForSync(
   })
   await client.login({ email: EMAIL, password: PASSWORD })
   await client.sync()
-  return client
+  return { client, http }
 }
 
 async function expectIsolatedPersonalCipherSync(sync: JsonObject, id = LOGIN_ID): Promise<void> {
@@ -1074,7 +1073,18 @@ async function expectIsolatedPersonalCipherSync(sync: JsonObject, id = LOGIN_ID)
 }
 
 describe('BitwardenDirectClient', () => {
-  it('annotates incompatible prelogin responses with a safe prelogin stage', async () => {
+  it.each([
+    {
+      label: 'an incompatible prelogin schema',
+      prelogin: { kdf: 'unexpected' },
+      reason: 'kdf-settings'
+    },
+    {
+      label: 'unsafe or excessive KDF parameters',
+      prelogin: { kdf: 0, kdfIterations: 4_999 },
+      reason: 'kdf-parameters'
+    }
+  ] as const)('annotates $label with the safe prelogin stage', async ({ prelogin, reason }) => {
     const client = new BitwardenDirectClient({
       serverUrl: 'https://vault.example.invalid',
       email: EMAIL,
@@ -1082,7 +1092,7 @@ describe('BitwardenDirectClient', () => {
         server: 'https://vault.example.invalid',
         fetch: async (url) =>
           url.endsWith('/identity/accounts/prelogin/password')
-            ? jsonResponse({ kdf: 'unexpected' })
+            ? jsonResponse(prelogin)
             : jsonResponse({ message: 'not found' }, 404)
       })
     })
@@ -1090,25 +1100,7 @@ describe('BitwardenDirectClient', () => {
     await expect(client.login({ email: EMAIL, password: PASSWORD })).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
       syncInvalidResponseStage: 'prelogin',
-      syncInvalidResponseReason: 'kdf-settings'
-    })
-  })
-
-  it('distinguishes unsafe or excessive KDF parameters from prelogin schema errors', async () => {
-    const http = new BitwardenHttpClient({
-      server: 'https://vault.example.invalid',
-      fetch: async () => jsonResponse({ kdf: 0, kdfIterations: 4_999 })
-    })
-    const client = new BitwardenDirectClient({
-      serverUrl: 'https://vault.example.invalid',
-      email: EMAIL,
-      httpClient: http
-    })
-
-    await expect(client.login({ email: EMAIL, password: PASSWORD })).rejects.toMatchObject({
-      code: 'INVALID_RESPONSE',
-      syncInvalidResponseStage: 'prelogin',
-      syncInvalidResponseReason: 'kdf-parameters'
+      syncInvalidResponseReason: reason
     })
   })
 
@@ -1787,30 +1779,7 @@ describe('BitwardenDirectClient', () => {
 
   it('does not publish a sync snapshot after the vault is locked', async () => {
     const sync = await encryptedSync()
-    const http = new BitwardenHttpClient({
-      server: 'https://vault.example.invalid',
-      fetch: async (url) => {
-        if (url.endsWith('/identity/accounts/prelogin/password')) {
-          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-        }
-        if (url.endsWith('/identity/connect/token')) {
-          return jsonResponse({
-            access_token: 'access-token',
-            refresh_token: 'refresh-token',
-            expires_in: 3_600
-          })
-        }
-        if (url.endsWith('/api/sync')) return jsonResponse(sync)
-        return jsonResponse({ message: 'not found' }, 404)
-      }
-    })
-    const client = new BitwardenDirectClient({
-      serverUrl: 'https://vault.example.invalid',
-      email: EMAIL,
-      httpClient: http
-    })
-    await client.login({ email: EMAIL, password: PASSWORD })
-    await client.sync()
+    const { client, http } = await syncedClient(sync)
 
     let resolveSync!: (value: JsonObject) => void
     const delayedSync = new Promise<JsonObject>((resolve) => {
@@ -1828,30 +1797,7 @@ describe('BitwardenDirectClient', () => {
 
   it('keeps later syncs queued when an intermediate waiter is canceled', async () => {
     const sync = await encryptedSync()
-    const http = new BitwardenHttpClient({
-      server: 'https://vault.example.invalid',
-      fetch: async (url) => {
-        if (url.endsWith('/identity/accounts/prelogin/password')) {
-          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-        }
-        if (url.endsWith('/identity/connect/token')) {
-          return jsonResponse({
-            access_token: 'access-token',
-            refresh_token: 'refresh-token',
-            expires_in: 3_600
-          })
-        }
-        if (url.endsWith('/api/sync')) return jsonResponse(sync)
-        return jsonResponse({ message: 'not found' }, 404)
-      }
-    })
-    const client = new BitwardenDirectClient({
-      serverUrl: 'https://vault.example.invalid',
-      email: EMAIL,
-      httpClient: http
-    })
-    await client.login({ email: EMAIL, password: PASSWORD })
-    await client.sync()
+    const { client, http } = await syncedClient(sync)
 
     let releaseFirst!: (value: JsonObject) => void
     const firstResponse = new Promise<JsonObject>((resolve) => {
@@ -1881,16 +1827,8 @@ describe('BitwardenDirectClient', () => {
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',
       fetch: async (url) => {
-        if (url.endsWith('/identity/accounts/prelogin/password')) {
-          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-        }
-        if (url.endsWith('/identity/connect/token')) {
-          return jsonResponse({
-            access_token: 'access-token',
-            refresh_token: 'refresh-token',
-            expires_in: 3_600
-          })
-        }
+        const auth = passwordLoginResponse(url)
+        if (auth) return auth
         if (url.endsWith('/api/sync')) return jsonResponse(sync)
         return jsonResponse({ message: 'not found' }, 404)
       }
@@ -1939,14 +1877,7 @@ describe('BitwardenDirectClient', () => {
       server: 'https://vault.example.invalid',
       fetch: async () => jsonResponse({ message: 'not found' }, 404)
     })
-    vi.spyOn(http, 'prelogin').mockResolvedValue({
-      kdfType: 0,
-      iterations: 5_000,
-      memory: null,
-      parallelism: null,
-      salt: EMAIL,
-      raw: {}
-    })
+    vi.spyOn(http, 'prelogin').mockResolvedValue(pbkdf2Prelogin())
     let resolveSession!: (session: {
       accessToken: string
       refreshToken: string
@@ -2403,14 +2334,8 @@ describe('BitwardenDirectClient', () => {
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',
       fetch: async (url) => {
-        if (url.endsWith('/identity/accounts/prelogin/password'))
-          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-        if (url.endsWith('/identity/connect/token'))
-          return jsonResponse({
-            access_token: 'access',
-            refresh_token: 'refresh',
-            expires_in: 3600
-          })
+        const auth = passwordLoginResponse(url)
+        if (auth) return auth
         if (url.endsWith('/api/sync')) return jsonResponse(sync)
         if (url.endsWith('/api/accounts/password')) {
           mutationCalls += 1
@@ -2459,16 +2384,8 @@ describe('BitwardenDirectClient', () => {
         new BitwardenHttpClient({
           server: 'https://vault.example.invalid',
           fetch: async (url) => {
-            if (url.endsWith('/identity/accounts/prelogin/password')) {
-              return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-            }
-            if (url.endsWith('/identity/connect/token')) {
-              return jsonResponse({
-                access_token: 'access',
-                refresh_token: 'refresh',
-                expires_in: 3600
-              })
-            }
+            const auth = passwordLoginResponse(url)
+            if (auth) return auth
             if (url.endsWith('/api/sync')) return jsonResponse(sync)
             return jsonResponse({ message: 'not found' }, 404)
           }
@@ -2507,16 +2424,8 @@ describe('BitwardenDirectClient', () => {
     const connectedHttp = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',
       fetch: async (url) => {
-        if (url.endsWith('/identity/accounts/prelogin/password')) {
-          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-        }
-        if (url.endsWith('/identity/connect/token')) {
-          return jsonResponse({
-            access_token: 'access',
-            refresh_token: 'refresh',
-            expires_in: 3600
-          })
-        }
+        const auth = passwordLoginResponse(url)
+        if (auth) return auth
         if (url.endsWith('/api/sync')) return jsonResponse(sync)
         return jsonResponse({ message: 'not found' }, 404)
       }
@@ -2640,16 +2549,8 @@ describe('BitwardenDirectClient', () => {
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',
       fetch: async (url, init) => {
-        if (url.endsWith('/identity/accounts/prelogin/password')) {
-          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-        }
-        if (url.endsWith('/identity/connect/token')) {
-          return jsonResponse({
-            access_token: 'access-token',
-            refresh_token: 'refresh-token',
-            expires_in: 3_600
-          })
-        }
+        const auth = passwordLoginResponse(url)
+        if (auth) return auth
         if (url.endsWith('/api/sync')) return jsonResponse(sync)
         if (init?.method === 'PUT' && url.endsWith(`/api/ciphers/${ORGANIZATION_CIPHER_ID}`)) {
           organizationUpdateRequest = JSON.parse(String(init.body)) as JsonObject
@@ -3024,16 +2925,8 @@ describe('BitwardenDirectClient', () => {
     sync.sends = [send]
     let updateBody: JsonObject | null = null
     const fetch = vi.fn<FetchLike>().mockImplementation(async (url, init) => {
-      if (url.endsWith('/identity/accounts/prelogin/password')) {
-        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-      }
-      if (url.endsWith('/identity/connect/token')) {
-        return jsonResponse({
-          access_token: 'access-token',
-          refresh_token: 'refresh-token',
-          expires_in: 3_600
-        })
-      }
+      const auth = passwordLoginResponse(url)
+      if (auth) return auth
       if (url.endsWith('/api/sync')) return jsonResponse(sync)
       if (url.endsWith('/api/sends')) return jsonResponse(send)
       if (url.endsWith('/api/sends/' + SEND_ID) && init?.method === 'PUT') {
@@ -3112,16 +3005,8 @@ describe('BitwardenDirectClient', () => {
     sync.sends = [send]
     let updateBody: JsonObject | null = null
     const fetch = vi.fn<FetchLike>().mockImplementation(async (url, init) => {
-      if (url.endsWith('/identity/accounts/prelogin/password')) {
-        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-      }
-      if (url.endsWith('/identity/connect/token')) {
-        return jsonResponse({
-          access_token: 'access-token',
-          refresh_token: 'refresh-token',
-          expires_in: 3_600
-        })
-      }
+      const auth = passwordLoginResponse(url)
+      if (auth) return auth
       if (url.endsWith('/api/sync')) return jsonResponse(sync)
       if (url.endsWith(`/api/sends/${SEND_ID}`) && init?.method === 'PUT') {
         updateBody = JSON.parse(String(init.body)) as JsonObject
@@ -3192,16 +3077,8 @@ describe('BitwardenDirectClient', () => {
     }
     sync.sends = [send]
     const fetch = vi.fn<FetchLike>().mockImplementation(async (url) => {
-      if (url.endsWith('/identity/accounts/prelogin/password')) {
-        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-      }
-      if (url.endsWith('/identity/connect/token')) {
-        return jsonResponse({
-          access_token: 'access-token',
-          refresh_token: 'refresh-token',
-          expires_in: 3_600
-        })
-      }
+      const auth = passwordLoginResponse(url)
+      if (auth) return auth
       if (url.endsWith('/api/sync')) return jsonResponse(sync)
       if (url.endsWith('/api/sends')) return jsonResponse(send)
       return jsonResponse({ message: 'not found' }, 404)
@@ -3243,16 +3120,8 @@ describe('BitwardenDirectClient', () => {
     const fileId = '0123456789abcdef0123456789abcdef'
     let created: JsonObject | null = null
     const fetch = vi.fn<FetchLike>().mockImplementation(async (url, init) => {
-      if (url.endsWith('/identity/accounts/prelogin/password')) {
-        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-      }
-      if (url.endsWith('/identity/connect/token')) {
-        return jsonResponse({
-          access_token: 'access-token',
-          refresh_token: 'refresh-token',
-          expires_in: 3_600
-        })
-      }
+      const auth = passwordLoginResponse(url)
+      if (auth) return auth
       if (url.endsWith('/api/sync'))
         return jsonResponse({ ...sync, sends: created ? [created] : [] })
       if (url.endsWith('/api/sends/file/v2')) {
@@ -3371,16 +3240,8 @@ describe('BitwardenDirectClient', () => {
     }
     sync.sends = [send]
     const fetch = vi.fn<FetchLike>().mockImplementation(async (url, init) => {
-      if (url.endsWith('/identity/accounts/prelogin/password')) {
-        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-      }
-      if (url.endsWith('/identity/connect/token')) {
-        return jsonResponse({
-          access_token: 'access-token',
-          refresh_token: 'refresh-token',
-          expires_in: 3_600
-        })
-      }
+      const auth = passwordLoginResponse(url)
+      if (auth) return auth
       if (url.endsWith('/api/sync')) return jsonResponse(sync)
       if (url.endsWith('/api/sends')) return jsonResponse(send)
       if (url.endsWith(`/api/sends/access/${send.accessId}`)) {
@@ -3484,12 +3345,7 @@ describe('BitwardenDirectClient', () => {
       serverUrl: 'https://vault.example.invalid',
       email: EMAIL,
       httpClient: http,
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: PROFILE_ID,
-        securityStamp: 'security-stamp'
-      }
+      state: lockedAccountState()
     })
 
     await expect(client.updateAccountProfileName('After', 'Before')).resolves.toMatchObject({
@@ -3529,12 +3385,7 @@ describe('BitwardenDirectClient', () => {
       serverUrl: 'https://vault.example.invalid',
       email: EMAIL,
       httpClient: http,
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: PROFILE_ID,
-        securityStamp: 'security-stamp'
-      }
+      state: lockedAccountState()
     })
 
     await expect(client.updateAccountProfileName('After', 'Before')).rejects.toMatchObject({
@@ -3566,12 +3417,7 @@ describe('BitwardenDirectClient', () => {
       email: EMAIL,
       httpClient: http,
       onStateChanged,
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: PROFILE_ID,
-        securityStamp: 'security-stamp'
-      }
+      state: lockedAccountState()
     })
 
     await expect(client.purgePersonalVault(PASSWORD)).resolves.toBeUndefined()
@@ -3596,31 +3442,8 @@ describe('BitwardenDirectClient', () => {
 
   it('does not clear an unlocked local cache after the purge POST succeeds', async () => {
     const sync = await encryptedSync()
-    const http = new BitwardenHttpClient({
-      server: 'https://vault.example.invalid',
-      fetch: async (url) => {
-        if (url.endsWith('/identity/accounts/prelogin/password')) {
-          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-        }
-        if (url.endsWith('/identity/connect/token')) {
-          return jsonResponse({
-            access_token: 'access',
-            refresh_token: 'refresh',
-            expires_in: 3_600
-          })
-        }
-        if (url.endsWith('/api/sync')) return jsonResponse(sync)
-        return jsonResponse({ message: 'not found' }, 404)
-      }
-    })
+    const { client, http } = await syncedClient(sync)
     const purge = vi.spyOn(http, 'purgePersonalVault').mockResolvedValue()
-    const client = new BitwardenDirectClient({
-      serverUrl: 'https://vault.example.invalid',
-      email: EMAIL,
-      httpClient: http
-    })
-    await client.login({ email: EMAIL, password: PASSWORD })
-    await client.sync()
     const before = await client.listPersonalLogins()
 
     await client.purgePersonalVault(PASSWORD)
@@ -3661,25 +3484,13 @@ describe('BitwardenDirectClient', () => {
       server: 'https://vault.example.invalid',
       fetch: async () => jsonResponse({ message: 'not found' }, 404)
     })
-    vi.spyOn(http, 'prelogin').mockResolvedValue({
-      kdfType: 0,
-      iterations: 5_000,
-      memory: null,
-      parallelism: null,
-      salt: EMAIL,
-      raw: {}
-    })
+    vi.spyOn(http, 'prelogin').mockResolvedValue(pbkdf2Prelogin())
     const purge = vi.spyOn(http, 'purgePersonalVault')
     const client = new BitwardenDirectClient({
       serverUrl: 'https://vault.example.invalid',
       email: EMAIL,
       httpClient: http,
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: PROFILE_ID,
-        securityStamp: 'security-stamp'
-      }
+      state: lockedAccountState()
     })
 
     vi.mocked(http.prelogin).mockRejectedValueOnce(new BitwardenHttpError('NETWORK'))
@@ -3709,25 +3520,13 @@ describe('BitwardenDirectClient', () => {
       server: 'https://vault.example.invalid',
       fetch: async () => jsonResponse({ message: 'not found' }, 404)
     })
-    vi.spyOn(http, 'prelogin').mockResolvedValue({
-      kdfType: 0,
-      iterations: 5_000,
-      memory: null,
-      parallelism: null,
-      salt: EMAIL,
-      raw: {}
-    })
+    vi.spyOn(http, 'prelogin').mockResolvedValue(pbkdf2Prelogin())
     const purge = vi.spyOn(http, 'purgePersonalVault')
     const client = new BitwardenDirectClient({
       serverUrl: 'https://vault.example.invalid',
       email: EMAIL,
       httpClient: http,
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: PROFILE_ID,
-        securityStamp: 'security-stamp'
-      }
+      state: lockedAccountState()
     })
 
     await expect(client.purgePersonalVault('')).rejects.toMatchObject({
@@ -3753,16 +3552,8 @@ describe('BitwardenDirectClient', () => {
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',
       fetch: async (url, init) => {
-        if (url.endsWith('/identity/accounts/prelogin/password')) {
-          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-        }
-        if (url.endsWith('/identity/connect/token')) {
-          return jsonResponse({
-            access_token: 'access',
-            refresh_token: 'refresh',
-            expires_in: 3600
-          })
-        }
+        const auth = passwordLoginResponse(url)
+        if (auth) return auth
         if (url.endsWith('/api/sync')) return jsonResponse(sync)
         if (url.endsWith('/api/accounts/security-stamp')) {
           requestBodies.push(JSON.parse(String(init?.body)) as JsonObject)
@@ -3824,14 +3615,7 @@ describe('BitwardenDirectClient', () => {
       server: 'https://vault.example.invalid',
       fetch: async () => jsonResponse({ message: 'not found' }, 404)
     })
-    const prelogin = vi.spyOn(http, 'prelogin').mockResolvedValue({
-      kdfType: 0,
-      iterations: 5_000,
-      memory: null,
-      parallelism: null,
-      salt: EMAIL,
-      raw: {}
-    })
+    const prelogin = vi.spyOn(http, 'prelogin').mockResolvedValue(pbkdf2Prelogin())
     const deauthorize = vi
       .spyOn(http, 'deauthorizeAllSessions')
       .mockRejectedValue(new BitwardenHttpError('USER_VERIFICATION_FAILED', 400))
@@ -3898,14 +3682,7 @@ describe('BitwardenDirectClient', () => {
       server: 'https://vault.example.invalid',
       fetch: async () => jsonResponse({ message: 'not found' }, 404)
     })
-    vi.spyOn(http, 'prelogin').mockResolvedValue({
-      kdfType: 0,
-      iterations: 5_000,
-      memory: null,
-      parallelism: null,
-      salt: EMAIL,
-      raw: {}
-    })
+    vi.spyOn(http, 'prelogin').mockResolvedValue(pbkdf2Prelogin())
     const deauthorize = vi
       .spyOn(http, 'deauthorizeAllSessions')
       .mockImplementation(async (_proof, _signal, onDispatch) => {
@@ -3998,12 +3775,7 @@ describe('BitwardenDirectClient', () => {
       serverUrl: 'https://vault.example.invalid',
       email: EMAIL,
       httpClient: http,
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: '90000000-0000-4000-8000-000000000099',
-        securityStamp: 'security-stamp'
-      }
+      state: { ...lockedAccountState(), profileId: '90000000-0000-4000-8000-000000000099' }
     })
 
     await expect(client.getPersonalApiKey(PASSWORD, false)).resolves.toEqual({
@@ -4046,12 +3818,7 @@ describe('BitwardenDirectClient', () => {
       serverUrl: 'https://vault.example.invalid',
       email: EMAIL,
       httpClient: http,
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: '90000000-0000-4000-8000-000000000099',
-        securityStamp: 'security-stamp'
-      }
+      state: lockedAccountState()
     })
 
     await expect(client.getPersonalApiKey(PASSWORD, true)).rejects.toMatchObject({
@@ -4079,12 +3846,7 @@ describe('BitwardenDirectClient', () => {
       serverUrl: 'https://vault.example.invalid',
       email: EMAIL,
       httpClient: http,
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: '90000000-0000-4000-8000-000000000099',
-        securityStamp: 'security-stamp'
-      }
+      state: lockedAccountState()
     })
 
     await expect(client.getTwoFactorRecoveryCode(PASSWORD)).resolves.toBe('RECOVERY-CODE')
@@ -4142,12 +3904,7 @@ describe('BitwardenDirectClient', () => {
       serverUrl: 'https://vault.example.invalid',
       email: EMAIL,
       httpClient: http,
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: PROFILE_ID,
-        securityStamp: 'security-stamp'
-      }
+      state: lockedAccountState()
     })
 
     await client.disableTwoFactorProvider(0, PASSWORD)
@@ -4216,12 +3973,7 @@ describe('BitwardenDirectClient', () => {
       serverUrl: 'https://vault.example.invalid',
       email: EMAIL,
       httpClient: http,
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: PROFILE_ID,
-        securityStamp: 'security-stamp'
-      }
+      state: lockedAccountState()
     })
 
     await expect(client.disableTwoFactorProvider(0, PASSWORD)).rejects.toMatchObject({
@@ -4243,145 +3995,80 @@ describe('BitwardenDirectClient', () => {
     expect(fetch).toHaveBeenCalledTimes(5)
   })
 
-  it('uses the fresh generic proof as the YubiKey escape hatch when Vaultwarden config is unusable', async () => {
-    let mutationBody: JsonObject | null = null
-    const fetch = vi.fn<FetchLike>(async (url, init) => {
-      if (url.endsWith('/identity/accounts/prelogin/password')) {
-        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-      }
-      if (url.endsWith('/api/two-factor/get-yubikey')) {
-        return jsonResponse({ message: 'Yubico support is disabled' }, 400)
-      }
-      if (url.endsWith('/api/two-factor/disable')) {
-        mutationBody = JSON.parse(String(init?.body)) as JsonObject
-        return jsonResponse({ enabled: false, type: 3, object: 'twoFactorProvider' })
-      }
-      return jsonResponse({ message: 'not found' }, 404)
-    })
-    const client = new BitwardenDirectClient({
-      serverUrl: 'https://vault.example.invalid',
-      email: EMAIL,
-      httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch }),
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: PROFILE_ID,
-        securityStamp: 'security-stamp'
-      }
-    })
+  const unverifiableProviders = [
+    {
+      label: 'YubiKey whose Vaultwarden config is unusable',
+      type: 3 as const,
+      setupPath: '/api/two-factor/get-yubikey',
+      setupResponse: () => jsonResponse({ message: 'Yubico support is disabled' }, 400)
+    },
+    {
+      label: 'Duo row that Vaultwarden hides as disabled',
+      type: 2 as const,
+      setupPath: '/api/two-factor/get-duo',
+      setupResponse: () => jsonResponse({ enabled: false, object: 'twoFactorDuo' })
+    }
+  ]
 
-    await expect(client.disableTwoFactorProvider(3, PASSWORD)).resolves.toBeUndefined()
-    expect(mutationBody).toMatchObject({ type: 3, masterPasswordHash: expect.any(String) })
-    expect(
-      fetch.mock.calls.filter(([url]) => url.endsWith('/api/two-factor/disable'))
-    ).toHaveLength(1)
-  })
+  it.each(unverifiableProviders)(
+    'uses the fresh generic proof as the escape hatch for a $label',
+    async ({ type, setupPath, setupResponse }) => {
+      let mutationBody: JsonObject | null = null
+      const fetch = vi.fn<FetchLike>(async (url, init) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith(setupPath)) return setupResponse()
+        if (url.endsWith('/api/two-factor/disable')) {
+          mutationBody = JSON.parse(String(init?.body)) as JsonObject
+          return jsonResponse({ enabled: false, type, object: 'twoFactorProvider' })
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      })
+      const client = new BitwardenDirectClient({
+        serverUrl: 'https://vault.example.invalid',
+        email: EMAIL,
+        httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch }),
+        state: lockedAccountState()
+      })
 
-  it('keeps a lost YubiKey escape-hatch result unknown without replaying it', async () => {
-    let mutationRequests = 0
-    const fetch = vi.fn<FetchLike>(async (url) => {
-      if (url.endsWith('/identity/accounts/prelogin/password')) {
-        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-      }
-      if (url.endsWith('/api/two-factor/get-yubikey')) {
-        return jsonResponse({ message: 'Yubico support is disabled' }, 400)
-      }
-      if (url.endsWith('/api/two-factor/disable')) {
-        mutationRequests += 1
-        throw new TypeError('response lost before outcome was known')
-      }
-      return jsonResponse({ message: 'not found' }, 404)
-    })
-    const client = new BitwardenDirectClient({
-      serverUrl: 'https://vault.example.invalid',
-      email: EMAIL,
-      httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch }),
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: PROFILE_ID,
-        securityStamp: 'security-stamp'
-      }
-    })
+      await expect(client.disableTwoFactorProvider(type, PASSWORD)).resolves.toBeUndefined()
+      expect(mutationBody).toMatchObject({ type, masterPasswordHash: expect.any(String) })
+      expect(
+        fetch.mock.calls.filter(([url]) => url.endsWith('/api/two-factor/disable'))
+      ).toHaveLength(1)
+    }
+  )
 
-    await expect(client.disableTwoFactorProvider(3, PASSWORD)).rejects.toMatchObject({
-      code: 'TWO_FACTOR_MUTATION_UNKNOWN'
-    })
-    expect(mutationRequests).toBe(1)
-    expect(
-      fetch.mock.calls.filter(([url]) => url.endsWith('/api/two-factor/get-yubikey'))
-    ).toHaveLength(1)
-  })
+  it.each(unverifiableProviders)(
+    'keeps a lost escape-hatch result unknown without replaying it for a $label',
+    async ({ type, setupPath, setupResponse }) => {
+      let mutationRequests = 0
+      const fetch = vi.fn<FetchLike>(async (url) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith(setupPath)) return setupResponse()
+        if (url.endsWith('/api/two-factor/disable')) {
+          mutationRequests += 1
+          throw new TypeError('response lost before outcome was known')
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      })
+      const client = new BitwardenDirectClient({
+        serverUrl: 'https://vault.example.invalid',
+        email: EMAIL,
+        httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch }),
+        state: lockedAccountState()
+      })
 
-  it('uses the fresh generic proof when Vaultwarden hides a stale Duo provider row', async () => {
-    let mutationBody: JsonObject | null = null
-    const fetch = vi.fn<FetchLike>(async (url, init) => {
-      if (url.endsWith('/identity/accounts/prelogin/password')) {
-        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-      }
-      if (url.endsWith('/api/two-factor/get-duo')) {
-        return jsonResponse({ enabled: false, object: 'twoFactorDuo' })
-      }
-      if (url.endsWith('/api/two-factor/disable')) {
-        mutationBody = JSON.parse(String(init?.body)) as JsonObject
-        return jsonResponse({ enabled: false, type: 2, object: 'twoFactorProvider' })
-      }
-      return jsonResponse({ message: 'not found' }, 404)
-    })
-    const client = new BitwardenDirectClient({
-      serverUrl: 'https://vault.example.invalid',
-      email: EMAIL,
-      httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch }),
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: PROFILE_ID,
-        securityStamp: 'security-stamp'
-      }
-    })
-
-    await expect(client.disableTwoFactorProvider(2, PASSWORD)).resolves.toBeUndefined()
-    expect(mutationBody).toMatchObject({ type: 2, masterPasswordHash: expect.any(String) })
-    expect(
-      fetch.mock.calls.filter(([url]) => url.endsWith('/api/two-factor/disable'))
-    ).toHaveLength(1)
-  })
-
-  it('does not mistake a hidden stale Duo row for a confirmed lost-response disable', async () => {
-    let mutationRequests = 0
-    const fetch = vi.fn<FetchLike>(async (url) => {
-      if (url.endsWith('/identity/accounts/prelogin/password')) {
-        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-      }
-      if (url.endsWith('/api/two-factor/get-duo')) {
-        return jsonResponse({ enabled: false, object: 'twoFactorDuo' })
-      }
-      if (url.endsWith('/api/two-factor/disable')) {
-        mutationRequests += 1
-        throw new TypeError('response lost before outcome was known')
-      }
-      return jsonResponse({ message: 'not found' }, 404)
-    })
-    const client = new BitwardenDirectClient({
-      serverUrl: 'https://vault.example.invalid',
-      email: EMAIL,
-      httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch }),
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: PROFILE_ID,
-        securityStamp: 'security-stamp'
-      }
-    })
-
-    await expect(client.disableTwoFactorProvider(2, PASSWORD)).rejects.toMatchObject({
-      code: 'TWO_FACTOR_MUTATION_UNKNOWN'
-    })
-    expect(mutationRequests).toBe(1)
-    expect(
-      fetch.mock.calls.filter(([url]) => url.endsWith('/api/two-factor/get-duo'))
-    ).toHaveLength(1)
-  })
+      await expect(client.disableTwoFactorProvider(type, PASSWORD)).rejects.toMatchObject({
+        code: 'TWO_FACTOR_MUTATION_UNKNOWN'
+      })
+      expect(mutationRequests).toBe(1)
+      expect(fetch.mock.calls.filter(([url]) => url.endsWith(setupPath))).toHaveLength(1)
+    }
+  )
 
   it('disables personal Duo, YubiKey, and the whole WebAuthn provider with fresh proofs', async () => {
     const requests: Array<{ url: string; method: string; body: JsonObject }> = []
@@ -4416,12 +4103,7 @@ describe('BitwardenDirectClient', () => {
       serverUrl: 'https://vault.example.invalid',
       email: EMAIL,
       httpClient: http,
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: PROFILE_ID,
-        securityStamp: 'security-stamp'
-      }
+      state: lockedAccountState()
     })
 
     await client.disableTwoFactorProvider(2, PASSWORD)
@@ -4441,7 +4123,10 @@ describe('BitwardenDirectClient', () => {
     expect(requests[5]?.body.type).toBe(7)
   })
 
-  it('reconciles a lost whole-WebAuthn disable response without replaying the mutation', async () => {
+  it.each([
+    { label: 'reconciles as disabled', committed: true },
+    { label: 'stays unknown while the provider remains enabled', committed: false }
+  ])('never replays a lost whole-WebAuthn disable and $label', async ({ committed }) => {
     let enabled = true
     let mutationRequests = 0
     const fetch = vi.fn<FetchLike>(async (url) => {
@@ -4453,38 +4138,7 @@ describe('BitwardenDirectClient', () => {
       }
       if (url.endsWith('/api/two-factor/disable')) {
         mutationRequests += 1
-        enabled = false
-        throw new TypeError('response lost after commit')
-      }
-      return jsonResponse({ message: 'not found' }, 404)
-    })
-    const client = new BitwardenDirectClient({
-      serverUrl: 'https://vault.example.invalid',
-      email: EMAIL,
-      httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch }),
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: PROFILE_ID,
-        securityStamp: 'security-stamp'
-      }
-    })
-
-    await expect(client.disableTwoFactorProvider(7, PASSWORD)).resolves.toBeUndefined()
-    expect(mutationRequests).toBe(1)
-  })
-
-  it('keeps an ambiguous WebAuthn disable unknown when the provider remains enabled', async () => {
-    let mutationRequests = 0
-    const fetch = vi.fn<FetchLike>(async (url) => {
-      if (url.endsWith('/identity/accounts/prelogin/password')) {
-        return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-      }
-      if (url.endsWith('/api/two-factor/get-webauthn')) {
-        return jsonResponse({ enabled: true, keys: [], object: 'twoFactorWebAuthn' })
-      }
-      if (url.endsWith('/api/two-factor/disable')) {
-        mutationRequests += 1
+        if (committed) enabled = false
         throw new TypeError('response lost before outcome was known')
       }
       return jsonResponse({ message: 'not found' }, 404)
@@ -4493,17 +4147,12 @@ describe('BitwardenDirectClient', () => {
       serverUrl: 'https://vault.example.invalid',
       email: EMAIL,
       httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch }),
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: PROFILE_ID,
-        securityStamp: 'security-stamp'
-      }
+      state: lockedAccountState()
     })
 
-    await expect(client.disableTwoFactorProvider(7, PASSWORD)).rejects.toMatchObject({
-      code: 'TWO_FACTOR_MUTATION_UNKNOWN'
-    })
+    const result = client.disableTwoFactorProvider(7, PASSWORD)
+    if (committed) await expect(result).resolves.toBeUndefined()
+    else await expect(result).rejects.toMatchObject({ code: 'TWO_FACTOR_MUTATION_UNKNOWN' })
     expect(mutationRequests).toBe(1)
   })
 
@@ -4605,12 +4254,7 @@ describe('BitwardenDirectClient', () => {
       serverUrl: 'https://vault.example.invalid',
       email: EMAIL,
       httpClient: http,
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: '90000000-0000-4000-8000-000000000099',
-        securityStamp: 'security-stamp'
-      }
+      state: lockedAccountState()
     })
 
     await expect(client.beginAuthenticatorSetup(PASSWORD)).resolves.toMatchObject({
@@ -4684,12 +4328,7 @@ describe('BitwardenDirectClient', () => {
       serverUrl: 'https://vault.example.invalid',
       email: EMAIL,
       httpClient: http,
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: '90000000-0000-4000-8000-000000000099',
-        securityStamp: 'security-stamp'
-      }
+      state: lockedAccountState()
     })
 
     await expect(client.beginEmailTwoFactorSetup(PASSWORD)).resolves.toMatchObject({
@@ -4816,12 +4455,7 @@ describe('BitwardenDirectClient', () => {
       serverUrl: 'https://vault.example.invalid',
       email: EMAIL,
       httpClient: http,
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: PROFILE_ID,
-        securityStamp: 'security-stamp'
-      }
+      state: lockedAccountState()
     })
 
     const setup = await client.beginWebAuthnSetup(PASSWORD)
@@ -4897,12 +4531,7 @@ describe('BitwardenDirectClient', () => {
       serverUrl: 'https://vault.example.invalid',
       email: EMAIL,
       httpClient: http,
-      state: {
-        session: { accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000 },
-        deviceIdentifier: '00000000-0000-4000-8000-000000000000',
-        profileId: PROFILE_ID,
-        securityStamp: 'security-stamp'
-      }
+      state: lockedAccountState()
     })
 
     const setup = await client.beginWebAuthnSetup(PASSWORD)
@@ -4927,6 +4556,13 @@ describe('BitwardenDirectClient', () => {
       name: 'Vaultwarden key',
       masterPasswordHash: expect.any(String)
     })
+  })
+
+  it('maps emergency-access transport failures to direct-client error codes', async () => {
+    const { client, http } = await syncedClient(await encryptedSync())
+    vi.spyOn(http, 'listEmergencyAccess').mockRejectedValueOnce(new BitwardenHttpError('AUTH'))
+
+    await expect(client.listEmergencyAccess()).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
   })
 
   it('passes authenticated equivalent-domain settings through without requiring decrypted vault keys', async () => {
@@ -5473,21 +5109,46 @@ describe('BitwardenDirectClient', () => {
     }
   })
 
-  it('downloads a V1 attachment only from fresh metadata and returns decrypted bytes', async () => {
-    const plaintext = Buffer.from('v1 attachment payload', 'utf8')
-    const encrypted = encryptAttachmentFixture(plaintext, Buffer.alloc(64, 11))
-    const client = await syncedAttachmentClient(await encryptedSync(), 'attachment-id', encrypted)
-
-    const downloaded = await client.downloadAttachment(LOGIN_ID, 'attachment-id')
-    try {
-      expect(downloaded.fileName).toBe('document.txt')
-      expect(downloaded.data).toEqual(plaintext)
-    } finally {
-      downloaded.data.fill(0)
-      plaintext.fill(0)
-      encrypted.fill(0)
+  it.each([
+    {
+      label: 'a V1 attachment with its own CEK',
+      createSync: () => encryptedSync(),
+      attachmentId: 'attachment-id',
+      fileKeyByte: 11,
+      fileName: 'document.txt'
+    },
+    {
+      label: 'a legacy attachment through the cipher key',
+      createSync: () => encryptedSync(),
+      attachmentId: 'legacy-attachment-id',
+      fileKeyByte: 9,
+      fileName: 'legacy-document.txt'
+    },
+    {
+      label: 'a V2-account attachment with its freshly wrapped CEK',
+      createSync: () => encryptedV2Sync(),
+      attachmentId: 'v2-attachment-id',
+      fileKeyByte: 12,
+      fileName: 'v2-document.txt'
     }
-  })
+  ])(
+    'downloads $label from fresh metadata and returns decrypted bytes',
+    async ({ createSync, attachmentId, fileKeyByte, fileName }) => {
+      const plaintext = Buffer.from(`${attachmentId} payload`, 'utf8')
+      const encrypted = encryptAttachmentFixture(plaintext, Buffer.alloc(64, fileKeyByte))
+      const client = await syncedAttachmentClient(await createSync(), attachmentId, encrypted)
+
+      const downloaded = await client.downloadAttachment(LOGIN_ID, attachmentId)
+      try {
+        expect(downloaded.fileName).toBe(fileName)
+        expect(downloaded.data).toEqual(plaintext)
+      } finally {
+        downloaded.data.fill(0)
+        plaintext.fill(0)
+        encrypted.fill(0)
+      }
+    }
+  )
 
   it('streams an authenticated attachment without returning a plaintext Buffer', async () => {
     const plaintext = Buffer.alloc(3 * 1024 * 1024 + 7, 0x5a)
@@ -5512,46 +5173,6 @@ describe('BitwardenDirectClient', () => {
       }).rejects.toMatchObject({ code: 'INVALID_INPUT' })
     } finally {
       await downloaded.dispose()
-    }
-  })
-
-  it('uses the cipher key for a legacy attachment that has no attachment CEK', async () => {
-    const plaintext = Buffer.from('legacy attachment payload', 'utf8')
-    const encrypted = encryptAttachmentFixture(plaintext, Buffer.alloc(64, 9))
-    const client = await syncedAttachmentClient(
-      await encryptedSync(),
-      'legacy-attachment-id',
-      encrypted
-    )
-
-    const downloaded = await client.downloadAttachment(LOGIN_ID, 'legacy-attachment-id')
-    try {
-      expect(downloaded.fileName).toBe('legacy-document.txt')
-      expect(downloaded.data).toEqual(plaintext)
-    } finally {
-      downloaded.data.fill(0)
-      plaintext.fill(0)
-      encrypted.fill(0)
-    }
-  })
-
-  it('downloads a V2-account attachment with its freshly wrapped CEK', async () => {
-    const plaintext = Buffer.from('v2 attachment payload', 'utf8')
-    const encrypted = encryptAttachmentFixture(plaintext, Buffer.alloc(64, 12))
-    const client = await syncedAttachmentClient(
-      await encryptedV2Sync(),
-      'v2-attachment-id',
-      encrypted
-    )
-
-    const downloaded = await client.downloadAttachment(LOGIN_ID, 'v2-attachment-id')
-    try {
-      expect(downloaded.fileName).toBe('v2-document.txt')
-      expect(downloaded.data).toEqual(plaintext)
-    } finally {
-      downloaded.data.fill(0)
-      plaintext.fill(0)
-      encrypted.fill(0)
     }
   })
 
@@ -6020,16 +5641,8 @@ describe('BitwardenDirectClient', () => {
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',
       fetch: async (url, init) => {
-        if (url.endsWith('/identity/accounts/prelogin/password')) {
-          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-        }
-        if (url.endsWith('/identity/connect/token')) {
-          return jsonResponse({
-            access_token: 'access-token',
-            refresh_token: 'refresh-token',
-            expires_in: 3600
-          })
-        }
+        const auth = passwordLoginResponse(url)
+        if (auth) return auth
         if (url.endsWith('/api/sync')) return jsonResponse(sync)
         if (url.endsWith(`/api/ciphers/${LOGIN_ID}`) && init?.method === 'PUT') {
           const body = String(init.body)
@@ -6072,16 +5685,8 @@ describe('BitwardenDirectClient', () => {
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',
       fetch: async (url, init) => {
-        if (url.endsWith('/identity/accounts/prelogin/password')) {
-          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-        }
-        if (url.endsWith('/identity/connect/token')) {
-          return jsonResponse({
-            access_token: 'access-token',
-            refresh_token: 'refresh-token',
-            expires_in: 3600
-          })
-        }
+        const auth = passwordLoginResponse(url)
+        if (auth) return auth
         if (url.endsWith('/api/sync')) return jsonResponse(sync)
         if (url.endsWith('/api/folders') && init?.method === 'POST') {
           const body = String(init.body)
@@ -6281,23 +5886,16 @@ describe('BitwardenDirectClient', () => {
     expect(changedUris[2]).toMatchObject({ uriChecksum: 'opaque-future-checksum' })
   })
 
-  it('rejects invalid reprompt metadata before personal-cipher quarantine', async () => {
-    const sync = await encryptedSync()
-    ;(sync.ciphers as JsonObject[])[0]!.reprompt = 2
-    await expectInvalidSync(sync, 'INVALID_RESPONSE', 'cipher')
-  })
-
-  it('rejects invalid favorite visibility metadata before personal-cipher quarantine', async () => {
-    const sync = await encryptedSync()
-    ;(sync.ciphers as JsonObject[])[0]!.favorite = 'true'
-    await expectInvalidSync(sync, 'INVALID_RESPONSE', 'cipher')
-  })
-
-  it.each(['deletedDate', 'archivedDate'] as const)(
-    'rejects invalid %s visibility metadata before personal-cipher quarantine',
-    async (field) => {
+  it.each([
+    ['reprompt', 2],
+    ['favorite', 'true'],
+    ['deletedDate', '2026-02-30T00:00:00Z'],
+    ['archivedDate', '2026-02-30T00:00:00Z']
+  ] as const)(
+    'rejects invalid %s metadata before personal-cipher quarantine',
+    async (field, value) => {
       const sync = await encryptedSync()
-      ;(sync.ciphers as JsonObject[])[0]![field] = '2026-02-30T00:00:00Z'
+      ;(sync.ciphers as JsonObject[])[0]![field] = value
 
       await expectInvalidSync(sync, 'INVALID_RESPONSE', 'cipher')
     }
@@ -6346,16 +5944,8 @@ describe('BitwardenDirectClient', () => {
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',
       fetch: async (url, init) => {
-        if (url.endsWith('/identity/accounts/prelogin/password')) {
-          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-        }
-        if (url.endsWith('/identity/connect/token')) {
-          return jsonResponse({
-            access_token: 'access-token',
-            refresh_token: 'refresh-token',
-            expires_in: 3600
-          })
-        }
+        const auth = passwordLoginResponse(url)
+        if (auth) return auth
         if (url.endsWith('/api/sync')) return jsonResponse(sync)
         requests.push(`${init?.method} ${url}`)
         if (url.endsWith(`/api/ciphers/${LOGIN_ID}/restore`) && init?.method === 'PUT') {
@@ -6452,16 +6042,8 @@ describe('BitwardenDirectClient', () => {
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',
       fetch: async (url, init) => {
-        if (url.endsWith('/identity/accounts/prelogin/password')) {
-          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-        }
-        if (url.endsWith('/identity/connect/token')) {
-          return jsonResponse({
-            access_token: 'access-token',
-            refresh_token: 'refresh-token',
-            expires_in: 3600
-          })
-        }
+        const auth = passwordLoginResponse(url)
+        if (auth) return auth
         if (url.endsWith('/api/sync')) return jsonResponse(sync)
         requests.push(`${init?.method} ${url}`)
         if (url.endsWith('/api/ciphers/restore')) {
@@ -6549,30 +6131,7 @@ describe('BitwardenDirectClient', () => {
 
   it('prepares a personal import with per-item keys and reconciles only exact markers', async () => {
     const sync = await encryptedSync()
-    const http = new BitwardenHttpClient({
-      server: 'https://vault.example.invalid',
-      fetch: async (url) => {
-        if (url.endsWith('/identity/accounts/prelogin/password')) {
-          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-        }
-        if (url.endsWith('/identity/connect/token')) {
-          return jsonResponse({
-            access_token: 'access-token',
-            refresh_token: 'refresh-token',
-            expires_in: 3_600
-          })
-        }
-        if (url.endsWith('/api/sync')) return jsonResponse(sync)
-        return jsonResponse({ message: 'not found' }, 404)
-      }
-    })
-    const client = new BitwardenDirectClient({
-      serverUrl: 'https://vault.example.invalid',
-      email: EMAIL,
-      httpClient: http
-    })
-    await client.login({ email: EMAIL, password: PASSWORD })
-    await client.sync()
+    const { client, http } = await syncedClient(sync)
 
     let imported: {
       folders: readonly { id?: string | null; name: string }[]
@@ -6668,30 +6227,7 @@ describe('BitwardenDirectClient', () => {
 
   it('consumes prepared imports before I/O and clears them when the vault locks', async () => {
     const sync = await encryptedSync()
-    const http = new BitwardenHttpClient({
-      server: 'https://vault.example.invalid',
-      fetch: async (url) => {
-        if (url.endsWith('/identity/accounts/prelogin/password')) {
-          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-        }
-        if (url.endsWith('/identity/connect/token')) {
-          return jsonResponse({
-            access_token: 'access-token',
-            refresh_token: 'refresh-token',
-            expires_in: 3_600
-          })
-        }
-        if (url.endsWith('/api/sync')) return jsonResponse(sync)
-        return jsonResponse({ message: 'not found' }, 404)
-      }
-    })
-    const client = new BitwardenDirectClient({
-      serverUrl: 'https://vault.example.invalid',
-      email: EMAIL,
-      httpClient: http
-    })
-    await client.login({ email: EMAIL, password: PASSWORD })
-    await client.sync()
+    const { client, http } = await syncedClient(sync)
     const entries = [
       {
         localId: '90000000-0000-4000-8000-000000000011',
@@ -6736,16 +6272,8 @@ describe('BitwardenDirectClient', () => {
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',
       fetch: async (url, init) => {
-        if (url.endsWith('/identity/accounts/prelogin/password')) {
-          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-        }
-        if (url.endsWith('/identity/connect/token')) {
-          return jsonResponse({
-            access_token: 'access-token',
-            refresh_token: 'refresh-token',
-            expires_in: 3600
-          })
-        }
+        const auth = passwordLoginResponse(url)
+        if (auth) return auth
         if (url.endsWith('/api/sync')) return jsonResponse(sync)
         if (url.endsWith(`/api/ciphers/${CARD_ID}`) && init?.method === 'PUT') {
           const request = JSON.parse(String(init.body)) as JsonObject
@@ -6926,16 +6454,8 @@ describe('BitwardenDirectClient', () => {
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',
       fetch: async (url) => {
-        if (url.endsWith('/identity/accounts/prelogin/password')) {
-          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-        }
-        if (url.endsWith('/identity/connect/token')) {
-          return jsonResponse({
-            access_token: 'access-token',
-            refresh_token: 'refresh-token',
-            expires_in: 3_600
-          })
-        }
+        const auth = passwordLoginResponse(url)
+        if (auth) return auth
         if (url.endsWith('/api/sync')) return jsonResponse(sync)
         return jsonResponse({ message: 'not found' }, 404)
       }
@@ -7323,16 +6843,8 @@ describe('BitwardenDirectClient', () => {
     const http = new BitwardenHttpClient({
       server: 'https://vault.example.invalid',
       fetch: async (url) => {
-        if (url.endsWith('/identity/accounts/prelogin/password')) {
-          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
-        }
-        if (url.endsWith('/identity/connect/token')) {
-          return jsonResponse({
-            access_token: 'access-token',
-            refresh_token: 'refresh-token',
-            expires_in: 3600
-          })
-        }
+        const auth = passwordLoginResponse(url)
+        if (auth) return auth
         if (url.endsWith('/api/sync')) return jsonResponse(sync)
         return jsonResponse({ message: 'not found' }, 404)
       }

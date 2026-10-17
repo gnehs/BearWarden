@@ -106,33 +106,33 @@ function isPlainRecord(value: unknown): value is PlainRecord {
   }
 }
 
+function ownDataDescriptor(
+  record: PlainRecord,
+  key: string,
+  code: InactiveTwoFactorErrorCode
+): PropertyDescriptor | undefined {
+  let descriptor: PropertyDescriptor | undefined
+  try {
+    descriptor = Object.getOwnPropertyDescriptor(record, key)
+  } catch {
+    fail(code)
+  }
+  if (descriptor && (!('value' in descriptor) || descriptor.get || descriptor.set)) fail(code)
+  return descriptor
+}
+
 function ownData(
   record: PlainRecord,
   key: string,
   code: InactiveTwoFactorErrorCode = 'INVALID_DATASET'
 ): unknown {
-  let descriptor: PropertyDescriptor | undefined
-  try {
-    descriptor = Object.getOwnPropertyDescriptor(record, key)
-  } catch {
-    fail(code)
-  }
-  if (!descriptor || !('value' in descriptor) || descriptor.get || descriptor.set) {
-    fail(code)
-  }
+  const descriptor = ownDataDescriptor(record, key, code)
+  if (!descriptor) fail(code)
   return descriptor.value
 }
 
 function optionalOwnData(record: PlainRecord, key: string): unknown {
-  let descriptor: PropertyDescriptor | undefined
-  try {
-    descriptor = Object.getOwnPropertyDescriptor(record, key)
-  } catch {
-    fail('INVALID_DATASET')
-  }
-  if (!descriptor) return undefined
-  if (!('value' in descriptor) || descriptor.get || descriptor.set) fail('INVALID_DATASET')
-  return descriptor.value
+  return ownDataDescriptor(record, key, 'INVALID_DATASET')?.value
 }
 
 function ownKeys(record: PlainRecord, code: InactiveTwoFactorErrorCode): string[] {

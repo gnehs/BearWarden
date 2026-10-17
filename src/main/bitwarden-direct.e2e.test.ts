@@ -146,10 +146,10 @@ async function close(server: Server): Promise<void> {
   })
 }
 
-async function startLoopbackVault(initialSyncMode: SyncMode = 'valid'): Promise<LoopbackVault> {
+async function startLoopbackVault(): Promise<LoopbackVault> {
   const sync = await encryptedV1Sync()
   const requests: RequestLog[] = []
-  let syncMode = initialSyncMode
+  let syncMode: SyncMode = 'valid'
   let accessToken = 'access-token-1'
   let refreshToken = 'refresh-token-1'
   let rejectFirstSync = true

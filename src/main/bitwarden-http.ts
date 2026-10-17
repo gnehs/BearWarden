@@ -2210,7 +2210,7 @@ export class BitwardenHttpClient {
     return this.entity('PUT', `/folders/${encodeURIComponent(assertId(id))}`, ciphertext, signal)
   }
   async deleteFolder(id: string, signal?: AbortSignal): Promise<void> {
-    await this.deleteEntity(`/folders/${encodeURIComponent(assertId(id))}`, signal)
+    await this.emptyEntity('DELETE', `/folders/${encodeURIComponent(assertId(id))}`, signal)
   }
   async createCipher(ciphertext: JsonObject, signal?: AbortSignal): Promise<JsonObject> {
     return this.entity('POST', '/ciphers', ciphertext, signal)
@@ -2312,7 +2312,7 @@ export class BitwardenHttpClient {
     )
   }
   async hardDeleteCipher(id: string, signal?: AbortSignal): Promise<void> {
-    await this.deleteEntity(`/ciphers/${encodeURIComponent(assertId(id))}`, signal)
+    await this.emptyEntity('DELETE', `/ciphers/${encodeURIComponent(assertId(id))}`, signal)
   }
   async bulkSoftDeleteCiphers(ids: readonly string[], signal?: AbortSignal): Promise<void> {
     await this.bulkEmptyCipherMutation('PUT', '/ciphers/delete', ids, undefined, signal)
@@ -2379,10 +2379,6 @@ export class BitwardenHttpClient {
     const response = await this.requestJson(method, `${this.urls.apiUrl}${path}`, { body, signal })
     if (!isRecord(response)) throw new BitwardenHttpError('INVALID_RESPONSE')
     return response
-  }
-
-  private async deleteEntity(path: string, signal?: AbortSignal): Promise<void> {
-    await this.emptyEntity('DELETE', path, signal)
   }
 
   private async emptyEntity(
@@ -2609,12 +2605,7 @@ export class BitwardenHttpClient {
         signal: fetchSignal
       })
     } catch (error) {
-      if (signal?.aborted) throw new BitwardenHttpError('ABORTED')
-      if (timeoutSignal.aborted) throw new BitwardenHttpError('NETWORK')
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        throw new BitwardenHttpError('ABORTED')
-      }
-      throw new BitwardenHttpError('NETWORK')
+      throw this.mapFetchFailure(error, signal, timeoutSignal)
     }
 
     if (response.status !== 200) {
@@ -2656,13 +2647,7 @@ export class BitwardenHttpClient {
       return output
     } catch (error) {
       output.fill(0)
-      if (error instanceof BitwardenHttpError) throw error
-      if (signal?.aborted) throw new BitwardenHttpError('ABORTED')
-      if (timeoutSignal.aborted) throw new BitwardenHttpError('NETWORK')
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        throw new BitwardenHttpError('ABORTED')
-      }
-      throw new BitwardenHttpError('NETWORK')
+      throw this.mapResponseReadFailure(error, signal)
     } finally {
       reader.releaseLock()
     }
@@ -2738,9 +2723,7 @@ export class BitwardenHttpClient {
           complete = true
         } catch (error) {
           if (error instanceof BitwardenHttpError) throw error
-          if (signal?.aborted) throw new BitwardenHttpError('ABORTED')
-          if (timeoutSignal.aborted) throw new BitwardenHttpError('NETWORK')
-          throw new BitwardenHttpError('NETWORK')
+          throw new BitwardenHttpError(signal?.aborted ? 'ABORTED' : 'NETWORK')
         } finally {
           if (!complete) await reader.cancel().catch(() => undefined)
           reader.releaseLock()
@@ -2812,12 +2795,7 @@ export class BitwardenHttpClient {
           signal: fetchSignal
         })
       } catch (error) {
-        if (request.signal?.aborted) throw new BitwardenHttpError('ABORTED')
-        if (timeoutSignal.aborted) throw new BitwardenHttpError('NETWORK')
-        if (error instanceof DOMException && error.name === 'AbortError') {
-          throw new BitwardenHttpError('ABORTED')
-        }
-        throw new BitwardenHttpError('NETWORK')
+        throw this.mapFetchFailure(error, request.signal, timeoutSignal)
       }
 
       if (response.status === 401 && authenticate && !refreshed && request.retry !== false) {

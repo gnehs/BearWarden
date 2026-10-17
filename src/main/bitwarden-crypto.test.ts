@@ -233,6 +233,9 @@ describe('Bitwarden EncString compatibility', () => {
     expect(() => decryptBitwardenWrappedKey(encryptedString, key)).toThrowError(
       BitwardenCryptoError
     )
+    expect(() => decryptBitwardenString(wrappedKey, key)).toThrowError(
+      expect.objectContaining({ code: 'INVALID_CIPHERSTRING' })
+    )
   })
 
   it('rejects type 7 tampering and key-id mismatches before returning plaintext', () => {

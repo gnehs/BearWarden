@@ -19,7 +19,7 @@ const HEADER_BYTES = 1 + IV_BYTES + MAC_BYTES
 const CHUNK_BYTES = 1024 * 1024
 
 export const MAX_STREAMED_ATTACHMENT_PLAINTEXT_BYTES = 500 * 1024 * 1024
-export const MAX_STREAMED_ATTACHMENT_ENVELOPE_BYTES =
+const MAX_STREAMED_ATTACHMENT_ENVELOPE_BYTES =
   MAX_STREAMED_ATTACHMENT_PLAINTEXT_BYTES + HEADER_BYTES + IV_BYTES
 
 export interface BitwardenAttachmentByteSource {
@@ -64,7 +64,7 @@ async function writeAll(
   }
 }
 
-export function encryptedAttachmentLength(plaintextLength: number): number {
+function encryptedAttachmentLength(plaintextLength: number): number {
   if (
     !Number.isSafeInteger(plaintextLength) ||
     plaintextLength < 0 ||
@@ -95,11 +95,7 @@ async function* fileChunks(
       }
       position += bytesRead
       remaining -= bytesRead
-      if (bytesRead === chunk.length) yield chunk
-      else {
-        const partial = chunk.subarray(0, bytesRead)
-        yield partial
-      }
+      yield bytesRead === chunk.length ? chunk : chunk.subarray(0, bytesRead)
     }
   } finally {
     await handle.close()
