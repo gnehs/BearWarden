@@ -18,7 +18,7 @@ export class SensitiveClipboard {
   setClearDelay(seconds: 0 | 15 | 30 | 60 | 120): void {
     this.clearDelayMs = seconds * 1_000
     this.clearTimerIfNeeded()
-    if (this.fingerprint && this.effectiveDelayMs() > 0) this.scheduleClear()
+    this.scheduleClear()
   }
 
   write(text: string, maxLifetimeSeconds?: number): void {
@@ -56,11 +56,12 @@ export class SensitiveClipboard {
     }
   }
 
-  private effectiveDelayMs(): number {
-    if (this.activeDeadlineMs === null) return this.clearDelayMs
-    const remaining = Math.max(0, this.activeDeadlineMs - Date.now())
+  /** Milliseconds until the content must be cleared, or `null` when nothing bounds its lifetime. */
+  private effectiveDelayMs(): number | null {
+    const remaining =
+      this.activeDeadlineMs === null ? null : Math.max(0, this.activeDeadlineMs - Date.now())
     if (this.clearDelayMs === 0) return remaining
-    return Math.min(this.clearDelayMs, remaining)
+    return remaining === null ? this.clearDelayMs : Math.min(this.clearDelayMs, remaining)
   }
 
   private clearTimerIfNeeded(): void {
@@ -69,8 +70,9 @@ export class SensitiveClipboard {
   }
 
   private scheduleClear(): void {
-    const delay = this.effectiveDelayMs()
     if (!this.fingerprint) return
+    const delay = this.effectiveDelayMs()
+    if (delay === null) return
     if (delay === 0) {
       this.clearIfOwned()
       return

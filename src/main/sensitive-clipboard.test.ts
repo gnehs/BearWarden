@@ -32,6 +32,14 @@ describe('SensitiveClipboard', () => {
     expect(state.value).toBe('')
   })
 
+  it('never clears on its own when the delay is Never and the write has no maximum', () => {
+    const { clipboard, state } = harness()
+    clipboard.setClearDelay(0)
+    clipboard.write('api-secret')
+    vi.advanceTimersByTime(3_600_000)
+    expect(state.value).toBe('api-secret')
+  })
+
   it('keeps the shorter user timeout and never clears replacement content', () => {
     const { clipboard, state } = harness()
     clipboard.setClearDelay(15)
