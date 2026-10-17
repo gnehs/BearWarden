@@ -399,16 +399,8 @@ export class PasskeyCeremonyService {
     this.cleanupAllStates()
   }
 
-  invalidatePeer(peer: PasskeyIngressPeer): void
-  invalidatePeer(provider: string, binding: string): void
-  invalidatePeer(coordinatorPeerBinding: string): void
-  invalidatePeer(peerOrProvider: PasskeyIngressPeer | string, binding?: string): void {
-    const bound =
-      typeof peerOrProvider === 'string'
-        ? binding === undefined
-          ? peerOrProvider
-          : peerBinding({ provider: peerOrProvider, binding, epoch: 0 })
-        : peerBinding(peerOrProvider)
+  invalidatePeer(peer: PasskeyIngressPeer): void {
+    const bound = peerBinding(peer)
     this.coordinator.invalidatePeer(bound)
     for (const state of [...this.states]) {
       if (state.peerBinding === bound) this.cleanupState(state)

@@ -21,9 +21,10 @@ import {
   type SshSigNamespace,
   SSH_AGENT_MAX_MESSAGE_LENGTH
 } from './ssh-agent-protocol'
+import type { SshAgentSignature } from './ssh-agent-crypto'
 
-export const BEARWARDEN_SSH_AUTH_SOCK = 'BEARWARDEN_SSH_AUTH_SOCK'
-export const BEARWARDEN_SSH_AGENT_SOCKET_NAME = '.bearwarden-ssh-agent.sock'
+const BEARWARDEN_SSH_AUTH_SOCK = 'BEARWARDEN_SSH_AUTH_SOCK'
+const BEARWARDEN_SSH_AGENT_SOCKET_NAME = '.bearwarden-ssh-agent.sock'
 export const OPENSSH_AGENT_PIPE_NAME = '\\\\.\\pipe\\openssh-ssh-agent'
 
 const MAX_CONNECTIONS = 32
@@ -75,11 +76,6 @@ export interface SshAgentApprovalRequest {
   namespace: SshSigNamespace | undefined
   connection: SshAgentConnectionContext
   signal: AbortSignal
-}
-
-export interface SshAgentSignature {
-  algorithm: string
-  signature: Buffer
 }
 
 export interface SshAgentProvider {

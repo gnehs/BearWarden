@@ -27,6 +27,8 @@ import {
 } from './account-webauthn-window-protocol'
 import {
   ACCOUNT_WEBAUTHN_CAPABILITY_PATTERN,
+  ownDataType,
+  parseWindowIdentity,
   strictRecord
 } from './account-webauthn-window-primitives'
 
@@ -66,55 +68,21 @@ interface ActiveWindowSession {
   readonly handleDownload: (event: Electron.Event) => void
 }
 
-function parseIdentity(value: unknown): AccountWebAuthnWrapperIdentity | null {
-  const record = strictRecord(value, ['epoch', 'capability'])
-  if (
-    record === null ||
-    typeof record.epoch !== 'number' ||
-    !Number.isSafeInteger(record.epoch) ||
-    record.epoch < 0 ||
-    typeof record.capability !== 'string' ||
-    !ACCOUNT_WEBAUTHN_CAPABILITY_PATTERN.test(record.capability)
-  ) {
-    return null
-  }
-  return { epoch: record.epoch, capability: record.capability }
-}
-
 function parseWrapperEvent(value: unknown): AccountWebAuthnWrapperEvent | null {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
-  let type: unknown
-  try {
-    const descriptor = Object.getOwnPropertyDescriptor(value, 'type')
-    if (!descriptor || !('value' in descriptor)) return null
-    type = descriptor.value
-  } catch {
-    return null
-  }
-  const keys =
+  const type = ownDataType(value)
+  if (type !== 'message' && type !== 'cancel') return null
+  const record = strictRecord(
+    value,
     type === 'message' ? ['epoch', 'capability', 'type', 'data'] : ['epoch', 'capability', 'type']
-  const record = strictRecord(value, keys)
-  if (
-    record === null ||
-    (record.type !== 'message' && record.type !== 'cancel') ||
-    typeof record.epoch !== 'number' ||
-    !Number.isSafeInteger(record.epoch) ||
-    record.epoch < 0 ||
-    typeof record.capability !== 'string' ||
-    !ACCOUNT_WEBAUTHN_CAPABILITY_PATTERN.test(record.capability)
-  ) {
-    return null
-  }
-  if (record.type === 'message') {
-    if (typeof record.data !== 'string') return null
-    return {
-      epoch: record.epoch,
-      capability: record.capability,
-      type: 'message',
-      data: record.data
-    }
-  }
-  return { epoch: record.epoch, capability: record.capability, type: 'cancel' }
+  )
+  const identity = parseWindowIdentity(
+    record === null ? null : { epoch: record.epoch, capability: record.capability }
+  )
+  if (record === null || identity === null) return null
+  if (type === 'cancel') return { ...identity, type: 'cancel' }
+  return typeof record.data === 'string'
+    ? { ...identity, type: 'message', data: record.data }
+    : null
 }
 
 function preventNonExactNavigation(
@@ -327,7 +295,7 @@ export class AccountWebAuthnWindowController {
     value: unknown
   ): AccountWebAuthnWrapperConfiguration | null => {
     const active = this.active
-    const identity = parseIdentity(value)
+    const identity = parseWindowIdentity(value)
     if (
       !active ||
       active.initConsumed ||

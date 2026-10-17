@@ -1,3 +1,4 @@
+import type { AutofillShortcut } from './autofill-shortcuts'
 import type { SelectedItemCopyCommand } from './selected-item-shortcuts'
 
 export const IPC_CHANNELS = {
@@ -346,7 +347,7 @@ export interface VaultSetupRequest {
   masterPassword: string
 }
 
-export interface VaultUnlockRequest {
+interface VaultUnlockRequest {
   masterPassword: string
 }
 
@@ -479,7 +480,7 @@ export interface NativeRestoreSummary {
   completedBytes: number
 }
 
-export interface NativeRestorePreviewRequest {
+interface NativeRestorePreviewRequest {
   /** Used only by the main process to open the selected encrypted archive. */
   password: string
 }
@@ -498,13 +499,13 @@ export type NativeRestorePreviewResult =
       resumePhase: NativeRestoreSummary['phase'] | null
     }
 
-export interface NativeRestoreStartRequest {
+interface NativeRestoreStartRequest {
   sessionId: string
   /** Fresh local owner proof consumed only by the main process. */
   masterPassword: string
 }
 
-export interface NativeRestoreSessionRequest {
+interface NativeRestoreSessionRequest {
   sessionId: string
 }
 
@@ -658,7 +659,7 @@ export interface VaultPasswordHistoryView {
   entries: Array<{ lastUsedDate: string }>
 }
 
-export type VaultItemFieldInput = Partial<VaultItemFields>
+type VaultItemFieldInput = Partial<VaultItemFields>
 
 export interface LoginCreateRequest extends VaultItemFieldInput {
   /** Omitted by older clients; defaults to login. */
@@ -687,7 +688,7 @@ export interface LoginUpdateRequest extends VaultItemFieldInput, LoginAuthorizat
   customFields?: VaultCustomFieldUpdate[]
 }
 
-export interface LoginAuthorizationRequest {
+interface LoginAuthorizationRequest {
   /** Short-lived, item-scoped capability issued by the main process. */
   authorizationToken?: string
 }
@@ -731,7 +732,7 @@ export interface AttachmentProgressEvent {
   totalBytes: number | null
 }
 
-export interface AttachmentOperationRequest extends LoginIdRequest {
+interface AttachmentOperationRequest extends LoginIdRequest {
   operationId: string
 }
 
@@ -768,7 +769,7 @@ export interface AttachmentUploadCardCoverRequest extends AttachmentOperationReq
   sourceUrl: string
 }
 
-export type AttachmentUploadCardCoverFileRequest = AttachmentOperationRequest
+type AttachmentUploadCardCoverFileRequest = AttachmentOperationRequest
 
 export interface AttachmentUploadResult {
   canceled: boolean
@@ -821,7 +822,6 @@ export interface LoginMoveRequest extends LoginIdRequest {
 }
 
 export const MAX_LOGIN_BATCH_IDS = 500
-export const MAX_LOGIN_MOVE_MANY_IDS = MAX_LOGIN_BATCH_IDS
 export const MAX_LOGIN_PREFETCH_IDS = 48
 
 export interface LoginBatchRequest {
@@ -848,7 +848,7 @@ export interface LoginEmptyTrashRequest {
   authorizationToken?: string
 }
 
-export type LoginSort = 'recent' | 'name' | 'frequency'
+type LoginSort = 'recent' | 'name' | 'frequency'
 
 export const MAX_LOGIN_SEARCH_QUERY_LENGTH = 1_024
 
@@ -926,7 +926,7 @@ export type SharedLoginUpdateRequest = Omit<
   'folderId' | 'favorite' | 'reprompt' | 'authorizationToken'
 >
 
-export type EmergencyAccessStatus = 0 | 1 | 2 | 3 | 4
+type EmergencyAccessStatus = 0 | 1 | 2 | 3 | 4
 
 export interface EmergencyAccessView {
   id: string
@@ -1074,7 +1074,7 @@ export type VaultHealthAccountBreachReport =
       breaches: []
     }
 
-export type SyncState = 'unconfigured' | 'locked' | 'ready' | 'syncing' | 'error'
+type SyncState = 'unconfigured' | 'locked' | 'ready' | 'syncing' | 'error'
 
 export type SyncErrorCode =
   | 'SYNC_AUTH_REQUIRED'
@@ -1200,7 +1200,7 @@ export interface SyncEmailTwoFactorCodeRequest {
 }
 
 /** Credentials used only long enough to request a fresh new-device verification email. */
-export interface SyncResendNewDeviceOtpRequest {
+interface SyncResendNewDeviceOtpRequest {
   serverUrl: string
   email: string
   masterPassword: string
@@ -1213,16 +1213,14 @@ export interface SyncResult extends SyncStatus {
   conflicts: number
 }
 
-export interface SyncTwoFactorRequiredResponse {
+interface SyncTwoFactorRequiredResponse {
   kind: 'two-factor-required'
   providers: readonly SyncTwoFactorProvider[]
 }
 
-export type SyncConnectResponse =
-  { kind: 'success'; result: SyncResult } | SyncTwoFactorRequiredResponse
+type SyncConnectResponse = { kind: 'success'; result: SyncResult } | SyncTwoFactorRequiredResponse
 
-export type SyncUnlockResponse =
-  { kind: 'success'; result: SyncResult } | SyncTwoFactorRequiredResponse
+type SyncUnlockResponse = { kind: 'success'; result: SyncResult } | SyncTwoFactorRequiredResponse
 
 export interface AccountSecurityProfile {
   name: string
@@ -1244,7 +1242,7 @@ export interface AccountProfileAvatarUpdateRequest {
   expectedAvatarColor: string | null
 }
 
-export interface AccountDeviceView {
+interface AccountDeviceView {
   name: string
   type: number
   createdAt: string
@@ -1279,7 +1277,7 @@ export interface AccountApiKeyCopyRequest {
   confirmRotation: boolean
 }
 
-export interface AccountApiKeyCopyResult {
+interface AccountApiKeyCopyResult {
   rotated: boolean
   revisionDate: string
 }
@@ -1305,11 +1303,11 @@ export interface AccountSessionDeauthorizationRequest {
   confirm: true
 }
 
-export interface AccountRecoveryCodeCopyRequest {
+interface AccountRecoveryCodeCopyRequest {
   masterPassword: string
 }
 
-export interface AccountAuthenticatorSetupRequest {
+interface AccountAuthenticatorSetupRequest {
   masterPassword: string
 }
 
@@ -1320,7 +1318,7 @@ export interface AccountAuthenticatorSetup {
   expiresAt: number
 }
 
-export interface AccountAuthenticatorSetupLocator {
+interface AccountAuthenticatorSetupLocator {
   sessionId: string
 }
 
@@ -1329,7 +1327,7 @@ export interface AccountAuthenticatorCompleteRequest extends AccountAuthenticato
   masterPassword?: string
 }
 
-export interface AccountEmailTwoFactorSetupRequest {
+interface AccountEmailTwoFactorSetupRequest {
   masterPassword: string
 }
 
@@ -1398,7 +1396,7 @@ export interface EquivalentDomainSettingsUpdate {
 }
 
 /** Renderer-safe metadata for a personal file Send. File bytes and URLs remain in main. */
-export interface SendFileView {
+interface SendFileView {
   id: string
   fileName: string
   size: number
@@ -1586,7 +1584,7 @@ export type GeneratorCredentialCategory = 'password' | 'username' | 'email'
 export type GeneratorCredentialAlgorithm =
   'password' | 'passphrase' | 'username' | 'subaddress' | 'catchall'
 
-export interface GeneratorPasswordOptions {
+interface GeneratorPasswordOptions {
   length?: number
   uppercase?: boolean
   lowercase?: boolean
@@ -1599,14 +1597,14 @@ export interface GeneratorPasswordOptions {
   avoidAmbiguous?: boolean
 }
 
-export interface GeneratorPassphraseOptions {
+interface GeneratorPassphraseOptions {
   wordCount?: number
   separator?: string
   capitalize?: boolean
   includeNumber?: boolean
 }
 
-export interface GeneratorRandomWordOptions {
+interface GeneratorRandomWordOptions {
   capitalize?: boolean
   includeNumber?: boolean
 }
@@ -1652,7 +1650,7 @@ export interface SshKeyMaterial {
 }
 
 /** Renderer-safe handle for main-process-only SSH key material. */
-export interface SshKeyMaterialSession {
+interface SshKeyMaterialSession {
   status: 'ready'
   token: string
   expiresAt: number
@@ -1753,7 +1751,7 @@ export type PasskeyUserVerificationRequirement = 'required' | 'preferred' | 'dis
 export type PasskeyVerificationMethod = 'none' | 'touch-id' | 'master-password'
 
 /** Renderer-safe metadata only. Protocol bytes, credential IDs, and vault revisions stay in main. */
-export interface PasskeyApprovalChoice {
+interface PasskeyApprovalChoice {
   /** Request-local opaque identifier; it is not a WebAuthn credential ID. */
   id: string
   label: string
@@ -1807,7 +1805,7 @@ export type AutofillPromptErrorCode =
   | 'FILL_FAILED'
   | 'UNAVAILABLE'
 
-export interface AutofillChoice {
+interface AutofillChoice {
   readonly id: string
   readonly name: string
   /** Empty for protected items until the main app performs item reprompt. */
@@ -1831,7 +1829,7 @@ export interface AutofillSelectionRequest {
   readonly itemId: string
 }
 
-export interface AutofillPromptRequest {
+interface AutofillPromptRequest {
   readonly requestId: string
 }
 
@@ -1847,8 +1845,6 @@ export interface AutofillFeatureStatus {
 export const MAX_VAULT_TIMEOUT_MINUTES = 525_600
 
 export type AppLanguagePreference = 'system' | 'en' | 'zh-CN' | 'zh-TW' | 'ja'
-
-export type { AutofillShortcut } from './autofill-shortcuts'
 
 /**
  * Timeout policy is deliberately closed: only policies implemented by the
@@ -1878,7 +1874,7 @@ export interface AppSettings {
   /** Enables the selected macOS cross-browser AutoFill shortcut. */
   autofillEnabled: boolean
   /** A validated global shortcut chosen from BearWarden's conflict-aware presets. */
-  autofillShortcut: import('./autofill-shortcuts').AutofillShortcut
+  autofillShortcut: AutofillShortcut
   /** Whether BearWarden exposes SSH keys through the local SSH agent socket. */
   sshAgentEnabled: boolean
   /** Controls whether individual SSH signing requests require user approval. */
@@ -1966,13 +1962,11 @@ export interface BearWardenAPI {
     report: () => Promise<VaultHealthReport>
     /** Performs an explicit k-anonymous HIBP range check from the main process. */
     exposedPasswords: () => Promise<VaultHealthExposedReport>
-    /** Cancels the active HIBP report, if any. */
     cancelExposedPasswords: () => Promise<boolean>
     /** Sends the complete address through the configured Vaultwarden server to HIBP. */
     accountBreaches: (
       request: VaultHealthAccountBreachRequest
     ) => Promise<VaultHealthAccountBreachReport>
-    /** Cancels the active account-breach report, if any. */
     cancelAccountBreaches: () => Promise<boolean>
     /** Opens the fixed HIBP attribution URL in the system browser. */
     openHibpWebsite: () => Promise<void>

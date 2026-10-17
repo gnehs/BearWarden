@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto'
 
 const PWNED_PASSWORDS_RANGE_URL = 'https://api.pwnedpasswords.com/range/'
 const MAX_RESPONSE_BYTES = 256 * 1024
-export const PWNED_PASSWORDS_MAX_CANDIDATES = 50_000
-export const PWNED_PASSWORDS_MAX_PASSWORD_CHARACTERS = 16_384
-export const PWNED_PASSWORDS_MAX_TOTAL_PASSWORD_CHARACTERS = 32 * 1_024 * 1_024
+const PWNED_PASSWORDS_MAX_CANDIDATES = 50_000
+const PWNED_PASSWORDS_MAX_PASSWORD_CHARACTERS = 16_384
+const PWNED_PASSWORDS_MAX_TOTAL_PASSWORD_CHARACTERS = 32 * 1_024 * 1_024
 const MAX_CONCURRENCY = 8
 const DEFAULT_TIMEOUT_MS = 10_000
 const MAX_TIMEOUT_MS = 120_000
@@ -14,7 +14,7 @@ const RANGE_LINE_PATTERN = /^([A-F0-9]{35}):([0-9]+)$/u
 export type PwnedPasswordsErrorCode =
   'ABORTED' | 'TIMEOUT' | 'NETWORK' | 'INVALID_INPUT' | 'INVALID_RESPONSE'
 
-export class PwnedPasswordsError extends Error {
+class PwnedPasswordsError extends Error {
   constructor(readonly code: PwnedPasswordsErrorCode) {
     super(`Pwned Passwords request failed (${code})`)
     this.name = 'PwnedPasswordsError'

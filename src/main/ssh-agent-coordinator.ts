@@ -10,9 +10,9 @@ import type {
   SshAgentApprovalRequest,
   SshAgentListRequest,
   SshAgentProvider,
-  SshAgentSignRequest,
-  SshAgentSignature
+  SshAgentSignRequest
 } from './ssh-agent-server'
+import type { SshAgentSignature } from './ssh-agent-crypto'
 import type { SshAgentIdentity } from './ssh-agent-protocol'
 
 const GRANT_TTL_MS = 60_000

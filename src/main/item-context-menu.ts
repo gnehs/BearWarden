@@ -94,44 +94,40 @@ export function showItemContextMenu(options: ItemContextMenuOptions): Menu {
   const { callbacks, folders, item, onError, position, window } = options
   const itemEnabled = canUseItem(item)
   const hasUris = item.uriLabels.length > 0
-  const openWebsite: MenuItemConstructorOptions =
+  const websiteEntry = (
+    base: Pick<MenuItemConstructorOptions, 'id' | 'label' | 'accelerator'>,
+    uriIdPrefix: string,
+    run: (uriIndex: number) => void | Promise<void>
+  ): MenuItemConstructorOptions =>
     item.uriLabels.length <= 1
       ? {
-          id: 'item-context-open-in-new-window',
-          label: translateMain('itemContext.openInBrowser'),
+          ...base,
           enabled: itemEnabled && hasUris,
-          click: () => invoke(() => callbacks.openInNewWindow(item.id, 0), onError)
+          click: () => invoke(() => run(0), onError)
         }
       : {
-          id: 'item-context-open-in-new-window',
-          label: translateMain('itemContext.openInBrowser'),
+          ...base,
           enabled: itemEnabled,
           submenu: item.uriLabels.map((label, index) => ({
-            id: `item-context-open-uri-${index}`,
+            id: `${uriIdPrefix}-${index}`,
             label: uriMenuLabel(label, index),
-            click: () => invoke(() => callbacks.openInNewWindow(item.id, index), onError)
+            click: () => invoke(() => run(index), onError)
           }))
         }
-  const copyWebsite: MenuItemConstructorOptions =
-    item.uriLabels.length <= 1
-      ? {
-          id: 'item-context-copy-website',
-          label: translateMain('itemContext.copyWebsite'),
-          accelerator: SELECTED_ITEM_COPY_SHORTCUTS.website.accelerator,
-          enabled: itemEnabled && hasUris,
-          click: () => invoke(() => callbacks.copyWebsite(item.id, 0), onError)
-        }
-      : {
-          id: 'item-context-copy-website',
-          label: translateMain('itemContext.copyWebsite'),
-          accelerator: SELECTED_ITEM_COPY_SHORTCUTS.website.accelerator,
-          enabled: itemEnabled,
-          submenu: item.uriLabels.map((label, index) => ({
-            id: `item-context-copy-uri-${index}`,
-            label: uriMenuLabel(label, index),
-            click: () => invoke(() => callbacks.copyWebsite(item.id, index), onError)
-          }))
-        }
+  const openWebsite = websiteEntry(
+    { id: 'item-context-open-in-new-window', label: translateMain('itemContext.openInBrowser') },
+    'item-context-open-uri',
+    (uriIndex) => callbacks.openInNewWindow(item.id, uriIndex)
+  )
+  const copyWebsite = websiteEntry(
+    {
+      id: 'item-context-copy-website',
+      label: translateMain('itemContext.copyWebsite'),
+      accelerator: SELECTED_ITEM_COPY_SHORTCUTS.website.accelerator
+    },
+    'item-context-copy-uri',
+    (uriIndex) => callbacks.copyWebsite(item.id, uriIndex)
+  )
   const template: MenuItemConstructorOptions[] = [
     openWebsite,
     { type: 'separator' },

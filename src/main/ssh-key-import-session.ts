@@ -31,7 +31,7 @@ export interface SshKeyImportSessionStoreOptions {
   ttlMs?: number
 }
 
-export type SshKeyImportSessionErrorCode =
+type SshKeyImportSessionErrorCode =
   | 'EmptyClipboard'
   | 'ClipboardTooLarge'
   | 'ParsingError'

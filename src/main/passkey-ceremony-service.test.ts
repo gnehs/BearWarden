@@ -294,8 +294,7 @@ describe('PasskeyCeremonyService', () => {
     )
     expect(response.rawId).toEqual(response.credentialId)
     expect(response.rawId).not.toBe(response.credentialId)
-    expect(JSON.stringify(response)).not.toContain('privateKey')
-    expect(JSON.stringify(response)).not.toContain('keyValue')
+    expect(JSON.stringify(response)).not.toContain('must-never-escape')
     expect(harness.bridge.discardMasterPasswordProof).toHaveBeenCalledWith(prompt.requestId)
   })
 

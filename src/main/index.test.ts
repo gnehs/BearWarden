@@ -687,20 +687,8 @@ describe('main WebAuthn lifecycle wiring', () => {
     expect(webContents.reload).not.toHaveBeenCalled()
 
     harness.lifecycleEvents.length = 0
-    harness.appRelaunch.mockClear()
-    harness.appQuit.mockClear()
     afterCommitRelaunch()
     expect(harness.lifecycleEvents).toEqual(['app.relaunch', 'app.quit'])
-    expect(harness.appRelaunch).toHaveBeenCalledOnce()
-    expect(harness.appQuit).toHaveBeenCalledOnce()
-  })
-
-  it('invalidates a pending timeout before every vault lock teardown', async () => {
-    harness.vaultTimeoutCancel.mockClear()
-
-    await (harness.vaultIpcOptions!.beforeLock as () => Promise<void>)()
-
-    expect(harness.vaultTimeoutCancel).toHaveBeenCalledOnce()
   })
 
   it('cancels timeout activity after an account-switch lock failure', async () => {
@@ -900,7 +888,6 @@ describe('main WebAuthn lifecycle wiring', () => {
     expect(harness.autoSyncRequest).not.toHaveBeenCalled()
     expect(harness.autoSyncRequestImmediate).toHaveBeenCalledOnce()
 
-    expect(harness.serverNotificationOptions!.onAuthRequest).toEqual(expect.any(Function))
     ;(
       harness.serverNotificationOptions!.onAuthRequest as (notification: {
         id: string

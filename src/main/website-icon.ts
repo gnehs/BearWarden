@@ -142,9 +142,7 @@ export async function fetchWebsiteIcon(
     if (response.status === 408 || response.status === 429 || response.status >= 500) {
       return { kind: 'failed' }
     }
-    if (!response.ok || response.status < 200 || response.status >= 300) {
-      return { kind: 'missing' }
-    }
+    if (!response.ok) return { kind: 'missing' }
 
     const mimeType = response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase()
     if (!mimeType || !SUPPORTED_IMAGE_TYPES.has(mimeType)) return { kind: 'missing' }

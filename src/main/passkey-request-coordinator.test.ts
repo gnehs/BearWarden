@@ -195,15 +195,12 @@ describe('PasskeyRequestCoordinator', () => {
       }),
       expect.any(AbortSignal)
     )
-    const context = operationContext
-    expect(context).toBeDefined()
-    const captured = context!
-    expect(captured.request.requestDigest).toEqual(expectedDigest)
-    expect(captured.request.clientDataHash).toEqual(expectedHash)
-    expect(captured.request.kind === 'create' ? captured.request.userHandle : []).toEqual(
-      expectedHandle
-    )
-    expect(captured.userVerified).toBe(true)
+    expect(operationContext?.request).toMatchObject({
+      requestDigest: expectedDigest,
+      clientDataHash: expectedHash,
+      userHandle: expectedHandle
+    })
+    expect(operationContext?.userVerified).toBe(true)
   })
 
   it('implements required, preferred, and discouraged UV without accepting a renderer-supplied boolean', async () => {

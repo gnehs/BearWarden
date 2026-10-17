@@ -153,7 +153,6 @@ export class AutofillCoordinator {
     }
     const candidate = active.discovery.candidates.find(({ id }) => id === request.itemId)
     if (!candidate) return
-    active.filling = true
     const fillingPrompt: AutofillPrompt = { ...active.prompt, status: 'filling' }
     this.active = { ...active, prompt: fillingPrompt, filling: true }
     this.prompt = fillingPrompt
@@ -201,12 +200,11 @@ export class AutofillCoordinator {
     const active = this.active
     if (this.prompt?.requestId !== requestId) return
     const protectedChoice = active?.discovery.candidates.find(({ reprompt }) => reprompt === 1)
-    this.options.openMain(active ? protectedChoice?.id : undefined)
+    this.options.openMain(protectedChoice?.id)
     this.cancel(requestId)
   }
 
   dispose(): void {
-    this.triggerEpoch += 1
     this.cancel()
   }
 

@@ -127,15 +127,10 @@ function parseVaultTimeoutPolicy(value: unknown, allowSystemIdle: boolean): Vaul
 function parseSettings(value: unknown): { settings: StoredSettings; needsMigration: boolean } {
   if (
     !isRecord(value) ||
-    (value.version !== 1 &&
-      value.version !== 2 &&
-      value.version !== 3 &&
-      value.version !== 4 &&
-      value.version !== 5 &&
-      value.version !== 6 &&
-      value.version !== 7 &&
-      value.version !== 8 &&
-      value.version !== SETTINGS_VERSION)
+    typeof value.version !== 'number' ||
+    !Number.isInteger(value.version) ||
+    value.version < 1 ||
+    value.version > SETTINGS_VERSION
   ) {
     throw new Error('invalid settings')
   }
@@ -686,17 +681,13 @@ export class AppSettingsService {
   }
 
   private async unlockWithLegacyFile(file: Buffer, operationEpoch: number): Promise<VaultStatus> {
-    let masterPassword: string | undefined = await safeStorageDecrypt(file)
-    try {
-      this.assertCurrent(operationEpoch)
-      const status = await this.runtime.unlockVault(masterPassword)
-      this.assertCurrent(operationEpoch)
-      // Migration failure must not fail the unlock; the legacy file is retried next time.
-      await this.migrateLegacyTouchId(masterPassword).catch(() => undefined)
-      return status
-    } finally {
-      masterPassword = undefined
-    }
+    const masterPassword = await safeStorageDecrypt(file)
+    this.assertCurrent(operationEpoch)
+    const status = await this.runtime.unlockVault(masterPassword)
+    this.assertCurrent(operationEpoch)
+    // Migration failure must not fail the unlock; the legacy file is retried next time.
+    await this.migrateLegacyTouchId(masterPassword).catch(() => undefined)
+    return status
   }
 
   /** Removes the enrolled file only if it still holds the bytes this operation found stale. */

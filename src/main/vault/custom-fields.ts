@@ -144,7 +144,7 @@ export function customFieldFromSource(
   return field
 }
 
-export function linkedCustomFieldValue(login: StoredLogin, linkedId: number | null): string {
+function linkedCustomFieldValue(login: StoredLogin, linkedId: number | null): string {
   if (login.type === 'login') {
     if (linkedId === 100) return login.username
     if (linkedId === 101) return login.password

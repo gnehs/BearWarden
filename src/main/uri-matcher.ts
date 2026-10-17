@@ -63,10 +63,6 @@ function hostFromUri(uri: string): string | null {
   }
 }
 
-function canonicalConfiguredDomain(value: string): string | null {
-  return domainFromUri(value)
-}
-
 export function equivalentDomainsForTarget(
   targetUri: string,
   settings: EquivalentDomainConfiguration | null
@@ -83,7 +79,7 @@ export function equivalentDomainsForTarget(
   ]
   for (const group of groups) {
     const canonical = group.flatMap((domain) => {
-      const parsed = canonicalConfiguredDomain(domain)
+      const parsed = domainFromUri(domain)
       return parsed ? [parsed] : []
     })
     if (canonical.includes(targetDomain)) canonical.forEach((domain) => matches.add(domain))

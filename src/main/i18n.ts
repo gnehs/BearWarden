@@ -1,9 +1,7 @@
 import { setupI18n, type Messages } from '@lingui/core'
 import type { AppLanguagePreference } from '../shared/vault-contract'
 
-export const mainLocales = ['en', 'zh-CN', 'zh-TW', 'ja'] as const
-
-export type MainLocale = (typeof mainLocales)[number]
+export type MainLocale = 'en' | 'zh-CN' | 'zh-TW' | 'ja'
 
 const en = {
   'applicationMenu.vault': 'Vault',

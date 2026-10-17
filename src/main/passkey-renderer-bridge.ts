@@ -438,45 +438,25 @@ export class PasskeyRendererBridge {
       this.resolvePending(pending, response)
       return
     }
-    const choices = pending.prompt.choices
-    if (
-      (choices.length === 0 && response.selectedChoiceId !== undefined) ||
-      (choices.length > 0 &&
-        (response.selectedChoiceId === undefined ||
-          !choices.some((choice) => choice.id === response.selectedChoiceId)))
-    ) {
+    if (!this.validSelectedChoice(pending.prompt, response.selectedChoiceId)) {
       throw publicInvalidInput()
     }
     const method = response.verificationMethod ?? 'none'
-    if (pending.prompt.userVerification === 'discouraged') {
-      if (method !== 'none') throw publicInvalidInput()
-      if (this.selectedChoiceRequiresReprompt(pending.prompt, response.selectedChoiceId)) {
-        const proof = this.passwordProofs.get(response.requestId)
-        if (!proof || proof.selectedChoiceId !== response.selectedChoiceId) {
-          throw publicInvalidInput()
-        }
-      } else {
-        this.deleteProof(response.requestId)
-      }
-    } else {
-      if (method === 'none' || !pending.prompt.verificationMethods.includes(method)) {
+    const methodAllowed =
+      pending.prompt.userVerification === 'discouraged'
+        ? method === 'none'
+        : method !== 'none' && pending.prompt.verificationMethods.includes(method)
+    if (!methodAllowed) throw publicInvalidInput()
+    if (
+      method === 'master-password' ||
+      this.selectedChoiceRequiresReprompt(pending.prompt, response.selectedChoiceId)
+    ) {
+      const proof = this.passwordProofs.get(response.requestId)
+      if (!proof || proof.selectedChoiceId !== response.selectedChoiceId) {
         throw publicInvalidInput()
       }
-      if (method === 'master-password') {
-        const proof = this.passwordProofs.get(response.requestId)
-        if (!proof || proof.selectedChoiceId !== response.selectedChoiceId) {
-          throw publicInvalidInput()
-        }
-      } else {
-        if (this.selectedChoiceRequiresReprompt(pending.prompt, response.selectedChoiceId)) {
-          const proof = this.passwordProofs.get(response.requestId)
-          if (!proof || proof.selectedChoiceId !== response.selectedChoiceId) {
-            throw publicInvalidInput()
-          }
-        } else {
-          this.deleteProof(response.requestId)
-        }
-      }
+    } else {
+      this.deleteProof(response.requestId)
     }
     this.resolvePending(pending, response)
   }

@@ -7,7 +7,7 @@ import {
   type Hash
 } from 'node:crypto'
 import { constants } from 'node:fs'
-import { chmod, lstat, mkdir, open, rename, unlink } from 'node:fs/promises'
+import { chmod, lstat, mkdir, open, rename, unlink, type FileHandle } from 'node:fs/promises'
 import { dirname, isAbsolute } from 'node:path'
 import { syncDirectoryBestEffort } from './account-paths'
 import { VaultError } from './vault-errors'
@@ -367,7 +367,7 @@ function decryptRecord(
 }
 
 async function readExactly(
-  handle: Awaited<ReturnType<typeof open>>,
+  handle: FileHandle,
   length: number,
   position: number
 ): Promise<Buffer | null> {
@@ -384,11 +384,7 @@ async function readExactly(
   return buffer
 }
 
-async function writeExactly(
-  handle: Awaited<ReturnType<typeof open>>,
-  bytes: Buffer,
-  position: number
-): Promise<void> {
+async function writeExactly(handle: FileHandle, bytes: Buffer, position: number): Promise<void> {
   let offset = 0
   while (offset < bytes.length) {
     const { bytesWritten } = await handle.write(
@@ -403,7 +399,7 @@ async function writeExactly(
 }
 
 async function scanArchive(
-  handle: Awaited<ReturnType<typeof open>>,
+  handle: FileHandle,
   password: string,
   options: { reader?: boolean; signal?: AbortSignal } = {}
 ): Promise<ScannedArchive> {
@@ -606,7 +602,7 @@ function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new VaultError('ATTACHMENT_CANCELED')
 }
 
-async function openExistingPartial(path: string): Promise<Awaited<ReturnType<typeof open>> | null> {
+async function openExistingPartial(path: string): Promise<FileHandle | null> {
   try {
     const stats = await lstat(path)
     if (!stats.isFile() || stats.isSymbolicLink()) invalidInput()
@@ -643,8 +639,7 @@ export async function writeNativeAttachmentBackup(
   await mkdir(dirname(path), { recursive: true, mode: 0o700 })
   throwIfAborted(options.signal)
 
-  let handle: Awaited<ReturnType<typeof open>> | undefined =
-    (await openExistingPartial(partialPath)) ?? undefined
+  let handle: FileHandle | undefined = (await openExistingPartial(partialPath)) ?? undefined
   const resumed = handle !== undefined
   let key: Buffer | undefined
   let salt: Buffer | undefined
@@ -824,7 +819,7 @@ export async function writeNativeAttachmentBackup(
 }
 
 function sameFileIdentity(
-  stats: Awaited<ReturnType<Awaited<ReturnType<typeof open>>['stat']>>,
+  stats: Awaited<ReturnType<FileHandle['stat']>>,
   expected: ArchiveFileIdentity
 ): boolean {
   return (
@@ -849,7 +844,7 @@ export async function openNativeAttachmentBackup(
   validatePath(path)
   validatePassword(password)
   throwIfAborted(options.signal)
-  let handle: Awaited<ReturnType<typeof open>> | undefined
+  let handle: FileHandle | undefined
   let scanned: ScannedArchive | undefined
   try {
     const before = await lstat(path)
@@ -868,8 +863,7 @@ export async function openNativeAttachmentBackup(
     scanned = await scanArchive(handle, password, { reader: true, signal: options.signal })
     const attachmentDigests = verifyCompletedArchive(scanned)
     const state = scanned.readerState
-    if (!state || !(await handle.stat()).isFile()) invalidInput()
-    if (!sameFileIdentity(await handle.stat(), state.identity)) invalidInput()
+    if (!state || !sameFileIdentity(await handle.stat(), state.identity)) invalidInput()
 
     const ownedHandle = handle
     const ownedKey = state.key
@@ -1018,7 +1012,7 @@ export async function inspectNativeAttachmentBackup(
 ): Promise<NativeAttachmentBackupInspection> {
   validatePath(path)
   validatePassword(password)
-  let handle: Awaited<ReturnType<typeof open>> | undefined
+  let handle: FileHandle | undefined
   let scanned: ScannedArchive | undefined
   try {
     const stats = await lstat(path)

@@ -8,7 +8,7 @@ import {
 } from './limits'
 import { isRecord } from './parse-primitives'
 
-export function parseStoredAttachment(value: unknown): VaultAttachmentView {
+function parseStoredAttachment(value: unknown): VaultAttachmentView {
   if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
   if (
     typeof value.id !== 'string' ||

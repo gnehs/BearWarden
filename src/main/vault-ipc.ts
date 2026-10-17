@@ -8,7 +8,6 @@ import {
   ACCOUNT_SESSION_DEAUTHORIZATION_CONFIRMATION,
   MAX_VAULT_TIMEOUT_MINUTES,
   MAX_LOGIN_BATCH_IDS,
-  MAX_LOGIN_MOVE_MANY_IDS,
   MAX_LOGIN_PREFETCH_IDS,
   MAX_LOGIN_AUTHORIZE_MANY_IDS,
   MAX_LOGIN_SEARCH_QUERY_LENGTH,
@@ -28,7 +27,6 @@ import {
   type AccountApiKeyCopyRequest,
   type AccountWebAuthnKeyEnrollmentRequest,
   type AccountWebAuthnKeyRemovalRequest,
-  type AccountWebAuthnKeysRequest,
   type AccountWebAuthnKeyView,
   type AccountAuthenticatorCompleteRequest,
   type AccountEmailTwoFactorCompleteRequest,
@@ -134,6 +132,7 @@ import {
   TwoFactorDirectoryCacheError,
   type TwoFactorDirectoryCache
 } from './two-factor-directory-cache'
+import { exactKeys, plainRecord } from './plain-record'
 import { ITEM_FIELD_NAMES } from './vault/item-fields'
 import {
   MAX_CUSTOM_FIELDS,
@@ -160,6 +159,11 @@ const MAX_SYNC_RESOLUTION_MASTER_PASSWORD_LENGTH = 1_024
 const MAX_SYNC_SERVER_URL_LENGTH = 4_096
 const MAX_SYNC_EMAIL_LENGTH = 512
 const MAX_ERROR_LOG_FIELD_LENGTH = 12_000
+const MAX_ACCOUNT_MASTER_PASSWORD_LENGTH = 16_384
+
+function validAccountMasterPassword(value: string): boolean {
+  return value.length > 0 && value.length <= MAX_ACCOUNT_MASTER_PASSWORD_LENGTH
+}
 
 interface RepromptAuthorizationEntry {
   senderId: number
@@ -343,9 +347,9 @@ function parseVaultImport(value: unknown): VaultImportRequest {
   }
 }
 
-function scrubVaultImportSecrets(value: unknown): void {
+function scrubStringProperties(value: unknown, keys: readonly string[]): void {
   if (typeof value !== 'object' || value === null) return
-  for (const key of ['masterPassword', 'password'] as const) {
+  for (const key of keys) {
     try {
       const descriptor = Object.getOwnPropertyDescriptor(value, key)
       if (!descriptor || !('value' in descriptor)) continue
@@ -393,17 +397,17 @@ function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
     'sshAgentPromptBehavior'
   ])
   const result: AppSettingsUpdate = {}
-  if (record.contentProtection !== undefined) {
-    if (typeof record.contentProtection !== 'boolean') throw new VaultError('INVALID_INPUT')
-    result.contentProtection = record.contentProtection
-  }
-  if (record.showWebsiteIcons !== undefined) {
-    if (typeof record.showWebsiteIcons !== 'boolean') throw new VaultError('INVALID_INPUT')
-    result.showWebsiteIcons = record.showWebsiteIcons
-  }
-  if (record.startAtLogin !== undefined) {
-    if (typeof record.startAtLogin !== 'boolean') throw new VaultError('INVALID_INPUT')
-    result.startAtLogin = record.startAtLogin
+  for (const key of [
+    'contentProtection',
+    'showWebsiteIcons',
+    'startAtLogin',
+    'lockOnScreenLock',
+    'lockOnSuspend',
+    'autofillEnabled',
+    'sshAgentEnabled'
+  ] as const) {
+    const value = optionalBoolean(record, key)
+    if (value !== undefined) result[key] = value
   }
   if (record.vaultTimeoutPolicy !== undefined) {
     const policy = exactDataRecord(record.vaultTimeoutPolicy, ['type', 'minutes'])
@@ -422,12 +426,6 @@ function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
       result.vaultTimeoutPolicy = { type: 'appInactivity', minutes: policy.minutes }
     } else {
       throw new VaultError('INVALID_INPUT')
-    }
-  }
-  for (const key of ['lockOnScreenLock', 'lockOnSuspend'] as const) {
-    if (record[key] !== undefined) {
-      if (typeof record[key] !== 'boolean') throw new VaultError('INVALID_INPUT')
-      result[key] = record[key]
     }
   }
   if (record.clearClipboardSeconds !== undefined) {
@@ -465,17 +463,9 @@ function parseSettingsUpdate(value: unknown): AppSettingsUpdate {
     }
     result.language = record.language
   }
-  if (record.autofillEnabled !== undefined) {
-    if (typeof record.autofillEnabled !== 'boolean') throw new VaultError('INVALID_INPUT')
-    result.autofillEnabled = record.autofillEnabled
-  }
   if (record.autofillShortcut !== undefined) {
     if (!isAutofillShortcut(record.autofillShortcut)) throw new VaultError('INVALID_INPUT')
     result.autofillShortcut = record.autofillShortcut
-  }
-  if (record.sshAgentEnabled !== undefined) {
-    if (typeof record.sshAgentEnabled !== 'boolean') throw new VaultError('INVALID_INPUT')
-    result.sshAgentEnabled = record.sshAgentEnabled
   }
   if (record.sshAgentPromptBehavior !== undefined) {
     if (
@@ -504,25 +494,15 @@ function parseMasterPasswordChange(
   value: unknown,
   includeHint: boolean
 ): MasterPasswordChangeRequest | MasterPasswordChangeResolutionRequest {
-  const allowedKeys = includeHint
-    ? ['currentPassword', 'newPassword', 'hint']
-    : ['currentPassword', 'newPassword']
-  if (!isRecord(value)) throw new VaultError('INVALID_INPUT')
-  const keys = Reflect.ownKeys(value)
   if (
-    keys.some((key) => typeof key !== 'string' || !allowedKeys.includes(key)) ||
-    !Object.hasOwn(value, 'currentPassword') ||
-    !Object.hasOwn(value, 'newPassword')
+    !plainRecord(value) ||
+    !exactKeys(value, ['currentPassword', 'newPassword'], includeHint ? ['hint'] : [])
   ) {
     throw new VaultError('INVALID_INPUT')
   }
-  for (const key of keys) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key)
-    if (!descriptor || !('value' in descriptor)) throw new VaultError('INVALID_INPUT')
-  }
-  const currentValue = Object.getOwnPropertyDescriptor(value, 'currentPassword')?.value
-  const newValue = Object.getOwnPropertyDescriptor(value, 'newPassword')?.value
-  const hintValue = Object.getOwnPropertyDescriptor(value, 'hint')?.value
+  const currentValue = value.currentPassword
+  const newValue = value.newPassword
+  const hintValue = value.hint
   if (
     typeof currentValue !== 'string' ||
     typeof newValue !== 'string' ||
@@ -579,8 +559,7 @@ function parsePinEnable(value: unknown): PinUnlockEnableRequest {
   if (
     request.pin.normalize('NFC').length < 4 ||
     request.pin.length > 1_024 ||
-    request.masterPassword.length === 0 ||
-    request.masterPassword.length > 16_384
+    !validAccountMasterPassword(request.masterPassword)
   ) {
     request.pin = ''
     request.masterPassword = ''
@@ -677,29 +656,8 @@ function parseAccountRename(value: unknown): AccountRenameRequest {
 }
 
 function strictRequiredDataRecord(value: unknown, requiredKeys: readonly string[]): RecordValue {
-  if (!isRecord(value)) throw new VaultError('INVALID_INPUT')
-  const descriptors = Object.getOwnPropertyDescriptors(value)
-  if (
-    Reflect.ownKeys(descriptors).some((key) => typeof key !== 'string') ||
-    Object.keys(descriptors).length !== requiredKeys.length
-  ) {
-    throw new VaultError('INVALID_INPUT')
-  }
-  const result: RecordValue = {}
-  for (const key of requiredKeys) {
-    const descriptor = descriptors[key]
-    if (
-      descriptor === undefined ||
-      descriptor.enumerable !== true ||
-      !('value' in descriptor) ||
-      descriptor.get !== undefined ||
-      descriptor.set !== undefined
-    ) {
-      throw new VaultError('INVALID_INPUT')
-    }
-    result[key] = descriptor.value
-  }
-  return result
+  if (!plainRecord(value) || !exactKeys(value, requiredKeys)) throw new VaultError('INVALID_INPUT')
+  return value
 }
 
 function strictAccountIdArray(value: unknown): readonly string[] {
@@ -792,7 +750,7 @@ function parseAccountApiKeyCopy(value: unknown): AccountApiKeyCopyRequest {
   const record = exactRecord(value, ['masterPassword', 'rotate', 'confirmRotation'])
   const masterPassword = requiredString(record, 'masterPassword')
   if (
-    masterPassword.length > 16_384 ||
+    masterPassword.length > MAX_ACCOUNT_MASTER_PASSWORD_LENGTH ||
     typeof record.rotate !== 'boolean' ||
     typeof record.confirmRotation !== 'boolean' ||
     record.confirmRotation !== record.rotate
@@ -858,8 +816,7 @@ function parseAccountSessionDeauthorization(value: unknown): AccountSessionDeaut
     confirm: record.confirm as true
   }
   if (
-    request.masterPassword.length === 0 ||
-    request.masterPassword.length > 16_384 ||
+    !validAccountMasterPassword(request.masterPassword) ||
     request.confirmation !== ACCOUNT_SESSION_DEAUTHORIZATION_CONFIRMATION ||
     request.confirm !== true
   ) {
@@ -869,30 +826,13 @@ function parseAccountSessionDeauthorization(value: unknown): AccountSessionDeaut
   return request
 }
 
-function scrubAccountSessionDeauthorization(value: unknown): void {
-  if (typeof value !== 'object' || value === null) return
-  for (const key of ['masterPassword', 'confirmation'] as const) {
-    try {
-      const descriptor = Object.getOwnPropertyDescriptor(value, key)
-      if (!descriptor || !('value' in descriptor)) continue
-      Reflect.defineProperty(value, key, { ...descriptor, value: '' })
-    } catch {
-      // Best-effort cleanup must not invoke accessors or replace the operation result.
-    }
-  }
-}
-
 const MAX_ACCOUNT_WEBAUTHN_KEY_ID = 2_147_483_647
 const MAX_ACCOUNT_WEBAUTHN_KEY_NAME_BYTES = 256
-const MAX_ACCOUNT_WEBAUTHN_MASTER_PASSWORD_LENGTH = 16_384
 
-function parseAccountWebAuthnKeys(value: unknown): AccountWebAuthnKeysRequest {
+function parseAccountMasterPassword(value: unknown): { masterPassword: string } {
   const record = exactRecord(value, ['masterPassword'])
   const request = { masterPassword: requiredString(record, 'masterPassword') }
-  if (
-    request.masterPassword.length === 0 ||
-    request.masterPassword.length > MAX_ACCOUNT_WEBAUTHN_MASTER_PASSWORD_LENGTH
-  ) {
+  if (!validAccountMasterPassword(request.masterPassword)) {
     request.masterPassword = ''
     throw new VaultError('INVALID_INPUT')
   }
@@ -906,8 +846,7 @@ function parseAccountWebAuthnKeyEnrollment(value: unknown): AccountWebAuthnKeyEn
     name: requiredString(record, 'name').trim()
   }
   if (
-    request.masterPassword.length === 0 ||
-    request.masterPassword.length > MAX_ACCOUNT_WEBAUTHN_MASTER_PASSWORD_LENGTH ||
+    !validAccountMasterPassword(request.masterPassword) ||
     request.name.length === 0 ||
     Buffer.byteLength(request.name, 'utf8') > MAX_ACCOUNT_WEBAUTHN_KEY_NAME_BYTES ||
     /[\0\r\n]/u.test(request.name)
@@ -931,8 +870,7 @@ function parseAccountWebAuthnKeyRemoval(value: unknown): AccountWebAuthnKeyRemov
     !Number.isSafeInteger(request.id) ||
     request.id < 1 ||
     request.id > MAX_ACCOUNT_WEBAUTHN_KEY_ID ||
-    request.masterPassword.length === 0 ||
-    request.masterPassword.length > MAX_ACCOUNT_WEBAUTHN_MASTER_PASSWORD_LENGTH ||
+    !validAccountMasterPassword(request.masterPassword) ||
     request.confirm !== true
   ) {
     request.masterPassword = ''
@@ -953,10 +891,8 @@ function parseGeneratorBooleanOptions(
 ): Record<string, boolean> {
   const result: Record<string, boolean> = {}
   for (const key of keys) {
-    const value = record[key]
-    if (value === undefined) continue
-    if (typeof value !== 'boolean') throw new VaultError('INVALID_INPUT')
-    result[key] = value
+    const value = optionalBoolean(record, key)
+    if (value !== undefined) result[key] = value
   }
   return result
 }
@@ -1126,23 +1062,14 @@ function exactRecord(value: unknown, allowedKeys: readonly string[]): RecordValu
 }
 
 function exactDataRecord(value: unknown, allowedKeys: readonly string[]): RecordValue {
-  if (!isRecord(value)) throw new VaultError('INVALID_INPUT')
-  if (Object.getPrototypeOf(value) !== Object.prototype) throw new VaultError('INVALID_INPUT')
-  const descriptors = Object.getOwnPropertyDescriptors(value)
   if (
-    Reflect.ownKeys(value).some((key) =>
-      typeof key !== 'string' ? true : !allowedKeys.includes(key)
-    )
+    !plainRecord(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype ||
+    !exactKeys(value, [], allowedKeys)
   ) {
     throw new VaultError('INVALID_INPUT')
   }
-  const result: RecordValue = Object.create(null) as RecordValue
-  for (const key of Object.keys(descriptors)) {
-    const descriptor = descriptors[key]!
-    if (!descriptor.enumerable || !('value' in descriptor)) throw new VaultError('INVALID_INPUT')
-    result[key] = descriptor.value
-  }
-  return result
+  return Object.assign(Object.create(null) as RecordValue, value)
 }
 
 function requiredString(record: RecordValue, key: string): string {
@@ -1174,7 +1101,7 @@ function optionalAuthorizationToken(record: RecordValue): string | undefined {
 
 function authorizationTokens(value: unknown): Record<string, string> | undefined {
   if (value === undefined) return undefined
-  if (!isRecord(value) || Object.keys(value).length > MAX_LOGIN_MOVE_MANY_IDS) {
+  if (!isRecord(value) || Object.keys(value).length > MAX_LOGIN_BATCH_IDS) {
     throw new VaultError('INVALID_INPUT')
   }
   const result: Record<string, string> = {}
@@ -1402,19 +1329,23 @@ function parseLoginAuthorize(value: unknown): LoginAuthorizeRequest {
   }
 }
 
-function parseLoginAuthorizeMany(value: unknown): LoginAuthorizeManyRequest {
-  const record = exactRecord(value, ['ids', 'masterPassword'])
+function uniqueUuidArray(value: unknown, maximum: number): string[] {
   if (
-    !Array.isArray(record.ids) ||
-    record.ids.length === 0 ||
-    record.ids.length > MAX_LOGIN_AUTHORIZE_MANY_IDS ||
-    record.ids.some((id) => typeof id !== 'string' || !UUID_PATTERN.test(id)) ||
-    new Set(record.ids).size !== record.ids.length
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > maximum ||
+    value.some((id) => typeof id !== 'string' || !UUID_PATTERN.test(id)) ||
+    new Set(value).size !== value.length
   ) {
     throw new VaultError('INVALID_INPUT')
   }
+  return [...value] as string[]
+}
+
+function parseLoginAuthorizeMany(value: unknown): LoginAuthorizeManyRequest {
+  const record = exactRecord(value, ['ids', 'masterPassword'])
   return {
-    ids: [...record.ids] as string[],
+    ids: uniqueUuidArray(record.ids, MAX_LOGIN_AUTHORIZE_MANY_IDS),
     masterPassword: requiredString(record, 'masterPassword')
   }
 }
@@ -1424,7 +1355,8 @@ function parseContextMenu(value: unknown): LoginContextMenuRequest {
   const authorizationToken = optionalAuthorizationToken(record)
   const result: LoginContextMenuRequest = { id: requiredString(record, 'id') }
   if (authorizationToken) result.authorizationToken = authorizationToken
-  if (record.hasTotp !== undefined) result.hasTotp = optionalBoolean(record, 'hasTotp') ?? false
+  const hasTotp = optionalBoolean(record, 'hasTotp')
+  if (hasTotp !== undefined) result.hasTotp = hasTotp
   for (const coordinate of ['x', 'y'] as const) {
     const candidate = record[coordinate]
     if (candidate === undefined) continue
@@ -1754,36 +1686,17 @@ function parseLoginMove(value: unknown): LoginMoveRequest {
 
 function parseLoginBatch(value: unknown): LoginBatchRequest {
   const record = exactRecord(value, ['ids', 'authorizationToken'])
-  if (!Array.isArray(record.ids)) throw new VaultError('INVALID_INPUT')
-  const ids = record.ids
-  if (
-    ids.length === 0 ||
-    ids.length > MAX_LOGIN_BATCH_IDS ||
-    ids.some((id) => typeof id !== 'string' || !UUID_PATTERN.test(id)) ||
-    new Set(ids).size !== ids.length
-  ) {
-    throw new VaultError('INVALID_INPUT')
-  }
+  const ids = uniqueUuidArray(record.ids, MAX_LOGIN_BATCH_IDS)
   const authorizationToken = optionalAuthorizationToken(record)
   return {
-    ids: [...ids] as string[],
+    ids,
     ...(authorizationToken ? { authorizationToken } : {})
   }
 }
 
 function parseLoginPrefetch(value: unknown): LoginPrefetchRequest {
   const record = exactRecord(value, ['ids'])
-  if (!Array.isArray(record.ids)) throw new VaultError('INVALID_INPUT')
-  const ids = record.ids
-  if (
-    ids.length === 0 ||
-    ids.length > MAX_LOGIN_PREFETCH_IDS ||
-    ids.some((id) => typeof id !== 'string' || !UUID_PATTERN.test(id)) ||
-    new Set(ids).size !== ids.length
-  ) {
-    throw new VaultError('INVALID_INPUT')
-  }
-  return { ids: [...ids] as string[] }
+  return { ids: uniqueUuidArray(record.ids, MAX_LOGIN_PREFETCH_IDS) }
 }
 
 function parseLoginMoveMany(value: unknown): LoginMoveManyRequest {
@@ -1794,23 +1707,14 @@ function parseLoginMoveMany(value: unknown): LoginMoveManyRequest {
     'authorizationTokens'
   ])
   const folderId = optionalStringOrNull(record, 'folderId')
-  if (folderId === undefined || !Array.isArray(record.ids)) {
+  if (folderId === undefined || (folderId !== null && !UUID_PATTERN.test(folderId))) {
     throw new VaultError('INVALID_INPUT')
   }
-  const ids = record.ids
-  if (
-    ids.length === 0 ||
-    ids.length > MAX_LOGIN_MOVE_MANY_IDS ||
-    ids.some((id) => typeof id !== 'string' || !UUID_PATTERN.test(id)) ||
-    new Set(ids).size !== ids.length
-  ) {
-    throw new VaultError('INVALID_INPUT')
-  }
-  if (folderId !== null && !UUID_PATTERN.test(folderId)) throw new VaultError('INVALID_INPUT')
+  const ids = uniqueUuidArray(record.ids, MAX_LOGIN_BATCH_IDS)
   const parsedTokens = authorizationTokens(record.authorizationTokens)
   const authorizationToken = optionalAuthorizationToken(record)
   return {
-    ids: [...ids] as string[],
+    ids,
     folderId,
     ...(authorizationToken ? { authorizationToken } : {}),
     ...(parsedTokens ? { authorizationTokens: parsedTokens } : {})
@@ -1904,24 +1808,16 @@ function parseVaultHealthEmptyRequest(value: unknown): RecordValue {
 }
 
 function parseInactiveTwoFactorEmptyRequest(value: unknown): void {
-  if (!isRecord(value) || Reflect.ownKeys(value).length !== 0) {
-    throw new VaultError('INVALID_INPUT')
-  }
+  strictRequiredDataRecord(value, [])
 }
 
 function parseInactiveTwoFactorDocumentation(
   value: unknown
 ): InactiveTwoFactorDocumentationRequest {
-  if (!isRecord(value)) throw new VaultError('INVALID_INPUT')
-  const keys = Reflect.ownKeys(value)
-  if (keys.length !== 1 || keys[0] !== 'matchedDomain' || !Object.hasOwn(value, 'matchedDomain')) {
-    throw new VaultError('INVALID_INPUT')
-  }
-  const descriptor = Object.getOwnPropertyDescriptor(value, 'matchedDomain')
-  if (!descriptor || !('value' in descriptor) || typeof descriptor.value !== 'string') {
-    throw new VaultError('INVALID_INPUT')
-  }
-  const matchedDomain = descriptor.value
+  const matchedDomain = requiredString(
+    strictRequiredDataRecord(value, ['matchedDomain']),
+    'matchedDomain'
+  )
   const labels = matchedDomain.split('.')
   if (
     matchedDomain.length === 0 ||
@@ -2020,10 +1916,8 @@ function applySendOptions(
   if (deletionDate !== undefined) result.deletionDate = deletionDate
   if (password !== undefined) result.password = password
   for (const key of booleanKeys) {
-    if (record[key] !== undefined) {
-      if (typeof record[key] !== 'boolean') throw new VaultError('INVALID_INPUT')
-      result[key] = record[key]
-    }
+    const value = optionalBoolean(record, key)
+    if (value !== undefined) result[key] = value
   }
   if (record.maxAccessCount !== undefined) {
     if (
@@ -2133,6 +2027,17 @@ function isSyncTwoFactorProvider(value: unknown): value is SyncTwoFactorProvider
   )
 }
 
+function applySyncTwoFactorOptions(record: RecordValue, result: SyncUnlockRequest): void {
+  const twoFactorCode = optionalStringOrNull(record, 'twoFactorCode')
+  const twoFactorMethod = optionalTwoFactorMethod(record)
+  const webAuthnRemember = optionalBoolean(record, 'webAuthnRemember')
+  const newDeviceOtp = optionalStringOrNull(record, 'newDeviceOtp')
+  if (twoFactorCode) result.twoFactorCode = twoFactorCode
+  if (twoFactorMethod) result.twoFactorMethod = twoFactorMethod
+  if (webAuthnRemember !== undefined) result.webAuthnRemember = webAuthnRemember
+  if (newDeviceOtp) result.newDeviceOtp = newDeviceOtp
+}
+
 function parseSyncConnect(value: unknown): SyncConnectRequest {
   const record = exactRecord(value, [
     'serverUrl',
@@ -2148,14 +2053,7 @@ function parseSyncConnect(value: unknown): SyncConnectRequest {
     email: requiredString(record, 'email'),
     masterPassword: requiredString(record, 'masterPassword')
   }
-  const twoFactorCode = optionalStringOrNull(record, 'twoFactorCode')
-  const newDeviceOtp = optionalStringOrNull(record, 'newDeviceOtp')
-  const twoFactorMethod = optionalTwoFactorMethod(record)
-  const webAuthnRemember = optionalBoolean(record, 'webAuthnRemember')
-  if (twoFactorCode) result.twoFactorCode = twoFactorCode
-  if (twoFactorMethod) result.twoFactorMethod = twoFactorMethod
-  if (webAuthnRemember !== undefined) result.webAuthnRemember = webAuthnRemember
-  if (newDeviceOtp) result.newDeviceOtp = newDeviceOtp
+  applySyncTwoFactorOptions(record, result)
   return result
 }
 
@@ -2170,14 +2068,7 @@ function parseSyncUnlock(value: unknown): SyncUnlockRequest {
   const result: SyncUnlockRequest = {
     masterPassword: requiredString(record, 'masterPassword')
   }
-  const twoFactorCode = optionalStringOrNull(record, 'twoFactorCode')
-  const twoFactorMethod = optionalTwoFactorMethod(record)
-  const newDeviceOtp = optionalStringOrNull(record, 'newDeviceOtp')
-  const webAuthnRemember = optionalBoolean(record, 'webAuthnRemember')
-  if (twoFactorCode) result.twoFactorCode = twoFactorCode
-  if (twoFactorMethod) result.twoFactorMethod = twoFactorMethod
-  if (webAuthnRemember !== undefined) result.webAuthnRemember = webAuthnRemember
-  if (newDeviceOtp) result.newDeviceOtp = newDeviceOtp
+  applySyncTwoFactorOptions(record, result)
   return result
 }
 
@@ -2228,27 +2119,11 @@ function parseSyncResolvePendingImport(value: unknown): SyncResolvePendingImport
 }
 
 function parseSyncPurgePersonalVault(value: unknown): SyncPurgePersonalVaultRequest {
-  if (!isRecord(value)) throw new VaultError('INVALID_INPUT')
-  const keys = Reflect.ownKeys(value)
-  const allowedKeys = ['masterPassword', 'confirmation', 'confirmPurge']
-  if (
-    keys.length !== allowedKeys.length ||
-    keys.some((key) => typeof key !== 'string' || !allowedKeys.includes(key))
-  ) {
-    throw new VaultError('INVALID_INPUT')
-  }
-  const descriptors = Object.getOwnPropertyDescriptors(value)
-  if (
-    allowedKeys.some((key) => {
-      const descriptor = descriptors[key]
-      return !descriptor || !('value' in descriptor)
-    })
-  ) {
-    throw new VaultError('INVALID_INPUT')
-  }
-  const masterPassword = descriptors.masterPassword!.value
-  const confirmation = descriptors.confirmation!.value
-  const confirmPurge = descriptors.confirmPurge!.value
+  const { masterPassword, confirmation, confirmPurge } = strictRequiredDataRecord(value, [
+    'masterPassword',
+    'confirmation',
+    'confirmPurge'
+  ])
   if (
     typeof masterPassword !== 'string' ||
     masterPassword.length < 1 ||
@@ -2318,10 +2193,9 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   const registeredChannels = new Set<string>()
   const registerHandler = <T>(
     channel: string,
-    windowProvider: () => BrowserWindow | null,
     handler: (event: IpcMainInvokeEvent, input: unknown) => Promise<T>
   ): void => {
-    registerTrustedHandler(channel, windowProvider, handler, options.errorLog)
+    registerTrustedHandler(channel, getMainWindow, handler, options.errorLog)
     registeredChannels.add(channel)
   }
   const sshKeyImportSessions = options.sshKeyImportSessions
@@ -2381,6 +2255,13 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       // Local unlock is already authoritative; auxiliary integrations remain best-effort.
     }
   }
+  const refreshSyncStatus = async (): Promise<void> => {
+    try {
+      options.afterSyncChanged?.(await vault.syncStatus())
+    } catch {
+      // Status refresh is advisory; it must never replace the operation's result or error.
+    }
+  }
   const afterMutation = async <T>(operation: Promise<T>): Promise<T> => {
     const result = await operation
     notifyMutation()
@@ -2389,13 +2270,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   const reconnectStatus = async (
     state: MasterPasswordChangeStatus['state']
   ): Promise<MasterPasswordChangeStatus> => {
-    if (disposed) return { state, requiresReconnect: true }
-    try {
-      const syncStatus = await vault.syncStatus()
-      options.afterSyncChanged?.(syncStatus)
-    } catch {
-      // The transaction result remains authoritative if an auxiliary lifecycle notification fails.
-    }
+    if (!disposed) await refreshSyncStatus()
     return { state, requiresReconnect: true }
   }
   const completedMasterPasswordChange = async (): Promise<MasterPasswordChangeStatus> => {
@@ -2413,43 +2288,30 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   const failedMasterPasswordChange = async (
     error: unknown
   ): Promise<MasterPasswordChangeStatus> => {
-    const vaultStatus = await vault.status()
-    if (vaultStatus.state === 'locked') {
-      authorizations.clear()
-      await settings.disableTouchId()
-      return { state: 'needs-remote-verification', requiresReconnect: true }
-    }
-    const transactionStatus = await vault.masterPasswordChangeStatus()
-    if (transactionStatus.phase === 'prepared') {
-      authorizations.clear()
-      await settings.disableTouchId()
-      return { state: 'needs-remote-verification', requiresReconnect: true }
-    }
-    if (
-      transactionStatus.phase === 'remote-confirmed' ||
-      transactionStatus.phase === 'local-rekeyed'
-    ) {
-      authorizations.clear()
-      await settings.disableTouchId()
-      return { state: 'resume-required', requiresReconnect: true }
-    }
-    throw error
+    const phase =
+      (await vault.status()).state === 'locked'
+        ? 'prepared'
+        : (await vault.masterPasswordChangeStatus()).phase
+    if (phase === null) throw error
+    authorizations.clear()
+    await settings.disableTouchId()
+    return publicMasterPasswordChangeStatus({ phase })
   }
-  registerHandler(IPC_CHANNELS.accountStatus, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.accountStatus, async (_event, input) => {
     parseNoInput(input)
     return publicAccountStatus(await runAccountOperation((service) => service.getStatus()))
   })
-  registerHandler(IPC_CHANNELS.accountAdd, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.accountAdd, async (_event, input) => {
     parseNoInput(input)
     return publicAccountMutation(await runAccountOperation((service) => service.addAccount()))
   })
-  registerHandler(IPC_CHANNELS.accountSwitch, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.accountSwitch, async (_event, input) => {
     const accountId = parseAccountSwitch(input)
     return publicAccountMutation(
       await runAccountOperation((service) => service.switchAccount(accountId))
     )
   })
-  registerHandler(IPC_CHANNELS.accountRename, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.accountRename, async (_event, input) => {
     const request = parseAccountRename(input)
     return publicAccountMutation(
       await runAccountOperation((service) =>
@@ -2457,7 +2319,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     )
   })
-  registerHandler(IPC_CHANNELS.accountReorder, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.accountReorder, async (_event, input) => {
     const request = parseAccountReorder(input)
     return publicAccountMutation(
       await runAccountOperation((service) =>
@@ -2465,21 +2327,21 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     )
   })
-  registerHandler(IPC_CHANNELS.accountRemove, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.accountRemove, async (_event, input) => {
     const request = parseAccountRemove(input)
     return publicAccountMutation(
       await runAccountOperation((service) => service.removeAccount(request.accountId, true))
     )
   })
-  registerHandler(IPC_CHANNELS.vaultStatus, getMainWindow, () => vault.status())
-  registerHandler(IPC_CHANNELS.vaultSetup, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.vaultStatus, () => vault.status())
+  registerHandler(IPC_CHANNELS.vaultSetup, async (_event, input) => {
     const request = parseSetup(input)
     authorizations.clear()
     const status = await vault.setup(request.masterPassword)
     await Promise.resolve(options.afterSetup?.()).catch(() => undefined)
     return status
   })
-  registerHandler(IPC_CHANNELS.vaultUnlock, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.vaultUnlock, async (_event, input) => {
     const request = parseSetup(input)
     authorizations.clear()
     try {
@@ -2490,11 +2352,11 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       request.masterPassword = ''
     }
   })
-  registerHandler(IPC_CHANNELS.vaultPinStatus, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.vaultPinStatus, async (_event, input) => {
     parseNoInput(input)
     return vault.pinUnlockStatus()
   })
-  registerHandler(IPC_CHANNELS.vaultPinEnable, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.vaultPinEnable, async (_event, input) => {
     const request = parsePinEnable(input)
     try {
       return await vault.enablePinUnlock(request)
@@ -2503,11 +2365,11 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       request.masterPassword = ''
     }
   })
-  registerHandler(IPC_CHANNELS.vaultPinDisable, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.vaultPinDisable, async (_event, input) => {
     parseNoInput(input)
     return vault.disablePinUnlock()
   })
-  registerHandler(IPC_CHANNELS.vaultPinUnlock, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.vaultPinUnlock, async (_event, input) => {
     const request = parsePinUnlock(input)
     authorizations.clear()
     try {
@@ -2518,20 +2380,16 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       request.pin = ''
     }
   })
-  registerHandler(
-    IPC_CHANNELS.vaultMasterPasswordChangeStatus,
-    getMainWindow,
-    async (_event, input) => {
-      parseNoInput(input)
-      const status = await vault.masterPasswordChangeStatus()
-      if (status.phase !== null) {
-        authorizations.clear()
-        await settings.disableTouchId()
-      }
-      return publicMasterPasswordChangeStatus(status)
+  registerHandler(IPC_CHANNELS.vaultMasterPasswordChangeStatus, async (_event, input) => {
+    parseNoInput(input)
+    const status = await vault.masterPasswordChangeStatus()
+    if (status.phase !== null) {
+      authorizations.clear()
+      await settings.disableTouchId()
     }
-  )
-  registerHandler(IPC_CHANNELS.vaultMasterPasswordChange, getMainWindow, async (_event, input) => {
+    return publicMasterPasswordChangeStatus(status)
+  })
+  registerHandler(IPC_CHANNELS.vaultMasterPasswordChange, async (_event, input) => {
     let request: MasterPasswordChangeRequest | null = null
     try {
       request = parseMasterPasswordChange(input, true)
@@ -2551,36 +2409,32 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       scrubMasterPasswordChangeInput(input)
     }
   })
-  registerHandler(
-    IPC_CHANNELS.vaultMasterPasswordChangeResolve,
-    getMainWindow,
-    async (_event, input) => {
-      let request: MasterPasswordChangeResolutionRequest | null = null
+  registerHandler(IPC_CHANNELS.vaultMasterPasswordChangeResolve, async (_event, input) => {
+    let request: MasterPasswordChangeResolutionRequest | null = null
+    try {
+      request = parseMasterPasswordChange(input, false)
+      await Promise.resolve(options.beforeSyncReconfigure?.())
+      let result: Awaited<ReturnType<VaultService['resolveMasterPasswordChange']>>
       try {
-        request = parseMasterPasswordChange(input, false)
-        await Promise.resolve(options.beforeSyncReconfigure?.())
-        let result: Awaited<ReturnType<VaultService['resolveMasterPasswordChange']>>
-        try {
-          result = await vault.resolveMasterPasswordChange(request)
-        } catch (error) {
-          return await failedMasterPasswordChange(error)
-        }
-        if (result.status === 'resolved') return await completedMasterPasswordChange()
-        if (result.status === 'remote-not-changed') {
-          return await reconnectStatus('remote-not-changed')
-        }
-        if (result.status === 'needs-reconnect') return await reconnectStatus('needs-reconnect')
-        return await reconnectStatus('indeterminate')
-      } finally {
-        if (request) {
-          request.currentPassword = ''
-          request.newPassword = ''
-        }
-        scrubMasterPasswordChangeInput(input)
+        result = await vault.resolveMasterPasswordChange(request)
+      } catch (error) {
+        return await failedMasterPasswordChange(error)
       }
+      if (result.status === 'resolved') return await completedMasterPasswordChange()
+      if (result.status === 'remote-not-changed') {
+        return await reconnectStatus('remote-not-changed')
+      }
+      if (result.status === 'needs-reconnect') return await reconnectStatus('needs-reconnect')
+      return await reconnectStatus('indeterminate')
+    } finally {
+      if (request) {
+        request.currentPassword = ''
+        request.newPassword = ''
+      }
+      scrubMasterPasswordChangeInput(input)
     }
-  )
-  registerHandler(IPC_CHANNELS.vaultLock, getMainWindow, async () => {
+  })
+  registerHandler(IPC_CHANNELS.vaultLock, async () => {
     try {
       await Promise.resolve(options.beforeLock?.())
       authorizations.clear()
@@ -2596,7 +2450,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       }
     }
   })
-  registerHandler(IPC_CHANNELS.vaultExport, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.vaultExport, async (_event, input) => {
     const request = parseVaultExport(input)
     try {
       return await portability.exportVault(request)
@@ -2605,7 +2459,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       if ('password' in request && typeof request.password === 'string') request.password = ''
     }
   })
-  registerHandler(IPC_CHANNELS.vaultImport, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.vaultImport, async (_event, input) => {
     let request: VaultImportRequest | undefined
     try {
       request = parseVaultImport(input)
@@ -2613,11 +2467,11 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       if (!result.canceled && result.importedFolders + result.importedItems > 0) notifyMutation()
       return result
     } finally {
-      scrubVaultImportSecrets(request)
-      scrubVaultImportSecrets(input)
+      scrubStringProperties(request, ['masterPassword', 'password'])
+      scrubStringProperties(input, ['masterPassword', 'password'])
     }
   })
-  registerHandler(IPC_CHANNELS.nativeRestorePreview, getMainWindow, async (event, input) => {
+  registerHandler(IPC_CHANNELS.nativeRestorePreview, async (event, input) => {
     const request = parseNativeRestorePreview(input)
     try {
       return await portability.previewNativeRestore(event.sender.id, request.password)
@@ -2625,7 +2479,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       request.password = ''
     }
   })
-  registerHandler(IPC_CHANNELS.nativeRestoreStart, getMainWindow, async (event, input) => {
+  registerHandler(IPC_CHANNELS.nativeRestoreStart, async (event, input) => {
     const request = parseNativeRestoreStart(input)
     try {
       const result = await portability.runNativeRestore(
@@ -2652,71 +2506,69 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       request.masterPassword = ''
     }
   })
-  registerHandler(IPC_CHANNELS.nativeRestoreCancel, getMainWindow, async (event, input) => {
+  registerHandler(IPC_CHANNELS.nativeRestoreCancel, async (event, input) => {
     const request = parseNativeRestoreSession(input)
     await portability.cancelNativeRestore(event.sender.id, request.sessionId)
   })
-  registerHandler(IPC_CHANNELS.nativeRestoreClearCompleted, getMainWindow, async (event, input) => {
+  registerHandler(IPC_CHANNELS.nativeRestoreClearCompleted, async (event, input) => {
     const request = parseNativeRestoreSession(input)
     await portability.clearCompletedNativeRestore(event.sender.id, request.sessionId)
   })
-  registerHandler(IPC_CHANNELS.folderList, getMainWindow, () => vault.listFolders())
-  registerHandler(IPC_CHANNELS.organizationList, getMainWindow, () => vault.listOrganizations())
-  registerHandler(IPC_CHANNELS.collectionList, getMainWindow, (_event, input) => {
+  registerHandler(IPC_CHANNELS.folderList, () => vault.listFolders())
+  registerHandler(IPC_CHANNELS.organizationList, () => vault.listOrganizations())
+  registerHandler(IPC_CHANNELS.collectionList, (_event, input) => {
     if (input === undefined || input === null) return vault.listCollections()
     if (typeof input !== 'string' || !UUID_PATTERN.test(input))
       throw new VaultError('INVALID_INPUT')
     return vault.listCollections(input)
   })
-  registerHandler(IPC_CHANNELS.sharedLoginList, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.sharedLoginList, (_event, input) =>
     vault.listSharedLogins(parseSharedLoginList(input))
   )
-  registerHandler(IPC_CHANNELS.sharedLoginGet, getMainWindow, (_event, input) => {
+  registerHandler(IPC_CHANNELS.sharedLoginGet, (_event, input) => {
     if (!isRecord(input) || typeof input.id !== 'string' || !UUID_PATTERN.test(input.id)) {
       throw new VaultError('INVALID_INPUT')
     }
     return vault.getSharedLogin({ id: input.id })
   })
-  registerHandler(IPC_CHANNELS.sharedLoginUpdate, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.sharedLoginUpdate, (_event, input) =>
     afterMutation(vault.updateSharedLogin(parseSharedLoginUpdate(input)))
   )
-  registerHandler(IPC_CHANNELS.sharedLoginRevealEditorSecrets, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.sharedLoginRevealEditorSecrets, (_event, input) =>
     vault.revealSharedEditorSecrets(parseEditorSecretsRequest(input))
   )
-  registerHandler(IPC_CHANNELS.sharedLoginRevealSecret, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.sharedLoginRevealSecret, (_event, input) =>
     vault.revealSharedSecret(parseItemField(input))
   )
-  registerHandler(IPC_CHANNELS.sharedLoginCopyField, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.sharedLoginCopyField, (_event, input) =>
     vault.copySharedField(parseItemField(input))
   )
-  registerHandler(IPC_CHANNELS.sharedLoginRevealCustomField, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.sharedLoginRevealCustomField, (_event, input) =>
     vault.revealSharedCustomField(parseCustomFieldRequest(input))
   )
-  registerHandler(IPC_CHANNELS.sharedLoginCopyCustomField, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.sharedLoginCopyCustomField, (_event, input) =>
     vault.copySharedCustomField(parseCustomFieldRequest(input))
   )
-  registerHandler(IPC_CHANNELS.sharedLoginGetTotp, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.sharedLoginGetTotp, (_event, input) =>
     vault.getSharedTotp(parseId(input))
   )
-  registerHandler(IPC_CHANNELS.sharedLoginCopyTotp, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.sharedLoginCopyTotp, (_event, input) =>
     vault.copySharedTotp(parseId(input))
   )
-  registerHandler(IPC_CHANNELS.sharedLoginOpenUri, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.sharedLoginOpenUri, (_event, input) =>
     vault.openSharedLoginUri(parseOpenUri(input))
   )
-  registerHandler(IPC_CHANNELS.emergencyAccessList, getMainWindow, () =>
-    vault.listEmergencyAccess()
-  )
-  registerHandler(IPC_CHANNELS.folderCreate, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.emergencyAccessList, () => vault.listEmergencyAccess())
+  registerHandler(IPC_CHANNELS.folderCreate, (_event, input) =>
     afterMutation(vault.createFolder(parseFolderCreate(input)))
   )
-  registerHandler(IPC_CHANNELS.folderUpdate, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.folderUpdate, (_event, input) =>
     afterMutation(vault.updateFolder(parseFolderUpdate(input)))
   )
-  registerHandler(IPC_CHANNELS.folderReparent, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.folderReparent, (_event, input) =>
     afterMutation(vault.reparentFolder(parseFolderReparent(input)))
   )
-  registerHandler(IPC_CHANNELS.folderDelete, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.folderDelete, (event, input) => {
     const request = parseFolderDelete(input)
     return runAuthorizationBoundary(
       event,
@@ -2735,23 +2587,18 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       }
     )
   })
-  registerHandler(IPC_CHANNELS.folderReorder, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.folderReorder, (_event, input) =>
     afterMutation(vault.reorderFolders(parseFolderReorder(input)))
   )
-  registerHandler(IPC_CHANNELS.loginList, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.loginList, (_event, input) =>
     vault.listLogins(parseLoginList(input))
   )
-  registerHandler<VaultHealthReport>(
-    IPC_CHANNELS.vaultHealthReport,
-    getMainWindow,
-    (_event, input) => {
-      parseVaultHealthEmptyRequest(input)
-      return vault.getHealthReport()
-    }
-  )
+  registerHandler<VaultHealthReport>(IPC_CHANNELS.vaultHealthReport, (_event, input) => {
+    parseVaultHealthEmptyRequest(input)
+    return vault.getHealthReport()
+  })
   registerHandler<VaultHealthExposedReport>(
     IPC_CHANNELS.vaultHealthExposedPasswords,
-    getMainWindow,
     (_event, input) => {
       parseVaultHealthEmptyRequest(input)
       return vault.getExposedPasswordReport()
@@ -2759,7 +2606,6 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   )
   registerHandler<boolean>(
     IPC_CHANNELS.vaultHealthCancelExposedPasswords,
-    getMainWindow,
     async (_event, input) => {
       parseVaultHealthEmptyRequest(input)
       return vault.cancelExposedPasswordReport()
@@ -2767,24 +2613,18 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   )
   registerHandler<VaultHealthAccountBreachReport>(
     IPC_CHANNELS.vaultHealthAccountBreaches,
-    getMainWindow,
     (_event, input) => vault.getAccountBreachReport(parseVaultHealthAccountBreachRequest(input))
   )
-  registerHandler<boolean>(
-    IPC_CHANNELS.vaultHealthCancelAccountBreaches,
-    getMainWindow,
-    async (_event, input) => {
-      parseVaultHealthEmptyRequest(input)
-      return vault.cancelAccountBreachReport()
-    }
-  )
-  registerHandler<void>(IPC_CHANNELS.vaultHealthOpenHibp, getMainWindow, async (_event, input) => {
+  registerHandler<boolean>(IPC_CHANNELS.vaultHealthCancelAccountBreaches, async (_event, input) => {
+    parseVaultHealthEmptyRequest(input)
+    return vault.cancelAccountBreachReport()
+  })
+  registerHandler<void>(IPC_CHANNELS.vaultHealthOpenHibp, async (_event, input) => {
     parseVaultHealthEmptyRequest(input)
     await vault.openHibpWebsite()
   })
   registerHandler<InactiveTwoFactorReport>(
     IPC_CHANNELS.vaultHealthInactiveTwoFactor,
-    getMainWindow,
     async (_event, input) => {
       parseInactiveTwoFactorEmptyRequest(input)
       const directory = options.twoFactorDirectory
@@ -2799,7 +2639,6 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   )
   registerHandler<void>(
     IPC_CHANNELS.vaultHealthOpenTwoFactorDocumentation,
-    getMainWindow,
     async (_event, input) => {
       const request = parseInactiveTwoFactorDocumentation(input)
       const directory = options.twoFactorDirectory
@@ -2811,24 +2650,24 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       }
     }
   )
-  registerHandler(IPC_CHANNELS.loginAuthorize, getMainWindow, async (event, input) => {
+  registerHandler(IPC_CHANNELS.loginAuthorize, async (event, input) => {
     const request = parseLoginAuthorize(input)
     const generation = await vault.authorizeLogin(request)
     return authorizations.issue(event.sender.id, request.id, generation)
   })
-  registerHandler(IPC_CHANNELS.loginAuthorizeMany, getMainWindow, async (event, input) => {
+  registerHandler(IPC_CHANNELS.loginAuthorizeMany, async (event, input) => {
     const request = parseLoginAuthorizeMany(input)
     const generation = await vault.authorizeLogins(request)
     return authorizations.issueMany(event.sender.id, request.ids, generation)
   })
-  registerHandler(IPC_CHANNELS.loginGet, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.loginGet, (event, input) => {
     const request = parseId(input)
     return runAuthorized(event, request, () => vault.getLogin(request))
   })
-  registerHandler(IPC_CHANNELS.loginPrefetch, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.loginPrefetch, (_event, input) =>
     vault.prefetchLogins(parseLoginPrefetch(input))
   )
-  registerHandler(IPC_CHANNELS.loginGetPasswordHistory, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.loginGetPasswordHistory, (event, input) => {
     const request = parseId(input)
     return vault.getPasswordHistoryView(request, (ids, state) =>
       authorizations.validateMany(
@@ -2839,7 +2678,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     )
   })
-  registerHandler(IPC_CHANNELS.loginRevealPasswordHistory, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.loginRevealPasswordHistory, (event, input) => {
     const request = parsePasswordHistoryEntry(input)
     return vault.revealPasswordHistory(request, (ids, state) =>
       authorizations.validateMany(
@@ -2850,7 +2689,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     )
   })
-  registerHandler(IPC_CHANNELS.loginCopyPasswordHistory, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.loginCopyPasswordHistory, (event, input) => {
     const request = parsePasswordHistoryEntry(input)
     return vault.copyPasswordHistory(request, (ids, state) =>
       authorizations.validateMany(
@@ -2861,7 +2700,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     )
   })
-  registerHandler(IPC_CHANNELS.loginRestorePasswordHistory, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.loginRestorePasswordHistory, (event, input) => {
     const request = parsePasswordHistoryRestore(input)
     return runAuthorized(event, request, () => afterMutation(vault.restorePasswordHistory(request)))
   })
@@ -2870,7 +2709,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     (progress: AttachmentProgressEvent): void => {
       if (!event.sender.isDestroyed()) event.sender.send(IPC_EVENTS.attachmentProgress, progress)
     }
-  registerHandler(IPC_CHANNELS.attachmentDownload, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.attachmentDownload, (event, input) => {
     const request = parseAttachmentTarget(input)
     return vault.downloadAttachment(
       request,
@@ -2878,7 +2717,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       attachmentAuthorization(event, request)
     )
   })
-  registerHandler(IPC_CHANNELS.attachmentPreview, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.attachmentPreview, (event, input) => {
     const request = parseAttachmentTarget(input) as AttachmentPreviewRequest
     return vault.previewAttachment(
       request,
@@ -2886,11 +2725,11 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       attachmentAuthorization(event, request)
     )
   })
-  registerHandler(IPC_CHANNELS.attachmentCardCoverPreview, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.attachmentCardCoverPreview, (event, input) => {
     const request = parseId(input)
     return vault.getCardCoverPreview(request, attachmentAuthorization(event, request))
   })
-  registerHandler(IPC_CHANNELS.attachmentUpload, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.attachmentUpload, (event, input) => {
     const request = parseAttachmentUpload(input)
     return afterMutation(
       vault.uploadAttachment(
@@ -2900,7 +2739,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     )
   })
-  registerHandler(IPC_CHANNELS.attachmentUploadCardCover, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.attachmentUploadCardCover, (event, input) => {
     const request = parseAttachmentUploadCardCover(input)
     return afterMutation(
       vault.uploadCardCoverAttachment(
@@ -2910,7 +2749,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     )
   })
-  registerHandler(IPC_CHANNELS.attachmentUploadCardCoverFile, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.attachmentUploadCardCoverFile, (event, input) => {
     const request = parseAttachmentUpload(input)
     return afterMutation(
       vault.uploadCardCoverFileAttachment(
@@ -2920,7 +2759,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     )
   })
-  registerHandler(IPC_CHANNELS.attachmentDelete, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.attachmentDelete, (event, input) => {
     const request = parseAttachmentTarget(input) as AttachmentDeleteRequest
     return afterMutation(
       vault.deleteAttachment(
@@ -2930,7 +2769,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     )
   })
-  registerHandler(IPC_CHANNELS.attachmentFixLegacy, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.attachmentFixLegacy, (event, input) => {
     const request = parseAttachmentTarget(input) as AttachmentFixLegacyRequest
     return afterMutation(
       vault.fixLegacyAttachment(
@@ -2940,13 +2779,13 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     )
   })
-  registerHandler(IPC_CHANNELS.attachmentCancel, getMainWindow, async (_event, input) =>
+  registerHandler(IPC_CHANNELS.attachmentCancel, async (_event, input) =>
     vault.cancelAttachmentOperation(parseAttachmentCancel(input))
   )
-  registerHandler(IPC_CHANNELS.loginCreate, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.loginCreate, (_event, input) =>
     afterMutation(vault.createLogin(parseLoginCreate(input)))
   )
-  registerHandler(IPC_CHANNELS.sharedLoginCreate, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.sharedLoginCreate, (_event, input) =>
     afterMutation(vault.createSharedLogin(parseSharedLoginCreate(input)))
   )
   for (const [channel, operation] of [
@@ -2960,7 +2799,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       (request: LoginIdRequest) => vault.deleteLoginPermanently(request)
     ]
   ] as const) {
-    registerHandler<unknown>(channel, getMainWindow, (event, input) => {
+    registerHandler<unknown>(channel, (event, input) => {
       const request = parseId(input)
       const invoke = operation as (request: LoginIdRequest) => Promise<unknown>
       return runAuthorized<unknown>(event, request, () => afterMutation<unknown>(invoke(request)))
@@ -2979,7 +2818,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       (request: LoginBatchRequest) => vault.deleteLoginsPermanently(request)
     ]
   ] as const) {
-    registerHandler<unknown>(channel, getMainWindow, (event, input) => {
+    registerHandler<unknown>(channel, (event, input) => {
       const request = parseLoginBatch(input)
       const invoke = operation as (request: LoginBatchRequest) => Promise<unknown>
       return runAuthorizationBoundary(event, request.authorizationToken, {}, async (authorize) => {
@@ -2988,15 +2827,15 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       })
     })
   }
-  registerHandler(IPC_CHANNELS.loginUpdate, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.loginUpdate, (event, input) => {
     const request = parseLoginUpdate(input)
     return runAuthorized(event, request, () => afterMutation(vault.updateLogin(request)))
   })
-  registerHandler(IPC_CHANNELS.passkeyDelete, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.passkeyDelete, (event, input) => {
     const request = parsePasskeyDelete(input)
     return runAuthorized(event, request, () => afterMutation(vault.deletePasskey(request)))
   })
-  registerHandler(IPC_CHANNELS.loginEmptyTrash, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.loginEmptyTrash, (event, input) => {
     const request = parseEmptyTrash(input)
     return runAuthorizationBoundary(
       event,
@@ -3009,15 +2848,15 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       }
     )
   })
-  registerHandler(IPC_CHANNELS.loginSetFavorite, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.loginSetFavorite, (event, input) => {
     const request = parseLoginFavorite(input)
     return runAuthorized(event, request, () => afterMutation(vault.setLoginFavorite(request)))
   })
-  registerHandler(IPC_CHANNELS.loginMove, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.loginMove, (event, input) => {
     const request = parseLoginMove(input)
     return runAuthorized(event, request, () => afterMutation(vault.moveLogin(request)))
   })
-  registerHandler(IPC_CHANNELS.loginMoveMany, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.loginMoveMany, (event, input) => {
     const request = parseLoginMoveMany(input)
     return runAuthorizationBoundary(
       event,
@@ -3036,17 +2875,17 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     [IPC_CHANNELS.loginGetTotp, (request: LoginIdRequest) => vault.getTotp(request)],
     [IPC_CHANNELS.loginCopyTotp, (request: LoginIdRequest) => vault.copyTotp(request)]
   ] as const) {
-    registerHandler<unknown>(channel, getMainWindow, (event, input) => {
+    registerHandler<unknown>(channel, (event, input) => {
       const request = parseId(input)
       const invoke = operation as (request: LoginIdRequest) => Promise<unknown>
       return runAuthorized<unknown>(event, request, () => invoke(request))
     })
   }
-  registerHandler(IPC_CHANNELS.loginOpenUri, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.loginOpenUri, (event, input) => {
     const request = parseOpenUri(input)
     return runAuthorized(event, request, () => vault.openLoginUri(request))
   })
-  registerHandler(IPC_CHANNELS.loginContextMenu, getMainWindow, async (event, input) => {
+  registerHandler(IPC_CHANNELS.loginContextMenu, async (event, input) => {
     const request = parseContextMenu(input)
     const window = getMainWindow()
     if (!window || window.isDestroyed()) throw new VaultError('INVALID_INPUT')
@@ -3151,7 +2990,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       }
     })
   })
-  registerHandler(IPC_CHANNELS.loginWebsiteIcon, getMainWindow, async (event, input) => {
+  registerHandler(IPC_CHANNELS.loginWebsiteIcon, async (event, input) => {
     const request = parseId(input)
     if (!settings.websiteIconsEnabled()) return null
     return vault.getWebsiteIcon(request, (ids, state) =>
@@ -3163,44 +3002,44 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     )
   })
-  registerHandler(IPC_CHANNELS.itemRevealSecret, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.itemRevealSecret, (event, input) => {
     const request = parseItemField(input)
     return runAuthorized(event, request, () => vault.revealSecret(request))
   })
-  registerHandler(IPC_CHANNELS.itemRevealEditorSecrets, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.itemRevealEditorSecrets, (event, input) => {
     const request = parseEditorSecretsRequest(input)
     return runAuthorized(event, request, () => vault.revealEditorSecrets(request))
   })
-  registerHandler(IPC_CHANNELS.itemCopyField, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.itemCopyField, (event, input) => {
     const request = parseItemField(input)
     return runAuthorized(event, request, () => vault.copyField(request))
   })
-  registerHandler(IPC_CHANNELS.itemRevealCustomField, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.itemRevealCustomField, (event, input) => {
     const request = parseCustomFieldRequest(input)
     return runAuthorized(event, request, () => vault.revealCustomField(request))
   })
-  registerHandler(IPC_CHANNELS.itemCopyCustomField, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.itemCopyCustomField, (event, input) => {
     const request = parseCustomFieldRequest(input)
     return runAuthorized(event, request, () => vault.copyCustomField(request))
   })
-  registerHandler(IPC_CHANNELS.generatorGenerate, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.generatorGenerate, (_event, input) =>
     vault.generateCredential(parseGeneratorRequest(input))
   )
-  registerHandler(IPC_CHANNELS.generatorGeneratedCopy, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.generatorGeneratedCopy, (_event, input) =>
     vault.copyGeneratedCredential(parseGeneratedCredentialCopyRequest(input))
   )
-  registerHandler(IPC_CHANNELS.generatorHistoryList, getMainWindow, (_event, input) => {
+  registerHandler(IPC_CHANNELS.generatorHistoryList, (_event, input) => {
     parseNoInput(input)
     return vault.generatorHistory()
   })
-  registerHandler(IPC_CHANNELS.generatorHistoryClear, getMainWindow, (_event, input) => {
+  registerHandler(IPC_CHANNELS.generatorHistoryClear, (_event, input) => {
     parseNoInput(input)
     return vault.clearGeneratorHistory()
   })
-  registerHandler(IPC_CHANNELS.generatorHistoryCopy, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.generatorHistoryCopy, (_event, input) =>
     vault.copyGeneratorHistory(parseGeneratorHistoryLocator(input))
   )
-  registerHandler(IPC_CHANNELS.sshKeyGenerate, getMainWindow, async (event, input) => {
+  registerHandler(IPC_CHANNELS.sshKeyGenerate, async (event, input) => {
     parseNoInput(input)
     const context = await importContext(event)
     const material = await vault.generateSshKey()
@@ -3231,32 +3070,24 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       throw error
     }
   }
-  registerHandler(IPC_CHANNELS.sshKeyBeginImport, getMainWindow, async (event, input) => {
+  registerHandler(IPC_CHANNELS.sshKeyBeginImport, async (event, input) => {
     parseNoInput(input)
     const context = await importContext(event)
     const result = sshKeyImportSessions.begin(context)
     return recheckImportResult(context, result)
   })
-  registerHandler(
-    IPC_CHANNELS.sshKeySubmitImportPassphrase,
-    getMainWindow,
-    async (event, input) => {
-      const request = parseSshKeyImportPassphrase(input)
-      const context = await importContext(event)
-      const result = sshKeyImportSessions.submitPassphrase(
-        request.token,
-        context,
-        request.passphrase
-      )
-      return recheckImportResult(context, result)
-    }
-  )
-  registerHandler(IPC_CHANNELS.sshKeyCancelImport, getMainWindow, async (event, input) => {
+  registerHandler(IPC_CHANNELS.sshKeySubmitImportPassphrase, async (event, input) => {
+    const request = parseSshKeyImportPassphrase(input)
+    const context = await importContext(event)
+    const result = sshKeyImportSessions.submitPassphrase(request.token, context, request.passphrase)
+    return recheckImportResult(context, result)
+  })
+  registerHandler(IPC_CHANNELS.sshKeyCancelImport, async (event, input) => {
     const request = parseSshKeyImportCancel(input)
     const context = await importContext(event)
     sshKeyImportSessions.cancel(request.token, context)
   })
-  registerHandler(IPC_CHANNELS.sshKeyCreateImported, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.sshKeyCreateImported, (event, input) => {
     const request = parseSshKeyCreateImported(input)
     return vault.runUnlockedOperation(async (generation) => {
       const consumed = sshKeyImportSessions.consumeReady(request.importToken, {
@@ -3277,7 +3108,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     })
   })
-  registerHandler(IPC_CHANNELS.sshKeyUpdateImported, getMainWindow, (event, input) => {
+  registerHandler(IPC_CHANNELS.sshKeyUpdateImported, (event, input) => {
     const request = parseSshKeyUpdateImported(input)
     return runAuthorized(event, request, async () => {
       // An imported update can only replace material on an existing SSH item. Check before
@@ -3302,8 +3133,8 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     })
   })
-  registerHandler(IPC_CHANNELS.syncStatus, getMainWindow, () => vault.syncStatus())
-  registerHandler(IPC_CHANNELS.syncConnect, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.syncStatus, () => vault.syncStatus())
+  registerHandler(IPC_CHANNELS.syncConnect, async (_event, input) => {
     await Promise.resolve(options.beforeSyncReconfigure?.())
     try {
       const result = await vault.connectSync(parseSyncConnect(input))
@@ -3312,15 +3143,11 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     } catch (error) {
       const challenge = syncTwoFactorChallenge(error)
       if (challenge) return challenge
-      try {
-        options.afterSyncChanged?.(await vault.syncStatus())
-      } catch {
-        // Never replace the original sync error with an auxiliary status refresh failure.
-      }
+      await refreshSyncStatus()
       throw error
     }
   })
-  registerHandler(IPC_CHANNELS.syncUnlock, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.syncUnlock, async (_event, input) => {
     try {
       const result = await vault.unlockAndSync(parseSyncUnlock(input))
       options.afterSyncChanged?.(result)
@@ -3328,18 +3155,14 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     } catch (error) {
       const challenge = syncTwoFactorChallenge(error)
       if (challenge) return challenge
-      try {
-        options.afterSyncChanged?.(await vault.syncStatus())
-      } catch {
-        // Never replace the original sync error with an auxiliary status refresh failure.
-      }
+      await refreshSyncStatus()
       throw error
     }
   })
-  registerHandler(IPC_CHANNELS.syncSendEmailTwoFactorCode, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.syncSendEmailTwoFactorCode, (_event, input) =>
     vault.sendSyncEmailTwoFactorCode(parseSyncCredentials(input))
   )
-  registerHandler(IPC_CHANNELS.syncResendNewDeviceOtp, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.syncResendNewDeviceOtp, async (_event, input) => {
     const request = parseSyncCredentials(input)
     try {
       await vault.resendSyncNewDeviceOtp(request)
@@ -3347,21 +3170,17 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       request.masterPassword = ''
     }
   })
-  registerHandler(IPC_CHANNELS.syncNow, getMainWindow, async () => {
+  registerHandler(IPC_CHANNELS.syncNow, async () => {
     try {
       const result = await vault.syncNow()
       options.afterSyncChanged?.(result)
       return result
     } catch (error) {
-      try {
-        options.afterSyncChanged?.(await vault.syncStatus())
-      } catch {
-        // Never replace the original sync error with an auxiliary status refresh failure.
-      }
+      await refreshSyncStatus()
       throw error
     }
   })
-  registerHandler(IPC_CHANNELS.syncResolvePendingImport, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.syncResolvePendingImport, async (_event, input) => {
     const request = parseSyncResolvePendingImport(input)
     try {
       const status = await vault.resolvePendingLoginImport(request)
@@ -3371,35 +3190,25 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       request.masterPassword = ''
     }
   })
-  registerHandler(IPC_CHANNELS.syncPurgePersonalVault, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.syncPurgePersonalVault, async (_event, input) => {
     const request = parseSyncPurgePersonalVault(input)
     try {
       let result: Awaited<ReturnType<VaultService['purgePersonalVault']>>
       try {
         result = await vault.purgePersonalVault(request)
       } catch (error) {
-        try {
-          const status = await vault.syncStatus()
-          options.afterSyncChanged?.(status)
-        } catch {
-          // Never replace the original purge/reconciliation error with refresh failure.
-        }
+        await refreshSyncStatus()
         throw error
       }
       notifyMutation()
-      try {
-        const status = await vault.syncStatus()
-        options.afterSyncChanged?.(status)
-      } catch {
-        // The purge result remains authoritative if an auxiliary lifecycle notification fails.
-      }
+      await refreshSyncStatus()
       return result
     } finally {
       request.masterPassword = ''
       ;(request as { confirmation: string }).confirmation = ''
     }
   })
-  registerHandler(IPC_CHANNELS.syncDisconnect, getMainWindow, async () => {
+  registerHandler(IPC_CHANNELS.syncDisconnect, async () => {
     await Promise.resolve(options.beforeSyncReconfigure?.())
     const status = await vault.disconnectSync()
     // The Touch ID capsule carries the disconnected account's key; never keep it at rest.
@@ -3407,28 +3216,28 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     options.afterSyncChanged?.(status)
     return status
   })
-  registerHandler(IPC_CHANNELS.accountSecurityProfile, getMainWindow, (_event, input) => {
+  registerHandler(IPC_CHANNELS.accountSecurityProfile, (_event, input) => {
     parseNoInput(input)
     return vault.getAccountSecurityProfile()
   })
-  registerHandler(IPC_CHANNELS.accountSecurityUpdateName, getMainWindow, (_event, input) => {
+  registerHandler(IPC_CHANNELS.accountSecurityUpdateName, (_event, input) => {
     return vault.updateAccountProfileName(parseAccountProfileNameUpdate(input))
   })
-  registerHandler(IPC_CHANNELS.accountSecurityUpdateAvatar, getMainWindow, (_event, input) => {
+  registerHandler(IPC_CHANNELS.accountSecurityUpdateAvatar, (_event, input) => {
     return vault.updateAccountAvatarColor(parseAccountProfileAvatarUpdate(input))
   })
-  registerHandler(IPC_CHANNELS.accountDevices, getMainWindow, (_event, input) => {
+  registerHandler(IPC_CHANNELS.accountDevices, (_event, input) => {
     parseNoInput(input)
     return vault.getAccountDevices()
   })
-  registerHandler(IPC_CHANNELS.accountPendingLoginApprovals, getMainWindow, (_event, input) => {
+  registerHandler(IPC_CHANNELS.accountPendingLoginApprovals, (_event, input) => {
     parseNoInput(input)
     return vault.getPendingLoginApprovals()
   })
-  registerHandler(IPC_CHANNELS.accountRespondLoginApproval, getMainWindow, (_event, input) => {
+  registerHandler(IPC_CHANNELS.accountRespondLoginApproval, (_event, input) => {
     return vault.respondLoginApproval(parseLoginApprovalResponse(input))
   })
-  registerHandler(IPC_CHANNELS.accountDeauthorizeSessions, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.accountDeauthorizeSessions, async (_event, input) => {
     let request: AccountSessionDeauthorizationRequest | null = null
     try {
       request = parseAccountSessionDeauthorization(input)
@@ -3436,35 +3245,27 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       try {
         await vault.deauthorizeAllSessions(request)
       } catch (error) {
-        try {
-          options.afterSyncChanged?.(await vault.syncStatus())
-        } catch {
-          // Never replace the mutation result with an auxiliary status refresh failure.
-        }
+        await refreshSyncStatus()
         throw error
       }
-      try {
-        options.afterSyncChanged?.(await vault.syncStatus())
-      } catch {
-        // The strict empty mutation response remains authoritative.
-      }
+      await refreshSyncStatus()
     } finally {
       if (request) {
         request.masterPassword = ''
         ;(request as { confirmation: string }).confirmation = ''
       }
-      scrubAccountSessionDeauthorization(input)
+      scrubStringProperties(input, ['masterPassword', 'confirmation'])
     }
   })
-  registerHandler(IPC_CHANNELS.accountResendVerification, getMainWindow, (_event, input) => {
+  registerHandler(IPC_CHANNELS.accountResendVerification, (_event, input) => {
     parseNoInput(input)
     return vault.resendAccountVerificationEmail()
   })
-  registerHandler(IPC_CHANNELS.accountCopyApiClientId, getMainWindow, (_event, input) => {
+  registerHandler(IPC_CHANNELS.accountCopyApiClientId, (_event, input) => {
     parseNoInput(input)
     return vault.copyAccountApiClientId()
   })
-  registerHandler(IPC_CHANNELS.accountCopyApiKey, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.accountCopyApiKey, async (_event, input) => {
     const request = parseAccountApiKeyCopy(input)
     try {
       return await vault.copyPersonalApiKey(request)
@@ -3472,274 +3273,215 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       request.masterPassword = ''
     }
   })
-  registerHandler(IPC_CHANNELS.accountTwoFactorStatus, getMainWindow, (_event, input) => {
+  registerHandler(IPC_CHANNELS.accountTwoFactorStatus, (_event, input) => {
     parseNoInput(input)
     return vault.getTwoFactorStatus()
   })
-  registerHandler(
-    IPC_CHANNELS.accountSecurityWebAuthnKeys,
-    getMainWindow,
-    async (_event, input) => {
-      const request = parseAccountWebAuthnKeys(input)
-      try {
-        return publicAccountWebAuthnKeys(await vault.listAccountWebAuthnKeys(request))
-      } finally {
-        request.masterPassword = ''
-      }
+  registerHandler(IPC_CHANNELS.accountSecurityWebAuthnKeys, async (_event, input) => {
+    const request = parseAccountMasterPassword(input)
+    try {
+      return publicAccountWebAuthnKeys(await vault.listAccountWebAuthnKeys(request))
+    } finally {
+      request.masterPassword = ''
     }
-  )
-  registerHandler(
-    IPC_CHANNELS.accountSecurityEnrollWebAuthnKey,
-    getMainWindow,
-    async (_event, input) => {
-      const request = parseAccountWebAuthnKeyEnrollment(input)
-      try {
-        await vault.enrollAccountWebAuthnKey(request)
-      } finally {
-        request.masterPassword = ''
-        request.name = ''
-      }
+  })
+  registerHandler(IPC_CHANNELS.accountSecurityEnrollWebAuthnKey, async (_event, input) => {
+    const request = parseAccountWebAuthnKeyEnrollment(input)
+    try {
+      await vault.enrollAccountWebAuthnKey(request)
+    } finally {
+      request.masterPassword = ''
+      request.name = ''
     }
-  )
-  registerHandler(
-    IPC_CHANNELS.accountSecurityRemoveWebAuthnKey,
-    getMainWindow,
-    async (_event, input) => {
-      const request = parseAccountWebAuthnKeyRemoval(input)
-      try {
-        await vault.removeAccountWebAuthnKey(request)
-      } finally {
-        request.masterPassword = ''
-      }
+  })
+  registerHandler(IPC_CHANNELS.accountSecurityRemoveWebAuthnKey, async (_event, input) => {
+    const request = parseAccountWebAuthnKeyRemoval(input)
+    try {
+      await vault.removeAccountWebAuthnKey(request)
+    } finally {
+      request.masterPassword = ''
     }
-  )
-  registerHandler(
-    IPC_CHANNELS.accountDisableTwoFactorProvider,
-    getMainWindow,
-    async (_event, input) => {
-      const record = exactRecord(input, ['type', 'masterPassword', 'confirm'])
-      const request: AccountTwoFactorDisableRequest = {
-        type: record.type as 0 | 1 | 2 | 3 | 7,
-        masterPassword: requiredString(record, 'masterPassword'),
-        confirm: record.confirm as true
-      }
-      if (
-        !([0, 1, 2, 3, 7] as const).includes(request.type) ||
-        request.masterPassword.length === 0 ||
-        request.masterPassword.length > 16_384 ||
-        request.confirm !== true
-      ) {
-        request.masterPassword = ''
-        throw new VaultError('INVALID_INPUT')
-      }
-      try {
-        return await vault.disableTwoFactorProvider(request)
-      } finally {
-        request.masterPassword = ''
-      }
+  })
+  registerHandler(IPC_CHANNELS.accountDisableTwoFactorProvider, async (_event, input) => {
+    const record = exactRecord(input, ['type', 'masterPassword', 'confirm'])
+    const request: AccountTwoFactorDisableRequest = {
+      type: record.type as 0 | 1 | 2 | 3 | 7,
+      masterPassword: requiredString(record, 'masterPassword'),
+      confirm: record.confirm as true
     }
-  )
-  registerHandler(IPC_CHANNELS.accountCopyRecoveryCode, getMainWindow, async (_event, input) => {
-    const record = exactRecord(input, ['masterPassword'])
-    const request = { masterPassword: requiredString(record, 'masterPassword') }
-    if (request.masterPassword.length === 0 || request.masterPassword.length > 16_384) {
+    if (
+      !([0, 1, 2, 3, 7] as const).includes(request.type) ||
+      !validAccountMasterPassword(request.masterPassword) ||
+      request.confirm !== true
+    ) {
+      request.masterPassword = ''
       throw new VaultError('INVALID_INPUT')
     }
+    try {
+      return await vault.disableTwoFactorProvider(request)
+    } finally {
+      request.masterPassword = ''
+    }
+  })
+  registerHandler(IPC_CHANNELS.accountCopyRecoveryCode, async (_event, input) => {
+    const request = parseAccountMasterPassword(input)
     try {
       return await vault.copyTwoFactorRecoveryCode(request)
     } finally {
       request.masterPassword = ''
     }
   })
-  registerHandler(
-    IPC_CHANNELS.accountBeginAuthenticatorSetup,
-    getMainWindow,
-    async (_event, input) => {
-      const record = exactRecord(input, ['masterPassword'])
-      const request = { masterPassword: requiredString(record, 'masterPassword') }
-      if (request.masterPassword.length === 0 || request.masterPassword.length > 16_384) {
-        throw new VaultError('INVALID_INPUT')
-      }
-      try {
-        return await vault.beginAccountAuthenticatorSetup(request)
-      } finally {
-        request.masterPassword = ''
-      }
+  registerHandler(IPC_CHANNELS.accountBeginAuthenticatorSetup, async (_event, input) => {
+    const request = parseAccountMasterPassword(input)
+    try {
+      return await vault.beginAccountAuthenticatorSetup(request)
+    } finally {
+      request.masterPassword = ''
     }
-  )
-  registerHandler(IPC_CHANNELS.accountCopyAuthenticatorKey, getMainWindow, (_event, input) => {
+  })
+  registerHandler(IPC_CHANNELS.accountCopyAuthenticatorKey, (_event, input) => {
     const record = exactRecord(input, ['sessionId'])
     const sessionId = requiredString(record, 'sessionId')
     if (!UUID_PATTERN.test(sessionId)) throw new VaultError('INVALID_INPUT')
     return vault.copyAccountAuthenticatorKey({ sessionId })
   })
-  registerHandler(
-    IPC_CHANNELS.accountCompleteAuthenticatorSetup,
-    getMainWindow,
-    async (_event, input) => {
-      const record = exactRecord(input, ['sessionId', 'token', 'masterPassword'])
-      const request: AccountAuthenticatorCompleteRequest = {
-        sessionId: requiredString(record, 'sessionId'),
-        token: requiredString(record, 'token'),
-        ...(record.masterPassword === undefined
-          ? {}
-          : { masterPassword: requiredString(record, 'masterPassword') })
-      }
-      if (
-        !UUID_PATTERN.test(request.sessionId) ||
-        !/^\d{6}$/.test(request.token) ||
-        (request.masterPassword !== undefined &&
-          (request.masterPassword.length === 0 || request.masterPassword.length > 16_384))
-      ) {
-        if (request.masterPassword !== undefined) request.masterPassword = ''
-        request.token = ''
-        throw new VaultError('INVALID_INPUT')
-      }
-      try {
-        return await vault.completeAccountAuthenticatorSetup(request)
-      } finally {
-        request.token = ''
-        if (request.masterPassword !== undefined) request.masterPassword = ''
-      }
+  registerHandler(IPC_CHANNELS.accountCompleteAuthenticatorSetup, async (_event, input) => {
+    const record = exactRecord(input, ['sessionId', 'token', 'masterPassword'])
+    const request: AccountAuthenticatorCompleteRequest = {
+      sessionId: requiredString(record, 'sessionId'),
+      token: requiredString(record, 'token'),
+      ...(record.masterPassword === undefined
+        ? {}
+        : { masterPassword: requiredString(record, 'masterPassword') })
     }
-  )
-  registerHandler(
-    IPC_CHANNELS.accountBeginEmailTwoFactorSetup,
-    getMainWindow,
-    async (_event, input) => {
-      const record = exactRecord(input, ['masterPassword'])
-      const request = { masterPassword: requiredString(record, 'masterPassword') }
-      if (request.masterPassword.length === 0 || request.masterPassword.length > 16_384) {
-        throw new VaultError('INVALID_INPUT')
-      }
-      try {
-        return await vault.beginAccountEmailTwoFactorSetup(request)
-      } finally {
-        request.masterPassword = ''
-      }
+    if (
+      !UUID_PATTERN.test(request.sessionId) ||
+      !/^\d{6}$/.test(request.token) ||
+      (request.masterPassword !== undefined && !validAccountMasterPassword(request.masterPassword))
+    ) {
+      if (request.masterPassword !== undefined) request.masterPassword = ''
+      request.token = ''
+      throw new VaultError('INVALID_INPUT')
     }
-  )
-  registerHandler(
-    IPC_CHANNELS.accountSendEmailTwoFactorSetup,
-    getMainWindow,
-    async (_event, input) => {
-      const record = exactRecord(input, ['sessionId', 'email', 'masterPassword'])
-      const request: AccountEmailTwoFactorSendRequest = {
-        sessionId: requiredString(record, 'sessionId'),
-        email: requiredString(record, 'email'),
-        ...(record.masterPassword === undefined
-          ? {}
-          : { masterPassword: requiredString(record, 'masterPassword') })
-      }
-      if (
-        !UUID_PATTERN.test(request.sessionId) ||
-        request.email.length === 0 ||
-        request.email.length > 256 ||
-        request.email.trim() !== request.email ||
-        !/^[^\s@]+@[^\s@]+$/u.test(request.email) ||
-        (request.masterPassword !== undefined &&
-          (request.masterPassword.length === 0 || request.masterPassword.length > 16_384))
-      ) {
-        request.email = ''
-        if (request.masterPassword !== undefined) request.masterPassword = ''
-        throw new VaultError('INVALID_INPUT')
-      }
-      try {
-        return await vault.sendAccountEmailTwoFactorSetup(request)
-      } finally {
-        request.email = ''
-        if (request.masterPassword !== undefined) request.masterPassword = ''
-      }
+    try {
+      return await vault.completeAccountAuthenticatorSetup(request)
+    } finally {
+      request.token = ''
+      if (request.masterPassword !== undefined) request.masterPassword = ''
     }
-  )
-  registerHandler(
-    IPC_CHANNELS.accountCompleteEmailTwoFactorSetup,
-    getMainWindow,
-    async (_event, input) => {
-      const record = exactRecord(input, ['sessionId', 'token', 'masterPassword'])
-      const request: AccountEmailTwoFactorCompleteRequest = {
-        sessionId: requiredString(record, 'sessionId'),
-        token: requiredString(record, 'token'),
-        ...(record.masterPassword === undefined
-          ? {}
-          : { masterPassword: requiredString(record, 'masterPassword') })
-      }
-      if (
-        !UUID_PATTERN.test(request.sessionId) ||
-        !/^\d{1,50}$/u.test(request.token) ||
-        (request.masterPassword !== undefined &&
-          (request.masterPassword.length === 0 || request.masterPassword.length > 16_384))
-      ) {
-        request.token = ''
-        if (request.masterPassword !== undefined) request.masterPassword = ''
-        throw new VaultError('INVALID_INPUT')
-      }
-      try {
-        return await vault.completeAccountEmailTwoFactorSetup(request)
-      } finally {
-        request.token = ''
-        if (request.masterPassword !== undefined) request.masterPassword = ''
-      }
+  })
+  registerHandler(IPC_CHANNELS.accountBeginEmailTwoFactorSetup, async (_event, input) => {
+    const request = parseAccountMasterPassword(input)
+    try {
+      return await vault.beginAccountEmailTwoFactorSetup(request)
+    } finally {
+      request.masterPassword = ''
     }
-  )
-  registerHandler<EquivalentDomainSettingsView>(
-    IPC_CHANNELS.domainRulesGet,
-    getMainWindow,
-    (_event, input) => {
-      parseNoInput(input)
-      return vault.getEquivalentDomainSettings()
+  })
+  registerHandler(IPC_CHANNELS.accountSendEmailTwoFactorSetup, async (_event, input) => {
+    const record = exactRecord(input, ['sessionId', 'email', 'masterPassword'])
+    const request: AccountEmailTwoFactorSendRequest = {
+      sessionId: requiredString(record, 'sessionId'),
+      email: requiredString(record, 'email'),
+      ...(record.masterPassword === undefined
+        ? {}
+        : { masterPassword: requiredString(record, 'masterPassword') })
     }
+    if (
+      !UUID_PATTERN.test(request.sessionId) ||
+      request.email.length === 0 ||
+      request.email.length > 256 ||
+      request.email.trim() !== request.email ||
+      !/^[^\s@]+@[^\s@]+$/u.test(request.email) ||
+      (request.masterPassword !== undefined && !validAccountMasterPassword(request.masterPassword))
+    ) {
+      request.email = ''
+      if (request.masterPassword !== undefined) request.masterPassword = ''
+      throw new VaultError('INVALID_INPUT')
+    }
+    try {
+      return await vault.sendAccountEmailTwoFactorSetup(request)
+    } finally {
+      request.email = ''
+      if (request.masterPassword !== undefined) request.masterPassword = ''
+    }
+  })
+  registerHandler(IPC_CHANNELS.accountCompleteEmailTwoFactorSetup, async (_event, input) => {
+    const record = exactRecord(input, ['sessionId', 'token', 'masterPassword'])
+    const request: AccountEmailTwoFactorCompleteRequest = {
+      sessionId: requiredString(record, 'sessionId'),
+      token: requiredString(record, 'token'),
+      ...(record.masterPassword === undefined
+        ? {}
+        : { masterPassword: requiredString(record, 'masterPassword') })
+    }
+    if (
+      !UUID_PATTERN.test(request.sessionId) ||
+      !/^\d{1,50}$/u.test(request.token) ||
+      (request.masterPassword !== undefined && !validAccountMasterPassword(request.masterPassword))
+    ) {
+      request.token = ''
+      if (request.masterPassword !== undefined) request.masterPassword = ''
+      throw new VaultError('INVALID_INPUT')
+    }
+    try {
+      return await vault.completeAccountEmailTwoFactorSetup(request)
+    } finally {
+      request.token = ''
+      if (request.masterPassword !== undefined) request.masterPassword = ''
+    }
+  })
+  registerHandler<EquivalentDomainSettingsView>(IPC_CHANNELS.domainRulesGet, (_event, input) => {
+    parseNoInput(input)
+    return vault.getEquivalentDomainSettings()
+  })
+  registerHandler<EquivalentDomainSettingsView>(IPC_CHANNELS.domainRulesUpdate, (_event, input) =>
+    vault.updateEquivalentDomainSettings(parseEquivalentDomainSettingsUpdate(input))
   )
-  registerHandler<EquivalentDomainSettingsView>(
-    IPC_CHANNELS.domainRulesUpdate,
-    getMainWindow,
-    (_event, input) =>
-      vault.updateEquivalentDomainSettings(parseEquivalentDomainSettingsUpdate(input))
-  )
-  registerHandler(IPC_CHANNELS.sendList, getMainWindow, (_event, input) => {
+  registerHandler(IPC_CHANNELS.sendList, (_event, input) => {
     parseNoInput(input)
     return vault.listSends()
   })
-  registerHandler(IPC_CHANNELS.sendCreate, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.sendCreate, (_event, input) =>
     afterMutation(vault.createSend(parseSendCreate(input)))
   )
-  registerHandler(IPC_CHANNELS.sendCreateFile, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.sendCreateFile, (_event, input) =>
     afterMutation(vault.createFileSend(parseSendFileCreate(input)))
   )
-  registerHandler(IPC_CHANNELS.sendDownloadFile, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.sendDownloadFile, (_event, input) =>
     vault.downloadFileSend(parseSendFileDownload(input))
   )
-  registerHandler(IPC_CHANNELS.sendUpdate, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.sendUpdate, (_event, input) =>
     afterMutation(vault.updateSend(parseSendUpdate(input)))
   )
-  registerHandler(IPC_CHANNELS.sendRemovePassword, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.sendRemovePassword, (_event, input) =>
     afterMutation(vault.removeSendPassword(parseSendId(input)))
   )
-  registerHandler(IPC_CHANNELS.sendDelete, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.sendDelete, (_event, input) =>
     afterMutation(vault.deleteSend(parseSendId(input)))
   )
-  registerHandler(IPC_CHANNELS.sendCopyLink, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.sendCopyLink, (_event, input) =>
     vault.copySendLink(parseSendId(input))
   )
-  registerHandler(IPC_CHANNELS.settingsGet, getMainWindow, (_event, input) => {
+  registerHandler(IPC_CHANNELS.settingsGet, (_event, input) => {
     parseNoInput(input)
     return settings.get()
   })
-  registerHandler(IPC_CHANNELS.settingsUpdate, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.settingsUpdate, (_event, input) =>
     settings.update(parseSettingsUpdate(input))
   )
-  registerHandler(IPC_CHANNELS.settingsEnableTouchId, getMainWindow, (_event, input) =>
+  registerHandler(IPC_CHANNELS.settingsEnableTouchId, (_event, input) =>
     settings.enableTouchId(parseTouchIdEnable(input).masterPassword)
   )
-  registerHandler(IPC_CHANNELS.settingsDisableTouchId, getMainWindow, (_event, input) => {
+  registerHandler(IPC_CHANNELS.settingsDisableTouchId, (_event, input) => {
     parseNoInput(input)
     return settings.disableTouchId()
   })
-  registerHandler(IPC_CHANNELS.settingsUnlockTouchId, getMainWindow, (_event, input) => {
+  registerHandler(IPC_CHANNELS.settingsUnlockTouchId, (_event, input) => {
     parseNoInput(input)
     return settings.unlockTouchId()
   })
-  registerHandler(IPC_CHANNELS.settingsActivity, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.settingsActivity, async (_event, input) => {
     parseNoInput(input)
     if (disposed) return
     if (settingsActivityCheck) return settingsActivityCheck
@@ -3757,12 +3499,12 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     settingsActivityCheck = sharedCheck
     return sharedCheck
   })
-  registerHandler(IPC_CHANNELS.settingsShowErrorLog, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.settingsShowErrorLog, async (_event, input) => {
     parseNoInput(input)
     if (!options.errorLog) throw new VaultError('INTERNAL_ERROR')
     await options.errorLog.showInFileManager()
   })
-  registerHandler(IPC_CHANNELS.errorLogRecordRenderer, getMainWindow, async (_event, input) => {
+  registerHandler(IPC_CHANNELS.errorLogRecordRenderer, async (_event, input) => {
     options.errorLog?.recordRendererError(parseRendererErrorLog(input))
   })
 

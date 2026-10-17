@@ -6,13 +6,10 @@ import {
   completeNativeAttachmentRestoreAttempt,
   createNativeAttachmentRestoreJournal,
   failNativeAttachmentRestoreAttempt,
-  nextNativeAttachmentRestoreAttachment,
   parseNativeAttachmentRestoreJournal,
-  parseNativeAttachmentRestoreJournalJson,
   reconcileNativeAttachmentRestoreMissing,
   reconcileNativeAttachmentRestoreUploaded,
   recoverInterruptedNativeAttachmentRestore,
-  serializeNativeAttachmentRestoreJournal,
   type NativeAttachmentRestoreJournal,
   type NativeAttachmentRestorePlan
 } from './native-attachment-restore'
@@ -86,19 +83,18 @@ describe('native attachment restore journal', () => {
     expect(Object.isFrozen(journal.items)).toBe(true)
     expect(Object.isFrozen(journal.attachments[0])).toBe(true)
 
-    const serialized = serializeNativeAttachmentRestoreJournal(journal)
+    const serialized = JSON.stringify(journal)
     expect(serialized).not.toMatch(/path|password|vaultJson|key/i)
-    expect(parseNativeAttachmentRestoreJournalJson(serialized)).toEqual(journal)
+    expect(parseNativeAttachmentRestoreJournal(JSON.parse(serialized))).toEqual(journal)
   })
 
-  it('binds each imported item once and exposes only the first safe pending attachment', () => {
+  it('binds each imported item once and leaves the first attachment pending', () => {
     let journal = createNativeAttachmentRestoreJournal(plan())
-    expect(nextNativeAttachmentRestoreAttachment(journal)).toBeNull()
     journal = bindNativeAttachmentRestoreRemoteItem(journal, 'source-item-1', FIRST_REMOTE_ID, T1)
     expect(journal.phase).toBe('syncing-items')
     journal = bindNativeAttachmentRestoreRemoteItem(journal, 'source-item-2', SECOND_REMOTE_ID, T2)
     expect(journal.phase).toBe('restoring-attachments')
-    expect(nextNativeAttachmentRestoreAttachment(journal)).toMatchObject({
+    expect(journal.attachments[0]).toMatchObject({
       sourceAttachmentId: 'source-attachment-1',
       localItemId: FIRST_LOCAL_ID,
       status: 'pending'
@@ -135,7 +131,6 @@ describe('native attachment restore journal', () => {
       T4
     )
     expect(journal.phase).toBe('complete')
-    expect(nextNativeAttachmentRestoreAttachment(journal)).toBeNull()
   })
 
   it('turns a crash-interrupted attempt into reconciliation instead of retrying it', () => {
@@ -149,7 +144,6 @@ describe('native attachment restore journal', () => {
       phase: 'needs-reconciliation',
       attachments: [{ status: 'needs-reconciliation', remoteAttachmentId: null }, {}]
     })
-    expect(nextNativeAttachmentRestoreAttachment(journal)).toBeNull()
 
     journal = reconcileNativeAttachmentRestoreMissing(
       journal,
@@ -222,7 +216,7 @@ describe('native attachment restore journal', () => {
 
   it('rejects malformed invariants, forbidden fields, and prototype-bearing input', () => {
     const valid = JSON.parse(
-      serializeNativeAttachmentRestoreJournal(createNativeAttachmentRestoreJournal(plan()))
+      JSON.stringify(createNativeAttachmentRestoreJournal(plan()))
     ) as Record<string, unknown>
     for (const field of ['path', 'password', 'key', 'vaultJson']) {
       expect(() =>
@@ -236,10 +230,13 @@ describe('native attachment restore journal', () => {
       /INVALID_INPUT/
     )
     expect(() =>
-      parseNativeAttachmentRestoreJournalJson(
-        serializeNativeAttachmentRestoreJournal(
-          createNativeAttachmentRestoreJournal(plan())
-        ).replace(/"version":1/, '"version":1,"__proto__":{"polluted":true}')
+      parseNativeAttachmentRestoreJournal(
+        JSON.parse(
+          JSON.stringify(createNativeAttachmentRestoreJournal(plan())).replace(
+            /"version":1/,
+            '"version":1,"__proto__":{"polluted":true}'
+          )
+        )
       )
     ).toThrowError(/INVALID_INPUT/)
 
@@ -265,7 +262,7 @@ describe('native attachment restore journal', () => {
       { sourceItemId: 'source-item-1', sourceAttachmentId: 'source-attachment-1' },
       T3
     )
-    const mixed = JSON.parse(serializeNativeAttachmentRestoreJournal(attempting)) as {
+    const mixed = JSON.parse(JSON.stringify(attempting)) as {
       phase: string
       attachments: Array<{ status: string }>
     }

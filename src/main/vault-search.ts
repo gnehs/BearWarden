@@ -99,10 +99,10 @@ function isPlainRecord(value: unknown): value is SearchRecord {
   }
 }
 
-function ownData(record: SearchRecord, key: string): PropertyDescriptor | undefined {
+function ownData(record: SearchRecord, key: string): unknown {
   try {
     const descriptor = Object.getOwnPropertyDescriptor(record, key)
-    return descriptor && 'value' in descriptor ? descriptor : undefined
+    return descriptor && 'value' in descriptor ? descriptor.value : undefined
   } catch {
     return undefined
   }
@@ -114,7 +114,7 @@ function boundedString(
   maximumLength: number,
   budget: SearchBudget
 ): string | undefined {
-  const value = ownData(record, key)?.value
+  const value = ownData(record, key)
   if (typeof value !== 'string') return undefined
 
   const result = value.slice(0, maximumLength)
@@ -158,7 +158,7 @@ function isProtected(record: SearchRecord): boolean {
 }
 
 function ownArray(record: SearchRecord, key: string): readonly unknown[] {
-  const value = ownData(record, key)?.value
+  const value = ownData(record, key)
   if (!Array.isArray(value)) return []
   if (value.length > MAX_COLLECTION_LENGTH) throw new SearchBoundsError()
   return value
@@ -200,7 +200,7 @@ function collectUris(record: SearchRecord, budget: SearchBudget): string[] {
 
   appendUris(ownArray(record, 'uris'))
 
-  const login = ownData(record, 'login')?.value
+  const login = ownData(record, 'login')
   if (isPlainRecord(login)) appendUris(ownArray(login, 'uris'))
   return [...new Set(result)]
 }
@@ -219,7 +219,7 @@ function collectUsername(record: SearchRecord, budget: SearchBudget): string {
   const username = boundedString(record, 'username', MAX_SHORT_FIELD_LENGTH, budget)
   if (username !== undefined) return username
 
-  const login = ownData(record, 'login')?.value
+  const login = ownData(record, 'login')
   if (!isPlainRecord(login)) return ''
   return boundedString(login, 'username', MAX_SHORT_FIELD_LENGTH, budget) ?? ''
 }
@@ -235,7 +235,7 @@ function collectCustomFields(
   for (const collection of collections) {
     for (const value of safeArrayEntries(collection)) {
       if (!isPlainRecord(value)) continue
-      const type = ownData(value, 'type')?.value
+      const type = ownData(value, 'type')
       // Text is Cipher.Field type 0 upstream. Hidden, boolean, linked and malformed
       // fields are excluded in their entirety so even their names cannot become an oracle.
       if (type !== 'text' && type !== 0) continue

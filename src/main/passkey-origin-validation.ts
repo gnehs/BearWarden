@@ -66,7 +66,6 @@ function canonicalizeRpId(value: unknown): string {
   if (
     typeof value !== 'string' ||
     value.length === 0 ||
-    value !== value.trim() ||
     hasForbiddenWhitespace(value) ||
     [...value].some((character) => FORBIDDEN_RP_ID_CHARACTER.has(character))
   ) {
@@ -87,25 +86,17 @@ function canonicalizeRpId(value: unknown): string {
 }
 
 function canonicalizeOrigin(value: unknown): URL {
-  if (
-    typeof value !== 'string' ||
-    value.length === 0 ||
-    value !== value.trim() ||
-    hasForbiddenWhitespace(value)
-  ) {
+  if (typeof value !== 'string' || value.length === 0 || hasForbiddenWhitespace(value)) {
     return fail('INVALID_ORIGIN')
   }
 
   // An RFC 6454 serialized origin contains only scheme and authority. Requiring
   // that shape also rejects paths, queries, fragments and opaque origins before
   // WHATWG URL normalization can hide them.
-  const match = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]+)$/iu.exec(value)
-  if (!match || match[2]!.includes('@') || match[2]!.includes('\\') || match[2]!.includes('%')) {
+  const rawAuthority = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)$/iu.exec(value)?.[1]
+  if (!rawAuthority || /[@\\%]/u.test(rawAuthority) || rawAuthority.endsWith(':')) {
     return fail('INVALID_ORIGIN')
   }
-
-  const rawAuthority = match[2]!
-  if (rawAuthority.endsWith(':')) return fail('INVALID_ORIGIN')
 
   let url: URL
   try {
@@ -156,17 +147,19 @@ export function validatePasskeyOrigin(
   const url = canonicalizeOrigin(input.origin)
   const rpId = canonicalizeRpId(input.rpId)
   const hostname = url.hostname
+  return Object.freeze({
+    origin: url.origin,
+    rpId,
+    hostname,
+    port: url.port || null,
+    registrableDomain: registrableDomainFor(hostname, rpId)
+  })
+}
 
+function registrableDomainFor(hostname: string, rpId: string): string | null {
   if (hostname === 'localhost' || rpId === 'localhost') {
     if (hostname !== 'localhost' || rpId !== 'localhost') return fail('RP_ID_MISMATCH')
-
-    return Object.freeze({
-      origin: url.origin,
-      rpId,
-      hostname,
-      port: url.port || null,
-      registrableDomain: null
-    })
+    return null
   }
 
   const parsedOrigin = parse(hostname, { allowPrivateDomains: true })
@@ -178,14 +171,6 @@ export function validatePasskeyOrigin(
     return fail('INVALID_RP_ID')
   }
   if (parsedOrigin.domain !== parsedRpId.domain) return fail('RP_ID_MISMATCH')
-
   if (hostname !== rpId && !hostname.endsWith(`.${rpId}`)) return fail('RP_ID_MISMATCH')
-
-  return Object.freeze({
-    origin: url.origin,
-    rpId,
-    hostname,
-    port: url.port || null,
-    registrableDomain: parsedRpId.domain
-  })
+  return parsedRpId.domain
 }

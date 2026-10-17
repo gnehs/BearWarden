@@ -111,7 +111,7 @@ function parseSyncUnlockMaterial(value: unknown): PersistedSyncUnlockMaterial | 
   }
 }
 
-export function parseSyncMappings(
+function parseSyncMappings(
   value: unknown,
   localIds: Set<string>,
   label: 'mapping' | 'tombstone'
@@ -151,7 +151,7 @@ export function parseSyncMappings(
   return parsed
 }
 
-export function parseDirectState(value: unknown): BitwardenDirectState {
+function parseDirectState(value: unknown): BitwardenDirectState {
   if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
   const deviceIdentifier = value.deviceIdentifier
   const profileId = value.profileId

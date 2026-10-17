@@ -18,7 +18,7 @@ import {
 } from './limits'
 import { isRecord } from './parse-primitives'
 
-export function parseStoredEquivalentDomain(value: unknown): string {
+function parseStoredEquivalentDomain(value: unknown): string {
   if (
     typeof value !== 'string' ||
     value.length === 0 ||
@@ -31,7 +31,7 @@ export function parseStoredEquivalentDomain(value: unknown): string {
   return value
 }
 
-export function parseStoredEquivalentDomainGroups(value: unknown): string[][] {
+function parseStoredEquivalentDomainGroups(value: unknown): string[][] {
   if (!Array.isArray(value) || value.length > MAX_EQUIVALENT_DOMAIN_GROUPS) {
     throw new VaultError('CORRUPT_VAULT')
   }
@@ -117,7 +117,7 @@ export function equivalentDomainSettingsView(
   }
 }
 
-export function normalizeEquivalentDomain(value: unknown): string {
+function normalizeEquivalentDomain(value: unknown): string {
   if (
     typeof value !== 'string' ||
     value.length === 0 ||

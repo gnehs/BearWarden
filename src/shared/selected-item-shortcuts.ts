@@ -1,6 +1,6 @@
 export type SelectedItemCopyCommand = 'username' | 'password' | 'totp' | 'website'
 
-export interface SelectedItemCopyShortcut {
+interface SelectedItemCopyShortcut {
   accelerator: string
   display: string
   key: string

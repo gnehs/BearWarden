@@ -13,12 +13,12 @@ import { strictRecord } from '../main/account-webauthn-window-primitives'
 
 const CONNECTOR_PATH = '/webauthn-connector.html'
 
-export interface AccountWebAuthnRegistrationIpc {
+interface AccountWebAuthnRegistrationIpc {
   invoke(channel: string, input: unknown): Promise<unknown>
   send(channel: string, input: unknown): void
 }
 
-export interface AccountWebAuthnRegistrationWindow {
+interface AccountWebAuthnRegistrationWindow {
   readonly location: { readonly href: string }
   readonly navigator: Pick<Navigator, 'credentials'>
 }

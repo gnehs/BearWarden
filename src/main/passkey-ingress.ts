@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
-import { validatePasskeyOrigin } from './passkey-origin-validation'
-import { plainRecord, type PlainRecord } from './plain-record'
+import { validatePasskeyOrigin, type ValidatedPasskeyOrigin } from './passkey-origin-validation'
+import { exactKeys as hasExactKeys, plainRecord, type PlainRecord } from './plain-record'
 
 const MAX_PROVIDER_LENGTH = 128
 const MAX_PEER_BINDING_LENGTH = 256
@@ -159,14 +159,7 @@ function exactKeys(
   optional: readonly string[] = [],
   code: PasskeyIngressErrorCode = 'INVALID_PAYLOAD'
 ): void {
-  const keys = Object.keys(value)
-  const allowed = new Set([...required, ...optional])
-  if (
-    required.some((key) => !Object.prototype.hasOwnProperty.call(value, key)) ||
-    keys.some((key) => !allowed.has(key))
-  ) {
-    fail(code)
-  }
+  if (!hasExactKeys(value, required, optional)) fail(code)
 }
 
 function rawArray(
@@ -664,31 +657,54 @@ function bindPasskeyIngressRequestInternal(
   transport: PasskeyIngressTransportContext
 ): PasskeyIngressSnapshot {
   const peer = validateTransportContext(transport)
-  const signal = transport.signal
   const payload = record(rawPayload)
   exactKeys(payload, ['version', 'kind', 'clientDataJSON', 'options'])
   if (payload.version !== 1) fail('UNSUPPORTED_VERSION')
-  if (payload.kind !== 'create' && payload.kind !== 'get') fail('INVALID_PAYLOAD')
+  const kind = payload.kind
+  if (kind !== 'create' && kind !== 'get') fail('INVALID_PAYLOAD')
 
   const clientData = parseClientData(payload.clientDataJSON)
-  const expectedType = payload.kind === 'create' ? 'webauthn.create' : 'webauthn.get'
-  if (clientData.type !== expectedType) fail('CEREMONY_MISMATCH')
-  const options =
-    payload.kind === 'create'
-      ? parseCreateOptions(payload.options)
-      : parseGetOptions(payload.options)
-  if (!matchesChallenge(clientData.challenge, options.challenge)) fail('CEREMONY_MISMATCH')
-  const requestedRpId =
-    payload.kind === 'create'
-      ? ((options as ParsedPasskeyIngressCreateOptions).rp.id ??
-        defaultRpIdFromOrigin(clientData.origin))
-      : ((options as ParsedPasskeyIngressGetOptions).rpId ??
-        defaultRpIdFromOrigin(clientData.origin))
-  let validatedOrigin: ReturnType<typeof validatePasskeyOrigin>
+  if (clientData.type !== `webauthn.${kind}`) fail('CEREMONY_MISMATCH')
+
+  // Keep one canonical RP ID throughout the trusted snapshot. Raw options are never spread over
+  // this value, so downstream code cannot accidentally choose an unnormalized spelling.
+  if (kind === 'create') {
+    const parsed = parseCreateOptions(payload.options)
+    const validated = validateCeremonyOrigin(clientData, parsed.challenge, parsed.rp.id, transport)
+    const options: PasskeyIngressCreateOptions = Object.freeze({
+      ...parsed,
+      rp: Object.freeze({ ...parsed.rp, id: validated.rpId })
+    })
+    return Object.freeze({
+      ...snapshotBase(peer, transport.signal, kind, clientData, validated, options),
+      kind,
+      options,
+      discoverable: createDiscoverable(options.authenticatorSelection)
+    })
+  }
+  const parsed = parseGetOptions(payload.options)
+  const validated = validateCeremonyOrigin(clientData, parsed.challenge, parsed.rpId, transport)
+  const options: PasskeyIngressGetOptions = Object.freeze({ ...parsed, rpId: validated.rpId })
+  return Object.freeze({
+    ...snapshotBase(peer, transport.signal, kind, clientData, validated, options),
+    kind,
+    options
+  })
+}
+
+function validateCeremonyOrigin(
+  clientData: ParsedClientData,
+  challenge: readonly number[],
+  requestedRpId: string | undefined,
+  transport: PasskeyIngressTransportContext
+): ValidatedPasskeyOrigin {
+  if (!matchesChallenge(clientData.challenge, challenge)) fail('CEREMONY_MISMATCH')
+  const rpId = requestedRpId ?? defaultRpIdFromOrigin(clientData.origin)
+  let validated: ValidatedPasskeyOrigin
   try {
-    validatedOrigin = validatePasskeyOrigin({
+    validated = validatePasskeyOrigin({
       origin: clientData.origin,
-      rpId: requestedRpId,
+      rpId,
       crossOrigin: clientData.crossOrigin
     })
   } catch {
@@ -696,60 +712,36 @@ function bindPasskeyIngressRequestInternal(
   }
   // clientDataJSON contains an RFC 6454 serialized origin. Do not accept a spelling that only
   // becomes valid after URL normalization; the exact claimed origin is part of the ceremony.
-  if (clientData.origin !== validatedOrigin.origin) fail('ORIGIN_REJECTED')
-  if (signal.aborted) fail('PEER_DISCONNECTED')
+  if (clientData.origin !== validated.origin) fail('ORIGIN_REJECTED')
+  if (transport.signal.aborted) fail('PEER_DISCONNECTED')
+  return validated
+}
 
-  // Keep one canonical RP ID throughout the trusted snapshot. Raw options are never spread over
-  // this value, so downstream code cannot accidentally choose an unnormalized spelling.
-  const canonicalOptions: PasskeyIngressCreateOptions | PasskeyIngressGetOptions =
-    payload.kind === 'create'
-      ? Object.freeze({
-          ...(options as ParsedPasskeyIngressCreateOptions),
-          rp: Object.freeze({
-            ...(options as ParsedPasskeyIngressCreateOptions).rp,
-            id: validatedOrigin.rpId
-          })
-        })
-      : Object.freeze({
-          ...(options as ParsedPasskeyIngressGetOptions),
-          rpId: validatedOrigin.rpId
-        })
-
-  const base = {
-    version: 1 as const,
+function snapshotBase(
+  peer: PasskeyIngressPeer,
+  signal: AbortSignal,
+  kind: 'create' | 'get',
+  clientData: ParsedClientData,
+  validated: ValidatedPasskeyOrigin,
+  options: PasskeyIngressCreateOptions | PasskeyIngressGetOptions
+): Omit<PasskeyIngressSnapshotBase, 'kind'> {
+  return {
+    version: 1,
     peer,
     signal,
     clientDataJSON: frozenBytes(clientData.bytes),
     clientDataHash: frozenBytes(clientData.hash),
-    challenge: canonicalOptions.challenge,
-    origin: validatedOrigin.origin,
-    rpId: validatedOrigin.rpId
+    requestDigest: requestDigest(
+      peer,
+      kind,
+      validated.origin,
+      validated.rpId,
+      clientData.hash,
+      clientData.challenge,
+      options
+    ),
+    challenge: options.challenge,
+    origin: validated.origin,
+    rpId: validated.rpId
   }
-  const digest = requestDigest(
-    peer,
-    payload.kind,
-    base.origin,
-    base.rpId,
-    clientData.hash,
-    clientData.challenge,
-    canonicalOptions
-  )
-
-  if (payload.kind === 'create') {
-    const createOptions = canonicalOptions as PasskeyIngressCreateOptions
-    return Object.freeze({
-      ...base,
-      kind: 'create' as const,
-      requestDigest: digest,
-      options: createOptions,
-      discoverable: createDiscoverable(createOptions.authenticatorSelection)
-    })
-  }
-  const getOptions = canonicalOptions as PasskeyIngressGetOptions
-  return Object.freeze({
-    ...base,
-    kind: 'get' as const,
-    requestDigest: digest,
-    options: getOptions
-  })
 }

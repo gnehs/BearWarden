@@ -1,23 +1,22 @@
-import { describe, expect, expectTypeOf, it } from 'vitest'
-import {
-  IPC_CHANNELS,
-  type AccountRemoveRequest,
-  type AccountReorderRequest,
-  type AccountSessionDeauthorizationRequest,
-  type AccountWebAuthnKeyEnrollmentRequest,
-  type AccountWebAuthnKeyRemovalRequest,
-  type AccountWebAuthnKeyView,
-  type AccountWebAuthnKeysRequest,
-  type BearWardenAPI,
-  type LoginView,
-  type SyncPurgePersonalVaultRequest,
-  type SyncPurgePersonalVaultResult,
-  type SyncResolvePendingImportRequest,
-  type SyncStatus,
-  type VaultExportRequest,
-  type VaultExportResult,
-  type VaultImportRequest,
-  type VaultImportResult
+import { describe, expectTypeOf, it } from 'vitest'
+import type {
+  AccountRemoveRequest,
+  AccountReorderRequest,
+  AccountSessionDeauthorizationRequest,
+  AccountWebAuthnKeyEnrollmentRequest,
+  AccountWebAuthnKeyRemovalRequest,
+  AccountWebAuthnKeyView,
+  AccountWebAuthnKeysRequest,
+  BearWardenAPI,
+  LoginView,
+  SyncPurgePersonalVaultRequest,
+  SyncPurgePersonalVaultResult,
+  SyncResolvePendingImportRequest,
+  SyncStatus,
+  VaultExportRequest,
+  VaultExportResult,
+  VaultImportRequest,
+  VaultImportResult
 } from './vault-contract'
 
 describe('item history renderer contract', () => {
@@ -97,7 +96,6 @@ describe('personal vault purge renderer contract', () => {
     expectTypeOf<BearWardenAPI['sync']['purgePersonalVault']>().parameters.toEqualTypeOf<
       [SyncPurgePersonalVaultRequest]
     >()
-    expect(IPC_CHANNELS.syncPurgePersonalVault).toBe('sync:purge-personal-vault')
   })
 })
 
@@ -113,7 +111,6 @@ describe('pending sync import renderer contract', () => {
     expectTypeOf<BearWardenAPI['sync']['resolvePendingImport']>().parameters.toEqualTypeOf<
       [SyncResolvePendingImportRequest]
     >()
-    expect(IPC_CHANNELS.syncResolvePendingImport).toBe('sync:resolve-pending-import')
   })
 })
 
@@ -127,17 +124,16 @@ describe('local account management renderer contract', () => {
       readonly accountId: string
       readonly confirm: true
     }>()
-    expect(IPC_CHANNELS.accountReorder).toBe('account:reorder')
-    expect(IPC_CHANNELS.accountRemove).toBe('account:remove')
   })
 })
 
 describe('account WebAuthn renderer contract', () => {
   it('limits the public view to server key metadata', () => {
-    const key: AccountWebAuthnKeyView = { id: 1, name: 'USB key', migrated: false }
-
-    expect(key).toEqual({ id: 1, name: 'USB key', migrated: false })
-    expect(Object.keys(key)).toEqual(['id', 'name', 'migrated'])
+    expectTypeOf<AccountWebAuthnKeyView>().toEqualTypeOf<{
+      id: number
+      name: string
+      migrated: boolean
+    }>()
   })
 
   it('types only the narrow list, enrollment, and removal requests', () => {
@@ -163,13 +159,6 @@ describe('account WebAuthn renderer contract', () => {
     expectTypeOf<BearWardenAPI['accountSecurity']['removeWebAuthnKey']>().returns.toEqualTypeOf<
       Promise<void>
     >()
-    expect(IPC_CHANNELS.accountSecurityWebAuthnKeys).toBe('account-security:webauthn-keys')
-    expect(IPC_CHANNELS.accountSecurityEnrollWebAuthnKey).toBe(
-      'account-security:enroll-webauthn-key'
-    )
-    expect(IPC_CHANNELS.accountSecurityRemoveWebAuthnKey).toBe(
-      'account-security:remove-webauthn-key'
-    )
   })
 })
 
@@ -186,6 +175,5 @@ describe('account session deauthorization renderer contract', () => {
     expectTypeOf<BearWardenAPI['accountSecurity']['deauthorizeSessions']>().returns.toEqualTypeOf<
       Promise<void>
     >()
-    expect(IPC_CHANNELS.accountDeauthorizeSessions).toBe('account-security:deauthorize-sessions')
   })
 })

@@ -1,4 +1,12 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
+import {
+  BASE_PAYLOAD_LENGTH,
+  isValidUnlockKeyMaterial,
+  MAX_PAYLOAD_LENGTH,
+  packUnlockKeyMaterial,
+  unpackUnlockKeyMaterial,
+  type UnlockKeyMaterial
+} from './unlock-key-payload'
 
 /**
  * Touch ID capsule v1 file layout. The outer header is plaintext so legacy master-password files
@@ -18,15 +26,6 @@ const DATA_KEY_LENGTH = 32
 const IV_LENGTH = 12
 const AUTH_TAG_LENGTH = 16
 const MAX_WRAPPED_DATA_KEY_LENGTH = 4_096
-const VAULT_KEY_LENGTH = 32
-const VAULT_SALT_LENGTH = 16
-const ACCOUNT_KEY_LENGTH_BYTES = 2
-const MIN_ACCOUNT_KEY_LENGTH = 64
-const MAX_ACCOUNT_KEY_LENGTH = 4_096
-const WRAPPED_KEY_FINGERPRINT_LENGTH = 32
-const BASE_PAYLOAD_LENGTH = VAULT_KEY_LENGTH + VAULT_SALT_LENGTH + ACCOUNT_KEY_LENGTH_BYTES
-const MAX_PAYLOAD_LENGTH =
-  BASE_PAYLOAD_LENGTH + MAX_ACCOUNT_KEY_LENGTH + WRAPPED_KEY_FINGERPRINT_LENGTH
 
 export class TouchIdCapsuleError extends Error {
   constructor() {
@@ -35,20 +34,11 @@ export class TouchIdCapsuleError extends Error {
   }
 }
 
-export interface TouchIdSyncKeyMaterial {
-  accountKey: Buffer
-  wrappedKeyFingerprint: Buffer
-}
-
 /**
  * Key material that reopens the local vault and restores the Bitwarden account key bound to one
  * server-wrapped-key generation. It never contains the master password.
  */
-export interface TouchIdUnlockMaterial {
-  key: Buffer
-  salt: Buffer
-  sync: TouchIdSyncKeyMaterial | null
-}
+export type TouchIdUnlockMaterial = UnlockKeyMaterial
 
 /** Platform key-wrapping boundary; production uses Electron `safeStorage`. */
 export interface TouchIdDataKeyProtector {
@@ -71,19 +61,6 @@ export function isTouchIdCapsule(file: Buffer): boolean {
   )
 }
 
-function assertMaterialShape(material: TouchIdUnlockMaterial): void {
-  if (
-    material.key.length !== VAULT_KEY_LENGTH ||
-    material.salt.length !== VAULT_SALT_LENGTH ||
-    (material.sync !== null &&
-      (material.sync.accountKey.length < MIN_ACCOUNT_KEY_LENGTH ||
-        material.sync.accountKey.length > MAX_ACCOUNT_KEY_LENGTH ||
-        material.sync.wrappedKeyFingerprint.length !== WRAPPED_KEY_FINGERPRINT_LENGTH))
-  ) {
-    throw new TouchIdCapsuleError()
-  }
-}
-
 function header(wrappedDataKeyLength: number): Buffer {
   const value = Buffer.alloc(HEADER_LENGTH)
   CAPSULE_MAGIC.copy(value, 0)
@@ -96,8 +73,7 @@ export async function sealTouchIdCapsule(
   material: TouchIdUnlockMaterial,
   protector: TouchIdDataKeyProtector
 ): Promise<Buffer> {
-  assertMaterialShape(material)
-  const sync = material.sync
+  if (!isValidUnlockKeyMaterial(material)) throw new TouchIdCapsuleError()
   let dataKey: Buffer | undefined
   let payload: Buffer | undefined
   let wrappedDataKey: Buffer | undefined
@@ -105,16 +81,7 @@ export async function sealTouchIdCapsule(
   try {
     dataKey = randomBytes(DATA_KEY_LENGTH)
     const iv = randomBytes(IV_LENGTH)
-    payload = Buffer.alloc(
-      BASE_PAYLOAD_LENGTH + (sync ? sync.accountKey.length + WRAPPED_KEY_FINGERPRINT_LENGTH : 0)
-    )
-    material.key.copy(payload, 0)
-    material.salt.copy(payload, VAULT_KEY_LENGTH)
-    payload.writeUInt16BE(sync?.accountKey.length ?? 0, VAULT_KEY_LENGTH + VAULT_SALT_LENGTH)
-    if (sync) {
-      sync.accountKey.copy(payload, BASE_PAYLOAD_LENGTH)
-      sync.wrappedKeyFingerprint.copy(payload, BASE_PAYLOAD_LENGTH + sync.accountKey.length)
-    }
+    payload = packUnlockKeyMaterial(material)
     wrappedDataKey = await protector.wrap(dataKey.toString('base64'))
     if (wrappedDataKey.length === 0 || wrappedDataKey.length > MAX_WRAPPED_DATA_KEY_LENGTH) {
       throw new TouchIdCapsuleError()
@@ -182,32 +149,9 @@ export async function openTouchIdCapsule(
       throw new TouchIdCapsuleError()
     }
 
-    const accountKeyLength = plaintext.readUInt16BE(VAULT_KEY_LENGTH + VAULT_SALT_LENGTH)
-    const expectedLength =
-      BASE_PAYLOAD_LENGTH +
-      (accountKeyLength === 0 ? 0 : accountKeyLength + WRAPPED_KEY_FINGERPRINT_LENGTH)
-    if (
-      plaintext.length !== expectedLength ||
-      (accountKeyLength !== 0 &&
-        (accountKeyLength < MIN_ACCOUNT_KEY_LENGTH || accountKeyLength > MAX_ACCOUNT_KEY_LENGTH))
-    ) {
-      throw new TouchIdCapsuleError()
-    }
-    return {
-      key: Buffer.from(plaintext.subarray(0, VAULT_KEY_LENGTH)),
-      salt: Buffer.from(plaintext.subarray(VAULT_KEY_LENGTH, VAULT_KEY_LENGTH + VAULT_SALT_LENGTH)),
-      sync:
-        accountKeyLength === 0
-          ? null
-          : {
-              accountKey: Buffer.from(
-                plaintext.subarray(BASE_PAYLOAD_LENGTH, BASE_PAYLOAD_LENGTH + accountKeyLength)
-              ),
-              wrappedKeyFingerprint: Buffer.from(
-                plaintext.subarray(BASE_PAYLOAD_LENGTH + accountKeyLength)
-              )
-            }
-    }
+    const material = unpackUnlockKeyMaterial(plaintext)
+    if (!material) throw new TouchIdCapsuleError()
+    return material
   } finally {
     dataKey?.fill(0)
     plaintext?.fill(0)

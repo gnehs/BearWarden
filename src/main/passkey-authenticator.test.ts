@@ -9,7 +9,6 @@ import { decode } from 'cbor-x'
 import { describe, expect, it } from 'vitest'
 import type { StoredPasskeyCredential } from './passkey'
 import {
-  BITWARDEN_AAGUID,
   createPasskeyCredential,
   getPasskeyAssertion,
   PasskeyAuthenticatorError,
@@ -113,7 +112,7 @@ describe('passkey software authenticator', () => {
     )
     expect(authData[32]).toBe(0x5d) // UP | UV | BE | BS | AT
     expect(authData.readUInt32BE(33)).toBe(0)
-    expect(authData.subarray(37, 53).toString('hex')).toBe(BITWARDEN_AAGUID.replaceAll('-', ''))
+    expect(authData.subarray(37, 53).toString('hex')).toBe('d548826e79b4db40a3d811116f7e8349')
     expect(authData.readUInt16BE(53)).toBe(16)
     expect(authData.subarray(55, 71)).toEqual(UUID_BYTES)
 

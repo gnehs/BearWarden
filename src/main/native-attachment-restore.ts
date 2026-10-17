@@ -325,33 +325,6 @@ export function parseNativeAttachmentRestoreJournal(
   }
 }
 
-export function parseNativeAttachmentRestoreJournalJson(
-  serialized: string
-): NativeAttachmentRestoreJournal {
-  if (
-    typeof serialized !== 'string' ||
-    serialized.length === 0 ||
-    Buffer.byteLength(serialized, 'utf8') > MAX_SERIALIZED_BYTES
-  ) {
-    invalid()
-  }
-  try {
-    return parseNativeAttachmentRestoreJournal(JSON.parse(serialized) as unknown)
-  } catch (error) {
-    if (error instanceof VaultError) throw error
-    invalid()
-  }
-}
-
-export function serializeNativeAttachmentRestoreJournal(
-  journal: NativeAttachmentRestoreJournal
-): string {
-  const validated = parseNativeAttachmentRestoreJournal(journal)
-  const serialized = JSON.stringify(validated)
-  if (Buffer.byteLength(serialized, 'utf8') > MAX_SERIALIZED_BYTES) invalid()
-  return serialized
-}
-
 export function createNativeAttachmentRestoreJournal(
   plan: NativeAttachmentRestorePlan
 ): NativeAttachmentRestoreJournal {
@@ -611,12 +584,4 @@ export function assertNativeAttachmentRestoreBinding(
     invalid()
   }
   return journal
-}
-
-export function nextNativeAttachmentRestoreAttachment(
-  journalValue: NativeAttachmentRestoreJournal
-): NativeAttachmentRestoreAttachmentMapping | null {
-  const journal = parseNativeAttachmentRestoreJournal(journalValue)
-  if (journal.phase !== 'restoring-attachments') return null
-  return journal.attachments.find((attachment) => attachment.status === 'pending') ?? null
 }

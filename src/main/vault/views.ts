@@ -129,7 +129,7 @@ export function toVaultSearchItem(login: StoredLogin): VaultSearchItem {
   }
 }
 
-export function summarizeSecureNote(notes: string | null): string {
+function summarizeSecureNote(notes: string | null): string {
   const firstLine =
     notes
       ?.split(/\r\n?|\n/u)

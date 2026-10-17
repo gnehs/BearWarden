@@ -16,11 +16,8 @@ vi.mock('electron', () => ({
 }))
 
 import { IPC_CHANNELS, IPC_EVENTS } from '../shared/vault-contract'
-import type {
-  PasskeyRendererSafePrompt,
-  PasskeyVerificationRequest
-} from './passkey-request-coordinator'
-import { PasskeyRendererBridge } from './passkey-renderer-bridge'
+import type { PasskeyRendererSafePrompt } from './passkey-request-coordinator'
+import { PasskeyRendererBridge, type PasskeyPasswordProofBinding } from './passkey-renderer-bridge'
 
 class FakeWebContents extends EventEmitter {
   readonly id = 29
@@ -57,21 +54,13 @@ function safePrompt(overrides: Partial<PasskeyRendererSafePrompt> = {}): Passkey
   }
 }
 
-function verificationRequest(
-  overrides: Partial<PasskeyVerificationRequest> = {}
-): PasskeyVerificationRequest {
+function proofBinding(
+  overrides: Partial<PasskeyPasswordProofBinding> = {}
+): PasskeyPasswordProofBinding {
   return {
     requestId: 'request-1',
-    kind: 'get',
-    method: 'master-password',
     selectedChoiceId: '00000000-0000-4000-8000-000000000002',
-    peerBinding: 'authenticated-peer',
-    peerEpoch: 3,
     vaultGeneration: 7,
-    lockEpoch: 1,
-    mutationEpoch: 2,
-    requestDigest: Object.freeze(Array(32).fill(0x42)),
-    origin: 'https://login.example.invalid',
     ...overrides
   }
 }
@@ -184,10 +173,10 @@ describe('PasskeyRendererBridge', () => {
       verificationMethod: 'master-password'
     })
 
-    expect(bridge.validateMasterPasswordProof(verificationRequest())).toBe(true)
-    expect(bridge.validateMasterPasswordProof(verificationRequest())).toBe(true)
-    expect(bridge.consumeMasterPasswordProof(verificationRequest())).toBe(true)
-    expect(bridge.consumeMasterPasswordProof(verificationRequest())).toBe(false)
+    expect(bridge.validateMasterPasswordProof(proofBinding())).toBe(true)
+    expect(bridge.validateMasterPasswordProof(proofBinding())).toBe(true)
+    expect(bridge.consumeMasterPasswordProof(proofBinding())).toBe(true)
+    expect(bridge.consumeMasterPasswordProof(proofBinding())).toBe(false)
     bridge.dispose()
   })
 
@@ -213,9 +202,7 @@ describe('PasskeyRendererBridge', () => {
     })
     await operation
     expect(
-      bridge.consumeMasterPasswordProof(
-        verificationRequest({ selectedChoiceId, vaultGeneration: 8 })
-      )
+      bridge.consumeMasterPasswordProof(proofBinding({ selectedChoiceId, vaultGeneration: 8 }))
     ).toBe(false)
 
     const second = bridge.requestConsent(
@@ -237,9 +224,7 @@ describe('PasskeyRendererBridge', () => {
     await second
     now += 60_001
     expect(
-      bridge.consumeMasterPasswordProof(
-        verificationRequest({ requestId: 'request-2', selectedChoiceId })
-      )
+      bridge.consumeMasterPasswordProof(proofBinding({ requestId: 'request-2', selectedChoiceId }))
     ).toBe(false)
     bridge.dispose()
   })
@@ -528,7 +513,7 @@ describe('PasskeyRendererBridge', () => {
     await expect(verifying).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     expect(
       bridge.consumeMasterPasswordProof(
-        verificationRequest({ selectedChoiceId: '00000000-0000-4000-8000-000000000001' })
+        proofBinding({ selectedChoiceId: '00000000-0000-4000-8000-000000000001' })
       )
     ).toBe(false)
     bridge.dispose()

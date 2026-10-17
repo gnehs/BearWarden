@@ -28,6 +28,37 @@ export function strictRecord(
   }
 }
 
+interface WebAuthnWindowIdentity {
+  readonly epoch: number
+  readonly capability: string
+}
+
+export function parseWindowIdentity(value: unknown): WebAuthnWindowIdentity | null {
+  const record = strictRecord(value, ['epoch', 'capability'])
+  if (
+    record === null ||
+    typeof record.epoch !== 'number' ||
+    !Number.isSafeInteger(record.epoch) ||
+    record.epoch < 0 ||
+    typeof record.capability !== 'string' ||
+    !ACCOUNT_WEBAUTHN_CAPABILITY_PATTERN.test(record.capability)
+  ) {
+    return null
+  }
+  return { epoch: record.epoch, capability: record.capability }
+}
+
+/** Reads the event discriminator without invoking getters or proxies' traps beyond a descriptor lookup. */
+export function ownDataType(value: unknown): unknown {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(value, 'type')
+    return descriptor && 'value' in descriptor ? descriptor.value : undefined
+  } catch {
+    return undefined
+  }
+}
+
 export function uniqueArgument(prefix: string): string | null {
   const values = process.argv.filter((argument) => argument.startsWith(prefix))
   if (values.length !== 1) return null

@@ -28,7 +28,7 @@ import type {
   VaultSecretField,
   TotpCodeView
 } from '../shared/vault-contract'
-import { MAX_LOGIN_AUTHORIZE_MANY_IDS, MAX_LOGIN_MOVE_MANY_IDS } from '../shared/vault-contract'
+import { MAX_LOGIN_AUTHORIZE_MANY_IDS, MAX_LOGIN_BATCH_IDS } from '../shared/vault-contract'
 import { VaultError } from './vault-errors'
 import { BITWARDEN_POLICY_TYPE } from './bitwarden-policy'
 import {
@@ -130,20 +130,9 @@ import type { ItemReadAuthorizationValidator } from './vault-service-base'
 import { VaultTransferService } from './vault-transfer-service'
 
 export type {
-  PersistedSyncData,
-  VaultMasterPasswordChangeStatus,
-  VaultMasterPasswordChangeRequest,
-  VaultMasterPasswordChangeResolutionRequest,
-  VaultMasterPasswordChangeResolution,
-  VaultPlatform,
-  VaultAccountWebAuthnRequest,
   VaultAccountWebAuthnAssertionRequester,
-  VaultAccountWebAuthnRegistrationRequest,
   VaultAccountWebAuthnRegistrationRequester,
   VaultServiceOptions,
-  VaultExportSnapshot,
-  VaultNativeAttachmentBackupSource,
-  VaultNativeAttachmentRestoreSummary,
   SshAgentVaultIdentity,
   SshAgentVaultSignRequest,
   SshAgentVaultSignResult,
@@ -1376,7 +1365,7 @@ export class VaultService extends VaultTransferService {
       if (
         !Array.isArray(request.ids) ||
         request.ids.length === 0 ||
-        request.ids.length > MAX_LOGIN_MOVE_MANY_IDS
+        request.ids.length > MAX_LOGIN_BATCH_IDS
       ) {
         throw new VaultError('INVALID_INPUT')
       }

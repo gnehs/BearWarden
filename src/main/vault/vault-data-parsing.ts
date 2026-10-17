@@ -338,7 +338,7 @@ export function parseStoredBitwardenPolicySet(value: unknown): BitwardenPolicySe
   } as BitwardenPolicySet
 }
 
-export function parseMasterPasswordChangeJournal(value: unknown): MasterPasswordChangeJournal {
+function parseMasterPasswordChangeJournal(value: unknown): MasterPasswordChangeJournal {
   if (
     !isRecord(value) ||
     (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) ||
@@ -369,7 +369,7 @@ export function parseMasterPasswordChangeJournal(value: unknown): MasterPassword
  * Tags one parseVaultData section so main-process diagnostics can identify the rejected portion
  * of the vault without exposing its contents.
  */
-export function taggedVaultSection<T>(section: string, parse: () => T): T {
+function taggedVaultSection<T>(section: string, parse: () => T): T {
   try {
     return parse()
   } catch (error) {
@@ -385,12 +385,7 @@ export function taggedVaultSection<T>(section: string, parse: () => T): T {
 }
 
 /** Tags one rejected stored item with its array index and opaque id for diagnosis. */
-export function taggedVaultItem<T>(
-  section: string,
-  index: number,
-  value: unknown,
-  parse: () => T
-): T {
+function taggedVaultItem<T>(section: string, index: number, value: unknown, parse: () => T): T {
   try {
     return parse()
   } catch (error) {

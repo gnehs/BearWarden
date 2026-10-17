@@ -11,7 +11,7 @@ import { MAX_LOGIN_URIS, MAX_URI_LENGTH } from './limits'
 import { isRecord, normalizeNullableString } from './parse-primitives'
 import type { StoredLogin } from './types'
 
-export function isVaultUriMatch(value: unknown): value is VaultUriMatch {
+function isVaultUriMatch(value: unknown): value is VaultUriMatch {
   return value === 0 || value === 1 || value === 2 || value === 3 || value === 4 || value === 5
 }
 
@@ -32,7 +32,7 @@ export function parseStoredLoginUris(value: unknown): VaultLoginUri[] {
   })
 }
 
-export function normalizeLoginUris(value: unknown): VaultLoginUri[] {
+function normalizeLoginUris(value: unknown): VaultLoginUri[] {
   if (!Array.isArray(value) || value.length > MAX_LOGIN_URIS) {
     throw new VaultError('INVALID_INPUT')
   }

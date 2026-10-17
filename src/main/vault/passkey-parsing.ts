@@ -57,7 +57,7 @@ export function normalizePasskeyCredentialIds(value: unknown): Buffer[] {
   return value.map(normalizePasskeyCredentialId)
 }
 
-export function decodeStoredPasskeyCredentialId(value: unknown): Buffer | null {
+function decodeStoredPasskeyCredentialId(value: unknown): Buffer | null {
   if (typeof value !== 'string') return null
   if (value.startsWith('b64.')) {
     const encoded = value.slice(4)
@@ -78,7 +78,7 @@ export function decodeStoredPasskeyCredentialId(value: unknown): Buffer | null {
   return PASSKEY_UUID_PATTERN.test(value) ? Buffer.from(value.replaceAll('-', ''), 'hex') : null
 }
 
-export function credentialIdIsAllowed(
+function credentialIdIsAllowed(
   credentialId: Buffer,
   allowCredentialIds: readonly Buffer[]
 ): boolean {
@@ -178,7 +178,7 @@ export function findPasskeyVaultMatches(
   )
 }
 
-export function assertUnambiguousPasskeyMatches(matches: readonly PasskeyVaultMatch[]): void {
+function assertUnambiguousPasskeyMatches(matches: readonly PasskeyVaultMatch[]): void {
   const seen = new Set<string>()
   for (const match of matches) {
     const encoded = match.credentialId.toString('base64url')

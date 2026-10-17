@@ -152,12 +152,17 @@ function mapHelperError(value: string): MacOSAutofillError {
   }
 }
 
-async function runHelper(command: string, args: readonly string[] = []): Promise<string> {
+async function availableHelperPath(): Promise<string> {
   if (process.platform !== 'darwin') throw new MacOSAutofillError('UNAVAILABLE')
   const executable = helperPath()
   await access(executable).catch(() => {
     throw new MacOSAutofillError('UNAVAILABLE')
   })
+  return executable
+}
+
+async function runHelper(command: string, args: readonly string[] = []): Promise<string> {
+  const executable = await availableHelperPath()
   return new Promise((resolve, reject) => {
     execFile(
       executable,
@@ -209,12 +214,8 @@ export class MacOSAutofillAdapter {
     credentials: AutofillCredentials,
     signal: AbortSignal
   ): Promise<void> {
-    if (process.platform !== 'darwin') throw new MacOSAutofillError('UNAVAILABLE')
     if (signal.aborted) throw new MacOSAutofillError('UNAVAILABLE')
-    const executable = helperPath()
-    await access(executable).catch(() => {
-      throw new MacOSAutofillError('UNAVAILABLE')
-    })
+    const executable = await availableHelperPath()
     await new Promise<void>((resolve, reject) => {
       const child = spawn(executable, ['fill'], {
         stdio: ['pipe', 'pipe', 'pipe'],

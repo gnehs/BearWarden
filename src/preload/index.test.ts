@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const electronMock = vi.hoisted(() => {
   let exposed: unknown
@@ -25,79 +25,102 @@ vi.mock('electron', () => ({
 
 import { IPC_CHANNELS, IPC_EVENTS, type BearWardenAPI } from '../shared/vault-contract'
 
+let api: BearWardenAPI
+
 beforeAll(async () => {
   Object.defineProperty(process, 'contextIsolated', { configurable: true, value: true })
   await import('./index')
+  api = electronMock.exposed() as BearWardenAPI
 })
 
-describe('preload AutoFill settings API', () => {
-  it('exposes narrow status and explicit permission-request calls', async () => {
-    electronMock.invoke.mockClear()
-    const api = electronMock.exposed() as BearWardenAPI
-
-    await api.autofill.status()
-    await api.autofill.requestAccessibility()
-
-    expect(electronMock.invoke.mock.calls).toEqual([
-      [IPC_CHANNELS.autofillStatus],
-      [IPC_CHANNELS.autofillRequestAccessibility]
-    ])
-    electronMock.invoke.mockClear()
-  })
+beforeEach(() => {
+  electronMock.invoke.mockClear()
+  electronMock.on.mockClear()
+  electronMock.removeListener.mockClear()
 })
 
-describe('preload diagnostic settings API', () => {
-  it('exposes a narrow error-log file-manager action', async () => {
-    electronMock.invoke.mockClear()
-    const api = electronMock.exposed() as BearWardenAPI
+const remoteCredentials = {
+  serverUrl: 'https://vault.example.invalid',
+  email: 'person@example.invalid',
+  masterPassword: 'remote password'
+}
+const deauthorizeRequest = {
+  masterPassword: 'test-master-password',
+  confirmation: 'deauthorize all sessions' as const,
+  confirm: true as const
+}
+const pendingImportRequest = { masterPassword: 'test-master-password', confirmRetry: true as const }
+const prefetchRequest = { ids: ['10000000-0000-4000-8000-000000000001'] }
+const csvExportRequest = {
+  masterPassword: 'test-master-password',
+  format: 'bitwarden-csv' as const
+}
+const purgeRequest = {
+  masterPassword: 'test-master-password',
+  confirmation: 'PURGE' as const,
+  confirmPurge: true as const
+}
 
-    await api.settings.showErrorLog()
+describe('preload request forwarding', () => {
+  it.each<[string, () => Promise<unknown>, unknown[][]]>([
+    [
+      'AutoFill status and explicit permission request',
+      async () => {
+        await api.autofill.status()
+        await api.autofill.requestAccessibility()
+      },
+      [[IPC_CHANNELS.autofillStatus], [IPC_CHANNELS.autofillRequestAccessibility]]
+    ],
+    [
+      'error-log file-manager action',
+      () => api.settings.showErrorLog(),
+      [[IPC_CHANNELS.settingsShowErrorLog]]
+    ],
+    [
+      'email two-factor code request',
+      () => api.sync.sendEmailTwoFactorCode(remoteCredentials),
+      [[IPC_CHANNELS.syncSendEmailTwoFactorCode, remoteCredentials]]
+    ],
+    [
+      'new-device OTP resend request',
+      () => api.sync.resendNewDeviceOtp(remoteCredentials),
+      [[IPC_CHANNELS.syncResendNewDeviceOtp, remoteCredentials]]
+    ],
+    [
+      'session deauthorization request',
+      () => api.accountSecurity.deauthorizeSessions(deauthorizeRequest),
+      [[IPC_CHANNELS.accountDeauthorizeSessions, deauthorizeRequest]]
+    ],
+    [
+      'pending import resolution request',
+      () => api.sync.resolvePendingImport(pendingImportRequest),
+      [[IPC_CHANNELS.syncResolvePendingImport, pendingImportRequest]]
+    ],
+    [
+      'bounded visible-detail prefetch request',
+      () => api.logins.prefetch(prefetchRequest),
+      [[IPC_CHANNELS.loginPrefetch, prefetchRequest]]
+    ],
+    [
+      'passwordless Bitwarden CSV export request',
+      () => api.portability.export(csvExportRequest),
+      [[IPC_CHANNELS.vaultExport, csvExportRequest]]
+    ],
+    [
+      'personal vault purge request',
+      () => api.sync.purgePersonalVault(purgeRequest),
+      [[IPC_CHANNELS.syncPurgePersonalVault, purgeRequest]]
+    ]
+  ])('forwards only the %s through its dedicated channel', async (_label, call, expected) => {
+    await call()
 
-    expect(electronMock.invoke).toHaveBeenCalledWith(IPC_CHANNELS.settingsShowErrorLog)
-    electronMock.invoke.mockClear()
-  })
-})
-
-describe('preload sync API', () => {
-  it('passes only the typed email two-factor request through its dedicated channel', async () => {
-    electronMock.invoke.mockClear()
-    const api = electronMock.exposed() as BearWardenAPI
-    const request = {
-      serverUrl: 'https://vault.example.invalid',
-      email: 'person@example.invalid',
-      masterPassword: 'remote password'
-    }
-
-    await api.sync.sendEmailTwoFactorCode(request)
-
-    expect(electronMock.invoke).toHaveBeenCalledWith(
-      IPC_CHANNELS.syncSendEmailTwoFactorCode,
-      request
-    )
-    electronMock.invoke.mockClear()
-  })
-
-  it('passes only the typed new-device resend request through its dedicated channel', async () => {
-    electronMock.invoke.mockClear()
-    const api = electronMock.exposed() as BearWardenAPI
-    const request = {
-      serverUrl: 'https://vault.example.invalid',
-      email: 'person@example.invalid',
-      masterPassword: 'remote password'
-    }
-
-    await api.sync.resendNewDeviceOtp(request)
-
-    expect(electronMock.invoke).toHaveBeenCalledWith(IPC_CHANNELS.syncResendNewDeviceOtp, request)
-    electronMock.invoke.mockClear()
+    expect(electronMock.invoke.mock.calls).toEqual(expected)
   })
 })
 
 describe('preload account API', () => {
   it('exposes the typed namespace with only narrow account IPC payloads', async () => {
-    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
     const accountId = '22222222-2222-4222-8222-222222222222'
-
     const accountIds = [accountId, '33333333-3333-4333-8333-333333333333']
 
     expect(Object.keys(api.accounts)).toEqual([
@@ -126,8 +149,6 @@ describe('preload account API', () => {
   })
 
   it('exposes only data-only profile mutation requests', async () => {
-    electronMock.invoke.mockClear()
-    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
     const nameRequest = { name: '', expectedName: 'Before' }
     const avatarRequest = { avatarColor: '#AABBCC', expectedAvatarColor: null }
 
@@ -140,38 +161,16 @@ describe('preload account API', () => {
     ])
   })
 
-  it('forwards only the explicit session deauthorization request', async () => {
-    electronMock.invoke.mockClear()
-    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
-    const request = {
-      masterPassword: 'test-master-password',
-      confirmation: 'deauthorize all sessions' as const,
-      confirm: true as const
-    }
-
-    await api.accountSecurity.deauthorizeSessions(request)
-
-    expect(electronMock.invoke).toHaveBeenCalledWith(
-      IPC_CHANNELS.accountDeauthorizeSessions,
-      request
-    )
-  })
-
   it('exposes short-lived login approval operations and a removable event listener', async () => {
-    electronMock.invoke.mockClear()
-    electronMock.on.mockClear()
-    electronMock.removeListener.mockClear()
-    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
     const response = {
       token: '22222222-2222-4222-8222-222222222222',
       fingerprint: 'alpha-bravo-charlie-delta-echo-foxtrot',
       approved: false
     }
-    const listener = vi.fn()
 
     await api.accountSecurity.pendingLoginApprovals()
     await api.accountSecurity.respondLoginApproval(response)
-    const unsubscribe = api.accountSecurity.onLoginApprovalRequested(listener)
+    const unsubscribe = api.accountSecurity.onLoginApprovalRequested(vi.fn())
 
     expect(electronMock.invoke.mock.calls).toEqual([
       [IPC_CHANNELS.accountPendingLoginApprovals],
@@ -189,8 +188,6 @@ describe('preload account API', () => {
   })
 
   it('exposes only the narrow account WebAuthn enrollment operations', async () => {
-    electronMock.invoke.mockClear()
-    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
     const listRequest = { masterPassword: 'test-master-password' }
     const enrollRequest = { masterPassword: 'test-master-password', name: 'USB key' }
     const removeRequest = { id: 1, masterPassword: 'test-master-password', confirm: true as const }
@@ -204,21 +201,11 @@ describe('preload account API', () => {
       [IPC_CHANNELS.accountSecurityEnrollWebAuthnKey, enrollRequest],
       [IPC_CHANNELS.accountSecurityRemoveWebAuthnKey, removeRequest]
     ])
-    expect(Object.keys(api.accountSecurity)).toContain('listWebAuthnKeys')
-    expect(Object.keys(api.accountSecurity)).toContain('enrollWebAuthnKey')
-    expect(Object.keys(api.accountSecurity)).toContain('removeWebAuthnKey')
   })
 })
 
-describe('preload pending import API', () => {
-  it('exposes one narrow request-response method', async () => {
-    electronMock.invoke.mockClear()
-    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
-    const request = { masterPassword: 'test-master-password', confirmRetry: true as const }
-
-    await api.sync.resolvePendingImport(request)
-
-    expect(electronMock.invoke).toHaveBeenCalledWith(IPC_CHANNELS.syncResolvePendingImport, request)
+describe('preload sync API', () => {
+  it('exposes exactly the sync namespace methods', () => {
     expect(Object.keys(api.sync)).toEqual([
       'status',
       'connect',
@@ -234,22 +221,8 @@ describe('preload pending import API', () => {
   })
 })
 
-describe('preload visible detail prefetch API', () => {
-  it('forwards one bounded data-only request through its dedicated channel', async () => {
-    electronMock.invoke.mockClear()
-    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
-    const request = { ids: ['10000000-0000-4000-8000-000000000001'] }
-
-    await api.logins.prefetch(request)
-
-    expect(electronMock.invoke).toHaveBeenCalledWith(IPC_CHANNELS.loginPrefetch, request)
-  })
-})
-
 describe('preload shared login read API', () => {
   it('forwards read-only shared actions through dedicated channels', async () => {
-    electronMock.invoke.mockClear()
-    const api = electronMock.exposed() as BearWardenAPI
     const id = '80000000-0000-4000-8000-000000000001'
     const fieldRequest = { id, field: 'password' as const }
     const customFieldRequest = {
@@ -287,8 +260,6 @@ describe('preload shared login read API', () => {
 
 describe('preload password history API', () => {
   it('forwards only narrow metadata, reveal, copy, and restore requests', async () => {
-    electronMock.invoke.mockClear()
-    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
     const id = '10000000-0000-4000-8000-000000000001'
     const locator = {
       id,
@@ -311,43 +282,8 @@ describe('preload password history API', () => {
   })
 })
 
-describe('preload portability API', () => {
-  it('forwards only the passwordless Bitwarden CSV request object', async () => {
-    electronMock.invoke.mockClear()
-    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
-    const request = {
-      masterPassword: 'test-master-password',
-      format: 'bitwarden-csv' as const
-    }
-
-    await api.portability.export(request)
-
-    expect(electronMock.invoke).toHaveBeenCalledWith(IPC_CHANNELS.vaultExport, request)
-  })
-})
-
-describe('preload personal vault purge API', () => {
-  it('passes only the typed request through its dedicated channel', async () => {
-    electronMock.invoke.mockClear()
-    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
-    const request = {
-      masterPassword: 'test-master-password',
-      confirmation: 'PURGE' as const,
-      confirmPurge: true as const
-    }
-
-    await api.sync.purgePersonalVault(request)
-
-    expect(electronMock.invoke).toHaveBeenCalledWith(IPC_CHANNELS.syncPurgePersonalVault, request)
-  })
-})
-
 describe('preload application menu API', () => {
   it('forwards typed application-menu commands and exposes a removable copy listener', async () => {
-    electronMock.invoke.mockClear()
-    electronMock.on.mockClear()
-    electronMock.removeListener.mockClear()
-    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
     const listener = vi.fn()
 
     await api.applicationMenu.execute('toggle-full-screen')
@@ -378,10 +314,6 @@ describe('preload application menu API', () => {
 
 describe('preload updater API', () => {
   it('exposes only narrow commands and a removable renderer-safe state listener', async () => {
-    electronMock.invoke.mockClear()
-    electronMock.on.mockClear()
-    electronMock.removeListener.mockClear()
-    const api: BearWardenAPI = electronMock.exposed() as BearWardenAPI
     const listener = vi.fn()
 
     expect(Object.keys(api.updater)).toEqual([

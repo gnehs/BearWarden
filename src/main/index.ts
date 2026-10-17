@@ -13,7 +13,7 @@ import {
   session,
   shell
 } from 'electron'
-import { DEFAULT_AUTOFILL_SHORTCUT } from '../shared/autofill-shortcuts'
+import { DEFAULT_AUTOFILL_SHORTCUT, type AutofillShortcut } from '../shared/autofill-shortcuts'
 import {
   IPC_CHANNELS,
   IPC_EVENTS,
@@ -38,7 +38,12 @@ import { ErrorLogService } from './error-log'
 import { FocusTouchIdUnlockController } from './focus-touch-id-unlock'
 import { installApplicationMenu } from './application-menu'
 import { registerApplicationMenuIpc } from './application-menu-ipc'
-import { initializeMainI18n, initializeMainI18nFromPreference, translateMain } from './i18n'
+import {
+  initializeMainI18n,
+  initializeMainI18nFromPreference,
+  translateMain,
+  type MainMessageId
+} from './i18n'
 import { windowChromeOptions } from './window-chrome'
 import { isTrustedVaultSender, registerVaultIpc, RepromptAuthorizationStore } from './vault-ipc'
 import { VaultService } from './vault-service'
@@ -133,6 +138,9 @@ const SHUTDOWN_GRACE_PERIOD_MS = 3_000
  * running process whose settings, updater and vault services reject every request.
  */
 const SHUTDOWN_EXIT_DEADLINE_MS = 5_000
+const autofillAvailable = process.platform === 'darwin'
+const startAtLoginAvailable =
+  app.isPackaged && (process.platform === 'darwin' || process.platform === 'win32')
 const rendererWebPreferences: Electron.WebPreferences = {
   preload: join(__dirname, '../preload/index.js'),
   sandbox: true,
@@ -167,10 +175,9 @@ function applyAutofillSettings({
   shortcut
 }: {
   enabled: boolean
-  shortcut: import('../shared/autofill-shortcuts').AutofillShortcut
+  shortcut: AutofillShortcut
 }): boolean {
-  const available = process.platform === 'darwin'
-  if (!available || !enabled) {
+  if (!autofillAvailable || !enabled) {
     autofillCoordinator?.cancel()
     autofillShortcutRegistration.apply(false, shortcut)
     return true
@@ -179,7 +186,7 @@ function applyAutofillSettings({
 }
 
 async function getAutofillFeatureStatus(prompt = false): Promise<AutofillFeatureStatus> {
-  const available = process.platform === 'darwin'
+  const available = autofillAvailable
   // A conflicting app may release the shortcut after BearWarden starts; status refresh doubles as a
   // safe retry so the user does not have to toggle the feature off and on again.
   if (
@@ -412,21 +419,25 @@ async function chooseSavePath(options: Electron.SaveDialogOptions): Promise<stri
   return result.canceled || !result.filePath ? null : result.filePath
 }
 
+const EXPORT_DIALOGS = {
+  bwbackup: { title: 'export.encryptedVaultTitle', filter: 'export.nativeBackupFilter' },
+  zip: { title: 'export.bitwardenZipTitle', filter: 'export.bitwardenZipFilter' },
+  csv: { title: 'export.bitwardenCsvTitle', filter: 'export.bitwardenCsvFilter' },
+  json: { title: 'export.encryptedVaultTitle', filter: 'export.bitwardenJsonFilter' }
+} as const satisfies Record<string, { title: MainMessageId; filter: MainMessageId }>
+const EXPORT_DIALOG_EXTENSIONS = Object.keys(EXPORT_DIALOGS) as (keyof typeof EXPORT_DIALOGS)[]
+
 const sensitiveClipboard = new SensitiveClipboard(clipboard)
 const focusTouchIdUnlockControllers = new WeakMap<BrowserWindow, FocusTouchIdUnlockController>()
 
-function parseAllowedExternalUrl(value: string): URL | null {
-  try {
-    const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:' ? url : null
-  } catch {
-    return null
-  }
-}
-
 async function openAllowedExternalUrl(value: string): Promise<void> {
-  const url = parseAllowedExternalUrl(value)
-  if (!url) return
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    return
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return
   await shell.openExternal(url.toString())
 }
 
@@ -921,29 +932,15 @@ if (hasSingleInstanceLock)
     })
     portability = new VaultPortabilityService(vault, {
       chooseExportPath: async (defaultName) => {
-        const native = defaultName.endsWith('.bwbackup')
-        const zip = defaultName.endsWith('.zip')
-        const csv = defaultName.endsWith('.csv')
+        const extension =
+          EXPORT_DIALOG_EXTENSIONS.find((candidate) => defaultName.endsWith(`.${candidate}`)) ??
+          'json'
+        const dialog = EXPORT_DIALOGS[extension]
         const options = {
-          title: zip
-            ? translateMain('export.bitwardenZipTitle')
-            : csv
-              ? translateMain('export.bitwardenCsvTitle')
-              : translateMain('export.encryptedVaultTitle'),
+          title: translateMain(dialog.title),
           defaultPath: defaultName,
           buttonLabel: translateMain('export.button'),
-          filters: [
-            native
-              ? {
-                  name: translateMain('export.nativeBackupFilter'),
-                  extensions: ['bwbackup']
-                }
-              : zip
-                ? { name: translateMain('export.bitwardenZipFilter'), extensions: ['zip'] }
-                : csv
-                  ? { name: translateMain('export.bitwardenCsvFilter'), extensions: ['csv'] }
-                  : { name: translateMain('export.bitwardenJsonFilter'), extensions: ['json'] }
-          ],
+          filters: [{ name: translateMain(dialog.filter), extensions: [extension] }],
           properties: ['showOverwriteConfirmation' as const]
         }
         return chooseSavePath(options)
@@ -1018,9 +1015,8 @@ if (hasSingleInstanceLock)
         },
         applySshAgentSettings,
         getStartAtLoginStatus: () => {
-          const available =
-            app.isPackaged && (process.platform === 'darwin' || process.platform === 'win32')
-          if (!available) return { available: false, enabled: false, needsApproval: false }
+          if (!startAtLoginAvailable)
+            return { available: false, enabled: false, needsApproval: false }
           try {
             const loginItem = app.getLoginItemSettings()
             return {
@@ -1033,9 +1029,7 @@ if (hasSingleInstanceLock)
           }
         },
         setStartAtLogin: (enabled) => {
-          if (!app.isPackaged || (process.platform !== 'darwin' && process.platform !== 'win32')) {
-            return false
-          }
+          if (!startAtLoginAvailable) return false
           try {
             app.setLoginItemSettings({ openAtLogin: enabled })
             return app.getLoginItemSettings().openAtLogin === enabled
@@ -1108,15 +1102,8 @@ if (hasSingleInstanceLock)
         hidePicker: hideAutofillWindow,
         openMain: () => focusMainWindow()
       })
-      const trustedAutofillSender = (event: Electron.IpcMainInvokeEvent): boolean => {
-        const window = autofillWindow
-        return Boolean(
-          window &&
-          !window.isDestroyed() &&
-          event.sender === window.webContents &&
-          event.senderFrame === window.webContents.mainFrame
-        )
-      }
+      const trustedAutofillSender = (event: Electron.IpcMainInvokeEvent): boolean =>
+        isTrustedVaultSender(event, autofillWindow)
       ipcMain.handle(IPC_CHANNELS.autofillCurrent, (event) => {
         if (!trustedAutofillSender(event)) return null
         return autofillCoordinator?.current() ?? null
@@ -1147,19 +1134,10 @@ if (hasSingleInstanceLock)
       })
     }
 
-    const trustedAutofillSettingsSender = (event: Electron.IpcMainInvokeEvent): boolean => {
-      const window = mainWindow
-      return Boolean(
-        window &&
-        !window.isDestroyed() &&
-        event.sender === window.webContents &&
-        event.senderFrame === window.webContents.mainFrame
-      )
-    }
     const trustedAutofillPermissionSender = (event: Electron.IpcMainInvokeEvent): boolean => {
       const window = mainWindow
       return Boolean(
-        trustedAutofillSettingsSender(event) &&
+        isTrustedVaultSender(event, window) &&
         window?.isVisible() &&
         window.isFocused() &&
         app.isActive()
@@ -1172,7 +1150,7 @@ if (hasSingleInstanceLock)
       accessibilityTrusted: false
     }
     ipcMain.handle(IPC_CHANNELS.autofillStatus, (event) =>
-      trustedAutofillSettingsSender(event)
+      isTrustedVaultSender(event, mainWindow)
         ? getAutofillFeatureStatus(false)
         : unavailableAutofillStatus
     )

@@ -51,7 +51,7 @@ export const ITEM_FIELD_NAMES = [
 
 export type ItemFieldName = (typeof ITEM_FIELD_NAMES)[number]
 
-export const ITEM_FIELDS_BY_TYPE: Record<VaultItemType, readonly ItemFieldName[]> = {
+const ITEM_FIELDS_BY_TYPE: Record<VaultItemType, readonly ItemFieldName[]> = {
   login: ['username', 'password', 'totp', 'uri'],
   card: ['cardholderName', 'brand', 'number', 'expMonth', 'expYear', 'code'],
   identity: [
@@ -78,7 +78,7 @@ export const ITEM_FIELDS_BY_TYPE: Record<VaultItemType, readonly ItemFieldName[]
   sshKey: ['privateKey', 'publicKey', 'fingerprint']
 }
 
-export const SECRET_FIELDS_BY_TYPE: Record<VaultItemType, readonly VaultSecretField[]> = {
+const SECRET_FIELDS_BY_TYPE: Record<VaultItemType, readonly VaultSecretField[]> = {
   login: ['password'],
   card: ['number', 'code'],
   identity: ['ssn', 'passportNumber', 'licenseNumber'],
@@ -94,7 +94,7 @@ export const EDITOR_SECRET_FIELDS_BY_TYPE: Record<
   login: ['password', 'totp']
 }
 
-export const COPY_FIELDS_BY_TYPE: Record<VaultItemType, readonly VaultCopyField[]> = {
+const COPY_FIELDS_BY_TYPE: Record<VaultItemType, readonly VaultCopyField[]> = {
   login: ['username', 'password', 'uri'],
   card: ['number', 'code', 'cardholderName', 'brand', 'cardExpiration'],
   identity: ['email', 'phone', 'ssn', 'identityUsername', 'passportNumber', 'licenseNumber'],

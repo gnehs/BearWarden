@@ -19,10 +19,8 @@ const MAX_PKCS8_BYTES = 1024
 const MAX_UINT32 = 0xffff_ffff
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/u
+/** Bitwarden's software authenticator AAGUID, d548826e-79b4-db40-a3d8-11116f7e8349. */
 const AAGUID_BYTES = Buffer.from('d548826e79b4db40a3d811116f7e8349', 'hex')
-
-/** The AAGUID used by Bitwarden's software authenticator. */
-export const BITWARDEN_AAGUID = 'd548826e-79b4-db40-a3d8-11116f7e8349'
 
 export type PasskeyAuthenticatorErrorCode =
   'INVALID_INPUT' | 'INVALID_CREDENTIAL' | 'RP_ID_MISMATCH' | 'COUNTER_OVERFLOW'
@@ -173,7 +171,7 @@ function parseCounter(value: unknown): number {
     fail('INVALID_CREDENTIAL')
   }
   const counter = Number(value)
-  if (!Number.isSafeInteger(counter) || counter < 0 || counter > MAX_UINT32) {
+  if (!Number.isSafeInteger(counter) || counter > MAX_UINT32) {
     fail('INVALID_CREDENTIAL')
   }
   return counter
@@ -219,7 +217,7 @@ function authenticatorData(
   userVerified: boolean,
   attestedCredentialData?: Buffer
 ): Buffer {
-  const rpIdHash = createPublicKeyHash(rpId)
+  const rpIdHash = createHash('sha256').update(rpId, 'ascii').digest()
   const header = Buffer.alloc(37)
   rpIdHash.copy(header, 0)
   header[32] = flags(attestedCredentialData !== undefined, userPresent, userVerified)
@@ -227,11 +225,6 @@ function authenticatorData(
   return attestedCredentialData === undefined
     ? header
     : Buffer.concat([header, attestedCredentialData])
-}
-
-function createPublicKeyHash(rpId: string): Buffer {
-  // Kept separate to make it impossible to hash a URL or display name accidentally.
-  return createHash('sha256').update(Buffer.from(rpId, 'ascii')).digest()
 }
 
 function validateBoolean(value: unknown, code: PasskeyAuthenticatorErrorCode): boolean {

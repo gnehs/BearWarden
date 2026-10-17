@@ -93,16 +93,12 @@ export class AppUpdaterController {
       this.updater.on('error', this.onUpdaterError)
     }
 
-    ipcMain.handle(IPC_CHANNELS.appUpdateCheck, (event) => this.handleCheck(event))
-    ipcMain.handle(IPC_CHANNELS.appUpdateDownload, (event) => this.handleDownload(event))
-    ipcMain.handle(IPC_CHANNELS.appUpdateInstall, (event) => this.handleInstall(event))
-    ipcMain.handle(IPC_CHANNELS.appUpdateOpenReleasePage, (event) =>
-      this.handleOpenReleasePage(event)
-    )
-    ipcMain.handle(IPC_CHANNELS.appUpdateOpenRepositoryPage, (event) =>
-      this.handleOpenRepositoryPage(event)
-    )
-    ipcMain.handle(IPC_CHANNELS.appUpdateState, (event) => this.handleState(event))
+    for (const [channel, handle] of this.ipcHandlers()) {
+      ipcMain.handle(channel, (event) => {
+        this.assertAttachedRenderer(event)
+        return handle()
+      })
+    }
   }
 
   get state(): AppUpdateState {
@@ -171,12 +167,7 @@ export class AppUpdaterController {
     if (this.disposed) return
     this.disposed = true
     this.attachedWindow = null
-    ipcMain.removeHandler(IPC_CHANNELS.appUpdateCheck)
-    ipcMain.removeHandler(IPC_CHANNELS.appUpdateDownload)
-    ipcMain.removeHandler(IPC_CHANNELS.appUpdateInstall)
-    ipcMain.removeHandler(IPC_CHANNELS.appUpdateOpenReleasePage)
-    ipcMain.removeHandler(IPC_CHANNELS.appUpdateOpenRepositoryPage)
-    ipcMain.removeHandler(IPC_CHANNELS.appUpdateState)
+    for (const [channel] of this.ipcHandlers()) ipcMain.removeHandler(channel)
 
     if (!this.enabled) return
     this.updater.removeListener('checking-for-update', this.onCheckingForUpdate)
@@ -193,34 +184,15 @@ export class AppUpdaterController {
     }
   }
 
-  private handleCheck(event: IpcMainInvokeEvent): Promise<AppUpdateState> {
-    this.assertAttachedRenderer(event)
-    return this.check()
-  }
-
-  private handleDownload(event: IpcMainInvokeEvent): Promise<AppUpdateState> {
-    this.assertAttachedRenderer(event)
-    return this.download()
-  }
-
-  private handleInstall(event: IpcMainInvokeEvent): void {
-    this.assertAttachedRenderer(event)
-    this.quitAndInstall()
-  }
-
-  private handleOpenReleasePage(event: IpcMainInvokeEvent): Promise<void> {
-    this.assertAttachedRenderer(event)
-    return this.openReleasePage()
-  }
-
-  private handleOpenRepositoryPage(event: IpcMainInvokeEvent): Promise<void> {
-    this.assertAttachedRenderer(event)
-    return this.openRepositoryPage()
-  }
-
-  private handleState(event: IpcMainInvokeEvent): AppUpdateState {
-    this.assertAttachedRenderer(event)
-    return this.state
+  private ipcHandlers(): Array<[channel: string, handle: () => unknown]> {
+    return [
+      [IPC_CHANNELS.appUpdateCheck, () => this.check()],
+      [IPC_CHANNELS.appUpdateDownload, () => this.download()],
+      [IPC_CHANNELS.appUpdateInstall, () => this.quitAndInstall()],
+      [IPC_CHANNELS.appUpdateOpenReleasePage, () => this.openReleasePage()],
+      [IPC_CHANNELS.appUpdateOpenRepositoryPage, () => this.openRepositoryPage()],
+      [IPC_CHANNELS.appUpdateState, () => this.state]
+    ]
   }
 
   private setState(

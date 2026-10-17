@@ -25,8 +25,10 @@ import {
   type AccountWebAuthnRegistrationWindowIdentity
 } from './account-webauthn-registration-window-protocol'
 import {
-  ACCOUNT_WEBAUTHN_CAPABILITY_PATTERN,
   containsUnsafePathSyntax,
+  ACCOUNT_WEBAUTHN_CAPABILITY_PATTERN,
+  ownDataType,
+  parseWindowIdentity,
   strictRecord
 } from './account-webauthn-window-primitives'
 
@@ -41,7 +43,7 @@ export type AccountWebAuthnRegistrationWindowErrorCode =
   'INVALID_CONFIGURATION' | 'CEREMONY_FAILED' | 'TIMEOUT' | 'ABORTED' | 'CANCELLED' | 'DISPOSED'
 
 /** Stable errors deliberately never echo the origin, challenge, credential, or remote content. */
-export class AccountWebAuthnRegistrationWindowError extends Error {
+class AccountWebAuthnRegistrationWindowError extends Error {
   constructor(
     readonly code: AccountWebAuthnRegistrationWindowErrorCode,
     readonly reason?: AccountWebAuthnRegistrationFailureReason
@@ -81,58 +83,30 @@ interface ActiveRegistration {
   cleaning: boolean
 }
 
-function parseIdentity(value: unknown): AccountWebAuthnRegistrationWindowIdentity | null {
-  const record = strictRecord(value, ['epoch', 'capability'])
-  if (
-    record === null ||
-    typeof record.epoch !== 'number' ||
-    !Number.isSafeInteger(record.epoch) ||
-    record.epoch < 0 ||
-    typeof record.capability !== 'string' ||
-    !ACCOUNT_WEBAUTHN_CAPABILITY_PATTERN.test(record.capability)
-  ) {
-    return null
-  }
-  return { epoch: record.epoch, capability: record.capability }
-}
+const FAILURE_REASONS: ReadonlySet<unknown> = new Set<AccountWebAuthnRegistrationFailureReason>([
+  'aborted',
+  'invalid-state',
+  'not-allowed',
+  'not-supported',
+  'security',
+  'unknown'
+])
 
 function parseWindowEvent(value: unknown): AccountWebAuthnRegistrationWindowEvent | null {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
-  let type: unknown
-  try {
-    const descriptor = Object.getOwnPropertyDescriptor(value, 'type')
-    if (!descriptor || !('value' in descriptor)) return null
-    type = descriptor.value
-  } catch {
-    return null
-  }
-  const keys =
+  const type = ownDataType(value)
+  if (type !== 'success' && type !== 'failure') return null
+  const record = strictRecord(
+    value,
     type === 'success'
       ? ['epoch', 'capability', 'type', 'attestation']
       : ['epoch', 'capability', 'type', 'reason']
-  const record = strictRecord(value, keys)
-  const identity = parseIdentity(
+  )
+  const identity = parseWindowIdentity(
     record === null ? null : { epoch: record.epoch, capability: record.capability }
   )
   if (record === null || identity === null) return null
-  if (record.type === 'success') {
-    return { ...identity, type: 'success', attestation: record.attestation }
-  }
-  const allowedReasons = new Set<AccountWebAuthnRegistrationFailureReason>([
-    'aborted',
-    'invalid-state',
-    'not-allowed',
-    'not-supported',
-    'security',
-    'unknown'
-  ])
-  if (
-    record.type !== 'failure' ||
-    typeof record.reason !== 'string' ||
-    !allowedReasons.has(record.reason as AccountWebAuthnRegistrationFailureReason)
-  ) {
-    return null
-  }
+  if (type === 'success') return { ...identity, type: 'success', attestation: record.attestation }
+  if (!FAILURE_REASONS.has(record.reason)) return null
   return {
     ...identity,
     type: 'failure',
@@ -426,7 +400,7 @@ export class AccountWebAuthnRegistrationWindowController {
     value: unknown
   ): AccountWebAuthnRegistrationWindowConfiguration | null => {
     const active = this.active
-    const identity = parseIdentity(value)
+    const identity = parseWindowIdentity(value)
     if (
       active === null ||
       active.initConsumed ||

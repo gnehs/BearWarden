@@ -726,81 +726,37 @@ describe('registerVaultIpc settings validation', () => {
     return { event: { sender: webContents, senderFrame: mainFrame }, settings }
   }
 
-  it('whitelists and validates SSH agent settings before they reach persistence', async () => {
-    const { event, settings } = settingsHarness()
-    const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!
+  it.each([
+    {
+      valid: { sshAgentEnabled: true, sshAgentPromptBehavior: 'rememberUntilLock' },
+      invalid: [
+        { sshAgentEnabled: 'true' },
+        { sshAgentPromptBehavior: 'ask-every-time' },
+        { sshAgentPromptBehavior: null },
+        { sshAgentEnabled: true, privateKey: 'must-not-be-accepted' }
+      ]
+    },
+    { valid: { autofillEnabled: true }, invalid: [{ autofillEnabled: 'true' }] },
+    {
+      valid: { autofillShortcut: 'Command+Control+K' },
+      invalid: [{ autofillShortcut: 'Command+\\' }]
+    },
+    { valid: { startAtLogin: true }, invalid: [{ startAtLogin: 'true' }, { startAtLogin: null }] },
+    { valid: { defaultSort: 'frequency' }, invalid: [{ defaultSort: 'popular' }] }
+  ])(
+    'whitelists and validates $valid before it reaches persistence',
+    async ({ valid, invalid }) => {
+      const { event, settings } = settingsHarness()
+      const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!
 
-    await expect(
-      update(event, { sshAgentEnabled: true, sshAgentPromptBehavior: 'rememberUntilLock' })
-    ).resolves.toEqual({ sshAgentEnabled: true, sshAgentPromptBehavior: 'rememberUntilLock' })
-    expect(settings.update).toHaveBeenCalledWith({
-      sshAgentEnabled: true,
-      sshAgentPromptBehavior: 'rememberUntilLock'
-    })
-
-    for (const invalid of [
-      { sshAgentEnabled: 'true' },
-      { sshAgentPromptBehavior: 'ask-every-time' },
-      { sshAgentPromptBehavior: null },
-      { sshAgentEnabled: true, privateKey: 'must-not-be-accepted' }
-    ]) {
-      await expect(update(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+      await expect(update(event, valid)).resolves.toEqual(valid)
+      expect(settings.update).toHaveBeenCalledWith(valid)
+      for (const input of invalid) {
+        await expect(update(event, input)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+      }
+      expect(settings.update).toHaveBeenCalledTimes(1)
     }
-    expect(settings.update).toHaveBeenCalledTimes(1)
-  })
-
-  it('accepts only a boolean AutoFill opt-in preference', async () => {
-    const { event, settings } = settingsHarness()
-    const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!
-
-    await expect(update(event, { autofillEnabled: true })).resolves.toEqual({
-      autofillEnabled: true
-    })
-    expect(settings.update).toHaveBeenCalledWith({ autofillEnabled: true })
-    await expect(update(event, { autofillEnabled: 'true' })).rejects.toThrow(
-      'BEARWARDEN:INVALID_INPUT'
-    )
-  })
-
-  it('accepts only curated AutoFill shortcuts', async () => {
-    const { event, settings } = settingsHarness()
-    const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!
-
-    await expect(update(event, { autofillShortcut: 'Command+Control+K' })).resolves.toEqual({
-      autofillShortcut: 'Command+Control+K'
-    })
-    expect(settings.update).toHaveBeenCalledWith({ autofillShortcut: 'Command+Control+K' })
-    await expect(update(event, { autofillShortcut: 'Command+\\' })).rejects.toThrow(
-      'BEARWARDEN:INVALID_INPUT'
-    )
-  })
-
-  it('whitelists and validates the start-at-login preference', async () => {
-    const { event, settings } = settingsHarness()
-    const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!
-
-    await expect(update(event, { startAtLogin: true })).resolves.toEqual({ startAtLogin: true })
-    expect(settings.update).toHaveBeenCalledWith({ startAtLogin: true })
-
-    for (const invalid of [{ startAtLogin: 'true' }, { startAtLogin: null }]) {
-      await expect(update(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
-    }
-    expect(settings.update).toHaveBeenCalledTimes(1)
-  })
-
-  it('accepts frequency as a default sort and rejects unknown values', async () => {
-    const { event, settings } = settingsHarness()
-    const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!
-
-    await expect(update(event, { defaultSort: 'frequency' })).resolves.toEqual({
-      defaultSort: 'frequency'
-    })
-    expect(settings.update).toHaveBeenCalledWith({ defaultSort: 'frequency' })
-    await expect(update(event, { defaultSort: 'popular' })).rejects.toThrow(
-      'BEARWARDEN:INVALID_INPUT'
-    )
-    expect(settings.update).toHaveBeenCalledTimes(1)
-  })
+  )
 
   it('accepts only supported application language preferences', async () => {
     const { event, settings } = settingsHarness()
@@ -1467,6 +1423,22 @@ describe('registerVaultIpc master-password transaction', () => {
     expect(changeMasterPassword).toHaveBeenCalledOnce()
     expect(h.settings.disableTouchId).toHaveBeenCalledOnce()
     expect(input).toEqual({ currentPassword: '', newPassword: '' })
+  })
+
+  it('rethrows a failure that never started a transaction and keeps Touch ID enabled', async () => {
+    const h = harness({
+      changeMasterPassword: vi.fn(async () => {
+        throw new VaultError('INVALID_MASTER_PASSWORD')
+      })
+    })
+
+    await expect(
+      electronMock.handlers.get(IPC_CHANNELS.vaultMasterPasswordChange)!(h.event, {
+        currentPassword: 'correct horse battery staple',
+        newPassword: 'replacement horse battery staple'
+      })
+    ).rejects.toThrow('BEARWARDEN:INVALID_MASTER_PASSWORD')
+    expect(h.settings.disableTouchId).not.toHaveBeenCalled()
   })
 
   it('rejects accessors and symbol keys without invoking getters, and compares NFC passwords', async () => {
@@ -3992,31 +3964,16 @@ describe('registerVaultIpc reprompt gate', () => {
   })
 
   it.each([
-    [
-      { algorithm: 'password', options: { length: 20, minNumber: 2 } },
-      { algorithm: 'password', options: { length: 20, minNumber: 2 } }
-    ],
-    [
-      { algorithm: 'passphrase', options: { wordCount: 8, separator: ' ', capitalize: true } },
-      { algorithm: 'passphrase', options: { wordCount: 8, separator: ' ', capitalize: true } }
-    ],
-    [
-      { algorithm: 'username', options: { includeNumber: true } },
-      { algorithm: 'username', options: { includeNumber: true } }
-    ],
-    [
-      { algorithm: 'subaddress', email: 'bear@example.invalid' },
-      { algorithm: 'subaddress', email: 'bear@example.invalid' }
-    ],
-    [
-      { algorithm: 'catchall', domain: 'example.invalid' },
-      { algorithm: 'catchall', domain: 'example.invalid' }
-    ]
-  ])('parses an exact generator request %#', async (input, expected) => {
+    { algorithm: 'password', options: { length: 20, minNumber: 2 } },
+    { algorithm: 'passphrase', options: { wordCount: 8, separator: ' ', capitalize: true } },
+    { algorithm: 'username', options: { includeNumber: true } },
+    { algorithm: 'subaddress', email: 'bear@example.invalid' },
+    { algorithm: 'catchall', domain: 'example.invalid' }
+  ])('parses an exact generator request %#', async (input) => {
     const { event, vault } = harness()
     const generate = electronMock.handlers.get(IPC_CHANNELS.generatorGenerate)!
     await generate(event, input)
-    expect(vault.generateCredential).toHaveBeenLastCalledWith(expected)
+    expect(vault.generateCredential).toHaveBeenLastCalledWith(input)
   })
 
   it.each([

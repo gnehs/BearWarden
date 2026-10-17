@@ -4,18 +4,18 @@ import {
   randomBytes,
   scrypt as deriveWithScrypt
 } from 'node:crypto'
+import {
+  BASE_PAYLOAD_LENGTH,
+  isValidUnlockKeyMaterial,
+  MAX_PAYLOAD_LENGTH,
+  packUnlockKeyMaterial,
+  unpackUnlockKeyMaterial,
+  type UnlockKeyMaterial,
+  type UnlockSyncKeyMaterial
+} from './unlock-key-payload'
 
 const CAPSULE_FORMAT = 'bearwarden-pin-capsule'
 const CAPSULE_VERSION = 2
-const VAULT_KEY_LENGTH = 32
-const VAULT_SALT_LENGTH = 16
-const ACCOUNT_KEY_LENGTH_BYTES = 2
-const MIN_ACCOUNT_KEY_LENGTH = 64
-const MAX_ACCOUNT_KEY_LENGTH = 4_096
-const WRAPPED_KEY_FINGERPRINT_LENGTH = 32
-const BASE_PAYLOAD_LENGTH = VAULT_KEY_LENGTH + VAULT_SALT_LENGTH + ACCOUNT_KEY_LENGTH_BYTES
-const MAX_PAYLOAD_LENGTH =
-  BASE_PAYLOAD_LENGTH + MAX_ACCOUNT_KEY_LENGTH + WRAPPED_KEY_FINGERPRINT_LENGTH
 const KDF_SALT_LENGTH = 16
 const IV_LENGTH = 12
 const AUTH_TAG_LENGTH = 16
@@ -48,16 +48,8 @@ export interface PinUnlockStatus {
   remainingAttempts: number
 }
 
-export interface PinVaultKeyMaterial {
-  key: Buffer
-  salt: Buffer
-  sync: PinSyncKeyMaterial | null
-}
-
-export interface PinSyncKeyMaterial {
-  accountKey: Buffer
-  wrappedKeyFingerprint: Buffer
-}
+export type PinVaultKeyMaterial = UnlockKeyMaterial
+export type PinSyncKeyMaterial = UnlockSyncKeyMaterial
 
 function pinBytes(pin: string): Buffer {
   if (typeof pin !== 'string') throw new PinUnlockError('INVALID_INPUT')
@@ -133,16 +125,8 @@ export class PinUnlockCapability {
     vaultSalt: Buffer,
     sync: PinSyncKeyMaterial | null = null
   ): Promise<PinUnlockCapability> {
-    if (
-      vaultKey.length !== VAULT_KEY_LENGTH ||
-      vaultSalt.length !== VAULT_SALT_LENGTH ||
-      (sync !== null &&
-        (sync.accountKey.length < MIN_ACCOUNT_KEY_LENGTH ||
-          sync.accountKey.length > MAX_ACCOUNT_KEY_LENGTH ||
-          sync.wrappedKeyFingerprint.length !== WRAPPED_KEY_FINGERPRINT_LENGTH))
-    ) {
-      throw new PinUnlockError('INVALID_INPUT')
-    }
+    const material: UnlockKeyMaterial = { key: vaultKey, salt: vaultSalt, sync }
+    if (!isValidUnlockKeyMaterial(material)) throw new PinUnlockError('INVALID_INPUT')
 
     const input = pinBytes(pin)
     let kdfSalt: Buffer | undefined
@@ -156,16 +140,7 @@ export class PinUnlockCapability {
     try {
       kdfSalt = randomBytes(KDF_SALT_LENGTH)
       iv = randomBytes(IV_LENGTH)
-      payload = Buffer.alloc(
-        BASE_PAYLOAD_LENGTH + (sync ? sync.accountKey.length + WRAPPED_KEY_FINGERPRINT_LENGTH : 0)
-      )
-      vaultKey.copy(payload, 0)
-      vaultSalt.copy(payload, VAULT_KEY_LENGTH)
-      payload.writeUInt16BE(sync?.accountKey.length ?? 0, VAULT_KEY_LENGTH + VAULT_SALT_LENGTH)
-      if (sync) {
-        sync.accountKey.copy(payload, BASE_PAYLOAD_LENGTH)
-        sync.wrappedKeyFingerprint.copy(payload, BASE_PAYLOAD_LENGTH + sync.accountKey.length)
-      }
+      payload = packUnlockKeyMaterial(material)
       wrappingKey = await derivePinKey(input, kdfSalt)
       aad = authenticatedMetadata(kdfSalt, iv)
       const cipher = createCipheriv('aes-256-gcm', wrappingKey, iv, {
@@ -278,44 +253,11 @@ export class PinUnlockCapability {
         throw new PinUnlockError(this.disposed ? 'PIN_DISABLED' : 'INVALID_PIN')
       }
 
-      if (
-        this.disposed ||
-        operationEpoch !== this.epoch ||
-        plaintext.length < BASE_PAYLOAD_LENGTH ||
-        plaintext.length > MAX_PAYLOAD_LENGTH
-      ) {
+      const result =
+        this.disposed || operationEpoch !== this.epoch ? null : unpackUnlockKeyMaterial(plaintext)
+      if (!result) {
         this.dispose()
         throw new PinUnlockError('PIN_DISABLED')
-      }
-
-      const accountKeyLength = plaintext.readUInt16BE(VAULT_KEY_LENGTH + VAULT_SALT_LENGTH)
-      const expectedLength =
-        BASE_PAYLOAD_LENGTH +
-        (accountKeyLength === 0 ? 0 : accountKeyLength + WRAPPED_KEY_FINGERPRINT_LENGTH)
-      if (
-        plaintext.length !== expectedLength ||
-        (accountKeyLength !== 0 &&
-          (accountKeyLength < MIN_ACCOUNT_KEY_LENGTH || accountKeyLength > MAX_ACCOUNT_KEY_LENGTH))
-      ) {
-        this.dispose()
-        throw new PinUnlockError('PIN_DISABLED')
-      }
-      const result = {
-        key: Buffer.from(plaintext.subarray(0, VAULT_KEY_LENGTH)),
-        salt: Buffer.from(
-          plaintext.subarray(VAULT_KEY_LENGTH, VAULT_KEY_LENGTH + VAULT_SALT_LENGTH)
-        ),
-        sync:
-          accountKeyLength === 0
-            ? null
-            : {
-                accountKey: Buffer.from(
-                  plaintext.subarray(BASE_PAYLOAD_LENGTH, BASE_PAYLOAD_LENGTH + accountKeyLength)
-                ),
-                wrappedKeyFingerprint: Buffer.from(
-                  plaintext.subarray(BASE_PAYLOAD_LENGTH + accountKeyLength)
-                )
-              }
       }
       this.failedAttempts = 0
       return result

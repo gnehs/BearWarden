@@ -275,26 +275,16 @@ function scrubAccountSessionDeauthorizationRequest(value: unknown): void {
 }
 
 export {
-  MAX_REMOTE_LOGIN_BATCH_IDS,
-  LOGIN_APPROVAL_TTL_MS,
-  MAX_LOGIN_APPROVAL_SESSIONS,
   clearAccountWebAuthnRegistrationSetup,
   clearAccountWebAuthnAttestation,
   scrubAccountSessionDeauthorizationRequest
 }
 export type {
-  BulkRemoteLoginMutation,
-  BulkRemoteLoginCandidate,
-  LoginImportCandidate,
   AttachmentAuthorizationValidator,
   ItemReadAuthorizationValidator,
   ExposedPasswordSnapshot,
-  ActiveExposedPasswordOperation,
-  ActiveAccountBreachOperation,
-  AuthenticatorSetupSession,
   EmailTwoFactorSetupSession,
-  AccountWebAuthnOperationLease,
-  LoginApprovalSession
+  AccountWebAuthnOperationLease
 }
 
 /**

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { exactKeys } from './plain-record'
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000
 const DEFAULT_MAX_PENDING_REQUESTS = 16
@@ -260,13 +261,7 @@ function frozenChoices(value: unknown): readonly PasskeyPromptChoice[] {
     }
     const record = candidate as Record<string, unknown>
     if (
-      Object.keys(record).some(
-        (key) => key !== 'id' && key !== 'label' && key !== 'detail' && key !== 'requiresReprompt'
-      )
-    ) {
-      throw coordinatorError('INVALID_REQUEST')
-    }
-    if (
+      !exactKeys(record, [], ['id', 'label', 'detail', 'requiresReprompt']) ||
       !validBoundedString(record.id, MAX_PROMPT_CHOICE_ID_LENGTH) ||
       !validBoundedString(record.label, MAX_TEXT_LENGTH) ||
       (record.detail !== undefined && !validBoundedString(record.detail, MAX_TEXT_LENGTH, true)) ||
@@ -380,13 +375,7 @@ function parseApproval(value: unknown): PasskeyApprovalResponse {
   }
   const record = value as Record<string, unknown>
   if (
-    Object.keys(record).some(
-      (key) =>
-        key !== 'requestId' &&
-        key !== 'approved' &&
-        key !== 'selectedChoiceId' &&
-        key !== 'verificationMethod'
-    ) ||
+    !exactKeys(record, [], ['requestId', 'approved', 'selectedChoiceId', 'verificationMethod']) ||
     !validBoundedString(record.requestId, MAX_REQUEST_ID_LENGTH) ||
     typeof record.approved !== 'boolean' ||
     (record.selectedChoiceId !== undefined &&
@@ -412,10 +401,6 @@ function parseApproval(value: unknown): PasskeyApprovalResponse {
       ? {}
       : { verificationMethod: record.verificationMethod })
   }
-}
-
-function validGeneratedRequestId(value: unknown): value is string {
-  return validBoundedString(value, MAX_REQUEST_ID_LENGTH)
 }
 
 /**
@@ -467,7 +452,7 @@ export class PasskeyRequestCoordinator {
       return Promise.reject(error)
     }
     const requestId = this.nextRequestId()
-    if (!validGeneratedRequestId(requestId) || this.pending.has(requestId)) {
+    if (!validBoundedString(requestId, MAX_REQUEST_ID_LENGTH) || this.pending.has(requestId)) {
       return Promise.reject(coordinatorError('REQUEST_UNAVAILABLE'))
     }
 
