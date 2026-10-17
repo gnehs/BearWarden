@@ -2099,6 +2099,8 @@ describe('registerVaultIpc reprompt gate', () => {
       setLoginFavorite: vi.fn(async () => ({ id: 'item-a' })),
       moveLogin: vi.fn(async () => ({ id: 'item-a' })),
       createSharedLogin: vi.fn(async () => ({ id: 'shared-created' })),
+      listSharedLogins: vi.fn(async () => []),
+      getSharedLogin: vi.fn(async () => ({ id: 'shared-item' })),
       updateSharedLogin: vi.fn(async () => ({ id: 'shared-item' })),
       revealSharedEditorSecrets: vi.fn(async () => ({ fields: {}, customFields: [] })),
       revealSharedSecret: vi.fn(async () => 'shared-secret'),
@@ -3259,7 +3261,9 @@ describe('registerVaultIpc reprompt gate', () => {
       {},
       { ...request, rotate: true },
       { ...request, confirmRotation: true },
-      { ...request, clientSecret: 'renderer-supplied-secret' }
+      { ...request, clientSecret: 'renderer-supplied-secret' },
+      { ...request, masterPassword: '' },
+      { ...request, masterPassword: 'x'.repeat(16_385) }
     ]) {
       await expect(copyApiKey(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
@@ -3724,17 +3728,63 @@ describe('registerVaultIpc reprompt gate', () => {
         })
       ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
-    await expect(
-      electronMock.handlers.get(IPC_CHANNELS.sharedLoginCreate)!(event, {
-        organizationId: '60000000-0000-4000-8000-000000000001',
-        collectionIds: [],
-        name: 'New shared item'
-      })
-    ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    const collectionId = '70000000-0000-4000-8000-000000000001'
+    const tooManyCollectionIds = Array.from(
+      { length: 100_001 },
+      (_, index) => `70000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`
+    )
+    for (const collectionIds of [
+      [],
+      [collectionId, collectionId],
+      ['not-a-uuid'],
+      tooManyCollectionIds
+    ]) {
+      await expect(
+        electronMock.handlers.get(IPC_CHANNELS.sharedLoginCreate)!(event, {
+          organizationId: '60000000-0000-4000-8000-000000000001',
+          collectionIds,
+          name: 'New shared item'
+        })
+      ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
     expect(vault.getSharedTotp).not.toHaveBeenCalled()
     expect(vault.copySharedField).not.toHaveBeenCalled()
     expect(vault.createSharedLogin).not.toHaveBeenCalled()
     expect(vault.updateSharedLogin).not.toHaveBeenCalled()
+  })
+
+  it('accepts only exact shared list and get requests', async () => {
+    const { event, vault } = harness()
+    const list = electronMock.handlers.get(IPC_CHANNELS.sharedLoginList)!
+    const get = electronMock.handlers.get(IPC_CHANNELS.sharedLoginGet)!
+    const id = '80000000-0000-4000-8000-000000000001'
+
+    await list(event, undefined)
+    await list(event, { sort: 'name', query: 'bank' })
+    expect(vault.listSharedLogins).toHaveBeenNthCalledWith(1, {})
+    expect(vault.listSharedLogins).toHaveBeenNthCalledWith(2, { sort: 'name', query: 'bank' })
+    await get(event, { id })
+    expect(vault.getSharedLogin).toHaveBeenCalledWith({ id })
+
+    for (const invalid of [
+      [],
+      { sort: 'name', extra: true },
+      { authorizationToken: 'personal-item-token' },
+      Object.assign(Object.create({ inherited: true }), { sort: 'name' })
+    ]) {
+      await expect(list(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    for (const invalid of [
+      undefined,
+      { id: 'not-a-uuid' },
+      { id, extra: true },
+      { id, authorizationToken: 'personal-item-token' },
+      Object.assign(Object.create({ inherited: true }), { id })
+    ]) {
+      await expect(get(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(vault.listSharedLogins).toHaveBeenCalledTimes(2)
+    expect(vault.getSharedLogin).toHaveBeenCalledOnce()
   })
 
   it('validates and authorizes exact passkey deletion requests before notifying mutations', async () => {

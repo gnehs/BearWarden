@@ -141,6 +141,7 @@ import {
   MAX_EQUIVALENT_DOMAIN_TOTAL,
   MAX_EQUIVALENT_DOMAINS_PER_GROUP,
   MAX_LOGIN_URIS,
+  MAX_REMOTE_ENTITIES,
   MAX_SYNC_SECRET_LENGTH,
   MAX_URI_LENGTH,
   UUID_PATTERN
@@ -750,7 +751,7 @@ function parseAccountApiKeyCopy(value: unknown): AccountApiKeyCopyRequest {
   const record = exactRecord(value, ['masterPassword', 'rotate', 'confirmRotation'])
   const masterPassword = requiredString(record, 'masterPassword')
   if (
-    masterPassword.length > MAX_ACCOUNT_MASTER_PASSWORD_LENGTH ||
+    !validAccountMasterPassword(masterPassword) ||
     typeof record.rotate !== 'boolean' ||
     typeof record.confirmRotation !== 'boolean' ||
     record.confirmRotation !== record.rotate
@@ -1506,16 +1507,7 @@ function parseSharedLoginCreate(value: unknown): SharedLoginCreateRequest {
   if (typeof organizationId !== 'string' || !UUID_PATTERN.test(organizationId)) {
     throw new VaultError('INVALID_INPUT')
   }
-  if (!Array.isArray(value.collectionIds) || value.collectionIds.length < 1) {
-    throw new VaultError('INVALID_INPUT')
-  }
-  const collectionIds = value.collectionIds.map((collectionId) => {
-    if (typeof collectionId !== 'string' || !UUID_PATTERN.test(collectionId)) {
-      throw new VaultError('INVALID_INPUT')
-    }
-    return collectionId
-  })
-  if (new Set(collectionIds).size !== collectionIds.length) throw new VaultError('INVALID_INPUT')
+  const collectionIds = uniqueUuidArray(value.collectionIds, MAX_REMOTE_ENTITIES)
   return { ...parsed, organizationId, collectionIds }
 }
 
@@ -1761,8 +1753,7 @@ function parseLoginList(value: unknown): LoginListRequest {
 
 function parseSharedLoginList(value: unknown): SharedLoginListRequest {
   if (value === undefined || value === null) return {}
-  if (typeof value !== 'object' || Array.isArray(value)) throw new VaultError('INVALID_INPUT')
-  const candidate = value as RecordValue
+  const candidate = exactDataRecord(value, ['organizationId', 'collectionId', 'query', 'sort'])
   const result: SharedLoginListRequest = {}
   if (candidate.organizationId !== undefined) {
     if (
@@ -2526,10 +2517,9 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     vault.listSharedLogins(parseSharedLoginList(input))
   )
   registerHandler(IPC_CHANNELS.sharedLoginGet, (_event, input) => {
-    if (!isRecord(input) || typeof input.id !== 'string' || !UUID_PATTERN.test(input.id)) {
-      throw new VaultError('INVALID_INPUT')
-    }
-    return vault.getSharedLogin({ id: input.id })
+    const { id } = exactDataRecord(input, ['id'])
+    if (typeof id !== 'string' || !UUID_PATTERN.test(id)) throw new VaultError('INVALID_INPUT')
+    return vault.getSharedLogin({ id })
   })
   registerHandler(IPC_CHANNELS.sharedLoginUpdate, (_event, input) =>
     afterMutation(vault.updateSharedLogin(parseSharedLoginUpdate(input)))
