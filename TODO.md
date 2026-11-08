@@ -43,33 +43,26 @@
 4. 多帳號切換、移除中斷、重啟續作與 stale operation 壓力測試。
 5. Windows OpenSSH named pipe、實體 FIDO2 security key 與附件 transport 真機驗證。
 
-## VaultService 重構
+## 資料核心重構
 
-Phase 1 的純函式拆分，以及 Phase 2 的 `VaultGeneratorService`、`VaultSendService` 已完成。`src/main/vault-service.ts` 目前約 8,000 行；後續每個協作類別應維持原公開 API，由 `VaultService` 做薄委派。
+目標是讓 wire、domain、IPC、renderer 四個邊界各有一份型別定義，資料只在邊界驗證一次。每步獨立 commit，且 `pnpm run typecheck`、`pnpm run lint`、`pnpm test` 全綠。
 
-建議依下列順序逐批執行，每批獨立驗證與 commit：
+1. [ ] 合併重複的 `isRecord`、UUID、大小寫屬性 helper 與 sync 診斷 enum。
+2. [ ] renderer 不再自行投影 login summary，避免 reprompt 項目在存檔後顯示未遮蔽的 username 與 URI。
+3. [ ] 以 zod 定義 `/sync` 回應 schema，Vaultwarden 形狀差異只在 schema 處理。
+4. [ ] 把 `BitwardenDirectClient.performSync` 的解析與解密抽成純函式 `fetchRemoteSnapshot`。
+5. [ ] 建立單一提交原語 `VaultStore.commit`：clone、mutate、validate、encrypt、write、generation 檢查、swap。
+6. [ ] sync 改用 snapshot 與 CRUD 回應，一次同步只下載一次 `/sync`，必要的重抓要在程式碼標明原因。
+7. [ ] vault 型別化事件取代 `registerVaultIpc` 的 lifecycle hook 與 `beforeVaultLock` 手寫清單。
+8. [ ] 以接收 store 的 domain 模組取代 `VaultServiceBase` 五層繼承鏈，`VaultService` 保留為 facade。
+9. [ ] 單一 IPC 定義表推導 preload API、`BearWardenAPI` 與主程序註冊。
+10. [ ] renderer vault snapshot store，`VaultShell` 只保留版面。
 
-1. [ ] 抽出 `vault/health-report-service.ts`：local health、inactive 2FA、exposed password、account breach 與 HIBP website。
-2. [ ] 將 `activeExposedPasswordOperation`、`activeAccountBreachOperation` 與 AbortController lifecycle 一起移入 health collaborator。
-3. [ ] 保留 account deauthorization 的 operation exclusion；lock、disconnect、remote logout、dispose 必須呼叫 health reset／abort。
-4. [ ] 抽出 `vault/folder-service.ts`：folder CRUD、reorder、sync deletion 與 folder mapping helpers。
-5. [ ] 抽出 `vault/account-security-service.ts`：profile、devices、驗證信、API key、TOTP／Email／WebAuthn 2FA 與 session deauthorization。
-6. [ ] 將 `accountSecurityAborts`、authenticator/email setup sessions、WebAuthn operation lease 與秘密清除責任一起移入 account-security collaborator。
-7. [ ] 抽出 `vault/attachment-service.ts`：upload、download、delete、fix legacy、cancel、progress 與 operation lease。
-8. [ ] 將 `activeAttachmentOperation` 與 attachment plaintext buffer cleanup 一起移入 attachment collaborator，保留 lock/cancel/generation 競態語意。
-9. [ ] 抽出 `vault/portability-service.ts`：JSON import/export、native attachment backup/restore、restore journal reconciliation。
-10. [ ] 抽出 `vault/sync-engine.ts`：connect/unlock/disconnect、performSync、snapshot、login import、personal purge、bulk mutation 與 action replay。
-11. [ ] 最後評估 equivalent domains、SSH Agent、讀取清單與 item/passkey CRUD 是否值得再拆；生命週期、核心 CRUD、`exclusive`、`persist`、`requireData` 預設留在 `VaultService`。
+約束：
 
-重構約束：
-
-- [ ] 不改 IPC、preload、renderer 或其他 importer；既有 `VaultService` 公開方法簽名維持不變。
-- [ ] 所有 collaborator 共用既有 `exclusive` queue、sync client 與 generation，不建立平行 mutex 或第二份 connector state。
-- [ ] Abort、lease、plaintext 暫存與 setup session 必須隨功能一起搬移，並接回 `clearUnlockedRuntimeState()`／`dispose()`。
-- [ ] 不順手改業務邏輯；錯誤碼、驗證順序、remote mutation 次數與 persist 時機必須保持一致。
-- [ ] 每個新檔案控制在 1,000 行內，且不得反向 import `vault-service.ts`。
-- [ ] 每批至少執行 changed-file ESLint、`pnpm typecheck`、focused tests 與完整 `pnpm test`。
-- [ ] 全部完成後確認 `vault-service.ts` 約 2,500–3,000 行，並檢查 `src/main/vault/` 無循環依賴。
+- v23 磁碟格式與 `PersistedSyncData` 不變，`parseVaultData` 原樣沿用。
+- 保留 copy-on-write `VaultData`、原子加密寫入、三方 fingerprint 合併與 journal、原始列 round-trip、損壞個人 cipher 隔離、trusted sender 檢查、每帳號一個 process、鎖定即 reload。
+- 錯誤碼、remote mutation 次數與 persist 時機若改變，必須有對應測試說明新行為。
 
 ## 已完成：垃圾桶密碼歷史窄化唯讀入口
 

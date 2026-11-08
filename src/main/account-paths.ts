@@ -15,7 +15,6 @@ export interface AccountStoragePaths {
   readonly settingsPath: string
   readonly touchIdPath: string
   readonly initializationMarkerPath: string
-  readonly displayMetadataPath: string
 }
 
 export interface AccountPathLayout {
@@ -79,8 +78,7 @@ export function createAccountPathLayout(userDataDirectory: string): AccountPathL
         vaultPath: join(vaultDirectory, 'vault.json'),
         settingsPath: join(accountDirectory, 'account-settings.json'),
         touchIdPath: join(accountDirectory, 'touch-id.bin'),
-        initializationMarkerPath: join(accountDirectory, '.pending-initialization'),
-        displayMetadataPath: join(accountDirectory, 'display-metadata.bin')
+        initializationMarkerPath: join(accountDirectory, '.pending-initialization')
       }
     },
     accountRemovalTombstone(accountId: string, deletionId: string): string {

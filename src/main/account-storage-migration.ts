@@ -324,8 +324,7 @@ function temporaryStoragePaths(temporaryDirectory: string): AccountStoragePaths 
     vaultPath: join(vaultDirectory, 'vault.json'),
     settingsPath: join(temporaryDirectory, 'account-settings.json'),
     touchIdPath: join(temporaryDirectory, 'touch-id.bin'),
-    initializationMarkerPath: join(temporaryDirectory, '.pending-initialization'),
-    displayMetadataPath: join(temporaryDirectory, 'display-metadata.bin')
+    initializationMarkerPath: join(temporaryDirectory, '.pending-initialization')
   }
 }
 
