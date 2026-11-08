@@ -41,9 +41,11 @@ type SshKeyImportSessionErrorCode =
   | 'SessionUnavailable'
   | 'SessionLimitReached'
 
-export interface SshKeyImportSessionError {
+export interface SshKeyImportSessionError<
+  Code extends SshKeyImportSessionErrorCode = SshKeyImportSessionErrorCode
+> {
   status: 'error'
-  code: SshKeyImportSessionErrorCode
+  code: Code
 }
 
 export interface SshKeyImportAwaitingPassphrase {
@@ -112,7 +114,9 @@ function parserErrorCode(error: unknown): ParserErrorCode | undefined {
   return isParserErrorCode(code) ? code : undefined
 }
 
-function error(code: SshKeyImportSessionErrorCode): SshKeyImportSessionError {
+function error<Code extends SshKeyImportSessionErrorCode>(
+  code: Code
+): SshKeyImportSessionError<Code> {
   return { status: 'error', code }
 }
 
@@ -160,7 +164,7 @@ export class SshKeyImportSessionStore {
   stageGenerated(
     context: SshKeyImportContext,
     material: SshKeyMaterial
-  ): SshKeyImportReady | SshKeyImportSessionError {
+  ): SshKeyImportReady | SshKeyImportSessionError<'SessionLimitReached' | 'SessionUnavailable'> {
     this.cancelExistingForSender(context.senderId)
     if (this.sessions.size >= MAX_SESSIONS) return error('SessionLimitReached')
 

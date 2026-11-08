@@ -506,13 +506,19 @@ vi.mock('./focus-touch-id-unlock', () => ({
   }
 }))
 vi.mock('./application-menu', () => ({ installApplicationMenu: harness.installApplicationMenu }))
-vi.mock('./application-menu-ipc', () => ({ registerApplicationMenuIpc: vi.fn() }))
+const ipcDisposers = vi.hoisted(() => ({ vault: vi.fn(), applicationMenu: vi.fn() }))
+vi.mock('./application-menu-ipc', () => ({
+  registerApplicationMenuIpc: vi.fn(() => ipcDisposers.applicationMenu)
+}))
 vi.mock('./window-chrome', () => ({ windowChromeOptions: vi.fn(() => ({})) }))
 vi.mock('./vault-ipc', () => ({
   RepromptAuthorizationStore: class {
     clear(): void {}
   },
-  registerVaultIpc: (options: Record<string, unknown>) => harness.setVaultIpcOptions(options)
+  registerVaultIpc: (options: Record<string, unknown>) => {
+    harness.setVaultIpcOptions(options)
+    return ipcDisposers.vault
+  }
 }))
 vi.mock('./vault-service', () => ({
   VaultService: class {
@@ -862,6 +868,8 @@ describe('main WebAuthn lifecycle wiring', () => {
     await vi.advanceTimersByTimeAsync(1)
     await vi.waitFor(() => expect(harness.controller.dispose).toHaveBeenCalledOnce())
     expect(harness.registrationController.dispose).toHaveBeenCalledOnce()
+    expect(ipcDisposers.vault).toHaveBeenCalledOnce()
+    expect(ipcDisposers.applicationMenu).toHaveBeenCalledOnce()
     expect(harness.appQuit).toHaveBeenCalledOnce()
 
     const finalQuitEvent = { preventDefault: vi.fn() }

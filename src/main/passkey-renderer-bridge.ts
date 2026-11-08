@@ -1,15 +1,13 @@
-import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
-import {
-  IPC_CHANNELS,
-  IPC_EVENTS,
-  type PasskeyApprovalPrompt,
-  type PasskeyApprovalResponse,
-  type PasskeyApprovalVerificationRequest,
-  type PasskeyVerificationMethod
+import type { BrowserWindow, IpcMainInvokeEvent } from 'electron'
+import type {
+  PasskeyApprovalPrompt,
+  PasskeyApprovalResponse,
+  PasskeyApprovalVerificationRequest,
+  PasskeyVerificationMethod
 } from '../shared/vault-contract'
 import type { PasskeyRendererSafePrompt } from './passkey-request-coordinator'
 import { exactRecord, publicInvalidInput } from './renderer-bridge-input'
-import { isTrustedVaultSender } from './vault-ipc'
+import { handleIpc, isTrustedVaultSender, sendIpcEvent, type IpcDisposer } from './typed-ipc'
 
 const DEFAULT_APPROVAL_TIMEOUT_MS = 60_000
 const DEFAULT_MAX_PENDING_APPROVALS = 16
@@ -181,6 +179,7 @@ export class PasskeyRendererBridge {
   private attachedWindow: BrowserWindow | null = null
   private rendererEpoch = 0
   private disposed = false
+  private readonly ipcDisposers: IpcDisposer[]
 
   private readonly handleRendererReset = (): void => this.cancelAll()
 
@@ -195,21 +194,23 @@ export class PasskeyRendererBridge {
       throw new Error('INVALID_PASSKEY_MAX_PENDING_APPROVALS')
     }
 
-    ipcMain.handle(IPC_CHANNELS.passkeyVerifyApproval, async (event, input) => {
-      try {
-        await this.verifyApproval(event, parseVerificationRequest(input))
-      } catch {
-        throw publicInvalidInput()
-      }
-    })
-    ipcMain.handle(IPC_CHANNELS.passkeyRespondApproval, (event, input) => {
-      try {
-        this.assertTrustedSender(event)
-        this.respond(event, parseApprovalResponse(input))
-      } catch {
-        throw publicInvalidInput()
-      }
-    })
+    this.ipcDisposers = [
+      handleIpc('passkey:verify-approval', async (event, input) => {
+        try {
+          await this.verifyApproval(event, parseVerificationRequest(input))
+        } catch {
+          throw publicInvalidInput()
+        }
+      }),
+      handleIpc('passkey:respond-approval', (event, input) => {
+        try {
+          this.assertTrustedSender(event)
+          this.respond(event, parseApprovalResponse(input))
+        } catch {
+          throw publicInvalidInput()
+        }
+      })
+    ]
   }
 
   attachWindow(window: BrowserWindow): void {
@@ -289,7 +290,7 @@ export class PasskeyRendererBridge {
       Promise.resolve(this.options.focusWindow(window))
         .then(() => {
           if (!this.pending.has(request.requestId) || window.webContents.isDestroyed()) return
-          window.webContents.send(IPC_EVENTS.passkeyApprovalRequested, prompt)
+          sendIpcEvent(window.webContents, 'passkey:approval-requested', prompt)
         })
         .catch(() => this.rejectPending(request.requestId))
     })
@@ -342,8 +343,7 @@ export class PasskeyRendererBridge {
     this.disposed = true
     this.cancelAll()
     this.detachWindow()
-    ipcMain.removeHandler(IPC_CHANNELS.passkeyVerifyApproval)
-    ipcMain.removeHandler(IPC_CHANNELS.passkeyRespondApproval)
+    this.ipcDisposers.forEach((dispose) => dispose())
   }
 
   private assertTrustedSender(event: IpcMainInvokeEvent): void {

@@ -5,7 +5,6 @@ import {
   clipboard,
   dialog,
   globalShortcut,
-  ipcMain,
   nativeTheme,
   Notification,
   powerMonitor,
@@ -15,7 +14,6 @@ import {
 } from 'electron'
 import { DEFAULT_AUTOFILL_SHORTCUT, type AutofillShortcut } from '../shared/autofill-shortcuts'
 import {
-  IPC_CHANNELS,
   IPC_EVENTS,
   type AutofillFeatureStatus,
   type SshAgentPromptBehavior,
@@ -45,7 +43,14 @@ import {
   type MainMessageId
 } from './i18n'
 import { windowChromeOptions } from './window-chrome'
-import { isTrustedVaultSender, registerVaultIpc, RepromptAuthorizationStore } from './vault-ipc'
+import { registerVaultIpc, RepromptAuthorizationStore } from './vault-ipc'
+import {
+  handleIpc,
+  isTrustedVaultSender,
+  onIpcSend,
+  sendIpcEvent,
+  type IpcDisposer
+} from './typed-ipc'
 import { VaultService } from './vault-service'
 import { VaultAttachmentFileService } from './vault-attachment-files'
 import { VaultPortabilityService } from './vault-portability'
@@ -132,6 +137,8 @@ let sshAgentLifecycleEpoch = 0
 let shutdownPending: Promise<void> | null = null
 let shutdownComplete = false
 let servicesDisposed = false
+let disposeVaultIpc: IpcDisposer | null = null
+let disposeApplicationMenuIpc: IpcDisposer | null = null
 const SHUTDOWN_GRACE_PERIOD_MS = 3_000
 /**
  * Services are disposed before the final quit, so a quit that does not complete would leave a
@@ -1096,7 +1103,7 @@ if (hasSingleInstanceLock)
         publish: (prompt) => {
           const window = autofillWindow
           if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return
-          window.webContents.send(IPC_EVENTS.autofillPromptChanged, prompt)
+          sendIpcEvent(window.webContents, 'autofill:prompt-changed', prompt)
         },
         showPicker: showAutofillWindow,
         hidePicker: hideAutofillWindow,
@@ -1104,11 +1111,11 @@ if (hasSingleInstanceLock)
       })
       const trustedAutofillSender = (event: Electron.IpcMainInvokeEvent): boolean =>
         isTrustedVaultSender(event, autofillWindow)
-      ipcMain.handle(IPC_CHANNELS.autofillCurrent, (event) => {
-        if (!trustedAutofillSender(event)) return null
+      handleIpc('autofill:current', (event, input) => {
+        if (!trustedAutofillSender(event) || input !== undefined) return null
         return autofillCoordinator?.current() ?? null
       })
-      ipcMain.handle(IPC_CHANNELS.autofillSelect, async (event, input: unknown) => {
+      handleIpc('autofill:select', async (event, input) => {
         if (!trustedAutofillSender(event) || !input || typeof input !== 'object') return
         const value = input as Record<string, unknown>
         if (
@@ -1120,13 +1127,13 @@ if (hasSingleInstanceLock)
         }
         await autofillCoordinator?.select({ requestId: value.requestId, itemId: value.itemId })
       })
-      ipcMain.handle(IPC_CHANNELS.autofillCancel, (event, input: unknown) => {
+      handleIpc('autofill:cancel', (event, input) => {
         if (!trustedAutofillSender(event) || !input || typeof input !== 'object') return
         const value = input as Record<string, unknown>
         if (Object.keys(value).length !== 1 || typeof value.requestId !== 'string') return
         autofillCoordinator?.cancel(value.requestId)
       })
-      ipcMain.handle(IPC_CHANNELS.autofillOpenMain, (event, input: unknown) => {
+      handleIpc('autofill:open-main', (event, input) => {
         if (!trustedAutofillSender(event) || !input || typeof input !== 'object') return
         const value = input as Record<string, unknown>
         if (Object.keys(value).length !== 1 || typeof value.requestId !== 'string') return
@@ -1149,13 +1156,17 @@ if (hasSingleInstanceLock)
       shortcutRegistered: false,
       accessibilityTrusted: false
     }
-    ipcMain.handle(IPC_CHANNELS.autofillStatus, (event) =>
-      isTrustedVaultSender(event, mainWindow)
+    handleIpc('autofill:status', (event, input) =>
+      isTrustedVaultSender(event, mainWindow) && input === undefined
         ? getAutofillFeatureStatus(false)
         : unavailableAutofillStatus
     )
-    ipcMain.handle(IPC_CHANNELS.autofillRequestAccessibility, (event) => {
-      if (!trustedAutofillPermissionSender(event) || !autofillShortcutRegistration.enabled) {
+    handleIpc('autofill:request-accessibility', (event, input) => {
+      if (
+        !trustedAutofillPermissionSender(event) ||
+        input !== undefined ||
+        !autofillShortcutRegistration.enabled
+      ) {
         return unavailableAutofillStatus
       }
       return getAutofillFeatureStatus(true)
@@ -1165,7 +1176,7 @@ if (hasSingleInstanceLock)
       readClipboard: () => clipboard.readText()
     })
 
-    registerVaultIpc({
+    disposeVaultIpc = registerVaultIpc({
       vault,
       portability,
       settings,
@@ -1216,10 +1227,10 @@ if (hasSingleInstanceLock)
         refreshSshAgentAfterVaultChange()
       }
     })
-    registerApplicationMenuIpc({
+    disposeApplicationMenuIpc = registerApplicationMenuIpc({
       getMainWindow: () => mainWindow
     })
-    ipcMain.on(IPC_CHANNELS.vaultLockRequestReady, (event, ready: unknown) => {
+    onIpcSend('vault:lock-request-ready', (event, ready) => {
       if (!isTrustedVaultSender(event, mainWindow) || typeof ready !== 'boolean') return
       rendererHandlesLockRequests = ready
     })
@@ -1259,6 +1270,10 @@ function disposeServices(): void {
   if (servicesDisposed) return
   servicesDisposed = true
   sensitiveClipboard.clearIfOwned()
+  disposeVaultIpc?.()
+  disposeVaultIpc = null
+  disposeApplicationMenuIpc?.()
+  disposeApplicationMenuIpc = null
   autofillShortcutRegistration.dispose()
   autofillCoordinator?.dispose()
   autofillCoordinator = null

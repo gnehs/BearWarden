@@ -1,8 +1,9 @@
-import { ipcMain, type BrowserWindow } from 'electron'
-import { IPC_CHANNELS, type ApplicationMenuCommand } from '../shared/vault-contract'
+import type { BrowserWindow } from 'electron'
+import type { ApplicationMenuCommand } from '../shared/vault-contract'
 import { SELECTED_ITEM_COPY_SHORTCUTS } from '../shared/selected-item-shortcuts'
 import { executeApplicationMenuCommand } from './application-menu'
-import { isTrustedVaultSender } from './vault-ipc'
+import { createTrustedIpc, type IpcDisposer } from './typed-ipc'
+import { VaultError } from './vault-errors'
 
 const applicationMenuCommands = new Set<ApplicationMenuCommand>([
   'close-window',
@@ -30,12 +31,17 @@ export function isApplicationMenuCommand(value: unknown): value is ApplicationMe
   return typeof value === 'string' && applicationMenuCommands.has(value as ApplicationMenuCommand)
 }
 
-export function registerApplicationMenuIpc(options: ApplicationMenuIpcOptions): void {
-  ipcMain.handle(IPC_CHANNELS.applicationMenuExecute, (event, command: unknown) => {
+function parseApplicationMenuCommand(value: unknown): ApplicationMenuCommand {
+  if (!isApplicationMenuCommand(value)) throw new VaultError('INVALID_INPUT')
+  return value
+}
+
+export function registerApplicationMenuIpc(options: ApplicationMenuIpcOptions): IpcDisposer {
+  const ipc = createTrustedIpc({ getMainWindow: options.getMainWindow })
+  ipc.handle('application-menu:execute', parseApplicationMenuCommand, (command) => {
     const window = options.getMainWindow()
-    if (!window || !isTrustedVaultSender(event, window) || !isApplicationMenuCommand(command)) {
-      throw new Error('Invalid application menu request')
-    }
+    if (!window) throw new VaultError('INVALID_INPUT')
     executeApplicationMenuCommand(window, command)
   })
+  return () => ipc.dispose()
 }

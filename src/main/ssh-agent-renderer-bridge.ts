@@ -1,17 +1,15 @@
-import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
-import {
-  IPC_CHANNELS,
-  IPC_EVENTS,
-  type SshAgentApprovalPrompt,
-  type SshAgentApprovalResponse,
-  type SshAgentStatus
+import type { BrowserWindow, IpcMainInvokeEvent } from 'electron'
+import type {
+  SshAgentApprovalPrompt,
+  SshAgentApprovalResponse,
+  SshAgentStatus
 } from '../shared/vault-contract'
 import type {
   SshAgentRendererApprovalRequest,
   SshAgentRendererApprovalResult
 } from './ssh-agent-coordinator'
 import { exactRecord, publicInvalidInput } from './renderer-bridge-input'
-import { isTrustedVaultSender } from './vault-ipc'
+import { handleIpc, isTrustedVaultSender, sendIpcEvent, type IpcDisposer } from './typed-ipc'
 
 const DEFAULT_APPROVAL_TIMEOUT_MS = 60_000
 const DEFAULT_MAX_PENDING_APPROVALS = 16
@@ -122,6 +120,7 @@ export class SshAgentRendererBridge {
   }
   private attachedWindow: BrowserWindow | null = null
   private disposed = false
+  private readonly ipcDisposers: IpcDisposer[]
 
   private readonly handleRendererReset = (): void => this.cancelAll()
 
@@ -135,14 +134,17 @@ export class SshAgentRendererBridge {
       throw new Error('INVALID_SSH_AGENT_MAX_PENDING_APPROVALS')
     }
 
-    ipcMain.handle(IPC_CHANNELS.sshAgentStatus, (event) => {
-      this.assertTrustedSender(event)
-      return cloneStatus(this.statusValue)
-    })
-    ipcMain.handle(IPC_CHANNELS.sshAgentRespondApproval, (event, input) => {
-      this.assertTrustedSender(event)
-      this.respond(parseApprovalResponse(input))
-    })
+    this.ipcDisposers = [
+      handleIpc('ssh-agent:status', (event, input) => {
+        this.assertTrustedSender(event)
+        if (input !== undefined) throw publicInvalidInput()
+        return cloneStatus(this.statusValue)
+      }),
+      handleIpc('ssh-agent:respond-approval', (event, input) => {
+        this.assertTrustedSender(event)
+        this.respond(parseApprovalResponse(input))
+      })
+    ]
   }
 
   attachWindow(window: BrowserWindow): void {
@@ -160,7 +162,7 @@ export class SshAgentRendererBridge {
     this.statusValue = cloneStatus(status)
     const window = this.options.getMainWindow()
     if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return
-    window.webContents.send(IPC_EVENTS.sshAgentStatusChanged, cloneStatus(this.statusValue))
+    sendIpcEvent(window.webContents, 'ssh-agent:status-changed', cloneStatus(this.statusValue))
   }
 
   async requestApproval(
@@ -192,8 +194,9 @@ export class SshAgentRendererBridge {
       Promise.resolve(this.options.focusWindow(window))
         .then(() => {
           if (!this.pending.has(request.requestId) || window.webContents.isDestroyed()) return
-          window.webContents.send(
-            IPC_EVENTS.sshAgentApprovalRequested,
+          sendIpcEvent(
+            window.webContents,
+            'ssh-agent:approval-requested',
             rendererSafePrompt(request, expiresAt)
           )
         })
@@ -230,8 +233,7 @@ export class SshAgentRendererBridge {
     this.disposed = true
     this.cancelAll()
     this.detachWindow()
-    ipcMain.removeHandler(IPC_CHANNELS.sshAgentStatus)
-    ipcMain.removeHandler(IPC_CHANNELS.sshAgentRespondApproval)
+    this.ipcDisposers.forEach((dispose) => dispose())
   }
 
   private assertTrustedSender(event: IpcMainInvokeEvent): void {

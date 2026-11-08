@@ -1,18 +1,17 @@
-import { app, ipcMain, shell, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
+import { app, shell, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import electronUpdater, {
   type AppUpdater as ElectronAppUpdater,
   type ProgressInfo,
   type UpdateDownloadedEvent,
   type UpdateInfo
 } from 'electron-updater'
-import {
-  IPC_CHANNELS,
-  IPC_EVENTS,
-  type AppUpdateState,
-  type AppUpdateStatus,
-  type AppManualUpdateSource
+import type { IpcInvokeChannel, IpcResponse } from '../shared/ipc-api'
+import type {
+  AppUpdateState,
+  AppUpdateStatus,
+  AppManualUpdateSource
 } from '../shared/vault-contract'
-import { isTrustedVaultSender } from './vault-ipc'
+import { handleIpc, isTrustedVaultSender, sendIpcEvent, type IpcDisposer } from './typed-ipc'
 
 // electron-updater is CommonJS. Its documented TypeScript ESM interop uses a default import.
 const { autoUpdater } = electronUpdater
@@ -37,6 +36,7 @@ export class AppUpdaterController {
   private readonly openExternal: (url: string) => Promise<unknown>
   private attachedWindow: BrowserWindow | null = null
   private disposed = false
+  private readonly ipcDisposers: IpcDisposer[]
   private stateValue: AppUpdateState
 
   private readonly onCheckingForUpdate = (): void => {
@@ -93,12 +93,14 @@ export class AppUpdaterController {
       this.updater.on('error', this.onUpdaterError)
     }
 
-    for (const [channel, handle] of this.ipcHandlers()) {
-      ipcMain.handle(channel, (event) => {
-        this.assertAttachedRenderer(event)
-        return handle()
-      })
-    }
+    this.ipcDisposers = [
+      this.handleAttached('app-update:check', () => this.check()),
+      this.handleAttached('app-update:download', () => this.download()),
+      this.handleAttached('app-update:install', () => this.quitAndInstall()),
+      this.handleAttached('app-update:open-release-page', () => this.openReleasePage()),
+      this.handleAttached('app-update:open-repository-page', () => this.openRepositoryPage()),
+      this.handleAttached('app-update:state', () => this.state)
+    ]
   }
 
   get state(): AppUpdateState {
@@ -167,7 +169,7 @@ export class AppUpdaterController {
     if (this.disposed) return
     this.disposed = true
     this.attachedWindow = null
-    for (const [channel] of this.ipcHandlers()) ipcMain.removeHandler(channel)
+    this.ipcDisposers.forEach((dispose) => dispose())
 
     if (!this.enabled) return
     this.updater.removeListener('checking-for-update', this.onCheckingForUpdate)
@@ -178,21 +180,17 @@ export class AppUpdaterController {
     this.updater.removeListener('error', this.onUpdaterError)
   }
 
-  private assertAttachedRenderer(event: IpcMainInvokeEvent): void {
-    if (!isTrustedVaultSender(event, this.attachedWindow)) {
-      throw new Error('Invalid app update request')
-    }
-  }
-
-  private ipcHandlers(): Array<[channel: string, handle: () => unknown]> {
-    return [
-      [IPC_CHANNELS.appUpdateCheck, () => this.check()],
-      [IPC_CHANNELS.appUpdateDownload, () => this.download()],
-      [IPC_CHANNELS.appUpdateInstall, () => this.quitAndInstall()],
-      [IPC_CHANNELS.appUpdateOpenReleasePage, () => this.openReleasePage()],
-      [IPC_CHANNELS.appUpdateOpenRepositoryPage, () => this.openRepositoryPage()],
-      [IPC_CHANNELS.appUpdateState, () => this.state]
-    ]
+  /** Updater commands take no payload and answer only the renderer this controller is attached to. */
+  private handleAttached<Channel extends IpcInvokeChannel>(
+    channel: Channel,
+    run: () => IpcResponse<Channel> | Promise<IpcResponse<Channel>>
+  ): IpcDisposer {
+    return handleIpc(channel, (event: IpcMainInvokeEvent, input) => {
+      if (!isTrustedVaultSender(event, this.attachedWindow) || input !== undefined) {
+        throw new Error('Invalid app update request')
+      }
+      return run()
+    })
   }
 
   private setState(
@@ -214,6 +212,6 @@ export class AppUpdaterController {
   private notifyStateChanged(): void {
     const window = this.attachedWindow
     if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return
-    window.webContents.send(IPC_EVENTS.appUpdateStateChanged, this.state)
+    sendIpcEvent(window.webContents, 'app-update:state-changed', this.state)
   }
 }

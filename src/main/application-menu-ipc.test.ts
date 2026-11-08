@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const electronMock = vi.hoisted(() => ({
-  handle: vi.fn()
+  handle: vi.fn(),
+  removeHandler: vi.fn()
 }))
 const executeApplicationMenuCommand = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({
-  ipcMain: { handle: electronMock.handle }
+  ipcMain: { handle: electronMock.handle, removeHandler: electronMock.removeHandler }
 }))
 vi.mock('./application-menu', () => ({ executeApplicationMenuCommand }))
 
-import { IPC_CHANNELS } from '../shared/vault-contract'
 import { isApplicationMenuCommand, registerApplicationMenuIpc } from './application-menu-ipc'
 
 describe('application menu IPC', () => {
@@ -27,29 +27,35 @@ describe('application menu IPC', () => {
     expect(isApplicationMenuCommand({ command: 'copy' })).toBe(false)
   })
 
-  it('executes a command only for the current main renderer', () => {
+  it('executes a command only for the current main renderer', async () => {
     const mainFrame = { url: 'file:///index.html' }
     const sender = { id: 1, mainFrame, getURL: () => mainFrame.url }
     const window = { isDestroyed: () => false, webContents: sender }
-    registerApplicationMenuIpc({ getMainWindow: () => window as never })
+    const dispose = registerApplicationMenuIpc({ getMainWindow: () => window as never })
     expect(electronMock.handle).toHaveBeenCalledWith(
-      IPC_CHANNELS.applicationMenuExecute,
+      'application-menu:execute',
       expect.any(Function)
     )
     const handler = electronMock.handle.mock.calls[0]?.[1] as (
       event: { sender: unknown; senderFrame?: unknown },
       command: unknown
-    ) => void
+    ) => Promise<void>
 
-    handler({ sender, senderFrame: mainFrame }, 'copy')
+    await handler({ sender, senderFrame: mainFrame }, 'copy')
 
     expect(executeApplicationMenuCommand).toHaveBeenCalledWith(window, 'copy')
-    expect(() => handler({ sender: { id: 2 } }, 'copy')).toThrow('Invalid application menu request')
-    expect(() => handler({ sender, senderFrame: { url: mainFrame.url } }, 'copy')).toThrow(
-      'Invalid application menu request'
+    await expect(handler({ sender: { id: 2 } }, 'copy')).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    await expect(handler({ sender, senderFrame: { url: mainFrame.url } }, 'copy')).rejects.toThrow(
+      'BEARWARDEN:INVALID_INPUT'
     )
-    expect(() => handler({ sender, senderFrame: mainFrame }, 'open-devtools')).toThrow(
-      'Invalid application menu request'
+    await expect(handler({ sender, senderFrame: mainFrame }, 'open-devtools')).rejects.toThrow(
+      'BEARWARDEN:INVALID_INPUT'
     )
+    expect(executeApplicationMenuCommand).toHaveBeenCalledOnce()
+
+    dispose()
+    dispose()
+    expect(electronMock.removeHandler).toHaveBeenCalledOnce()
+    expect(electronMock.removeHandler).toHaveBeenCalledWith('application-menu:execute')
   })
 })

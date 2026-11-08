@@ -1,10 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
-import { dialog, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
+import { dialog, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import { isAutofillShortcut } from '../shared/autofill-shortcuts'
 import {
-  IPC_CHANNELS,
-  IPC_ERROR_PREFIX,
-  IPC_EVENTS,
   ACCOUNT_SESSION_DEAUTHORIZATION_CONFIRMATION,
   MAX_VAULT_TIMEOUT_MINUTES,
   MAX_LOGIN_BATCH_IDS,
@@ -19,6 +16,7 @@ import {
   type AccountProfileNameUpdateRequest,
   type AccountRemoveRequest,
   type AccountRenameRequest,
+  type AccountSwitchRequest,
   type AccountReorderRequest,
   type AccountSessionDeauthorizationRequest,
   type LoginApprovalResponse,
@@ -43,7 +41,6 @@ import {
   type CustomFieldRequest,
   type EditorSecretsRequest,
   type EquivalentDomainSettingsUpdate,
-  type EquivalentDomainSettingsView,
   type CredentialGeneratorRequest,
   type FolderCreateRequest,
   type FolderDeleteRequest,
@@ -81,7 +78,6 @@ import {
   type MasterPasswordChangeStatus,
   type ItemFieldRequest,
   type InactiveTwoFactorDocumentationRequest,
-  type InactiveTwoFactorReport,
   type SshKeyImportCancelRequest,
   type SshKeyImportPassphraseRequest,
   type SshKeyCreateImportedRequest,
@@ -98,12 +94,8 @@ import {
   type SyncTwoFactorMethod,
   type SyncTwoFactorProvider,
   type SyncUnlockRequest,
-  type VaultErrorCode,
   type VaultExportRequest,
-  type VaultHealthExposedReport,
-  type VaultHealthAccountBreachReport,
   type VaultHealthAccountBreachRequest,
-  type VaultHealthReport,
   type VaultImportRequest,
   type TouchIdEnableRequest,
   type VaultSetupRequest,
@@ -117,12 +109,7 @@ import type { AppSettingsService } from './app-settings'
 import { ACCOUNT_ID_PATTERN } from './account-paths'
 import { ACCOUNT_REGISTRY_MAX_ACCOUNTS } from './account-registry'
 import type { AccountSwitchService } from './account-switch-service'
-import {
-  accountSwitchVaultError,
-  isVaultError,
-  SyncTwoFactorRequiredError,
-  VaultError
-} from './vault-errors'
+import { accountSwitchVaultError, SyncTwoFactorRequiredError, VaultError } from './vault-errors'
 import type { VaultService } from './vault-service'
 import type { VaultPortabilityService } from './vault-portability'
 import { translateMain } from './i18n'
@@ -133,6 +120,7 @@ import {
   type TwoFactorDirectoryCache
 } from './two-factor-directory-cache'
 import { exactKeys, plainRecord } from './plain-record'
+import { createTrustedIpc, parseNoInput, sendIpcEvent } from './typed-ipc'
 import { UUID_PATTERN, isPlainObjectRecord } from './validation-primitives'
 import { ITEM_FIELD_NAMES } from './vault/item-fields'
 import {
@@ -579,11 +567,6 @@ function parsePinUnlock(value: unknown): PinUnlockRequest {
   return request
 }
 
-/** No-argument channels carry no payload, so renderer data can never steer an operation that takes none. */
-function parseNoInput(value: unknown): void {
-  if (value !== undefined) throw new VaultError('INVALID_INPUT')
-}
-
 function optionalErrorLogText(record: RecordValue, key: string): string | undefined {
   const value = record[key]
   if (value === undefined) return undefined
@@ -630,11 +613,11 @@ function parseRendererErrorLog(value: unknown): RendererErrorLogRequest {
   }
 }
 
-function parseAccountSwitch(value: unknown): string {
+function parseAccountSwitch(value: unknown): AccountSwitchRequest {
   const record = exactRecord(value, ['accountId'])
   const accountId = requiredString(record, 'accountId')
   if (!ACCOUNT_ID_PATTERN.test(accountId)) throw new VaultError('INVALID_INPUT')
-  return accountId
+  return { accountId }
 }
 
 function parseAccountRename(value: unknown): AccountRenameRequest {
@@ -823,6 +806,97 @@ function parseAccountSessionDeauthorization(value: unknown): AccountSessionDeaut
     request.confirm !== true
   ) {
     request.masterPassword = ''
+    throw new VaultError('INVALID_INPUT')
+  }
+  return request
+}
+
+function parseAccountTwoFactorDisable(value: unknown): AccountTwoFactorDisableRequest {
+  const record = exactRecord(value, ['type', 'masterPassword', 'confirm'])
+  const request: AccountTwoFactorDisableRequest = {
+    type: record.type as 0 | 1 | 2 | 3 | 7,
+    masterPassword: requiredString(record, 'masterPassword'),
+    confirm: record.confirm as true
+  }
+  if (
+    !([0, 1, 2, 3, 7] as const).includes(request.type) ||
+    !validAccountMasterPassword(request.masterPassword) ||
+    request.confirm !== true
+  ) {
+    request.masterPassword = ''
+    throw new VaultError('INVALID_INPUT')
+  }
+  return request
+}
+
+function parseAccountAuthenticatorSetupLocator(value: unknown): { sessionId: string } {
+  const record = exactRecord(value, ['sessionId'])
+  const sessionId = requiredString(record, 'sessionId')
+  if (!UUID_PATTERN.test(sessionId)) throw new VaultError('INVALID_INPUT')
+  return { sessionId }
+}
+
+function parseAccountAuthenticatorComplete(value: unknown): AccountAuthenticatorCompleteRequest {
+  const record = exactRecord(value, ['sessionId', 'token', 'masterPassword'])
+  const request: AccountAuthenticatorCompleteRequest = {
+    sessionId: requiredString(record, 'sessionId'),
+    token: requiredString(record, 'token'),
+    ...(record.masterPassword === undefined
+      ? {}
+      : { masterPassword: requiredString(record, 'masterPassword') })
+  }
+  if (
+    !UUID_PATTERN.test(request.sessionId) ||
+    !/^\d{6}$/.test(request.token) ||
+    (request.masterPassword !== undefined && !validAccountMasterPassword(request.masterPassword))
+  ) {
+    if (request.masterPassword !== undefined) request.masterPassword = ''
+    request.token = ''
+    throw new VaultError('INVALID_INPUT')
+  }
+  return request
+}
+
+function parseAccountEmailTwoFactorSend(value: unknown): AccountEmailTwoFactorSendRequest {
+  const record = exactRecord(value, ['sessionId', 'email', 'masterPassword'])
+  const request: AccountEmailTwoFactorSendRequest = {
+    sessionId: requiredString(record, 'sessionId'),
+    email: requiredString(record, 'email'),
+    ...(record.masterPassword === undefined
+      ? {}
+      : { masterPassword: requiredString(record, 'masterPassword') })
+  }
+  if (
+    !UUID_PATTERN.test(request.sessionId) ||
+    request.email.length === 0 ||
+    request.email.length > 256 ||
+    request.email.trim() !== request.email ||
+    !/^[^\s@]+@[^\s@]+$/u.test(request.email) ||
+    (request.masterPassword !== undefined && !validAccountMasterPassword(request.masterPassword))
+  ) {
+    request.email = ''
+    if (request.masterPassword !== undefined) request.masterPassword = ''
+    throw new VaultError('INVALID_INPUT')
+  }
+  return request
+}
+
+function parseAccountEmailTwoFactorComplete(value: unknown): AccountEmailTwoFactorCompleteRequest {
+  const record = exactRecord(value, ['sessionId', 'token', 'masterPassword'])
+  const request: AccountEmailTwoFactorCompleteRequest = {
+    sessionId: requiredString(record, 'sessionId'),
+    token: requiredString(record, 'token'),
+    ...(record.masterPassword === undefined
+      ? {}
+      : { masterPassword: requiredString(record, 'masterPassword') })
+  }
+  if (
+    !UUID_PATTERN.test(request.sessionId) ||
+    !/^\d{1,50}$/u.test(request.token) ||
+    (request.masterPassword !== undefined && !validAccountMasterPassword(request.masterPassword))
+  ) {
+    request.token = ''
+    if (request.masterPassword !== undefined) request.masterPassword = ''
     throw new VaultError('INVALID_INPUT')
   }
   return request
@@ -1207,6 +1281,18 @@ function parseId(value: unknown): LoginIdRequest {
     id: requiredString(record, 'id'),
     ...(authorizationToken ? { authorizationToken } : {})
   }
+}
+
+function parseSharedLoginId(value: unknown): LoginIdRequest {
+  const { id } = exactDataRecord(value, ['id'])
+  if (typeof id !== 'string' || !UUID_PATTERN.test(id)) throw new VaultError('INVALID_INPUT')
+  return { id }
+}
+
+function parseCollectionOrganizationId(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'string' || !UUID_PATTERN.test(value)) throw new VaultError('INVALID_INPUT')
+  return value
 }
 
 function parsePasswordHistoryEntry(value: unknown): PasswordHistoryEntryRequest {
@@ -2112,68 +2198,12 @@ function parseSyncPurgePersonalVault(value: unknown): SyncPurgePersonalVaultRequ
   return { masterPassword, confirmation, confirmPurge: true }
 }
 
-export function isTrustedVaultSender(
-  event: Pick<IpcMainInvokeEvent, 'sender' | 'senderFrame'>,
-  mainWindow: BrowserWindow | null
-): boolean {
-  if (!mainWindow || mainWindow.isDestroyed()) return false
-  const webContents = mainWindow.webContents
-  const senderFrame = event.senderFrame
-  return (
-    event.sender === webContents &&
-    senderFrame != null &&
-    senderFrame === webContents.mainFrame &&
-    senderFrame.url === webContents.getURL()
-  )
-}
-
-function publicError(code: VaultErrorCode): Error {
-  return new Error(`${IPC_ERROR_PREFIX}${code}`)
-}
-
-function registerTrustedHandler<T>(
-  channel: string,
-  getMainWindow: () => BrowserWindow | null,
-  handler: (event: IpcMainInvokeEvent, input: unknown) => Promise<T>,
-  errorLog?: VaultIpcOptions['errorLog']
-): void {
-  ipcMain.handle(channel, async (event, input) => {
-    if (!isTrustedVaultSender(event, getMainWindow())) {
-      const error = publicError('INVALID_INPUT')
-      errorLog?.recordMainError('ipc-error', error, { channel, code: 'INVALID_INPUT' })
-      throw error
-    }
-
-    try {
-      return await handler(event, input)
-    } catch (error) {
-      if (isVaultError(error)) {
-        errorLog?.recordMainError('ipc-error', error, { channel, code: error.code })
-        // Stage-tagged failures carry a static diagnostic label in their message (never paths,
-        // secrets, or vault content). Surface it in the main-process log so intermittent faults
-        // like CORRUPT_VAULT can be traced to their exact throw site.
-        if (error.message !== error.code) console.error(`[vault-ipc] ${channel}: ${error.message}`)
-        throw publicError(error.code)
-      }
-      errorLog?.recordMainError('ipc-error', error, { channel, code: 'INTERNAL_ERROR' })
-      throw publicError('INTERNAL_ERROR')
-    }
-  })
-}
-
 export function registerVaultIpc(options: VaultIpcOptions): () => void {
   const { vault, portability, settings, getMainWindow } = options
   const accountSwitchService = options.accountSwitchService
   let disposed = false
   let settingsActivityCheck: Promise<void> | null = null
-  const registeredChannels = new Set<string>()
-  const registerHandler = <T>(
-    channel: string,
-    handler: (event: IpcMainInvokeEvent, input: unknown) => Promise<T>
-  ): void => {
-    registerTrustedHandler(channel, getMainWindow, handler, options.errorLog)
-    registeredChannels.add(channel)
-  }
+  const ipc = createTrustedIpc({ getMainWindow, errorLog: options.errorLog })
   const sshKeyImportSessions = options.sshKeyImportSessions
   const authorizations =
     options.repromptAuthorizations ??
@@ -2273,55 +2303,46 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     await settings.disableTouchId()
     return publicMasterPasswordChangeStatus({ phase })
   }
-  registerHandler(IPC_CHANNELS.accountStatus, async (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('account:status', parseNoInput, async () => {
     return publicAccountStatus(await runAccountOperation((service) => service.getStatus()))
   })
-  registerHandler(IPC_CHANNELS.accountAdd, async (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('account:add', parseNoInput, async () => {
     return publicAccountMutation(await runAccountOperation((service) => service.addAccount()))
   })
-  registerHandler(IPC_CHANNELS.accountSwitch, async (_event, input) => {
-    const accountId = parseAccountSwitch(input)
+  ipc.handle('account:switch', parseAccountSwitch, async (request) => {
     return publicAccountMutation(
-      await runAccountOperation((service) => service.switchAccount(accountId))
+      await runAccountOperation((service) => service.switchAccount(request.accountId))
     )
   })
-  registerHandler(IPC_CHANNELS.accountRename, async (_event, input) => {
-    const request = parseAccountRename(input)
+  ipc.handle('account:rename', parseAccountRename, async (request) => {
     return publicAccountMutation(
       await runAccountOperation((service) =>
         service.renameAccount(request.accountId, request.displayName, request.expectedRevision)
       )
     )
   })
-  registerHandler(IPC_CHANNELS.accountReorder, async (_event, input) => {
-    const request = parseAccountReorder(input)
+  ipc.handle('account:reorder', parseAccountReorder, async (request) => {
     return publicAccountMutation(
       await runAccountOperation((service) =>
         service.reorderAccounts(request.accountIds, request.expectedRevision)
       )
     )
   })
-  registerHandler(IPC_CHANNELS.accountRemove, async (_event, input) => {
-    const request = parseAccountRemove(input)
+  ipc.handle('account:remove', parseAccountRemove, async (request) => {
     return publicAccountMutation(
       await runAccountOperation((service) => service.removeAccount(request.accountId, true))
     )
   })
-  registerHandler(IPC_CHANNELS.vaultStatus, async (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('vault:status', parseNoInput, async () => {
     return vault.status()
   })
-  registerHandler(IPC_CHANNELS.vaultSetup, async (_event, input) => {
-    const request = parseSetup(input)
+  ipc.handle('vault:setup', parseSetup, async (request) => {
     authorizations.clear()
     const status = await vault.setup(request.masterPassword)
     await Promise.resolve(options.afterSetup?.()).catch(() => undefined)
     return status
   })
-  registerHandler(IPC_CHANNELS.vaultUnlock, async (_event, input) => {
-    const request = parseSetup(input)
+  ipc.handle('vault:unlock', parseSetup, async (request) => {
     authorizations.clear()
     try {
       const status = await vault.unlock(request.masterPassword)
@@ -2331,12 +2352,10 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       request.masterPassword = ''
     }
   })
-  registerHandler(IPC_CHANNELS.vaultPinStatus, async (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('vault:pin-status', parseNoInput, async () => {
     return vault.pinUnlockStatus()
   })
-  registerHandler(IPC_CHANNELS.vaultPinEnable, async (_event, input) => {
-    const request = parsePinEnable(input)
+  ipc.handle('vault:pin-enable', parsePinEnable, async (request) => {
     try {
       return await vault.enablePinUnlock(request)
     } finally {
@@ -2344,12 +2363,10 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       request.masterPassword = ''
     }
   })
-  registerHandler(IPC_CHANNELS.vaultPinDisable, async (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('vault:pin-disable', parseNoInput, async () => {
     return vault.disablePinUnlock()
   })
-  registerHandler(IPC_CHANNELS.vaultPinUnlock, async (_event, input) => {
-    const request = parsePinUnlock(input)
+  ipc.handle('vault:pin-unlock', parsePinUnlock, async (request) => {
     authorizations.clear()
     try {
       const status = await vault.unlockWithPin(request)
@@ -2359,8 +2376,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       request.pin = ''
     }
   })
-  registerHandler(IPC_CHANNELS.vaultMasterPasswordChangeStatus, async (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('vault:master-password-change-status', parseNoInput, async () => {
     const status = await vault.masterPasswordChangeStatus()
     if (status.phase !== null) {
       authorizations.clear()
@@ -2368,53 +2384,52 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     }
     return publicMasterPasswordChangeStatus(status)
   })
-  registerHandler(IPC_CHANNELS.vaultMasterPasswordChange, async (_event, input) => {
-    let request: MasterPasswordChangeRequest | null = null
-    try {
-      request = parseMasterPasswordChange(input, true)
-      await Promise.resolve(options.beforeSyncReconfigure?.())
+  ipc.handle(
+    'vault:master-password-change',
+    (input) => parseMasterPasswordChange(input, true),
+    async (request) => {
       try {
-        await vault.changeMasterPassword(request)
-      } catch (error) {
-        return await failedMasterPasswordChange(error)
-      }
-      return await completedMasterPasswordChange()
-    } finally {
-      if (request) {
+        await Promise.resolve(options.beforeSyncReconfigure?.())
+        try {
+          await vault.changeMasterPassword(request)
+        } catch (error) {
+          return await failedMasterPasswordChange(error)
+        }
+        return await completedMasterPasswordChange()
+      } finally {
         request.currentPassword = ''
         request.newPassword = ''
         request.hint = null
       }
-      scrubMasterPasswordChangeInput(input)
-    }
-  })
-  registerHandler(IPC_CHANNELS.vaultMasterPasswordChangeResolve, async (_event, input) => {
-    let request: MasterPasswordChangeResolutionRequest | null = null
-    try {
-      request = parseMasterPasswordChange(input, false)
-      await Promise.resolve(options.beforeSyncReconfigure?.())
-      let result: Awaited<ReturnType<VaultService['resolveMasterPasswordChange']>>
+    },
+    { scrubInput: scrubMasterPasswordChangeInput }
+  )
+  ipc.handle(
+    'vault:master-password-change-resolve',
+    (input) => parseMasterPasswordChange(input, false),
+    async (request) => {
       try {
-        result = await vault.resolveMasterPasswordChange(request)
-      } catch (error) {
-        return await failedMasterPasswordChange(error)
-      }
-      if (result.status === 'resolved') return await completedMasterPasswordChange()
-      if (result.status === 'remote-not-changed') {
-        return await reconnectStatus('remote-not-changed')
-      }
-      if (result.status === 'needs-reconnect') return await reconnectStatus('needs-reconnect')
-      return await reconnectStatus('indeterminate')
-    } finally {
-      if (request) {
+        await Promise.resolve(options.beforeSyncReconfigure?.())
+        let result: Awaited<ReturnType<VaultService['resolveMasterPasswordChange']>>
+        try {
+          result = await vault.resolveMasterPasswordChange(request)
+        } catch (error) {
+          return await failedMasterPasswordChange(error)
+        }
+        if (result.status === 'resolved') return await completedMasterPasswordChange()
+        if (result.status === 'remote-not-changed') {
+          return await reconnectStatus('remote-not-changed')
+        }
+        if (result.status === 'needs-reconnect') return await reconnectStatus('needs-reconnect')
+        return await reconnectStatus('indeterminate')
+      } finally {
         request.currentPassword = ''
         request.newPassword = ''
       }
-      scrubMasterPasswordChangeInput(input)
-    }
-  })
-  registerHandler(IPC_CHANNELS.vaultLock, async (_event, input) => {
-    parseNoInput(input)
+    },
+    { scrubInput: scrubMasterPasswordChangeInput }
+  )
+  ipc.handle('vault:lock', parseNoInput, async () => {
     try {
       await Promise.resolve(options.beforeLock?.())
       authorizations.clear()
@@ -2430,8 +2445,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       }
     }
   })
-  registerHandler(IPC_CHANNELS.vaultExport, async (_event, input) => {
-    const request = parseVaultExport(input)
+  ipc.handle('vault:export', parseVaultExport, async (request) => {
     try {
       return await portability.exportVault(request)
     } finally {
@@ -2439,28 +2453,28 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       if ('password' in request && typeof request.password === 'string') request.password = ''
     }
   })
-  registerHandler(IPC_CHANNELS.vaultImport, async (_event, input) => {
-    let request: VaultImportRequest | undefined
-    try {
-      request = parseVaultImport(input)
-      const result = await portability.importVault(request)
-      if (!result.canceled && result.importedFolders + result.importedItems > 0) notifyMutation()
-      return result
-    } finally {
-      scrubStringProperties(request, ['masterPassword', 'password'])
-      scrubStringProperties(input, ['masterPassword', 'password'])
-    }
-  })
-  registerHandler(IPC_CHANNELS.nativeRestorePreview, async (event, input) => {
-    const request = parseNativeRestorePreview(input)
+  ipc.handle(
+    'vault:import',
+    parseVaultImport,
+    async (request) => {
+      try {
+        const result = await portability.importVault(request)
+        if (!result.canceled && result.importedFolders + result.importedItems > 0) notifyMutation()
+        return result
+      } finally {
+        scrubStringProperties(request, ['masterPassword', 'password'])
+      }
+    },
+    { scrubInput: (input) => scrubStringProperties(input, ['masterPassword', 'password']) }
+  )
+  ipc.handle('vault:native-restore-preview', parseNativeRestorePreview, async (request, event) => {
     try {
       return await portability.previewNativeRestore(event.sender.id, request.password)
     } finally {
       request.password = ''
     }
   })
-  registerHandler(IPC_CHANNELS.nativeRestoreStart, async (event, input) => {
-    const request = parseNativeRestoreStart(input)
+  ipc.handle('vault:native-restore-start', parseNativeRestoreStart, async (request, event) => {
     try {
       const result = await portability.runNativeRestore(
         event.sender.id,
@@ -2469,7 +2483,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
         (summary, state) => {
           try {
             if (!event.sender.isDestroyed()) {
-              event.sender.send(IPC_EVENTS.nativeRestoreProgress, {
+              sendIpcEvent(event.sender, 'vault:native-restore-progress', {
                 sessionId: request.sessionId,
                 state,
                 ...summary
@@ -2486,78 +2500,61 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       request.masterPassword = ''
     }
   })
-  registerHandler(IPC_CHANNELS.nativeRestoreCancel, async (event, input) => {
-    const request = parseNativeRestoreSession(input)
+  ipc.handle('vault:native-restore-cancel', parseNativeRestoreSession, async (request, event) => {
     await portability.cancelNativeRestore(event.sender.id, request.sessionId)
   })
-  registerHandler(IPC_CHANNELS.nativeRestoreClearCompleted, async (event, input) => {
-    const request = parseNativeRestoreSession(input)
-    await portability.clearCompletedNativeRestore(event.sender.id, request.sessionId)
-  })
-  registerHandler(IPC_CHANNELS.folderList, async (_event, input) => {
-    parseNoInput(input)
+  ipc.handle(
+    'vault:native-restore-clear-completed',
+    parseNativeRestoreSession,
+    async (request, event) => {
+      await portability.clearCompletedNativeRestore(event.sender.id, request.sessionId)
+    }
+  )
+  ipc.handle('folder:list', parseNoInput, async () => {
     return vault.listFolders()
   })
-  registerHandler(IPC_CHANNELS.organizationList, async (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('organization:list', parseNoInput, async () => {
     return vault.listOrganizations()
   })
-  registerHandler(IPC_CHANNELS.collectionList, (_event, input) => {
-    if (input === undefined || input === null) return vault.listCollections()
-    if (typeof input !== 'string' || !UUID_PATTERN.test(input))
-      throw new VaultError('INVALID_INPUT')
-    return vault.listCollections(input)
-  })
-  registerHandler(IPC_CHANNELS.sharedLoginList, (_event, input) =>
-    vault.listSharedLogins(parseSharedLoginList(input))
+  ipc.handle('collection:list', parseCollectionOrganizationId, (organizationId) =>
+    organizationId === undefined ? vault.listCollections() : vault.listCollections(organizationId)
   )
-  registerHandler(IPC_CHANNELS.sharedLoginGet, (_event, input) => {
-    const { id } = exactDataRecord(input, ['id'])
-    if (typeof id !== 'string' || !UUID_PATTERN.test(id)) throw new VaultError('INVALID_INPUT')
-    return vault.getSharedLogin({ id })
-  })
-  registerHandler(IPC_CHANNELS.sharedLoginUpdate, (_event, input) =>
-    afterMutation(vault.updateSharedLogin(parseSharedLoginUpdate(input)))
+  ipc.handle('shared-login:list', parseSharedLoginList, (request) =>
+    vault.listSharedLogins(request)
   )
-  registerHandler(IPC_CHANNELS.sharedLoginRevealEditorSecrets, (_event, input) =>
-    vault.revealSharedEditorSecrets(parseEditorSecretsRequest(input))
+  ipc.handle('shared-login:get', parseSharedLoginId, (request) => vault.getSharedLogin(request))
+  ipc.handle('shared-login:update', parseSharedLoginUpdate, (request) =>
+    afterMutation(vault.updateSharedLogin(request))
   )
-  registerHandler(IPC_CHANNELS.sharedLoginRevealSecret, (_event, input) =>
-    vault.revealSharedSecret(parseItemField(input))
+  ipc.handle('shared-login:reveal-editor-secrets', parseEditorSecretsRequest, (request) =>
+    vault.revealSharedEditorSecrets(request)
   )
-  registerHandler(IPC_CHANNELS.sharedLoginCopyField, (_event, input) =>
-    vault.copySharedField(parseItemField(input))
+  ipc.handle('shared-login:reveal-secret', parseItemField, (request) =>
+    vault.revealSharedSecret(request)
   )
-  registerHandler(IPC_CHANNELS.sharedLoginRevealCustomField, (_event, input) =>
-    vault.revealSharedCustomField(parseCustomFieldRequest(input))
+  ipc.handle('shared-login:copy-field', parseItemField, (request) => vault.copySharedField(request))
+  ipc.handle('shared-login:reveal-custom-field', parseCustomFieldRequest, (request) =>
+    vault.revealSharedCustomField(request)
   )
-  registerHandler(IPC_CHANNELS.sharedLoginCopyCustomField, (_event, input) =>
-    vault.copySharedCustomField(parseCustomFieldRequest(input))
+  ipc.handle('shared-login:copy-custom-field', parseCustomFieldRequest, (request) =>
+    vault.copySharedCustomField(request)
   )
-  registerHandler(IPC_CHANNELS.sharedLoginGetTotp, (_event, input) =>
-    vault.getSharedTotp(parseId(input))
-  )
-  registerHandler(IPC_CHANNELS.sharedLoginCopyTotp, (_event, input) =>
-    vault.copySharedTotp(parseId(input))
-  )
-  registerHandler(IPC_CHANNELS.sharedLoginOpenUri, (_event, input) =>
-    vault.openSharedLoginUri(parseOpenUri(input))
-  )
-  registerHandler(IPC_CHANNELS.emergencyAccessList, async (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('shared-login:get-totp', parseId, (request) => vault.getSharedTotp(request))
+  ipc.handle('shared-login:copy-totp', parseId, (request) => vault.copySharedTotp(request))
+  ipc.handle('shared-login:open-uri', parseOpenUri, (request) => vault.openSharedLoginUri(request))
+  ipc.handle('emergency-access:list', parseNoInput, async () => {
     return vault.listEmergencyAccess()
   })
-  registerHandler(IPC_CHANNELS.folderCreate, (_event, input) =>
-    afterMutation(vault.createFolder(parseFolderCreate(input)))
+  ipc.handle('folder:create', parseFolderCreate, (request) =>
+    afterMutation(vault.createFolder(request))
   )
-  registerHandler(IPC_CHANNELS.folderUpdate, (_event, input) =>
-    afterMutation(vault.updateFolder(parseFolderUpdate(input)))
+  ipc.handle('folder:update', parseFolderUpdate, (request) =>
+    afterMutation(vault.updateFolder(request))
   )
-  registerHandler(IPC_CHANNELS.folderReparent, (_event, input) =>
-    afterMutation(vault.reparentFolder(parseFolderReparent(input)))
+  ipc.handle('folder:reparent', parseFolderReparent, (request) =>
+    afterMutation(vault.reparentFolder(request))
   )
-  registerHandler(IPC_CHANNELS.folderDelete, (event, input) => {
-    const request = parseFolderDelete(input)
+  ipc.handle('folder:delete', parseFolderDelete, (request, event) => {
     return runAuthorizationBoundary(
       event,
       request.authorizationToken,
@@ -2575,60 +2572,40 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       }
     )
   })
-  registerHandler(IPC_CHANNELS.folderReorder, (_event, input) =>
-    afterMutation(vault.reorderFolders(parseFolderReorder(input)))
+  ipc.handle('folder:reorder', parseFolderReorder, (request) =>
+    afterMutation(vault.reorderFolders(request))
   )
-  registerHandler(IPC_CHANNELS.loginList, (_event, input) =>
-    vault.listLogins(parseLoginList(input))
-  )
-  registerHandler<VaultHealthReport>(IPC_CHANNELS.vaultHealthReport, (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('login:list', parseLoginList, (request) => vault.listLogins(request))
+  ipc.handle('vault:health-report', parseNoInput, () => {
     return vault.getHealthReport()
   })
-  registerHandler<VaultHealthExposedReport>(
-    IPC_CHANNELS.vaultHealthExposedPasswords,
-    (_event, input) => {
-      parseNoInput(input)
-      return vault.getExposedPasswordReport()
-    }
+  ipc.handle('vault:health-exposed-passwords', parseNoInput, () => vault.getExposedPasswordReport())
+  ipc.handle('vault:health-cancel-exposed-passwords', parseNoInput, async () =>
+    vault.cancelExposedPasswordReport()
   )
-  registerHandler<boolean>(
-    IPC_CHANNELS.vaultHealthCancelExposedPasswords,
-    async (_event, input) => {
-      parseNoInput(input)
-      return vault.cancelExposedPasswordReport()
-    }
+  ipc.handle('vault:health-account-breaches', parseVaultHealthAccountBreachRequest, (request) =>
+    vault.getAccountBreachReport(request)
   )
-  registerHandler<VaultHealthAccountBreachReport>(
-    IPC_CHANNELS.vaultHealthAccountBreaches,
-    (_event, input) => vault.getAccountBreachReport(parseVaultHealthAccountBreachRequest(input))
-  )
-  registerHandler<boolean>(IPC_CHANNELS.vaultHealthCancelAccountBreaches, async (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('vault:health-cancel-account-breaches', parseNoInput, async () => {
     return vault.cancelAccountBreachReport()
   })
-  registerHandler<void>(IPC_CHANNELS.vaultHealthOpenHibp, async (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('vault:health-open-hibp', parseNoInput, async () => {
     await vault.openHibpWebsite()
   })
-  registerHandler<InactiveTwoFactorReport>(
-    IPC_CHANNELS.vaultHealthInactiveTwoFactor,
-    async (_event, input) => {
-      parseNoInput(input)
-      const directory = options.twoFactorDirectory
-      if (!directory) throw new VaultError('HEALTH_CHECK_FAILED')
-      try {
-        const dataset = await directory.getDataset()
-        return await vault.getInactiveTwoFactorReport(dataset)
-      } catch (error) {
-        mapTwoFactorDirectoryError(error)
-      }
+  ipc.handle('vault:health-inactive-two-factor', parseNoInput, async () => {
+    const directory = options.twoFactorDirectory
+    if (!directory) throw new VaultError('HEALTH_CHECK_FAILED')
+    try {
+      const dataset = await directory.getDataset()
+      return await vault.getInactiveTwoFactorReport(dataset)
+    } catch (error) {
+      mapTwoFactorDirectoryError(error)
     }
-  )
-  registerHandler<void>(
-    IPC_CHANNELS.vaultHealthOpenTwoFactorDocumentation,
-    async (_event, input) => {
-      const request = parseInactiveTwoFactorDocumentation(input)
+  })
+  ipc.handle(
+    'vault:health-open-two-factor-documentation',
+    parseInactiveTwoFactorDocumentation,
+    async (request) => {
       const directory = options.twoFactorDirectory
       if (!directory) throw new VaultError('HEALTH_CHECK_FAILED')
       try {
@@ -2638,25 +2615,19 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       }
     }
   )
-  registerHandler(IPC_CHANNELS.loginAuthorize, async (event, input) => {
-    const request = parseLoginAuthorize(input)
+  ipc.handle('login:authorize', parseLoginAuthorize, async (request, event) => {
     const generation = await vault.authorizeLogin(request)
     return authorizations.issue(event.sender.id, request.id, generation)
   })
-  registerHandler(IPC_CHANNELS.loginAuthorizeMany, async (event, input) => {
-    const request = parseLoginAuthorizeMany(input)
+  ipc.handle('login:authorize-many', parseLoginAuthorizeMany, async (request, event) => {
     const generation = await vault.authorizeLogins(request)
     return authorizations.issueMany(event.sender.id, request.ids, generation)
   })
-  registerHandler(IPC_CHANNELS.loginGet, (event, input) => {
-    const request = parseId(input)
+  ipc.handle('login:get', parseId, (request, event) => {
     return runAuthorized(event, request, () => vault.getLogin(request))
   })
-  registerHandler(IPC_CHANNELS.loginPrefetch, (_event, input) =>
-    vault.prefetchLogins(parseLoginPrefetch(input))
-  )
-  registerHandler(IPC_CHANNELS.loginGetPasswordHistory, (event, input) => {
-    const request = parseId(input)
+  ipc.handle('login:prefetch', parseLoginPrefetch, (request) => vault.prefetchLogins(request))
+  ipc.handle('login:get-password-history', parseId, (request, event) => {
     return vault.getPasswordHistoryView(request, (ids, state) =>
       authorizations.validateMany(
         request.authorizationToken,
@@ -2666,8 +2637,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     )
   })
-  registerHandler(IPC_CHANNELS.loginRevealPasswordHistory, (event, input) => {
-    const request = parsePasswordHistoryEntry(input)
+  ipc.handle('login:reveal-password-history', parsePasswordHistoryEntry, (request, event) => {
     return vault.revealPasswordHistory(request, (ids, state) =>
       authorizations.validateMany(
         request.authorizationToken,
@@ -2677,8 +2647,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     )
   })
-  registerHandler(IPC_CHANNELS.loginCopyPasswordHistory, (event, input) => {
-    const request = parsePasswordHistoryEntry(input)
+  ipc.handle('login:copy-password-history', parsePasswordHistoryEntry, (request, event) => {
     return vault.copyPasswordHistory(request, (ids, state) =>
       authorizations.validateMany(
         request.authorizationToken,
@@ -2688,37 +2657,36 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     )
   })
-  registerHandler(IPC_CHANNELS.loginRestorePasswordHistory, (event, input) => {
-    const request = parsePasswordHistoryRestore(input)
+  ipc.handle('login:restore-password-history', parsePasswordHistoryRestore, (request, event) => {
     return runAuthorized(event, request, () => afterMutation(vault.restorePasswordHistory(request)))
   })
   const attachmentProgress =
     (event: IpcMainInvokeEvent) =>
     (progress: AttachmentProgressEvent): void => {
-      if (!event.sender.isDestroyed()) event.sender.send(IPC_EVENTS.attachmentProgress, progress)
+      if (!event.sender.isDestroyed()) sendIpcEvent(event.sender, 'attachment:progress', progress)
     }
-  registerHandler(IPC_CHANNELS.attachmentDownload, (event, input) => {
-    const request = parseAttachmentTarget(input)
+  ipc.handle('attachment:download', parseAttachmentTarget, (request, event) => {
     return vault.downloadAttachment(
       request,
       attachmentProgress(event),
       attachmentAuthorization(event, request)
     )
   })
-  registerHandler(IPC_CHANNELS.attachmentPreview, (event, input) => {
-    const request = parseAttachmentTarget(input) as AttachmentPreviewRequest
-    return vault.previewAttachment(
-      request,
-      attachmentProgress(event),
-      attachmentAuthorization(event, request)
-    )
-  })
-  registerHandler(IPC_CHANNELS.attachmentCardCoverPreview, (event, input) => {
-    const request = parseId(input)
+  ipc.handle(
+    'attachment:preview',
+    (input) => parseAttachmentTarget(input) as AttachmentPreviewRequest,
+    (request, event) => {
+      return vault.previewAttachment(
+        request,
+        attachmentProgress(event),
+        attachmentAuthorization(event, request)
+      )
+    }
+  )
+  ipc.handle('attachment:card-cover-preview', parseId, (request, event) => {
     return vault.getCardCoverPreview(request, attachmentAuthorization(event, request))
   })
-  registerHandler(IPC_CHANNELS.attachmentUpload, (event, input) => {
-    const request = parseAttachmentUpload(input)
+  ipc.handle('attachment:upload', parseAttachmentUpload, (request, event) => {
     return afterMutation(
       vault.uploadAttachment(
         request,
@@ -2727,8 +2695,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     )
   })
-  registerHandler(IPC_CHANNELS.attachmentUploadCardCover, (event, input) => {
-    const request = parseAttachmentUploadCardCover(input)
+  ipc.handle('attachment:upload-card-cover', parseAttachmentUploadCardCover, (request, event) => {
     return afterMutation(
       vault.uploadCardCoverAttachment(
         request,
@@ -2737,8 +2704,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     )
   })
-  registerHandler(IPC_CHANNELS.attachmentUploadCardCoverFile, (event, input) => {
-    const request = parseAttachmentUpload(input)
+  ipc.handle('attachment:upload-card-cover-file', parseAttachmentUpload, (request, event) => {
     return afterMutation(
       vault.uploadCardCoverFileAttachment(
         request,
@@ -2747,84 +2713,96 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     )
   })
-  registerHandler(IPC_CHANNELS.attachmentDelete, (event, input) => {
-    const request = parseAttachmentTarget(input) as AttachmentDeleteRequest
-    return afterMutation(
-      vault.deleteAttachment(
-        request,
-        attachmentProgress(event),
-        attachmentAuthorization(event, request)
+  ipc.handle(
+    'attachment:delete',
+    (input) => parseAttachmentTarget(input) as AttachmentDeleteRequest,
+    (request, event) => {
+      return afterMutation(
+        vault.deleteAttachment(
+          request,
+          attachmentProgress(event),
+          attachmentAuthorization(event, request)
+        )
       )
-    )
-  })
-  registerHandler(IPC_CHANNELS.attachmentFixLegacy, (event, input) => {
-    const request = parseAttachmentTarget(input) as AttachmentFixLegacyRequest
-    return afterMutation(
-      vault.fixLegacyAttachment(
-        request,
-        attachmentProgress(event),
-        attachmentAuthorization(event, request)
+    }
+  )
+  ipc.handle(
+    'attachment:fix-legacy',
+    (input) => parseAttachmentTarget(input) as AttachmentFixLegacyRequest,
+    (request, event) => {
+      return afterMutation(
+        vault.fixLegacyAttachment(
+          request,
+          attachmentProgress(event),
+          attachmentAuthorization(event, request)
+        )
       )
-    )
-  })
-  registerHandler(IPC_CHANNELS.attachmentCancel, async (_event, input) =>
-    vault.cancelAttachmentOperation(parseAttachmentCancel(input))
+    }
   )
-  registerHandler(IPC_CHANNELS.loginCreate, (_event, input) =>
-    afterMutation(vault.createLogin(parseLoginCreate(input)))
+  ipc.handle('attachment:cancel', parseAttachmentCancel, async (request) =>
+    vault.cancelAttachmentOperation(request)
   )
-  registerHandler(IPC_CHANNELS.sharedLoginCreate, (_event, input) =>
-    afterMutation(vault.createSharedLogin(parseSharedLoginCreate(input)))
+  ipc.handle('login:create', parseLoginCreate, (request) =>
+    afterMutation(vault.createLogin(request))
   )
-  for (const [channel, operation] of [
-    [IPC_CHANNELS.loginClone, (request: LoginIdRequest) => vault.cloneLogin(request)],
-    [IPC_CHANNELS.loginArchive, (request: LoginIdRequest) => vault.archiveLogin(request)],
-    [IPC_CHANNELS.loginUnarchive, (request: LoginIdRequest) => vault.unarchiveLogin(request)],
-    [IPC_CHANNELS.loginDelete, (request: LoginIdRequest) => vault.deleteLogin(request)],
-    [IPC_CHANNELS.loginRestore, (request: LoginIdRequest) => vault.restoreLogin(request)],
-    [
-      IPC_CHANNELS.loginDeletePermanently,
-      (request: LoginIdRequest) => vault.deleteLoginPermanently(request)
-    ]
-  ] as const) {
-    registerHandler<unknown>(channel, (event, input) => {
-      const request = parseId(input)
-      const invoke = operation as (request: LoginIdRequest) => Promise<unknown>
-      return runAuthorized<unknown>(event, request, () => afterMutation<unknown>(invoke(request)))
+  ipc.handle('shared-login:create', parseSharedLoginCreate, (request) =>
+    afterMutation(vault.createSharedLogin(request))
+  )
+  ipc.handle('login:clone', parseId, (request, event) =>
+    runAuthorized(event, request, () => afterMutation(vault.cloneLogin(request)))
+  )
+  ipc.handle('login:archive', parseId, (request, event) =>
+    runAuthorized(event, request, () => afterMutation(vault.archiveLogin(request)))
+  )
+  ipc.handle('login:unarchive', parseId, (request, event) =>
+    runAuthorized(event, request, () => afterMutation(vault.unarchiveLogin(request)))
+  )
+  ipc.handle('login:delete', parseId, (request, event) =>
+    runAuthorized(event, request, () => afterMutation(vault.deleteLogin(request)))
+  )
+  ipc.handle('login:restore', parseId, (request, event) =>
+    runAuthorized(event, request, () => afterMutation(vault.restoreLogin(request)))
+  )
+  ipc.handle('login:delete-permanently', parseId, (request, event) =>
+    runAuthorized(event, request, () => afterMutation(vault.deleteLoginPermanently(request)))
+  )
+  ipc.handle('login:archive-many', parseLoginBatch, (request, event) =>
+    runAuthorizationBoundary(event, request.authorizationToken, {}, async (authorize) => {
+      authorize(request.ids)
+      return afterMutation(vault.archiveLogins(request))
     })
-  }
-  for (const [channel, operation] of [
-    [IPC_CHANNELS.loginArchiveMany, (request: LoginBatchRequest) => vault.archiveLogins(request)],
-    [
-      IPC_CHANNELS.loginUnarchiveMany,
-      (request: LoginBatchRequest) => vault.unarchiveLogins(request)
-    ],
-    [IPC_CHANNELS.loginDeleteMany, (request: LoginBatchRequest) => vault.deleteLogins(request)],
-    [IPC_CHANNELS.loginRestoreMany, (request: LoginBatchRequest) => vault.restoreLogins(request)],
-    [
-      IPC_CHANNELS.loginDeletePermanentlyMany,
-      (request: LoginBatchRequest) => vault.deleteLoginsPermanently(request)
-    ]
-  ] as const) {
-    registerHandler<unknown>(channel, (event, input) => {
-      const request = parseLoginBatch(input)
-      const invoke = operation as (request: LoginBatchRequest) => Promise<unknown>
-      return runAuthorizationBoundary(event, request.authorizationToken, {}, async (authorize) => {
-        authorize(request.ids)
-        return afterMutation(invoke(request))
-      })
+  )
+  ipc.handle('login:unarchive-many', parseLoginBatch, (request, event) =>
+    runAuthorizationBoundary(event, request.authorizationToken, {}, async (authorize) => {
+      authorize(request.ids)
+      return afterMutation(vault.unarchiveLogins(request))
     })
-  }
-  registerHandler(IPC_CHANNELS.loginUpdate, (event, input) => {
-    const request = parseLoginUpdate(input)
+  )
+  ipc.handle('login:delete-many', parseLoginBatch, (request, event) =>
+    runAuthorizationBoundary(event, request.authorizationToken, {}, async (authorize) => {
+      authorize(request.ids)
+      return afterMutation(vault.deleteLogins(request))
+    })
+  )
+  ipc.handle('login:restore-many', parseLoginBatch, (request, event) =>
+    runAuthorizationBoundary(event, request.authorizationToken, {}, async (authorize) => {
+      authorize(request.ids)
+      return afterMutation(vault.restoreLogins(request))
+    })
+  )
+  ipc.handle('login:delete-permanently-many', parseLoginBatch, (request, event) =>
+    runAuthorizationBoundary(event, request.authorizationToken, {}, async (authorize) => {
+      authorize(request.ids)
+      return afterMutation(vault.deleteLoginsPermanently(request))
+    })
+  )
+  ipc.handle('login:update', parseLoginUpdate, (request, event) => {
     return runAuthorized(event, request, () => afterMutation(vault.updateLogin(request)))
   })
-  registerHandler(IPC_CHANNELS.passkeyDelete, (event, input) => {
-    const request = parsePasskeyDelete(input)
+  ipc.handle('passkey:delete', parsePasskeyDelete, (request, event) => {
     return runAuthorized(event, request, () => afterMutation(vault.deletePasskey(request)))
   })
-  registerHandler(IPC_CHANNELS.loginEmptyTrash, (event, input) => {
-    const request = parseEmptyTrash(input)
+  ipc.handle('login:empty-trash', parseEmptyTrash, (request, event) => {
     return runAuthorizationBoundary(
       event,
       request.authorizationToken,
@@ -2836,16 +2814,13 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       }
     )
   })
-  registerHandler(IPC_CHANNELS.loginSetFavorite, (event, input) => {
-    const request = parseLoginFavorite(input)
+  ipc.handle('login:set-favorite', parseLoginFavorite, (request, event) => {
     return runAuthorized(event, request, () => afterMutation(vault.setLoginFavorite(request)))
   })
-  registerHandler(IPC_CHANNELS.loginMove, (event, input) => {
-    const request = parseLoginMove(input)
+  ipc.handle('login:move', parseLoginMove, (request, event) => {
     return runAuthorized(event, request, () => afterMutation(vault.moveLogin(request)))
   })
-  registerHandler(IPC_CHANNELS.loginMoveMany, (event, input) => {
-    const request = parseLoginMoveMany(input)
+  ipc.handle('login:move-many', parseLoginMoveMany, (request, event) => {
     return runAuthorizationBoundary(
       event,
       request.authorizationToken,
@@ -2856,25 +2831,25 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       }
     )
   })
-  for (const [channel, operation] of [
-    [IPC_CHANNELS.loginRevealPassword, (request: LoginIdRequest) => vault.revealPassword(request)],
-    [IPC_CHANNELS.loginCopyUsername, (request: LoginIdRequest) => vault.copyUsername(request)],
-    [IPC_CHANNELS.loginCopyPassword, (request: LoginIdRequest) => vault.copyPassword(request)],
-    [IPC_CHANNELS.loginGetTotp, (request: LoginIdRequest) => vault.getTotp(request)],
-    [IPC_CHANNELS.loginCopyTotp, (request: LoginIdRequest) => vault.copyTotp(request)]
-  ] as const) {
-    registerHandler<unknown>(channel, (event, input) => {
-      const request = parseId(input)
-      const invoke = operation as (request: LoginIdRequest) => Promise<unknown>
-      return runAuthorized<unknown>(event, request, () => invoke(request))
-    })
-  }
-  registerHandler(IPC_CHANNELS.loginOpenUri, (event, input) => {
-    const request = parseOpenUri(input)
+  ipc.handle('login:reveal-password', parseId, (request, event) =>
+    runAuthorized(event, request, () => vault.revealPassword(request))
+  )
+  ipc.handle('login:copy-username', parseId, (request, event) =>
+    runAuthorized(event, request, () => vault.copyUsername(request))
+  )
+  ipc.handle('login:copy-password', parseId, (request, event) =>
+    runAuthorized(event, request, () => vault.copyPassword(request))
+  )
+  ipc.handle('login:get-totp', parseId, (request, event) =>
+    runAuthorized(event, request, () => vault.getTotp(request))
+  )
+  ipc.handle('login:copy-totp', parseId, (request, event) =>
+    runAuthorized(event, request, () => vault.copyTotp(request))
+  )
+  ipc.handle('login:open-uri', parseOpenUri, (request, event) => {
     return runAuthorized(event, request, () => vault.openLoginUri(request))
   })
-  registerHandler(IPC_CHANNELS.loginContextMenu, async (event, input) => {
-    const request = parseContextMenu(input)
+  ipc.handle('login:context-menu', parseContextMenu, async (request, event) => {
     const window = getMainWindow()
     if (!window || window.isDestroyed()) throw new VaultError('INVALID_INPUT')
     const item = await runAuthorized(event, request, () => vault.getLogin(request))
@@ -2892,7 +2867,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     const folderId = item.folderId
     const archivedAt = item.archivedAt
     const folders = await vault.listFolders()
-    const notifyChanged = (): void => window.webContents.send(IPC_EVENTS.vaultChanged)
+    const notifyChanged = (): void => sendIpcEvent(window.webContents, 'vault:changed')
     showItemContextMenu({
       window,
       item: {
@@ -2978,8 +2953,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       }
     })
   })
-  registerHandler(IPC_CHANNELS.loginWebsiteIcon, async (event, input) => {
-    const request = parseId(input)
+  ipc.handle('login:website-icon', parseId, async (request, event) => {
     if (!settings.websiteIconsEnabled()) return null
     return vault.getWebsiteIcon(request, (ids, state) =>
       authorizations.validateMany(
@@ -2990,45 +2964,37 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     )
   })
-  registerHandler(IPC_CHANNELS.itemRevealSecret, (event, input) => {
-    const request = parseItemField(input)
+  ipc.handle('item:reveal-secret', parseItemField, (request, event) => {
     return runAuthorized(event, request, () => vault.revealSecret(request))
   })
-  registerHandler(IPC_CHANNELS.itemRevealEditorSecrets, (event, input) => {
-    const request = parseEditorSecretsRequest(input)
+  ipc.handle('item:reveal-editor-secrets', parseEditorSecretsRequest, (request, event) => {
     return runAuthorized(event, request, () => vault.revealEditorSecrets(request))
   })
-  registerHandler(IPC_CHANNELS.itemCopyField, (event, input) => {
-    const request = parseItemField(input)
+  ipc.handle('item:copy-field', parseItemField, (request, event) => {
     return runAuthorized(event, request, () => vault.copyField(request))
   })
-  registerHandler(IPC_CHANNELS.itemRevealCustomField, (event, input) => {
-    const request = parseCustomFieldRequest(input)
+  ipc.handle('item:reveal-custom-field', parseCustomFieldRequest, (request, event) => {
     return runAuthorized(event, request, () => vault.revealCustomField(request))
   })
-  registerHandler(IPC_CHANNELS.itemCopyCustomField, (event, input) => {
-    const request = parseCustomFieldRequest(input)
+  ipc.handle('item:copy-custom-field', parseCustomFieldRequest, (request, event) => {
     return runAuthorized(event, request, () => vault.copyCustomField(request))
   })
-  registerHandler(IPC_CHANNELS.generatorGenerate, (_event, input) =>
-    vault.generateCredential(parseGeneratorRequest(input))
+  ipc.handle('generator:generate', parseGeneratorRequest, (request) =>
+    vault.generateCredential(request)
   )
-  registerHandler(IPC_CHANNELS.generatorGeneratedCopy, (_event, input) =>
-    vault.copyGeneratedCredential(parseGeneratedCredentialCopyRequest(input))
+  ipc.handle('generator:generated-copy', parseGeneratedCredentialCopyRequest, (request) =>
+    vault.copyGeneratedCredential(request)
   )
-  registerHandler(IPC_CHANNELS.generatorHistoryList, (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('generator:history-list', parseNoInput, () => {
     return vault.generatorHistory()
   })
-  registerHandler(IPC_CHANNELS.generatorHistoryClear, (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('generator:history-clear', parseNoInput, () => {
     return vault.clearGeneratorHistory()
   })
-  registerHandler(IPC_CHANNELS.generatorHistoryCopy, (_event, input) =>
-    vault.copyGeneratorHistory(parseGeneratorHistoryLocator(input))
+  ipc.handle('generator:history-copy', parseGeneratorHistoryLocator, (request) =>
+    vault.copyGeneratorHistory(request)
   )
-  registerHandler(IPC_CHANNELS.sshKeyGenerate, async (event, input) => {
-    parseNoInput(input)
+  ipc.handle('ssh-key:generate', parseNoInput, async (_request, event) => {
     const context = await importContext(event)
     const material = await vault.generateSshKey()
     const result = sshKeyImportSessions.stageGenerated(context, material)
@@ -3058,25 +3024,29 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       throw error
     }
   }
-  registerHandler(IPC_CHANNELS.sshKeyBeginImport, async (event, input) => {
-    parseNoInput(input)
+  ipc.handle('ssh-key:begin-import', parseNoInput, async (_request, event) => {
     const context = await importContext(event)
     const result = sshKeyImportSessions.begin(context)
     return recheckImportResult(context, result)
   })
-  registerHandler(IPC_CHANNELS.sshKeySubmitImportPassphrase, async (event, input) => {
-    const request = parseSshKeyImportPassphrase(input)
-    const context = await importContext(event)
-    const result = sshKeyImportSessions.submitPassphrase(request.token, context, request.passphrase)
-    return recheckImportResult(context, result)
-  })
-  registerHandler(IPC_CHANNELS.sshKeyCancelImport, async (event, input) => {
-    const request = parseSshKeyImportCancel(input)
+  ipc.handle(
+    'ssh-key:submit-import-passphrase',
+    parseSshKeyImportPassphrase,
+    async (request, event) => {
+      const context = await importContext(event)
+      const result = sshKeyImportSessions.submitPassphrase(
+        request.token,
+        context,
+        request.passphrase
+      )
+      return recheckImportResult(context, result)
+    }
+  )
+  ipc.handle('ssh-key:cancel-import', parseSshKeyImportCancel, async (request, event) => {
     const context = await importContext(event)
     sshKeyImportSessions.cancel(request.token, context)
   })
-  registerHandler(IPC_CHANNELS.sshKeyCreateImported, (event, input) => {
-    const request = parseSshKeyCreateImported(input)
+  ipc.handle('ssh-key:create-imported', parseSshKeyCreateImported, (request, event) => {
     return vault.runUnlockedOperation(async (generation) => {
       const consumed = sshKeyImportSessions.consumeReady(request.importToken, {
         senderId: event.sender.id,
@@ -3096,8 +3066,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     })
   })
-  registerHandler(IPC_CHANNELS.sshKeyUpdateImported, (event, input) => {
-    const request = parseSshKeyUpdateImported(input)
+  ipc.handle('ssh-key:update-imported', parseSshKeyUpdateImported, (request, event) => {
     return runAuthorized(event, request, async () => {
       // An imported update can only replace material on an existing SSH item. Check before
       // consuming the one-time token so a mismatched item cannot burn the imported key.
@@ -3121,14 +3090,13 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     })
   })
-  registerHandler(IPC_CHANNELS.syncStatus, async (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('sync:status', parseNoInput, async () => {
     return vault.syncStatus()
   })
-  registerHandler(IPC_CHANNELS.syncConnect, async (_event, input) => {
+  ipc.handle('sync:connect', parseSyncConnect, async (request) => {
     await Promise.resolve(options.beforeSyncReconfigure?.())
     try {
-      const result = await vault.connectSync(parseSyncConnect(input))
+      const result = await vault.connectSync(request)
       options.afterSyncChanged?.(result)
       return { kind: 'success' as const, result }
     } catch (error) {
@@ -3138,9 +3106,9 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       throw error
     }
   })
-  registerHandler(IPC_CHANNELS.syncUnlock, async (_event, input) => {
+  ipc.handle('sync:unlock', parseSyncUnlock, async (request) => {
     try {
-      const result = await vault.unlockAndSync(parseSyncUnlock(input))
+      const result = await vault.unlockAndSync(request)
       options.afterSyncChanged?.(result)
       return { kind: 'success' as const, result }
     } catch (error) {
@@ -3150,19 +3118,17 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       throw error
     }
   })
-  registerHandler(IPC_CHANNELS.syncSendEmailTwoFactorCode, (_event, input) =>
-    vault.sendSyncEmailTwoFactorCode(parseSyncCredentials(input))
+  ipc.handle('sync:send-email-two-factor-code', parseSyncCredentials, (request) =>
+    vault.sendSyncEmailTwoFactorCode(request)
   )
-  registerHandler(IPC_CHANNELS.syncResendNewDeviceOtp, async (_event, input) => {
-    const request = parseSyncCredentials(input)
+  ipc.handle('sync:resend-new-device-otp', parseSyncCredentials, async (request) => {
     try {
       await vault.resendSyncNewDeviceOtp(request)
     } finally {
       request.masterPassword = ''
     }
   })
-  registerHandler(IPC_CHANNELS.syncNow, async (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('sync:now', parseNoInput, async () => {
     try {
       const result = await vault.syncNow()
       options.afterSyncChanged?.(result)
@@ -3172,8 +3138,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       throw error
     }
   })
-  registerHandler(IPC_CHANNELS.syncResolvePendingImport, async (_event, input) => {
-    const request = parseSyncResolvePendingImport(input)
+  ipc.handle('sync:resolve-pending-import', parseSyncResolvePendingImport, async (request) => {
     try {
       const status = await vault.resolvePendingLoginImport(request)
       options.afterSyncChanged?.(status)
@@ -3182,8 +3147,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       request.masterPassword = ''
     }
   })
-  registerHandler(IPC_CHANNELS.syncPurgePersonalVault, async (_event, input) => {
-    const request = parseSyncPurgePersonalVault(input)
+  ipc.handle('sync:purge-personal-vault', parseSyncPurgePersonalVault, async (request) => {
     try {
       let result: Awaited<ReturnType<VaultService['purgePersonalVault']>>
       try {
@@ -3200,8 +3164,7 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       ;(request as { confirmation: string }).confirmation = ''
     }
   })
-  registerHandler(IPC_CHANNELS.syncDisconnect, async (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('sync:disconnect', parseNoInput, async () => {
     await Promise.resolve(options.beforeSyncReconfigure?.())
     const status = await vault.disconnectSync()
     // The Touch ID capsule carries the disconnected account's key; never keep it at rest.
@@ -3209,273 +3172,207 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     options.afterSyncChanged?.(status)
     return status
   })
-  registerHandler(IPC_CHANNELS.accountSecurityProfile, (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('account-security:profile', parseNoInput, () => {
     return vault.getAccountSecurityProfile()
   })
-  registerHandler(IPC_CHANNELS.accountSecurityUpdateName, (_event, input) => {
-    return vault.updateAccountProfileName(parseAccountProfileNameUpdate(input))
-  })
-  registerHandler(IPC_CHANNELS.accountSecurityUpdateAvatar, (_event, input) => {
-    return vault.updateAccountAvatarColor(parseAccountProfileAvatarUpdate(input))
-  })
-  registerHandler(IPC_CHANNELS.accountDevices, (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('account-security:update-name', parseAccountProfileNameUpdate, (request) =>
+    vault.updateAccountProfileName(request)
+  )
+  ipc.handle('account-security:update-avatar', parseAccountProfileAvatarUpdate, (request) =>
+    vault.updateAccountAvatarColor(request)
+  )
+  ipc.handle('account-security:devices', parseNoInput, () => {
     return vault.getAccountDevices()
   })
-  registerHandler(IPC_CHANNELS.accountPendingLoginApprovals, (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('account-security:pending-login-approvals', parseNoInput, () => {
     return vault.getPendingLoginApprovals()
   })
-  registerHandler(IPC_CHANNELS.accountRespondLoginApproval, (_event, input) => {
-    return vault.respondLoginApproval(parseLoginApprovalResponse(input))
-  })
-  registerHandler(IPC_CHANNELS.accountDeauthorizeSessions, async (_event, input) => {
-    let request: AccountSessionDeauthorizationRequest | null = null
-    try {
-      request = parseAccountSessionDeauthorization(input)
-      await Promise.resolve(options.beforeSyncReconfigure?.())
+  ipc.handle('account-security:respond-login-approval', parseLoginApprovalResponse, (request) =>
+    vault.respondLoginApproval(request)
+  )
+  ipc.handle(
+    'account-security:deauthorize-sessions',
+    parseAccountSessionDeauthorization,
+    async (request) => {
       try {
-        await vault.deauthorizeAllSessions(request)
-      } catch (error) {
+        await Promise.resolve(options.beforeSyncReconfigure?.())
+        try {
+          await vault.deauthorizeAllSessions(request)
+        } catch (error) {
+          await refreshSyncStatus()
+          throw error
+        }
         await refreshSyncStatus()
-        throw error
-      }
-      await refreshSyncStatus()
-    } finally {
-      if (request) {
+      } finally {
         request.masterPassword = ''
         ;(request as { confirmation: string }).confirmation = ''
       }
-      scrubStringProperties(input, ['masterPassword', 'confirmation'])
-    }
-  })
-  registerHandler(IPC_CHANNELS.accountResendVerification, (_event, input) => {
-    parseNoInput(input)
+    },
+    { scrubInput: (input) => scrubStringProperties(input, ['masterPassword', 'confirmation']) }
+  )
+  ipc.handle('account-security:resend-verification', parseNoInput, () => {
     return vault.resendAccountVerificationEmail()
   })
-  registerHandler(IPC_CHANNELS.accountCopyApiClientId, (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('account-security:copy-api-client-id', parseNoInput, () => {
     return vault.copyAccountApiClientId()
   })
-  registerHandler(IPC_CHANNELS.accountCopyApiKey, async (_event, input) => {
-    const request = parseAccountApiKeyCopy(input)
+  ipc.handle('account-security:copy-api-key', parseAccountApiKeyCopy, async (request) => {
     try {
       return await vault.copyPersonalApiKey(request)
     } finally {
       request.masterPassword = ''
     }
   })
-  registerHandler(IPC_CHANNELS.accountTwoFactorStatus, (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('account-security:two-factor-status', parseNoInput, () => {
     return vault.getTwoFactorStatus()
   })
-  registerHandler(IPC_CHANNELS.accountSecurityWebAuthnKeys, async (_event, input) => {
-    const request = parseAccountMasterPassword(input)
+  ipc.handle('account-security:webauthn-keys', parseAccountMasterPassword, async (request) => {
     try {
       return publicAccountWebAuthnKeys(await vault.listAccountWebAuthnKeys(request))
     } finally {
       request.masterPassword = ''
     }
   })
-  registerHandler(IPC_CHANNELS.accountSecurityEnrollWebAuthnKey, async (_event, input) => {
-    const request = parseAccountWebAuthnKeyEnrollment(input)
-    try {
-      await vault.enrollAccountWebAuthnKey(request)
-    } finally {
-      request.masterPassword = ''
-      request.name = ''
+  ipc.handle(
+    'account-security:enroll-webauthn-key',
+    parseAccountWebAuthnKeyEnrollment,
+    async (request) => {
+      try {
+        await vault.enrollAccountWebAuthnKey(request)
+      } finally {
+        request.masterPassword = ''
+        request.name = ''
+      }
     }
-  })
-  registerHandler(IPC_CHANNELS.accountSecurityRemoveWebAuthnKey, async (_event, input) => {
-    const request = parseAccountWebAuthnKeyRemoval(input)
-    try {
-      await vault.removeAccountWebAuthnKey(request)
-    } finally {
-      request.masterPassword = ''
+  )
+  ipc.handle(
+    'account-security:remove-webauthn-key',
+    parseAccountWebAuthnKeyRemoval,
+    async (request) => {
+      try {
+        await vault.removeAccountWebAuthnKey(request)
+      } finally {
+        request.masterPassword = ''
+      }
     }
-  })
-  registerHandler(IPC_CHANNELS.accountDisableTwoFactorProvider, async (_event, input) => {
-    const record = exactRecord(input, ['type', 'masterPassword', 'confirm'])
-    const request: AccountTwoFactorDisableRequest = {
-      type: record.type as 0 | 1 | 2 | 3 | 7,
-      masterPassword: requiredString(record, 'masterPassword'),
-      confirm: record.confirm as true
+  )
+  ipc.handle(
+    'account-security:disable-two-factor-provider',
+    parseAccountTwoFactorDisable,
+    async (request) => {
+      try {
+        return await vault.disableTwoFactorProvider(request)
+      } finally {
+        request.masterPassword = ''
+      }
     }
-    if (
-      !([0, 1, 2, 3, 7] as const).includes(request.type) ||
-      !validAccountMasterPassword(request.masterPassword) ||
-      request.confirm !== true
-    ) {
-      request.masterPassword = ''
-      throw new VaultError('INVALID_INPUT')
-    }
-    try {
-      return await vault.disableTwoFactorProvider(request)
-    } finally {
-      request.masterPassword = ''
-    }
-  })
-  registerHandler(IPC_CHANNELS.accountCopyRecoveryCode, async (_event, input) => {
-    const request = parseAccountMasterPassword(input)
+  )
+  ipc.handle('account-security:copy-recovery-code', parseAccountMasterPassword, async (request) => {
     try {
       return await vault.copyTwoFactorRecoveryCode(request)
     } finally {
       request.masterPassword = ''
     }
   })
-  registerHandler(IPC_CHANNELS.accountBeginAuthenticatorSetup, async (_event, input) => {
-    const request = parseAccountMasterPassword(input)
-    try {
-      return await vault.beginAccountAuthenticatorSetup(request)
-    } finally {
-      request.masterPassword = ''
+  ipc.handle(
+    'account-security:begin-authenticator-setup',
+    parseAccountMasterPassword,
+    async (request) => {
+      try {
+        return await vault.beginAccountAuthenticatorSetup(request)
+      } finally {
+        request.masterPassword = ''
+      }
     }
-  })
-  registerHandler(IPC_CHANNELS.accountCopyAuthenticatorKey, (_event, input) => {
-    const record = exactRecord(input, ['sessionId'])
-    const sessionId = requiredString(record, 'sessionId')
-    if (!UUID_PATTERN.test(sessionId)) throw new VaultError('INVALID_INPUT')
-    return vault.copyAccountAuthenticatorKey({ sessionId })
-  })
-  registerHandler(IPC_CHANNELS.accountCompleteAuthenticatorSetup, async (_event, input) => {
-    const record = exactRecord(input, ['sessionId', 'token', 'masterPassword'])
-    const request: AccountAuthenticatorCompleteRequest = {
-      sessionId: requiredString(record, 'sessionId'),
-      token: requiredString(record, 'token'),
-      ...(record.masterPassword === undefined
-        ? {}
-        : { masterPassword: requiredString(record, 'masterPassword') })
+  )
+  ipc.handle(
+    'account-security:copy-authenticator-key',
+    parseAccountAuthenticatorSetupLocator,
+    (request) => vault.copyAccountAuthenticatorKey(request)
+  )
+  ipc.handle(
+    'account-security:complete-authenticator-setup',
+    parseAccountAuthenticatorComplete,
+    async (request) => {
+      try {
+        return await vault.completeAccountAuthenticatorSetup(request)
+      } finally {
+        request.token = ''
+        if (request.masterPassword !== undefined) request.masterPassword = ''
+      }
     }
-    if (
-      !UUID_PATTERN.test(request.sessionId) ||
-      !/^\d{6}$/.test(request.token) ||
-      (request.masterPassword !== undefined && !validAccountMasterPassword(request.masterPassword))
-    ) {
-      if (request.masterPassword !== undefined) request.masterPassword = ''
-      request.token = ''
-      throw new VaultError('INVALID_INPUT')
+  )
+  ipc.handle(
+    'account-security:begin-email-two-factor-setup',
+    parseAccountMasterPassword,
+    async (request) => {
+      try {
+        return await vault.beginAccountEmailTwoFactorSetup(request)
+      } finally {
+        request.masterPassword = ''
+      }
     }
-    try {
-      return await vault.completeAccountAuthenticatorSetup(request)
-    } finally {
-      request.token = ''
-      if (request.masterPassword !== undefined) request.masterPassword = ''
+  )
+  ipc.handle(
+    'account-security:send-email-two-factor-setup',
+    parseAccountEmailTwoFactorSend,
+    async (request) => {
+      try {
+        return await vault.sendAccountEmailTwoFactorSetup(request)
+      } finally {
+        request.email = ''
+        if (request.masterPassword !== undefined) request.masterPassword = ''
+      }
     }
-  })
-  registerHandler(IPC_CHANNELS.accountBeginEmailTwoFactorSetup, async (_event, input) => {
-    const request = parseAccountMasterPassword(input)
-    try {
-      return await vault.beginAccountEmailTwoFactorSetup(request)
-    } finally {
-      request.masterPassword = ''
+  )
+  ipc.handle(
+    'account-security:complete-email-two-factor-setup',
+    parseAccountEmailTwoFactorComplete,
+    async (request) => {
+      try {
+        return await vault.completeAccountEmailTwoFactorSetup(request)
+      } finally {
+        request.token = ''
+        if (request.masterPassword !== undefined) request.masterPassword = ''
+      }
     }
-  })
-  registerHandler(IPC_CHANNELS.accountSendEmailTwoFactorSetup, async (_event, input) => {
-    const record = exactRecord(input, ['sessionId', 'email', 'masterPassword'])
-    const request: AccountEmailTwoFactorSendRequest = {
-      sessionId: requiredString(record, 'sessionId'),
-      email: requiredString(record, 'email'),
-      ...(record.masterPassword === undefined
-        ? {}
-        : { masterPassword: requiredString(record, 'masterPassword') })
-    }
-    if (
-      !UUID_PATTERN.test(request.sessionId) ||
-      request.email.length === 0 ||
-      request.email.length > 256 ||
-      request.email.trim() !== request.email ||
-      !/^[^\s@]+@[^\s@]+$/u.test(request.email) ||
-      (request.masterPassword !== undefined && !validAccountMasterPassword(request.masterPassword))
-    ) {
-      request.email = ''
-      if (request.masterPassword !== undefined) request.masterPassword = ''
-      throw new VaultError('INVALID_INPUT')
-    }
-    try {
-      return await vault.sendAccountEmailTwoFactorSetup(request)
-    } finally {
-      request.email = ''
-      if (request.masterPassword !== undefined) request.masterPassword = ''
-    }
-  })
-  registerHandler(IPC_CHANNELS.accountCompleteEmailTwoFactorSetup, async (_event, input) => {
-    const record = exactRecord(input, ['sessionId', 'token', 'masterPassword'])
-    const request: AccountEmailTwoFactorCompleteRequest = {
-      sessionId: requiredString(record, 'sessionId'),
-      token: requiredString(record, 'token'),
-      ...(record.masterPassword === undefined
-        ? {}
-        : { masterPassword: requiredString(record, 'masterPassword') })
-    }
-    if (
-      !UUID_PATTERN.test(request.sessionId) ||
-      !/^\d{1,50}$/u.test(request.token) ||
-      (request.masterPassword !== undefined && !validAccountMasterPassword(request.masterPassword))
-    ) {
-      request.token = ''
-      if (request.masterPassword !== undefined) request.masterPassword = ''
-      throw new VaultError('INVALID_INPUT')
-    }
-    try {
-      return await vault.completeAccountEmailTwoFactorSetup(request)
-    } finally {
-      request.token = ''
-      if (request.masterPassword !== undefined) request.masterPassword = ''
-    }
-  })
-  registerHandler<EquivalentDomainSettingsView>(IPC_CHANNELS.domainRulesGet, (_event, input) => {
-    parseNoInput(input)
+  )
+  ipc.handle('domain-rules:get', parseNoInput, () => {
     return vault.getEquivalentDomainSettings()
   })
-  registerHandler<EquivalentDomainSettingsView>(IPC_CHANNELS.domainRulesUpdate, (_event, input) =>
-    vault.updateEquivalentDomainSettings(parseEquivalentDomainSettingsUpdate(input))
+  ipc.handle('domain-rules:update', parseEquivalentDomainSettingsUpdate, (request) =>
+    vault.updateEquivalentDomainSettings(request)
   )
-  registerHandler(IPC_CHANNELS.sendList, (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('send:list', parseNoInput, () => {
     return vault.listSends()
   })
-  registerHandler(IPC_CHANNELS.sendCreate, (_event, input) =>
-    afterMutation(vault.createSend(parseSendCreate(input)))
+  ipc.handle('send:create', parseSendCreate, (request) => afterMutation(vault.createSend(request)))
+  ipc.handle('send:create-file', parseSendFileCreate, (request) =>
+    afterMutation(vault.createFileSend(request))
   )
-  registerHandler(IPC_CHANNELS.sendCreateFile, (_event, input) =>
-    afterMutation(vault.createFileSend(parseSendFileCreate(input)))
+  ipc.handle('send:download-file', parseSendFileDownload, (request) =>
+    vault.downloadFileSend(request)
   )
-  registerHandler(IPC_CHANNELS.sendDownloadFile, (_event, input) =>
-    vault.downloadFileSend(parseSendFileDownload(input))
+  ipc.handle('send:update', parseSendUpdate, (request) => afterMutation(vault.updateSend(request)))
+  ipc.handle('send:remove-password', parseSendId, (request) =>
+    afterMutation(vault.removeSendPassword(request))
   )
-  registerHandler(IPC_CHANNELS.sendUpdate, (_event, input) =>
-    afterMutation(vault.updateSend(parseSendUpdate(input)))
-  )
-  registerHandler(IPC_CHANNELS.sendRemovePassword, (_event, input) =>
-    afterMutation(vault.removeSendPassword(parseSendId(input)))
-  )
-  registerHandler(IPC_CHANNELS.sendDelete, (_event, input) =>
-    afterMutation(vault.deleteSend(parseSendId(input)))
-  )
-  registerHandler(IPC_CHANNELS.sendCopyLink, (_event, input) =>
-    vault.copySendLink(parseSendId(input))
-  )
-  registerHandler(IPC_CHANNELS.settingsGet, (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('send:delete', parseSendId, (request) => afterMutation(vault.deleteSend(request)))
+  ipc.handle('send:copy-link', parseSendId, (request) => vault.copySendLink(request))
+  ipc.handle('settings:get', parseNoInput, () => {
     return settings.get()
   })
-  registerHandler(IPC_CHANNELS.settingsUpdate, (_event, input) =>
-    settings.update(parseSettingsUpdate(input))
+  ipc.handle('settings:update', parseSettingsUpdate, (request) => settings.update(request))
+  ipc.handle('settings:enable-touch-id', parseTouchIdEnable, (request) =>
+    settings.enableTouchId(request.masterPassword)
   )
-  registerHandler(IPC_CHANNELS.settingsEnableTouchId, (_event, input) =>
-    settings.enableTouchId(parseTouchIdEnable(input).masterPassword)
-  )
-  registerHandler(IPC_CHANNELS.settingsDisableTouchId, (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('settings:disable-touch-id', parseNoInput, () => {
     return settings.disableTouchId()
   })
-  registerHandler(IPC_CHANNELS.settingsUnlockTouchId, (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('settings:unlock-touch-id', parseNoInput, () => {
     return settings.unlockTouchId()
   })
-  registerHandler(IPC_CHANNELS.settingsActivity, async (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('settings:activity', parseNoInput, async () => {
     if (disposed) return
     if (settingsActivityCheck) return settingsActivityCheck
 
@@ -3492,13 +3389,12 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     settingsActivityCheck = sharedCheck
     return sharedCheck
   })
-  registerHandler(IPC_CHANNELS.settingsShowErrorLog, async (_event, input) => {
-    parseNoInput(input)
+  ipc.handle('settings:show-error-log', parseNoInput, async () => {
     if (!options.errorLog) throw new VaultError('INTERNAL_ERROR')
     await options.errorLog.showInFileManager()
   })
-  registerHandler(IPC_CHANNELS.errorLogRecordRenderer, async (_event, input) => {
-    options.errorLog?.recordRendererError(parseRendererErrorLog(input))
+  ipc.handle('error-log:record-renderer', parseRendererErrorLog, async (request) => {
+    options.errorLog?.recordRendererError(request)
   })
 
   return () => {
@@ -3507,7 +3403,6 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     authorizations.clear()
     sshKeyImportSessions.clearAll()
     void portability.disposeNativeRestoreSession?.()
-    registeredChannels.forEach((channel) => ipcMain.removeHandler(channel))
-    registeredChannels.clear()
+    ipc.dispose()
   }
 }
