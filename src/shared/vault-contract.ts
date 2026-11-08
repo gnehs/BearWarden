@@ -297,6 +297,10 @@ export interface AccountStatus {
   readonly cleanupPending?: true
 }
 
+export interface AccountSwitchRequest {
+  readonly accountId: string
+}
+
 export interface AccountReorderRequest {
   readonly accountIds: readonly string[]
   readonly expectedRevision: number
@@ -347,7 +351,7 @@ export interface VaultSetupRequest {
   masterPassword: string
 }
 
-interface VaultUnlockRequest {
+export interface VaultUnlockRequest {
   masterPassword: string
 }
 
@@ -480,7 +484,7 @@ export interface NativeRestoreSummary {
   completedBytes: number
 }
 
-interface NativeRestorePreviewRequest {
+export interface NativeRestorePreviewRequest {
   /** Used only by the main process to open the selected encrypted archive. */
   password: string
 }
@@ -499,13 +503,13 @@ export type NativeRestorePreviewResult =
       resumePhase: NativeRestoreSummary['phase'] | null
     }
 
-interface NativeRestoreStartRequest {
+export interface NativeRestoreStartRequest {
   sessionId: string
   /** Fresh local owner proof consumed only by the main process. */
   masterPassword: string
 }
 
-interface NativeRestoreSessionRequest {
+export interface NativeRestoreSessionRequest {
   sessionId: string
 }
 
@@ -769,7 +773,7 @@ export interface AttachmentUploadCardCoverRequest extends AttachmentOperationReq
   sourceUrl: string
 }
 
-type AttachmentUploadCardCoverFileRequest = AttachmentOperationRequest
+export type AttachmentUploadCardCoverFileRequest = AttachmentOperationRequest
 
 export interface AttachmentUploadResult {
   canceled: boolean
@@ -1200,7 +1204,7 @@ export interface SyncEmailTwoFactorCodeRequest {
 }
 
 /** Credentials used only long enough to request a fresh new-device verification email. */
-interface SyncResendNewDeviceOtpRequest {
+export interface SyncResendNewDeviceOtpRequest {
   serverUrl: string
   email: string
   masterPassword: string
@@ -1218,9 +1222,11 @@ interface SyncTwoFactorRequiredResponse {
   providers: readonly SyncTwoFactorProvider[]
 }
 
-type SyncConnectResponse = { kind: 'success'; result: SyncResult } | SyncTwoFactorRequiredResponse
+export type SyncConnectResponse =
+  { kind: 'success'; result: SyncResult } | SyncTwoFactorRequiredResponse
 
-type SyncUnlockResponse = { kind: 'success'; result: SyncResult } | SyncTwoFactorRequiredResponse
+export type SyncUnlockResponse =
+  { kind: 'success'; result: SyncResult } | SyncTwoFactorRequiredResponse
 
 export interface AccountSecurityProfile {
   name: string
@@ -1277,7 +1283,7 @@ export interface AccountApiKeyCopyRequest {
   confirmRotation: boolean
 }
 
-interface AccountApiKeyCopyResult {
+export interface AccountApiKeyCopyResult {
   rotated: boolean
   revisionDate: string
 }
@@ -1303,11 +1309,11 @@ export interface AccountSessionDeauthorizationRequest {
   confirm: true
 }
 
-interface AccountRecoveryCodeCopyRequest {
+export interface AccountRecoveryCodeCopyRequest {
   masterPassword: string
 }
 
-interface AccountAuthenticatorSetupRequest {
+export interface AccountAuthenticatorSetupRequest {
   masterPassword: string
 }
 
@@ -1318,7 +1324,7 @@ export interface AccountAuthenticatorSetup {
   expiresAt: number
 }
 
-interface AccountAuthenticatorSetupLocator {
+export interface AccountAuthenticatorSetupLocator {
   sessionId: string
 }
 
@@ -1327,7 +1333,7 @@ export interface AccountAuthenticatorCompleteRequest extends AccountAuthenticato
   masterPassword?: string
 }
 
-interface AccountEmailTwoFactorSetupRequest {
+export interface AccountEmailTwoFactorSetupRequest {
   masterPassword: string
 }
 
@@ -1829,7 +1835,7 @@ export interface AutofillSelectionRequest {
   readonly itemId: string
 }
 
-interface AutofillPromptRequest {
+export interface AutofillPromptRequest {
   readonly requestId: string
 }
 
