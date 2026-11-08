@@ -16,7 +16,10 @@ import {
   type AccountWebAuthnAttestation,
   type AccountWebAuthnRegistrationChallenge
 } from './account-webauthn-registration-codec'
-import { MAX_ACCOUNT_PROFILE_NAME_BYTES } from '../shared/vault-contract'
+import {
+  MAX_ACCOUNT_PROFILE_NAME_BYTES,
+  type SyncInvalidResponseReason
+} from '../shared/vault-contract'
 import { createPublicKey } from 'node:crypto'
 import { UUID_PATTERN, isRecord } from './validation-primitives'
 
@@ -380,13 +383,15 @@ export type BitwardenHttpErrorCode =
   | 'USER_VERIFICATION_FAILED'
 
 /** Fixed, value-free response failures safe to propagate into sync diagnostics. */
-export type BitwardenHttpInvalidResponseReason =
+export type BitwardenHttpInvalidResponseReason = Extract<
+  SyncInvalidResponseReason,
   | 'empty-response'
   | 'invalid-json'
   | 'non-object-response'
   | 'session-response'
   | 'prelogin-route-response'
   | 'kdf-settings'
+>
 
 export class BitwardenHttpError extends Error {
   constructor(

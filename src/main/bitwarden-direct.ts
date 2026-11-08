@@ -67,6 +67,8 @@ import {
 } from './bitwarden-http'
 import { loadEffLongWordlist } from './eff-wordlist'
 import type {
+  SyncInvalidResponseReason,
+  SyncInvalidResponseStage,
   VaultCustomField,
   VaultCustomFieldType,
   VaultItemFields,
@@ -252,45 +254,7 @@ export type BitwardenDirectErrorCode =
   | 'ACCOUNT_PROFILE_MUTATION_UNKNOWN'
   | 'STATE_PERSISTENCE_FAILED'
 
-export type BitwardenSyncInvalidResponseStage =
-  | 'prelogin'
-  | 'authentication'
-  | 'access-token'
-  | 'response'
-  | 'account'
-  | 'organization'
-  | 'folder'
-  | 'cipher'
-  | 'collection'
-  | 'send'
-  | 'snapshot'
-
-/** Value-free, closed reasons safe to surface in sync diagnostics. */
-export type BitwardenSyncInvalidResponseReason =
-  | 'response-shape'
-  | 'empty-response'
-  | 'invalid-json'
-  | 'non-object-response'
-  | 'session-response'
-  | 'prelogin-route-response'
-  | 'kdf-settings'
-  | 'kdf-parameters'
-  | 'account-profile'
-  | 'user-decryption-data'
-  | 'organization-profile'
-  | 'organization-key'
-  | 'provider-organization-key'
-  | 'folder-data'
-  | 'unsupported-cipher-type'
-  | 'cipher-data'
-  | 'collection-data'
-  | 'send-data'
-  | 'snapshot-limit'
-
-const DEFAULT_SYNC_INVALID_REASON: Record<
-  BitwardenSyncInvalidResponseStage,
-  BitwardenSyncInvalidResponseReason
-> = {
+const DEFAULT_SYNC_INVALID_REASON: Record<SyncInvalidResponseStage, SyncInvalidResponseReason> = {
   prelogin: 'response-shape',
   authentication: 'response-shape',
   'access-token': 'response-shape',
@@ -310,11 +274,11 @@ export class BitwardenDirectError extends Error {
     /** Main-process-only, strictly normalized provider-7 request options. */
     readonly webAuthnChallenge?: AccountWebAuthnChallenge,
     /** Fixed, value-free location for sync response diagnostics. */
-    readonly syncInvalidResponseStage?: BitwardenSyncInvalidResponseStage,
+    readonly syncInvalidResponseStage?: SyncInvalidResponseStage,
     /** Main-process-only, bounded provider ids from the token challenge. */
     readonly twoFactorProviders?: readonly BitwardenTwoFactorProviderId[],
     /** Fixed, value-free reason suitable for renderer diagnostics. */
-    readonly syncInvalidResponseReason?: BitwardenSyncInvalidResponseReason
+    readonly syncInvalidResponseReason?: SyncInvalidResponseReason
   ) {
     super(`Bitwarden direct sync failed (${code})`)
     this.name = 'BitwardenDirectError'
@@ -326,7 +290,7 @@ function isUnknownMutationOutcome(error: BitwardenDirectError): boolean {
   return error.code === 'NETWORK' || error.code === 'ABORTED' || error.code === 'INVALID_RESPONSE'
 }
 
-function invalidResponse(reason: BitwardenSyncInvalidResponseReason): BitwardenDirectError {
+function invalidResponse(reason: SyncInvalidResponseReason): BitwardenDirectError {
   return new BitwardenDirectError('INVALID_RESPONSE', undefined, undefined, undefined, reason)
 }
 
@@ -3593,7 +3557,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   }
 
   private async performSync(signal?: AbortSignal): Promise<void> {
-    let invalidResponseStage: BitwardenSyncInvalidResponseStage | null = 'access-token'
+    let invalidResponseStage: SyncInvalidResponseStage | null = 'access-token'
     let wrappedKeyFingerprint: Buffer | null = null
     const pendingMasterKey = this.pendingMasterKey
     const operationGeneration = this.runtimeGeneration
@@ -5036,7 +5000,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     signal?: AbortSignal
   ): Promise<void> {
     const operationGeneration = this.runtimeGeneration
-    let invalidResponseStage: BitwardenSyncInvalidResponseStage = 'prelogin'
+    let invalidResponseStage: SyncInvalidResponseStage = 'prelogin'
     let masterKey: Buffer | null = null
     let passwordKey: Buffer | null = null
     let stretched: ReturnType<typeof stretchMasterKey> | null = null

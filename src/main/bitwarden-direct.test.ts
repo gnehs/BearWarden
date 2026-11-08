@@ -32,10 +32,9 @@ import {
   BitwardenDirectClient,
   type BitwardenDirectErrorCode,
   type BitwardenDirectState,
-  type BitwardenSyncInvalidResponseReason,
-  type BitwardenSyncInvalidResponseStage,
   type BitwardenTwoFactor
 } from './bitwarden-direct'
+import type { SyncInvalidResponseReason, SyncInvalidResponseStage } from '../shared/vault-contract'
 import type { AccountWebAuthnAssertion } from './account-webauthn-codec'
 import type { AccountWebAuthnAttestation } from './account-webauthn-registration-codec'
 import {
@@ -1004,8 +1003,8 @@ async function attachmentMutationHarness(
 async function expectInvalidSync(
   sync: unknown,
   code: BitwardenDirectErrorCode = 'INVALID_RESPONSE',
-  stage?: BitwardenSyncInvalidResponseStage,
-  reason?: BitwardenSyncInvalidResponseReason
+  stage?: SyncInvalidResponseStage,
+  reason?: SyncInvalidResponseReason
 ): Promise<void> {
   const http = new BitwardenHttpClient({
     server: 'https://vault.example.invalid',
