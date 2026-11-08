@@ -8,6 +8,17 @@ export function isPlainObjectRecord(value: unknown): value is Record<string, unk
   return prototype === Object.prototype || prototype === null
 }
 
+/** Object whose prototype is Object.prototype or null, tolerating hostile proxies; arrays are not excluded. */
+export function hasPlainPrototype(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object') return false
+  try {
+    const prototype = Object.getPrototypeOf(value)
+    return prototype === Object.prototype || prototype === null
+  } catch {
+    return false
+  }
+}
+
 /** UUID with a valid version (1-8) and RFC variant, either letter case. */
 export const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu

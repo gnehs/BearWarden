@@ -1,5 +1,6 @@
 import { domainToASCII } from 'node:url'
 import { parse as parseDomain } from 'tldts'
+import { hasPlainPrototype } from './validation-primitives'
 
 export const TWO_FACTOR_DIRECTORY_API_VERSION = 4 as const
 export const TWO_FACTOR_DIRECTORY_TOTP_URL = 'https://api.2fa.directory/v4/totp.json' as const
@@ -97,13 +98,7 @@ function fail(code: InactiveTwoFactorErrorCode): never {
 }
 
 function isPlainRecord(value: unknown): value is PlainRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
-  try {
-    const prototype = Object.getPrototypeOf(value)
-    return prototype === Object.prototype || prototype === null
-  } catch {
-    return false
-  }
+  return !Array.isArray(value) && hasPlainPrototype(value)
 }
 
 function ownDataDescriptor(

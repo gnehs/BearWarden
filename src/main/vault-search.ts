@@ -1,4 +1,5 @@
 import lunr from 'lunr'
+import { hasPlainPrototype } from './validation-primitives'
 
 const MAX_QUERY_LENGTH = 1_024
 const MAX_SEARCH_ITEMS_PER_BATCH = 50_000
@@ -86,17 +87,6 @@ class SearchBoundsError extends Error {}
 
 interface SearchBudget {
   remaining: number
-}
-
-function isPlainRecord(value: unknown): value is SearchRecord {
-  if (value === null || typeof value !== 'object') return false
-
-  try {
-    const prototype = Object.getPrototypeOf(value)
-    return prototype === Object.prototype || prototype === null
-  } catch {
-    return false
-  }
 }
 
 function ownData(record: SearchRecord, key: string): unknown {
@@ -192,7 +182,7 @@ function collectUris(record: SearchRecord, budget: SearchBudget): string[] {
         if (uri) result.push(uri)
         continue
       }
-      if (!isPlainRecord(value)) continue
+      if (!hasPlainPrototype(value)) continue
       const uri = boundedString(value, 'uri', MAX_URI_LENGTH, budget)
       if (uri) result.push(uri)
     }
@@ -201,7 +191,7 @@ function collectUris(record: SearchRecord, budget: SearchBudget): string[] {
   appendUris(ownArray(record, 'uris'))
 
   const login = ownData(record, 'login')
-  if (isPlainRecord(login)) appendUris(ownArray(login, 'uris'))
+  if (hasPlainPrototype(login)) appendUris(ownArray(login, 'uris'))
   return [...new Set(result)]
 }
 
@@ -220,7 +210,7 @@ function collectUsername(record: SearchRecord, budget: SearchBudget): string {
   if (username !== undefined) return username
 
   const login = ownData(record, 'login')
-  if (!isPlainRecord(login)) return ''
+  if (!hasPlainPrototype(login)) return ''
   return boundedString(login, 'username', MAX_SHORT_FIELD_LENGTH, budget) ?? ''
 }
 
@@ -234,7 +224,7 @@ function collectCustomFields(
 
   for (const collection of collections) {
     for (const value of safeArrayEntries(collection)) {
-      if (!isPlainRecord(value)) continue
+      if (!hasPlainPrototype(value)) continue
       const type = ownData(value, 'type')
       // Text is Cipher.Field type 0 upstream. Hidden, boolean, linked and malformed
       // fields are excluded in their entirety so even their names cannot become an oracle.
@@ -261,7 +251,7 @@ function collectAttachments(
       fileName = value.slice(0, MAX_SHORT_FIELD_LENGTH)
       budget.remaining -= fileName.length
       if (budget.remaining < 0) throw new SearchBoundsError()
-    } else if (isPlainRecord(value)) {
+    } else if (hasPlainPrototype(value)) {
       fileName = boundedString(value, 'fileName', MAX_SHORT_FIELD_LENGTH, budget)
     }
     if (fileName) attachments.push(normalizeSearchText(fileName))
@@ -274,7 +264,7 @@ function toSearchDocument(
   originalIndex: number,
   budget: SearchBudget
 ): SearchDocument | null {
-  if (!isPlainRecord(value)) return null
+  if (!hasPlainPrototype(value)) return null
 
   const protectedItem = isProtected(value)
   const id = boundedString(value, 'id', MAX_SHORT_FIELD_LENGTH, budget)

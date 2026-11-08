@@ -1,4 +1,5 @@
 import zxcvbn from 'zxcvbn'
+import { hasPlainPrototype } from './validation-primitives'
 
 const MAX_HEALTH_ITEMS = 50_000
 const MAX_ID_LENGTH = 256
@@ -95,17 +96,6 @@ function emptyAnalysis(): VaultHealthAnalysis {
   }
 }
 
-function isPlainRecord(value: unknown): value is HealthRecord {
-  if (value === null || typeof value !== 'object') return false
-
-  try {
-    const prototype = Object.getPrototypeOf(value)
-    return prototype === Object.prototype || prototype === null
-  } catch {
-    return false
-  }
-}
-
 function ownData(record: HealthRecord, key: string): unknown {
   try {
     const descriptor = Object.getOwnPropertyDescriptor(record, key)
@@ -157,7 +147,7 @@ function hasUnsecuredHttpUri(record: HealthRecord, budget: InputBudget): boolean
   let unsecured = false
   for (let index = 0; index < uris.length; index += 1) {
     const entry = inputAt(uris, index)
-    if (!isPlainRecord(entry)) continue
+    if (!hasPlainPrototype(entry)) continue
     const uri = boundedString(entry, 'uri', MAX_URI_LENGTH, budget)
     // Match Bitwarden's report semantics exactly: the stored URI must begin with lowercase http://.
     if (uri?.indexOf('http://') === 0) unsecured = true
@@ -205,7 +195,7 @@ function parseCandidates(items: readonly unknown[]): {
 
   for (let index = 0; index < items.length; index += 1) {
     const value = inputAt(items, index)
-    if (!isPlainRecord(value)) continue
+    if (!hasPlainPrototype(value)) continue
     if (ownData(value, 'type') !== 'login') continue
     if (!isActiveOptionalDate(value, 'deletedAt') || !isActiveOptionalDate(value, 'archivedAt')) {
       continue

@@ -1,5 +1,5 @@
 import { VaultError } from './vault-errors'
-import { LOOSE_UUID_PATTERN } from './validation-primitives'
+import { LOOSE_UUID_PATTERN, isPlainObjectRecord } from './validation-primitives'
 
 const JOURNAL_VERSION = 1
 const MAX_ITEMS = 40_000
@@ -70,10 +70,8 @@ function invalid(): never {
 }
 
 function plainRecord(value: unknown): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) invalid()
-  const prototype = Object.getPrototypeOf(value)
-  if (prototype !== Object.prototype && prototype !== null) invalid()
-  return value as Record<string, unknown>
+  if (!isPlainObjectRecord(value)) invalid()
+  return value
 }
 
 function exactRecord(value: unknown, keys: readonly string[]): Record<string, unknown> {

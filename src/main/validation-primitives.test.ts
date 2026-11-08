@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  hasPlainPrototype,
   isPlainObjectRecord,
   isRecord,
   LOOSE_LOWERCASE_UUID_PATTERN,
@@ -29,6 +30,29 @@ describe('record predicates', () => {
     expect(isPlainObjectRecord(new Map())).toBe(false)
     expect(isPlainObjectRecord([])).toBe(false)
     expect(isPlainObjectRecord(null)).toBe(false)
+  })
+})
+
+describe('hasPlainPrototype', () => {
+  it('checks the prototype only and tolerates throwing proxies', () => {
+    const hostile = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          throw new Error('trap')
+        }
+      }
+    )
+    const nullPrototypeArray = Object.setPrototypeOf([], null) as unknown
+
+    expect(hasPlainPrototype({})).toBe(true)
+    expect(hasPlainPrototype(Object.create(null))).toBe(true)
+    expect(hasPlainPrototype(nullPrototypeArray)).toBe(true)
+    expect(hasPlainPrototype([])).toBe(false)
+    expect(hasPlainPrototype(new Map())).toBe(false)
+    expect(hasPlainPrototype(null)).toBe(false)
+    expect(hasPlainPrototype('x')).toBe(false)
+    expect(hasPlainPrototype(hostile)).toBe(false)
   })
 })
 
