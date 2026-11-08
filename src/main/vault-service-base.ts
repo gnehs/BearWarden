@@ -287,6 +287,15 @@ export type {
   AccountWebAuthnOperationLease
 }
 
+function changesRemote(action: SyncAction): boolean {
+  if (action.kind === 'conflict-copy') return action.reason !== 'both-modified'
+  return (
+    action.kind === 'push-create' ||
+    action.kind === 'push-update' ||
+    action.kind === 'delete-remote'
+  )
+}
+
 /**
  * Owns the vault's mutable runtime state, persistence transaction boundary, and sync engine.
  * Feature layers extend this class so every operation shares one mutex, generation, and cleanup
@@ -2390,7 +2399,8 @@ export class VaultServiceBase {
       protectedLoginMappings,
       protectedLoginTombstones
     )
-    await client.sync(signal)
+    // A plan that only touched local data leaves the server as the last download saw it.
+    if (plan.actions.some(changesRemote)) await client.sync(signal)
     const finalIsolatedPersonalCipherIds = this.isolatedPersonalCipherIds(client)
     const newlyIsolatedMappedRemoteIds = this.newlyIsolatedMappedRemoteIds(
       finalIsolatedPersonalCipherIds,

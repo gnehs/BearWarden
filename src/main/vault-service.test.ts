@@ -1320,7 +1320,7 @@ describe('VaultService encrypted local data', () => {
     ).revisionDate = async () => '2026-07-13T00:00:00.000Z'
     const fullSync = vi.spyOn(fake!, 'sync')
     await expect(service.syncNow()).resolves.toMatchObject({ pushed: 0 })
-    expect(fullSync).toHaveBeenCalledTimes(2)
+    expect(fullSync).toHaveBeenCalledOnce()
     fullSync.mockClear()
 
     await service.updateLogin({ id: local.id, name: 'Locally edited while isolated' })
@@ -1456,7 +1456,7 @@ describe('VaultService encrypted local data', () => {
       deleted: 0,
       conflicts: 0
     })
-    expect(fullSync).toHaveBeenCalledTimes(2)
+    expect(fullSync).toHaveBeenCalledOnce()
     expect(fake!.remoteLogins.filter((login) => login.name === local.name)).toEqual([])
 
     fake!.isolatedPersonalIds.splice(0)
@@ -1469,7 +1469,7 @@ describe('VaultService encrypted local data', () => {
       deleted: 0,
       conflicts: 0
     })
-    expect(fullSync).toHaveBeenCalledTimes(2)
+    expect(fullSync).toHaveBeenCalledOnce()
     expect(fake!.remoteLogins.filter((login) => login.name === local.name)).toMatchObject([
       { id: retainedRemote!.id }
     ])
@@ -1523,7 +1523,7 @@ describe('VaultService encrypted local data', () => {
       deleted: 0,
       conflicts: 0
     })
-    expect(fullSync).toHaveBeenCalledTimes(2)
+    expect(fullSync).toHaveBeenCalledOnce()
     expect(fake!.hardDeletedIds).toEqual([remoteId])
 
     fake!.isolatedPersonalIds.splice(0)
@@ -1534,6 +1534,57 @@ describe('VaultService encrypted local data', () => {
     expect(fullSync).toHaveBeenCalledTimes(2)
     expect(fake!.hardDeletedIds).toEqual([remoteId, remoteId])
     expect(fake!.remoteLogins).toEqual([])
+  })
+
+  it('downloads the remote vault once when a sync only pulls remote changes', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    fake!.remoteLogins[0] = {
+      ...fake!.remoteLogins[0]!,
+      name: 'Renamed on another device',
+      revisionDate: '2026-07-15T00:00:00.000Z'
+    }
+    const fullSync = vi.spyOn(fake!, 'sync')
+
+    await expect(service.syncNow()).resolves.toMatchObject({ pulled: 1, pushed: 0 })
+
+    expect(fullSync).toHaveBeenCalledOnce()
+    expect((await service.listLogins()).map((login) => login.name)).toEqual([
+      'Renamed on another device'
+    ])
+  })
+
+  it('downloads the remote vault again after pushing local changes', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.createLogin({ name: 'Created locally' })
+    const fullSync = vi.spyOn(fake!, 'sync')
+
+    await expect(service.syncNow()).resolves.toMatchObject({ pushed: 1 })
+
+    expect(fullSync).toHaveBeenCalledTimes(2)
   })
 
   it('keeps core vault sync available when self-hosted domain settings are malformed', async () => {
@@ -2885,7 +2936,7 @@ describe('VaultService encrypted local data', () => {
     await expect(reopened.unlock(MASTER_PASSWORD)).resolves.toEqual({ state: 'unlocked' })
     await expect(reopened.syncNow()).resolves.toMatchObject({ state: 'ready' })
     expect(reopenedFake).not.toBeNull()
-    expect(vi.mocked(reopenedFake!.sync)).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(reopenedFake!.sync)).toHaveBeenCalledOnce()
     await reopened.lock()
 
     const corruptStore = new EncryptedVaultStore<unknown>(filePath)
@@ -10079,7 +10130,7 @@ describe('VaultService encrypted local data', () => {
       deleted: 0,
       conflicts: 0
     })
-    expect(fullSync).toHaveBeenCalledTimes(2)
+    expect(fullSync).toHaveBeenCalledOnce()
     expect(fake!.hardDeletedIds).toHaveLength(2)
 
     fake!.isolatedPersonalIds.splice(0)
