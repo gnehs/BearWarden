@@ -77,11 +77,7 @@ import {
   createLoginWithOptionalSshImport,
   updateLoginWithOptionalSshImport
 } from './ssh-key-editor-state'
-import {
-  hasTrashPasswordHistory,
-  isCurrentVaultLoad,
-  protectedDetailInvalidationIds
-} from './VaultShell-security'
+import { hasTrashPasswordHistory } from './VaultShell-security'
 import {
   folderHierarchyDragIntent,
   itemDropPreviewDescription,
@@ -102,7 +98,6 @@ import { type VaultPortabilityMode } from './VaultPortabilityDialog'
 import VaultShellDialogs from './VaultShellDialogs'
 import { formatVaultExportResult, formatVaultImportResult } from '../lib/vault-portability-ui'
 import { groupItemsByDate } from '../lib/item-date-groups'
-import { listLoginsInAllStates } from '../lib/vault-login-lists'
 import { matchesVaultCategory } from '../lib/vault-category'
 import { normalizeBitwardenCardBrand } from '../lib/payment-card'
 import { shouldShowSyncSetupPrompt } from '../lib/sync-setup-prompt'
@@ -116,6 +111,7 @@ import { useVaultAccounts } from '@renderer/hooks/use-vault-accounts'
 import { useVaultSearch } from '@renderer/hooks/use-vault-search'
 import { useVaultAuthorization } from '@renderer/hooks/use-vault-authorization'
 import { useLoginDetailCache } from '@renderer/hooks/use-login-detail-cache'
+import { useVaultDataSync } from '@renderer/hooks/use-vault-data-sync'
 import { useCardCoverPreviews } from '@renderer/hooks/use-card-cover-previews'
 import { resolveTotpRefreshTarget } from './totp-refresh-target'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
@@ -478,8 +474,6 @@ function VaultShellContent({
     busy,
     setFolders,
     setItems,
-    setOrganizations,
-    setCollections,
     setSharedItems,
     setScope,
     setSortMode,
@@ -489,7 +483,6 @@ function VaultShellContent({
     setSelectedId,
     setSelectedLogin,
     setEditorMode,
-    setLoading,
     setBusy
   } = useVaultSessionStore(
     useShallow((state) => ({
@@ -510,8 +503,6 @@ function VaultShellContent({
       busy: state.busy,
       setFolders: state.setFolders,
       setItems: state.setItems,
-      setOrganizations: state.setOrganizations,
-      setCollections: state.setCollections,
       setSharedItems: state.setSharedItems,
       setScope: state.setScope,
       setSortMode: state.setSortMode,
@@ -521,7 +512,6 @@ function VaultShellContent({
       setSelectedId: state.setSelectedId,
       setSelectedLogin: state.setSelectedLogin,
       setEditorMode: state.setEditorMode,
-      setLoading: state.setLoading,
       setBusy: state.setBusy
     }))
   )
@@ -629,6 +619,17 @@ function VaultShellContent({
     tokens: authorizationTokens
   } = useVaultAuthorization()
   const detailCache = useLoginDetailCache(authorization, prefetchCardCoverPreview)
+  const vaultData = useVaultDataSync(authorization, detailCache, {
+    selectedDetailInvalidated: () => {
+      setPasswordHistoryDialogOpen(false)
+      clearEditorDirty()
+      setTotpCodeState(null)
+      setRevealedSecrets(emptyRevealedSecrets)
+      setRevealedCustomFields(emptyRevealedCustomFields)
+    },
+    loadStarted: () => toast.dismiss(vaultErrorToastId),
+    loadFailed: (error) => announceError(describeVaultError(error))
+  })
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   const [loginApprovalPrompts, setLoginApprovalPrompts] = useState<LoginApprovalPrompt[]>([])
@@ -658,8 +659,6 @@ function VaultShellContent({
   const compactReturnIdRef = useRef<string | null>(null)
   const compactDetailFocusIdRef = useRef<string | null>(null)
   const selectionAnchorIdRef = useRef<string | null>(null)
-  // A successful list load may invalidate protected details, so list freshness needs its own epoch.
-  const vaultLoadRequestIdRef = useRef(0)
   const attachmentOperationRef = useRef<AttachmentOperationState | null>(null)
 
   const beginAttachmentOperation = useCallback(
@@ -732,34 +731,6 @@ function VaultShellContent({
     setPasswordHistoryDialogOpen(false)
   }, [setSelectedId, setSelectedIds, setSelectedLogin])
 
-  const invalidateProtectedDetails = useCallback(
-    (summaries: readonly LoginSummary[]): void => {
-      const invalidIds = protectedDetailInvalidationIds(summaries, (id) =>
-        Boolean(authorization.token(id))
-      )
-      if (invalidIds.size === 0) return
-      detailCache.invalidate(invalidIds)
-      const activeId = currentSelectedId()
-      if (activeId && invalidIds.has(activeId)) {
-        setPasswordHistoryDialogOpen(false)
-        setSelectedLogin(null)
-        setEditorMode(null)
-        clearEditorDirty()
-        setTotpCodeState(null)
-        setRevealedSecrets(emptyRevealedSecrets)
-        setRevealedCustomFields(emptyRevealedCustomFields)
-      }
-    },
-    [
-      authorization,
-      clearEditorDirty,
-      currentSelectedId,
-      detailCache,
-      setEditorMode,
-      setSelectedLogin
-    ]
-  )
-
   useEffect(
     () =>
       authorization.subscribeRevoked((id, { preservePasswordHistoryDialog }) => {
@@ -778,76 +749,6 @@ function VaultShellContent({
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
-
-  const loadVault = useCallback(async (): Promise<void> => {
-    const requestId = ++vaultLoadRequestIdRef.current
-    detailCache.clear()
-    try {
-      toast.dismiss(vaultErrorToastId)
-      const [folderList, loginList, organizationList, collectionList, sharedItemList] =
-        await Promise.all([
-          window.bearwarden.folders.list(),
-          listLoginsInAllStates(window.bearwarden.logins),
-          window.bearwarden.organizations.list(),
-          window.bearwarden.collections.list(),
-          window.bearwarden.sharedLogins.list({ sort: 'name' })
-        ])
-      if (!isCurrentVaultLoad(requestId, vaultLoadRequestIdRef.current)) return
-      invalidateProtectedDetails(loginList)
-      setFolders(sortFoldersByPosition(folderList))
-      setItems(loginList)
-      setOrganizations(organizationList)
-      setCollections(collectionList)
-      setSharedItems(sharedItemList)
-      setScope((current) =>
-        (current.kind === 'folder' &&
-          !folderList.some((folder) => folder.id === current.folderId)) ||
-        (current.kind === 'organization' &&
-          !organizationList.some((organization) => organization.id === current.organizationId)) ||
-        (current.kind === 'collection' &&
-          !collectionList.some(
-            (collection) =>
-              collection.id === current.collectionId &&
-              collection.organizationId === current.organizationId
-          ))
-          ? { kind: 'all' }
-          : current
-      )
-      setSelectedId((current) =>
-        current &&
-        !loginList.some((item) => item.id === current) &&
-        !sharedItemList.some((item) => item.id === current)
-          ? null
-          : current
-      )
-      setSelectedLogin((current) =>
-        current &&
-        !loginList.some((item) => item.id === current.id) &&
-        !sharedItemList.some((item) => item.id === current.id)
-          ? null
-          : current
-      )
-    } catch (loadError) {
-      if (isCurrentVaultLoad(requestId, vaultLoadRequestIdRef.current)) {
-        announceError(describeVaultError(loadError))
-      }
-    } finally {
-      if (isCurrentVaultLoad(requestId, vaultLoadRequestIdRef.current)) setLoading(false)
-    }
-  }, [
-    detailCache,
-    invalidateProtectedDetails,
-    setFolders,
-    setItems,
-    setOrganizations,
-    setCollections,
-    setSharedItems,
-    setScope,
-    setSelectedId,
-    setSelectedLogin,
-    describeVaultError,
-    setLoading
-  ])
 
   const activateLogin = useCallback(
     (id: string | null): void => {
@@ -950,18 +851,6 @@ function VaultShellContent({
     [authorization, selectedSummary]
   )
 
-  const refreshItems = useCallback(async (): Promise<void> => {
-    const loginList = await listLoginsInAllStates(window.bearwarden.logins)
-    invalidateProtectedDetails(loginList)
-    detailCache.retainSummaries(loginList)
-    setItems(loginList)
-    setSelectedLogin((current) => {
-      if (!current) return current
-      const summary = loginList.find((item) => item.id === current.id)
-      return summary ? mergeLoginSummary(current, summary) : current
-    })
-  }, [detailCache, invalidateProtectedDetails, setItems, setSelectedLogin])
-
   const updateSelectedAttachments = useCallback(
     (
       itemId: string,
@@ -996,7 +885,7 @@ function VaultShellContent({
 
   const refreshAfterSync = useCallback(async (): Promise<void> => {
     const applyRefresh = async (): Promise<void> => {
-      await loadVault()
+      await vaultData.load()
       setEditorMode(null)
       clearItemSelection()
       setRevealedSecrets(emptyRevealedSecrets)
@@ -1007,18 +896,7 @@ function VaultShellContent({
       return
     }
     await applyRefresh()
-  }, [clearItemSelection, isEditorDirty, loadVault, requestEditorTransition, setEditorMode])
-
-  useEffect(() => {
-    queueMicrotask(() => void loadVault())
-  }, [loadVault])
-
-  useEffect(
-    () => () => {
-      vaultLoadRequestIdRef.current += 1
-    },
-    []
-  )
+  }, [clearItemSelection, isEditorDirty, requestEditorTransition, setEditorMode, vaultData])
 
   useEffect(() => {
     let active = true
@@ -1082,13 +960,6 @@ function VaultShellContent({
       )
     })
   }, [])
-
-  useEffect(() => {
-    const unsubscribe = window.bearwarden.vault.onChanged(() => {
-      void loadVault()
-    })
-    return unsubscribe
-  }, [loadVault])
 
   useEffect(() => {
     return startSyncStatusSubscription(syncStatusStore, window.bearwarden.sync)
@@ -1951,7 +1822,7 @@ function VaultShellContent({
   }
 
   async function refreshAfterImport(result: VaultImportResult): Promise<void> {
-    await loadVault()
+    await vaultData.load()
     announce(formatVaultImportResult(result))
   }
 
@@ -2099,7 +1970,7 @@ function VaultShellContent({
                 ? t`Restored ${affectedCount} items.`
                 : t`Permanently deleted ${affectedCount} items.`
       try {
-        await refreshItems()
+        await vaultData.refreshItems()
       } catch {
         toast.warning(t`${message} The list could not be refreshed. Try again later.`)
         return true
@@ -2197,7 +2068,7 @@ function VaultShellContent({
       )
       return true
     } catch (favoriteError) {
-      await refreshItems().catch(() => undefined)
+      await vaultData.refreshItems().catch(() => undefined)
       announceError(describeVaultError(favoriteError))
       return false
     } finally {
@@ -2514,7 +2385,7 @@ function VaultShellContent({
         })
       )
       detailCache.remember(archived)
-      await refreshItems()
+      await vaultData.refreshItems()
       setScope({ kind: 'archive' })
       selectSavedItem(archived.id, archived)
       announce(t`Archived “${archived.name}”.`)
@@ -2537,7 +2408,7 @@ function VaultShellContent({
         })
       )
       detailCache.remember(restored)
-      await refreshItems()
+      await vaultData.refreshItems()
       setScope({ kind: 'all' })
       selectSavedItem(restored.id, restored)
       announce(t`Unarchived “${restored.name}”.`)
@@ -2563,7 +2434,7 @@ function VaultShellContent({
           : window.bearwarden.logins.delete(request)
       })
       detailCache.forget(selectedSummary.id)
-      await refreshItems()
+      await vaultData.refreshItems()
       clearItemSelection()
       setDeleteDialogOpen(false)
       announce(selectedSummary.deletedAt ? t`Item permanently deleted.` : t`Item moved to Trash.`)
@@ -2586,7 +2457,7 @@ function VaultShellContent({
         })
       )
       detailCache.remember(restored)
-      await refreshItems()
+      await vaultData.refreshItems()
       setScope(restored.archivedAt ? { kind: 'archive' } : { kind: 'all' })
       selectSavedItem(restored.id, restored)
       announce(t`Restored “${restored.name}”.`)
@@ -2607,7 +2478,7 @@ function VaultShellContent({
         })
       )
       detailCache.clear()
-      await refreshItems()
+      await vaultData.refreshItems()
       clearItemSelection()
       setEmptyTrashDialogOpen(false)
       announce(
@@ -2733,7 +2604,7 @@ function VaultShellContent({
         )
       }
       showCopied(detailFieldCopyFeedbackKey(itemId, field, uriIndex))
-      if (!selectedSharedSummary) await refreshItems()
+      if (!selectedSharedSummary) await vaultData.refreshItems()
     } catch (copyError) {
       announceError(describeVaultError(copyError))
     }
@@ -2809,7 +2680,7 @@ function VaultShellContent({
         )
       }
       showCopied(customFieldCopyFeedbackKey(itemId, index, field))
-      if (!selectedSharedSummary) await refreshItems()
+      if (!selectedSharedSummary) await vaultData.refreshItems()
     } catch (copyError) {
       announceError(describeVaultError(copyError))
     }
@@ -2833,11 +2704,13 @@ function VaultShellContent({
         announce(t`Downloaded “${result.fileName}”.`)
       }
       if (!result.canceled) {
-        await refreshItems().catch(() =>
-          announceError(
-            t`The attachment was downloaded, but the list could not be refreshed. Sync again later.`
+        await vaultData
+          .refreshItems()
+          .catch(() =>
+            announceError(
+              t`The attachment was downloaded, but the list could not be refreshed. Sync again later.`
+            )
           )
-        )
       }
     } catch (downloadError) {
       if (
@@ -2917,11 +2790,13 @@ function VaultShellContent({
         if (currentSelectedId() === itemId) {
           announce(t`Uploaded “${result.attachment.fileName}”.`)
         }
-        await refreshItems().catch(() =>
-          announceError(
-            t`The attachment was uploaded, but the list could not be refreshed. Sync again later.`
+        await vaultData
+          .refreshItems()
+          .catch(() =>
+            announceError(
+              t`The attachment was uploaded, but the list could not be refreshed. Sync again later.`
+            )
           )
-        )
       }
     } catch (uploadError) {
       if (isCurrentAttachmentOperation(operationId, itemId) && !isAttachmentCanceled(uploadError)) {
@@ -2953,11 +2828,13 @@ function VaultShellContent({
       )
       invalidateCardCoverListPreview(itemId)
       if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
-      await refreshItems().catch(() =>
-        announceError(
-          t`The card face was uploaded, but the list could not be refreshed. Sync again later.`
+      await vaultData
+        .refreshItems()
+        .catch(() =>
+          announceError(
+            t`The card face was uploaded, but the list could not be refreshed. Sync again later.`
+          )
         )
-      )
       return result.attachment
     } catch (coverError) {
       if (isCurrentAttachmentOperation(operationId, itemId) && !isAttachmentCanceled(coverError)) {
@@ -2989,11 +2866,13 @@ function VaultShellContent({
       if (currentSelectedId() === itemId) {
         announce(t`Uploaded card face “${result.attachment.fileName}”.`)
       }
-      await refreshItems().catch(() =>
-        announceError(
-          t`The card face was uploaded, but the list could not be refreshed. Sync again later.`
+      await vaultData
+        .refreshItems()
+        .catch(() =>
+          announceError(
+            t`The card face was uploaded, but the list could not be refreshed. Sync again later.`
+          )
         )
-      )
     } catch (coverError) {
       if (isCurrentAttachmentOperation(operationId, itemId) && !isAttachmentCanceled(coverError)) {
         announceError(describeVaultError(coverError))
@@ -3025,11 +2904,13 @@ function VaultShellContent({
         if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
       }
       if (currentSelectedId() === target.itemId) announce(t`Deleted “${target.fileName}”.`)
-      await refreshItems().catch(() =>
-        announceError(
-          t`The attachment was deleted, but the list could not be refreshed. Sync again later.`
+      await vaultData
+        .refreshItems()
+        .catch(() =>
+          announceError(
+            t`The attachment was deleted, but the list could not be refreshed. Sync again later.`
+          )
         )
-      )
     } catch (deleteError) {
       if (
         isCurrentAttachmentOperation(operationId, target.itemId) &&
@@ -3069,11 +2950,13 @@ function VaultShellContent({
         if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
       }
       if (currentSelectedId() === itemId) announce(t`Repaired “${attachment.fileName}”.`)
-      await refreshItems().catch(() =>
-        announceError(
-          t`The attachment was repaired, but the list could not be refreshed. Sync again later.`
+      await vaultData
+        .refreshItems()
+        .catch(() =>
+          announceError(
+            t`The attachment was repaired, but the list could not be refreshed. Sync again later.`
+          )
         )
-      )
     } catch (fixError) {
       if (isCurrentAttachmentOperation(operationId, itemId) && !isAttachmentCanceled(fixError)) {
         announceError(describeVaultError(fixError))
@@ -3127,7 +3010,7 @@ function VaultShellContent({
         )
       }
       showCopied(`totp:${itemId}`)
-      if (!selectedSharedSummary) await refreshItems()
+      if (!selectedSharedSummary) await vaultData.refreshItems()
     } catch (copyError) {
       announceError(describeVaultError(copyError))
     }
@@ -3149,7 +3032,7 @@ function VaultShellContent({
         )
       }
       announce(t`Website opened.`)
-      if (!selectedSharedSummary) await refreshItems()
+      if (!selectedSharedSummary) await vaultData.refreshItems()
     } catch (openError) {
       announceError(describeVaultError(openError))
     }
@@ -3471,7 +3354,7 @@ function VaultShellContent({
                   onOpenSync={() => setSyncDialogOpen(true)}
                   onVaultPurged={async () => {
                     await Promise.allSettled([
-                      loadVault(),
+                      vaultData.load(),
                       syncStatusStore
                         .getState()
                         .refreshStatus(() => window.bearwarden.sync.status())
