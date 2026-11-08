@@ -39,7 +39,7 @@ import {
 import {
   BitwardenHttpClient,
   BitwardenHttpError,
-  isRecord,
+  isJsonObject,
   parseEquivalentDomainSettings,
   type BitwardenAccountBreachReport,
   type BitwardenAuthRequest,
@@ -1008,7 +1008,7 @@ function isSafePersistedPolicyData(value: JsonObject): boolean {
 function restorePolicySet(value: unknown): BitwardenPolicySet {
   if (value === undefined) return { ...EMPTY_POLICY_SET, policies: [] }
   if (
-    !isRecord(value) ||
+    !isJsonObject(value) ||
     !hasOnlyPolicyKeys(value, ['source', 'policies'], ['parseFailure', 'applicableOrganizationIds'])
   ) {
     return invalidPersistedPolicySet()
@@ -1049,7 +1049,7 @@ function restorePolicySet(value: unknown): BitwardenPolicySet {
   }
   for (const policy of policies) {
     if (
-      !isRecord(policy) ||
+      !isJsonObject(policy) ||
       !hasOnlyPolicyKeys(policy, [
         'id',
         'organizationId',
@@ -1089,13 +1089,13 @@ function restorePolicySet(value: unknown): BitwardenPolicySet {
         execution !== 'unsupported' &&
         execution !== 'unknown' &&
         execution !== 'malformed') ||
-      (policy.data !== null && !isRecord(policy.data))
+      (policy.data !== null && !isJsonObject(policy.data))
     ) {
       return invalidPersistedPolicySet()
     }
     if (
       (execution === 'actionable' &&
-        (!isRecord(policy.data) || !isSafePersistedPolicyData(policy.data))) ||
+        (!isJsonObject(policy.data) || !isSafePersistedPolicyData(policy.data))) ||
       (execution !== 'actionable' && policy.data !== null)
     ) {
       return invalidPersistedPolicySet()
@@ -1119,7 +1119,7 @@ function property(record: JsonObject, name: string): JsonValue | undefined {
 
 function recordProperty(record: JsonObject, name: string): JsonObject | null {
   const value = property(record, name)
-  return isRecord(value) ? value : null
+  return isJsonObject(value) ? value : null
 }
 
 function optionalRemoteArrayProperty(record: JsonObject, name: string): JsonValue[] {
@@ -1341,7 +1341,7 @@ function parseRemoteCustomFields(
   decode: (value: string) => string
 ): VaultCustomField[] {
   return customFieldArray(rawFields).map((rawField) => {
-    if (!isRecord(rawField)) throw new BitwardenDirectError('INVALID_RESPONSE')
+    if (!isJsonObject(rawField)) throw new BitwardenDirectError('INVALID_RESPONSE')
     const name = nullableCustomFieldString(rawField, 'name')
     const value = nullableCustomFieldString(rawField, 'value')
     return {
@@ -1358,7 +1358,7 @@ function validateDraftCustomFields(value: unknown): VaultCustomField[] {
     throw new BitwardenDirectError('INVALID_RESPONSE')
   }
   return value.map((field) => {
-    if (!isRecord(field)) throw new BitwardenDirectError('INVALID_RESPONSE')
+    if (!isJsonObject(field)) throw new BitwardenDirectError('INVALID_RESPONSE')
     const name = property(field, 'name')
     const fieldValue = property(field, 'value')
     if (
@@ -1453,7 +1453,7 @@ function parsePasswordHistory(
   password: (entry: JsonObject) => unknown
 ): VaultPasswordHistoryEntry[] {
   return passwordHistoryArray(value).map((raw) => {
-    if (!isRecord(raw)) throw new BitwardenDirectError('INVALID_RESPONSE')
+    if (!isJsonObject(raw)) throw new BitwardenDirectError('INVALID_RESPONSE')
     return {
       password: checkedHistoryPassword(password(raw)),
       lastUsedDate: normalizedBitwardenTimestamp(property(raw, 'lastUsedDate'))
@@ -1696,7 +1696,7 @@ function decryptAttachments(raw: JsonObject, key: BitwardenSymmetricKey): Bitwar
   if (Array.isArray(value)) {
     if (value.length > MAX_ATTACHMENTS) throw new BitwardenDirectError('INVALID_RESPONSE')
     const attachments = value.map((entry) => {
-      if (!isRecord(entry)) throw new BitwardenDirectError('INVALID_RESPONSE')
+      if (!isJsonObject(entry)) throw new BitwardenDirectError('INVALID_RESPONSE')
       return decryptAttachment(
         requiredStringProperty(entry, 'id'),
         requiredStringProperty(entry, 'fileName'),
@@ -1708,10 +1708,10 @@ function decryptAttachments(raw: JsonObject, key: BitwardenSymmetricKey): Bitwar
     }
     return attachments
   }
-  if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+  if (!isJsonObject(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
 
   const detailsValue = property(raw, 'attachments2')
-  if (detailsValue !== undefined && detailsValue !== null && !isRecord(detailsValue)) {
+  if (detailsValue !== undefined && detailsValue !== null && !isJsonObject(detailsValue)) {
     throw new BitwardenDirectError('INVALID_RESPONSE')
   }
   const entries = Object.entries(value)
@@ -1721,7 +1721,7 @@ function decryptAttachments(raw: JsonObject, key: BitwardenSymmetricKey): Bitwar
       throw new BitwardenDirectError('INVALID_RESPONSE')
     }
     const details = detailsValue ? detailsValue[id] : undefined
-    if (details !== undefined && !isRecord(details))
+    if (details !== undefined && !isJsonObject(details))
       throw new BitwardenDirectError('INVALID_RESPONSE')
     if (details) {
       const detailFileName = requiredStringProperty(details, 'fileName')
@@ -1789,11 +1789,11 @@ function rawCipherNestedRows(raw: JsonObject): number {
   const attachments = property(raw, 'attachments')
   if (Array.isArray(attachments)) {
     rows = addAggregateRemoteRows(rows, attachments.length)
-  } else if (isRecord(attachments)) {
+  } else if (isJsonObject(attachments)) {
     rows = addAggregateRemoteRows(rows, Object.keys(attachments).length)
   }
   const attachmentDetails = property(raw, 'attachments2')
-  if (isRecord(attachmentDetails)) {
+  if (isJsonObject(attachmentDetails)) {
     rows = addAggregateRemoteRows(rows, Object.keys(attachmentDetails).length)
   }
   const login = recordProperty(raw, 'login')
@@ -1974,7 +1974,7 @@ function preservedUriRows(
   }
   const preserved = new Map<string, { rows: JsonObject[]; next: number }>()
   for (const value of Array.isArray(previous) ? previous : []) {
-    if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+    if (!isJsonObject(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
     const uri = nullableStringProperty(value, 'uri')
     const matchKey = uriRowKey(
       uri === null ? '' : decode(uri),
@@ -2008,7 +2008,7 @@ function parseRemoteUris(
     throw new BitwardenDirectError('INVALID_RESPONSE')
   }
   return (Array.isArray(value) ? value : []).map((row) => {
-    if (!isRecord(row)) throw new BitwardenDirectError('INVALID_RESPONSE')
+    if (!isJsonObject(row)) throw new BitwardenDirectError('INVALID_RESPONSE')
     const encoded = nullableStringProperty(row, 'uri')
     const uri = encoded === null ? '' : decode(encoded)
     if (uri.length > MAX_URI_LENGTH) throw new BitwardenDirectError('INVALID_RESPONSE')
@@ -2031,7 +2031,7 @@ function preservedAttachments(existing: JsonObject, request: JsonObject): void {
   const attachments: JsonObject = {}
   const attachments2: JsonObject = {}
   for (const entry of value) {
-    if (!isRecord(entry)) throw new BitwardenDirectError('INVALID_RESPONSE')
+    if (!isJsonObject(entry)) throw new BitwardenDirectError('INVALID_RESPONSE')
     const id = requiredStringProperty(entry, 'id')
     const fileName = requiredStringProperty(entry, 'fileName')
     attachments[id] = fileName
@@ -2054,7 +2054,7 @@ function opaqueCipherBlob(record: JsonObject): string | null {
     } catch {
       throw new BitwardenDirectError('INVALID_RESPONSE')
     }
-    if (!isRecord(container) || property(container, 'format_version') !== 1) return null
+    if (!isJsonObject(container) || property(container, 'format_version') !== 1) return null
     if (
       typeof property(container, 'wrapped_cek') !== 'string' ||
       typeof property(container, 'envelope') !== 'string'
@@ -2122,7 +2122,7 @@ function decryptFido2Credentials(
     throw new BitwardenDirectError('INVALID_RESPONSE')
   }
   return raw.map((value) => {
-    if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+    if (!isJsonObject(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
     return validatePasskey({
       credentialId: decryptBitwardenString(requiredStringProperty(value, 'credentialId'), key),
       keyType: decryptBitwardenString(requiredStringProperty(value, 'keyType'), key),
@@ -2149,7 +2149,7 @@ function parseBlobFido2Credentials(typeData: JsonObject): StoredPasskeyCredentia
     throw new BitwardenDirectError('INVALID_RESPONSE')
   }
   return raw.map((value) => {
-    if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+    if (!isJsonObject(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
     const counter = property(value, 'counter')
     const discoverable = property(value, 'discoverable')
     if (
@@ -3723,7 +3723,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         const providerRows = optionalRemoteArrayProperty(profile, 'providers')
         const organizationRowsById = new Map<string, JsonObject>()
         for (const value of organizationRows) {
-          if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+          if (!isJsonObject(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
           const organization = this.parseOrganization(value)
           if (organizationRowsById.has(organization.id)) {
             throw new BitwardenDirectError('INVALID_RESPONSE')
@@ -3733,7 +3733,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         }
         const providerOrganizationRowsById = new Map<string, JsonObject>()
         for (const value of providerOrganizationRows) {
-          if (!isRecord(value)) {
+          if (!isJsonObject(value)) {
             throw invalidResponse('organization-profile')
           }
           const organization = this.parseOrganization(value)
@@ -3772,7 +3772,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         const cipherIds = new Set<string>()
         for (const value of cipherRows) {
           invalidResponseStage = 'cipher'
-          if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+          if (!isJsonObject(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
           const id = assertUuidValue(requiredStringProperty(value, 'id'))
           if (cipherIds.has(id)) throw new BitwardenDirectError('INVALID_RESPONSE')
           cipherIds.add(id)
@@ -3800,7 +3800,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         }
         for (const value of collectionRows) {
           invalidResponseStage = 'collection'
-          if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+          if (!isJsonObject(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
           requiredOrganizationIds.add(
             assertUuidValue(requiredStringProperty(value, 'organizationId'))
           )
@@ -3837,7 +3837,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
               )
             }
             for (const value of providerRows) {
-              if (!isRecord(value)) {
+              if (!isJsonObject(value)) {
                 throw invalidResponse('provider-organization-key')
               }
               const providerId = assertUuidValue(requiredStringProperty(value, 'id'))
@@ -3883,14 +3883,14 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         aggregateRows = addAggregateRemoteRows(aggregateRows, sendRows.length)
         for (const value of folderRows) {
           invalidResponseStage = 'folder'
-          if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+          if (!isJsonObject(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
           const item = this.decryptFolder(value, userKey)
           if (nextFolders.has(item.id)) throw new BitwardenDirectError('INVALID_RESPONSE')
           nextFolders.set(item.id, { raw: structuredClone(value), item })
         }
         for (const value of cipherRows) {
           invalidResponseStage = 'cipher'
-          if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+          if (!isJsonObject(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
           const type = remoteCipherType(value)
           const organizationId = property(value, 'organizationId')
           const rawNestedRows = rawCipherNestedRows(value)
@@ -3940,7 +3940,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         }
         for (const value of collectionRows) {
           invalidResponseStage = 'collection'
-          if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+          if (!isJsonObject(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
           const collection = this.decryptCollection(value, organizationKeys)
           if (nextCollections.has(collection.id)) throw new BitwardenDirectError('INVALID_RESPONSE')
           nextCollections.set(collection.id, collection)
@@ -3956,7 +3956,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         }
         for (const value of sendRows) {
           invalidResponseStage = 'send'
-          if (!isRecord(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
+          if (!isJsonObject(value)) throw new BitwardenDirectError('INVALID_RESPONSE')
           const send = this.decryptSend(value, userKey)
           nextSends.set(send.item.id, send)
         }
@@ -4681,9 +4681,9 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     try {
       for (const [index, entry] of entries.entries()) {
         if (
-          !isRecord(entry) ||
+          !isJsonObject(entry) ||
           typeof entry.localId !== 'string' ||
-          !isRecord(entry.draft) ||
+          !isJsonObject(entry.draft) ||
           typeof entry.draft.name !== 'string'
         ) {
           throw new BitwardenDirectError('INVALID_RESPONSE')
@@ -5195,7 +5195,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     if (
       masterPasswordUnlockValue !== undefined &&
       masterPasswordUnlockValue !== null &&
-      !isRecord(masterPasswordUnlockValue)
+      !isJsonObject(masterPasswordUnlockValue)
     ) {
       throw invalidResponse('user-decryption-data')
     }
@@ -5253,7 +5253,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   ): BitwardenUserDecryptionCapabilities {
     const raw = property(payload, 'userDecryption')
     if (raw === undefined || raw === null) return noUserDecryptionCapabilities()
-    if (!isRecord(raw)) {
+    if (!isJsonObject(raw)) {
       throw invalidResponse('user-decryption-data')
     }
     const prfOptions = property(raw, 'webAuthnPrfOptions')
@@ -5262,17 +5262,17 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       prfOptions !== null &&
       (!Array.isArray(prfOptions) ||
         prfOptions.length > MAX_REMOTE_ENTITIES ||
-        prfOptions.some((option) => !isRecord(option)))
+        prfOptions.some((option) => !isJsonObject(option)))
     ) {
       throw invalidResponse('user-decryption-data')
     }
     const v2UpgradeToken = property(raw, 'v2UpgradeToken')
-    if (v2UpgradeToken !== undefined && v2UpgradeToken !== null && !isRecord(v2UpgradeToken)) {
+    if (v2UpgradeToken !== undefined && v2UpgradeToken !== null && !isJsonObject(v2UpgradeToken)) {
       throw invalidResponse('user-decryption-data')
     }
     return {
       hasWebAuthnPrfOptions: Array.isArray(prfOptions) && prfOptions.length > 0,
-      hasV2UpgradeToken: isRecord(v2UpgradeToken),
+      hasV2UpgradeToken: isJsonObject(v2UpgradeToken),
       webAuthnPrfUnlockSupported: false,
       v2AccountUpgradeSupported: false
     }
@@ -5693,7 +5693,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       if (sealedBlob !== null) {
         if (!Buffer.isBuffer(key)) throw new BitwardenDirectError('INVALID_RESPONSE')
         const content = decryptBitwardenCipherBlob(sealedBlob, key)
-        if (!isRecord(content)) throw new BitwardenDirectError('INVALID_RESPONSE')
+        if (!isJsonObject(content)) throw new BitwardenDirectError('INVALID_RESPONSE')
         onBlobNestedRows?.(decodedBlobNestedRows(content))
         return this.decryptBlobLogin(raw, content, wireType, attachments)
       }
@@ -5939,7 +5939,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       const sealedBlob = opaqueCipherBlob(existing)
       if (!sealedBlob) throw new BitwardenDirectError('INVALID_RESPONSE')
       const decrypted = decryptBitwardenCipherBlob(sealedBlob, key)
-      if (!isRecord(decrypted)) throw new BitwardenDirectError('INVALID_RESPONSE')
+      if (!isJsonObject(decrypted)) throw new BitwardenDirectError('INVALID_RESPONSE')
       content = structuredClone(decrypted)
     } else {
       content = {

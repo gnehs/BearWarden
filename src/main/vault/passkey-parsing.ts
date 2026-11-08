@@ -10,8 +10,9 @@ import {
   MAX_PASSKEY_RP_ID_LENGTH,
   PASSKEY_UUID_PATTERN
 } from './limits'
-import { assertIsoDate, isRecord } from './parse-primitives'
+import { assertIsoDate } from './parse-primitives'
 import type { PasskeyVaultMatch, VaultData } from './types'
+import { isRecord } from '../record-primitives'
 
 export function normalizePasskeyRpId(value: unknown): string {
   if (

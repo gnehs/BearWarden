@@ -6,6 +6,7 @@ import {
   type HubConnection
 } from '@microsoft/signalr'
 import { MessagePackHubProtocol } from '@microsoft/signalr-protocol-msgpack'
+import { isRecord } from './record-primitives'
 
 const MIN_RECONNECT_DELAY_MS = 2 * 60 * 1_000
 const MAX_RECONNECT_DELAY_MS = 5 * 60 * 1_000
@@ -78,10 +79,6 @@ interface ParsedNotification {
   contextId: string | null
   payloadUserId: string | null
   authRequest: BitwardenAuthRequestNotification | null
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function property(record: Record<string, unknown>, lower: string, upper: string): unknown {

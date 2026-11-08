@@ -14,7 +14,7 @@ import {
   OAUTH_CLIENT_ID_PATTERN,
   UUID_PATTERN
 } from './limits'
-import { assertIsoDate, isRecord } from './parse-primitives'
+import { assertIsoDate } from './parse-primitives'
 import { parseStoredEquivalentDomainSettings } from './equivalent-domains'
 import type {
   PendingLoginImport,
@@ -26,6 +26,7 @@ import type {
   SyncEntityMapping,
   SyncTombstone
 } from './types'
+import { isRecord } from '../record-primitives'
 
 const MIN_SYNC_ACCOUNT_KEY_BYTES = 64
 const MAX_SYNC_ACCOUNT_KEY_BYTES = 4_096

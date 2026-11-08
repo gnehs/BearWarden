@@ -6,7 +6,7 @@ import type {
 import type { BitwardenEmergencyAccess } from '../bitwarden-http'
 import { VaultError } from '../vault-errors'
 import { MAX_NAME_LENGTH, UUID_PATTERN } from './limits'
-import { isRecord } from './parse-primitives'
+import { isRecord } from '../record-primitives'
 
 export function parseStoredOrganization(value: unknown): OrganizationView {
   if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')

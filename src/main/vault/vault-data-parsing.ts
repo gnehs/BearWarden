@@ -36,7 +36,7 @@ import {
   MAX_REMOTE_ENTITIES,
   MAX_SENDS
 } from './limits'
-import { assertIsoDate, isRecord } from './parse-primitives'
+import { assertIsoDate } from './parse-primitives'
 import { parseFolder, parseStoredLogin, parseStoredSharedLogin } from './login-parsing'
 import { parseStoredSend } from './send-parsing'
 import { parseStoredCollection, parseStoredOrganization } from './org-collection-parsing'
@@ -48,6 +48,7 @@ import { cloneLoginUris } from './login-uris'
 import { clonePasswordHistory } from './password-history'
 import { cloneCustomFields } from './custom-fields'
 import type { MasterPasswordChangeJournal, VaultData } from './types'
+import { isRecord } from '../record-primitives'
 
 const STORED_POLICY_NAMES = new Map<number, keyof typeof BITWARDEN_POLICY_TYPE>(
   Object.entries(BITWARDEN_POLICY_TYPE).map(([name, type]) => [

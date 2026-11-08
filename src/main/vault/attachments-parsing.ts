@@ -6,7 +6,7 @@ import {
   MAX_ATTACHMENT_ID_LENGTH,
   MAX_ATTACHMENT_SIZE_NAME_LENGTH
 } from './limits'
-import { isRecord } from './parse-primitives'
+import { isRecord } from '../record-primitives'
 
 function parseStoredAttachment(value: unknown): VaultAttachmentView {
   if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')

@@ -133,6 +133,7 @@ import {
   type TwoFactorDirectoryCache
 } from './two-factor-directory-cache'
 import { exactKeys, plainRecord } from './plain-record'
+import { isPlainObjectRecord } from './record-primitives'
 import { ITEM_FIELD_NAMES } from './vault/item-fields'
 import {
   MAX_CUSTOM_FIELDS,
@@ -530,7 +531,7 @@ function parseMasterPasswordChange(
 }
 
 function scrubMasterPasswordChangeInput(value: unknown): void {
-  if (!isRecord(value)) return
+  if (!isPlainObjectRecord(value)) return
   for (const [key, replacement] of [
     ['currentPassword', ''],
     ['newPassword', ''],
@@ -1048,14 +1049,8 @@ function parseGeneratedCredentialCopyRequest(value: unknown): GeneratedCredentia
   return { token }
 }
 
-function isRecord(value: unknown): value is RecordValue {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
-  const prototype = Object.getPrototypeOf(value)
-  return prototype === Object.prototype || prototype === null
-}
-
 function exactRecord(value: unknown, allowedKeys: readonly string[]): RecordValue {
-  if (!isRecord(value)) throw new VaultError('INVALID_INPUT')
+  if (!isPlainObjectRecord(value)) throw new VaultError('INVALID_INPUT')
   if (Object.keys(value).some((key) => !allowedKeys.includes(key))) {
     throw new VaultError('INVALID_INPUT')
   }
@@ -1102,7 +1097,7 @@ function optionalAuthorizationToken(record: RecordValue): string | undefined {
 
 function authorizationTokens(value: unknown): Record<string, string> | undefined {
   if (value === undefined) return undefined
-  if (!isRecord(value) || Object.keys(value).length > MAX_LOGIN_BATCH_IDS) {
+  if (!isPlainObjectRecord(value) || Object.keys(value).length > MAX_LOGIN_BATCH_IDS) {
     throw new VaultError('INVALID_INPUT')
   }
   const result: Record<string, string> = {}
@@ -1482,7 +1477,7 @@ function parseLoginUpdate(
 
 function parseSharedLoginUpdate(value: unknown): SharedLoginUpdateRequest {
   if (
-    !isRecord(value) ||
+    !isPlainObjectRecord(value) ||
     Object.hasOwn(value, 'folderId') ||
     Object.hasOwn(value, 'favorite') ||
     Object.hasOwn(value, 'reprompt') ||
@@ -1495,7 +1490,7 @@ function parseSharedLoginUpdate(value: unknown): SharedLoginUpdateRequest {
 
 function parseSharedLoginCreate(value: unknown): SharedLoginCreateRequest {
   if (
-    !isRecord(value) ||
+    !isPlainObjectRecord(value) ||
     Object.hasOwn(value, 'folderId') ||
     Object.hasOwn(value, 'favorite') ||
     Object.hasOwn(value, 'reprompt')

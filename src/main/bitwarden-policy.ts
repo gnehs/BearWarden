@@ -1,3 +1,5 @@
+import { isRecord } from './record-primitives'
+
 /**
  * Bitwarden organization policy wire values.
  *
@@ -142,10 +144,6 @@ const POLICY_NAMES = new Map<number, keyof typeof BITWARDEN_POLICY_TYPE>(
 
 function invalidResponse(): never {
   throw new BitwardenPolicyParseError('INVALID_POLICY_RESPONSE')
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function readAliased(

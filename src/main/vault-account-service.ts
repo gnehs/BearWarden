@@ -39,7 +39,7 @@ import {
   MAX_EMAIL_TWO_FACTOR_SETUP_SESSIONS,
   MAX_SYNC_SECRET_LENGTH
 } from './vault/limits'
-import { isRecord, normalizeRequiredString, normalizeSyncPassword } from './vault/parse-primitives'
+import { normalizeRequiredString, normalizeSyncPassword } from './vault/parse-primitives'
 import { cloneData } from './vault/vault-data-parsing'
 import { assertNoPendingPersonalVaultPurge } from './vault/sync-data-parsing'
 import {
@@ -62,6 +62,7 @@ import {
   type AccountWebAuthnOperationLease
 } from './vault-service-base'
 import { VaultServiceBase } from './vault-service-base'
+import { isRecord } from './record-primitives'
 
 function initialSyncData(serverUrl: string, email: string): PersistedSyncData {
   return {

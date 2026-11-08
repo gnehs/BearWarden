@@ -101,7 +101,6 @@ import {
   UUID_PATTERN
 } from './vault/limits'
 import {
-  isRecord,
   assertUuid,
   normalizeRequiredString,
   normalizeNullableString,
@@ -150,6 +149,7 @@ import type {
   VaultServiceOptions,
   VaultNativeAttachmentRestoreSummary
 } from './vault/types'
+import { isRecord } from './record-primitives'
 
 type BulkRemoteLoginMutation =
   'soft-delete' | 'restore' | 'move' | 'archive' | 'unarchive' | 'hard-delete'

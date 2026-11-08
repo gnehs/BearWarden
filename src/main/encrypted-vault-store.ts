@@ -9,7 +9,7 @@ import { mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { syncDirectoryBestEffort } from './account-paths'
 import { VaultError } from './vault-errors'
-import { isRecord } from './vault/parse-primitives'
+import { isRecord } from './record-primitives'
 
 const FORMAT = 'bearwarden-vault'
 const ENVELOPE_VERSION = 1

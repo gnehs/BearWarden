@@ -18,12 +18,12 @@ import {
   UUID_PATTERN
 } from './limits'
 import {
-  isRecord,
   normalizeNullableString,
   normalizeRequiredString,
   normalizeString
 } from './parse-primitives'
 import type { StoredSend } from './types'
+import { isRecord } from '../record-primitives'
 
 export function parseStoredSend(value: unknown): StoredSend {
   if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')

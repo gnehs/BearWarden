@@ -20,7 +20,7 @@ import type { StoredPasskeyCredential } from './passkey'
 import type { SyncLogin } from './sync-merge'
 import { VaultError } from './vault-errors'
 import { emptyItemFields } from './vault/item-fields'
-import { isRecord } from './vault/parse-primitives'
+import { isRecord } from './record-primitives'
 
 export interface PortableVaultFolder {
   id: string

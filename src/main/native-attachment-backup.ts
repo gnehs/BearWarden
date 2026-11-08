@@ -11,7 +11,7 @@ import { chmod, lstat, mkdir, open, rename, unlink, type FileHandle } from 'node
 import { dirname, isAbsolute } from 'node:path'
 import { syncDirectoryBestEffort } from './account-paths'
 import { VaultError } from './vault-errors'
-import { isRecord } from './vault/parse-primitives'
+import { isRecord } from './record-primitives'
 
 const MAGIC = Buffer.from('BWAB0001', 'ascii')
 const HEADER_LENGTH_BYTES = 4

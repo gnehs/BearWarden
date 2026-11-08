@@ -16,7 +16,7 @@ import {
   MAX_EQUIVALENT_DOMAIN_TOTAL,
   MAX_EQUIVALENT_DOMAINS_PER_GROUP
 } from './limits'
-import { isRecord } from './parse-primitives'
+import { isRecord } from '../record-primitives'
 
 function parseStoredEquivalentDomain(value: unknown): string {
   if (
