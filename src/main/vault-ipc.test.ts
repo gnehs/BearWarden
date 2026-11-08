@@ -66,6 +66,39 @@ describe('registerVaultIpc lifecycle', () => {
   })
 })
 
+describe('registerVaultIpc no-input boundary', () => {
+  it.each([
+    ['vault:status', 'status'],
+    ['vault:lock', 'lock'],
+    ['folder:list', 'listFolders'],
+    ['organization:list', 'listOrganizations'],
+    ['emergency-access:list', 'listEmergencyAccess'],
+    ['sync:status', 'syncStatus'],
+    ['sync:now', 'syncNow'],
+    ['sync:disconnect', 'disconnectSync']
+  ])('rejects any payload on %s before calling the vault', async (channel, method) => {
+    const mainFrame = { url: 'app://bearwarden/index.html' }
+    const webContents = { id: 103, mainFrame, getURL: () => mainFrame.url }
+    const operation = vi.fn(async () => ({}))
+    registerVaultIpc({
+      vault: { [method]: operation } as unknown as VaultService,
+      portability: {} as Parameters<typeof registerVaultIpc>[0]['portability'],
+      settings: { disableTouchId: vi.fn(async () => undefined) } as unknown as AppSettingsService,
+      sshKeyImportSessions: new SshKeyImportSessionStore({ readClipboard: () => '' }),
+      getMainWindow: () => ({ isDestroyed: () => false, webContents }) as never
+    })
+    const handler = electronMock.handlers.get(channel)!
+    const event = { sender: webContents, senderFrame: mainFrame }
+
+    for (const invalid of [{}, null, 'scope', []]) {
+      await expect(handler(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    expect(operation).not.toHaveBeenCalled()
+    await handler(event, undefined)
+    expect(operation).toHaveBeenCalledOnce()
+  })
+})
+
 describe('registerVaultIpc sync failure lifecycle', () => {
   it('publishes the failure status without replacing the original sync error', async () => {
     const mainFrame = { url: 'app://bearwarden/index.html' }
@@ -1661,7 +1694,7 @@ describe('registerVaultIpc inactive two-factor privacy boundary', () => {
     const h = harness()
     const response = await electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(
       h.event,
-      {}
+      undefined
     )
 
     expect(h.directory.getDataset).toHaveBeenCalledOnce()
@@ -1684,7 +1717,7 @@ describe('registerVaultIpc inactive two-factor privacy boundary', () => {
     ])
     expect(JSON.stringify(response)).not.toContain('login.private-vault.example')
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(h.event, undefined)
+      electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(h.event, {})
     ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     await expect(
       electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(h.event, {
@@ -1749,7 +1782,10 @@ describe('registerVaultIpc inactive two-factor privacy boundary', () => {
       new TwoFactorDirectoryCacheError('UNAVAILABLE')
     )
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(unavailable.event, {})
+      electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(
+        unavailable.event,
+        undefined
+      )
     ).rejects.toThrow('BEARWARDEN:HEALTH_CHECK_FAILED')
 
     const missingDocumentation = harness()
@@ -1776,7 +1812,7 @@ describe('registerVaultIpc inactive two-factor privacy boundary', () => {
       getMainWindow: () => ({ isDestroyed: () => false, webContents: event.sender }) as never
     })
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(absent.event, {})
+      electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(absent.event, undefined)
     ).rejects.toThrow('BEARWARDEN:HEALTH_CHECK_FAILED')
   })
 })
@@ -2872,11 +2908,11 @@ describe('registerVaultIpc reprompt gate', () => {
     expect(vault.listLogins).toHaveBeenCalledTimes(3)
   })
 
-  it('exposes vault health through an exact empty request without a reprompt capability', async () => {
+  it('exposes vault health without input or a reprompt capability', async () => {
     const { event, vault } = harness()
     const health = electronMock.handlers.get(IPC_CHANNELS.vaultHealthReport)!
 
-    await expect(health(event, {})).resolves.toEqual({
+    await expect(health(event, undefined)).resolves.toEqual({
       generatedAt: '2026-07-16T00:00:00.000Z',
       totals: {
         analyzedCount: 1,
@@ -2892,7 +2928,7 @@ describe('registerVaultIpc reprompt gate', () => {
     expect(vault.getHealthReport).toHaveBeenCalledWith()
 
     for (const invalid of [
-      undefined,
+      {},
       null,
       [],
       { authorizationToken: 'not-accepted' },
@@ -2903,12 +2939,12 @@ describe('registerVaultIpc reprompt gate', () => {
     expect(vault.getHealthReport).toHaveBeenCalledOnce()
   })
 
-  it('exposes and cancels the explicit HIBP report only through exact empty requests', async () => {
+  it('exposes and cancels the explicit HIBP report only without input', async () => {
     const { event, vault } = harness()
     const exposed = electronMock.handlers.get(IPC_CHANNELS.vaultHealthExposedPasswords)!
     const cancel = electronMock.handlers.get(IPC_CHANNELS.vaultHealthCancelExposedPasswords)!
 
-    await expect(exposed(event, {})).resolves.toEqual({
+    await expect(exposed(event, undefined)).resolves.toEqual({
       generatedAt: '2026-07-16T00:00:00.000Z',
       totals: {
         analyzedCount: 2,
@@ -2918,10 +2954,10 @@ describe('registerVaultIpc reprompt gate', () => {
       exposedPasswords: [{ id: 'item-a', name: 'Example', subtitle: '', exposedCount: 42 }]
     })
     expect(vault.getExposedPasswordReport).toHaveBeenCalledWith()
-    await expect(cancel(event, {})).resolves.toBe(true)
+    await expect(cancel(event, undefined)).resolves.toBe(true)
     expect(vault.cancelExposedPasswordReport).toHaveBeenCalledWith()
 
-    for (const invalid of [undefined, null, [], { password: 'must-not-be-accepted' }]) {
+    for (const invalid of [{}, null, [], { password: 'must-not-be-accepted' }]) {
       await expect(exposed(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
       await expect(cancel(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
@@ -2942,7 +2978,7 @@ describe('registerVaultIpc reprompt gate', () => {
     expect(vault.getAccountBreachReport).toHaveBeenCalledWith({
       email: 'member@example.invalid'
     })
-    await expect(cancel(event, {})).resolves.toBe(true)
+    await expect(cancel(event, undefined)).resolves.toBe(true)
     expect(vault.cancelAccountBreachReport).toHaveBeenCalledWith()
 
     for (const invalid of [
@@ -2955,20 +2991,20 @@ describe('registerVaultIpc reprompt gate', () => {
     ]) {
       await expect(account(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
-    for (const invalid of [undefined, null, [], { email: 'must-not-be-accepted' }]) {
+    for (const invalid of [{}, null, [], { email: 'must-not-be-accepted' }]) {
       await expect(cancel(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
     expect(vault.getAccountBreachReport).toHaveBeenCalledOnce()
     expect(vault.cancelAccountBreachReport).toHaveBeenCalledOnce()
   })
 
-  it('opens only the fixed HIBP attribution target through an empty request', async () => {
+  it('opens only the fixed HIBP attribution target without input', async () => {
     const { event, vault } = harness()
     const open = electronMock.handlers.get(IPC_CHANNELS.vaultHealthOpenHibp)!
 
-    await expect(open(event, {})).resolves.toBeUndefined()
+    await expect(open(event, undefined)).resolves.toBeUndefined()
     expect(vault.openHibpWebsite).toHaveBeenCalledWith()
-    for (const invalid of [undefined, null, [], { url: 'https://example.invalid' }]) {
+    for (const invalid of [{}, null, [], { url: 'https://example.invalid' }]) {
       await expect(open(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
     expect(vault.openHibpWebsite).toHaveBeenCalledOnce()

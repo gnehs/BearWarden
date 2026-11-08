@@ -1,10 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import {
-  IPC_CHANNELS,
-  IPC_EVENTS,
-  type BearWardenAPI,
-  type RendererErrorLogRequest
-} from '../shared/vault-contract'
+import { IPC_API, PRELOAD_IPC, type BearWardenAPI, type IpcEndpoint } from '../shared/ipc-api'
+import type { RendererErrorLogRequest } from '../shared/vault-contract'
 
 const MAX_RENDERER_LOG_FIELD_LENGTH = 12_000
 
@@ -34,7 +30,7 @@ function errorLikeDetails(value: unknown): { message: string; stack?: string } {
 }
 
 function sendRendererErrorLog(report: RendererErrorLogRequest): void {
-  void ipcRenderer.invoke(IPC_CHANNELS.errorLogRecordRenderer, report).catch(() => undefined)
+  void ipcRenderer.invoke(PRELOAD_IPC.recordRendererError.channel, report).catch(() => undefined)
 }
 
 function installRendererErrorReporting(): void {
@@ -72,297 +68,42 @@ function installRendererErrorReporting(): void {
   })
 }
 
-function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
-  const wrappedListener = (_event: IpcRendererEvent, payload: T): void => listener(payload)
+function subscribe(
+  channel: string,
+  wrappedListener: (event: IpcRendererEvent, payload: unknown) => void
+): () => void {
   ipcRenderer.on(channel, wrappedListener)
   return () => ipcRenderer.removeListener(channel, wrappedListener)
 }
 
-const api: BearWardenAPI = {
-  vault: {
-    status: () => ipcRenderer.invoke(IPC_CHANNELS.vaultStatus),
-    setup: (request) => ipcRenderer.invoke(IPC_CHANNELS.vaultSetup, request),
-    unlock: (request) => ipcRenderer.invoke(IPC_CHANNELS.vaultUnlock, request),
-    pinStatus: () => ipcRenderer.invoke(IPC_CHANNELS.vaultPinStatus),
-    enablePin: (request) => ipcRenderer.invoke(IPC_CHANNELS.vaultPinEnable, request),
-    disablePin: () => ipcRenderer.invoke(IPC_CHANNELS.vaultPinDisable),
-    unlockPin: (request) => ipcRenderer.invoke(IPC_CHANNELS.vaultPinUnlock, request),
-    masterPasswordChangeStatus: () =>
-      ipcRenderer.invoke(IPC_CHANNELS.vaultMasterPasswordChangeStatus),
-    changeMasterPassword: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.vaultMasterPasswordChange, request),
-    resolveMasterPasswordChange: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.vaultMasterPasswordChangeResolve, request),
-    lock: () => ipcRenderer.invoke(IPC_CHANNELS.vaultLock),
-    setLockRequestReady: (ready) => ipcRenderer.send(IPC_CHANNELS.vaultLockRequestReady, ready),
-    onLocked: (listener) => subscribe(IPC_EVENTS.vaultLocked, () => listener()),
-    onLockRequested: (listener) => subscribe(IPC_EVENTS.vaultLockRequested, () => listener()),
-    onUnlocked: (listener) => subscribe(IPC_EVENTS.vaultUnlocked, () => listener()),
-    onChanged: (listener) => subscribe(IPC_EVENTS.vaultChanged, () => listener())
-  },
-  portability: {
-    export: (request) => ipcRenderer.invoke(IPC_CHANNELS.vaultExport, request),
-    import: (request) => ipcRenderer.invoke(IPC_CHANNELS.vaultImport, request),
-    previewNativeRestore: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.nativeRestorePreview, request),
-    startNativeRestore: (request) => ipcRenderer.invoke(IPC_CHANNELS.nativeRestoreStart, request),
-    cancelNativeRestore: (request) => ipcRenderer.invoke(IPC_CHANNELS.nativeRestoreCancel, request),
-    clearCompletedNativeRestore: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.nativeRestoreClearCompleted, request),
-    onNativeRestoreProgress: (listener) => subscribe(IPC_EVENTS.nativeRestoreProgress, listener)
-  },
-  health: {
-    report: () => ipcRenderer.invoke(IPC_CHANNELS.vaultHealthReport, {}),
-    exposedPasswords: () => ipcRenderer.invoke(IPC_CHANNELS.vaultHealthExposedPasswords, {}),
-    cancelExposedPasswords: () =>
-      ipcRenderer.invoke(IPC_CHANNELS.vaultHealthCancelExposedPasswords, {}),
-    accountBreaches: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.vaultHealthAccountBreaches, request),
-    cancelAccountBreaches: () =>
-      ipcRenderer.invoke(IPC_CHANNELS.vaultHealthCancelAccountBreaches, {}),
-    openHibpWebsite: () => ipcRenderer.invoke(IPC_CHANNELS.vaultHealthOpenHibp, {}),
-    inactiveTwoFactor: () => ipcRenderer.invoke(IPC_CHANNELS.vaultHealthInactiveTwoFactor, {}),
-    openTwoFactorDocumentation: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.vaultHealthOpenTwoFactorDocumentation, request)
-  },
-  folders: {
-    list: () => ipcRenderer.invoke(IPC_CHANNELS.folderList),
-    create: (request) => ipcRenderer.invoke(IPC_CHANNELS.folderCreate, request),
-    update: (request) => ipcRenderer.invoke(IPC_CHANNELS.folderUpdate, request),
-    reparent: (request) => ipcRenderer.invoke(IPC_CHANNELS.folderReparent, request),
-    delete: (request) => ipcRenderer.invoke(IPC_CHANNELS.folderDelete, request),
-    reorder: (request) => ipcRenderer.invoke(IPC_CHANNELS.folderReorder, request)
-  },
-  organizations: {
-    list: () => ipcRenderer.invoke(IPC_CHANNELS.organizationList)
-  },
-  collections: {
-    list: (organizationId) => ipcRenderer.invoke(IPC_CHANNELS.collectionList, organizationId)
-  },
-  sharedLogins: {
-    list: (request = {}) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginList, request),
-    get: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginGet, request),
-    create: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginCreate, request),
-    update: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginUpdate, request),
-    revealEditorSecrets: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.sharedLoginRevealEditorSecrets, request),
-    revealSecret: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginRevealSecret, request),
-    copyField: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginCopyField, request),
-    revealCustomField: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.sharedLoginRevealCustomField, request),
-    copyCustomField: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.sharedLoginCopyCustomField, request),
-    getTotp: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginGetTotp, request),
-    copyTotp: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginCopyTotp, request),
-    openUri: (request) => ipcRenderer.invoke(IPC_CHANNELS.sharedLoginOpenUri, request)
-  },
-  emergencyAccess: {
-    list: () => ipcRenderer.invoke(IPC_CHANNELS.emergencyAccessList)
-  },
-  logins: {
-    list: (request = {}) => ipcRenderer.invoke(IPC_CHANNELS.loginList, request),
-    authorize: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginAuthorize, request),
-    authorizeMany: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginAuthorizeMany, request),
-    get: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginGet, request),
-    prefetch: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginPrefetch, request),
-    getPasswordHistory: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.loginGetPasswordHistory, request),
-    revealPasswordHistory: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.loginRevealPasswordHistory, request),
-    copyPasswordHistory: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.loginCopyPasswordHistory, request),
-    restorePasswordHistory: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.loginRestorePasswordHistory, request),
-    downloadAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentDownload, request),
-    previewAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentPreview, request),
-    getCardCoverPreview: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.attachmentCardCoverPreview, request),
-    uploadAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentUpload, request),
-    uploadCardCoverAttachment: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.attachmentUploadCardCover, request),
-    uploadCardCoverFileAttachment: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.attachmentUploadCardCoverFile, request),
-    deleteAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentDelete, request),
-    fixLegacyAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentFixLegacy, request),
-    cancelAttachment: (request) => ipcRenderer.invoke(IPC_CHANNELS.attachmentCancel, request),
-    onAttachmentProgress: (listener) => subscribe(IPC_EVENTS.attachmentProgress, listener),
-    create: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginCreate, request),
-    clone: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginClone, request),
-    archive: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginArchive, request),
-    archiveMany: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginArchiveMany, request),
-    unarchive: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginUnarchive, request),
-    unarchiveMany: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginUnarchiveMany, request),
-    update: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginUpdate, request),
-    delete: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginDelete, request),
-    deleteMany: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginDeleteMany, request),
-    restore: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginRestore, request),
-    restoreMany: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginRestoreMany, request),
-    deletePermanently: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.loginDeletePermanently, request),
-    deletePermanentlyMany: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.loginDeletePermanentlyMany, request),
-    emptyTrash: (request = {}) => ipcRenderer.invoke(IPC_CHANNELS.loginEmptyTrash, request),
-    setFavorite: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginSetFavorite, request),
-    move: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginMove, request),
-    moveMany: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginMoveMany, request),
-    revealPassword: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginRevealPassword, request),
-    copyUsername: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginCopyUsername, request),
-    copyPassword: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginCopyPassword, request),
-    openUri: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginOpenUri, request),
-    getTotp: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginGetTotp, request),
-    copyTotp: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginCopyTotp, request),
-    showContextMenu: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginContextMenu, request),
-    getWebsiteIcon: (request) => ipcRenderer.invoke(IPC_CHANNELS.loginWebsiteIcon, request),
-    revealEditorSecrets: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.itemRevealEditorSecrets, request),
-    revealSecret: (request) => ipcRenderer.invoke(IPC_CHANNELS.itemRevealSecret, request),
-    copyField: (request) => ipcRenderer.invoke(IPC_CHANNELS.itemCopyField, request),
-    revealCustomField: (request) => ipcRenderer.invoke(IPC_CHANNELS.itemRevealCustomField, request),
-    copyCustomField: (request) => ipcRenderer.invoke(IPC_CHANNELS.itemCopyCustomField, request)
-  },
-  passkeys: {
-    delete: (request) => ipcRenderer.invoke(IPC_CHANNELS.passkeyDelete, request),
-    verifyApproval: (request) => ipcRenderer.invoke(IPC_CHANNELS.passkeyVerifyApproval, request),
-    respondApproval: (response) =>
-      ipcRenderer.invoke(IPC_CHANNELS.passkeyRespondApproval, response),
-    onApprovalRequested: (listener) => subscribe(IPC_EVENTS.passkeyApprovalRequested, listener)
-  },
-  autofill: {
-    status: () => ipcRenderer.invoke(IPC_CHANNELS.autofillStatus),
-    requestAccessibility: () => ipcRenderer.invoke(IPC_CHANNELS.autofillRequestAccessibility),
-    current: () => ipcRenderer.invoke(IPC_CHANNELS.autofillCurrent),
-    select: (request) => ipcRenderer.invoke(IPC_CHANNELS.autofillSelect, request),
-    cancel: (request) => ipcRenderer.invoke(IPC_CHANNELS.autofillCancel, request),
-    openMain: (request) => ipcRenderer.invoke(IPC_CHANNELS.autofillOpenMain, request),
-    onPromptChanged: (listener) => subscribe(IPC_EVENTS.autofillPromptChanged, listener)
-  },
-  generator: {
-    generate: (request) => ipcRenderer.invoke(IPC_CHANNELS.generatorGenerate, request),
-    copyGenerated: (request) => ipcRenderer.invoke(IPC_CHANNELS.generatorGeneratedCopy, request),
-    history: () => ipcRenderer.invoke(IPC_CHANNELS.generatorHistoryList),
-    clearHistory: () => ipcRenderer.invoke(IPC_CHANNELS.generatorHistoryClear),
-    copyHistory: (request) => ipcRenderer.invoke(IPC_CHANNELS.generatorHistoryCopy, request)
-  },
-  sshKeys: {
-    generate: () => ipcRenderer.invoke(IPC_CHANNELS.sshKeyGenerate),
-    beginImport: () => ipcRenderer.invoke(IPC_CHANNELS.sshKeyBeginImport),
-    submitImportPassphrase: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.sshKeySubmitImportPassphrase, request),
-    cancelImport: (request) => ipcRenderer.invoke(IPC_CHANNELS.sshKeyCancelImport, request),
-    createImported: (request) => ipcRenderer.invoke(IPC_CHANNELS.sshKeyCreateImported, request),
-    updateImported: (request) => ipcRenderer.invoke(IPC_CHANNELS.sshKeyUpdateImported, request)
-  },
-  sshAgent: {
-    status: () => ipcRenderer.invoke(IPC_CHANNELS.sshAgentStatus),
-    respondApproval: (response) =>
-      ipcRenderer.invoke(IPC_CHANNELS.sshAgentRespondApproval, response),
-    onApprovalRequested: (listener) => subscribe(IPC_EVENTS.sshAgentApprovalRequested, listener),
-    onStatusChanged: (listener) => subscribe(IPC_EVENTS.sshAgentStatusChanged, listener)
-  },
-  sync: {
-    status: () => ipcRenderer.invoke(IPC_CHANNELS.syncStatus),
-    connect: (request) => ipcRenderer.invoke(IPC_CHANNELS.syncConnect, request),
-    unlock: (request) => ipcRenderer.invoke(IPC_CHANNELS.syncUnlock, request),
-    sendEmailTwoFactorCode: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.syncSendEmailTwoFactorCode, request),
-    resendNewDeviceOtp: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.syncResendNewDeviceOtp, request),
-    now: () => ipcRenderer.invoke(IPC_CHANNELS.syncNow),
-    resolvePendingImport: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.syncResolvePendingImport, request),
-    purgePersonalVault: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.syncPurgePersonalVault, request),
-    disconnect: () => ipcRenderer.invoke(IPC_CHANNELS.syncDisconnect),
-    onChanged: (listener) => subscribe(IPC_EVENTS.syncChanged, listener)
-  },
-  accounts: {
-    status: () => ipcRenderer.invoke(IPC_CHANNELS.accountStatus),
-    add: () => ipcRenderer.invoke(IPC_CHANNELS.accountAdd),
-    switch: (accountId) => ipcRenderer.invoke(IPC_CHANNELS.accountSwitch, { accountId }),
-    rename: (accountId, displayName, expectedRevision) =>
-      ipcRenderer.invoke(IPC_CHANNELS.accountRename, { accountId, displayName, expectedRevision }),
-    reorder: (accountIds, expectedRevision) =>
-      ipcRenderer.invoke(IPC_CHANNELS.accountReorder, { accountIds, expectedRevision }),
-    remove: (accountId, confirm) =>
-      ipcRenderer.invoke(IPC_CHANNELS.accountRemove, { accountId, confirm })
-  },
-  accountSecurity: {
-    profile: () => ipcRenderer.invoke(IPC_CHANNELS.accountSecurityProfile),
-    updateName: (request) => ipcRenderer.invoke(IPC_CHANNELS.accountSecurityUpdateName, request),
-    updateAvatar: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.accountSecurityUpdateAvatar, request),
-    devices: () => ipcRenderer.invoke(IPC_CHANNELS.accountDevices),
-    pendingLoginApprovals: () => ipcRenderer.invoke(IPC_CHANNELS.accountPendingLoginApprovals),
-    respondLoginApproval: (response) =>
-      ipcRenderer.invoke(IPC_CHANNELS.accountRespondLoginApproval, response),
-    onLoginApprovalRequested: (listener) => subscribe(IPC_EVENTS.loginApprovalRequested, listener),
-    deauthorizeSessions: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.accountDeauthorizeSessions, request),
-    resendVerification: () => ipcRenderer.invoke(IPC_CHANNELS.accountResendVerification),
-    copyApiClientId: () => ipcRenderer.invoke(IPC_CHANNELS.accountCopyApiClientId),
-    copyApiKey: (request) => ipcRenderer.invoke(IPC_CHANNELS.accountCopyApiKey, request),
-    twoFactorStatus: () => ipcRenderer.invoke(IPC_CHANNELS.accountTwoFactorStatus),
-    disableTwoFactorProvider: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.accountDisableTwoFactorProvider, request),
-    copyRecoveryCode: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.accountCopyRecoveryCode, request),
-    beginAuthenticatorSetup: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.accountBeginAuthenticatorSetup, request),
-    copyAuthenticatorKey: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.accountCopyAuthenticatorKey, request),
-    completeAuthenticatorSetup: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.accountCompleteAuthenticatorSetup, request),
-    beginEmailTwoFactorSetup: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.accountBeginEmailTwoFactorSetup, request),
-    sendEmailTwoFactorSetup: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.accountSendEmailTwoFactorSetup, request),
-    completeEmailTwoFactorSetup: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.accountCompleteEmailTwoFactorSetup, request),
-    listWebAuthnKeys: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.accountSecurityWebAuthnKeys, request),
-    enrollWebAuthnKey: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.accountSecurityEnrollWebAuthnKey, request),
-    removeWebAuthnKey: (request) =>
-      ipcRenderer.invoke(IPC_CHANNELS.accountSecurityRemoveWebAuthnKey, request)
-  },
-  domainRules: {
-    get: () => ipcRenderer.invoke(IPC_CHANNELS.domainRulesGet),
-    update: (request) => ipcRenderer.invoke(IPC_CHANNELS.domainRulesUpdate, request)
-  },
-  sends: {
-    list: () => ipcRenderer.invoke(IPC_CHANNELS.sendList),
-    create: (request) => ipcRenderer.invoke(IPC_CHANNELS.sendCreate, request),
-    createFile: (request) => ipcRenderer.invoke(IPC_CHANNELS.sendCreateFile, request),
-    downloadFile: (request) => ipcRenderer.invoke(IPC_CHANNELS.sendDownloadFile, request),
-    update: (request) => ipcRenderer.invoke(IPC_CHANNELS.sendUpdate, request),
-    removePassword: (request) => ipcRenderer.invoke(IPC_CHANNELS.sendRemovePassword, request),
-    delete: (request) => ipcRenderer.invoke(IPC_CHANNELS.sendDelete, request),
-    copyLink: (request) => ipcRenderer.invoke(IPC_CHANNELS.sendCopyLink, request)
-  },
-  settings: {
-    get: () => ipcRenderer.invoke(IPC_CHANNELS.settingsGet),
-    update: (request) => ipcRenderer.invoke(IPC_CHANNELS.settingsUpdate, request),
-    enableTouchId: (request) => ipcRenderer.invoke(IPC_CHANNELS.settingsEnableTouchId, request),
-    disableTouchId: () => ipcRenderer.invoke(IPC_CHANNELS.settingsDisableTouchId),
-    unlockTouchId: () => ipcRenderer.invoke(IPC_CHANNELS.settingsUnlockTouchId),
-    activity: () => ipcRenderer.invoke(IPC_CHANNELS.settingsActivity),
-    showErrorLog: () => ipcRenderer.invoke(IPC_CHANNELS.settingsShowErrorLog)
-  },
-  applicationMenu: {
-    execute: (command) => ipcRenderer.invoke(IPC_CHANNELS.applicationMenuExecute, command),
-    onCopySelectedItem: (listener) =>
-      subscribe(IPC_EVENTS.applicationMenuCopySelectedItem, listener)
-  },
-  updater: {
-    state: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateState),
-    check: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateCheck),
-    download: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateDownload),
-    install: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateInstall),
-    openReleasePage: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateOpenReleasePage),
-    openRepositoryPage: () => ipcRenderer.invoke(IPC_CHANNELS.appUpdateOpenRepositoryPage),
-    onStateChanged: (listener) => subscribe(IPC_EVENTS.appUpdateStateChanged, listener)
+function rendererMethod(endpoint: IpcEndpoint): (...args: never[]) => unknown {
+  const { channel } = endpoint
+  switch (endpoint.kind) {
+    case 'invoke': {
+      const { toRequest } = endpoint
+      if (!toRequest) return () => ipcRenderer.invoke(channel)
+      return (...args) => ipcRenderer.invoke(channel, toRequest(...args))
+    }
+    case 'send': {
+      const { toPayload } = endpoint
+      return (...args) => ipcRenderer.send(channel, toPayload(...args))
+    }
+    case 'event':
+      return (listener: (payload: unknown) => void) =>
+        subscribe(channel, (_event, payload) => listener(payload))
+    case 'signal':
+      return (listener: () => void) => subscribe(channel, () => listener())
   }
 }
+
+const api = Object.fromEntries(
+  Object.entries(IPC_API).map(([namespace, endpoints]) => [
+    namespace,
+    Object.fromEntries(
+      Object.entries(endpoints).map(([method, endpoint]) => [method, rendererMethod(endpoint)])
+    )
+  ])
+) as BearWardenAPI
 
 if (!process.contextIsolated) {
   throw new Error('BearWarden requires Electron context isolation')

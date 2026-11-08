@@ -72,6 +72,25 @@ describe('preload request forwarding', () => {
       [[IPC_CHANNELS.autofillStatus], [IPC_CHANNELS.autofillRequestAccessibility]]
     ],
     [
+      'payload-free vault health reports',
+      async () => {
+        await api.health.report()
+        await api.health.inactiveTwoFactor()
+      },
+      [[IPC_CHANNELS.vaultHealthReport], [IPC_CHANNELS.vaultHealthInactiveTwoFactor]]
+    ],
+    [
+      'default shared-login and trash requests',
+      async () => {
+        await api.sharedLogins.list()
+        await api.logins.emptyTrash()
+      },
+      [
+        [IPC_CHANNELS.sharedLoginList, {}],
+        [IPC_CHANNELS.loginEmptyTrash, {}]
+      ]
+    ],
+    [
       'error-log file-manager action',
       () => api.settings.showErrorLog(),
       [[IPC_CHANNELS.settingsShowErrorLog]]
@@ -201,6 +220,24 @@ describe('preload account API', () => {
       [IPC_CHANNELS.accountSecurityEnrollWebAuthnKey, enrollRequest],
       [IPC_CHANNELS.accountSecurityRemoveWebAuthnKey, removeRequest]
     ])
+  })
+})
+
+describe('preload vault lifecycle events', () => {
+  it('calls payload-free listeners without forwarding whatever main sent', () => {
+    const listener = vi.fn()
+
+    const unsubscribe = api.vault.onLocked(listener)
+    const wrapped = electronMock.on.mock.calls.at(-1)?.[1] as (
+      event: unknown,
+      payload: unknown
+    ) => void
+    wrapped({}, { unexpected: true })
+    unsubscribe()
+
+    expect(electronMock.on).toHaveBeenCalledWith(IPC_EVENTS.vaultLocked, wrapped)
+    expect(listener).toHaveBeenCalledWith()
+    expect(electronMock.removeListener).toHaveBeenCalledWith(IPC_EVENTS.vaultLocked, wrapped)
   })
 })
 

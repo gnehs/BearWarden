@@ -579,6 +579,7 @@ function parsePinUnlock(value: unknown): PinUnlockRequest {
   return request
 }
 
+/** No-argument channels carry no payload, so renderer data can never steer an operation that takes none. */
 function parseNoInput(value: unknown): void {
   if (value !== undefined) throw new VaultError('INVALID_INPUT')
 }
@@ -1786,16 +1787,6 @@ function parseSharedLoginList(value: unknown): SharedLoginListRequest {
   return result
 }
 
-/** Vault health intentionally accepts only an explicit empty object: no renderer-supplied scope
- * or authorization material may influence which decrypted records are analyzed. */
-function parseVaultHealthEmptyRequest(value: unknown): RecordValue {
-  return exactRecord(value, [])
-}
-
-function parseInactiveTwoFactorEmptyRequest(value: unknown): void {
-  strictRequiredDataRecord(value, [])
-}
-
 function parseInactiveTwoFactorDocumentation(
   value: unknown
 ): InactiveTwoFactorDocumentationRequest {
@@ -2318,7 +2309,10 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       await runAccountOperation((service) => service.removeAccount(request.accountId, true))
     )
   })
-  registerHandler(IPC_CHANNELS.vaultStatus, () => vault.status())
+  registerHandler(IPC_CHANNELS.vaultStatus, async (_event, input) => {
+    parseNoInput(input)
+    return vault.status()
+  })
   registerHandler(IPC_CHANNELS.vaultSetup, async (_event, input) => {
     const request = parseSetup(input)
     authorizations.clear()
@@ -2419,7 +2413,8 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       scrubMasterPasswordChangeInput(input)
     }
   })
-  registerHandler(IPC_CHANNELS.vaultLock, async () => {
+  registerHandler(IPC_CHANNELS.vaultLock, async (_event, input) => {
+    parseNoInput(input)
     try {
       await Promise.resolve(options.beforeLock?.())
       authorizations.clear()
@@ -2499,8 +2494,14 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     const request = parseNativeRestoreSession(input)
     await portability.clearCompletedNativeRestore(event.sender.id, request.sessionId)
   })
-  registerHandler(IPC_CHANNELS.folderList, () => vault.listFolders())
-  registerHandler(IPC_CHANNELS.organizationList, () => vault.listOrganizations())
+  registerHandler(IPC_CHANNELS.folderList, async (_event, input) => {
+    parseNoInput(input)
+    return vault.listFolders()
+  })
+  registerHandler(IPC_CHANNELS.organizationList, async (_event, input) => {
+    parseNoInput(input)
+    return vault.listOrganizations()
+  })
   registerHandler(IPC_CHANNELS.collectionList, (_event, input) => {
     if (input === undefined || input === null) return vault.listCollections()
     if (typeof input !== 'string' || !UUID_PATTERN.test(input))
@@ -2542,7 +2543,10 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   registerHandler(IPC_CHANNELS.sharedLoginOpenUri, (_event, input) =>
     vault.openSharedLoginUri(parseOpenUri(input))
   )
-  registerHandler(IPC_CHANNELS.emergencyAccessList, () => vault.listEmergencyAccess())
+  registerHandler(IPC_CHANNELS.emergencyAccessList, async (_event, input) => {
+    parseNoInput(input)
+    return vault.listEmergencyAccess()
+  })
   registerHandler(IPC_CHANNELS.folderCreate, (_event, input) =>
     afterMutation(vault.createFolder(parseFolderCreate(input)))
   )
@@ -2578,20 +2582,20 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     vault.listLogins(parseLoginList(input))
   )
   registerHandler<VaultHealthReport>(IPC_CHANNELS.vaultHealthReport, (_event, input) => {
-    parseVaultHealthEmptyRequest(input)
+    parseNoInput(input)
     return vault.getHealthReport()
   })
   registerHandler<VaultHealthExposedReport>(
     IPC_CHANNELS.vaultHealthExposedPasswords,
     (_event, input) => {
-      parseVaultHealthEmptyRequest(input)
+      parseNoInput(input)
       return vault.getExposedPasswordReport()
     }
   )
   registerHandler<boolean>(
     IPC_CHANNELS.vaultHealthCancelExposedPasswords,
     async (_event, input) => {
-      parseVaultHealthEmptyRequest(input)
+      parseNoInput(input)
       return vault.cancelExposedPasswordReport()
     }
   )
@@ -2600,17 +2604,17 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     (_event, input) => vault.getAccountBreachReport(parseVaultHealthAccountBreachRequest(input))
   )
   registerHandler<boolean>(IPC_CHANNELS.vaultHealthCancelAccountBreaches, async (_event, input) => {
-    parseVaultHealthEmptyRequest(input)
+    parseNoInput(input)
     return vault.cancelAccountBreachReport()
   })
   registerHandler<void>(IPC_CHANNELS.vaultHealthOpenHibp, async (_event, input) => {
-    parseVaultHealthEmptyRequest(input)
+    parseNoInput(input)
     await vault.openHibpWebsite()
   })
   registerHandler<InactiveTwoFactorReport>(
     IPC_CHANNELS.vaultHealthInactiveTwoFactor,
     async (_event, input) => {
-      parseInactiveTwoFactorEmptyRequest(input)
+      parseNoInput(input)
       const directory = options.twoFactorDirectory
       if (!directory) throw new VaultError('HEALTH_CHECK_FAILED')
       try {
@@ -3117,7 +3121,10 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       )
     })
   })
-  registerHandler(IPC_CHANNELS.syncStatus, () => vault.syncStatus())
+  registerHandler(IPC_CHANNELS.syncStatus, async (_event, input) => {
+    parseNoInput(input)
+    return vault.syncStatus()
+  })
   registerHandler(IPC_CHANNELS.syncConnect, async (_event, input) => {
     await Promise.resolve(options.beforeSyncReconfigure?.())
     try {
@@ -3154,7 +3161,8 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       request.masterPassword = ''
     }
   })
-  registerHandler(IPC_CHANNELS.syncNow, async () => {
+  registerHandler(IPC_CHANNELS.syncNow, async (_event, input) => {
+    parseNoInput(input)
     try {
       const result = await vault.syncNow()
       options.afterSyncChanged?.(result)
@@ -3192,7 +3200,8 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       ;(request as { confirmation: string }).confirmation = ''
     }
   })
-  registerHandler(IPC_CHANNELS.syncDisconnect, async () => {
+  registerHandler(IPC_CHANNELS.syncDisconnect, async (_event, input) => {
+    parseNoInput(input)
     await Promise.resolve(options.beforeSyncReconfigure?.())
     const status = await vault.disconnectSync()
     // The Touch ID capsule carries the disconnected account's key; never keep it at rest.
