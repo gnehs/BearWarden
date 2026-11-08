@@ -68,7 +68,7 @@ import type {
   VaultSecretField,
   VaultAttachmentView
 } from '../../../shared/vault-contract'
-import { MAX_LOGIN_BATCH_IDS, MAX_LOGIN_PREFETCH_IDS } from '../../../shared/vault-contract'
+import { MAX_LOGIN_BATCH_IDS } from '../../../shared/vault-contract'
 import bearCutUrl from '../assets/bear-cut.svg'
 import { ItemDragPreview } from './DragPreview'
 import { type ItemSelectionModifiers } from './DndRows'
@@ -78,11 +78,8 @@ import {
   updateLoginWithOptionalSshImport
 } from './ssh-key-editor-state'
 import {
-  canUseCachedLoginDetail,
   hasTrashPasswordHistory,
-  isCurrentPrefetchedDetailResponse,
   isCurrentVaultLoad,
-  isCurrentSelectedDetailResponse,
   protectedDetailInvalidationIds
 } from './VaultShell-security'
 import {
@@ -118,6 +115,7 @@ import { useEditorTransitionGuard } from '@renderer/hooks/use-editor-transition-
 import { useVaultAccounts } from '@renderer/hooks/use-vault-accounts'
 import { useVaultSearch } from '@renderer/hooks/use-vault-search'
 import { useVaultAuthorization } from '@renderer/hooks/use-vault-authorization'
+import { useLoginDetailCache } from '@renderer/hooks/use-login-detail-cache'
 import { useCardCoverPreviews } from '@renderer/hooks/use-card-cover-previews'
 import { resolveTotpRefreshTarget } from './totp-refresh-target'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
@@ -210,9 +208,7 @@ import {
 } from './vault-detail-view-model'
 import {
   authorizationTokenField,
-  cacheLoginDetail,
   firstAuthorizationToken,
-  mergeCachedSummary,
   mergeLoginSummary
 } from './vault-detail-cache'
 import { describeError, isRepromptRequired } from './vault-error-ui'
@@ -632,6 +628,7 @@ function VaultShellContent({
     busy: repromptBusy,
     tokens: authorizationTokens
   } = useVaultAuthorization()
+  const detailCache = useLoginDetailCache(authorization, prefetchCardCoverPreview)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   const [loginApprovalPrompts, setLoginApprovalPrompts] = useState<LoginApprovalPrompt[]>([])
@@ -661,12 +658,6 @@ function VaultShellContent({
   const compactReturnIdRef = useRef<string | null>(null)
   const compactDetailFocusIdRef = useRef<string | null>(null)
   const selectionAnchorIdRef = useRef<string | null>(null)
-  const detailRequestsRef = useRef(new Map<string, Promise<LoginView>>())
-  const detailPrefetchRequestsRef = useRef(new Map<string, Promise<LoginView | undefined>>())
-  const detailPrefetchQueueRef = useRef(new Set<string>())
-  const detailPrefetchScheduledRef = useRef(false)
-  const detailCacheRef = useRef(new Map<string, LoginView>())
-  const detailCacheGenerationRef = useRef(0)
   // A successful list load may invalidate protected details, so list freshness needs its own epoch.
   const vaultLoadRequestIdRef = useRef(0)
   const attachmentOperationRef = useRef<AttachmentOperationState | null>(null)
@@ -741,23 +732,13 @@ function VaultShellContent({
     setPasswordHistoryDialogOpen(false)
   }, [setSelectedId, setSelectedIds, setSelectedLogin])
 
-  const clearDetailCache = useCallback((): void => {
-    detailCacheGenerationRef.current += 1
-    detailRequestsRef.current.clear()
-    detailPrefetchRequestsRef.current.clear()
-    detailPrefetchQueueRef.current.clear()
-    detailCacheRef.current.clear()
-  }, [])
-
   const invalidateProtectedDetails = useCallback(
     (summaries: readonly LoginSummary[]): void => {
       const invalidIds = protectedDetailInvalidationIds(summaries, (id) =>
         Boolean(authorization.token(id))
       )
       if (invalidIds.size === 0) return
-      detailCacheGenerationRef.current += 1
-      detailRequestsRef.current.clear()
-      for (const id of invalidIds) detailCacheRef.current.delete(id)
+      detailCache.invalidate(invalidIds)
       const activeId = currentSelectedId()
       if (activeId && invalidIds.has(activeId)) {
         setPasswordHistoryDialogOpen(false)
@@ -769,15 +750,19 @@ function VaultShellContent({
         setRevealedCustomFields(emptyRevealedCustomFields)
       }
     },
-    [authorization, clearEditorDirty, currentSelectedId, setEditorMode, setSelectedLogin]
+    [
+      authorization,
+      clearEditorDirty,
+      currentSelectedId,
+      detailCache,
+      setEditorMode,
+      setSelectedLogin
+    ]
   )
 
   useEffect(
     () =>
       authorization.subscribeRevoked((id, { preservePasswordHistoryDialog }) => {
-        detailCacheGenerationRef.current += 1
-        detailRequestsRef.current.clear()
-        detailCacheRef.current.delete(id)
         if (currentSelectedId() !== id) return
         if (!preservePasswordHistoryDialog) setPasswordHistoryDialogOpen(false)
         setSelectedLogin(null)
@@ -796,7 +781,7 @@ function VaultShellContent({
 
   const loadVault = useCallback(async (): Promise<void> => {
     const requestId = ++vaultLoadRequestIdRef.current
-    clearDetailCache()
+    detailCache.clear()
     try {
       toast.dismiss(vaultErrorToastId)
       const [folderList, loginList, organizationList, collectionList, sharedItemList] =
@@ -850,7 +835,7 @@ function VaultShellContent({
       if (isCurrentVaultLoad(requestId, vaultLoadRequestIdRef.current)) setLoading(false)
     }
   }, [
-    clearDetailCache,
+    detailCache,
     invalidateProtectedDetails,
     setFolders,
     setItems,
@@ -864,174 +849,12 @@ function VaultShellContent({
     setLoading
   ])
 
-  const loadLoginDetail = useCallback(
-    (id: string): Promise<LoginView> => {
-      const summary = findItem(id)
-      if (summary?.deletedAt) return Promise.reject(new Error('INVALID_INPUT'))
-      if (summary && isSharedLoginSummary(summary)) {
-        return window.bearwarden.sharedLogins.get({ id })
-      }
-      const cached = detailCacheRef.current.get(id)
-      if (
-        cached &&
-        canUseCachedLoginDetail(summary, cached.reprompt, Boolean(authorization.token(id)))
-      ) {
-        detailCacheRef.current.delete(id)
-        detailCacheRef.current.set(id, cached)
-        return Promise.resolve(cached)
-      }
-
-      const pending = detailRequestsRef.current.get(id)
-      if (pending) return pending
-
-      const startSelectedRequest = (): Promise<LoginView> => {
-        let requestGeneration = detailCacheGenerationRef.current
-        return authorization
-          .withReprompt([id], (tokenFor) => {
-            requestGeneration = detailCacheGenerationRef.current
-            return window.bearwarden.logins.get({
-              id,
-              ...authorizationTokenField(tokenFor(id))
-            })
-          })
-          .then((login) => {
-            if (
-              !isCurrentSelectedDetailResponse({
-                id,
-                selectedId: currentSelectedId(),
-                requestGeneration,
-                currentGeneration: detailCacheGenerationRef.current,
-                reprompt: login.reprompt,
-                authorizationToken: authorization.token(id)
-              })
-            ) {
-              throw new Error('DETAIL_REQUEST_INVALIDATED')
-            }
-            cacheLoginDetail(detailCacheRef.current, login)
-            return login
-          })
-      }
-
-      const pendingPrefetch = detailPrefetchRequestsRef.current.get(id)
-      const promise = pendingPrefetch
-        ? pendingPrefetch.then((prefetched) => {
-            const currentSummary = findItem(id)
-            const currentCached = detailCacheRef.current.get(id) ?? prefetched
-            if (
-              currentCached &&
-              canUseCachedLoginDetail(
-                currentSummary,
-                currentCached.reprompt,
-                Boolean(authorization.token(id))
-              )
-            ) {
-              cacheLoginDetail(detailCacheRef.current, currentCached)
-              return currentCached
-            }
-            if (currentSelectedId() !== id) throw new Error('DETAIL_REQUEST_INVALIDATED')
-            return startSelectedRequest()
-          })
-        : startSelectedRequest()
-      detailRequestsRef.current.set(id, promise)
-      void promise
-        .catch(() => undefined)
-        .finally(() => {
-          if (detailRequestsRef.current.get(id) === promise) detailRequestsRef.current.delete(id)
-        })
-      return promise
-    },
-    [authorization, currentSelectedId, findItem]
-  )
-
-  const prefetchLoginDetail = useCallback(
-    (id: string): void => {
-      const summary = findItem(id)
-      const cached = detailCacheRef.current.get(id)
-      if (cached) {
-        prefetchCardCoverPreview(cached)
-        return
-      }
-      // Never speculatively cross the authorization boundary or hydrate inactive items.
-      if (
-        !summary ||
-        isSharedLoginSummary(summary) ||
-        summary.reprompt !== 0 ||
-        summary.deletedAt !== null ||
-        summary.archivedAt !== null ||
-        detailCacheRef.current.has(id) ||
-        detailRequestsRef.current.has(id) ||
-        detailPrefetchRequestsRef.current.has(id)
-      ) {
-        return
-      }
-
-      detailPrefetchQueueRef.current.add(id)
-      if (detailPrefetchScheduledRef.current) return
-      detailPrefetchScheduledRef.current = true
-      queueMicrotask(() => {
-        detailPrefetchScheduledRef.current = false
-        const queuedIds = [...detailPrefetchQueueRef.current]
-        detailPrefetchQueueRef.current.clear()
-        const eligibleIds = queuedIds.filter((queuedId) => {
-          const queuedSummary = findItem(queuedId)
-          return Boolean(
-            queuedSummary &&
-            queuedSummary.reprompt === 0 &&
-            queuedSummary.deletedAt === null &&
-            queuedSummary.archivedAt === null &&
-            !detailCacheRef.current.has(queuedId) &&
-            !detailRequestsRef.current.has(queuedId) &&
-            !detailPrefetchRequestsRef.current.has(queuedId)
-          )
-        })
-
-        for (let offset = 0; offset < eligibleIds.length; offset += MAX_LOGIN_PREFETCH_IDS) {
-          const ids = eligibleIds.slice(offset, offset + MAX_LOGIN_PREFETCH_IDS)
-          const requestGeneration = detailCacheGenerationRef.current
-          const batchPromise = window.bearwarden.logins.prefetch({ ids })
-          for (const queuedId of ids) {
-            const itemPromise = batchPromise
-              .then((logins) => {
-                const login = logins.find((candidate) => candidate.id === queuedId)
-                if (
-                  !login ||
-                  !isCurrentPrefetchedDetailResponse({
-                    requestGeneration,
-                    currentGeneration: detailCacheGenerationRef.current,
-                    response: login,
-                    summary: findItem(queuedId)
-                  })
-                ) {
-                  return undefined
-                }
-                cacheLoginDetail(detailCacheRef.current, login)
-                prefetchCardCoverPreview(login)
-                return login
-              })
-              .catch(() => undefined)
-              .finally(() => {
-                if (detailPrefetchRequestsRef.current.get(queuedId) === itemPromise) {
-                  detailPrefetchRequestsRef.current.delete(queuedId)
-                }
-              })
-            detailPrefetchRequestsRef.current.set(queuedId, itemPromise)
-          }
-        }
-      })
-    },
-    [findItem, prefetchCardCoverPreview]
-  )
-
   const activateLogin = useCallback(
     (id: string | null): void => {
       requestEditorTransition(() => {
         if (id) compactReturnIdRef.current = id
-        const cached = id ? detailCacheRef.current.get(id) : undefined
-        const summary = id ? findItem(id) : undefined
-        const canUseCached =
-          cached &&
-          canUseCachedLoginDetail(summary, cached.reprompt, Boolean(authorization.token(cached.id)))
-        if (canUseCached) setSelectedLogin(cached)
+        const cached = id ? detailCache.usable(id) : undefined
+        if (cached) setSelectedLogin(cached)
         else if (!id) setSelectedLogin(null)
         setSelectedId(id)
         setRevealedSecrets(emptyRevealedSecrets)
@@ -1040,14 +863,7 @@ function VaultShellContent({
         setEditorMode(null)
       })
     },
-    [
-      authorization,
-      findItem,
-      requestEditorTransition,
-      setEditorMode,
-      setSelectedId,
-      setSelectedLogin
-    ]
+    [detailCache, requestEditorTransition, setEditorMode, setSelectedId, setSelectedLogin]
   )
 
   const selectLogin = useCallback(
@@ -1137,25 +953,21 @@ function VaultShellContent({
   const refreshItems = useCallback(async (): Promise<void> => {
     const loginList = await listLoginsInAllStates(window.bearwarden.logins)
     invalidateProtectedDetails(loginList)
-    const currentIds = new Set(loginList.map((login) => login.id))
-    for (const cachedId of detailCacheRef.current.keys()) {
-      if (!currentIds.has(cachedId)) detailCacheRef.current.delete(cachedId)
-    }
-    for (const summary of loginList) mergeCachedSummary(detailCacheRef.current, summary)
+    detailCache.retainSummaries(loginList)
     setItems(loginList)
     setSelectedLogin((current) => {
       if (!current) return current
       const summary = loginList.find((item) => item.id === current.id)
       return summary ? mergeLoginSummary(current, summary) : current
     })
-  }, [invalidateProtectedDetails, setItems, setSelectedLogin])
+  }, [detailCache, invalidateProtectedDetails, setItems, setSelectedLogin])
 
   const updateSelectedAttachments = useCallback(
     (
       itemId: string,
       update: (attachments: VaultAttachmentView[]) => VaultAttachmentView[]
     ): LoginView | null => {
-      const cached = detailCacheRef.current.get(itemId)
+      const cached = detailCache.get(itemId)
       const updatedAttachments = cached ? update(cached.attachments) : null
       const updatedCached =
         cached && updatedAttachments
@@ -1166,7 +978,7 @@ function VaultShellContent({
             }
           : null
       if (updatedCached) {
-        cacheLoginDetail(detailCacheRef.current, updatedCached)
+        detailCache.remember(updatedCached)
       }
       if (currentSelectedId() !== itemId) return updatedCached
       setSelectedLogin((current) => {
@@ -1174,12 +986,12 @@ function VaultShellContent({
         if (updatedCached) return updatedCached
         const attachments = update(current.attachments)
         const next = { ...current, attachments, attachmentCount: attachments.length }
-        cacheLoginDetail(detailCacheRef.current, next)
+        detailCache.remember(next)
         return next
       })
       return updatedCached
     },
-    [currentSelectedId, setSelectedLogin]
+    [currentSelectedId, detailCache, setSelectedLogin]
   )
 
   const refreshAfterSync = useCallback(async (): Promise<void> => {
@@ -1204,9 +1016,8 @@ function VaultShellContent({
   useEffect(
     () => () => {
       vaultLoadRequestIdRef.current += 1
-      clearDetailCache()
     },
-    [clearDetailCache]
+    []
   )
 
   useEffect(() => {
@@ -1319,7 +1130,7 @@ function VaultShellContent({
       }
     }
 
-    const detailRequest = loadLoginDetail(selectedId)
+    const detailRequest = detailCache.load(selectedId)
     detailRequest
       .then((login) => {
         if (!active) return
@@ -1333,14 +1144,7 @@ function VaultShellContent({
     return () => {
       active = false
     }
-  }, [
-    allItems,
-    clearItemSelection,
-    describeVaultError,
-    loadLoginDetail,
-    selectedId,
-    setSelectedLogin
-  ])
+  }, [allItems, clearItemSelection, describeVaultError, detailCache, selectedId, setSelectedLogin])
 
   useEffect(() => {
     let active = true
@@ -1818,7 +1622,7 @@ function VaultShellContent({
 
   const performLockVault = useCallback(async (): Promise<void> => {
     cancelAndClearAttachmentOperation()
-    clearDetailCache()
+    detailCache.clear()
     clearCardCoverListPreviews()
     setRevealedSecrets(emptyRevealedSecrets)
     setRevealedCustomFields(emptyRevealedCustomFields)
@@ -1834,8 +1638,8 @@ function VaultShellContent({
   }, [
     cancelAndClearAttachmentOperation,
     clearCardCoverListPreviews,
-    clearDetailCache,
     describeVaultError,
+    detailCache,
     onLocked,
     setSelectedLogin,
     t
@@ -2160,7 +1964,7 @@ function VaultShellContent({
 
   function applyUpdatedSummaries(updated: readonly LoginSummary[]): void {
     const updatedById = new Map(updated.map((item) => [item.id, item]))
-    for (const item of updated) mergeCachedSummary(detailCacheRef.current, item)
+    for (const item of updated) detailCache.mergeSummary(item)
     setItems((current) => current.map((item) => updatedById.get(item.id) ?? item))
     setSelectedLogin((current) => {
       if (!current) return current
@@ -2179,7 +1983,7 @@ function VaultShellContent({
             ...authorizationTokenField(tokenFor(item.id))
           })
         )
-        mergeCachedSummary(detailCacheRef.current, updated)
+        detailCache.mergeSummary(updated)
         setItems((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)))
         setSelectedLogin((current) =>
           current?.id === updated.id ? mergeLoginSummary(current, updated) : current
@@ -2189,7 +1993,7 @@ function VaultShellContent({
         announceError(describeVaultError(favoriteError))
       }
     },
-    [announce, authorization, describeVaultError, setItems, setSelectedLogin, t]
+    [announce, authorization, describeVaultError, detailCache, setItems, setSelectedLogin, t]
   )
 
   function revalidateBulkSelection(
@@ -2277,9 +2081,7 @@ function VaultShellContent({
       }
 
       if (snapshot.action === 'delete' || snapshot.action === 'deletePermanently') {
-        detailCacheGenerationRef.current += 1
-        detailRequestsRef.current.clear()
-        for (const id of snapshot.ids) detailCacheRef.current.delete(id)
+        detailCache.invalidate(snapshot.ids)
         const deletedIds = new Set(snapshot.ids)
         setItems((current) => current.filter((item) => !deletedIds.has(item.id)))
         clearItemSelection()
@@ -2327,7 +2129,7 @@ function VaultShellContent({
     }
     const movableIds = new Set(movable.map((item) => item.id))
     setBusy(true)
-    for (const item of movable) mergeCachedSummary(detailCacheRef.current, { ...item, folderId })
+    for (const item of movable) detailCache.mergeSummary({ ...item, folderId })
     setItems((current) =>
       current.map((item) => (movableIds.has(item.id) ? { ...item, folderId } : item))
     )
@@ -2350,7 +2152,7 @@ function VaultShellContent({
       return true
     } catch (moveError) {
       const previousById = new Map(previous.map((item) => [item.id, item]))
-      for (const item of previous) mergeCachedSummary(detailCacheRef.current, item)
+      for (const item of previous) detailCache.mergeSummary(item)
       setItems((current) => current.map((item) => previousById.get(item.id) ?? item))
       announceError(describeVaultError(moveError))
       return false
@@ -2440,11 +2242,7 @@ function VaultShellContent({
           ...authorizationTokenField(firstAuthorizationToken(containedIds, tokenFor))
         })
       )
-      for (const [id, cached] of detailCacheRef.current) {
-        if (cached.folderId === folderDialog.id) {
-          detailCacheRef.current.set(id, { ...cached, folderId: null })
-        }
-      }
+      detailCache.moveFolderContentsToUnfiled(folderDialog.id)
       setFolders((current) => current.filter((folder) => folder.id !== folderDialog.id))
       setItems((current) =>
         current.map((item) =>
@@ -2529,7 +2327,7 @@ function VaultShellContent({
             collectionIds: draft.collectionIds,
             customFields
           })
-          cacheLoginDetail(detailCacheRef.current, created)
+          detailCache.remember(created)
           setSharedItems((current) => [...current, toSharedLoginSummary(created)])
           setScope({ kind: 'organization', organizationId: created.organizationId })
           selectSavedItem(created.id, created)
@@ -2551,7 +2349,7 @@ function VaultShellContent({
               }
             : created
           if (createdWithCardCover.reprompt === 0) {
-            cacheLoginDetail(detailCacheRef.current, createdWithCardCover)
+            detailCache.remember(createdWithCardCover)
           }
           setItems((current) => [...current, toLoginSummary(created)])
           setScope({ kind: 'all' })
@@ -2612,9 +2410,9 @@ function VaultShellContent({
               }
             : updated
           if (updatedWithCardCover.reprompt === 0 || authorization.token(itemId)) {
-            cacheLoginDetail(detailCacheRef.current, updatedWithCardCover)
+            detailCache.remember(updatedWithCardCover)
           } else {
-            detailCacheRef.current.delete(itemId)
+            detailCache.forget(itemId)
           }
           setItems((current) =>
             current.map((item) =>
@@ -2661,9 +2459,9 @@ function VaultShellContent({
       })
       const canRetainDetail = updated.reprompt === 0 || operationAuthorizationToken !== undefined
       if (canRetainDetail) {
-        cacheLoginDetail(detailCacheRef.current, updated)
+        detailCache.remember(updated)
       } else {
-        detailCacheRef.current.delete(itemId)
+        detailCache.forget(itemId)
       }
       setItems((current) =>
         current.map((item) => (item.id === updated.id ? toLoginSummary(updated) : item))
@@ -2690,7 +2488,7 @@ function VaultShellContent({
           ...authorizationTokenField(tokenFor(itemId))
         })
       )
-      if (cloned.reprompt === 0) cacheLoginDetail(detailCacheRef.current, cloned)
+      if (cloned.reprompt === 0) detailCache.remember(cloned)
       setItems((current) => [...current, toLoginSummary(cloned)])
       setScope(cloned.archivedAt ? { kind: 'archive' } : { kind: 'all' })
       selectSavedItem(cloned.id, cloned.reprompt === 0 ? cloned : null)
@@ -2715,7 +2513,7 @@ function VaultShellContent({
           ...authorizationTokenField(tokenFor(itemId))
         })
       )
-      cacheLoginDetail(detailCacheRef.current, archived)
+      detailCache.remember(archived)
       await refreshItems()
       setScope({ kind: 'archive' })
       selectSavedItem(archived.id, archived)
@@ -2738,7 +2536,7 @@ function VaultShellContent({
           ...authorizationTokenField(tokenFor(itemId))
         })
       )
-      cacheLoginDetail(detailCacheRef.current, restored)
+      detailCache.remember(restored)
       await refreshItems()
       setScope({ kind: 'all' })
       selectSavedItem(restored.id, restored)
@@ -2764,7 +2562,7 @@ function VaultShellContent({
           ? window.bearwarden.logins.deletePermanently(request)
           : window.bearwarden.logins.delete(request)
       })
-      detailCacheRef.current.delete(selectedSummary.id)
+      detailCache.forget(selectedSummary.id)
       await refreshItems()
       clearItemSelection()
       setDeleteDialogOpen(false)
@@ -2787,7 +2585,7 @@ function VaultShellContent({
           ...authorizationTokenField(tokenFor(itemId))
         })
       )
-      cacheLoginDetail(detailCacheRef.current, restored)
+      detailCache.remember(restored)
       await refreshItems()
       setScope(restored.archivedAt ? { kind: 'archive' } : { kind: 'all' })
       selectSavedItem(restored.id, restored)
@@ -2808,7 +2606,7 @@ function VaultShellContent({
           ...authorizationTokenField(firstAuthorizationToken(trashIds, tokenFor))
         })
       )
-      clearDetailCache()
+      detailCache.clear()
       await refreshItems()
       clearItemSelection()
       setEmptyTrashDialogOpen(false)
@@ -3718,7 +3516,7 @@ function VaultShellContent({
                     selectedItemCount: selectedSummaries.length
                   }}
                   actions={{
-                    onPrefetch: prefetchLoginDetail,
+                    onPrefetch: detailCache.prefetch,
                     onSelect: selectItems,
                     onToggleFavorite: toggleFavorite,
                     onContextMenu: showLoginContextMenu,
