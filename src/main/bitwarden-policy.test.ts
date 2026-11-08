@@ -256,7 +256,7 @@ describe('policy field spellings', () => {
       response: { policies: null, Policies: [row] },
       source: null
     },
-    { label: 'another casing only', response: { POLICIES: [row] }, source: 'none' }
+    { label: 'another casing only', response: { POLICIES: [row] }, source: 'policies' }
   ])('reads $label', ({ response, source }) => {
     expect(sourceFor(response)).toBe(source)
   })

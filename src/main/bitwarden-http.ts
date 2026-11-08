@@ -21,6 +21,7 @@ import {
   type SyncInvalidResponseReason
 } from '../shared/vault-contract'
 import { createPublicKey } from 'node:crypto'
+import { readField, readUnambiguousField } from './bitwarden-fields'
 import { UUID_PATTERN, isRecord } from './validation-primitives'
 
 export type BitwardenEnvironment = 'us' | 'eu' | string
@@ -3032,7 +3033,7 @@ function parseBulkCipherList(
   const rows: JsonObject[] = []
   for (const row of data) {
     if (!isJsonObject(row)) throw new BitwardenHttpError('INVALID_RESPONSE')
-    const id = row.id ?? row.Id
+    const id = readField(row, 'id')
     const deletedDate = 'deletedDate' in row ? row.deletedDate : row.DeletedDate
     const archivedDate = 'archivedDate' in row ? row.archivedDate : row.ArchivedDate
     const organizationId = 'organizationId' in row ? row.organizationId : row.OrganizationId
@@ -3082,27 +3083,26 @@ function assertAccountAvatarColor(value: unknown): string | null {
 
 function parseAccountSecurityProfile(value: JsonValue): BitwardenAccountSecurityProfile {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const id = value.id ?? value.Id
-  const name = value.name ?? value.Name
-  const email = value.email ?? value.Email
-  const hasAvatarColor = Object.hasOwn(value, 'avatarColor') || Object.hasOwn(value, 'AvatarColor')
-  const avatarColor = Object.hasOwn(value, 'avatarColor') ? value.avatarColor : value.AvatarColor
-  const emailVerified = value.emailVerified ?? value.EmailVerified
-  const twoFactorEnabled = value.twoFactorEnabled ?? value.TwoFactorEnabled
-  const object = value.object ?? value.Object
+  const id = readField(value, 'id')
+  const name = readField(value, 'name')
+  const email = readField(value, 'email')
+  const avatarColor = readField(value, 'avatarColor')
+  const emailVerified = readField(value, 'emailVerified')
+  const twoFactorEnabled = readField(value, 'twoFactorEnabled')
+  const object = readField(value, 'object')
   const parsedName = assertAccountProfileName(name)
   const parsedAvatarColor = assertAccountAvatarColor(avatarColor)
   if (
     typeof id !== 'string' ||
     !UUID_PATTERN.test(id) ||
-    !hasAvatarColor ||
+    avatarColor === undefined ||
     typeof email !== 'string' ||
     email.length === 0 ||
     email.length > 254 ||
     /[\0\r\n]/u.test(email) ||
     typeof emailVerified !== 'boolean' ||
     typeof twoFactorEnabled !== 'boolean' ||
-    (object !== undefined && object !== 'profile')
+    (object != null && object !== 'profile')
   ) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
@@ -3202,14 +3202,13 @@ function authRequestDate(value: unknown): string {
 
 function parsePendingAuthRequest(value: JsonValue, now: number): BitwardenAuthRequest {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const id = value.id ?? value.Id
-  const publicKey = value.publicKey ?? value.PublicKey
-  const requestDeviceType = value.requestDeviceType ?? value.RequestDeviceType
-  const creationDate = authRequestDate(value.creationDate ?? value.CreationDate)
-  const responseDate = value.responseDate ?? value.ResponseDate
-  const requestApproved =
-    value.requestApproved !== undefined ? value.requestApproved : value.RequestApproved
-  const object = value.object ?? value.Object
+  const id = readField(value, 'id')
+  const publicKey = readField(value, 'publicKey')
+  const requestDeviceType = readField(value, 'requestDeviceType')
+  const creationDate = authRequestDate(readField(value, 'creationDate'))
+  const responseDate = readField(value, 'responseDate')
+  const requestApproved = readField(value, 'requestApproved')
+  const object = readField(value, 'object')
   const createdAt = Date.parse(creationDate)
   const age = now - createdAt
   if (
@@ -3217,7 +3216,7 @@ function parsePendingAuthRequest(value: JsonValue, now: number): BitwardenAuthRe
     !UUID_PATTERN.test(id) ||
     (responseDate !== undefined && responseDate !== null) ||
     (requestApproved !== undefined && requestApproved !== false && requestApproved !== null) ||
-    (object !== undefined && object !== 'auth-request') ||
+    (object != null && object !== 'auth-request') ||
     !Number.isFinite(age) ||
     age < 0 ||
     age >= AUTH_REQUEST_VALIDITY_MS
@@ -3234,13 +3233,13 @@ function parsePendingAuthRequest(value: JsonValue, now: number): BitwardenAuthRe
 
 function parsePendingAuthRequests(value: JsonValue, now: number): BitwardenAuthRequest[] {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const data = value.data ?? value.Data
-  const object = value.object ?? value.Object
-  const continuationToken = value.continuationToken ?? value.ContinuationToken
+  const data = readField(value, 'data')
+  const object = readField(value, 'object')
+  const continuationToken = readField(value, 'continuationToken')
   if (
     !Array.isArray(data) ||
     data.length > MAX_PENDING_AUTH_REQUESTS ||
-    (object !== undefined && object !== 'list') ||
+    (object != null && object !== 'list') ||
     (continuationToken !== undefined && continuationToken !== null)
   ) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
@@ -3257,10 +3256,9 @@ function parsePendingAuthRequests(value: JsonValue, now: number): BitwardenAuthR
 
 function parseAnsweredAuthRequest(value: JsonValue, id: string, approved: boolean): void {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const responseId = value.id ?? value.Id
-  const requestApproved =
-    value.requestApproved !== undefined ? value.requestApproved : value.RequestApproved
-  const responseDate = value.responseDate ?? value.ResponseDate
+  const responseId = readField(value, 'id')
+  const requestApproved = readField(value, 'requestApproved')
+  const responseDate = readField(value, 'responseDate')
   // Vaultwarden deletes a rejected request before serializing the response, so
   // its compatibility response can contain null here. Bitwarden returns false.
   const approvalMatches = approved
@@ -3281,13 +3279,13 @@ function parseAccountDevices(
   currentDeviceIdentifier: string
 ): BitwardenAccountDevice[] {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const data = value.data ?? value.Data
-  const object = value.object ?? value.Object
-  const continuationToken = value.continuationToken ?? value.ContinuationToken
+  const data = readField(value, 'data')
+  const object = readField(value, 'object')
+  const continuationToken = readField(value, 'continuationToken')
   if (
     !Array.isArray(data) ||
     data.length > MAX_ACCOUNT_DEVICES ||
-    (object !== undefined && object !== 'list') ||
+    (object != null && object !== 'list') ||
     (continuationToken !== undefined && continuationToken !== null)
   ) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
@@ -3296,15 +3294,15 @@ function parseAccountDevices(
   const identifiers = new Set<string>()
   return data.map((entry) => {
     if (!isJsonObject(entry)) throw new BitwardenHttpError('INVALID_RESPONSE')
-    const id = entry.id ?? entry.Id
-    const name = entry.name ?? entry.Name
-    const type = finiteInteger(entry.type ?? entry.Type)
-    const identifier = entry.identifier ?? entry.Identifier
-    const creationDate = entry.creationDate ?? entry.CreationDate
-    const lastActivityDate = entry.lastActivityDate ?? entry.LastActivityDate
-    const isTrusted = entry.isTrusted ?? entry.IsTrusted
-    const deviceObject = entry.object ?? entry.Object
-    const pending = entry.devicePendingAuthRequest ?? entry.DevicePendingAuthRequest
+    const id = readField(entry, 'id')
+    const name = readField(entry, 'name')
+    const type = finiteInteger(readField(entry, 'type'))
+    const identifier = readField(entry, 'identifier')
+    const creationDate = readField(entry, 'creationDate')
+    const lastActivityDate = readField(entry, 'lastActivityDate')
+    const isTrusted = readField(entry, 'isTrusted')
+    const deviceObject = readField(entry, 'object')
+    const pending = readField(entry, 'devicePendingAuthRequest')
     if (
       typeof id !== 'string' ||
       !UUID_PATTERN.test(id) ||
@@ -3321,15 +3319,15 @@ function parseAccountDevices(
       Buffer.byteLength(identifier, 'utf8') > MAX_DEVICE_STRING_BYTES ||
       /[\0\r\n]/u.test(identifier) ||
       typeof isTrusted !== 'boolean' ||
-      (deviceObject !== undefined && deviceObject !== 'device')
+      (deviceObject != null && deviceObject !== 'device')
     ) {
       throw new BitwardenHttpError('INVALID_RESPONSE')
     }
     let pendingAuthRequest = false
     if (pending !== undefined && pending !== null) {
       if (!isJsonObject(pending)) throw new BitwardenHttpError('INVALID_RESPONSE')
-      const pendingId = pending.id ?? pending.Id
-      const pendingCreationDate = pending.creationDate ?? pending.CreationDate
+      const pendingId = readField(pending, 'id')
+      const pendingCreationDate = readField(pending, 'creationDate')
       if (typeof pendingId !== 'string' || !UUID_PATTERN.test(pendingId)) {
         throw new BitwardenHttpError('INVALID_RESPONSE')
       }
@@ -3353,9 +3351,9 @@ function parseAccountDevices(
 
 function parsePersonalApiKey(value: JsonValue): BitwardenPersonalApiKey {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const apiKey = value.apiKey ?? value.ApiKey
-  const revisionDate = value.revisionDate ?? value.RevisionDate
-  const object = value.object ?? value.Object
+  const apiKey = readField(value, 'apiKey')
+  const revisionDate = readField(value, 'revisionDate')
+  const object = readField(value, 'object')
   if (
     typeof apiKey !== 'string' ||
     apiKey.length === 0 ||
@@ -3363,7 +3361,7 @@ function parsePersonalApiKey(value: JsonValue): BitwardenPersonalApiKey {
     /[\0\r\n]/u.test(apiKey) ||
     typeof revisionDate !== 'string' ||
     !Number.isFinite(Date.parse(revisionDate)) ||
-    (object !== undefined && object !== 'apiKey')
+    (object != null && object !== 'apiKey')
   ) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
@@ -3372,24 +3370,24 @@ function parsePersonalApiKey(value: JsonValue): BitwardenPersonalApiKey {
 
 function parseTwoFactorProviders(value: JsonValue): BitwardenTwoFactorProvider[] {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const data = value.data ?? value.Data
-  const object = value.object ?? value.Object
-  if (!Array.isArray(data) || data.length > 32 || (object !== undefined && object !== 'list')) {
+  const data = readField(value, 'data')
+  const object = readField(value, 'object')
+  if (!Array.isArray(data) || data.length > 32 || (object != null && object !== 'list')) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
   const seen = new Set<number>()
   return data.map((entry) => {
     if (!isJsonObject(entry)) throw new BitwardenHttpError('INVALID_RESPONSE')
-    const type = finiteInteger(entry.type ?? entry.Type)
-    const enabled = entry.enabled ?? entry.Enabled
-    const providerObject = entry.object ?? entry.Object
+    const type = finiteInteger(readField(entry, 'type'))
+    const enabled = readField(entry, 'enabled')
+    const providerObject = readField(entry, 'object')
     if (
       type === undefined ||
       type < 0 ||
       type > 8 ||
       seen.has(type) ||
       typeof enabled !== 'boolean' ||
-      (providerObject !== undefined && providerObject !== 'twoFactorProvider')
+      (providerObject != null && providerObject !== 'twoFactorProvider')
     ) {
       throw new BitwardenHttpError('INVALID_RESPONSE')
     }
@@ -3400,37 +3398,24 @@ function parseTwoFactorProviders(value: JsonValue): BitwardenTwoFactorProvider[]
 
 function parseTwoFactorDisableSetup(value: JsonValue, type: 2 | 3): BitwardenTwoFactorDisableSetup {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const nestedName = type === 2 ? ['duo', 'Duo'] : ['yubiKey', 'YubiKey']
-  const presentNested = nestedName.filter((name) => Object.hasOwn(value, name))
-  if (presentNested.length > 1) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const nested = readUnambiguousField(value, type === 2 ? 'duo' : 'yubiKey', throwInvalidResponse)
   const expectedObject = type === 2 ? 'twoFactorDuo' : 'twoFactorYubiKey'
-  const object = value.object ?? value.Object
-  if (
-    object !== undefined &&
-    object !== expectedObject &&
-    !(type === 3 && object === 'twoFactorU2f')
-  ) {
+  const object = readField(value, 'object')
+  if (object != null && object !== expectedObject && !(type === 3 && object === 'twoFactorU2f')) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
-  if (presentNested.length === 1) {
-    const nested = value[presentNested[0]!]
-    if (!isJsonObject(nested) || typeof (nested.enabled ?? nested.Enabled) !== 'boolean') {
+  if (nested !== undefined) {
+    if (!isJsonObject(nested) || typeof readField(nested, 'enabled') !== 'boolean') {
       throw new BitwardenHttpError('INVALID_RESPONSE')
     }
     return {
-      enabled: (nested.enabled ?? nested.Enabled) as boolean,
+      enabled: readField(nested, 'enabled') as boolean,
       verificationMode: 'server-token',
-      userVerificationToken: assertVerificationToken(
-        value.userVerificationToken ?? value.UserVerificationToken
-      )
+      userVerificationToken: assertVerificationToken(readField(value, 'userVerificationToken'))
     }
   }
-  const enabled = value.enabled ?? value.Enabled
-  if (
-    typeof enabled !== 'boolean' ||
-    value.userVerificationToken !== undefined ||
-    value.UserVerificationToken !== undefined
-  ) {
+  const enabled = readField(value, 'enabled')
+  if (typeof enabled !== 'boolean' || readField(value, 'userVerificationToken') !== undefined) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
   return { enabled, verificationMode: 'master-password', userVerificationToken: null }
@@ -3438,14 +3423,14 @@ function parseTwoFactorDisableSetup(value: JsonValue, type: 2 | 3): BitwardenTwo
 
 function parseTwoFactorRecoveryCode(value: JsonValue): string {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const code = value.code ?? value.Code
-  const object = value.object ?? value.Object
+  const code = readField(value, 'code')
+  const object = readField(value, 'object')
   if (
     typeof code !== 'string' ||
     code.length === 0 ||
     code.length > 128 ||
     /[\0\r\n]/u.test(code) ||
-    (object !== undefined && object !== 'twoFactorRecover')
+    (object != null && object !== 'twoFactorRecover')
   ) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
@@ -3476,16 +3461,14 @@ function assertVerificationToken(value: unknown): string {
   return value
 }
 
-function webAuthnAlias(
-  value: JsonObject,
-  names: readonly string[],
-  required = true
-): JsonValue | undefined {
-  const present = names.filter((name) => Object.hasOwn(value, name))
-  if (present.length > 1 || (required && present.length !== 1)) {
-    throw new BitwardenHttpError('INVALID_RESPONSE')
-  }
-  return present.length === 0 ? undefined : value[present[0]!]
+function throwInvalidResponse(): never {
+  throw new BitwardenHttpError('INVALID_RESPONSE')
+}
+
+function webAuthnAlias(value: JsonObject, name: string, required = true): JsonValue | undefined {
+  const field = readUnambiguousField(value, name, throwInvalidResponse)
+  if (required && field === undefined) throwInvalidResponse()
+  return field
 }
 
 function assertWebAuthnKeyId(value: unknown): number {
@@ -3515,9 +3498,9 @@ function assertWebAuthnKeyName(value: unknown): string {
 
 function parseWebAuthnKey(value: JsonValue): BitwardenWebAuthnKey {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const id = assertWebAuthnKeyId(webAuthnAlias(value, ['id', 'Id']))
-  const name = assertWebAuthnKeyName(webAuthnAlias(value, ['name', 'Name']))
-  const migrated = webAuthnAlias(value, ['migrated', 'Migrated'])
+  const id = assertWebAuthnKeyId(webAuthnAlias(value, 'id'))
+  const name = assertWebAuthnKeyName(webAuthnAlias(value, 'name'))
+  const migrated = webAuthnAlias(value, 'migrated')
   if (typeof migrated !== 'boolean') throw new BitwardenHttpError('INVALID_RESPONSE')
   return { id, name, migrated }
 }
@@ -3527,8 +3510,8 @@ function parseWebAuthnDetails(value: JsonValue): {
   keys: BitwardenWebAuthnKey[]
 } {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const enabled = webAuthnAlias(value, ['enabled', 'Enabled'])
-  const rawKeys = webAuthnAlias(value, ['keys', 'Keys'])
+  const enabled = webAuthnAlias(value, 'enabled')
+  const rawKeys = webAuthnAlias(value, 'keys')
   if (
     typeof enabled !== 'boolean' ||
     !Array.isArray(rawKeys) ||
@@ -3548,31 +3531,27 @@ function parseWebAuthnDetailsResponse(value: JsonValue): {
   keys: BitwardenWebAuthnKey[]
 } {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const nested = webAuthnAlias(value, ['webAuthn', 'WebAuthn'], false)
+  const nested = webAuthnAlias(value, 'webAuthn', false)
   return parseWebAuthnDetails(nested === undefined ? value : nested)
 }
 
 function parseWebAuthnSetup(value: JsonValue): BitwardenWebAuthnSetup {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const nested = webAuthnAlias(value, ['webAuthn', 'WebAuthn'], false)
+  const nested = webAuthnAlias(value, 'webAuthn', false)
   if (nested !== undefined) {
     if (
-      webAuthnAlias(value, ['enabled', 'Enabled'], false) !== undefined ||
-      webAuthnAlias(value, ['keys', 'Keys'], false) !== undefined
+      webAuthnAlias(value, 'enabled', false) !== undefined ||
+      webAuthnAlias(value, 'keys', false) !== undefined
     ) {
       throw new BitwardenHttpError('INVALID_RESPONSE')
     }
     return {
       ...parseWebAuthnDetails(nested),
       verificationMode: 'server-token',
-      userVerificationToken: assertVerificationToken(
-        webAuthnAlias(value, ['userVerificationToken', 'UserVerificationToken'])
-      )
+      userVerificationToken: assertVerificationToken(webAuthnAlias(value, 'userVerificationToken'))
     }
   }
-  if (
-    webAuthnAlias(value, ['userVerificationToken', 'UserVerificationToken'], false) !== undefined
-  ) {
+  if (webAuthnAlias(value, 'userVerificationToken', false) !== undefined) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
   return {
@@ -3627,23 +3606,21 @@ function normalizeUserVerificationError(error: unknown): unknown {
 
 function parseAuthenticatorDetails(value: JsonValue): { enabled: boolean; key: string } {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const enabled = value.enabled ?? value.Enabled
-  const key = value.key ?? value.Key
+  const enabled = readField(value, 'enabled')
+  const key = readField(value, 'key')
   if (typeof enabled !== 'boolean') throw new BitwardenHttpError('INVALID_RESPONSE')
   return { enabled, key: assertTotpSetupKey(key) }
 }
 
 function parseAuthenticatorSetup(value: JsonValue): BitwardenAuthenticatorSetup {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const nested = value.authenticator ?? value.Authenticator
-  if (nested !== undefined) {
+  const nested = readField(value, 'authenticator')
+  if (nested != null) {
     const details = parseAuthenticatorDetails(nested)
     return {
       ...details,
       verificationMode: 'server-token',
-      userVerificationToken: assertVerificationToken(
-        value.userVerificationToken ?? value.UserVerificationToken
-      )
+      userVerificationToken: assertVerificationToken(readField(value, 'userVerificationToken'))
     }
   }
   const details = parseAuthenticatorDetails(value)
@@ -3656,8 +3633,8 @@ function parseAuthenticatorSetup(value: JsonValue): BitwardenAuthenticatorSetup 
 
 function parseEnabledAuthenticator(value: JsonValue, expectedKey: string): void {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const nested = value.authenticator ?? value.Authenticator
-  const details = parseAuthenticatorDetails(nested === undefined ? value : nested)
+  const nested = readField(value, 'authenticator')
+  const details = parseAuthenticatorDetails(nested == null ? value : nested)
   if (!details.enabled || details.key !== expectedKey) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
@@ -3716,8 +3693,8 @@ function clearEmailTwoFactorBody(body: JsonObject): void {
 
 function parseEmailTwoFactorDetails(value: JsonValue): { enabled: boolean; email: string | null } {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const enabled = value.enabled ?? value.Enabled
-  const rawEmail = value.email ?? value.Email
+  const enabled = readField(value, 'enabled')
+  const rawEmail = readField(value, 'email')
   if (typeof enabled !== 'boolean') throw new BitwardenHttpError('INVALID_RESPONSE')
   const email = rawEmail === null || rawEmail === undefined ? null : assertTwoFactorEmail(rawEmail)
   if (enabled && email === null) throw new BitwardenHttpError('INVALID_RESPONSE')
@@ -3726,18 +3703,16 @@ function parseEmailTwoFactorDetails(value: JsonValue): { enabled: boolean; email
 
 function parseEmailTwoFactorSetup(value: JsonValue): BitwardenEmailTwoFactorSetup {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const object = value.object ?? value.Object
-  if (object !== undefined && object !== 'twoFactorEmail') {
+  const object = readField(value, 'object')
+  if (object != null && object !== 'twoFactorEmail') {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
-  const nested = value.email ?? value.Email
+  const nested = readField(value, 'email')
   if (isJsonObject(nested)) {
     return {
       ...parseEmailTwoFactorDetails(nested),
       verificationMode: 'server-token',
-      userVerificationToken: assertVerificationToken(
-        value.userVerificationToken ?? value.UserVerificationToken
-      )
+      userVerificationToken: assertVerificationToken(readField(value, 'userVerificationToken'))
     }
   }
   return {
@@ -3749,15 +3724,15 @@ function parseEmailTwoFactorSetup(value: JsonValue): BitwardenEmailTwoFactorSetu
 
 function parseEnabledEmailTwoFactor(value: JsonValue, expectedEmail: string): void {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const object = value.object ?? value.Object
-  if (object !== undefined && object !== 'twoFactorEmail' && object !== 'twoFactorEmailUpdate') {
+  const object = readField(value, 'object')
+  if (object != null && object !== 'twoFactorEmail' && object !== 'twoFactorEmailUpdate') {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
-  const nested = value.email ?? value.Email
+  const nested = readField(value, 'email')
   const detailsSource = isJsonObject(nested) ? nested : value
-  const rawEnabled = detailsSource.enabled ?? detailsSource.Enabled
+  const rawEnabled = readField(detailsSource, 'enabled')
   const enabled = rawEnabled === true || rawEnabled === 'true'
-  const rawEmail = detailsSource.email ?? detailsSource.Email
+  const rawEmail = readField(detailsSource, 'email')
   if (!enabled || assertTwoFactorEmail(rawEmail).toLowerCase() !== expectedEmail.toLowerCase()) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
@@ -3773,9 +3748,9 @@ function parseDisabledTwoFactor(
     return
   }
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const enabled = value.enabled ?? value.Enabled
-  const type = finiteInteger(value.type ?? value.Type)
-  const object = value.object ?? value.Object
+  const enabled = readField(value, 'enabled')
+  const type = finiteInteger(readField(value, 'type'))
+  const object = readField(value, 'object')
   if (enabled !== false || type !== expectedType || object !== 'twoFactorProvider') {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
@@ -3795,10 +3770,6 @@ function isValidBreachEmail(value: string): boolean {
   )
 }
 
-function hibpProperty(record: JsonObject, lower: string, upper: string): JsonValue | undefined {
-  return record[lower] ?? record[upper]
-}
-
 function boundedHibpString(value: JsonValue | undefined): string | undefined {
   if (
     typeof value !== 'string' ||
@@ -3813,10 +3784,10 @@ function boundedHibpString(value: JsonValue | undefined): string | undefined {
 }
 
 function isVaultwardenHibpUnconfigured(row: JsonObject): boolean {
-  const name = hibpProperty(row, 'name', 'Name')
-  const title = hibpProperty(row, 'title', 'Title')
-  const pwnCount = hibpProperty(row, 'pwnCount', 'PwnCount')
-  const dataClasses = hibpProperty(row, 'dataClasses', 'DataClasses')
+  const name = readField(row, 'name')
+  const title = readField(row, 'title')
+  const pwnCount = readField(row, 'pwnCount')
+  const dataClasses = readField(row, 'dataClasses')
   return (
     name === 'HaveIBeenPwned' &&
     title === 'Manual HIBP Check' &&
@@ -3828,14 +3799,14 @@ function isVaultwardenHibpUnconfigured(row: JsonObject): boolean {
 }
 
 function parseHibpBreach(row: JsonObject): BitwardenAccountBreach {
-  const name = boundedHibpString(hibpProperty(row, 'name', 'Name'))
-  const title = boundedHibpString(hibpProperty(row, 'title', 'Title'))
-  const breachDate = boundedHibpString(hibpProperty(row, 'breachDate', 'BreachDate'))
-  const addedDate = boundedHibpString(hibpProperty(row, 'addedDate', 'AddedDate'))
-  const domain = boundedHibpString(hibpProperty(row, 'domain', 'Domain'))
-  const pwnCount = hibpProperty(row, 'pwnCount', 'PwnCount')
-  const dataClasses = hibpProperty(row, 'dataClasses', 'DataClasses')
-  const isVerified = hibpProperty(row, 'isVerified', 'IsVerified')
+  const name = boundedHibpString(readField(row, 'name'))
+  const title = boundedHibpString(readField(row, 'title'))
+  const breachDate = boundedHibpString(readField(row, 'breachDate'))
+  const addedDate = boundedHibpString(readField(row, 'addedDate'))
+  const domain = boundedHibpString(readField(row, 'domain'))
+  const pwnCount = readField(row, 'pwnCount')
+  const dataClasses = readField(row, 'dataClasses')
+  const isVerified = readField(row, 'isVerified')
   if (!Array.isArray(dataClasses) || dataClasses.length > MAX_HIBP_DATA_CLASSES) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
@@ -3887,14 +3858,6 @@ function parseAccountBreachReport(value: JsonValue): BitwardenAccountBreachRepor
       return parseHibpBreach(row)
     })
   }
-}
-
-function domainSettingsProperty(
-  record: JsonObject,
-  lower: string,
-  upper: string
-): JsonValue | undefined {
-  return record[lower] ?? record[upper]
 }
 
 function parseEquivalentDomain(value: JsonValue): string {
@@ -3964,18 +3927,14 @@ function parseEquivalentDomainUpdate(value: unknown): BitwardenEquivalentDomainU
 
 export function parseEquivalentDomainSettings(value: JsonValue): BitwardenEquivalentDomainSettings {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const object = domainSettingsProperty(value, 'object', 'Object')
-  if (object !== undefined && object !== 'domains') {
+  const object = readField(value, 'object')
+  if (object != null && object !== 'domains') {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
   const equivalentDomains = parseNullableEquivalentDomainGroups(
-    domainSettingsProperty(value, 'equivalentDomains', 'EquivalentDomains')
+    readField(value, 'equivalentDomains')
   )
-  const globalValue = domainSettingsProperty(
-    value,
-    'globalEquivalentDomains',
-    'GlobalEquivalentDomains'
-  )
+  const globalValue = readField(value, 'globalEquivalentDomains')
   const rawGlobals = globalValue === undefined || globalValue === null ? [] : globalValue
   if (!Array.isArray(rawGlobals) || rawGlobals.length > MAX_EQUIVALENT_DOMAIN_GROUPS) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
@@ -3984,9 +3943,9 @@ export function parseEquivalentDomainSettings(value: JsonValue): BitwardenEquiva
   const seenTypes = new Set<number>()
   const globalEquivalentDomains = rawGlobals.map((candidate) => {
     if (!isJsonObject(candidate)) throw new BitwardenHttpError('INVALID_RESPONSE')
-    const type = finiteInteger(domainSettingsProperty(candidate, 'type', 'Type'))
-    const domains = domainSettingsProperty(candidate, 'domains', 'Domains')
-    const excluded = domainSettingsProperty(candidate, 'excluded', 'Excluded')
+    const type = finiteInteger(readField(candidate, 'type'))
+    const domains = readField(candidate, 'domains')
+    const excluded = readField(candidate, 'excluded')
     if (
       type === undefined ||
       type > 2_147_483_647 ||
@@ -4007,23 +3966,19 @@ export function parseEquivalentDomainSettings(value: JsonValue): BitwardenEquiva
 
 function parseSendEntity(value: JsonValue): JsonObject {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const nested = value.send ?? value.Send
-  if (nested !== undefined) {
+  const nested = readField(value, 'send')
+  if (nested != null) {
     if (!isJsonObject(nested)) throw new BitwardenHttpError('INVALID_RESPONSE')
     return nested
   }
   return value
 }
 
-function sendProperty(record: JsonObject, lower: string, upper: string): JsonValue | undefined {
-  return record[lower] ?? record[upper]
-}
-
 function parseSendFileUpload(value: JsonValue): BitwardenSendFileUpload {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const fileUploadType = sendProperty(value, 'fileUploadType', 'FileUploadType')
-  const url = sendProperty(value, 'url', 'Url')
-  const sendResponse = sendProperty(value, 'sendResponse', 'SendResponse')
+  const fileUploadType = readField(value, 'fileUploadType')
+  const url = readField(value, 'url')
+  const sendResponse = readField(value, 'sendResponse')
   const normalizedType =
     fileUploadType === 0 || fileUploadType === '0'
       ? 'direct'
@@ -4048,8 +4003,8 @@ function parseSendFileUpload(value: JsonValue): BitwardenSendFileUpload {
 
 function parseSendAccessEntity(value: JsonValue): JsonObject {
   const entity = parseSendEntity(value)
-  const type = sendProperty(entity, 'type', 'Type')
-  const id = sendProperty(entity, 'id', 'Id')
+  const type = readField(entity, 'type')
+  const id = readField(entity, 'id')
   if ((type !== 0 && type !== 1) || typeof id !== 'string' || !UUID_PATTERN.test(id)) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
@@ -4058,8 +4013,8 @@ function parseSendAccessEntity(value: JsonValue): JsonObject {
 
 function parseSendFileDownload(value: JsonValue, expectedId: string): { id: string; url: string } {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const id = sendProperty(value, 'id', 'Id')
-  const url = sendProperty(value, 'url', 'Url')
+  const id = readField(value, 'id')
+  const url = readField(value, 'url')
   if (
     typeof id !== 'string' ||
     id !== expectedId ||
@@ -4096,24 +4051,24 @@ function parseEmergencyAccessList(
   role: BitwardenEmergencyAccess['role']
 ): BitwardenEmergencyAccess[] {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const rows = value.data ?? value.Data
+  const rows = readField(value, 'data')
   if (!Array.isArray(rows) || rows.length > MAX_EMERGENCY_ACCESS_ENTRIES) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
   return rows.map((candidate) => {
     if (!isJsonObject(candidate)) throw new BitwardenHttpError('INVALID_RESPONSE')
-    const id = emergencyStringProperty(candidate, 'id', 'Id')
+    const id = emergencyStringProperty(candidate, 'id')
     const subjectId =
       role === 'trusted'
-        ? emergencyNullableStringProperty(candidate, 'granteeId', 'GranteeId')
-        : emergencyStringProperty(candidate, 'grantorId', 'GrantorId')
-    const name = emergencyNullableStringProperty(candidate, 'name', 'Name')
-    const email = emergencyStringProperty(candidate, 'email', 'Email')
-    const type = finiteInteger(emergencyProperty(candidate, 'type', 'Type'))
-    const status = finiteInteger(emergencyProperty(candidate, 'status', 'Status'))
-    const waitTimeDays = finiteInteger(emergencyProperty(candidate, 'waitTimeDays', 'WaitTimeDays'))
-    const creationDate = emergencyNullableStringProperty(candidate, 'creationDate', 'CreationDate')
-    const avatarColor = emergencyNullableStringProperty(candidate, 'avatarColor', 'AvatarColor')
+        ? emergencyNullableStringProperty(candidate, 'granteeId')
+        : emergencyStringProperty(candidate, 'grantorId')
+    const name = emergencyNullableStringProperty(candidate, 'name')
+    const email = emergencyStringProperty(candidate, 'email')
+    const type = finiteInteger(readField(candidate, 'type'))
+    const status = finiteInteger(readField(candidate, 'status'))
+    const waitTimeDays = finiteInteger(readField(candidate, 'waitTimeDays'))
+    const creationDate = emergencyNullableStringProperty(candidate, 'creationDate')
+    const avatarColor = emergencyNullableStringProperty(candidate, 'avatarColor')
     if (
       !id ||
       !UUID_PATTERN.test(id) ||
@@ -4150,25 +4105,13 @@ function parseEmergencyAccessList(
   })
 }
 
-function emergencyProperty(
-  record: JsonObject,
-  lower: string,
-  upper: string
-): JsonValue | undefined {
-  return record[lower] ?? record[upper]
-}
-
-function emergencyStringProperty(record: JsonObject, lower: string, upper: string): string | null {
-  const value = emergencyProperty(record, lower, upper)
+function emergencyStringProperty(record: JsonObject, name: string): string | null {
+  const value = readField(record, name)
   return typeof value === 'string' ? value : null
 }
 
-function emergencyNullableStringProperty(
-  record: JsonObject,
-  lower: string,
-  upper: string
-): string | null {
-  const value = emergencyProperty(record, lower, upper)
+function emergencyNullableStringProperty(record: JsonObject, name: string): string | null {
+  const value = readField(record, name)
   if (value === undefined || value === null) return null
   if (typeof value !== 'string') throw new BitwardenHttpError('INVALID_RESPONSE')
   return value
@@ -4185,9 +4128,9 @@ interface ParsedAttachmentDownload {
 
 function parseAttachmentUpload(value: JsonValue): BitwardenAttachmentUpload {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const attachmentId = string(value.attachmentId ?? value.AttachmentId)
-  const url = string(value.url ?? value.Url)
-  const rawFileUploadType = value.fileUploadType ?? value.FileUploadType
+  const attachmentId = string(readField(value, 'attachmentId'))
+  const url = string(readField(value, 'url'))
+  const rawFileUploadType = readField(value, 'fileUploadType')
   const normalizedFileUploadType =
     typeof rawFileUploadType === 'string' ? rawFileUploadType.toLowerCase() : rawFileUploadType
   const fileUploadType =
@@ -4214,7 +4157,7 @@ function parseAttachmentUpload(value: JsonValue): BitwardenAttachmentUpload {
 
 function parseDeletedAttachment(value: JsonValue): JsonObject {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const cipher = value.cipher ?? value.Cipher
+  const cipher = readField(value, 'cipher')
   if (!isJsonObject(cipher)) throw new BitwardenHttpError('INVALID_RESPONSE')
   return cipher
 }
@@ -4224,12 +4167,12 @@ function parseAttachmentDownload(
   expectedAttachmentId: string
 ): ParsedAttachmentDownload {
   if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
-  const id = string(value.id ?? value.Id)
-  const url = string(value.url ?? value.Url)
-  const fileName = string(value.fileName ?? value.FileName)
-  const keyValue = value.key ?? value.Key ?? null
-  const sizeValue = value.size ?? value.Size
-  const sizeNameValue = value.sizeName ?? value.SizeName ?? null
+  const id = string(readField(value, 'id'))
+  const url = string(readField(value, 'url'))
+  const fileName = string(readField(value, 'fileName'))
+  const keyValue = readField(value, 'key') ?? null
+  const sizeValue = readField(value, 'size')
+  const sizeNameValue = readField(value, 'sizeName') ?? null
   const size =
     typeof sizeValue === 'number'
       ? sizeValue
@@ -4481,7 +4424,7 @@ function oauthClientIdFromAccessToken(accessToken: unknown): string | undefined 
 
 function hasInvalidGrant(details: JsonObject | undefined): boolean {
   if (!details) return false
-  const error = details.error ?? details.Error
+  const error = readField(details, 'error')
   return typeof error === 'string' && error.toLowerCase() === 'invalid_grant'
 }
 

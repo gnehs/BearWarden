@@ -6877,7 +6877,7 @@ describe('sync field spellings', () => {
     {
       label: 'camelCase null, PascalCase set',
       spell: (f: unknown[]) => ({ folders: null, Folders: f }),
-      count: null
+      count: 1
     },
     { label: 'another casing only', spell: (f: unknown[]) => ({ FOLDERS: f }), count: 1 }
   ])('reads folders with $label', async ({ spell, count }) => {
@@ -6885,10 +6885,6 @@ describe('sync field spellings', () => {
     const folders = sync.folders as unknown[]
     delete sync.folders
     Object.assign(sync, spell(folders))
-    if (count === null) {
-      await expectInvalidSync(sync, 'INVALID_RESPONSE', 'folder', 'folder-data')
-      return
-    }
     const client = await clientForSync(sync)
     await expect(client.listFolders()).resolves.toHaveLength(count)
   })

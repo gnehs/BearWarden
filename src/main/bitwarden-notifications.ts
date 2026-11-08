@@ -6,6 +6,7 @@ import {
   type HubConnection
 } from '@microsoft/signalr'
 import { MessagePackHubProtocol } from '@microsoft/signalr-protocol-msgpack'
+import { readField } from './bitwarden-fields'
 import { UUID_PATTERN, isRecord } from './validation-primitives'
 
 const MIN_RECONNECT_DELAY_MS = 2 * 60 * 1_000
@@ -80,10 +81,6 @@ interface ParsedNotification {
   authRequest: BitwardenAuthRequestNotification | null
 }
 
-function property(record: Record<string, unknown>, lower: string, upper: string): unknown {
-  return record[upper] ?? record[lower]
-}
-
 function parsePayload(value: unknown): Record<string, unknown> | null {
   if (isRecord(value)) return value
   if (typeof value !== 'string' || value.length > MAX_NOTIFICATION_PAYLOAD_LENGTH) return null
@@ -97,22 +94,22 @@ function parsePayload(value: unknown): Record<string, unknown> | null {
 
 function parseNotification(value: unknown): ParsedNotification | null {
   if (!isRecord(value)) return null
-  const type = property(value, 'type', 'Type')
-  const contextId = property(value, 'contextId', 'ContextId')
-  const payload = parsePayload(property(value, 'payload', 'Payload'))
+  const type = readField(value, 'type')
+  const contextId = readField(value, 'contextId')
+  const payload = parsePayload(readField(value, 'payload'))
   if (!Number.isSafeInteger(type) || typeof type !== 'number' || type < 0 || type > 100) return null
   if (contextId !== null && contextId !== undefined && typeof contextId !== 'string') return null
   if (typeof contextId === 'string' && contextId.length > 128) return null
   if (!payload) return null
 
-  const payloadUserId = property(payload, 'userId', 'UserId')
+  const payloadUserId = readField(payload, 'userId')
   if (payloadUserId !== null && payloadUserId !== undefined && typeof payloadUserId !== 'string') {
     return null
   }
   if (typeof payloadUserId === 'string' && payloadUserId.length > 128) return null
   let authRequest: BitwardenAuthRequestNotification | null = null
   if (type === AUTH_REQUEST_NOTIFICATION_TYPE) {
-    const id = property(payload, 'id', 'Id')
+    const id = readField(payload, 'id')
     if (
       typeof id !== 'string' ||
       !UUID_PATTERN.test(id) ||

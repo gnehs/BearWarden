@@ -406,14 +406,14 @@ describe('BitwardenNotificationCoordinator', () => {
     {
       label: 'both spellings, different',
       fields: { contextId: DEVICE_ID, ContextId: OTHER_DEVICE_ID },
-      syncs: 1
+      syncs: 0
     },
     {
       label: 'camelCase null, PascalCase set',
       fields: { contextId: null, ContextId: DEVICE_ID },
       syncs: 0
     },
-    { label: 'another casing only', fields: { CONTEXTID: DEVICE_ID }, syncs: 1 }
+    { label: 'another casing only', fields: { CONTEXTID: DEVICE_ID }, syncs: 0 }
   ])('reads the context id with $label', async ({ fields, syncs }) => {
     const { coordinator, connections, onSyncRequested } = harness()
     await coordinator.refresh()

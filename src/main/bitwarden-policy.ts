@@ -1,3 +1,4 @@
+import { readUnambiguousField } from './bitwarden-fields'
 import { UUID_PATTERN, isRecord } from './validation-primitives'
 
 /**
@@ -145,17 +146,8 @@ function invalidResponse(): never {
   throw new BitwardenPolicyParseError('INVALID_POLICY_RESPONSE')
 }
 
-function readAliased(
-  record: Record<string, unknown>,
-  camelName: string,
-  pascalName: string
-): unknown {
-  const hasCamel = Object.hasOwn(record, camelName)
-  const hasPascal = Object.hasOwn(record, pascalName)
-  if (hasCamel && hasPascal) invalidResponse()
-  if (hasCamel) return record[camelName]
-  if (hasPascal) return record[pascalName]
-  return undefined
+function readAliased(record: Record<string, unknown>, name: string): unknown {
+  return readUnambiguousField(record, name, invalidResponse)
 }
 
 function requiredUuid(value: unknown): string {
@@ -199,25 +191,21 @@ function optionalDate(value: unknown): string | null {
   return value
 }
 
-function dataValue(data: Record<string, unknown>, name: string): unknown {
-  return readAliased(data, name, `${name[0]?.toUpperCase() ?? ''}${name.slice(1)}`)
-}
-
 function dataBoolean(data: Record<string, unknown>, name: string): boolean | null {
-  const value = dataValue(data, name)
+  const value = readAliased(data, name)
   if (value === undefined || value === null) return false
   return typeof value === 'boolean' ? value : null
 }
 
 function dataInteger(data: Record<string, unknown>, name: string, maximum: number): number | null {
-  const value = dataValue(data, name)
+  const value = readAliased(data, name)
   if (value === undefined || value === null) return 0
   return boundedInteger(value, 0, maximum)
 }
 
 function parsePasswordGenerator(data: unknown): PasswordGeneratorPolicyMetadata | null {
   if (!isRecord(data)) return null
-  const override = dataValue(data, 'overridePasswordType')
+  const override = readAliased(data, 'overridePasswordType')
   const overridePasswordType = override === undefined || override === null ? '' : override
   if (
     overridePasswordType !== '' &&
@@ -268,10 +256,10 @@ function parsePasswordGenerator(data: unknown): PasswordGeneratorPolicyMetadata 
 
 function parseMaximumVaultTimeout(data: unknown): MaximumVaultTimeoutPolicyMetadata | null {
   if (!isRecord(data)) return null
-  const minutes = boundedInteger(dataValue(data, 'minutes'), 1, MAX_TIMEOUT_MINUTES)
+  const minutes = boundedInteger(readAliased(data, 'minutes'), 1, MAX_TIMEOUT_MINUTES)
   if (minutes === null) return null
-  const rawType = dataValue(data, 'type')
-  const rawAction = dataValue(data, 'action')
+  const rawType = readAliased(data, 'type')
+  const rawAction = readAliased(data, 'action')
   const timeoutType = rawType === undefined ? null : rawType
   const action = rawAction === undefined ? null : rawAction
   if (
@@ -329,18 +317,15 @@ function actionableData(type: number, data: unknown): ActionablePolicyMetadata |
 
 function parsePolicy(value: unknown): BitwardenPolicyMetadata {
   if (!isRecord(value)) invalidResponse()
-  const id = requiredUuid(readAliased(value, 'id', 'Id'))
-  const organizationId = requiredUuid(readAliased(value, 'organizationId', 'OrganizationId'))
-  const type = boundedInteger(readAliased(value, 'type', 'Type'), 0, MAX_POLICY_TYPE)
+  const id = requiredUuid(readAliased(value, 'id'))
+  const organizationId = requiredUuid(readAliased(value, 'organizationId'))
+  const type = boundedInteger(readAliased(value, 'type'), 0, MAX_POLICY_TYPE)
   if (type === null) invalidResponse()
-  const enabled = requiredBoolean(readAliased(value, 'enabled', 'Enabled'))
-  const canToggleState = optionalBoolean(
-    readAliased(value, 'canToggleState', 'CanToggleState'),
-    true
-  )
-  const revisionDate = optionalDate(readAliased(value, 'revisionDate', 'RevisionDate'))
+  const enabled = requiredBoolean(readAliased(value, 'enabled'))
+  const canToggleState = optionalBoolean(readAliased(value, 'canToggleState'), true)
+  const revisionDate = optionalDate(readAliased(value, 'revisionDate'))
   const typeName = POLICY_NAMES.get(type) ?? null
-  const normalizedData = actionableData(type, readAliased(value, 'data', 'Data'))
+  const normalizedData = actionableData(type, readAliased(value, 'data'))
   const execution: BitwardenPolicyExecution =
     typeName === null
       ? 'unknown'
@@ -376,14 +361,14 @@ function parsePolicyArray(value: unknown): BitwardenPolicyMetadata[] {
  */
 export function parseBitwardenPolicySync(response: unknown): BitwardenPolicySet {
   if (!isRecord(response)) invalidResponse()
-  const policiesNew = readAliased(response, 'policiesNew', 'PoliciesNew')
+  const policiesNew = readAliased(response, 'policiesNew')
   if (policiesNew !== undefined && policiesNew !== null) {
     if (!Array.isArray(policiesNew)) invalidResponse()
     if (policiesNew.length > 0) {
       return { source: 'policiesNew', policies: parsePolicyArray(policiesNew) }
     }
   }
-  const policies = readAliased(response, 'policies', 'Policies')
+  const policies = readAliased(response, 'policies')
   if (policies === undefined || policies === null) return { source: 'none', policies: [] }
   return { source: 'policies', policies: parsePolicyArray(policies) }
 }

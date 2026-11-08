@@ -3991,7 +3991,7 @@ describe('response field spellings', () => {
       value: { equivalentDomains: null, EquivalentDomains: groupB },
       expected: groupB
     },
-    { label: 'another casing only', value: { EQUIVALENTDOMAINS: groupA }, expected: [] }
+    { label: 'another casing only', value: { EQUIVALENTDOMAINS: groupA }, expected: groupA }
   ])('reads equivalent-domain settings with $label', ({ value, expected }) => {
     expect(parseEquivalentDomainSettings(value).equivalentDomains).toEqual(expected)
   })
@@ -4023,7 +4023,7 @@ describe('response field spellings', () => {
       page: { data: null, Data: [trustedRow({ name: null, Name: 'B' })] },
       names: ['B']
     },
-    { label: 'another casing only', page: { data: [trustedRow({ NAME: 'A' })] }, names: [null] }
+    { label: 'another casing only', page: { data: [trustedRow({ NAME: 'A' })] }, names: ['A'] }
   ])('reads emergency-access pages with $label', async ({ page, names }) => {
     const fetch = vi
       .fn<FetchLike>()
