@@ -226,3 +226,38 @@ describe('Bitwarden organization policy parser', () => {
     ).toThrowError(new BitwardenPolicyParseError('POLICY_LIMIT_EXCEEDED'))
   })
 })
+
+describe('policy field spellings', () => {
+  const row = policy(BITWARDEN_POLICY_TYPE.DisableSend)
+  const sourceFor = (response: Record<string, unknown>): string | null => {
+    try {
+      return parseBitwardenPolicySync(response).source
+    } catch (error) {
+      if (error instanceof BitwardenPolicyParseError) return null
+      throw error
+    }
+  }
+
+  it.each([
+    { label: 'camelCase only', response: { policies: [row] }, source: 'policies' },
+    { label: 'PascalCase only', response: { Policies: [row] }, source: 'policies' },
+    {
+      label: 'both spellings, equal',
+      response: { policies: [row], Policies: [row] },
+      source: null
+    },
+    {
+      label: 'both spellings, different',
+      response: { policies: [], Policies: [row] },
+      source: null
+    },
+    {
+      label: 'camelCase null, PascalCase set',
+      response: { policies: null, Policies: [row] },
+      source: null
+    },
+    { label: 'another casing only', response: { POLICIES: [row] }, source: 'none' }
+  ])('reads $label', ({ response, source }) => {
+    expect(sourceFor(response)).toBe(source)
+  })
+})

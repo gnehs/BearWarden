@@ -6859,3 +6859,37 @@ describe('BitwardenDirectClient', () => {
     await expect(client.listPersonalLogins()).rejects.toMatchObject({ code: 'AUTH_REQUIRED' })
   })
 })
+
+describe('sync field spellings', () => {
+  it.each([
+    { label: 'camelCase only', spell: (f: unknown[]) => ({ folders: f }), count: 1 },
+    { label: 'PascalCase only', spell: (f: unknown[]) => ({ Folders: f }), count: 1 },
+    {
+      label: 'both spellings, equal',
+      spell: (f: unknown[]) => ({ folders: f, Folders: f }),
+      count: 1
+    },
+    {
+      label: 'both spellings, different',
+      spell: (f: unknown[]) => ({ folders: [], Folders: f }),
+      count: 0
+    },
+    {
+      label: 'camelCase null, PascalCase set',
+      spell: (f: unknown[]) => ({ folders: null, Folders: f }),
+      count: null
+    },
+    { label: 'another casing only', spell: (f: unknown[]) => ({ FOLDERS: f }), count: 1 }
+  ])('reads folders with $label', async ({ spell, count }) => {
+    const sync = await encryptedSync()
+    const folders = sync.folders as unknown[]
+    delete sync.folders
+    Object.assign(sync, spell(folders))
+    if (count === null) {
+      await expectInvalidSync(sync, 'INVALID_RESPONSE', 'folder', 'folder-data')
+      return
+    }
+    const client = await clientForSync(sync)
+    await expect(client.listFolders()).resolves.toHaveLength(count)
+  })
+})

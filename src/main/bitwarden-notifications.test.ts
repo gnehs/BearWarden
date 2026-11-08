@@ -394,4 +394,35 @@ describe('BitwardenNotificationCoordinator', () => {
     expect(insecure.connections).toHaveLength(0)
     await insecure.coordinator.dispose()
   })
+
+  it.each([
+    { label: 'camelCase only', fields: { contextId: DEVICE_ID }, syncs: 0 },
+    { label: 'PascalCase only', fields: { ContextId: DEVICE_ID }, syncs: 0 },
+    {
+      label: 'both spellings, equal',
+      fields: { contextId: DEVICE_ID, ContextId: DEVICE_ID },
+      syncs: 0
+    },
+    {
+      label: 'both spellings, different',
+      fields: { contextId: DEVICE_ID, ContextId: OTHER_DEVICE_ID },
+      syncs: 1
+    },
+    {
+      label: 'camelCase null, PascalCase set',
+      fields: { contextId: null, ContextId: DEVICE_ID },
+      syncs: 0
+    },
+    { label: 'another casing only', fields: { CONTEXTID: DEVICE_ID }, syncs: 1 }
+  ])('reads the context id with $label', async ({ fields, syncs }) => {
+    const { coordinator, connections, onSyncRequested } = harness()
+    await coordinator.refresh()
+    const connection = connections[0]!
+    await waitForConnected(connection)
+    onSyncRequested.mockClear()
+
+    connection.emit({ ...fields, Type: 0, Payload: { UserId: USER_ID } })
+    expect(onSyncRequested).toHaveBeenCalledTimes(syncs)
+    await coordinator.dispose()
+  })
 })

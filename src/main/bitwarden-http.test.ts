@@ -3,6 +3,7 @@ import { generateKeyPairSync } from 'node:crypto'
 import {
   BitwardenHttpClient,
   BitwardenHttpError,
+  parseEquivalentDomainSettings,
   resolveBitwardenUrls,
   type FetchLike,
   type JsonObject,
@@ -3965,5 +3966,72 @@ describe('BitwardenHttpClient', () => {
     await expect(
       client.uploadAttachmentDirect('cipher-id', 'attachment-id', '2.encrypted-name', oversizedBlob)
     ).rejects.toMatchObject({ code: 'TOO_LARGE' })
+  })
+})
+
+describe('response field spellings', () => {
+  const groupA = [['a.example', 'b.example']]
+  const groupB = [['c.example', 'd.example']]
+
+  it.each<{ label: string; value: JsonObject; expected: string[][] }>([
+    { label: 'camelCase only', value: { equivalentDomains: groupA }, expected: groupA },
+    { label: 'PascalCase only', value: { EquivalentDomains: groupA }, expected: groupA },
+    {
+      label: 'both spellings, equal',
+      value: { equivalentDomains: groupA, EquivalentDomains: groupA },
+      expected: groupA
+    },
+    {
+      label: 'both spellings, different',
+      value: { equivalentDomains: groupA, EquivalentDomains: groupB },
+      expected: groupA
+    },
+    {
+      label: 'camelCase null, PascalCase set',
+      value: { equivalentDomains: null, EquivalentDomains: groupB },
+      expected: groupB
+    },
+    { label: 'another casing only', value: { EQUIVALENTDOMAINS: groupA }, expected: [] }
+  ])('reads equivalent-domain settings with $label', ({ value, expected }) => {
+    expect(parseEquivalentDomainSettings(value).equivalentDomains).toEqual(expected)
+  })
+
+  const trustedRow = (fields: JsonObject): JsonObject => ({
+    id: '60000000-0000-4000-8000-000000000001',
+    email: 'trusted@example.invalid',
+    type: 0,
+    status: 1,
+    waitTimeDays: 7,
+    ...fields
+  })
+
+  it.each([
+    { label: 'camelCase only', page: { data: [trustedRow({ name: 'A' })] }, names: ['A'] },
+    { label: 'PascalCase only', page: { Data: [trustedRow({ Name: 'A' })] }, names: ['A'] },
+    {
+      label: 'both spellings, equal',
+      page: { data: [trustedRow({ name: 'A', Name: 'A' })], Data: [] },
+      names: ['A']
+    },
+    {
+      label: 'both spellings, different',
+      page: { data: [trustedRow({ name: 'A', Name: 'B' })], Data: [] },
+      names: ['A']
+    },
+    {
+      label: 'camelCase null, PascalCase set',
+      page: { data: null, Data: [trustedRow({ name: null, Name: 'B' })] },
+      names: ['B']
+    },
+    { label: 'another casing only', page: { data: [trustedRow({ NAME: 'A' })] }, names: [null] }
+  ])('reads emergency-access pages with $label', async ({ page, names }) => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(json(page))
+      .mockResolvedValueOnce(json({ data: [] }))
+    const client = new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
+    client.setSession({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 1 })
+    const rows = await client.listEmergencyAccess()
+    expect(rows.map((row) => row.name)).toEqual(names)
   })
 })
