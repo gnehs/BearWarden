@@ -1,4 +1,4 @@
-import { isRecord } from './record-primitives'
+import { UUID_PATTERN, isRecord } from './validation-primitives'
 
 /**
  * Bitwarden organization policy wire values.
@@ -132,7 +132,6 @@ const MAX_TIMEOUT_MINUTES = 366 * 24 * 60
 const MAX_GENERATOR_LENGTH = 4_096
 const MAX_GENERATOR_COUNT = 1_024
 const MAX_RESTRICTED_TYPES = 16
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/u
 
 const POLICY_NAMES = new Map<number, keyof typeof BITWARDEN_POLICY_TYPE>(

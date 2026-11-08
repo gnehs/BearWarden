@@ -62,7 +62,7 @@ import {
   type AccountWebAuthnOperationLease
 } from './vault-service-base'
 import { VaultServiceBase } from './vault-service-base'
-import { isRecord } from './record-primitives'
+import { isRecord } from './validation-primitives'
 
 function initialSyncData(serverUrl: string, email: string): PersistedSyncData {
   return {

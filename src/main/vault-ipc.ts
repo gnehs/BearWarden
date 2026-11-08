@@ -133,7 +133,7 @@ import {
   type TwoFactorDirectoryCache
 } from './two-factor-directory-cache'
 import { exactKeys, plainRecord } from './plain-record'
-import { isPlainObjectRecord } from './record-primitives'
+import { UUID_PATTERN, isPlainObjectRecord } from './validation-primitives'
 import { ITEM_FIELD_NAMES } from './vault/item-fields'
 import {
   MAX_CUSTOM_FIELDS,
@@ -144,8 +144,7 @@ import {
   MAX_LOGIN_URIS,
   MAX_REMOTE_ENTITIES,
   MAX_SYNC_SECRET_LENGTH,
-  MAX_URI_LENGTH,
-  UUID_PATTERN
+  MAX_URI_LENGTH
 } from './vault/limits'
 
 type RecordValue = Record<string, unknown>

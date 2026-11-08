@@ -7,12 +7,11 @@ import {
   MAX_ITEM_FIELD_LENGTH,
   MAX_PASSKEY_CREDENTIAL_DESCRIPTORS,
   MAX_PASSKEY_CREDENTIAL_ID_BYTES,
-  MAX_PASSKEY_RP_ID_LENGTH,
-  PASSKEY_UUID_PATTERN
+  MAX_PASSKEY_RP_ID_LENGTH
 } from './limits'
 import { assertIsoDate } from './parse-primitives'
 import type { PasskeyVaultMatch, VaultData } from './types'
-import { isRecord } from '../record-primitives'
+import { LOOSE_LOWERCASE_UUID_PATTERN, isRecord } from '../validation-primitives'
 
 export function normalizePasskeyRpId(value: unknown): string {
   if (
@@ -76,7 +75,9 @@ function decodeStoredPasskeyCredentialId(value: unknown): Buffer | null {
       ? decoded
       : null
   }
-  return PASSKEY_UUID_PATTERN.test(value) ? Buffer.from(value.replaceAll('-', ''), 'hex') : null
+  return LOOSE_LOWERCASE_UUID_PATTERN.test(value)
+    ? Buffer.from(value.replaceAll('-', ''), 'hex')
+    : null
 }
 
 function credentialIdIsAllowed(

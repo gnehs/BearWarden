@@ -67,9 +67,5 @@ export const MAX_PENDING_LOGIN_IMPORT_MARKER_LENGTH = 4_096
 export const MAX_PASSKEY_CREDENTIAL_DESCRIPTORS = 1_000
 export const MAX_PASSKEY_CREDENTIAL_ID_BYTES = 1_023
 export const MAX_PASSKEY_RP_ID_LENGTH = 253
-export const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-export const PASSKEY_UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u
 export const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/u
 export const OAUTH_CLIENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u

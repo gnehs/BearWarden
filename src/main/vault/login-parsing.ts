@@ -7,8 +7,7 @@ import {
   MAX_PASSWORD_LENGTH,
   MAX_REMOTE_ENTITIES,
   MAX_URI_LENGTH,
-  MAX_USERNAME_LENGTH,
-  UUID_PATTERN
+  MAX_USERNAME_LENGTH
 } from './limits'
 import { assertIsoDate, parseNullableString } from './parse-primitives'
 import {
@@ -23,7 +22,7 @@ import { parseCustomField } from './custom-fields'
 import { parseStoredAttachments } from './attachments-parsing'
 import { parseStoredPasskey } from './passkey-parsing'
 import type { StoredLogin, StoredSharedLogin } from './types'
-import { isRecord } from '../record-primitives'
+import { UUID_PATTERN, isRecord } from '../validation-primitives'
 
 export function parseFolder(value: unknown): FolderView {
   if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')

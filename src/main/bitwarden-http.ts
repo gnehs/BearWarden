@@ -18,7 +18,7 @@ import {
 } from './account-webauthn-registration-codec'
 import { MAX_ACCOUNT_PROFILE_NAME_BYTES } from '../shared/vault-contract'
 import { createPublicKey } from 'node:crypto'
-import { isRecord } from './record-primitives'
+import { UUID_PATTERN, isRecord } from './validation-primitives'
 
 export type BitwardenEnvironment = 'us' | 'eu' | string
 export type JsonPrimitive = string | number | boolean | null
@@ -437,7 +437,6 @@ const MAX_PENDING_AUTH_REQUESTS = 10_000
 const AUTH_REQUEST_VALIDITY_MS = 15 * 60 * 1000
 const MAX_EMERGENCY_ACCESS_RESPONSE_BYTES = 2 * 1024 * 1024
 const MAX_EMERGENCY_ACCESS_ENTRIES = 10_000
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 const MAX_HIBP_BREACHES = 10_000
 const MAX_HIBP_DATA_CLASSES = 100
 const MAX_HIBP_STRING_BYTES = 4_096

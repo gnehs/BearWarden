@@ -14,8 +14,7 @@ import {
   MAX_SEND_FILE_SIZE,
   MAX_SEND_FILE_SIZE_NAME_LENGTH,
   MAX_SEND_TEXT_LENGTH,
-  MAX_SYNC_SECRET_LENGTH,
-  UUID_PATTERN
+  MAX_SYNC_SECRET_LENGTH
 } from './limits'
 import {
   normalizeNullableString,
@@ -23,7 +22,7 @@ import {
   normalizeString
 } from './parse-primitives'
 import type { StoredSend } from './types'
-import { isRecord } from '../record-primitives'
+import { UUID_PATTERN, isRecord } from '../validation-primitives'
 
 export function parseStoredSend(value: unknown): StoredSend {
   if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')

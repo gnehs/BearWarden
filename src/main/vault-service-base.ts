@@ -97,8 +97,7 @@ import {
   MAX_ATTACHMENT_ID_LENGTH,
   MAX_TWO_FACTOR_CODE_LENGTH,
   MAX_PENDING_LOGIN_IMPORT_ENTRIES,
-  MAX_PENDING_LOGIN_IMPORT_MARKER_LENGTH,
-  UUID_PATTERN
+  MAX_PENDING_LOGIN_IMPORT_MARKER_LENGTH
 } from './vault/limits'
 import {
   assertUuid,
@@ -149,7 +148,7 @@ import type {
   VaultServiceOptions,
   VaultNativeAttachmentRestoreSummary
 } from './vault/types'
-import { isRecord } from './record-primitives'
+import { UUID_PATTERN, isRecord } from './validation-primitives'
 
 type BulkRemoteLoginMutation =
   'soft-delete' | 'restore' | 'move' | 'archive' | 'unarchive' | 'hard-delete'

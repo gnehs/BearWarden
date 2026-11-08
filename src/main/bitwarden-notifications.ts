@@ -6,7 +6,7 @@ import {
   type HubConnection
 } from '@microsoft/signalr'
 import { MessagePackHubProtocol } from '@microsoft/signalr-protocol-msgpack'
-import { isRecord } from './record-primitives'
+import { UUID_PATTERN, isRecord } from './validation-primitives'
 
 const MIN_RECONNECT_DELAY_MS = 2 * 60 * 1_000
 const MAX_RECONNECT_DELAY_MS = 5 * 60 * 1_000
@@ -14,7 +14,6 @@ const STOP_CONNECTION_TIMEOUT_MS = 1_000
 const MAX_ACCESS_TOKEN_LENGTH = 64 * 1_024
 const MAX_NOTIFICATION_PAYLOAD_LENGTH = 1024 * 1_024
 const MAX_URL_LENGTH = 2_048
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 
 // These notification types mutate data BearWarden currently understands. A full sync is
 // deliberate: the local-first merge engine remains the single authority for conflict handling,

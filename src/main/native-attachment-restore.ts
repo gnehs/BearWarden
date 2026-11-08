@@ -1,4 +1,5 @@
 import { VaultError } from './vault-errors'
+import { LOOSE_UUID_PATTERN } from './validation-primitives'
 
 const JOURNAL_VERSION = 1
 const MAX_ITEMS = 40_000
@@ -8,7 +9,6 @@ const MAX_ATTACHMENT_ID_LENGTH = 256
 const MAX_FILE_NAME_LENGTH = 255
 const MAX_ATTACHMENT_BYTES = 500 * 1024 * 1024
 const MAX_SERIALIZED_BYTES = 64 * 1024 * 1024
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DIGEST_PATTERN = /^[0-9a-f]{64}$/
 
 export type NativeAttachmentRestorePhase =
@@ -125,7 +125,7 @@ function digest(value: unknown): string {
 }
 
 function uuid(value: unknown): string {
-  if (typeof value !== 'string' || !UUID_PATTERN.test(value)) invalid()
+  if (typeof value !== 'string' || !LOOSE_UUID_PATTERN.test(value)) invalid()
   return value.toLowerCase()
 }
 

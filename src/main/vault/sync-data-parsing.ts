@@ -11,8 +11,7 @@ import {
   MAX_SYNC_SECRET_LENGTH,
   MAX_URI_LENGTH,
   MAX_USERNAME_LENGTH,
-  OAUTH_CLIENT_ID_PATTERN,
-  UUID_PATTERN
+  OAUTH_CLIENT_ID_PATTERN
 } from './limits'
 import { assertIsoDate } from './parse-primitives'
 import { parseStoredEquivalentDomainSettings } from './equivalent-domains'
@@ -26,7 +25,7 @@ import type {
   SyncEntityMapping,
   SyncTombstone
 } from './types'
-import { isRecord } from '../record-primitives'
+import { UUID_PATTERN, isRecord } from '../validation-primitives'
 
 const MIN_SYNC_ACCOUNT_KEY_BYTES = 64
 const MAX_SYNC_ACCOUNT_KEY_BYTES = 4_096

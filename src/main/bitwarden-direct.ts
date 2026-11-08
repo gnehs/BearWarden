@@ -116,10 +116,10 @@ import {
   MAX_SEND_FILE_SIZE,
   MAX_SEND_FILE_SIZE_NAME_LENGTH,
   MAX_SYNC_SECRET_LENGTH,
-  MAX_URI_LENGTH,
-  UUID_PATTERN
+  MAX_URI_LENGTH
 } from './vault/limits'
 import { clonePasswordHistory } from './vault/password-history'
+import { UUID_PATTERN } from './validation-primitives'
 
 const USER_KEY_BYTES = 64
 const MAX_CUSTOM_FIELD_STRING_LENGTH = 5_000

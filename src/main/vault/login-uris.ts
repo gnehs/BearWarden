@@ -10,7 +10,7 @@ import { VaultError } from '../vault-errors'
 import { MAX_LOGIN_URIS, MAX_URI_LENGTH } from './limits'
 import { normalizeNullableString } from './parse-primitives'
 import type { StoredLogin } from './types'
-import { isRecord } from '../record-primitives'
+import { isRecord } from '../validation-primitives'
 
 function isVaultUriMatch(value: unknown): value is VaultUriMatch {
   return value === 0 || value === 1 || value === 2 || value === 3 || value === 4 || value === 5

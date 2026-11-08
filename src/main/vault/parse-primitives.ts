@@ -2,9 +2,9 @@ import { VaultError } from '../vault-errors'
 import {
   MAX_MASTER_PASSWORD_LENGTH,
   MAX_SYNC_SECRET_LENGTH,
-  MIN_MASTER_PASSWORD_LENGTH,
-  UUID_PATTERN
+  MIN_MASTER_PASSWORD_LENGTH
 } from './limits'
+import { UUID_PATTERN } from '../validation-primitives'
 
 export function assertIsoDate(value: unknown): asserts value is string {
   if (

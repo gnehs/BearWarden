@@ -27,7 +27,7 @@ import {
 import { writeBitwardenAttachmentZip } from './bitwarden-attachment-zip'
 import type { VaultService } from './vault-service'
 import { parseKeePass2Xml } from './vault-portability-keepass-xml'
-import { isRecord } from './record-primitives'
+import { isRecord } from './validation-primitives'
 
 const MAX_PORTABLE_FILE_BYTES = 64 * 1024 * 1024
 const MIN_EXPORT_PASSWORD_LENGTH = 12

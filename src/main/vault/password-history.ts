@@ -1,7 +1,7 @@
 import type { VaultPasswordHistoryEntry } from '../../shared/vault-contract'
 import { VaultError } from '../vault-errors'
 import { MAX_PASSWORD_HISTORY, MAX_PASSWORD_LENGTH } from './limits'
-import { isRecord } from '../record-primitives'
+import { isRecord } from '../validation-primitives'
 
 export function parsePasswordHistory(value: unknown): VaultPasswordHistoryEntry[] {
   if (!Array.isArray(value) || value.length > MAX_PASSWORD_HISTORY) {

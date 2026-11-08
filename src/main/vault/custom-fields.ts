@@ -13,7 +13,7 @@ import {
   MAX_CUSTOM_FIELD_VALUE_LENGTH
 } from './limits'
 import type { StoredLogin } from './types'
-import { isRecord } from '../record-primitives'
+import { isRecord } from '../validation-primitives'
 
 export function parseCustomField(value: unknown): VaultCustomField {
   if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')

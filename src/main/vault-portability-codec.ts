@@ -20,7 +20,7 @@ import type { StoredPasskeyCredential } from './passkey'
 import type { SyncLogin } from './sync-merge'
 import { VaultError } from './vault-errors'
 import { emptyItemFields } from './vault/item-fields'
-import { isRecord } from './record-primitives'
+import { LOOSE_UUID_PATTERN, isRecord } from './validation-primitives'
 
 export interface PortableVaultFolder {
   id: string
@@ -65,7 +65,6 @@ const MAX_ARGON2_ITERATIONS = 100
 const MIN_ARGON2_MEMORY_MIB = 16
 const MAX_ARGON2_MEMORY_MIB = 1_024
 const MAX_ARGON2_PARALLELISM = 64
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const WIRE_TYPE_BY_ITEM_TYPE = {
   login: 1,
@@ -1154,7 +1153,7 @@ export async function decryptBitwardenPasswordProtectedJson(
     }
     ;({ encKey, macKey, combinedKey } = stretchMasterKey(masterKey))
     const validation = decryptBitwardenString(validationCipher, combinedKey)
-    if (!UUID_PATTERN.test(validation)) invalidInput()
+    if (!LOOSE_UUID_PATTERN.test(validation)) invalidInput()
     const clearText = decryptBitwardenString(dataCipher, combinedKey)
     if (Buffer.byteLength(clearText, 'utf8') > MAX_JSON_BYTES) invalidInput()
     return clearText

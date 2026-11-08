@@ -26,7 +26,7 @@ import {
 } from './touch-id-unlock-capsule'
 import { VaultError } from './vault-errors'
 import type { VaultTimeoutCoordinator } from './vault-timeout-coordinator'
-import { isRecord } from './record-primitives'
+import { isRecord } from './validation-primitives'
 
 const SETTINGS_VERSION = 9
 const MAX_SETTINGS_BYTES = 16 * 1024

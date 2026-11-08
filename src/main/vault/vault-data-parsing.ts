@@ -48,7 +48,7 @@ import { cloneLoginUris } from './login-uris'
 import { clonePasswordHistory } from './password-history'
 import { cloneCustomFields } from './custom-fields'
 import type { MasterPasswordChangeJournal, VaultData } from './types'
-import { isRecord } from '../record-primitives'
+import { STRICT_LOWERCASE_UUID_PATTERN, isRecord } from '../validation-primitives'
 
 const STORED_POLICY_NAMES = new Map<number, keyof typeof BITWARDEN_POLICY_TYPE>(
   Object.entries(BITWARDEN_POLICY_TYPE).map(([name, type]) => [
@@ -56,8 +56,6 @@ const STORED_POLICY_NAMES = new Map<number, keyof typeof BITWARDEN_POLICY_TYPE>(
     name as keyof typeof BITWARDEN_POLICY_TYPE
   ])
 )
-const STORED_POLICY_UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u
 const STORED_POLICY_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/u
 
 function strictStoredRecord(
@@ -226,9 +224,9 @@ function parseStoredPolicy(value: unknown): BitwardenPolicyMetadata {
   ])
   if (
     typeof policy.id !== 'string' ||
-    !STORED_POLICY_UUID_PATTERN.test(policy.id) ||
+    !STRICT_LOWERCASE_UUID_PATTERN.test(policy.id) ||
     typeof policy.organizationId !== 'string' ||
-    !STORED_POLICY_UUID_PATTERN.test(policy.organizationId) ||
+    !STRICT_LOWERCASE_UUID_PATTERN.test(policy.organizationId) ||
     typeof policy.enabled !== 'boolean' ||
     typeof policy.canToggleState !== 'boolean' ||
     (policy.execution !== 'actionable' &&
@@ -322,7 +320,7 @@ export function parseStoredBitwardenPolicySet(value: unknown): BitwardenPolicySe
       throw new VaultError('CORRUPT_VAULT')
     }
     applicableOrganizationIds = set.applicableOrganizationIds.map((id) => {
-      if (typeof id !== 'string' || !STORED_POLICY_UUID_PATTERN.test(id)) {
+      if (typeof id !== 'string' || !STRICT_LOWERCASE_UUID_PATTERN.test(id)) {
         throw new VaultError('CORRUPT_VAULT')
       }
       return id

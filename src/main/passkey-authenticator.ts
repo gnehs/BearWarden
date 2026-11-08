@@ -9,6 +9,7 @@ import {
 import { isIP } from 'node:net'
 import { Encoder } from 'cbor-x'
 import type { StoredPasskeyCredential } from './passkey'
+import { LOOSE_LOWERCASE_UUID_PATTERN } from './validation-primitives'
 
 const ES256_ALGORITHM = -7 as const
 const MAX_RP_ID_LENGTH = 253
@@ -17,7 +18,6 @@ const MAX_USER_HANDLE_BYTES = 64
 const MAX_CREDENTIAL_ID_BYTES = 1023
 const MAX_PKCS8_BYTES = 1024
 const MAX_UINT32 = 0xffff_ffff
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/u
 /** Bitwarden's software authenticator AAGUID, d548826e-79b4-db40-a3d8-11116f7e8349. */
 const AAGUID_BYTES = Buffer.from('d548826e79b4db40a3d811116f7e8349', 'hex')
@@ -154,7 +154,7 @@ function decodeBase64Url(
 }
 
 function uuidToBytes(value: unknown, code: PasskeyAuthenticatorErrorCode): Buffer {
-  if (typeof value !== 'string' || !UUID_PATTERN.test(value)) fail(code)
+  if (typeof value !== 'string' || !LOOSE_LOWERCASE_UUID_PATTERN.test(value)) fail(code)
   return Buffer.from(value.replaceAll('-', ''), 'hex')
 }
 

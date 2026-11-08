@@ -5,7 +5,7 @@ import type {
 } from '../../shared/vault-contract'
 import { VaultError } from '../vault-errors'
 import { MAX_GENERATED_CREDENTIAL_LENGTH, MAX_GENERATOR_HISTORY } from './limits'
-import { isRecord } from '../record-primitives'
+import { isRecord } from '../validation-primitives'
 
 export function generatorCategoryForAlgorithm(
   algorithm: GeneratorCredentialAlgorithm
