@@ -5,6 +5,7 @@ import type {
   SharedLoginView,
   VaultCustomFieldView
 } from '../../shared/vault-contract'
+import { toLoginSummary, toSharedLoginSummary } from '../../shared/login-summary'
 import { toPasskeyView } from '../passkey'
 import { VaultError } from '../vault-errors'
 import { fingerprintLogin, type SyncLogin } from '../sync-merge'
@@ -14,30 +15,23 @@ import { cloneLoginUris } from './login-uris'
 import type { StoredLogin, StoredSharedLogin } from './types'
 
 export function toSummary(login: StoredLogin): LoginSummary {
-  if (login.deletedAt !== null || login.reprompt === 1) {
-    return {
-      id: login.id,
-      type: login.type,
-      name: login.name,
-      subtitle: '',
-      username: '',
-      uri: null,
-      uris: [],
-      ...(login.type === 'login' ? { hasTotp: false, passkeyCount: 0 } : {}),
-      passwordHistoryCount: login.passwordHistory.length,
-      attachmentCount: login.attachments.length,
-      folderId: login.folderId,
-      favorite: login.deletedAt === null ? login.favorite : false,
-      usageCount: login.deletedAt === null ? login.usageCount : 0,
-      lastUsedAt: login.deletedAt === null ? login.lastUsedAt : null,
-      createdAt: login.createdAt,
-      updatedAt: login.updatedAt,
-      deletedAt: login.deletedAt,
-      archivedAt: login.archivedAt,
-      reprompt: login.reprompt
-    }
-  }
-  const notePreview = login.type === 'secureNote' ? summarizeSecureNote(login.notes) : ''
+  return toLoginSummary(describeLogin(login))
+}
+
+export function toSharedSummary(login: StoredSharedLogin): SharedLoginSummary {
+  return toSharedLoginSummary({
+    ...describeLogin(login),
+    organizationId: login.organizationId,
+    collectionIds: login.collectionIds,
+    shared: true,
+    edit: login.edit,
+    viewPassword: login.viewPassword,
+    delete: login.delete,
+    restore: login.restore
+  })
+}
+
+function describeLogin(login: StoredLogin): LoginSummary {
   const subtitle =
     login.type === 'login'
       ? login.username || login.uri || ''
@@ -48,7 +42,7 @@ export function toSummary(login: StoredLogin): LoginSummary {
         : login.type === 'identity'
           ? [login.firstName, login.lastName].filter(Boolean).join(' ')
           : login.type === 'secureNote'
-            ? notePreview
+            ? summarizeSecureNote(login.notes)
             : login.type === 'sshKey'
               ? login.fingerprint || 'SSH key'
               : ''
@@ -57,13 +51,12 @@ export function toSummary(login: StoredLogin): LoginSummary {
     type: login.type,
     name: login.name,
     subtitle,
-    username: login.type === 'login' ? login.username : '',
-    uri: login.type === 'login' ? login.uri : null,
-    uris: login.type === 'login' ? cloneLoginUris(login.uris) : [],
-    ...(login.type === 'card' ? { cardBrand: login.brand } : {}),
-    ...(login.type === 'login'
-      ? { hasTotp: Boolean(login.totp), passkeyCount: login.passkeys.length }
-      : {}),
+    username: login.username,
+    uri: login.uri,
+    uris: login.uris,
+    cardBrand: login.brand,
+    hasTotp: Boolean(login.totp),
+    passkeyCount: login.passkeys.length,
     passwordHistoryCount: login.passwordHistory.length,
     attachmentCount: login.attachments.length,
     folderId: login.folderId,
@@ -75,29 +68,6 @@ export function toSummary(login: StoredLogin): LoginSummary {
     deletedAt: login.deletedAt,
     archivedAt: login.archivedAt,
     reprompt: login.reprompt
-  }
-}
-
-export function toSharedSummary(login: StoredSharedLogin): SharedLoginSummary {
-  const summary = toSummary(login)
-  const safeSummary = login.viewPassword
-    ? summary
-    : {
-        ...summary,
-        subtitle: '',
-        username: '',
-        ...(summary.cardBrand !== undefined ? { cardBrand: undefined } : {}),
-        ...(summary.hasTotp !== undefined ? { hasTotp: false } : {})
-      }
-  return {
-    ...safeSummary,
-    organizationId: login.organizationId,
-    collectionIds: [...login.collectionIds],
-    shared: true,
-    edit: login.edit,
-    viewPassword: login.viewPassword,
-    delete: login.delete,
-    restore: login.restore
   }
 }
 

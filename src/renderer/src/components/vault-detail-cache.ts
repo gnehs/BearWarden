@@ -1,9 +1,4 @@
-import type {
-  LoginSummary,
-  LoginView,
-  SharedLoginSummary,
-  SharedLoginView
-} from '../../../shared/vault-contract'
+import type { LoginSummary, LoginView } from '../../../shared/vault-contract'
 
 const detailCacheLimit = 48
 
@@ -58,43 +53,4 @@ export function authorizationTokenField(token: string | undefined): {
   authorizationToken?: string
 } {
   return token ? { authorizationToken: token } : {}
-}
-
-export function toLoginSummary(login: LoginView): LoginSummary {
-  return {
-    id: login.id,
-    type: login.type,
-    name: login.name,
-    subtitle: login.subtitle,
-    username: login.username,
-    uri: login.uri,
-    uris: login.uris.map((entry) => ({ ...entry })),
-    ...(login.cardBrand === undefined ? {} : { cardBrand: login.cardBrand }),
-    hasTotp: login.hasTotp,
-    ...(login.passkeyCount === undefined ? {} : { passkeyCount: login.passkeyCount }),
-    passwordHistoryCount: login.passwordHistoryCount,
-    attachmentCount: login.attachmentCount,
-    folderId: login.folderId,
-    favorite: login.favorite,
-    usageCount: login.usageCount,
-    lastUsedAt: login.lastUsedAt,
-    createdAt: login.createdAt,
-    updatedAt: login.updatedAt,
-    deletedAt: login.deletedAt,
-    archivedAt: login.archivedAt,
-    reprompt: login.reprompt
-  }
-}
-
-export function toSharedLoginSummary(login: SharedLoginView): SharedLoginSummary {
-  return {
-    ...toLoginSummary(login),
-    organizationId: login.organizationId,
-    collectionIds: login.collectionIds,
-    shared: true,
-    edit: login.edit,
-    viewPassword: login.viewPassword,
-    delete: login.delete,
-    restore: login.restore
-  }
 }

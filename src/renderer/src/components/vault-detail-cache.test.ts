@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { toLoginSummary, toSharedLoginSummary } from '../../../shared/login-summary'
 import type { LoginSummary, SharedLoginView } from '../../../shared/vault-contract'
 import {
   authorizationTokenField,
   cacheLoginDetail,
   firstAuthorizationToken,
   mergeCachedSummary,
-  mergeLoginSummary,
-  toLoginSummary,
-  toSharedLoginSummary
+  mergeLoginSummary
 } from './vault-detail-cache'
 import { makeLoginView } from './vault-detail-test-fixtures'
 
@@ -80,10 +79,11 @@ describe('detail cache helpers', () => {
 
 describe('summary and authorization projections', () => {
   it('creates an independent URI summary and preserves optional fields', () => {
-    const login = makeLoginView({ cardBrand: 'visa', passkeyCount: 2 })
+    const login = makeLoginView({ passkeyCount: 2 })
     const summary = toLoginSummary(login)
+    const card = makeLoginView({ type: 'card', cardBrand: 'visa' })
 
-    expect(summary.cardBrand).toBe('visa')
+    expect(toLoginSummary(card).cardBrand).toBe('visa')
     expect(summary.passkeyCount).toBe(2)
     expect(summary.uris).toEqual(login.uris)
     expect(summary.uris).not.toBe(login.uris)

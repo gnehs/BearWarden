@@ -40,6 +40,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useStore } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
+import { toLoginSummary, toSharedLoginSummary } from '../../../shared/login-summary'
 import {
   SELECTED_ITEM_COPY_SHORTCUTS,
   type SelectedItemCopyCommand
@@ -210,9 +211,7 @@ import {
   cacheLoginDetail,
   firstAuthorizationToken,
   mergeCachedSummary,
-  mergeLoginSummary,
-  toLoginSummary,
-  toSharedLoginSummary
+  mergeLoginSummary
 } from './vault-detail-cache'
 import { describeError, isRepromptRequired } from './vault-error-ui'
 import { itemTypeIcons } from './vault-item-type-icons'
