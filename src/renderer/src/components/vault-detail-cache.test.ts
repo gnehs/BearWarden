@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import type { LoginSummary } from '../../../shared/vault-contract'
+import type { LoginSummary, SharedLoginView } from '../../../shared/vault-contract'
 import {
   authorizationTokenField,
   cacheLoginDetail,
   firstAuthorizationToken,
   mergeCachedSummary,
   mergeLoginSummary,
-  toLoginSummary
+  toLoginSummary,
+  toSharedLoginSummary
 } from './vault-detail-cache'
 import { makeLoginView } from './vault-detail-test-fixtures'
 
@@ -87,6 +88,63 @@ describe('summary and authorization projections', () => {
     expect(summary.uris).toEqual(login.uris)
     expect(summary.uris).not.toBe(login.uris)
     expect(summary.uris[0]).not.toBe(login.uris[0])
+  })
+
+  it('hides protected identifiers in the list summary written after saving a re-prompt item', () => {
+    const saved = makeLoginView({ reprompt: 1, subtitle: '', hasTotp: true, favorite: true })
+
+    const summary = toLoginSummary(saved)
+
+    expect(summary).toMatchObject({
+      name: 'Sample item',
+      favorite: true,
+      reprompt: 1,
+      subtitle: '',
+      username: '',
+      uri: null,
+      uris: [],
+      hasTotp: false,
+      passkeyCount: 0
+    })
+  })
+
+  it('hides identifiers and personal state in the list summary of a trashed item', () => {
+    const trashed = makeLoginView({
+      deletedAt: '2026-07-17T00:00:00.000Z',
+      favorite: true,
+      usageCount: 3,
+      lastUsedAt: '2026-07-16T12:00:00.000Z'
+    })
+
+    expect(toLoginSummary(trashed)).toMatchObject({
+      subtitle: '',
+      username: '',
+      uri: null,
+      uris: [],
+      favorite: false,
+      usageCount: 0,
+      lastUsedAt: null
+    })
+  })
+
+  it('hides the username in a shared list summary when the member cannot view secrets', () => {
+    const saved: SharedLoginView = {
+      ...makeLoginView({ subtitle: 'sample-user', hasTotp: true }),
+      organizationId: 'org-id',
+      collectionIds: ['collection-id'],
+      shared: true,
+      edit: true,
+      viewPassword: false,
+      delete: false,
+      restore: false
+    }
+
+    expect(toSharedLoginSummary(saved)).toMatchObject({
+      subtitle: '',
+      username: '',
+      hasTotp: false,
+      viewPassword: false
+    })
   })
 
   it('returns the first available authorization token in item order', () => {
