@@ -406,10 +406,7 @@ export class VaultServiceBase {
       currentGeneration: () => this.generation,
       startSyncOperation: () => this.startSyncOperation(),
       finishSyncOperation: (abort) => this.finishSyncOperation(abort),
-      persistData: async (data) => {
-        await this.persist(data)
-        this.data = data
-      },
+      commitData: (data, generation) => this.commit(data, generation),
       nowIso: () => this.nowIso(),
       clearSyncError: () => this.clearSyncErrorState(),
       mapSyncError: (error) => this.mapSyncError(error),

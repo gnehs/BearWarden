@@ -12527,7 +12527,7 @@ describe('VaultService commit races with lock and dispose', () => {
     await expect(reopenedLoginNames(filePath)).resolves.toEqual(['Raced with dispose'])
   })
 
-  it('reports success for a Send whose remote create finishes after lock(), and keeps the write', async () => {
+  it('reports LOCKED for a Send whose remote create finishes after lock(), and keeps the write', async () => {
     let fake: ReturnType<typeof createSyncFake> | null = null
     const { service } = await createHarness({
       createSyncClient: (sync) => {
@@ -12579,7 +12579,7 @@ describe('VaultService commit races with lock and dispose', () => {
     const locking = service.lock()
     finishRemote()
 
-    await expect(creating).resolves.toMatchObject({ id: sendId, name: 'Raced Send' })
+    await expect(creating).rejects.toMatchObject({ code: 'LOCKED' })
     await expect(locking).resolves.toEqual({ state: 'locked' })
     await expect(service.listSends()).rejects.toMatchObject({ code: 'LOCKED' })
     await service.unlock(MASTER_PASSWORD)

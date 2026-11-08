@@ -27,7 +27,7 @@ export interface VaultSendServiceDependencies {
   readonly currentGeneration: () => number
   readonly startSyncOperation: () => AbortController
   readonly finishSyncOperation: (abort: AbortController) => void
-  readonly persistData: (data: VaultData) => Promise<void>
+  readonly commitData: (data: VaultData, generation: number) => Promise<void>
   readonly nowIso: () => string
   readonly clearSyncError: () => void
   readonly mapSyncError: (error: unknown) => VaultError
@@ -54,6 +54,7 @@ export class VaultSendService {
       this.dependencies.assertMutationAllowed()
       const draft = normalizeSendDraft(request)
       const current = this.dependencies.readData()
+      const generation = this.dependencies.currentGeneration()
       const client = this.syncClient()
       if (!client.createSend) throw new VaultError('SYNC_FAILED')
       const abort = this.dependencies.startSyncOperation()
@@ -67,7 +68,7 @@ export class VaultSendService {
         if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
         next.sync.state = client.exportState()
         next.updatedAt = this.dependencies.nowIso()
-        await this.dependencies.persistData(next)
+        await this.dependencies.commitData(next, generation)
         this.dependencies.clearSyncError()
         return { ...sendViewFromRemote(remote) }
       } catch (error) {
@@ -122,7 +123,7 @@ export class VaultSendService {
         next.sync.state = client.exportState()
         next.sync.lastSyncAt = this.dependencies.nowIso()
         next.updatedAt = this.dependencies.nowIso()
-        await this.dependencies.persistData(next)
+        await this.dependencies.commitData(next, preflight.generation)
         this.dependencies.clearSyncError()
         return { canceled: false, send: { ...sendViewFromRemote(authoritative) } }
       } catch (error) {
@@ -208,10 +209,11 @@ export class VaultSendService {
       if (!current.sends.some((send) => send.id === request.id)) throw new VaultError('NOT_FOUND')
       const client = this.syncClient()
       if (!client.updateSend) throw new VaultError('SYNC_FAILED')
+      const generation = this.dependencies.currentGeneration()
       const abort = this.dependencies.startSyncOperation()
       try {
         const remote = await client.updateSend(request.id, draft, abort.signal)
-        return await this.persistRemoteSend(current, client, remote)
+        return await this.persistRemoteSend(current, generation, client, remote)
       } catch (error) {
         throw this.dependencies.mapSyncError(error)
       } finally {
@@ -228,10 +230,11 @@ export class VaultSendService {
       if (!current.sends.some((send) => send.id === request.id)) throw new VaultError('NOT_FOUND')
       const client = this.syncClient()
       if (!client.removeSendPassword) throw new VaultError('SYNC_FAILED')
+      const generation = this.dependencies.currentGeneration()
       const abort = this.dependencies.startSyncOperation()
       try {
         const remote = await client.removeSendPassword(request.id, abort.signal)
-        return await this.persistRemoteSend(current, client, remote)
+        return await this.persistRemoteSend(current, generation, client, remote)
       } catch (error) {
         throw this.dependencies.mapSyncError(error)
       } finally {
@@ -247,6 +250,7 @@ export class VaultSendService {
       if (!current.sends.some((send) => send.id === request.id)) throw new VaultError('NOT_FOUND')
       const client = this.syncClient()
       if (!client.deleteSend) throw new VaultError('SYNC_FAILED')
+      const generation = this.dependencies.currentGeneration()
       const abort = this.dependencies.startSyncOperation()
       try {
         await client.deleteSend(request.id, abort.signal)
@@ -255,7 +259,7 @@ export class VaultSendService {
         if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
         next.sync.state = client.exportState()
         next.updatedAt = this.dependencies.nowIso()
-        await this.dependencies.persistData(next)
+        await this.dependencies.commitData(next, generation)
         this.dependencies.clearSyncError()
       } catch (error) {
         throw this.dependencies.mapSyncError(error)
@@ -284,6 +288,7 @@ export class VaultSendService {
 
   private async persistRemoteSend(
     current: VaultData,
+    generation: number,
     client: BitwardenSyncClient,
     remote: Parameters<typeof sendViewFromRemote>[0]
   ): Promise<SendView> {
@@ -292,7 +297,7 @@ export class VaultSendService {
     if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
     next.sync.state = client.exportState()
     next.updatedAt = this.dependencies.nowIso()
-    await this.dependencies.persistData(next)
+    await this.dependencies.commitData(next, generation)
     this.dependencies.clearSyncError()
     return { ...sendViewFromRemote(remote) }
   }
