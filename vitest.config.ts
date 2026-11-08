@@ -1,7 +1,7 @@
 import { resolve } from 'node:path'
 import { lingui } from '@lingui/vite-plugin'
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 export default defineConfig({
   plugins: [
@@ -13,6 +13,7 @@ export default defineConfig({
     lingui()
   ],
   test: {
+    exclude: [...configDefaults.exclude, '.claude/**'],
     setupFiles: ['src/renderer/src/test/i18n-setup.ts']
   },
   resolve: {
