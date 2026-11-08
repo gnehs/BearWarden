@@ -1,6 +1,5 @@
 import {
   MAX_LOGIN_SEARCH_QUERY_LENGTH,
-  type LoginListRequest,
   type LoginSummary,
   type SharedLoginSummary
 } from '../../../shared/vault-contract'
@@ -30,17 +29,6 @@ export function boundedVaultSearchQuery(value: string): string {
 
 export function normalizedVaultSearchQuery(value: string): string {
   return boundedVaultSearchQuery(value).trim()
-}
-
-export function vaultSearchListRequests(
-  query: string
-): readonly [LoginListRequest, LoginListRequest, LoginListRequest] {
-  const normalizedQuery = normalizedVaultSearchQuery(query)
-  return [
-    { sort: 'name', query: normalizedQuery },
-    { sort: 'name', archived: true, query: normalizedQuery },
-    { sort: 'name', deleted: true, query: normalizedQuery }
-  ]
 }
 
 export function filterVaultSearchMatches(

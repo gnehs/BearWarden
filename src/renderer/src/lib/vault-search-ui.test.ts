@@ -8,8 +8,7 @@ import {
   boundedVaultSearchQuery,
   filterVaultSearchMatches,
   isCurrentVaultSearchResponse,
-  matchesVaultSearchNavigation,
-  vaultSearchListRequests
+  matchesVaultSearchNavigation
 } from './vault-search-ui'
 
 function summary(id: string, overrides: Partial<LoginSummary> = {}): LoginSummary {
@@ -98,14 +97,6 @@ describe('vault search renderer policy', () => {
     expect(boundedVaultSearchQuery('x'.repeat(MAX_LOGIN_SEARCH_QUERY_LENGTH + 10))).toHaveLength(
       MAX_LOGIN_SEARCH_QUERY_LENGTH
     )
-  })
-
-  it('searches active, archived, and deleted scopes through the main process', () => {
-    expect(vaultSearchListRequests('  github  ')).toEqual([
-      { sort: 'name', query: 'github' },
-      { sort: 'name', archived: true, query: 'github' },
-      { sort: 'name', deleted: true, query: 'github' }
-    ])
   })
 
   it('does not restrict active header search results to the current navigation filter', () => {

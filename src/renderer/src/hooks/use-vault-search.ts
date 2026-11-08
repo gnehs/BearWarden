@@ -9,10 +9,10 @@ import {
   matchesVaultSearchNavigation,
   normalizedVaultSearchQuery,
   VAULT_SEARCH_DEBOUNCE_MS,
-  vaultSearchListRequests,
   type VaultSearchMatches,
   type VaultSearchNavigationScope
 } from '@renderer/lib/vault-search-ui'
+import { listLoginsInAllStates } from '@renderer/lib/vault-login-lists'
 import { sortVaultItems, type VaultSortMode } from '@renderer/lib/vault-sort'
 
 interface UseVaultSearchOptions {
@@ -79,22 +79,15 @@ export function useVaultSearch({
       })
 
     const timeout = window.setTimeout(() => {
-      const [activeRequest, archivedRequest, deletedRequest] = vaultSearchListRequests(searchQuery)
       void Promise.all([
-        window.bearwarden.logins.list(activeRequest),
-        window.bearwarden.logins.list(archivedRequest),
-        window.bearwarden.logins.list(deletedRequest),
+        listLoginsInAllStates(window.bearwarden.logins, searchQuery),
         window.bearwarden.sharedLogins.list({ sort: 'name', query: searchQuery })
       ]).then(
-        ([activeItems, archivedItems, deletedItems, matchingSharedItems]) => {
+        ([matchingItems, matchingSharedItems]) => {
           if (!isCurrentResponse()) return
           setSearchMatches({
             query: searchQuery,
-            ids: new Set(
-              [...activeItems, ...archivedItems, ...deletedItems, ...matchingSharedItems].map(
-                (item) => item.id
-              )
-            )
+            ids: new Set([...matchingItems, ...matchingSharedItems].map((item) => item.id))
           })
         },
         (searchError) => {

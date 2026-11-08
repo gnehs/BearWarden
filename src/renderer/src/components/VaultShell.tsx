@@ -105,6 +105,7 @@ import { type VaultPortabilityMode } from './VaultPortabilityDialog'
 import VaultShellDialogs from './VaultShellDialogs'
 import { formatVaultExportResult, formatVaultImportResult } from '../lib/vault-portability-ui'
 import { groupItemsByDate } from '../lib/item-date-groups'
+import { listLoginsInAllStates } from '../lib/vault-login-lists'
 import { matchesVaultCategory } from '../lib/vault-category'
 import { normalizeBitwardenCardBrand } from '../lib/payment-card'
 import { shouldShowSyncSetupPrompt } from '../lib/sync-setup-prompt'
@@ -929,24 +930,14 @@ function VaultShellContent({
     clearDetailCache()
     try {
       toast.dismiss(vaultErrorToastId)
-      const [
-        folderList,
-        activeItems,
-        archivedItems,
-        deletedItems,
-        organizationList,
-        collectionList,
-        sharedItemList
-      ] = await Promise.all([
-        window.bearwarden.folders.list(),
-        window.bearwarden.logins.list({ sort: 'name' }),
-        window.bearwarden.logins.list({ sort: 'name', archived: true }),
-        window.bearwarden.logins.list({ sort: 'name', deleted: true }),
-        window.bearwarden.organizations.list(),
-        window.bearwarden.collections.list(),
-        window.bearwarden.sharedLogins.list({ sort: 'name' })
-      ])
-      const loginList = [...activeItems, ...archivedItems, ...deletedItems]
+      const [folderList, loginList, organizationList, collectionList, sharedItemList] =
+        await Promise.all([
+          window.bearwarden.folders.list(),
+          listLoginsInAllStates(window.bearwarden.logins),
+          window.bearwarden.organizations.list(),
+          window.bearwarden.collections.list(),
+          window.bearwarden.sharedLogins.list({ sort: 'name' })
+        ])
       if (!isCurrentVaultLoad(requestId, vaultLoadRequestIdRef.current)) return
       invalidateProtectedDetails(loginList)
       setFolders(sortFoldersByPosition(folderList))
@@ -1270,12 +1261,7 @@ function VaultShellContent({
   )
 
   const refreshItems = useCallback(async (): Promise<void> => {
-    const [activeItems, archivedItems, deletedItems] = await Promise.all([
-      window.bearwarden.logins.list({ sort: 'name' }),
-      window.bearwarden.logins.list({ sort: 'name', archived: true }),
-      window.bearwarden.logins.list({ sort: 'name', deleted: true })
-    ])
-    const loginList = [...activeItems, ...archivedItems, ...deletedItems]
+    const loginList = await listLoginsInAllStates(window.bearwarden.logins)
     invalidateProtectedDetails(loginList)
     const currentIds = new Set(loginList.map((login) => login.id))
     for (const cachedId of detailCacheRef.current.keys()) {
