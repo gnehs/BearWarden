@@ -17,7 +17,7 @@ import type {
   LoginView,
   VaultItemFields
 } from '../shared/vault-contract'
-import { EncryptedVaultStore } from './encrypted-vault-store'
+import { EncryptedVaultStore, type EncryptedVaultStoreOptions } from './encrypted-vault-store'
 import { EncryptedImageCache } from './encrypted-image-cache'
 import {
   VaultService,
@@ -103,7 +103,10 @@ function customFieldRequest(login: LoginView, index: number): CustomFieldRequest
   }
 }
 
-async function createHarness(options: VaultServiceOptions = {}): Promise<{
+async function createHarness(
+  options: VaultServiceOptions = {},
+  storeOptions: EncryptedVaultStoreOptions = {}
+): Promise<{
   directory: string
   filePath: string
   store: EncryptedVaultStore<unknown>
@@ -120,7 +123,7 @@ async function createHarness(options: VaultServiceOptions = {}): Promise<{
   const openExternal = vi.fn()
   let idIndex = 0
   let clock = Date.parse('2026-07-14T00:00:00.000Z')
-  const store = new EncryptedVaultStore<unknown>(filePath)
+  const store = new EncryptedVaultStore<unknown>(filePath, storeOptions)
   const service = new VaultService(
     store,
     {
@@ -12423,5 +12426,208 @@ describe('VaultService encrypted local data', () => {
     await expect(reopened.unlock(MASTER_PASSWORD)).rejects.toMatchObject({
       code: 'CORRUPT_VAULT'
     })
+  })
+})
+
+function createWriteGate(): {
+  storeOptions: EncryptedVaultStoreOptions
+  holdNextWrite: () => { reached: Promise<void>; release: () => void }
+} {
+  let held: { markReached: () => void; released: Promise<void> } | null = null
+  return {
+    storeOptions: {
+      atomicWriteHook: async (stage) => {
+        if (stage !== 'before-rename' || !held) return
+        const current = held
+        held = null
+        current.markReached()
+        await current.released
+      }
+    },
+    holdNextWrite: () => {
+      let markReached!: () => void
+      let release!: () => void
+      const reached = new Promise<void>((resolve) => {
+        markReached = resolve
+      })
+      const released = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      held = { markReached, released }
+      return { reached, release }
+    }
+  }
+}
+
+async function reopenedLoginNames(filePath: string): Promise<string[]> {
+  const reopened = new VaultService(new EncryptedVaultStore<unknown>(filePath), {
+    copyText: vi.fn(),
+    openExternal: vi.fn()
+  })
+  await reopened.unlock(MASTER_PASSWORD)
+  const names = (await reopened.listLogins()).map((login) => login.name)
+  reopened.dispose()
+  return names
+}
+
+describe('VaultService commit races with lock and dispose', () => {
+  it('reports LOCKED for a mutation whose write lands while lock() is pending, and keeps the write', async () => {
+    const gate = createWriteGate()
+    const { filePath, service } = await createHarness({}, gate.storeOptions)
+    await service.setup(MASTER_PASSWORD)
+
+    const write = gate.holdNextWrite()
+    const creating = service.createLogin({ name: 'Raced with lock' })
+    await write.reached
+    const locking = service.lock()
+    write.release()
+
+    await expect(creating).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(locking).resolves.toEqual({ state: 'locked' })
+    await expect(service.listLogins()).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(reopenedLoginNames(filePath)).resolves.toEqual(['Raced with lock'])
+    await service.unlock(MASTER_PASSWORD)
+    expect((await service.listLogins()).map((login) => login.name)).toEqual(['Raced with lock'])
+  })
+
+  it('drops a lock-raced write when a mutation queued ahead of the lock rebuilds from the older snapshot', async () => {
+    const gate = createWriteGate()
+    const { filePath, service } = await createHarness({}, gate.storeOptions)
+    await service.setup(MASTER_PASSWORD)
+
+    const write = gate.holdNextWrite()
+    const raced = service.createLogin({ name: 'Raced with lock' })
+    await write.reached
+    const queued = service.createLogin({ name: 'Queued before lock' })
+    const locking = service.lock()
+    write.release()
+
+    await expect(raced).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(queued).resolves.toMatchObject({ name: 'Queued before lock' })
+    await expect(locking).resolves.toEqual({ state: 'locked' })
+    await expect(reopenedLoginNames(filePath)).resolves.toEqual(['Queued before lock'])
+  })
+
+  it('reports LOCKED for a mutation whose write lands after dispose(), and keeps a readable write', async () => {
+    const gate = createWriteGate()
+    const { filePath, service } = await createHarness({}, gate.storeOptions)
+    await service.setup(MASTER_PASSWORD)
+
+    const write = gate.holdNextWrite()
+    const creating = service.createLogin({ name: 'Raced with dispose' })
+    await write.reached
+    service.dispose()
+    write.release()
+
+    await expect(creating).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(service.listLogins()).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(reopenedLoginNames(filePath)).resolves.toEqual(['Raced with dispose'])
+  })
+
+  it('reports success for a Send whose remote create finishes after lock(), and keeps the write', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const sendId = '50000000-0000-4000-8000-000000000002'
+    const deletionDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    let remoteCalled!: () => void
+    const remoteReached = new Promise<void>((resolve) => {
+      remoteCalled = resolve
+    })
+    let finishRemote!: () => void
+    const remoteFinished = new Promise<void>((resolve) => {
+      finishRemote = resolve
+    })
+    fake!.createSend = async (draft) => {
+      remoteCalled()
+      await remoteFinished
+      return {
+        id: sendId,
+        accessId: 'UAAAAAAAQABAAAAAAAAAAg',
+        type: 'text',
+        name: draft.name,
+        notes: null,
+        text: draft.text ?? null,
+        hidden: false,
+        maxAccessCount: null,
+        accessCount: 0,
+        revisionDate: '2026-07-16T00:00:00.000Z',
+        expirationDate: null,
+        deletionDate,
+        disabled: false,
+        hideEmail: false,
+        authType: 2,
+        passwordProtected: false
+      }
+    }
+
+    const creating = service.createSend({ name: 'Raced Send', text: 'body', deletionDate })
+    await remoteReached
+    const locking = service.lock()
+    finishRemote()
+
+    await expect(creating).resolves.toMatchObject({ id: sendId, name: 'Raced Send' })
+    await expect(locking).resolves.toEqual({ state: 'locked' })
+    await expect(service.listSends()).rejects.toMatchObject({ code: 'LOCKED' })
+    await service.unlock(MASTER_PASSWORD)
+    expect((await service.listSends()).map((send) => send.id)).toEqual([sendId])
+  })
+
+  it('rejects a PIN unlock with LOCKED when lock() is queued behind it, without spending an attempt', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    await service.enablePinUnlock({ pin: 'bear-2026', masterPassword: MASTER_PASSWORD })
+    await service.lock()
+
+    const unlocking = service.unlockWithPin({ pin: 'bear-2026' })
+    const locking = service.lock()
+
+    await expect(unlocking).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(locking).resolves.toEqual({ state: 'locked' })
+    expect(service.pinUnlockStatus()).toEqual({ available: true, remainingAttempts: 5 })
+    await expect(service.listLogins()).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(service.unlockWithPin({ pin: 'bear-2026' })).resolves.toEqual({
+      state: 'unlocked'
+    })
+  })
+
+  it('rejects a Touch ID unlock with LOCKED when lock() is queued behind it', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const material = await service.exportTouchIdUnlockMaterial(MASTER_PASSWORD)
+    await service.lock()
+
+    const unlocking = service.unlockWithTouchIdMaterial(material)
+    const locking = service.lock()
+
+    await expect(unlocking).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(locking).resolves.toEqual({ state: 'locked' })
+    await expect(service.listLogins()).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(service.unlockWithTouchIdMaterial(material)).resolves.toEqual({
+      state: 'unlocked'
+    })
+  })
+
+  it('resolves a master-password unlock when lock() is queued behind it, then ends locked', async () => {
+    const { service } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    await service.lock()
+
+    const unlocking = service.unlock(MASTER_PASSWORD)
+    const locking = service.lock()
+
+    await expect(unlocking).resolves.toEqual({ state: 'unlocked' })
+    await expect(locking).resolves.toEqual({ state: 'locked' })
+    await expect(service.listLogins()).rejects.toMatchObject({ code: 'LOCKED' })
   })
 })
