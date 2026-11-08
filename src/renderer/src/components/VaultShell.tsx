@@ -211,6 +211,7 @@ import { describeError, isRepromptRequired } from './vault-error-ui'
 import { itemTypeIcons } from './vault-item-type-icons'
 import { VaultSearchDialog, VaultShellLoading, VaultShellTitlebar } from './VaultShellChrome'
 import { isSharedLoginSummary } from './organizations-ui'
+import { createVaultItemAccess, tracksItemUsage } from './vault-item-access'
 
 interface ItemTypeMeta {
   label: string
@@ -619,6 +620,13 @@ function VaultShellContent({
     tokens: authorizationTokens
   } = useVaultAuthorization()
   const detailCache = useLoginDetailCache(authorization, prefetchCardCoverPreview)
+  const [itemAccess] = useState(() =>
+    createVaultItemAccess({
+      logins: window.bearwarden.logins,
+      sharedLogins: window.bearwarden.sharedLogins,
+      authorization
+    })
+  )
   const vaultData = useVaultDataSync(authorization, detailCache, {
     selectedDetailInvalidated: () => {
       setPasswordHistoryDialogOpen(false)
@@ -1037,12 +1045,13 @@ function VaultShellContent({
     const refresh = (): void => {
       if (stopped || refreshing) return
       refreshing = true
-      const token = authorization.token(itemId)
-      const request = { id: itemId, ...authorizationTokenField(token) }
-      const pendingCode = selectedSharedSummary
-        ? window.bearwarden.sharedLogins.getTotp({ id: itemId })
-        : window.bearwarden.logins.getTotp(request)
-      pendingCode
+      const item = findItem(itemId)
+      if (!item) {
+        refreshing = false
+        return
+      }
+      itemAccess
+        .getTotp(item)
         .then(
           (nextCode) => {
             if (!active) return
@@ -1088,7 +1097,9 @@ function VaultShellContent({
     totpRefreshTarget?.itemId,
     totpRefreshTarget?.sourceRevision,
     selectedSharedSummary,
-    authorization
+    authorization,
+    findItem,
+    itemAccess
   ])
 
   useEffect(() => {
@@ -2516,15 +2527,7 @@ function VaultShellContent({
       return undefined
     }
     try {
-      const value = selectedSharedSummary
-        ? await window.bearwarden.sharedLogins.revealSecret({ id: itemId, field })
-        : await authorization.withReprompt([itemId], (tokenFor) =>
-            window.bearwarden.logins.revealSecret({
-              id: itemId,
-              field,
-              ...authorizationTokenField(tokenFor(itemId))
-            })
-          )
+      const value = await itemAccess.revealSecret(selectedSummary, field)
       if (currentSelectedId() !== itemId) return undefined
       if (
         options.quiet &&
@@ -2587,31 +2590,16 @@ function VaultShellContent({
     if (!selectedSummary) return
     clearCopied()
     try {
-      const itemId = selectedSummary.id
-      const request = {
-        id: itemId,
-        field,
-        ...(uriIndex === undefined ? {} : { uriIndex })
-      }
-      if (selectedSharedSummary) {
-        await window.bearwarden.sharedLogins.copyField(request)
-      } else {
-        await authorization.withReprompt([itemId], (tokenFor) =>
-          window.bearwarden.logins.copyField({
-            ...request,
-            ...authorizationTokenField(tokenFor(itemId))
-          })
-        )
-      }
-      showCopied(detailFieldCopyFeedbackKey(itemId, field, uriIndex))
-      if (!selectedSharedSummary) await vaultData.refreshItems()
+      await itemAccess.copyField(selectedSummary, field, uriIndex)
+      showCopied(detailFieldCopyFeedbackKey(selectedSummary.id, field, uriIndex))
+      if (tracksItemUsage(selectedSummary)) await vaultData.refreshItems()
     } catch (copyError) {
       announceError(describeVaultError(copyError))
     }
   }
 
   async function revealCustomField(index: number, field: VaultCustomFieldView): Promise<void> {
-    if (!selectedLogin) return
+    if (!selectedLogin || !selectedSummary) return
     const itemId = selectedLogin.id
     const revealedEntry =
       revealedCustomFields.itemId === itemId ? revealedCustomFields.values[index] : undefined
@@ -2636,15 +2624,10 @@ function VaultShellContent({
         type: field.type,
         linkedId: field.linkedId
       }
-      const request = { id: itemId, expectedUpdatedAt, source }
-      const value = selectedSharedSummary
-        ? await window.bearwarden.sharedLogins.revealCustomField(request)
-        : await authorization.withReprompt([itemId], (tokenFor) =>
-            window.bearwarden.logins.revealCustomField({
-              ...request,
-              ...authorizationTokenField(tokenFor(itemId))
-            })
-          )
+      const value = await itemAccess.revealCustomField(selectedSummary, {
+        expectedUpdatedAt,
+        source
+      })
       if (currentSelectedId() !== itemId) return
       setRevealedCustomFields((current) => ({
         itemId,
@@ -2660,27 +2643,15 @@ function VaultShellContent({
   }
 
   async function copyCustomField(index: number, field: VaultCustomFieldView): Promise<void> {
-    if (!selectedLogin) return
+    if (!selectedLogin || !selectedSummary) return
     clearCopied()
     try {
-      const itemId = selectedLogin.id
-      const request = {
-        id: itemId,
+      await itemAccess.copyCustomField(selectedSummary, {
         expectedUpdatedAt: selectedLogin.updatedAt,
         source: { index, name: field.name, type: field.type, linkedId: field.linkedId }
-      }
-      if (selectedSharedSummary) {
-        await window.bearwarden.sharedLogins.copyCustomField(request)
-      } else {
-        await authorization.withReprompt([itemId], (tokenFor) =>
-          window.bearwarden.logins.copyCustomField({
-            ...request,
-            ...authorizationTokenField(tokenFor(itemId))
-          })
-        )
-      }
-      showCopied(customFieldCopyFeedbackKey(itemId, index, field))
-      if (!selectedSharedSummary) await vaultData.refreshItems()
+      })
+      showCopied(customFieldCopyFeedbackKey(selectedLogin.id, index, field))
+      if (tracksItemUsage(selectedSummary)) await vaultData.refreshItems()
     } catch (copyError) {
       announceError(describeVaultError(copyError))
     }
@@ -2995,22 +2966,12 @@ function VaultShellContent({
   }
 
   async function copyTotp(): Promise<void> {
-    if (!selectedLogin?.hasTotp) return
+    if (!selectedLogin?.hasTotp || !selectedSummary) return
     clearCopied()
     try {
-      const itemId = selectedLogin.id
-      if (selectedSharedSummary) {
-        await window.bearwarden.sharedLogins.copyTotp({ id: itemId })
-      } else {
-        await authorization.withReprompt([itemId], (tokenFor) =>
-          window.bearwarden.logins.copyTotp({
-            id: itemId,
-            ...authorizationTokenField(tokenFor(itemId))
-          })
-        )
-      }
-      showCopied(`totp:${itemId}`)
-      if (!selectedSharedSummary) await vaultData.refreshItems()
+      await itemAccess.copyTotp(selectedSummary)
+      showCopied(`totp:${selectedLogin.id}`)
+      if (tracksItemUsage(selectedSummary)) await vaultData.refreshItems()
     } catch (copyError) {
       announceError(describeVaultError(copyError))
     }
@@ -3019,20 +2980,9 @@ function VaultShellContent({
   async function openWebsite(uriIndex = 0): Promise<void> {
     if (!selectedSummary?.uris[uriIndex]?.uri) return
     try {
-      const itemId = selectedSummary.id
-      if (selectedSharedSummary) {
-        await window.bearwarden.sharedLogins.openUri({ id: itemId, uriIndex })
-      } else {
-        await authorization.withReprompt([itemId], (tokenFor) =>
-          window.bearwarden.logins.openUri({
-            id: itemId,
-            uriIndex,
-            ...authorizationTokenField(tokenFor(itemId))
-          })
-        )
-      }
+      await itemAccess.openUri(selectedSummary, uriIndex)
       announce(t`Website opened.`)
-      if (!selectedSharedSummary) await vaultData.refreshItems()
+      if (tracksItemUsage(selectedSummary)) await vaultData.refreshItems()
     } catch (openError) {
       announceError(describeVaultError(openError))
     }
