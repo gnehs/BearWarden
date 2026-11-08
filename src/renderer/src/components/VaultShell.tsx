@@ -117,6 +117,7 @@ import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
 import { useEditorTransitionGuard } from '@renderer/hooks/use-editor-transition-guard'
 import { useVaultAccounts } from '@renderer/hooks/use-vault-accounts'
 import { useVaultSearch } from '@renderer/hooks/use-vault-search'
+import { useVaultAuthorization } from '@renderer/hooks/use-vault-authorization'
 import { useCardCoverPreviews } from '@renderer/hooks/use-card-cover-previews'
 import { resolveTotpRefreshTarget } from './totp-refresh-target'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
@@ -187,8 +188,6 @@ import {
   type BulkActionSnapshot,
   type BulkSelectionState,
   type MoveSnapshot,
-  type PendingReprompt,
-  type RepromptPromptState,
   type RevealedCustomFieldsState,
   type RevealedSecretsState,
   type Scope,
@@ -627,9 +626,12 @@ function VaultShellContent({
   } = useCardCoverPreviews()
   const [attachmentDeleteTarget, setAttachmentDeleteTarget] =
     useState<AttachmentDeleteTarget | null>(null)
-  const [repromptPrompt, setRepromptPrompt] = useState<RepromptPromptState | null>(null)
-  const [repromptBusy, setRepromptBusy] = useState(false)
-  const [authorizationTokenState, setAuthorizationTokenState] = useState<Record<string, string>>({})
+  const {
+    authorization,
+    prompt: repromptRequest,
+    busy: repromptBusy,
+    tokens: authorizationTokens
+  } = useVaultAuthorization()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   const [loginApprovalPrompts, setLoginApprovalPrompts] = useState<LoginApprovalPrompt[]>([])
@@ -667,9 +669,6 @@ function VaultShellContent({
   const detailCacheGenerationRef = useRef(0)
   // A successful list load may invalidate protected details, so list freshness needs its own epoch.
   const vaultLoadRequestIdRef = useRef(0)
-  const authorizationCacheRef = useRef(new Map<string, LoginAuthorization>())
-  const authorizationExpiryTimersRef = useRef(new Map<string, number>())
-  const pendingRepromptRef = useRef<PendingReprompt | null>(null)
   const attachmentOperationRef = useRef<AttachmentOperationState | null>(null)
 
   const beginAttachmentOperation = useCallback(
@@ -750,47 +749,10 @@ function VaultShellContent({
     detailCacheRef.current.clear()
   }, [])
 
-  const discardAuthorizationToken = useCallback((id: string): void => {
-    authorizationCacheRef.current.delete(id)
-    setAuthorizationTokenState((current) => {
-      if (!(id in current)) return current
-      const next = { ...current }
-      delete next[id]
-      return next
-    })
-    const timer = authorizationExpiryTimersRef.current.get(id)
-    if (timer !== undefined) window.clearTimeout(timer)
-    authorizationExpiryTimersRef.current.delete(id)
-  }, [])
-
-  const authorizationToken = useCallback(
-    (id: string): string | undefined => {
-      const authorization = authorizationCacheRef.current.get(id)
-      if (!authorization) return undefined
-      if (authorization.expiresAt <= Date.now()) {
-        detailCacheGenerationRef.current += 1
-        detailRequestsRef.current.clear()
-        discardAuthorizationToken(id)
-        detailCacheRef.current.delete(id)
-        if (currentSelectedId() === id) {
-          setPasswordHistoryDialogOpen(false)
-          setSelectedLogin(null)
-          setEditorMode(null)
-          setTotpCodeState(null)
-          setRevealedSecrets(emptyRevealedSecrets)
-          setRevealedCustomFields(emptyRevealedCustomFields)
-        }
-        return undefined
-      }
-      return authorization.token
-    },
-    [currentSelectedId, discardAuthorizationToken, setEditorMode, setSelectedLogin]
-  )
-
   const invalidateProtectedDetails = useCallback(
     (summaries: readonly LoginSummary[]): void => {
       const invalidIds = protectedDetailInvalidationIds(summaries, (id) =>
-        Boolean(authorizationToken(id))
+        Boolean(authorization.token(id))
       )
       if (invalidIds.size === 0) return
       detailCacheGenerationRef.current += 1
@@ -807,104 +769,24 @@ function VaultShellContent({
         setRevealedCustomFields(emptyRevealedCustomFields)
       }
     },
-    [authorizationToken, clearEditorDirty, currentSelectedId, setEditorMode, setSelectedLogin]
+    [authorization, clearEditorDirty, currentSelectedId, setEditorMode, setSelectedLogin]
   )
 
-  const invalidateAuthorization = useCallback(
-    (id: string, preservePasswordHistoryDialog = false): void => {
-      detailCacheGenerationRef.current += 1
-      detailRequestsRef.current.clear()
-      discardAuthorizationToken(id)
-      detailCacheRef.current.delete(id)
-      if (currentSelectedId() === id) {
+  useEffect(
+    () =>
+      authorization.subscribeRevoked((id, { preservePasswordHistoryDialog }) => {
+        detailCacheGenerationRef.current += 1
+        detailRequestsRef.current.clear()
+        detailCacheRef.current.delete(id)
+        if (currentSelectedId() !== id) return
         if (!preservePasswordHistoryDialog) setPasswordHistoryDialogOpen(false)
         setSelectedLogin(null)
         setEditorMode(null)
+        setTotpCodeState(null)
         setRevealedSecrets(emptyRevealedSecrets)
         setRevealedCustomFields(emptyRevealedCustomFields)
-      }
-    },
-    [currentSelectedId, discardAuthorizationToken, setEditorMode, setSelectedLogin]
-  )
-
-  const cacheAuthorization = useCallback(
-    (id: string, authorization: LoginAuthorization): void => {
-      // Replacing an authorization token must not dismiss the operation that requested it.
-      discardAuthorizationToken(id)
-      authorizationCacheRef.current.set(id, authorization)
-      setAuthorizationTokenState((current) => ({
-        ...current,
-        [id]: authorization.token
-      }))
-      const delay = Math.max(0, authorization.expiresAt - Date.now())
-      const timer = window.setTimeout(() => {
-        const current = authorizationCacheRef.current.get(id)
-        if (current?.token === authorization.token) invalidateAuthorization(id)
-      }, delay)
-      authorizationExpiryTimersRef.current.set(id, timer)
-    },
-    [discardAuthorizationToken, invalidateAuthorization]
-  )
-
-  const requestReprompt = useCallback(
-    (ids: readonly string[]): Promise<LoginAuthorization> => {
-      const normalizedIds = ids.toSorted()
-      if (normalizedIds.length === 1) {
-        const cached = authorizationCacheRef.current.get(normalizedIds[0])
-        if (cached && authorizationToken(normalizedIds[0])) return Promise.resolve(cached)
-      }
-      const key = normalizedIds.join('\n')
-      const pending = pendingRepromptRef.current
-      if (pending) {
-        if (pending.key === key) return pending.promise
-        return Promise.reject(new Error('REPROMPT_REQUIRED'))
-      }
-      let resolve!: (authorization: LoginAuthorization) => void
-      let reject!: (error: Error) => void
-      const promise = new Promise<LoginAuthorization>((resolvePromise, rejectPromise) => {
-        resolve = resolvePromise
-        reject = rejectPromise
-      })
-      pendingRepromptRef.current = { key, ids: normalizedIds, promise, resolve, reject }
-      const item = findItem(normalizedIds[0])
-      setRepromptPrompt({
-        itemName:
-          normalizedIds.length === 1
-            ? (item?.name ?? t`This item`)
-            : t({
-                message: plural(normalizedIds.length, {
-                  one: '# protected item',
-                  other: '# protected items'
-                })
-              })
-      })
-      return promise
-    },
-    [authorizationToken, findItem, t]
-  )
-
-  const withReprompt = useCallback(
-    async <T,>(
-      ids: readonly string[],
-      operation: (tokenFor: (id: string) => string | undefined) => Promise<T>,
-      preservePasswordHistoryDialog = false
-    ): Promise<T> => {
-      const protectedIds = ids.filter((id) => findItem(id)?.reprompt === 1)
-      const authorization = protectedIds.length > 0 ? await requestReprompt(ids) : undefined
-      const tokenFor = (id: string): string | undefined =>
-        authorization ? authorization.token : authorizationToken(id)
-      try {
-        return await operation(tokenFor)
-      } catch (error) {
-        if (!isRepromptRequired(error) || ids.length === 0) throw error
-        for (const id of ids) invalidateAuthorization(id, preservePasswordHistoryDialog)
-        const retryAuthorization = await requestReprompt(ids)
-        return operation((id) =>
-          ids.includes(id) ? retryAuthorization.token : authorizationToken(id)
-        )
-      }
-    },
-    [authorizationToken, findItem, invalidateAuthorization, requestReprompt]
+      }),
+    [authorization, currentSelectedId, setEditorMode, setSelectedLogin]
   )
 
   const sensors = useSensors(
@@ -992,7 +874,7 @@ function VaultShellContent({
       const cached = detailCacheRef.current.get(id)
       if (
         cached &&
-        canUseCachedLoginDetail(summary, cached.reprompt, Boolean(authorizationToken(id)))
+        canUseCachedLoginDetail(summary, cached.reprompt, Boolean(authorization.token(id)))
       ) {
         detailCacheRef.current.delete(id)
         detailCacheRef.current.set(id, cached)
@@ -1004,28 +886,30 @@ function VaultShellContent({
 
       const startSelectedRequest = (): Promise<LoginView> => {
         let requestGeneration = detailCacheGenerationRef.current
-        return withReprompt([id], (tokenFor) => {
-          requestGeneration = detailCacheGenerationRef.current
-          return window.bearwarden.logins.get({
-            id,
-            ...authorizationTokenField(tokenFor(id))
-          })
-        }).then((login) => {
-          if (
-            !isCurrentSelectedDetailResponse({
+        return authorization
+          .withReprompt([id], (tokenFor) => {
+            requestGeneration = detailCacheGenerationRef.current
+            return window.bearwarden.logins.get({
               id,
-              selectedId: currentSelectedId(),
-              requestGeneration,
-              currentGeneration: detailCacheGenerationRef.current,
-              reprompt: login.reprompt,
-              authorizationToken: authorizationToken(id)
+              ...authorizationTokenField(tokenFor(id))
             })
-          ) {
-            throw new Error('DETAIL_REQUEST_INVALIDATED')
-          }
-          cacheLoginDetail(detailCacheRef.current, login)
-          return login
-        })
+          })
+          .then((login) => {
+            if (
+              !isCurrentSelectedDetailResponse({
+                id,
+                selectedId: currentSelectedId(),
+                requestGeneration,
+                currentGeneration: detailCacheGenerationRef.current,
+                reprompt: login.reprompt,
+                authorizationToken: authorization.token(id)
+              })
+            ) {
+              throw new Error('DETAIL_REQUEST_INVALIDATED')
+            }
+            cacheLoginDetail(detailCacheRef.current, login)
+            return login
+          })
       }
 
       const pendingPrefetch = detailPrefetchRequestsRef.current.get(id)
@@ -1038,7 +922,7 @@ function VaultShellContent({
               canUseCachedLoginDetail(
                 currentSummary,
                 currentCached.reprompt,
-                Boolean(authorizationToken(id))
+                Boolean(authorization.token(id))
               )
             ) {
               cacheLoginDetail(detailCacheRef.current, currentCached)
@@ -1056,7 +940,7 @@ function VaultShellContent({
         })
       return promise
     },
-    [authorizationToken, currentSelectedId, findItem, withReprompt]
+    [authorization, currentSelectedId, findItem]
   )
 
   const prefetchLoginDetail = useCallback(
@@ -1146,7 +1030,7 @@ function VaultShellContent({
         const summary = id ? findItem(id) : undefined
         const canUseCached =
           cached &&
-          canUseCachedLoginDetail(summary, cached.reprompt, Boolean(authorizationToken(cached.id)))
+          canUseCachedLoginDetail(summary, cached.reprompt, Boolean(authorization.token(cached.id)))
         if (canUseCached) setSelectedLogin(cached)
         else if (!id) setSelectedLogin(null)
         setSelectedId(id)
@@ -1157,7 +1041,7 @@ function VaultShellContent({
       })
     },
     [
-      authorizationToken,
+      authorization,
       findItem,
       requestEditorTransition,
       setEditorMode,
@@ -1179,23 +1063,25 @@ function VaultShellContent({
 
   const showLoginContextMenu = useCallback(
     (id: string, position: { x: number; y: number }): void => {
-      void withReprompt([id], (tokenFor) =>
-        window.bearwarden.logins.showContextMenu({
-          id,
-          ...position,
-          hasTotp: items.find((item) => item.id === id)?.hasTotp ?? false,
-          ...authorizationTokenField(tokenFor(id))
-        })
-      ).catch((menuError) => announceError(describeVaultError(menuError)))
+      void authorization
+        .withReprompt([id], (tokenFor) =>
+          window.bearwarden.logins.showContextMenu({
+            id,
+            ...position,
+            hasTotp: items.find((item) => item.id === id)?.hasTotp ?? false,
+            ...authorizationTokenField(tokenFor(id))
+          })
+        )
+        .catch((menuError) => announceError(describeVaultError(menuError)))
     },
-    [describeVaultError, items, withReprompt]
+    [authorization, describeVaultError, items]
   )
 
   const loadPasswordHistory = useCallback(async () => {
     const summary = selectedSummary
     if (!summary || summary.passwordHistoryCount === 0) throw new Error('INVALID_INPUT')
     const itemId = summary.id
-    return withReprompt(
+    return authorization.withReprompt(
       [itemId],
       (tokenFor) =>
         window.bearwarden.logins.getPasswordHistory({
@@ -1204,7 +1090,7 @@ function VaultShellContent({
         }),
       true
     )
-  }, [selectedSummary, withReprompt])
+  }, [authorization, selectedSummary])
 
   const revealPasswordHistory = useCallback(
     async (
@@ -1213,7 +1099,7 @@ function VaultShellContent({
       const summary = selectedSummary
       if (!summary) throw new Error('INVALID_INPUT')
       const itemId = summary.id
-      return withReprompt(
+      return authorization.withReprompt(
         [itemId],
         (tokenFor) =>
           window.bearwarden.logins.revealPasswordHistory({
@@ -1224,7 +1110,7 @@ function VaultShellContent({
         true
       )
     },
-    [selectedSummary, withReprompt]
+    [authorization, selectedSummary]
   )
 
   const copyPasswordHistory = useCallback(
@@ -1234,7 +1120,7 @@ function VaultShellContent({
       const summary = selectedSummary
       if (!summary) throw new Error('INVALID_INPUT')
       const itemId = summary.id
-      await withReprompt(
+      await authorization.withReprompt(
         [itemId],
         (tokenFor) =>
           window.bearwarden.logins.copyPasswordHistory({
@@ -1245,7 +1131,7 @@ function VaultShellContent({
         true
       )
     },
-    [selectedSummary, withReprompt]
+    [authorization, selectedSummary]
   )
 
   const refreshItems = useCallback(async (): Promise<void> => {
@@ -1321,19 +1207,6 @@ function VaultShellContent({
       clearDetailCache()
     },
     [clearDetailCache]
-  )
-
-  useEffect(
-    () => () => {
-      for (const timer of authorizationExpiryTimersRef.current.values()) {
-        window.clearTimeout(timer)
-      }
-      authorizationExpiryTimersRef.current.clear()
-      authorizationCacheRef.current.clear()
-      pendingRepromptRef.current?.reject(new Error('REPROMPT_REQUIRED'))
-      pendingRepromptRef.current = null
-    },
-    []
   )
 
   useEffect(() => {
@@ -1489,7 +1362,7 @@ function VaultShellContent({
     const refresh = (): void => {
       if (stopped || refreshing) return
       refreshing = true
-      const token = authorizationToken(itemId)
+      const token = authorization.token(itemId)
       const request = { id: itemId, ...authorizationTokenField(token) }
       const pendingCode = selectedSharedSummary
         ? window.bearwarden.sharedLogins.getTotp({ id: itemId })
@@ -1511,7 +1384,7 @@ function VaultShellContent({
               stopped = true
               window.clearInterval(timer)
               setTotpCodeState(null)
-              invalidateAuthorization(itemId)
+              authorization.revoke(itemId)
               clearItemSelection()
               announceError(
                 t`Authorization expired. Select the item again and verify your master password.`
@@ -1535,13 +1408,12 @@ function VaultShellContent({
       window.clearInterval(timer)
     }
   }, [
-    authorizationToken,
     clearItemSelection,
-    invalidateAuthorization,
     t,
     totpRefreshTarget?.itemId,
     totpRefreshTarget?.sourceRevision,
-    selectedSharedSummary
+    selectedSharedSummary,
+    authorization
   ])
 
   useEffect(() => {
@@ -1639,20 +1511,20 @@ function VaultShellContent({
         const now = Date.now()
         if (listAuthorization && listAuthorization.expiresAt <= now) listAuthorization = undefined
         const requiresListAuthorization = totpListItemIds.some(
-          (id) => findItem(id)?.reprompt === 1 && !authorizationToken(id)
+          (id) => findItem(id)?.reprompt === 1 && !authorization.token(id)
         )
         if (!listAuthorization && requiresListAuthorization) {
-          listAuthorization = await requestReprompt(totpListItemIds)
+          listAuthorization = await authorization.request(totpListItemIds)
         }
 
         const tokenFor = (id: string): string | undefined =>
-          listAuthorization?.token ?? authorizationToken(id)
+          listAuthorization?.token ?? authorization.token(id)
         let results: Array<{ id: string; code: TotpCodeView | null; fetchedAt: number }>
         try {
           results = await readCodes(tokenFor)
         } catch (error) {
           if (!isRepromptRequired(error)) throw error
-          listAuthorization = await requestReprompt(totpListItemIds)
+          listAuthorization = await authorization.request(totpListItemIds)
           results = await readCodes(() => listAuthorization?.token)
         }
         if (!active) return
@@ -1711,15 +1583,7 @@ function VaultShellContent({
       active = false
       window.clearInterval(timer)
     }
-  }, [
-    authorizationToken,
-    describeVaultError,
-    findItem,
-    requestReprompt,
-    totpListItemIds,
-    totpListRevision,
-    typeFilter
-  ])
+  }, [authorization, describeVaultError, findItem, totpListItemIds, totpListRevision, typeFilter])
 
   const selectItems = useCallback(
     (id: string, modifiers: ItemSelectionModifiers): void => {
@@ -2238,32 +2102,6 @@ function VaultShellContent({
     selectLogin(id)
   }
 
-  async function submitReprompt(masterPassword: string): Promise<void> {
-    const pending = pendingRepromptRef.current
-    if (!pending) throw new Error('REPROMPT_REQUIRED')
-    setRepromptBusy(true)
-    try {
-      const authorization = await window.bearwarden.logins.authorizeMany({
-        ids: pending.ids,
-        masterPassword
-      })
-      if (pending.ids.length === 1) cacheAuthorization(pending.ids[0], authorization)
-      pending.resolve(authorization)
-      pendingRepromptRef.current = null
-      setRepromptPrompt(null)
-    } finally {
-      setRepromptBusy(false)
-    }
-  }
-
-  function cancelReprompt(): void {
-    if (repromptBusy) return
-    const pending = pendingRepromptRef.current
-    pendingRepromptRef.current = null
-    setRepromptPrompt(null)
-    pending?.reject(new Error('REPROMPT_REQUIRED'))
-  }
-
   async function updateSettings(update: AppSettingsUpdate): Promise<boolean> {
     try {
       const next = await persistSettings(update)
@@ -2334,7 +2172,7 @@ function VaultShellContent({
   const toggleFavorite = useCallback(
     async (item: LoginSummary): Promise<void> => {
       try {
-        const updated = await withReprompt([item.id], (tokenFor) =>
+        const updated = await authorization.withReprompt([item.id], (tokenFor) =>
           window.bearwarden.logins.setFavorite({
             id: item.id,
             favorite: !item.favorite,
@@ -2351,7 +2189,7 @@ function VaultShellContent({
         announceError(describeVaultError(favoriteError))
       }
     },
-    [announce, describeVaultError, setItems, setSelectedLogin, t, withReprompt]
+    [announce, authorization, describeVaultError, setItems, setSelectedLogin, t]
   )
 
   function revalidateBulkSelection(
@@ -2408,7 +2246,7 @@ function VaultShellContent({
       let affectedCount = 0
       let updated: LoginSummary[] = []
       try {
-        await withReprompt(snapshot.ids, async (tokenFor) => {
+        await authorization.withReprompt(snapshot.ids, async (tokenFor) => {
           const request = {
             ids: snapshot.ids,
             ...authorizationTokenField(firstAuthorizationToken(snapshot.ids, tokenFor))
@@ -2495,7 +2333,7 @@ function VaultShellContent({
     )
     try {
       const movableItemIds = movable.map((item) => item.id)
-      const updated = await withReprompt(movableItemIds, (tokenFor) =>
+      const updated = await authorization.withReprompt(movableItemIds, (tokenFor) =>
         window.bearwarden.logins.moveMany({
           ids: movableItemIds,
           folderId,
@@ -2540,7 +2378,7 @@ function VaultShellContent({
     const ids = itemsToUpdate.map((item) => item.id)
     setBusy(true)
     try {
-      const updated = await withReprompt(ids, (tokenFor) =>
+      const updated = await authorization.withReprompt(ids, (tokenFor) =>
         Promise.all(
           ids.map((id) =>
             window.bearwarden.logins.setFavorite({
@@ -2596,7 +2434,7 @@ function VaultShellContent({
       const containedIds = items
         .filter((item) => item.folderId === folderDialog.id)
         .map((item) => item.id)
-      await withReprompt(containedIds, (tokenFor) =>
+      await authorization.withReprompt(containedIds, (tokenFor) =>
         window.bearwarden.folders.delete({
           id: folderDialog.id,
           ...authorizationTokenField(firstAuthorizationToken(containedIds, tokenFor))
@@ -2741,7 +2579,7 @@ function VaultShellContent({
           setSelectedLogin(updated)
           announce(t`Saved “${updated.name}”.`)
         } else {
-          const updated = await withReprompt([itemId], (tokenFor) => {
+          const updated = await authorization.withReprompt([itemId], (tokenFor) => {
             const request = {
               id: itemId,
               expectedUpdatedAt: draft.expectedUpdatedAt ?? undefined,
@@ -2773,7 +2611,7 @@ function VaultShellContent({
                 attachmentCount: updatedAttachments.length
               }
             : updated
-          if (updatedWithCardCover.reprompt === 0 || authorizationToken(itemId)) {
+          if (updatedWithCardCover.reprompt === 0 || authorization.token(itemId)) {
             cacheLoginDetail(detailCacheRef.current, updatedWithCardCover)
           } else {
             detailCacheRef.current.delete(itemId)
@@ -2784,7 +2622,7 @@ function VaultShellContent({
             )
           )
           setSelectedLogin(
-            updatedWithCardCover.reprompt === 0 || authorizationToken(itemId)
+            updatedWithCardCover.reprompt === 0 || authorization.token(itemId)
               ? updatedWithCardCover
               : null
           )
@@ -2812,7 +2650,7 @@ function VaultShellContent({
     try {
       const itemId = selectedLogin.id
       let operationAuthorizationToken: string | undefined
-      const updated = await withReprompt([itemId], (tokenFor) => {
+      const updated = await authorization.withReprompt([itemId], (tokenFor) => {
         operationAuthorizationToken = tokenFor(itemId)
         return window.bearwarden.passkeys.delete({
           id: itemId,
@@ -2846,7 +2684,7 @@ function VaultShellContent({
     setBusy(true)
     try {
       const itemId = selectedLogin.id
-      const cloned = await withReprompt([itemId], (tokenFor) =>
+      const cloned = await authorization.withReprompt([itemId], (tokenFor) =>
         window.bearwarden.logins.clone({
           id: itemId,
           ...authorizationTokenField(tokenFor(itemId))
@@ -2871,7 +2709,7 @@ function VaultShellContent({
     setBusy(true)
     try {
       const itemId = selectedLogin.id
-      const archived = await withReprompt([itemId], (tokenFor) =>
+      const archived = await authorization.withReprompt([itemId], (tokenFor) =>
         window.bearwarden.logins.archive({
           id: itemId,
           ...authorizationTokenField(tokenFor(itemId))
@@ -2894,7 +2732,7 @@ function VaultShellContent({
     setBusy(true)
     try {
       const itemId = selectedLogin.id
-      const restored = await withReprompt([itemId], (tokenFor) =>
+      const restored = await authorization.withReprompt([itemId], (tokenFor) =>
         window.bearwarden.logins.unarchive({
           id: itemId,
           ...authorizationTokenField(tokenFor(itemId))
@@ -2917,7 +2755,7 @@ function VaultShellContent({
     setBusy(true)
     try {
       const itemId = selectedSummary.id
-      await withReprompt([itemId], (tokenFor) => {
+      await authorization.withReprompt([itemId], (tokenFor) => {
         const request = {
           id: itemId,
           ...authorizationTokenField(tokenFor(itemId))
@@ -2943,7 +2781,7 @@ function VaultShellContent({
     setBusy(true)
     try {
       const itemId = selectedSummary.id
-      const restored = await withReprompt([itemId], (tokenFor) =>
+      const restored = await authorization.withReprompt([itemId], (tokenFor) =>
         window.bearwarden.logins.restore({
           id: itemId,
           ...authorizationTokenField(tokenFor(itemId))
@@ -2965,7 +2803,7 @@ function VaultShellContent({
     setBusy(true)
     try {
       const trashIds = trashItems.map((item) => item.id)
-      const count = await withReprompt(trashIds, (tokenFor) =>
+      const count = await authorization.withReprompt(trashIds, (tokenFor) =>
         window.bearwarden.logins.emptyTrash({
           ...authorizationTokenField(firstAuthorizationToken(trashIds, tokenFor))
         })
@@ -3011,7 +2849,7 @@ function VaultShellContent({
     try {
       const value = selectedSharedSummary
         ? await window.bearwarden.sharedLogins.revealSecret({ id: itemId, field })
-        : await withReprompt([itemId], (tokenFor) =>
+        : await authorization.withReprompt([itemId], (tokenFor) =>
             window.bearwarden.logins.revealSecret({
               id: itemId,
               field,
@@ -3089,7 +2927,7 @@ function VaultShellContent({
       if (selectedSharedSummary) {
         await window.bearwarden.sharedLogins.copyField(request)
       } else {
-        await withReprompt([itemId], (tokenFor) =>
+        await authorization.withReprompt([itemId], (tokenFor) =>
           window.bearwarden.logins.copyField({
             ...request,
             ...authorizationTokenField(tokenFor(itemId))
@@ -3132,7 +2970,7 @@ function VaultShellContent({
       const request = { id: itemId, expectedUpdatedAt, source }
       const value = selectedSharedSummary
         ? await window.bearwarden.sharedLogins.revealCustomField(request)
-        : await withReprompt([itemId], (tokenFor) =>
+        : await authorization.withReprompt([itemId], (tokenFor) =>
             window.bearwarden.logins.revealCustomField({
               ...request,
               ...authorizationTokenField(tokenFor(itemId))
@@ -3165,7 +3003,7 @@ function VaultShellContent({
       if (selectedSharedSummary) {
         await window.bearwarden.sharedLogins.copyCustomField(request)
       } else {
-        await withReprompt([itemId], (tokenFor) =>
+        await authorization.withReprompt([itemId], (tokenFor) =>
           window.bearwarden.logins.copyCustomField({
             ...request,
             ...authorizationTokenField(tokenFor(itemId))
@@ -3185,7 +3023,7 @@ function VaultShellContent({
     const attachment = selectedLogin.attachments.find((entry) => entry.id === attachmentId)
     const operationId = beginAttachmentOperation('download', itemId, attachment?.fileName ?? null)
     try {
-      const result = await withReprompt([itemId], (tokenFor) =>
+      const result = await authorization.withReprompt([itemId], (tokenFor) =>
         window.bearwarden.logins.downloadAttachment({
           id: itemId,
           attachmentId,
@@ -3226,7 +3064,7 @@ function VaultShellContent({
     if (!attachment) return
     const operationId = beginAttachmentOperation('preview', itemId, attachment.fileName)
     try {
-      const result = await withReprompt([itemId], (tokenFor) =>
+      const result = await authorization.withReprompt([itemId], (tokenFor) =>
         window.bearwarden.logins.previewAttachment({
           id: itemId,
           attachmentId,
@@ -3263,7 +3101,7 @@ function VaultShellContent({
     const itemId = selectedLogin.id
     const operationId = beginAttachmentOperation('upload', itemId, null)
     try {
-      const result = await withReprompt([itemId], (tokenFor) =>
+      const result = await authorization.withReprompt([itemId], (tokenFor) =>
         window.bearwarden.logins.uploadAttachment({
           id: itemId,
           operationId,
@@ -3303,7 +3141,7 @@ function VaultShellContent({
     if (attachmentOperationRef.current) return null
     const operationId = beginAttachmentOperation('upload', itemId, 'cover.webp')
     try {
-      const result = await withReprompt([itemId], (tokenFor) =>
+      const result = await authorization.withReprompt([itemId], (tokenFor) =>
         window.bearwarden.logins.uploadCardCoverAttachment({
           id: itemId,
           operationId,
@@ -3337,7 +3175,7 @@ function VaultShellContent({
     if (attachmentOperationRef.current) return
     const operationId = beginAttachmentOperation('upload', itemId, null)
     try {
-      const result = await withReprompt([itemId], (tokenFor) =>
+      const result = await authorization.withReprompt([itemId], (tokenFor) =>
         window.bearwarden.logins.uploadCardCoverFileAttachment({
           id: itemId,
           operationId,
@@ -3373,7 +3211,7 @@ function VaultShellContent({
     setAttachmentDeleteTarget(null)
     const operationId = beginAttachmentOperation('delete', target.itemId, target.fileName)
     try {
-      const result = await withReprompt([target.itemId], (tokenFor) =>
+      const result = await authorization.withReprompt([target.itemId], (tokenFor) =>
         window.bearwarden.logins.deleteAttachment({
           id: target.itemId,
           attachmentId: target.attachmentId,
@@ -3413,7 +3251,7 @@ function VaultShellContent({
     if (!attachment?.legacy) return
     const operationId = beginAttachmentOperation('fix-legacy', itemId, attachment.fileName)
     try {
-      const result = await withReprompt([itemId], (tokenFor) =>
+      const result = await authorization.withReprompt([itemId], (tokenFor) =>
         window.bearwarden.logins.fixLegacyAttachment({
           id: itemId,
           attachmentId,
@@ -3483,7 +3321,7 @@ function VaultShellContent({
       if (selectedSharedSummary) {
         await window.bearwarden.sharedLogins.copyTotp({ id: itemId })
       } else {
-        await withReprompt([itemId], (tokenFor) =>
+        await authorization.withReprompt([itemId], (tokenFor) =>
           window.bearwarden.logins.copyTotp({
             id: itemId,
             ...authorizationTokenField(tokenFor(itemId))
@@ -3504,7 +3342,7 @@ function VaultShellContent({
       if (selectedSharedSummary) {
         await window.bearwarden.sharedLogins.openUri({ id: itemId, uriIndex })
       } else {
-        await withReprompt([itemId], (tokenFor) =>
+        await authorization.withReprompt([itemId], (tokenFor) =>
           window.bearwarden.logins.openUri({
             id: itemId,
             uriIndex,
@@ -3920,7 +3758,7 @@ function VaultShellContent({
                   }
                   busy={busy}
                   authorizationToken={
-                    selectedLogin ? authorizationTokenState[selectedLogin.id] : undefined
+                    selectedLogin ? authorizationTokens[selectedLogin.id] : undefined
                   }
                   attachmentUpload={
                     editorMode === 'edit' && selectedLogin && !selectedSharedSummary
@@ -4405,10 +4243,20 @@ function VaultShellContent({
           }}
           securityDialogs={{
             reprompt: {
-              prompt: repromptPrompt,
+              prompt: repromptRequest && {
+                itemName:
+                  repromptRequest.count === 1
+                    ? (repromptRequest.itemName ?? t`This item`)
+                    : t({
+                        message: plural(repromptRequest.count, {
+                          one: '# protected item',
+                          other: '# protected items'
+                        })
+                      })
+              },
               busy: repromptBusy,
-              onCancel: cancelReprompt,
-              onAuthorize: submitReprompt
+              onCancel: authorization.cancel,
+              onAuthorize: authorization.submit
             },
             loginApproval: {
               prompt: loginApprovalPrompts[0],

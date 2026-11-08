@@ -1,5 +1,4 @@
 import type {
-  LoginAuthorization,
   TotpCodeView,
   VaultCustomFieldSource,
   VaultSecretField
@@ -39,14 +38,6 @@ export const emptyRevealedCustomFields: RevealedCustomFieldsState = { itemId: nu
 
 export interface RepromptPromptState {
   itemName: string
-}
-
-export interface PendingReprompt {
-  key: string
-  ids: string[]
-  promise: Promise<LoginAuthorization>
-  resolve: (authorization: LoginAuthorization) => void
-  reject: (error: Error) => void
 }
 
 export type BulkSelectionState = 'active' | 'archive' | 'trash'
