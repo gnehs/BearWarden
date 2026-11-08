@@ -1592,9 +1592,7 @@ export class VaultTransferService extends VaultContentService {
       }
 
       next.updatedAt = this.nowIso()
-      await this.persist(next)
-      if (generation !== this.generation) throw new VaultError('LOCKED')
-      this.data = next
+      await this.commit(next, generation)
       return {
         importedFolders: snapshot.folders.length,
         importedItems: snapshot.items.length,

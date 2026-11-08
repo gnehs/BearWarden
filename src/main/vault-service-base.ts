@@ -394,10 +394,7 @@ export class VaultServiceBase {
         const next = cloneData(current)
         next.generatorHistory = cloneGeneratorHistory(history)
         next.updatedAt = this.nowIso()
-        const generation = this.generation
-        await this.persist(next)
-        if (generation !== this.generation) throw new VaultError('LOCKED')
-        this.data = next
+        await this.commit(next, this.generation)
       }
     })
     this.sendService = new VaultSendService({
@@ -3953,9 +3950,7 @@ export class VaultServiceBase {
       usedLogin.usageCount = Math.min(Number.MAX_SAFE_INTEGER, usedLogin.usageCount + 1)
       usedLogin.lastUsedAt = now
       next.updatedAt = now
-      await this.persist(next)
-      if (generation !== this.generation) throw new VaultError('LOCKED')
-      this.data = next
+      await this.commit(next, generation)
       return result
     })
   }
@@ -3968,11 +3963,19 @@ export class VaultServiceBase {
       const now = this.nowIso()
       const result = mutation(next, now)
       next.updatedAt = now
-      await this.persist(next)
-      if (generation !== this.generation) throw new VaultError('LOCKED')
-      this.data = next
+      await this.commit(next, generation)
       return result
     })
+  }
+
+  /**
+   * Validates, encrypts and writes `next`, then installs it as the committed snapshot. Throws
+   * `LOCKED` without installing it when the vault was locked after `generation` was captured.
+   */
+  protected async commit(next: VaultData, generation: number): Promise<void> {
+    await this.persist(next)
+    if (generation !== this.generation) throw new VaultError('LOCKED')
+    this.data = next
   }
 
   protected async persist(data: VaultData): Promise<void> {

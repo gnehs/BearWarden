@@ -249,9 +249,7 @@ export class VaultService extends VaultTransferService {
       const next = cloneData(current)
       next.sharedLogins.push(created)
       next.updatedAt = this.nowIso()
-      await this.persist(next)
-      if (generation !== this.generation) throw new VaultError('LOCKED')
-      this.data = next
+      await this.commit(next, generation)
       return toSharedView(created)
     })
   }
@@ -414,9 +412,7 @@ export class VaultService extends VaultTransferService {
       if (index < 0) throw new VaultError('NOT_FOUND')
       next.sharedLogins[index] = updated
       next.updatedAt = this.nowIso()
-      await this.persist(next)
-      if (generation !== this.generation) throw new VaultError('LOCKED')
-      this.data = next
+      await this.commit(next, generation)
       return toSharedView(updated)
     })
   }
@@ -1035,9 +1031,7 @@ export class VaultService extends VaultTransferService {
       usedLogin.usageCount = Math.min(Number.MAX_SAFE_INTEGER, usedLogin.usageCount + 1)
       usedLogin.lastUsedAt = now
       next.updatedAt = now
-      await this.persist(next)
-      if (generation !== this.generation) throw new VaultError('LOCKED')
-      this.data = next
+      await this.commit(next, generation)
     })
   }
 
@@ -1176,9 +1170,7 @@ export class VaultService extends VaultTransferService {
       if (login.username.length === 0) login.username = created.credential.userName ?? ''
       login.updatedAt = now
       next.updatedAt = now
-      await this.persist(next)
-      if (generation !== this.generation) throw new VaultError('LOCKED')
-      this.data = next
+      await this.commit(next, generation)
       return {
         item: toView(login),
         generation,
@@ -1240,9 +1232,7 @@ export class VaultService extends VaultTransferService {
         nextPasskey.counter = assertion.counter
         nextLogin.updatedAt = now
         next.updatedAt = now
-        await this.persist(next)
-        if (generation !== this.generation) throw new VaultError('LOCKED')
-        this.data = next
+        await this.commit(next, generation)
       }
       return {
         itemId: match.login.id,
