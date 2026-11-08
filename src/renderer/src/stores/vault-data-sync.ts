@@ -63,12 +63,15 @@ function scopeStillExists(
 }
 
 /**
- * Keeps the session store's vault lists in step with the main process. A list response
- * applies only while it is the latest request, and nothing applies after `dispose`.
+ * Keeps the session store's vault lists in step with the main process. Full loads and item
+ * refreshes share one item-request sequence, so an item list applies only while no newer
+ * load or refresh has started; folders and organizations follow the newest full load.
+ * Nothing applies after `dispose`.
  */
 export function createVaultDataSync(options: VaultDataSyncOptions): VaultDataSync {
   const { api, session, detailCache } = options
   let latestLoad = 0
+  let latestItemsRequest = 0
   let events: VaultDataSyncEvents | null = null
 
   function invalidateProtectedDetails(summaries: readonly LoginSummary[]): void {
@@ -85,6 +88,7 @@ export function createVaultDataSync(options: VaultDataSyncOptions): VaultDataSyn
 
   async function load(): Promise<void> {
     const requestId = ++latestLoad
+    const itemsRequestId = ++latestItemsRequest
     detailCache.clear()
     try {
       events?.loadStarted()
@@ -96,11 +100,14 @@ export function createVaultDataSync(options: VaultDataSyncOptions): VaultDataSyn
         api.sharedLogins.list({ sort: 'name' })
       ])
       if (!isCurrentVaultLoad(requestId, latestLoad)) return
-      invalidateProtectedDetails(items)
-      const listed = new Set([...items, ...sharedItems].map((item) => item.id))
+      const itemsCurrent = isCurrentVaultLoad(itemsRequestId, latestItemsRequest)
+      if (itemsCurrent) invalidateProtectedDetails(items)
       const state = session.getState()
+      const listed = new Set(
+        [...(itemsCurrent ? items : state.items), ...sharedItems].map((item) => item.id)
+      )
       state.setFolders(sortFoldersByPosition(folders))
-      state.setItems(items)
+      if (itemsCurrent) state.setItems(items)
       state.setOrganizations(organizations)
       state.setCollections(collections)
       state.setSharedItems(sharedItems)
@@ -119,7 +126,9 @@ export function createVaultDataSync(options: VaultDataSyncOptions): VaultDataSyn
   }
 
   async function refreshItems(): Promise<void> {
+    const itemsRequestId = ++latestItemsRequest
     const items = await listLoginsInAllStates(api.logins)
+    if (!isCurrentVaultLoad(itemsRequestId, latestItemsRequest)) return
     invalidateProtectedDetails(items)
     detailCache.retainSummaries(items)
     const state = session.getState()
@@ -142,6 +151,7 @@ export function createVaultDataSync(options: VaultDataSyncOptions): VaultDataSyn
     },
     dispose: () => {
       latestLoad += 1
+      latestItemsRequest += 1
     }
   }
 }

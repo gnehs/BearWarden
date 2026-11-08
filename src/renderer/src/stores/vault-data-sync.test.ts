@@ -198,4 +198,58 @@ describe('createVaultDataSync refreshItems', () => {
     })
     expect(detailCache.retainSummaries).toHaveBeenCalledWith([summary('item', { name: 'Renamed' })])
   })
+
+  it('keeps a newer refresh when an older one resolves after it', async () => {
+    const { sync, session, activeLists } = setup()
+
+    const older = sync.refreshItems()
+    const newer = sync.refreshItems()
+    activeLists[1].resolve([summary('item', { name: 'Newer' })])
+    await newer
+    activeLists[0].resolve([summary('item', { name: 'Older' })])
+    await older
+
+    expect(session.getState().items.map((entry) => entry.name)).toEqual(['Newer'])
+  })
+
+  it('keeps refreshed items when an earlier full load resolves after the refresh', async () => {
+    const { sync, session, activeLists, folderLists } = setup()
+
+    const load = sync.load()
+    const refresh = sync.refreshItems()
+    activeLists[1].resolve([summary('item', { name: 'Refreshed' })])
+    await refresh
+    folderLists[0].resolve([folder('folder', 0)])
+    activeLists[0].resolve([summary('item', { name: 'Loaded earlier' })])
+    await load
+
+    expect(session.getState().items.map((entry) => entry.name)).toEqual(['Refreshed'])
+    expect(session.getState().folders.map((entry) => entry.id)).toEqual(['folder'])
+    expect(session.getState().loading).toBe(false)
+  })
+
+  it('drops a refresh that started before a newer full load', async () => {
+    const { sync, session, activeLists, folderLists } = setup()
+
+    const refresh = sync.refreshItems()
+    const load = sync.load()
+    folderLists[0].resolve([])
+    activeLists[1].resolve([summary('item', { name: 'Loaded' })])
+    await load
+    activeLists[0].resolve([summary('item', { name: 'Refreshed earlier' })])
+    await refresh
+
+    expect(session.getState().items.map((entry) => entry.name)).toEqual(['Loaded'])
+  })
+
+  it('writes nothing once disposed', async () => {
+    const { sync, session, activeLists } = setup()
+
+    const refresh = sync.refreshItems()
+    sync.dispose()
+    activeLists[0].resolve([summary('late')])
+    await refresh
+
+    expect(session.getState().items).toEqual([])
+  })
 })
