@@ -12490,7 +12490,7 @@ describe('VaultService commit races with lock and dispose', () => {
     expect((await service.listLogins()).map((login) => login.name)).toEqual(['Raced with lock'])
   })
 
-  it('drops a lock-raced write when a mutation queued ahead of the lock rebuilds from the older snapshot', async () => {
+  it('keeps a lock-raced write when a mutation queued ahead of the lock builds on it', async () => {
     const gate = createWriteGate()
     const { filePath, service } = await createHarness({}, gate.storeOptions)
     await service.setup(MASTER_PASSWORD)
@@ -12505,7 +12505,10 @@ describe('VaultService commit races with lock and dispose', () => {
     await expect(raced).rejects.toMatchObject({ code: 'LOCKED' })
     await expect(queued).resolves.toMatchObject({ name: 'Queued before lock' })
     await expect(locking).resolves.toEqual({ state: 'locked' })
-    await expect(reopenedLoginNames(filePath)).resolves.toEqual(['Queued before lock'])
+    expect((await reopenedLoginNames(filePath)).sort()).toEqual([
+      'Queued before lock',
+      'Raced with lock'
+    ])
   })
 
   it('reports LOCKED for a mutation whose write lands after dispose(), and keeps a readable write', async () => {

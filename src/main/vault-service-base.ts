@@ -3970,12 +3970,15 @@ export class VaultServiceBase {
 
   /**
    * Validates, encrypts and writes `next`, then installs it as the committed snapshot. Throws
-   * `LOCKED` without installing it when the vault was locked after `generation` was captured.
+   * `LOCKED` when the vault was locked after `generation` was captured; the write is kept.
    */
   protected async commit(next: VaultData, generation: number): Promise<void> {
     await this.persist(next)
+    // Memory must match disk once the write landed. Operations queued ahead of lock()'s teardown
+    // still read this snapshot, and rebuilding from an older one would overwrite this write.
+    // dispose() has already torn the session down, so nothing may be reinstalled after it.
+    if (this.key && this.salt) this.data = next
     if (generation !== this.generation) throw new VaultError('LOCKED')
-    this.data = next
   }
 
   protected async persist(data: VaultData): Promise<void> {
