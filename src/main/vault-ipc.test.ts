@@ -18,12 +18,7 @@ vi.mock('electron', () => ({
   Menu: { buildFromTemplate: vi.fn() }
 }))
 
-import {
-  IPC_CHANNELS,
-  IPC_EVENTS,
-  type VaultExportRequest,
-  type VaultImportRequest
-} from '../shared/vault-contract'
+import type { VaultExportRequest, VaultImportRequest } from '../shared/vault-contract'
 import type { AppSettingsService } from './app-settings'
 import {
   AccountRelaunchResultUnknownError,
@@ -53,8 +48,8 @@ describe('registerVaultIpc lifecycle', () => {
     })
     const ownedChannels = new Set(electronMock.handlers.keys())
 
-    expect(ownedChannels.has(IPC_CHANNELS.passkeyVerifyApproval)).toBe(false)
-    expect(ownedChannels.has(IPC_CHANNELS.sshAgentStatus)).toBe(false)
+    expect(ownedChannels.has('passkey:verify-approval')).toBe(false)
+    expect(ownedChannels.has('ssh-agent:status')).toBe(false)
 
     dispose()
     dispose()
@@ -130,9 +125,9 @@ describe('registerVaultIpc sync failure lifecycle', () => {
     })
 
     const event = { sender: webContents, senderFrame: mainFrame }
-    await expect(
-      electronMock.handlers.get(IPC_CHANNELS.syncNow)!(event, undefined)
-    ).rejects.toThrow('BEARWARDEN:SYNC_NETWORK')
+    await expect(electronMock.handlers.get('sync:now')!(event, undefined)).rejects.toThrow(
+      'BEARWARDEN:SYNC_NETWORK'
+    )
     expect(syncStatus).toHaveBeenCalledOnce()
     expect(afterSyncChanged).toHaveBeenCalledWith(errorStatus)
   })
@@ -193,7 +188,7 @@ describe('registerVaultIpc personal vault purge boundary', () => {
     const harness = purgeHarness(purgePersonalVault)
 
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.syncPurgePersonalVault)!(harness.event, {
+      electronMock.handlers.get('sync:purge-personal-vault')!(harness.event, {
         masterPassword: 'remote-master-password',
         confirmation: 'PURGE',
         confirmPurge: true
@@ -222,7 +217,7 @@ describe('registerVaultIpc personal vault purge boundary', () => {
     const harness = purgeHarness()
 
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.syncPurgePersonalVault)!(harness.event, request)
+      electronMock.handlers.get('sync:purge-personal-vault')!(harness.event, request)
     ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     expect(harness.purgePersonalVault).not.toHaveBeenCalled()
   })
@@ -234,7 +229,7 @@ describe('registerVaultIpc personal vault purge boundary', () => {
     Object.defineProperty(request, 'masterPassword', { enumerable: true, get: getter })
 
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.syncPurgePersonalVault)!(harness.event, request)
+      electronMock.handlers.get('sync:purge-personal-vault')!(harness.event, request)
     ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     expect(getter).not.toHaveBeenCalled()
     expect(harness.purgePersonalVault).not.toHaveBeenCalled()
@@ -245,7 +240,7 @@ describe('registerVaultIpc personal vault purge boundary', () => {
     harness.syncStatus.mockRejectedValueOnce(new Error('status unavailable'))
 
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.syncPurgePersonalVault)!(harness.event, {
+      electronMock.handlers.get('sync:purge-personal-vault')!(harness.event, {
         masterPassword: 'remote-master-password',
         confirmation: 'PURGE',
         confirmPurge: true
@@ -264,7 +259,7 @@ describe('registerVaultIpc personal vault purge boundary', () => {
     const harness = purgeHarness(purgePersonalVault)
 
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.syncPurgePersonalVault)!(harness.event, {
+      electronMock.handlers.get('sync:purge-personal-vault')!(harness.event, {
         masterPassword: 'wrong-remote-password',
         confirmation: 'PURGE',
         confirmPurge: true
@@ -293,7 +288,7 @@ describe('registerVaultIpc personal vault purge boundary', () => {
     harness.syncStatus.mockResolvedValueOnce(pendingStatus)
 
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.syncPurgePersonalVault)!(harness.event, {
+      electronMock.handlers.get('sync:purge-personal-vault')!(harness.event, {
         masterPassword: 'remote-master-password',
         confirmation: 'PURGE',
         confirmPurge: true
@@ -313,7 +308,7 @@ describe('registerVaultIpc personal vault purge boundary', () => {
     harness.syncStatus.mockRejectedValueOnce(new Error('status unavailable'))
 
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.syncPurgePersonalVault)!(harness.event, {
+      electronMock.handlers.get('sync:purge-personal-vault')!(harness.event, {
         masterPassword: 'remote-master-password',
         confirmation: 'PURGE',
         confirmPurge: true
@@ -379,9 +374,7 @@ describe('registerVaultIpc account boundary', () => {
     }
     const { event } = accountHarness(service)
 
-    await expect(
-      electronMock.handlers.get(IPC_CHANNELS.accountStatus)!(event, undefined)
-    ).resolves.toEqual({
+    await expect(electronMock.handlers.get('account:status')!(event, undefined)).resolves.toEqual({
       revision: 7,
       activeAccountId: accountA,
       cleanupPending: true,
@@ -390,9 +383,7 @@ describe('registerVaultIpc account boundary', () => {
         { id: accountB, active: false, slot: 2 }
       ]
     })
-    await expect(
-      electronMock.handlers.get(IPC_CHANNELS.accountAdd)!(event, undefined)
-    ).resolves.toEqual({
+    await expect(electronMock.handlers.get('account:add')!(event, undefined)).resolves.toEqual({
       kind: 'relaunch-required',
       status: {
         revision: 7,
@@ -421,10 +412,10 @@ describe('registerVaultIpc account boundary', () => {
       }))
     }
     const { event, untrustedEvent } = accountHarness(service)
-    const status = electronMock.handlers.get(IPC_CHANNELS.accountStatus)!
-    const add = electronMock.handlers.get(IPC_CHANNELS.accountAdd)!
-    const switchAccount = electronMock.handlers.get(IPC_CHANNELS.accountSwitch)!
-    const renameAccount = electronMock.handlers.get(IPC_CHANNELS.accountRename)!
+    const status = electronMock.handlers.get('account:status')!
+    const add = electronMock.handlers.get('account:add')!
+    const switchAccount = electronMock.handlers.get('account:switch')!
+    const renameAccount = electronMock.handlers.get('account:rename')!
 
     await expect(status(untrustedEvent, undefined)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     await expect(status(event, {})).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
@@ -485,8 +476,8 @@ describe('registerVaultIpc account boundary', () => {
       }))
     }
     const { event, untrustedEvent } = accountHarness(service)
-    const reorder = electronMock.handlers.get(IPC_CHANNELS.accountReorder)!
-    const remove = electronMock.handlers.get(IPC_CHANNELS.accountRemove)!
+    const reorder = electronMock.handlers.get('account:reorder')!
+    const remove = electronMock.handlers.get('account:remove')!
 
     await expect(
       reorder(event, { accountIds: [accountB, accountA], expectedRevision: 7 })
@@ -535,7 +526,7 @@ describe('registerVaultIpc account boundary', () => {
   it('keeps legacy fallback unavailable and maps membership failures without leaking causes', async () => {
     const legacy = accountHarness()
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.accountStatus)!(legacy.event, undefined)
+      electronMock.handlers.get('account:status')!(legacy.event, undefined)
     ).rejects.toThrow('BEARWARDEN:ACCOUNT_SWITCH_UNAVAILABLE')
 
     const membershipFailure = new AccountSwitchServiceError('ACCOUNT_NOT_REGISTERED')
@@ -550,7 +541,7 @@ describe('registerVaultIpc account boundary', () => {
         .mockRejectedValueOnce(privateFailure)
     }
     const { event } = accountHarness(service)
-    const switchAccount = electronMock.handlers.get(IPC_CHANNELS.accountSwitch)!
+    const switchAccount = electronMock.handlers.get('account:switch')!
 
     await expect(switchAccount(event, { accountId: accountB })).rejects.toThrow(
       'BEARWARDEN:ACCOUNT_NOT_FOUND'
@@ -589,9 +580,9 @@ describe('registerVaultIpc account boundary', () => {
     ]
   ])('maps account mutation failures to stable public codes', async (failure, publicCode) => {
     const { event } = accountHarness({ addAccount: vi.fn().mockRejectedValue(failure) })
-    await expect(
-      electronMock.handlers.get(IPC_CHANNELS.accountAdd)!(event, undefined)
-    ).rejects.toThrow(`BEARWARDEN:${publicCode}`)
+    await expect(electronMock.handlers.get('account:add')!(event, undefined)).rejects.toThrow(
+      `BEARWARDEN:${publicCode}`
+    )
   })
 })
 
@@ -651,18 +642,18 @@ describe('registerVaultIpc account WebAuthn enrollment boundary', () => {
     const { event } = accountWebAuthnHarness(vault)
 
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.accountSecurityWebAuthnKeys)!(event, {
+      electronMock.handlers.get('account-security:webauthn-keys')!(event, {
         masterPassword: 'test-master-password'
       })
     ).resolves.toEqual([{ id: 1, name: 'USB key', migrated: false }])
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.accountSecurityEnrollWebAuthnKey)!(event, {
+      electronMock.handlers.get('account-security:enroll-webauthn-key')!(event, {
         masterPassword: 'test-master-password',
         name: '  USB key  '
       })
     ).resolves.toBeUndefined()
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.accountSecurityRemoveWebAuthnKey)!(event, {
+      electronMock.handlers.get('account-security:remove-webauthn-key')!(event, {
         id: 2,
         masterPassword: 'test-master-password',
         confirm: true
@@ -691,9 +682,9 @@ describe('registerVaultIpc account WebAuthn enrollment boundary', () => {
       removeAccountWebAuthnKey: vi.fn()
     }
     const { event, untrustedEvent } = accountWebAuthnHarness(vault)
-    const list = electronMock.handlers.get(IPC_CHANNELS.accountSecurityWebAuthnKeys)!
-    const enroll = electronMock.handlers.get(IPC_CHANNELS.accountSecurityEnrollWebAuthnKey)!
-    const remove = electronMock.handlers.get(IPC_CHANNELS.accountSecurityRemoveWebAuthnKey)!
+    const list = electronMock.handlers.get('account-security:webauthn-keys')!
+    const enroll = electronMock.handlers.get('account-security:enroll-webauthn-key')!
+    const remove = electronMock.handlers.get('account-security:remove-webauthn-key')!
 
     await expect(list(untrustedEvent, { masterPassword: 'test-master-password' })).rejects.toThrow(
       'BEARWARDEN:INVALID_INPUT'
@@ -780,7 +771,7 @@ describe('registerVaultIpc settings validation', () => {
     'whitelists and validates $valid before it reaches persistence',
     async ({ valid, invalid }) => {
       const { event, settings } = settingsHarness()
-      const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!
+      const update = electronMock.handlers.get('settings:update')!
 
       await expect(update(event, valid)).resolves.toEqual(valid)
       expect(settings.update).toHaveBeenCalledWith(valid)
@@ -793,7 +784,7 @@ describe('registerVaultIpc settings validation', () => {
 
   it('accepts only supported application language preferences', async () => {
     const { event, settings } = settingsHarness()
-    const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!
+    const update = electronMock.handlers.get('settings:update')!
 
     for (const language of ['system', 'en', 'zh-CN', 'zh-TW', 'ja'] as const) {
       await expect(update(event, { language })).resolves.toEqual({ language })
@@ -814,7 +805,7 @@ describe('registerVaultIpc settings validation', () => {
 
   it('accepts only exact, data-only vault timeout policies', async () => {
     const { event, settings } = settingsHarness()
-    const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!
+    const update = electronMock.handlers.get('settings:update')!
 
     await expect(
       update(event, { vaultTimeoutPolicy: { type: 'appInactivity', minutes: 525_600 } })
@@ -892,7 +883,7 @@ describe('registerVaultIpc diagnostics logging', () => {
 
   it('opens the error log only for the trusted renderer', async () => {
     const harness = diagnosticsHarness()
-    const showErrorLog = electronMock.handlers.get(IPC_CHANNELS.settingsShowErrorLog)!
+    const showErrorLog = electronMock.handlers.get('settings:show-error-log')!
 
     await expect(showErrorLog(harness.event, undefined)).resolves.toBeUndefined()
     await expect(
@@ -906,13 +897,13 @@ describe('registerVaultIpc diagnostics logging', () => {
     expect(harness.errorLog.recordMainError).toHaveBeenCalledWith(
       'ipc-error',
       expect.objectContaining({ message: 'BEARWARDEN:INVALID_INPUT' }),
-      { channel: IPC_CHANNELS.settingsShowErrorLog, code: 'INVALID_INPUT' }
+      { channel: 'settings:show-error-log', code: 'INVALID_INPUT' }
     )
   })
 
   it('accepts only sanitized renderer error-log records', async () => {
     const harness = diagnosticsHarness()
-    const record = electronMock.handlers.get(IPC_CHANNELS.errorLogRecordRenderer)!
+    const record = electronMock.handlers.get('error-log:record-renderer')!
 
     await expect(
       record(harness.event, {
@@ -946,13 +937,13 @@ describe('registerVaultIpc diagnostics logging', () => {
     expect(harness.errorLog.recordMainError).toHaveBeenLastCalledWith(
       'ipc-error',
       expect.objectContaining({ code: 'INVALID_INPUT' }),
-      { channel: IPC_CHANNELS.errorLogRecordRenderer, code: 'INVALID_INPUT' }
+      { channel: 'error-log:record-renderer', code: 'INVALID_INPUT' }
     )
   })
 
   it('records handled IPC operation failures without logging request payloads', async () => {
     const harness = diagnosticsHarness()
-    const update = electronMock.handlers.get(IPC_CHANNELS.settingsUpdate)!
+    const update = electronMock.handlers.get('settings:update')!
 
     await expect(update(harness.event, { theme: 'unknown' })).rejects.toThrow(
       'BEARWARDEN:INVALID_INPUT'
@@ -961,7 +952,7 @@ describe('registerVaultIpc diagnostics logging', () => {
     expect(harness.errorLog.recordMainError).toHaveBeenCalledWith(
       'ipc-error',
       expect.objectContaining({ code: 'INVALID_INPUT' }),
-      { channel: IPC_CHANNELS.settingsUpdate, code: 'INVALID_INPUT' }
+      { channel: 'settings:update', code: 'INVALID_INPUT' }
     )
   })
 })
@@ -1001,7 +992,7 @@ describe('registerVaultIpc settings activity', () => {
         })
     )
     const harness = activityHarness(status)
-    const activity = electronMock.handlers.get(IPC_CHANNELS.settingsActivity)!
+    const activity = electronMock.handlers.get('settings:activity')!
 
     const calls = Array.from({ length: 1_000 }, () => activity(harness.event, undefined))
     await vi.waitFor(() => expect(status).toHaveBeenCalledOnce())
@@ -1016,7 +1007,7 @@ describe('registerVaultIpc settings activity', () => {
 
   it('ignores activity when the authoritative vault status is locked', async () => {
     const harness = activityHarness(vi.fn(async () => ({ state: 'locked' as const })))
-    const activity = electronMock.handlers.get(IPC_CHANNELS.settingsActivity)!
+    const activity = electronMock.handlers.get('settings:activity')!
 
     await expect(activity(harness.event, undefined)).resolves.toBeUndefined()
 
@@ -1026,7 +1017,7 @@ describe('registerVaultIpc settings activity', () => {
 
   it('accepts activity only when the authoritative vault status is unlocked', async () => {
     const harness = activityHarness(vi.fn(async () => ({ state: 'unlocked' as const })))
-    const activity = electronMock.handlers.get(IPC_CHANNELS.settingsActivity)!
+    const activity = electronMock.handlers.get('settings:activity')!
 
     await expect(activity(harness.event, undefined)).resolves.toBeUndefined()
 
@@ -1044,7 +1035,7 @@ describe('registerVaultIpc settings activity', () => {
           })
       )
     )
-    const activity = electronMock.handlers.get(IPC_CHANNELS.settingsActivity)!
+    const activity = electronMock.handlers.get('settings:activity')!
 
     const pending = activity(harness.event, undefined)
     await vi.waitFor(() => expect(harness.status).toHaveBeenCalledOnce())
@@ -1062,7 +1053,7 @@ describe('registerVaultIpc settings activity', () => {
         .mockRejectedValueOnce(new Error('status unavailable'))
         .mockResolvedValueOnce({ state: 'unlocked' })
     )
-    const activity = electronMock.handlers.get(IPC_CHANNELS.settingsActivity)!
+    const activity = electronMock.handlers.get('settings:activity')!
 
     await expect(activity(harness.event, undefined)).rejects.toThrow('BEARWARDEN:INTERNAL_ERROR')
     await expect(activity(harness.event, undefined)).resolves.toBeUndefined()
@@ -1119,7 +1110,7 @@ describe('registerVaultIpc manual lock lifecycle', () => {
 
   it('cancels timeout coordination after a successful manual lock without changing success notification semantics', async () => {
     const harness = lockHarness()
-    const lock = electronMock.handlers.get(IPC_CHANNELS.vaultLock)!
+    const lock = electronMock.handlers.get('vault:lock')!
 
     await expect(lock(harness.event, undefined)).resolves.toEqual({ state: 'locked' })
 
@@ -1131,7 +1122,7 @@ describe('registerVaultIpc manual lock lifecycle', () => {
 
   it('runs the attempt cleanup after a failed manual lock without reporting lock success', async () => {
     const harness = lockHarness({ lock: async () => Promise.reject(new Error('lock failed')) })
-    const lock = electronMock.handlers.get(IPC_CHANNELS.vaultLock)!
+    const lock = electronMock.handlers.get('vault:lock')!
 
     await expect(lock(harness.event, undefined)).rejects.toThrow('BEARWARDEN:INTERNAL_ERROR')
 
@@ -1147,7 +1138,7 @@ describe('registerVaultIpc manual lock lifecycle', () => {
           rejectTeardown = reject
         })
     })
-    const lock = electronMock.handlers.get(IPC_CHANNELS.vaultLock)!
+    const lock = electronMock.handlers.get('vault:lock')!
 
     const pending = lock(harness.event, undefined)
     await vi.waitFor(() => expect(rejectTeardown).toBeTypeOf('function'))
@@ -1166,7 +1157,7 @@ describe('registerVaultIpc manual lock lifecycle', () => {
         throw new VaultError('INVALID_INPUT')
       }
     })
-    const lock = electronMock.handlers.get(IPC_CHANNELS.vaultLock)!
+    const lock = electronMock.handlers.get('vault:lock')!
 
     await expect(lock(harness.event, undefined)).rejects.toThrow('BEARWARDEN:INTERNAL_ERROR')
 
@@ -1180,7 +1171,7 @@ describe('registerVaultIpc manual lock lifecycle', () => {
         throw new Error('cleanup failed')
       }
     })
-    const lock = electronMock.handlers.get(IPC_CHANNELS.vaultLock)!
+    const lock = electronMock.handlers.get('vault:lock')!
 
     await expect(lock(harness.event, undefined)).resolves.toEqual({ state: 'locked' })
 
@@ -1277,7 +1268,7 @@ describe('registerVaultIpc shared main-process hooks', () => {
       vault: { authorizeLogin: vi.fn().mockResolvedValue(9) },
       repromptAuthorizations: store
     })
-    const authorize = electronMock.handlers.get(IPC_CHANNELS.loginAuthorize)!
+    const authorize = electronMock.handlers.get('login:authorize')!
     const result = (await authorize(event, { id: itemId, masterPassword: 'test-only' })) as {
       token: string
     }
@@ -1289,7 +1280,7 @@ describe('registerVaultIpc shared main-process hooks', () => {
     const setup = vi.fn().mockResolvedValue({ state: 'unlocked' })
     const { event } = registerHarness({ vault: { setup }, afterSetup })
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultSetup)!(event, { masterPassword: 'test-only' })
+      electronMock.handlers.get('vault:setup')!(event, { masterPassword: 'test-only' })
     ).resolves.toEqual({ state: 'unlocked' })
     expect(setup).toHaveBeenCalledWith('test-only')
     expect(afterSetup).toHaveBeenCalledOnce()
@@ -1308,7 +1299,7 @@ describe('registerVaultIpc shared main-process hooks', () => {
     const unlock = vi.fn().mockResolvedValue({ state: 'unlocked' })
     const { event } = registerHarness({ vault: { unlock }, afterUnlock })
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultUnlock)!(event, { masterPassword: 'test-only' })
+      electronMock.handlers.get('vault:unlock')!(event, { masterPassword: 'test-only' })
     ).resolves.toEqual({ state: 'unlocked' })
     expect(afterUnlock).toHaveBeenCalledOnce()
     expect(receivedPassword).toBe('test-only')
@@ -1324,7 +1315,7 @@ describe('registerVaultIpc shared main-process hooks', () => {
     const { event } = registerHarness({ vault: { unlock }, afterUnlock })
 
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultUnlock)!(event, {
+      electronMock.handlers.get('vault:unlock')!(event, {
         masterPassword: 'test-only'
       })
     ).resolves.toEqual({ state: 'unlocked' })
@@ -1396,7 +1387,7 @@ describe('registerVaultIpc master-password transaction', () => {
     }
 
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultMasterPasswordChange)!(h.event, input)
+      electronMock.handlers.get('vault:master-password-change')!(h.event, input)
     ).resolves.toEqual({ state: 'completed', requiresReconnect: true })
     expect(h.vault.changeMasterPassword).toHaveBeenCalledWith({
       currentPassword: '',
@@ -1429,7 +1420,7 @@ describe('registerVaultIpc master-password transaction', () => {
       }
     ]) {
       await expect(
-        electronMock.handlers.get(IPC_CHANNELS.vaultMasterPasswordChange)!(h.event, invalid)
+        electronMock.handlers.get('vault:master-password-change')!(h.event, invalid)
       ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
       expect(invalid.currentPassword).toBe('')
       expect(invalid.newPassword).toBe('')
@@ -1451,7 +1442,7 @@ describe('registerVaultIpc master-password transaction', () => {
     }
 
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultMasterPasswordChange)!(h.event, input)
+      electronMock.handlers.get('vault:master-password-change')!(h.event, input)
     ).resolves.toEqual({ state: 'needs-remote-verification', requiresReconnect: true })
     expect(changeMasterPassword).toHaveBeenCalledOnce()
     expect(h.settings.disableTouchId).toHaveBeenCalledOnce()
@@ -1466,7 +1457,7 @@ describe('registerVaultIpc master-password transaction', () => {
     })
 
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultMasterPasswordChange)!(h.event, {
+      electronMock.handlers.get('vault:master-password-change')!(h.event, {
         currentPassword: 'correct horse battery staple',
         newPassword: 'replacement horse battery staple'
       })
@@ -1495,7 +1486,7 @@ describe('registerVaultIpc master-password transaction', () => {
       }
     )
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultMasterPasswordChange)!(h.event, accessorInput)
+      electronMock.handlers.get('vault:master-password-change')!(h.event, accessorInput)
     ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     expect(getterCalls).toBe(0)
 
@@ -1505,7 +1496,7 @@ describe('registerVaultIpc master-password transaction', () => {
       [Symbol('hidden')]: 'not allowed'
     }
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultMasterPasswordChange)!(h.event, symbolInput)
+      electronMock.handlers.get('vault:master-password-change')!(h.event, symbolInput)
     ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
 
     const nfcInput = {
@@ -1513,7 +1504,7 @@ describe('registerVaultIpc master-password transaction', () => {
       newPassword: 'correct horse cafe\u0301'
     }
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultMasterPasswordChange)!(h.event, nfcInput)
+      electronMock.handlers.get('vault:master-password-change')!(h.event, nfcInput)
     ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     expect(h.vault.changeMasterPassword).not.toHaveBeenCalled()
   })
@@ -1528,7 +1519,7 @@ describe('registerVaultIpc master-password transaction', () => {
         })
       })
     })
-    await electronMock.handlers.get(IPC_CHANNELS.vaultMasterPasswordChange)!(h.event, {
+    await electronMock.handlers.get('vault:master-password-change')!(h.event, {
       currentPassword: '            ',
       newPassword: '             '
     })
@@ -1553,8 +1544,8 @@ describe('registerVaultIpc master-password transaction', () => {
       })
       const channel =
         operation === 'change'
-          ? IPC_CHANNELS.vaultMasterPasswordChange
-          : IPC_CHANNELS.vaultMasterPasswordChangeResolve
+          ? 'vault:master-password-change'
+          : 'vault:master-password-change-resolve'
 
       await expect(
         electronMock.handlers.get(channel)!(h.event, {
@@ -1581,9 +1572,10 @@ describe('registerVaultIpc master-password transaction', () => {
           needsRemoteVerification: phase === 'prepared'
         }))
       })
-      const response = await electronMock.handlers.get(
-        IPC_CHANNELS.vaultMasterPasswordChangeStatus
-      )!(h.event, undefined)
+      const response = await electronMock.handlers.get('vault:master-password-change-status')!(
+        h.event,
+        undefined
+      )
 
       expect(response).toEqual({ state, requiresReconnect: true })
       expect(Object.keys(response as object).sort()).toEqual(['requiresReconnect', 'state'])
@@ -1605,9 +1597,10 @@ describe('registerVaultIpc master-password transaction', () => {
         currentPassword: 'correct horse battery staple',
         newPassword: 'replacement horse battery staple'
       }
-      const response = await electronMock.handlers.get(
-        IPC_CHANNELS.vaultMasterPasswordChangeResolve
-      )!(h.event, input)
+      const response = await electronMock.handlers.get('vault:master-password-change-resolve')!(
+        h.event,
+        input
+      )
 
       expect(response).toEqual({ state, requiresReconnect: true })
       expect(JSON.stringify(response)).not.toContain('fingerprint')
@@ -1624,7 +1617,7 @@ describe('registerVaultIpc master-password transaction', () => {
       finish = resolve
     })
     const h = harness({ changeMasterPassword: vi.fn(() => pending) })
-    const handler = electronMock.handlers.get(IPC_CHANNELS.vaultMasterPasswordChange)!
+    const handler = electronMock.handlers.get('vault:master-password-change')!
     const operation = handler(h.event, {
       currentPassword: 'correct horse battery staple',
       newPassword: 'replacement horse battery staple'
@@ -1692,7 +1685,7 @@ describe('registerVaultIpc inactive two-factor privacy boundary', () => {
 
   it('returns only the service safe report and never accepts vault domains from the renderer', async () => {
     const h = harness()
-    const response = await electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(
+    const response = await electronMock.handlers.get('vault:health-inactive-two-factor')!(
       h.event,
       undefined
     )
@@ -1717,15 +1710,15 @@ describe('registerVaultIpc inactive two-factor privacy boundary', () => {
     ])
     expect(JSON.stringify(response)).not.toContain('login.private-vault.example')
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(h.event, {})
+      electronMock.handlers.get('vault:health-inactive-two-factor')!(h.event, {})
     ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(h.event, {
+      electronMock.handlers.get('vault:health-inactive-two-factor')!(h.event, {
         [Symbol('hidden')]: true
       })
     ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(h.event, {
+      electronMock.handlers.get('vault:health-inactive-two-factor')!(h.event, {
         hostname: 'login.private-vault.example'
       })
     ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
@@ -1734,7 +1727,7 @@ describe('registerVaultIpc inactive two-factor privacy boundary', () => {
   it('opens documentation using only a dataset domain and rejects URL-shaped or accessor input', async () => {
     const h = harness()
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultHealthOpenTwoFactorDocumentation)!(h.event, {
+      electronMock.handlers.get('vault:health-open-two-factor-documentation')!(h.event, {
         matchedDomain: 'example.com'
       })
     ).resolves.toBeUndefined()
@@ -1751,10 +1744,7 @@ describe('registerVaultIpc inactive two-factor privacy boundary', () => {
       { matchedDomain: `${'a'.repeat(250)}.com` }
     ]) {
       await expect(
-        electronMock.handlers.get(IPC_CHANNELS.vaultHealthOpenTwoFactorDocumentation)!(
-          h.event,
-          invalid
-        )
+        electronMock.handlers.get('vault:health-open-two-factor-documentation')!(h.event, invalid)
       ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     }
 
@@ -1767,10 +1757,7 @@ describe('registerVaultIpc inactive two-factor privacy boundary', () => {
       }
     })
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultHealthOpenTwoFactorDocumentation)!(
-        h.event,
-        accessor
-      )
+      electronMock.handlers.get('vault:health-open-two-factor-documentation')!(h.event, accessor)
     ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     expect(getterCalls).toBe(0)
     expect(h.directory.openDocumentation).toHaveBeenCalledOnce()
@@ -1782,10 +1769,7 @@ describe('registerVaultIpc inactive two-factor privacy boundary', () => {
       new TwoFactorDirectoryCacheError('UNAVAILABLE')
     )
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(
-        unavailable.event,
-        undefined
-      )
+      electronMock.handlers.get('vault:health-inactive-two-factor')!(unavailable.event, undefined)
     ).rejects.toThrow('BEARWARDEN:HEALTH_CHECK_FAILED')
 
     const missingDocumentation = harness()
@@ -1793,7 +1777,7 @@ describe('registerVaultIpc inactive two-factor privacy boundary', () => {
       new TwoFactorDirectoryCacheError('DOCUMENTATION_NOT_FOUND')
     )
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultHealthOpenTwoFactorDocumentation)!(
+      electronMock.handlers.get('vault:health-open-two-factor-documentation')!(
         missingDocumentation.event,
         { matchedDomain: 'example.com' }
       )
@@ -1812,7 +1796,7 @@ describe('registerVaultIpc inactive two-factor privacy boundary', () => {
       getMainWindow: () => ({ isDestroyed: () => false, webContents: event.sender }) as never
     })
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.vaultHealthInactiveTwoFactor)!(absent.event, undefined)
+      electronMock.handlers.get('vault:health-inactive-two-factor')!(absent.event, undefined)
     ).rejects.toThrow('BEARWARDEN:HEALTH_CHECK_FAILED')
   })
 })
@@ -2285,12 +2269,12 @@ describe('registerVaultIpc reprompt gate', () => {
       return { configured: false, state: 'unconfigured' }
     })
 
-    await electronMock.handlers.get(IPC_CHANNELS.syncConnect)!(event, {
+    await electronMock.handlers.get('sync:connect')!(event, {
       serverUrl: 'https://vault.example.invalid',
       email: 'person@example.invalid',
       masterPassword: 'remote password'
     })
-    await electronMock.handlers.get(IPC_CHANNELS.syncDisconnect)!(event, undefined)
+    await electronMock.handlers.get('sync:disconnect')!(event, undefined)
 
     expect(order).toEqual(['before', 'connect', 'before', 'disconnect'])
     expect(beforeSyncReconfigure).toHaveBeenCalledTimes(2)
@@ -2300,7 +2284,7 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('validates and clears the master password before resolving an unknown import result', async () => {
     const { event, vault, afterSyncChanged } = harness()
-    const resolve = electronMock.handlers.get(IPC_CHANNELS.syncResolvePendingImport)!
+    const resolve = electronMock.handlers.get('sync:resolve-pending-import')!
     let received: { masterPassword: string; confirmRetry: true } | undefined
     const status = {
       configured: true,
@@ -2357,8 +2341,8 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('accepts only the explicit WebAuthn remember flag for sync connect and unlock', async () => {
     const { event, vault, afterSyncChanged } = harness()
-    const connect = electronMock.handlers.get(IPC_CHANNELS.syncConnect)!
-    const unlock = electronMock.handlers.get(IPC_CHANNELS.syncUnlock)!
+    const connect = electronMock.handlers.get('sync:connect')!
+    const unlock = electronMock.handlers.get('sync:unlock')!
     const connectRequest = {
       serverUrl: 'https://vault.example.invalid',
       email: 'person@example.invalid',
@@ -2415,8 +2399,8 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('returns only the provider allowlist for expected two-factor challenges', async () => {
     const { event, vault, afterSyncChanged } = harness()
-    const connect = electronMock.handlers.get(IPC_CHANNELS.syncConnect)!
-    const unlock = electronMock.handlers.get(IPC_CHANNELS.syncUnlock)!
+    const connect = electronMock.handlers.get('sync:connect')!
+    const unlock = electronMock.handlers.get('sync:unlock')!
     const connectRequest = {
       serverUrl: 'https://vault.example.invalid',
       email: 'person@example.invalid',
@@ -2449,8 +2433,8 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('publishes connect and unlock failure status without replacing the original error', async () => {
     const { event, vault, afterSyncChanged } = harness()
-    const connect = electronMock.handlers.get(IPC_CHANNELS.syncConnect)!
-    const unlock = electronMock.handlers.get(IPC_CHANNELS.syncUnlock)!
+    const connect = electronMock.handlers.get('sync:connect')!
+    const unlock = electronMock.handlers.get('sync:unlock')!
     const failureStatus = {
       configured: true,
       state: 'error' as const,
@@ -2490,7 +2474,7 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('passes an exact data-only email two-factor request to the service', async () => {
     const { event, vault } = harness()
-    const send = electronMock.handlers.get(IPC_CHANNELS.syncSendEmailTwoFactorCode)!
+    const send = electronMock.handlers.get('sync:send-email-two-factor-code')!
     const request = {
       serverUrl: 'https://vault.example.invalid',
       email: 'person@example.invalid',
@@ -2528,7 +2512,7 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('validates new-device resend credentials and clears the parsed password after dispatch', async () => {
     const { event, vault } = harness()
-    const resend = electronMock.handlers.get(IPC_CHANNELS.syncResendNewDeviceOtp)!
+    const resend = electronMock.handlers.get('sync:resend-new-device-otp')!
     let dispatchedPassword = ''
     let dispatchedRequest: { masterPassword: string } | undefined
     vault.resendSyncNewDeviceOtp.mockImplementationOnce(async (request) => {
@@ -2591,8 +2575,8 @@ describe('registerVaultIpc reprompt gate', () => {
         skippedTrashItems: 0
       }
     })
-    const exportVault = electronMock.handlers.get(IPC_CHANNELS.vaultExport)!
-    const importVault = electronMock.handlers.get(IPC_CHANNELS.vaultImport)!
+    const exportVault = electronMock.handlers.get('vault:export')!
+    const importVault = electronMock.handlers.get('vault:import')!
     await expect(
       exportVault(event, {
         masterPassword: 'correct horse battery staple',
@@ -2826,10 +2810,10 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('keeps native restore sessions exact, sender-bound, progress-only, and secret-free', async () => {
     const { event, portability, afterMutation } = harness()
-    const preview = electronMock.handlers.get(IPC_CHANNELS.nativeRestorePreview)!
-    const start = electronMock.handlers.get(IPC_CHANNELS.nativeRestoreStart)!
-    const cancel = electronMock.handlers.get(IPC_CHANNELS.nativeRestoreCancel)!
-    const clear = electronMock.handlers.get(IPC_CHANNELS.nativeRestoreClearCompleted)!
+    const preview = electronMock.handlers.get('vault:native-restore-preview')!
+    const start = electronMock.handlers.get('vault:native-restore-start')!
+    const cancel = electronMock.handlers.get('vault:native-restore-cancel')!
+    const clear = electronMock.handlers.get('vault:native-restore-clear-completed')!
     const sessionId = '70000000-0000-4000-8000-000000000099'
     await expect(preview(event, { password: 'portable backup password' })).resolves.toMatchObject({
       canceled: false,
@@ -2852,7 +2836,7 @@ describe('registerVaultIpc reprompt gate', () => {
     expect(
       (event as { sender: { send: ReturnType<typeof vi.fn> } }).sender.send
     ).toHaveBeenCalledWith(
-      IPC_EVENTS.nativeRestoreProgress,
+      'vault:native-restore-progress',
       expect.objectContaining({ sessionId, state: 'complete', completedBytes: 23 })
     )
     expect(JSON.stringify(result)).not.toContain('correct horse battery staple')
@@ -2887,7 +2871,7 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('accepts a bounded empty vault query and rejects malformed list requests', async () => {
     const { event, vault } = harness()
-    const list = electronMock.handlers.get(IPC_CHANNELS.loginList)!
+    const list = electronMock.handlers.get('login:list')!
 
     await expect(list(event, { query: '' })).resolves.toEqual([])
     expect(vault.listLogins).toHaveBeenCalledWith({ query: '' })
@@ -2910,7 +2894,7 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('exposes vault health without input or a reprompt capability', async () => {
     const { event, vault } = harness()
-    const health = electronMock.handlers.get(IPC_CHANNELS.vaultHealthReport)!
+    const health = electronMock.handlers.get('vault:health-report')!
 
     await expect(health(event, undefined)).resolves.toEqual({
       generatedAt: '2026-07-16T00:00:00.000Z',
@@ -2941,8 +2925,8 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('exposes and cancels the explicit HIBP report only without input', async () => {
     const { event, vault } = harness()
-    const exposed = electronMock.handlers.get(IPC_CHANNELS.vaultHealthExposedPasswords)!
-    const cancel = electronMock.handlers.get(IPC_CHANNELS.vaultHealthCancelExposedPasswords)!
+    const exposed = electronMock.handlers.get('vault:health-exposed-passwords')!
+    const cancel = electronMock.handlers.get('vault:health-cancel-exposed-passwords')!
 
     await expect(exposed(event, undefined)).resolves.toEqual({
       generatedAt: '2026-07-16T00:00:00.000Z',
@@ -2967,8 +2951,8 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('accepts only a bounded email for the explicit account-breach report', async () => {
     const { event, vault } = harness()
-    const account = electronMock.handlers.get(IPC_CHANNELS.vaultHealthAccountBreaches)!
-    const cancel = electronMock.handlers.get(IPC_CHANNELS.vaultHealthCancelAccountBreaches)!
+    const account = electronMock.handlers.get('vault:health-account-breaches')!
+    const cancel = electronMock.handlers.get('vault:health-cancel-account-breaches')!
 
     await expect(account(event, { email: '  member@example.invalid  ' })).resolves.toEqual({
       generatedAt: '2026-07-16T00:00:00.000Z',
@@ -3000,7 +2984,7 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('opens only the fixed HIBP attribution target without input', async () => {
     const { event, vault } = harness()
-    const open = electronMock.handlers.get(IPC_CHANNELS.vaultHealthOpenHibp)!
+    const open = electronMock.handlers.get('vault:health-open-hibp')!
 
     await expect(open(event, undefined)).resolves.toBeUndefined()
     expect(vault.openHibpWebsite).toHaveBeenCalledWith()
@@ -3012,8 +2996,8 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('validates equivalent-domain reads and bounded replacement writes', async () => {
     const { event, vault } = harness()
-    const get = electronMock.handlers.get(IPC_CHANNELS.domainRulesGet)!
-    const update = electronMock.handlers.get(IPC_CHANNELS.domainRulesUpdate)!
+    const get = electronMock.handlers.get('domain-rules:get')!
+    const update = electronMock.handlers.get('domain-rules:update')!
 
     await expect(get(event, undefined)).resolves.toMatchObject({ revision: 'a'.repeat(64) })
     expect(vault.getEquivalentDomainSettings).toHaveBeenCalledWith()
@@ -3045,9 +3029,9 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('keeps account security actions on exact empty IPC requests', async () => {
     const { event, vault } = harness()
-    const profile = electronMock.handlers.get(IPC_CHANNELS.accountSecurityProfile)!
-    const devices = electronMock.handlers.get(IPC_CHANNELS.accountDevices)!
-    const resend = electronMock.handlers.get(IPC_CHANNELS.accountResendVerification)!
+    const profile = electronMock.handlers.get('account-security:profile')!
+    const devices = electronMock.handlers.get('account-security:devices')!
+    const resend = electronMock.handlers.get('account-security:resend-verification')!
 
     await expect(profile(event, undefined)).resolves.toMatchObject({
       email: 'sync@example.invalid',
@@ -3070,8 +3054,8 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('validates the opaque login approval response exactly', async () => {
     const { event, vault } = harness()
-    const pending = electronMock.handlers.get(IPC_CHANNELS.accountPendingLoginApprovals)!
-    const respond = electronMock.handlers.get(IPC_CHANNELS.accountRespondLoginApproval)!
+    const pending = electronMock.handlers.get('account-security:pending-login-approvals')!
+    const respond = electronMock.handlers.get('account-security:respond-login-approval')!
     const response = {
       token: '22222222-2222-4222-8222-222222222222',
       fingerprint: 'alpha-bravo-charlie-delta-echo-foxtrot',
@@ -3101,7 +3085,7 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('deauthorizes sessions only after exact confirmation and scrubs retained input', async () => {
     const { event, vault, beforeSyncReconfigure, afterSyncChanged } = harness()
-    const deauthorize = electronMock.handlers.get(IPC_CHANNELS.accountDeauthorizeSessions)!
+    const deauthorize = electronMock.handlers.get('account-security:deauthorize-sessions')!
     const order: string[] = []
     beforeSyncReconfigure.mockImplementation(async () => {
       order.push('before')
@@ -3164,7 +3148,7 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('publishes auth-required state without replacing an unknown deauthorization result', async () => {
     const { event, vault, afterSyncChanged } = harness()
-    const deauthorize = electronMock.handlers.get(IPC_CHANNELS.accountDeauthorizeSessions)!
+    const deauthorize = electronMock.handlers.get('account-security:deauthorize-sessions')!
     vault.deauthorizeAllSessions.mockRejectedValueOnce(
       new VaultError('SESSION_DEAUTHORIZATION_UNKNOWN')
     )
@@ -3183,8 +3167,8 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('accepts only exact data-only bounded profile mutations', async () => {
     const { event, vault } = harness()
-    const updateName = electronMock.handlers.get(IPC_CHANNELS.accountSecurityUpdateName)!
-    const updateAvatar = electronMock.handlers.get(IPC_CHANNELS.accountSecurityUpdateAvatar)!
+    const updateName = electronMock.handlers.get('account-security:update-name')!
+    const updateAvatar = electronMock.handlers.get('account-security:update-avatar')!
 
     await expect(updateName(event, { name: '', expectedName: 'Sync User' })).resolves.toMatchObject(
       { name: '' }
@@ -3228,10 +3212,10 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('keeps PIN capability IPC exact and clears all copied secrets', async () => {
     const { event, vault } = harness()
-    const status = electronMock.handlers.get(IPC_CHANNELS.vaultPinStatus)!
-    const enable = electronMock.handlers.get(IPC_CHANNELS.vaultPinEnable)!
-    const disable = electronMock.handlers.get(IPC_CHANNELS.vaultPinDisable)!
-    const unlock = electronMock.handlers.get(IPC_CHANNELS.vaultPinUnlock)!
+    const status = electronMock.handlers.get('vault:pin-status')!
+    const enable = electronMock.handlers.get('vault:pin-enable')!
+    const disable = electronMock.handlers.get('vault:pin-disable')!
+    const unlock = electronMock.handlers.get('vault:pin-unlock')!
 
     await expect(status(event, undefined)).resolves.toEqual({
       available: true,
@@ -3271,8 +3255,8 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('never returns an API key secret across IPC and gates rotation confirmation', async () => {
     const { event, vault } = harness()
-    const copyClientId = electronMock.handlers.get(IPC_CHANNELS.accountCopyApiClientId)!
-    const copyApiKey = electronMock.handlers.get(IPC_CHANNELS.accountCopyApiKey)!
+    const copyClientId = electronMock.handlers.get('account-security:copy-api-client-id')!
+    const copyApiKey = electronMock.handlers.get('account-security:copy-api-key')!
 
     await expect(copyClientId(event, undefined)).resolves.toBeUndefined()
     const request = {
@@ -3308,8 +3292,8 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('keeps recovery codes out of IPC responses and rejects extra fields', async () => {
     const { event, vault } = harness()
-    const status = electronMock.handlers.get(IPC_CHANNELS.accountTwoFactorStatus)!
-    const recovery = electronMock.handlers.get(IPC_CHANNELS.accountCopyRecoveryCode)!
+    const status = electronMock.handlers.get('account-security:two-factor-status')!
+    const recovery = electronMock.handlers.get('account-security:copy-recovery-code')!
 
     await expect(status(event, undefined)).resolves.toEqual([{ type: 0, enabled: true }])
     await expect(
@@ -3329,7 +3313,7 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('validates destructive 2FA disable requests and returns no secrets', async () => {
     const { event, vault } = harness()
-    const disable = electronMock.handlers.get(IPC_CHANNELS.accountDisableTwoFactorProvider)!
+    const disable = electronMock.handlers.get('account-security:disable-two-factor-provider')!
     const request = {
       type: 0,
       masterPassword: 'remote master password',
@@ -3373,9 +3357,9 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('keeps authenticator setup capabilities in main and validates the one-time session boundary', async () => {
     const { event, vault } = harness()
-    const begin = electronMock.handlers.get(IPC_CHANNELS.accountBeginAuthenticatorSetup)!
-    const copyKey = electronMock.handlers.get(IPC_CHANNELS.accountCopyAuthenticatorKey)!
-    const complete = electronMock.handlers.get(IPC_CHANNELS.accountCompleteAuthenticatorSetup)!
+    const begin = electronMock.handlers.get('account-security:begin-authenticator-setup')!
+    const copyKey = electronMock.handlers.get('account-security:copy-authenticator-key')!
+    const complete = electronMock.handlers.get('account-security:complete-authenticator-setup')!
     const sessionId = '10000000-0000-4000-8000-000000000001'
 
     const setup = await begin(event, { masterPassword: 'remote master password' })
@@ -3422,9 +3406,9 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('keeps Email 2FA capabilities in main across the two mutation phases', async () => {
     const { event, vault } = harness()
-    const begin = electronMock.handlers.get(IPC_CHANNELS.accountBeginEmailTwoFactorSetup)!
-    const send = electronMock.handlers.get(IPC_CHANNELS.accountSendEmailTwoFactorSetup)!
-    const complete = electronMock.handlers.get(IPC_CHANNELS.accountCompleteEmailTwoFactorSetup)!
+    const begin = electronMock.handlers.get('account-security:begin-email-two-factor-setup')!
+    const send = electronMock.handlers.get('account-security:send-email-two-factor-setup')!
+    const complete = electronMock.handlers.get('account-security:complete-email-two-factor-setup')!
     const sessionId = '20000000-0000-4000-8000-000000000002'
 
     const setup = await begin(event, { masterPassword: 'remote master password' })
@@ -3470,9 +3454,9 @@ describe('registerVaultIpc reprompt gate', () => {
   })
 
   it.each([
-    [IPC_CHANNELS.loginGet, 'getLogin', { id: 'item-a' }],
+    ['login:get', 'getLogin', { id: 'item-a' }],
     [
-      IPC_CHANNELS.loginRestorePasswordHistory,
+      'login:restore-password-history',
       'restorePasswordHistory',
       {
         id: 'item-a',
@@ -3481,21 +3465,21 @@ describe('registerVaultIpc reprompt gate', () => {
         expectedUpdatedAt: '2026-07-16T00:00:00.000Z'
       }
     ],
-    [IPC_CHANNELS.loginClone, 'cloneLogin', { id: 'item-a' }],
-    [IPC_CHANNELS.loginUpdate, 'updateLogin', { id: 'item-a', name: 'Updated' }],
-    [IPC_CHANNELS.loginDelete, 'deleteLogin', { id: 'item-a' }],
-    [IPC_CHANNELS.passkeyDelete, 'deletePasskey', { id: 'item-a', credentialId: 'credential-a' }],
-    [IPC_CHANNELS.loginSetFavorite, 'setLoginFavorite', { id: 'item-a', favorite: true }],
-    [IPC_CHANNELS.loginMove, 'moveLogin', { id: 'item-a', folderId: null }],
-    [IPC_CHANNELS.loginGetTotp, 'getTotp', { id: 'item-a' }],
-    [IPC_CHANNELS.loginCopyTotp, 'copyTotp', { id: 'item-a' }],
-    [IPC_CHANNELS.itemRevealSecret, 'revealSecret', { id: 'item-a', field: 'password' }],
+    ['login:clone', 'cloneLogin', { id: 'item-a' }],
+    ['login:update', 'updateLogin', { id: 'item-a', name: 'Updated' }],
+    ['login:delete', 'deleteLogin', { id: 'item-a' }],
+    ['passkey:delete', 'deletePasskey', { id: 'item-a', credentialId: 'credential-a' }],
+    ['login:set-favorite', 'setLoginFavorite', { id: 'item-a', favorite: true }],
+    ['login:move', 'moveLogin', { id: 'item-a', folderId: null }],
+    ['login:get-totp', 'getTotp', { id: 'item-a' }],
+    ['login:copy-totp', 'copyTotp', { id: 'item-a' }],
+    ['item:reveal-secret', 'revealSecret', { id: 'item-a', field: 'password' }],
     [
-      IPC_CHANNELS.itemRevealEditorSecrets,
+      'item:reveal-editor-secrets',
       'revealEditorSecrets',
       { id: 'item-a', expectedUpdatedAt: '2026-07-16T00:00:00.000Z' }
     ],
-    [IPC_CHANNELS.loginOpenUri, 'openLoginUri', { id: 'item-a' }]
+    ['login:open-uri', 'openLoginUri', { id: 'item-a' }]
   ])('blocks %s before invoking %s without an item token', async (channel, method, input) => {
     const { event, vault } = harness()
     await expect(electronMock.handlers.get(channel)!(event, input)).rejects.toThrow(
@@ -3506,7 +3490,7 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('accepts only narrow visible-detail prefetch batches', async () => {
     const { event, vault } = harness()
-    const handler = electronMock.handlers.get(IPC_CHANNELS.loginPrefetch)!
+    const handler = electronMock.handlers.get('login:prefetch')!
     const ids = ['10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000002']
 
     await expect(handler(event, { ids })).resolves.toEqual([])
@@ -3528,13 +3512,13 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('validates website-icon authorization inside the short service preflight', async () => {
     const { event, vault } = harness()
-    const handler = electronMock.handlers.get(IPC_CHANNELS.loginWebsiteIcon)!
+    const handler = electronMock.handlers.get('login:website-icon')!
 
     await expect(handler(event, { id: 'item-a' })).rejects.toThrow('BEARWARDEN:REPROMPT_REQUIRED')
     expect(vault.getWebsiteIcon).toHaveBeenCalledWith({ id: 'item-a' }, expect.any(Function))
     expect(vault.runAuthorizedOperation).not.toHaveBeenCalled()
 
-    const authorization = (await electronMock.handlers.get(IPC_CHANNELS.loginAuthorize)!(event, {
+    const authorization = (await electronMock.handlers.get('login:authorize')!(event, {
       id: 'item-a',
       masterPassword: 'correct horse battery staple'
     })) as { token: string }
@@ -3545,12 +3529,12 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('validates card cover authorization inside the service fast read', async () => {
     const { event, vault } = harness()
-    const handler = electronMock.handlers.get(IPC_CHANNELS.attachmentCardCoverPreview)!
+    const handler = electronMock.handlers.get('attachment:card-cover-preview')!
 
     await expect(handler(event, { id: 'item-a' })).rejects.toThrow('BEARWARDEN:REPROMPT_REQUIRED')
     expect(vault.getCardCoverPreview).toHaveBeenCalledWith({ id: 'item-a' }, expect.any(Function))
 
-    const authorization = (await electronMock.handlers.get(IPC_CHANNELS.loginAuthorize)!(event, {
+    const authorization = (await electronMock.handlers.get('login:authorize')!(event, {
       id: 'item-a',
       masterPassword: 'correct horse battery staple'
     })) as { token: string }
@@ -3562,7 +3546,7 @@ describe('registerVaultIpc reprompt gate', () => {
   it('lets the service enforce deleted-history authorization inside the atomic read', async () => {
     const { event, vault, setAuthorizationState } = harness()
     setAuthorizationState({ reprompt: 0, generation: 3, deleted: true })
-    const handler = electronMock.handlers.get(IPC_CHANNELS.loginGetPasswordHistory)!
+    const handler = electronMock.handlers.get('login:get-password-history')!
 
     await expect(handler(event, { id: 'item-a' })).rejects.toThrow('BEARWARDEN:REPROMPT_REQUIRED')
     expect(vault.getPasswordHistoryView).toHaveBeenCalledWith(
@@ -3570,7 +3554,7 @@ describe('registerVaultIpc reprompt gate', () => {
       expect.any(Function)
     )
 
-    const authorization = (await electronMock.handlers.get(IPC_CHANNELS.loginAuthorize)!(event, {
+    const authorization = (await electronMock.handlers.get('login:authorize')!(event, {
       id: 'item-a',
       masterPassword: 'correct horse battery staple'
     })) as { token: string }
@@ -3584,23 +3568,23 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it.each([
     [
-      IPC_CHANNELS.attachmentDownload,
+      'attachment:download',
       'downloadAttachment',
       { id: 'item-a', attachmentId: 'attachment-a', operationId }
     ],
     [
-      IPC_CHANNELS.attachmentPreview,
+      'attachment:preview',
       'previewAttachment',
       { id: 'item-a', attachmentId: 'attachment-a', operationId }
     ],
-    [IPC_CHANNELS.attachmentUpload, 'uploadAttachment', { id: 'item-a', operationId }],
+    ['attachment:upload', 'uploadAttachment', { id: 'item-a', operationId }],
     [
-      IPC_CHANNELS.attachmentDelete,
+      'attachment:delete',
       'deleteAttachment',
       { id: 'item-a', attachmentId: 'attachment-a', operationId }
     ],
     [
-      IPC_CHANNELS.attachmentFixLegacy,
+      'attachment:fix-legacy',
       'fixLegacyAttachment',
       { id: 'item-a', attachmentId: 'attachment-a', operationId }
     ]
@@ -3618,7 +3602,7 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('issues proof only after password verification and rejects wrong item or epoch', async () => {
     const { event, setAuthorizationState } = harness()
-    const authorize = electronMock.handlers.get(IPC_CHANNELS.loginAuthorize)!
+    const authorize = electronMock.handlers.get('login:authorize')!
     await expect(
       authorize(event, { id: 'item-a', masterPassword: 'wrong password' })
     ).rejects.toThrow('BEARWARDEN:INVALID_MASTER_PASSWORD')
@@ -3627,10 +3611,10 @@ describe('registerVaultIpc reprompt gate', () => {
       id: 'item-a',
       masterPassword: 'correct horse battery staple'
     })) as { token: string }
-    const get = electronMock.handlers.get(IPC_CHANNELS.loginGet)!
-    const getHistory = electronMock.handlers.get(IPC_CHANNELS.loginGetPasswordHistory)!
-    const getTotp = electronMock.handlers.get(IPC_CHANNELS.loginGetTotp)!
-    const copyTotp = electronMock.handlers.get(IPC_CHANNELS.loginCopyTotp)!
+    const get = electronMock.handlers.get('login:get')!
+    const getHistory = electronMock.handlers.get('login:get-password-history')!
+    const getTotp = electronMock.handlers.get('login:get-totp')!
+    const copyTotp = electronMock.handlers.get('login:copy-totp')!
     await expect(
       get(event, { id: 'item-a', authorizationToken: authorization.token })
     ).resolves.toEqual({ id: 'item-a' })
@@ -3663,8 +3647,8 @@ describe('registerVaultIpc reprompt gate', () => {
     const { event, vault, setAuthorizationState } = harness()
     setAuthorizationState({ reprompt: 0, generation: 3 })
     for (const [channel, method] of [
-      [IPC_CHANNELS.loginGetTotp, 'getTotp'],
-      [IPC_CHANNELS.loginCopyTotp, 'copyTotp']
+      ['login:get-totp', 'getTotp'],
+      ['login:copy-totp', 'copyTotp']
     ] as const) {
       const handler = electronMock.handlers.get(channel)!
       await expect(handler(event, { id: 'item-a', extra: true })).rejects.toThrow(
@@ -3684,7 +3668,7 @@ describe('registerVaultIpc reprompt gate', () => {
     const source = { index: 0, name: 'PIN', type: 'hidden', linkedId: null }
     const requests = [
       [
-        IPC_CHANNELS.sharedLoginCreate,
+        'shared-login:create',
         'createSharedLogin',
         {
           organizationId: '60000000-0000-4000-8000-000000000001',
@@ -3693,30 +3677,30 @@ describe('registerVaultIpc reprompt gate', () => {
         }
       ],
       [
-        IPC_CHANNELS.sharedLoginUpdate,
+        'shared-login:update',
         'updateSharedLogin',
         { id, expectedUpdatedAt, name: 'Updated shared item' }
       ],
       [
-        IPC_CHANNELS.sharedLoginRevealEditorSecrets,
+        'shared-login:reveal-editor-secrets',
         'revealSharedEditorSecrets',
         { id, expectedUpdatedAt }
       ],
-      [IPC_CHANNELS.sharedLoginRevealSecret, 'revealSharedSecret', { id, field: 'password' }],
-      [IPC_CHANNELS.sharedLoginCopyField, 'copySharedField', { id, field: 'username' }],
+      ['shared-login:reveal-secret', 'revealSharedSecret', { id, field: 'password' }],
+      ['shared-login:copy-field', 'copySharedField', { id, field: 'username' }],
       [
-        IPC_CHANNELS.sharedLoginRevealCustomField,
+        'shared-login:reveal-custom-field',
         'revealSharedCustomField',
         { id, expectedUpdatedAt, source }
       ],
       [
-        IPC_CHANNELS.sharedLoginCopyCustomField,
+        'shared-login:copy-custom-field',
         'copySharedCustomField',
         { id, expectedUpdatedAt, source }
       ],
-      [IPC_CHANNELS.sharedLoginGetTotp, 'getSharedTotp', { id }],
-      [IPC_CHANNELS.sharedLoginCopyTotp, 'copySharedTotp', { id }],
-      [IPC_CHANNELS.sharedLoginOpenUri, 'openSharedLoginUri', { id, uriIndex: 1 }]
+      ['shared-login:get-totp', 'getSharedTotp', { id }],
+      ['shared-login:copy-totp', 'copySharedTotp', { id }],
+      ['shared-login:open-uri', 'openSharedLoginUri', { id, uriIndex: 1 }]
     ] as const
 
     for (const [channel, method, request] of requests) {
@@ -3732,10 +3716,10 @@ describe('registerVaultIpc reprompt gate', () => {
     const id = '80000000-0000-4000-8000-000000000001'
 
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.sharedLoginGetTotp)!(event, { id, extra: true })
+      electronMock.handlers.get('shared-login:get-totp')!(event, { id, extra: true })
     ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.sharedLoginCopyField)!(event, {
+      electronMock.handlers.get('shared-login:copy-field')!(event, {
         id,
         field: 'password',
         uriIndex: 0
@@ -3748,7 +3732,7 @@ describe('registerVaultIpc reprompt gate', () => {
       { authorizationToken: 'personal-item-token' }
     ]) {
       await expect(
-        electronMock.handlers.get(IPC_CHANNELS.sharedLoginCreate)!(event, {
+        electronMock.handlers.get('shared-login:create')!(event, {
           organizationId: '60000000-0000-4000-8000-000000000001',
           collectionIds: ['70000000-0000-4000-8000-000000000001'],
           name: 'New shared item',
@@ -3756,7 +3740,7 @@ describe('registerVaultIpc reprompt gate', () => {
         })
       ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
       await expect(
-        electronMock.handlers.get(IPC_CHANNELS.sharedLoginUpdate)!(event, {
+        electronMock.handlers.get('shared-login:update')!(event, {
           id,
           expectedUpdatedAt: '2026-07-16T00:00:00.000Z',
           name: 'Updated shared item',
@@ -3776,7 +3760,7 @@ describe('registerVaultIpc reprompt gate', () => {
       tooManyCollectionIds
     ]) {
       await expect(
-        electronMock.handlers.get(IPC_CHANNELS.sharedLoginCreate)!(event, {
+        electronMock.handlers.get('shared-login:create')!(event, {
           organizationId: '60000000-0000-4000-8000-000000000001',
           collectionIds,
           name: 'New shared item'
@@ -3791,8 +3775,8 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('accepts only exact shared list and get requests', async () => {
     const { event, vault } = harness()
-    const list = electronMock.handlers.get(IPC_CHANNELS.sharedLoginList)!
-    const get = electronMock.handlers.get(IPC_CHANNELS.sharedLoginGet)!
+    const list = electronMock.handlers.get('shared-login:list')!
+    const get = electronMock.handlers.get('shared-login:get')!
     const id = '80000000-0000-4000-8000-000000000001'
 
     await list(event, undefined)
@@ -3826,7 +3810,7 @@ describe('registerVaultIpc reprompt gate', () => {
   it('validates and authorizes exact passkey deletion requests before notifying mutations', async () => {
     const { event, vault, afterMutation, setAuthorizationState } = harness()
     setAuthorizationState({ reprompt: 0, generation: 3 })
-    const handler = electronMock.handlers.get(IPC_CHANNELS.passkeyDelete)!
+    const handler = electronMock.handlers.get('passkey:delete')!
     const request = {
       id: 'item-a',
       credentialId: 'credential-a',
@@ -3850,11 +3834,11 @@ describe('registerVaultIpc reprompt gate', () => {
   })
 
   const batchOperations = [
-    [IPC_CHANNELS.loginArchiveMany, 'archiveLogins'],
-    [IPC_CHANNELS.loginUnarchiveMany, 'unarchiveLogins'],
-    [IPC_CHANNELS.loginDeleteMany, 'deleteLogins'],
-    [IPC_CHANNELS.loginRestoreMany, 'restoreLogins'],
-    [IPC_CHANNELS.loginDeletePermanentlyMany, 'deleteLoginsPermanently']
+    ['login:archive-many', 'archiveLogins'],
+    ['login:unarchive-many', 'unarchiveLogins'],
+    ['login:delete-many', 'deleteLogins'],
+    ['login:restore-many', 'restoreLogins'],
+    ['login:delete-permanently-many', 'deleteLoginsPermanently']
   ] as const
   const batchIds = ['10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000002']
 
@@ -3862,10 +3846,10 @@ describe('registerVaultIpc reprompt gate', () => {
     'binds %s to the exact batch set and invokes %s only once',
     async (channel, method) => {
       const { event, vault, afterMutation } = harness()
-      const authorization = (await electronMock.handlers.get(IPC_CHANNELS.loginAuthorizeMany)!(
-        event,
-        { ids: batchIds, masterPassword: 'correct horse battery staple' }
-      )) as { token: string }
+      const authorization = (await electronMock.handlers.get('login:authorize-many')!(event, {
+        ids: batchIds,
+        masterPassword: 'correct horse battery staple'
+      })) as { token: string }
       const handler = electronMock.handlers.get(channel)!
       const request = {
         ids: [...batchIds].reverse(),
@@ -3925,7 +3909,7 @@ describe('registerVaultIpc reprompt gate', () => {
   it('uses a narrow exact history request and propagates service rejection', async () => {
     const { event, vault, setAuthorizationState } = harness()
     setAuthorizationState({ reprompt: 0, generation: 3 })
-    const getHistory = electronMock.handlers.get(IPC_CHANNELS.loginGetPasswordHistory)!
+    const getHistory = electronMock.handlers.get('login:get-password-history')!
     await expect(getHistory(event, { id: 'item-a', future: true })).rejects.toThrow(
       'BEARWARDEN:INVALID_INPUT'
     )
@@ -3938,14 +3922,14 @@ describe('registerVaultIpc reprompt gate', () => {
       lastUsedDate: '2026-07-14T00:00:00.000Z',
       expectedUpdatedAt: '2026-07-16T00:00:00.000Z'
     }
-    const reveal = electronMock.handlers.get(IPC_CHANNELS.loginRevealPasswordHistory)!
-    const copy = electronMock.handlers.get(IPC_CHANNELS.loginCopyPasswordHistory)!
+    const reveal = electronMock.handlers.get('login:reveal-password-history')!
+    const copy = electronMock.handlers.get('login:copy-password-history')!
     await expect(reveal(event, request)).resolves.toBe('old-secret')
     await expect(copy(event, request)).resolves.toBeUndefined()
     expect(vault.revealPasswordHistory).toHaveBeenCalledWith(request, expect.any(Function))
     expect(vault.copyPasswordHistory).toHaveBeenCalledWith(request, expect.any(Function))
 
-    const restore = electronMock.handlers.get(IPC_CHANNELS.loginRestorePasswordHistory)!
+    const restore = electronMock.handlers.get('login:restore-password-history')!
     await expect(restore(event, request)).resolves.toEqual({ id: 'item-a' })
     expect(vault.restorePasswordHistory).toHaveBeenCalledWith(request)
     for (const invalid of [
@@ -3964,7 +3948,7 @@ describe('registerVaultIpc reprompt gate', () => {
   it('keeps attachment download paths out of renderer IPC', async () => {
     const { event, vault, setAuthorizationState } = harness()
     setAuthorizationState({ reprompt: 0, generation: 3 })
-    const download = electronMock.handlers.get(IPC_CHANNELS.attachmentDownload)!
+    const download = electronMock.handlers.get('attachment:download')!
     await expect(
       download(event, {
         id: 'item-a',
@@ -4000,7 +3984,7 @@ describe('registerVaultIpc reprompt gate', () => {
     })
 
     await expect(
-      electronMock.handlers.get(IPC_CHANNELS.attachmentDownload)!(event, {
+      electronMock.handlers.get('attachment:download')!(event, {
         id: 'item-a',
         attachmentId: 'attachment-a',
         operationId
@@ -4008,13 +3992,13 @@ describe('registerVaultIpc reprompt gate', () => {
     ).resolves.toEqual({ canceled: false, fileName: 'document.txt' })
     expect(
       (event as { sender: { send: ReturnType<typeof vi.fn> } }).sender.send
-    ).toHaveBeenCalledWith(IPC_EVENTS.attachmentProgress, progress)
+    ).toHaveBeenCalledWith('attachment:progress', progress)
   })
 
   it('keeps upload paths, bytes, names, and sizes out of renderer IPC', async () => {
     const { event, vault, setAuthorizationState } = harness()
     setAuthorizationState({ reprompt: 0, generation: 3 })
-    const upload = electronMock.handlers.get(IPC_CHANNELS.attachmentUpload)!
+    const upload = electronMock.handlers.get('attachment:upload')!
     for (const forbidden of [
       { path: '/tmp/private.txt' },
       { bytes: [1, 2, 3] },
@@ -4038,7 +4022,7 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('validates operation ids and exposes cancel only to the trusted exact channel', async () => {
     const { event, vault } = harness()
-    const cancel = electronMock.handlers.get(IPC_CHANNELS.attachmentCancel)!
+    const cancel = electronMock.handlers.get('attachment:cancel')!
     await expect(cancel(event, { operationId: 'not-a-uuid' })).rejects.toThrow(
       'BEARWARDEN:INVALID_INPUT'
     )
@@ -4057,7 +4041,7 @@ describe('registerVaultIpc reprompt gate', () => {
     { algorithm: 'catchall', domain: 'example.invalid' }
   ])('parses an exact generator request %#', async (input) => {
     const { event, vault } = harness()
-    const generate = electronMock.handlers.get(IPC_CHANNELS.generatorGenerate)!
+    const generate = electronMock.handlers.get('generator:generate')!
     await generate(event, input)
     expect(vault.generateCredential).toHaveBeenLastCalledWith(input)
   })
@@ -4074,17 +4058,17 @@ describe('registerVaultIpc reprompt gate', () => {
     { algorithm: 'forwarder', options: {} }
   ])('rejects an oversized or non-exact generator request %#', async (input) => {
     const { event, vault } = harness()
-    const generate = electronMock.handlers.get(IPC_CHANNELS.generatorGenerate)!
+    const generate = electronMock.handlers.get('generator:generate')!
     await expect(generate(event, input)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
     expect(vault.generateCredential).not.toHaveBeenCalled()
   })
 
   it('keeps generator history IPC narrow and rejects stale-shaped copy locators', async () => {
     const { event, vault } = harness()
-    const copyGenerated = electronMock.handlers.get(IPC_CHANNELS.generatorGeneratedCopy)!
-    const history = electronMock.handlers.get(IPC_CHANNELS.generatorHistoryList)!
-    const clear = electronMock.handlers.get(IPC_CHANNELS.generatorHistoryClear)!
-    const copy = electronMock.handlers.get(IPC_CHANNELS.generatorHistoryCopy)!
+    const copyGenerated = electronMock.handlers.get('generator:generated-copy')!
+    const history = electronMock.handlers.get('generator:history-list')!
+    const clear = electronMock.handlers.get('generator:history-clear')!
+    const copy = electronMock.handlers.get('generator:history-copy')!
     await copyGenerated(event, { token: '00000000-0000-4000-8000-000000000001' })
     expect(vault.copyGeneratedCredential).toHaveBeenCalledWith({
       token: '00000000-0000-4000-8000-000000000001'
@@ -4130,8 +4114,8 @@ describe('registerVaultIpc reprompt gate', () => {
 
   it('stages generated SSH private material in main and returns only a one-time handle', async () => {
     const { event, vault } = harness()
-    const generate = electronMock.handlers.get(IPC_CHANNELS.sshKeyGenerate)!
-    const create = electronMock.handlers.get(IPC_CHANNELS.sshKeyCreateImported)!
+    const generate = electronMock.handlers.get('ssh-key:generate')!
+    const create = electronMock.handlers.get('ssh-key:create-imported')!
 
     const ready = await generate(event, undefined)
     expect(ready).toEqual({
@@ -4177,7 +4161,7 @@ describe('registerVaultIpc reprompt gate', () => {
   it('parses ordered URI match rows and indexed copy/open requests', async () => {
     const { event, vault, setAuthorizationState } = harness()
     setAuthorizationState({ reprompt: 0, generation: 3 })
-    const create = electronMock.handlers.get(IPC_CHANNELS.loginCreate)!
+    const create = electronMock.handlers.get('login:create')!
     await create(event, {
       name: 'Multiple URIs',
       uri: 'https://primary.example.invalid',
@@ -4195,12 +4179,12 @@ describe('registerVaultIpc reprompt gate', () => {
       })
     )
 
-    const copy = electronMock.handlers.get(IPC_CHANNELS.itemCopyField)!
+    const copy = electronMock.handlers.get('item:copy-field')!
     await copy(event, { id: 'item-a', field: 'uri', uriIndex: 1, authorizationToken: 'token' })
     expect(vault.copyField).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'item-a', field: 'uri', uriIndex: 1 })
     )
-    const open = electronMock.handlers.get(IPC_CHANNELS.loginOpenUri)!
+    const open = electronMock.handlers.get('login:open-uri')!
     await open(event, { id: 'item-a', uriIndex: 1, authorizationToken: 'token' })
     expect(vault.openLoginUri).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'item-a', uriIndex: 1 })
@@ -4216,7 +4200,7 @@ describe('registerVaultIpc reprompt gate', () => {
       { length: 1_001 },
       (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`
     )
-    const authorizeMany = electronMock.handlers.get(IPC_CHANNELS.loginAuthorizeMany)!
+    const authorizeMany = electronMock.handlers.get('login:authorize-many')!
     await expect(
       authorizeMany(event, { ids, masterPassword: 'correct horse battery staple' })
     ).resolves.toMatchObject({ token: expect.any(String), expiresAt: 61_000 })
@@ -4338,9 +4322,9 @@ describe('registerVaultIpc SSH clipboard imports', () => {
 
   it('reads the clipboard once and never returns imported private material to the renderer', async () => {
     const { event, reads, vault, afterMutation } = harness()
-    const begin = electronMock.handlers.get(IPC_CHANNELS.sshKeyBeginImport)!
-    const submit = electronMock.handlers.get(IPC_CHANNELS.sshKeySubmitImportPassphrase)!
-    const create = electronMock.handlers.get(IPC_CHANNELS.sshKeyCreateImported)!
+    const begin = electronMock.handlers.get('ssh-key:begin-import')!
+    const submit = electronMock.handlers.get('ssh-key:submit-import-passphrase')!
+    const create = electronMock.handlers.get('ssh-key:create-imported')!
 
     await expect(
       begin(
@@ -4397,8 +4381,8 @@ describe('registerVaultIpc SSH clipboard imports', () => {
 
   it('strictly validates passphrases and binds sessions to the trusted sender and vault generation', async () => {
     const { event, secondEvent, useSecondSender, setGeneration } = harness()
-    const begin = electronMock.handlers.get(IPC_CHANNELS.sshKeyBeginImport)!
-    const submit = electronMock.handlers.get(IPC_CHANNELS.sshKeySubmitImportPassphrase)!
+    const begin = electronMock.handlers.get('ssh-key:begin-import')!
+    const submit = electronMock.handlers.get('ssh-key:submit-import-passphrase')!
     const awaiting = (await begin(event, undefined)) as { token: string }
 
     await expect(submit(event, { token: awaiting.token, passphrase: '' })).rejects.toThrow(
@@ -4418,11 +4402,11 @@ describe('registerVaultIpc SSH clipboard imports', () => {
 
   it('clears import sessions before locking and keeps update reprompt authorization and mutation sync', async () => {
     const { event, vault, beforeLock, afterMutation } = harness()
-    const begin = electronMock.handlers.get(IPC_CHANNELS.sshKeyBeginImport)!
-    const submit = electronMock.handlers.get(IPC_CHANNELS.sshKeySubmitImportPassphrase)!
-    const lock = electronMock.handlers.get(IPC_CHANNELS.vaultLock)!
-    const authorize = electronMock.handlers.get(IPC_CHANNELS.loginAuthorize)!
-    const update = electronMock.handlers.get(IPC_CHANNELS.sshKeyUpdateImported)!
+    const begin = electronMock.handlers.get('ssh-key:begin-import')!
+    const submit = electronMock.handlers.get('ssh-key:submit-import-passphrase')!
+    const lock = electronMock.handlers.get('vault:lock')!
+    const authorize = electronMock.handlers.get('login:authorize')!
+    const update = electronMock.handlers.get('ssh-key:update-imported')!
 
     const awaiting = (await begin(event, undefined)) as { token: string }
     const ready = (await submit(event, {
@@ -4475,10 +4459,10 @@ describe('registerVaultIpc SSH clipboard imports', () => {
 
   it('rejects a non-SSH update before consuming the imported token', async () => {
     const { event, setTargetType, afterMutation } = harness()
-    const begin = electronMock.handlers.get(IPC_CHANNELS.sshKeyBeginImport)!
-    const submit = electronMock.handlers.get(IPC_CHANNELS.sshKeySubmitImportPassphrase)!
-    const authorize = electronMock.handlers.get(IPC_CHANNELS.loginAuthorize)!
-    const update = electronMock.handlers.get(IPC_CHANNELS.sshKeyUpdateImported)!
+    const begin = electronMock.handlers.get('ssh-key:begin-import')!
+    const submit = electronMock.handlers.get('ssh-key:submit-import-passphrase')!
+    const authorize = electronMock.handlers.get('login:authorize')!
+    const update = electronMock.handlers.get('ssh-key:update-imported')!
     const id = '70000000-0000-4000-8000-000000000001'
     const awaiting = (await begin(event, undefined)) as { token: string }
     const ready = (await submit(event, {

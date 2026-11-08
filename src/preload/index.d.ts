@@ -1,4 +1,4 @@
-import type { BearWardenAPI } from '../shared/vault-contract'
+import type { BearWardenAPI } from '../shared/ipc-api'
 
 declare global {
   interface Window {

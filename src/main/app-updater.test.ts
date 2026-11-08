@@ -49,7 +49,6 @@ vi.mock('electron-updater', () => ({
   default: { autoUpdater: harness.updater }
 }))
 
-import { IPC_CHANNELS, IPC_EVENTS } from '../shared/vault-contract'
 import { AppUpdaterController } from './app-updater'
 
 function emitUpdaterEvent(event: string, value?: unknown): void {
@@ -101,7 +100,7 @@ describe('AppUpdaterController', () => {
     const { window, sender } = createWindow()
     controller.attachWindow(window as never)
 
-    const check = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateCheck)
+    const check = harness.ipcHandlers.get('app-update:check')
     expect(await check?.(sender)).toEqual({
       status: 'disabled',
       currentVersion: '0.1.1',
@@ -112,7 +111,7 @@ describe('AppUpdaterController', () => {
     })
     expect(harness.updater.on).not.toHaveBeenCalled()
     expect(harness.updater.checkForUpdates).not.toHaveBeenCalled()
-    expect(window.webContents.send).toHaveBeenCalledWith(IPC_EVENTS.appUpdateStateChanged, {
+    expect(window.webContents.send).toHaveBeenCalledWith('app-update:state-changed', {
       status: 'disabled',
       currentVersion: '0.1.1',
       availableVersion: null,
@@ -185,9 +184,9 @@ describe('AppUpdaterController', () => {
     const { window, sender } = createWindow()
     controller.attachWindow(window as never)
 
-    const check = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateCheck)
-    const download = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateDownload)
-    const install = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateInstall)
+    const check = harness.ipcHandlers.get('app-update:check')
+    const download = harness.ipcHandlers.get('app-update:download')
+    const install = harness.ipcHandlers.get('app-update:install')
     await check?.(sender)
     expect(harness.updater.checkForUpdates).toHaveBeenCalledOnce()
 
@@ -213,7 +212,7 @@ describe('AppUpdaterController', () => {
     })
     const { window } = createWindow()
     controller.attachWindow(window as never)
-    const check = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateCheck)
+    const check = harness.ipcHandlers.get('app-update:check')
 
     expect(() => check?.({ sender: { id: 999 } })).toThrow('Invalid app update request')
     expect(harness.updater.checkForUpdates).not.toHaveBeenCalled()
@@ -232,7 +231,7 @@ describe('AppUpdaterController', () => {
       new Error('token=private https://updates.example.invalid/feed.yml')
     )
 
-    const check = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateCheck)
+    const check = harness.ipcHandlers.get('app-update:check')
     expect(await check?.(sender)).toEqual({
       status: 'error',
       currentVersion: '0.1.1',
@@ -259,11 +258,11 @@ describe('AppUpdaterController', () => {
     })
     const { window, sender } = createWindow()
     controller.attachWindow(window as never)
-    const check = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateCheck)
-    const download = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateDownload)
-    const install = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateInstall)
-    const openReleasePage = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateOpenReleasePage)
-    const openRepositoryPage = harness.ipcHandlers.get(IPC_CHANNELS.appUpdateOpenRepositoryPage)
+    const check = harness.ipcHandlers.get('app-update:check')
+    const download = harness.ipcHandlers.get('app-update:download')
+    const install = harness.ipcHandlers.get('app-update:install')
+    const openReleasePage = harness.ipcHandlers.get('app-update:open-release-page')
+    const openRepositoryPage = harness.ipcHandlers.get('app-update:open-repository-page')
 
     await check?.(sender)
     expect(harness.updater.checkForUpdates).toHaveBeenCalledOnce()

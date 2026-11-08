@@ -23,7 +23,7 @@ vi.mock('electron', () => ({
   }
 }))
 
-import { IPC_CHANNELS, IPC_EVENTS, type BearWardenAPI } from '../shared/vault-contract'
+import type { BearWardenAPI } from '../shared/ipc-api'
 
 let api: BearWardenAPI
 
@@ -69,7 +69,7 @@ describe('preload request forwarding', () => {
         await api.autofill.status()
         await api.autofill.requestAccessibility()
       },
-      [[IPC_CHANNELS.autofillStatus], [IPC_CHANNELS.autofillRequestAccessibility]]
+      [['autofill:status'], ['autofill:request-accessibility']]
     ],
     [
       'payload-free vault health reports',
@@ -77,7 +77,7 @@ describe('preload request forwarding', () => {
         await api.health.report()
         await api.health.inactiveTwoFactor()
       },
-      [[IPC_CHANNELS.vaultHealthReport], [IPC_CHANNELS.vaultHealthInactiveTwoFactor]]
+      [['vault:health-report'], ['vault:health-inactive-two-factor']]
     ],
     [
       'default shared-login and trash requests',
@@ -86,49 +86,49 @@ describe('preload request forwarding', () => {
         await api.logins.emptyTrash()
       },
       [
-        [IPC_CHANNELS.sharedLoginList, {}],
-        [IPC_CHANNELS.loginEmptyTrash, {}]
+        ['shared-login:list', {}],
+        ['login:empty-trash', {}]
       ]
     ],
     [
       'error-log file-manager action',
       () => api.settings.showErrorLog(),
-      [[IPC_CHANNELS.settingsShowErrorLog]]
+      [['settings:show-error-log']]
     ],
     [
       'email two-factor code request',
       () => api.sync.sendEmailTwoFactorCode(remoteCredentials),
-      [[IPC_CHANNELS.syncSendEmailTwoFactorCode, remoteCredentials]]
+      [['sync:send-email-two-factor-code', remoteCredentials]]
     ],
     [
       'new-device OTP resend request',
       () => api.sync.resendNewDeviceOtp(remoteCredentials),
-      [[IPC_CHANNELS.syncResendNewDeviceOtp, remoteCredentials]]
+      [['sync:resend-new-device-otp', remoteCredentials]]
     ],
     [
       'session deauthorization request',
       () => api.accountSecurity.deauthorizeSessions(deauthorizeRequest),
-      [[IPC_CHANNELS.accountDeauthorizeSessions, deauthorizeRequest]]
+      [['account-security:deauthorize-sessions', deauthorizeRequest]]
     ],
     [
       'pending import resolution request',
       () => api.sync.resolvePendingImport(pendingImportRequest),
-      [[IPC_CHANNELS.syncResolvePendingImport, pendingImportRequest]]
+      [['sync:resolve-pending-import', pendingImportRequest]]
     ],
     [
       'bounded visible-detail prefetch request',
       () => api.logins.prefetch(prefetchRequest),
-      [[IPC_CHANNELS.loginPrefetch, prefetchRequest]]
+      [['login:prefetch', prefetchRequest]]
     ],
     [
       'passwordless Bitwarden CSV export request',
       () => api.portability.export(csvExportRequest),
-      [[IPC_CHANNELS.vaultExport, csvExportRequest]]
+      [['vault:export', csvExportRequest]]
     ],
     [
       'personal vault purge request',
       () => api.sync.purgePersonalVault(purgeRequest),
-      [[IPC_CHANNELS.syncPurgePersonalVault, purgeRequest]]
+      [['sync:purge-personal-vault', purgeRequest]]
     ]
   ])('forwards only the %s through its dedicated channel', async (_label, call, expected) => {
     await call()
@@ -158,12 +158,12 @@ describe('preload account API', () => {
     await api.accounts.remove(accountId, true)
 
     expect(electronMock.invoke.mock.calls).toEqual([
-      [IPC_CHANNELS.accountStatus],
-      [IPC_CHANNELS.accountAdd],
-      [IPC_CHANNELS.accountSwitch, { accountId }],
-      [IPC_CHANNELS.accountRename, { accountId, displayName: 'Work', expectedRevision: 6 }],
-      [IPC_CHANNELS.accountReorder, { accountIds, expectedRevision: 7 }],
-      [IPC_CHANNELS.accountRemove, { accountId, confirm: true }]
+      ['account:status'],
+      ['account:add'],
+      ['account:switch', { accountId }],
+      ['account:rename', { accountId, displayName: 'Work', expectedRevision: 6 }],
+      ['account:reorder', { accountIds, expectedRevision: 7 }],
+      ['account:remove', { accountId, confirm: true }]
     ])
   })
 
@@ -175,8 +175,8 @@ describe('preload account API', () => {
     await api.accountSecurity.updateAvatar(avatarRequest)
 
     expect(electronMock.invoke.mock.calls).toEqual([
-      [IPC_CHANNELS.accountSecurityUpdateName, nameRequest],
-      [IPC_CHANNELS.accountSecurityUpdateAvatar, avatarRequest]
+      ['account-security:update-name', nameRequest],
+      ['account-security:update-avatar', avatarRequest]
     ])
   })
 
@@ -192,16 +192,16 @@ describe('preload account API', () => {
     const unsubscribe = api.accountSecurity.onLoginApprovalRequested(vi.fn())
 
     expect(electronMock.invoke.mock.calls).toEqual([
-      [IPC_CHANNELS.accountPendingLoginApprovals],
-      [IPC_CHANNELS.accountRespondLoginApproval, response]
+      ['account-security:pending-login-approvals'],
+      ['account-security:respond-login-approval', response]
     ])
     expect(electronMock.on).toHaveBeenCalledWith(
-      IPC_EVENTS.loginApprovalRequested,
+      'account-security:login-approval-requested',
       expect.any(Function)
     )
     unsubscribe()
     expect(electronMock.removeListener).toHaveBeenCalledWith(
-      IPC_EVENTS.loginApprovalRequested,
+      'account-security:login-approval-requested',
       expect.any(Function)
     )
   })
@@ -216,9 +216,9 @@ describe('preload account API', () => {
     await api.accountSecurity.removeWebAuthnKey(removeRequest)
 
     expect(electronMock.invoke.mock.calls).toEqual([
-      [IPC_CHANNELS.accountSecurityWebAuthnKeys, listRequest],
-      [IPC_CHANNELS.accountSecurityEnrollWebAuthnKey, enrollRequest],
-      [IPC_CHANNELS.accountSecurityRemoveWebAuthnKey, removeRequest]
+      ['account-security:webauthn-keys', listRequest],
+      ['account-security:enroll-webauthn-key', enrollRequest],
+      ['account-security:remove-webauthn-key', removeRequest]
     ])
   })
 })
@@ -235,9 +235,9 @@ describe('preload vault lifecycle events', () => {
     wrapped({}, { unexpected: true })
     unsubscribe()
 
-    expect(electronMock.on).toHaveBeenCalledWith(IPC_EVENTS.vaultLocked, wrapped)
+    expect(electronMock.on).toHaveBeenCalledWith('vault:locked', wrapped)
     expect(listener).toHaveBeenCalledWith()
-    expect(electronMock.removeListener).toHaveBeenCalledWith(IPC_EVENTS.vaultLocked, wrapped)
+    expect(electronMock.removeListener).toHaveBeenCalledWith('vault:locked', wrapped)
   })
 })
 
@@ -282,15 +282,15 @@ describe('preload shared login read API', () => {
     await api.sharedLogins.openUri(uriRequest)
 
     expect(electronMock.invoke.mock.calls).toEqual([
-      [IPC_CHANNELS.sharedLoginUpdate, updateRequest],
-      [IPC_CHANNELS.sharedLoginRevealEditorSecrets, editorRequest],
-      [IPC_CHANNELS.sharedLoginRevealSecret, fieldRequest],
-      [IPC_CHANNELS.sharedLoginCopyField, fieldRequest],
-      [IPC_CHANNELS.sharedLoginRevealCustomField, customFieldRequest],
-      [IPC_CHANNELS.sharedLoginCopyCustomField, customFieldRequest],
-      [IPC_CHANNELS.sharedLoginGetTotp, { id }],
-      [IPC_CHANNELS.sharedLoginCopyTotp, { id }],
-      [IPC_CHANNELS.sharedLoginOpenUri, uriRequest]
+      ['shared-login:update', updateRequest],
+      ['shared-login:reveal-editor-secrets', editorRequest],
+      ['shared-login:reveal-secret', fieldRequest],
+      ['shared-login:copy-field', fieldRequest],
+      ['shared-login:reveal-custom-field', customFieldRequest],
+      ['shared-login:copy-custom-field', customFieldRequest],
+      ['shared-login:get-totp', { id }],
+      ['shared-login:copy-totp', { id }],
+      ['shared-login:open-uri', uriRequest]
     ])
   })
 })
@@ -311,10 +311,10 @@ describe('preload password history API', () => {
     await api.logins.restorePasswordHistory(locator)
 
     expect(electronMock.invoke.mock.calls).toEqual([
-      [IPC_CHANNELS.loginGetPasswordHistory, { id }],
-      [IPC_CHANNELS.loginRevealPasswordHistory, locator],
-      [IPC_CHANNELS.loginCopyPasswordHistory, locator],
-      [IPC_CHANNELS.loginRestorePasswordHistory, locator]
+      ['login:get-password-history', { id }],
+      ['login:reveal-password-history', locator],
+      ['login:copy-password-history', locator],
+      ['login:restore-password-history', locator]
     ])
   })
 })
@@ -334,16 +334,16 @@ describe('preload application menu API', () => {
 
     expect(Object.keys(api.applicationMenu)).toEqual(['execute', 'onCopySelectedItem'])
     expect(electronMock.invoke).toHaveBeenCalledWith(
-      IPC_CHANNELS.applicationMenuExecute,
+      'application-menu:execute',
       'toggle-full-screen'
     )
     expect(electronMock.on).toHaveBeenCalledWith(
-      IPC_EVENTS.applicationMenuCopySelectedItem,
+      'application-menu:copy-selected-item',
       expect.any(Function)
     )
     expect(listener).toHaveBeenCalledWith('password')
     expect(electronMock.removeListener).toHaveBeenCalledWith(
-      IPC_EVENTS.applicationMenuCopySelectedItem,
+      'application-menu:copy-selected-item',
       wrapped
     )
   })
@@ -371,12 +371,12 @@ describe('preload updater API', () => {
     const unsubscribe = api.updater.onStateChanged(listener)
 
     expect(electronMock.invoke.mock.calls).toEqual([
-      [IPC_CHANNELS.appUpdateState],
-      [IPC_CHANNELS.appUpdateCheck],
-      [IPC_CHANNELS.appUpdateDownload],
-      [IPC_CHANNELS.appUpdateInstall],
-      [IPC_CHANNELS.appUpdateOpenReleasePage],
-      [IPC_CHANNELS.appUpdateOpenRepositoryPage]
+      ['app-update:state'],
+      ['app-update:check'],
+      ['app-update:download'],
+      ['app-update:install'],
+      ['app-update:open-release-page'],
+      ['app-update:open-repository-page']
     ])
     expect(electronMock.on).toHaveBeenCalledWith('app-update:state-changed', expect.any(Function))
 

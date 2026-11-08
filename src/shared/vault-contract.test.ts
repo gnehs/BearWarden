@@ -1,4 +1,5 @@
 import { describe, expectTypeOf, it } from 'vitest'
+import type { BearWardenAPI } from './ipc-api'
 import type {
   AccountRemoveRequest,
   AccountReorderRequest,
@@ -7,7 +8,6 @@ import type {
   AccountWebAuthnKeyRemovalRequest,
   AccountWebAuthnKeyView,
   AccountWebAuthnKeysRequest,
-  BearWardenAPI,
   LoginView,
   SyncPurgePersonalVaultRequest,
   SyncPurgePersonalVaultResult,

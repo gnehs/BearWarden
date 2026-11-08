@@ -15,7 +15,6 @@ vi.mock('electron', () => ({
   }
 }))
 
-import { IPC_CHANNELS, IPC_EVENTS } from '../shared/vault-contract'
 import type { SshAgentRendererApprovalRequest } from './ssh-agent-coordinator'
 import { SshAgentRendererBridge } from './ssh-agent-renderer-bridge'
 
@@ -93,7 +92,7 @@ describe('SshAgentRendererBridge', () => {
 
     expect(webContents.send).toHaveBeenCalledOnce()
     const [eventName, payload] = webContents.send.mock.calls[0]!
-    expect(eventName).toBe(IPC_EVENTS.sshAgentApprovalRequested)
+    expect(eventName).toBe('ssh-agent:approval-requested')
     expect(payload).toMatchObject({
       requestId: 'request-1',
       itemName: 'Production key',
@@ -105,7 +104,7 @@ describe('SshAgentRendererBridge', () => {
     expect(payload).not.toHaveProperty('privateKey')
     expect(payload).not.toHaveProperty('publicKeyBlob')
 
-    const respond = electronMock.handlers.get(IPC_CHANNELS.sshAgentRespondApproval)!
+    const respond = electronMock.handlers.get('ssh-agent:respond-approval')!
     await expect(
       Promise.resolve().then(() =>
         respond(
@@ -127,7 +126,7 @@ describe('SshAgentRendererBridge', () => {
 
   it('rejects unknown fields, invalid denial tokens, and renderer reload replays', async () => {
     const { bridge, webContents, trustedEvent } = harness()
-    const respond = electronMock.handlers.get(IPC_CHANNELS.sshAgentRespondApproval)!
+    const respond = electronMock.handlers.get('ssh-agent:respond-approval')!
     const operation = bridge.requestApproval(approval(), new AbortController().signal)
     await Promise.resolve()
 
@@ -186,7 +185,7 @@ describe('SshAgentRendererBridge', () => {
       endpoint: '/tmp/bearwarden-agent.sock',
       identityCount: 3
     })
-    expect(webContents.send).toHaveBeenLastCalledWith(IPC_EVENTS.sshAgentStatusChanged, {
+    expect(webContents.send).toHaveBeenLastCalledWith('ssh-agent:status-changed', {
       enabled: true,
       running: true,
       state: 'ready',
@@ -194,7 +193,7 @@ describe('SshAgentRendererBridge', () => {
       identityCount: 3
     })
 
-    const status = electronMock.handlers.get(IPC_CHANNELS.sshAgentStatus)!
+    const status = electronMock.handlers.get('ssh-agent:status')!
     await expect(Promise.resolve(status(trustedEvent))).resolves.toEqual({
       enabled: true,
       running: true,

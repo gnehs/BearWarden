@@ -756,7 +756,6 @@ type AnyEndpoint =
   | (typeof PRELOAD_IPC)[keyof typeof PRELOAD_IPC]
 
 type InvokeEndpointOf<Channel> = Extract<AnyEndpoint, { kind: 'invoke'; channel: Channel }>
-type SendEndpointOf<Channel> = Extract<AnyEndpoint, { kind: 'send'; channel: Channel }>
 type EventEndpointOf<Channel> = Extract<AnyEndpoint, { kind: 'event' | 'signal'; channel: Channel }>
 
 export type IpcInvokeChannel = Extract<AnyEndpoint, { kind: 'invoke' }>['channel']
@@ -774,9 +773,6 @@ export type IpcResponse<Channel extends IpcInvokeChannel> =
   InvokeEndpointOf<Channel> extends InvokeEndpoint<Channel, never, unknown, infer Response>
     ? Response
     : never
-
-export type IpcSendPayload<Channel extends IpcSendChannel> =
-  SendEndpointOf<Channel> extends SendEndpoint<Channel, never, infer Payload> ? Payload : never
 
 /** Arguments after the channel name for `webContents.send` on an event channel. */
 export type IpcEventArgs<Channel extends IpcEventChannel> =

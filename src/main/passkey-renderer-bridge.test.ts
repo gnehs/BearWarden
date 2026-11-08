@@ -15,7 +15,6 @@ vi.mock('electron', () => ({
   }
 }))
 
-import { IPC_CHANNELS, IPC_EVENTS } from '../shared/vault-contract'
 import type { PasskeyRendererSafePrompt } from './passkey-request-coordinator'
 import { PasskeyRendererBridge, type PasskeyPasswordProofBinding } from './passkey-renderer-bridge'
 
@@ -114,7 +113,7 @@ describe('PasskeyRendererBridge', () => {
     await vi.waitFor(() => expect(webContents.send).toHaveBeenCalledOnce())
 
     const [eventName, prompt] = webContents.send.mock.calls[0]!
-    expect(eventName).toBe(IPC_EVENTS.passkeyApprovalRequested)
+    expect(eventName).toBe('passkey:approval-requested')
     expect(prompt).toMatchObject({
       requestId: 'request-1',
       kind: 'get',
@@ -130,7 +129,7 @@ describe('PasskeyRendererBridge', () => {
     expect(JSON.stringify(prompt)).not.toContain('credentialId')
     expect(JSON.stringify(prompt)).not.toContain('userHandle')
 
-    const respond = electronMock.handlers.get(IPC_CHANNELS.passkeyRespondApproval)!
+    const respond = electronMock.handlers.get('passkey:respond-approval')!
     await respond(trustedEvent as never, {
       requestId: 'request-1',
       approved: true,
@@ -145,8 +144,8 @@ describe('PasskeyRendererBridge', () => {
     const { bridge, trustedEvent, verifyMasterPassword } = harness()
     const operation = bridge.requestConsent(safePrompt(), new AbortController().signal)
     await Promise.resolve()
-    const verifyApproval = electronMock.handlers.get(IPC_CHANNELS.passkeyVerifyApproval)!
-    const respond = electronMock.handlers.get(IPC_CHANNELS.passkeyRespondApproval)!
+    const verifyApproval = electronMock.handlers.get('passkey:verify-approval')!
+    const respond = electronMock.handlers.get('passkey:respond-approval')!
     const selectedChoiceId = '00000000-0000-4000-8000-000000000002'
 
     await verifyApproval(trustedEvent as never, {
@@ -185,8 +184,8 @@ describe('PasskeyRendererBridge', () => {
     const { bridge, trustedEvent } = harness({ now: () => now })
     const operation = bridge.requestConsent(safePrompt(), new AbortController().signal)
     await Promise.resolve()
-    const verifyApproval = electronMock.handlers.get(IPC_CHANNELS.passkeyVerifyApproval)!
-    const respond = electronMock.handlers.get(IPC_CHANNELS.passkeyRespondApproval)!
+    const verifyApproval = electronMock.handlers.get('passkey:verify-approval')!
+    const respond = electronMock.handlers.get('passkey:respond-approval')!
     const selectedChoiceId = '00000000-0000-4000-8000-000000000001'
 
     await verifyApproval(trustedEvent as never, {
@@ -233,7 +232,7 @@ describe('PasskeyRendererBridge', () => {
     const { bridge, trustedEvent } = harness()
     const operation = bridge.requestConsent(safePrompt(), new AbortController().signal)
     await Promise.resolve()
-    const respond = electronMock.handlers.get(IPC_CHANNELS.passkeyRespondApproval)!
+    const respond = electronMock.handlers.get('passkey:respond-approval')!
 
     await expect(
       Promise.resolve().then(() =>
@@ -275,7 +274,7 @@ describe('PasskeyRendererBridge', () => {
     expect(webContents.send.mock.calls[0]![1]).toMatchObject({ verificationMethods: [] })
     expect(getVerificationMethods).not.toHaveBeenCalled()
 
-    const verifyApproval = electronMock.handlers.get(IPC_CHANNELS.passkeyVerifyApproval)!
+    const verifyApproval = electronMock.handlers.get('passkey:verify-approval')!
     await expect(
       Promise.resolve().then(() =>
         verifyApproval(trustedEvent as never, {
@@ -286,7 +285,7 @@ describe('PasskeyRendererBridge', () => {
       )
     ).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
 
-    const respond = electronMock.handlers.get(IPC_CHANNELS.passkeyRespondApproval)!
+    const respond = electronMock.handlers.get('passkey:respond-approval')!
     await respond(trustedEvent as never, {
       requestId: 'request-1',
       approved: true,
@@ -321,8 +320,8 @@ describe('PasskeyRendererBridge', () => {
     })
     expect(getVerificationMethods).not.toHaveBeenCalled()
 
-    const verifyApproval = electronMock.handlers.get(IPC_CHANNELS.passkeyVerifyApproval)!
-    const respond = electronMock.handlers.get(IPC_CHANNELS.passkeyRespondApproval)!
+    const verifyApproval = electronMock.handlers.get('passkey:verify-approval')!
+    const respond = electronMock.handlers.get('passkey:respond-approval')!
     await expect(
       Promise.resolve().then(() =>
         respond(trustedEvent as never, {
@@ -373,8 +372,8 @@ describe('PasskeyRendererBridge', () => {
       new AbortController().signal
     )
     await Promise.resolve()
-    const verifyApproval = electronMock.handlers.get(IPC_CHANNELS.passkeyVerifyApproval)!
-    const respond = electronMock.handlers.get(IPC_CHANNELS.passkeyRespondApproval)!
+    const verifyApproval = electronMock.handlers.get('passkey:verify-approval')!
+    const respond = electronMock.handlers.get('passkey:respond-approval')!
 
     await expect(
       Promise.resolve().then(() =>
@@ -412,7 +411,7 @@ describe('PasskeyRendererBridge', () => {
     const { bridge, webContents, trustedEvent } = harness()
     const operation = bridge.requestConsent(safePrompt(), new AbortController().signal)
     await Promise.resolve()
-    const respond = electronMock.handlers.get(IPC_CHANNELS.passkeyRespondApproval)!
+    const respond = electronMock.handlers.get('passkey:respond-approval')!
 
     await expect(
       Promise.resolve().then(() =>
@@ -473,8 +472,8 @@ describe('PasskeyRendererBridge', () => {
     webContents.emit('did-start-loading')
     await reloadResult
     bridge.dispose()
-    expect(electronMock.removeHandler).toHaveBeenCalledWith(IPC_CHANNELS.passkeyVerifyApproval)
-    expect(electronMock.removeHandler).toHaveBeenCalledWith(IPC_CHANNELS.passkeyRespondApproval)
+    expect(electronMock.removeHandler).toHaveBeenCalledWith('passkey:verify-approval')
+    expect(electronMock.removeHandler).toHaveBeenCalledWith('passkey:respond-approval')
   })
 
   it('disposes safely after the attached window has already been destroyed', () => {
@@ -498,7 +497,7 @@ describe('PasskeyRendererBridge', () => {
     const controller = new AbortController()
     const operation = bridge.requestConsent(safePrompt(), controller.signal)
     await Promise.resolve()
-    const verifyApproval = electronMock.handlers.get(IPC_CHANNELS.passkeyVerifyApproval)!
+    const verifyApproval = electronMock.handlers.get('passkey:verify-approval')!
     const verifying = Promise.resolve(
       verifyApproval(trustedEvent as never, {
         requestId: 'request-1',
