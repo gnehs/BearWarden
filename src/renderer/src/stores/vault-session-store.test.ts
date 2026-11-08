@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import type {
-  CollectionView,
-  FolderView,
-  LoginSummary,
-  OrganizationView,
-  SharedLoginSummary
+import {
+  MAX_LOGIN_SEARCH_QUERY_LENGTH,
+  type CollectionView,
+  type FolderView,
+  type LoginSummary,
+  type LoginView,
+  type OrganizationView,
+  type SharedLoginSummary
 } from '../../../shared/vault-contract'
-import { createVaultSessionStore } from './vault-session-store'
+import { createVaultSessionStore, findVaultItem } from './vault-session-store'
 
 const folder: FolderView = {
   id: 'folder-1',
@@ -192,5 +194,38 @@ describe('createVaultSessionStore', () => {
       loading: true,
       busy: false
     })
+  })
+
+  it('bounds every query write to the main-process search limit', () => {
+    const store = createVaultSessionStore()
+
+    store.getState().setQuery('x'.repeat(MAX_LOGIN_SEARCH_QUERY_LENGTH + 5))
+    expect(store.getState().query).toHaveLength(MAX_LOGIN_SEARCH_QUERY_LENGTH)
+
+    store.getState().setQuery((current) => `${current}more`)
+    expect(store.getState().query).toHaveLength(MAX_LOGIN_SEARCH_QUERY_LENGTH)
+  })
+
+  it('drops the decrypted selected detail on disposal', () => {
+    const store = createVaultSessionStore()
+    const staleSetSelectedLogin = store.getState().setSelectedLogin
+    const detail = { ...item, notes: 'secret note' } as unknown as LoginView
+
+    store.getState().setSelectedLogin(detail)
+    expect(store.getState().selectedLogin).toBe(detail)
+    store.getState().dispose()
+    staleSetSelectedLogin(detail)
+
+    expect(store.getState().selectedLogin).toBeNull()
+  })
+
+  it('finds personal and shared items by id', () => {
+    const store = createVaultSessionStore()
+    store.getState().setItems([item])
+    store.getState().setSharedItems([sharedItem])
+
+    expect(findVaultItem(store.getState(), item.id)).toBe(item)
+    expect(findVaultItem(store.getState(), sharedItem.id)).toBe(sharedItem)
+    expect(findVaultItem(store.getState(), 'missing')).toBeUndefined()
   })
 })

@@ -12,14 +12,18 @@ import type {
   CollectionView,
   FolderView,
   LoginSummary,
+  LoginView,
   OrganizationView,
-  SharedLoginSummary
+  SharedLoginSummary,
+  SharedLoginView
 } from '../../../shared/vault-contract'
 import type { Scope, TypeFilter } from '../components/VaultShell-model'
 import { resolveValue } from '../lib/utils'
+import { boundedVaultSearchQuery } from '../lib/vault-search-ui'
 import type { VaultSortMode } from '../lib/vault-sort'
 
 export type VaultEditorMode = 'create' | 'edit' | null
+export type SelectedVaultLogin = LoginView | SharedLoginView
 
 export interface VaultSessionState {
   folders: FolderView[]
@@ -33,6 +37,8 @@ export interface VaultSessionState {
   query: string
   selectedIds: ReadonlySet<string>
   selectedId: string | null
+  /** Decrypted detail of the selected item; null until loaded or after authorization lapses. */
+  selectedLogin: SelectedVaultLogin | null
   editorMode: VaultEditorMode
   loading: boolean
   busy: boolean
@@ -50,6 +56,7 @@ export interface VaultSessionActions {
   setQuery: (value: SetStateAction<string>) => void
   setSelectedIds: (value: SetStateAction<ReadonlySet<string>>) => void
   setSelectedId: (value: SetStateAction<string | null>) => void
+  setSelectedLogin: (value: SetStateAction<SelectedVaultLogin | null>) => void
   setEditorMode: (value: SetStateAction<VaultEditorMode>) => void
   setLoading: (value: SetStateAction<boolean>) => void
   setBusy: (value: SetStateAction<boolean>) => void
@@ -74,6 +81,7 @@ function createInitialState(): VaultSessionState {
     query: '',
     selectedIds: new Set(),
     selectedId: null,
+    selectedLogin: null,
     editorMode: null,
     loading: true,
     busy: false
@@ -108,13 +116,18 @@ export function createVaultSessionStore(): VaultSessionStoreApi {
         setIfActive((state) => ({ sortMode: resolveValue(value, state.sortMode) })),
       setTypeFilter: (value) =>
         setIfActive((state) => ({ typeFilter: resolveValue(value, state.typeFilter) })),
-      setQuery: (value) => setIfActive((state) => ({ query: resolveValue(value, state.query) })),
+      setQuery: (value) =>
+        setIfActive((state) => ({
+          query: boundedVaultSearchQuery(resolveValue(value, state.query))
+        })),
       setSelectedIds: (value) =>
         setIfActive((state) => ({
           selectedIds: new Set(resolveValue(value, state.selectedIds))
         })),
       setSelectedId: (value) =>
         setIfActive((state) => ({ selectedId: resolveValue(value, state.selectedId) })),
+      setSelectedLogin: (value) =>
+        setIfActive((state) => ({ selectedLogin: resolveValue(value, state.selectedLogin) })),
       setEditorMode: (value) =>
         setIfActive((state) => ({ editorMode: resolveValue(value, state.editorMode) })),
       setLoading: (value) =>
@@ -130,6 +143,13 @@ export function createVaultSessionStore(): VaultSessionStoreApi {
       }
     }
   })
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function findVaultItem(state: VaultSessionState, id: string): LoginSummary | undefined {
+  return (
+    state.items.find((item) => item.id === id) ?? state.sharedItems.find((item) => item.id === id)
+  )
 }
 
 const VaultSessionStoreContext = createContext<VaultSessionStoreApi | null>(null)
@@ -160,7 +180,8 @@ export function useVaultSessionStore<T>(selector: (state: VaultSessionStore) => 
   return useStore(store, selector)
 }
 
-function useVaultSessionStoreApi(): VaultSessionStoreApi {
+// eslint-disable-next-line react-refresh/only-export-components
+export function useVaultSessionStoreApi(): VaultSessionStoreApi {
   const store = useContext(VaultSessionStoreContext)
 
   if (!store) {

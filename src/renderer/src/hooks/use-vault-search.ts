@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, RefObject, SetStateAction } from 'react'
 import type { LoginSummary, SharedLoginSummary } from '../../../shared/vault-contract'
 import type { VaultCategoryFilter } from '@renderer/lib/vault-category'
 import {
-  boundedVaultSearchQuery,
   filterVaultSearchMatches,
   isCurrentVaultSearchResponse,
   matchesVaultSearchNavigation,
@@ -22,7 +21,6 @@ interface UseVaultSearchOptions {
   typeFilter: VaultCategoryFilter
   sortMode: VaultSortMode
   query: string
-  setQuery: Dispatch<SetStateAction<string>>
   describeError: (error: unknown) => string
   onError: (message: string) => void
 }
@@ -31,7 +29,6 @@ interface VaultSearchState {
   searchOpen: boolean
   searchRef: RefObject<HTMLInputElement | null>
   scopedItems: LoginSummary[]
-  updateQuery: (value: string) => void
   setSearchOpen: Dispatch<SetStateAction<boolean>>
 }
 
@@ -42,7 +39,6 @@ export function useVaultSearch({
   typeFilter,
   sortMode,
   query,
-  setQuery,
   describeError,
   onError
 }: UseVaultSearchOptions): VaultSearchState {
@@ -51,15 +47,6 @@ export function useVaultSearch({
   const searchRef = useRef<HTMLInputElement>(null)
   const queryRef = useRef(query)
   const searchRequestIdRef = useRef(0)
-
-  const updateQuery = useCallback(
-    (value: string): void => {
-      const bounded = boundedVaultSearchQuery(value)
-      queryRef.current = bounded
-      setQuery(bounded)
-    },
-    [setQuery]
-  )
 
   useEffect(() => {
     queryRef.current = query
@@ -109,5 +96,5 @@ export function useVaultSearch({
     return sortVaultItems(scoped, sortMode)
   }, [items, query, scope, searchMatches, sharedItems, sortMode, typeFilter])
 
-  return { searchOpen, searchRef, scopedItems, updateQuery, setSearchOpen }
+  return { searchOpen, searchRef, scopedItems, setSearchOpen }
 }

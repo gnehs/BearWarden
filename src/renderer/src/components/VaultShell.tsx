@@ -157,7 +157,9 @@ import { activateLanguagePreference } from '@renderer/i18n'
 import { useVaultRouteState } from '@renderer/lib/vault-route-state'
 import {
   VaultSessionStoreProvider,
-  useVaultSessionStore
+  findVaultItem,
+  useVaultSessionStore,
+  useVaultSessionStoreApi
 } from '@renderer/stores/vault-session-store'
 import { VaultImageStoreProvider } from '@renderer/stores/vault-image-store'
 import {
@@ -475,6 +477,7 @@ function VaultShellContent({
     query,
     selectedIds,
     selectedId,
+    selectedLogin,
     editorMode,
     loading,
     busy,
@@ -489,6 +492,7 @@ function VaultShellContent({
     setQuery,
     setSelectedIds,
     setSelectedId,
+    setSelectedLogin,
     setEditorMode,
     setLoading,
     setBusy
@@ -505,6 +509,7 @@ function VaultShellContent({
       query: state.query,
       selectedIds: state.selectedIds,
       selectedId: state.selectedId,
+      selectedLogin: state.selectedLogin,
       editorMode: state.editorMode,
       loading: state.loading,
       busy: state.busy,
@@ -519,24 +524,36 @@ function VaultShellContent({
       setQuery: state.setQuery,
       setSelectedIds: state.setSelectedIds,
       setSelectedId: state.setSelectedId,
+      setSelectedLogin: state.setSelectedLogin,
       setEditorMode: state.setEditorMode,
       setLoading: state.setLoading,
       setBusy: state.setBusy
     }))
   )
+  const sessionStore = useVaultSessionStoreApi()
+  const findItem = useCallback(
+    (id: string): LoginSummary | undefined => findVaultItem(sessionStore.getState(), id),
+    [sessionStore]
+  )
+  const currentSelectedId = useCallback(
+    (): string | null => sessionStore.getState().selectedId,
+    [sessionStore]
+  )
+  const currentSelectedIds = useCallback(
+    (): ReadonlySet<string> => sessionStore.getState().selectedIds,
+    [sessionStore]
+  )
   const allItems = useMemo<LoginSummary[]>(() => [...items, ...sharedItems], [items, sharedItems])
-  const { searchOpen, searchRef, scopedItems, updateQuery, setSearchOpen } = useVaultSearch({
+  const { searchOpen, searchRef, scopedItems, setSearchOpen } = useVaultSearch({
     items,
     sharedItems,
     scope,
     typeFilter,
     sortMode,
     query,
-    setQuery,
     describeError: describeVaultError,
     onError: announceError
   })
-  const [selectedLogin, setSelectedLogin] = useState<LoginView | SharedLoginView | null>(null)
   const { copiedKey, clearCopied, showCopied } = useCopyFeedback()
   const selectedSummary = allItems.find((item) => item.id === selectedId) ?? null
   const selectedSharedSummary =
@@ -641,8 +658,6 @@ function VaultShellContent({
   const defaultSortInitializedRef = useRef(false)
   const compactReturnIdRef = useRef<string | null>(null)
   const compactDetailFocusIdRef = useRef<string | null>(null)
-  const selectedIdRef = useRef<string | null>(null)
-  const selectedIdsRef = useRef<ReadonlySet<string>>(new Set())
   const selectionAnchorIdRef = useRef<string | null>(null)
   const detailRequestsRef = useRef(new Map<string, Promise<LoginView>>())
   const detailPrefetchRequestsRef = useRef(new Map<string, Promise<LoginView | undefined>>())
@@ -652,7 +667,6 @@ function VaultShellContent({
   const detailCacheGenerationRef = useRef(0)
   // A successful list load may invalidate protected details, so list freshness needs its own epoch.
   const vaultLoadRequestIdRef = useRef(0)
-  const itemsRef = useRef<LoginSummary[]>([])
   const authorizationCacheRef = useRef(new Map<string, LoginAuthorization>())
   const authorizationExpiryTimersRef = useRef(new Map<string, number>())
   const pendingRepromptRef = useRef<PendingReprompt | null>(null)
@@ -704,10 +718,10 @@ function VaultShellContent({
         current !== null &&
         current.operationId === operationId &&
         current.itemId === itemId &&
-        selectedIdRef.current === itemId
+        currentSelectedId() === itemId
       )
     },
-    []
+    [currentSelectedId]
   )
 
   const openEditor = useCallback(
@@ -720,22 +734,13 @@ function VaultShellContent({
     [requestEditorTransition, setEditorMode]
   )
 
-  const updateSelectedIds = useCallback(
-    (nextIds: ReadonlySet<string>): void => {
-      selectedIdsRef.current = nextIds
-      setSelectedIds(nextIds)
-    },
-    [setSelectedIds]
-  )
-
   const clearItemSelection = useCallback((): void => {
-    updateSelectedIds(new Set())
+    setSelectedIds(new Set())
     selectionAnchorIdRef.current = null
-    selectedIdRef.current = null
     setSelectedId(null)
     setSelectedLogin(null)
     setPasswordHistoryDialogOpen(false)
-  }, [setPasswordHistoryDialogOpen, setSelectedId, updateSelectedIds])
+  }, [setSelectedId, setSelectedIds, setSelectedLogin])
 
   const clearDetailCache = useCallback((): void => {
     detailCacheGenerationRef.current += 1
@@ -767,7 +772,7 @@ function VaultShellContent({
         detailRequestsRef.current.clear()
         discardAuthorizationToken(id)
         detailCacheRef.current.delete(id)
-        if (selectedIdRef.current === id) {
+        if (currentSelectedId() === id) {
           setPasswordHistoryDialogOpen(false)
           setSelectedLogin(null)
           setEditorMode(null)
@@ -779,15 +784,7 @@ function VaultShellContent({
       }
       return authorization.token
     },
-    [
-      discardAuthorizationToken,
-      setEditorMode,
-      setPasswordHistoryDialogOpen,
-      setRevealedCustomFields,
-      setRevealedSecrets,
-      setSelectedLogin,
-      setTotpCodeState
-    ]
+    [currentSelectedId, discardAuthorizationToken, setEditorMode, setSelectedLogin]
   )
 
   const invalidateProtectedDetails = useCallback(
@@ -799,7 +796,8 @@ function VaultShellContent({
       detailCacheGenerationRef.current += 1
       detailRequestsRef.current.clear()
       for (const id of invalidIds) detailCacheRef.current.delete(id)
-      if (selectedIdRef.current && invalidIds.has(selectedIdRef.current)) {
+      const activeId = currentSelectedId()
+      if (activeId && invalidIds.has(activeId)) {
         setPasswordHistoryDialogOpen(false)
         setSelectedLogin(null)
         setEditorMode(null)
@@ -809,16 +807,7 @@ function VaultShellContent({
         setRevealedCustomFields(emptyRevealedCustomFields)
       }
     },
-    [
-      authorizationToken,
-      clearEditorDirty,
-      setEditorMode,
-      setPasswordHistoryDialogOpen,
-      setRevealedCustomFields,
-      setRevealedSecrets,
-      setSelectedLogin,
-      setTotpCodeState
-    ]
+    [authorizationToken, clearEditorDirty, currentSelectedId, setEditorMode, setSelectedLogin]
   )
 
   const invalidateAuthorization = useCallback(
@@ -827,7 +816,7 @@ function VaultShellContent({
       detailRequestsRef.current.clear()
       discardAuthorizationToken(id)
       detailCacheRef.current.delete(id)
-      if (selectedIdRef.current === id) {
+      if (currentSelectedId() === id) {
         if (!preservePasswordHistoryDialog) setPasswordHistoryDialogOpen(false)
         setSelectedLogin(null)
         setEditorMode(null)
@@ -835,7 +824,7 @@ function VaultShellContent({
         setRevealedCustomFields(emptyRevealedCustomFields)
       }
     },
-    [discardAuthorizationToken, setEditorMode, setPasswordHistoryDialogOpen]
+    [currentSelectedId, discardAuthorizationToken, setEditorMode, setSelectedLogin]
   )
 
   const cacheAuthorization = useCallback(
@@ -877,7 +866,7 @@ function VaultShellContent({
         reject = rejectPromise
       })
       pendingRepromptRef.current = { key, ids: normalizedIds, promise, resolve, reject }
-      const item = itemsRef.current.find((candidate) => candidate.id === normalizedIds[0])
+      const item = findItem(normalizedIds[0])
       setRepromptPrompt({
         itemName:
           normalizedIds.length === 1
@@ -891,7 +880,7 @@ function VaultShellContent({
       })
       return promise
     },
-    [authorizationToken, t]
+    [authorizationToken, findItem, t]
   )
 
   const withReprompt = useCallback(
@@ -900,9 +889,7 @@ function VaultShellContent({
       operation: (tokenFor: (id: string) => string | undefined) => Promise<T>,
       preservePasswordHistoryDialog = false
     ): Promise<T> => {
-      const protectedIds = ids.filter(
-        (id) => itemsRef.current.find((item) => item.id === id)?.reprompt === 1
-      )
+      const protectedIds = ids.filter((id) => findItem(id)?.reprompt === 1)
       const authorization = protectedIds.length > 0 ? await requestReprompt(ids) : undefined
       const tokenFor = (id: string): string | undefined =>
         authorization ? authorization.token : authorizationToken(id)
@@ -917,7 +904,7 @@ function VaultShellContent({
         )
       }
     },
-    [authorizationToken, invalidateAuthorization, requestReprompt]
+    [authorizationToken, findItem, invalidateAuthorization, requestReprompt]
   )
 
   const sensors = useSensors(
@@ -982,21 +969,22 @@ function VaultShellContent({
     }
   }, [
     clearDetailCache,
-    describeVaultError,
     invalidateProtectedDetails,
     setFolders,
     setItems,
     setOrganizations,
     setCollections,
     setSharedItems,
-    setLoading,
     setScope,
-    setSelectedId
+    setSelectedId,
+    setSelectedLogin,
+    describeVaultError,
+    setLoading
   ])
 
   const loadLoginDetail = useCallback(
     (id: string): Promise<LoginView> => {
-      const summary = itemsRef.current.find((item) => item.id === id)
+      const summary = findItem(id)
       if (summary?.deletedAt) return Promise.reject(new Error('INVALID_INPUT'))
       if (summary && isSharedLoginSummary(summary)) {
         return window.bearwarden.sharedLogins.get({ id })
@@ -1026,7 +1014,7 @@ function VaultShellContent({
           if (
             !isCurrentSelectedDetailResponse({
               id,
-              selectedId: selectedIdRef.current,
+              selectedId: currentSelectedId(),
               requestGeneration,
               currentGeneration: detailCacheGenerationRef.current,
               reprompt: login.reprompt,
@@ -1043,7 +1031,7 @@ function VaultShellContent({
       const pendingPrefetch = detailPrefetchRequestsRef.current.get(id)
       const promise = pendingPrefetch
         ? pendingPrefetch.then((prefetched) => {
-            const currentSummary = itemsRef.current.find((item) => item.id === id)
+            const currentSummary = findItem(id)
             const currentCached = detailCacheRef.current.get(id) ?? prefetched
             if (
               currentCached &&
@@ -1056,7 +1044,7 @@ function VaultShellContent({
               cacheLoginDetail(detailCacheRef.current, currentCached)
               return currentCached
             }
-            if (selectedIdRef.current !== id) throw new Error('DETAIL_REQUEST_INVALIDATED')
+            if (currentSelectedId() !== id) throw new Error('DETAIL_REQUEST_INVALIDATED')
             return startSelectedRequest()
           })
         : startSelectedRequest()
@@ -1068,12 +1056,12 @@ function VaultShellContent({
         })
       return promise
     },
-    [authorizationToken, withReprompt]
+    [authorizationToken, currentSelectedId, findItem, withReprompt]
   )
 
   const prefetchLoginDetail = useCallback(
     (id: string): void => {
-      const summary = itemsRef.current.find((item) => item.id === id)
+      const summary = findItem(id)
       const cached = detailCacheRef.current.get(id)
       if (cached) {
         prefetchCardCoverPreview(cached)
@@ -1101,7 +1089,7 @@ function VaultShellContent({
         const queuedIds = [...detailPrefetchQueueRef.current]
         detailPrefetchQueueRef.current.clear()
         const eligibleIds = queuedIds.filter((queuedId) => {
-          const queuedSummary = itemsRef.current.find((item) => item.id === queuedId)
+          const queuedSummary = findItem(queuedId)
           return Boolean(
             queuedSummary &&
             queuedSummary.reprompt === 0 &&
@@ -1127,7 +1115,7 @@ function VaultShellContent({
                     requestGeneration,
                     currentGeneration: detailCacheGenerationRef.current,
                     response: login,
-                    summary: itemsRef.current.find((item) => item.id === queuedId)
+                    summary: findItem(queuedId)
                   })
                 ) {
                   return undefined
@@ -1147,16 +1135,15 @@ function VaultShellContent({
         }
       })
     },
-    [prefetchCardCoverPreview]
+    [findItem, prefetchCardCoverPreview]
   )
 
   const activateLogin = useCallback(
     (id: string | null): void => {
       requestEditorTransition(() => {
         if (id) compactReturnIdRef.current = id
-        selectedIdRef.current = id
         const cached = id ? detailCacheRef.current.get(id) : undefined
-        const summary = id ? itemsRef.current.find((item) => item.id === id) : undefined
+        const summary = id ? findItem(id) : undefined
         const canUseCached =
           cached &&
           canUseCachedLoginDetail(summary, cached.reprompt, Boolean(authorizationToken(cached.id)))
@@ -1171,22 +1158,23 @@ function VaultShellContent({
     },
     [
       authorizationToken,
+      findItem,
       requestEditorTransition,
       setEditorMode,
-      setPasswordHistoryDialogOpen,
-      setSelectedId
+      setSelectedId,
+      setSelectedLogin
     ]
   )
 
   const selectLogin = useCallback(
     (id: string): void => {
       requestEditorTransition(() => {
-        updateSelectedIds(new Set([id]))
+        setSelectedIds(new Set([id]))
         selectionAnchorIdRef.current = id
         activateLogin(id)
       })
     },
-    [activateLogin, requestEditorTransition, updateSelectedIds]
+    [activateLogin, requestEditorTransition, setSelectedIds]
   )
 
   const showLoginContextMenu = useCallback(
@@ -1274,7 +1262,7 @@ function VaultShellContent({
       const summary = loginList.find((item) => item.id === current.id)
       return summary ? mergeLoginSummary(current, summary) : current
     })
-  }, [invalidateProtectedDetails, setItems])
+  }, [invalidateProtectedDetails, setItems, setSelectedLogin])
 
   const updateSelectedAttachments = useCallback(
     (
@@ -1294,7 +1282,7 @@ function VaultShellContent({
       if (updatedCached) {
         cacheLoginDetail(detailCacheRef.current, updatedCached)
       }
-      if (selectedIdRef.current !== itemId) return updatedCached
+      if (currentSelectedId() !== itemId) return updatedCached
       setSelectedLogin((current) => {
         if (!current || current.id !== itemId) return current
         if (updatedCached) return updatedCached
@@ -1305,7 +1293,7 @@ function VaultShellContent({
       })
       return updatedCached
     },
-    []
+    [currentSelectedId, setSelectedLogin]
   )
 
   const refreshAfterSync = useCallback(async (): Promise<void> => {
@@ -1335,10 +1323,6 @@ function VaultShellContent({
     [clearDetailCache]
   )
 
-  useEffect(() => {
-    itemsRef.current = allItems
-  }, [allItems])
-
   useEffect(
     () => () => {
       for (const timer of authorizationExpiryTimersRef.current.values()) {
@@ -1353,7 +1337,6 @@ function VaultShellContent({
   )
 
   useEffect(() => {
-    selectedIdRef.current = selectedId
     let active = true
     queueMicrotask(() => {
       if (!active) return
@@ -1374,7 +1357,7 @@ function VaultShellContent({
         !current ||
         progress.operationId !== current.operationId ||
         progress.itemId !== current.itemId ||
-        progress.itemId !== selectedIdRef.current ||
+        progress.itemId !== currentSelectedId() ||
         progress.kind !== current.kind
       ) {
         return
@@ -1399,7 +1382,7 @@ function VaultShellContent({
           .catch(() => undefined)
       }
     }
-  }, [])
+  }, [currentSelectedId])
 
   const syncState = syncStatus.state
   useEffect(() => {
@@ -1477,7 +1460,14 @@ function VaultShellContent({
     return () => {
       active = false
     }
-  }, [allItems, clearItemSelection, describeVaultError, loadLoginDetail, selectedId])
+  }, [
+    allItems,
+    clearItemSelection,
+    describeVaultError,
+    loadLoginDetail,
+    selectedId,
+    setSelectedLogin
+  ])
 
   useEffect(() => {
     let active = true
@@ -1649,9 +1639,7 @@ function VaultShellContent({
         const now = Date.now()
         if (listAuthorization && listAuthorization.expiresAt <= now) listAuthorization = undefined
         const requiresListAuthorization = totpListItemIds.some(
-          (id) =>
-            itemsRef.current.find((item) => item.id === id)?.reprompt === 1 &&
-            !authorizationToken(id)
+          (id) => findItem(id)?.reprompt === 1 && !authorizationToken(id)
         )
         if (!listAuthorization && requiresListAuthorization) {
           listAuthorization = await requestReprompt(totpListItemIds)
@@ -1726,6 +1714,7 @@ function VaultShellContent({
   }, [
     authorizationToken,
     describeVaultError,
+    findItem,
     requestReprompt,
     totpListItemIds,
     totpListRevision,
@@ -1735,49 +1724,57 @@ function VaultShellContent({
   const selectItems = useCallback(
     (id: string, modifiers: ItemSelectionModifiers): void => {
       requestEditorTransition(() => {
-        const target = itemsRef.current.find((item) => item.id === id)
+        const target = findItem(id)
         if (target && isSharedLoginSummary(target)) {
-          updateSelectedIds(new Set([id]))
+          setSelectedIds(new Set([id]))
           selectionAnchorIdRef.current = id
           activateLogin(id)
           return
         }
         const nextSelection = updateItemSelection({
-          selectedIds: selectedIdsRef.current,
+          selectedIds: currentSelectedIds(),
           anchorId: selectionAnchorIdRef.current,
-          activeId: selectedIdRef.current,
+          activeId: currentSelectedId(),
           orderedIds: scopedItemIds,
           targetId: id,
           toggle: modifiers.toggle,
           range: modifiers.range
         })
         const containsSharedItem = [...nextSelection.selectedIds].some((selectedItemId) => {
-          const selectedItem = itemsRef.current.find((item) => item.id === selectedItemId)
+          const selectedItem = findItem(selectedItemId)
           return selectedItem ? isSharedLoginSummary(selectedItem) : false
         })
         const selectedIds = containsSharedItem ? new Set([id]) : nextSelection.selectedIds
-        updateSelectedIds(selectedIds)
+        setSelectedIds(selectedIds)
         selectionAnchorIdRef.current = containsSharedItem ? id : nextSelection.anchorId
         activateLogin(containsSharedItem ? id : nextSelection.activeId)
       })
     },
-    [activateLogin, requestEditorTransition, scopedItemIds, updateSelectedIds]
+    [
+      activateLogin,
+      currentSelectedId,
+      currentSelectedIds,
+      findItem,
+      requestEditorTransition,
+      scopedItemIds,
+      setSelectedIds
+    ]
   )
 
   useEffect(() => {
     const nextSelection = normalizeItemSelection({
-      selectedIds: selectedIdsRef.current,
+      selectedIds: currentSelectedIds(),
       anchorId: selectionAnchorIdRef.current,
-      activeId: selectedIdRef.current,
+      activeId: currentSelectedId(),
       orderedIds: scopedItemIds
     })
     const selectionChanged =
-      nextSelection.selectedIds.size !== selectedIdsRef.current.size ||
-      [...nextSelection.selectedIds].some((id) => !selectedIdsRef.current.has(id))
-    if (selectionChanged) updateSelectedIds(nextSelection.selectedIds)
+      nextSelection.selectedIds.size !== currentSelectedIds().size ||
+      [...nextSelection.selectedIds].some((id) => !currentSelectedIds().has(id))
+    if (selectionChanged) setSelectedIds(nextSelection.selectedIds)
     selectionAnchorIdRef.current = nextSelection.anchorId
-    if (nextSelection.activeId !== selectedIdRef.current) activateLogin(nextSelection.activeId)
-  }, [activateLogin, scopedItemIds, updateSelectedIds])
+    if (nextSelection.activeId !== currentSelectedId()) activateLogin(nextSelection.activeId)
+  }, [activateLogin, currentSelectedId, currentSelectedIds, scopedItemIds, setSelectedIds])
 
   useEffect(() => {
     if (!window.matchMedia('(max-width: 680px)').matches) {
@@ -1828,10 +1825,10 @@ function VaultShellContent({
   }, [moveSummaries])
   const openMoveDialogForSelection = useCallback((): void => {
     if (busy || scope.kind === 'trash') return
-    const ids = [...selectedIdsRef.current]
+    const ids = [...currentSelectedIds()]
     if (ids.length === 0) return
     setMoveSnapshot({ ids, state: scope.kind === 'archive' ? 'archive' : 'active' })
-  }, [busy, scope.kind, setMoveSnapshot])
+  }, [busy, currentSelectedIds, scope.kind])
   const activeDragItem = activeDragId
     ? (allItems.find((item) => item.id === activeDragId) ?? null)
     : null
@@ -1976,6 +1973,7 @@ function VaultShellContent({
     clearDetailCache,
     describeVaultError,
     onLocked,
+    setSelectedLogin,
     t
   ])
 
@@ -2056,12 +2054,11 @@ function VaultShellContent({
       if (key === 'a' && !editorMode && !searchOpen && !isEditableShortcutTarget(event.target)) {
         event.preventDefault()
         const nextIds = new Set(scopedItemIds)
-        updateSelectedIds(nextIds)
+        setSelectedIds(nextIds)
         selectionAnchorIdRef.current = scopedItemIds[0] ?? null
+        const activeId = currentSelectedId()
         const nextActiveId =
-          selectedIdRef.current && nextIds.has(selectedIdRef.current)
-            ? selectedIdRef.current
-            : (scopedItemIds[0] ?? null)
+          activeId && nextIds.has(activeId) ? activeId : (scopedItemIds[0] ?? null)
         activateLogin(nextActiveId)
       }
       if (key === 'f') {
@@ -2109,7 +2106,8 @@ function VaultShellContent({
     emergencyAccessOpen,
     sendsOpen,
     settingsOpen,
-    updateSelectedIds
+    setSelectedIds,
+    currentSelectedId
   ])
 
   useEffect(() => {
@@ -2236,7 +2234,7 @@ function VaultShellContent({
     setHealthOpen(false)
     setScope({ kind: 'all' })
     setTypeFilter('login')
-    updateQuery('')
+    setQuery('')
     selectLogin(id)
   }
 
@@ -2316,9 +2314,8 @@ function VaultShellContent({
   }
 
   function selectSavedItem(id: string, login: LoginView | SharedLoginView | null): void {
-    updateSelectedIds(new Set([id]))
+    setSelectedIds(new Set([id]))
     selectionAnchorIdRef.current = id
-    selectedIdRef.current = id
     setSelectedId(id)
     setSelectedLogin(login)
   }
@@ -2354,7 +2351,7 @@ function VaultShellContent({
         announceError(describeVaultError(favoriteError))
       }
     },
-    [announce, describeVaultError, setItems, t, withReprompt]
+    [announce, describeVaultError, setItems, setSelectedLogin, t, withReprompt]
   )
 
   function revalidateBulkSelection(
@@ -2363,10 +2360,9 @@ function VaultShellContent({
   ): LoginSummary[] | null {
     const uniqueIds = new Set(ids)
     if (ids.length === 0 || uniqueIds.size !== ids.length) return null
-    const currentById = new Map(itemsRef.current.map((item) => [item.id, item]))
-    const currentItems: LoginSummary[] = []
+    const revalidated: LoginSummary[] = []
     for (const id of ids) {
-      const item = currentById.get(id)
+      const item = findItem(id)
       if (!item) return null
       const stateMatches =
         expectedState === 'trash'
@@ -2375,9 +2371,9 @@ function VaultShellContent({
             ? !item.deletedAt && Boolean(item.archivedAt)
             : !item.deletedAt && !item.archivedAt
       if (!stateMatches) return null
-      currentItems.push(item)
+      revalidated.push(item)
     }
-    return currentItems
+    return revalidated
   }
 
   function snapshotBulkAction(action: BulkActionKind): BulkActionSnapshot {
@@ -2387,7 +2383,7 @@ function VaultShellContent({
         : action === 'unarchive' || (action === 'delete' && scope.kind === 'archive')
           ? 'archive'
           : 'active'
-    return { action, ids: [...selectedIdsRef.current], state }
+    return { action, ids: [...currentSelectedIds()], state }
   }
 
   async function performBulkAction(snapshot: BulkActionSnapshot): Promise<boolean> {
@@ -3022,7 +3018,7 @@ function VaultShellContent({
               ...authorizationTokenField(tokenFor(itemId))
             })
           )
-      if (selectedIdRef.current !== itemId) return undefined
+      if (currentSelectedId() !== itemId) return undefined
       if (
         options.quiet &&
         !hoveringSecretFieldsRef.current.has(field) &&
@@ -3142,7 +3138,7 @@ function VaultShellContent({
               ...authorizationTokenField(tokenFor(itemId))
             })
           )
-      if (selectedIdRef.current !== itemId) return
+      if (currentSelectedId() !== itemId) return
       setRevealedCustomFields((current) => ({
         itemId,
         values: {
@@ -3197,7 +3193,7 @@ function VaultShellContent({
           ...authorizationTokenField(tokenFor(itemId))
         })
       )
-      if (!result.canceled && selectedIdRef.current === itemId) {
+      if (!result.canceled && currentSelectedId() === itemId) {
         announce(t`Downloaded “${result.fileName}”.`)
       }
       if (!result.canceled) {
@@ -3238,7 +3234,7 @@ function VaultShellContent({
           ...authorizationTokenField(tokenFor(itemId))
         })
       )
-      if (selectedIdRef.current !== itemId) return
+      if (currentSelectedId() !== itemId) return
       const preview = {
         itemId,
         attachmentId,
@@ -3282,7 +3278,7 @@ function VaultShellContent({
           invalidateCardCoverListPreview(itemId)
           if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
         }
-        if (selectedIdRef.current === itemId) {
+        if (currentSelectedId() === itemId) {
           announce(t`Uploaded “${result.attachment.fileName}”.`)
         }
         await refreshItems().catch(() =>
@@ -3354,7 +3350,7 @@ function VaultShellContent({
       )
       invalidateCardCoverListPreview(itemId)
       if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
-      if (selectedIdRef.current === itemId) {
+      if (currentSelectedId() === itemId) {
         announce(t`Uploaded card face “${result.attachment.fileName}”.`)
       }
       await refreshItems().catch(() =>
@@ -3373,7 +3369,7 @@ function VaultShellContent({
 
   async function deleteSelectedAttachment(): Promise<void> {
     const target = attachmentDeleteTarget
-    if (!target || target.itemId !== selectedIdRef.current || attachmentOperationRef.current) return
+    if (!target || target.itemId !== currentSelectedId() || attachmentOperationRef.current) return
     setAttachmentDeleteTarget(null)
     const operationId = beginAttachmentOperation('delete', target.itemId, target.fileName)
     try {
@@ -3392,7 +3388,7 @@ function VaultShellContent({
         invalidateCardCoverListPreview(target.itemId)
         if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
       }
-      if (selectedIdRef.current === target.itemId) announce(t`Deleted “${target.fileName}”.`)
+      if (currentSelectedId() === target.itemId) announce(t`Deleted “${target.fileName}”.`)
       await refreshItems().catch(() =>
         announceError(
           t`The attachment was deleted, but the list could not be refreshed. Sync again later.`
@@ -3436,7 +3432,7 @@ function VaultShellContent({
         invalidateCardCoverListPreview(itemId)
         if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
       }
-      if (selectedIdRef.current === itemId) announce(t`Repaired “${attachment.fileName}”.`)
+      if (currentSelectedId() === itemId) announce(t`Repaired “${attachment.fileName}”.`)
       await refreshItems().catch(() =>
         announceError(
           t`The attachment was repaired, but the list could not be refreshed. Sync again later.`
@@ -3525,7 +3521,7 @@ function VaultShellContent({
 
   function startDrag(event: DragStartEvent): void {
     const activeId = String(event.active.id)
-    if (itemIds.has(activeId) && !selectedIdsRef.current.has(activeId)) selectLogin(activeId)
+    if (itemIds.has(activeId) && !currentSelectedIds().has(activeId)) selectLogin(activeId)
     foldersBeforeDragRef.current = folderIds.has(activeId) ? folders : null
     foldersDuringDragRef.current = folderIds.has(activeId) ? folders : null
     setActiveDragId(activeId)
@@ -3582,9 +3578,7 @@ function VaultShellContent({
     const activeId = String(event.active.id)
     const overId = String(event.over.id)
     if (itemIds.has(activeId)) {
-      const draggedIds = selectedIdsRef.current.has(activeId)
-        ? [...selectedIdsRef.current]
-        : [activeId]
+      const draggedIds = currentSelectedIds().has(activeId) ? [...currentSelectedIds()] : [activeId]
       const snapshot: MoveSnapshot = {
         ids: draggedIds,
         state: scope.kind === 'archive' ? 'archive' : 'active'
@@ -3693,7 +3687,7 @@ function VaultShellContent({
             open: searchOpen,
             shortcutLabel: commandLabel,
             onOpen: () => setSearchOpen(true),
-            onClear: () => updateQuery('')
+            onClear: () => setQuery('')
           }}
           itemCreation={{
             visible:
@@ -3729,7 +3723,7 @@ function VaultShellContent({
           }}
           actions={{
             onOpenChange: setSearchOpen,
-            onQueryChange: updateQuery,
+            onQueryChange: setQuery,
             onSelectItem: (id) => {
               selectLogin(id)
               setSearchOpen(false)
