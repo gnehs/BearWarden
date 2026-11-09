@@ -938,14 +938,7 @@ export class VaultServiceBase {
   lock(): Promise<VaultStatus> {
     this.fastReadsBlocked = true
     this.generation += 1
-    this.abortImageRequests()
-    this.syncAbort?.abort()
-    this.abortNotificationTokenLeases()
-    this.abortAccountSecurityRequests()
-    this.abortNativeAttachmentBackups()
-    this.abortNativeAttachmentRestores()
-    this.activeExposedPasswordOperation?.abort.abort()
-    this.activeAccountBreachOperation?.abort.abort()
+    this.abortBackgroundOperations()
     return this.exclusive(async () => {
       try {
         await this.syncClient?.lock()
@@ -963,16 +956,22 @@ export class VaultServiceBase {
     this.clearUnlockedRuntimeState()
   }
 
-  protected clearUnlockedRuntimeState(): void {
-    this.fastReadsBlocked = true
+  /** Aborts every in-flight background operation; new background work registers its abort here. */
+  protected abortBackgroundOperations(): void {
+    this.abortImageRequests()
     this.syncAbort?.abort()
     this.abortNotificationTokenLeases()
     this.abortAccountSecurityRequests()
     this.abortNativeAttachmentBackups()
     this.abortNativeAttachmentRestores()
     this.activeExposedPasswordOperation?.abort.abort()
-    this.activeExposedPasswordOperation = null
     this.activeAccountBreachOperation?.abort.abort()
+  }
+
+  protected clearUnlockedRuntimeState(): void {
+    this.fastReadsBlocked = true
+    this.abortBackgroundOperations()
+    this.activeExposedPasswordOperation = null
     this.activeAccountBreachOperation = null
     this.syncAbort = null
     this.activeAttachmentOperation = null
@@ -980,7 +979,6 @@ export class VaultServiceBase {
     this.sessionDeauthorizationInProgress = false
     this.discardSession()
     this.generatorService.clearRuntimeState()
-    this.abortImageRequests()
     this.websiteIconCache.clear()
     this.websiteIconRequests.clear()
     this.cardCoverCache.clear()
