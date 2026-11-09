@@ -81,7 +81,10 @@ import type {
   SyncPurgePersonalVaultRequest,
   SyncPurgePersonalVaultResult,
   SyncResult,
-  SyncUnlockRequest
+  SyncUnlockRequest,
+  VaultTimeoutPolicy,
+  VaultStatus,
+  PinUnlockStatus
 } from '../shared/vault-contract'
 import type { SshKeyMaterial } from './ssh-key'
 import type {
@@ -122,6 +125,8 @@ import type { NativeAttachmentRestoreAttachmentKey } from './native-attachment-r
 import type { NativeAttachmentBackupPreview } from './native-attachment-backup'
 import type { BitwardenAttachmentByteSource } from './bitwarden-attachment-stream'
 import type { BitwardenNotificationConnectionInfo } from './bitwarden-notifications'
+import type { TouchIdUnlockMaterial } from './touch-id-unlock-capsule'
+
 export type {
   VaultAccountWebAuthnAssertionRequester,
   VaultAccountWebAuthnRegistrationRequester,
@@ -907,5 +912,61 @@ export class VaultService extends VaultServiceBase {
     request: VaultMasterPasswordChangeResolutionRequest
   ): Promise<VaultMasterPasswordChangeResolution> {
     return this.masterPasswordChange.resolveMasterPasswordChange(request)
+  }
+
+  status(): Promise<VaultStatus> {
+    return this.unlocking.status()
+  }
+
+  unlockedGeneration(): Promise<number> {
+    return this.unlocking.unlockedGeneration()
+  }
+
+  runUnlockedOperation<T>(operation: (generation: number) => Promise<T>): Promise<T> {
+    return this.unlocking.runUnlockedOperation(operation)
+  }
+
+  setup(masterPassword: string): Promise<VaultStatus> {
+    return this.unlocking.setup(masterPassword)
+  }
+
+  unlock(masterPassword: string): Promise<VaultStatus> {
+    return this.unlocking.unlock(masterPassword)
+  }
+
+  pinUnlockStatus(): PinUnlockStatus {
+    return this.unlocking.pinUnlockStatus()
+  }
+
+  enablePinUnlock(request: { pin: string; masterPassword: string }): Promise<PinUnlockStatus> {
+    return this.unlocking.enablePinUnlock(request)
+  }
+
+  disablePinUnlock(): PinUnlockStatus {
+    return this.unlocking.disablePinUnlock()
+  }
+
+  exportTouchIdUnlockMaterial(masterPassword: string): Promise<TouchIdUnlockMaterial> {
+    return this.unlocking.exportTouchIdUnlockMaterial(masterPassword)
+  }
+
+  unlockWithTouchIdMaterial(material: TouchIdUnlockMaterial): Promise<VaultStatus> {
+    return this.unlocking.unlockWithTouchIdMaterial(material)
+  }
+
+  unlockWithPin(request: { pin: string }): Promise<VaultStatus> {
+    return this.unlocking.unlockWithPin(request)
+  }
+
+  lock(): Promise<VaultStatus> {
+    return this.unlocking.lock()
+  }
+
+  dispose(): void {
+    return this.unlocking.dispose()
+  }
+
+  constrainVaultTimeoutPolicy(requested: VaultTimeoutPolicy): Promise<VaultTimeoutPolicy> {
+    return this.unlocking.constrainVaultTimeoutPolicy(requested)
   }
 }
