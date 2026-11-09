@@ -2,28 +2,17 @@ import { DndContext, DragOverlay } from '@dnd-kit/core'
 import { plural } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import {
-  ArrowLeft,
-  Archive,
-  ArchiveRestore,
   BadgeCheck,
   CloudAlert,
   CloudCheck,
   CloudCog,
   CloudSync,
   ContactRound,
-  Copy,
   CreditCard,
-  Edit3,
   FileKey2,
   Fingerprint,
-  History,
   KeyRound,
-  MoreHorizontal,
-  NotebookPen,
-  RotateCcw,
-  Settings2,
-  Star,
-  Trash2
+  NotebookPen
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -36,14 +25,12 @@ import type {
   SyncStatus,
   SharedLoginView,
   VaultExportResult,
-  VaultImportResult,
-  VaultItemType
+  VaultImportResult
 } from '../../../shared/vault-contract'
 import bearCutUrl from '../assets/bear-cut.svg'
 import { ItemDragPreview } from './DragPreview'
 import { type ItemSelectionModifiers } from './DndRows'
 import LoginEditor from './LoginEditor'
-import { hasTrashPasswordHistory } from './VaultShell-security'
 import { precisePointerCollisionDetection } from './VaultShell-dnd'
 import SettingsPage from './SettingsPage'
 import SendsPage from './SendsPage'
@@ -55,11 +42,9 @@ import VaultShellDialogs from './VaultShellDialogs'
 import { formatVaultExportResult, formatVaultImportResult } from '../lib/vault-portability-ui'
 import { groupItemsByDate } from '../lib/item-date-groups'
 import { matchesVaultCategory } from '../lib/vault-category'
-import { normalizeBitwardenCardBrand } from '../lib/payment-card'
 import { shouldShowSyncSetupPrompt } from '../lib/sync-setup-prompt'
 import { normalizeItemSelection, updateItemSelection } from '../lib/item-selection'
 import { isMac, isWindows, usesWindowControlsOverlay } from '../lib/platform'
-import { formatVaultDate } from '../lib/vault-date'
 import { vaultHealthRevision } from '../lib/vault-health-ui'
 import { useEditorTransitionGuard } from '@renderer/hooks/use-editor-transition-guard'
 import { useVaultAccounts } from '@renderer/hooks/use-vault-accounts'
@@ -80,24 +65,9 @@ import { useVaultLock } from '@renderer/hooks/use-vault-lock'
 import { useVaultShortcuts } from '@renderer/hooks/use-vault-shortcuts'
 import { useVaultDragAndDrop } from '@renderer/hooks/use-vault-drag-and-drop'
 import { useCardCoverPreviews } from '@renderer/hooks/use-card-cover-previews'
-import PaymentCardBrandMark from './PaymentCardBrandMark'
-import WebsiteIcon from './WebsiteIcon'
-import { VaultCustomFieldRows, VaultDetailFieldRows } from './VaultDetailFieldRows'
-import { canRevealSecretsOnHover } from './VaultDetailFieldRows-model'
-import { VaultItemMetadataCards } from './VaultItemMetadataCards'
 import { VaultItemListPane } from './VaultItemListPane'
 import type { VirtualizedItemGroup } from './VirtualizedItemList'
-import { VaultItemAttachmentsCard, VaultItemTotpCard } from './VaultItemAccessCards'
 import { Button } from '@renderer/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from '@renderer/components/ui/dropdown-menu'
-import { CardContent, CardDescription, CardHeader, CardTitle } from '@renderer/components/ui/card'
 import {
   Empty,
   EmptyDescription,
@@ -112,7 +82,6 @@ import {
   DialogHeader,
   DialogTitle
 } from '@renderer/components/ui/dialog'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { cn } from '@renderer/lib/utils'
 import { activateLanguagePreference } from '@renderer/i18n'
 import { useVaultRouteState } from '@renderer/lib/vault-route-state'
@@ -125,33 +94,18 @@ import {
 import { VaultImageStoreProvider } from '@renderer/stores/vault-image-store'
 import { useSettingsStore } from '@renderer/stores/settings-runtime'
 import { requestAccountAction } from './account-switcher-ui'
-import {
-  DetailCard,
-  DetailHeader,
-  DetailPlaceholder,
-  TooltipIconButton,
-  detailIconClassName,
-  detailScrollClassName,
-  hostLabel,
-  type SidebarTone
-} from './VaultShell-primitives'
+import { DetailPlaceholder, type SidebarTone } from './VaultShell-primitives'
 import { VaultShellSidebar } from './VaultShellSidebar'
+import { SelectedItemDetail, TrashedItemDetail } from './VaultItemDetailViews'
+import { useItemTypeMeta } from '@renderer/hooks/use-item-type-meta'
 import {
-  totpListCountdownPeriodSeconds,
   type BulkActionSnapshot,
   type MoveSnapshot,
   type Scope,
   type TypeFilter
 } from './VaultShell-model'
-import { detailFields } from './vault-detail-view-model'
-import { itemTypeIcons } from './vault-item-type-icons'
 import { VaultSearchDialog, VaultShellLoading, VaultShellTitlebar } from './VaultShellChrome'
 import { isSharedLoginSummary } from './organizations-ui'
-
-interface ItemTypeMeta {
-  label: string
-  icon: typeof KeyRound
-}
 
 const categoryDefinitions: Array<{
   id: TypeFilter
@@ -190,22 +144,7 @@ function VaultShellContent({
   onSyncSetupPromptHandled
 }: VaultShellProps): React.JSX.Element {
   const { t } = useLingui()
-  const itemTypeMeta = useMemo<Record<VaultItemType, ItemTypeMeta>>(
-    () => ({
-      login: { label: t`Login`, icon: itemTypeIcons.login },
-      card: {
-        label: t({
-          message: 'Card',
-          comment: 'Vault item category label for payment card records.'
-        }),
-        icon: itemTypeIcons.card
-      },
-      identity: { label: t`Identity`, icon: itemTypeIcons.identity },
-      secureNote: { label: t`Secure note`, icon: itemTypeIcons.secureNote },
-      sshKey: { label: t`SSH key`, icon: itemTypeIcons.sshKey }
-    }),
-    [t]
-  )
+  const itemTypeMeta = useItemTypeMeta()
   const categoryMeta = useMemo(() => {
     const labels: Record<TypeFilter, string> = {
       all: t`All`,
@@ -239,74 +178,6 @@ function VaultShellContent({
     { label: t`Most used`, value: 'frequency' },
     { label: t`Recently modified`, value: 'modified' }
   ] as const
-  const detailFieldLabels = useMemo<Record<string, string>>(
-    () => ({
-      username: t`Username`,
-      password: t`Password`,
-      website: t`Website`,
-      cardNumber: t`Card number`,
-      securityCode: t`Security code`,
-      cardholder: t`Cardholder`,
-      brand: t({
-        message: 'Brand',
-        comment:
-          'Field label for the payment card issuer or network brand, such as Visa or Mastercard.'
-      }),
-      expirationDate: t`Expiration date`,
-      name: t`Name`,
-      company: t({
-        message: 'Company',
-        comment: 'Field label for the company name in an identity item.'
-      }),
-      email: t`Email`,
-      phone: t`Phone`,
-      address: t`Address`,
-      ssn: t`ID / Social Security number`,
-      passportNumber: t`Passport number`,
-      licenseNumber: t`Driver's license number`,
-      privateKey: t`Private key`,
-      publicKey: t`Public key`,
-      keyFingerprint: t`Key fingerprint`
-    }),
-    [t]
-  )
-  const linkedFieldLabels: Record<number, string> = {
-    100: t`Username`,
-    101: t`Password`,
-    300: t`Cardholder`,
-    301: t`Expiration month`,
-    302: t`Expiration year`,
-    303: t`Security code`,
-    304: t`Brand`,
-    305: t`Card number`,
-    400: t`Title`,
-    401: t`Middle name`,
-    402: t`Address 1`,
-    403: t`Address 2`,
-    404: t`Address 3`,
-    405: t`City`,
-    406: t`State / Province`,
-    407: t`Postal code`,
-    408: t`Country`,
-    409: t`Company`,
-    410: t`Email`,
-    411: t`Phone`,
-    412: t`ID / Social Security number`,
-    413: t`Username`,
-    414: t`Passport number`,
-    415: t`Driver's license number`,
-    416: t`First name`,
-    417: t`Last name`,
-    418: t`Full name`
-  }
-  const customFieldLabels = {
-    yes: t`Yes`,
-    no: t`No`,
-    linkedTo: (label: string): string => t`Linked to ${label}`,
-    itemField: t`Item field`,
-    linkedFields: linkedFieldLabels,
-    unset: t`Not set`
-  }
   const describeVaultError = useDescribeVaultError()
   const {
     settingsOpen,
@@ -744,10 +615,6 @@ function VaultShellContent({
     if (ids.length === 0) return
     setMoveSnapshot({ ids, state: scope.kind === 'archive' ? 'archive' : 'active' })
   }, [busy, currentSelectedIds, scope.kind])
-  const selectedDetailFields = useMemo(
-    () => (selectedLogin ? detailFields(selectedLogin, detailFieldLabels) : []),
-    [detailFieldLabels, selectedLogin]
-  )
   const selectedSharedContext = useMemo(() => {
     if (!selectedSharedSummary) return undefined
     const collectionIds = new Set(selectedSharedSummary.collectionIds)
@@ -1371,129 +1238,15 @@ function VaultShellContent({
                   onSave={actions.saveLogin}
                 />
               ) : selectedSummary?.deletedAt ? (
-                <article className="flex size-full min-h-0 min-w-0 flex-col">
-                  <DetailHeader>
-                    <TooltipIconButton
-                      variant="outline"
-                      size="icon"
-                      className="hidden max-[680px]:grid"
-                      data-detail-back=""
-                      type="button"
-                      label={t`Back to Trash`}
-                      onClick={clearItemSelection}
-                    >
-                      <ArrowLeft />
-                    </TooltipIconButton>
-                    <span className={detailIconClassName()} aria-hidden="true">
-                      <Trash2 />
-                    </span>
-                    <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-base [&>h2]:font-medium [&>span]:mt-0.5 [&>span]:block [&>span]:truncate [&>span]:text-xs">
-                      <p className="text-primary m-0 mb-1 text-xs font-bold tracking-wide uppercase">
-                        <Trans>Trash</Trans>
-                      </p>
-                      <h2>{selectedSummary.name}</h2>
-                      <span>{itemTypeMeta[selectedSummary.type].label}</span>
-                    </div>
-                  </DetailHeader>
-                  <div
-                    className={cn(
-                      'scroll-fade-y forced-colors:scroll-fade-none',
-                      detailScrollClassName
-                    )}
-                  >
-                    <DetailCard>
-                      <CardHeader>
-                        <CardTitle>
-                          <Trash2 aria-hidden="true" />
-                          <Trans>This item is in Trash</Trans>
-                        </CardTitle>
-                        <CardDescription>
-                          <Trans>
-                            To protect deleted sensitive data, restore the item before viewing or
-                            editing its contents.
-                          </Trans>
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <dl className="m-0 px-(--card-spacing) py-1">
-                          <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_1fr] border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:gap-1">
-                            <dt className="text-muted-foreground text-xs">
-                              <Trans>Deleted</Trans>
-                            </dt>
-                            <dd className="m-0 text-xs">
-                              {formatVaultDate(selectedSummary.deletedAt)}
-                            </dd>
-                          </div>
-                          <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_1fr] border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:gap-1">
-                            <dt className="text-muted-foreground text-xs">
-                              <Trans>Original folder</Trans>
-                            </dt>
-                            <dd className="m-0 text-xs">
-                              {folders.find((folder) => folder.id === selectedSummary.folderId)
-                                ?.name ?? t`Unfiled`}
-                            </dd>
-                          </div>
-                        </dl>
-                      </CardContent>
-                    </DetailCard>
-                    {hasTrashPasswordHistory(selectedSummary) && (
-                      <DetailCard role="region" aria-labelledby="trash-password-history-title">
-                        <CardHeader>
-                          <CardTitle id="trash-password-history-title">
-                            <History aria-hidden="true" />
-                            <Trans>Item history</Trans>
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent className="contents">
-                          <dl className="m-0 px-(--card-spacing) py-1">
-                            <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
-                              <dt className="text-muted-foreground text-xs leading-4">
-                                <Trans>Password history</Trans>
-                              </dt>
-                              <dd className="m-0 flex min-w-0 items-center gap-2 text-xs leading-4">
-                                <span className="min-w-0 flex-1 truncate">
-                                  <Trans>
-                                    {selectedSummary.passwordHistoryCount} read-only records
-                                  </Trans>
-                                </span>
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  className="-my-1.5 ml-auto"
-                                  type="button"
-                                  aria-label={t`View password history`}
-                                  disabled={busy}
-                                  onClick={() => setPasswordHistoryDialogOpen(true)}
-                                >
-                                  <History aria-hidden="true" />
-                                </Button>
-                              </dd>
-                            </div>
-                          </dl>
-                        </CardContent>
-                      </DetailCard>
-                    )}
-                    <div className="mx-auto flex max-w-[720px] flex-wrap justify-end gap-2">
-                      <Button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void actions.restoreLogin()}
-                      >
-                        <RotateCcw data-icon="inline-start" />
-                        <Trans>Restore item</Trans>
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        type="button"
-                        disabled={busy}
-                        onClick={() => setDeleteDialogOpen(true)}
-                      >
-                        <Trash2 data-icon="inline-start" />
-                        <Trans>Delete permanently</Trans>
-                      </Button>
-                    </div>
-                  </div>
-                </article>
+                <TrashedItemDetail
+                  summary={selectedSummary}
+                  folders={folders}
+                  busy={busy}
+                  onBack={clearItemSelection}
+                  onViewPasswordHistory={() => setPasswordHistoryDialogOpen(true)}
+                  onRestore={() => void actions.restoreLogin()}
+                  onDelete={() => setDeleteDialogOpen(true)}
+                />
               ) : selectedId && selectedSummary && selectedLogin?.id !== selectedId ? (
                 <DetailPlaceholder
                   item={selectedSummary}
@@ -1501,271 +1254,33 @@ function VaultShellContent({
                   onBack={clearItemSelection}
                 />
               ) : selectedLogin && selectedLogin.id === selectedId ? (
-                <article className="flex size-full min-h-0 min-w-0 flex-col">
-                  <DetailHeader>
-                    <TooltipIconButton
-                      variant="outline"
-                      size="icon"
-                      className="hidden max-[680px]:grid"
-                      data-detail-back=""
-                      type="button"
-                      label={t`Back to item list`}
-                      onClick={clearItemSelection}
-                    >
-                      <ArrowLeft />
-                    </TooltipIconButton>
-                    <span
-                      className={detailIconClassName(selectedLogin.type)}
-                      data-detail-icon=""
-                      aria-hidden="true"
-                    >
-                      {selectedLogin.type === 'login' ? (
-                        <WebsiteIcon
-                          id={selectedLogin.id}
-                          uri={selectedLogin.uri}
-                          enabled={!selectedSharedSummary && (settings?.showWebsiteIcons ?? false)}
-                        />
-                      ) : selectedLogin.type === 'card' ? (
-                        <PaymentCardBrandMark
-                          brand={normalizeBitwardenCardBrand(selectedLogin.brand)}
-                          imageSrc={cardCoverListPreviews.get(selectedLogin.id)}
-                        />
-                      ) : (
-                        (() => {
-                          const TypeIcon = itemTypeMeta[selectedLogin.type].icon
-                          return <TypeIcon size={18} />
-                        })()
-                      )}
-                    </span>
-                    <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-base [&>h2]:font-medium [&>span]:mt-0.5 [&>span]:block [&>span]:truncate [&>span]:text-xs">
-                      <h2>{selectedLogin.name}</h2>
-                      <span>
-                        {selectedLogin.subtitle ||
-                          (selectedLogin.type === 'login'
-                            ? hostLabel(selectedLogin.uri, t`Website not set`)
-                            : t`Securely stored item`)}
-                      </span>
-                    </div>
-                    {selectedSharedSummary?.edit && selectedSharedSummary.reprompt === 0 && (
-                      <TooltipIconButton
-                        variant="outline"
-                        size="icon"
-                        type="button"
-                        label={t`Edit`}
-                        disabled={busy}
-                        onClick={() => openEditor('edit')}
-                      >
-                        <Edit3 />
-                      </TooltipIconButton>
-                    )}
-                    {!selectedSharedSummary && (
-                      <>
-                        <TooltipIconButton
-                          variant="outline"
-                          size="icon"
-                          className={cn(selectedLogin.favorite && 'text-chart-4')}
-                          type="button"
-                          label={
-                            selectedLogin.favorite ? t`Remove from favorites` : t`Add to favorites`
-                          }
-                          aria-pressed={selectedLogin.favorite}
-                          onClick={() => void actions.toggleFavorite(selectedLogin)}
-                        >
-                          <Star fill={selectedLogin.favorite ? 'currentColor' : 'none'} />
-                        </TooltipIconButton>
-                        <DropdownMenu>
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <DropdownMenuTrigger
-                                  render={
-                                    <Button
-                                      variant="outline"
-                                      size="icon"
-                                      className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-9 min-w-9 rounded-md shadow-(--control-highlight)"
-                                      type="button"
-                                      aria-label={t`More actions`}
-                                      disabled={busy}
-                                    />
-                                  }
-                                >
-                                  <MoreHorizontal aria-hidden="true" />
-                                </DropdownMenuTrigger>
-                              }
-                            />
-                            <TooltipContent>
-                              <Trans>More actions</Trans>
-                            </TooltipContent>
-                          </Tooltip>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuGroup>
-                              <DropdownMenuItem
-                                disabled={busy}
-                                onClick={() => void actions.cloneLogin()}
-                              >
-                                <Copy data-icon="inline-start" />
-                                <Trans>Duplicate item</Trans>
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                disabled={busy}
-                                onClick={() =>
-                                  void (selectedLogin.archivedAt
-                                    ? actions.unarchiveLogin()
-                                    : actions.archiveLogin())
-                                }
-                              >
-                                {selectedLogin.archivedAt ? (
-                                  <ArchiveRestore data-icon="inline-start" />
-                                ) : (
-                                  <Archive data-icon="inline-start" />
-                                )}
-                                {selectedLogin.archivedAt ? t`Unarchive` : t`Archive item`}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem disabled={busy} onClick={() => openEditor('edit')}>
-                                <Edit3 data-icon="inline-start" />
-                                <Trans>Edit</Trans>
-                              </DropdownMenuItem>
-                            </DropdownMenuGroup>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuGroup>
-                              <DropdownMenuItem
-                                variant="destructive"
-                                disabled={busy}
-                                onClick={() => setDeleteDialogOpen(true)}
-                              >
-                                <Trash2 data-icon="inline-start" />
-                                <Trans>Move to Trash</Trans>
-                              </DropdownMenuItem>
-                            </DropdownMenuGroup>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </>
-                    )}
-                  </DetailHeader>
-
-                  <div
-                    className={cn(
-                      'scroll-fade-y forced-colors:scroll-fade-none',
-                      detailScrollClassName
-                    )}
-                  >
-                    {selectedDetailFields.length > 0 && (
-                      <DetailCard
-                        role="region"
-                        aria-labelledby="credentials-title"
-                        className="gap-1 pb-0"
-                      >
-                        <CardHeader>
-                          <CardTitle id="credentials-title">
-                            {(() => {
-                              const TypeIcon = itemTypeMeta[selectedLogin.type].icon
-                              return <TypeIcon aria-hidden="true" />
-                            })()}
-                            {t`${itemTypeMeta[selectedLogin.type].label} details`}
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent className="flex flex-col">
-                          <VaultDetailFieldRows
-                            fields={selectedDetailFields.filter(
-                              (field) =>
-                                (!selectedSharedSummary ||
-                                  selectedSharedSummary.viewPassword ||
-                                  !field.secret) &&
-                                (field.secret || Boolean(field.value))
-                            )}
-                            copy={{
-                              copiedKey: secrets.copiedKey,
-                              itemId: selectedSummary?.id,
-                              copyField: secrets.copyField
-                            }}
-                            reveal={{
-                              state: secrets.revealedSecrets,
-                              selectedItemId: selectedLogin.id,
-                              hoveringFieldsRef: secrets.hoveringSecretFieldsRef,
-                              hoverRevealedFieldsRef: secrets.hoverRevealedSecretFieldsRef,
-                              passwordZoomOpenRef: secrets.passwordZoomOpenRef,
-                              reveal: secrets.revealSecret,
-                              hide: secrets.hideRevealedSecret,
-                              openPasswordZoom: secrets.openPasswordZoom,
-                              revealOnHover: canRevealSecretsOnHover(selectedSharedSummary)
-                            }}
-                            website={{ openWebsite: secrets.openWebsite }}
-                          />
-                        </CardContent>
-                      </DetailCard>
-                    )}
-
-                    {selectedLogin.customFields.length > 0 && (
-                      <DetailCard
-                        role="region"
-                        aria-labelledby="custom-fields-title"
-                        className="gap-1 pb-0"
-                      >
-                        <CardHeader>
-                          <CardTitle id="custom-fields-title">
-                            <Settings2 aria-hidden="true" />
-                            <Trans>Custom fields</Trans>
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent className="flex flex-col">
-                          <VaultCustomFieldRows
-                            fields={selectedLogin.customFields}
-                            item={{ id: selectedLogin.id, updatedAt: selectedLogin.updatedAt }}
-                            labels={customFieldLabels}
-                            copy={{
-                              copiedKey: secrets.copiedKey,
-                              copyField: secrets.copyCustomField
-                            }}
-                            reveal={{
-                              state: secrets.revealedCustomFields,
-                              reveal: secrets.revealCustomField
-                            }}
-                          />
-                        </CardContent>
-                      </DetailCard>
-                    )}
-
-                    {!selectedSharedSummary && (
-                      <VaultItemAttachmentsCard
-                        itemId={selectedLogin.id}
-                        attachments={selectedLogin.attachments}
-                        busy={busy}
-                        syncReady={syncStatus.state === 'ready'}
-                        operation={attachments.operation}
-                        getOperationStageLabel={attachments.getStageLabel}
-                        onCancelOperation={attachments.cancel}
-                        onFixLegacy={attachments.fixLegacy}
-                        onPreview={attachments.preview}
-                        onDownload={attachments.download}
-                        onDelete={attachments.setDeleteTarget}
-                      />
-                    )}
-
-                    {selectedLogin.type === 'login' && selectedLogin.hasTotp && (
-                      <VaultItemTotpCard
-                        code={selectedTotp.code}
-                        generationError={selectedTotp.generationError}
-                        revealReady={selectedTotp.revealReady}
-                        showSkeleton={selectedTotp.showSkeleton}
-                        codeCycle={selectedTotp.cycle}
-                        showCountdown={typeFilter !== 'totp'}
-                        copied={secrets.copiedKey === `totp:${selectedLogin.id}`}
-                        defaultCountdownPeriodSeconds={totpListCountdownPeriodSeconds}
-                        onCopy={secrets.copyTotp}
-                      />
-                    )}
-
-                    <VaultItemMetadataCards
-                      selectedLogin={selectedLogin}
-                      folders={folders}
-                      formatDate={formatVaultDate}
-                      busy={busy}
-                      onMoveToFolder={openMoveDialogForSelection}
-                      onViewPasswordHistory={() => setPasswordHistoryDialogOpen(true)}
-                      sharedContext={selectedSharedContext}
-                    />
-                  </div>
-                </article>
+                <SelectedItemDetail
+                  login={selectedLogin}
+                  sharedSummary={selectedSharedSummary}
+                  sharedContext={selectedSharedContext}
+                  folders={folders}
+                  busy={busy}
+                  showWebsiteIcons={settings?.showWebsiteIcons ?? false}
+                  cardCoverPreview={cardCoverListPreviews.get(selectedLogin.id)}
+                  syncReady={syncStatus.state === 'ready'}
+                  showTotpCountdown={typeFilter !== 'totp'}
+                  secrets={secrets}
+                  attachments={attachments}
+                  totp={selectedTotp}
+                  actions={{
+                    onBack: clearItemSelection,
+                    onEdit: () => openEditor('edit'),
+                    onToggleFavorite: () => void actions.toggleFavorite(selectedLogin),
+                    onClone: () => void actions.cloneLogin(),
+                    onToggleArchive: () =>
+                      void (selectedLogin.archivedAt
+                        ? actions.unarchiveLogin()
+                        : actions.archiveLogin()),
+                    onDelete: () => setDeleteDialogOpen(true),
+                    onMoveToFolder: openMoveDialogForSelection,
+                    onViewPasswordHistory: () => setPasswordHistoryDialogOpen(true)
+                  }}
+                />
               ) : (
                 <Empty className="min-h-0 flex-1 gap-0 p-7">
                   <EmptyHeader>
