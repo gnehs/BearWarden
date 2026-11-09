@@ -1,16 +1,10 @@
 import { randomInt as nodeRandomInt, randomUUID } from 'node:crypto'
 import type {
-  AttachmentOperationKind,
-  AttachmentOperationStage,
-  AttachmentProgressEvent,
-  AttachmentTargetRequest,
-  CardCoverPreviewResult,
   LoginApprovalPrompt,
   FolderView,
   LoginIdRequest,
   OrganizationView,
   CollectionView,
-  VaultAttachmentView,
   SyncPurgePersonalVaultResult,
   SyncResult,
   VaultTimeoutPolicy,
@@ -60,7 +54,6 @@ import {
   MAX_USERNAME_LENGTH,
   MAX_NAME_LENGTH,
   MAX_PASSWORD_LENGTH,
-  MAX_ATTACHMENT_ID_LENGTH,
   MAX_PENDING_LOGIN_IMPORT_ENTRIES,
   MAX_PENDING_LOGIN_IMPORT_MARKER_LENGTH
 } from './vault/limits'
@@ -90,7 +83,6 @@ import { clonePasswordHistory } from './vault/password-history'
 import type {
   StoredLogin,
   StoredSharedLogin,
-  SyncEntityMapping,
   PersistedSyncData,
   VaultData,
   VaultMasterPasswordChangeStatus,
@@ -100,8 +92,7 @@ import type {
   VaultPlatform,
   VaultAccountWebAuthnAssertionRequester,
   VaultAccountWebAuthnRegistrationRequester,
-  VaultServiceOptions,
-  AttachmentAuthorizationValidator
+  VaultServiceOptions
 } from './vault/types'
 import { UUID_PATTERN, isRecord } from './validation-primitives'
 import {
@@ -161,6 +152,7 @@ import {
   createLocalFolder,
   deleteLocalFolder
 } from './vault/local-records'
+import { VaultAttachments } from './vault/attachments'
 
 interface AccountWebAuthnOperationLease {
   readonly generation: number
@@ -240,12 +232,6 @@ export class VaultServiceBase {
   })
   protected readonly websiteIconRequests = new Map<string, Promise<string | null>>()
   protected readonly websiteIconFetches = new ConcurrencyLimiter(6)
-  protected readonly cardCoverCache = new ImageMemoryCache<CardCoverPreviewResult>({
-    maxEntries: 256,
-    maxSize: 64 * 1024 * 1024
-  })
-  protected readonly cardCoverRequests = new Map<string, Promise<CardCoverPreviewResult | null>>()
-  protected readonly cardCoverDownloads = new ConcurrencyLimiter(3)
   /** Aborted on lock so detached image downloads stop as soon as the vault key is gone. */
   protected readonly imageRequestAborts = new Set<AbortController>()
   protected readonly core: VaultCore
@@ -254,6 +240,7 @@ export class VaultServiceBase {
   protected readonly health: VaultHealth
   protected readonly listings: VaultListings
   protected readonly passwordHistory: VaultPasswordHistory
+  protected readonly attachments: VaultAttachments
 
   constructor(
     protected readonly store: EncryptedVaultStore<unknown>,
@@ -272,8 +259,6 @@ export class VaultServiceBase {
         this.generatorService.clearRuntimeState()
         this.websiteIconCache.clear()
         this.websiteIconRequests.clear()
-        this.cardCoverCache.clear()
-        this.cardCoverRequests.clear()
       }
     })
     this.fetch = options.fetch ?? fetch
@@ -330,6 +315,12 @@ export class VaultServiceBase {
     this.health = new VaultHealth(this.core, this.syncSession, this.platform, this.fetch)
     this.listings = new VaultListings(this.core, this.syncSession)
     this.passwordHistory = new VaultPasswordHistory(this.core, this.platform)
+    this.attachments = new VaultAttachments(
+      this.core,
+      this.syncSession,
+      this.attachmentFiles,
+      this.imageCache
+    )
   }
 
   status(): Promise<VaultStatus> {
@@ -1235,122 +1226,6 @@ export class VaultServiceBase {
     ) {
       this.invalidatePinUnlockCapability()
     }
-  }
-
-  protected mapAttachmentError(
-    error: unknown,
-    operation?: { canceledByUser: boolean }
-  ): VaultError {
-    if (
-      operation?.canceledByUser &&
-      ((error instanceof VaultError && error.code === 'LOCKED') ||
-        (error instanceof BitwardenDirectError && error.code === 'ABORTED'))
-    ) {
-      return new VaultError('ATTACHMENT_CANCELED')
-    }
-    if (error instanceof VaultError) return error
-    if (error instanceof BitwardenDirectError) {
-      if (error.code === 'ABORTED') return new VaultError('LOCKED')
-      if (error.code === 'NOT_FOUND') return new VaultError('NOT_FOUND')
-      if (error.code === 'STORAGE_LIMIT') return new VaultError('ATTACHMENT_STORAGE_LIMIT')
-      if (error.code === 'TOO_LARGE') return new VaultError('ATTACHMENT_TOO_LARGE')
-      if (error.code === 'ATTACHMENT_REJECTED') return new VaultError('ATTACHMENT_REJECTED')
-      if (
-        error.code === 'AUTH_REQUIRED' ||
-        error.code === 'TWO_FACTOR_REQUIRED' ||
-        error.code === 'NEW_DEVICE_REQUIRED'
-      ) {
-        return this.syncSession.mapSyncError(error)
-      }
-    }
-    return new VaultError('ATTACHMENT_FAILED')
-  }
-
-  protected attachmentMutationContext(
-    request: AttachmentTargetRequest,
-    validateAuthorization?: AttachmentAuthorizationValidator
-  ): {
-    data: VaultData
-    attachment: VaultAttachmentView
-    mapping: SyncEntityMapping
-    client: BitwardenSyncClient
-  } {
-    assertUuid(request.id)
-    assertUuid(request.operationId)
-    if (
-      typeof request.attachmentId !== 'string' ||
-      request.attachmentId.length === 0 ||
-      request.attachmentId.length > MAX_ATTACHMENT_ID_LENGTH
-    ) {
-      throw new VaultError('INVALID_INPUT')
-    }
-    const data = this.core.requireData()
-    assertNoPendingPersonalVaultPurge(data.sync)
-    const login = findLogin(data, request.id)
-    assertActiveLogin(login)
-    this.assertAttachmentAuthorized(login, validateAuthorization)
-    const attachment = login.attachments.find((entry) => entry.id === request.attachmentId)
-    if (!attachment) throw new VaultError('NOT_FOUND')
-    const sync = this.syncSession.requireSyncData()
-    const mapping = sync.loginMappings.find((entry) => entry.localId === login.id)
-    if (!mapping) throw new VaultError('INVALID_INPUT')
-    return { data, attachment, mapping, client: this.syncSession.getOrCreateSyncClient(sync) }
-  }
-
-  protected assertAttachmentAuthorized(
-    login: StoredLogin,
-    validateAuthorization?: AttachmentAuthorizationValidator
-  ): void {
-    if (
-      login.reprompt === 1 &&
-      !validateAuthorization?.([login.id], { generation: this.core.generation })
-    ) {
-      throw new VaultError('REPROMPT_REQUIRED')
-    }
-  }
-
-  protected reportAttachmentProgress(
-    report: ((progress: AttachmentProgressEvent) => void) | undefined,
-    request: { id: string; operationId: string },
-    kind: AttachmentOperationKind,
-    stage: AttachmentOperationStage,
-    completedBytes: number,
-    totalBytes: number | null
-  ): void {
-    if (!report) return
-    try {
-      report({
-        operationId: request.operationId,
-        itemId: request.id,
-        kind,
-        stage,
-        completedBytes,
-        totalBytes
-      })
-    } catch {
-      // Renderer progress is advisory and must never decide mutation success.
-    }
-  }
-
-  protected async persistAttachmentMutation(
-    current: VaultData,
-    client: BitwardenSyncClient
-  ): Promise<void> {
-    const sync = current.sync
-    if (!sync) throw new VaultError('SYNC_AUTH_REQUIRED')
-    assertNoPendingPersonalVaultPurge(sync)
-    const [remoteFolders, remoteLogins] = await Promise.all([
-      client.listFolders(),
-      client.listPersonalLogins()
-    ])
-    const next = cloneData(current)
-    reconcileServerAuthoritativeAttachments(next, sync.loginMappings, remoteFolders, remoteLogins)
-    const syncedAt = this.core.nowIso()
-    if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
-    next.sync.state = client.exportState()
-    next.sync.lastSyncAt = syncedAt
-    next.updatedAt = syncedAt
-    await this.core.commit(next)
   }
 
   protected async restorePreDispatchPurge(original: VaultData): Promise<void> {

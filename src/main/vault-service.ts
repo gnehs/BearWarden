@@ -54,7 +54,22 @@ import type {
   EmergencyAccessView,
   PasswordHistoryEntryRequest,
   PasswordHistoryRestoreRequest,
-  VaultPasswordHistoryView
+  VaultPasswordHistoryView,
+  AttachmentProgressEvent,
+  CardCoverPreviewResult,
+  AttachmentCancelRequest,
+  AttachmentCancelResult,
+  AttachmentDeleteRequest,
+  AttachmentDeleteResult,
+  AttachmentDownloadRequest,
+  AttachmentDownloadResult,
+  AttachmentFixLegacyRequest,
+  AttachmentFixLegacyResult,
+  AttachmentPreviewRequest,
+  AttachmentPreviewResult,
+  AttachmentUploadCardCoverRequest,
+  AttachmentUploadRequest,
+  AttachmentUploadResult
 } from '../shared/vault-contract'
 import { MAX_LOGIN_AUTHORIZE_MANY_IDS, MAX_LOGIN_BATCH_IDS } from '../shared/vault-contract'
 import { VaultError } from './vault-errors'
@@ -154,7 +169,8 @@ import type {
   PasskeyVaultAssertionRequest,
   PasskeyVaultAssertionResult,
   VaultData,
-  ItemReadAuthorizationValidator
+  ItemReadAuthorizationValidator,
+  AttachmentAuthorizationValidator
 } from './vault/types'
 import { VaultTransferService } from './vault-transfer-service'
 import {
@@ -168,7 +184,6 @@ import { assertBitwardenPolicyDoesNotBlock, assertPersonalItemTypeAllowed } from
 import type { InactiveTwoFactorReport, TwoFactorDirectoryDataset } from './inactive-two-factor'
 import { remoteDraft } from './vault/sync-snapshots'
 import { sharedLoginFromRemote } from './vault/local-records'
-
 export type {
   VaultAccountWebAuthnAssertionRequester,
   VaultAccountWebAuthnRegistrationRequester,
@@ -1804,5 +1819,80 @@ export class VaultService extends VaultTransferService {
 
   restorePasswordHistory(request: PasswordHistoryRestoreRequest): Promise<LoginView> {
     return this.passwordHistory.restorePasswordHistory(request)
+  }
+
+  downloadAttachment(
+    request: AttachmentDownloadRequest,
+    reportProgress?: (progress: AttachmentProgressEvent) => void,
+    validateAuthorization?: AttachmentAuthorizationValidator
+  ): Promise<AttachmentDownloadResult> {
+    return this.attachments.downloadAttachment(request, reportProgress, validateAuthorization)
+  }
+
+  getCardCoverPreview(
+    request: LoginIdRequest,
+    validateAuthorization?: AttachmentAuthorizationValidator
+  ): Promise<CardCoverPreviewResult | null> {
+    return this.attachments.getCardCoverPreview(request, validateAuthorization)
+  }
+
+  previewAttachment(
+    request: AttachmentPreviewRequest,
+    reportProgress?: (progress: AttachmentProgressEvent) => void,
+    validateAuthorization?: AttachmentAuthorizationValidator
+  ): Promise<AttachmentPreviewResult> {
+    return this.attachments.previewAttachment(request, reportProgress, validateAuthorization)
+  }
+
+  uploadAttachment(
+    request: AttachmentUploadRequest,
+    reportProgress?: (progress: AttachmentProgressEvent) => void,
+    validateAuthorization?: AttachmentAuthorizationValidator
+  ): Promise<AttachmentUploadResult> {
+    return this.attachments.uploadAttachment(request, reportProgress, validateAuthorization)
+  }
+
+  uploadCardCoverAttachment(
+    request: AttachmentUploadCardCoverRequest,
+    reportProgress?: (progress: AttachmentProgressEvent) => void,
+    validateAuthorization?: AttachmentAuthorizationValidator
+  ): Promise<AttachmentUploadResult> {
+    return this.attachments.uploadCardCoverAttachment(
+      request,
+      reportProgress,
+      validateAuthorization
+    )
+  }
+
+  uploadCardCoverFileAttachment(
+    request: AttachmentUploadRequest,
+    reportProgress?: (progress: AttachmentProgressEvent) => void,
+    validateAuthorization?: AttachmentAuthorizationValidator
+  ): Promise<AttachmentUploadResult> {
+    return this.attachments.uploadCardCoverFileAttachment(
+      request,
+      reportProgress,
+      validateAuthorization
+    )
+  }
+
+  deleteAttachment(
+    request: AttachmentDeleteRequest,
+    reportProgress?: (progress: AttachmentProgressEvent) => void,
+    validateAuthorization?: AttachmentAuthorizationValidator
+  ): Promise<AttachmentDeleteResult> {
+    return this.attachments.deleteAttachment(request, reportProgress, validateAuthorization)
+  }
+
+  fixLegacyAttachment(
+    request: AttachmentFixLegacyRequest,
+    reportProgress?: (progress: AttachmentProgressEvent) => void,
+    validateAuthorization?: AttachmentAuthorizationValidator
+  ): Promise<AttachmentFixLegacyResult> {
+    return this.attachments.fixLegacyAttachment(request, reportProgress, validateAuthorization)
+  }
+
+  cancelAttachmentOperation(request: AttachmentCancelRequest): AttachmentCancelResult {
+    return this.attachments.cancelAttachmentOperation(request)
   }
 }
