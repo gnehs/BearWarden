@@ -40,7 +40,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useStore } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
-import { toLoginSummary, toSharedLoginSummary } from '../../../shared/login-summary'
 import {
   SELECTED_ITEM_COPY_SHORTCUTS,
   type SelectedItemCopyCommand
@@ -57,15 +56,10 @@ import type {
   VaultImportResult,
   VaultItemType
 } from '../../../shared/vault-contract'
-import { MAX_LOGIN_BATCH_IDS } from '../../../shared/vault-contract'
 import bearCutUrl from '../assets/bear-cut.svg'
 import { ItemDragPreview } from './DragPreview'
 import { type ItemSelectionModifiers } from './DndRows'
-import LoginEditor, { type LoginDraft } from './LoginEditor'
-import {
-  createLoginWithOptionalSshImport,
-  updateLoginWithOptionalSshImport
-} from './ssh-key-editor-state'
+import LoginEditor from './LoginEditor'
 import { hasTrashPasswordHistory } from './VaultShell-security'
 import {
   folderHierarchyDragIntent,
@@ -105,6 +99,7 @@ import { useVaultDataSync } from '@renderer/hooks/use-vault-data-sync'
 import { useAttachmentOperations } from '@renderer/hooks/use-attachment-operations'
 import { useSelectedItemTotp, useTotpListCodes } from '@renderer/hooks/use-totp-codes'
 import { useSelectedItemSecrets } from '@renderer/hooks/use-selected-item-secrets'
+import { useVaultItemActions } from '@renderer/hooks/use-vault-item-actions'
 import { useCardCoverPreviews } from '@renderer/hooks/use-card-cover-previews'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
@@ -168,23 +163,15 @@ import {
 import { VaultShellSidebar } from './VaultShellSidebar'
 import {
   totpListCountdownPeriodSeconds,
-  type BulkActionKind,
   type BulkActionSnapshot,
-  type BulkSelectionState,
   type MoveSnapshot,
   type Scope,
   type TypeFilter
 } from './VaultShell-model'
 import { detailFields } from './vault-detail-view-model'
-import {
-  authorizationTokenField,
-  firstAuthorizationToken,
-  mergeLoginSummary
-} from './vault-detail-cache'
 import { itemTypeIcons } from './vault-item-type-icons'
 import { VaultSearchDialog, VaultShellLoading, VaultShellTitlebar } from './VaultShellChrome'
 import { isSharedLoginSummary } from './organizations-ui'
-import { upsertAttachment } from './vault-attachment-ui'
 import { createVaultItemAccess } from './vault-item-access'
 
 interface ItemTypeMeta {
@@ -383,8 +370,6 @@ function VaultShellContent({
     loading,
     busy,
     setFolders,
-    setItems,
-    setSharedItems,
     setScope,
     setSortMode,
     setTypeFilter,
@@ -392,8 +377,7 @@ function VaultShellContent({
     setSelectedIds,
     setSelectedId,
     setSelectedLogin,
-    setEditorMode,
-    setBusy
+    setEditorMode
   } = useVaultSessionStore(
     useShallow((state) => ({
       folders: state.folders,
@@ -412,8 +396,6 @@ function VaultShellContent({
       loading: state.loading,
       busy: state.busy,
       setFolders: state.setFolders,
-      setItems: state.setItems,
-      setSharedItems: state.setSharedItems,
       setScope: state.setScope,
       setSortMode: state.setSortMode,
       setTypeFilter: state.setTypeFilter,
@@ -421,8 +403,7 @@ function VaultShellContent({
       setSelectedIds: state.setSelectedIds,
       setSelectedId: state.setSelectedId,
       setSelectedLogin: state.setSelectedLogin,
-      setEditorMode: state.setEditorMode,
-      setBusy: state.setBusy
+      setEditorMode: state.setEditorMode
     }))
   )
   const sessionStore = useVaultSessionStoreApi()
@@ -549,6 +530,17 @@ function VaultShellContent({
     setSelectedLogin(null)
     setPasswordHistoryDialogOpen(false)
   }, [setSelectedId, setSelectedIds, setSelectedLogin])
+  const actions = useVaultItemActions({
+    authorization,
+    detailCache,
+    vaultData,
+    uploadSelectedCardCover: attachments.uploadSelectedCardCover,
+    selectSavedItem,
+    clearItemSelection,
+    clearEditorDirty,
+    resetReveals,
+    resetRevealedCustomFields: secrets.resetRevealedCustomFields
+  })
   const selectedTotp = useSelectedItemTotp(authorization, itemAccess, clearItemSelection)
   const totpList = useTotpListCodes(authorization, scopedItems, typeFilter === 'totp')
 
@@ -1271,668 +1263,6 @@ function VaultShellContent({
     setSelectedLogin(login)
   }
 
-  function applyUpdatedSummaries(updated: readonly LoginSummary[]): void {
-    const updatedById = new Map(updated.map((item) => [item.id, item]))
-    for (const item of updated) detailCache.mergeSummary(item)
-    setItems((current) => current.map((item) => updatedById.get(item.id) ?? item))
-    setSelectedLogin((current) => {
-      if (!current) return current
-      const summary = updatedById.get(current.id)
-      return summary ? mergeLoginSummary(current, summary) : current
-    })
-  }
-
-  const toggleFavorite = useCallback(
-    async (item: LoginSummary): Promise<void> => {
-      try {
-        const updated = await authorization.withReprompt([item.id], (tokenFor) =>
-          window.bearwarden.logins.setFavorite({
-            id: item.id,
-            favorite: !item.favorite,
-            ...authorizationTokenField(tokenFor(item.id))
-          })
-        )
-        detailCache.mergeSummary(updated)
-        setItems((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)))
-        setSelectedLogin((current) =>
-          current?.id === updated.id ? mergeLoginSummary(current, updated) : current
-        )
-        announce(updated.favorite ? t`Added to favorites.` : t`Removed from favorites.`)
-      } catch (favoriteError) {
-        announceError(describeVaultError(favoriteError))
-      }
-    },
-    [authorization, describeVaultError, detailCache, setItems, setSelectedLogin, t]
-  )
-
-  function revalidateBulkSelection(
-    ids: readonly string[],
-    expectedState: BulkSelectionState
-  ): LoginSummary[] | null {
-    const uniqueIds = new Set(ids)
-    if (ids.length === 0 || uniqueIds.size !== ids.length) return null
-    const revalidated: LoginSummary[] = []
-    for (const id of ids) {
-      const item = findItem(id)
-      if (!item) return null
-      const stateMatches =
-        expectedState === 'trash'
-          ? Boolean(item.deletedAt)
-          : expectedState === 'archive'
-            ? !item.deletedAt && Boolean(item.archivedAt)
-            : !item.deletedAt && !item.archivedAt
-      if (!stateMatches) return null
-      revalidated.push(item)
-    }
-    return revalidated
-  }
-
-  function snapshotBulkAction(action: BulkActionKind): BulkActionSnapshot {
-    const state: BulkSelectionState =
-      action === 'restore' || action === 'deletePermanently'
-        ? 'trash'
-        : action === 'unarchive' || (action === 'delete' && scope.kind === 'archive')
-          ? 'archive'
-          : 'active'
-    return { action, ids: [...currentSelectedIds()], state }
-  }
-
-  async function performBulkAction(snapshot: BulkActionSnapshot): Promise<boolean> {
-    if (busy) return false
-    if (snapshot.ids.length === 0) {
-      announceError(t`Select at least one item first.`)
-      return false
-    }
-    if (snapshot.ids.length > MAX_LOGIN_BATCH_IDS) {
-      announceError(t`You can process up to ${MAX_LOGIN_BATCH_IDS} items at a time.`)
-      return false
-    }
-    if (!revalidateBulkSelection(snapshot.ids, snapshot.state)) {
-      announceError(
-        t`The selection changed, so no action was taken. Select the items again and retry.`
-      )
-      return false
-    }
-
-    setBusy(true)
-    try {
-      let affectedCount = 0
-      let updated: LoginSummary[] = []
-      try {
-        await authorization.withReprompt(snapshot.ids, async (tokenFor) => {
-          const request = {
-            ids: snapshot.ids,
-            ...authorizationTokenField(firstAuthorizationToken(snapshot.ids, tokenFor))
-          }
-          if (snapshot.action === 'archive') {
-            updated = await window.bearwarden.logins.archiveMany(request)
-            affectedCount = updated.length
-            return
-          }
-          if (snapshot.action === 'unarchive') {
-            updated = await window.bearwarden.logins.unarchiveMany(request)
-            affectedCount = updated.length
-            return
-          }
-          if (snapshot.action === 'restore') {
-            updated = await window.bearwarden.logins.restoreMany(request)
-            affectedCount = updated.length
-            return
-          }
-          affectedCount =
-            snapshot.action === 'delete'
-              ? await window.bearwarden.logins.deleteMany(request)
-              : await window.bearwarden.logins.deletePermanentlyMany(request)
-        })
-      } catch (bulkError) {
-        announceError(describeVaultError(bulkError))
-        return false
-      }
-
-      if (snapshot.action === 'delete' || snapshot.action === 'deletePermanently') {
-        detailCache.invalidate(snapshot.ids)
-        const deletedIds = new Set(snapshot.ids)
-        setItems((current) => current.filter((item) => !deletedIds.has(item.id)))
-        clearItemSelection()
-      } else {
-        applyUpdatedSummaries(updated)
-      }
-      const message =
-        snapshot.action === 'archive'
-          ? t`Archived ${affectedCount} items.`
-          : snapshot.action === 'unarchive'
-            ? t`Unarchived ${affectedCount} items.`
-            : snapshot.action === 'delete'
-              ? t`Moved ${affectedCount} items to Trash.`
-              : snapshot.action === 'restore'
-                ? t`Restored ${affectedCount} items.`
-                : t`Permanently deleted ${affectedCount} items.`
-      try {
-        await vaultData.refreshItems()
-      } catch {
-        toast.warning(t`${message} The list could not be refreshed. Try again later.`)
-        return true
-      }
-      announce(message)
-      return true
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function moveLogins(snapshot: MoveSnapshot, folderId: string | null): Promise<boolean> {
-    const previous = revalidateBulkSelection(snapshot.ids, snapshot.state)
-    if (!previous) {
-      announceError(
-        t`The selection changed, so no action was taken. Select the items again and retry.`
-      )
-      return false
-    }
-    const movable = previous.filter((item) => item.folderId !== folderId)
-    if (movable.length === 0) {
-      return true
-    }
-    if (movable.length > MAX_LOGIN_BATCH_IDS) {
-      announceError(t`You can move up to ${MAX_LOGIN_BATCH_IDS} items at a time.`)
-      return false
-    }
-    const movableIds = new Set(movable.map((item) => item.id))
-    setBusy(true)
-    for (const item of movable) detailCache.mergeSummary({ ...item, folderId })
-    setItems((current) =>
-      current.map((item) => (movableIds.has(item.id) ? { ...item, folderId } : item))
-    )
-    try {
-      const movableItemIds = movable.map((item) => item.id)
-      const updated = await authorization.withReprompt(movableItemIds, (tokenFor) =>
-        window.bearwarden.logins.moveMany({
-          ids: movableItemIds,
-          folderId,
-          ...authorizationTokenField(firstAuthorizationToken(movableItemIds, tokenFor))
-        })
-      )
-      applyUpdatedSummaries(updated)
-      const destination = folders.find((folder) => folder.id === folderId)?.name ?? t`Unfiled`
-      announce(
-        updated.length > 1
-          ? t`Moved ${updated.length} items to “${destination}”.`
-          : t`Moved to “${destination}”.`
-      )
-      return true
-    } catch (moveError) {
-      const previousById = new Map(previous.map((item) => [item.id, item]))
-      for (const item of previous) detailCache.mergeSummary(item)
-      setItems((current) => current.map((item) => previousById.get(item.id) ?? item))
-      announceError(describeVaultError(moveError))
-      return false
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function addLoginsToFavorites(snapshot: MoveSnapshot): Promise<boolean> {
-    if (busy) return false
-    const previous = revalidateBulkSelection(snapshot.ids, snapshot.state)
-    if (!previous) {
-      announceError(
-        t`The selection changed, so no action was taken. Select the items again and retry.`
-      )
-      return false
-    }
-    const itemsToUpdate = previous.filter((item) => !item.favorite)
-    if (itemsToUpdate.length === 0) return true
-    if (itemsToUpdate.length > MAX_LOGIN_BATCH_IDS) {
-      announceError(t`You can process up to ${MAX_LOGIN_BATCH_IDS} items at a time.`)
-      return false
-    }
-
-    const ids = itemsToUpdate.map((item) => item.id)
-    setBusy(true)
-    try {
-      const updated = await authorization.withReprompt(ids, (tokenFor) =>
-        Promise.all(
-          ids.map((id) =>
-            window.bearwarden.logins.setFavorite({
-              id,
-              favorite: true,
-              ...authorizationTokenField(tokenFor(id))
-            })
-          )
-        )
-      )
-      applyUpdatedSummaries(updated)
-      announce(
-        updated.length > 1 ? t`Added ${updated.length} items to favorites.` : t`Added to favorites.`
-      )
-      return true
-    } catch (favoriteError) {
-      await vaultData.refreshItems().catch(() => undefined)
-      announceError(describeVaultError(favoriteError))
-      return false
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function saveFolder(name: string): Promise<void> {
-    setBusy(true)
-    try {
-      if (folderDialog === 'new') {
-        const created = await window.bearwarden.folders.create({ name })
-        setFolders((current) => sortFoldersByPosition([...current, created]))
-        announce(t`Created folder “${created.name}”.`)
-      } else if (folderDialog) {
-        const updatedFolders = await window.bearwarden.folders.update({
-          id: folderDialog.id,
-          name
-        })
-        setFolders(sortFoldersByPosition(updatedFolders))
-        const updated = updatedFolders.find((folder) => folder.id === folderDialog.id)
-        if (updated) announce(t`Renamed to “${updated.name}”.`)
-      }
-      setFolderDialog(null)
-    } catch (folderError) {
-      announceError(describeVaultError(folderError))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function deleteFolder(): Promise<void> {
-    if (!folderDialog || folderDialog === 'new') return
-    setBusy(true)
-    try {
-      const containedIds = items
-        .filter((item) => item.folderId === folderDialog.id)
-        .map((item) => item.id)
-      await authorization.withReprompt(containedIds, (tokenFor) =>
-        window.bearwarden.folders.delete({
-          id: folderDialog.id,
-          ...authorizationTokenField(firstAuthorizationToken(containedIds, tokenFor))
-        })
-      )
-      detailCache.moveFolderContentsToUnfiled(folderDialog.id)
-      setFolders((current) => current.filter((folder) => folder.id !== folderDialog.id))
-      setItems((current) =>
-        current.map((item) =>
-          item.folderId === folderDialog.id ? { ...item, folderId: null } : item
-        )
-      )
-      if (scope.kind === 'folder' && scope.folderId === folderDialog.id)
-        setScope({ kind: 'unfiled' })
-      announce(t`Deleted folder “${folderDialog.name}”. Its items were moved to Unfiled.`)
-      setFolderDialog(null)
-    } catch (folderError) {
-      announceError(describeVaultError(folderError))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function saveLogin(draft: LoginDraft): Promise<boolean> {
-    setBusy(true)
-    try {
-      const changedSecrets = new Set(draft.changedSecrets)
-      const customFields = draft.customFields.map((field) => ({
-        source: field.source,
-        name: field.name,
-        type: field.type,
-        value: field.value,
-        linkedId: field.linkedId
-      }))
-      const fields = {
-        username: draft.username,
-        uri: draft.uri || null,
-        uris: draft.uris.map((entry) => ({ uri: entry.uri, match: entry.match })),
-        cardholderName: draft.cardholderName,
-        brand: draft.brand,
-        expMonth: draft.expMonth,
-        expYear: draft.expYear,
-        title: draft.title,
-        firstName: draft.firstName,
-        middleName: draft.middleName,
-        lastName: draft.lastName,
-        address1: draft.address1,
-        address2: draft.address2,
-        address3: draft.address3,
-        city: draft.city,
-        state: draft.state,
-        postalCode: draft.postalCode,
-        country: draft.country,
-        company: draft.company,
-        email: draft.email,
-        phone: draft.phone,
-        identityUsername: draft.identityUsername,
-        publicKey: draft.publicKey,
-        fingerprint: draft.fingerprint,
-        ...(changedSecrets.has('password') ? { password: draft.password } : {}),
-        ...(changedSecrets.has('totp') ? { totp: draft.totp } : {}),
-        ...(changedSecrets.has('number') ? { number: draft.number } : {}),
-        ...(changedSecrets.has('code') ? { code: draft.code } : {}),
-        ...(changedSecrets.has('ssn') ? { ssn: draft.ssn } : {}),
-        ...(changedSecrets.has('passportNumber') ? { passportNumber: draft.passportNumber } : {}),
-        ...(changedSecrets.has('licenseNumber') ? { licenseNumber: draft.licenseNumber } : {}),
-        ...(changedSecrets.has('privateKey') ? { privateKey: draft.privateKey } : {})
-      }
-      if (editorMode === 'create') {
-        const request = {
-          type: draft.type,
-          name: draft.name,
-          ...fields,
-          notes: draft.notes || null,
-          folderId: draft.folderId,
-          favorite: draft.favorite,
-          reprompt: draft.reprompt,
-          customFields
-        }
-        if (draft.ownerOrganizationId) {
-          if (draft.sshImportToken) throw new Error('Shared SSH key imports are not supported.')
-          const created = await window.bearwarden.sharedLogins.create({
-            type: draft.type,
-            name: draft.name,
-            ...fields,
-            notes: draft.notes || null,
-            organizationId: draft.ownerOrganizationId,
-            collectionIds: draft.collectionIds,
-            customFields
-          })
-          detailCache.remember(created)
-          setSharedItems((current) => [...current, toSharedLoginSummary(created)])
-          setScope({ kind: 'organization', organizationId: created.organizationId })
-          selectSavedItem(created.id, created)
-          announce(t`Created “${created.name}”.`)
-        } else {
-          const created = await createLoginWithOptionalSshImport(request, draft.sshImportToken, {
-            create: window.bearwarden.logins.create,
-            createImported: window.bearwarden.sshKeys.createImported
-          })
-          const cardCoverAttachment =
-            draft.type === 'card' && draft.cardCoverSourceUrl
-              ? await attachments.uploadSelectedCardCover(created.id, draft.cardCoverSourceUrl)
-              : null
-          const createdWithCardCover = cardCoverAttachment
-            ? {
-                ...created,
-                attachments: [...created.attachments, cardCoverAttachment],
-                attachmentCount: created.attachments.length + 1
-              }
-            : created
-          if (createdWithCardCover.reprompt === 0) {
-            detailCache.remember(createdWithCardCover)
-          }
-          setItems((current) => [...current, toLoginSummary(created)])
-          setScope({ kind: 'all' })
-          selectSavedItem(
-            created.id,
-            createdWithCardCover.reprompt === 0 ? createdWithCardCover : null
-          )
-          announce(t`Created “${created.name}”.`)
-        }
-      } else if (selectedLogin) {
-        const itemId = selectedLogin.id
-        if (selectedSharedSummary) {
-          if (draft.sshImportToken) throw new Error('Shared SSH key imports are not supported.')
-          const updated = await window.bearwarden.sharedLogins.update({
-            id: itemId,
-            expectedUpdatedAt: draft.expectedUpdatedAt ?? undefined,
-            name: draft.name,
-            ...fields,
-            notes: draft.notes || null,
-            customFields
-          })
-          setSharedItems((current) =>
-            current.map((item) => (item.id === updated.id ? toSharedLoginSummary(updated) : item))
-          )
-          setSelectedLogin(updated)
-          announce(t`Saved “${updated.name}”.`)
-        } else {
-          const updated = await authorization.withReprompt([itemId], (tokenFor) => {
-            const request = {
-              id: itemId,
-              expectedUpdatedAt: draft.expectedUpdatedAt ?? undefined,
-              name: draft.name,
-              ...fields,
-              notes: draft.notes || null,
-              folderId: draft.folderId,
-              favorite: draft.favorite,
-              reprompt: draft.reprompt,
-              ...authorizationTokenField(tokenFor(itemId)),
-              customFields
-            }
-            return updateLoginWithOptionalSshImport(request, draft.sshImportToken, {
-              update: window.bearwarden.logins.update,
-              updateImported: window.bearwarden.sshKeys.updateImported
-            })
-          })
-          const cardCoverAttachment =
-            draft.type === 'card' && draft.cardCoverSourceUrl
-              ? await attachments.uploadSelectedCardCover(itemId, draft.cardCoverSourceUrl)
-              : null
-          const updatedAttachments = cardCoverAttachment
-            ? upsertAttachment(updated.attachments, cardCoverAttachment)
-            : null
-          const updatedWithCardCover = updatedAttachments
-            ? {
-                ...updated,
-                attachments: updatedAttachments,
-                attachmentCount: updatedAttachments.length
-              }
-            : updated
-          if (updatedWithCardCover.reprompt === 0 || authorization.token(itemId)) {
-            detailCache.remember(updatedWithCardCover)
-          } else {
-            detailCache.forget(itemId)
-          }
-          setItems((current) =>
-            current.map((item) =>
-              item.id === updatedWithCardCover.id ? toLoginSummary(updatedWithCardCover) : item
-            )
-          )
-          setSelectedLogin(
-            updatedWithCardCover.reprompt === 0 || authorization.token(itemId)
-              ? updatedWithCardCover
-              : null
-          )
-          announce(t`Saved “${updatedWithCardCover.name}”.`)
-        }
-      }
-      secrets.resetRevealedCustomFields()
-      clearEditorDirty()
-      setEditorMode(null)
-      return true
-    } catch (saveError) {
-      announceError(describeVaultError(saveError))
-      return false
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function deletePasskey(
-    credentialId: string,
-    expectedUpdatedAt: string
-  ): Promise<LoginView | null> {
-    if (!selectedLogin || selectedLogin.deletedAt || selectedLogin.type !== 'login') return null
-    setBusy(true)
-    try {
-      const itemId = selectedLogin.id
-      let operationAuthorizationToken: string | undefined
-      const updated = await authorization.withReprompt([itemId], (tokenFor) => {
-        operationAuthorizationToken = tokenFor(itemId)
-        return window.bearwarden.passkeys.delete({
-          id: itemId,
-          credentialId,
-          expectedUpdatedAt,
-          ...authorizationTokenField(operationAuthorizationToken)
-        })
-      })
-      const canRetainDetail = updated.reprompt === 0 || operationAuthorizationToken !== undefined
-      if (canRetainDetail) {
-        detailCache.remember(updated)
-      } else {
-        detailCache.forget(itemId)
-      }
-      setItems((current) =>
-        current.map((item) => (item.id === updated.id ? toLoginSummary(updated) : item))
-      )
-      setSelectedLogin(canRetainDetail ? updated : null)
-      announce(t`Passkey deleted.`)
-      return updated
-    } catch (deleteError) {
-      announceError(describeVaultError(deleteError))
-      return null
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function cloneLogin(): Promise<void> {
-    if (!selectedLogin || selectedLogin.deletedAt) return
-    setBusy(true)
-    try {
-      const itemId = selectedLogin.id
-      const cloned = await authorization.withReprompt([itemId], (tokenFor) =>
-        window.bearwarden.logins.clone({
-          id: itemId,
-          ...authorizationTokenField(tokenFor(itemId))
-        })
-      )
-      if (cloned.reprompt === 0) detailCache.remember(cloned)
-      setItems((current) => [...current, toLoginSummary(cloned)])
-      setScope(cloned.archivedAt ? { kind: 'archive' } : { kind: 'all' })
-      selectSavedItem(cloned.id, cloned.reprompt === 0 ? cloned : null)
-      resetReveals()
-      announce(t`Created “${cloned.name}”.`)
-    } catch (cloneError) {
-      announceError(describeVaultError(cloneError))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function archiveLogin(): Promise<void> {
-    if (!selectedLogin || selectedLogin.deletedAt || selectedLogin.archivedAt) return
-    setBusy(true)
-    try {
-      const itemId = selectedLogin.id
-      const archived = await authorization.withReprompt([itemId], (tokenFor) =>
-        window.bearwarden.logins.archive({
-          id: itemId,
-          ...authorizationTokenField(tokenFor(itemId))
-        })
-      )
-      detailCache.remember(archived)
-      await vaultData.refreshItems()
-      setScope({ kind: 'archive' })
-      selectSavedItem(archived.id, archived)
-      announce(t`Archived “${archived.name}”.`)
-    } catch (archiveError) {
-      announceError(describeVaultError(archiveError))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function unarchiveLogin(): Promise<void> {
-    if (!selectedLogin || selectedLogin.deletedAt || !selectedLogin.archivedAt) return
-    setBusy(true)
-    try {
-      const itemId = selectedLogin.id
-      const restored = await authorization.withReprompt([itemId], (tokenFor) =>
-        window.bearwarden.logins.unarchive({
-          id: itemId,
-          ...authorizationTokenField(tokenFor(itemId))
-        })
-      )
-      detailCache.remember(restored)
-      await vaultData.refreshItems()
-      setScope({ kind: 'all' })
-      selectSavedItem(restored.id, restored)
-      announce(t`Unarchived “${restored.name}”.`)
-    } catch (unarchiveError) {
-      announceError(describeVaultError(unarchiveError))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function deleteLogin(): Promise<void> {
-    if (!selectedSummary) return
-    setBusy(true)
-    try {
-      const itemId = selectedSummary.id
-      await authorization.withReprompt([itemId], (tokenFor) => {
-        const request = {
-          id: itemId,
-          ...authorizationTokenField(tokenFor(itemId))
-        }
-        return selectedSummary.deletedAt
-          ? window.bearwarden.logins.deletePermanently(request)
-          : window.bearwarden.logins.delete(request)
-      })
-      detailCache.forget(selectedSummary.id)
-      await vaultData.refreshItems()
-      clearItemSelection()
-      setDeleteDialogOpen(false)
-      announce(selectedSummary.deletedAt ? t`Item permanently deleted.` : t`Item moved to Trash.`)
-    } catch (deleteError) {
-      announceError(describeVaultError(deleteError))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function restoreLogin(): Promise<void> {
-    if (!selectedSummary?.deletedAt) return
-    setBusy(true)
-    try {
-      const itemId = selectedSummary.id
-      const restored = await authorization.withReprompt([itemId], (tokenFor) =>
-        window.bearwarden.logins.restore({
-          id: itemId,
-          ...authorizationTokenField(tokenFor(itemId))
-        })
-      )
-      detailCache.remember(restored)
-      await vaultData.refreshItems()
-      setScope(restored.archivedAt ? { kind: 'archive' } : { kind: 'all' })
-      selectSavedItem(restored.id, restored)
-      announce(t`Restored “${restored.name}”.`)
-    } catch (restoreError) {
-      announceError(describeVaultError(restoreError))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function emptyTrash(): Promise<void> {
-    setBusy(true)
-    try {
-      const trashIds = trashItems.map((item) => item.id)
-      const count = await authorization.withReprompt(trashIds, (tokenFor) =>
-        window.bearwarden.logins.emptyTrash({
-          ...authorizationTokenField(firstAuthorizationToken(trashIds, tokenFor))
-        })
-      )
-      detailCache.clear()
-      await vaultData.refreshItems()
-      clearItemSelection()
-      setEmptyTrashDialogOpen(false)
-      announce(
-        t({
-          message: plural(count, {
-            one: 'Permanently deleted # item.',
-            other: 'Permanently deleted # items.'
-          })
-        })
-      )
-    } catch (emptyError) {
-      announceError(describeVaultError(emptyError))
-    } finally {
-      setBusy(false)
-    }
-  }
-
   function startDrag(event: DragStartEvent): void {
     const activeId = String(event.active.id)
     if (itemIds.has(activeId) && !currentSelectedIds().has(activeId)) selectLogin(activeId)
@@ -1998,13 +1328,13 @@ function VaultShellContent({
         state: scope.kind === 'archive' ? 'archive' : 'active'
       }
       const quickAction = quickAccessDropAction(overId, snapshot.state)
-      if (quickAction === 'favorites') await addLoginsToFavorites(snapshot)
+      if (quickAction === 'favorites') await actions.addLoginsToFavorites(snapshot)
       else if (quickAction === 'archive') {
-        await performBulkAction({ action: 'archive', ...snapshot })
+        await actions.performBulkAction({ action: 'archive', ...snapshot })
       } else if (quickAction === 'trash') {
         setPendingBulkAction({ action: 'delete', ...snapshot })
-      } else if (overId === 'folder:none') await moveLogins(snapshot, null)
-      else if (folderIds.has(overId)) await moveLogins(snapshot, overId)
+      } else if (overId === 'folder:none') await actions.moveLogins(snapshot, null)
+      else if (folderIds.has(overId)) await actions.moveLogins(snapshot, overId)
       return
     }
     if (!previousFolders || !folderIds.has(activeId)) return
@@ -2296,11 +1626,11 @@ function VaultShellContent({
                   actions={{
                     onPrefetch: detailCache.prefetch,
                     onSelect: selectItems,
-                    onToggleFavorite: toggleFavorite,
+                    onToggleFavorite: actions.toggleFavorite,
                     onContextMenu: secrets.showLoginContextMenu,
                     onOpenCreate: () => openEditor('create'),
-                    snapshotBulkAction,
-                    onPerformBulkAction: performBulkAction,
+                    snapshotBulkAction: actions.snapshotBulkAction,
+                    onPerformBulkAction: actions.performBulkAction,
                     onSetPendingBulkAction: setPendingBulkAction,
                     onOpenMove: openMoveDialogForSelection,
                     onEmptyTrash: () => setEmptyTrashDialogOpen(true)
@@ -2351,8 +1681,8 @@ function VaultShellContent({
                   }
                   onCancel={() => requestEditorTransition(() => setEditorMode(null))}
                   onDirtyChange={handleEditorDirtyChange}
-                  onDeletePasskey={deletePasskey}
-                  onSave={saveLogin}
+                  onDeletePasskey={actions.deletePasskey}
+                  onSave={actions.saveLogin}
                 />
               ) : selectedSummary?.deletedAt ? (
                 <article className="flex size-full min-h-0 min-w-0 flex-col">
@@ -2458,7 +1788,11 @@ function VaultShellContent({
                       </DetailCard>
                     )}
                     <div className="mx-auto flex max-w-[720px] flex-wrap justify-end gap-2">
-                      <Button type="button" disabled={busy} onClick={() => void restoreLogin()}>
+                      <Button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void actions.restoreLogin()}
+                      >
                         <RotateCcw data-icon="inline-start" />
                         <Trans>Restore item</Trans>
                       </Button>
@@ -2549,7 +1883,7 @@ function VaultShellContent({
                             selectedLogin.favorite ? t`Remove from favorites` : t`Add to favorites`
                           }
                           aria-pressed={selectedLogin.favorite}
-                          onClick={() => void toggleFavorite(selectedLogin)}
+                          onClick={() => void actions.toggleFavorite(selectedLogin)}
                         >
                           <Star fill={selectedLogin.favorite ? 'currentColor' : 'none'} />
                         </TooltipIconButton>
@@ -2579,7 +1913,10 @@ function VaultShellContent({
                           </Tooltip>
                           <DropdownMenuContent align="end">
                             <DropdownMenuGroup>
-                              <DropdownMenuItem disabled={busy} onClick={() => void cloneLogin()}>
+                              <DropdownMenuItem
+                                disabled={busy}
+                                onClick={() => void actions.cloneLogin()}
+                              >
                                 <Copy data-icon="inline-start" />
                                 <Trans>Duplicate item</Trans>
                               </DropdownMenuItem>
@@ -2587,8 +1924,8 @@ function VaultShellContent({
                                 disabled={busy}
                                 onClick={() =>
                                   void (selectedLogin.archivedAt
-                                    ? unarchiveLogin()
-                                    : archiveLogin())
+                                    ? actions.unarchiveLogin()
+                                    : actions.archiveLogin())
                                 }
                               >
                                 {selectedLogin.archivedAt ? (
@@ -2772,8 +2109,15 @@ function VaultShellContent({
               value: folderDialog,
               folders,
               onClose: () => setFolderDialog(null),
-              onSave: saveFolder,
-              onDelete: deleteFolder
+              onSave: async (name) => {
+                if (folderDialog && (await actions.saveFolder(folderDialog, name))) {
+                  setFolderDialog(null)
+                }
+              },
+              onDelete: async () => {
+                if (!folderDialog || folderDialog === 'new') return
+                if (await actions.deleteFolder(folderDialog)) setFolderDialog(null)
+              }
             },
             move: {
               snapshot: moveSnapshot,
@@ -2781,20 +2125,24 @@ function VaultShellContent({
               currentFolderId: moveFolderId,
               folders,
               onClose: () => setMoveSnapshot(null),
-              onMove: moveLogins
+              onMove: actions.moveLogins
             },
             deletion: {
               selectedSummary,
               deleteOpen: deleteDialogOpen,
               onCloseDelete: () => setDeleteDialogOpen(false),
-              onDelete: deleteLogin,
+              onDelete: async () => {
+                if (await actions.deleteLogin()) setDeleteDialogOpen(false)
+              },
               trashItemCount: trashItems.length,
               emptyTrashOpen: emptyTrashDialogOpen,
               onCloseEmptyTrash: () => setEmptyTrashDialogOpen(false),
-              onEmptyTrash: emptyTrash,
+              onEmptyTrash: async () => {
+                if (await actions.emptyTrash()) setEmptyTrashDialogOpen(false)
+              },
               pendingBulkAction,
               onCloseBulkAction: () => setPendingBulkAction(null),
-              onPerformBulkAction: performBulkAction
+              onPerformBulkAction: actions.performBulkAction
             },
             passwordHistory: {
               open: passwordHistoryDialogOpen,
