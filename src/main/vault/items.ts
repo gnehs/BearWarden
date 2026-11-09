@@ -60,7 +60,10 @@ import {
 } from './item-fields'
 import { passwordHistoryAfterEdit } from './password-history'
 
-/** Personal vault items: create, clone, edit, archive, trash, restore, move and favorite, and the reveal, copy, TOTP and open operations that record item usage. */
+/**
+ * Personal vault items: create, clone, edit, archive, trash, restore, move and favorite, plus
+ * reveal and TOTP reads and the copy and open operations that record item usage.
+ */
 export class VaultItems {
   constructor(
     private readonly core: VaultCore,

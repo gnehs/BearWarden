@@ -6,7 +6,9 @@ import type {
   LoginApprovalPrompt,
   AccountSessionDeauthorizationRequest,
   LoginApprovalResponse,
-  SyncStatus
+  SyncStatus,
+  AccountDevicesResult,
+  AccountSecurityProfile
 } from '../../shared/vault-contract'
 import {
   BitwardenDirectError,
@@ -38,6 +40,7 @@ import {
 } from '../../shared/vault-contract'
 import { resolveBitwardenUrls } from '../bitwarden-http'
 import type { BitwardenNotificationConnectionInfo } from '../bitwarden-notifications'
+import type { BitwardenAccountSecurityProfile } from '../bitwarden-http'
 
 interface AccountWebAuthnOperationLease {
   readonly generation: number
@@ -94,9 +97,7 @@ export class VaultAccountSecurity {
     private readonly requestAccountWebAuthnRegistration: VaultAccountWebAuthnRegistrationRequester | null
   ) {}
 
-  async getAccountSecurityProfile(): Promise<
-    import('../../shared/vault-contract').AccountSecurityProfile
-  > {
+  async getAccountSecurityProfile(): Promise<AccountSecurityProfile> {
     const lease = await this.core.exclusive(async () => {
       const sync = this.syncSession.requireSyncData()
       const client = this.syncSession.getOrCreateSyncClient(sync)
@@ -151,7 +152,7 @@ export class VaultAccountSecurity {
   async updateAccountProfileName(request: {
     name: string
     expectedName: string
-  }): Promise<import('../../shared/vault-contract').AccountSecurityProfile> {
+  }): Promise<AccountSecurityProfile> {
     if (
       typeof request.name !== 'string' ||
       typeof request.expectedName !== 'string' ||
@@ -171,7 +172,7 @@ export class VaultAccountSecurity {
   async updateAccountAvatarColor(request: {
     avatarColor: string | null
     expectedAvatarColor: string | null
-  }): Promise<import('../../shared/vault-contract').AccountSecurityProfile> {
+  }): Promise<AccountSecurityProfile> {
     const validColor = (value: unknown): value is string | null =>
       value === null || (typeof value === 'string' && /^#[0-9a-f]{6}$/iu.test(value))
     if (!validColor(request.avatarColor) || !validColor(request.expectedAvatarColor)) {
@@ -189,8 +190,8 @@ export class VaultAccountSecurity {
     request: (
       client: BitwardenSyncClient,
       signal: AbortSignal
-    ) => Promise<import('../bitwarden-http').BitwardenAccountSecurityProfile>
-  ): Promise<import('../../shared/vault-contract').AccountSecurityProfile> {
+    ) => Promise<BitwardenAccountSecurityProfile>
+  ): Promise<AccountSecurityProfile> {
     const lease = await this.core.exclusive(async () => {
       const sync = this.syncSession.requireSyncData()
       const client = this.syncSession.getOrCreateSyncClient(sync)
@@ -244,7 +245,7 @@ export class VaultAccountSecurity {
     }
   }
 
-  async getAccountDevices(): Promise<import('../../shared/vault-contract').AccountDevicesResult> {
+  async getAccountDevices(): Promise<AccountDevicesResult> {
     const lease = await this.core.exclusive(async () => {
       const sync = this.syncSession.requireSyncData()
       const client = this.syncSession.getOrCreateSyncClient(sync)

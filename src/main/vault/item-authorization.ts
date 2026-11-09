@@ -6,7 +6,10 @@ import { MAX_MASTER_PASSWORD_LENGTH } from './limits'
 import { assertUuid } from './parse-primitives'
 import { findLogin } from './data-lookup'
 
-/** Master-password reprompt for protected items: one-shot item authorization and the authorized-operation gate that integrations run their credential reads through. */
+/**
+ * Master-password reprompt for protected items: one-shot item authorization, and the
+ * authorized-operation gate that integrations run their credential reads through.
+ */
 export class VaultItemAuthorization {
   constructor(private readonly core: VaultCore) {}
 

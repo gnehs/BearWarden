@@ -28,7 +28,10 @@ import {
 import { emergencyAccessViewFromRemote } from './org-collection-parsing'
 import { findFolder, findLogin, assertActiveLogin } from './data-lookup'
 
-/** Read-only item queries: personal and shared item lists, item views, organizations, collections and emergency access. */
+/**
+ * Read-only item queries: personal and shared item lists and views, organizations, collections
+ * and emergency access.
+ */
 export class VaultListings {
   constructor(
     private readonly core: VaultCore,
