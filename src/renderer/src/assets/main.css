@@ -67,7 +67,7 @@
   --reveal-ease: ease-in-out;
   --tabs-dur: 250ms;
   --tabs-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --tabs-pill-bg: var(--background);
+  --tabs-pill-bg: var(--segment-thumb);
   --acc-expand: 250ms;
   --acc-collapse: 250ms;
   --acc-chevron: 250ms;
@@ -126,23 +126,37 @@
   --accent-soft: color-mix(in oklch, var(--primary) 12%, var(--background));
   --danger-soft: color-mix(in oklch, var(--destructive) 10%, var(--background));
   --shadow-color: oklch(0 0 0);
-  --control-highlight: inset 0 1px rgb(255 255 255 / 50%);
-  --subtle-primary-action-shadow:
-    inset 0 1px rgb(255 255 255 / 24%),
-    0 2px 5px color-mix(in oklch, var(--shadow-color) 18%, transparent);
+  --control-highlight: 0 0 #0000;
+  --subtle-primary-action-shadow: 0 2px 5px
+    color-mix(in oklch, var(--shadow-color) 18%, transparent);
   --sidebar-tile-highlight: var(--control-highlight);
   --website-icon-background: oklch(1 0 0);
   --shadow: 0 18px 48px color-mix(in oklch, var(--shadow-color) 14%, transparent);
   --native-window-material: color-mix(in oklch, var(--background) 78%, transparent);
   --native-panel-material: color-mix(in oklch, var(--card) 88%, transparent);
   --native-material-border: color-mix(in oklch, var(--foreground) 9%, transparent);
-  --native-material-shadow:
-    0 1px 0 color-mix(in oklch, white 58%, transparent) inset,
-    0 10px 30px color-mix(in oklch, var(--shadow-color) 7%, transparent);
+  --native-material-shadow: 0 10px 30px color-mix(in oklch, var(--shadow-color) 7%, transparent);
   --popup-material-shadow:
-    0 1px 0 color-mix(in oklch, white 72%, transparent) inset,
     0 12px 40px color-mix(in oklch, var(--shadow-color) 14%, transparent),
     0 2px 8px color-mix(in oklch, var(--shadow-color) 6%, transparent);
+  --canvas: oklch(0.972 0.002 197.1);
+  --dot-grid-color: color-mix(in oklch, var(--foreground) 12%, var(--canvas));
+  --surface-ring: color-mix(in oklch, var(--foreground) 8%, transparent);
+  --surface-shadow:
+    0 1px 2px color-mix(in oklch, var(--shadow-color) 5%, transparent),
+    0 8px 24px color-mix(in oklch, var(--shadow-color) 5%, transparent);
+  --inset-surface: color-mix(in oklch, var(--foreground) 4%, var(--card));
+  --inset-shadow:
+    inset 0 1px 2px color-mix(in oklch, var(--shadow-color) 7%, transparent),
+    inset 0 0 0 1px color-mix(in oklch, var(--foreground) 5%, transparent);
+  --glass-surface: color-mix(in oklch, var(--card) 68%, transparent);
+  --glass-popover: color-mix(in oklch, var(--popover) 76%, transparent);
+  --glass-ring: color-mix(in oklch, var(--foreground) 9%, transparent);
+  --segment-track: color-mix(in oklch, var(--foreground) 6%, var(--card));
+  --segment-thumb: var(--card);
+  --segment-thumb-shadow:
+    0 1px 2px color-mix(in oklch, var(--shadow-color) 14%, transparent),
+    0 3px 10px color-mix(in oklch, var(--shadow-color) 8%, transparent);
   font-family:
     'Inter',
     ui-sans-serif,
@@ -195,11 +209,10 @@
 .dark,
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --control-highlight: inset 0 1px rgb(255 255 255 / 20%), inset 0 -1px rgb(0 0 0 / 5%);
-  --subtle-primary-action-shadow:
-    inset 0 1px rgb(255 255 255 / 20%),
-    0 2px 5px color-mix(in oklch, var(--shadow-color) 18%, transparent);
-  --sidebar-tile-highlight: inset 0 1px rgb(255 255 255 / 5%), inset 0 -1px rgb(0 0 0 / 20%);
+  --control-highlight: 0 0 #0000;
+  --subtle-primary-action-shadow: 0 2px 5px
+    color-mix(in oklch, var(--shadow-color) 18%, transparent);
+  --sidebar-tile-highlight: var(--control-highlight);
   --background: oklch(0.148 0.004 228.8);
   --foreground: oklch(0.987 0.002 197.1);
   --card: oklch(0.218 0.008 223.9);
@@ -242,10 +255,24 @@
     0 1px 0 color-mix(in oklch, var(--shadow-color) 18%, transparent) inset,
     0 10px 30px color-mix(in oklch, var(--shadow-color) 28%, transparent);
   --popup-material-shadow:
-    0 1px 0 color-mix(in oklch, white 14%, transparent) inset,
-    0 -1px 0 color-mix(in oklch, black 22%, transparent) inset,
     0 16px 48px color-mix(in oklch, var(--shadow-color) 42%, transparent),
     0 4px 12px color-mix(in oklch, var(--shadow-color) 22%, transparent);
+  --canvas: oklch(0.172 0.005 228.8);
+  --dot-grid-color: color-mix(in oklch, var(--foreground) 10%, var(--canvas));
+  --surface-ring: color-mix(in oklch, var(--foreground) 9%, transparent);
+  --surface-shadow:
+    0 1px 2px color-mix(in oklch, var(--shadow-color) 30%, transparent),
+    0 10px 28px color-mix(in oklch, var(--shadow-color) 24%, transparent);
+  --inset-surface: color-mix(in oklch, var(--foreground) 5%, var(--card));
+  --inset-shadow:
+    inset 0 1px 0 color-mix(in oklch, black 28%, transparent),
+    inset 0 0 0 1px color-mix(in oklch, var(--foreground) 6%, transparent);
+  --glass-surface: color-mix(in oklch, var(--card) 62%, transparent);
+  --glass-popover: color-mix(in oklch, var(--popover) 78%, transparent);
+  --glass-ring: color-mix(in oklch, var(--foreground) 12%, transparent);
+  --segment-track: color-mix(in oklch, black 28%, var(--card));
+  --segment-thumb: color-mix(in oklch, var(--foreground) 17%, var(--card));
+  --segment-thumb-shadow: 0 1px 2px color-mix(in oklch, var(--shadow-color) 40%, transparent);
 }
 
 @layer base {
@@ -356,6 +383,13 @@ body:has(.platform-windows) {
 }
 
 @media (prefers-reduced-transparency: reduce) {
+  :root,
+  .dark,
+  :root[data-theme='dark'] {
+    --glass-surface: var(--card);
+    --glass-popover: var(--popover);
+  }
+
   body:has(.platform-macos),
   body:has(.platform-windows) {
     background: var(--background);
