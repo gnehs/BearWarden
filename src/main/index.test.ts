@@ -982,4 +982,19 @@ describe('main WebAuthn lifecycle wiring', () => {
     expect(harness.windows).toHaveLength(previousCount + 1)
     expect(harness.windows.at(-1)!.focus).toHaveBeenCalledOnce()
   })
+
+  // Runs after the teardown test above has completed shutdown.
+  it('locks without reloading the renderer once the app is shutting down', async () => {
+    const webContents = harness.windows.at(-1)!.webContents as unknown as {
+      reload: ReturnType<typeof vi.fn>
+    }
+    webContents.reload.mockClear()
+    harness.vaultLock.mockClear()
+
+    await (harness.vaultIpcOptions!.lockVault as () => Promise<unknown>)()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    expect(harness.vaultLock).toHaveBeenCalledOnce()
+    expect(webContents.reload).not.toHaveBeenCalled()
+  })
 })

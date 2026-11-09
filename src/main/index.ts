@@ -450,6 +450,8 @@ async function openAllowedExternalUrl(value: string): Promise<void> {
 
 function notifyVaultLocked(): void {
   sensitiveClipboard.clearIfOwned()
+  // The window is closing with the app; a reload would only race the IPC handler teardown.
+  if (shutdownPending || shutdownComplete) return
   const window = mainWindow
   if (!window || window.isDestroyed()) return
   window.webContents.send(IPC_EVENTS.vaultLocked)
