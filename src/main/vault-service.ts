@@ -103,8 +103,7 @@ import {
   MAX_NAME_LENGTH,
   MAX_URI_LENGTH,
   MAX_NOTES_LENGTH,
-  MAX_ITEM_FIELD_LENGTH,
-  MAX_PASSWORD_HISTORY
+  MAX_ITEM_FIELD_LENGTH
 } from './vault/limits'
 import {
   assertUuid,
@@ -151,7 +150,7 @@ import {
   assertCopyField
 } from './vault/item-fields'
 import { parseSupportedSshAgentPublicKeyBlob, sshAgentFingerprint } from './vault/ssh-helpers'
-import { clonePasswordHistory } from './vault/password-history'
+import { passwordHistoryAfterEdit } from './vault/password-history'
 import type {
   StoredLogin,
   SshAgentVaultIdentity,
@@ -617,10 +616,8 @@ export class VaultService extends VaultAccountService {
         throw new VaultError('INVALID_INPUT')
       }
       const previousPassword = login.password
-      const previousHistory = clonePasswordHistory(login.passwordHistory)
-      const previousHiddenFields = login.customFields.filter(
-        (field) => field.type === 'hidden' && field.name.length > 0 && field.value.length > 0
-      )
+      const previousHistory = login.passwordHistory
+      const previousCustomFields = login.customFields
       // Normalize the complete post-save set first. Partial editor updates can preserve hidden
       // values that never entered renderer state and therefore must not create false history.
       const nextCustomFields =
@@ -644,31 +641,19 @@ export class VaultService extends VaultAccountService {
       }
       if (request.reprompt !== undefined) login.reprompt = normalizeReprompt(request.reprompt)
       if (request.customFields !== undefined) login.customFields = nextCustomFields
-      const newHistory: VaultPasswordHistoryEntry[] = []
-      if (
-        login.type === 'login' &&
-        request.password !== undefined &&
-        previousPassword.length > 0 &&
-        login.password !== previousPassword
-      ) {
-        newHistory.unshift({ password: previousPassword, lastUsedDate: now })
-      }
-      const consumedNextHiddenFields = new Set<number>()
-      for (const field of previousHiddenFields) {
-        const unchangedIndex = nextCustomFields.findIndex(
-          (candidate, index) =>
-            !consumedNextHiddenFields.has(index) &&
-            candidate.type === 'hidden' &&
-            candidate.name === field.name &&
-            candidate.value === field.value
-        )
-        if (unchangedIndex >= 0) {
-          consumedNextHiddenFields.add(unchangedIndex)
-        } else {
-          newHistory.unshift({ password: `${field.name}: ${field.value}`, lastUsedDate: now })
-        }
-      }
-      login.passwordHistory = [...newHistory, ...previousHistory].slice(0, MAX_PASSWORD_HISTORY)
+      login.passwordHistory = passwordHistoryAfterEdit({
+        previousHistory,
+        retiredPassword:
+          login.type === 'login' &&
+          request.password !== undefined &&
+          previousPassword.length > 0 &&
+          login.password !== previousPassword
+            ? previousPassword
+            : null,
+        previousCustomFields,
+        nextCustomFields,
+        lastUsedDate: () => now
+      })
       if (
         login.type === 'login' &&
         request.password !== undefined &&

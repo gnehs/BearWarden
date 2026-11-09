@@ -15,7 +15,8 @@ import type {
 } from '../../shared/vault-contract'
 import { VaultError } from '../vault-errors'
 import { generateTotp } from '../totp'
-import { MAX_NAME_LENGTH, MAX_NOTES_LENGTH, MAX_PASSWORD_HISTORY } from './limits'
+import { MAX_NAME_LENGTH, MAX_NOTES_LENGTH } from './limits'
+import { passwordHistoryAfterEdit } from './password-history'
 import { assertUuid, normalizeRequiredString, normalizeNullableString } from './parse-primitives'
 import { cloneData } from './vault-data-parsing'
 import { toSharedView } from './views'
@@ -267,19 +268,21 @@ export class VaultSharedItems {
       if (request.notes !== undefined) {
         desired.notes = normalizeNullableString(request.notes, MAX_NOTES_LENGTH)
       }
+      const previousCustomFields = desired.customFields
       if (request.customFields !== undefined) desired.customFields = nextCustomFields
-      if (
+      const retiresPassword =
         desired.type === 'login' &&
         request.password !== undefined &&
         previousPassword.length > 0 &&
         desired.password !== previousPassword
-      ) {
-        desired.passwordHistory = [
-          { password: previousPassword, lastUsedDate: this.core.nowIso() },
-          ...desired.passwordHistory
-        ].slice(0, MAX_PASSWORD_HISTORY)
-        desired.passwordRevisionDate = this.core.nowIso()
-      }
+      desired.passwordHistory = passwordHistoryAfterEdit({
+        previousHistory: desired.passwordHistory,
+        retiredPassword: retiresPassword ? previousPassword : null,
+        previousCustomFields,
+        nextCustomFields,
+        lastUsedDate: () => this.core.nowIso()
+      })
+      if (retiresPassword) desired.passwordRevisionDate = this.core.nowIso()
 
       const generation = this.core.generation
       const abort = this.syncSession.startSyncOperation()

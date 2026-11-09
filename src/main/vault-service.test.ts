@@ -3313,6 +3313,93 @@ describe('VaultService encrypted local data', () => {
     await expect(service.listSharedLogins()).resolves.toHaveLength(1)
   })
 
+  it('records changed hidden custom fields in shared item password history like personal items', async () => {
+    const organizationId = '60000000-0000-4000-8000-000000000001'
+    const collectionId = '70000000-0000-4000-8000-000000000001'
+    const sharedId = '80000000-0000-4000-8000-000000000001'
+    const drafts: BitwardenLoginDraft[] = []
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        const fake = createSyncFake(sync.state)
+        let shared = {
+          ...fake.remoteLogins[0]!,
+          id: sharedId,
+          organizationId,
+          collectionIds: [collectionId],
+          edit: true,
+          viewPassword: true,
+          delete: true,
+          restore: false
+        }
+        fake.editOrganizationCipher = async (id, draft) => {
+          drafts.push(structuredClone(draft))
+          shared = {
+            ...shared,
+            ...draft,
+            id,
+            organizationId,
+            collectionIds: [collectionId],
+            revisionDate: '2026-07-15T00:00:00.000Z'
+          }
+          return structuredClone(shared)
+        }
+        fake.listOrganizations = async () => [
+          {
+            id: organizationId,
+            name: 'Shared Team',
+            status: 0,
+            type: 0,
+            enabled: true,
+            identifier: 'shared-team',
+            hasPublicAndPrivateKeys: false
+          }
+        ]
+        fake.listCollections = async () => [
+          {
+            id: collectionId,
+            organizationId,
+            name: 'Shared Collection',
+            externalId: null,
+            readOnly: false,
+            hidePasswords: false,
+            manage: true,
+            type: 0,
+            assigned: true
+          }
+        ]
+        fake.listOrganizationCiphers = async () => [structuredClone(shared)]
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const shared = await service.getSharedLogin({ id: sharedId })
+
+    await service.updateSharedLogin({
+      id: sharedId,
+      expectedUpdatedAt: shared.updatedAt,
+      password: 'rotated-password',
+      customFields: [
+        {
+          source: { index: 1, name: 'recovery-code', type: 'hidden', linkedId: null },
+          name: 'recovery-code',
+          type: 'hidden',
+          value: 'rotated-hidden-code',
+          linkedId: null
+        }
+      ]
+    })
+
+    expect(drafts.at(-1)?.passwordHistory?.map((entry) => entry.password)).toEqual([
+      'recovery-code: remote-hidden-code',
+      'remote-test-secret'
+    ])
+  })
+
   it('keeps shared item access read-only and enforces organization visibility atomically', async () => {
     const { service, copyText, openExternal } = await createHarness()
     await service.setup(MASTER_PASSWORD)
