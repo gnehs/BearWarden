@@ -11,8 +11,6 @@ import type {
   OrganizationView,
   CollectionView,
   VaultAttachmentView,
-  VaultHealthExposedReport,
-  VaultHealthAccountBreachReport,
   SyncPurgePersonalVaultResult,
   SyncResult,
   VaultTimeoutPolicy,
@@ -147,6 +145,7 @@ import {
   type EmailTwoFactorSetupSession
 } from './vault/sync-session'
 import { VaultFolders } from './vault/folders'
+import { VaultHealth } from './vault/health'
 
 type BulkRemoteLoginMutation =
   'soft-delete' | 'restore' | 'move' | 'archive' | 'unarchive' | 'hard-delete'
@@ -174,33 +173,6 @@ type ItemReadAuthorizationValidator = (
   ids: readonly string[],
   state: { generation: number }
 ) => boolean
-
-interface ExposedPasswordSnapshot {
-  readonly generation: number
-  readonly revision: string
-  readonly candidates: readonly {
-    id: string
-    name: string
-    subtitle: string
-  }[]
-  readonly hashes: string[]
-  readonly protectedSkippedCount: number
-}
-
-interface ActiveExposedPasswordOperation {
-  readonly generation: number
-  readonly revision: string
-  readonly abort: AbortController
-  readonly promise: Promise<VaultHealthExposedReport>
-}
-
-interface ActiveAccountBreachOperation {
-  readonly generation: number
-  readonly email: string
-  readonly client: BitwardenSyncClient
-  readonly abort: AbortController
-  readonly promise: Promise<VaultHealthAccountBreachReport>
-}
 
 interface AccountWebAuthnOperationLease {
   readonly generation: number
@@ -250,7 +222,6 @@ export {
 export type {
   AttachmentAuthorizationValidator,
   ItemReadAuthorizationValidator,
-  ExposedPasswordSnapshot,
   AccountWebAuthnOperationLease
 }
 
@@ -293,11 +264,10 @@ export class VaultServiceBase {
   protected readonly cardCoverDownloads = new ConcurrencyLimiter(3)
   /** Aborted on lock so detached image downloads stop as soon as the vault key is gone. */
   protected readonly imageRequestAborts = new Set<AbortController>()
-  protected activeExposedPasswordOperation: ActiveExposedPasswordOperation | null = null
-  protected activeAccountBreachOperation: ActiveAccountBreachOperation | null = null
   protected readonly core: VaultCore
   protected readonly syncSession: VaultSyncSession
   protected readonly folders: VaultFolders
+  protected readonly health: VaultHealth
 
   constructor(
     protected readonly store: EncryptedVaultStore<unknown>,
@@ -311,12 +281,8 @@ export class VaultServiceBase {
     this.core.registerResource({
       abort: () => {
         this.abortImageRequests()
-        this.activeExposedPasswordOperation?.abort.abort()
-        this.activeAccountBreachOperation?.abort.abort()
       },
       clear: () => {
-        this.activeExposedPasswordOperation = null
-        this.activeAccountBreachOperation = null
         this.generatorService.clearRuntimeState()
         this.websiteIconCache.clear()
         this.websiteIconRequests.clear()
@@ -375,6 +341,7 @@ export class VaultServiceBase {
       this.requestAccountWebAuthnAssertion
     )
     this.folders = new VaultFolders(this.core)
+    this.health = new VaultHealth(this.core, this.syncSession, this.platform, this.fetch)
   }
 
   status(): Promise<VaultStatus> {

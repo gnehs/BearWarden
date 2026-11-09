@@ -459,7 +459,7 @@ export class VaultAccountService extends VaultServiceBase {
           current.nativeAttachmentRestore ||
           current.masterPasswordChange ||
           this.syncSession.activeAttachmentOperation ||
-          this.activeAccountBreachOperation ||
+          this.health.hasActiveAccountBreachReport() ||
           this.syncSession.notificationTokenAborts.size > 0 ||
           this.syncSession.accountSecurityAborts.size > 0 ||
           this.syncSession.nativeAttachmentBackupAborts.size > 0 ||
@@ -1654,7 +1654,7 @@ export class VaultAccountService extends VaultServiceBase {
       this.syncSession.abortAccountSecurityRequests()
       this.syncSession.abortNativeAttachmentBackups()
       this.syncSession.abortNativeAttachmentRestores()
-      this.activeAccountBreachOperation?.abort.abort()
+      this.health.cancelAccountBreachReport()
       if (!current.sync) return { configured: false, state: 'unconfigured' }
       const client = this.syncSession.dropSyncClient()
       this.syncSession.clearSyncErrorState()
@@ -1869,7 +1869,7 @@ export class VaultAccountService extends VaultServiceBase {
       this.syncSession.abortAccountSecurityRequests()
       this.syncSession.abortNativeAttachmentBackups()
       this.syncSession.abortNativeAttachmentRestores()
-      this.activeAccountBreachOperation?.abort.abort()
+      this.health.cancelAccountBreachReport()
       const next = cloneData(current)
       const client = this.syncSession.dropSyncClient()
       this.syncSession.clearSyncErrorState()

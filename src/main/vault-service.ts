@@ -40,7 +40,11 @@ import type {
   FolderReorderRequest,
   FolderReparentRequest,
   FolderUpdateRequest,
-  FolderView
+  FolderView,
+  VaultHealthExposedReport,
+  VaultHealthAccountBreachReport,
+  VaultHealthAccountBreachRequest,
+  VaultHealthReport
 } from '../shared/vault-contract'
 import { MAX_LOGIN_AUTHORIZE_MANY_IDS, MAX_LOGIN_BATCH_IDS } from '../shared/vault-contract'
 import { VaultError } from './vault-errors'
@@ -151,6 +155,7 @@ import {
   assertExpectedPasskeyRevision
 } from './vault/data-lookup'
 import { assertBitwardenPolicyDoesNotBlock, assertPersonalItemTypeAllowed } from './vault/policy'
+import type { InactiveTwoFactorReport, TwoFactorDirectoryDataset } from './inactive-two-factor'
 
 export type {
   VaultAccountWebAuthnAssertionRequester,
@@ -1693,5 +1698,35 @@ export class VaultService extends VaultTransferService {
 
   reorderFolders(request: FolderReorderRequest): Promise<FolderView[]> {
     return this.folders.reorderFolders(request)
+  }
+
+  getHealthReport(): Promise<VaultHealthReport> {
+    return this.health.getHealthReport()
+  }
+
+  getInactiveTwoFactorReport(dataset: TwoFactorDirectoryDataset): Promise<InactiveTwoFactorReport> {
+    return this.health.getInactiveTwoFactorReport(dataset)
+  }
+
+  getExposedPasswordReport(): Promise<VaultHealthExposedReport> {
+    return this.health.getExposedPasswordReport()
+  }
+
+  cancelExposedPasswordReport(): boolean {
+    return this.health.cancelExposedPasswordReport()
+  }
+
+  getAccountBreachReport(
+    request: VaultHealthAccountBreachRequest
+  ): Promise<VaultHealthAccountBreachReport> {
+    return this.health.getAccountBreachReport(request)
+  }
+
+  cancelAccountBreachReport(): boolean {
+    return this.health.cancelAccountBreachReport()
+  }
+
+  openHibpWebsite(): Promise<void> {
+    return this.health.openHibpWebsite()
   }
 }
