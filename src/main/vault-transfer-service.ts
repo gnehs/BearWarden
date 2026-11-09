@@ -61,6 +61,13 @@ import type {
 import { VaultAccountService } from './vault-account-service'
 import { findLogin, assertActiveLogin } from './vault/data-lookup'
 import { assertBitwardenPolicyDoesNotBlock, assertPersonalItemTypeAllowed } from './vault/policy'
+import { localSyncSnapshot } from './vault/sync-snapshots'
+import {
+  nativeAttachmentRestoreAccountFingerprint,
+  nativeAttachmentRestoreSummary,
+  nativeAttachmentRestoreCandidateMatches,
+  requireBoundNativeAttachmentRestore
+} from './vault/native-restore-binding'
 const MAX_ATTACHMENT_PREVIEW_BYTES = 10 * 1024 * 1024
 const MAX_CARD_COVER_BYTES = 10 * 1024 * 1024
 const CARD_COVER_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000
@@ -959,7 +966,7 @@ export class VaultTransferService extends VaultAccountService {
       await this.core.assertMasterPassword(masterPassword)
       const data = this.core.requireData()
       assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.DisablePersonalVaultExport, data)
-      const snapshot = this.localSyncSnapshot(data)
+      const snapshot = localSyncSnapshot(data)
       const items = snapshot.logins.filter((item) => item.deletedAt === null)
       return {
         snapshot: {
@@ -994,7 +1001,7 @@ export class VaultTransferService extends VaultAccountService {
       assertNoPendingPersonalVaultPurge(data.sync)
       const sync = this.syncSession.requireSyncData()
       const client = this.syncSession.getOrCreateSyncClient(sync)
-      const snapshot = this.localSyncSnapshot(data)
+      const snapshot = localSyncSnapshot(data)
       const activeItems = snapshot.logins.filter((item) => item.deletedAt === null)
       const candidates: Candidate[] = []
       for (const item of data.logins.filter((login) => login.deletedAt === null)) {
@@ -1208,7 +1215,7 @@ export class VaultTransferService extends VaultAccountService {
   nativeAttachmentRestoreStatus(): Promise<VaultNativeAttachmentRestoreSummary | null> {
     return this.core.exclusive(async () => {
       const journal = this.core.requireData().nativeAttachmentRestore
-      return journal ? this.nativeAttachmentRestoreSummary(journal) : null
+      return journal ? nativeAttachmentRestoreSummary(journal) : null
     })
   }
 
@@ -1217,12 +1224,7 @@ export class VaultTransferService extends VaultAccountService {
       const current = this.core.requireData()
       const sync = this.syncSession.requireSyncData()
       const client = this.syncSession.getOrCreateSyncClient(sync)
-      const journal = this.requireBoundNativeAttachmentRestore(
-        current,
-        archiveFingerprint,
-        sync,
-        client
-      )
+      const journal = requireBoundNativeAttachmentRestore(current, archiveFingerprint, sync, client)
       if (journal.phase !== 'complete') throw new VaultError('INVALID_INPUT')
       const next = cloneData(current)
       next.nativeAttachmentRestore = null
@@ -1257,7 +1259,7 @@ export class VaultTransferService extends VaultAccountService {
       try {
         await client.sync(operation.abort.signal)
         this.assertNativeAttachmentRestoreLease(operation)
-        const accountFingerprint = this.nativeAttachmentRestoreAccountFingerprint(sync, client)
+        const accountFingerprint = nativeAttachmentRestoreAccountFingerprint(sync, client)
         const parsed = parseBitwardenJson(preview.vaultJson)
         if (parsed.skippedTrashItems !== 0) throw new VaultError('INVALID_INPUT')
         for (const item of parsed.snapshot.items) assertPersonalItemTypeAllowed(item.type, current)
@@ -1284,7 +1286,7 @@ export class VaultTransferService extends VaultAccountService {
         })
         next.updatedAt = now
         await this.core.commit(next, operation.generation)
-        return this.nativeAttachmentRestoreSummary(next.nativeAttachmentRestore)
+        return nativeAttachmentRestoreSummary(next.nativeAttachmentRestore)
       } catch (error) {
         if (operation.abort.signal.aborted || operation.generation !== this.core.generation) {
           throw new VaultError('LOCKED')
@@ -1304,13 +1306,8 @@ export class VaultTransferService extends VaultAccountService {
       const current = this.core.requireData()
       const sync = this.syncSession.requireSyncData()
       const client = this.syncSession.getOrCreateSyncClient(sync)
-      const journal = this.requireBoundNativeAttachmentRestore(
-        current,
-        archiveFingerprint,
-        sync,
-        client
-      )
-      if (journal.phase !== 'syncing-items') return this.nativeAttachmentRestoreSummary(journal)
+      const journal = requireBoundNativeAttachmentRestore(current, archiveFingerprint, sync, client)
+      if (journal.phase !== 'syncing-items') return nativeAttachmentRestoreSummary(journal)
       const operation = this.startNativeAttachmentRestoreOperation(client)
       try {
         await this.performSync(current, client, operation.abort.signal)
@@ -1333,7 +1330,7 @@ export class VaultTransferService extends VaultAccountService {
         next.nativeAttachmentRestore = updated
         next.updatedAt = updated.updatedAt
         await this.core.commit(next, operation.generation)
-        return this.nativeAttachmentRestoreSummary(updated)
+        return nativeAttachmentRestoreSummary(updated)
       } finally {
         this.finishNativeAttachmentRestoreOperation(operation)
       }
@@ -1349,12 +1346,7 @@ export class VaultTransferService extends VaultAccountService {
       const current = this.core.requireData()
       const sync = this.syncSession.requireSyncData()
       const client = this.syncSession.getOrCreateSyncClient(sync)
-      const journal = this.requireBoundNativeAttachmentRestore(
-        current,
-        archiveFingerprint,
-        sync,
-        client
-      )
+      const journal = requireBoundNativeAttachmentRestore(current, archiveFingerprint, sync, client)
       const target = journal.attachments.find(
         (attachment) =>
           attachment.sourceItemId === key.sourceItemId &&
@@ -1415,7 +1407,7 @@ export class VaultTransferService extends VaultAccountService {
         )
         next.updatedAt = next.nativeAttachmentRestore.updatedAt
         await this.core.commit(next, operation.generation)
-        return this.nativeAttachmentRestoreSummary(next.nativeAttachmentRestore)
+        return nativeAttachmentRestoreSummary(next.nativeAttachmentRestore)
       } catch (error) {
         let reconciliationPersistenceError: unknown = null
         try {
@@ -1446,12 +1438,7 @@ export class VaultTransferService extends VaultAccountService {
       const current = this.core.requireData()
       const sync = this.syncSession.requireSyncData()
       const client = this.syncSession.getOrCreateSyncClient(sync)
-      const journal = this.requireBoundNativeAttachmentRestore(
-        current,
-        archiveFingerprint,
-        sync,
-        client
-      )
+      const journal = requireBoundNativeAttachmentRestore(current, archiveFingerprint, sync, client)
       const target = journal.attachments.find(
         (attachment) =>
           attachment.sourceItemId === key.sourceItemId &&
@@ -1480,7 +1467,7 @@ export class VaultTransferService extends VaultAccountService {
         } else if (remoteItem && candidates.length === 1) {
           const candidate = candidates[0]!
           if (
-            await this.nativeAttachmentRestoreCandidateMatches(
+            await nativeAttachmentRestoreCandidateMatches(
               client,
               item.remoteItemId,
               candidate.id,
@@ -1528,7 +1515,7 @@ export class VaultTransferService extends VaultAccountService {
         await this.core.commit(next, operation.generation)
         return {
           outcome,
-          summary: this.nativeAttachmentRestoreSummary(next.nativeAttachmentRestore)
+          summary: nativeAttachmentRestoreSummary(next.nativeAttachmentRestore)
         }
       } catch (error) {
         if (operation.abort.signal.aborted || operation.generation !== this.core.generation) {

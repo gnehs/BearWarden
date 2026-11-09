@@ -1,4 +1,4 @@
-import { createHash, randomInt as nodeRandomInt, randomUUID } from 'node:crypto'
+import { randomInt as nodeRandomInt, randomUUID } from 'node:crypto'
 import type {
   AttachmentOperationKind,
   AttachmentOperationStage,
@@ -19,7 +19,6 @@ import type {
 import {
   BitwardenDirectError,
   type BitwardenFolder,
-  type BitwardenLoginDraft,
   type BitwardenLoginItem,
   type BitwardenLoginApprovalRequest,
   type BitwardenOrganizationCipher,
@@ -27,7 +26,6 @@ import {
   type BitwardenSyncClient,
   type BitwardenWebAuthnRegistrationSetup
 } from './bitwarden-direct'
-import { resolveBitwardenUrls, type BitwardenEquivalentDomainSettings } from './bitwarden-http'
 import { BITWARDEN_POLICY_TYPE } from './bitwarden-policy'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import { type EncryptedImageCache, type ImageCacheKeys } from './encrypted-image-cache'
@@ -41,25 +39,19 @@ import {
 import type { TouchIdUnlockMaterial } from './touch-id-unlock-capsule'
 import { type PortableVaultSnapshot } from './vault-portability-codec'
 import {
-  assertNativeAttachmentRestoreBinding,
   failNativeAttachmentRestoreAttempt,
   recoverInterruptedNativeAttachmentRestore,
-  type NativeAttachmentRestoreAttachmentKey,
-  type NativeAttachmentRestoreJournal
+  type NativeAttachmentRestoreAttachmentKey
 } from './native-attachment-restore'
 import {
   completeSyncMetadata,
-  fingerprintFolder,
   fingerprintLogin,
   legacyCustomFieldBaselineUpgrades,
   planSync,
   type SyncAction,
   type SyncActionResult,
-  type SyncFolderReference,
   type SyncLink,
-  type SyncLogin,
-  type SyncMetadata,
-  type SyncSnapshot
+  type SyncLogin
 } from './sync-merge'
 import { VaultError } from './vault-errors'
 import type { VaultAttachmentFileService } from './vault-attachment-files'
@@ -83,13 +75,7 @@ import {
   normalizeSyncPassword
 } from './vault/parse-primitives'
 import { cloneData } from './vault/vault-data-parsing'
-import {
-  validRemoteDate,
-  validRemoteDeletedDate,
-  validRemoteArchivedDate,
-  isCompositeRemoteLoginUpdate,
-  sameLoginContentExceptFolder
-} from './vault/views'
+import { isCompositeRemoteLoginUpdate } from './vault/views'
 import { assertNoPendingPersonalVaultPurge } from './vault/sync-data-parsing'
 import { parseFolder, parseStoredLogin } from './vault/login-parsing'
 import { sendViewFromRemote } from './vault/send-parsing'
@@ -102,7 +88,7 @@ import {
   validateRemoteEquivalentDomainSettings
 } from './vault/equivalent-domains'
 import { parseStoredOrganization, parseStoredCollection } from './vault/org-collection-parsing'
-import { cloneAttachments, validateRemoteAttachments } from './vault/attachments-parsing'
+import { validateRemoteAttachments } from './vault/attachments-parsing'
 import { VaultGeneratorService } from './vault/generator-service'
 import { VaultSendService } from './vault/send-service'
 import { VaultCore } from './vault/core'
@@ -112,7 +98,6 @@ import type {
   StoredLogin,
   StoredSharedLogin,
   SyncEntityMapping,
-  SyncTombstone,
   PersistedSyncData,
   VaultData,
   VaultMasterPasswordChangeStatus,
@@ -123,7 +108,6 @@ import type {
   VaultAccountWebAuthnAssertionRequester,
   VaultAccountWebAuthnRegistrationRequester,
   VaultServiceOptions,
-  VaultNativeAttachmentRestoreSummary,
   AttachmentAuthorizationValidator
 } from './vault/types'
 import { UUID_PATTERN, isRecord } from './validation-primitives'
@@ -149,23 +133,34 @@ import { VaultFolders } from './vault/folders'
 import { VaultHealth } from './vault/health'
 import { VaultListings } from './vault/listings'
 import { VaultPasswordHistory } from './vault/password-history-service'
-
-type BulkRemoteLoginMutation =
-  'soft-delete' | 'restore' | 'move' | 'archive' | 'unarchive' | 'hard-delete'
-const MAX_REMOTE_LOGIN_BATCH_IDS = 500
-
-interface BulkRemoteLoginCandidate {
-  action: Extract<SyncAction, { entity: 'login' }>
-  mutation: BulkRemoteLoginMutation
-  remoteId: string
-  folderId: string | null
-}
-
-interface LoginImportCandidate {
-  action: Extract<SyncAction, { entity: 'login'; kind: 'push-create' }>
-  remoteFolderId: string | null
-  baseFingerprint: string
-}
+import {
+  localSyncSnapshot,
+  remoteSyncSnapshot,
+  syncMetadataOf,
+  withoutProtectedLoginSnapshot,
+  reattachProtectedLoginLinks,
+  getSyncEquivalentDomainSettings,
+  isolatedPersonalCipherIdsOf,
+  findNewlyIsolatedMappedRemoteIds,
+  supportsLoginImport,
+  supportsBulkRemoteLoginMutation,
+  bulkRemoteLoginMutationApplied,
+  resolveFolderReference,
+  remoteDraft,
+  hasPendingLocalSyncWork,
+  reconcileServerAuthoritativeAttachments,
+  loginImportCandidate,
+  bulkRemoteLoginCandidate,
+  updateRemoteLogin,
+  throwSharedSnapshotError,
+  MAX_REMOTE_LOGIN_BATCH_IDS,
+  type BulkRemoteLoginCandidate,
+  type LoginImportCandidate
+} from './vault/sync-snapshots'
+import {
+  masterPasswordChangeAccountFingerprint,
+  assertMasterPasswordChangeAccount
+} from './vault/master-password-change'
 
 interface AccountWebAuthnOperationLease {
   readonly generation: number
@@ -579,7 +574,7 @@ export class VaultServiceBase {
   masterPasswordChangeStatus(): Promise<VaultMasterPasswordChangeStatus> {
     return this.core.exclusive(async () => {
       const data = this.core.requireData()
-      this.assertMasterPasswordChangeAccount(data)
+      assertMasterPasswordChangeAccount(data)
       const journal = data.masterPasswordChange
       return {
         phase: journal?.phase ?? null,
@@ -607,7 +602,7 @@ export class VaultServiceBase {
         }
         const current = this.core.requireData()
         assertNoPendingPersonalVaultPurge(current.sync)
-        this.assertMasterPasswordChangeAccount(current)
+        assertMasterPasswordChangeAccount(current)
         const existing = current.masterPasswordChange
         if (existing?.phase === 'prepared') {
           // A prepared mutation has an ambiguous remote outcome. Resolution must use the separate,
@@ -629,7 +624,7 @@ export class VaultServiceBase {
             phase: 'prepared',
             startedAt: now,
             updatedAt: now,
-            accountFingerprint: this.masterPasswordChangeAccountFingerprint(sync)
+            accountFingerprint: masterPasswordChangeAccountFingerprint(sync)
           }
           prepared.updatedAt = now
           await this.core.commit(prepared)
@@ -703,7 +698,7 @@ export class VaultServiceBase {
         newPassword = normalizeMasterPassword(request.newPassword)
         if (currentPassword === newPassword) throw new VaultError('INVALID_INPUT')
         const current = this.core.requireData()
-        this.assertMasterPasswordChangeAccount(current)
+        assertMasterPasswordChangeAccount(current)
         if (current.masterPasswordChange?.phase !== 'prepared') {
           throw new VaultError('INVALID_INPUT')
         }
@@ -721,7 +716,7 @@ export class VaultServiceBase {
           if (currentPasswordProof === 'rejected') return { status: 'indeterminate' }
 
           const cleared = cloneData(this.core.requireData())
-          this.assertMasterPasswordChangeAccount(cleared)
+          assertMasterPasswordChangeAccount(cleared)
           if (cleared.masterPasswordChange?.phase !== 'prepared') {
             throw new VaultError('SYNC_FAILED')
           }
@@ -734,7 +729,7 @@ export class VaultServiceBase {
         }
 
         const confirmed = cloneData(this.core.requireData())
-        this.assertMasterPasswordChangeAccount(confirmed)
+        assertMasterPasswordChangeAccount(confirmed)
         if (confirmed.masterPasswordChange?.phase !== 'prepared') {
           throw new VaultError('SYNC_FAILED')
         }
@@ -919,30 +914,6 @@ export class VaultServiceBase {
     })
   }
 
-  protected masterPasswordChangeAccountFingerprint(sync: PersistedSyncData): string {
-    const profileId = sync.state.profileId
-    if (!profileId || !UUID_PATTERN.test(profileId)) {
-      throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:sync-profile-id')
-    }
-    const canonicalAccount = JSON.stringify({
-      provider: sync.provider,
-      serverUrl: resolveBitwardenUrls(sync.serverUrl).apiUrl,
-      profileId
-    })
-    return createHash('sha256').update(canonicalAccount, 'utf8').digest('hex')
-  }
-
-  protected assertMasterPasswordChangeAccount(data: VaultData): void {
-    const journal = data.masterPasswordChange
-    if (!journal) return
-    if (
-      !data.sync ||
-      journal.accountFingerprint !== this.masterPasswordChangeAccountFingerprint(data.sync)
-    ) {
-      throw new VaultError('CORRUPT_VAULT', 'CORRUPT_VAULT:password-change-account')
-    }
-  }
-
   protected async proveRemotePassword(
     sync: PersistedSyncData,
     password: string,
@@ -1112,7 +1083,7 @@ export class VaultServiceBase {
     requiresMigration: boolean
   ): Promise<void> {
     const current = this.core.requireData()
-    this.assertMasterPasswordChangeAccount(current)
+    assertMasterPasswordChangeAccount(current)
     const interrupted = current.nativeAttachmentRestore?.attachments.some(
       (attachment) => attachment.status === 'attempting'
     )
@@ -1144,7 +1115,7 @@ export class VaultServiceBase {
     newPassword: string
   ): Promise<void> {
     const current = this.core.requireData()
-    this.assertMasterPasswordChangeAccount(current)
+    assertMasterPasswordChangeAccount(current)
     if (
       current.masterPasswordChange?.phase !== 'remote-confirmed' &&
       current.masterPasswordChange?.phase !== 'local-rekeyed'
@@ -1373,12 +1344,7 @@ export class VaultServiceBase {
       client.listPersonalLogins()
     ])
     const next = cloneData(current)
-    this.reconcileServerAuthoritativeAttachments(
-      next,
-      sync.loginMappings,
-      remoteFolders,
-      remoteLogins
-    )
+    reconcileServerAuthoritativeAttachments(next, sync.loginMappings, remoteFolders, remoteLogins)
     const syncedAt = this.core.nowIso()
     if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
     next.sync.state = client.exportState()
@@ -1403,7 +1369,7 @@ export class VaultServiceBase {
       // Do not reuse the mutation signal: cancellation after dispatch must not suppress the
       // authoritative read that distinguishes a completed purge from an unknown partial result.
       await client.sync()
-      const isolatedPersonalCipherIds = this.isolatedPersonalCipherIds(client)
+      const isolatedPersonalCipherIds = isolatedPersonalCipherIdsOf(client)
       const [remoteFolders, remoteLogins] = await Promise.all([
         client.listFolders(),
         client.listPersonalLogins()
@@ -1502,7 +1468,7 @@ export class VaultServiceBase {
     const unchanged = await this.skipUnchangedRemoteSync(source, client, signal, syncStartedAt)
     if (unchanged) return unchanged
     await client.sync(signal)
-    const initialIsolatedPersonalCipherIds = this.isolatedPersonalCipherIds(client)
+    const initialIsolatedPersonalCipherIds = isolatedPersonalCipherIdsOf(client)
     if (initialIsolatedPersonalCipherIds.size > 0) {
       // Persist the full-sync requirement before any later parsing, shared-vault read, or mutation
       // can fail. Otherwise a revision fast path could hide the quarantined personal ciphers.
@@ -1528,7 +1494,7 @@ export class VaultServiceBase {
     const initialRemote = await Promise.all([
       client.listFolders(signal),
       client.listPersonalLogins(signal),
-      this.getSyncEquivalentDomainSettings(
+      getSyncEquivalentDomainSettings(
         client,
         sync.domainSettings ?? { equivalentDomains: [], globalEquivalentDomains: [] },
         signal
@@ -1556,12 +1522,12 @@ export class VaultServiceBase {
     if (next.sync?.pendingLoginMutation) {
       await this.resumePendingLoginMutation(next, client, remoteFolders, remoteLogins, signal)
       await client.sync(signal)
-      const refreshedIsolatedPersonalCipherIds = this.isolatedPersonalCipherIds(client)
+      const refreshedIsolatedPersonalCipherIds = isolatedPersonalCipherIdsOf(client)
       if (refreshedIsolatedPersonalCipherIds.size > 0) {
         await this.persistCipherIsolationRecovery([], refreshedIsolatedPersonalCipherIds)
         if (next.sync) next.sync.requiresFullSyncAfterCipherIsolation = true
       }
-      const newlyIsolatedPendingRemoteIds = this.newlyIsolatedMappedRemoteIds(
+      const newlyIsolatedPendingRemoteIds = findNewlyIsolatedMappedRemoteIds(
         refreshedIsolatedPersonalCipherIds,
         [...(next.sync?.loginMappings ?? []), ...(next.sync?.loginTombstones ?? [])],
         protectedRemoteLoginIds
@@ -1595,13 +1561,13 @@ export class VaultServiceBase {
         for (const localId of unmatched) skipBulkImportLocalIds.add(localId)
       }
     }
-    const remoteSnapshot = this.remoteSyncSnapshot(remoteFolders, remoteLogins)
-    const syncMetadata = this.syncMetadata(next.sync ?? sync)
+    const remoteSnapshot = remoteSyncSnapshot(remoteFolders, remoteLogins)
+    const syncMetadata = syncMetadataOf(next.sync ?? sync)
     syncMetadata.loginLinks = syncMetadata.loginLinks.filter(
       (entry) => !initialIsolatedPersonalCipherIds.has(entry.remoteId)
     )
     for (const upgrade of legacyCustomFieldBaselineUpgrades(
-      this.withoutProtectedLoginSnapshot(this.localSyncSnapshot(next), protectedLocalLoginIds),
+      withoutProtectedLoginSnapshot(localSyncSnapshot(next), protectedLocalLoginIds),
       remoteSnapshot,
       syncMetadata
     )) {
@@ -1631,7 +1597,7 @@ export class VaultServiceBase {
       if (metadataLink) metadataLink.baseFingerprint = upgrade.baseFingerprint
     }
     const plan = planSync(
-      this.withoutProtectedLoginSnapshot(this.localSyncSnapshot(next), protectedLocalLoginIds),
+      withoutProtectedLoginSnapshot(localSyncSnapshot(next), protectedLocalLoginIds),
       remoteSnapshot,
       syncMetadata
     )
@@ -1642,12 +1608,12 @@ export class VaultServiceBase {
     for (let actionIndex = 0; actionIndex < plan.actions.length; actionIndex += 1) {
       const action = plan.actions[actionIndex]!
       if (signal.aborted) throw new BitwardenDirectError('ABORTED')
-      const importCandidate = this.loginImportCandidate(action, completed, skipBulkImportLocalIds)
-      if (importCandidate && this.supportsLoginImport(client)) {
+      const importCandidate = loginImportCandidate(action, completed, skipBulkImportLocalIds)
+      if (importCandidate && supportsLoginImport(client)) {
         const batch: LoginImportCandidate[] = [importCandidate]
         for (let nextIndex = actionIndex + 1; nextIndex < plan.actions.length; nextIndex += 1) {
           if (batch.length === MAX_PENDING_LOGIN_IMPORT_ENTRIES) break
-          const candidate = this.loginImportCandidate(
+          const candidate = loginImportCandidate(
             plan.actions[nextIndex]!,
             completed,
             skipBulkImportLocalIds
@@ -1672,12 +1638,12 @@ export class VaultServiceBase {
           continue
         }
       }
-      const batchCandidate = this.bulkRemoteLoginCandidate(action, completed)
-      if (batchCandidate && this.supportsBulkRemoteLoginMutation(client, batchCandidate.mutation)) {
+      const batchCandidate = bulkRemoteLoginCandidate(action, completed)
+      if (batchCandidate && supportsBulkRemoteLoginMutation(client, batchCandidate.mutation)) {
         const batch: BulkRemoteLoginCandidate[] = [batchCandidate]
         for (let nextIndex = actionIndex + 1; nextIndex < plan.actions.length; nextIndex += 1) {
           if (batch.length === MAX_REMOTE_LOGIN_BATCH_IDS) break
-          const candidate = this.bulkRemoteLoginCandidate(plan.actions[nextIndex]!, completed)
+          const candidate = bulkRemoteLoginCandidate(plan.actions[nextIndex]!, completed)
           if (
             candidate === null ||
             candidate.mutation !== batchCandidate.mutation ||
@@ -1711,15 +1677,15 @@ export class VaultServiceBase {
     }
 
     const metadata = completeSyncMetadata(plan, results)
-    const completedLoginLinks = this.reattachProtectedLoginLinks(
+    const completedLoginLinks = reattachProtectedLoginLinks(
       metadata.loginLinks,
       protectedLoginMappings,
       protectedLoginTombstones
     )
     // A plan that only touched local data leaves the server as the last download saw it.
     if (plan.actions.some(changesRemote)) await client.sync(signal)
-    const finalIsolatedPersonalCipherIds = this.isolatedPersonalCipherIds(client)
-    const newlyIsolatedMappedRemoteIds = this.newlyIsolatedMappedRemoteIds(
+    const finalIsolatedPersonalCipherIds = isolatedPersonalCipherIdsOf(client)
+    const newlyIsolatedMappedRemoteIds = findNewlyIsolatedMappedRemoteIds(
       finalIsolatedPersonalCipherIds,
       [
         ...mappedLoginLinksBeforeActions,
@@ -1741,11 +1707,11 @@ export class VaultServiceBase {
     const [finalRemoteFolders, finalRemoteLogins, finalDomainSettings] = await Promise.all([
       client.listFolders(signal),
       client.listPersonalLogins(signal),
-      this.getSyncEquivalentDomainSettings(client, initialRemote[2], signal)
+      getSyncEquivalentDomainSettings(client, initialRemote[2], signal)
     ])
     const finalSharedSnapshot = await this.fetchSharedSnapshot(client)
     const finalRemoteSends = client.listSends ? await client.listSends(signal) : remoteSends
-    this.reconcileServerAuthoritativeAttachments(
+    reconcileServerAuthoritativeAttachments(
       next,
       metadata.loginLinks,
       finalRemoteFolders,
@@ -1790,7 +1756,7 @@ export class VaultServiceBase {
   ): Promise<SyncResult | null> {
     const sync = source.sync
     if (!sync?.lastSyncAt || !Number.isFinite(Date.parse(sync.lastSyncAt))) return null
-    if (this.hasPendingLocalSyncWork(source)) return null
+    if (hasPendingLocalSyncWork(source)) return null
     const revisionDate = client.revisionDate
     if (!revisionDate) return null
 
@@ -1825,57 +1791,6 @@ export class VaultServiceBase {
     }
   }
 
-  protected hasPendingLocalSyncWork(data: VaultData): boolean {
-    const sync = data.sync
-    if (!sync) return true
-    if (
-      sync.requiresFullSyncAfterCipherIsolation === true ||
-      sync.pendingLoginMutation ||
-      sync.pendingLoginImport ||
-      sync.pendingPersonalVaultPurge ||
-      sync.folderTombstones.length > 0 ||
-      sync.loginTombstones.length > 0
-    ) {
-      return true
-    }
-
-    const folderMappings = new Map(sync.folderMappings.map((entry) => [entry.localId, entry]))
-    const mappedRemoteFolderIds = new Set(sync.folderMappings.map((entry) => entry.remoteId))
-    if (
-      folderMappings.size !== sync.folderMappings.length ||
-      mappedRemoteFolderIds.size !== sync.folderMappings.length ||
-      folderMappings.size !== data.folders.length
-    ) {
-      return true
-    }
-    for (const folder of data.folders) {
-      if (folderMappings.get(folder.id)?.baseFingerprint !== fingerprintFolder(folder)) return true
-    }
-
-    const loginMappings = new Map(sync.loginMappings.map((entry) => [entry.localId, entry]))
-    const mappedRemoteLoginIds = new Set(sync.loginMappings.map((entry) => entry.remoteId))
-    if (
-      loginMappings.size !== sync.loginMappings.length ||
-      mappedRemoteLoginIds.size !== sync.loginMappings.length ||
-      loginMappings.size !== data.logins.length
-    ) {
-      return true
-    }
-    const folderNames = new Map(data.folders.map((folder) => [folder.id, folder.name]))
-    for (const login of this.localSyncSnapshot(data).logins) {
-      const canonicalFolder =
-        login.folderId === null
-          ? null
-          : (folderNames.get(login.folderId) ?? `missing:${login.folderId}`)
-      if (
-        loginMappings.get(login.id)?.baseFingerprint !== fingerprintLogin(login, canonicalFolder)
-      ) {
-        return true
-      }
-    }
-    return false
-  }
-
   protected async fetchSharedSnapshot(client: BitwardenSyncClient): Promise<{
     organizations: OrganizationView[]
     collections: CollectionView[]
@@ -1885,19 +1800,15 @@ export class VaultServiceBase {
       return null
     }
     const [organizations, collections, sharedLogins] = await Promise.all([
-      client
-        .listOrganizations()
-        .catch((error) => this.throwSharedSnapshotError(error, 'organization')),
-      client.listCollections().catch((error) => this.throwSharedSnapshotError(error, 'collection')),
-      client
-        .listOrganizationCiphers()
-        .catch((error) => this.throwSharedSnapshotError(error, 'cipher'))
+      client.listOrganizations().catch((error) => throwSharedSnapshotError(error, 'organization')),
+      client.listCollections().catch((error) => throwSharedSnapshotError(error, 'collection')),
+      client.listOrganizationCiphers().catch((error) => throwSharedSnapshotError(error, 'cipher'))
     ])
     let parsedOrganizations: OrganizationView[]
     try {
       parsedOrganizations = organizations.map(parseStoredOrganization)
     } catch (error) {
-      this.throwSharedSnapshotError(error, 'organization')
+      throwSharedSnapshotError(error, 'organization')
     }
     const organizationIds = new Set(parsedOrganizations.map((organization) => organization.id))
     if (organizationIds.size !== parsedOrganizations.length) {
@@ -1907,7 +1818,7 @@ export class VaultServiceBase {
     try {
       parsedCollections = collections.map(parseStoredCollection)
     } catch (error) {
-      this.throwSharedSnapshotError(error, 'collection')
+      throwSharedSnapshotError(error, 'collection')
     }
     const collectionIds = new Set(parsedCollections.map((collection) => collection.id))
     if (
@@ -1920,7 +1831,7 @@ export class VaultServiceBase {
     try {
       parsedSharedLogins = sharedLogins.map((login) => this.sharedLoginFromRemote(login))
     } catch (error) {
-      this.throwSharedSnapshotError(error, 'cipher')
+      throwSharedSnapshotError(error, 'cipher')
     }
     const sharedIds = new Set(parsedSharedLogins.map((login) => login.id))
     if (
@@ -1945,17 +1856,6 @@ export class VaultServiceBase {
     }
   }
 
-  protected throwSharedSnapshotError(
-    error: unknown,
-    stage: 'organization' | 'collection' | 'cipher'
-  ): never {
-    if (error instanceof BitwardenDirectError) {
-      if (error.code !== 'INVALID_RESPONSE' || error.syncInvalidResponseStage) throw error
-      throw new BitwardenDirectError('INVALID_RESPONSE', undefined, stage)
-    }
-    throw new BitwardenDirectError('INVALID_RESPONSE', undefined, stage)
-  }
-
   protected async resumePendingLoginMutation(
     data: VaultData,
     client: BitwardenSyncClient,
@@ -1965,10 +1865,8 @@ export class VaultServiceBase {
   ): Promise<void> {
     const pending = data.sync?.pendingLoginMutation
     if (!pending || !data.sync) return
-    const desired = this.localSyncSnapshot(data).logins.find(
-      (login) => login.id === pending.localId
-    )
-    const current = this.remoteSyncSnapshot(remoteFolders, remoteLogins).logins.find(
+    const desired = localSyncSnapshot(data).logins.find((login) => login.id === pending.localId)
+    const current = remoteSyncSnapshot(remoteFolders, remoteLogins).logins.find(
       (login) => login.id === pending.remoteId
     )
 
@@ -2012,7 +1910,7 @@ export class VaultServiceBase {
         const contentChanged =
           fingerprintLogin({ ...desired, deletedAt: null, archivedAt: null }, desiredFolderName) !==
           fingerprintLogin({ ...current, deletedAt: null, archivedAt: null }, currentFolderName)
-        await this.updateRemoteLogin(
+        await updateRemoteLogin(
           client,
           pending.remoteId,
           desired,
@@ -2026,221 +1924,6 @@ export class VaultServiceBase {
 
     data.sync.pendingLoginMutation = null
     await this.core.commit(cloneData(data))
-  }
-
-  protected localSyncSnapshot(data: VaultData): SyncSnapshot {
-    return {
-      folders: data.folders.map((folder) => ({
-        id: folder.id,
-        name: folder.name,
-        updatedAt: folder.updatedAt
-      })),
-      logins: data.logins.map((login) => ({
-        ...login,
-        uris: cloneLoginUris(login.uris),
-        passkeys: login.passkeys.map((passkey) => ({ ...passkey })),
-        customFields: cloneCustomFields(login.customFields),
-        passwordHistory: clonePasswordHistory(login.passwordHistory),
-        attachments: cloneAttachments(login.attachments)
-      })),
-      tombstones: {
-        folders: (data.sync?.folderTombstones ?? []).map((entry) => ({
-          id: entry.localId,
-          deletedAt: data.updatedAt
-        })),
-        logins: (data.sync?.loginTombstones ?? []).map((entry) => ({
-          id: entry.localId,
-          deletedAt: data.updatedAt
-        }))
-      }
-    }
-  }
-
-  protected remoteSyncSnapshot(
-    folders: BitwardenFolder[],
-    logins: BitwardenLoginItem[]
-  ): SyncSnapshot {
-    return {
-      folders: folders.map((folder) => ({ id: folder.id, name: folder.name })),
-      logins: logins.map((login) => ({
-        ...login,
-        uris: cloneLoginUris(login.uris),
-        passkeys: validateRemotePasskeys(login.passkeys),
-        passwordHistory: clonePasswordHistory(login.passwordHistory),
-        uri: uriAlias(login.uris),
-        // Wire metadata is login-only upstream (vaultwarden nests it under the login object).
-        // Null it for other item types here, mirroring the upload path, so a quirky server
-        // cannot persist a combination the vault schema rejects at the next unlock.
-        passwordRevisionDate: login.type === 'login' ? login.passwordRevisionDate : null,
-        autofillOnPageLoad: login.type === 'login' ? login.autofillOnPageLoad : null,
-        createdAt: validRemoteDate(login.creationDate),
-        updatedAt: validRemoteDate(login.revisionDate),
-        deletedAt: validRemoteDeletedDate(login.deletedAt),
-        archivedAt: validRemoteArchivedDate(login.archivedAt)
-      })),
-      tombstones: { folders: [], logins: [] }
-    }
-  }
-
-  protected reconcileServerAuthoritativeAttachments(
-    data: VaultData,
-    links: readonly SyncLink[],
-    remoteFolders: readonly BitwardenFolder[],
-    remoteLogins: readonly BitwardenLoginItem[]
-  ): void {
-    const remoteById = new Map(remoteLogins.map((login) => [login.id, login]))
-    if (remoteById.size !== remoteLogins.length) throw new VaultError('SYNC_FAILED')
-    const remoteSnapshotById = new Map(
-      this.remoteSyncSnapshot([], [...remoteLogins]).logins.map((login) => [login.id, login])
-    )
-    const remoteFolderNames = new Map(remoteFolders.map((folder) => [folder.id, folder.name]))
-    if (remoteFolderNames.size !== remoteFolders.length) throw new VaultError('SYNC_FAILED')
-
-    for (const link of links) {
-      const local = data.logins.find((login) => login.id === link.localId)
-      const remote = remoteById.get(link.remoteId)
-      const remoteSnapshot = remoteSnapshotById.get(link.remoteId)
-      if (
-        !local ||
-        !remote ||
-        !remoteSnapshot ||
-        fingerprintLogin(
-          remoteSnapshot,
-          remoteSnapshot.folderId === null
-            ? null
-            : (remoteFolderNames.get(remoteSnapshot.folderId) ??
-                `missing:${remoteSnapshot.folderId}`)
-        ) !== link.baseFingerprint
-      ) {
-        throw new VaultError('SYNC_FAILED')
-      }
-      local.attachments = validateRemoteAttachments(remote.attachments)
-      const revisionDate = validRemoteDate(remote.revisionDate)
-      if (revisionDate) local.updatedAt = revisionDate
-    }
-  }
-
-  protected syncMetadata(sync: PersistedSyncData): SyncMetadata {
-    return {
-      version: 1,
-      folderLinks: [...sync.folderMappings, ...sync.folderTombstones].map((entry) => ({
-        localId: entry.localId,
-        remoteId: entry.remoteId,
-        baseFingerprint: entry.baseFingerprint
-      })),
-      loginLinks: [...sync.loginMappings, ...sync.loginTombstones].map((entry) => ({
-        localId: entry.localId,
-        remoteId: entry.remoteId,
-        baseFingerprint: entry.baseFingerprint
-      }))
-    }
-  }
-
-  protected withoutProtectedLoginSnapshot(
-    snapshot: SyncSnapshot,
-    protectedLocalIds: ReadonlySet<string>
-  ): SyncSnapshot {
-    if (protectedLocalIds.size === 0) return snapshot
-    return {
-      ...snapshot,
-      logins: snapshot.logins.filter((login) => !protectedLocalIds.has(login.id)),
-      tombstones: {
-        ...snapshot.tombstones,
-        logins: snapshot.tombstones.logins.filter(
-          (tombstone) => !protectedLocalIds.has(tombstone.id)
-        )
-      }
-    }
-  }
-
-  protected reattachProtectedLoginLinks(
-    completedLinks: readonly SyncLink[],
-    protectedMappings: readonly SyncEntityMapping[],
-    protectedTombstones: readonly SyncTombstone[]
-  ): { loginMappings: SyncEntityMapping[]; loginTombstones: SyncTombstone[] } {
-    const loginMappings: SyncEntityMapping[] = []
-    const loginTombstones: SyncTombstone[] = []
-    const attached: Array<{
-      kind: 'mapping' | 'tombstone'
-      link: SyncEntityMapping | SyncTombstone
-    }> = []
-    const attach = (
-      kind: 'mapping' | 'tombstone',
-      link: SyncEntityMapping | SyncTombstone
-    ): void => {
-      const duplicate = attached.find(
-        (entry) => entry.link.localId === link.localId || entry.link.remoteId === link.remoteId
-      )
-      if (duplicate) {
-        if (
-          duplicate.kind === kind &&
-          duplicate.link.localId === link.localId &&
-          duplicate.link.remoteId === link.remoteId &&
-          duplicate.link.baseFingerprint === link.baseFingerprint
-        ) {
-          return
-        }
-        throw new VaultError('SYNC_FAILED')
-      }
-      const cloned = { ...link }
-      attached.push({ kind, link: cloned })
-      if (kind === 'mapping') loginMappings.push(cloned)
-      else loginTombstones.push(cloned)
-    }
-
-    for (const link of completedLinks) attach('mapping', link)
-    for (const link of protectedMappings) attach('mapping', link)
-    for (const link of protectedTombstones) attach('tombstone', link)
-    return { loginMappings, loginTombstones }
-  }
-
-  protected getAuthoritativeEquivalentDomainSettings(
-    client: BitwardenSyncClient,
-    signal?: AbortSignal
-  ): Promise<BitwardenEquivalentDomainSettings> {
-    const getter =
-      client.getAuthoritativeEquivalentDomainSettings ?? client.getEquivalentDomainSettings
-    return getter.call(client, signal)
-  }
-
-  protected async getSyncEquivalentDomainSettings(
-    client: BitwardenSyncClient,
-    lastKnownGood: BitwardenEquivalentDomainSettings,
-    signal?: AbortSignal
-  ): Promise<BitwardenEquivalentDomainSettings> {
-    try {
-      return await this.getAuthoritativeEquivalentDomainSettings(client, signal)
-    } catch (error) {
-      if (
-        error instanceof BitwardenDirectError &&
-        (error.code === 'INVALID_RESPONSE' ||
-          error.code === 'TOO_LARGE' ||
-          error.code === 'NOT_FOUND')
-      ) {
-        // Equivalent-domain rules are ancillary matching hints. A malformed self-hosted setting
-        // must not block vault data, but it also must not replace the last authoritative snapshot.
-        return cloneEquivalentDomainSettings(lastKnownGood)
-      }
-      throw error
-    }
-  }
-
-  protected isolatedPersonalCipherIds(client: BitwardenSyncClient): ReadonlySet<string> {
-    return new Set(client.isolatedPersonalCipherIds?.() ?? [])
-  }
-
-  protected newlyIsolatedMappedRemoteIds(
-    isolatedRemoteIds: ReadonlySet<string>,
-    links: readonly { remoteId: string }[],
-    protectedRemoteIds: ReadonlySet<string>
-  ): ReadonlySet<string> {
-    return new Set(
-      links.flatMap((link) =>
-        isolatedRemoteIds.has(link.remoteId) && !protectedRemoteIds.has(link.remoteId)
-          ? [link.remoteId]
-          : []
-      )
-    )
   }
 
   protected async persistCipherIsolationRecovery(
@@ -2273,50 +1956,19 @@ export class VaultServiceBase {
     await this.core.commit(recovery)
   }
 
-  protected loginImportCandidate(
-    action: SyncAction,
-    completed: Map<string, SyncActionResult>,
-    skipLocalIds: ReadonlySet<string>
-  ): LoginImportCandidate | null {
-    if (
-      action.entity !== 'login' ||
-      action.kind !== 'push-create' ||
-      action.local.deletedAt !== null ||
-      skipLocalIds.has(action.local.id) ||
-      typeof action.baseFingerprint !== 'string' ||
-      !/^[0-9a-f]{64}$/u.test(action.baseFingerprint)
-    ) {
-      return null
-    }
-    return {
-      action,
-      remoteFolderId: this.resolveFolderReference(action.remoteFolder, completed, 'remoteId'),
-      baseFingerprint: action.baseFingerprint
-    }
-  }
-
-  protected supportsLoginImport(client: BitwardenSyncClient): boolean {
-    return (
-      client.prepareLoginImport !== undefined &&
-      client.executePreparedLoginImport !== undefined &&
-      client.reconcileLoginImportMarkers !== undefined &&
-      client.discardPreparedLoginImport !== undefined
-    )
-  }
-
   protected async executeLoginImportBatch(
     data: VaultData,
     client: BitwardenSyncClient,
     batch: readonly LoginImportCandidate[],
     signal: AbortSignal
   ): Promise<Map<string, string>> {
-    if (!data.sync || !this.supportsLoginImport(client) || batch.length < 2) {
+    if (!data.sync || !supportsLoginImport(client) || batch.length < 2) {
       throw new VaultError('SYNC_FAILED')
     }
     const preparedValue: unknown = await client.prepareLoginImport!(
       batch.map((candidate) => ({
         localId: candidate.action.local.id,
-        draft: this.remoteDraft(candidate.action.local, candidate.remoteFolderId)
+        draft: remoteDraft(candidate.action.local, candidate.remoteFolderId)
       }))
     )
     const expected = new Map(batch.map((candidate) => [candidate.action.local.id, candidate]))
@@ -2480,7 +2132,7 @@ export class VaultServiceBase {
     const remoteById = new Map(remoteLogins.map((login) => [login.id, login]))
     const remoteFolderNames = new Map(remoteFolders.map((folder) => [folder.id, folder.name]))
     const remoteSnapshotById = new Map(
-      this.remoteSyncSnapshot([...remoteFolders], [...remoteLogins]).logins.map((login) => [
+      remoteSyncSnapshot([...remoteFolders], [...remoteLogins]).logins.map((login) => [
         login.id,
         login
       ])
@@ -2535,65 +2187,6 @@ export class VaultServiceBase {
     return unmatched
   }
 
-  protected bulkRemoteLoginCandidate(
-    action: SyncAction,
-    completed: Map<string, SyncActionResult>
-  ): BulkRemoteLoginCandidate | null {
-    if (action.entity !== 'login') return null
-    if (action.kind === 'delete-remote') {
-      return {
-        action,
-        mutation: 'hard-delete',
-        remoteId: action.remoteId,
-        folderId: null
-      }
-    }
-    if (action.kind !== 'push-update') return null
-
-    const desiredDeleted = action.local.deletedAt !== null
-    const currentDeleted = action.remote.deletedAt !== null
-    const desiredArchived = action.local.archivedAt !== null
-    const currentArchived = action.remote.archivedAt !== null
-    if (!action.contentChanged) {
-      const mutations: BulkRemoteLoginMutation[] = []
-      if (currentDeleted && !desiredDeleted) mutations.push('restore')
-      if (currentArchived && !desiredArchived) mutations.push('unarchive')
-      if (desiredArchived && !currentArchived) mutations.push('archive')
-      if (desiredDeleted && !currentDeleted) mutations.push('soft-delete')
-      return mutations.length === 1
-        ? {
-            action,
-            mutation: mutations[0]!,
-            remoteId: action.remoteId,
-            folderId: null
-          }
-        : null
-    }
-
-    if (
-      desiredDeleted !== currentDeleted ||
-      desiredArchived !== currentArchived ||
-      !sameLoginContentExceptFolder(action.local, action.remote)
-    ) {
-      return null
-    }
-    const folderId = this.resolveFolderReference(action.remoteFolder, completed, 'remoteId')
-    if (folderId === action.remote.folderId) return null
-    return { action, mutation: 'move', remoteId: action.remoteId, folderId }
-  }
-
-  protected supportsBulkRemoteLoginMutation(
-    client: BitwardenSyncClient,
-    mutation: BulkRemoteLoginMutation
-  ): boolean {
-    if (mutation === 'soft-delete') return client.softDeleteLogins !== undefined
-    if (mutation === 'restore') return client.restoreLogins !== undefined
-    if (mutation === 'move') return client.moveLogins !== undefined
-    if (mutation === 'archive') return client.archiveLogins !== undefined
-    if (mutation === 'unarchive') return client.unarchiveLogins !== undefined
-    return client.hardDeleteLogins !== undefined
-  }
-
   protected async executeBulkRemoteLoginMutation(
     client: BitwardenSyncClient,
     batch: readonly BulkRemoteLoginCandidate[],
@@ -2616,7 +2209,7 @@ export class VaultServiceBase {
       if (signal.aborted) throw error
       try {
         await client.sync(signal)
-        const isolated = this.isolatedPersonalCipherIds(client)
+        const isolated = isolatedPersonalCipherIdsOf(client)
         isolatedDuringReconciliation = new Set(
           batch.flatMap((candidate) =>
             isolated.has(candidate.remoteId) ? [candidate.remoteId] : []
@@ -2628,8 +2221,7 @@ export class VaultServiceBase {
         if (
           batch.every(
             (candidate) =>
-              !isolated.has(candidate.remoteId) &&
-              this.bulkRemoteLoginMutationApplied(candidate, remote)
+              !isolated.has(candidate.remoteId) && bulkRemoteLoginMutationApplied(candidate, remote)
           )
         ) {
           return
@@ -2652,20 +2244,6 @@ export class VaultServiceBase {
       }
       throw error
     }
-  }
-
-  protected bulkRemoteLoginMutationApplied(
-    candidate: BulkRemoteLoginCandidate,
-    remote: ReadonlyMap<string, BitwardenLoginItem>
-  ): boolean {
-    const current = remote.get(candidate.remoteId)
-    if (candidate.mutation === 'hard-delete') return current === undefined
-    if (!current) return false
-    if (candidate.mutation === 'soft-delete') return current.deletedAt !== null
-    if (candidate.mutation === 'restore') return current.deletedAt === null
-    if (candidate.mutation === 'archive') return current.archivedAt !== null
-    if (candidate.mutation === 'unarchive') return current.archivedAt === null
-    return current.folderId === candidate.folderId
   }
 
   protected async executeSyncAction(
@@ -2712,12 +2290,12 @@ export class VaultServiceBase {
     }
 
     if (action.kind === 'push-create') {
-      const folderId = this.resolveFolderReference(action.remoteFolder, completed, 'remoteId')
-      const created = await client.createLogin(this.remoteDraft(action.local, folderId), signal)
+      const folderId = resolveFolderReference(action.remoteFolder, completed, 'remoteId')
+      const created = await client.createLogin(remoteDraft(action.local, folderId), signal)
       result.remoteId = created.id
       if (action.local.deletedAt !== null) await client.softDeleteLogin(created.id, signal)
     } else if (action.kind === 'push-update') {
-      const folderId = this.resolveFolderReference(action.remoteFolder, completed, 'remoteId')
+      const folderId = resolveFolderReference(action.remoteFolder, completed, 'remoteId')
       const composite = isCompositeRemoteLoginUpdate(
         action.local,
         action.remote,
@@ -2734,7 +2312,7 @@ export class VaultServiceBase {
         }
         await this.core.commit(cloneData(data))
       }
-      await this.updateRemoteLogin(
+      await updateRemoteLogin(
         client,
         action.remoteId,
         action.local,
@@ -2749,10 +2327,10 @@ export class VaultServiceBase {
         await this.core.commit(cloneData(data))
       }
     } else if (action.kind === 'pull-create') {
-      const folderId = this.resolveFolderReference(action.localFolder, completed, 'localId')
+      const folderId = resolveFolderReference(action.localFolder, completed, 'localId')
       result.localId = this.createLocalLogin(data, action.remote, folderId).id
     } else if (action.kind === 'pull-update') {
-      const folderId = this.resolveFolderReference(action.localFolder, completed, 'localId')
+      const folderId = resolveFolderReference(action.localFolder, completed, 'localId')
       this.updateLocalLogin(data, action.localId, action.remote, folderId)
     } else if (action.kind === 'delete-local') {
       data.logins = data.logins.filter((login) => login.id !== action.localId)
@@ -2765,17 +2343,17 @@ export class VaultServiceBase {
           ? action.local.folderId
           : null
       this.createLocalLogin(data, { ...action.local, name: action.conflictName }, copyFolderId)
-      const primaryFolderId = this.resolveFolderReference(action.localFolder, completed, 'localId')
+      const primaryFolderId = resolveFolderReference(action.localFolder, completed, 'localId')
       this.updateLocalLogin(data, action.local.id, action.remote, primaryFolderId)
     } else if (action.reason === 'remote-deleted') {
       if (!action.local) throw new VaultError('SYNC_FAILED')
       const local = findLogin(data, action.local.id)
       local.name = action.conflictName
       local.updatedAt = this.core.nowIso()
-      const folderId = this.resolveFolderReference(action.remoteFolder, completed, 'remoteId')
+      const folderId = resolveFolderReference(action.remoteFolder, completed, 'remoteId')
       result.remoteId = (
         await client.createLogin(
-          this.remoteDraft({ ...action.local, name: action.conflictName }, folderId),
+          remoteDraft({ ...action.local, name: action.conflictName }, folderId),
           signal
         )
       ).id
@@ -2783,7 +2361,7 @@ export class VaultServiceBase {
     } else {
       if (!action.remote) throw new VaultError('SYNC_FAILED')
       const remoteFolderId = action.remote.folderId
-      await this.updateRemoteLogin(
+      await updateRemoteLogin(
         client,
         action.remote.id,
         { ...action.remote, name: action.conflictName },
@@ -2792,7 +2370,7 @@ export class VaultServiceBase {
         true,
         signal
       )
-      const localFolderId = this.resolveFolderReference(action.localFolder, completed, 'localId')
+      const localFolderId = resolveFolderReference(action.localFolder, completed, 'localId')
       result.localId = this.createLocalLogin(
         data,
         { ...action.remote, name: action.conflictName },
@@ -2800,18 +2378,6 @@ export class VaultServiceBase {
       ).id
     }
     return result
-  }
-
-  protected resolveFolderReference(
-    reference: SyncFolderReference,
-    completed: Map<string, SyncActionResult>,
-    side: 'localId' | 'remoteId'
-  ): string | null {
-    if (reference.id !== null) return reference.id
-    if (!reference.pendingKey) return null
-    const id = completed.get(reference.pendingKey)?.[side]
-    if (!id) throw new VaultError('SYNC_FAILED')
-    return id
   }
 
   protected createLocalFolder(data: VaultData, name: string): FolderView {
@@ -2927,59 +2493,6 @@ export class VaultServiceBase {
     }
   }
 
-  protected nativeAttachmentRestoreAccountFingerprint(
-    sync: PersistedSyncData,
-    client: BitwardenSyncClient
-  ): string {
-    const state = client.exportState()
-    if (!state.session || !state.profileId) throw new VaultError('SYNC_AUTH_REQUIRED')
-    return createHash('sha256')
-      .update(
-        JSON.stringify({
-          provider: 'bitwarden',
-          serverUrl: sync.serverUrl,
-          profileId: state.profileId
-        })
-      )
-      .digest('hex')
-  }
-
-  protected requireBoundNativeAttachmentRestore(
-    data: VaultData,
-    archiveFingerprint: string,
-    sync: PersistedSyncData,
-    client: BitwardenSyncClient
-  ): NativeAttachmentRestoreJournal {
-    if (!data.nativeAttachmentRestore) throw new VaultError('INVALID_INPUT')
-    return assertNativeAttachmentRestoreBinding(
-      data.nativeAttachmentRestore,
-      archiveFingerprint,
-      this.nativeAttachmentRestoreAccountFingerprint(sync, client)
-    )
-  }
-
-  protected nativeAttachmentRestoreSummary(
-    journal: NativeAttachmentRestoreJournal
-  ): VaultNativeAttachmentRestoreSummary {
-    return {
-      phase: journal.phase,
-      totalItems: journal.items.length,
-      mappedItems: journal.items.filter((item) => item.remoteItemId !== null).length,
-      totalAttachments: journal.attachments.length,
-      uploadedAttachments: journal.attachments.filter(
-        (attachment) => attachment.status === 'uploaded'
-      ).length,
-      needsReconciliationAttachments: journal.attachments.filter(
-        (attachment) => attachment.status === 'needs-reconciliation'
-      ).length,
-      totalBytes: journal.attachments.reduce((total, attachment) => total + attachment.size, 0),
-      completedBytes: journal.attachments.reduce(
-        (total, attachment) => total + (attachment.status === 'uploaded' ? attachment.size : 0),
-        0
-      )
-    }
-  }
-
   protected applyNativeAttachmentRestoreRemoteSnapshot(
     current: VaultData,
     client: BitwardenSyncClient,
@@ -2988,7 +2501,7 @@ export class VaultServiceBase {
   ): VaultData {
     if (!current.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
     const next = cloneData(current)
-    this.reconcileServerAuthoritativeAttachments(
+    reconcileServerAuthoritativeAttachments(
       next,
       current.sync.loginMappings,
       remoteFolders,
@@ -3020,46 +2533,6 @@ export class VaultServiceBase {
     )
     next.updatedAt = next.nativeAttachmentRestore.updatedAt
     await this.core.commit(next)
-  }
-
-  protected async nativeAttachmentRestoreCandidateMatches(
-    client: BitwardenSyncClient,
-    remoteItemId: string,
-    remoteAttachmentId: string,
-    expectedFileName: string,
-    expectedSize: number,
-    expectedDigest: string,
-    signal: AbortSignal
-  ): Promise<boolean> {
-    let streamed:
-      Awaited<ReturnType<NonNullable<BitwardenSyncClient['downloadAttachmentStream']>>> | undefined
-    let clearText: Buffer | undefined
-    try {
-      const downloaded = client.downloadAttachmentStream
-        ? await client.downloadAttachmentStream(remoteItemId, remoteAttachmentId, signal)
-        : await client.downloadAttachment(remoteItemId, remoteAttachmentId, signal)
-      if (downloaded.fileName !== expectedFileName) return false
-      if ('dispose' in downloaded) streamed = downloaded
-      else clearText = downloaded.data
-      const chunks: AsyncIterable<Buffer> = streamed
-        ? streamed.data.chunks(signal)
-        : (async function* (): AsyncIterable<Buffer> {
-            yield clearText!
-          })()
-      const hash = createHash('sha256')
-      let size = 0
-      for await (const chunk of chunks) {
-        size += chunk.length
-        if (size > expectedSize) return false
-        hash.update(chunk)
-      }
-      return size === expectedSize && hash.digest('hex') === expectedDigest
-    } catch {
-      return false
-    } finally {
-      clearText?.fill(0)
-      await streamed?.dispose().catch(() => undefined)
-    }
   }
 
   protected createLocalLogin(
@@ -3098,7 +2571,7 @@ export class VaultServiceBase {
   }
 
   protected sharedLoginFromRemote(source: BitwardenOrganizationCipher): StoredSharedLogin {
-    const normalized = this.remoteSyncSnapshot([], [{ ...source, organizationId: null }]).logins[0]
+    const normalized = remoteSyncSnapshot([], [{ ...source, organizationId: null }]).logins[0]
     if (!normalized) throw new VaultError('SYNC_FAILED')
     return {
       id: source.id,
@@ -3157,88 +2630,6 @@ export class VaultServiceBase {
     login.reprompt = source.reprompt
     if (source.createdAt) login.createdAt = source.createdAt
     login.updatedAt = source.updatedAt ?? this.core.nowIso()
-  }
-
-  protected remoteDraft(login: SyncLogin, folderId: string | null): BitwardenLoginDraft {
-    return {
-      type: login.type,
-      name: login.name,
-      username: login.username,
-      password: login.password,
-      totp: login.totp,
-      uri: login.uri,
-      uris: cloneLoginUris(login.uris),
-      cardholderName: login.cardholderName,
-      brand: login.brand,
-      number: login.number,
-      expMonth: login.expMonth,
-      expYear: login.expYear,
-      code: login.code,
-      title: login.title,
-      firstName: login.firstName,
-      middleName: login.middleName,
-      lastName: login.lastName,
-      address1: login.address1,
-      address2: login.address2,
-      address3: login.address3,
-      city: login.city,
-      state: login.state,
-      postalCode: login.postalCode,
-      country: login.country,
-      company: login.company,
-      email: login.email,
-      phone: login.phone,
-      ssn: login.ssn,
-      identityUsername: login.identityUsername,
-      passportNumber: login.passportNumber,
-      licenseNumber: login.licenseNumber,
-      privateKey: login.privateKey,
-      publicKey: login.publicKey,
-      fingerprint: login.fingerprint,
-      notes: login.notes,
-      folderId,
-      favorite: login.favorite,
-      archivedAt: login.archivedAt,
-      reprompt: login.reprompt,
-      passkeys: login.passkeys.map((passkey) => ({ ...passkey })),
-      customFields: cloneCustomFields(login.customFields),
-      passwordHistory: clonePasswordHistory(login.passwordHistory),
-      passwordRevisionDate: login.passwordRevisionDate,
-      autofillOnPageLoad: login.autofillOnPageLoad
-    }
-  }
-
-  protected async updateRemoteLogin(
-    client: BitwardenSyncClient,
-    remoteId: string,
-    desired: SyncLogin,
-    current: SyncLogin,
-    folderId: string | null,
-    contentChanged: boolean,
-    signal: AbortSignal
-  ): Promise<void> {
-    const desiredDeleted = desired.deletedAt !== null
-    const currentDeleted = current.deletedAt !== null
-    const desiredArchived = desired.archivedAt !== null
-    const currentArchived = current.archivedAt !== null
-
-    if (currentDeleted && (!desiredDeleted || contentChanged)) {
-      await client.restoreLogin(remoteId, signal)
-    }
-    // Vaultwarden treats archivedDate: null in an ordinary cipher update as "leave unchanged",
-    // so an explicit unarchive route is required even when a content edit follows.
-    if (currentArchived && !desiredArchived) {
-      await client.unarchiveLogin(remoteId, signal)
-    }
-    if (contentChanged) {
-      await client.editLogin(remoteId, this.remoteDraft(desired, folderId), signal)
-    }
-    if (!contentChanged && desiredArchived && !currentArchived) {
-      await client.archiveLogin(remoteId, signal)
-    }
-    if (desiredDeleted && (!currentDeleted || contentChanged)) {
-      await client.softDeleteLogin(remoteId, signal)
-    }
   }
 
   protected useLogin<T>(

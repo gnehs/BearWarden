@@ -166,6 +166,7 @@ import {
 } from './vault/data-lookup'
 import { assertBitwardenPolicyDoesNotBlock, assertPersonalItemTypeAllowed } from './vault/policy'
 import type { InactiveTwoFactorReport, TwoFactorDirectoryDataset } from './inactive-two-factor'
+import { remoteDraft } from './vault/sync-snapshots'
 export type {
   VaultAccountWebAuthnAssertionRequester,
   VaultAccountWebAuthnRegistrationRequester,
@@ -268,7 +269,7 @@ export class VaultService extends VaultTransferService {
         remote = await client.createOrganizationCipher(
           request.organizationId,
           [...collectionIds],
-          this.remoteDraft(login, null),
+          remoteDraft(login, null),
           abort.signal
         )
       } catch (error) {
@@ -439,7 +440,7 @@ export class VaultService extends VaultTransferService {
       try {
         remote = await client.editOrganizationCipher(
           login.id,
-          this.remoteDraft(desired, login.folderId),
+          remoteDraft(desired, login.folderId),
           abort.signal
         )
       } catch (error) {

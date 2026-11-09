@@ -63,6 +63,7 @@ import {
 } from './vault-service-base'
 import { isRecord } from './validation-primitives'
 import type { EmailTwoFactorSetupSession } from './vault/sync-session'
+import { getAuthoritativeEquivalentDomainSettings } from './vault/sync-snapshots'
 
 function initialSyncData(serverUrl: string, email: string): PersistedSyncData {
   return {
@@ -2048,7 +2049,7 @@ export class VaultAccountService extends VaultServiceBase {
       const abort = this.syncSession.startSyncOperation()
       try {
         const settings = validateRemoteEquivalentDomainSettings(
-          await this.getAuthoritativeEquivalentDomainSettings(client, abort.signal)
+          await getAuthoritativeEquivalentDomainSettings(client, abort.signal)
         )
         if (abort.signal.aborted) throw new BitwardenDirectError('ABORTED')
         const next = cloneData(current)
@@ -2081,7 +2082,7 @@ export class VaultAccountService extends VaultServiceBase {
       const abort = this.syncSession.startSyncOperation()
       try {
         const serverSettings = validateRemoteEquivalentDomainSettings(
-          await this.getAuthoritativeEquivalentDomainSettings(client, abort.signal)
+          await getAuthoritativeEquivalentDomainSettings(client, abort.signal)
         )
         if (equivalentDomainRevision(serverSettings) !== request.expectedRevision) {
           throw new VaultError('SYNC_CONFLICT')
@@ -2092,7 +2093,7 @@ export class VaultAccountService extends VaultServiceBase {
         }
         await client.updateEquivalentDomainSettings(update, abort.signal)
         const confirmed = validateRemoteEquivalentDomainSettings(
-          await this.getAuthoritativeEquivalentDomainSettings(client, abort.signal)
+          await getAuthoritativeEquivalentDomainSettings(client, abort.signal)
         )
         if (abort.signal.aborted) throw new BitwardenDirectError('ABORTED')
         const next = cloneData(current)
