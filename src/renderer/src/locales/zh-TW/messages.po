@@ -533,7 +533,7 @@ msgstr "新裝置驗證碼已透過電子郵件寄出。"
 msgid "A new Ed25519 key is being created securely."
 msgstr "正在安全地建立新的 Ed25519 金鑰。"
 
-#: src/renderer/src/components/AboutPage.tsx:92
+#: src/renderer/src/components/AboutPage.tsx:81
 msgid "a new version"
 msgstr "新版本"
 
@@ -557,7 +557,7 @@ msgstr "兩步驟驗證碼已透過電子郵件寄出。"
 msgid "About"
 msgstr "關於"
 
-#: src/renderer/src/components/AboutPage.tsx:146
+#: src/renderer/src/components/AboutPage.tsx:135
 msgid "About BearWarden"
 msgstr "關於 BearWarden"
 
@@ -1220,7 +1220,7 @@ msgstr "BearWarden 無法安全地建立 SSH Agent 端點。請檢查主目錄�
 msgid "BearWarden could not load the vault service. Your data has not been changed."
 msgstr "BearWarden 無法載入保管庫服務。您的資料尚未變更。"
 
-#: src/renderer/src/components/AboutPage.tsx:159
+#: src/renderer/src/components/AboutPage.tsx:148
 msgid "BearWarden Desktop"
 msgstr "BearWarden Desktop"
 
@@ -1228,7 +1228,7 @@ msgstr "BearWarden Desktop"
 msgid "BearWarden does not yet support recipient OTP. To avoid removing verification requirements, this Send cannot be edited or downloaded."
 msgstr "BearWarden 尚未支援收件者 OTP。為避免移除驗證要求，無法編輯或下載此 Send。"
 
-#: src/renderer/src/components/AboutPage.tsx:257
+#: src/renderer/src/components/AboutPage.tsx:246
 msgid "BearWarden is a local-first desktop password manager."
 msgstr "BearWarden 是一套本機優先的桌面密碼管理器。"
 
@@ -1252,7 +1252,7 @@ msgstr "BearWarden 僅傳送密碼 SHA-1 雜湊的前 5 個字元，從 HIBP Pwn
 msgid "BearWarden sends your complete email address to the configured Vaultwarden server only after you submit a query. That server then sends it to <0/>. This is not a k-anonymity password check. Query only accounts you are authorized to check."
 msgstr "BearWarden 僅會在您提交查詢後，將完整的電子郵件地址傳送至已設定的 Vaultwarden 伺服器。該伺服器隨後會將地址傳送到 <0/>。這不是 k-匿名性密碼檢查。僅查詢您有權檢查的帳戶。"
 
-#: src/renderer/src/components/AboutPage.tsx:230
+#: src/renderer/src/components/AboutPage.tsx:219
 msgid "BearWarden stores local error logs for troubleshooting. Open the log in {fileManagerName} when you need to inspect or share diagnostics."
 msgstr "BearWarden 會在本機儲存錯誤日誌以便疑難排解。需要檢查或分享診斷資訊時，請在{fileManagerName}中開啟日誌。"
 
@@ -1515,15 +1515,15 @@ msgstr "再次檢查衝突"
 msgid "Check exposed passwords"
 msgstr "檢查已外洩密碼"
 
-#: src/renderer/src/components/AboutPage.tsx:104
+#: src/renderer/src/components/AboutPage.tsx:93
 msgid "Check failed"
 msgstr "檢查失敗"
 
-#: src/renderer/src/components/AboutPage.tsx:213
+#: src/renderer/src/components/AboutPage.tsx:202
 msgid "Check for updates"
 msgstr "檢查更新"
 
-#: src/renderer/src/components/AboutPage.tsx:132
+#: src/renderer/src/components/AboutPage.tsx:121
 msgid "Check manually for a new version of BearWarden."
 msgstr "手動檢查是否有新版 BearWarden。"
 
@@ -1572,7 +1572,7 @@ msgstr "核取方塊"
 msgid "Checked this time"
 msgstr "本次已檢查"
 
-#: src/renderer/src/components/AboutPage.tsx:96
+#: src/renderer/src/components/AboutPage.tsx:85
 #: src/renderer/src/components/SettingsPage.tsx:603
 msgid "Checking"
 msgstr "檢查中"
@@ -1581,7 +1581,7 @@ msgstr "檢查中"
 msgid "Checking the status of the previous change…"
 msgstr "正在檢查前次變更的狀態…"
 
-#: src/renderer/src/components/AboutPage.tsx:114
+#: src/renderer/src/components/AboutPage.tsx:103
 msgid "Checking the update service for a new version."
 msgstr "正在向更新服務檢查是否有新版本。"
 
@@ -2282,7 +2282,7 @@ msgstr "目前本機帳戶 · 本機代碼 {code}"
 msgid "Current master password"
 msgstr "目前的主密碼"
 
-#: src/renderer/src/components/AboutPage.tsx:158
+#: src/renderer/src/components/AboutPage.tsx:147
 msgid "Current version"
 msgstr "目前版本"
 
@@ -2514,11 +2514,11 @@ msgstr "拒絕"
 msgid "Developer tools"
 msgstr "開發者工具"
 
-#: src/renderer/src/components/AboutPage.tsx:128
+#: src/renderer/src/components/AboutPage.tsx:117
 msgid "Development builds do not support automatic updates. Download an installer from GitHub Releases."
 msgstr "開發版本不支援自動更新。請從 GitHub Releases 下載安裝程式。"
 
-#: src/renderer/src/components/AboutPage.tsx:228
+#: src/renderer/src/components/AboutPage.tsx:217
 msgid "Diagnostic logs"
 msgstr "診斷日誌"
 
@@ -2601,7 +2601,7 @@ msgstr "下載 {0}"
 msgid "Download file Send"
 msgstr "下載檔案 Send"
 
-#: src/renderer/src/components/AboutPage.tsx:220
+#: src/renderer/src/components/AboutPage.tsx:209
 msgid "Download progress"
 msgstr "下載進度"
 
@@ -2609,7 +2609,7 @@ msgstr "下載進度"
 msgid "Download the service list only when requested"
 msgstr "僅在要求時下載服務清單"
 
-#: src/renderer/src/components/AboutPage.tsx:184
+#: src/renderer/src/components/AboutPage.tsx:173
 #: src/renderer/src/lib/app-update-ui.ts:34
 msgid "Download update"
 msgstr "下載更新"
@@ -2619,7 +2619,7 @@ msgstr "下載更新"
 msgid "Downloaded “{0}”."
 msgstr "已下載「{0}」。"
 
-#: src/renderer/src/components/AboutPage.tsx:100
+#: src/renderer/src/components/AboutPage.tsx:89
 msgid "Downloading"
 msgstr "正在下載"
 
@@ -3145,11 +3145,11 @@ msgstr "檔案"
 msgid "File contents and paths are handled only by the local main process and are never sent back to the renderer process."
 msgstr "檔案內容和路徑只會由本機主程式處理，絕不會傳回轉譯程式。"
 
-#: src/renderer/src/components/AboutPage.tsx:85
+#: src/renderer/src/components/AboutPage.tsx:74
 msgid "File Explorer"
 msgstr "檔案總管"
 
-#: src/renderer/src/components/AboutPage.tsx:85
+#: src/renderer/src/components/AboutPage.tsx:74
 msgid "file manager"
 msgstr "檔案管理器"
 
@@ -3179,7 +3179,7 @@ msgstr "依集合篩選共用項目。"
 msgid "Find this item quickly from the sidebar"
 msgstr "從側邊欄快速找到此項目"
 
-#: src/renderer/src/components/AboutPage.tsx:85
+#: src/renderer/src/components/AboutPage.tsx:74
 msgid "Finder"
 msgstr "Finder"
 
@@ -3361,7 +3361,7 @@ msgstr "從 Bitwarden 寄出的電子郵件取得驗證碼，並在進階選項�
 msgid "Git signing"
 msgstr "Git 簽署"
 
-#: src/renderer/src/components/AboutPage.tsx:273
+#: src/renderer/src/components/AboutPage.tsx:262
 msgid "GitHub"
 msgstr "GitHub"
 
@@ -3373,7 +3373,7 @@ msgstr "返回"
 msgid "Go to download"
 msgstr "前往下載頁面"
 
-#: src/renderer/src/components/AboutPage.tsx:184
+#: src/renderer/src/components/AboutPage.tsx:173
 msgid "Go to Releases"
 msgstr "前往 Releases"
 
@@ -3859,7 +3859,7 @@ msgstr "正在載入共享項目…"
 msgid "Loading the 2fa.directory service list"
 msgstr "正在載入 2fa.directory 服務清單"
 
-#: src/renderer/src/components/AboutPage.tsx:91
+#: src/renderer/src/components/AboutPage.tsx:80
 #: src/renderer/src/components/LoginEditor.tsx:3141
 msgid "Loading…"
 msgstr "正在載入…"
@@ -4039,7 +4039,7 @@ msgstr "管理您的顯示名稱與大頭貼顏色。"
 msgid "Manual setup key"
 msgstr "手動設定金鑰"
 
-#: src/renderer/src/components/AboutPage.tsx:106
+#: src/renderer/src/components/AboutPage.tsx:95
 msgid "Manual update"
 msgstr "手動更新"
 
@@ -4497,7 +4497,7 @@ msgstr "未啟用雙因素驗證方式。"
 msgid "No unsecured websites"
 msgstr "沒有未受保護的網站"
 
-#: src/renderer/src/components/AboutPage.tsx:131
+#: src/renderer/src/components/AboutPage.tsx:120
 msgid "No updates are currently available."
 msgstr "目前沒有可用的更新。"
 
@@ -4537,7 +4537,7 @@ msgstr "BearWarden 不支援此伺服器提供的任何驗證方式。"
 msgid "Not all attachments were completed this time. Select the same backup again and enter its password to continue from the saved progress."
 msgstr "這次並未完成所有附件。請再次選取相同的備份並輸入其密碼，以從已儲存的進度繼續。"
 
-#: src/renderer/src/components/AboutPage.tsx:108
+#: src/renderer/src/components/AboutPage.tsx:97
 msgid "Not checked"
 msgstr "未檢查"
 
@@ -4594,7 +4594,7 @@ msgstr "發生時間"
 #~ msgid "On macOS, allow BearWarden under System Settings → Privacy & Security → Accessibility. If the autofill helper appears in the list, allow it as well. After a denial, macOS may not show the prompt again."
 #~ msgstr "在 macOS 上，請於「系統設定」→「隱私權與安全性」→「輔助使用」中允許 BearWarden。若清單中出現自動填寫輔助程式，也請一併允許。遭拒後，macOS 可能不會再次顯示提示。"
 
-#: src/renderer/src/components/AboutPage.tsx:119
+#: src/renderer/src/components/AboutPage.tsx:108
 #: src/renderer/src/lib/app-update-ui.ts:28
 msgid "On macOS, update by running brew upgrade --cask gnehs/tap/bearwarden in Terminal. You can also download the latest version from GitHub Releases."
 msgstr "在 macOS 上，請於「終端機」執行 brew upgrade --cask gnehs/tap/bearwarden 進行更新；也可以從 GitHub Releases 下載最新版本。"
@@ -5058,7 +5058,7 @@ msgstr "正在處理本機帳戶"
 msgid "Profile"
 msgstr "個人資料"
 
-#: src/renderer/src/components/AboutPage.tsx:255
+#: src/renderer/src/components/AboutPage.tsx:244
 msgid "Project information"
 msgstr "專案資訊"
 
@@ -5133,7 +5133,7 @@ msgstr "正在讀取剪貼簿…"
 msgid "Ready"
 msgstr "就緒"
 
-#: src/renderer/src/components/AboutPage.tsx:102
+#: src/renderer/src/components/AboutPage.tsx:91
 msgid "Ready to install"
 msgstr "已準備好安裝"
 
@@ -5215,7 +5215,7 @@ msgstr "正規表示式"
 msgid "Release to cancel moving"
 msgstr "放開即可取消移動"
 
-#: src/renderer/src/components/AboutPage.tsx:283
+#: src/renderer/src/components/AboutPage.tsx:272
 msgid "Releases"
 msgstr "發行版本"
 
@@ -5384,7 +5384,7 @@ msgstr "重新傳送驗證電子郵件"
 msgid "Resending is now allowed. Select “Sync now” to retry."
 msgstr "現在可以重新傳送。選取「立即同步」以重試。"
 
-#: src/renderer/src/components/AboutPage.tsx:193
+#: src/renderer/src/components/AboutPage.tsx:182
 #: src/renderer/src/lib/app-update-ui.ts:57
 msgid "Restart and install"
 msgstr "重新啟動並安裝"
@@ -5887,15 +5887,15 @@ msgstr "顯示自訂欄位內容"
 msgid "Show history"
 msgstr "顯示歷程記錄"
 
-#: src/renderer/src/components/AboutPage.tsx:89
+#: src/renderer/src/components/AboutPage.tsx:78
 msgid "Show in File Explorer"
 msgstr "在檔案總管中顯示"
 
-#: src/renderer/src/components/AboutPage.tsx:90
+#: src/renderer/src/components/AboutPage.tsx:79
 msgid "Show in file manager"
 msgstr "在檔案管理器中顯示"
 
-#: src/renderer/src/components/AboutPage.tsx:87
+#: src/renderer/src/components/AboutPage.tsx:76
 msgid "Show in Finder"
 msgstr "在 Finder 中顯示"
 
@@ -6707,7 +6707,7 @@ msgstr "無法剖析剪貼簿中的 SSH 私密金鑰。請確認金鑰完整。"
 #~ msgid "The SSH private key in the clipboard could not be parsed. Verify that its contents are complete."
 #~ msgstr "無法剖析剪貼簿中的 SSH 私密金鑰。請驗證其內容完整。"
 
-#: src/renderer/src/components/AboutPage.tsx:122
+#: src/renderer/src/components/AboutPage.tsx:111
 msgid "The update downloads in the background. You can choose when to restart after it finishes."
 msgstr "更新會在背景下載。下載完成後，您可以選擇何時重新啟動。"
 
@@ -6893,7 +6893,7 @@ msgstr "已複製此歷程記錄"
 msgid "This includes the current device. Every device must sign in again and complete two-step login if enabled. Other devices may remain active for up to an hour. BearWarden keeps this computer’s local encrypted vault, but it will not sync until you sign in again."
 msgstr "這包括目前裝置。每部裝置都必須重新登入，並在啟用時完成兩步驟登入。其他裝置最多可能保持有效一小時。BearWarden 會保留此電腦的本機加密保管庫，但在您重新登入前不會同步。"
 
-#: src/renderer/src/components/AboutPage.tsx:120
+#: src/renderer/src/components/AboutPage.tsx:109
 msgid "This installation format must be downloaded manually from GitHub Releases."
 msgstr "此安裝格式必須從 GitHub Releases 手動下載。"
 
@@ -7273,7 +7273,7 @@ msgstr "U2F"
 msgid "Unable to {0} the security key. Try again later."
 msgstr "無法{0}安全金鑰。請稍後再試。"
 
-#: src/renderer/src/components/AboutPage.tsx:126
+#: src/renderer/src/components/AboutPage.tsx:115
 msgid "Unable to check for updates. Check your network connection and try again."
 msgstr "無法檢查更新。請檢查網路連線後再試一次。"
 
@@ -7289,7 +7289,7 @@ msgstr "無法完成"
 msgid "Unable to complete the two-factor authentication check"
 msgstr "無法完成雙因素驗證檢查"
 
-#: src/renderer/src/components/AboutPage.tsx:65
+#: src/renderer/src/components/AboutPage.tsx:54
 msgid "Unable to complete the update action. Please try again later."
 msgstr "無法完成更新操作。請稍後再試。"
 
@@ -7414,7 +7414,7 @@ msgstr "無法讀取雙因素驗證狀態。"
 msgid "Unable to read the URL from the current browser tab."
 msgstr "無法讀取目前瀏覽器分頁的 URL。"
 
-#: src/renderer/src/components/AboutPage.tsx:49
+#: src/renderer/src/components/AboutPage.tsx:43
 msgid "Unable to read update status."
 msgstr "無法讀取更新狀態。"
 
@@ -7470,7 +7470,7 @@ msgstr "無法儲存顯示名稱；已重新載入目前的伺服器值。"
 msgid "Unable to send the verification code. Restart setup."
 msgstr "無法傳送驗證碼。請重新開始設定。"
 
-#: src/renderer/src/components/AboutPage.tsx:77
+#: src/renderer/src/components/AboutPage.tsx:66
 msgid "Unable to show the error log. Please try again later."
 msgstr "無法顯示錯誤日誌。請稍後再試。"
 
@@ -7667,11 +7667,11 @@ msgstr "不支援的保管庫項目類型"
 msgid "Unverified"
 msgstr "未驗證"
 
-#: src/renderer/src/components/AboutPage.tsx:108
+#: src/renderer/src/components/AboutPage.tsx:97
 msgid "Up to date"
 msgstr "已是最新版本"
 
-#: src/renderer/src/components/AboutPage.tsx:98
+#: src/renderer/src/components/AboutPage.tsx:87
 msgid "Update available"
 msgstr "有可用更新"
 
@@ -7876,11 +7876,11 @@ msgstr "正在驗證私密金鑰密碼…"
 msgid "Verifying…"
 msgstr "正在驗證…"
 
-#: src/renderer/src/components/AboutPage.tsx:124
+#: src/renderer/src/components/AboutPage.tsx:113
 msgid "Version {availableVersion} has finished downloading."
 msgstr "版本 {availableVersion} 已完成下載。"
 
-#: src/renderer/src/components/AboutPage.tsx:117
+#: src/renderer/src/components/AboutPage.tsx:106
 msgid "Version {availableVersion} is available to download."
 msgstr "版本 {availableVersion} 可供下載。"
 
@@ -7888,7 +7888,7 @@ msgstr "版本 {availableVersion} 可供下載。"
 msgid "Version and update information"
 msgstr "版本與更新資訊"
 
-#: src/renderer/src/components/AboutPage.tsx:168
+#: src/renderer/src/components/AboutPage.tsx:157
 msgid "Version updates"
 msgstr "版本更新"
 
@@ -7942,11 +7942,11 @@ msgstr "檢視項目，隱藏密碼"
 msgid "View password history"
 msgstr "檢視密碼歷程"
 
-#: src/renderer/src/components/AboutPage.tsx:147
+#: src/renderer/src/components/AboutPage.tsx:136
 msgid "View the current version, update status, and project information."
 msgstr "查看目前版本、更新狀態與專案資訊。"
 
-#: src/renderer/src/components/AboutPage.tsx:261
+#: src/renderer/src/components/AboutPage.tsx:250
 msgid "View the source code, report an issue, or get the latest release."
 msgstr "查看原始碼、回報問題，或取得最新版本。"
 

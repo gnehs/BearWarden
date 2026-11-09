@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useStore } from 'zustand'
 import { useLingui } from '@lingui/react/macro'
 import type { AppUpdateState } from '../../../shared/vault-contract'
 import { Badge } from '@renderer/components/ui/badge'
@@ -15,6 +16,7 @@ import { Separator } from '@renderer/components/ui/separator'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { ExternalLink, FolderOpen, GitFork, Info, RefreshCw } from 'lucide-react'
 import { SettingsCard, SettingsCardContent, SettingsCardHeading } from './SettingsPrimitives'
+import { appUpdates } from '@renderer/stores/app-update-store'
 
 const initialUpdateState: AppUpdateState = {
   status: 'idle',
@@ -31,36 +33,23 @@ interface AboutPageProps {
 
 export default function AboutPage({ onOpenRepository }: AboutPageProps): React.JSX.Element {
   const { t } = useLingui()
-  const [updateState, setUpdateState] = useState<AppUpdateState>(initialUpdateState)
+  const sharedUpdateState = useStore(appUpdates.store, (state) => state.updateState)
+  const updateStatusUnavailable = useStore(appUpdates.store, (state) => state.readFailed)
+  const updateState = sharedUpdateState ?? initialUpdateState
   const [hasChecked, setHasChecked] = useState(false)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
+  const visibleError =
+    actionError || (updateStatusUnavailable ? t`Unable to read update status.` : '')
 
-  useEffect(() => {
-    let active = true
-    const unsubscribe = window.bearwarden.updater.onStateChanged((state) => {
-      if (active) setUpdateState(state)
-    })
-    void window.bearwarden.updater.state().then(
-      (state) => {
-        if (active) setUpdateState(state)
-      },
-      () => {
-        if (active) setActionError(t`Unable to read update status.`)
-      }
-    )
-    return () => {
-      active = false
-      unsubscribe()
-    }
-  }, [t])
+  useEffect(() => appUpdates.connect(), [])
 
   async function runUpdateAction(action: () => Promise<AppUpdateState | void>): Promise<void> {
     setBusy(true)
     setActionError('')
     try {
       const nextState = await action()
-      if (nextState) setUpdateState(nextState)
+      if (nextState) appUpdates.apply(nextState)
     } catch {
       setActionError(t`Unable to complete the update action. Please try again later.`)
     } finally {
@@ -241,9 +230,9 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
               {showErrorLogLabel}
             </Button>
           </div>
-          {actionError && (
+          {visibleError && (
             <p className="text-destructive m-0 text-xs" role="alert">
-              {actionError}
+              {visibleError}
             </p>
           )}
         </SettingsCardContent>

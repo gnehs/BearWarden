@@ -533,7 +533,7 @@ msgstr "A new device verification code was sent by email."
 msgid "A new Ed25519 key is being created securely."
 msgstr "A new Ed25519 key is being created securely."
 
-#: src/renderer/src/components/AboutPage.tsx:92
+#: src/renderer/src/components/AboutPage.tsx:81
 msgid "a new version"
 msgstr "a new version"
 
@@ -557,7 +557,7 @@ msgstr "A two-step verification code was sent by email."
 msgid "About"
 msgstr "About"
 
-#: src/renderer/src/components/AboutPage.tsx:146
+#: src/renderer/src/components/AboutPage.tsx:135
 msgid "About BearWarden"
 msgstr "About BearWarden"
 
@@ -1220,7 +1220,7 @@ msgstr "BearWarden could not create the SSH Agent endpoint safely. Check the hom
 msgid "BearWarden could not load the vault service. Your data has not been changed."
 msgstr "BearWarden could not load the vault service. Your data has not been changed."
 
-#: src/renderer/src/components/AboutPage.tsx:159
+#: src/renderer/src/components/AboutPage.tsx:148
 msgid "BearWarden Desktop"
 msgstr "BearWarden Desktop"
 
@@ -1228,7 +1228,7 @@ msgstr "BearWarden Desktop"
 msgid "BearWarden does not yet support recipient OTP. To avoid removing verification requirements, this Send cannot be edited or downloaded."
 msgstr "BearWarden does not yet support recipient OTP. To avoid removing verification requirements, this Send cannot be edited or downloaded."
 
-#: src/renderer/src/components/AboutPage.tsx:257
+#: src/renderer/src/components/AboutPage.tsx:246
 msgid "BearWarden is a local-first desktop password manager."
 msgstr "BearWarden is a local-first desktop password manager."
 
@@ -1252,7 +1252,7 @@ msgstr "BearWarden sends only the first 5 characters of the password SHA-1 hash,
 msgid "BearWarden sends your complete email address to the configured Vaultwarden server only after you submit a query. That server then sends it to <0/>. This is not a k-anonymity password check. Query only accounts you are authorized to check."
 msgstr "BearWarden sends your complete email address to the configured Vaultwarden server only after you submit a query. That server then sends it to <0/>. This is not a k-anonymity password check. Query only accounts you are authorized to check."
 
-#: src/renderer/src/components/AboutPage.tsx:230
+#: src/renderer/src/components/AboutPage.tsx:219
 msgid "BearWarden stores local error logs for troubleshooting. Open the log in {fileManagerName} when you need to inspect or share diagnostics."
 msgstr "BearWarden stores local error logs for troubleshooting. Open the log in {fileManagerName} when you need to inspect or share diagnostics."
 
@@ -1515,15 +1515,15 @@ msgstr "Check conflicts again"
 msgid "Check exposed passwords"
 msgstr "Check exposed passwords"
 
-#: src/renderer/src/components/AboutPage.tsx:104
+#: src/renderer/src/components/AboutPage.tsx:93
 msgid "Check failed"
 msgstr "Check failed"
 
-#: src/renderer/src/components/AboutPage.tsx:213
+#: src/renderer/src/components/AboutPage.tsx:202
 msgid "Check for updates"
 msgstr "Check for updates"
 
-#: src/renderer/src/components/AboutPage.tsx:132
+#: src/renderer/src/components/AboutPage.tsx:121
 msgid "Check manually for a new version of BearWarden."
 msgstr "Check manually for a new version of BearWarden."
 
@@ -1572,7 +1572,7 @@ msgstr "Checkbox"
 msgid "Checked this time"
 msgstr "Checked this time"
 
-#: src/renderer/src/components/AboutPage.tsx:96
+#: src/renderer/src/components/AboutPage.tsx:85
 #: src/renderer/src/components/SettingsPage.tsx:603
 msgid "Checking"
 msgstr "Checking"
@@ -1581,7 +1581,7 @@ msgstr "Checking"
 msgid "Checking the status of the previous change…"
 msgstr "Checking the status of the previous change…"
 
-#: src/renderer/src/components/AboutPage.tsx:114
+#: src/renderer/src/components/AboutPage.tsx:103
 msgid "Checking the update service for a new version."
 msgstr "Checking the update service for a new version."
 
@@ -2282,7 +2282,7 @@ msgstr "Current local account · Local code {code}"
 msgid "Current master password"
 msgstr "Current master password"
 
-#: src/renderer/src/components/AboutPage.tsx:158
+#: src/renderer/src/components/AboutPage.tsx:147
 msgid "Current version"
 msgstr "Current version"
 
@@ -2514,11 +2514,11 @@ msgstr "Deny"
 msgid "Developer tools"
 msgstr "Developer tools"
 
-#: src/renderer/src/components/AboutPage.tsx:128
+#: src/renderer/src/components/AboutPage.tsx:117
 msgid "Development builds do not support automatic updates. Download an installer from GitHub Releases."
 msgstr "Development builds do not support automatic updates. Download an installer from GitHub Releases."
 
-#: src/renderer/src/components/AboutPage.tsx:228
+#: src/renderer/src/components/AboutPage.tsx:217
 msgid "Diagnostic logs"
 msgstr "Diagnostic logs"
 
@@ -2601,7 +2601,7 @@ msgstr "Download {0}"
 msgid "Download file Send"
 msgstr "Download file Send"
 
-#: src/renderer/src/components/AboutPage.tsx:220
+#: src/renderer/src/components/AboutPage.tsx:209
 msgid "Download progress"
 msgstr "Download progress"
 
@@ -2609,7 +2609,7 @@ msgstr "Download progress"
 msgid "Download the service list only when requested"
 msgstr "Download the service list only when requested"
 
-#: src/renderer/src/components/AboutPage.tsx:184
+#: src/renderer/src/components/AboutPage.tsx:173
 #: src/renderer/src/lib/app-update-ui.ts:34
 msgid "Download update"
 msgstr "Download update"
@@ -2619,7 +2619,7 @@ msgstr "Download update"
 msgid "Downloaded “{0}”."
 msgstr "Downloaded “{0}”."
 
-#: src/renderer/src/components/AboutPage.tsx:100
+#: src/renderer/src/components/AboutPage.tsx:89
 msgid "Downloading"
 msgstr "Downloading"
 
@@ -3145,11 +3145,11 @@ msgstr "File"
 msgid "File contents and paths are handled only by the local main process and are never sent back to the renderer process."
 msgstr "File contents and paths are handled only by the local main process and are never sent back to the renderer process."
 
-#: src/renderer/src/components/AboutPage.tsx:85
+#: src/renderer/src/components/AboutPage.tsx:74
 msgid "File Explorer"
 msgstr "File Explorer"
 
-#: src/renderer/src/components/AboutPage.tsx:85
+#: src/renderer/src/components/AboutPage.tsx:74
 msgid "file manager"
 msgstr "file manager"
 
@@ -3179,7 +3179,7 @@ msgstr "Filter shared items by Collection."
 msgid "Find this item quickly from the sidebar"
 msgstr "Find this item quickly from the sidebar"
 
-#: src/renderer/src/components/AboutPage.tsx:85
+#: src/renderer/src/components/AboutPage.tsx:74
 msgid "Finder"
 msgstr "Finder"
 
@@ -3361,7 +3361,7 @@ msgstr "Get the verification code from the email sent by Bitwarden and enter it 
 msgid "Git signing"
 msgstr "Git signing"
 
-#: src/renderer/src/components/AboutPage.tsx:273
+#: src/renderer/src/components/AboutPage.tsx:262
 msgid "GitHub"
 msgstr "GitHub"
 
@@ -3373,7 +3373,7 @@ msgstr "Go back"
 msgid "Go to download"
 msgstr "Go to download"
 
-#: src/renderer/src/components/AboutPage.tsx:184
+#: src/renderer/src/components/AboutPage.tsx:173
 msgid "Go to Releases"
 msgstr "Go to Releases"
 
@@ -3859,7 +3859,7 @@ msgstr "Loading shared item…"
 msgid "Loading the 2fa.directory service list"
 msgstr "Loading the 2fa.directory service list"
 
-#: src/renderer/src/components/AboutPage.tsx:91
+#: src/renderer/src/components/AboutPage.tsx:80
 #: src/renderer/src/components/LoginEditor.tsx:3141
 msgid "Loading…"
 msgstr "Loading…"
@@ -4039,7 +4039,7 @@ msgstr "Manage your display name and avatar color."
 msgid "Manual setup key"
 msgstr "Manual setup key"
 
-#: src/renderer/src/components/AboutPage.tsx:106
+#: src/renderer/src/components/AboutPage.tsx:95
 msgid "Manual update"
 msgstr "Manual update"
 
@@ -4497,7 +4497,7 @@ msgstr "No two-factor authentication methods are enabled."
 msgid "No unsecured websites"
 msgstr "No unsecured websites"
 
-#: src/renderer/src/components/AboutPage.tsx:131
+#: src/renderer/src/components/AboutPage.tsx:120
 msgid "No updates are currently available."
 msgstr "No updates are currently available."
 
@@ -4537,7 +4537,7 @@ msgstr "None of the verification methods offered by this server are supported by
 msgid "Not all attachments were completed this time. Select the same backup again and enter its password to continue from the saved progress."
 msgstr "Not all attachments were completed this time. Select the same backup again and enter its password to continue from the saved progress."
 
-#: src/renderer/src/components/AboutPage.tsx:108
+#: src/renderer/src/components/AboutPage.tsx:97
 msgid "Not checked"
 msgstr "Not checked"
 
@@ -4594,7 +4594,7 @@ msgstr "Occurred at"
 #~ msgid "On macOS, allow BearWarden under System Settings → Privacy & Security → Accessibility. If the autofill helper appears in the list, allow it as well. After a denial, macOS may not show the prompt again."
 #~ msgstr "On macOS, allow BearWarden under System Settings → Privacy & Security → Accessibility. If the autofill helper appears in the list, allow it as well. After a denial, macOS may not show the prompt again."
 
-#: src/renderer/src/components/AboutPage.tsx:119
+#: src/renderer/src/components/AboutPage.tsx:108
 #: src/renderer/src/lib/app-update-ui.ts:28
 msgid "On macOS, update by running brew upgrade --cask gnehs/tap/bearwarden in Terminal. You can also download the latest version from GitHub Releases."
 msgstr "On macOS, update by running brew upgrade --cask gnehs/tap/bearwarden in Terminal. You can also download the latest version from GitHub Releases."
@@ -5058,7 +5058,7 @@ msgstr "Processing local accounts"
 msgid "Profile"
 msgstr "Profile"
 
-#: src/renderer/src/components/AboutPage.tsx:255
+#: src/renderer/src/components/AboutPage.tsx:244
 msgid "Project information"
 msgstr "Project information"
 
@@ -5133,7 +5133,7 @@ msgstr "Reading clipboard…"
 msgid "Ready"
 msgstr "Ready"
 
-#: src/renderer/src/components/AboutPage.tsx:102
+#: src/renderer/src/components/AboutPage.tsx:91
 msgid "Ready to install"
 msgstr "Ready to install"
 
@@ -5215,7 +5215,7 @@ msgstr "Regular expression"
 msgid "Release to cancel moving"
 msgstr "Release to cancel moving"
 
-#: src/renderer/src/components/AboutPage.tsx:283
+#: src/renderer/src/components/AboutPage.tsx:272
 msgid "Releases"
 msgstr "Releases"
 
@@ -5384,7 +5384,7 @@ msgstr "Resend verification email"
 msgid "Resending is now allowed. Select “Sync now” to retry."
 msgstr "Resending is now allowed. Select “Sync now” to retry."
 
-#: src/renderer/src/components/AboutPage.tsx:193
+#: src/renderer/src/components/AboutPage.tsx:182
 #: src/renderer/src/lib/app-update-ui.ts:57
 msgid "Restart and install"
 msgstr "Restart and install"
@@ -5887,15 +5887,15 @@ msgstr "Show custom field contents"
 msgid "Show history"
 msgstr "Show history"
 
-#: src/renderer/src/components/AboutPage.tsx:89
+#: src/renderer/src/components/AboutPage.tsx:78
 msgid "Show in File Explorer"
 msgstr "Show in File Explorer"
 
-#: src/renderer/src/components/AboutPage.tsx:90
+#: src/renderer/src/components/AboutPage.tsx:79
 msgid "Show in file manager"
 msgstr "Show in file manager"
 
-#: src/renderer/src/components/AboutPage.tsx:87
+#: src/renderer/src/components/AboutPage.tsx:76
 msgid "Show in Finder"
 msgstr "Show in Finder"
 
@@ -6707,7 +6707,7 @@ msgstr "The SSH private key in the clipboard could not be parsed. Make sure the 
 #~ msgid "The SSH private key in the clipboard could not be parsed. Verify that its contents are complete."
 #~ msgstr "The SSH private key in the clipboard could not be parsed. Verify that its contents are complete."
 
-#: src/renderer/src/components/AboutPage.tsx:122
+#: src/renderer/src/components/AboutPage.tsx:111
 msgid "The update downloads in the background. You can choose when to restart after it finishes."
 msgstr "The update downloads in the background. You can choose when to restart after it finishes."
 
@@ -6893,7 +6893,7 @@ msgstr "This history entry is copied"
 msgid "This includes the current device. Every device must sign in again and complete two-step login if enabled. Other devices may remain active for up to an hour. BearWarden keeps this computer’s local encrypted vault, but it will not sync until you sign in again."
 msgstr "This includes the current device. Every device must sign in again and complete two-step login if enabled. Other devices may remain active for up to an hour. BearWarden keeps this computer’s local encrypted vault, but it will not sync until you sign in again."
 
-#: src/renderer/src/components/AboutPage.tsx:120
+#: src/renderer/src/components/AboutPage.tsx:109
 msgid "This installation format must be downloaded manually from GitHub Releases."
 msgstr "This installation format must be downloaded manually from GitHub Releases."
 
@@ -7273,7 +7273,7 @@ msgstr ""
 msgid "Unable to {0} the security key. Try again later."
 msgstr "Unable to {0} the security key. Try again later."
 
-#: src/renderer/src/components/AboutPage.tsx:126
+#: src/renderer/src/components/AboutPage.tsx:115
 msgid "Unable to check for updates. Check your network connection and try again."
 msgstr "Unable to check for updates. Check your network connection and try again."
 
@@ -7289,7 +7289,7 @@ msgstr "Unable to complete"
 msgid "Unable to complete the two-factor authentication check"
 msgstr "Unable to complete the two-factor authentication check"
 
-#: src/renderer/src/components/AboutPage.tsx:65
+#: src/renderer/src/components/AboutPage.tsx:54
 msgid "Unable to complete the update action. Please try again later."
 msgstr "Unable to complete the update action. Please try again later."
 
@@ -7414,7 +7414,7 @@ msgstr "Unable to read the two-factor authentication status."
 msgid "Unable to read the URL from the current browser tab."
 msgstr "Unable to read the URL from the current browser tab."
 
-#: src/renderer/src/components/AboutPage.tsx:49
+#: src/renderer/src/components/AboutPage.tsx:43
 msgid "Unable to read update status."
 msgstr "Unable to read update status."
 
@@ -7470,7 +7470,7 @@ msgstr "Unable to save the display name; the current server value has been reloa
 msgid "Unable to send the verification code. Restart setup."
 msgstr "Unable to send the verification code. Restart setup."
 
-#: src/renderer/src/components/AboutPage.tsx:77
+#: src/renderer/src/components/AboutPage.tsx:66
 msgid "Unable to show the error log. Please try again later."
 msgstr "Unable to show the error log. Please try again later."
 
@@ -7667,11 +7667,11 @@ msgstr "Unsupported vault item type"
 msgid "Unverified"
 msgstr "Unverified"
 
-#: src/renderer/src/components/AboutPage.tsx:108
+#: src/renderer/src/components/AboutPage.tsx:97
 msgid "Up to date"
 msgstr "Up to date"
 
-#: src/renderer/src/components/AboutPage.tsx:98
+#: src/renderer/src/components/AboutPage.tsx:87
 msgid "Update available"
 msgstr "Update available"
 
@@ -7876,11 +7876,11 @@ msgstr "Verifying private key password…"
 msgid "Verifying…"
 msgstr "Verifying…"
 
-#: src/renderer/src/components/AboutPage.tsx:124
+#: src/renderer/src/components/AboutPage.tsx:113
 msgid "Version {availableVersion} has finished downloading."
 msgstr "Version {availableVersion} has finished downloading."
 
-#: src/renderer/src/components/AboutPage.tsx:117
+#: src/renderer/src/components/AboutPage.tsx:106
 msgid "Version {availableVersion} is available to download."
 msgstr "Version {availableVersion} is available to download."
 
@@ -7888,7 +7888,7 @@ msgstr "Version {availableVersion} is available to download."
 msgid "Version and update information"
 msgstr "Version and update information"
 
-#: src/renderer/src/components/AboutPage.tsx:168
+#: src/renderer/src/components/AboutPage.tsx:157
 msgid "Version updates"
 msgstr "Version updates"
 
@@ -7942,11 +7942,11 @@ msgstr "View items, hide passwords"
 msgid "View password history"
 msgstr "View password history"
 
-#: src/renderer/src/components/AboutPage.tsx:147
+#: src/renderer/src/components/AboutPage.tsx:136
 msgid "View the current version, update status, and project information."
 msgstr "View the current version, update status, and project information."
 
-#: src/renderer/src/components/AboutPage.tsx:261
+#: src/renderer/src/components/AboutPage.tsx:250
 msgid "View the source code, report an issue, or get the latest release."
 msgstr "View the source code, report an issue, or get the latest release."
 

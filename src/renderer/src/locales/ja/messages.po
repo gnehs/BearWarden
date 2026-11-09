@@ -533,7 +533,7 @@ msgstr "新しいデバイスの確認コードをメールで送信しました
 msgid "A new Ed25519 key is being created securely."
 msgstr "新しい Ed25519 キーを安全に作成しています。"
 
-#: src/renderer/src/components/AboutPage.tsx:92
+#: src/renderer/src/components/AboutPage.tsx:81
 msgid "a new version"
 msgstr "新しいバージョン"
 
@@ -557,7 +557,7 @@ msgstr "2 段階認証コードをメールで送信しました。"
 msgid "About"
 msgstr "情報"
 
-#: src/renderer/src/components/AboutPage.tsx:146
+#: src/renderer/src/components/AboutPage.tsx:135
 msgid "About BearWarden"
 msgstr "BearWarden について"
 
@@ -1220,7 +1220,7 @@ msgstr "BearWarden は SSH Agent エンドポイントを安全に作成でき�
 msgid "BearWarden could not load the vault service. Your data has not been changed."
 msgstr "BearWarden は保管庫サービスを読み込めませんでした。データは変更されていません。"
 
-#: src/renderer/src/components/AboutPage.tsx:159
+#: src/renderer/src/components/AboutPage.tsx:148
 msgid "BearWarden Desktop"
 msgstr "BearWarden Desktop"
 
@@ -1228,7 +1228,7 @@ msgstr "BearWarden Desktop"
 msgid "BearWarden does not yet support recipient OTP. To avoid removing verification requirements, this Send cannot be edited or downloaded."
 msgstr "BearWarden は受信者 OTP にまだ対応していません。確認要件が失われることを避けるため、この Send は編集またはダウンロードできません。"
 
-#: src/renderer/src/components/AboutPage.tsx:257
+#: src/renderer/src/components/AboutPage.tsx:246
 msgid "BearWarden is a local-first desktop password manager."
 msgstr "BearWarden はローカルファーストのデスクトップパスワードマネージャーです。"
 
@@ -1252,7 +1252,7 @@ msgstr "BearWarden はパスワードの SHA-1 ハッシュの先頭 5 文字の
 msgid "BearWarden sends your complete email address to the configured Vaultwarden server only after you submit a query. That server then sends it to <0/>. This is not a k-anonymity password check. Query only accounts you are authorized to check."
 msgstr "BearWarden は、クエリを送信した後にのみ完全なメールアドレスを設定済みの Vaultwarden サーバーへ送信します。そのサーバーは続いて <0/> に送信します。これは k 匿名性を用いたパスワード確認ではありません。確認する権限があるアカウントのみを照会してください。"
 
-#: src/renderer/src/components/AboutPage.tsx:230
+#: src/renderer/src/components/AboutPage.tsx:219
 msgid "BearWarden stores local error logs for troubleshooting. Open the log in {fileManagerName} when you need to inspect or share diagnostics."
 msgstr "BearWarden はトラブルシューティング用のエラーログをローカルに保存します。診断情報を確認または共有する必要がある場合は、{fileManagerName}でログを開いてください。"
 
@@ -1515,15 +1515,15 @@ msgstr "競合を再確認"
 msgid "Check exposed passwords"
 msgstr "漏えいしたパスワードを確認"
 
-#: src/renderer/src/components/AboutPage.tsx:104
+#: src/renderer/src/components/AboutPage.tsx:93
 msgid "Check failed"
 msgstr "確認に失敗しました"
 
-#: src/renderer/src/components/AboutPage.tsx:213
+#: src/renderer/src/components/AboutPage.tsx:202
 msgid "Check for updates"
 msgstr "更新を確認"
 
-#: src/renderer/src/components/AboutPage.tsx:132
+#: src/renderer/src/components/AboutPage.tsx:121
 msgid "Check manually for a new version of BearWarden."
 msgstr "BearWarden の新しいバージョンを手動で確認します。"
 
@@ -1572,7 +1572,7 @@ msgstr "チェックボックス"
 msgid "Checked this time"
 msgstr "今回確認済み"
 
-#: src/renderer/src/components/AboutPage.tsx:96
+#: src/renderer/src/components/AboutPage.tsx:85
 #: src/renderer/src/components/SettingsPage.tsx:603
 msgid "Checking"
 msgstr "確認中"
@@ -1581,7 +1581,7 @@ msgstr "確認中"
 msgid "Checking the status of the previous change…"
 msgstr "前回の変更の状態を確認中…"
 
-#: src/renderer/src/components/AboutPage.tsx:114
+#: src/renderer/src/components/AboutPage.tsx:103
 msgid "Checking the update service for a new version."
 msgstr "更新サービスで新しいバージョンを確認しています。"
 
@@ -2282,7 +2282,7 @@ msgstr "現在のローカルアカウント · ローカルコード {code}"
 msgid "Current master password"
 msgstr "現在のマスターパスワード"
 
-#: src/renderer/src/components/AboutPage.tsx:158
+#: src/renderer/src/components/AboutPage.tsx:147
 msgid "Current version"
 msgstr "現在のバージョン"
 
@@ -2514,11 +2514,11 @@ msgstr "拒否"
 msgid "Developer tools"
 msgstr "開発者ツール"
 
-#: src/renderer/src/components/AboutPage.tsx:128
+#: src/renderer/src/components/AboutPage.tsx:117
 msgid "Development builds do not support automatic updates. Download an installer from GitHub Releases."
 msgstr "開発ビルドでは自動更新をサポートしていません。GitHub Releasesからインストーラーをダウンロードしてください。"
 
-#: src/renderer/src/components/AboutPage.tsx:228
+#: src/renderer/src/components/AboutPage.tsx:217
 msgid "Diagnostic logs"
 msgstr "診断ログ"
 
@@ -2601,7 +2601,7 @@ msgstr "{0}をダウンロード"
 msgid "Download file Send"
 msgstr "ファイルSendをダウンロード"
 
-#: src/renderer/src/components/AboutPage.tsx:220
+#: src/renderer/src/components/AboutPage.tsx:209
 msgid "Download progress"
 msgstr "ダウンロードの進行状況"
 
@@ -2609,7 +2609,7 @@ msgstr "ダウンロードの進行状況"
 msgid "Download the service list only when requested"
 msgstr "要求された場合にのみサービスリストをダウンロード"
 
-#: src/renderer/src/components/AboutPage.tsx:184
+#: src/renderer/src/components/AboutPage.tsx:173
 #: src/renderer/src/lib/app-update-ui.ts:34
 msgid "Download update"
 msgstr "更新をダウンロード"
@@ -2619,7 +2619,7 @@ msgstr "更新をダウンロード"
 msgid "Downloaded “{0}”."
 msgstr "「{0}」をダウンロードしました。"
 
-#: src/renderer/src/components/AboutPage.tsx:100
+#: src/renderer/src/components/AboutPage.tsx:89
 msgid "Downloading"
 msgstr "ダウンロード中"
 
@@ -3145,11 +3145,11 @@ msgstr "ファイル"
 msgid "File contents and paths are handled only by the local main process and are never sent back to the renderer process."
 msgstr "ファイルの内容とパスはローカルのメインプロセスでのみ処理され、レンダラープロセスに送り返されることはありません。"
 
-#: src/renderer/src/components/AboutPage.tsx:85
+#: src/renderer/src/components/AboutPage.tsx:74
 msgid "File Explorer"
 msgstr "ファイル エクスプローラー"
 
-#: src/renderer/src/components/AboutPage.tsx:85
+#: src/renderer/src/components/AboutPage.tsx:74
 msgid "file manager"
 msgstr "ファイル マネージャー"
 
@@ -3179,7 +3179,7 @@ msgstr "共有アイテムをコレクションで絞り込みます。"
 msgid "Find this item quickly from the sidebar"
 msgstr "サイドバーからこのアイテムをすばやく見つける"
 
-#: src/renderer/src/components/AboutPage.tsx:85
+#: src/renderer/src/components/AboutPage.tsx:74
 msgid "Finder"
 msgstr "Finder"
 
@@ -3361,7 +3361,7 @@ msgstr "Bitwarden から送信されたメールの確認コードを取得し�
 msgid "Git signing"
 msgstr "Git 署名"
 
-#: src/renderer/src/components/AboutPage.tsx:273
+#: src/renderer/src/components/AboutPage.tsx:262
 msgid "GitHub"
 msgstr "GitHub"
 
@@ -3373,7 +3373,7 @@ msgstr "戻る"
 msgid "Go to download"
 msgstr "ダウンロードページを開く"
 
-#: src/renderer/src/components/AboutPage.tsx:184
+#: src/renderer/src/components/AboutPage.tsx:173
 msgid "Go to Releases"
 msgstr "GitHub Releases を開く"
 
@@ -3859,7 +3859,7 @@ msgstr "共有アイテムを読み込み中…"
 msgid "Loading the 2fa.directory service list"
 msgstr "2fa.directory のサービス一覧を読み込み中"
 
-#: src/renderer/src/components/AboutPage.tsx:91
+#: src/renderer/src/components/AboutPage.tsx:80
 #: src/renderer/src/components/LoginEditor.tsx:3141
 msgid "Loading…"
 msgstr "読み込み中…"
@@ -4039,7 +4039,7 @@ msgstr "表示名とアバターの色を管理します。"
 msgid "Manual setup key"
 msgstr "手動セットアップキー"
 
-#: src/renderer/src/components/AboutPage.tsx:106
+#: src/renderer/src/components/AboutPage.tsx:95
 msgid "Manual update"
 msgstr "手動更新"
 
@@ -4497,7 +4497,7 @@ msgstr "有効な二要素認証方法はありません。"
 msgid "No unsecured websites"
 msgstr "安全でないウェブサイトはありません"
 
-#: src/renderer/src/components/AboutPage.tsx:131
+#: src/renderer/src/components/AboutPage.tsx:120
 msgid "No updates are currently available."
 msgstr "現在、利用可能な更新はありません。"
 
@@ -4537,7 +4537,7 @@ msgstr "このサーバーが提供する認証方法は、BearWarden ではサ�
 msgid "Not all attachments were completed this time. Select the same backup again and enter its password to continue from the saved progress."
 msgstr "今回はすべての添付ファイルを完了できませんでした。同じバックアップを再度選択し、そのパスワードを入力すると、保存された進行状況から続行できます。"
 
-#: src/renderer/src/components/AboutPage.tsx:108
+#: src/renderer/src/components/AboutPage.tsx:97
 msgid "Not checked"
 msgstr "未確認"
 
@@ -4594,7 +4594,7 @@ msgstr "発生日時"
 #~ msgid "On macOS, allow BearWarden under System Settings → Privacy & Security → Accessibility. If the autofill helper appears in the list, allow it as well. After a denial, macOS may not show the prompt again."
 #~ msgstr "macOS では、システム設定 → プライバシーとセキュリティ → アクセシビリティで BearWarden を許可してください。自動入力ヘルパーが一覧に表示される場合は、そちらも許可してください。拒否した後は、macOS が再びプロンプトを表示しないことがあります。"
 
-#: src/renderer/src/components/AboutPage.tsx:119
+#: src/renderer/src/components/AboutPage.tsx:108
 #: src/renderer/src/lib/app-update-ui.ts:28
 msgid "On macOS, update by running brew upgrade --cask gnehs/tap/bearwarden in Terminal. You can also download the latest version from GitHub Releases."
 msgstr "macOS では、ターミナルで brew upgrade --cask gnehs/tap/bearwarden を実行して更新できます。GitHub Releases から最新バージョンをダウンロードすることもできます。"
@@ -5058,7 +5058,7 @@ msgstr "ローカルアカウントを処理しています"
 msgid "Profile"
 msgstr "プロフィール"
 
-#: src/renderer/src/components/AboutPage.tsx:255
+#: src/renderer/src/components/AboutPage.tsx:244
 msgid "Project information"
 msgstr "プロジェクト情報"
 
@@ -5133,7 +5133,7 @@ msgstr "クリップボードを読み取っています…"
 msgid "Ready"
 msgstr "準備完了"
 
-#: src/renderer/src/components/AboutPage.tsx:102
+#: src/renderer/src/components/AboutPage.tsx:91
 msgid "Ready to install"
 msgstr "インストールの準備ができました"
 
@@ -5215,7 +5215,7 @@ msgstr "正規表現"
 msgid "Release to cancel moving"
 msgstr "移動をキャンセルするには離してください"
 
-#: src/renderer/src/components/AboutPage.tsx:283
+#: src/renderer/src/components/AboutPage.tsx:272
 msgid "Releases"
 msgstr "リリース"
 
@@ -5384,7 +5384,7 @@ msgstr "確認メールを再送信"
 msgid "Resending is now allowed. Select “Sync now” to retry."
 msgstr "再送信できるようになりました。もう一度試すには「今すぐ同期」を選択してください。"
 
-#: src/renderer/src/components/AboutPage.tsx:193
+#: src/renderer/src/components/AboutPage.tsx:182
 #: src/renderer/src/lib/app-update-ui.ts:57
 msgid "Restart and install"
 msgstr "再起動してインストール"
@@ -5887,15 +5887,15 @@ msgstr "カスタムフィールドの内容を表示"
 msgid "Show history"
 msgstr "履歴を表示"
 
-#: src/renderer/src/components/AboutPage.tsx:89
+#: src/renderer/src/components/AboutPage.tsx:78
 msgid "Show in File Explorer"
 msgstr "ファイル エクスプローラーで表示"
 
-#: src/renderer/src/components/AboutPage.tsx:90
+#: src/renderer/src/components/AboutPage.tsx:79
 msgid "Show in file manager"
 msgstr "ファイル マネージャーで表示"
 
-#: src/renderer/src/components/AboutPage.tsx:87
+#: src/renderer/src/components/AboutPage.tsx:76
 msgid "Show in Finder"
 msgstr "Finder で表示"
 
@@ -6707,7 +6707,7 @@ msgstr "クリップボード内の SSH 秘密鍵を解析できませんでし�
 #~ msgid "The SSH private key in the clipboard could not be parsed. Verify that its contents are complete."
 #~ msgstr "クリップボード内の SSH 秘密鍵を解析できませんでした。内容が完全であることを確認してください。"
 
-#: src/renderer/src/components/AboutPage.tsx:122
+#: src/renderer/src/components/AboutPage.tsx:111
 msgid "The update downloads in the background. You can choose when to restart after it finishes."
 msgstr "更新プログラムはバックグラウンドでダウンロードされます。完了後に再起動するタイミングを選択できます。"
 
@@ -6893,7 +6893,7 @@ msgstr "この履歴エントリはコピーされています"
 msgid "This includes the current device. Every device must sign in again and complete two-step login if enabled. Other devices may remain active for up to an hour. BearWarden keeps this computer’s local encrypted vault, but it will not sync until you sign in again."
 msgstr "これには現在のデバイスも含まれます。すべてのデバイスで再度サインインし、有効な場合は二段階ログインを完了する必要があります。他のデバイスは最大 1 時間アクティブなままになる場合があります。BearWarden はこのコンピューターのローカル暗号化保管庫を保持しますが、再度サインインするまで同期されません。"
 
-#: src/renderer/src/components/AboutPage.tsx:120
+#: src/renderer/src/components/AboutPage.tsx:109
 msgid "This installation format must be downloaded manually from GitHub Releases."
 msgstr "このインストール形式は GitHub Releases から手動でダウンロードする必要があります。"
 
@@ -7273,7 +7273,7 @@ msgstr "U2F"
 msgid "Unable to {0} the security key. Try again later."
 msgstr "セキュリティキーの操作（{0}）を実行できません。しばらくしてからもう一度お試しください。"
 
-#: src/renderer/src/components/AboutPage.tsx:126
+#: src/renderer/src/components/AboutPage.tsx:115
 msgid "Unable to check for updates. Check your network connection and try again."
 msgstr "更新を確認できません。ネットワーク接続を確認してから、もう一度お試しください。"
 
@@ -7289,7 +7289,7 @@ msgstr "完了できません"
 msgid "Unable to complete the two-factor authentication check"
 msgstr "二要素認証の確認を完了できません"
 
-#: src/renderer/src/components/AboutPage.tsx:65
+#: src/renderer/src/components/AboutPage.tsx:54
 msgid "Unable to complete the update action. Please try again later."
 msgstr "更新操作を完了できません。しばらくしてからもう一度お試しください。"
 
@@ -7414,7 +7414,7 @@ msgstr "二要素認証の状態を読み取れません。"
 msgid "Unable to read the URL from the current browser tab."
 msgstr "現在のブラウザータブから URL を読み取れません。"
 
-#: src/renderer/src/components/AboutPage.tsx:49
+#: src/renderer/src/components/AboutPage.tsx:43
 msgid "Unable to read update status."
 msgstr "更新状態を読み取れません。"
 
@@ -7470,7 +7470,7 @@ msgstr "表示名を保存できません。現在のサーバー値を再読み
 msgid "Unable to send the verification code. Restart setup."
 msgstr "確認コードを送信できません。セットアップをやり直してください。"
 
-#: src/renderer/src/components/AboutPage.tsx:77
+#: src/renderer/src/components/AboutPage.tsx:66
 msgid "Unable to show the error log. Please try again later."
 msgstr "エラーログを表示できません。後でもう一度お試しください。"
 
@@ -7667,11 +7667,11 @@ msgstr "未対応の保管庫アイテムタイプ"
 msgid "Unverified"
 msgstr "未確認"
 
-#: src/renderer/src/components/AboutPage.tsx:108
+#: src/renderer/src/components/AboutPage.tsx:97
 msgid "Up to date"
 msgstr "最新です"
 
-#: src/renderer/src/components/AboutPage.tsx:98
+#: src/renderer/src/components/AboutPage.tsx:87
 msgid "Update available"
 msgstr "更新があります"
 
@@ -7876,11 +7876,11 @@ msgstr "秘密鍵のパスワードを確認中…"
 msgid "Verifying…"
 msgstr "確認中…"
 
-#: src/renderer/src/components/AboutPage.tsx:124
+#: src/renderer/src/components/AboutPage.tsx:113
 msgid "Version {availableVersion} has finished downloading."
 msgstr "バージョン {availableVersion} のダウンロードが完了しました。"
 
-#: src/renderer/src/components/AboutPage.tsx:117
+#: src/renderer/src/components/AboutPage.tsx:106
 msgid "Version {availableVersion} is available to download."
 msgstr "バージョン {availableVersion} をダウンロードできます。"
 
@@ -7888,7 +7888,7 @@ msgstr "バージョン {availableVersion} をダウンロードできます。"
 msgid "Version and update information"
 msgstr "バージョンと更新情報"
 
-#: src/renderer/src/components/AboutPage.tsx:168
+#: src/renderer/src/components/AboutPage.tsx:157
 msgid "Version updates"
 msgstr "バージョン更新"
 
@@ -7942,11 +7942,11 @@ msgstr "項目を表示、パスワードを非表示"
 msgid "View password history"
 msgstr "パスワード履歴を表示"
 
-#: src/renderer/src/components/AboutPage.tsx:147
+#: src/renderer/src/components/AboutPage.tsx:136
 msgid "View the current version, update status, and project information."
 msgstr "現在のバージョン、更新状態、プロジェクト情報を表示します。"
 
-#: src/renderer/src/components/AboutPage.tsx:261
+#: src/renderer/src/components/AboutPage.tsx:250
 msgid "View the source code, report an issue, or get the latest release."
 msgstr "ソースコードの表示、問題の報告、または最新リリースの取得を行います。"
 
