@@ -69,7 +69,11 @@ import type {
   AttachmentUploadCardCoverRequest,
   AttachmentUploadRequest,
   AttachmentUploadResult,
-  VaultImportResult
+  VaultImportResult,
+  LoginApprovalPrompt,
+  AccountSessionDeauthorizationRequest,
+  LoginApprovalResponse,
+  SyncStatus
 } from '../shared/vault-contract'
 import type { SshKeyMaterial } from './ssh-key'
 import type {
@@ -105,6 +109,8 @@ import type { PortableVaultSnapshot } from './vault-portability-codec'
 import type { NativeAttachmentRestoreAttachmentKey } from './native-attachment-restore'
 import type { NativeAttachmentBackupPreview } from './native-attachment-backup'
 import type { BitwardenAttachmentByteSource } from './bitwarden-attachment-stream'
+import type { BitwardenNotificationConnectionInfo } from './bitwarden-notifications'
+
 export type {
   VaultAccountWebAuthnAssertionRequester,
   VaultAccountWebAuthnRegistrationRequester,
@@ -672,5 +678,142 @@ export class VaultService extends VaultAccountService {
     masterPassword: string
   ): Promise<Omit<VaultImportResult, 'canceled'>> {
     return this.portability.importPortableSnapshot(snapshot, skippedTrashItems, masterPassword)
+  }
+
+  getAccountSecurityProfile(): Promise<import('../shared/vault-contract').AccountSecurityProfile> {
+    return this.accountSecurity.getAccountSecurityProfile()
+  }
+
+  updateAccountProfileName(request: {
+    name: string
+    expectedName: string
+  }): Promise<import('../shared/vault-contract').AccountSecurityProfile> {
+    return this.accountSecurity.updateAccountProfileName(request)
+  }
+
+  updateAccountAvatarColor(request: {
+    avatarColor: string | null
+    expectedAvatarColor: string | null
+  }): Promise<import('../shared/vault-contract').AccountSecurityProfile> {
+    return this.accountSecurity.updateAccountAvatarColor(request)
+  }
+
+  getAccountDevices(): Promise<import('../shared/vault-contract').AccountDevicesResult> {
+    return this.accountSecurity.getAccountDevices()
+  }
+
+  prepareLoginApproval(requestId: string): Promise<LoginApprovalPrompt | null> {
+    return this.accountSecurity.prepareLoginApproval(requestId)
+  }
+
+  getPendingLoginApprovals(): Promise<LoginApprovalPrompt[]> {
+    return this.accountSecurity.getPendingLoginApprovals()
+  }
+
+  respondLoginApproval(response: LoginApprovalResponse): Promise<void> {
+    return this.accountSecurity.respondLoginApproval(response)
+  }
+
+  deauthorizeAllSessions(request: AccountSessionDeauthorizationRequest): Promise<SyncStatus> {
+    return this.accountSecurity.deauthorizeAllSessions(request)
+  }
+
+  resendAccountVerificationEmail(): Promise<void> {
+    return this.accountSecurity.resendAccountVerificationEmail()
+  }
+
+  copyAccountApiClientId(): Promise<void> {
+    return this.accountSecurity.copyAccountApiClientId()
+  }
+
+  copyPersonalApiKey(request: {
+    masterPassword: string
+    rotate: boolean
+    confirmRotation: boolean
+  }): Promise<{ rotated: boolean; revisionDate: string }> {
+    return this.accountSecurity.copyPersonalApiKey(request)
+  }
+
+  getTwoFactorStatus(): Promise<{ type: number; enabled: boolean }[]> {
+    return this.accountSecurity.getTwoFactorStatus()
+  }
+
+  disableTwoFactorProvider(request: {
+    type: 0 | 1 | 2 | 3 | 7
+    masterPassword: string
+    confirm: true
+  }): Promise<void> {
+    return this.accountSecurity.disableTwoFactorProvider(request)
+  }
+
+  copyTwoFactorRecoveryCode(request: { masterPassword: string }): Promise<void> {
+    return this.accountSecurity.copyTwoFactorRecoveryCode(request)
+  }
+
+  beginAccountAuthenticatorSetup(request: { masterPassword: string }): Promise<{
+    sessionId: string
+    key: string
+    requiresMasterPassword: boolean
+    expiresAt: number
+  }> {
+    return this.accountSecurity.beginAccountAuthenticatorSetup(request)
+  }
+
+  copyAccountAuthenticatorKey(request: { sessionId: string }): Promise<void> {
+    return this.accountSecurity.copyAccountAuthenticatorKey(request)
+  }
+
+  completeAccountAuthenticatorSetup(request: {
+    sessionId: string
+    token: string
+    masterPassword?: string
+  }): Promise<void> {
+    return this.accountSecurity.completeAccountAuthenticatorSetup(request)
+  }
+
+  beginAccountEmailTwoFactorSetup(request: { masterPassword: string }): Promise<{
+    sessionId: string
+    requiresMasterPassword: boolean
+    expiresAt: number
+  }> {
+    return this.accountSecurity.beginAccountEmailTwoFactorSetup(request)
+  }
+
+  sendAccountEmailTwoFactorSetup(request: {
+    sessionId: string
+    email: string
+    masterPassword?: string
+  }): Promise<void> {
+    return this.accountSecurity.sendAccountEmailTwoFactorSetup(request)
+  }
+
+  completeAccountEmailTwoFactorSetup(request: {
+    sessionId: string
+    token: string
+    masterPassword?: string
+  }): Promise<void> {
+    return this.accountSecurity.completeAccountEmailTwoFactorSetup(request)
+  }
+
+  listAccountWebAuthnKeys(request: {
+    masterPassword: string
+  }): Promise<{ id: number; name: string; migrated: boolean }[]> {
+    return this.accountSecurity.listAccountWebAuthnKeys(request)
+  }
+
+  enrollAccountWebAuthnKey(request: { masterPassword: string; name: string }): Promise<void> {
+    return this.accountSecurity.enrollAccountWebAuthnKey(request)
+  }
+
+  removeAccountWebAuthnKey(request: {
+    id: number
+    masterPassword: string
+    confirm: true
+  }): Promise<void> {
+    return this.accountSecurity.removeAccountWebAuthnKey(request)
+  }
+
+  notificationConnectionInfo(): Promise<BitwardenNotificationConnectionInfo | null> {
+    return this.accountSecurity.notificationConnectionInfo()
   }
 }

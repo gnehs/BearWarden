@@ -1,6 +1,5 @@
 import { randomInt as nodeRandomInt, randomUUID } from 'node:crypto'
 import type {
-  LoginApprovalPrompt,
   OrganizationView,
   CollectionView,
   SyncPurgePersonalVaultResult,
@@ -12,10 +11,8 @@ import {
   BitwardenDirectError,
   type BitwardenFolder,
   type BitwardenLoginItem,
-  type BitwardenLoginApprovalRequest,
   type BitwardenSendItem,
-  type BitwardenSyncClient,
-  type BitwardenWebAuthnRegistrationSetup
+  type BitwardenSyncClient
 } from './bitwarden-direct'
 import { BITWARDEN_POLICY_TYPE } from './bitwarden-policy'
 import { EncryptedVaultStore } from './encrypted-vault-store'
@@ -39,12 +36,10 @@ import {
 } from './sync-merge'
 import { VaultError } from './vault-errors'
 import type { VaultAttachmentFileService } from './vault-attachment-files'
-import type { AccountWebAuthnAttestation } from './account-webauthn-registration-codec'
 import {
   DATA_VERSION,
   MAX_MASTER_PASSWORD_LENGTH,
   MAX_USERNAME_LENGTH,
-  MAX_PASSWORD_LENGTH,
   MAX_PENDING_LOGIN_IMPORT_ENTRIES,
   MAX_PENDING_LOGIN_IMPORT_MARKER_LENGTH
 } from './vault/limits'
@@ -91,11 +86,7 @@ import {
   assertSendMutationAllowed,
   maximumVaultTimeoutMinutes
 } from './vault/policy'
-import {
-  VaultSyncSession,
-  type AuthenticatorSetupSession,
-  type EmailTwoFactorSetupSession
-} from './vault/sync-session'
+import { VaultSyncSession } from './vault/sync-session'
 import { VaultFolders } from './vault/folders'
 import { VaultHealth } from './vault/health'
 import { VaultListings } from './vault/listings'
@@ -142,53 +133,7 @@ import { VaultItemAuthorization } from './vault/item-authorization'
 import { VaultItems } from './vault/items'
 import { VaultIntegrations } from './vault/integrations'
 import { VaultWebsiteIcons } from './vault/website-icons'
-
-interface AccountWebAuthnOperationLease {
-  readonly generation: number
-  readonly client: BitwardenSyncClient
-  readonly abort: AbortController
-}
-
-const LOGIN_APPROVAL_TTL_MS = 15 * 60 * 1_000
-const MAX_LOGIN_APPROVAL_SESSIONS = 64
-
-function clearAccountWebAuthnRegistrationSetup(
-  setup: BitwardenWebAuthnRegistrationSetup | null
-): void {
-  if (!setup) return
-  setup.userVerificationToken = null
-  setup.keys.splice(0)
-}
-
-function clearAccountWebAuthnAttestation(attestation: AccountWebAuthnAttestation | null): void {
-  if (!attestation) return
-  attestation.id = ''
-  attestation.rawId = ''
-  attestation.response.clientDataJSON = ''
-  attestation.response.attestationObject = ''
-  attestation.clientExtensionResults = {}
-  attestation.authenticatorAttachment = null
-}
-
-function scrubAccountSessionDeauthorizationRequest(value: unknown): void {
-  if (typeof value !== 'object' || value === null) return
-  for (const key of ['masterPassword', 'confirmation'] as const) {
-    try {
-      const descriptor = Object.getOwnPropertyDescriptor(value, key)
-      if (!descriptor || !('value' in descriptor)) continue
-      Reflect.defineProperty(value, key, { ...descriptor, value: '' })
-    } catch {
-      // Cleanup is best-effort and must not invoke accessors or replace the intended result.
-    }
-  }
-}
-
-export {
-  clearAccountWebAuthnRegistrationSetup,
-  clearAccountWebAuthnAttestation,
-  scrubAccountSessionDeauthorizationRequest
-}
-export type { AccountWebAuthnOperationLease }
+import { VaultAccountSecurity } from './vault/account-security'
 
 function changesRemote(action: SyncAction): boolean {
   if (action.kind === 'conflict-copy') return action.reason !== 'both-modified'
@@ -228,6 +173,7 @@ export class VaultServiceBase {
   protected readonly items: VaultItems
   protected readonly integrations: VaultIntegrations
   protected readonly websiteIcons: VaultWebsiteIcons
+  protected readonly accountSecurity: VaultAccountSecurity
 
   constructor(
     protected readonly store: EncryptedVaultStore<unknown>,
@@ -311,6 +257,13 @@ export class VaultServiceBase {
     this.items = new VaultItems(this.core, this.platform)
     this.integrations = new VaultIntegrations(this.core, this.authorization)
     this.websiteIcons = new VaultWebsiteIcons(this.core, this.fetch, this.imageCache)
+    this.accountSecurity = new VaultAccountSecurity(
+      this.core,
+      this.syncSession,
+      this.health,
+      this.platform,
+      this.requestAccountWebAuthnRegistration
+    )
   }
 
   status(): Promise<VaultStatus> {
@@ -912,140 +865,6 @@ export class VaultServiceBase {
     }
   }
 
-  protected assertAccountWebAuthnOperationCurrent(
-    lease: AccountWebAuthnOperationLease
-  ): Promise<void> {
-    return this.core.exclusive(async () => {
-      this.core.requireData()
-      if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
-        throw new VaultError('LOCKED')
-      }
-      if (this.syncSession.syncClient !== lease.client || !lease.client.exportState().session) {
-        throw new VaultError('SYNC_AUTH_REQUIRED')
-      }
-    })
-  }
-
-  protected finishAccountWebAuthnOperation(lease: AccountWebAuthnOperationLease): Promise<void> {
-    return this.core.exclusive(async () => {
-      this.core.requireData()
-      if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
-        throw new VaultError('LOCKED')
-      }
-      if (this.syncSession.syncClient !== lease.client || !lease.client.exportState().session) {
-        throw new VaultError('SYNC_AUTH_REQUIRED')
-      }
-      await this.syncSession.persistCurrentClientState()
-      if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
-        throw new VaultError('LOCKED')
-      }
-      if (this.syncSession.syncClient !== lease.client || !lease.client.exportState().session) {
-        throw new VaultError('SYNC_AUTH_REQUIRED')
-      }
-      this.syncSession.accountSecurityAborts.delete(lease.abort)
-    })
-  }
-
-  protected releaseAccountWebAuthnOperation(lease: AccountWebAuthnOperationLease): Promise<void> {
-    return this.core.exclusive(async () => {
-      this.syncSession.accountSecurityAborts.delete(lease.abort)
-    })
-  }
-
-  protected throwAccountWebAuthnOperationError(
-    error: unknown,
-    lease: AccountWebAuthnOperationLease
-  ): never {
-    if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
-      throw new VaultError('LOCKED')
-    }
-    if (this.syncSession.syncClient !== lease.client || !lease.client.exportState().session) {
-      throw new VaultError('SYNC_AUTH_REQUIRED')
-    }
-    if (error instanceof BitwardenDirectError) {
-      if (error.code === 'USER_VERIFICATION_FAILED') {
-        throw new VaultError('INVALID_MASTER_PASSWORD')
-      }
-      if (error.code === 'TWO_FACTOR_MUTATION_UNKNOWN') {
-        throw new VaultError('TWO_FACTOR_MUTATION_UNKNOWN')
-      }
-      if (error.code === 'NOT_FOUND') throw new VaultError('NOT_FOUND')
-    }
-    if (error instanceof VaultError) throw error
-    throw this.syncSession.mapSyncError(error)
-  }
-
-  protected assertLoginApprovalLease(lease: {
-    generation: number
-    client: BitwardenSyncClient
-    abort: AbortController
-  }): void {
-    if (
-      lease.abort.signal.aborted ||
-      lease.generation !== this.core.generation ||
-      lease.client !== this.syncSession.syncClient ||
-      !lease.client.exportState().session
-    ) {
-      throw new VaultError('SYNC_AUTH_REQUIRED')
-    }
-  }
-
-  protected issueLoginApproval(
-    request: BitwardenLoginApprovalRequest,
-    client: BitwardenSyncClient,
-    generation: number
-  ): LoginApprovalPrompt | null {
-    const now = this.core.now().getTime()
-    const expiresAt = Date.parse(request.createdAt) + LOGIN_APPROVAL_TTL_MS
-    for (const [token, session] of this.syncSession.loginApprovalSessions) {
-      if (
-        session.expiresAt <= now ||
-        session.generation !== this.core.generation ||
-        session.client !== this.syncSession.syncClient
-      ) {
-        this.syncSession.loginApprovalSessions.delete(token)
-        continue
-      }
-      if (
-        session.requestId === request.id &&
-        session.fingerprint === request.fingerprint &&
-        session.client === client &&
-        session.generation === generation
-      ) {
-        return {
-          token,
-          fingerprint: session.fingerprint,
-          requestDeviceType: session.requestDeviceType,
-          createdAt: session.createdAt,
-          expiresAt: new Date(session.expiresAt).toISOString()
-        }
-      }
-    }
-    if (!Number.isFinite(expiresAt) || expiresAt <= now) return null
-    while (this.syncSession.loginApprovalSessions.size >= MAX_LOGIN_APPROVAL_SESSIONS) {
-      const oldest = this.syncSession.loginApprovalSessions.keys().next().value
-      if (oldest === undefined) break
-      this.syncSession.loginApprovalSessions.delete(oldest)
-    }
-    const token = randomUUID()
-    this.syncSession.loginApprovalSessions.set(token, {
-      generation,
-      client,
-      requestId: request.id,
-      fingerprint: request.fingerprint,
-      requestDeviceType: request.requestDeviceType,
-      createdAt: request.createdAt,
-      expiresAt
-    })
-    return {
-      token,
-      fingerprint: request.fingerprint,
-      requestDeviceType: request.requestDeviceType,
-      createdAt: request.createdAt,
-      expiresAt: new Date(expiresAt).toISOString()
-    }
-  }
-
   protected async recoverNativeAttachmentRestoreAfterUnlock(
     requiresMigration: boolean
   ): Promise<void> {
@@ -1109,90 +928,6 @@ export class VaultServiceBase {
     complete.masterPasswordChange = null
     complete.updatedAt = this.core.nowIso()
     await this.core.commit(complete, generation)
-  }
-
-  protected evictExpiredAuthenticatorSetupSessions(): void {
-    const now = this.core.now().getTime()
-    for (const [sessionId, session] of this.syncSession.authenticatorSetupSessions) {
-      if (session.expiresAt <= now) this.syncSession.deleteAuthenticatorSetupSession(sessionId)
-    }
-  }
-
-  protected requireAuthenticatorSetupSession(sessionId: string): AuthenticatorSetupSession {
-    this.evictExpiredAuthenticatorSetupSessions()
-    const session = this.syncSession.authenticatorSetupSessions.get(sessionId)
-    if (
-      !session ||
-      session.generation !== this.core.generation ||
-      session.client !== this.syncSession.syncClient ||
-      !session.client.exportState().session
-    ) {
-      if (session) this.syncSession.deleteAuthenticatorSetupSession(sessionId)
-      throw new VaultError('INVALID_INPUT')
-    }
-    return session
-  }
-
-  protected evictExpiredEmailTwoFactorSetupSessions(): void {
-    const now = this.core.now().getTime()
-    for (const [sessionId, session] of this.syncSession.emailTwoFactorSetupSessions) {
-      if (session.expiresAt <= now) this.syncSession.deleteEmailTwoFactorSetupSession(sessionId)
-    }
-  }
-
-  protected requireEmailTwoFactorSetupSession(
-    sessionId: string,
-    phase: EmailTwoFactorSetupSession['phase']
-  ): EmailTwoFactorSetupSession {
-    this.evictExpiredEmailTwoFactorSetupSessions()
-    const session = this.syncSession.emailTwoFactorSetupSessions.get(sessionId)
-    if (!session) throw new VaultError('INVALID_INPUT')
-    if (
-      session.generation !== this.core.generation ||
-      session.client !== this.syncSession.syncClient ||
-      !session.client.exportState().session
-    ) {
-      this.syncSession.deleteEmailTwoFactorSetupSession(sessionId)
-      throw new VaultError('INVALID_INPUT')
-    }
-    if (session.phase !== phase) throw new VaultError('INVALID_INPUT')
-    return session
-  }
-
-  protected validateEmailTwoFactorSetupPassword(
-    session: EmailTwoFactorSetupSession,
-    masterPassword: string | undefined
-  ): void {
-    if (session.verificationMode === 'server-token') {
-      if (masterPassword !== undefined) throw new VaultError('INVALID_INPUT')
-      return
-    }
-    if (
-      typeof masterPassword !== 'string' ||
-      masterPassword.length === 0 ||
-      masterPassword.length > MAX_PASSWORD_LENGTH
-    ) {
-      throw new VaultError('INVALID_INPUT')
-    }
-  }
-
-  protected throwTwoFactorMutationError(
-    error: unknown,
-    lease: { abort: AbortController; generation: number }
-  ): never {
-    if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
-      throw new VaultError('LOCKED')
-    }
-    if (error instanceof BitwardenDirectError) {
-      if (error.code === 'USER_VERIFICATION_FAILED') {
-        throw new VaultError('INVALID_MASTER_PASSWORD')
-      }
-      if (error.code === 'TWO_FACTOR_MUTATION_UNKNOWN') {
-        throw new VaultError('TWO_FACTOR_MUTATION_UNKNOWN')
-      }
-    }
-    if (error instanceof VaultError) throw error
-    throw this.syncSession.mapSyncError(error)
   }
 
   protected applyBitwardenPolicyRuntimeState(data: VaultData): void {
