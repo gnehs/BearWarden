@@ -516,3 +516,24 @@ export function throwSharedSnapshotError(
   }
   throw new BitwardenDirectError('INVALID_RESPONSE', undefined, stage)
 }
+
+/** Compares the parts of two snapshots the vault screens render; sync bookkeeping is ignored. */
+export function visibleVaultContentChanged(
+  before: VaultData | null,
+  after: VaultData | null
+): boolean {
+  if (before === after) return false
+  if (!before || !after) return true
+  return JSON.stringify(visibleVaultContent(before)) !== JSON.stringify(visibleVaultContent(after))
+}
+
+function visibleVaultContent(data: VaultData): unknown[] {
+  return [
+    data.logins,
+    data.folders,
+    data.sharedLogins,
+    data.organizations,
+    data.collections,
+    data.sends
+  ]
+}

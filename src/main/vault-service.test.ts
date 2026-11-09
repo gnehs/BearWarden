@@ -1568,6 +1568,34 @@ describe('VaultService encrypted local data', () => {
     ])
   })
 
+  it('reports whether a sync changed local vault content', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+
+    await expect(service.syncNow()).resolves.toMatchObject({ localDataChanged: false })
+
+    fake!.remoteLogins[0] = {
+      ...fake!.remoteLogins[0]!,
+      name: 'Renamed on another device',
+      revisionDate: '2026-07-15T00:00:00.000Z'
+    }
+    await expect(service.syncNow()).resolves.toMatchObject({
+      pulled: 1,
+      localDataChanged: true
+    })
+  })
+
   it('downloads the remote vault again after pushing local changes', async () => {
     let fake: ReturnType<typeof createSyncFake> | null = null
     const { service } = await createHarness({

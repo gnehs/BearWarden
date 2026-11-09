@@ -10,7 +10,7 @@ import { MAX_MASTER_PASSWORD_LENGTH, MAX_USERNAME_LENGTH } from './limits'
 import { normalizeRequiredString, normalizeSyncPassword } from './parse-primitives'
 import { cloneData } from './vault-data-parsing'
 import { assertNoPendingPersonalVaultPurge } from './sync-data-parsing'
-import type { PersistedSyncData, VaultData } from './types'
+import type { PersistedSyncData, SyncNowResult, VaultData } from './types'
 import type {
   EquivalentDomainSettingsUpdate,
   EquivalentDomainSettingsView,
@@ -30,7 +30,10 @@ import {
   normalizeEquivalentDomainUpdate
 } from './equivalent-domains'
 import { isRecord } from '../validation-primitives'
-import { getAuthoritativeEquivalentDomainSettings } from './sync-snapshots'
+import {
+  getAuthoritativeEquivalentDomainSettings,
+  visibleVaultContentChanged
+} from './sync-snapshots'
 
 function initialSyncData(serverUrl: string, email: string): PersistedSyncData {
   return {
@@ -324,14 +327,18 @@ export class VaultSyncService {
     }
   }
 
-  syncNow(): Promise<SyncResult> {
+  syncNow(): Promise<SyncNowResult> {
     return this.core.exclusive(async () => {
       const data = this.core.requireData()
       const sync = this.syncSession.requireSyncData()
       const client = this.syncSession.getOrCreateSyncClient(sync)
       const abort = this.syncSession.startSyncOperation()
       try {
-        return await this.syncEngine.performSync(data, client, abort.signal)
+        const result = await this.syncEngine.performSync(data, client, abort.signal)
+        return {
+          ...result,
+          localDataChanged: visibleVaultContentChanged(data, this.core.currentData())
+        }
       } catch (error) {
         await this.syncSession.persistCurrentClientState().catch(() => undefined)
         throw this.syncSession.mapSyncError(error)

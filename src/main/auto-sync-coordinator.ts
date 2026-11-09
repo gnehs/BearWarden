@@ -1,4 +1,5 @@
-import type { SyncResult, SyncStatus } from '../shared/vault-contract'
+import type { SyncStatus } from '../shared/vault-contract'
+import type { SyncNowResult } from './vault/types'
 
 const DEFAULT_AUTO_SYNC_DELAY_MS = 10 * 60 * 1_000
 const DEFAULT_SAFETY_MIN_DELAY_MS = 10 * 60 * 1_000
@@ -11,7 +12,7 @@ type TimerKind = 'request' | 'safety' | 'retry'
 
 export interface AutoSyncVault {
   syncStatus: () => Promise<SyncStatus>
-  syncNow: () => Promise<SyncResult>
+  syncNow: () => Promise<SyncNowResult>
 }
 
 export interface AutoSyncCoordinatorOptions {
@@ -216,7 +217,7 @@ export class AutoSyncCoordinator {
       const result = await this.options.vault.syncNow()
       if (this.disposed || runEpoch !== this.epoch) return
       this.notifySyncChanged(result)
-      this.notifyVaultChanged()
+      if (result.localDataChanged) this.notifyVaultChanged()
 
       if (result.state === 'error') this.recordFailure()
       else this.consecutiveFailures = 0

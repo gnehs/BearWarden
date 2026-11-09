@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { SyncResult, SyncStatus } from '../shared/vault-contract'
+import type { SyncStatus } from '../shared/vault-contract'
+import type { SyncNowResult } from './vault/types'
 import {
   AutoSyncCoordinator,
   type AutoSyncCoordinatorOptions,
@@ -13,12 +14,13 @@ const READY_STATUS: SyncStatus = {
   lastSyncAt: '2026-07-15T00:00:00.000Z'
 }
 
-const SYNC_RESULT: SyncResult = {
+const SYNC_RESULT: SyncNowResult = {
   ...READY_STATUS,
   pulled: 1,
   pushed: 2,
   deleted: 0,
-  conflicts: 0
+  conflicts: 0,
+  localDataChanged: true
 }
 
 function createDeferred<T>(): {
@@ -111,6 +113,18 @@ describe('AutoSyncCoordinator', () => {
     })
     expect(onSyncChanged).toHaveBeenNthCalledWith(2, SYNC_RESULT)
     expect(events).toEqual(['sync:syncing', 'sync:ready', 'vault:changed'])
+  })
+
+  it('does not announce a vault change when the sync left local content untouched', async () => {
+    const { coordinator, syncNow, onSyncChanged, onVaultChanged } = createHarness()
+    syncNow.mockResolvedValueOnce({ ...SYNC_RESULT, pulled: 0, pushed: 0, localDataChanged: false })
+
+    coordinator.request()
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(syncNow).toHaveBeenCalledOnce()
+    expect(onSyncChanged).toHaveBeenCalledWith(expect.objectContaining({ state: 'ready' }))
+    expect(onVaultChanged).not.toHaveBeenCalled()
   })
 
   it('reports a locked status without syncing', async () => {
@@ -389,7 +403,7 @@ describe('AutoSyncCoordinator', () => {
   })
 
   it('runs one more sync when a request arrives while syncing', async () => {
-    const firstSync = createDeferred<SyncResult>()
+    const firstSync = createDeferred<SyncNowResult>()
     const { coordinator, syncStatus, syncNow } = createHarness()
     syncNow.mockReturnValueOnce(firstSync.promise).mockResolvedValueOnce(SYNC_RESULT)
 
@@ -447,7 +461,7 @@ describe('AutoSyncCoordinator', () => {
   })
 
   it('uses epochs to prevent an in-flight sync from restarting timers after cancel or dispose', async () => {
-    const pending = createDeferred<SyncResult>()
+    const pending = createDeferred<SyncNowResult>()
     const cancelled = createHarness(250, {
       safetyMinDelayMs: 1_000,
       safetyMaxDelayMs: 1_000
@@ -460,7 +474,7 @@ describe('AutoSyncCoordinator', () => {
     await vi.advanceTimersByTimeAsync(2_000)
     expect(cancelled.syncNow).toHaveBeenCalledOnce()
 
-    const disposedPending = createDeferred<SyncResult>()
+    const disposedPending = createDeferred<SyncNowResult>()
     const disposed = createHarness(250, {
       safetyMinDelayMs: 1_000,
       safetyMaxDelayMs: 1_000
@@ -475,7 +489,7 @@ describe('AutoSyncCoordinator', () => {
   })
 
   it('honors a new-epoch request queued while a cancelled run is still settling', async () => {
-    const pending = createDeferred<SyncResult>()
+    const pending = createDeferred<SyncNowResult>()
     const { coordinator, syncNow } = createHarness()
     syncNow.mockReturnValueOnce(pending.promise).mockResolvedValueOnce(SYNC_RESULT)
 

@@ -5,6 +5,7 @@ import type {
   LoginView,
   OrganizationView,
   SendView,
+  SyncResult,
   VaultCustomField,
   VaultItemFields,
   VaultPasswordHistoryEntry,
@@ -395,3 +396,8 @@ export type ItemReadAuthorizationValidator = (
   ids: readonly string[],
   state: { generation: number }
 ) => boolean
+
+/** A sync result that also says whether anything the vault screens show was replaced. */
+export interface SyncNowResult extends SyncResult {
+  readonly localDataChanged: boolean
+}

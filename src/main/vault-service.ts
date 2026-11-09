@@ -119,6 +119,7 @@ import type {
   VaultMasterPasswordChangeRequest,
   VaultMasterPasswordChangeResolutionRequest,
   VaultMasterPasswordChangeResolution,
+  SyncNowResult,
   VaultPlatform,
   VaultServiceOptions
 } from './vault/types'
@@ -175,7 +176,8 @@ export type {
   PasskeyVaultCreateRequest,
   PasskeyVaultCreateResult,
   PasskeyVaultAssertionRequest,
-  PasskeyVaultAssertionResult
+  PasskeyVaultAssertionResult,
+  SyncNowResult
 } from './vault/types'
 
 /**
@@ -388,7 +390,7 @@ export class VaultService {
     return this.sync.unlockSyncWithLocalPassword(masterPassword)
   }
 
-  syncNow(): Promise<SyncResult> {
+  syncNow(): Promise<SyncNowResult> {
     return this.sync.syncNow()
   }
 
