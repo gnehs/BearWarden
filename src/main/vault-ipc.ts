@@ -103,7 +103,8 @@ import {
   type SendFileCreateRequest,
   type SendFileDownloadRequest,
   type SendUpdateRequest,
-  type SendIdRequest
+  type SendIdRequest,
+  type VaultStatus
 } from '../shared/vault-contract'
 import type { AppSettingsService } from './app-settings'
 import { ACCOUNT_ID_PATTERN } from './account-paths'
@@ -263,11 +264,8 @@ export interface VaultIpcOptions {
   }
   twoFactorDirectory?: TwoFactorDirectoryCache
   afterSetup?: () => void | Promise<void>
-  beforeLock?: () => void | Promise<void>
-  /** Always runs after a manual lock attempt, including teardown or lock failures. */
-  afterLockAttempt?: () => void
-  /** Runs only after a manual lock has succeeded. */
-  afterLock?: () => void
+  /** The app-wide lock barrier; without one, a manual lock only locks the vault service. */
+  lockVault?: () => Promise<VaultStatus>
   afterUnlock?: (masterPassword: string) => void | Promise<void>
   afterPinUnlock?: () => void | Promise<void>
   afterMasterPasswordChanged?: (status: SyncStatus) => void
@@ -2430,20 +2428,8 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
     { scrubInput: scrubMasterPasswordChangeInput }
   )
   ipc.handle('vault:lock', parseNoInput, async () => {
-    try {
-      await Promise.resolve(options.beforeLock?.())
-      authorizations.clear()
-      const status = await vault.lock()
-      options.afterLock?.()
-      return status
-    } finally {
-      // Timer cleanup is defensive bookkeeping; it must not replace the lock outcome.
-      try {
-        options.afterLockAttempt?.()
-      } catch {
-        // A failed cleanup callback cannot safely change a successful lock into an IPC error.
-      }
-    }
+    authorizations.clear()
+    return options.lockVault ? options.lockVault() : vault.lock()
   })
   ipc.handle('vault:export', parseVaultExport, async (request) => {
     try {

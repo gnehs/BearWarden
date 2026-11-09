@@ -707,15 +707,34 @@ describe('main WebAuthn lifecycle wiring', () => {
     expect(harness.vaultTimeoutCancel).toHaveBeenCalledTimes(2)
   })
 
-  it('wires manual locks to cancel timers after both success-only and attempt callbacks', () => {
-    const afterLock = harness.vaultIpcOptions!.afterLock as () => void
-    const afterLockAttempt = harness.vaultIpcOptions!.afterLockAttempt as () => void
+  it('routes manual locks through the same teardown and timer cancellation as other locks', async () => {
+    const lockVault = harness.vaultIpcOptions!.lockVault as () => Promise<unknown>
+    harness.vaultLock.mockClear()
     harness.vaultTimeoutCancel.mockClear()
+    harness.lifecycleEvents.length = 0
 
-    afterLock()
-    expect(harness.vaultTimeoutCancel).toHaveBeenCalledOnce()
-    afterLockAttempt()
+    await lockVault()
+
+    expect(harness.lifecycleEvents).toEqual(
+      expect.arrayContaining(['notifications.stop', 'portability.dispose', 'vault.lock'])
+    )
+    expect(harness.lifecycleEvents.indexOf('notifications.stop')).toBeLessThan(
+      harness.lifecycleEvents.indexOf('vault.lock')
+    )
     expect(harness.vaultTimeoutCancel).toHaveBeenCalledTimes(2)
+  })
+
+  it('fails a manual lock closed and still tells the renderer the vault is locked', async () => {
+    const lockVault = harness.vaultIpcOptions!.lockVault as () => Promise<unknown>
+    const webContents = harness.windows[0]!.webContents as unknown as {
+      send: ReturnType<typeof vi.fn>
+    }
+    webContents.send.mockClear()
+    harness.vaultLock.mockRejectedValueOnce(new Error('lock failed'))
+
+    await expect(lockVault()).resolves.toBeDefined()
+
+    expect(webContents.send).toHaveBeenCalledWith('vault:locked')
   })
 
   it('invalidates the Touch ID generation before asynchronous teardown can reject', async () => {
@@ -728,9 +747,9 @@ describe('main WebAuthn lifecycle wiring', () => {
           rejectTeardown = reject
         })
     )
-    const beforeLock = harness.vaultIpcOptions!.beforeLock as () => Promise<void>
+    const beforeActivation = harness.accountSwitchOptions!.beforeActivation as () => Promise<void>
 
-    const locking = beforeLock()
+    const locking = beforeActivation()
     expect(lockGeneration()).toBe(initialGeneration + 1)
     await vi.waitFor(() => expect(rejectTeardown).toBeTypeOf('function'))
     rejectTeardown(new Error('teardown failed'))
@@ -828,7 +847,7 @@ describe('main WebAuthn lifecycle wiring', () => {
     await expect(requestRegistration(input)).resolves.toEqual({ attestation: true })
     expect(harness.registrationController.run).toHaveBeenCalledWith(input)
 
-    await (harness.vaultIpcOptions!.beforeLock as () => Promise<void>)()
+    await (harness.accountSwitchOptions!.beforeActivation as () => Promise<void>)()
     await (harness.vaultIpcOptions!.beforeSyncReconfigure as () => Promise<void>)()
     harness.powerMonitorListeners.get('lock-screen')!()
     harness.powerMonitorListeners.get('suspend')!()

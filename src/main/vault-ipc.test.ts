@@ -1064,18 +1064,9 @@ describe('registerVaultIpc settings activity', () => {
 })
 
 describe('registerVaultIpc manual lock lifecycle', () => {
-  function lockHarness(
-    options: {
-      beforeLock?: () => void | Promise<void>
-      lock?: () => Promise<{ state: 'locked' }>
-      afterLockAttempt?: () => void
-    } = {}
-  ): {
+  function lockHarness(options: { lockVault?: () => Promise<{ state: 'locked' }> } = {}): {
     event: unknown
-    beforeLock: ReturnType<typeof vi.fn>
     lock: ReturnType<typeof vi.fn>
-    afterLock: ReturnType<typeof vi.fn>
-    afterLockAttempt: ReturnType<typeof vi.fn>
   } {
     const mainFrame = { url: 'app://bearwarden/index.html' }
     const webContents = {
@@ -1085,98 +1076,43 @@ describe('registerVaultIpc manual lock lifecycle', () => {
       send: vi.fn(),
       isDestroyed: () => false
     }
-    const beforeLock = vi.fn(options.beforeLock ?? (() => undefined))
-    const lock = vi.fn(options.lock ?? (async () => ({ state: 'locked' as const })))
-    const afterLock = vi.fn()
-    const afterLockAttempt = vi.fn(options.afterLockAttempt ?? (() => undefined))
+    const lock = vi.fn(async () => ({ state: 'locked' as const }))
     registerVaultIpc({
       vault: { lock } as unknown as VaultService,
       portability: {} as Parameters<typeof registerVaultIpc>[0]['portability'],
       settings: {} as AppSettingsService,
       sshKeyImportSessions: new SshKeyImportSessionStore({ readClipboard: () => '' }),
       getMainWindow: () => ({ isDestroyed: () => false, webContents }) as never,
-      beforeLock,
-      afterLock,
-      afterLockAttempt
+      ...(options.lockVault ? { lockVault: options.lockVault } : {})
     })
-    return {
-      event: { sender: webContents, senderFrame: mainFrame },
-      beforeLock,
-      lock,
-      afterLock,
-      afterLockAttempt
-    }
+    return { event: { sender: webContents, senderFrame: mainFrame }, lock }
   }
 
-  it('cancels timeout coordination after a successful manual lock without changing success notification semantics', async () => {
+  it('locks through the app-wide barrier when one is provided', async () => {
+    const lockVault = vi.fn(async () => ({ state: 'locked' as const }))
+    const harness = lockHarness({ lockVault })
+    const lock = electronMock.handlers.get('vault:lock')!
+
+    await expect(lock(harness.event, undefined)).resolves.toEqual({ state: 'locked' })
+
+    expect(lockVault).toHaveBeenCalledOnce()
+    expect(harness.lock).not.toHaveBeenCalled()
+  })
+
+  it('locks the vault service directly without a barrier', async () => {
     const harness = lockHarness()
     const lock = electronMock.handlers.get('vault:lock')!
 
     await expect(lock(harness.event, undefined)).resolves.toEqual({ state: 'locked' })
 
-    expect(harness.beforeLock).toHaveBeenCalledOnce()
     expect(harness.lock).toHaveBeenCalledOnce()
-    expect(harness.afterLock).toHaveBeenCalledOnce()
-    expect(harness.afterLockAttempt).toHaveBeenCalledOnce()
   })
 
-  it('runs the attempt cleanup after a failed manual lock without reporting lock success', async () => {
-    const harness = lockHarness({ lock: async () => Promise.reject(new Error('lock failed')) })
+  it('reports a failing barrier as an internal error', async () => {
+    const harness = lockHarness({ lockVault: async () => Promise.reject(new Error('lock failed')) })
     const lock = electronMock.handlers.get('vault:lock')!
 
     await expect(lock(harness.event, undefined)).rejects.toThrow('BEARWARDEN:INTERNAL_ERROR')
-
-    expect(harness.afterLock).not.toHaveBeenCalled()
-    expect(harness.afterLockAttempt).toHaveBeenCalledOnce()
-  })
-
-  it('runs the attempt cleanup when deferred manual-lock teardown fails before vault.lock', async () => {
-    let rejectTeardown!: (reason: Error) => void
-    const harness = lockHarness({
-      beforeLock: () =>
-        new Promise<void>((_resolve, reject) => {
-          rejectTeardown = reject
-        })
-    })
-    const lock = electronMock.handlers.get('vault:lock')!
-
-    const pending = lock(harness.event, undefined)
-    await vi.waitFor(() => expect(rejectTeardown).toBeTypeOf('function'))
-    rejectTeardown(new Error('teardown failed'))
-    await expect(pending).rejects.toThrow('BEARWARDEN:INTERNAL_ERROR')
-
-    expect(harness.lock).not.toHaveBeenCalled()
-    expect(harness.afterLock).not.toHaveBeenCalled()
-    expect(harness.afterLockAttempt).toHaveBeenCalledOnce()
-  })
-
-  it('preserves the original lock failure when best-effort attempt cleanup also throws', async () => {
-    const harness = lockHarness({
-      lock: async () => Promise.reject(new Error('lock failed')),
-      afterLockAttempt: () => {
-        throw new VaultError('INVALID_INPUT')
-      }
-    })
-    const lock = electronMock.handlers.get('vault:lock')!
-
-    await expect(lock(harness.event, undefined)).rejects.toThrow('BEARWARDEN:INTERNAL_ERROR')
-
-    expect(harness.afterLockAttempt).toHaveBeenCalledOnce()
-    expect(harness.afterLock).not.toHaveBeenCalled()
-  })
-
-  it('preserves a successful lock status when best-effort attempt cleanup throws', async () => {
-    const harness = lockHarness({
-      afterLockAttempt: () => {
-        throw new Error('cleanup failed')
-      }
-    })
-    const lock = electronMock.handlers.get('vault:lock')!
-
-    await expect(lock(harness.event, undefined)).resolves.toEqual({ state: 'locked' })
-
-    expect(harness.afterLock).toHaveBeenCalledOnce()
-    expect(harness.afterLockAttempt).toHaveBeenCalledOnce()
   })
 })
 
@@ -4220,7 +4156,7 @@ describe('registerVaultIpc SSH clipboard imports', () => {
     setGeneration: (generation: number) => void
     setTargetType: (type: 'login' | 'sshKey') => void
     reads: () => number
-    beforeLock: ReturnType<typeof vi.fn>
+    lockVault: ReturnType<typeof vi.fn>
     afterMutation: ReturnType<typeof vi.fn>
   } {
     let reads = 0
@@ -4288,7 +4224,10 @@ describe('registerVaultIpc SSH clipboard imports', () => {
       })),
       lock: vi.fn(async () => ({ state: 'locked' }))
     }
-    const beforeLock = vi.fn(() => sessions.clearAll())
+    const lockVault = vi.fn(async () => {
+      sessions.clearAll()
+      return { state: 'locked' as const }
+    })
     const afterMutation = vi.fn()
     registerVaultIpc({
       vault: vault as unknown as VaultService,
@@ -4296,7 +4235,7 @@ describe('registerVaultIpc SSH clipboard imports', () => {
       settings: {} as AppSettingsService,
       getMainWindow: () => currentWindow as never,
       sshKeyImportSessions: sessions,
-      beforeLock,
+      lockVault,
       afterMutation,
       repromptNow: () => 1_000,
       repromptRandomBytes: (size) => Buffer.alloc(size, 1)
@@ -4315,7 +4254,7 @@ describe('registerVaultIpc SSH clipboard imports', () => {
         targetType = type
       },
       reads: () => reads,
-      beforeLock,
+      lockVault,
       afterMutation
     }
   }
@@ -4401,7 +4340,7 @@ describe('registerVaultIpc SSH clipboard imports', () => {
   })
 
   it('clears import sessions before locking and keeps update reprompt authorization and mutation sync', async () => {
-    const { event, vault, beforeLock, afterMutation } = harness()
+    const { event, vault, lockVault, afterMutation } = harness()
     const begin = electronMock.handlers.get('ssh-key:begin-import')!
     const submit = electronMock.handlers.get('ssh-key:submit-import-passphrase')!
     const lock = electronMock.handlers.get('vault:lock')!
@@ -4440,7 +4379,7 @@ describe('registerVaultIpc SSH clipboard imports', () => {
       passphrase: 'correct passphrase'
     })) as { token: string }
     await lock(event, undefined)
-    expect(beforeLock).toHaveBeenCalledTimes(1)
+    expect(lockVault).toHaveBeenCalledTimes(1)
     const authorizationAfterLock = (await authorize(event, {
       id: '70000000-0000-4000-8000-000000000001',
       masterPassword: 'correct horse battery staple'

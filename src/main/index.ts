@@ -561,33 +561,43 @@ function continueAfterVaultUnlock(masterPassword?: string): void {
   })().catch(() => undefined)
 }
 
-async function beforeVaultLock(): Promise<void> {
-  vaultLockGeneration += 1
-  vaultTimeoutCoordinator?.cancel()
+/** Operations waiting on the user or the unlocked vault; neither a lock nor quit may leave them open. */
+function cancelInteractiveOperations(): void {
   autofillCoordinator?.cancel()
   cancelAccountWebAuthnCeremony()
   passkeyCeremonyService?.onLocked()
   passkeyRendererBridge?.cancelAll()
+  sshAgentBridge?.cancelAll()
+  repromptAuthorizations?.clear()
+}
+
+async function beforeVaultLock(): Promise<void> {
+  vaultLockGeneration += 1
+  vaultTimeoutCoordinator?.cancel()
+  cancelInteractiveOperations()
   autoSync?.cancel()
   await stopServerNotifications()
   await portability?.disposeNativeRestoreSession()
   sshKeyImportSessions?.clearAll()
   sshAgentCoordinator?.onLocked()
-  sshAgentBridge?.cancelAll()
-  repromptAuthorizations?.clear()
   publishSshAgentStatus()
 }
 
-async function lockVault(): Promise<void> {
+/** Tears down every integration and locks the vault without touching the renderer. */
+async function lockVaultSession(): Promise<boolean> {
   try {
-    if (!vault) return
+    if (!vault) return false
     await beforeVaultLock()
     await vault.lock()
-    notifyVaultLocked()
+    return true
   } finally {
     // Activity can arrive while asynchronous teardown runs; never leave that timer armed.
     vaultTimeoutCoordinator?.cancel()
   }
+}
+
+async function lockVault(): Promise<void> {
+  if (await lockVaultSession()) notifyVaultLocked()
 }
 
 async function lockVaultForInactivity(): Promise<void> {
@@ -864,13 +874,9 @@ if (hasSingleInstanceLock)
             registryStore: accountRegistryStore,
             removalJournal: accountRemovalJournal,
             initialCleanupPending: accountRemovalCleanupPending,
+            // The relaunch that follows replaces the renderer, so it is not reloaded here.
             beforeActivation: async () => {
-              try {
-                await beforeVaultLock()
-                await activeVault.lock()
-              } finally {
-                vaultTimeoutCoordinator?.cancel()
-              }
+              await lockVaultSession()
             },
             afterCommitRelaunch: () => {
               app.relaunch()
@@ -1191,13 +1197,10 @@ if (hasSingleInstanceLock)
         await refreshSshAgentAfterUnlock().catch(() => undefined)
         scheduleSshAgentLifecycle()
       },
-      beforeLock: beforeVaultLock,
-      afterLock: () => {
-        vaultTimeoutCoordinator?.cancel()
-        autoSync?.cancel()
-        notifyVaultLocked()
+      lockVault: async () => {
+        await lockVaultFailClosed()
+        return (await vault?.status()) ?? { state: 'uninitialized' }
       },
-      afterLockAttempt: () => vaultTimeoutCoordinator?.cancel(),
       afterUnlock: (masterPassword) => {
         continueAfterVaultUnlock(masterPassword)
         void settings?.migrateLegacyTouchId(masterPassword).catch(() => undefined)
@@ -1351,13 +1354,8 @@ app.on('before-quit', (event) => {
   try {
     sshAgentEnabled = false
     sshAgentLifecycleEpoch += 1
-    cancelAccountWebAuthnCeremony()
-    autofillCoordinator?.cancel()
-    passkeyCeremonyService?.onLocked()
-    passkeyRendererBridge?.cancelAll()
-    sshAgentBridge?.cancelAll()
+    cancelInteractiveOperations()
     sshAgentCoordinator?.reset()
-    repromptAuthorizations?.clear()
   } catch {
     // Continue into the bounded shutdown even if a best-effort cancellation hook fails.
   }
