@@ -464,16 +464,7 @@ export class VaultServiceBase {
       }
       const generation = this.generation
       const material = await this.store.initialize(password, initialData)
-      if (generation !== this.generation) {
-        material.key.fill(0)
-        material.salt.fill(0)
-        throw new VaultError('LOCKED')
-      }
-      this.key = material.key
-      this.salt = material.salt
-      this.data = initialData
-      this.fastReadsBlocked = false
-      return { state: 'unlocked' }
+      return this.installUnlockedVault({ data: initialData, ...material }, generation)
     })
   }
 
@@ -484,25 +475,65 @@ export class VaultServiceBase {
       const password = normalizeMasterPassword(masterPassword)
       const generation = this.generation
       const unlocked = await this.store.unlock(password)
+      return this.installUnlockedVault(unlocked, generation)
+    })
+  }
 
-      try {
-        if (generation !== this.generation) throw new VaultError('LOCKED')
-        const requiresMigration = isRecord(unlocked.data) && unlocked.data.version !== DATA_VERSION
-        this.data = parseVaultDataTagged(unlocked.data)
-        this.key = unlocked.key
-        this.salt = unlocked.salt
-        await this.recoverNativeAttachmentRestoreAfterUnlock(requiresMigration)
-        this.fastReadsBlocked = false
-        return { state: 'unlocked' }
-      } catch (error) {
+  /**
+   * The shared unlock transition. Takes ownership of `unlocked.key` and `unlocked.salt`: they
+   * become the session key material, or are zeroed when the unlock fails. `validate` runs on the
+   * parsed vault before anything is installed. Key-material unlocks pass `startSync` so the
+   * connector starts, restoring the account key when the material carries one.
+   */
+  protected async installUnlockedVault(
+    unlocked: { data: unknown; key: Buffer; salt: Buffer },
+    generation: number,
+    options: {
+      validate?: (data: VaultData) => void
+      startSync?: { material: PinSyncKeyMaterial | null }
+    } = {}
+  ): Promise<VaultStatus> {
+    let installed = false
+    try {
+      if (generation !== this.generation) throw new VaultError('LOCKED')
+      const requiresMigration = isRecord(unlocked.data) && unlocked.data.version !== DATA_VERSION
+      const data = parseVaultDataTagged(unlocked.data)
+      options.validate?.(data)
+      this.data = data
+      this.key = unlocked.key
+      this.salt = unlocked.salt
+      installed = true
+      await this.recoverNativeAttachmentRestoreAfterUnlock(requiresMigration)
+      if (options.startSync && this.data.sync) {
+        const { material } = options.startSync
+        if (material) {
+          this.syncClient ??= this.createSyncClient(this.data.sync)
+          this.syncClient.restorePinUnlockMaterial?.(material)
+        } else {
+          this.getOrCreateSyncClient(this.data.sync)
+        }
+      }
+      this.fastReadsBlocked = false
+      return { state: 'unlocked' }
+    } catch (error) {
+      if (installed) {
+        this.discardSession()
+      } else {
         unlocked.key.fill(0)
         unlocked.salt.fill(0)
-        this.key = null
-        this.salt = null
-        this.data = null
-        throw error
       }
-    })
+      throw error
+    }
+  }
+
+  /** Zeroes and drops the session key material, snapshot and sync connector. */
+  protected discardSession(): void {
+    this.key?.fill(0)
+    this.salt?.fill(0)
+    this.key = null
+    this.salt = null
+    this.data = null
+    this.syncClient = null
   }
 
   pinUnlockStatus(): import('../shared/vault-contract').PinUnlockStatus {
@@ -622,68 +653,40 @@ export class VaultServiceBase {
   unlockWithTouchIdMaterial(material: TouchIdUnlockMaterial): Promise<VaultStatus> {
     const generation = this.generation
     return this.exclusive(async () => {
-      let unlocked: Awaited<ReturnType<EncryptedVaultStore<unknown>['unlockWithKey']>> | null = null
-      let committed = false
+      if (generation !== this.generation) throw new VaultError('LOCKED')
+      if (this.data && this.key && this.salt) return { state: 'unlocked' }
+      let unlocked: Awaited<ReturnType<EncryptedVaultStore<unknown>['unlockWithKey']>>
       try {
-        if (generation !== this.generation) throw new VaultError('LOCKED')
-        if (this.data && this.key && this.salt) return { state: 'unlocked' }
-        try {
-          unlocked = await this.store.unlockWithKey(material.key, material.salt)
-        } catch (error) {
-          if (
-            error instanceof VaultError &&
-            error.code === 'CORRUPT_VAULT' &&
-            (error.message === 'CORRUPT_VAULT:salt-mismatch' ||
-              error.message === 'CORRUPT_VAULT:decrypt')
-          ) {
-            // A local re-key replaces both the salt and the key; the capsule is permanently stale.
-            throw new VaultError('TOUCH_ID_UNAVAILABLE', 'TOUCH_ID_UNAVAILABLE:stale-vault-key')
-          }
-          throw error
-        }
-        if (generation !== this.generation) throw new VaultError('LOCKED')
-        const requiresMigration = isRecord(unlocked.data) && unlocked.data.version !== DATA_VERSION
-        const data = parseVaultDataTagged(unlocked.data)
-        const persisted = data.sync?.unlockMaterial ?? null
-        if (
-          material.sync &&
-          persisted &&
-          !material.sync.wrappedKeyFingerprint.equals(
-            Buffer.from(persisted.wrappedKeyFingerprint, 'base64')
-          )
-        ) {
-          // The account key was re-wrapped (rotation or remote password change) after Touch ID
-          // was enrolled. Never restore an older account-key generation; require the password.
-          throw new VaultError('TOUCH_ID_UNAVAILABLE', 'TOUCH_ID_UNAVAILABLE:stale-account-key')
-        }
-        committed = true
-        this.data = data
-        this.key = unlocked.key
-        this.salt = unlocked.salt
-        unlocked = null
-        await this.recoverNativeAttachmentRestoreAfterUnlock(requiresMigration)
-        if (material.sync && this.data.sync) {
-          this.syncClient ??= this.createSyncClient(this.data.sync)
-          this.syncClient.restorePinUnlockMaterial?.(material.sync)
-        } else if (this.data.sync) {
-          this.getOrCreateSyncClient(this.data.sync)
-        }
-        this.fastReadsBlocked = false
-        return { state: 'unlocked' }
+        unlocked = await this.store.unlockWithKey(material.key, material.salt)
       } catch (error) {
-        if (committed) {
-          this.key?.fill(0)
-          this.salt?.fill(0)
-          this.key = null
-          this.salt = null
-          this.data = null
-          this.syncClient = null
+        if (
+          error instanceof VaultError &&
+          error.code === 'CORRUPT_VAULT' &&
+          (error.message === 'CORRUPT_VAULT:salt-mismatch' ||
+            error.message === 'CORRUPT_VAULT:decrypt')
+        ) {
+          // A local re-key replaces both the salt and the key; the capsule is permanently stale.
+          throw new VaultError('TOUCH_ID_UNAVAILABLE', 'TOUCH_ID_UNAVAILABLE:stale-vault-key')
         }
         throw error
-      } finally {
-        unlocked?.key.fill(0)
-        unlocked?.salt.fill(0)
       }
+      return this.installUnlockedVault(unlocked, generation, {
+        validate: (data) => {
+          const persisted = data.sync?.unlockMaterial ?? null
+          if (
+            material.sync &&
+            persisted &&
+            !material.sync.wrappedKeyFingerprint.equals(
+              Buffer.from(persisted.wrappedKeyFingerprint, 'base64')
+            )
+          ) {
+            // The account key was re-wrapped (rotation or remote password change) after Touch ID
+            // was enrolled. Never restore an older account-key generation; require the password.
+            throw new VaultError('TOUCH_ID_UNAVAILABLE', 'TOUCH_ID_UNAVAILABLE:stale-account-key')
+          }
+        },
+        startSync: { material: material.sync }
+      })
     })
   }
 
@@ -873,7 +876,6 @@ export class VaultServiceBase {
     const generation = this.generation
     return this.exclusive(async () => {
       let material: PinVaultKeyMaterial | null = null
-      let unlocked: Awaited<ReturnType<EncryptedVaultStore<unknown>['unlockWithKey']>> | null = null
       try {
         if (generation !== this.generation || lifecycleEpoch !== this.pinLifecycleEpoch) {
           throw new VaultError('LOCKED')
@@ -897,29 +899,19 @@ export class VaultServiceBase {
         ) {
           throw new VaultError('LOCKED')
         }
-        unlocked = await this.store.unlockWithKey(material.key, material.salt)
-        if (
-          lifecycleEpoch !== this.pinLifecycleEpoch ||
-          generation !== this.generation ||
-          capability !== this.pinUnlockCapability
-        ) {
-          throw new VaultError('LOCKED')
-        }
-        const requiresMigration = isRecord(unlocked.data) && unlocked.data.version !== DATA_VERSION
-        this.data = parseVaultDataTagged(unlocked.data)
-        this.assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin, this.data)
-        this.key = unlocked.key
-        this.salt = unlocked.salt
-        unlocked = null
-        await this.recoverNativeAttachmentRestoreAfterUnlock(requiresMigration)
-        if (material.sync && this.data.sync) {
-          this.syncClient ??= this.createSyncClient(this.data.sync)
-          this.syncClient.restorePinUnlockMaterial?.(material.sync)
-        } else if (this.data.sync) {
-          this.getOrCreateSyncClient(this.data.sync)
-        }
-        this.fastReadsBlocked = false
-        return { state: 'unlocked' }
+        const unlocked = await this.store.unlockWithKey(material.key, material.salt)
+        return await this.installUnlockedVault(unlocked, generation, {
+          validate: (data) => {
+            if (
+              lifecycleEpoch !== this.pinLifecycleEpoch ||
+              capability !== this.pinUnlockCapability
+            ) {
+              throw new VaultError('LOCKED')
+            }
+            this.assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin, data)
+          },
+          startSync: { material: material.sync }
+        })
       } catch (error) {
         if (error instanceof PinUnlockError) {
           if (
@@ -931,12 +923,7 @@ export class VaultServiceBase {
           }
           throw this.mapPinUnlockError(error)
         }
-        this.key?.fill(0)
-        this.salt?.fill(0)
-        this.key = null
-        this.salt = null
-        this.data = null
-        this.syncClient = null
+        this.discardSession()
         throw error
       } finally {
         request.pin = ''
@@ -944,8 +931,6 @@ export class VaultServiceBase {
         material?.salt.fill(0)
         material?.sync?.accountKey.fill(0)
         material?.sync?.wrappedKeyFingerprint.fill(0)
-        unlocked?.key.fill(0)
-        unlocked?.salt.fill(0)
       }
     })
   }
@@ -991,14 +976,9 @@ export class VaultServiceBase {
     this.activeAccountBreachOperation = null
     this.syncAbort = null
     this.activeAttachmentOperation = null
-    this.syncClient = null
     this.syncInProgress = false
     this.sessionDeauthorizationInProgress = false
-    this.key?.fill(0)
-    this.salt?.fill(0)
-    this.key = null
-    this.salt = null
-    this.data = null
+    this.discardSession()
     this.generatorService.clearRuntimeState()
     this.abortImageRequests()
     this.websiteIconCache.clear()
