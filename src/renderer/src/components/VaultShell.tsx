@@ -1,15 +1,4 @@
-import {
-  DndContext,
-  DragOverlay,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-  type DragOverEvent,
-  type DragStartEvent
-} from '@dnd-kit/core'
-import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
+import { DndContext, DragOverlay } from '@dnd-kit/core'
 import { plural } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import {
@@ -59,17 +48,7 @@ import { ItemDragPreview } from './DragPreview'
 import { type ItemSelectionModifiers } from './DndRows'
 import LoginEditor from './LoginEditor'
 import { hasTrashPasswordHistory } from './VaultShell-security'
-import {
-  folderHierarchyDragIntent,
-  itemDropPreviewDescription,
-  precisePointerCollisionDetection,
-  quickAccessDropAction
-} from './VaultShell-dnd'
-import {
-  planVaultFolderMove,
-  sortFoldersByPosition,
-  vaultFolderHierarchyRows
-} from '@renderer/lib/vault-folder-tree'
+import { precisePointerCollisionDetection } from './VaultShell-dnd'
 import SettingsPage from './SettingsPage'
 import SendsPage from './SendsPage'
 import OrganizationsPage from './OrganizationsPage'
@@ -102,6 +81,7 @@ import { useSyncStatus } from '@renderer/hooks/use-sync-status'
 import { useLoginApprovalQueue } from '@renderer/hooks/use-login-approval-queue'
 import { useVaultItemAccess } from '@renderer/hooks/use-vault-item-access'
 import { useVaultLock } from '@renderer/hooks/use-vault-lock'
+import { useVaultDragAndDrop } from '@renderer/hooks/use-vault-drag-and-drop'
 import { useCardCoverPreviews } from '@renderer/hooks/use-card-cover-previews'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
@@ -366,7 +346,6 @@ function VaultShellContent({
     editorMode,
     loading,
     busy,
-    setFolders,
     setScope,
     setSortMode,
     setTypeFilter,
@@ -392,7 +371,6 @@ function VaultShellContent({
       editorMode: state.editorMode,
       loading: state.loading,
       busy: state.busy,
-      setFolders: state.setFolders,
       setScope: state.setScope,
       setSortMode: state.setSortMode,
       setTypeFilter: state.setTypeFilter,
@@ -495,10 +473,6 @@ function VaultShellContent({
   const [portabilityDialogMode, setPortabilityDialogMode] = useState<VaultPortabilityMode | null>(
     null
   )
-  const [activeDragId, setActiveDragId] = useState<string | null>(null)
-  const [activeDragOverId, setActiveDragOverId] = useState<string | null>(null)
-  const foldersBeforeDragRef = useRef<FolderView[] | null>(null)
-  const foldersDuringDragRef = useRef<FolderView[] | null>(null)
   const sidebarMenuTriggerRef = useRef<HTMLButtonElement>(null)
   const settingsReturnFocusRef = useRef<HTMLElement | null>(null)
   const defaultSortInitializedRef = useRef(false)
@@ -549,11 +523,6 @@ function VaultShellContent({
     [authorization, currentSelectedId, resetReveals, setEditorMode, setSelectedLogin]
   )
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  )
-
   const activateLogin = useCallback(
     (id: string | null): void => {
       requestEditorTransition(() => {
@@ -587,6 +556,7 @@ function VaultShellContent({
     },
     [activateLogin, requestEditorTransition, setSelectedIds]
   )
+  const dragAndDrop = useVaultDragAndDrop({ actions, selectLogin, setPendingBulkAction })
 
   const refreshAfterSync = useCallback(async (): Promise<void> => {
     const applyRefresh = async (): Promise<void> => {
@@ -784,19 +754,6 @@ function VaultShellContent({
     if (ids.length === 0) return
     setMoveSnapshot({ ids, state: scope.kind === 'archive' ? 'archive' : 'active' })
   }, [busy, currentSelectedIds, scope.kind])
-  const activeDragItem = activeDragId
-    ? (allItems.find((item) => item.id === activeDragId) ?? null)
-    : null
-  const activeDragItemCount =
-    activeDragItem && selectedIds.has(activeDragItem.id) ? selectedIds.size : 1
-  const activeDragDestinationDescription = activeDragItem
-    ? (itemDropPreviewDescription({
-        overId: activeDragOverId,
-        itemState: scope.kind === 'archive' ? 'archive' : 'active',
-        folders,
-        count: activeDragItemCount
-      }) ?? t`Release to cancel moving`)
-    : null
   const selectedDetailFields = useMemo(
     () => (selectedLogin ? detailFields(selectedLogin, detailFieldLabels) : []),
     [detailFieldLabels, selectedLogin]
@@ -826,7 +783,6 @@ function VaultShellContent({
       sortMode === 'modified' ? 'updatedAt' : 'activity'
     ).filter((group) => group.items.length > 0)
   }, [scopedItems, sortMode])
-  const folderIds = useMemo(() => new Set(folders.map((folder) => folder.id)), [folders])
   const activeItems = useMemo(
     () => allItems.filter((item) => !item.deletedAt && !item.archivedAt),
     [allItems]
@@ -836,10 +792,6 @@ function VaultShellContent({
     [items]
   )
   const trashItems = useMemo(() => items.filter((item) => item.deletedAt), [items])
-  const itemIds = useMemo(
-    () => new Set([...activeItems, ...archivedItems].map((item) => item.id)),
-    [activeItems, archivedItems]
-  )
   const folderCounts = useMemo(() => {
     const counts = new Map<string | null, number>()
     for (const item of activeItems) counts.set(item.folderId, (counts.get(item.folderId) ?? 0) + 1)
@@ -1225,125 +1177,6 @@ function VaultShellContent({
     setSelectedLogin(login)
   }
 
-  function startDrag(event: DragStartEvent): void {
-    const activeId = String(event.active.id)
-    if (itemIds.has(activeId) && !currentSelectedIds().has(activeId)) selectLogin(activeId)
-    foldersBeforeDragRef.current = folderIds.has(activeId) ? folders : null
-    foldersDuringDragRef.current = folderIds.has(activeId) ? folders : null
-    setActiveDragId(activeId)
-    setActiveDragOverId(null)
-  }
-
-  function dragOver(event: DragOverEvent): void {
-    setActiveDragOverId(event.over ? String(event.over.id) : null)
-    const activeId = String(event.active.id)
-    const overId = event.over ? String(event.over.id) : null
-    const previousFolders = foldersBeforeDragRef.current
-    if (!previousFolders || !folderIds.has(activeId)) return
-
-    const hierarchyIntent = folderHierarchyDragIntent(overId, event.delta.x)
-    if (hierarchyIntent) {
-      const plan = planVaultFolderMove(previousFolders, activeId, hierarchyIntent.parentId)
-      foldersDuringDragRef.current = previousFolders
-      setFolders(plan.kind === 'move' ? plan.folders : previousFolders)
-      return
-    }
-
-    if (!overId || activeId === overId || !folderIds.has(overId)) return
-    const visualFolders = vaultFolderHierarchyRows(previousFolders).map((row) => row.folder)
-    const oldIndex = visualFolders.findIndex((folder) => folder.id === activeId)
-    const newIndex = visualFolders.findIndex((folder) => folder.id === overId)
-    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return
-    const reordered = vaultFolderHierarchyRows(arrayMove(visualFolders, oldIndex, newIndex)).map(
-      ({ folder }, position) => ({ ...folder, position })
-    )
-    foldersDuringDragRef.current = reordered
-    setFolders(reordered)
-  }
-
-  function cancelDrag(): void {
-    const previousFolders = foldersBeforeDragRef.current
-    foldersBeforeDragRef.current = null
-    foldersDuringDragRef.current = null
-    if (previousFolders) setFolders(previousFolders)
-    setActiveDragId(null)
-    setActiveDragOverId(null)
-  }
-
-  async function endDrag(event: DragEndEvent): Promise<void> {
-    const previousFolders = foldersBeforeDragRef.current
-    const reorderedFolders = foldersDuringDragRef.current
-    foldersBeforeDragRef.current = null
-    foldersDuringDragRef.current = null
-    setActiveDragId(null)
-    setActiveDragOverId(null)
-    if (!event.over) {
-      if (previousFolders) setFolders(previousFolders)
-      return
-    }
-    const activeId = String(event.active.id)
-    const overId = String(event.over.id)
-    if (itemIds.has(activeId)) {
-      const draggedIds = currentSelectedIds().has(activeId) ? [...currentSelectedIds()] : [activeId]
-      const snapshot: MoveSnapshot = {
-        ids: draggedIds,
-        state: scope.kind === 'archive' ? 'archive' : 'active'
-      }
-      const quickAction = quickAccessDropAction(overId, snapshot.state)
-      if (quickAction === 'favorites') await actions.addLoginsToFavorites(snapshot)
-      else if (quickAction === 'archive') {
-        await actions.performBulkAction({ action: 'archive', ...snapshot })
-      } else if (quickAction === 'trash') {
-        setPendingBulkAction({ action: 'delete', ...snapshot })
-      } else if (overId === 'folder:none') await actions.moveLogins(snapshot, null)
-      else if (folderIds.has(overId)) await actions.moveLogins(snapshot, overId)
-      return
-    }
-    if (!previousFolders || !folderIds.has(activeId)) return
-    const hierarchyIntent = folderHierarchyDragIntent(overId, event.delta.x)
-    if (hierarchyIntent) {
-      const plan = planVaultFolderMove(previousFolders, activeId, hierarchyIntent.parentId)
-      setFolders(previousFolders)
-      if (plan.kind === 'noop') return
-      if (plan.kind === 'invalid') {
-        announceError(t`That folder can't be moved there.`)
-        return
-      }
-      try {
-        const saved = await window.bearwarden.folders.reparent({
-          id: activeId,
-          parentId: hierarchyIntent.parentId
-        })
-        setFolders(sortFoldersByPosition(saved))
-        const movedFolder = saved.find((folder) => folder.id === activeId)
-        const parentFolder =
-          hierarchyIntent.parentId === null
-            ? null
-            : saved.find((folder) => folder.id === hierarchyIntent.parentId)
-        if (movedFolder && parentFolder) {
-          announce(t`Moved “${movedFolder.name}” into “${parentFolder.name}”.`)
-        } else if (movedFolder) {
-          announce(t`Moved “${movedFolder.name}” to the top level.`)
-        }
-      } catch (moveError) {
-        setFolders(previousFolders)
-        announceError(describeVaultError(moveError))
-      }
-      return
-    }
-    const reordered = reorderedFolders ?? previousFolders
-    const orderedIds = reordered.map((folder) => folder.id)
-    if (orderedIds.every((id, index) => id === previousFolders[index]?.id)) return
-    try {
-      const saved = await window.bearwarden.folders.reorder({ orderedIds })
-      setFolders(sortFoldersByPosition(saved))
-      announce(t`Folder order updated.`)
-    } catch (reorderError) {
-      setFolders(previousFolders)
-      announceError(describeVaultError(reorderError))
-    }
-  }
-
   const closeAuxiliaryPage = healthOpen
     ? closeHealth
     : organizationsOpen
@@ -1363,12 +1196,12 @@ function VaultShellContent({
 
   return (
     <DndContext
-      sensors={sensors}
+      sensors={dragAndDrop.sensors}
       collisionDetection={precisePointerCollisionDetection}
-      onDragStart={startDrag}
-      onDragOver={dragOver}
-      onDragCancel={cancelDrag}
-      onDragEnd={(event) => void endDrag(event)}
+      onDragStart={dragAndDrop.startDrag}
+      onDragOver={dragAndDrop.dragOver}
+      onDragCancel={dragAndDrop.cancelDrag}
+      onDragEnd={(event) => void dragAndDrop.endDrag(event)}
     >
       <main
         className={cn(
@@ -2200,12 +2033,12 @@ function VaultShellContent({
       </main>
 
       <DragOverlay dropAnimation={null} style={{ pointerEvents: 'none' }}>
-        {activeDragItem ? (
+        {dragAndDrop.activeDragItem ? (
           <ItemDragPreview
-            item={activeDragItem}
-            count={activeDragItemCount}
+            item={dragAndDrop.activeDragItem}
+            count={dragAndDrop.activeDragItemCount}
             showWebsiteIcons={settings?.showWebsiteIcons ?? false}
-            destinationDescription={activeDragDestinationDescription}
+            destinationDescription={dragAndDrop.activeDragDestinationDescription}
           />
         ) : null}
       </DragOverlay>
