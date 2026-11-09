@@ -19,8 +19,7 @@ import {
 } from './bitwarden-direct'
 import { BITWARDEN_POLICY_TYPE } from './bitwarden-policy'
 import { EncryptedVaultStore } from './encrypted-vault-store'
-import { type EncryptedImageCache, type ImageCacheKeys } from './encrypted-image-cache'
-import { ConcurrencyLimiter, ImageMemoryCache } from './image-memory-cache'
+import { type EncryptedImageCache } from './encrypted-image-cache'
 import {
   PinUnlockCapability,
   PinUnlockError,
@@ -142,6 +141,7 @@ import { VaultSharedItems } from './vault/shared-items'
 import { VaultItemAuthorization } from './vault/item-authorization'
 import { VaultItems } from './vault/items'
 import { VaultIntegrations } from './vault/integrations'
+import { VaultWebsiteIcons } from './vault/website-icons'
 
 interface AccountWebAuthnOperationLease {
   readonly generation: number
@@ -215,14 +215,6 @@ export class VaultServiceBase {
   protected readonly requestAccountWebAuthnAssertion: VaultAccountWebAuthnAssertionRequester | null
   protected readonly requestAccountWebAuthnRegistration: VaultAccountWebAuthnRegistrationRequester | null
   protected readonly imageCache: EncryptedImageCache | null
-  protected readonly websiteIconCache = new ImageMemoryCache<string | null>({
-    maxEntries: 512,
-    maxSize: 32 * 1024 * 1024
-  })
-  protected readonly websiteIconRequests = new Map<string, Promise<string | null>>()
-  protected readonly websiteIconFetches = new ConcurrencyLimiter(6)
-  /** Aborted on lock so detached image downloads stop as soon as the vault key is gone. */
-  protected readonly imageRequestAborts = new Set<AbortController>()
   protected readonly core: VaultCore
   protected readonly syncSession: VaultSyncSession
   protected readonly folders: VaultFolders
@@ -235,6 +227,7 @@ export class VaultServiceBase {
   protected readonly authorization: VaultItemAuthorization
   protected readonly items: VaultItems
   protected readonly integrations: VaultIntegrations
+  protected readonly websiteIcons: VaultWebsiteIcons
 
   constructor(
     protected readonly store: EncryptedVaultStore<unknown>,
@@ -246,13 +239,8 @@ export class VaultServiceBase {
       createId: options.createId ?? randomUUID
     })
     this.core.registerResource({
-      abort: () => {
-        this.abortImageRequests()
-      },
       clear: () => {
         this.generatorService.clearRuntimeState()
-        this.websiteIconCache.clear()
-        this.websiteIconRequests.clear()
       }
     })
     this.fetch = options.fetch ?? fetch
@@ -322,6 +310,7 @@ export class VaultServiceBase {
     this.authorization = new VaultItemAuthorization(this.core)
     this.items = new VaultItems(this.core, this.platform)
     this.integrations = new VaultIntegrations(this.core, this.authorization)
+    this.websiteIcons = new VaultWebsiteIcons(this.core, this.fetch, this.imageCache)
   }
 
   status(): Promise<VaultStatus> {
@@ -825,20 +814,6 @@ export class VaultServiceBase {
     this.core.advanceGeneration()
     this.invalidatePinUnlockCapability()
     this.core.teardown()
-  }
-
-  protected abortImageRequests(): void {
-    for (const abort of this.imageRequestAborts) abort.abort()
-    this.imageRequestAborts.clear()
-  }
-
-  /**
-   * Derives per-operation image cache subkeys from the unlocked vault key. Callers must zero the
-   * result with `clearImageCacheKeys`, and must re-check `generation` before every cache write.
-   */
-  protected imageCacheKeys(): ImageCacheKeys | null {
-    if (!this.imageCache) return null
-    return this.core.imageCacheKeys()
   }
 
   async constrainVaultTimeoutPolicy(requested: VaultTimeoutPolicy): Promise<VaultTimeoutPolicy> {
