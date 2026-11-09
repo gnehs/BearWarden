@@ -356,7 +356,7 @@ export function SelectedItemDetail({
             </>
           }
         />
-        {sharedSummary?.edit && sharedSummary.reprompt === 0 && (
+        {(!sharedSummary || (sharedSummary.edit && sharedSummary.reprompt === 0)) && (
           <TooltipIconButton
             variant="outline"
             size="icon"
@@ -418,10 +418,6 @@ export function SelectedItemDetail({
                       <Archive data-icon="inline-start" />
                     )}
                     {login.archivedAt ? t`Unarchive` : t`Archive item`}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem disabled={busy} onClick={actions.onEdit}>
-                    <Edit3 data-icon="inline-start" />
-                    <Trans>Edit</Trans>
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
