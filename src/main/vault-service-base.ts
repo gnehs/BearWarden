@@ -134,6 +134,7 @@ import { VaultItems } from './vault/items'
 import { VaultIntegrations } from './vault/integrations'
 import { VaultWebsiteIcons } from './vault/website-icons'
 import { VaultAccountSecurity } from './vault/account-security'
+import { VaultPinUnlockState } from './vault/pin-unlock-state'
 
 function changesRemote(action: SyncAction): boolean {
   if (action.kind === 'conflict-copy') return action.reason !== 'both-modified'
@@ -150,8 +151,6 @@ function changesRemote(action: SyncAction): boolean {
  * lifecycle; this module must never import a higher service layer.
  */
 export class VaultServiceBase {
-  protected pinUnlockCapability: PinUnlockCapability | null = null
-  protected pinLifecycleEpoch = 0
   protected readonly generatorService: VaultGeneratorService
   protected readonly sendService: VaultSendService
   protected readonly createSyncClient: (sync: PersistedSyncData) => BitwardenSyncClient
@@ -174,6 +173,7 @@ export class VaultServiceBase {
   protected readonly integrations: VaultIntegrations
   protected readonly websiteIcons: VaultWebsiteIcons
   protected readonly accountSecurity: VaultAccountSecurity
+  protected readonly pinUnlock: VaultPinUnlockState
 
   constructor(
     protected readonly store: EncryptedVaultStore<unknown>,
@@ -264,6 +264,7 @@ export class VaultServiceBase {
       this.platform,
       this.requestAccountWebAuthnRegistration
     )
+    this.pinUnlock = new VaultPinUnlockState()
   }
 
   status(): Promise<VaultStatus> {
@@ -365,7 +366,7 @@ export class VaultServiceBase {
     ) {
       return { available: false, remainingAttempts: 0 }
     }
-    const status = this.pinUnlockCapability?.status()
+    const status = this.pinUnlock.capability?.status()
     if (!status?.available) return { available: false, remainingAttempts: 0 }
     return status
   }
@@ -374,13 +375,13 @@ export class VaultServiceBase {
     pin: string
     masterPassword: string
   }): Promise<import('../shared/vault-contract').PinUnlockStatus> {
-    const lifecycleEpoch = this.pinLifecycleEpoch
+    const lifecycleEpoch = this.pinUnlock.epoch
     const generation = this.core.generation
     return this.core.exclusive(async () => {
       let capability: PinUnlockCapability | null = null
       let syncMaterial: PinSyncKeyMaterial | null = null
       try {
-        if (generation !== this.core.generation || lifecycleEpoch !== this.pinLifecycleEpoch) {
+        if (generation !== this.core.generation || lifecycleEpoch !== this.pinUnlock.epoch) {
           throw new VaultError('LOCKED')
         }
         const data = this.core.requireData()
@@ -402,13 +403,12 @@ export class VaultServiceBase {
         capability = await PinUnlockCapability.create(request.pin, key, salt, syncMaterial)
         if (
           generation !== this.core.generation ||
-          lifecycleEpoch !== this.pinLifecycleEpoch ||
+          lifecycleEpoch !== this.pinUnlock.epoch ||
           !this.core.isUnlocked()
         ) {
           throw new VaultError('LOCKED')
         }
-        this.pinUnlockCapability?.dispose()
-        this.pinUnlockCapability = capability
+        this.pinUnlock.install(capability)
         capability = null
         return this.pinUnlockStatus()
       } catch (error) {
@@ -425,7 +425,7 @@ export class VaultServiceBase {
   }
 
   disablePinUnlock(): import('../shared/vault-contract').PinUnlockStatus {
-    this.invalidatePinUnlockCapability()
+    this.pinUnlock.invalidate()
     return this.pinUnlockStatus()
   }
 
@@ -573,7 +573,7 @@ export class VaultServiceBase {
               error.code === 'MASTER_PASSWORD_CHANGE_UNKNOWN'
             ) {
               this.core.advanceGeneration()
-              this.invalidatePinUnlockCapability()
+              this.pinUnlock.invalidate()
               this.syncSession.dropSyncClient()
               this.core.teardown()
               throw new VaultError('SYNC_FAILED')
@@ -597,7 +597,7 @@ export class VaultServiceBase {
             await this.core.commit(confirmed)
           } catch (error) {
             this.core.advanceGeneration()
-            this.invalidatePinUnlockCapability()
+            this.pinUnlock.invalidate()
             this.core.teardown()
             throw error
           }
@@ -686,13 +686,13 @@ export class VaultServiceBase {
   }
 
   unlockWithPin(request: { pin: string }): Promise<VaultStatus> {
-    const capability = this.pinUnlockCapability
-    const lifecycleEpoch = this.pinLifecycleEpoch
+    const capability = this.pinUnlock.capability
+    const lifecycleEpoch = this.pinUnlock.epoch
     const generation = this.core.generation
     return this.core.exclusive(async () => {
       let material: PinVaultKeyMaterial | null = null
       try {
-        if (generation !== this.core.generation || lifecycleEpoch !== this.pinLifecycleEpoch) {
+        if (generation !== this.core.generation || lifecycleEpoch !== this.pinUnlock.epoch) {
           throw new VaultError('LOCKED')
         }
         if (this.core.isUnlocked()) return { state: 'unlocked' }
@@ -708,9 +708,9 @@ export class VaultServiceBase {
         request.pin = ''
         material = await materialPromise
         if (
-          lifecycleEpoch !== this.pinLifecycleEpoch ||
+          lifecycleEpoch !== this.pinUnlock.epoch ||
           generation !== this.core.generation ||
-          capability !== this.pinUnlockCapability
+          capability !== this.pinUnlock.capability
         ) {
           throw new VaultError('LOCKED')
         }
@@ -718,8 +718,8 @@ export class VaultServiceBase {
         return await this.installUnlockedVault(unlocked, generation, {
           validate: (data) => {
             if (
-              lifecycleEpoch !== this.pinLifecycleEpoch ||
-              capability !== this.pinUnlockCapability
+              lifecycleEpoch !== this.pinUnlock.epoch ||
+              capability !== this.pinUnlock.capability
             ) {
               throw new VaultError('LOCKED')
             }
@@ -729,13 +729,7 @@ export class VaultServiceBase {
         })
       } catch (error) {
         if (error instanceof PinUnlockError) {
-          if (
-            capability &&
-            !capability.status().available &&
-            this.pinUnlockCapability === capability
-          ) {
-            this.pinUnlockCapability = null
-          }
+          if (capability && !capability.status().available) this.pinUnlock.forget(capability)
           throw this.mapPinUnlockError(error)
         }
         this.core.discardSession()
@@ -765,7 +759,7 @@ export class VaultServiceBase {
 
   dispose(): void {
     this.core.advanceGeneration()
-    this.invalidatePinUnlockCapability()
+    this.pinUnlock.invalidate()
     this.core.teardown()
   }
 
@@ -911,7 +905,7 @@ export class VaultServiceBase {
     await this.core.rekey(currentPassword, newPassword)
 
     const generation = this.core.advanceGeneration()
-    this.invalidatePinUnlockCapability()
+    this.pinUnlock.invalidate()
     this.syncSession.abortSyncOperation()
     this.syncSession.abortNotificationTokenLeases()
     this.syncSession.abortAccountSecurityRequests()
@@ -935,7 +929,7 @@ export class VaultServiceBase {
       bitwardenPolicyDecision(BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin, data).state !==
       'not-applicable'
     ) {
-      this.invalidatePinUnlockCapability()
+      this.pinUnlock.invalidate()
     }
   }
 
@@ -1970,12 +1964,6 @@ export class VaultServiceBase {
       ).id
     }
     return result
-  }
-
-  protected invalidatePinUnlockCapability(): void {
-    this.pinLifecycleEpoch += 1
-    this.pinUnlockCapability?.dispose()
-    this.pinUnlockCapability = null
   }
 
   protected mapPinUnlockError(error: PinUnlockError): VaultError {

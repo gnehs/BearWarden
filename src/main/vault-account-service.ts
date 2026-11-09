@@ -63,7 +63,7 @@ export class VaultAccountService extends VaultServiceBase {
     return this.core.exclusive(async () => {
       const current = this.core.requireData()
       assertNoPendingPersonalVaultPurge(current.sync)
-      this.invalidatePinUnlockCapability()
+      this.pinUnlock.invalidate()
       this.syncSession.abortSyncOperation()
       this.syncSession.abortNotificationTokenLeases()
       this.syncSession.abortAccountSecurityRequests()
@@ -91,7 +91,7 @@ export class VaultAccountService extends VaultServiceBase {
   }
 
   connectSync(request: SyncConnectRequest): Promise<SyncResult> {
-    this.invalidatePinUnlockCapability()
+    this.pinUnlock.invalidate()
     return this.core.exclusive(async () => {
       const current = this.core.requireData()
       assertNoPendingPersonalVaultPurge(current.sync)
@@ -278,7 +278,7 @@ export class VaultAccountService extends VaultServiceBase {
     return this.core.exclusive(async () => {
       const current = this.core.requireData()
       assertNoPendingPersonalVaultPurge(current.sync)
-      this.invalidatePinUnlockCapability()
+      this.pinUnlock.invalidate()
       this.syncSession.abortSyncOperation()
       this.syncSession.abortNotificationTokenLeases()
       this.syncSession.abortAccountSecurityRequests()

@@ -110,7 +110,6 @@ import type { NativeAttachmentRestoreAttachmentKey } from './native-attachment-r
 import type { NativeAttachmentBackupPreview } from './native-attachment-backup'
 import type { BitwardenAttachmentByteSource } from './bitwarden-attachment-stream'
 import type { BitwardenNotificationConnectionInfo } from './bitwarden-notifications'
-
 export type {
   VaultAccountWebAuthnAssertionRequester,
   VaultAccountWebAuthnRegistrationRequester,
