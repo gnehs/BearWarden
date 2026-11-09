@@ -84,7 +84,9 @@ import type {
   SyncUnlockRequest,
   VaultTimeoutPolicy,
   VaultStatus,
-  PinUnlockStatus
+  PinUnlockStatus,
+  AccountDevicesResult,
+  AccountSecurityProfile
 } from '../shared/vault-contract'
 import type { SshKeyMaterial } from './ssh-key'
 import type {
@@ -116,9 +118,10 @@ import type {
   VaultMasterPasswordChangeStatus,
   VaultMasterPasswordChangeRequest,
   VaultMasterPasswordChangeResolutionRequest,
-  VaultMasterPasswordChangeResolution
+  VaultMasterPasswordChangeResolution,
+  VaultPlatform,
+  VaultServiceOptions
 } from './vault/types'
-import { VaultServiceBase } from './vault-service-base'
 import type { InactiveTwoFactorReport, TwoFactorDirectoryDataset } from './inactive-two-factor'
 import type { PortableVaultSnapshot } from './vault-portability-codec'
 import type { NativeAttachmentRestoreAttachmentKey } from './native-attachment-restore'
@@ -126,6 +129,33 @@ import type { NativeAttachmentBackupPreview } from './native-attachment-backup'
 import type { BitwardenAttachmentByteSource } from './bitwarden-attachment-stream'
 import type { BitwardenNotificationConnectionInfo } from './bitwarden-notifications'
 import type { TouchIdUnlockMaterial } from './touch-id-unlock-capsule'
+import { randomInt as nodeRandomInt, randomUUID } from 'node:crypto'
+import { BitwardenDirectError } from './bitwarden-direct'
+import type { EncryptedVaultStore } from './encrypted-vault-store'
+import { cloneData } from './vault/vault-data-parsing'
+import { VaultGeneratorService } from './vault/generator-service'
+import { VaultSendService } from './vault/send-service'
+import { VaultCore } from './vault/core'
+import { cloneGeneratorHistory } from './vault/generator-history'
+import { currentBitwardenPolicySet, assertSendMutationAllowed } from './vault/policy'
+import { VaultSyncSession } from './vault/sync-session'
+import { VaultFolders } from './vault/folders'
+import { VaultHealth } from './vault/health'
+import { VaultListings } from './vault/listings'
+import { VaultPasswordHistory } from './vault/password-history-service'
+import { VaultAttachments } from './vault/attachments'
+import { VaultPortability } from './vault/portability'
+import { VaultSharedItems } from './vault/shared-items'
+import { VaultItemAuthorization } from './vault/item-authorization'
+import { VaultItems } from './vault/items'
+import { VaultIntegrations } from './vault/integrations'
+import { VaultWebsiteIcons } from './vault/website-icons'
+import { VaultAccountSecurity } from './vault/account-security'
+import { VaultPinUnlockState } from './vault/pin-unlock-state'
+import { VaultSyncEngine } from './vault/sync-engine'
+import { VaultSyncService } from './vault/sync-service'
+import { VaultMasterPasswordChange } from './vault/master-password-change-service'
+import { VaultUnlock } from './vault/unlock'
 
 export type {
   VaultAccountWebAuthnAssertionRequester,
@@ -148,136 +178,438 @@ export type {
   PasskeyVaultAssertionResult
 } from './vault/types'
 
-/** Stable public entry point for item, autofill, passkey, SSH, and generator operations. */
-export class VaultService extends VaultServiceBase {
-  /**
-   * Test-only view of the committed in-memory snapshot, for planting records the public API cannot
-   * create and trapping reads of protected fields. Production code must not call it.
-   */
-  committedSnapshotForTesting(): VaultData | null {
-    return this.core.currentData()
+/**
+ * The vault's stable public API. It builds one VaultCore, which owns the key material, committed
+ * snapshot, generation and mutex, and composes the domain modules over it; every public method
+ * delegates to the module that owns it.
+ */
+export class VaultService {
+  private readonly core: VaultCore
+  private readonly unlocking: VaultUnlock
+  private readonly masterPasswordChange: VaultMasterPasswordChange
+  private readonly sync: VaultSyncService
+  private readonly accountSecurity: VaultAccountSecurity
+  private readonly folders: VaultFolders
+  private readonly listings: VaultListings
+  private readonly items: VaultItems
+  private readonly authorization: VaultItemAuthorization
+  private readonly sharedItems: VaultSharedItems
+  private readonly passwordHistory: VaultPasswordHistory
+  private readonly attachments: VaultAttachments
+  private readonly portability: VaultPortability
+  private readonly health: VaultHealth
+  private readonly integrations: VaultIntegrations
+  private readonly websiteIcons: VaultWebsiteIcons
+  private readonly sends: VaultSendService
+  private readonly generator: VaultGeneratorService
+
+  constructor(
+    store: EncryptedVaultStore<unknown>,
+    platform: VaultPlatform,
+    options: VaultServiceOptions = {}
+  ) {
+    const fetchImpl = options.fetch ?? fetch
+    const attachmentFiles = options.attachmentFiles ?? null
+    const imageCache = options.imageCache ?? null
+    const createId = options.createId ?? randomUUID
+    const core = new VaultCore(store, { now: options.now ?? (() => new Date()), createId })
+    const syncSession = new VaultSyncSession(
+      core,
+      options.createSyncClient ??
+        (() => {
+          throw new BitwardenDirectError('INVALID_RESPONSE')
+        }),
+      options.requestAccountWebAuthnAssertion ?? null
+    )
+    const pinUnlock = new VaultPinUnlockState()
+    const syncEngine = new VaultSyncEngine(core, syncSession, pinUnlock)
+    this.core = core
+    this.health = new VaultHealth(core, syncSession, platform, fetchImpl)
+    this.unlocking = new VaultUnlock(core, store, syncSession, pinUnlock)
+    this.masterPasswordChange = new VaultMasterPasswordChange(core, syncSession, pinUnlock)
+    this.sync = new VaultSyncService(core, syncSession, syncEngine, pinUnlock, this.health)
+    this.accountSecurity = new VaultAccountSecurity(
+      core,
+      syncSession,
+      this.health,
+      platform,
+      options.requestAccountWebAuthnRegistration ?? null
+    )
+    this.folders = new VaultFolders(core)
+    this.listings = new VaultListings(core, syncSession)
+    this.items = new VaultItems(core, platform)
+    this.authorization = new VaultItemAuthorization(core)
+    this.sharedItems = new VaultSharedItems(core, syncSession, platform)
+    this.passwordHistory = new VaultPasswordHistory(core, platform)
+    this.attachments = new VaultAttachments(core, syncSession, attachmentFiles, imageCache)
+    this.portability = new VaultPortability(core, syncSession, syncEngine)
+    this.integrations = new VaultIntegrations(core, this.authorization)
+    this.websiteIcons = new VaultWebsiteIcons(core, fetchImpl, imageCache)
+    this.sends = new VaultSendService({
+      attachmentFiles,
+      exclusive: (operation) => core.exclusive(operation),
+      readData: () => core.requireData(),
+      requireSyncData: () => syncSession.requireSyncData(),
+      getSyncClient: (sync) => syncSession.getOrCreateSyncClient(sync),
+      currentGeneration: () => core.generation,
+      startSyncOperation: () => syncSession.startSyncOperation(),
+      finishSyncOperation: (abort) => syncSession.finishSyncOperation(abort),
+      commitData: (data, generation) => core.commit(data, generation),
+      nowIso: () => core.nowIso(),
+      clearSyncError: () => syncSession.clearSyncErrorState(),
+      mapSyncError: (error) => syncSession.mapSyncError(error),
+      copyText: (text) => platform.copyText(text),
+      assertMutationAllowed: () => assertSendMutationAllowed(core.requireData())
+    })
+    this.generator = new VaultGeneratorService({
+      now: core.now,
+      createId,
+      randomInt: options.randomInt ?? nodeRandomInt,
+      copyText: (text) => platform.copyText(text),
+      exclusive: (operation) => core.exclusive(operation),
+      assertUnlocked: () => {
+        core.requireData()
+      },
+      readPolicySet: () => currentBitwardenPolicySet(core.requireData()),
+      readHistory: () => core.requireData().generatorHistory,
+      commitHistory: async (history) => {
+        const next = cloneData(core.requireData())
+        next.generatorHistory = cloneGeneratorHistory(history)
+        next.updatedAt = core.nowIso()
+        await core.commit(next)
+      }
+    })
+    core.registerResource({ clear: () => this.generator.clearRuntimeState() })
   }
 
-  createSharedLogin(request: SharedLoginCreateRequest): Promise<SharedLoginView> {
-    return this.sharedItems.createSharedLogin(request)
+  status(): Promise<VaultStatus> {
+    return this.unlocking.status()
   }
 
-  revealSharedSecret(request: ItemFieldRequest): Promise<string> {
-    return this.sharedItems.revealSharedSecret(request)
+  unlockedGeneration(): Promise<number> {
+    return this.unlocking.unlockedGeneration()
   }
 
-  revealSharedEditorSecrets(request: EditorSecretsRequest): Promise<EditorSecretsView> {
-    return this.sharedItems.revealSharedEditorSecrets(request)
+  runUnlockedOperation<T>(operation: (generation: number) => Promise<T>): Promise<T> {
+    return this.unlocking.runUnlockedOperation(operation)
   }
 
-  updateSharedLogin(request: SharedLoginUpdateRequest): Promise<SharedLoginView> {
-    return this.sharedItems.updateSharedLogin(request)
+  setup(masterPassword: string): Promise<VaultStatus> {
+    return this.unlocking.setup(masterPassword)
   }
 
-  copySharedField(request: ItemFieldRequest): Promise<void> {
-    return this.sharedItems.copySharedField(request)
+  unlock(masterPassword: string): Promise<VaultStatus> {
+    return this.unlocking.unlock(masterPassword)
   }
 
-  revealSharedCustomField(request: CustomFieldRequest): Promise<string> {
-    return this.sharedItems.revealSharedCustomField(request)
+  pinUnlockStatus(): PinUnlockStatus {
+    return this.unlocking.pinUnlockStatus()
   }
 
-  copySharedCustomField(request: CustomFieldRequest): Promise<void> {
-    return this.sharedItems.copySharedCustomField(request)
+  enablePinUnlock(request: { pin: string; masterPassword: string }): Promise<PinUnlockStatus> {
+    return this.unlocking.enablePinUnlock(request)
   }
 
-  getSharedTotp(request: LoginIdRequest): Promise<TotpCodeView> {
-    return this.sharedItems.getSharedTotp(request)
+  disablePinUnlock(): PinUnlockStatus {
+    return this.unlocking.disablePinUnlock()
   }
 
-  copySharedTotp(request: LoginIdRequest): Promise<void> {
-    return this.sharedItems.copySharedTotp(request)
+  exportTouchIdUnlockMaterial(masterPassword: string): Promise<TouchIdUnlockMaterial> {
+    return this.unlocking.exportTouchIdUnlockMaterial(masterPassword)
   }
 
-  openSharedLoginUri(request: LoginOpenUriRequest): Promise<void> {
-    return this.sharedItems.openSharedLoginUri(request)
+  unlockWithTouchIdMaterial(material: TouchIdUnlockMaterial): Promise<VaultStatus> {
+    return this.unlocking.unlockWithTouchIdMaterial(material)
   }
 
-  listSends(): Promise<SendView[]> {
-    return this.sendService.list()
+  unlockWithPin(request: { pin: string }): Promise<VaultStatus> {
+    return this.unlocking.unlockWithPin(request)
   }
 
-  createSend(request: SendCreateRequest): Promise<SendView> {
-    return this.sendService.create(request)
+  lock(): Promise<VaultStatus> {
+    return this.unlocking.lock()
   }
 
-  async createFileSend(request: SendFileCreateRequest): Promise<SendFileCreateResult> {
-    return this.sendService.createFile(request)
+  dispose(): void {
+    return this.unlocking.dispose()
   }
 
-  async downloadFileSend(request: SendFileDownloadRequest): Promise<SendFileDownloadResult> {
-    return this.sendService.downloadFile(request)
+  constrainVaultTimeoutPolicy(requested: VaultTimeoutPolicy): Promise<VaultTimeoutPolicy> {
+    return this.unlocking.constrainVaultTimeoutPolicy(requested)
   }
 
-  updateSend(request: SendUpdateRequest): Promise<SendView> {
-    return this.sendService.update(request)
+  masterPasswordChangeStatus(): Promise<VaultMasterPasswordChangeStatus> {
+    return this.masterPasswordChange.masterPasswordChangeStatus()
   }
 
-  removeSendPassword(request: SendIdRequest): Promise<SendView> {
-    return this.sendService.removePassword(request)
+  changeMasterPassword(request: VaultMasterPasswordChangeRequest): Promise<void> {
+    return this.masterPasswordChange.changeMasterPassword(request)
   }
 
-  deleteSend(request: SendIdRequest): Promise<void> {
-    return this.sendService.delete(request)
+  resolveMasterPasswordChange(
+    request: VaultMasterPasswordChangeResolutionRequest
+  ): Promise<VaultMasterPasswordChangeResolution> {
+    return this.masterPasswordChange.resolveMasterPasswordChange(request)
   }
 
-  copySendLink(request: SendIdRequest): Promise<void> {
-    return this.sendService.copyLink(request)
+  syncStatus(): Promise<SyncStatus> {
+    return this.sync.syncStatus()
   }
 
-  generateCredential(request: CredentialGeneratorRequest): Promise<CredentialGeneratorResult> {
-    return this.generatorService.generateCredential(request)
+  remoteLogoutSync(): Promise<SyncStatus> {
+    return this.sync.remoteLogoutSync()
   }
 
-  copyGeneratedCredential(request: GeneratedCredentialCopyRequest): Promise<void> {
-    return this.generatorService.copyGeneratedCredential(request)
+  connectSync(request: SyncConnectRequest): Promise<SyncResult> {
+    return this.sync.connectSync(request)
   }
 
-  generateSshKey(): Promise<SshKeyMaterial> {
-    return this.generatorService.generateSshKey()
+  sendSyncEmailTwoFactorCode(request: SyncEmailTwoFactorCodeRequest): Promise<void> {
+    return this.sync.sendSyncEmailTwoFactorCode(request)
   }
 
-  generatorHistory(): Promise<GeneratorHistoryEntry[]> {
-    return this.generatorService.history()
+  resendSyncNewDeviceOtp(request: {
+    serverUrl: string
+    email: string
+    masterPassword: string
+  }): Promise<void> {
+    return this.sync.resendSyncNewDeviceOtp(request)
   }
 
-  clearGeneratorHistory(): Promise<void> {
-    return this.generatorService.clearHistory()
+  unlockSync(request: SyncUnlockRequest): Promise<SyncStatus> {
+    return this.sync.unlockSync(request)
   }
 
-  copyGeneratorHistory(request: GeneratorHistoryLocator): Promise<void> {
-    return this.generatorService.copyHistory(request)
+  unlockAndSync(request: SyncUnlockRequest): Promise<SyncResult> {
+    return this.sync.unlockAndSync(request)
   }
 
-  listSshAgentIdentities(): Promise<SshAgentVaultIdentity[]> {
-    return this.integrations.listSshAgentIdentities()
+  unlockSyncWithLocalPassword(masterPassword: string): Promise<SyncStatus> {
+    return this.sync.unlockSyncWithLocalPassword(masterPassword)
   }
 
-  signSshAgentRequest(
-    request: SshAgentVaultSignRequest,
-    validateAuthorization: SshAgentVaultAuthorizationValidator
-  ): Promise<SshAgentVaultSignResult> {
-    return this.integrations.signSshAgentRequest(request, validateAuthorization)
+  syncNow(): Promise<SyncResult> {
+    return this.sync.syncNow()
   }
 
-  runAuthorizedOperation<T>(
-    validate: (ids: readonly string[], state: { generation: number }) => boolean,
-    operation: (authorize: (ids: readonly string[]) => void) => Promise<T>
-  ): Promise<T> {
-    return this.authorization.runAuthorizedOperation(validate, operation)
+  disconnectSync(): Promise<SyncStatus> {
+    return this.sync.disconnectSync()
   }
 
-  authorizeLogin(request: LoginAuthorizeRequest): Promise<number> {
-    return this.authorization.authorizeLogin(request)
+  resolvePendingLoginImport(request: {
+    masterPassword: string
+    confirmRetry: true
+  }): Promise<SyncStatus> {
+    return this.sync.resolvePendingLoginImport(request)
   }
 
-  authorizeLogins(request: LoginAuthorizeManyRequest): Promise<number> {
-    return this.authorization.authorizeLogins(request)
+  purgePersonalVault(
+    request: SyncPurgePersonalVaultRequest
+  ): Promise<SyncPurgePersonalVaultResult> {
+    return this.sync.purgePersonalVault(request)
+  }
+
+  getEquivalentDomainSettings(): Promise<EquivalentDomainSettingsView> {
+    return this.sync.getEquivalentDomainSettings()
+  }
+
+  updateEquivalentDomainSettings(
+    request: EquivalentDomainSettingsUpdate
+  ): Promise<EquivalentDomainSettingsView> {
+    return this.sync.updateEquivalentDomainSettings(request)
+  }
+
+  getAccountSecurityProfile(): Promise<AccountSecurityProfile> {
+    return this.accountSecurity.getAccountSecurityProfile()
+  }
+
+  updateAccountProfileName(request: {
+    name: string
+    expectedName: string
+  }): Promise<AccountSecurityProfile> {
+    return this.accountSecurity.updateAccountProfileName(request)
+  }
+
+  updateAccountAvatarColor(request: {
+    avatarColor: string | null
+    expectedAvatarColor: string | null
+  }): Promise<AccountSecurityProfile> {
+    return this.accountSecurity.updateAccountAvatarColor(request)
+  }
+
+  getAccountDevices(): Promise<AccountDevicesResult> {
+    return this.accountSecurity.getAccountDevices()
+  }
+
+  prepareLoginApproval(requestId: string): Promise<LoginApprovalPrompt | null> {
+    return this.accountSecurity.prepareLoginApproval(requestId)
+  }
+
+  getPendingLoginApprovals(): Promise<LoginApprovalPrompt[]> {
+    return this.accountSecurity.getPendingLoginApprovals()
+  }
+
+  respondLoginApproval(response: LoginApprovalResponse): Promise<void> {
+    return this.accountSecurity.respondLoginApproval(response)
+  }
+
+  deauthorizeAllSessions(request: AccountSessionDeauthorizationRequest): Promise<SyncStatus> {
+    return this.accountSecurity.deauthorizeAllSessions(request)
+  }
+
+  resendAccountVerificationEmail(): Promise<void> {
+    return this.accountSecurity.resendAccountVerificationEmail()
+  }
+
+  copyAccountApiClientId(): Promise<void> {
+    return this.accountSecurity.copyAccountApiClientId()
+  }
+
+  copyPersonalApiKey(request: {
+    masterPassword: string
+    rotate: boolean
+    confirmRotation: boolean
+  }): Promise<{ rotated: boolean; revisionDate: string }> {
+    return this.accountSecurity.copyPersonalApiKey(request)
+  }
+
+  getTwoFactorStatus(): Promise<{ type: number; enabled: boolean }[]> {
+    return this.accountSecurity.getTwoFactorStatus()
+  }
+
+  disableTwoFactorProvider(request: {
+    type: 0 | 1 | 2 | 3 | 7
+    masterPassword: string
+    confirm: true
+  }): Promise<void> {
+    return this.accountSecurity.disableTwoFactorProvider(request)
+  }
+
+  copyTwoFactorRecoveryCode(request: { masterPassword: string }): Promise<void> {
+    return this.accountSecurity.copyTwoFactorRecoveryCode(request)
+  }
+
+  beginAccountAuthenticatorSetup(request: { masterPassword: string }): Promise<{
+    sessionId: string
+    key: string
+    requiresMasterPassword: boolean
+    expiresAt: number
+  }> {
+    return this.accountSecurity.beginAccountAuthenticatorSetup(request)
+  }
+
+  copyAccountAuthenticatorKey(request: { sessionId: string }): Promise<void> {
+    return this.accountSecurity.copyAccountAuthenticatorKey(request)
+  }
+
+  completeAccountAuthenticatorSetup(request: {
+    sessionId: string
+    token: string
+    masterPassword?: string
+  }): Promise<void> {
+    return this.accountSecurity.completeAccountAuthenticatorSetup(request)
+  }
+
+  beginAccountEmailTwoFactorSetup(request: { masterPassword: string }): Promise<{
+    sessionId: string
+    requiresMasterPassword: boolean
+    expiresAt: number
+  }> {
+    return this.accountSecurity.beginAccountEmailTwoFactorSetup(request)
+  }
+
+  sendAccountEmailTwoFactorSetup(request: {
+    sessionId: string
+    email: string
+    masterPassword?: string
+  }): Promise<void> {
+    return this.accountSecurity.sendAccountEmailTwoFactorSetup(request)
+  }
+
+  completeAccountEmailTwoFactorSetup(request: {
+    sessionId: string
+    token: string
+    masterPassword?: string
+  }): Promise<void> {
+    return this.accountSecurity.completeAccountEmailTwoFactorSetup(request)
+  }
+
+  listAccountWebAuthnKeys(request: {
+    masterPassword: string
+  }): Promise<{ id: number; name: string; migrated: boolean }[]> {
+    return this.accountSecurity.listAccountWebAuthnKeys(request)
+  }
+
+  enrollAccountWebAuthnKey(request: { masterPassword: string; name: string }): Promise<void> {
+    return this.accountSecurity.enrollAccountWebAuthnKey(request)
+  }
+
+  removeAccountWebAuthnKey(request: {
+    id: number
+    masterPassword: string
+    confirm: true
+  }): Promise<void> {
+    return this.accountSecurity.removeAccountWebAuthnKey(request)
+  }
+
+  notificationConnectionInfo(): Promise<BitwardenNotificationConnectionInfo | null> {
+    return this.accountSecurity.notificationConnectionInfo()
+  }
+
+  listFolders(): Promise<FolderView[]> {
+    return this.folders.listFolders()
+  }
+
+  createFolder(request: FolderCreateRequest): Promise<FolderView> {
+    return this.folders.createFolder(request)
+  }
+
+  updateFolder(request: FolderUpdateRequest): Promise<FolderView[]> {
+    return this.folders.updateFolder(request)
+  }
+
+  reparentFolder(request: FolderReparentRequest): Promise<FolderView[]> {
+    return this.folders.reparentFolder(request)
+  }
+
+  deleteFolder(request: FolderDeleteRequest): Promise<void> {
+    return this.folders.deleteFolder(request)
+  }
+
+  reorderFolders(request: FolderReorderRequest): Promise<FolderView[]> {
+    return this.folders.reorderFolders(request)
+  }
+
+  listLogins(request: LoginListRequest = {}): Promise<LoginSummary[]> {
+    return this.listings.listLogins(request)
+  }
+
+  listOrganizations(): Promise<OrganizationView[]> {
+    return this.listings.listOrganizations()
+  }
+
+  listCollections(organizationId?: string): Promise<CollectionView[]> {
+    return this.listings.listCollections(organizationId)
+  }
+
+  listSharedLogins(request: SharedLoginListRequest = {}): Promise<SharedLoginSummary[]> {
+    return this.listings.listSharedLogins(request)
+  }
+
+  getSharedLogin(request: LoginIdRequest): Promise<SharedLoginView> {
+    return this.listings.getSharedLogin(request)
+  }
+
+  listEmergencyAccess(): Promise<EmergencyAccessView[]> {
+    return this.listings.listEmergencyAccess()
+  }
+
+  getLogin(request: LoginIdRequest): Promise<LoginView> {
+    return this.listings.getLogin(request)
+  }
+
+  prefetchLogins(request: LoginPrefetchRequest): Promise<LoginView[]> {
+    return this.listings.prefetchLogins(request)
   }
 
   createLogin(request: LoginCreateRequest): Promise<LoginView> {
@@ -310,44 +642,6 @@ export class VaultService extends VaultServiceBase {
 
   deletePasskey(request: PasskeyDeleteRequest): Promise<LoginView> {
     return this.items.deletePasskey(request)
-  }
-
-  discoverAutofillCandidates(targetUrl: string): Promise<AutofillDiscoveryResult> {
-    return this.integrations.discoverAutofillCandidates(targetUrl)
-  }
-
-  performAutofill(
-    request: AutofillExecutionRequest,
-    validateAuthorization: AutofillAuthorizationValidator,
-    consume: AutofillCredentialConsumer
-  ): Promise<void> {
-    return this.integrations.performAutofill(request, validateAuthorization, consume)
-  }
-
-  discoverPasskeyCredentials(
-    request: PasskeyVaultDiscoveryRequest
-  ): Promise<PasskeyVaultDiscoveryResult> {
-    return this.integrations.discoverPasskeyCredentials(request)
-  }
-
-  discoverPasskeyCreationTargets(
-    request: PasskeyVaultCreationTargetDiscoveryRequest
-  ): Promise<PasskeyVaultCreationTargetDiscoveryResult> {
-    return this.integrations.discoverPasskeyCreationTargets(request)
-  }
-
-  createPasskey(
-    request: PasskeyVaultCreateRequest,
-    validateAuthorization: PasskeyVaultAuthorizationValidator
-  ): Promise<PasskeyVaultCreateResult> {
-    return this.integrations.createPasskey(request, validateAuthorization)
-  }
-
-  getPasskeyAssertion(
-    request: PasskeyVaultAssertionRequest,
-    validateAuthorization: PasskeyVaultAuthorizationValidator
-  ): Promise<PasskeyVaultAssertionResult> {
-    return this.integrations.getPasskeyAssertion(request, validateAuthorization)
   }
 
   deleteLogin(request: LoginIdRequest): Promise<void> {
@@ -434,97 +728,59 @@ export class VaultService extends VaultServiceBase {
     return this.items.openLoginUri(request)
   }
 
-  getWebsiteIcon(
-    request: LoginIdRequest,
-    validateAuthorization?: ItemReadAuthorizationValidator
-  ): Promise<string | null> {
-    return this.websiteIcons.getWebsiteIcon(request, validateAuthorization)
+  runAuthorizedOperation<T>(
+    validate: (ids: readonly string[], state: { generation: number }) => boolean,
+    operation: (authorize: (ids: readonly string[]) => void) => Promise<T>
+  ): Promise<T> {
+    return this.authorization.runAuthorizedOperation(validate, operation)
   }
 
-  listFolders(): Promise<FolderView[]> {
-    return this.folders.listFolders()
+  authorizeLogin(request: LoginAuthorizeRequest): Promise<number> {
+    return this.authorization.authorizeLogin(request)
   }
 
-  createFolder(request: FolderCreateRequest): Promise<FolderView> {
-    return this.folders.createFolder(request)
+  authorizeLogins(request: LoginAuthorizeManyRequest): Promise<number> {
+    return this.authorization.authorizeLogins(request)
   }
 
-  updateFolder(request: FolderUpdateRequest): Promise<FolderView[]> {
-    return this.folders.updateFolder(request)
+  createSharedLogin(request: SharedLoginCreateRequest): Promise<SharedLoginView> {
+    return this.sharedItems.createSharedLogin(request)
   }
 
-  reparentFolder(request: FolderReparentRequest): Promise<FolderView[]> {
-    return this.folders.reparentFolder(request)
+  revealSharedSecret(request: ItemFieldRequest): Promise<string> {
+    return this.sharedItems.revealSharedSecret(request)
   }
 
-  deleteFolder(request: FolderDeleteRequest): Promise<void> {
-    return this.folders.deleteFolder(request)
+  revealSharedEditorSecrets(request: EditorSecretsRequest): Promise<EditorSecretsView> {
+    return this.sharedItems.revealSharedEditorSecrets(request)
   }
 
-  reorderFolders(request: FolderReorderRequest): Promise<FolderView[]> {
-    return this.folders.reorderFolders(request)
+  updateSharedLogin(request: SharedLoginUpdateRequest): Promise<SharedLoginView> {
+    return this.sharedItems.updateSharedLogin(request)
   }
 
-  getHealthReport(): Promise<VaultHealthReport> {
-    return this.health.getHealthReport()
+  copySharedField(request: ItemFieldRequest): Promise<void> {
+    return this.sharedItems.copySharedField(request)
   }
 
-  getInactiveTwoFactorReport(dataset: TwoFactorDirectoryDataset): Promise<InactiveTwoFactorReport> {
-    return this.health.getInactiveTwoFactorReport(dataset)
+  revealSharedCustomField(request: CustomFieldRequest): Promise<string> {
+    return this.sharedItems.revealSharedCustomField(request)
   }
 
-  getExposedPasswordReport(): Promise<VaultHealthExposedReport> {
-    return this.health.getExposedPasswordReport()
+  copySharedCustomField(request: CustomFieldRequest): Promise<void> {
+    return this.sharedItems.copySharedCustomField(request)
   }
 
-  cancelExposedPasswordReport(): boolean {
-    return this.health.cancelExposedPasswordReport()
+  getSharedTotp(request: LoginIdRequest): Promise<TotpCodeView> {
+    return this.sharedItems.getSharedTotp(request)
   }
 
-  getAccountBreachReport(
-    request: VaultHealthAccountBreachRequest
-  ): Promise<VaultHealthAccountBreachReport> {
-    return this.health.getAccountBreachReport(request)
+  copySharedTotp(request: LoginIdRequest): Promise<void> {
+    return this.sharedItems.copySharedTotp(request)
   }
 
-  cancelAccountBreachReport(): boolean {
-    return this.health.cancelAccountBreachReport()
-  }
-
-  openHibpWebsite(): Promise<void> {
-    return this.health.openHibpWebsite()
-  }
-
-  listLogins(request: LoginListRequest = {}): Promise<LoginSummary[]> {
-    return this.listings.listLogins(request)
-  }
-
-  listOrganizations(): Promise<OrganizationView[]> {
-    return this.listings.listOrganizations()
-  }
-
-  listCollections(organizationId?: string): Promise<CollectionView[]> {
-    return this.listings.listCollections(organizationId)
-  }
-
-  listSharedLogins(request: SharedLoginListRequest = {}): Promise<SharedLoginSummary[]> {
-    return this.listings.listSharedLogins(request)
-  }
-
-  getSharedLogin(request: LoginIdRequest): Promise<SharedLoginView> {
-    return this.listings.getSharedLogin(request)
-  }
-
-  listEmergencyAccess(): Promise<EmergencyAccessView[]> {
-    return this.listings.listEmergencyAccess()
-  }
-
-  getLogin(request: LoginIdRequest): Promise<LoginView> {
-    return this.listings.getLogin(request)
-  }
-
-  prefetchLogins(request: LoginPrefetchRequest): Promise<LoginView[]> {
-    return this.listings.prefetchLogins(request)
+  openSharedLoginUri(request: LoginOpenUriRequest): Promise<void> {
+    return this.sharedItems.openSharedLoginUri(request)
   }
 
   getPasswordHistory(
@@ -696,277 +952,153 @@ export class VaultService extends VaultServiceBase {
     return this.portability.importPortableSnapshot(snapshot, skippedTrashItems, masterPassword)
   }
 
-  getAccountSecurityProfile(): Promise<import('../shared/vault-contract').AccountSecurityProfile> {
-    return this.accountSecurity.getAccountSecurityProfile()
+  getHealthReport(): Promise<VaultHealthReport> {
+    return this.health.getHealthReport()
   }
 
-  updateAccountProfileName(request: {
-    name: string
-    expectedName: string
-  }): Promise<import('../shared/vault-contract').AccountSecurityProfile> {
-    return this.accountSecurity.updateAccountProfileName(request)
+  getInactiveTwoFactorReport(dataset: TwoFactorDirectoryDataset): Promise<InactiveTwoFactorReport> {
+    return this.health.getInactiveTwoFactorReport(dataset)
   }
 
-  updateAccountAvatarColor(request: {
-    avatarColor: string | null
-    expectedAvatarColor: string | null
-  }): Promise<import('../shared/vault-contract').AccountSecurityProfile> {
-    return this.accountSecurity.updateAccountAvatarColor(request)
+  getExposedPasswordReport(): Promise<VaultHealthExposedReport> {
+    return this.health.getExposedPasswordReport()
   }
 
-  getAccountDevices(): Promise<import('../shared/vault-contract').AccountDevicesResult> {
-    return this.accountSecurity.getAccountDevices()
+  cancelExposedPasswordReport(): boolean {
+    return this.health.cancelExposedPasswordReport()
   }
 
-  prepareLoginApproval(requestId: string): Promise<LoginApprovalPrompt | null> {
-    return this.accountSecurity.prepareLoginApproval(requestId)
+  getAccountBreachReport(
+    request: VaultHealthAccountBreachRequest
+  ): Promise<VaultHealthAccountBreachReport> {
+    return this.health.getAccountBreachReport(request)
   }
 
-  getPendingLoginApprovals(): Promise<LoginApprovalPrompt[]> {
-    return this.accountSecurity.getPendingLoginApprovals()
+  cancelAccountBreachReport(): boolean {
+    return this.health.cancelAccountBreachReport()
   }
 
-  respondLoginApproval(response: LoginApprovalResponse): Promise<void> {
-    return this.accountSecurity.respondLoginApproval(response)
+  openHibpWebsite(): Promise<void> {
+    return this.health.openHibpWebsite()
   }
 
-  deauthorizeAllSessions(request: AccountSessionDeauthorizationRequest): Promise<SyncStatus> {
-    return this.accountSecurity.deauthorizeAllSessions(request)
+  listSshAgentIdentities(): Promise<SshAgentVaultIdentity[]> {
+    return this.integrations.listSshAgentIdentities()
   }
 
-  resendAccountVerificationEmail(): Promise<void> {
-    return this.accountSecurity.resendAccountVerificationEmail()
+  signSshAgentRequest(
+    request: SshAgentVaultSignRequest,
+    validateAuthorization: SshAgentVaultAuthorizationValidator
+  ): Promise<SshAgentVaultSignResult> {
+    return this.integrations.signSshAgentRequest(request, validateAuthorization)
   }
 
-  copyAccountApiClientId(): Promise<void> {
-    return this.accountSecurity.copyAccountApiClientId()
+  discoverAutofillCandidates(targetUrl: string): Promise<AutofillDiscoveryResult> {
+    return this.integrations.discoverAutofillCandidates(targetUrl)
   }
 
-  copyPersonalApiKey(request: {
-    masterPassword: string
-    rotate: boolean
-    confirmRotation: boolean
-  }): Promise<{ rotated: boolean; revisionDate: string }> {
-    return this.accountSecurity.copyPersonalApiKey(request)
+  performAutofill(
+    request: AutofillExecutionRequest,
+    validateAuthorization: AutofillAuthorizationValidator,
+    consume: AutofillCredentialConsumer
+  ): Promise<void> {
+    return this.integrations.performAutofill(request, validateAuthorization, consume)
   }
 
-  getTwoFactorStatus(): Promise<{ type: number; enabled: boolean }[]> {
-    return this.accountSecurity.getTwoFactorStatus()
+  discoverPasskeyCredentials(
+    request: PasskeyVaultDiscoveryRequest
+  ): Promise<PasskeyVaultDiscoveryResult> {
+    return this.integrations.discoverPasskeyCredentials(request)
   }
 
-  disableTwoFactorProvider(request: {
-    type: 0 | 1 | 2 | 3 | 7
-    masterPassword: string
-    confirm: true
-  }): Promise<void> {
-    return this.accountSecurity.disableTwoFactorProvider(request)
+  discoverPasskeyCreationTargets(
+    request: PasskeyVaultCreationTargetDiscoveryRequest
+  ): Promise<PasskeyVaultCreationTargetDiscoveryResult> {
+    return this.integrations.discoverPasskeyCreationTargets(request)
   }
 
-  copyTwoFactorRecoveryCode(request: { masterPassword: string }): Promise<void> {
-    return this.accountSecurity.copyTwoFactorRecoveryCode(request)
+  createPasskey(
+    request: PasskeyVaultCreateRequest,
+    validateAuthorization: PasskeyVaultAuthorizationValidator
+  ): Promise<PasskeyVaultCreateResult> {
+    return this.integrations.createPasskey(request, validateAuthorization)
   }
 
-  beginAccountAuthenticatorSetup(request: { masterPassword: string }): Promise<{
-    sessionId: string
-    key: string
-    requiresMasterPassword: boolean
-    expiresAt: number
-  }> {
-    return this.accountSecurity.beginAccountAuthenticatorSetup(request)
+  getPasskeyAssertion(
+    request: PasskeyVaultAssertionRequest,
+    validateAuthorization: PasskeyVaultAuthorizationValidator
+  ): Promise<PasskeyVaultAssertionResult> {
+    return this.integrations.getPasskeyAssertion(request, validateAuthorization)
   }
 
-  copyAccountAuthenticatorKey(request: { sessionId: string }): Promise<void> {
-    return this.accountSecurity.copyAccountAuthenticatorKey(request)
+  getWebsiteIcon(
+    request: LoginIdRequest,
+    validateAuthorization?: ItemReadAuthorizationValidator
+  ): Promise<string | null> {
+    return this.websiteIcons.getWebsiteIcon(request, validateAuthorization)
   }
 
-  completeAccountAuthenticatorSetup(request: {
-    sessionId: string
-    token: string
-    masterPassword?: string
-  }): Promise<void> {
-    return this.accountSecurity.completeAccountAuthenticatorSetup(request)
+  listSends(): Promise<SendView[]> {
+    return this.sends.list()
   }
 
-  beginAccountEmailTwoFactorSetup(request: { masterPassword: string }): Promise<{
-    sessionId: string
-    requiresMasterPassword: boolean
-    expiresAt: number
-  }> {
-    return this.accountSecurity.beginAccountEmailTwoFactorSetup(request)
+  createSend(request: SendCreateRequest): Promise<SendView> {
+    return this.sends.create(request)
   }
 
-  sendAccountEmailTwoFactorSetup(request: {
-    sessionId: string
-    email: string
-    masterPassword?: string
-  }): Promise<void> {
-    return this.accountSecurity.sendAccountEmailTwoFactorSetup(request)
+  createFileSend(request: SendFileCreateRequest): Promise<SendFileCreateResult> {
+    return this.sends.createFile(request)
   }
 
-  completeAccountEmailTwoFactorSetup(request: {
-    sessionId: string
-    token: string
-    masterPassword?: string
-  }): Promise<void> {
-    return this.accountSecurity.completeAccountEmailTwoFactorSetup(request)
+  downloadFileSend(request: SendFileDownloadRequest): Promise<SendFileDownloadResult> {
+    return this.sends.downloadFile(request)
   }
 
-  listAccountWebAuthnKeys(request: {
-    masterPassword: string
-  }): Promise<{ id: number; name: string; migrated: boolean }[]> {
-    return this.accountSecurity.listAccountWebAuthnKeys(request)
+  updateSend(request: SendUpdateRequest): Promise<SendView> {
+    return this.sends.update(request)
   }
 
-  enrollAccountWebAuthnKey(request: { masterPassword: string; name: string }): Promise<void> {
-    return this.accountSecurity.enrollAccountWebAuthnKey(request)
+  removeSendPassword(request: SendIdRequest): Promise<SendView> {
+    return this.sends.removePassword(request)
   }
 
-  removeAccountWebAuthnKey(request: {
-    id: number
-    masterPassword: string
-    confirm: true
-  }): Promise<void> {
-    return this.accountSecurity.removeAccountWebAuthnKey(request)
+  deleteSend(request: SendIdRequest): Promise<void> {
+    return this.sends.delete(request)
   }
 
-  notificationConnectionInfo(): Promise<BitwardenNotificationConnectionInfo | null> {
-    return this.accountSecurity.notificationConnectionInfo()
+  copySendLink(request: SendIdRequest): Promise<void> {
+    return this.sends.copyLink(request)
   }
 
-  syncStatus(): Promise<SyncStatus> {
-    return this.sync.syncStatus()
+  generateCredential(request: CredentialGeneratorRequest): Promise<CredentialGeneratorResult> {
+    return this.generator.generateCredential(request)
   }
 
-  remoteLogoutSync(): Promise<SyncStatus> {
-    return this.sync.remoteLogoutSync()
+  copyGeneratedCredential(request: GeneratedCredentialCopyRequest): Promise<void> {
+    return this.generator.copyGeneratedCredential(request)
   }
 
-  connectSync(request: SyncConnectRequest): Promise<SyncResult> {
-    return this.sync.connectSync(request)
+  generateSshKey(): Promise<SshKeyMaterial> {
+    return this.generator.generateSshKey()
   }
 
-  sendSyncEmailTwoFactorCode(request: SyncEmailTwoFactorCodeRequest): Promise<void> {
-    return this.sync.sendSyncEmailTwoFactorCode(request)
+  generatorHistory(): Promise<GeneratorHistoryEntry[]> {
+    return this.generator.history()
   }
 
-  resendSyncNewDeviceOtp(request: {
-    serverUrl: string
-    email: string
-    masterPassword: string
-  }): Promise<void> {
-    return this.sync.resendSyncNewDeviceOtp(request)
+  clearGeneratorHistory(): Promise<void> {
+    return this.generator.clearHistory()
   }
 
-  unlockSync(request: SyncUnlockRequest): Promise<SyncStatus> {
-    return this.sync.unlockSync(request)
+  copyGeneratorHistory(request: GeneratorHistoryLocator): Promise<void> {
+    return this.generator.copyHistory(request)
   }
 
-  unlockAndSync(request: SyncUnlockRequest): Promise<SyncResult> {
-    return this.sync.unlockAndSync(request)
-  }
-
-  unlockSyncWithLocalPassword(masterPassword: string): Promise<SyncStatus> {
-    return this.sync.unlockSyncWithLocalPassword(masterPassword)
-  }
-
-  syncNow(): Promise<SyncResult> {
-    return this.sync.syncNow()
-  }
-
-  disconnectSync(): Promise<SyncStatus> {
-    return this.sync.disconnectSync()
-  }
-
-  resolvePendingLoginImport(request: {
-    masterPassword: string
-    confirmRetry: true
-  }): Promise<SyncStatus> {
-    return this.sync.resolvePendingLoginImport(request)
-  }
-
-  purgePersonalVault(
-    request: SyncPurgePersonalVaultRequest
-  ): Promise<SyncPurgePersonalVaultResult> {
-    return this.sync.purgePersonalVault(request)
-  }
-
-  getEquivalentDomainSettings(): Promise<EquivalentDomainSettingsView> {
-    return this.sync.getEquivalentDomainSettings()
-  }
-
-  updateEquivalentDomainSettings(
-    request: EquivalentDomainSettingsUpdate
-  ): Promise<EquivalentDomainSettingsView> {
-    return this.sync.updateEquivalentDomainSettings(request)
-  }
-
-  masterPasswordChangeStatus(): Promise<VaultMasterPasswordChangeStatus> {
-    return this.masterPasswordChange.masterPasswordChangeStatus()
-  }
-
-  changeMasterPassword(request: VaultMasterPasswordChangeRequest): Promise<void> {
-    return this.masterPasswordChange.changeMasterPassword(request)
-  }
-
-  resolveMasterPasswordChange(
-    request: VaultMasterPasswordChangeResolutionRequest
-  ): Promise<VaultMasterPasswordChangeResolution> {
-    return this.masterPasswordChange.resolveMasterPasswordChange(request)
-  }
-
-  status(): Promise<VaultStatus> {
-    return this.unlocking.status()
-  }
-
-  unlockedGeneration(): Promise<number> {
-    return this.unlocking.unlockedGeneration()
-  }
-
-  runUnlockedOperation<T>(operation: (generation: number) => Promise<T>): Promise<T> {
-    return this.unlocking.runUnlockedOperation(operation)
-  }
-
-  setup(masterPassword: string): Promise<VaultStatus> {
-    return this.unlocking.setup(masterPassword)
-  }
-
-  unlock(masterPassword: string): Promise<VaultStatus> {
-    return this.unlocking.unlock(masterPassword)
-  }
-
-  pinUnlockStatus(): PinUnlockStatus {
-    return this.unlocking.pinUnlockStatus()
-  }
-
-  enablePinUnlock(request: { pin: string; masterPassword: string }): Promise<PinUnlockStatus> {
-    return this.unlocking.enablePinUnlock(request)
-  }
-
-  disablePinUnlock(): PinUnlockStatus {
-    return this.unlocking.disablePinUnlock()
-  }
-
-  exportTouchIdUnlockMaterial(masterPassword: string): Promise<TouchIdUnlockMaterial> {
-    return this.unlocking.exportTouchIdUnlockMaterial(masterPassword)
-  }
-
-  unlockWithTouchIdMaterial(material: TouchIdUnlockMaterial): Promise<VaultStatus> {
-    return this.unlocking.unlockWithTouchIdMaterial(material)
-  }
-
-  unlockWithPin(request: { pin: string }): Promise<VaultStatus> {
-    return this.unlocking.unlockWithPin(request)
-  }
-
-  lock(): Promise<VaultStatus> {
-    return this.unlocking.lock()
-  }
-
-  dispose(): void {
-    return this.unlocking.dispose()
-  }
-
-  constrainVaultTimeoutPolicy(requested: VaultTimeoutPolicy): Promise<VaultTimeoutPolicy> {
-    return this.unlocking.constrainVaultTimeoutPolicy(requested)
+  /**
+   * Test-only view of the committed in-memory snapshot, for planting records the public API cannot
+   * create and trapping reads of protected fields. Production code must not call it.
+   */
+  committedSnapshotForTesting(): VaultData | null {
+    return this.core.currentData()
   }
 }
