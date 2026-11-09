@@ -484,12 +484,11 @@ export class VaultAccountService extends VaultServiceBase {
         this.sessionDeauthorizationInProgress = true
         this.abortNotificationTokenLeases()
         try {
-          await this.persist(failClosed)
+          await this.commit(failClosed)
         } catch {
           this.sessionDeauthorizationInProgress = false
           throw new VaultError('SYNC_FAILED')
         }
-        this.data = failClosed
         this.accountSecurityAborts.add(abort)
         return {
           generation: this.generation,
@@ -542,8 +541,7 @@ export class VaultAccountService extends VaultServiceBase {
             restored.sync.state = lease.originalState
             restored.updatedAt = this.nowIso()
             try {
-              await this.persist(restored)
-              this.data = restored
+              await this.commit(restored)
             } catch {
               this.syncClient = null
               await lease.client.logout().catch(() => undefined)
@@ -1620,8 +1618,7 @@ export class VaultAccountService extends VaultServiceBase {
         if (!next.sync) return null
         next.sync.state = state
         next.updatedAt = this.nowIso()
-        await this.persist(next)
-        this.data = next
+        await this.commit(next)
       }
       return {
         notificationsUrl: lease.notificationsUrl,
@@ -1660,8 +1657,7 @@ export class VaultAccountService extends VaultServiceBase {
         session: null
       }
       next.updatedAt = this.nowIso()
-      await this.persist(next)
-      this.data = next
+      await this.commit(next)
       return this.baseSyncStatus(next.sync, 'locked')
     })
   }
@@ -1711,8 +1707,7 @@ export class VaultAccountService extends VaultServiceBase {
         }
         next.sync = sync
         next.updatedAt = this.nowIso()
-        await this.persist(next)
-        this.data = next
+        await this.commit(next)
         this.syncClient = client
         return await this.performSync(next, client, abort.signal)
       } catch (error) {
@@ -1867,8 +1862,7 @@ export class VaultAccountService extends VaultServiceBase {
       }
       next.sync = null
       next.updatedAt = this.nowIso()
-      await this.persist(next)
-      this.data = next
+      await this.commit(next)
       return { configured: false, state: 'unconfigured' }
     })
   }
@@ -1889,8 +1883,7 @@ export class VaultAccountService extends VaultServiceBase {
       if (!next.sync?.pendingLoginImport) throw new VaultError('SYNC_FAILED')
       next.sync.pendingLoginImport.phase = 'retry-approved'
       next.updatedAt = this.nowIso()
-      await this.persist(next)
-      this.data = next
+      await this.commit(next)
       this.syncLastError = null
       return await this.currentSyncStatus()
     })
@@ -1950,8 +1943,7 @@ export class VaultAccountService extends VaultServiceBase {
           if (!cleared.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
           cleared.sync.pendingPersonalVaultPurge = null
           cleared.updatedAt = this.nowIso()
-          await this.persist(cleared)
-          this.data = cleared
+          await this.commit(cleared)
           original = cloneData(cleared)
         }
 
@@ -1972,16 +1964,14 @@ export class VaultAccountService extends VaultServiceBase {
             remainingFolders: active.folders.length
           }
           prepared.updatedAt = this.nowIso()
-          await this.persist(prepared)
-          this.data = prepared
+          await this.commit(prepared)
 
           const dispatched = cloneData(prepared)
           if (!dispatched.sync?.pendingPersonalVaultPurge) throw new VaultError('SYNC_FAILED')
           dispatched.sync.pendingPersonalVaultPurge.phase = 'dispatched'
           dispatched.updatedAt = this.nowIso()
           try {
-            await this.persist(dispatched)
-            this.data = dispatched
+            await this.commit(dispatched)
           } catch (error) {
             await this.restorePreDispatchPurge(original).catch(() => undefined)
             throw error
@@ -2048,9 +2038,7 @@ export class VaultAccountService extends VaultServiceBase {
         next.sync.domainSettings = cloneEquivalentDomainSettings(settings)
         next.sync.state = client.exportState()
         next.updatedAt = this.nowIso()
-        await this.persist(next)
-        if (abort.signal.aborted) throw new BitwardenDirectError('ABORTED')
-        this.data = next
+        await this.commit(next)
         this.syncLastError = null
         return equivalentDomainSettingsView(settings)
       } catch (error) {
@@ -2094,9 +2082,7 @@ export class VaultAccountService extends VaultServiceBase {
         next.sync.domainSettings = cloneEquivalentDomainSettings(confirmed)
         next.sync.state = client.exportState()
         next.updatedAt = this.nowIso()
-        await this.persist(next)
-        if (abort.signal.aborted) throw new BitwardenDirectError('ABORTED')
-        this.data = next
+        await this.commit(next)
         this.syncLastError = null
         return equivalentDomainSettingsView(confirmed)
       } catch (error) {

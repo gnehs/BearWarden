@@ -12586,6 +12586,43 @@ describe('VaultService commit races with lock and dispose', () => {
     expect((await service.listSends()).map((send) => send.id)).toEqual([sendId])
   })
 
+  it('stops a personal vault purge before the remote purge when lock() races its journal write', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const gate = createWriteGate()
+    const { service } = await createHarness(
+      {
+        createSyncClient: (sync) => {
+          fake = createSyncFake(sync.state)
+          return fake
+        }
+      },
+      gate.storeOptions
+    )
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.createLogin({ name: 'Kept local login' })
+
+    const write = gate.holdNextWrite()
+    const purging = service.purgePersonalVault({
+      masterPassword: 'remote master password',
+      confirmation: 'PURGE',
+      confirmPurge: true
+    })
+    await write.reached
+    const locking = service.lock()
+    write.release()
+
+    await expect(purging).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(locking).resolves.toEqual({ state: 'locked' })
+    expect(fake!.purgeCalls).toEqual([])
+    await service.unlock(MASTER_PASSWORD)
+    expect((await service.listLogins()).map((login) => login.name)).toContain('Kept local login')
+  })
+
   it('rejects a PIN unlock with LOCKED when lock() is queued behind it, without spending an attempt', async () => {
     const { service } = await createHarness()
     await service.setup(MASTER_PASSWORD)

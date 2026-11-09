@@ -1226,8 +1226,7 @@ export class VaultTransferService extends VaultContentService {
       const next = cloneData(current)
       next.nativeAttachmentRestore = null
       next.updatedAt = this.nowIso()
-      await this.persist(next)
-      this.data = next
+      await this.commit(next)
     })
   }
 
@@ -1287,9 +1286,7 @@ export class VaultTransferService extends VaultContentService {
           attachments
         })
         next.updatedAt = now
-        await this.persist(next)
-        this.assertNativeAttachmentRestoreLease(operation)
-        this.data = next
+        await this.commit(next, operation.generation)
         return this.nativeAttachmentRestoreSummary(next.nativeAttachmentRestore)
       } catch (error) {
         if (operation.abort.signal.aborted || operation.generation !== this.generation) {
@@ -1338,9 +1335,7 @@ export class VaultTransferService extends VaultContentService {
         }
         next.nativeAttachmentRestore = updated
         next.updatedAt = updated.updatedAt
-        await this.persist(next)
-        this.assertNativeAttachmentRestoreLease(operation)
-        this.data = next
+        await this.commit(next, operation.generation)
         return this.nativeAttachmentRestoreSummary(updated)
       } finally {
         this.finishNativeAttachmentRestoreOperation(operation)
@@ -1383,8 +1378,7 @@ export class VaultTransferService extends VaultContentService {
           this.nowIso()
         )
         attempting.updatedAt = attempting.nativeAttachmentRestore.updatedAt
-        await this.persist(attempting)
-        this.data = attempting
+        await this.commit(attempting, operation.generation)
         this.assertNativeAttachmentRestoreLease(operation)
         const uploaded = await client.uploadAttachmentStream(
           item.remoteItemId,
@@ -1423,8 +1417,7 @@ export class VaultTransferService extends VaultContentService {
           this.nowIso()
         )
         next.updatedAt = next.nativeAttachmentRestore.updatedAt
-        await this.persist(next)
-        this.data = next
+        await this.commit(next, operation.generation)
         return this.nativeAttachmentRestoreSummary(next.nativeAttachmentRestore)
       } catch (error) {
         let reconciliationPersistenceError: unknown = null
@@ -1535,8 +1528,7 @@ export class VaultTransferService extends VaultContentService {
           )
         }
         next.updatedAt = next.nativeAttachmentRestore.updatedAt
-        await this.persist(next)
-        this.data = next
+        await this.commit(next, operation.generation)
         return {
           outcome,
           summary: this.nativeAttachmentRestoreSummary(next.nativeAttachmentRestore)

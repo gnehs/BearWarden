@@ -310,7 +310,11 @@ export class VaultServiceBase {
   protected pinLifecycleEpoch = 0
   protected generation = 0
   protected operationQueue: Promise<void> = Promise.resolve()
-  protected readonly exclusiveContext = new AsyncLocalStorage<{ active: boolean }>()
+  /** Marks the mutex holder and records the generation its operation started in. */
+  protected readonly exclusiveContext = new AsyncLocalStorage<{
+    active: boolean
+    generation: number
+  }>()
   protected syncClient: BitwardenSyncClient | null = null
   protected syncAbort: AbortController | null = null
   protected readonly notificationTokenAborts = new Set<AbortController>()
@@ -394,7 +398,7 @@ export class VaultServiceBase {
         const next = cloneData(current)
         next.generatorHistory = cloneGeneratorHistory(history)
         next.updatedAt = this.nowIso()
-        await this.commit(next, this.generation)
+        await this.commit(next)
       }
     })
     this.sendService = new VaultSendService({
@@ -739,8 +743,7 @@ export class VaultServiceBase {
             accountFingerprint: this.masterPasswordChangeAccountFingerprint(sync)
           }
           prepared.updatedAt = now
-          await this.persist(prepared)
-          this.data = prepared
+          await this.commit(prepared)
 
           abort = this.startSyncOperation()
           remoteRequest = { currentPassword, newPassword, hint, signal: abort.signal }
@@ -760,8 +763,7 @@ export class VaultServiceBase {
             const cleared = cloneData(this.requireData())
             cleared.masterPasswordChange = null
             cleared.updatedAt = this.nowIso()
-            await this.persist(cleared)
-            this.data = cleared
+            await this.commit(cleared)
             throw this.mapSyncError(error)
           }
 
@@ -774,8 +776,7 @@ export class VaultServiceBase {
           }
           confirmed.updatedAt = confirmed.masterPasswordChange.updatedAt
           try {
-            await this.persist(confirmed)
-            this.data = confirmed
+            await this.commit(confirmed)
           } catch (error) {
             this.generation += 1
             this.invalidatePinUnlockCapability()
@@ -838,8 +839,7 @@ export class VaultServiceBase {
           cleared.masterPasswordChange = null
           if (cleared.sync) cleared.sync.state.session = null
           cleared.updatedAt = this.nowIso()
-          await this.persist(cleared)
-          this.data = cleared
+          await this.commit(cleared)
           this.syncClient = null
           return { status: 'remote-not-changed' }
         }
@@ -853,8 +853,7 @@ export class VaultServiceBase {
         confirmed.masterPasswordChange.updatedAt = this.nowIso()
         if (confirmed.sync) confirmed.sync.state.session = null
         confirmed.updatedAt = confirmed.masterPasswordChange.updatedAt
-        await this.persist(confirmed)
-        this.data = confirmed
+        await this.commit(confirmed)
         this.syncClient = null
         await this.finishMasterPasswordChange(currentPassword, newPassword)
         return { status: 'resolved' }
@@ -1635,8 +1634,7 @@ export class VaultServiceBase {
       next.sync.pendingPersonalVaultPurge = null
       next.updatedAt = this.nowIso()
     }
-    await this.persist(next)
-    this.data = next
+    await this.commit(next)
   }
 
   protected async finishMasterPasswordChange(
@@ -1671,6 +1669,7 @@ export class VaultServiceBase {
     }
 
     this.generation += 1
+    const generation = this.generation
     this.invalidatePinUnlockCapability()
     this.syncAbort?.abort()
     this.abortNotificationTokenLeases()
@@ -1682,14 +1681,12 @@ export class VaultServiceBase {
     localRekeyed.masterPasswordChange.updatedAt = this.nowIso()
     if (localRekeyed.sync) localRekeyed.sync.state.session = null
     localRekeyed.updatedAt = localRekeyed.masterPasswordChange.updatedAt
-    await this.persist(localRekeyed)
-    this.data = localRekeyed
+    await this.commit(localRekeyed, generation)
 
     const complete = cloneData(localRekeyed)
     complete.masterPasswordChange = null
     complete.updatedAt = this.nowIso()
-    await this.persist(complete)
-    this.data = complete
+    await this.commit(complete, generation)
   }
 
   protected evictExpiredAuthenticatorSetupSessions(): void {
@@ -2028,8 +2025,7 @@ export class VaultServiceBase {
     next.sync.state = state
     next.sync.unlockMaterial = unlockMaterial
     next.updatedAt = this.nowIso()
-    await this.persist(next)
-    this.data = next
+    await this.commit(next)
   }
 
   protected async persistAttachmentMutation(
@@ -2055,15 +2051,13 @@ export class VaultServiceBase {
     next.sync.state = client.exportState()
     next.sync.lastSyncAt = syncedAt
     next.updatedAt = syncedAt
-    await this.persist(next)
-    this.data = next
+    await this.commit(next)
   }
 
   protected async restorePreDispatchPurge(original: VaultData): Promise<void> {
     const restored = cloneData(original)
     restored.updatedAt = this.nowIso()
-    await this.persist(restored)
-    this.data = restored
+    await this.commit(restored)
   }
 
   protected async reconcilePersonalVaultPurge(
@@ -2097,8 +2091,7 @@ export class VaultServiceBase {
       pending.sync.state = client.exportState()
       pending.sync.lastSyncAt = this.nowIso()
       pending.updatedAt = pending.sync.lastSyncAt
-      await this.persist(pending)
-      this.data = pending
+      await this.commit(pending)
       this.clearSyncErrorState()
       return {
         status: 'pending',
@@ -2139,8 +2132,7 @@ export class VaultServiceBase {
     complete.sync.state = client.exportState()
     complete.sync.lastSyncAt = this.nowIso()
     complete.updatedAt = complete.sync.lastSyncAt
-    await this.persist(complete)
-    this.data = complete
+    await this.commit(complete)
     this.clearSyncErrorState()
     return { status: 'complete', removedItems, removedFolders }
   }
@@ -2158,8 +2150,7 @@ export class VaultServiceBase {
       if (!cleared.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
       cleared.sync.pendingPersonalVaultPurge = null
       cleared.updatedAt = this.nowIso()
-      await this.persist(cleared)
-      this.data = cleared
+      await this.commit(cleared)
       source = cleared
     } else if (pendingPurge?.phase === 'dispatched') {
       const reconciled = await this.reconcilePersonalVaultPurge(client)
@@ -2452,8 +2443,7 @@ export class VaultServiceBase {
       )
     }
     next.updatedAt = syncedAt
-    await this.persist(next)
-    this.data = next
+    await this.commit(next)
     this.applyBitwardenPolicyRuntimeState(next)
     this.clearSyncErrorState()
     return { ...this.baseSyncStatus(next.sync, 'ready'), ...counts }
@@ -2490,8 +2480,7 @@ export class VaultServiceBase {
     completed.sync.state = client.exportState()
     completed.sync.lastSyncAt = syncStartedAt
     completed.updatedAt = syncStartedAt
-    await this.persist(completed)
-    this.data = completed
+    await this.commit(completed)
     this.applyBitwardenPolicyRuntimeState(completed)
     this.clearSyncErrorState()
     return {
@@ -2653,8 +2642,7 @@ export class VaultServiceBase {
     if (pending.intent === 'hard-delete') {
       if (current) await client.hardDeleteLogin(pending.remoteId, signal)
       data.sync.pendingLoginMutation = null
-      await this.persist(data)
-      this.data = cloneData(data)
+      await this.commit(cloneData(data))
       return
     }
 
@@ -2704,8 +2692,7 @@ export class VaultServiceBase {
     }
 
     data.sync.pendingLoginMutation = null
-    await this.persist(data)
-    this.data = cloneData(data)
+    await this.commit(cloneData(data))
   }
 
   protected localSyncSnapshot(data: VaultData): SyncSnapshot {
@@ -2950,8 +2937,7 @@ export class VaultServiceBase {
       recovery.sync.loginMappings.push({ ...link })
     }
     recovery.updatedAt = this.nowIso()
-    await this.persist(recovery)
-    this.data = recovery
+    await this.commit(recovery)
   }
 
   protected loginImportCandidate(
@@ -3069,8 +3055,7 @@ export class VaultServiceBase {
     }
     data.updatedAt = this.nowIso()
     try {
-      await this.persist(data)
-      this.data = cloneData(data)
+      await this.commit(cloneData(data))
     } catch (error) {
       await client.discardPreparedLoginImport!(discardToken).catch(() => undefined)
       throw error
@@ -3083,19 +3068,20 @@ export class VaultServiceBase {
     data.sync.pendingLoginImport.phase = 'dispatched'
     data.updatedAt = this.nowIso()
     try {
-      await this.persist(data)
-      this.data = cloneData(data)
+      await this.commit(cloneData(data))
     } catch (error) {
-      await client.discardPreparedLoginImport!(discardToken).catch(() => undefined)
-      throw error
+      // A lock that raced this write leaves 'dispatched' on disk; the abort path reverts it.
+      if (!signal.aborted) {
+        await client.discardPreparedLoginImport!(discardToken).catch(() => undefined)
+        throw error
+      }
     }
 
     if (signal.aborted) {
       try {
         data.sync.pendingLoginImport.phase = 'prepared'
         data.updatedAt = this.nowIso()
-        await this.persist(data)
-        this.data = cloneData(data)
+        await this.commit(cloneData(data))
       } finally {
         await client.discardPreparedLoginImport!(discardToken).catch(() => undefined)
       }
@@ -3212,8 +3198,7 @@ export class VaultServiceBase {
         ? null
         : { ...pending, entries: unmatchedEntries.map((entry) => ({ ...entry })) }
     data.updatedAt = this.nowIso()
-    await this.persist(data)
-    this.data = cloneData(data)
+    await this.commit(cloneData(data))
     return unmatched
   }
 
@@ -3414,8 +3399,7 @@ export class VaultServiceBase {
           remoteFolderId: folderId,
           expectedRemoteFingerprints: [...action.resumeFingerprints]
         }
-        await this.persist(data)
-        this.data = cloneData(data)
+        await this.commit(cloneData(data))
       }
       await this.updateRemoteLogin(
         client,
@@ -3429,8 +3413,7 @@ export class VaultServiceBase {
       if (composite) {
         if (!data.sync) throw new VaultError('SYNC_FAILED')
         data.sync.pendingLoginMutation = null
-        await this.persist(data)
-        this.data = cloneData(data)
+        await this.commit(cloneData(data))
       }
     } else if (action.kind === 'pull-create') {
       const folderId = this.resolveFolderReference(action.localFolder, completed, 'localId')
@@ -3706,8 +3689,7 @@ export class VaultServiceBase {
       this.nowIso()
     )
     next.updatedAt = next.nativeAttachmentRestore.updatedAt
-    await this.persist(next)
-    this.data = next
+    await this.commit(next)
   }
 
   protected async nativeAttachmentRestoreCandidateMatches(
@@ -3937,7 +3919,6 @@ export class VaultServiceBase {
       assertUuid(request.id)
       const current = this.requireData()
       assertNoPendingPersonalVaultPurge(current.sync)
-      const generation = this.generation
       const currentLogin = this.findLogin(current, request.id)
       this.assertActiveLogin(currentLogin)
       const result = await operation(currentLogin)
@@ -3947,7 +3928,7 @@ export class VaultServiceBase {
       usedLogin.usageCount = Math.min(Number.MAX_SAFE_INTEGER, usedLogin.usageCount + 1)
       usedLogin.lastUsedAt = now
       next.updatedAt = now
-      await this.commit(next, generation)
+      await this.commit(next)
       return result
     })
   }
@@ -3956,21 +3937,25 @@ export class VaultServiceBase {
     return this.exclusive(async () => {
       const next = cloneData(this.requireData())
       assertNoPendingPersonalVaultPurge(next.sync)
-      const generation = this.generation
       const now = this.nowIso()
       const result = mutation(next, now)
       next.updatedAt = now
-      await this.commit(next, generation)
+      await this.commit(next)
       return result
     })
   }
 
   /**
-   * Validates, encrypts and writes `next`, then installs it as the committed snapshot. Throws
-   * `LOCKED` when the vault was locked after `generation` was captured; the write is kept.
+   * The only path that replaces the committed snapshot: validates, encrypts and writes `next`,
+   * then installs it. Throws `LOCKED` when the vault was locked after `generation` was captured
+   * (by default, when the current exclusive operation started); the write is kept.
    */
-  protected async commit(next: VaultData, generation: number): Promise<void> {
-    await this.persist(next)
+  protected async commit(next: VaultData, generation = this.operationGeneration()): Promise<void> {
+    if (!this.key || !this.salt) throw new VaultError('LOCKED')
+    // Never persist data the read path would reject: a write-time bug must fail the current
+    // operation loudly instead of locking the user out of the vault at the next unlock.
+    parseVaultData(next)
+    await this.store.write(next, this.key, this.salt)
     // Memory must match disk once the write landed. Operations queued ahead of lock()'s teardown
     // still read this snapshot, and rebuilding from an older one would overwrite this write.
     // dispose() has already torn the session down, so nothing may be reinstalled after it.
@@ -3978,12 +3963,10 @@ export class VaultServiceBase {
     if (generation !== this.generation) throw new VaultError('LOCKED')
   }
 
-  protected async persist(data: VaultData): Promise<void> {
-    if (!this.key || !this.salt) throw new VaultError('LOCKED')
-    // Never persist data the read path would reject: a write-time bug must fail the current
-    // operation loudly instead of locking the user out of the vault at the next unlock.
-    parseVaultData(data)
-    await this.store.write(data, this.key, this.salt)
+  private operationGeneration(): number {
+    const context = this.exclusiveContext.getStore()
+    if (!context?.active) throw new VaultError('INTERNAL_ERROR')
+    return context.generation
   }
 
   protected requireData(): VaultData {
@@ -4131,7 +4114,7 @@ export class VaultServiceBase {
       release = resolve
     })
     await previous
-    const context = { active: true }
+    const context = { active: true, generation: this.generation }
     try {
       return await this.exclusiveContext.run(context, operation)
     } finally {
