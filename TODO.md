@@ -47,16 +47,22 @@
 
 目標是讓 wire、domain、IPC、renderer 四個邊界各有一份型別定義，資料只在邊界驗證一次。每步獨立 commit，且 `pnpm run typecheck`、`pnpm run lint`、`pnpm test` 全綠。
 
-1. [ ] 合併重複的 `isRecord`、UUID、大小寫屬性 helper 與 sync 診斷 enum。
-2. [ ] renderer 不再自行投影 login summary，避免 reprompt 項目在存檔後顯示未遮蔽的 username 與 URI。
-3. [ ] 以 zod 定義 `/sync` 回應 schema，Vaultwarden 形狀差異只在 schema 處理。
-4. [ ] 把 `BitwardenDirectClient.performSync` 的解析與解密抽成純函式 `fetchRemoteSnapshot`。
-5. [ ] 建立單一提交原語 `VaultStore.commit`：clone、mutate、validate、encrypt、write、generation 檢查、swap。
-6. [ ] sync 改用 snapshot 與 CRUD 回應，一次同步只下載一次 `/sync`，必要的重抓要在程式碼標明原因。
-7. [ ] vault 型別化事件取代 `registerVaultIpc` 的 lifecycle hook 與 `beforeVaultLock` 手寫清單。
-8. [ ] 以接收 store 的 domain 模組取代 `VaultServiceBase` 五層繼承鏈，`VaultService` 保留為 facade。
-9. [ ] 單一 IPC 定義表推導 preload API、`BearWardenAPI` 與主程序註冊。
-10. [ ] renderer vault snapshot store，`VaultShell` 只保留版面。
+1. [x] 合併重複的 `isRecord`、UUID、prototype guard 與 sync 診斷 enum（`src/main/validation-primitives.ts`）。
+2. [x] renderer 不再自行投影 login summary（`src/shared/login-summary.ts`），reprompt 與無 `viewPassword` 權限的共享項目在存檔後也維持遮蔽。
+3. [x] Bitwarden／Vaultwarden 欄位大小寫統一由 `src/main/bitwarden-fields.ts` 讀取。原計畫的 zod `/sync` schema 不採用：cipher row 必須保留未知欄位做 round-trip，診斷 stage 也依讀取順序決定。
+4. [x] `/sync` 解析與解密抽成純函式 `decodeSyncPayload`（`src/main/bitwarden-sync-decoder.ts`），row codec 在 `src/main/bitwarden-cipher-codec.ts`。
+5. [x] 所有 vault 寫入走 `VaultCore.commit`；寫入落地後先裝回記憶體再回報 `LOCKED`，修正鎖定競爭時後續修改覆蓋已寫入資料的問題。
+6. [ ] 一次同步只下載一次 `/sync`。只拉取的同步已是一次；有推送時仍會在結尾重抓一次做附件對帳與遠端漂移偵測，要改用 CRUD 回應前需先確認官方伺服器與 Vaultwarden 的回應都帶附件與 revision。
+7. [x] 所有鎖定路徑（逾時、選單、系統、視窗關閉、renderer 手動、帳號切換）共用同一個 fail-closed barrier，關機與鎖定共用互動操作取消清單。原計畫的事件 emitter 不採用：`beforeVaultLock` 是需要依序 await 的清單。
+8. [x] `VaultServiceBase` 五層繼承鏈改為 `VaultCore` 加上各 domain 模組（`src/main/vault/`），`VaultService` 保留為 facade。
+9. [x] `src/shared/ipc-api.ts` 一張表推導 preload API、`BearWardenAPI` 與主程序 handler 型別。
+10. [ ] renderer：`VaultShell` 已拆成 hooks 與 stores（約 1,470 行、無直接 IPC）。尚未做的是讓 `vault:changed` 帶版本或差異，目前每次背景同步後仍以 7 個 IPC 重新載入清單；`OrganizationsPage` 仍直接呼叫 list IPC。
+
+後續可考慮：
+
+- [ ] `src/main/vault/account-security.ts`（約 1,860 行）依 2FA、WebAuthn、login approvals 再拆。
+- [ ] `src/main/bitwarden-cipher-codec.ts`（約 1,500 行）拆成 decode 與 encode。
+- [ ] 共享項目只有在舊密碼非空時才設定 `passwordRevisionDate`，個人項目則只要密碼改變就設定，確認是否為刻意差異。
 
 約束：
 
