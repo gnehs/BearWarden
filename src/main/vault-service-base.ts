@@ -8,7 +8,6 @@ import type {
   CardCoverPreviewResult,
   LoginApprovalPrompt,
   FolderView,
-  LoginBatchRequest,
   LoginIdRequest,
   OrganizationView,
   CollectionView,
@@ -21,10 +20,8 @@ import type {
   SyncStatus,
   SyncTwoFactorProvider,
   VaultTimeoutPolicy,
-  VaultItemType,
   VaultStatus
 } from '../shared/vault-contract'
-import { MAX_LOGIN_BATCH_IDS } from '../shared/vault-contract'
 import {
   BitwardenDirectError,
   type BitwardenFolder,
@@ -39,13 +36,7 @@ import {
   type BitwardenWebAuthnRegistrationSetup
 } from './bitwarden-direct'
 import { resolveBitwardenUrls, type BitwardenEquivalentDomainSettings } from './bitwarden-http'
-import {
-  BITWARDEN_POLICY_TYPE,
-  policyEnforcementDecision,
-  type BitwardenPolicyMetadata,
-  type BitwardenPolicySet,
-  type PolicyEnforcementDecision
-} from './bitwarden-policy'
+import { BITWARDEN_POLICY_TYPE } from './bitwarden-policy'
 import { EncryptedVaultStore } from './encrypted-vault-store'
 import {
   deriveImageCacheKeys,
@@ -149,6 +140,19 @@ import type {
   VaultNativeAttachmentRestoreSummary
 } from './vault/types'
 import { UUID_PATTERN, isRecord } from './validation-primitives'
+import {
+  findFolder,
+  findLogin,
+  assertActiveLogin,
+  uniqueImportedFolderName
+} from './vault/data-lookup'
+import {
+  currentBitwardenPolicySet,
+  bitwardenPolicyDecision,
+  assertBitwardenPolicyDoesNotBlock,
+  assertSendMutationAllowed,
+  maximumVaultTimeoutMinutes
+} from './vault/policy'
 
 type BulkRemoteLoginMutation =
   'soft-delete' | 'restore' | 'move' | 'archive' | 'unarchive' | 'hard-delete'
@@ -391,7 +395,7 @@ export class VaultServiceBase {
       assertUnlocked: () => {
         this.requireData()
       },
-      readPolicySet: () => this.currentBitwardenPolicySet(),
+      readPolicySet: () => currentBitwardenPolicySet(this.requireData()),
       readHistory: () => this.requireData().generatorHistory,
       commitHistory: async (history) => {
         const current = this.requireData()
@@ -415,7 +419,7 @@ export class VaultServiceBase {
       clearSyncError: () => this.clearSyncErrorState(),
       mapSyncError: (error) => this.mapSyncError(error),
       copyText: (text) => this.platform.copyText(text),
-      assertMutationAllowed: () => this.assertSendMutationAllowed()
+      assertMutationAllowed: () => assertSendMutationAllowed(this.requireData())
     })
   }
 
@@ -539,7 +543,7 @@ export class VaultServiceBase {
   pinUnlockStatus(): import('../shared/vault-contract').PinUnlockStatus {
     if (
       this.data &&
-      this.bitwardenPolicyDecision(BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin, this.data).state !==
+      bitwardenPolicyDecision(BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin, this.data).state !==
         'not-applicable'
     ) {
       return { available: false, remainingAttempts: 0 }
@@ -563,7 +567,7 @@ export class VaultServiceBase {
           throw new VaultError('LOCKED')
         }
         const data = this.requireData()
-        this.assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin, data)
+        assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin, data)
         if (
           typeof request.pin !== 'string' ||
           request.pin.normalize('NFC').length < 4 ||
@@ -908,7 +912,7 @@ export class VaultServiceBase {
             ) {
               throw new VaultError('LOCKED')
             }
-            this.assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin, data)
+            assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin, data)
           },
           startSync: { material: material.sync }
         })
@@ -1059,102 +1063,17 @@ export class VaultServiceBase {
     }
   }
 
-  /** Returns only the safe, encrypted-at-rest policy snapshot for the active Bitwarden account. */
-  protected currentBitwardenPolicySet(data: VaultData = this.requireData()): BitwardenPolicySet {
-    return data.sync?.state.policySet ?? { source: 'none', policies: [] }
-  }
-
-  /**
-   * Resolves a policy only against organization memberships that explicitly reported
-   * `usePolicies: true`. Missing applicability metadata cannot be treated as an exemption.
-   */
-  protected bitwardenPolicyDecision(
-    type: number,
-    data: VaultData = this.requireData()
-  ): PolicyEnforcementDecision {
-    const policySet = this.currentBitwardenPolicySet(data)
-    if (policySet.parseFailure) {
-      return { state: 'fail-closed', reason: 'malformed-policy', policies: [] }
-    }
-    const candidates = policySet.policies.filter((policy) => policy.enabled && policy.type === type)
-    if (candidates.length > 0 && policySet.applicableOrganizationIds === undefined) {
-      return { state: 'fail-closed', reason: 'unsupported-policy', policies: candidates }
-    }
-    return policyEnforcementDecision(
-      policySet,
-      type,
-      new Set(policySet.applicableOrganizationIds ?? [])
-    )
-  }
-
-  protected assertBitwardenPolicyDoesNotBlock(
-    type: number,
-    data: VaultData = this.requireData()
-  ): void {
-    const decision = this.bitwardenPolicyDecision(type, data)
-    if (decision.state !== 'not-applicable') throw new VaultError('POLICY_RESTRICTED')
-  }
-
-  protected assertSendMutationAllowed(): void {
-    const data = this.requireData()
-    this.assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.DisableSend, data)
-    const controls = this.bitwardenPolicyDecision(BITWARDEN_POLICY_TYPE.SendControls, data)
-    if (controls.state === 'fail-closed') throw new VaultError('POLICY_RESTRICTED')
-    if (
-      controls.state === 'enforce' &&
-      controls.policies.some(
-        (policy) => policy.data?.kind !== 'sendControls' || policy.data.disableSend
-      )
-    ) {
-      throw new VaultError('POLICY_RESTRICTED')
-    }
-  }
-
-  protected assertPersonalItemTypeAllowed(type: VaultItemType, data: VaultData): void {
-    const wireType: Record<VaultItemType, number> = {
-      login: 1,
-      secureNote: 2,
-      card: 3,
-      identity: 4,
-      sshKey: 5
-    }
-    const decision = this.bitwardenPolicyDecision(BITWARDEN_POLICY_TYPE.RestrictedItemTypes, data)
-    if (decision.state === 'not-applicable') return
-    if (decision.state === 'fail-closed') throw new VaultError('POLICY_RESTRICTED')
-    if (
-      decision.policies.some(
-        (policy) =>
-          policy.data?.kind !== 'restrictedItemTypes' ||
-          policy.data.cipherTypes.includes(wireType[type])
-      )
-    ) {
-      throw new VaultError('POLICY_RESTRICTED')
-    }
-  }
-
   async constrainVaultTimeoutPolicy(requested: VaultTimeoutPolicy): Promise<VaultTimeoutPolicy> {
     return this.exclusive(async () => {
       if (!this.data) return requested
-      const decision = this.bitwardenPolicyDecision(
-        BITWARDEN_POLICY_TYPE.MaximumVaultTimeout,
-        this.data
-      )
+      const decision = bitwardenPolicyDecision(BITWARDEN_POLICY_TYPE.MaximumVaultTimeout, this.data)
       if (decision.state === 'not-applicable') return requested
       if (decision.state === 'fail-closed') return { type: 'appInactivity', minutes: 1 }
-      const maximum = this.maximumVaultTimeoutMinutes(decision.policies)
+      const maximum = maximumVaultTimeoutMinutes(decision.policies)
       return requested.type === 'appInactivity' && requested.minutes <= maximum
         ? requested
         : { type: 'appInactivity', minutes: maximum }
     })
-  }
-
-  private maximumVaultTimeoutMinutes(policies: readonly BitwardenPolicyMetadata[]): number {
-    let maximum = Number.POSITIVE_INFINITY
-    for (const policy of policies) {
-      if (policy.data?.kind !== 'maximumVaultTimeout' || policy.data.action === 'logOut') return 1
-      maximum = Math.min(maximum, policy.data.minutes)
-    }
-    return Number.isFinite(maximum) ? maximum : 1
   }
 
   protected normalizeSyncServerUrl(value: unknown): string {
@@ -1877,7 +1796,7 @@ export class VaultServiceBase {
 
   protected applyBitwardenPolicyRuntimeState(data: VaultData): void {
     if (
-      this.bitwardenPolicyDecision(BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin, data).state !==
+      bitwardenPolicyDecision(BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin, data).state !==
       'not-applicable'
     ) {
       this.invalidatePinUnlockCapability()
@@ -1933,8 +1852,8 @@ export class VaultServiceBase {
     }
     const data = this.requireData()
     assertNoPendingPersonalVaultPurge(data.sync)
-    const login = this.findLogin(data, request.id)
-    this.assertActiveLogin(login)
+    const login = findLogin(data, request.id)
+    assertActiveLogin(login)
     this.assertAttachmentAuthorized(login, validateAuthorization)
     const attachment = login.attachments.find((entry) => entry.id === request.attachmentId)
     if (!attachment) throw new VaultError('NOT_FOUND')
@@ -2251,7 +2170,7 @@ export class VaultServiceBase {
       remoteSnapshot,
       syncMetadata
     )) {
-      const upgradedLogin = this.findLogin(next, upgrade.localId)
+      const upgradedLogin = findLogin(next, upgrade.localId)
       upgradedLogin.customFields = cloneCustomFields(upgrade.customFields)
       if (upgrade.uris) {
         upgradedLogin.uris = cloneLoginUris(upgrade.uris)
@@ -3330,7 +3249,7 @@ export class VaultServiceBase {
       } else if (action.kind === 'pull-create') {
         result.localId = this.createLocalFolder(data, action.remote.name).id
       } else if (action.kind === 'pull-update') {
-        const folder = this.findFolder(data, action.localId)
+        const folder = findFolder(data, action.localId)
         folder.name = action.remote.name
         folder.updatedAt = this.nowIso()
       } else if (action.kind === 'delete-local') {
@@ -3340,12 +3259,12 @@ export class VaultServiceBase {
       } else if (action.reason === 'both-modified') {
         if (!action.local || !action.remote) throw new VaultError('SYNC_FAILED')
         this.createLocalFolder(data, action.conflictName)
-        const primary = this.findFolder(data, action.local.id)
+        const primary = findFolder(data, action.local.id)
         primary.name = action.remote.name
         primary.updatedAt = this.nowIso()
       } else if (action.reason === 'remote-deleted') {
         if (!action.local) throw new VaultError('SYNC_FAILED')
-        const local = this.findFolder(data, action.local.id)
+        const local = findFolder(data, action.local.id)
         local.name = action.conflictName
         local.updatedAt = this.nowIso()
         result.remoteId = (await client.createFolder(action.conflictName, signal)).id
@@ -3415,7 +3334,7 @@ export class VaultServiceBase {
       this.updateLocalLogin(data, action.local.id, action.remote, primaryFolderId)
     } else if (action.reason === 'remote-deleted') {
       if (!action.local) throw new VaultError('SYNC_FAILED')
-      const local = this.findLogin(data, action.local.id)
+      const local = findLogin(data, action.local.id)
       local.name = action.conflictName
       local.updatedAt = this.nowIso()
       const folderId = this.resolveFolderReference(action.remoteFolder, completed, 'remoteId')
@@ -3510,10 +3429,7 @@ export class VaultServiceBase {
       sourceFolderIds.add(source.id)
       const folder: FolderView = {
         id: this.validatedNewId(),
-        name: this.uniqueImportedFolderName(
-          data,
-          normalizeRequiredString(source.name, MAX_NAME_LENGTH)
-        ),
+        name: uniqueImportedFolderName(data, normalizeRequiredString(source.name, MAX_NAME_LENGTH)),
         position: data.folders.length,
         createdAt: now,
         updatedAt: now
@@ -3787,7 +3703,7 @@ export class VaultServiceBase {
     source: SyncLogin,
     folderId: string | null
   ): void {
-    const login = this.findLogin(data, id)
+    const login = findLogin(data, id)
     login.type = normalizeItemType(source.type)
     login.name = normalizeRequiredString(source.name, MAX_NAME_LENGTH)
     login.notes = normalizeNullableString(source.notes, MAX_NOTES_LENGTH)
@@ -3898,11 +3814,11 @@ export class VaultServiceBase {
       assertUuid(request.id)
       const current = this.requireData()
       assertNoPendingPersonalVaultPurge(current.sync)
-      const currentLogin = this.findLogin(current, request.id)
-      this.assertActiveLogin(currentLogin)
+      const currentLogin = findLogin(current, request.id)
+      assertActiveLogin(currentLogin)
       const result = await operation(currentLogin)
       const next = cloneData(current)
-      const usedLogin = this.findLogin(next, request.id)
+      const usedLogin = findLogin(next, request.id)
       const now = this.nowIso()
       usedLogin.usageCount = Math.min(Number.MAX_SAFE_INTEGER, usedLogin.usageCount + 1)
       usedLogin.lastUsedAt = now
@@ -3963,85 +3879,11 @@ export class VaultServiceBase {
     return { state: (await this.store.exists()) ? 'locked' : 'uninitialized' }
   }
 
-  protected findFolder(data: VaultData, id: string): FolderView {
-    const folder = data.folders.find((candidate) => candidate.id === id)
-    if (!folder) throw new VaultError('NOT_FOUND')
-    return folder
-  }
-
-  protected findLogin(data: VaultData, id: string): StoredLogin {
-    const login = data.logins.find((candidate) => candidate.id === id)
-    if (!login) throw new VaultError('NOT_FOUND')
-    return login
-  }
-
-  protected resolveLoginBatch(
-    data: VaultData,
-    request: LoginBatchRequest,
-    assertState: (login: StoredLogin) => void
-  ): StoredLogin[] {
-    if (
-      !Array.isArray(request.ids) ||
-      request.ids.length === 0 ||
-      request.ids.length > MAX_LOGIN_BATCH_IDS
-    ) {
-      throw new VaultError('INVALID_INPUT')
-    }
-    request.ids.forEach(assertUuid)
-    if (new Set(request.ids).size !== request.ids.length) {
-      throw new VaultError('INVALID_INPUT')
-    }
-    const logins = request.ids.map((id) => this.findLogin(data, id))
-    logins.forEach(assertState)
-    return logins
-  }
-
-  protected assertActiveLogin(login: StoredLogin): void {
-    if (login.deletedAt !== null) throw new VaultError('INVALID_INPUT')
-  }
-
   protected assertExpectedPasskeyGeneration(value: unknown): asserts value is number {
     if (!Number.isSafeInteger(value) || (value as number) < 0) {
       throw new VaultError('INVALID_INPUT')
     }
     if (value !== this.generation) throw new VaultError('LOCKED')
-  }
-
-  protected assertExpectedPasskeyRevision(
-    login: StoredLogin,
-    value: unknown
-  ): asserts value is string {
-    if (typeof value !== 'string' || value !== login.updatedAt) {
-      throw new VaultError('INVALID_INPUT')
-    }
-  }
-
-  protected normalizeFolderId(data: VaultData, folderId: unknown): string | null {
-    if (folderId === undefined || folderId === null) return null
-    assertUuid(folderId)
-    this.findFolder(data, folderId)
-    return folderId
-  }
-
-  protected assertUniqueFolderName(data: VaultData, name: string): void {
-    const normalized = name.toLocaleLowerCase('en-US')
-    if (data.folders.some((folder) => folder.name.toLocaleLowerCase('en-US') === normalized)) {
-      throw new VaultError('DUPLICATE_NAME')
-    }
-  }
-
-  protected uniqueImportedFolderName(data: VaultData, requestedName: string): string {
-    const existing = new Set(data.folders.map((folder) => folder.name.toLocaleLowerCase('en-US')))
-    if (!existing.has(requestedName.toLocaleLowerCase('en-US'))) return requestedName
-
-    for (let copy = 1; copy <= data.folders.length + 1; copy += 1) {
-      const suffix = copy === 1 ? ' (Imported)' : ` (Imported ${copy})`
-      const codePoints = Array.from(requestedName)
-      while (codePoints.join('').length > MAX_NAME_LENGTH - suffix.length) codePoints.pop()
-      const candidate = `${codePoints.join('')}${suffix}`
-      if (!existing.has(candidate.toLocaleLowerCase('en-US'))) return candidate
-    }
-    throw new VaultError('INVALID_INPUT')
   }
 
   protected async assertMasterPassword(candidateValue: unknown): Promise<void> {

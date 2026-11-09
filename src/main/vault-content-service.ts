@@ -65,6 +65,12 @@ import {
   type ExposedPasswordSnapshot
 } from './vault-service-base'
 import { VaultAccountService } from './vault-account-service'
+import {
+  findFolder,
+  findLogin,
+  assertActiveLogin,
+  assertUniqueFolderName
+} from './vault/data-lookup'
 
 /** Vault queries and local content domains: sends, folders, health, and password history. */
 export class VaultContentService extends VaultAccountService {
@@ -109,7 +115,7 @@ export class VaultContentService extends VaultAccountService {
   createFolder(request: FolderCreateRequest): Promise<FolderView> {
     return this.mutate((data, now) => {
       const name = normalizeRequiredString(request.name, MAX_NAME_LENGTH)
-      this.assertUniqueFolderName(data, name)
+      assertUniqueFolderName(data, name)
       const folder: FolderView = {
         id: this.validatedNewId(),
         name,
@@ -125,7 +131,7 @@ export class VaultContentService extends VaultAccountService {
   updateFolder(request: FolderUpdateRequest): Promise<FolderView[]> {
     return this.mutate((data, now) => {
       assertUuid(request.id)
-      const folder = this.findFolder(data, request.id)
+      const folder = findFolder(data, request.id)
       const name = normalizeRequiredString(request.name, MAX_NAME_LENGTH)
       if (name === folder.name) return data.folders.map((candidate) => ({ ...candidate }))
 
@@ -136,9 +142,9 @@ export class VaultContentService extends VaultAccountService {
   reparentFolder(request: FolderReparentRequest): Promise<FolderView[]> {
     return this.mutate((data, now) => {
       assertUuid(request.id)
-      const folder = this.findFolder(data, request.id)
+      const folder = findFolder(data, request.id)
       if (request.parentId !== null) assertUuid(request.parentId)
-      const parent = request.parentId === null ? null : this.findFolder(data, request.parentId)
+      const parent = request.parentId === null ? null : findFolder(data, request.parentId)
       if (parent && (parent.id === folder.id || parent.name.startsWith(`${folder.name}/`))) {
         throw new VaultError('INVALID_INPUT')
       }
@@ -212,7 +218,7 @@ export class VaultContentService extends VaultAccountService {
   deleteFolder(request: FolderDeleteRequest): Promise<void> {
     return this.mutate((data, now) => {
       assertUuid(request.id)
-      this.findFolder(data, request.id)
+      findFolder(data, request.id)
       recordSyncDeletion(data.sync, 'folder', request.id)
       data.folders = data.folders
         .filter((folder) => folder.id !== request.id)
@@ -652,7 +658,7 @@ export class VaultContentService extends VaultAccountService {
     if (request.deleted === true && request.archived === true) throw new VaultError('INVALID_INPUT')
     if (request.folderId !== undefined && request.folderId !== null) {
       assertUuid(request.folderId)
-      this.findFolder(data, request.folderId)
+      findFolder(data, request.folderId)
     }
 
     const scoped = data.logins.filter(
@@ -778,8 +784,8 @@ export class VaultContentService extends VaultAccountService {
   getLogin(request: LoginIdRequest): Promise<LoginView> {
     return this.exclusive(async () => {
       assertUuid(request.id)
-      const login = this.findLogin(this.requireData(), request.id)
-      this.assertActiveLogin(login)
+      const login = findLogin(this.requireData(), request.id)
+      assertActiveLogin(login)
       return toView(login)
     })
   }
@@ -851,7 +857,7 @@ export class VaultContentService extends VaultAccountService {
     // History is cloned synchronously from the last committed snapshot so a background sync
     // cannot leave the explicit reveal action waiting behind network I/O. Lock starts by
     // blocking fast reads, and authorization is validated before this turn can yield.
-    const login = this.findLogin(this.requireFastReadData(), request.id)
+    const login = findLogin(this.requireFastReadData(), request.id)
     if (
       (login.reprompt === 1 || login.deletedAt !== null) &&
       !validateAuthorization?.([login.id], { generation: this.generation })
@@ -898,8 +904,8 @@ export class VaultContentService extends VaultAccountService {
       ) {
         throw new VaultError('INVALID_INPUT')
       }
-      const login = this.findLogin(data, request.id)
-      this.assertActiveLogin(login)
+      const login = findLogin(data, request.id)
+      assertActiveLogin(login)
       if (login.type !== 'login' || login.updatedAt !== request.expectedUpdatedAt) {
         throw new VaultError('INVALID_INPUT')
       }

@@ -128,6 +128,14 @@ import type {
 } from './vault/types'
 import type { ItemReadAuthorizationValidator } from './vault-service-base'
 import { VaultTransferService } from './vault-transfer-service'
+import {
+  findLogin,
+  resolveLoginBatch,
+  assertActiveLogin,
+  normalizeFolderId,
+  assertExpectedPasskeyRevision
+} from './vault/data-lookup'
+import { assertBitwardenPolicyDoesNotBlock, assertPersonalItemTypeAllowed } from './vault/policy'
 
 export type {
   VaultAccountWebAuthnAssertionRequester,
@@ -608,7 +616,7 @@ export class VaultService extends VaultTransferService {
         let requiresReprompt = false
         for (const id of ids) {
           assertUuid(id)
-          const login = this.findLogin(this.requireData(), id)
+          const login = findLogin(this.requireData(), id)
           if (login.reprompt === 1) requiresReprompt = true
         }
         if (requiresReprompt && !validate(ids, { generation: this.generation })) {
@@ -624,7 +632,7 @@ export class VaultService extends VaultTransferService {
   authorizeLogin(request: LoginAuthorizeRequest): Promise<number> {
     return this.exclusive(async () => {
       assertUuid(request.id)
-      this.findLogin(this.requireData(), request.id)
+      findLogin(this.requireData(), request.id)
       if (typeof request.masterPassword !== 'string') throw new VaultError('INVALID_INPUT')
       const candidate = request.masterPassword.normalize('NFC')
       if (candidate.length > MAX_MASTER_PASSWORD_LENGTH) {
@@ -651,7 +659,7 @@ export class VaultService extends VaultTransferService {
       }
       for (const id of request.ids) {
         assertUuid(id)
-        this.findLogin(this.requireData(), id)
+        findLogin(this.requireData(), id)
       }
       if (typeof request.masterPassword !== 'string') throw new VaultError('INVALID_INPUT')
       const candidate = request.masterPassword.normalize('NFC')
@@ -669,10 +677,10 @@ export class VaultService extends VaultTransferService {
 
   createLogin(request: LoginCreateRequest): Promise<LoginView> {
     return this.mutate((data, now) => {
-      const folderId = this.normalizeFolderId(data, request.folderId)
+      const folderId = normalizeFolderId(data, request.folderId)
       const type = normalizeItemType(request.type ?? 'login')
-      this.assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.OrganizationDataOwnership, data)
-      this.assertPersonalItemTypeAllowed(type, data)
+      assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.OrganizationDataOwnership, data)
+      assertPersonalItemTypeAllowed(type, data)
       const fields = emptyItemFields()
       applyItemFields(fields, request, type)
       const uris = createRequestUris(request, type)
@@ -710,10 +718,10 @@ export class VaultService extends VaultTransferService {
   cloneLogin(request: LoginIdRequest): Promise<LoginView> {
     return this.mutate((data, now) => {
       assertUuid(request.id)
-      const source = this.findLogin(data, request.id)
-      this.assertActiveLogin(source)
-      this.assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.OrganizationDataOwnership, data)
-      this.assertPersonalItemTypeAllowed(source.type, data)
+      const source = findLogin(data, request.id)
+      assertActiveLogin(source)
+      assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.OrganizationDataOwnership, data)
+      assertPersonalItemTypeAllowed(source.type, data)
       const clone: StoredLogin = {
         id: this.validatedNewId(),
         type: source.type,
@@ -748,8 +756,8 @@ export class VaultService extends VaultTransferService {
   archiveLogin(request: LoginIdRequest): Promise<LoginView> {
     return this.mutate((data, now) => {
       assertUuid(request.id)
-      const login = this.findLogin(data, request.id)
-      this.assertActiveLogin(login)
+      const login = findLogin(data, request.id)
+      assertActiveLogin(login)
       if (login.archivedAt !== null) throw new VaultError('INVALID_INPUT')
       login.archivedAt = now
       login.updatedAt = now
@@ -759,8 +767,8 @@ export class VaultService extends VaultTransferService {
 
   archiveLogins(request: LoginBatchRequest): Promise<LoginSummary[]> {
     return this.mutate((data, now) => {
-      const logins = this.resolveLoginBatch(data, request, (login) => {
-        this.assertActiveLogin(login)
+      const logins = resolveLoginBatch(data, request, (login) => {
+        assertActiveLogin(login)
         if (login.archivedAt !== null) throw new VaultError('INVALID_INPUT')
       })
       return logins.map((login) => {
@@ -774,8 +782,8 @@ export class VaultService extends VaultTransferService {
   unarchiveLogin(request: LoginIdRequest): Promise<LoginView> {
     return this.mutate((data, now) => {
       assertUuid(request.id)
-      const login = this.findLogin(data, request.id)
-      this.assertActiveLogin(login)
+      const login = findLogin(data, request.id)
+      assertActiveLogin(login)
       if (login.archivedAt === null) throw new VaultError('INVALID_INPUT')
       login.archivedAt = null
       login.updatedAt = now
@@ -785,8 +793,8 @@ export class VaultService extends VaultTransferService {
 
   unarchiveLogins(request: LoginBatchRequest): Promise<LoginSummary[]> {
     return this.mutate((data, now) => {
-      const logins = this.resolveLoginBatch(data, request, (login) => {
-        this.assertActiveLogin(login)
+      const logins = resolveLoginBatch(data, request, (login) => {
+        assertActiveLogin(login)
         if (login.archivedAt === null) throw new VaultError('INVALID_INPUT')
       })
       return logins.map((login) => {
@@ -800,9 +808,9 @@ export class VaultService extends VaultTransferService {
   updateLogin(request: LoginUpdateRequest): Promise<LoginView> {
     return this.mutate((data, now) => {
       assertUuid(request.id)
-      const login = this.findLogin(data, request.id)
-      this.assertActiveLogin(login)
-      this.assertPersonalItemTypeAllowed(login.type, data)
+      const login = findLogin(data, request.id)
+      assertActiveLogin(login)
+      assertPersonalItemTypeAllowed(login.type, data)
       if (
         request.expectedUpdatedAt !== undefined &&
         (typeof request.expectedUpdatedAt !== 'string' ||
@@ -830,7 +838,7 @@ export class VaultService extends VaultTransferService {
         login.notes = normalizeNullableString(request.notes, MAX_NOTES_LENGTH)
       }
       if (request.folderId !== undefined) {
-        login.folderId = this.normalizeFolderId(data, request.folderId)
+        login.folderId = normalizeFolderId(data, request.folderId)
       }
       if (request.favorite !== undefined) {
         if (typeof request.favorite !== 'boolean') throw new VaultError('INVALID_INPUT')
@@ -885,8 +893,8 @@ export class VaultService extends VaultTransferService {
       ) {
         throw new VaultError('INVALID_INPUT')
       }
-      const login = this.findLogin(data, request.id)
-      this.assertActiveLogin(login)
+      const login = findLogin(data, request.id)
+      assertActiveLogin(login)
       if (login.type !== 'login') throw new VaultError('INVALID_INPUT')
       if (
         request.expectedUpdatedAt !== undefined &&
@@ -1003,8 +1011,8 @@ export class VaultService extends VaultTransferService {
 
       const current = this.requireData()
       assertNoPendingPersonalVaultPurge(current.sync)
-      const login = this.findLogin(current, request.itemId)
-      this.assertActiveLogin(login)
+      const login = findLogin(current, request.itemId)
+      assertActiveLogin(login)
       if (
         login.type !== 'login' ||
         login.archivedAt !== null ||
@@ -1026,7 +1034,7 @@ export class VaultService extends VaultTransferService {
       if (generation !== this.generation) throw new VaultError('LOCKED')
 
       const next = cloneData(current)
-      const usedLogin = this.findLogin(next, login.id)
+      const usedLogin = findLogin(next, login.id)
       const now = this.nowIso()
       usedLogin.usageCount = Math.min(Number.MAX_SAFE_INTEGER, usedLogin.usageCount + 1)
       usedLogin.lastUsedAt = now
@@ -1120,12 +1128,12 @@ export class VaultService extends VaultTransferService {
       this.assertExpectedPasskeyGeneration(request.expectedGeneration)
       assertUuid(request.itemId)
       const next = cloneData(current)
-      const login = this.findLogin(next, request.itemId)
-      this.assertActiveLogin(login)
+      const login = findLogin(next, request.itemId)
+      assertActiveLogin(login)
       if (login.type !== 'login' || login.archivedAt !== null) {
         throw new VaultError('INVALID_INPUT')
       }
-      this.assertExpectedPasskeyRevision(login, request.expectedUpdatedAt)
+      assertExpectedPasskeyRevision(login, request.expectedUpdatedAt)
       if (typeof request.replaceExisting !== 'boolean') throw new VaultError('INVALID_INPUT')
       if (login.passkeys.length > 1 || (login.passkeys.length === 1 && !request.replaceExisting)) {
         throw new VaultError('INVALID_INPUT')
@@ -1204,7 +1212,7 @@ export class VaultService extends VaultTransferService {
       if (selected.length === 0) throw new VaultError('NOT_FOUND')
       if (selected.length !== 1) throw new VaultError('INVALID_INPUT')
       const match = selected[0]!
-      this.assertExpectedPasskeyRevision(match.login, request.expectedUpdatedAt)
+      assertExpectedPasskeyRevision(match.login, request.expectedUpdatedAt)
       assertPasskeyApproval(request.requireUserVerification, request.userVerified)
 
       authorize([match.login.id])
@@ -1219,7 +1227,7 @@ export class VaultService extends VaultTransferService {
       if (generation !== this.generation) throw new VaultError('LOCKED')
       if (assertion.counter !== match.passkey.counter) {
         const next = cloneData(current)
-        const nextLogin = this.findLogin(next, match.login.id)
+        const nextLogin = findLogin(next, match.login.id)
         const nextPasskey = nextLogin.passkeys[match.passkeyIndex]
         if (
           nextPasskey === undefined ||
@@ -1250,8 +1258,8 @@ export class VaultService extends VaultTransferService {
   deleteLogin(request: LoginIdRequest): Promise<void> {
     return this.mutate((data, now) => {
       assertUuid(request.id)
-      const login = this.findLogin(data, request.id)
-      this.assertActiveLogin(login)
+      const login = findLogin(data, request.id)
+      assertActiveLogin(login)
       login.deletedAt = now
       login.updatedAt = now
     })
@@ -1259,7 +1267,7 @@ export class VaultService extends VaultTransferService {
 
   deleteLogins(request: LoginBatchRequest): Promise<number> {
     return this.mutate((data, now) => {
-      const logins = this.resolveLoginBatch(data, request, (login) => this.assertActiveLogin(login))
+      const logins = resolveLoginBatch(data, request, (login) => assertActiveLogin(login))
       for (const login of logins) {
         login.deletedAt = now
         login.updatedAt = now
@@ -1271,7 +1279,7 @@ export class VaultService extends VaultTransferService {
   restoreLogin(request: LoginIdRequest): Promise<LoginView> {
     return this.mutate((data, now) => {
       assertUuid(request.id)
-      const login = this.findLogin(data, request.id)
+      const login = findLogin(data, request.id)
       if (login.deletedAt === null) throw new VaultError('INVALID_INPUT')
       login.deletedAt = null
       login.updatedAt = now
@@ -1281,7 +1289,7 @@ export class VaultService extends VaultTransferService {
 
   restoreLogins(request: LoginBatchRequest): Promise<LoginSummary[]> {
     return this.mutate((data, now) => {
-      const logins = this.resolveLoginBatch(data, request, (login) => {
+      const logins = resolveLoginBatch(data, request, (login) => {
         if (login.deletedAt === null) throw new VaultError('INVALID_INPUT')
       })
       return logins.map((login) => {
@@ -1296,7 +1304,7 @@ export class VaultService extends VaultTransferService {
     return this.mutate((data) => {
       assertNoPendingLoginImport(data.sync)
       assertUuid(request.id)
-      const login = this.findLogin(data, request.id)
+      const login = findLogin(data, request.id)
       if (login.deletedAt === null) throw new VaultError('INVALID_INPUT')
       recordSyncDeletion(data.sync, 'login', request.id)
       data.logins = data.logins.filter((candidate) => candidate.id !== request.id)
@@ -1306,7 +1314,7 @@ export class VaultService extends VaultTransferService {
   deleteLoginsPermanently(request: LoginBatchRequest): Promise<number> {
     return this.mutate((data) => {
       assertNoPendingLoginImport(data.sync)
-      const logins = this.resolveLoginBatch(data, request, (login) => {
+      const logins = resolveLoginBatch(data, request, (login) => {
         if (login.deletedAt === null) throw new VaultError('INVALID_INPUT')
       })
       for (const login of logins) recordSyncDeletion(data.sync, 'login', login.id)
@@ -1331,8 +1339,8 @@ export class VaultService extends VaultTransferService {
     return this.mutate((data, now) => {
       assertUuid(request.id)
       if (typeof request.favorite !== 'boolean') throw new VaultError('INVALID_INPUT')
-      const login = this.findLogin(data, request.id)
-      this.assertActiveLogin(login)
+      const login = findLogin(data, request.id)
+      assertActiveLogin(login)
       login.favorite = request.favorite
       login.updatedAt = now
       return toSummary(login)
@@ -1342,9 +1350,9 @@ export class VaultService extends VaultTransferService {
   moveLogin(request: LoginMoveRequest): Promise<LoginSummary> {
     return this.mutate((data, now) => {
       assertUuid(request.id)
-      const login = this.findLogin(data, request.id)
-      this.assertActiveLogin(login)
-      login.folderId = this.normalizeFolderId(data, request.folderId)
+      const login = findLogin(data, request.id)
+      assertActiveLogin(login)
+      login.folderId = normalizeFolderId(data, request.folderId)
       login.updatedAt = now
       return toSummary(login)
     })
@@ -1364,9 +1372,9 @@ export class VaultService extends VaultTransferService {
         throw new VaultError('INVALID_INPUT')
       }
 
-      const folderId = this.normalizeFolderId(data, request.folderId)
-      const logins = request.ids.map((id) => this.findLogin(data, id))
-      logins.forEach((login) => this.assertActiveLogin(login))
+      const folderId = normalizeFolderId(data, request.folderId)
+      const logins = request.ids.map((id) => findLogin(data, id))
+      logins.forEach((login) => assertActiveLogin(login))
       return logins.map((login) => {
         login.folderId = folderId
         login.updatedAt = now
@@ -1378,8 +1386,8 @@ export class VaultService extends VaultTransferService {
   revealPassword(request: LoginIdRequest): Promise<string> {
     return this.exclusive(async () => {
       assertUuid(request.id)
-      const login = this.findLogin(this.requireData(), request.id)
-      this.assertActiveLogin(login)
+      const login = findLogin(this.requireData(), request.id)
+      assertActiveLogin(login)
       assertSecretField(login.type, 'password')
       return login.password
     })
@@ -1388,8 +1396,8 @@ export class VaultService extends VaultTransferService {
   revealEditorSecrets(request: EditorSecretsRequest): Promise<EditorSecretsView> {
     return this.exclusive(async () => {
       assertUuid(request.id)
-      const login = this.findLogin(this.requireData(), request.id)
-      this.assertActiveLogin(login)
+      const login = findLogin(this.requireData(), request.id)
+      assertActiveLogin(login)
       if (request.expectedUpdatedAt !== login.updatedAt) throw new VaultError('INVALID_INPUT')
 
       const fields: EditorSecretsView['fields'] = {}
@@ -1418,8 +1426,8 @@ export class VaultService extends VaultTransferService {
   revealSecret(request: ItemFieldRequest): Promise<string> {
     return this.exclusive(async () => {
       assertUuid(request.id)
-      const login = this.findLogin(this.requireData(), request.id)
-      this.assertActiveLogin(login)
+      const login = findLogin(this.requireData(), request.id)
+      assertActiveLogin(login)
       assertSecretField(login.type, request.field as VaultSecretField)
       return login[request.field] as string
     })
@@ -1428,8 +1436,8 @@ export class VaultService extends VaultTransferService {
   revealCustomField(request: CustomFieldRequest): Promise<string> {
     return this.exclusive(async () => {
       assertUuid(request.id)
-      const login = this.findLogin(this.requireData(), request.id)
-      this.assertActiveLogin(login)
+      const login = findLogin(this.requireData(), request.id)
+      assertActiveLogin(login)
       if (request.expectedUpdatedAt !== login.updatedAt) throw new VaultError('INVALID_INPUT')
       const field = customFieldFromSource(login, request.source)
       if (field.type !== 'hidden') throw new VaultError('INVALID_INPUT')
@@ -1447,8 +1455,8 @@ export class VaultService extends VaultTransferService {
   getTotp(request: LoginIdRequest): Promise<TotpCodeView> {
     return this.exclusive(async () => {
       assertUuid(request.id)
-      const login = this.findLogin(this.requireData(), request.id)
-      this.assertActiveLogin(login)
+      const login = findLogin(this.requireData(), request.id)
+      assertActiveLogin(login)
       if (login.type !== 'login' || !login.totp) throw new VaultError('INVALID_INPUT')
       return generateTotp(login.totp, this.now())
     })
@@ -1515,8 +1523,8 @@ export class VaultService extends VaultTransferService {
     const iconUrl = (() => {
       assertUuid(request.id)
       const data = this.requireFastReadData()
-      const login = this.findLogin(data, request.id)
-      this.assertActiveLogin(login)
+      const login = findLogin(data, request.id)
+      assertActiveLogin(login)
       if (
         login.reprompt === 1 &&
         !validateAuthorization?.([login.id], { generation: this.generation })

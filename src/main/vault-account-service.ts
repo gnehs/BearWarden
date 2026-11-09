@@ -59,9 +59,9 @@ import {
   clearAccountWebAuthnAttestation,
   scrubAccountSessionDeauthorizationRequest,
   type EmailTwoFactorSetupSession,
-  type AccountWebAuthnOperationLease
+  type AccountWebAuthnOperationLease,
+  VaultServiceBase
 } from './vault-service-base'
-import { VaultServiceBase } from './vault-service-base'
 import { isRecord } from './validation-primitives'
 
 function initialSyncData(serverUrl: string, email: string): PersistedSyncData {
