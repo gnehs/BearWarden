@@ -246,8 +246,19 @@ export function VaultItemTotpCard({
       </CardHeader>
       <CardContent className="contents">
         <div className="mx-(--card-spacing) grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl bg-(--inset-surface) py-2 pr-2 pl-3.5 shadow-(--inset-shadow) [&_strong]:font-mono [&_strong]:text-2xl [&_strong]:tracking-widest">
-          <div className="flex h-8 min-w-0 items-center">
-            {code ? (
+          {code ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="-ml-2 h-8 w-[calc(100%+8px)] min-w-0 justify-start overflow-hidden px-2 [&>strong]:min-w-0 [&>strong]:truncate"
+              data-field-copy-value=""
+              type="button"
+              aria-label={
+                copied ? t`One-time verification code copied` : t`Copy one-time verification code`
+              }
+              disabled={generationError !== null}
+              onClick={() => void onCopy()}
+            >
               <strong>
                 {/^\d+$/.test(code.code) ? (
                   <NumberFlow
@@ -263,12 +274,16 @@ export function VaultItemTotpCard({
                   code.code
                 )}
               </strong>
-            ) : generationError ? (
-              <strong>—</strong>
-            ) : showSkeleton ? (
-              <Skeleton className="h-8 w-36" aria-hidden="true" />
-            ) : null}
-          </div>
+            </Button>
+          ) : (
+            <div className="flex h-8 min-w-0 items-center">
+              {generationError ? (
+                <strong>—</strong>
+              ) : showSkeleton ? (
+                <Skeleton className="h-8 w-36" aria-hidden="true" />
+              ) : null}
+            </div>
+          )}
           <TooltipIconButton
             variant="outline"
             size="icon"
