@@ -72,7 +72,7 @@ import type {
   AttachmentUploadResult,
   VaultImportResult
 } from '../shared/vault-contract'
-import { MAX_LOGIN_AUTHORIZE_MANY_IDS, MAX_LOGIN_BATCH_IDS } from '../shared/vault-contract'
+import { MAX_LOGIN_BATCH_IDS } from '../shared/vault-contract'
 import { VaultError } from './vault-errors'
 import { BITWARDEN_POLICY_TYPE } from './bitwarden-policy'
 import {
@@ -99,7 +99,6 @@ import type {
 } from './autofill'
 import { validatePasskeyOrigin } from './passkey-origin-validation'
 import {
-  MAX_MASTER_PASSWORD_LENGTH,
   MAX_NAME_LENGTH,
   MAX_URI_LENGTH,
   MAX_NOTES_LENGTH,
@@ -355,7 +354,7 @@ export class VaultService extends VaultAccountService {
     request: SshAgentVaultSignRequest,
     validateAuthorization: SshAgentVaultAuthorizationValidator
   ): Promise<SshAgentVaultSignResult> {
-    return this.runAuthorizedOperation(validateAuthorization, async (authorize) => {
+    return this.authorization.runAuthorizedOperation(validateAuthorization, async (authorize) => {
       if (
         !Buffer.isBuffer(request.publicKeyBlob) ||
         request.publicKeyBlob.length === 0 ||
@@ -401,75 +400,19 @@ export class VaultService extends VaultAccountService {
     })
   }
 
-  /**
-   * Main-process authorization boundary. The validator must be synchronous: keeping it and the
-   * nested service operation in this same exclusive section prevents sync from enabling reprompt
-   * between the check and secret access.
-   */
   runAuthorizedOperation<T>(
     validate: (ids: readonly string[], state: { generation: number }) => boolean,
     operation: (authorize: (ids: readonly string[]) => void) => Promise<T>
   ): Promise<T> {
-    return this.core.exclusive(async () => {
-      let didAuthorize = false
-      const authorize = (ids: readonly string[]): void => {
-        didAuthorize = true
-        let requiresReprompt = false
-        for (const id of ids) {
-          assertUuid(id)
-          const login = findLogin(this.core.requireData(), id)
-          if (login.reprompt === 1) requiresReprompt = true
-        }
-        if (requiresReprompt && !validate(ids, { generation: this.core.generation })) {
-          throw new VaultError('REPROMPT_REQUIRED')
-        }
-      }
-      const result = await operation(authorize)
-      if (!didAuthorize) throw new VaultError('INTERNAL_ERROR')
-      return result
-    })
+    return this.authorization.runAuthorizedOperation(validate, operation)
   }
 
   authorizeLogin(request: LoginAuthorizeRequest): Promise<number> {
-    return this.core.exclusive(async () => {
-      assertUuid(request.id)
-      findLogin(this.core.requireData(), request.id)
-      if (typeof request.masterPassword !== 'string') throw new VaultError('INVALID_INPUT')
-      const candidate = request.masterPassword.normalize('NFC')
-      if (candidate.length > MAX_MASTER_PASSWORD_LENGTH) {
-        throw new VaultError('INVALID_MASTER_PASSWORD')
-      }
-      const generation = this.core.generation
-      const valid = await this.core.verifyMasterPassword(candidate)
-      if (!valid) throw new VaultError('INVALID_MASTER_PASSWORD')
-      return generation
-    })
+    return this.authorization.authorizeLogin(request)
   }
 
   authorizeLogins(request: LoginAuthorizeManyRequest): Promise<number> {
-    return this.core.exclusive(async () => {
-      if (
-        !Array.isArray(request.ids) ||
-        request.ids.length === 0 ||
-        request.ids.length > MAX_LOGIN_AUTHORIZE_MANY_IDS ||
-        new Set(request.ids).size !== request.ids.length
-      ) {
-        throw new VaultError('INVALID_INPUT')
-      }
-      for (const id of request.ids) {
-        assertUuid(id)
-        findLogin(this.core.requireData(), id)
-      }
-      if (typeof request.masterPassword !== 'string') throw new VaultError('INVALID_INPUT')
-      const candidate = request.masterPassword.normalize('NFC')
-      if (candidate.length > MAX_MASTER_PASSWORD_LENGTH) {
-        throw new VaultError('INVALID_MASTER_PASSWORD')
-      }
-      const generation = this.core.generation
-      const valid = await this.core.verifyMasterPassword(candidate)
-      if (!valid) throw new VaultError('INVALID_MASTER_PASSWORD')
-      return generation
-    })
+    return this.authorization.authorizeLogins(request)
   }
 
   createLogin(request: LoginCreateRequest): Promise<LoginView> {
@@ -766,7 +709,7 @@ export class VaultService extends VaultAccountService {
     validateAuthorization: AutofillAuthorizationValidator,
     consume: AutofillCredentialConsumer
   ): Promise<void> {
-    return this.runAuthorizedOperation(validateAuthorization, async (authorize) => {
+    return this.authorization.runAuthorizedOperation(validateAuthorization, async (authorize) => {
       if (
         !Number.isSafeInteger(request.expectedGeneration) ||
         request.expectedGeneration < 0 ||
@@ -905,7 +848,7 @@ export class VaultService extends VaultAccountService {
     request: PasskeyVaultCreateRequest,
     validateAuthorization: PasskeyVaultAuthorizationValidator
   ): Promise<PasskeyVaultCreateResult> {
-    return this.runAuthorizedOperation(validateAuthorization, async (authorize) => {
+    return this.authorization.runAuthorizedOperation(validateAuthorization, async (authorize) => {
       const current = this.core.requireData()
       assertNoPendingPersonalVaultPurge(current.sync)
       this.assertExpectedPasskeyGeneration(request.expectedGeneration)
@@ -979,7 +922,7 @@ export class VaultService extends VaultAccountService {
     request: PasskeyVaultAssertionRequest,
     validateAuthorization: PasskeyVaultAuthorizationValidator
   ): Promise<PasskeyVaultAssertionResult> {
-    return this.runAuthorizedOperation(validateAuthorization, async (authorize) => {
+    return this.authorization.runAuthorizedOperation(validateAuthorization, async (authorize) => {
       const current = this.core.requireData()
       assertNoPendingPersonalVaultPurge(current.sync)
       this.assertExpectedPasskeyGeneration(request.expectedGeneration)
