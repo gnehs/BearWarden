@@ -103,7 +103,7 @@ msgid "{0, plural, one {{1, plural, one {The server still has {2} personal item 
 msgstr "{0, plural, one {{1, plural, one {The server still has {2} personal item and # folder. BearWarden will not resend automatically; trying again only removes remaining data.} other {The server still has {3} personal item and # folders. BearWarden will not resend automatically; trying again only removes remaining data.}}} other {{4, plural, one {The server still has {5} personal items and # folder. BearWarden will not resend automatically; trying again only removes remaining data.} other {The server still has {6} personal items and # folders. BearWarden will not resend automatically; trying again only removes remaining data.}}}}"
 
 #. placeholder {0}: nextStatus.remainingAttempts
-#: src/renderer/src/components/AuthScreen.tsx:181
+#: src/renderer/src/components/AuthScreen.tsx:187
 msgid "{0, plural, one {{base} You have # attempt remaining.} other {{base} You have # attempts remaining.}}"
 msgstr "{0, plural, one {{base} You have # attempt remaining.} other {{base} You have # attempts remaining.}}"
 
@@ -184,7 +184,7 @@ msgid "{0} custom field types simplified to text"
 msgstr "{0} custom field types simplified to text"
 
 #. placeholder {0}: itemTypeMeta[login.type].label
-#: src/renderer/src/components/VaultItemDetailViews.tsx:453
+#: src/renderer/src/components/VaultItemDetailViews.tsx:449
 msgid "{0} details"
 msgstr "{0} details"
 
@@ -877,7 +877,7 @@ msgstr "After this time, the server permanently removes the Send."
 msgid "After updating BearWarden: if the system switch is already on but this page still says “Permission required”, select BearWarden in the Accessibility list, click − to remove the old entry, then return here and request permission again."
 msgstr "After updating BearWarden: if the system switch is already on but this page still says “Permission required”, select BearWarden in the Accessibility list, click − to remove the old entry, then return here and request permission again."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:332
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:335
 msgid "After you acknowledge this, reconnect. You can start a new master-password change only after reconnecting."
 msgstr "After you acknowledge this, reconnect. You can start a new master-password change only after reconnecting."
 
@@ -902,7 +902,7 @@ msgstr "All"
 msgid "All analyzed login items are above the weak-password threshold."
 msgstr "All analyzed login items are above the weak-password threshold."
 
-#: src/renderer/src/components/AuthScreen.tsx:283
+#: src/renderer/src/components/AuthScreen.tsx:290
 msgid "All data is decrypted on this device."
 msgstr "All data is decrypted on this device."
 
@@ -1060,9 +1060,13 @@ msgstr "Archived {affectedCount} items."
 msgid "Ask before every signature"
 msgstr "Ask before every signature"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:377
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:384
 msgid "At least {MIN_PASSWORD_LENGTH} characters. Keep it safe: BearWarden cannot recover it."
 msgstr "At least {MIN_PASSWORD_LENGTH} characters. Keep it safe: BearWarden cannot recover it."
+
+#: src/renderer/src/components/AuthScreen.tsx:408
+msgid "At least 12 characters. BearWarden cannot recover it."
+msgstr "At least 12 characters. BearWarden cannot recover it."
 
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:549
 msgid "At least 12 characters. It is provided only to the local main process for encryption or decryption."
@@ -1072,7 +1076,7 @@ msgstr "At least 12 characters. It is provided only to the local main process fo
 msgid "At least one URI explicitly uses http://"
 msgstr "At least one URI explicitly uses http://"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:410
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:419
 msgid "At most {MAX_HINT_LENGTH} characters. Do not enter your master password directly."
 msgstr "At most {MAX_HINT_LENGTH} characters. Do not enter your master password directly."
 
@@ -1165,7 +1169,7 @@ msgstr "Back"
 msgid "Back to item list"
 msgstr "Back to item list"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:473
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:482
 msgid "Back to review"
 msgstr "Back to review"
 
@@ -1201,7 +1205,7 @@ msgstr "BearWarden autofill"
 msgid "BearWarden can control the current browser and perform autofill."
 msgstr "BearWarden can control the current browser and perform autofill."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:96
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:98
 msgid "BearWarden can't safely determine the remote outcome on the current connection. No new action will be submitted now to prevent duplicate changes."
 msgstr "BearWarden can't safely determine the remote outcome on the current connection. No new action will be submitted now to prevent duplicate changes."
 
@@ -1217,7 +1221,7 @@ msgstr "BearWarden cannot unlock this organization's account safely. Use the off
 msgid "BearWarden could not create the SSH Agent endpoint safely. Check the home directory permissions and socket path, then try again."
 msgstr "BearWarden could not create the SSH Agent endpoint safely. Check the home directory permissions and socket path, then try again."
 
-#: src/renderer/src/components/AuthScreen.tsx:300
+#: src/renderer/src/components/AuthScreen.tsx:307
 msgid "BearWarden could not load the vault service. Your data has not been changed."
 msgstr "BearWarden could not load the vault service. Your data has not been changed."
 
@@ -1486,13 +1490,13 @@ msgstr "Catch-all domain"
 msgid "Categories"
 msgstr "Categories"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:241
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:246
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:480
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:244
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:249
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:489
 msgid "Change master password"
 msgstr "Change master password"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:461
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:470
 msgid "Change your master password?"
 msgstr "Change your master password?"
 
@@ -1504,7 +1508,7 @@ msgstr "Character types"
 msgid "Check again"
 msgstr "Check again"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:421
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:430
 msgid "Check and continue"
 msgstr "Check and continue"
 
@@ -1578,7 +1582,7 @@ msgstr "Checked this time"
 msgid "Checking"
 msgstr "Checking"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:258
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:261
 msgid "Checking the status of the previous change…"
 msgstr "Checking the status of the previous change…"
 
@@ -1727,7 +1731,7 @@ msgstr "Clipboard and website icons"
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:918
 #: src/renderer/src/components/Dialogs.tsx:100
 #: src/renderer/src/components/Dialogs.tsx:783
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:433
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:442
 #: src/renderer/src/components/SyncDialog.tsx:905
 #: src/renderer/src/components/SyncDialog.tsx:1438
 #: src/renderer/src/components/SyncErrorDetailsDialog.tsx:136
@@ -1806,16 +1810,16 @@ msgstr "Command plus Option plus backslash"
 msgid "Company"
 msgstr "Company"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:420
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:479
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:429
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:488
 msgid "Complete local change"
 msgstr "Complete local change"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:460
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:469
 msgid "Complete the confirmed local master-password change?"
 msgstr "Complete the confirmed local master-password change?"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:296
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:299
 msgid "Complete the locally pending change confirmed by the server"
 msgstr "Complete the locally pending change confirmed by the server"
 
@@ -1839,7 +1843,8 @@ msgstr "Confirm clearing completion record"
 msgid "Confirm disabling {disableTargetName}"
 msgstr "Confirm disabling {disableTargetName}"
 
-#: src/renderer/src/components/AuthScreen.tsx:403
+#: src/renderer/src/components/AuthScreen.tsx:417
+#: src/renderer/src/components/AuthScreen.tsx:421
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:409
 #: src/renderer/src/components/SettingsPage.tsx:1142
 #: src/renderer/src/components/SettingsPage.tsx:1252
@@ -1847,12 +1852,13 @@ msgstr "Confirm disabling {disableTargetName}"
 msgid "Confirm master password"
 msgstr "Confirm master password"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:382
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:389
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:393
 msgid "Confirm new master password"
 msgstr "Confirm new master password"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:418
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:477
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:427
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:486
 msgid "Confirm remote outcome"
 msgstr "Confirm remote outcome"
 
@@ -1868,11 +1874,11 @@ msgstr "Confirm that sync is connected and try again. Existing data has not been
 msgid "Confirm that the vault is unlocked, then try again later."
 msgstr "Confirm that the vault is unlocked, then try again later."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:458
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:467
 msgid "Confirm the remote master-password outcome?"
 msgstr "Confirm the remote master-password outcome?"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:280
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:283
 msgid "Confirm the remote outcome and recover the existing change"
 msgstr "Confirm the remote outcome and recover the existing change"
 
@@ -2180,7 +2186,7 @@ msgstr "Create a plaintext copy of your personal vault and attachments that Bitw
 msgid "Create a text Send to securely share one-time content."
 msgstr "Create a text Send to securely share one-time content."
 
-#: src/renderer/src/components/AuthScreen.tsx:453
+#: src/renderer/src/components/AuthScreen.tsx:469
 msgid "Create and unlock"
 msgstr "Create and unlock"
 
@@ -2205,7 +2211,7 @@ msgstr "Create unique passwords for the most frequently reused items first."
 msgid "Create your first Send"
 msgstr "Create your first Send"
 
-#: src/renderer/src/components/AuthScreen.tsx:316
+#: src/renderer/src/components/AuthScreen.tsx:323
 msgid "Create your vault"
 msgstr "Create your vault"
 
@@ -2278,7 +2284,8 @@ msgstr "Current device"
 msgid "Current local account · Local code {code}"
 msgstr "Current local account · Local code {code}"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:346
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:349
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:353
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:510
 msgid "Current master password"
 msgstr "Current master password"
@@ -2332,7 +2339,7 @@ msgid "Custom field was not moved."
 msgstr "Custom field was not moved."
 
 #: src/renderer/src/components/LoginEditor.tsx:2786
-#: src/renderer/src/components/VaultItemDetailViews.tsx:492
+#: src/renderer/src/components/VaultItemDetailViews.tsx:488
 msgid "Custom fields"
 msgstr "Custom fields"
 
@@ -2681,7 +2688,6 @@ msgstr "Edge web app"
 #: src/renderer/src/components/AccountProfileCard.tsx:152
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:146
 #: src/renderer/src/components/VaultItemDetailViews.tsx:364
-#: src/renderer/src/components/VaultItemDetailViews.tsx:424
 msgid "Edit"
 msgstr "Edit"
 
@@ -2942,11 +2948,11 @@ msgstr "Enter the email address to query through Vaultwarden and HIBP."
 msgid "Enter the numeric verification code from the email."
 msgstr "Enter the numeric verification code from the email."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:283
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:286
 msgid "Enter the original master password and the new password you set. This only confirms the remote state and completes local recovery; it does not resubmit the master-password change."
 msgstr "Enter the original master password and the new password you set. This only confirms the remote state and completes local recovery; it does not resubmit the master-password change."
 
-#: src/renderer/src/components/AuthScreen.tsx:322
+#: src/renderer/src/components/AuthScreen.tsx:329
 msgid "Enter the PIN set for this session."
 msgstr "Enter the PIN set for this session."
 
@@ -3002,7 +3008,7 @@ msgstr "Enter your master password to confirm."
 msgid "Enter your master password to continue."
 msgstr "Enter your master password to continue."
 
-#: src/renderer/src/components/AuthScreen.tsx:323
+#: src/renderer/src/components/AuthScreen.tsx:330
 msgid "Enter your master password to unlock items stored on this device."
 msgstr "Enter your master password to unlock items stored on this device."
 
@@ -3012,7 +3018,7 @@ msgstr "Enter your master password to unlock items stored on this device."
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:369
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:484
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:514
-#: src/renderer/src/components/AuthScreen.tsx:200
+#: src/renderer/src/components/AuthScreen.tsx:206
 #: src/renderer/src/components/Dialogs.tsx:489
 #: src/renderer/src/components/SyncDialog.tsx:780
 #: src/renderer/src/components/SyncDialog.tsx:831
@@ -3418,6 +3424,7 @@ msgid "Hide {0}"
 msgstr "Hide {0}"
 
 #: src/renderer/src/components/LoginEditor.tsx:1516
+#: src/renderer/src/components/RevealableSecretInput.tsx:31
 #: src/renderer/src/components/VaultDetailFieldRows.tsx:330
 msgid "Hide {label}"
 msgstr "Hide {label}"
@@ -3475,7 +3482,7 @@ msgstr "hours"
 msgid "I understand that existing CLI sessions may need to sign in again"
 msgstr "I understand that existing CLI sessions may need to sign in again"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:326
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:329
 msgid "I understand the previous operation did not change the remote master password"
 msgstr "I understand the previous operation did not change the remote master password"
 
@@ -3866,7 +3873,7 @@ msgid "Loading…"
 msgstr "Loading…"
 
 #. Field label for choosing which device-local vault account to unlock; this is not a remote Bitwarden profile.
-#: src/renderer/src/components/AuthScreen.tsx:332
+#: src/renderer/src/components/AuthScreen.tsx:339
 msgctxt "local-account-selector"
 msgid "Local account"
 msgstr "Local account"
@@ -4053,7 +4060,8 @@ msgstr "Manual update"
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1091
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1193
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1260
-#: src/renderer/src/components/AuthScreen.tsx:383
+#: src/renderer/src/components/AuthScreen.tsx:390
+#: src/renderer/src/components/AuthScreen.tsx:395
 #: src/renderer/src/components/Dialogs.tsx:518
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:95
 #: src/renderer/src/components/PendingImportWarning.tsx:61
@@ -4061,7 +4069,7 @@ msgstr "Manual update"
 msgid "Master password"
 msgstr "Master password"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:83
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:85
 msgid "Master password changed"
 msgstr "Master password changed"
 
@@ -4091,7 +4099,7 @@ msgstr "Master password verification failed. Enter your master password and conf
 msgid "Master password verification failed. Restart setup."
 msgstr "Master password verification failed. Restart setup."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:399
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:408
 msgid "Master-password hint (optional)"
 msgstr "Master-password hint (optional)"
 
@@ -4254,7 +4262,7 @@ msgstr "Move to folder"
 msgid "Move to trash"
 msgstr "Move to trash"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:435
+#: src/renderer/src/components/VaultItemDetailViews.tsx:431
 #: src/renderer/src/components/VaultShell-dnd.ts:71
 #: src/renderer/src/components/VaultShellDialogs.tsx:230
 msgid "Move to Trash"
@@ -4357,11 +4365,13 @@ msgstr "New device verification code required"
 #~ msgid "New item"
 #~ msgstr "New item"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:363
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:368
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:372
 msgid "New master password"
 msgstr "New master password"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:363
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:368
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:372
 msgid "New master password you set"
 msgstr "New master password you set"
 
@@ -4649,7 +4659,7 @@ msgstr "Open two-factor authentication setup instructions for {findingName}"
 msgid "Open website"
 msgstr "Open website"
 
-#: src/renderer/src/components/AuthScreen.tsx:280
+#: src/renderer/src/components/AuthScreen.tsx:287
 msgid "Opening secure vault"
 msgstr "Opening secure vault"
 
@@ -4728,7 +4738,8 @@ msgstr "Organizations"
 msgid "Original folder"
 msgstr "Original folder"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:346
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:349
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:353
 msgid "Original master password"
 msgstr "Original master password"
 
@@ -4945,7 +4956,7 @@ msgstr "Picked up local account {0} of {1}."
 msgid "Picked up website {0} of {1}."
 msgstr "Picked up website {0} of {1}."
 
-#: src/renderer/src/components/AuthScreen.tsx:366
+#: src/renderer/src/components/AuthScreen.tsx:373
 #: src/renderer/src/components/SettingsPage.tsx:1111
 msgid "PIN"
 msgstr "PIN"
@@ -4970,7 +4981,7 @@ msgstr "PIN unlock is disabled. Enter your master password instead."
 msgid "PIN unlock is enabled for this session only."
 msgstr "PIN unlock is enabled for this session only."
 
-#: src/renderer/src/components/AuthScreen.tsx:189
+#: src/renderer/src/components/AuthScreen.tsx:195
 msgid "PIN unlock is no longer available. Enter your master password."
 msgstr "PIN unlock is no longer available. Enter your master password."
 
@@ -5168,11 +5179,11 @@ msgstr "Recipients must actively reveal the text to see it."
 msgid "Recommended"
 msgstr "Recommended"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:443
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:452
 msgid "Reconnect"
 msgstr "Reconnect"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:95
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:97
 msgid "Reconnect required before confirmation"
 msgstr "Reconnect required before confirmation"
 
@@ -5250,7 +5261,7 @@ msgstr "Remote master password"
 msgid "Remote master password verification failed."
 msgstr "Remote master password verification failed."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:101
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:103
 msgid "Remote outcome remains indeterminate"
 msgstr "Remote outcome remains indeterminate"
 
@@ -5627,7 +5638,7 @@ msgstr "Securely removing local account"
 msgid "Securely stored item"
 msgstr "Securely stored item"
 
-#: src/renderer/src/components/AuthScreen.tsx:438
+#: src/renderer/src/components/AuthScreen.tsx:454
 #: src/renderer/src/hooks/use-vault-accounts.ts:130
 msgid "Securely switching accounts and restarting"
 msgstr "Securely switching accounts and restarting"
@@ -5758,7 +5769,7 @@ msgstr "Separator"
 msgid "Server"
 msgstr "Server"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:89
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:91
 msgid "Server confirms master password was not changed"
 msgstr "Server confirms master password was not changed"
 
@@ -5793,7 +5804,7 @@ msgstr "Session refresh response"
 msgid "Set <0>SSH_AUTH_SOCK</0> in the terminal environment so SSH and Git use BearWarden’s local socket."
 msgstr "Set <0>SSH_AUTH_SOCK</0> in the terminal environment so SSH and Git use BearWarden’s local socket."
 
-#: src/renderer/src/components/AuthScreen.tsx:320
+#: src/renderer/src/components/AuthScreen.tsx:327
 msgid "Set a master password that only you know. BearWarden cannot recover it for you."
 msgstr "Set a master password that only you know. BearWarden cannot recover it for you."
 
@@ -5876,6 +5887,7 @@ msgid "Show {0}"
 msgstr "Show {0}"
 
 #: src/renderer/src/components/LoginEditor.tsx:1516
+#: src/renderer/src/components/RevealableSecretInput.tsx:31
 #: src/renderer/src/components/VaultDetailFieldRows.tsx:330
 msgid "Show {label}"
 msgstr "Show {label}"
@@ -6020,7 +6032,7 @@ msgstr "Status unavailable"
 msgid "Status:"
 msgstr "Status:"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:102
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:104
 msgid "Stop and reconnect. Do not submit another master-password change until you confirm which master password lets you sign in."
 msgstr "Stop and reconnect. Do not submit another master-password change until you confirm which master password lets you sign in."
 
@@ -6381,7 +6393,7 @@ msgstr "The local account and its data on this device were removed."
 msgid "The local account limit has been reached. You can keep up to 5 accounts."
 msgstr "The local account limit has been reached. You can keep up to 5 accounts."
 
-#: src/renderer/src/components/AuthScreen.tsx:117
+#: src/renderer/src/components/AuthScreen.tsx:122
 #: src/renderer/src/hooks/use-vault-accounts.ts:105
 msgid "The local account list could not be loaded. Try again later."
 msgstr "The local account list could not be loaded. Try again later."
@@ -6424,15 +6436,15 @@ msgstr "The master password is sent only to the local process for verification."
 msgid "The master password is verified again in the main process each time PIN unlock is enabled."
 msgstr "The master password is verified again in the main process each time PIN unlock is enabled."
 
-#: src/renderer/src/components/AuthScreen.tsx:204
+#: src/renderer/src/components/AuthScreen.tsx:210
 msgid "The master password must contain at least 12 characters."
 msgstr "The master password must contain at least 12 characters."
 
-#: src/renderer/src/components/AuthScreen.tsx:208
+#: src/renderer/src/components/AuthScreen.tsx:214
 msgid "The master passwords do not match."
 msgstr "The master passwords do not match."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:178
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:181
 msgid "The new master passwords do not match."
 msgstr "The new master passwords do not match."
 
@@ -6473,7 +6485,7 @@ msgstr "The PIN and encrypted credential are never written to disk. You can use 
 msgid "The PIN is incorrect."
 msgstr "The PIN is incorrect."
 
-#: src/renderer/src/components/AuthScreen.tsx:159
+#: src/renderer/src/components/AuthScreen.tsx:165
 #: src/renderer/src/components/SettingsPage.tsx:546
 msgid "The PIN must contain at least 4 characters."
 msgstr "The PIN must contain at least 4 characters."
@@ -6482,7 +6494,7 @@ msgstr "The PIN must contain at least 4 characters."
 msgid "The PINs do not match."
 msgstr "The PINs do not match."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:90
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:92
 msgid "The previous uncertain operation did not change your remote account. This is not a retry; to start a new change, explicitly acknowledge it and reconnect first."
 msgstr "The previous uncertain operation did not change your remote account. This is not a retry; to start a new change, explicitly acknowledge it and reconnect first."
 
@@ -6518,7 +6530,7 @@ msgstr "The recovery code has been copied. The clipboard will be cleared within 
 msgid "The recovery code is never returned to the renderer or stored by BearWarden."
 msgstr "The recovery code is never returned to the renderer or stored by BearWarden."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:467
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:476
 msgid "The remote change has already been confirmed. This only completes local vault re-encryption; the transaction record prevents the remote change from being resent."
 msgstr "The remote change has already been confirmed. This only completes local vault re-encryption; the transaction record prevents the remote change from being resent."
 
@@ -6526,7 +6538,7 @@ msgstr "The remote change has already been confirmed. This only completes local 
 msgid "The remote host hasn't provided a verifiable host fingerprint. Approve only on an SSH connection you trust."
 msgstr "The remote host hasn't provided a verifiable host fingerprint. Approve only on an SSH connection you trust."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:299
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:302
 msgid "The remote master password has been confirmed as changed. Enter the original master password and the new password you set so BearWarden can re-encrypt your local vault; the transaction record prevents the remote change from being sent again."
 msgstr "The remote master password has been confirmed as changed. Enter the original master password and the new password you set so BearWarden can re-encrypt your local vault; the transaction record prevents the remote change from being sent again."
 
@@ -6934,7 +6946,7 @@ msgstr "This locks the vault, then safely restarts BearWarden. Unsaved changes w
 msgid "This login request has expired, was handled on another device, or its verification phrase changed. Refresh and check again."
 msgstr "This login request has expired, was handled on another device, or its verification phrase changed. Refresh and check again."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:268
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:271
 msgid "This only changes your master password and its protection. It does not create a new account encryption key. After it is complete, biometrics will be disabled and you must reconnect using your new master password."
 msgstr "This only changes your master password and its protection. It does not create a new account encryption key. After it is complete, biometrics will be disabled and you must reconnect using your new master password."
 
@@ -7042,11 +7054,11 @@ msgstr "This SSH private key staging session has expired. Generate or import the
 msgid "This SSH private key type is not supported. Use a supported key format."
 msgstr "This SSH private key type is not supported. Use a supported key format."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:468
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:477
 msgid "This updates your remote account password and local encrypted vault. Your account encryption key will not be rotated; you must reconnect when it is complete."
 msgstr "This updates your remote account password and local encrypted vault. Your account encryption key will not be rotated; you must reconnect when it is complete."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:465
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:474
 msgid "This uses the original and new master passwords you entered to confirm the remote outcome and complete local recovery. It does not resubmit the change."
 msgstr "This uses the original and new master passwords you entered to confirm the remote outcome and complete local recovery. It does not resubmit the change."
 
@@ -7184,7 +7196,7 @@ msgstr "Trusted-device encryption is not supported"
 msgid "Try a shorter search term or switch to All items."
 msgstr "Try a shorter search term or switch to All items."
 
-#: src/renderer/src/components/AuthScreen.tsx:306
+#: src/renderer/src/components/AuthScreen.tsx:313
 #: src/renderer/src/components/EmergencyAccessPage.tsx:69
 #: src/renderer/src/components/OrganizationsPage.tsx:192
 #: src/renderer/src/components/OrganizationsPage.tsx:352
@@ -7298,7 +7310,7 @@ msgstr "Unable to complete the update action. Please try again later."
 msgid "Unable to confirm whether all sessions were deauthorized. Check your sign-in status and other devices before retrying."
 msgstr "Unable to confirm whether all sessions were deauthorized. Check your sign-in status and other devices before retrying."
 
-#: src/renderer/src/components/AuthScreen.tsx:297
+#: src/renderer/src/components/AuthScreen.tsx:304
 msgid "Unable to connect to the security service"
 msgstr "Unable to connect to the security service"
 
@@ -7439,11 +7451,11 @@ msgstr "Unable to retrieve your personal API key."
 msgid "Unable to rotate your personal API key. The existing Client Secret may still be valid."
 msgstr "Unable to rotate your personal API key. The existing Client Secret may still be valid."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:217
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:220
 msgid "Unable to safely complete the master-password change. Reopen this screen to check the transaction status."
 msgstr "Unable to safely complete the master-password change. Reopen this screen to check the transaction status."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:126
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:129
 msgid "Unable to safely read the master-password change status. Reconnect and check again."
 msgstr "Unable to safely read the master-password change status. Reconnect and check again."
 
@@ -7614,16 +7626,16 @@ msgstr "Unlock required"
 msgid "Unlock the local vault with a temporary PIN."
 msgstr "Unlock the local vault with a temporary PIN."
 
-#: src/renderer/src/components/AuthScreen.tsx:456
+#: src/renderer/src/components/AuthScreen.tsx:472
 msgid "Unlock vault"
 msgstr "Unlock vault"
 
-#: src/renderer/src/components/AuthScreen.tsx:488
+#: src/renderer/src/components/AuthScreen.tsx:504
 msgid "Unlock with biometrics"
 msgstr "Unlock with biometrics"
 
-#: src/renderer/src/components/AuthScreen.tsx:455
-#: src/renderer/src/components/AuthScreen.tsx:472
+#: src/renderer/src/components/AuthScreen.tsx:471
+#: src/renderer/src/components/AuthScreen.tsx:488
 msgid "Unlock with PIN"
 msgstr "Unlock with PIN"
 
@@ -7677,7 +7689,7 @@ msgstr "Up to date"
 msgid "Update available"
 msgstr "Update available"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:249
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:252
 msgid "Update your Vaultwarden or Bitwarden account password and local vault unlock password."
 msgstr "Update your Vaultwarden or Bitwarden account password and local vault unlock password."
 
@@ -7740,7 +7752,7 @@ msgstr "Use bitwarden.com for Bitwarden Cloud. For Vaultwarden, use an HTTPS URL
 msgid "Use long passwords created by the password generator instead."
 msgstr "Use long passwords created by the password generator instead."
 
-#: src/renderer/src/components/AuthScreen.tsx:472
+#: src/renderer/src/components/AuthScreen.tsx:488
 msgid "Use master password"
 msgstr "Use master password"
 
@@ -8037,7 +8049,7 @@ msgstr "Website: {0}"
 msgid "Websites"
 msgstr "Websites"
 
-#: src/renderer/src/components/AuthScreen.tsx:316
+#: src/renderer/src/components/AuthScreen.tsx:323
 msgid "Welcome back"
 msgstr "Welcome back"
 
@@ -8112,7 +8124,7 @@ msgstr "You can use biometrics to unlock after the next lock."
 msgid "You will no longer be able to sign in with this security key after removing it. Enter your master password again to confirm; previous verification is never reused."
 msgstr "You will no longer be able to sign in with this security key after removing it. Enter your master password again to confirm; previous verification is never reused."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:265
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:268
 msgid "Your account encryption key will not be rotated"
 msgstr "Your account encryption key will not be rotated"
 
@@ -8140,11 +8152,11 @@ msgstr "Your complete email address will leave this device"
 msgid "Your current Client Secret was copied, and the clipboard will be cleared within 30 seconds."
 msgstr "Your current Client Secret was copied, and the clipboard will be cleared within 30 seconds."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:216
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:219
 msgid "Your current master password could not be verified."
 msgstr "Your current master password could not be verified."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:163
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:166
 msgid "Your current master password must be {MIN_PASSWORD_LENGTH} to {MAX_PASSWORD_LENGTH} characters."
 msgstr "Your current master password must be {MIN_PASSWORD_LENGTH} to {MAX_PASSWORD_LENGTH} characters."
 
@@ -8152,7 +8164,7 @@ msgstr "Your current master password must be {MIN_PASSWORD_LENGTH} to {MAX_PASSW
 msgid "Your current session has expired. Please sign in again."
 msgstr "Your current session has expired. Please sign in again."
 
-#: src/renderer/src/components/AuthScreen.tsx:496
+#: src/renderer/src/components/AuthScreen.tsx:512
 msgid "Your master password and decrypted data never leave this device."
 msgstr "Your master password and decrypted data never leave this device."
 
@@ -8172,7 +8184,7 @@ msgstr "Your master password is sent only to the local main process for verifica
 msgid "Your master password is used only for this add request and is cleared immediately after submission."
 msgstr "Your master password is used only for this add request and is cleared immediately after submission."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:182
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:185
 msgid "Your master-password hint can be at most {MAX_HINT_LENGTH} characters."
 msgstr "Your master-password hint can be at most {MAX_HINT_LENGTH} characters."
 
@@ -8180,15 +8192,15 @@ msgstr "Your master-password hint can be at most {MAX_HINT_LENGTH} characters."
 msgid "Your new Client Secret was copied. The old value is no longer valid, and the clipboard will be cleared within 30 seconds."
 msgstr "Your new Client Secret was copied. The old value is no longer valid, and the clipboard will be cleared within 30 seconds."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:169
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:172
 msgid "Your new master password must be {MIN_PASSWORD_LENGTH} to {MAX_PASSWORD_LENGTH} characters."
 msgstr "Your new master password must be {MIN_PASSWORD_LENGTH} to {MAX_PASSWORD_LENGTH} characters."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:174
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:177
 msgid "Your new master password must be different from your current master password."
 msgstr "Your new master password must be different from your current master password."
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:84
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:86
 msgid "Your remote account and local encrypted vault have been updated. Reconnect using your new master password."
 msgstr "Your remote account and local encrypted vault have been updated. Reconnect using your new master password."
 

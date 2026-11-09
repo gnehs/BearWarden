@@ -4,10 +4,11 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { ArrowRight, Fingerprint, KeyRound, RotateCcw, ShieldAlert } from 'lucide-react'
 import type { AccountStatus, PinUnlockStatus } from '../../../shared/vault-contract'
 import BrandMark from './BrandMark'
+import RevealableSecretInput from './RevealableSecretInput'
 import ApplicationTitlebarMenu from './ApplicationTitlebarMenu'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
-import { Field, FieldGroup, FieldLabel } from '@renderer/components/ui/field'
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@renderer/components/ui/field'
 import { Input } from '@renderer/components/ui/input'
 import {
   Select,
@@ -46,6 +47,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
     remainingAttempts: 0
   })
   const [confirmation, setConfirmation] = useState('')
+  const [revealedInState, setRevealedInState] = useState<AuthScreenProps['state'] | null>(null)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null)
@@ -59,6 +61,9 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
   const authOperationRef = useRef(false)
   const accountStatusRequestRef = useRef(0)
   const isSetup = state === 'uninitialized'
+  const showMasterPassword = revealedInState === state
+  const setShowMasterPassword = (visible: boolean): void =>
+    setRevealedInState(visible ? state : null)
   const accountItems = authAccountItems(accountStatus)
 
   useEffect(() => {
@@ -131,6 +136,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
     accountStatusRequestRef.current += 1
     setMasterPassword('')
     setConfirmation('')
+    setShowMasterPassword(false)
     setPin('')
     setError('')
     setAccountError('')
@@ -218,6 +224,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
         : await window.bearwarden.vault.unlock({ masterPassword })
       setMasterPassword('')
       setConfirmation('')
+      setShowMasterPassword(false)
       if (status.state === 'unlocked') onAuthenticated(isSetup ? 'setup' : 'unlock')
     } catch (submitError) {
       setError(describeError(submitError))
@@ -382,10 +389,12 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                     <FieldLabel htmlFor="master-password">
                       <Trans>Master password</Trans>
                     </FieldLabel>
-                    <Input
+                    <RevealableSecretInput
                       ref={passwordRef}
                       id="master-password"
-                      type="password"
+                      label={t`Master password`}
+                      visible={showMasterPassword}
+                      onVisibleChange={setShowMasterPassword}
                       name="master-password"
                       autoComplete={isSetup ? 'new-password' : 'current-password'}
                       value={masterPassword}
@@ -394,6 +403,11 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                       aria-invalid={Boolean(error)}
                       aria-describedby={error ? 'auth-error' : undefined}
                     />
+                    {isSetup && (
+                      <FieldDescription>
+                        <Trans>At least 12 characters. BearWarden cannot recover it.</Trans>
+                      </FieldDescription>
+                    )}
                   </Field>
                 )}
 
@@ -402,9 +416,11 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                     <FieldLabel htmlFor="master-password-confirmation">
                       <Trans>Confirm master password</Trans>
                     </FieldLabel>
-                    <Input
+                    <RevealableSecretInput
                       id="master-password-confirmation"
-                      type="password"
+                      label={t`Confirm master password`}
+                      visible={showMasterPassword}
+                      onVisibleChange={setShowMasterPassword}
                       name="master-password-confirmation"
                       autoComplete="new-password"
                       value={confirmation}

@@ -38,6 +38,7 @@ import {
   FieldLabel
 } from '@renderer/components/ui/field'
 import { Input } from '@renderer/components/ui/input'
+import RevealableSecretInput from './RevealableSecretInput'
 import { Spinner } from '@renderer/components/ui/spinner'
 
 const MIN_PASSWORD_LENGTH = 12
@@ -72,6 +73,7 @@ function MasterPasswordChangeDialog({
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [hint, setHint] = useState('')
+  const [showPasswords, setShowPasswords] = useState(false)
   const [error, setError] = useState('')
 
   function stateGuidance(state: MasterPasswordChangeState): {
@@ -110,6 +112,7 @@ function MasterPasswordChangeDialog({
     setNewPassword('')
     setConfirmPassword('')
     setHint('')
+    setShowPasswords(false)
   }, [])
 
   const loadStatus = useCallback(async (): Promise<void> => {
@@ -345,9 +348,11 @@ function MasterPasswordChangeDialog({
                       <FieldLabel htmlFor="master-password-current">
                         {recovery ? t`Original master password` : t`Current master password`}
                       </FieldLabel>
-                      <Input
+                      <RevealableSecretInput
                         id="master-password-current"
-                        type="password"
+                        label={recovery ? t`Original master password` : t`Current master password`}
+                        visible={showPasswords}
+                        onVisibleChange={setShowPasswords}
                         autoComplete="current-password"
                         autoFocus
                         value={currentPassword}
@@ -362,9 +367,11 @@ function MasterPasswordChangeDialog({
                       <FieldLabel htmlFor="master-password-new">
                         {recovery ? t`New master password you set` : t`New master password`}
                       </FieldLabel>
-                      <Input
+                      <RevealableSecretInput
                         id="master-password-new"
-                        type="password"
+                        label={recovery ? t`New master password you set` : t`New master password`}
+                        visible={showPasswords}
+                        onVisibleChange={setShowPasswords}
                         autoComplete="new-password"
                         value={newPassword}
                         disabled={busy}
@@ -381,9 +388,11 @@ function MasterPasswordChangeDialog({
                       <FieldLabel htmlFor="master-password-confirm">
                         <Trans>Confirm new master password</Trans>
                       </FieldLabel>
-                      <Input
+                      <RevealableSecretInput
                         id="master-password-confirm"
-                        type="password"
+                        label={t`Confirm new master password`}
+                        visible={showPasswords}
+                        onVisibleChange={setShowPasswords}
                         autoComplete="new-password"
                         value={confirmPassword}
                         disabled={busy}
