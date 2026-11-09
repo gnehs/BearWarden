@@ -340,7 +340,10 @@ export class VaultSyncEngine {
       protectedLoginMappings,
       protectedLoginTombstones
     )
-    // A plan that only touched local data leaves the server as the last download saw it.
+    // The closing download confirms what the server stored for this run's pushes: several push
+    // endpoints return no cipher, and the reconciliation below catches pushed ciphers the server
+    // now returns in a form this client quarantines. A plan that only touched local data leaves
+    // the server as the first download saw it.
     if (plan.actions.some(changesRemote)) await client.sync(signal)
     const finalIsolatedPersonalCipherIds = isolatedPersonalCipherIdsOf(client)
     const newlyIsolatedMappedRemoteIds = findNewlyIsolatedMappedRemoteIds(

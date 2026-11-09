@@ -52,11 +52,11 @@
 3. [x] Bitwarden／Vaultwarden 欄位大小寫統一由 `src/main/bitwarden-fields.ts` 讀取。原計畫的 zod `/sync` schema 不採用：cipher row 必須保留未知欄位做 round-trip，診斷 stage 也依讀取順序決定。
 4. [x] `/sync` 解析與解密抽成純函式 `decodeSyncPayload`（`src/main/bitwarden-sync-decoder.ts`），row codec 在 `src/main/bitwarden-cipher-codec.ts`。
 5. [x] 所有 vault 寫入走 `VaultCore.commit`；寫入落地後先裝回記憶體再回報 `LOCKED`，修正鎖定競爭時後續修改覆蓋已寫入資料的問題。
-6. [ ] 一次同步只下載一次 `/sync`。只拉取的同步已是一次；有推送時仍會在結尾重抓一次做附件對帳與遠端漂移偵測，要改用 CRUD 回應前需先確認官方伺服器與 Vaultwarden 的回應都帶附件與 revision。
+6. [x] 只拉取的同步只下載一次 `/sync`。有推送時保留結尾的重抓：軟刪除與批次移動等端點不回傳 cipher，快取只能用本機時鐘修補；結尾對帳也負責抓出伺服器回傳後必須隔離的已推送 cipher 與同步期間的並行修改（`vault-service.test.ts` 的 final reconciliation 測試）。
 7. [x] 所有鎖定路徑（逾時、選單、系統、視窗關閉、renderer 手動、帳號切換）共用同一個 fail-closed barrier，關機與鎖定共用互動操作取消清單。原計畫的事件 emitter 不採用：`beforeVaultLock` 是需要依序 await 的清單。
 8. [x] `VaultServiceBase` 五層繼承鏈改為 `VaultCore` 加上各 domain 模組（`src/main/vault/`），`VaultService` 保留為 facade。
 9. [x] `src/shared/ipc-api.ts` 一張表推導 preload API、`BearWardenAPI` 與主程序 handler 型別。
-10. [ ] renderer：`VaultShell` 已拆成 hooks 與 stores（約 1,470 行、無直接 IPC）。尚未做的是讓 `vault:changed` 帶版本或差異，目前每次背景同步後仍以 7 個 IPC 重新載入清單；`OrganizationsPage` 仍直接呼叫 list IPC。
+10. [x] renderer：`VaultShell` 拆成 hooks 與 stores（約 1,470 行、無直接 IPC）；`OrganizationsPage` 改走 `organization-workspace` store；自動同步只在本機可見內容改變時送出 `vault:changed`，推送自己的編輯不再觸發整份清單重載。
 
 後續可考慮：
 
