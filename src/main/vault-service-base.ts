@@ -141,6 +141,7 @@ import {
 } from './vault/local-records'
 import { VaultAttachments } from './vault/attachments'
 import { VaultPortability } from './vault/portability'
+import { VaultSharedItems } from './vault/shared-items'
 
 interface AccountWebAuthnOperationLease {
   readonly generation: number
@@ -230,6 +231,7 @@ export class VaultServiceBase {
   protected readonly passwordHistory: VaultPasswordHistory
   protected readonly attachments: VaultAttachments
   protected readonly portability: VaultPortability
+  protected readonly sharedItems: VaultSharedItems
 
   constructor(
     protected readonly store: EncryptedVaultStore<unknown>,
@@ -313,6 +315,7 @@ export class VaultServiceBase {
     this.portability = new VaultPortability(this.core, this.syncSession, {
       performSync: (data, client, signal) => this.performSync(data, client, signal)
     })
+    this.sharedItems = new VaultSharedItems(this.core, this.syncSession, this.platform)
   }
 
   status(): Promise<VaultStatus> {
