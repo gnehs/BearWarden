@@ -141,6 +141,7 @@ import { VaultPortability } from './vault/portability'
 import { VaultSharedItems } from './vault/shared-items'
 import { VaultItemAuthorization } from './vault/item-authorization'
 import { VaultItems } from './vault/items'
+import { VaultIntegrations } from './vault/integrations'
 
 interface AccountWebAuthnOperationLease {
   readonly generation: number
@@ -233,6 +234,7 @@ export class VaultServiceBase {
   protected readonly sharedItems: VaultSharedItems
   protected readonly authorization: VaultItemAuthorization
   protected readonly items: VaultItems
+  protected readonly integrations: VaultIntegrations
 
   constructor(
     protected readonly store: EncryptedVaultStore<unknown>,
@@ -319,6 +321,7 @@ export class VaultServiceBase {
     this.sharedItems = new VaultSharedItems(this.core, this.syncSession, this.platform)
     this.authorization = new VaultItemAuthorization(this.core)
     this.items = new VaultItems(this.core, this.platform)
+    this.integrations = new VaultIntegrations(this.core, this.authorization)
   }
 
   status(): Promise<VaultStatus> {
@@ -2257,13 +2260,6 @@ export class VaultServiceBase {
       ).id
     }
     return result
-  }
-
-  protected assertExpectedPasskeyGeneration(value: unknown): asserts value is number {
-    if (!Number.isSafeInteger(value) || (value as number) < 0) {
-      throw new VaultError('INVALID_INPUT')
-    }
-    if (value !== this.core.generation) throw new VaultError('LOCKED')
   }
 
   protected invalidatePinUnlockCapability(): void {

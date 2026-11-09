@@ -81,3 +81,6 @@ export class VaultItemAuthorization {
     })
   }
 }
+
+/** The authorized-operation gate, without the one-shot authorization entry points. */
+export type AuthorizedOperationRunner = Pick<VaultItemAuthorization, 'runAuthorizedOperation'>
