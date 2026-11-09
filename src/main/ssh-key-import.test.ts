@@ -11,6 +11,17 @@ import { utils, type ParsedKey } from 'ssh2'
 import { describe, expect, it, vi } from 'vitest'
 import { importSshKey, type SshKeyImportErrorCode } from './ssh-key-import'
 
+/** ssh2 drops a leading zero byte from roughly 1 in 256 Ed25519 public keys; skip those keys. */
+function generateSsh2Ed25519(
+  options?: Parameters<typeof utils.generateKeyPairSync>[1]
+): ReturnType<typeof utils.generateKeyPairSync> {
+  for (;;) {
+    const pair = utils.generateKeyPairSync('ed25519', options)
+    const blob = Buffer.from(pair.public.split(' ')[1]!, 'base64')
+    if (blob.readUInt32BE(15) === 32) return pair
+  }
+}
+
 vi.mock('bcrypt-pbkdf', async (importOriginal) => {
   const original = await importOriginal<typeof import('bcrypt-pbkdf')>()
   return { ...original, pbkdf: vi.fn(original.pbkdf) }
@@ -104,7 +115,7 @@ function mutateOpenSsh(
 
 describe('importSshKey OpenSSH', () => {
   it.each([
-    ['Ed25519', () => utils.generateKeyPairSync('ed25519').private, 'ssh-ed25519'],
+    ['Ed25519', () => generateSsh2Ed25519().private, 'ssh-ed25519'],
     ['RSA', () => utils.generateKeyPairSync('rsa', { bits: 2048 }).private, 'ssh-rsa'],
     [
       'ECDSA P-256',
@@ -130,7 +141,7 @@ describe('importSshKey OpenSSH', () => {
   })
 
   it('imports an AES-encrypted OpenSSH key and classifies password failures', () => {
-    const encrypted = utils.generateKeyPairSync('ed25519', {
+    const encrypted = generateSsh2Ed25519({
       cipher: 'aes256-ctr',
       passphrase: PASSWORD,
       rounds: 16
@@ -152,7 +163,7 @@ describe('importSshKey OpenSSH', () => {
     'aes256-gcm@openssh.com',
     '3des-cbc'
   ])('imports ssh-key-compatible %s encryption', (cipher) => {
-    const encrypted = utils.generateKeyPairSync('ed25519', {
+    const encrypted = generateSsh2Ed25519({
       cipher,
       passphrase: PASSWORD,
       rounds: 1
@@ -175,7 +186,7 @@ describe('importSshKey OpenSSH', () => {
   })
 
   it('does not mutate caller-owned key or password buffers', () => {
-    const key = Buffer.from(utils.generateKeyPairSync('ed25519').private)
+    const key = Buffer.from(generateSsh2Ed25519().private)
     const password = Buffer.from('unused-test-password')
     const originalKey = Buffer.from(key)
     const originalPassword = Buffer.from(password)
@@ -285,7 +296,7 @@ describe('importSshKey validation', () => {
     })
     expectImportError(() => importSshKey(unknownCipher, 'hunter42'), 'ParsingError')
 
-    const generated = utils.generateKeyPairSync('ed25519').private
+    const generated = generateSsh2Ed25519().private
     const mismatchedPublic = mutateOpenSsh(generated, (_binary, readString, readUint32) => {
       readString() // cipher
       readString() // KDF
@@ -334,7 +345,7 @@ describe('importSshKey validation', () => {
   })
 
   it('emits a canonical public blob and standard unpadded Base64 fingerprint', () => {
-    const material = importSshKey(utils.generateKeyPairSync('ed25519').private)
+    const material = importSshKey(generateSsh2Ed25519().private)
     const [type, encoded, comment] = material.publicKey.split(' ')
     const publicBlob = Buffer.from(encoded!, 'base64')
 
