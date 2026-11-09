@@ -541,7 +541,7 @@ msgstr "新しいバージョン"
 msgid "A password is required when adding a login item."
 msgstr "ログインアイテムを追加するにはパスワードが必要です。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:236
+#: src/renderer/src/components/OrganizationsPage.tsx:167
 msgid "A read-only mirror of shared items. The server determines permissions and password visibility."
 msgstr "共有アイテムの読み取り専用ミラーです。権限とパスワードの表示可否はサーバーによって決まります。"
 
@@ -561,7 +561,7 @@ msgstr "情報"
 msgid "About BearWarden"
 msgstr "BearWarden について"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:66
+#: src/renderer/src/components/OrganizationsPage.tsx:64
 msgid "Accepted"
 msgstr "承諾済み"
 
@@ -828,7 +828,7 @@ msgstr "住所（2行目）"
 msgid "Address line 3"
 msgstr "住所（3行目）"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:40
+#: src/renderer/src/components/OrganizationsPage.tsx:38
 msgid "Administrator"
 msgstr "管理者"
 
@@ -856,7 +856,7 @@ msgstr "30 秒後"
 msgid "After 5 minutes of system inactivity"
 msgstr "システムの無操作が 5 分続いた後"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:275
+#: src/renderer/src/components/OrganizationsPage.tsx:206
 #: src/renderer/src/components/VaultItemListPane.tsx:200
 msgid "After Bitwarden sync completes, shared items that you have permission to access will appear here."
 msgstr "Bitwarden の同期が完了すると、アクセス権のある共有アイテムがここに表示されます。"
@@ -893,7 +893,7 @@ msgstr "確認を開始すると、メインプロセスは 2fa.directory から
 msgid "Agent could not start"
 msgstr "エージェントを開始できませんでした"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:337
+#: src/renderer/src/components/OrganizationsPage.tsx:268
 #: src/renderer/src/components/VaultShell.tsx:151
 msgid "All"
 msgstr "すべて"
@@ -910,7 +910,7 @@ msgstr "すべてのデータはこのデバイスで復号されます。"
 msgid "All items"
 msgstr "すべてのアイテム"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:298
+#: src/renderer/src/components/OrganizationsPage.tsx:229
 msgid "All organizations"
 msgstr "すべての組織"
 
@@ -1351,15 +1351,15 @@ msgstr "組み込みのグローバルルール"
 msgid "Bulk actions for selected items"
 msgstr "選択したアイテムの一括操作"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:122
+#: src/renderer/src/components/OrganizationsPage.tsx:120
 msgid "Can delete"
 msgstr "削除可能"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:116
+#: src/renderer/src/components/OrganizationsPage.tsx:114
 msgid "Can edit"
 msgstr "編集可能"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:125
+#: src/renderer/src/components/OrganizationsPage.tsx:123
 msgid "Can restore"
 msgstr "復元可能"
 
@@ -1405,11 +1405,11 @@ msgstr "クエリをキャンセル"
 msgid "Canceling"
 msgstr "キャンセル中"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:122
+#: src/renderer/src/components/OrganizationsPage.tsx:120
 msgid "Cannot delete"
 msgstr "削除できません"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:125
+#: src/renderer/src/components/OrganizationsPage.tsx:123
 msgid "Cannot restore"
 msgstr "復元できません"
 
@@ -1775,13 +1775,13 @@ msgctxt "organization-collection"
 msgid "Collection"
 msgstr "コレクション"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:468
+#: src/renderer/src/components/OrganizationsPage.tsx:399
 msgid "Collection:"
 msgstr "コレクション:"
 
 #: src/renderer/src/components/LoginEditor.tsx:2521
 #: src/renderer/src/components/LoginEditor.tsx:2564
-#: src/renderer/src/components/OrganizationsPage.tsx:324
+#: src/renderer/src/components/OrganizationsPage.tsx:255
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:130
 msgid "Collections"
 msgstr "コレクション"
@@ -1864,7 +1864,7 @@ msgstr "セキュリティキーの削除を確認"
 msgid "Confirm that sync is connected and try again. Existing data has not been changed."
 msgstr "同期が接続されていることを確認して、もう一度お試しください。既存のデータは変更されていません。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:257
+#: src/renderer/src/components/OrganizationsPage.tsx:188
 msgid "Confirm that the vault is unlocked, then try again later."
 msgstr "保管庫のロックが解除されていることを確認して、後でもう一度お試しください。"
 
@@ -1881,7 +1881,7 @@ msgid "Confirm your master password before approving."
 msgstr "承認する前にマスターパスワードを確認してください。"
 
 #: src/renderer/src/components/EmergencyAccessPage.tsx:150
-#: src/renderer/src/components/OrganizationsPage.tsx:68
+#: src/renderer/src/components/OrganizationsPage.tsx:66
 msgid "Confirmed"
 msgstr "確認済み"
 
@@ -2103,7 +2103,7 @@ msgstr "KeePass XML をインポートできませんでした。マスターパ
 msgid "Could not load Emergency Access"
 msgstr "緊急アクセスを読み込めませんでした"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:253
+#: src/renderer/src/components/OrganizationsPage.tsx:184
 msgid "Could not load organization items"
 msgstr "組織のアイテムを読み込めませんでした"
 
@@ -2111,7 +2111,7 @@ msgstr "組織のアイテムを読み込めませんでした"
 msgid "Could not load Sends"
 msgstr "Send を読み込めませんでした"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:409
+#: src/renderer/src/components/OrganizationsPage.tsx:340
 msgid "Could not load shared item"
 msgstr "共有アイテムを読み込めませんでした"
 
@@ -2348,7 +2348,7 @@ msgstr "カスタム非アクティブタイムアウト（時間）"
 msgid "Custom inactivity timeout minutes"
 msgstr "カスタム非アクティブタイムアウト（分）"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:44
+#: src/renderer/src/components/OrganizationsPage.tsx:42
 msgid "Custom role"
 msgstr "カスタムロール"
 
@@ -2523,7 +2523,7 @@ msgstr "開発ビルドでは自動更新をサポートしていません。Git
 msgid "Diagnostic logs"
 msgstr "診断ログ"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:107
+#: src/renderer/src/components/OrganizationsPage.tsx:105
 msgid "Direct assignment"
 msgstr "直接割り当て"
 
@@ -2547,7 +2547,7 @@ msgstr "PINによるロック解除を無効にする"
 msgid "Disable Send"
 msgstr "Sendを無効にする"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:60
+#: src/renderer/src/components/OrganizationsPage.tsx:58
 #: src/renderer/src/components/SendsPage.tsx:113
 #: src/renderer/src/components/SettingsPage.tsx:607
 #: src/renderer/src/components/SettingsPage.tsx:1059
@@ -2702,11 +2702,11 @@ msgstr "フォルダーを編集"
 msgid "Edit folder {0}"
 msgstr "フォルダー{0}を編集"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:94
+#: src/renderer/src/components/OrganizationsPage.tsx:92
 msgid "Edit items"
 msgstr "項目を編集"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:92
+#: src/renderer/src/components/OrganizationsPage.tsx:90
 msgid "Edit items, hide passwords"
 msgstr "項目を編集、パスワードを非表示"
 
@@ -3172,7 +3172,7 @@ msgstr "現在、ファイル Send は表示とリンクのコピーのみ可能
 msgid "File signing"
 msgstr "ファイル署名"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:327
+#: src/renderer/src/components/OrganizationsPage.tsx:258
 msgid "Filter shared items by Collection."
 msgstr "共有アイテムをコレクションで絞り込みます。"
 
@@ -3565,7 +3565,7 @@ msgstr "数字を 1 文字含める"
 msgid "Incorrect master password."
 msgstr "マスターパスワードが正しくありません。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:107
+#: src/renderer/src/components/OrganizationsPage.tsx:105
 msgid "Indirect assignment"
 msgstr "間接割り当て"
 
@@ -3586,7 +3586,7 @@ msgid "Invitation accepted"
 msgstr "招待を承諾しました"
 
 #: src/renderer/src/components/EmergencyAccessPage.tsx:146
-#: src/renderer/src/components/OrganizationsPage.tsx:64
+#: src/renderer/src/components/OrganizationsPage.tsx:62
 msgid "Invited"
 msgstr "招待済み"
 
@@ -3836,7 +3836,7 @@ msgstr "アイテムの詳細を読み込み中…"
 msgid "Loading local accounts"
 msgstr "ローカルアカウントを読み込み中"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:247
+#: src/renderer/src/components/OrganizationsPage.tsx:178
 msgid "Loading organization items…"
 msgstr "組織のアイテムを読み込み中…"
 
@@ -3852,7 +3852,7 @@ msgstr "Send を読み込み中…"
 msgid "Loading settings…"
 msgstr "設定を読み込み中…"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:402
+#: src/renderer/src/components/OrganizationsPage.tsx:333
 msgid "Loading shared item…"
 msgstr "共有アイテムを読み込み中…"
 
@@ -4016,7 +4016,7 @@ msgstr "保管庫が引き続きロック解除されていることを確認し
 #~ msgid "Manage collection"
 #~ msgstr "コレクションを管理"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:86
+#: src/renderer/src/components/OrganizationsPage.tsx:84
 msgid "Manage Collection"
 msgstr "コレクションを管理"
 
@@ -4436,7 +4436,7 @@ msgstr "一致するルールは見つかりませんでした。"
 msgid "No matching vault items"
 msgstr "一致する保管庫アイテムはありません"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:272
+#: src/renderer/src/components/OrganizationsPage.tsx:203
 msgid "No organizations have been synced"
 msgstr "同期された組織はありません"
 
@@ -4473,7 +4473,7 @@ msgstr "セキュリティキーはまだ登録されていません。最初の
 msgid "No Sends yet"
 msgstr "Send はまだありません"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:388
+#: src/renderer/src/components/OrganizationsPage.tsx:319
 #: src/renderer/src/components/VaultItemListPane.tsx:190
 msgid "No shared items"
 msgstr "共有アイテムはありません"
@@ -4707,7 +4707,7 @@ msgstr "組織の Duo"
 msgid "Organization encryption key"
 msgstr "組織の暗号化キー"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:234
+#: src/renderer/src/components/OrganizationsPage.tsx:165
 msgid "Organization items"
 msgstr "組織アイテム"
 
@@ -4719,7 +4719,7 @@ msgstr "組織キーとメンバーデータ"
 msgid "Organization profile data"
 msgstr "組織プロフィールデータ"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:287
+#: src/renderer/src/components/OrganizationsPage.tsx:218
 #: src/renderer/src/components/VaultOrganizationSidebarSection.tsx:53
 msgid "Organizations"
 msgstr "組織"
@@ -4745,7 +4745,7 @@ msgid "Other card issuer"
 msgstr "その他のカード発行会社"
 
 #: src/renderer/src/components/LoginEditor.tsx:2535
-#: src/renderer/src/components/OrganizationsPage.tsx:38
+#: src/renderer/src/components/OrganizationsPage.tsx:36
 msgid "Owner"
 msgstr "所有者"
 
@@ -4821,11 +4821,11 @@ msgstr "パスワードが必要です"
 msgid "Passwords and attachments in the ZIP are unencrypted plaintext"
 msgstr "ZIP 内のパスワードと添付ファイルは暗号化されていない平文です"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:451
+#: src/renderer/src/components/OrganizationsPage.tsx:382
 msgid "Passwords and sensitive fields are masked"
 msgstr "パスワードと機密フィールドはマスクされています"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:119
+#: src/renderer/src/components/OrganizationsPage.tsx:117
 msgid "Passwords hidden"
 msgstr "パスワードを非表示"
 
@@ -5083,7 +5083,7 @@ msgstr "プロバイダー {providerType}"
 msgid "Provider-managed organization key"
 msgstr "プロバイダー管理の組織キー"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:70
+#: src/renderer/src/components/OrganizationsPage.tsx:68
 msgid "Provisioned"
 msgstr "プロビジョニング済み"
 
@@ -5121,7 +5121,7 @@ msgstr "ランダムな単語"
 msgid "Read the foreground browser’s URL and form only when you press the shortcut. Multiple matches appear in a mini picker."
 msgstr "ショートカットを押したときにのみ、前面のブラウザーの URL とフォームを読み取ります。複数の候補がある場合はミニピッカーに表示されます。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:116
+#: src/renderer/src/components/OrganizationsPage.tsx:114
 msgid "Read-only"
 msgstr "読み取り専用"
 
@@ -5449,7 +5449,7 @@ msgstr "リクエストを確認"
 msgid "Review the authentication providers currently enabled on the server and securely copy your recovery code."
 msgstr "サーバーで現在有効になっている認証プロバイダーを確認し、リカバリーコードを安全にコピーしてください。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:36
+#: src/renderer/src/components/OrganizationsPage.tsx:34
 msgid "Role unavailable"
 msgstr "ロールを利用できません"
 
@@ -5850,7 +5850,7 @@ msgstr "設定手順"
 msgid "Setup key copied"
 msgstr "設定キーをコピーしました"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:365
+#: src/renderer/src/components/OrganizationsPage.tsx:296
 msgid "Shared item"
 msgstr "共有アイテム"
 
@@ -5977,11 +5977,11 @@ msgstr "SSH キー"
 msgid "SSH keys"
 msgstr "SSH キー"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:119
+#: src/renderer/src/components/OrganizationsPage.tsx:117
 msgid "Standard view"
 msgstr "標準ビュー"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:449
+#: src/renderer/src/components/OrganizationsPage.tsx:380
 msgid "Standard view permission"
 msgstr "標準ビューの権限"
 
@@ -6012,7 +6012,7 @@ msgstr "次で始まる"
 msgid "State / Province"
 msgstr "州 / 都道府県"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:62
+#: src/renderer/src/components/OrganizationsPage.tsx:60
 msgid "Status unavailable"
 msgstr "ステータスを利用できません"
 
@@ -6300,7 +6300,7 @@ msgstr "ローテーション中に接続が中断されたため、結果は不
 msgid "The current account cannot be removed. Switch to another account first."
 msgstr "現在のアカウントは削除できません。先に別のアカウントに切り替えてください。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:391
+#: src/renderer/src/components/OrganizationsPage.tsx:322
 #: src/renderer/src/components/VaultItemListPane.tsx:201
 msgid "The current organization or Collection has no items you can read."
 msgstr "現在の組織またはコレクションには、読み取り可能なアイテムがありません。"
@@ -6580,11 +6580,11 @@ msgstr "選択内容が変更されたため、操作は実行されませんで
 msgid "The send result is unknown. The status has been refreshed. Do not resend immediately."
 msgstr "送信結果は不明です。状態を更新しました。すぐに再送しないでください。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:432
+#: src/renderer/src/components/OrganizationsPage.tsx:363
 msgid "The server allows standard viewing. This read-only page does not show or copy passwords."
 msgstr "サーバーでは標準表示が許可されています。この読み取り専用ページでは、パスワードの表示やコピーはできません。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:437
+#: src/renderer/src/components/OrganizationsPage.tsx:368
 msgid "The server applies hidden-password permissions, so sensitive fields are masked."
 msgstr "サーバーでパスワード非表示の権限が適用されているため、機密フィールドはマスクされています。"
 
@@ -7186,8 +7186,8 @@ msgstr "検索語を短くするか、「すべてのアイテム」に切り替
 
 #: src/renderer/src/components/AuthScreen.tsx:306
 #: src/renderer/src/components/EmergencyAccessPage.tsx:69
-#: src/renderer/src/components/OrganizationsPage.tsx:261
-#: src/renderer/src/components/OrganizationsPage.tsx:421
+#: src/renderer/src/components/OrganizationsPage.tsx:192
+#: src/renderer/src/components/OrganizationsPage.tsx:352
 #: src/renderer/src/components/SendsPage.tsx:391
 msgid "Try again"
 msgstr "もう一度試す"
@@ -7570,7 +7570,7 @@ msgstr "不明なデバイス"
 msgid "Unknown device type ({type})"
 msgstr "不明なデバイスの種類（{type}）"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:46
+#: src/renderer/src/components/OrganizationsPage.tsx:44
 msgid "Unknown role ({type})"
 msgstr "不明なロール（{type}）"
 
@@ -7579,7 +7579,7 @@ msgid "Unknown SSHSIG"
 msgstr "不明な SSHSIG"
 
 #. placeholder {0}: organization.status
-#: src/renderer/src/components/OrganizationsPage.tsx:72
+#: src/renderer/src/components/OrganizationsPage.tsx:70
 msgid "Unknown status ({0})"
 msgstr "不明な状態（{0}）"
 
@@ -7760,7 +7760,7 @@ msgstr "Bitwarden CLI のクライアント認証情報に使用します。Bear
 msgid "Used only by the main process to create a one-time server proof. It is not stored."
 msgstr "メインプロセスが一回限りのサーバー証明を作成するためにのみ使用します。保存されません。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:42
+#: src/renderer/src/components/OrganizationsPage.tsx:40
 msgid "User"
 msgstr "ユーザー"
 
@@ -7786,7 +7786,7 @@ msgid "Username, password, and websites"
 msgstr "ユーザー名、パスワード、Web サイト"
 
 #. placeholder {0}: selected.username
-#: src/renderer/src/components/OrganizationsPage.tsx:457
+#: src/renderer/src/components/OrganizationsPage.tsx:388
 msgid "Username: {0}"
 msgstr "ユーザー名: {0}"
 
@@ -7900,13 +7900,13 @@ msgstr "非常に弱い"
 
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:154
 #: src/renderer/src/components/EmergencyAccessPage.tsx:136
-#: src/renderer/src/components/OrganizationsPage.tsx:376
+#: src/renderer/src/components/OrganizationsPage.tsx:307
 #: src/renderer/src/components/VaultHealthPage.tsx:202
 msgid "View"
 msgstr "表示"
 
 #. placeholder {0}: item.name
-#: src/renderer/src/components/OrganizationsPage.tsx:373
+#: src/renderer/src/components/OrganizationsPage.tsx:304
 msgid "View {0}"
 msgstr "{0} を表示"
 
@@ -7931,11 +7931,11 @@ msgstr "サーバー上のデバイスのアクティビティと信頼状態を
 msgid "View item"
 msgstr "項目を表示"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:90
+#: src/renderer/src/components/OrganizationsPage.tsx:88
 msgid "View items"
 msgstr "項目を表示"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:88
+#: src/renderer/src/components/OrganizationsPage.tsx:86
 msgid "View items, hide passwords"
 msgstr "項目を表示、パスワードを非表示"
 
@@ -8029,7 +8029,7 @@ msgid "Website was not moved."
 msgstr "ウェブサイトは移動されませんでした。"
 
 #. placeholder {0}: selected.uri
-#: src/renderer/src/components/OrganizationsPage.tsx:462
+#: src/renderer/src/components/OrganizationsPage.tsx:393
 msgid "Website: {0}"
 msgstr "Web サイト: {0}"
 
@@ -8087,7 +8087,7 @@ msgstr "はい"
 msgid "Yesterday"
 msgstr "昨日"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:239
+#: src/renderer/src/components/OrganizationsPage.tsx:170
 msgid "You can currently browse synced organizations and shared items in read-only mode. Creating, editing, deleting, sharing, and other management actions are not supported yet."
 msgstr "現在、同期済みの組織と共有項目は読み取り専用モードで参照できます。作成、編集、削除、共有、その他の管理操作にはまだ対応していません。"
 

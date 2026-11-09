@@ -1,11 +1,9 @@
 import { FolderOpen, LockKeyhole, RefreshCw, TriangleAlert, UsersRound } from 'lucide-react'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { useEffect, useRef, useState } from 'react'
 import type {
   CollectionView,
   OrganizationView,
-  SharedLoginSummary,
-  SharedLoginView
+  SharedLoginSummary
 } from '../../../shared/vault-contract'
 import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
@@ -27,7 +25,7 @@ import {
 import { Spinner } from '@renderer/components/ui/spinner'
 import AuxiliaryPageLayout, { AuxiliaryPageContent } from './AuxiliaryPageLayout'
 import FeatureUnderConstructionNotice from './FeatureUnderConstructionNotice'
-import { createLatestRequestGuard } from './organizations-ui'
+import { useOrganizationWorkspace } from '@renderer/hooks/use-organization-workspace'
 
 function OrganizationRoleBadge({ type }: Pick<OrganizationView, 'type'>): React.JSX.Element {
   return (
@@ -130,19 +128,23 @@ function SharedItemPermissionBadges({ item }: { item: SharedLoginSummary }): Rea
 
 function OrganizationsPage(): React.JSX.Element {
   const { t } = useLingui()
-  const [organizations, setOrganizations] = useState<OrganizationView[]>([])
-  const [collections, setCollections] = useState<CollectionView[]>([])
-  const [items, setItems] = useState<SharedLoginSummary[]>([])
-  const [organizationId, setOrganizationId] = useState<string | null>(null)
-  const [collectionId, setCollectionId] = useState<string | null>(null)
-  const [selected, setSelected] = useState<SharedLoginView | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState(false)
-  const [retryVersion, setRetryVersion] = useState(0)
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
-  const [selectedLoading, setSelectedLoading] = useState(false)
-  const [selectedError, setSelectedError] = useState(false)
-  const selectedRequest = useRef(createLatestRequestGuard())
+  const {
+    organizations,
+    collections,
+    items,
+    organizationId,
+    collectionId,
+    selected,
+    loading,
+    loadError,
+    selectedItemId,
+    selectedLoading,
+    selectedError,
+    load,
+    selectItem,
+    selectOrganization,
+    selectCollection
+  } = useOrganizationWorkspace()
 
   const visibleCollections = collections.filter(
     (collection) => organizationId === null || collection.organizationId === organizationId
@@ -157,77 +159,6 @@ function OrganizationsPage(): React.JSX.Element {
   const selectedCollections = selected
     ? collections.filter((collection) => selected.collectionIds.includes(collection.id))
     : []
-
-  useEffect(() => {
-    let active = true
-    const requestGuard = selectedRequest.current
-    Promise.all([
-      window.bearwarden.organizations.list(),
-      window.bearwarden.collections.list(),
-      window.bearwarden.sharedLogins.list()
-    ]).then(
-      ([nextOrganizations, nextCollections, nextItems]) => {
-        if (!active) return
-        setOrganizations(nextOrganizations)
-        setCollections(nextCollections)
-        setItems(nextItems)
-        setOrganizationId(nextOrganizations[0]?.id ?? null)
-        setLoading(false)
-      },
-      () => {
-        if (!active) return
-        setLoading(false)
-        setLoadError(true)
-      }
-    )
-    return () => {
-      active = false
-      requestGuard.invalidate()
-    }
-  }, [retryVersion])
-
-  async function selectItem(item: SharedLoginSummary): Promise<void> {
-    const requestId = selectedRequest.current.next()
-    setSelectedItemId(item.id)
-    setSelected(null)
-    setSelectedError(false)
-    setSelectedLoading(true)
-    try {
-      const nextSelected = await window.bearwarden.sharedLogins.get({ id: item.id })
-      if (!selectedRequest.current.isCurrent(requestId)) return
-      setSelected(nextSelected)
-    } catch {
-      if (!selectedRequest.current.isCurrent(requestId)) return
-      setSelectedError(true)
-    } finally {
-      if (selectedRequest.current.isCurrent(requestId)) setSelectedLoading(false)
-    }
-  }
-
-  function clearSelected(): void {
-    selectedRequest.current.invalidate()
-    setSelectedItemId(null)
-    setSelected(null)
-    setSelectedError(false)
-    setSelectedLoading(false)
-  }
-
-  function retryLoad(): void {
-    clearSelected()
-    setLoading(true)
-    setLoadError(false)
-    setRetryVersion((value) => value + 1)
-  }
-
-  function selectOrganization(id: string | null): void {
-    setOrganizationId(id)
-    selectCollection(null)
-  }
-
-  function selectCollection(id: string | null): void {
-    setCollectionId(id)
-    clearSelected()
-  }
 
   return (
     <AuxiliaryPageLayout
@@ -256,7 +187,7 @@ function OrganizationsPage(): React.JSX.Element {
             <p>
               <Trans>Confirm that the vault is unlocked, then try again later.</Trans>
             </p>
-            <Button type="button" variant="outline" onClick={retryLoad}>
+            <Button type="button" variant="outline" onClick={() => void load()}>
               <RefreshCw data-icon="inline-start" />
               <Trans>Try again</Trans>
             </Button>

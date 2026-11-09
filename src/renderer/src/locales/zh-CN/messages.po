@@ -541,7 +541,7 @@ msgstr "新版本"
 msgid "A password is required when adding a login item."
 msgstr "添加登录项目时必须填写密码。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:236
+#: src/renderer/src/components/OrganizationsPage.tsx:167
 msgid "A read-only mirror of shared items. The server determines permissions and password visibility."
 msgstr "共享项目的只读镜像。服务器决定权限和密码可见性。"
 
@@ -561,7 +561,7 @@ msgstr "关于"
 msgid "About BearWarden"
 msgstr "关于 BearWarden"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:66
+#: src/renderer/src/components/OrganizationsPage.tsx:64
 msgid "Accepted"
 msgstr "已接受"
 
@@ -828,7 +828,7 @@ msgstr "地址行 2"
 msgid "Address line 3"
 msgstr "地址行 3"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:40
+#: src/renderer/src/components/OrganizationsPage.tsx:38
 msgid "Administrator"
 msgstr "管理员"
 
@@ -856,7 +856,7 @@ msgstr "30 秒后"
 msgid "After 5 minutes of system inactivity"
 msgstr "系统闲置 5 分钟后"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:275
+#: src/renderer/src/components/OrganizationsPage.tsx:206
 #: src/renderer/src/components/VaultItemListPane.tsx:200
 msgid "After Bitwarden sync completes, shared items that you have permission to access will appear here."
 msgstr "Bitwarden 同步完成后，您有权访问的共享项目将显示在此处。"
@@ -893,7 +893,7 @@ msgstr "开始检查后，主进程仅从 2fa.directory 下载静态 TOTP 服务
 msgid "Agent could not start"
 msgstr "Agent 无法启动"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:337
+#: src/renderer/src/components/OrganizationsPage.tsx:268
 #: src/renderer/src/components/VaultShell.tsx:151
 msgid "All"
 msgstr "全部"
@@ -910,7 +910,7 @@ msgstr "所有数据均在此设备上解密。"
 msgid "All items"
 msgstr "所有项目"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:298
+#: src/renderer/src/components/OrganizationsPage.tsx:229
 msgid "All organizations"
 msgstr "所有组织"
 
@@ -1351,15 +1351,15 @@ msgstr "内置全局规则"
 msgid "Bulk actions for selected items"
 msgstr "对所选项目运行批量操作"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:122
+#: src/renderer/src/components/OrganizationsPage.tsx:120
 msgid "Can delete"
 msgstr "可删除"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:116
+#: src/renderer/src/components/OrganizationsPage.tsx:114
 msgid "Can edit"
 msgstr "可编辑"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:125
+#: src/renderer/src/components/OrganizationsPage.tsx:123
 msgid "Can restore"
 msgstr "可还原"
 
@@ -1405,11 +1405,11 @@ msgstr "取消查询"
 msgid "Canceling"
 msgstr "正在取消"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:122
+#: src/renderer/src/components/OrganizationsPage.tsx:120
 msgid "Cannot delete"
 msgstr "无法删除"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:125
+#: src/renderer/src/components/OrganizationsPage.tsx:123
 msgid "Cannot restore"
 msgstr "无法还原"
 
@@ -1775,13 +1775,13 @@ msgctxt "organization-collection"
 msgid "Collection"
 msgstr "集合"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:468
+#: src/renderer/src/components/OrganizationsPage.tsx:399
 msgid "Collection:"
 msgstr "集合："
 
 #: src/renderer/src/components/LoginEditor.tsx:2521
 #: src/renderer/src/components/LoginEditor.tsx:2564
-#: src/renderer/src/components/OrganizationsPage.tsx:324
+#: src/renderer/src/components/OrganizationsPage.tsx:255
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:130
 msgid "Collections"
 msgstr "集合"
@@ -1864,7 +1864,7 @@ msgstr "确认移除安全密钥"
 msgid "Confirm that sync is connected and try again. Existing data has not been changed."
 msgstr "请确认同步已连接，然后重试。现有数据尚未更改。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:257
+#: src/renderer/src/components/OrganizationsPage.tsx:188
 msgid "Confirm that the vault is unlocked, then try again later."
 msgstr "请确认密码库已解锁，然后稍后重试。"
 
@@ -1881,7 +1881,7 @@ msgid "Confirm your master password before approving."
 msgstr "请在批准前确认您的主密码。"
 
 #: src/renderer/src/components/EmergencyAccessPage.tsx:150
-#: src/renderer/src/components/OrganizationsPage.tsx:68
+#: src/renderer/src/components/OrganizationsPage.tsx:66
 msgid "Confirmed"
 msgstr "已确认"
 
@@ -2103,7 +2103,7 @@ msgstr "无法导入 KeePass XML。请检查主密码，并确保文件是来自
 msgid "Could not load Emergency Access"
 msgstr "无法加载紧急访问"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:253
+#: src/renderer/src/components/OrganizationsPage.tsx:184
 msgid "Could not load organization items"
 msgstr "无法加载组织项目"
 
@@ -2111,7 +2111,7 @@ msgstr "无法加载组织项目"
 msgid "Could not load Sends"
 msgstr "无法加载 Sends"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:409
+#: src/renderer/src/components/OrganizationsPage.tsx:340
 msgid "Could not load shared item"
 msgstr "无法加载共享项目"
 
@@ -2348,7 +2348,7 @@ msgstr "自定义非活动超时小时数"
 msgid "Custom inactivity timeout minutes"
 msgstr "自定义非活动超时分钟数"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:44
+#: src/renderer/src/components/OrganizationsPage.tsx:42
 msgid "Custom role"
 msgstr "自定义角色"
 
@@ -2523,7 +2523,7 @@ msgstr "开发版本不支持自动更新。请从 GitHub Releases 下载安装�
 msgid "Diagnostic logs"
 msgstr "诊断日志"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:107
+#: src/renderer/src/components/OrganizationsPage.tsx:105
 msgid "Direct assignment"
 msgstr "直接分配"
 
@@ -2547,7 +2547,7 @@ msgstr "禁用 PIN 解锁"
 msgid "Disable Send"
 msgstr "禁用 Send"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:60
+#: src/renderer/src/components/OrganizationsPage.tsx:58
 #: src/renderer/src/components/SendsPage.tsx:113
 #: src/renderer/src/components/SettingsPage.tsx:607
 #: src/renderer/src/components/SettingsPage.tsx:1059
@@ -2702,11 +2702,11 @@ msgstr "编辑文件夹"
 msgid "Edit folder {0}"
 msgstr "编辑文件夹 {0}"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:94
+#: src/renderer/src/components/OrganizationsPage.tsx:92
 msgid "Edit items"
 msgstr "编辑项目"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:92
+#: src/renderer/src/components/OrganizationsPage.tsx:90
 msgid "Edit items, hide passwords"
 msgstr "编辑项目，隐藏密码"
 
@@ -3172,7 +3172,7 @@ msgstr "当前只能查看文件 Send 并复制其链接。"
 msgid "File signing"
 msgstr "文件签名"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:327
+#: src/renderer/src/components/OrganizationsPage.tsx:258
 msgid "Filter shared items by Collection."
 msgstr "按集合筛选共享项目。"
 
@@ -3565,7 +3565,7 @@ msgstr "包含一个数字"
 msgid "Incorrect master password."
 msgstr "主密码不正确。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:107
+#: src/renderer/src/components/OrganizationsPage.tsx:105
 msgid "Indirect assignment"
 msgstr "间接分配"
 
@@ -3586,7 +3586,7 @@ msgid "Invitation accepted"
 msgstr "邀请已接受"
 
 #: src/renderer/src/components/EmergencyAccessPage.tsx:146
-#: src/renderer/src/components/OrganizationsPage.tsx:64
+#: src/renderer/src/components/OrganizationsPage.tsx:62
 msgid "Invited"
 msgstr "已邀请"
 
@@ -3836,7 +3836,7 @@ msgstr "正在加载项目详情…"
 msgid "Loading local accounts"
 msgstr "正在加载本地账号"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:247
+#: src/renderer/src/components/OrganizationsPage.tsx:178
 msgid "Loading organization items…"
 msgstr "正在加载组织项目…"
 
@@ -3852,7 +3852,7 @@ msgstr "正在加载 Sends…"
 msgid "Loading settings…"
 msgstr "正在加载设置…"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:402
+#: src/renderer/src/components/OrganizationsPage.tsx:333
 msgid "Loading shared item…"
 msgstr "正在加载共享项目…"
 
@@ -4016,7 +4016,7 @@ msgstr "请确认密码库仍处于解锁状态，然后再次分析。"
 #~ msgid "Manage collection"
 #~ msgstr "管理集合"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:86
+#: src/renderer/src/components/OrganizationsPage.tsx:84
 msgid "Manage Collection"
 msgstr "管理集合"
 
@@ -4436,7 +4436,7 @@ msgstr "未找到匹配的规则。"
 msgid "No matching vault items"
 msgstr "没有匹配的密码库项目"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:272
+#: src/renderer/src/components/OrganizationsPage.tsx:203
 msgid "No organizations have been synced"
 msgstr "尚未同步任何组织"
 
@@ -4473,7 +4473,7 @@ msgstr "尚未注册安全密钥。您可以添加第一把密钥。"
 msgid "No Sends yet"
 msgstr "尚无 Send"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:388
+#: src/renderer/src/components/OrganizationsPage.tsx:319
 #: src/renderer/src/components/VaultItemListPane.tsx:190
 msgid "No shared items"
 msgstr "没有共享项目"
@@ -4707,7 +4707,7 @@ msgstr "组织 Duo"
 msgid "Organization encryption key"
 msgstr "组织加密密钥"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:234
+#: src/renderer/src/components/OrganizationsPage.tsx:165
 msgid "Organization items"
 msgstr "组织项目"
 
@@ -4719,7 +4719,7 @@ msgstr "组织密钥和成员数据"
 msgid "Organization profile data"
 msgstr "组织配置文件数据"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:287
+#: src/renderer/src/components/OrganizationsPage.tsx:218
 #: src/renderer/src/components/VaultOrganizationSidebarSection.tsx:53
 msgid "Organizations"
 msgstr "组织"
@@ -4745,7 +4745,7 @@ msgid "Other card issuer"
 msgstr "其他发卡机构"
 
 #: src/renderer/src/components/LoginEditor.tsx:2535
-#: src/renderer/src/components/OrganizationsPage.tsx:38
+#: src/renderer/src/components/OrganizationsPage.tsx:36
 msgid "Owner"
 msgstr "属主"
 
@@ -4821,11 +4821,11 @@ msgstr "需要密码"
 msgid "Passwords and attachments in the ZIP are unencrypted plaintext"
 msgstr "ZIP 中的密码和附件是未加密的明文"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:451
+#: src/renderer/src/components/OrganizationsPage.tsx:382
 msgid "Passwords and sensitive fields are masked"
 msgstr "密码和敏感字段已遮蔽"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:119
+#: src/renderer/src/components/OrganizationsPage.tsx:117
 msgid "Passwords hidden"
 msgstr "密码已隐藏"
 
@@ -5083,7 +5083,7 @@ msgstr "提供商 {providerType}"
 msgid "Provider-managed organization key"
 msgstr "服务提供商管理的组织密钥"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:70
+#: src/renderer/src/components/OrganizationsPage.tsx:68
 msgid "Provisioned"
 msgstr "已预配"
 
@@ -5121,7 +5121,7 @@ msgstr "随机单词"
 msgid "Read the foreground browser’s URL and form only when you press the shortcut. Multiple matches appear in a mini picker."
 msgstr "仅在按下快捷键时读取前台浏览器的 URL 和表单。多个匹配项会显示在迷您选择器中。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:116
+#: src/renderer/src/components/OrganizationsPage.tsx:114
 msgid "Read-only"
 msgstr "只读"
 
@@ -5449,7 +5449,7 @@ msgstr "审核请求"
 msgid "Review the authentication providers currently enabled on the server and securely copy your recovery code."
 msgstr "查看服务器上当前激活的身份验证提供程序，并安全地复制您的恢复代码。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:36
+#: src/renderer/src/components/OrganizationsPage.tsx:34
 msgid "Role unavailable"
 msgstr "角色不可用"
 
@@ -5850,7 +5850,7 @@ msgstr "设置说明"
 msgid "Setup key copied"
 msgstr "设置密钥已复制"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:365
+#: src/renderer/src/components/OrganizationsPage.tsx:296
 msgid "Shared item"
 msgstr "共享项目"
 
@@ -5977,11 +5977,11 @@ msgstr "SSH 密钥"
 msgid "SSH keys"
 msgstr "SSH 密钥"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:119
+#: src/renderer/src/components/OrganizationsPage.tsx:117
 msgid "Standard view"
 msgstr "标准视图"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:449
+#: src/renderer/src/components/OrganizationsPage.tsx:380
 msgid "Standard view permission"
 msgstr "标准视图权限"
 
@@ -6012,7 +6012,7 @@ msgstr "开头为"
 msgid "State / Province"
 msgstr "州 / 省"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:62
+#: src/renderer/src/components/OrganizationsPage.tsx:60
 msgid "Status unavailable"
 msgstr "状态不可用"
 
@@ -6300,7 +6300,7 @@ msgstr "轮换期间连接中断，因此结果未知。请勿再次轮换；请
 msgid "The current account cannot be removed. Switch to another account first."
 msgstr "无法移除当前账号。请先切换到另一个账号。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:391
+#: src/renderer/src/components/OrganizationsPage.tsx:322
 #: src/renderer/src/components/VaultItemListPane.tsx:201
 msgid "The current organization or Collection has no items you can read."
 msgstr "当前组织或集合中没有您可以读取的项目。"
@@ -6580,11 +6580,11 @@ msgstr "选择内容已更改，因此未运行任何操作。请重新选择项
 msgid "The send result is unknown. The status has been refreshed. Do not resend immediately."
 msgstr "发送结果未知。状态已刷新。请勿立即重新发送。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:432
+#: src/renderer/src/components/OrganizationsPage.tsx:363
 msgid "The server allows standard viewing. This read-only page does not show or copy passwords."
 msgstr "服务器允许标准查看。此只读页面不会显示或复制密码。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:437
+#: src/renderer/src/components/OrganizationsPage.tsx:368
 msgid "The server applies hidden-password permissions, so sensitive fields are masked."
 msgstr "服务器应用了隐藏密码权限，因此敏感字段会被遮蔽。"
 
@@ -7186,8 +7186,8 @@ msgstr "请尝试更短的搜索词，或切换到“所有项目”。"
 
 #: src/renderer/src/components/AuthScreen.tsx:306
 #: src/renderer/src/components/EmergencyAccessPage.tsx:69
-#: src/renderer/src/components/OrganizationsPage.tsx:261
-#: src/renderer/src/components/OrganizationsPage.tsx:421
+#: src/renderer/src/components/OrganizationsPage.tsx:192
+#: src/renderer/src/components/OrganizationsPage.tsx:352
 #: src/renderer/src/components/SendsPage.tsx:391
 msgid "Try again"
 msgstr "重试"
@@ -7570,7 +7570,7 @@ msgstr "未知设备"
 msgid "Unknown device type ({type})"
 msgstr "未知设备类型 ({type})"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:46
+#: src/renderer/src/components/OrganizationsPage.tsx:44
 msgid "Unknown role ({type})"
 msgstr "未知角色 ({type})"
 
@@ -7579,7 +7579,7 @@ msgid "Unknown SSHSIG"
 msgstr "未知 SSHSIG"
 
 #. placeholder {0}: organization.status
-#: src/renderer/src/components/OrganizationsPage.tsx:72
+#: src/renderer/src/components/OrganizationsPage.tsx:70
 msgid "Unknown status ({0})"
 msgstr "未知状态 ({0})"
 
@@ -7760,7 +7760,7 @@ msgstr "用于 Bitwarden CLI 客户端凭据。BearWarden 不会存储您的 Cli
 msgid "Used only by the main process to create a one-time server proof. It is not stored."
 msgstr "仅供主进程创建一次性服务器证明，不会被存储。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:42
+#: src/renderer/src/components/OrganizationsPage.tsx:40
 msgid "User"
 msgstr "用户"
 
@@ -7786,7 +7786,7 @@ msgid "Username, password, and websites"
 msgstr "用户名、密码和网站"
 
 #. placeholder {0}: selected.username
-#: src/renderer/src/components/OrganizationsPage.tsx:457
+#: src/renderer/src/components/OrganizationsPage.tsx:388
 msgid "Username: {0}"
 msgstr "用户名：{0}"
 
@@ -7900,13 +7900,13 @@ msgstr "极弱"
 
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:154
 #: src/renderer/src/components/EmergencyAccessPage.tsx:136
-#: src/renderer/src/components/OrganizationsPage.tsx:376
+#: src/renderer/src/components/OrganizationsPage.tsx:307
 #: src/renderer/src/components/VaultHealthPage.tsx:202
 msgid "View"
 msgstr "查看"
 
 #. placeholder {0}: item.name
-#: src/renderer/src/components/OrganizationsPage.tsx:373
+#: src/renderer/src/components/OrganizationsPage.tsx:304
 msgid "View {0}"
 msgstr "查看 {0}"
 
@@ -7931,11 +7931,11 @@ msgstr "查看服务器上的设备活动和受信任状态，并撤销所有会
 msgid "View item"
 msgstr "查看条目"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:90
+#: src/renderer/src/components/OrganizationsPage.tsx:88
 msgid "View items"
 msgstr "查看条目"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:88
+#: src/renderer/src/components/OrganizationsPage.tsx:86
 msgid "View items, hide passwords"
 msgstr "查看条目，隐藏密码"
 
@@ -8029,7 +8029,7 @@ msgid "Website was not moved."
 msgstr "网站未移动。"
 
 #. placeholder {0}: selected.uri
-#: src/renderer/src/components/OrganizationsPage.tsx:462
+#: src/renderer/src/components/OrganizationsPage.tsx:393
 msgid "Website: {0}"
 msgstr "网站：{0}"
 
@@ -8087,7 +8087,7 @@ msgstr "是"
 msgid "Yesterday"
 msgstr "昨天"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:239
+#: src/renderer/src/components/OrganizationsPage.tsx:170
 msgid "You can currently browse synced organizations and shared items in read-only mode. Creating, editing, deleting, sharing, and other management actions are not supported yet."
 msgstr "您目前可在只读模式下浏览已同步的组织和共享条目。尚不支持创建、编辑、删除、共享以及其他管理操作。"
 
