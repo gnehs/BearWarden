@@ -89,6 +89,43 @@ describe('EncryptedVaultStore operation-scoped key unlock', () => {
     saltBefore.fill(0)
   })
 
+  it('keeps decrypting with its own copy when the caller zeroes key material mid-unlock', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'bearwarden-key-zeroed-'))
+    directories.push(directory)
+    const store = new EncryptedVaultStore<{ marker: string }>(join(directory, 'vault.json'))
+    const material = await store.initialize('correct horse battery staple', { marker: 'safe' })
+    const keyBefore = Buffer.from(material.key)
+
+    const unlocking = store.unlockWithKey(material.key, material.salt)
+    await Promise.resolve()
+    material.key.fill(0)
+    material.salt.fill(0)
+    const unlocked = await unlocking
+
+    expect(unlocked.data).toEqual({ marker: 'safe' })
+    expect(unlocked.key).toEqual(keyBefore)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+    keyBefore.fill(0)
+  })
+
+  it('reports a wrong key for the right salt as a decrypt failure', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'bearwarden-key-wrong-'))
+    directories.push(directory)
+    const store = new EncryptedVaultStore<{ marker: string }>(join(directory, 'vault.json'))
+    const material = await store.initialize('correct horse battery staple', { marker: 'safe' })
+
+    await expect(store.unlockWithKey(Buffer.alloc(32, 1), material.salt)).rejects.toMatchObject({
+      code: 'CORRUPT_VAULT',
+      message: 'CORRUPT_VAULT:decrypt'
+    })
+    await expect(store.unlock('wrong horse battery staple')).rejects.toMatchObject({
+      code: 'INVALID_MASTER_PASSWORD'
+    })
+    material.key.fill(0)
+    material.salt.fill(0)
+  })
+
   it('rejects key material bound to a different vault envelope salt', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'bearwarden-key-swap-'))
     directories.push(directory)
