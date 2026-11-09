@@ -258,7 +258,7 @@ export class VaultCore {
   }
 
   /** Aborts every in-flight background operation registered by a session resource. */
-  abortBackgroundOperations(): void {
+  private abortBackgroundOperations(): void {
     for (const resource of this.resources) resource.abort?.()
   }
 
