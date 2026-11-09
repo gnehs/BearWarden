@@ -1,7 +1,8 @@
 import type {
   AttachmentOperationKind,
   AttachmentOperationStage,
-  AttachmentProgressEvent
+  AttachmentProgressEvent,
+  VaultAttachmentView
 } from '../../../shared/vault-contract'
 
 export interface AttachmentOperationState extends AttachmentProgressEvent {
@@ -39,3 +40,12 @@ export function isPreviewableImageAttachment(fileName: string): boolean {
 }
 
 export { isCardCoverAttachment } from '../../../shared/card-cover'
+
+export function upsertAttachment(
+  attachments: readonly VaultAttachmentView[],
+  attachment: VaultAttachmentView
+): VaultAttachmentView[] {
+  return attachments.some((entry) => entry.id === attachment.id)
+    ? attachments.map((entry) => (entry.id === attachment.id ? attachment : entry))
+    : [...attachments, attachment]
+}

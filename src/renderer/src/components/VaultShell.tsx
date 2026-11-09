@@ -47,9 +47,6 @@ import {
 } from '../../../shared/selected-item-shortcuts'
 import type {
   AppSettingsUpdate,
-  AttachmentOperationKind,
-  AttachmentOperationStage,
-  AttachmentProgressEvent,
   FolderView,
   LoginSummary,
   LoginView,
@@ -65,8 +62,7 @@ import type {
   VaultExportResult,
   VaultImportResult,
   VaultItemType,
-  VaultSecretField,
-  VaultAttachmentView
+  VaultSecretField
 } from '../../../shared/vault-contract'
 import { MAX_LOGIN_BATCH_IDS } from '../../../shared/vault-contract'
 import bearCutUrl from '../assets/bear-cut.svg'
@@ -109,9 +105,12 @@ import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
 import { useEditorTransitionGuard } from '@renderer/hooks/use-editor-transition-guard'
 import { useVaultAccounts } from '@renderer/hooks/use-vault-accounts'
 import { useVaultSearch } from '@renderer/hooks/use-vault-search'
+import { useDescribeVaultError } from '@renderer/hooks/use-describe-vault-error'
+import { announce, announceError, vaultErrorToastId } from '@renderer/lib/vault-notices'
 import { useVaultAuthorization } from '@renderer/hooks/use-vault-authorization'
 import { useLoginDetailCache } from '@renderer/hooks/use-login-detail-cache'
 import { useVaultDataSync } from '@renderer/hooks/use-vault-data-sync'
+import { useAttachmentOperations } from '@renderer/hooks/use-attachment-operations'
 import { useCardCoverPreviews } from '@renderer/hooks/use-card-cover-previews'
 import { resolveTotpRefreshTarget } from './totp-refresh-target'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
@@ -190,13 +189,6 @@ import {
   type TypeFilter
 } from './VaultShell-model'
 import {
-  initialAttachmentStages,
-  isCardCoverAttachment,
-  isAttachmentCanceled,
-  type AttachmentDeleteTarget,
-  type AttachmentOperationState
-} from './vault-attachment-ui'
-import {
   customFieldCopyFeedbackKey,
   detailFieldCopyFeedbackKey,
   detailFields,
@@ -207,10 +199,11 @@ import {
   firstAuthorizationToken,
   mergeLoginSummary
 } from './vault-detail-cache'
-import { describeError, isRepromptRequired } from './vault-error-ui'
+import { isRepromptRequired } from './vault-error-ui'
 import { itemTypeIcons } from './vault-item-type-icons'
 import { VaultSearchDialog, VaultShellLoading, VaultShellTitlebar } from './VaultShellChrome'
 import { isSharedLoginSummary } from './organizations-ui'
+import { upsertAttachment } from './vault-attachment-ui'
 import { createVaultItemAccess, tracksItemUsage } from './vault-item-access'
 
 interface ItemTypeMeta {
@@ -249,26 +242,8 @@ interface VaultShellProps {
   onSyncSetupPromptHandled: () => void
 }
 
-const vaultErrorToastId = 'vault-error'
-
-function announceError(message: string): void {
-  toast.error(message, {
-    id: vaultErrorToastId,
-    duration: 7_000
-  })
-}
-
 function isTotpListItem(item: LoginSummary): boolean {
   return !isSharedLoginSummary(item) && item.type === 'login' && Boolean(item.hasTotp)
-}
-
-function upsertAttachment(
-  attachments: readonly VaultAttachmentView[],
-  attachment: VaultAttachmentView
-): VaultAttachmentView[] {
-  return attachments.some((entry) => entry.id === attachment.id)
-    ? attachments.map((entry) => (entry.id === attachment.id ? attachment : entry))
-    : [...attachments, attachment]
 }
 
 function isEditableShortcutTarget(target: EventTarget | null): boolean {
@@ -401,50 +376,7 @@ function VaultShellContent({
     linkedFields: linkedFieldLabels,
     unset: t`Not set`
   }
-  const getAttachmentStageLabel = (progress: AttachmentProgressEvent): string => {
-    if (progress.stage === 'choosing-file' && progress.kind === 'download') {
-      return t`Waiting for a save location`
-    }
-    if (progress.kind === 'preview') {
-      return t`Loading image preview`
-    }
-    const labels: Record<AttachmentOperationStage, string> = {
-      'choosing-file': t`Waiting for a file`,
-      'reading-file': t`Safely reading the file`,
-      encrypting: t`Encrypting locally`,
-      downloading: t`Downloading attachment`,
-      uploading: t`Uploading encrypted attachment`,
-      deleting: t`Deleting attachment`,
-      syncing: t`Syncing attachment list`
-    }
-    return labels[progress.stage]
-  }
-  const errorMessages = useMemo<Record<string, string>>(
-    () => ({
-      LOCKED: t`The vault is locked. Unlock it and try again.`,
-      NOT_FOUND: t`The requested item could not be found.`,
-      INVALID_INPUT: t`The input is invalid. Check it and try again.`,
-      POLICY_RESTRICTED: t`This operation is restricted by your organization's policy.`,
-      DUPLICATE_NAME: t`That name is already in use. Choose another name.`,
-      INVALID_URL: t`The website URL is invalid.`,
-      ATTACHMENT_FAILED: t`The attachment operation failed. The server content may have changed; sync and try again.`,
-      ATTACHMENT_TOO_LARGE: t`The attachment is too large to encrypt within the safe memory limit.`,
-      ATTACHMENT_STORAGE_LIMIT: t`There is not enough Bitwarden attachment storage. Free some space and try again.`,
-      ATTACHMENT_REJECTED: t`This server or account does not currently allow this attachment to be added.`,
-      ATTACHMENT_CANCELED: t`The attachment operation was canceled.`
-    }),
-    [t]
-  )
-  const describeVaultError = useCallback(
-    (error: unknown): string =>
-      describeError(
-        error,
-        errorMessages,
-        t`An unknown error occurred.`,
-        t`The operation did not finish. Refresh and confirm the current state.`
-      ),
-    [errorMessages, t]
-  )
+  const describeVaultError = useDescribeVaultError()
   const {
     settingsOpen,
     setSettingsOpen,
@@ -595,24 +527,11 @@ function VaultShellContent({
   const hoverRevealedSecretFieldsRef = useRef(new Set<VaultSecretField>())
   const passwordZoomOpenRef = useRef(false)
   const [generatorDialogOpen, setGeneratorDialogOpen] = useState(false)
-  const [attachmentOperation, setAttachmentOperation] = useState<AttachmentOperationState | null>(
-    null
-  )
-  const [attachmentPreview, setAttachmentPreview] = useState<{
-    itemId: string
-    attachmentId: string
-    fileName: string
-    dataUrl: string
-  } | null>(null)
   const {
     previews: cardCoverListPreviews,
     clear: clearCardCoverListPreviews,
-    invalidate: invalidateCardCoverListPreview,
-    prefetch: prefetchCardCoverPreview,
-    remember: rememberCardCoverPreview
+    prefetch: prefetchCardCoverPreview
   } = useCardCoverPreviews()
-  const [attachmentDeleteTarget, setAttachmentDeleteTarget] =
-    useState<AttachmentDeleteTarget | null>(null)
   const {
     authorization,
     prompt: repromptRequest,
@@ -638,6 +557,8 @@ function VaultShellContent({
     loadStarted: () => toast.dismiss(vaultErrorToastId),
     loadFailed: (error) => announceError(describeVaultError(error))
   })
+  const attachments = useAttachmentOperations(authorization, detailCache, vaultData)
+  const cancelAndClearAttachment = attachments.cancelAndClear
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   const [loginApprovalPrompts, setLoginApprovalPrompts] = useState<LoginApprovalPrompt[]>([])
@@ -667,59 +588,6 @@ function VaultShellContent({
   const compactReturnIdRef = useRef<string | null>(null)
   const compactDetailFocusIdRef = useRef<string | null>(null)
   const selectionAnchorIdRef = useRef<string | null>(null)
-  const attachmentOperationRef = useRef<AttachmentOperationState | null>(null)
-
-  const beginAttachmentOperation = useCallback(
-    (kind: AttachmentOperationKind, itemId: string, fileName: string | null): string => {
-      const operationId = crypto.randomUUID()
-      const operation: AttachmentOperationState = {
-        operationId,
-        itemId,
-        kind,
-        stage: initialAttachmentStages[kind],
-        completedBytes: 0,
-        totalBytes: null,
-        fileName,
-        canceling: false
-      }
-      attachmentOperationRef.current = operation
-      setAttachmentOperation(operation)
-      setAttachmentDeleteTarget(null)
-      return operationId
-    },
-    [setAttachmentDeleteTarget]
-  )
-
-  const finishAttachmentOperation = useCallback((operationId: string): void => {
-    if (attachmentOperationRef.current?.operationId !== operationId) return
-    attachmentOperationRef.current = null
-    setAttachmentOperation((current) => (current?.operationId === operationId ? null : current))
-  }, [])
-
-  const cancelAndClearAttachmentOperation = useCallback((): void => {
-    const operation = attachmentOperationRef.current
-    attachmentOperationRef.current = null
-    setAttachmentOperation(null)
-    setAttachmentDeleteTarget(null)
-    if (operation) {
-      void window.bearwarden.logins
-        .cancelAttachment({ operationId: operation.operationId })
-        .catch(() => undefined)
-    }
-  }, [setAttachmentDeleteTarget])
-
-  const isCurrentAttachmentOperation = useCallback(
-    (operationId: string, itemId: string): boolean => {
-      const current = attachmentOperationRef.current
-      return (
-        current !== null &&
-        current.operationId === operationId &&
-        current.itemId === itemId &&
-        currentSelectedId() === itemId
-      )
-    },
-    [currentSelectedId]
-  )
 
   const openEditor = useCallback(
     (mode: 'create' | 'edit'): void => {
@@ -859,38 +727,6 @@ function VaultShellContent({
     [authorization, selectedSummary]
   )
 
-  const updateSelectedAttachments = useCallback(
-    (
-      itemId: string,
-      update: (attachments: VaultAttachmentView[]) => VaultAttachmentView[]
-    ): LoginView | null => {
-      const cached = detailCache.get(itemId)
-      const updatedAttachments = cached ? update(cached.attachments) : null
-      const updatedCached =
-        cached && updatedAttachments
-          ? {
-              ...cached,
-              attachments: updatedAttachments,
-              attachmentCount: updatedAttachments.length
-            }
-          : null
-      if (updatedCached) {
-        detailCache.remember(updatedCached)
-      }
-      if (currentSelectedId() !== itemId) return updatedCached
-      setSelectedLogin((current) => {
-        if (!current || current.id !== itemId) return current
-        if (updatedCached) return updatedCached
-        const attachments = update(current.attachments)
-        const next = { ...current, attachments, attachmentCount: attachments.length }
-        detailCache.remember(next)
-        return next
-      })
-      return updatedCached
-    },
-    [currentSelectedId, detailCache, setSelectedLogin]
-  )
-
   const refreshAfterSync = useCallback(async (): Promise<void> => {
     const applyRefresh = async (): Promise<void> => {
       await vaultData.load()
@@ -905,54 +741,6 @@ function VaultShellContent({
     }
     await applyRefresh()
   }, [clearItemSelection, isEditorDirty, requestEditorTransition, setEditorMode, vaultData])
-
-  useEffect(() => {
-    let active = true
-    queueMicrotask(() => {
-      if (!active) return
-      const operation = attachmentOperationRef.current
-      if (operation && operation.itemId !== selectedId) cancelAndClearAttachmentOperation()
-      setAttachmentDeleteTarget((current) => (current?.itemId === selectedId ? current : null))
-      setAttachmentPreview((current) => (current?.itemId === selectedId ? current : null))
-    })
-    return () => {
-      active = false
-    }
-  }, [cancelAndClearAttachmentOperation, selectedId])
-
-  useEffect(() => {
-    const unsubscribe = window.bearwarden.logins.onAttachmentProgress((progress) => {
-      const current = attachmentOperationRef.current
-      if (
-        !current ||
-        progress.operationId !== current.operationId ||
-        progress.itemId !== current.itemId ||
-        progress.itemId !== currentSelectedId() ||
-        progress.kind !== current.kind
-      ) {
-        return
-      }
-      const next: AttachmentOperationState = {
-        ...current,
-        ...progress,
-        canceling: current.canceling
-      }
-      attachmentOperationRef.current = next
-      setAttachmentOperation((previous) =>
-        previous?.operationId === next.operationId ? next : previous
-      )
-    })
-    return () => {
-      unsubscribe()
-      const operation = attachmentOperationRef.current
-      attachmentOperationRef.current = null
-      if (operation) {
-        void window.bearwarden.logins
-          .cancelAttachment({ operationId: operation.operationId })
-          .catch(() => undefined)
-      }
-    }
-  }, [currentSelectedId])
 
   const syncState = syncStatus.state
   useEffect(() => {
@@ -1483,9 +1271,6 @@ function VaultShellContent({
   const sharedScope =
     scope.kind === 'shared' || scope.kind === 'organization' || scope.kind === 'collection'
 
-  const announce = useCallback((message: string): void => {
-    toast.success(message)
-  }, [])
   const {
     accountStatus,
     accountBusy,
@@ -1503,7 +1288,7 @@ function VaultShellContent({
     sidebarAccountProfileName || (syncStatus.configured ? t`Connected account` : t`Local vault`)
 
   const performLockVault = useCallback(async (): Promise<void> => {
-    cancelAndClearAttachmentOperation()
+    cancelAndClearAttachment()
     detailCache.clear()
     clearCardCoverListPreviews()
     setRevealedSecrets(emptyRevealedSecrets)
@@ -1518,7 +1303,7 @@ function VaultShellContent({
       announceError(describeVaultError(lockError))
     }
   }, [
-    cancelAndClearAttachmentOperation,
+    cancelAndClearAttachment,
     clearCardCoverListPreviews,
     describeVaultError,
     detailCache,
@@ -1875,7 +1660,7 @@ function VaultShellContent({
         announceError(describeVaultError(favoriteError))
       }
     },
-    [announce, authorization, describeVaultError, detailCache, setItems, setSelectedLogin, t]
+    [authorization, describeVaultError, detailCache, setItems, setSelectedLogin, t]
   )
 
   function revalidateBulkSelection(
@@ -2221,7 +2006,7 @@ function VaultShellContent({
           })
           const cardCoverAttachment =
             draft.type === 'card' && draft.cardCoverSourceUrl
-              ? await uploadSelectedCardCover(created.id, draft.cardCoverSourceUrl)
+              ? await attachments.uploadSelectedCardCover(created.id, draft.cardCoverSourceUrl)
               : null
           const createdWithCardCover = cardCoverAttachment
             ? {
@@ -2279,7 +2064,7 @@ function VaultShellContent({
           })
           const cardCoverAttachment =
             draft.type === 'card' && draft.cardCoverSourceUrl
-              ? await uploadSelectedCardCover(itemId, draft.cardCoverSourceUrl)
+              ? await attachments.uploadSelectedCardCover(itemId, draft.cardCoverSourceUrl)
               : null
           const updatedAttachments = cardCoverAttachment
             ? upsertAttachment(updated.attachments, cardCoverAttachment)
@@ -2654,314 +2439,6 @@ function VaultShellContent({
       if (tracksItemUsage(selectedSummary)) await vaultData.refreshItems()
     } catch (copyError) {
       announceError(describeVaultError(copyError))
-    }
-  }
-
-  async function downloadAttachment(attachmentId: string): Promise<void> {
-    if (!selectedLogin || attachmentOperationRef.current) return
-    const itemId = selectedLogin.id
-    const attachment = selectedLogin.attachments.find((entry) => entry.id === attachmentId)
-    const operationId = beginAttachmentOperation('download', itemId, attachment?.fileName ?? null)
-    try {
-      const result = await authorization.withReprompt([itemId], (tokenFor) =>
-        window.bearwarden.logins.downloadAttachment({
-          id: itemId,
-          attachmentId,
-          operationId,
-          ...authorizationTokenField(tokenFor(itemId))
-        })
-      )
-      if (!result.canceled && currentSelectedId() === itemId) {
-        announce(t`Downloaded “${result.fileName}”.`)
-      }
-      if (!result.canceled) {
-        await vaultData
-          .refreshItems()
-          .catch(() =>
-            announceError(
-              t`The attachment was downloaded, but the list could not be refreshed. Sync again later.`
-            )
-          )
-      }
-    } catch (downloadError) {
-      if (
-        isCurrentAttachmentOperation(operationId, itemId) &&
-        !isAttachmentCanceled(downloadError)
-      ) {
-        announceError(describeVaultError(downloadError))
-      }
-    } finally {
-      finishAttachmentOperation(operationId)
-    }
-  }
-
-  async function previewAttachment(
-    attachmentId: string,
-    options: { openDialog?: boolean; quiet?: boolean } = {}
-  ): Promise<void> {
-    if (!selectedLogin || attachmentOperationRef.current) return
-    const openDialog = options.openDialog ?? true
-    const itemId = selectedLogin.id
-    const attachment = selectedLogin.attachments.find((entry) => entry.id === attachmentId)
-    if (!attachment) return
-    const operationId = beginAttachmentOperation('preview', itemId, attachment.fileName)
-    try {
-      const result = await authorization.withReprompt([itemId], (tokenFor) =>
-        window.bearwarden.logins.previewAttachment({
-          id: itemId,
-          attachmentId,
-          operationId,
-          ...authorizationTokenField(tokenFor(itemId))
-        })
-      )
-      if (currentSelectedId() !== itemId) return
-      const preview = {
-        itemId,
-        attachmentId,
-        fileName: result.fileName,
-        dataUrl: result.dataUrl
-      }
-      if (openDialog) setAttachmentPreview(preview)
-      if (selectedLogin.type === 'card' && isCardCoverAttachment(result.fileName)) {
-        rememberCardCoverPreview(selectedLogin, attachmentId, result.dataUrl)
-      }
-    } catch (previewError) {
-      if (
-        isCurrentAttachmentOperation(operationId, itemId) &&
-        !isAttachmentCanceled(previewError) &&
-        !options.quiet
-      ) {
-        announceError(describeVaultError(previewError))
-      }
-    } finally {
-      finishAttachmentOperation(operationId)
-    }
-  }
-
-  async function uploadAttachment(): Promise<void> {
-    if (!selectedLogin || attachmentOperationRef.current) return
-    const itemId = selectedLogin.id
-    const operationId = beginAttachmentOperation('upload', itemId, null)
-    try {
-      const result = await authorization.withReprompt([itemId], (tokenFor) =>
-        window.bearwarden.logins.uploadAttachment({
-          id: itemId,
-          operationId,
-          ...authorizationTokenField(tokenFor(itemId))
-        })
-      )
-      if (result.attachment) {
-        const updatedLogin = updateSelectedAttachments(itemId, (attachments) =>
-          upsertAttachment(attachments, result.attachment!)
-        )
-        if (isCardCoverAttachment(result.attachment.fileName)) {
-          invalidateCardCoverListPreview(itemId)
-          if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
-        }
-        if (currentSelectedId() === itemId) {
-          announce(t`Uploaded “${result.attachment.fileName}”.`)
-        }
-        await vaultData
-          .refreshItems()
-          .catch(() =>
-            announceError(
-              t`The attachment was uploaded, but the list could not be refreshed. Sync again later.`
-            )
-          )
-      }
-    } catch (uploadError) {
-      if (isCurrentAttachmentOperation(operationId, itemId) && !isAttachmentCanceled(uploadError)) {
-        announceError(describeVaultError(uploadError))
-      }
-    } finally {
-      finishAttachmentOperation(operationId)
-    }
-  }
-
-  async function uploadSelectedCardCover(
-    itemId: string,
-    sourceUrl: string
-  ): Promise<VaultAttachmentView | null> {
-    if (attachmentOperationRef.current) return null
-    const operationId = beginAttachmentOperation('upload', itemId, 'cover.webp')
-    try {
-      const result = await authorization.withReprompt([itemId], (tokenFor) =>
-        window.bearwarden.logins.uploadCardCoverAttachment({
-          id: itemId,
-          operationId,
-          sourceUrl,
-          ...authorizationTokenField(tokenFor(itemId))
-        })
-      )
-      if (!result.attachment) return null
-      const updatedLogin = updateSelectedAttachments(itemId, (attachments) =>
-        upsertAttachment(attachments, result.attachment!)
-      )
-      invalidateCardCoverListPreview(itemId)
-      if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
-      await vaultData
-        .refreshItems()
-        .catch(() =>
-          announceError(
-            t`The card face was uploaded, but the list could not be refreshed. Sync again later.`
-          )
-        )
-      return result.attachment
-    } catch (coverError) {
-      if (isCurrentAttachmentOperation(operationId, itemId) && !isAttachmentCanceled(coverError)) {
-        announceError(describeVaultError(coverError))
-      }
-      return null
-    } finally {
-      finishAttachmentOperation(operationId)
-    }
-  }
-
-  async function uploadManualCardCover(itemId: string): Promise<void> {
-    if (attachmentOperationRef.current) return
-    const operationId = beginAttachmentOperation('upload', itemId, null)
-    try {
-      const result = await authorization.withReprompt([itemId], (tokenFor) =>
-        window.bearwarden.logins.uploadCardCoverFileAttachment({
-          id: itemId,
-          operationId,
-          ...authorizationTokenField(tokenFor(itemId))
-        })
-      )
-      if (!result.attachment) return
-      const updatedLogin = updateSelectedAttachments(itemId, (attachments) =>
-        upsertAttachment(attachments, result.attachment!)
-      )
-      invalidateCardCoverListPreview(itemId)
-      if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
-      if (currentSelectedId() === itemId) {
-        announce(t`Uploaded card face “${result.attachment.fileName}”.`)
-      }
-      await vaultData
-        .refreshItems()
-        .catch(() =>
-          announceError(
-            t`The card face was uploaded, but the list could not be refreshed. Sync again later.`
-          )
-        )
-    } catch (coverError) {
-      if (isCurrentAttachmentOperation(operationId, itemId) && !isAttachmentCanceled(coverError)) {
-        announceError(describeVaultError(coverError))
-      }
-    } finally {
-      finishAttachmentOperation(operationId)
-    }
-  }
-
-  async function deleteSelectedAttachment(): Promise<void> {
-    const target = attachmentDeleteTarget
-    if (!target || target.itemId !== currentSelectedId() || attachmentOperationRef.current) return
-    setAttachmentDeleteTarget(null)
-    const operationId = beginAttachmentOperation('delete', target.itemId, target.fileName)
-    try {
-      const result = await authorization.withReprompt([target.itemId], (tokenFor) =>
-        window.bearwarden.logins.deleteAttachment({
-          id: target.itemId,
-          attachmentId: target.attachmentId,
-          operationId,
-          ...authorizationTokenField(tokenFor(target.itemId))
-        })
-      )
-      const updatedLogin = updateSelectedAttachments(target.itemId, (attachments) =>
-        attachments.filter((entry) => entry.id !== result.attachmentId)
-      )
-      if (isCardCoverAttachment(target.fileName)) {
-        invalidateCardCoverListPreview(target.itemId)
-        if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
-      }
-      if (currentSelectedId() === target.itemId) announce(t`Deleted “${target.fileName}”.`)
-      await vaultData
-        .refreshItems()
-        .catch(() =>
-          announceError(
-            t`The attachment was deleted, but the list could not be refreshed. Sync again later.`
-          )
-        )
-    } catch (deleteError) {
-      if (
-        isCurrentAttachmentOperation(operationId, target.itemId) &&
-        !isAttachmentCanceled(deleteError)
-      ) {
-        announceError(describeVaultError(deleteError))
-      }
-    } finally {
-      finishAttachmentOperation(operationId)
-    }
-  }
-
-  async function fixLegacyAttachment(attachmentId: string): Promise<void> {
-    if (!selectedLogin || attachmentOperationRef.current) return
-    const itemId = selectedLogin.id
-    const attachment = selectedLogin.attachments.find((entry) => entry.id === attachmentId)
-    if (!attachment?.legacy) return
-    const operationId = beginAttachmentOperation('fix-legacy', itemId, attachment.fileName)
-    try {
-      const result = await authorization.withReprompt([itemId], (tokenFor) =>
-        window.bearwarden.logins.fixLegacyAttachment({
-          id: itemId,
-          attachmentId,
-          operationId,
-          ...authorizationTokenField(tokenFor(itemId))
-        })
-      )
-      const updatedLogin = updateSelectedAttachments(itemId, (attachments) => {
-        const replacementIndex = attachments.findIndex((entry) => entry.id === attachmentId)
-        if (replacementIndex < 0) return [...attachments, result.attachment]
-        return attachments.map((entry, index) =>
-          index === replacementIndex ? result.attachment : entry
-        )
-      })
-      if (isCardCoverAttachment(attachment.fileName)) {
-        invalidateCardCoverListPreview(itemId)
-        if (updatedLogin) prefetchCardCoverPreview(updatedLogin)
-      }
-      if (currentSelectedId() === itemId) announce(t`Repaired “${attachment.fileName}”.`)
-      await vaultData
-        .refreshItems()
-        .catch(() =>
-          announceError(
-            t`The attachment was repaired, but the list could not be refreshed. Sync again later.`
-          )
-        )
-    } catch (fixError) {
-      if (isCurrentAttachmentOperation(operationId, itemId) && !isAttachmentCanceled(fixError)) {
-        announceError(describeVaultError(fixError))
-      }
-    } finally {
-      finishAttachmentOperation(operationId)
-    }
-  }
-
-  async function cancelAttachmentOperation(): Promise<void> {
-    const operation = attachmentOperationRef.current
-    if (!operation || operation.canceling) return
-    const canceling = { ...operation, canceling: true }
-    attachmentOperationRef.current = canceling
-    setAttachmentOperation(canceling)
-    try {
-      const result = await window.bearwarden.logins.cancelAttachment({
-        operationId: operation.operationId
-      })
-      if (
-        !result.canceled &&
-        attachmentOperationRef.current?.operationId === operation.operationId
-      ) {
-        const current = { ...attachmentOperationRef.current, canceling: false }
-        attachmentOperationRef.current = current
-        setAttachmentOperation(current)
-      }
-    } catch (cancelError) {
-      if (attachmentOperationRef.current?.operationId === operation.operationId) {
-        const current = { ...attachmentOperationRef.current, canceling: false }
-        attachmentOperationRef.current = current
-        setAttachmentOperation(current)
-        announceError(describeVaultError(cancelError))
-      }
     }
   }
 
@@ -3395,12 +2872,12 @@ function VaultShellContent({
                     editorMode === 'edit' && selectedLogin && !selectedSharedSummary
                       ? {
                           attachmentCount: selectedLogin.attachments.length,
-                          operation: attachmentOperation,
+                          operation: attachments.operation,
                           syncReady: syncStatus.state === 'ready',
-                          getOperationStageLabel: getAttachmentStageLabel,
-                          onUpload: uploadAttachment,
-                          onUploadCardCover: uploadManualCardCover,
-                          onCancelOperation: cancelAttachmentOperation
+                          getOperationStageLabel: attachments.getStageLabel,
+                          onUpload: attachments.upload,
+                          onUploadCardCover: attachments.uploadManualCardCover,
+                          onCancelOperation: attachments.cancel
                         }
                       : undefined
                   }
@@ -3757,13 +3234,13 @@ function VaultShellContent({
                         attachments={selectedLogin.attachments}
                         busy={busy}
                         syncReady={syncStatus.state === 'ready'}
-                        operation={attachmentOperation}
-                        getOperationStageLabel={getAttachmentStageLabel}
-                        onCancelOperation={cancelAttachmentOperation}
-                        onFixLegacy={fixLegacyAttachment}
-                        onPreview={previewAttachment}
-                        onDownload={downloadAttachment}
-                        onDelete={setAttachmentDeleteTarget}
+                        operation={attachments.operation}
+                        getOperationStageLabel={attachments.getStageLabel}
+                        onCancelOperation={attachments.cancel}
+                        onFixLegacy={attachments.fixLegacy}
+                        onPreview={attachments.preview}
+                        onDownload={attachments.download}
+                        onDelete={attachments.setDeleteTarget}
                       />
                     )}
 
@@ -3867,9 +3344,9 @@ function VaultShellContent({
               onClearHistory: window.bearwarden.generator.clearHistory
             },
             attachment: {
-              deleteTarget: attachmentDeleteTarget,
-              onCloseDelete: () => setAttachmentDeleteTarget(null),
-              onDelete: deleteSelectedAttachment
+              deleteTarget: attachments.deleteTarget,
+              onCloseDelete: () => attachments.setDeleteTarget(null),
+              onDelete: attachments.deleteSelected
             }
           }}
           securityDialogs={{
@@ -3923,24 +3400,26 @@ function VaultShellContent({
           }}
         />
         <Dialog
-          open={attachmentPreview !== null}
+          open={attachments.imagePreview !== null}
           onOpenChange={(open) => {
-            if (!open) setAttachmentPreview(null)
+            if (!open) attachments.setImagePreview(null)
           }}
         >
           <DialogContent className="max-w-[min(920px,calc(100vw-32px))] gap-4">
             <DialogHeader>
-              <DialogTitle>{attachmentPreview?.fileName ?? t`Attachment preview`}</DialogTitle>
+              <DialogTitle>
+                {attachments.imagePreview?.fileName ?? t`Attachment preview`}
+              </DialogTitle>
               <DialogDescription>
                 <Trans>Image attachment preview</Trans>
               </DialogDescription>
             </DialogHeader>
-            {attachmentPreview && (
+            {attachments.imagePreview && (
               <div className="bg-muted grid max-h-[min(70vh,720px)] place-items-center overflow-auto rounded-md border p-2">
                 <img
                   className="max-h-[min(66vh,680px)] max-w-full object-contain"
-                  src={attachmentPreview.dataUrl}
-                  alt={attachmentPreview.fileName}
+                  src={attachments.imagePreview.dataUrl}
+                  alt={attachments.imagePreview.fileName}
                 />
               </div>
             )}
