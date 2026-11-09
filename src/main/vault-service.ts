@@ -109,7 +109,11 @@ import type {
   AttachmentAuthorizationValidator,
   VaultExportSnapshot,
   VaultNativeAttachmentBackupSource,
-  VaultNativeAttachmentRestoreSummary
+  VaultNativeAttachmentRestoreSummary,
+  VaultMasterPasswordChangeStatus,
+  VaultMasterPasswordChangeRequest,
+  VaultMasterPasswordChangeResolutionRequest,
+  VaultMasterPasswordChangeResolution
 } from './vault/types'
 import { VaultServiceBase } from './vault-service-base'
 import type { InactiveTwoFactorReport, TwoFactorDirectoryDataset } from './inactive-two-factor'
@@ -889,5 +893,19 @@ export class VaultService extends VaultServiceBase {
     request: EquivalentDomainSettingsUpdate
   ): Promise<EquivalentDomainSettingsView> {
     return this.sync.updateEquivalentDomainSettings(request)
+  }
+
+  masterPasswordChangeStatus(): Promise<VaultMasterPasswordChangeStatus> {
+    return this.masterPasswordChange.masterPasswordChangeStatus()
+  }
+
+  changeMasterPassword(request: VaultMasterPasswordChangeRequest): Promise<void> {
+    return this.masterPasswordChange.changeMasterPassword(request)
+  }
+
+  resolveMasterPasswordChange(
+    request: VaultMasterPasswordChangeResolutionRequest
+  ): Promise<VaultMasterPasswordChangeResolution> {
+    return this.masterPasswordChange.resolveMasterPasswordChange(request)
   }
 }
