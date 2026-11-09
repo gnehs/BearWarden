@@ -83,11 +83,6 @@ export interface VaultShellItemDialogs {
   generator: {
     open: boolean
     onClose: () => void
-    onGenerate: ComponentProps<typeof CredentialGeneratorDialog>['onGenerate']
-    onCopyGenerated: ComponentProps<typeof CredentialGeneratorDialog>['onCopyGenerated']
-    onListHistory: ComponentProps<typeof CredentialGeneratorDialog>['onListHistory']
-    onCopyHistory: ComponentProps<typeof CredentialGeneratorDialog>['onCopyHistory']
-    onClearHistory: ComponentProps<typeof CredentialGeneratorDialog>['onClearHistory']
   }
   attachment: {
     deleteTarget: AttachmentDeleteTarget | null
@@ -126,8 +121,6 @@ export interface VaultShellSyncDialogs {
   portability: {
     mode: VaultPortabilityMode | null
     onClose: () => void
-    onExport: ComponentProps<typeof VaultPortabilityDialog>['onExport']
-    onImport: ComponentProps<typeof VaultPortabilityDialog>['onImport']
     onExported: ComponentProps<typeof VaultPortabilityDialog>['onExported']
     onImported: ComponentProps<typeof VaultPortabilityDialog>['onImported']
   }
@@ -269,11 +262,11 @@ function VaultShellDialogs({
       {generator.open && (
         <CredentialGeneratorDialog
           onClose={generator.onClose}
-          onGenerate={generator.onGenerate}
-          onCopyGenerated={generator.onCopyGenerated}
-          onListHistory={generator.onListHistory}
-          onCopyHistory={generator.onCopyHistory}
-          onClearHistory={generator.onClearHistory}
+          onGenerate={window.bearwarden.generator.generate}
+          onCopyGenerated={(token) => window.bearwarden.generator.copyGenerated({ token })}
+          onListHistory={window.bearwarden.generator.history}
+          onCopyHistory={window.bearwarden.generator.copyHistory}
+          onClearHistory={window.bearwarden.generator.clearHistory}
         />
       )}
       {securityDialogs.reprompt.prompt && (
@@ -303,8 +296,8 @@ function VaultShellDialogs({
         <VaultPortabilityDialog
           mode={syncDialogs.portability.mode}
           onClose={syncDialogs.portability.onClose}
-          onExport={syncDialogs.portability.onExport}
-          onImport={syncDialogs.portability.onImport}
+          onExport={(request) => window.bearwarden.portability.export(request)}
+          onImport={(request) => window.bearwarden.portability.import(request)}
           onExported={syncDialogs.portability.onExported}
           onImported={syncDialogs.portability.onImported}
         />

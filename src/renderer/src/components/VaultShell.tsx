@@ -38,7 +38,6 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { useStore } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import {
   SELECTED_ITEM_COPY_SHORTCUTS,
@@ -49,7 +48,6 @@ import type {
   FolderView,
   LoginSummary,
   LoginView,
-  LoginApprovalPrompt,
   SyncStatus,
   SharedLoginView,
   VaultExportResult,
@@ -100,6 +98,10 @@ import { useAttachmentOperations } from '@renderer/hooks/use-attachment-operatio
 import { useSelectedItemTotp, useTotpListCodes } from '@renderer/hooks/use-totp-codes'
 import { useSelectedItemSecrets } from '@renderer/hooks/use-selected-item-secrets'
 import { useVaultItemActions } from '@renderer/hooks/use-vault-item-actions'
+import { useSyncStatus } from '@renderer/hooks/use-sync-status'
+import { useLoginApprovalQueue } from '@renderer/hooks/use-login-approval-queue'
+import { useVaultItemAccess } from '@renderer/hooks/use-vault-item-access'
+import { useVaultLock } from '@renderer/hooks/use-vault-lock'
 import { useCardCoverPreviews } from '@renderer/hooks/use-card-cover-previews'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
@@ -144,10 +146,6 @@ import {
   useVaultSessionStoreApi
 } from '@renderer/stores/vault-session-store'
 import { VaultImageStoreProvider } from '@renderer/stores/vault-image-store'
-import {
-  createSyncStatusStore,
-  startSyncStatusSubscription
-} from '@renderer/stores/sync-status-store'
 import { useSettingsStore } from '@renderer/stores/settings-runtime'
 import { requestAccountAction } from './account-switcher-ui'
 import {
@@ -172,7 +170,6 @@ import { detailFields } from './vault-detail-view-model'
 import { itemTypeIcons } from './vault-item-type-icons'
 import { VaultSearchDialog, VaultShellLoading, VaultShellTitlebar } from './VaultShellChrome'
 import { isSharedLoginSummary } from './organizations-ui'
-import { createVaultItemAccess } from './vault-item-access'
 
 interface ItemTypeMeta {
   label: string
@@ -463,13 +460,7 @@ function VaultShellContent({
     tokens: authorizationTokens
   } = useVaultAuthorization()
   const detailCache = useLoginDetailCache(authorization, prefetchCardCoverPreview)
-  const [itemAccess] = useState(() =>
-    createVaultItemAccess({
-      logins: window.bearwarden.logins,
-      sharedLogins: window.bearwarden.sharedLogins,
-      authorization
-    })
-  )
+  const itemAccess = useVaultItemAccess(authorization)
   const vaultData = useVaultDataSync(authorization, detailCache, {
     selectedDetailInvalidated: () => {
       setPasswordHistoryDialogOpen(false)
@@ -485,11 +476,13 @@ function VaultShellContent({
   const resetReveals = secrets.resetReveals
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
-  const [loginApprovalPrompts, setLoginApprovalPrompts] = useState<LoginApprovalPrompt[]>([])
-  const [syncStatusStore] = useState(() => createSyncStatusStore())
-  const syncStatus = useStore(syncStatusStore, (state) => state.status)
-  const syncStatusLoaded = useStore(syncStatusStore, (state) => state.loaded)
-  const setSyncStatus = syncStatusStore.getState().setStatus
+  const loginApprovals = useLoginApprovalQueue()
+  const {
+    status: syncStatus,
+    loaded: syncStatusLoaded,
+    setStatus: setSyncStatus,
+    refresh: refreshSyncStatus
+  } = useSyncStatus()
   const showSyncSetupPrompt = shouldShowSyncSetupPrompt(promptSyncSetup, syncStatusLoaded)
   const SyncSidebarIcon = syncStateMeta[syncStatus.state].icon
   const settings = useSettingsStore((state) => state.settings)
@@ -622,18 +615,6 @@ function VaultShellContent({
     if (!selectedLogin || selectedSharedSummary || syncState === 'syncing') return
     prefetchCardCoverPreview(selectedLogin)
   }, [prefetchCardCoverPreview, selectedLogin, selectedSharedSummary, syncState])
-
-  useEffect(() => {
-    return window.bearwarden.accountSecurity.onLoginApprovalRequested((prompt) => {
-      setLoginApprovalPrompts((current) =>
-        current.some((entry) => entry.token === prompt.token) ? current : [...current, prompt]
-      )
-    })
-  }, [])
-
-  useEffect(() => {
-    return startSyncStatusSubscription(syncStatusStore, window.bearwarden.sync)
-  }, [syncStatusStore])
 
   useEffect(() => {
     if (!settings) {
@@ -923,53 +904,34 @@ function VaultShellContent({
   const sidebarAccountName =
     sidebarAccountProfileName || (syncStatus.configured ? t`Connected account` : t`Local vault`)
 
-  const performLockVault = useCallback(async (): Promise<void> => {
+  const clearSessionSecrets = useCallback(() => {
     cancelAndClearAttachment()
     detailCache.clear()
     clearCardCoverListPreviews()
     resetReveals()
     setTouchIdPassword('')
     setSelectedLogin(null)
-    try {
-      const status = await window.bearwarden.vault.lock()
-      if (status.state === 'locked') onLocked()
-      else announceError(t`The vault is not locked yet. Try again.`)
-    } catch (lockError) {
-      announceError(describeVaultError(lockError))
-    }
   }, [
     cancelAndClearAttachment,
     clearCardCoverListPreviews,
-    describeVaultError,
     detailCache,
-    onLocked,
     resetReveals,
-    setSelectedLogin,
-    t
+    setSelectedLogin
   ])
-
-  const lockVault = useCallback(async (): Promise<void> => {
-    if (isEditorDirty()) {
-      requestEditorTransition(() => void performLockVault())
-      return
-    }
-    await performLockVault()
-  }, [isEditorDirty, performLockVault, requestEditorTransition])
+  const lockVault = useVaultLock({
+    clearSessionSecrets,
+    onLocked,
+    onNotLocked: () => announceError(t`The vault is not locked yet. Try again.`),
+    onError: (error) => announceError(describeVaultError(error)),
+    isEditorDirty,
+    requestEditorTransition
+  })
   const shortcutCopyFieldRef = useRef(secrets.copyField)
   const shortcutCopyTotpRef = useRef(secrets.copyTotp)
   useEffect(() => {
     shortcutCopyFieldRef.current = secrets.copyField
     shortcutCopyTotpRef.current = secrets.copyTotp
   })
-
-  useEffect(() => {
-    const unsubscribe = window.bearwarden.vault.onLockRequested(() => void lockVault())
-    window.bearwarden.vault.setLockRequestReady(true)
-    return () => {
-      window.bearwarden.vault.setLockRequestReady(false)
-      unsubscribe()
-    }
-  }, [lockVault])
 
   useEffect(() => {
     function copySelectedItem(command: SelectedItemCopyCommand): boolean {
@@ -1578,12 +1540,7 @@ function VaultShellContent({
                   onDisableTouchId={disableTouchId}
                   onOpenSync={() => setSyncDialogOpen(true)}
                   onVaultPurged={async () => {
-                    await Promise.allSettled([
-                      vaultData.load(),
-                      syncStatusStore
-                        .getState()
-                        .refreshStatus(() => window.bearwarden.sync.status())
-                    ])
+                    await Promise.allSettled([vaultData.load(), refreshSyncStatus()])
                   }}
                   onExportVault={() => setPortabilityDialogMode('export')}
                   onImportVault={() => setPortabilityDialogMode('import')}
@@ -2158,12 +2115,7 @@ function VaultShellContent({
             },
             generator: {
               open: generatorDialogOpen,
-              onClose: () => setGeneratorDialogOpen(false),
-              onGenerate: window.bearwarden.generator.generate,
-              onCopyGenerated: (token) => window.bearwarden.generator.copyGenerated({ token }),
-              onListHistory: window.bearwarden.generator.history,
-              onCopyHistory: window.bearwarden.generator.copyHistory,
-              onClearHistory: window.bearwarden.generator.clearHistory
+              onClose: () => setGeneratorDialogOpen(false)
             },
             attachment: {
               deleteTarget: attachments.deleteTarget,
@@ -2189,8 +2141,8 @@ function VaultShellContent({
               onAuthorize: authorization.submit
             },
             loginApproval: {
-              prompt: loginApprovalPrompts[0],
-              onClose: () => setLoginApprovalPrompts((current) => current.slice(1))
+              prompt: loginApprovals.current,
+              onClose: loginApprovals.dismissCurrent
             },
             editorDiscard: {
               open: discardEditorDialogOpen && editorDirty,
@@ -2214,8 +2166,6 @@ function VaultShellContent({
             portability: {
               mode: portabilityDialogMode,
               onClose: () => setPortabilityDialogMode(null),
-              onExport: (request) => window.bearwarden.portability.export(request),
-              onImport: (request) => window.bearwarden.portability.import(request),
               onExported: announceExported,
               onImported: refreshAfterImport
             }
