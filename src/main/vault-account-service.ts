@@ -140,7 +140,7 @@ export class VaultAccountService extends VaultServiceBase {
         next.updatedAt = this.core.nowIso()
         await this.core.commit(next)
         this.syncSession.setSyncClient(client)
-        return await this.performSync(next, client, abort.signal)
+        return await this.syncEngine.performSync(next, client, abort.signal)
       } catch (error) {
         await this.syncSession.persistCurrentClientState().catch(() => undefined)
         throw this.syncSession.mapSyncError(error)
@@ -225,7 +225,7 @@ export class VaultAccountService extends VaultServiceBase {
       try {
         await this.authenticateConfiguredSync(request, sync, client, abort.signal)
         await this.syncSession.persistCurrentClientState()
-        return await this.performSync(this.core.requireData(), client, abort.signal)
+        return await this.syncEngine.performSync(this.core.requireData(), client, abort.signal)
       } catch (error) {
         await this.syncSession.persistCurrentClientState().catch(() => undefined)
         throw this.syncSession.mapSyncError(error)
@@ -264,7 +264,7 @@ export class VaultAccountService extends VaultServiceBase {
       const client = this.syncSession.getOrCreateSyncClient(sync)
       const abort = this.syncSession.startSyncOperation()
       try {
-        return await this.performSync(data, client, abort.signal)
+        return await this.syncEngine.performSync(data, client, abort.signal)
       } catch (error) {
         await this.syncSession.persistCurrentClientState().catch(() => undefined)
         throw this.syncSession.mapSyncError(error)
@@ -406,7 +406,7 @@ export class VaultAccountService extends VaultServiceBase {
           try {
             await this.core.commit(dispatched)
           } catch (error) {
-            await this.restorePreDispatchPurge(original).catch(() => undefined)
+            await this.syncEngine.restorePreDispatchPurge(original).catch(() => undefined)
             throw error
           }
           didDispatch = true
@@ -428,18 +428,18 @@ export class VaultAccountService extends VaultServiceBase {
           remoteError instanceof BitwardenDirectError &&
           remoteError.code === 'USER_VERIFICATION_FAILED'
         ) {
-          await this.restorePreDispatchPurge(original)
+          await this.syncEngine.restorePreDispatchPurge(original)
           throw new VaultError('INVALID_MASTER_PASSWORD')
         }
 
-        const reconciled = await this.reconcilePersonalVaultPurge(client)
+        const reconciled = await this.syncEngine.reconcilePersonalVaultPurge(client)
         if (reconciled.status === 'complete') return reconciled
         // A dispatched failure is intentionally surfaced as pending after an authoritative read.
         // The caller may start one fresh, explicitly confirmed attempt; generic sync never replays.
         return reconciled
       } catch (error) {
         if (!didDispatch && original) {
-          await this.restorePreDispatchPurge(original).catch(() => undefined)
+          await this.syncEngine.restorePreDispatchPurge(original).catch(() => undefined)
         }
         if (error instanceof VaultError) throw error
         throw this.syncSession.mapSyncError(error)
