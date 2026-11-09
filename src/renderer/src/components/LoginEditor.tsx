@@ -211,7 +211,7 @@ const paymentCardBrands: Exclude<PaymentCardBrand, 'unknown'>[] = [
 
 const fieldGridClassName = 'grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3'
 const checkFieldClassName =
-  'flex items-start gap-2.5 rounded-lg border bg-muted p-2.5 [&_[data-slot=checkbox]]:size-4 [&_[data-slot=checkbox]]:accent-[var(--primary)] [&_[data-slot=field-content]]:grid [&_[data-slot=field-content]]:gap-1 [&_[data-slot=field-content]_[data-slot=field-label]]:text-xs [&_[data-slot=field-description]]:text-xs'
+  'flex items-start gap-2.5 rounded-lg border bg-muted p-2.5 [&_[data-slot=checkbox]]:size-4 [&_[data-slot=checkbox]]:accent-[var(--brand)] [&_[data-slot=field-content]]:grid [&_[data-slot=field-content]]:gap-1 [&_[data-slot=field-content]_[data-slot=field-label]]:text-xs [&_[data-slot=field-description]]:text-xs'
 
 const emptyFields: VaultItemFields = {
   username: '',
@@ -1959,7 +1959,7 @@ function LoginEditor({
                               className="border-border [&_small]:text-muted-foreground grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 border-b px-(--card-spacing) py-3 last:border-b-0 [&_small]:truncate [&_small]:text-xs [&_span]:truncate [&_span]:text-xs [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-1"
                             >
                               <span
-                                className="text-primary grid size-8 place-items-center rounded-md bg-(--accent-soft)"
+                                className="text-brand grid size-8 place-items-center rounded-md bg-(--accent-soft)"
                                 aria-hidden="true"
                               >
                                 <KeyRound size={16} />

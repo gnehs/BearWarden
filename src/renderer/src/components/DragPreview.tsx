@@ -49,7 +49,7 @@ export function ItemDragPreview({
         )
       })}
       <div className="bg-popover/95 text-foreground relative grid min-h-14 w-full grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border px-2.5 py-2 shadow-lg backdrop-blur-md forced-colors:outline-2 forced-colors:outline-[CanvasText]">
-        <span className="bg-muted text-primary outline-foreground/5 grid size-9 shrink-0 place-items-center overflow-hidden rounded-md shadow-(--control-highlight) outline">
+        <span className="bg-muted text-brand outline-foreground/5 grid size-9 shrink-0 place-items-center overflow-hidden rounded-md shadow-(--control-highlight) outline">
           {item.type === 'card' ? (
             <PaymentCardBrandMark brand={normalizeBitwardenCardBrand(item.cardBrand)} />
           ) : item.type === 'login' ? (

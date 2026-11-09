@@ -886,7 +886,7 @@ function SyncDialog({
         <ModalHeader className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start">
           <span
             className={cn(
-              'text-primary grid size-11 place-items-center rounded-xl bg-[var(--accent-soft)]',
+              'text-brand grid size-11 place-items-center rounded-xl bg-[var(--accent-soft)]',
               status.state === 'error' && 'text-destructive bg-[var(--danger-soft)]'
             )}
             aria-hidden="true"
@@ -922,7 +922,7 @@ function SyncDialog({
                 isSyncing
                   ? 'bg-ring animate-[pulse_1.1s_ease-in-out_infinite]'
                   : status.state === 'ready'
-                    ? 'bg-primary shadow-[0_0_0_3px_color-mix(in_srgb,var(--primary),transparent_80%)]'
+                    ? 'bg-brand shadow-[0_0_0_3px_color-mix(in_srgb,var(--brand),transparent_80%)]'
                     : status.state === 'locked' || status.state === 'unconfigured'
                       ? 'bg-chart-4'
                       : status.state === 'error'
@@ -1019,7 +1019,7 @@ function SyncDialog({
                 )}
                 {configured && (
                   <Alert
-                    className="text-primary m-0 flex items-center gap-2 rounded-lg border-0 bg-[color-mix(in_oklch,var(--primary)_10%,var(--background))] px-2.5 py-2 text-xs [&_[data-slot=alert-description]]:text-xs"
+                    className="text-brand m-0 flex items-center gap-2 rounded-lg border-0 bg-[color-mix(in_oklch,var(--brand)_10%,var(--background))] px-2.5 py-2 text-xs [&_[data-slot=alert-description]]:text-xs"
                     role="status"
                   >
                     <ShieldCheck aria-hidden="true" />
@@ -1241,7 +1241,7 @@ function SyncDialog({
               )}
               {success && (
                 <Alert
-                  className="text-primary m-0 mx-5 flex items-start gap-2 rounded-lg border-0 bg-[color-mix(in_oklch,var(--primary)_10%,var(--background))] px-2.5 py-2 text-xs leading-normal [&_[data-slot=alert-description]]:text-xs"
+                  className="text-brand m-0 mx-5 flex items-start gap-2 rounded-lg border-0 bg-[color-mix(in_oklch,var(--brand)_10%,var(--background))] px-2.5 py-2 text-xs leading-normal [&_[data-slot=alert-description]]:text-xs"
                   role="status"
                 >
                   <CheckCircle2 aria-hidden="true" />
@@ -1266,7 +1266,7 @@ function SyncDialog({
           ) : (
             <>
               <section
-                className="[&_svg]:text-primary [&_span]:text-muted-foreground grid gap-px overflow-hidden rounded-lg border [&_strong]:truncate [&_strong]:text-right [&_strong]:font-semibold [&>div]:grid [&>div]:min-w-0 [&>div]:grid-cols-[16px_76px_minmax(0,1fr)] [&>div]:items-center [&>div]:gap-1.5 [&>div]:border-b [&>div]:p-2.5 [&>div]:text-xs [&>div:last-child]:border-b-0"
+                className="[&_svg]:text-brand [&_span]:text-muted-foreground grid gap-px overflow-hidden rounded-lg border [&_strong]:truncate [&_strong]:text-right [&_strong]:font-semibold [&>div]:grid [&>div]:min-w-0 [&>div]:grid-cols-[16px_76px_minmax(0,1fr)] [&>div]:items-center [&>div]:gap-1.5 [&>div]:border-b [&>div]:p-2.5 [&>div]:text-xs [&>div:last-child]:border-b-0"
                 aria-label={t`Sync connection information`}
               >
                 <div>
@@ -1382,7 +1382,7 @@ function SyncDialog({
               )}
               {success && (
                 <Alert
-                  className="text-primary m-0 flex items-start gap-2 rounded-lg border-0 bg-[color-mix(in_oklch,var(--primary)_10%,var(--background))] px-2.5 py-2 text-xs leading-normal [&_[data-slot=alert-description]]:text-xs"
+                  className="text-brand m-0 flex items-start gap-2 rounded-lg border-0 bg-[color-mix(in_oklch,var(--brand)_10%,var(--background))] px-2.5 py-2 text-xs leading-normal [&_[data-slot=alert-description]]:text-xs"
                   role="status"
                 >
                   <CheckCircle2 aria-hidden="true" />

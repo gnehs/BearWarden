@@ -152,7 +152,7 @@ describe('FolderRow hierarchy', () => {
       </DndContext>
     )
 
-    expect(markup).toContain('padding-inline-start:28px')
+    expect(markup).toContain('padding-inline-start:24px')
     expect(markup).toContain('aria-label="金融/銀行"')
     expect(markup).toContain('cursor-grab')
     expect(markup).toContain('>銀行</span>')
@@ -193,7 +193,7 @@ describe('FolderRow hierarchy', () => {
     )
 
     expect(parentMarkup).toContain('aria-expanded="false"')
-    expect(parentMarkup).toContain('padding-inline-start:12px')
+    expect(parentMarkup).toContain('padding-inline-start:8px')
     expect(parentMarkup).toContain('>7</small>')
     expect(parentMarkup).toContain('lucide-folders')
     expect(parentMarkup).not.toContain('lucide-chevron-right')

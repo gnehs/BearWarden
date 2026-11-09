@@ -221,7 +221,7 @@ function EquivalentDomainsDialog(): React.JSX.Element {
         <DialogHeader>
           <div className="flex items-start gap-3">
             <span
-              className="bg-primary/10 text-primary grid size-9 shrink-0 place-items-center rounded-lg"
+              className="bg-brand/10 text-brand grid size-9 shrink-0 place-items-center rounded-lg"
               aria-hidden="true"
             >
               <Globe2 className="size-4" />

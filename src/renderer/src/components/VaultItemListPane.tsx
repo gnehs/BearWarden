@@ -171,7 +171,7 @@ export function VaultItemListPane({
           <EmptyHeader>
             <EmptyMedia
               variant="icon"
-              className="text-primary mb-3 size-12 rounded-2xl bg-(--accent-soft)"
+              className="text-brand mb-3 size-12 rounded-2xl bg-(--accent-soft)"
             >
               {query ? (
                 <Search className="size-8" />

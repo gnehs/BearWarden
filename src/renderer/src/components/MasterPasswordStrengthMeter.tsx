@@ -10,7 +10,7 @@ const SEGMENT_COUNT = 4
 const toneClassNames: Record<MasterPasswordStrengthLevel['tone'], string> = {
   destructive: 'bg-destructive',
   warning: 'bg-amber-500',
-  success: 'bg-primary'
+  success: 'bg-brand'
 }
 
 const strengthLabels: Record<MasterPasswordStrengthLevel['segments'], MessageDescriptor> = {

@@ -45,11 +45,8 @@ export function VaultOrganizationSidebarSection({
 
   return (
     <section className="flex flex-none flex-col px-3 py-1" aria-labelledby="organizations-title">
-      <header className="flex items-center justify-between pt-0 pr-1.5 pb-1 pl-3">
-        <h2
-          className="text-muted-foreground m-0 text-xs font-bold tracking-wide uppercase"
-          id="organizations-title"
-        >
+      <header className="flex items-center justify-between pt-3 pr-1 pb-1 pl-2.5">
+        <h2 className="text-muted-foreground m-0 text-xs font-medium" id="organizations-title">
           <Trans>Organizations</Trans>
         </h2>
       </header>

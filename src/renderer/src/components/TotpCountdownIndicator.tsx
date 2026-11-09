@@ -43,7 +43,7 @@ export default function TotpCountdownIndicator({
           strokeWidth={compact ? 14 : 18}
         />
         <circle
-          className="stroke-primary fill-none [transition-property:stroke-dashoffset] duration-[1s] ease-linear motion-reduce:duration-0"
+          className="stroke-brand fill-none [transition-property:stroke-dashoffset] duration-[1s] ease-linear motion-reduce:duration-0"
           cx="50"
           cy="50"
           r="40"

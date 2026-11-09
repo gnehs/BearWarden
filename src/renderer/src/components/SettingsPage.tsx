@@ -79,6 +79,7 @@ import AccountSwitcherCard from './AccountSwitcherCard'
 import PersonalVaultPurgeDialog from './PersonalVaultPurgeDialog'
 import AuxiliaryPageLayout, { AuxiliaryPageContent } from './AuxiliaryPageLayout'
 import AboutPage from './AboutPage'
+import { ThemePreviewPicker } from './ThemePreviewPicker'
 import { AutofillAccessibilityGuide } from './AutofillAccessibilityGuide'
 import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 import AutofillShortcut from './AutofillShortcut'
@@ -787,34 +788,20 @@ function SettingsPage({
                 </CardHeader>
                 <SettingsCardContent flush>
                   <FieldGroup className="gap-0">
-                    <SettingsStackedRow>
-                      <FieldLabel htmlFor="theme-select">
+                    <SettingsStackedRow className="gap-3">
+                      <FieldLabel id="theme-picker-label">
                         <Trans>Theme</Trans>
                       </FieldLabel>
-                      <Select
+                      <ThemePreviewPicker
                         items={localizedThemeItems}
                         value={settings.theme}
                         disabled={settingsBusy}
-                        onValueChange={(value) =>
-                          void onUpdate({ theme: value as AppSettings['theme'] })
-                        }
-                      >
-                        <SelectTrigger id="theme-select">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {localizedThemeItems.map((item) => (
-                              <SelectItem key={item.value} value={item.value}>
-                                {item.label}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
+                        labelledBy="theme-picker-label"
+                        onValueChange={(theme) => void onUpdate({ theme })}
+                      />
                     </SettingsStackedRow>
                     <Separator />
-                    <SettingsStackedRow>
+                    <SettingsSelectRow>
                       <FieldLabel htmlFor="language-select">
                         <Trans>Language</Trans>
                       </FieldLabel>
@@ -839,9 +826,9 @@ function SettingsPage({
                           </SelectGroup>
                         </SelectContent>
                       </Select>
-                    </SettingsStackedRow>
+                    </SettingsSelectRow>
                     <Separator />
-                    <SettingsStackedRow>
+                    <SettingsSelectRow>
                       <FieldLabel htmlFor="default-sort-select">
                         <Trans>Default sort</Trans>
                       </FieldLabel>
@@ -866,7 +853,7 @@ function SettingsPage({
                           </SelectGroup>
                         </SelectContent>
                       </Select>
-                    </SettingsStackedRow>
+                    </SettingsSelectRow>
                     <Separator />
                     <SettingsRow data-disabled={!settings.startAtLoginAvailable}>
                       <FieldContent>
@@ -1397,7 +1384,7 @@ function SettingsPage({
                 <SettingsCardContent>
                   <div className="flex min-w-0 items-center gap-2.5">
                     <span
-                      className="text-primary grid size-9 shrink-0 place-items-center rounded-lg bg-[var(--accent-soft)] [&>svg]:size-4"
+                      className="text-brand grid size-9 shrink-0 place-items-center rounded-lg bg-[var(--accent-soft)] [&>svg]:size-4"
                       aria-hidden="true"
                     >
                       <Cloud />

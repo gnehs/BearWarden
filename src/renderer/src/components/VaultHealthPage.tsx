@@ -1316,7 +1316,7 @@ export default function VaultHealthPage({
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 sm:flex-row sm:items-center">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <span
-              className="bg-primary/10 text-primary grid size-11 shrink-0 place-items-center rounded-xl"
+              className="bg-brand/10 text-brand grid size-11 shrink-0 place-items-center rounded-xl"
               aria-hidden="true"
             >
               <ShieldCheck />

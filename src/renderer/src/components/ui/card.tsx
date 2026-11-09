@@ -8,22 +8,15 @@ type CardVariant = 'default' | 'folder'
 // Titles follow their nearest card, so a plain card nested in a folder card keeps a plain title.
 const CardVariantContext = React.createContext<CardVariant>('default')
 
-// Folder tabs read their colours from these variables so each tone stays a single map entry.
+// A folder card names its section above the card; the tone only tints the heading icon.
 const folderToneClasses: Record<CardTone, string> = {
-  neutral:
-    '[--tab-from:var(--color-slate-50)] [--tab-to:var(--color-slate-100)] [--tab-fg:var(--color-slate-700)] [--tab-border:var(--color-slate-200)] dark:[--tab-from:var(--color-slate-800)] dark:[--tab-to:var(--color-slate-900)] dark:[--tab-fg:var(--color-slate-200)] dark:[--tab-border:var(--color-slate-700)]',
-  brand:
-    '[--tab-from:var(--color-emerald-50)] [--tab-to:var(--color-emerald-100)] [--tab-fg:var(--color-emerald-800)] [--tab-border:var(--color-emerald-200)] dark:[--tab-from:var(--color-emerald-900)] dark:[--tab-to:var(--color-emerald-950)] dark:[--tab-fg:var(--color-emerald-200)] dark:[--tab-border:var(--color-emerald-800)]',
-  amber:
-    '[--tab-from:var(--color-amber-50)] [--tab-to:var(--color-amber-100)] [--tab-fg:var(--color-amber-800)] [--tab-border:var(--color-amber-200)] dark:[--tab-from:var(--color-amber-900)] dark:[--tab-to:var(--color-amber-950)] dark:[--tab-fg:var(--color-amber-200)] dark:[--tab-border:var(--color-amber-800)]',
-  sky: '[--tab-from:var(--color-sky-50)] [--tab-to:var(--color-sky-100)] [--tab-fg:var(--color-sky-800)] [--tab-border:var(--color-sky-200)] dark:[--tab-from:var(--color-sky-900)] dark:[--tab-to:var(--color-sky-950)] dark:[--tab-fg:var(--color-sky-200)] dark:[--tab-border:var(--color-sky-800)]',
-  violet:
-    '[--tab-from:var(--color-violet-50)] [--tab-to:var(--color-violet-100)] [--tab-fg:var(--color-violet-800)] [--tab-border:var(--color-violet-200)] dark:[--tab-from:var(--color-violet-900)] dark:[--tab-to:var(--color-violet-950)] dark:[--tab-fg:var(--color-violet-200)] dark:[--tab-border:var(--color-violet-800)]',
-  rose: '[--tab-from:var(--color-rose-50)] [--tab-to:var(--color-rose-100)] [--tab-fg:var(--color-rose-800)] [--tab-border:var(--color-rose-200)] dark:[--tab-from:var(--color-rose-900)] dark:[--tab-to:var(--color-rose-950)] dark:[--tab-fg:var(--color-rose-200)] dark:[--tab-border:var(--color-rose-800)]'
+  neutral: '[--tab-icon:var(--color-slate-500)] dark:[--tab-icon:var(--color-slate-400)]',
+  brand: '[--tab-icon:var(--color-emerald-600)] dark:[--tab-icon:var(--color-emerald-400)]',
+  amber: '[--tab-icon:var(--color-amber-600)] dark:[--tab-icon:var(--color-amber-400)]',
+  sky: '[--tab-icon:var(--color-sky-600)] dark:[--tab-icon:var(--color-sky-400)]',
+  violet: '[--tab-icon:var(--color-violet-600)] dark:[--tab-icon:var(--color-violet-400)]',
+  rose: '[--tab-icon:var(--color-rose-600)] dark:[--tab-icon:var(--color-rose-400)]'
 }
-
-const folderFieldClasses =
-  '[&_[data-slot=input]]:bg-(--inset-surface) [&_[data-slot=input-group]]:bg-(--inset-surface) [&_[data-slot=select-trigger]]:bg-(--inset-surface) [&_[data-slot=textarea]]:bg-(--inset-surface) [&_[data-slot=button]]:rounded-lg [&_[data-slot=input-group]]:rounded-xl [&_[data-slot=input-group]]:border-transparent [&_[data-slot=input-group]]:shadow-(--inset-shadow) [&_[data-slot=input-group]:has(>input)]:h-9 [&_[data-slot=input]]:h-9 [&_[data-slot=input]]:rounded-xl [&_[data-slot=input]]:border-transparent [&_[data-slot=input]]:px-3 [&_[data-slot=input]]:shadow-(--inset-shadow) [&_[data-slot=select-trigger]]:h-9 [&_[data-slot=select-trigger]]:rounded-xl [&_[data-slot=select-trigger]]:border-transparent [&_[data-slot=select-trigger]]:px-3 [&_[data-slot=select-trigger]]:shadow-(--inset-shadow) [&_[data-slot=textarea]]:min-h-20 [&_[data-slot=textarea]]:rounded-xl [&_[data-slot=textarea]]:border-transparent [&_[data-slot=textarea]]:px-3 [&_[data-slot=textarea]]:py-2 [&_[data-slot=textarea]]:shadow-(--inset-shadow)'
 
 function Card({
   className,
@@ -45,13 +38,9 @@ function Card({
         data-variant={variant}
         data-tone={variant === 'folder' ? tone : undefined}
         className={cn(
-          'group/card bg-card text-card-foreground flex flex-col gap-(--card-spacing) rounded-3xl py-(--card-spacing) text-sm shadow-(--surface-shadow) ring-1 ring-(--surface-ring) [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-3xl *:[img:last-child]:rounded-b-3xl',
+          'group/card bg-card text-card-foreground flex flex-col gap-(--card-spacing) rounded-3xl bg-(image:--surface-sheen) py-(--card-spacing) text-sm shadow-(--surface-shadow) ring-1 ring-(--surface-ring) [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-3xl *:[img:last-child]:rounded-b-3xl',
           variant === 'default' && 'overflow-hidden',
-          variant === 'folder' && [
-            'relative mt-7 rounded-2xl',
-            folderToneClasses[tone],
-            folderFieldClasses
-          ],
+          variant === 'folder' && ['relative mt-8 rounded-2xl', folderToneClasses[tone]],
           className
         )}
         {...props}
@@ -85,7 +74,7 @@ function CardTitle({ className, ...props }: React.ComponentProps<'div'>) {
       className={cn(
         'text-base leading-snug font-medium group-data-[size=sm]/card:text-sm',
         folder &&
-          "absolute bottom-full left-4 flex h-7 max-w-[calc(100%-2rem)] items-center gap-1.5 truncate rounded-t-[0.625rem] border border-b-0 border-(--tab-border) bg-linear-to-b from-(--tab-from) to-(--tab-to) px-2.5 text-xs font-semibold whitespace-nowrap text-(--tab-fg) [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
+          "text-foreground absolute bottom-full left-1 flex h-8 max-w-[calc(100%-0.5rem)] items-center gap-2 truncate text-[0.8125rem] font-semibold whitespace-nowrap [&_svg]:shrink-0 [&_svg]:text-(--tab-icon) [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
@@ -123,10 +112,7 @@ function CardFooter({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="card-footer"
-      className={cn(
-        'bg-muted/50 flex items-center rounded-b-3xl border-t p-(--card-spacing)',
-        className
-      )}
+      className={cn('flex items-center rounded-b-3xl border-t p-(--card-spacing)', className)}
       {...props}
     />
   )

@@ -1042,8 +1042,8 @@ function VaultShellContent({
               ? 'grid-cols-[minmax(0,1fr)] [&>[data-vault-pane-group]>[data-vault-detail-pane]]:hidden [&>[data-vault-pane-group]>[data-vault-list-pane]]:border-r-0 [&>[data-vault-sidebar]]:hidden'
               : 'grid-cols-[260px_minmax(0,1fr)] max-[1050px]:grid-cols-[220px_minmax(0,1fr)] max-[880px]:grid-cols-[minmax(0,1fr)]',
 
-            (isMac || isWindows) && 'gap-2 pr-2 pb-2 max-[880px]:pl-2',
-            auxiliaryPageOpen && (isMac || isWindows) && 'pl-2'
+            (isMac || isWindows) && 'gap-3 pr-3 pb-3 max-[880px]:pl-3',
+            auxiliaryPageOpen && (isMac || isWindows) && 'pl-3'
           )}
         >
           <VaultShellSidebar
@@ -1092,7 +1092,7 @@ function VaultShellContent({
                 ? 'grid-cols-[minmax(0,1fr)]'
                 : 'grid-cols-[minmax(340px,390px)_minmax(0,1fr)] max-[1050px]:grid-cols-[minmax(290px,330px)_minmax(0,1fr)] max-[880px]:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]',
 
-              (isMac || isWindows) && 'gap-2 bg-transparent max-[680px]:gap-0'
+              (isMac || isWindows) && 'gap-3 bg-transparent max-[680px]:gap-0'
             )}
             data-vault-pane-group=""
           >
@@ -1100,7 +1100,7 @@ function VaultShellContent({
               className={cn(
                 'border-border relative flex min-h-0 min-w-0 flex-col border-r bg-transparent max-[680px]:size-full [[data-has-detail=true]_&]:max-[680px]:hidden',
                 (isMac || isWindows) &&
-                  'overflow-hidden rounded-3xl border border-(--glass-ring) bg-(--glass-surface) shadow-(--surface-shadow) backdrop-blur-2xl backdrop-saturate-150'
+                  'overflow-hidden rounded-[1.75rem] border-0 bg-(--glass-surface) bg-(image:--surface-sheen) shadow-(--surface-shadow) ring-1 ring-(--surface-ring) backdrop-blur-2xl backdrop-saturate-150'
               )}
               data-vault-list-pane=""
               aria-labelledby={
@@ -1197,7 +1197,7 @@ function VaultShellContent({
               className={cn(
                 'relative isolate flex min-h-0 min-w-0 overflow-hidden bg-transparent max-[680px]:hidden max-[680px]:size-full [[data-has-detail=true]_&]:max-[680px]:flex',
                 (isMac || isWindows) &&
-                  'rounded-3xl border border-(--surface-ring) shadow-(--surface-shadow)'
+                  'rounded-[1.75rem] shadow-(--surface-shadow) ring-1 ring-(--surface-ring)'
               )}
               data-vault-detail-pane=""
               aria-label={t`Item details`}

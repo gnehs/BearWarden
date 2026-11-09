@@ -32,7 +32,7 @@ export function DetailHeader({ className, ...props }: ComponentProps<'header'>):
   return (
     <header
       className={cn(
-        'flex items-center gap-3.5 border-b border-(--surface-ring) bg-(--glass-surface) px-6 py-4 backdrop-blur-xl backdrop-saturate-150 max-[680px]:gap-2.5 max-[680px]:px-3 max-[680px]:py-3',
+        'flex items-center gap-4 border-b border-(--surface-ring) bg-(--glass-surface) px-6 py-5 backdrop-blur-xl backdrop-saturate-150 max-[680px]:gap-2.5 max-[680px]:px-3 max-[680px]:py-3',
         className
       )}
       {...props}
@@ -84,15 +84,7 @@ export function DetailRowGroup({
   className,
   ...props
 }: DetailRowGroupProps): JSX.Element {
-  return (
-    <Tag
-      className={cn(
-        'm-0 flex flex-col overflow-hidden rounded-xl bg-(--inset-surface) shadow-(--inset-shadow)',
-        className
-      )}
-      {...props}
-    />
-  )
+  return <Tag className={cn('m-0 -my-1 flex flex-col overflow-hidden', className)} {...props} />
 }
 
 /** A read-only label/value pair inside a `DetailRowGroup` rendered as a `<dl>`. */
@@ -123,10 +115,10 @@ export const detailScrollClassName =
 // eslint-disable-next-line react-refresh/only-export-components
 export function detailIconClassName(type?: VaultItemType): string {
   return cn(
-    'outline-foreground/5 bg-card text-primary dark:border-border dark:bg-muted dark:text-muted-foreground grid size-12 flex-none place-items-center rounded-2xl shadow-(--surface-shadow) outline max-[680px]:size-10 max-[680px]:rounded-xl max-[430px]:hidden forced-colors:[forced-color-adjust:none] [&>svg]:size-5',
+    'bg-card text-brand dark:text-muted-foreground grid size-13 flex-none place-items-center rounded-2xl shadow-(--keycap-shadow) max-[680px]:size-10 max-[680px]:rounded-xl max-[430px]:hidden forced-colors:[forced-color-adjust:none] [&>svg]:size-5',
     type === 'login' && 'overflow-hidden',
     type === 'card' && 'bg-muted text-chart-4 dark:bg-website-icon-background',
-    type === 'identity' && 'bg-accent text-primary',
+    type === 'identity' && 'bg-accent text-brand',
     type === 'secureNote' && 'bg-muted text-chart-3',
     type === 'sshKey' && 'bg-accent text-chart-2'
   )

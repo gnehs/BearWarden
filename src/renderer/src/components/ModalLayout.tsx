@@ -48,7 +48,7 @@ export function ModalContent({
   return (
     <DialogContent
       className={cn(
-        'border-border bg-card text-foreground m-auto max-h-[calc(100%-48px)] w-[min(calc(100%-32px),470px)] max-w-[min(calc(100%-32px),470px)] gap-0 overflow-hidden rounded-2xl border p-0 shadow-[var(--shadow)] max-[680px]:w-[min(calc(100%-20px),470px)] max-[680px]:max-w-[min(calc(100%-20px),470px)]',
+        'bg-card text-foreground m-auto max-h-[calc(100%-48px)] w-[min(calc(100%-32px),470px)] max-w-[min(calc(100%-32px),470px)] gap-0 overflow-hidden rounded-[1.75rem] p-0 backdrop-blur-none max-[680px]:w-[min(calc(100%-20px),470px)] max-[680px]:max-w-[min(calc(100%-20px),470px)]',
         className
       )}
       {...props}
@@ -67,7 +67,7 @@ export function ModalHeader({
   return (
     <DialogHeader
       className={cn(
-        'flex flex-row justify-between gap-3.5 border-b px-5 pt-5 pb-3.5',
+        'flex flex-row justify-between gap-3.5 border-b px-6 pt-6 pb-4',
         hasDescription ? 'items-start' : 'items-center',
         className
       )}
@@ -77,7 +77,7 @@ export function ModalHeader({
 }
 
 export function ModalBody({ className, ...props }: React.ComponentProps<'div'>): React.JSX.Element {
-  return <div className={cn('grid gap-3 px-5 py-4', className)} {...props} />
+  return <div className={cn('grid gap-3 px-6 py-5', className)} {...props} />
 }
 
 export function ModalFooter({
@@ -88,7 +88,7 @@ export function ModalFooter({
   return (
     <DialogFooter
       className={cn(
-        'bg-muted mx-0 mb-0 items-center gap-2 border-t px-5 py-3',
+        'mx-0 mb-0 items-center gap-2 border-t px-6 py-4',
         split ? 'justify-between max-[430px]:flex-col max-[430px]:items-stretch' : 'justify-end',
         className
       )}

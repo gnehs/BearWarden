@@ -55,7 +55,7 @@ export function VaultItemMetadataCards({
                   className="[&_small]:text-muted-foreground grid grid-cols-[auto_minmax(0,1fr)] items-start gap-2.5 border-b border-(--surface-ring) px-3 py-2 last:border-b-0 [&_small]:truncate [&_small]:text-xs [&_span]:truncate [&_span]:text-xs [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-1"
                 >
                   <span
-                    className="text-primary bg-card grid size-8 place-items-center rounded-lg shadow-(--surface-shadow)"
+                    className="text-brand bg-card grid size-8 place-items-center rounded-lg shadow-(--surface-shadow)"
                     aria-hidden="true"
                   >
                     <KeyRound size={16} />

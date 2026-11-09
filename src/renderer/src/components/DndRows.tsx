@@ -10,6 +10,12 @@ import { normalizeBitwardenCardBrand } from '../lib/payment-card'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
 import { itemListIcons } from './vault-item-type-icons'
+import {
+  sidebarCountClassName,
+  sidebarRowClassName,
+  sidebarRowDropClassName,
+  sidebarRowSelectedClassName
+} from './VaultShell-primitives'
 import { Button } from '@renderer/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { cn } from '@renderer/lib/utils'
@@ -108,9 +114,9 @@ export const ItemRow = memo(function ItemRow({
       className={cn(
         'group/item has-[[data-item-row-main]:focus-visible]:outline-ring/72 relative grid cursor-grab touch-none items-center rounded-2xl border-0 has-[[data-item-row-main]:focus-visible]:outline-3 has-[[data-item-row-main]:focus-visible]:outline-offset-2',
         shouldShowTotpCode ? 'grid-cols-1' : 'grid-cols-[minmax(0,1fr)_auto] pr-3',
-        !selected && 'hover:bg-sidebar-overlay-hover active:bg-sidebar-overlay-active',
+        !selected && 'hover:bg-sidebar-overlay active:bg-sidebar-overlay-hover',
         selected &&
-          'text-foreground bg-(--segment-thumb) shadow-[var(--segment-thumb-shadow),0_0_0_1px_var(--surface-ring)] forced-colors:outline-2 forced-colors:outline-offset-[-2px] forced-colors:outline-[Highlight]',
+          'text-foreground bg-sidebar-overlay-hover forced-colors:outline-2 forced-colors:outline-offset-[-2px] forced-colors:outline-[Highlight]',
         isDragging && 'cursor-grabbing opacity-0'
       )}
       {...attributes}
@@ -158,11 +164,11 @@ export const ItemRow = memo(function ItemRow({
       >
         <span
           className={cn(
-            'bg-card text-muted-foreground outline-foreground/5 grid size-10 place-items-center rounded-xl shadow-(--surface-shadow) outline forced-colors:[forced-color-adjust:none]',
+            'bg-card text-muted-foreground grid size-10 place-items-center rounded-xl shadow-(--keycap-shadow) forced-colors:[forced-color-adjust:none]',
             item.type === 'login' && 'overflow-hidden',
             item.type === 'card' &&
               'text-chart-4 [[data-theme=dark]_&]:bg-[var(--website-icon-background)]',
-            item.type === 'identity' && 'bg-accent text-primary',
+            item.type === 'identity' && 'bg-accent text-brand',
             item.type === 'secureNote' && 'text-chart-3',
             item.type === 'sshKey' && 'bg-accent text-chart-2'
           )}
@@ -302,19 +308,17 @@ export function FolderRow({
       {...attributes}
       {...listeners}
       className={cn(
-        'group/folder text-foreground relative grid min-h-10 cursor-grab touch-none grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-xl py-1 pe-3',
+        sidebarRowClassName,
+        'group/folder relative grid cursor-grab touch-none grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 py-1 pe-2',
         !selected && !isOver && !isDragging && 'hover:bg-sidebar-overlay-hover',
-        selected && !isDragging && 'bg-(--segment-thumb) shadow-(--segment-thumb-shadow)',
-        isDragging &&
-          'bg-sidebar-overlay-active relative z-10 cursor-grabbing shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--sidebar-primary)_55%,transparent)] forced-colors:outline-2 forced-colors:outline-offset-[-2px] forced-colors:outline-[Highlight]',
-        isOver &&
-          !isDragging &&
-          'bg-sidebar-overlay-active shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--sidebar-primary)_55%,transparent)] forced-colors:outline-2 forced-colors:outline-offset-[-2px] forced-colors:outline-[Highlight]'
+        selected && !isDragging && sidebarRowSelectedClassName,
+        isDragging && [sidebarRowDropClassName, 'relative z-10 cursor-grabbing'],
+        isOver && !isDragging && sidebarRowDropClassName
       )}
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
-        paddingInlineStart: `${12 + depth * 16}px`
+        paddingInlineStart: `${8 + depth * 16}px`
       }}
     >
       <Button
@@ -350,9 +354,7 @@ export function FolderRow({
           <Folder />
         </span>
       )}
-      <strong className="pointer-events-none z-10 min-w-0 truncate text-xs font-semibold">
-        <span>{label}</span>
-      </strong>
+      <span className="pointer-events-none z-10 min-w-0 truncate">{label}</span>
       <span className="relative z-10 grid size-8 justify-self-end">
         <RowIconButton
           variant="ghost"
@@ -365,7 +367,10 @@ export function FolderRow({
           <MoreHorizontal aria-hidden="true" />
         </RowIconButton>
         <small
-          className="text-muted-foreground pointer-events-none absolute inset-0 grid size-8 items-center justify-items-end text-xs transition-opacity group-hover/folder:opacity-0 peer-focus-visible/edit:opacity-0"
+          className={cn(
+            sidebarCountClassName,
+            'pointer-events-none absolute end-0 top-1/2 -translate-y-1/2 transition-opacity group-hover/folder:opacity-0 peer-focus-visible/edit:opacity-0'
+          )}
           aria-label={t`${count} items`}
         >
           {count}

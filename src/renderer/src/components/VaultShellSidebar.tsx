@@ -115,7 +115,7 @@ interface SidebarTooltipIconButtonProps extends ComponentProps<typeof Button> {
 }
 
 const folderSectionClassName =
-  'flex flex-none flex-col [&>header]:flex [&>header]:items-center [&>header]:justify-between [&>header]:pt-0 [&>header]:pr-1.5 [&>header]:pb-1 [&>header]:pl-3 [&_h2]:m-0 [&_h2]:text-xs [&_h2]:font-bold [&_h2]:tracking-wide [&_h2]:text-muted-foreground [&_h2]:uppercase'
+  'flex flex-none flex-col [&>header]:flex [&>header]:items-center [&>header]:justify-between [&>header]:pt-3 [&>header]:pr-1 [&>header]:pb-1 [&>header]:pl-2.5 [&_h2]:m-0 [&_h2]:text-xs [&_h2]:font-medium [&_h2]:text-muted-foreground'
 
 function SidebarTooltipIconButton({
   label,
@@ -132,7 +132,7 @@ function SidebarTooltipIconButton({
           <Button
             aria-label={label}
             className={cn(
-              'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-9 min-w-9 rounded-md shadow-(--control-highlight) transition-[background,color,border-color,transform] duration-150 [-webkit-app-region:no-drag]',
+              'text-muted-foreground hover:text-foreground size-9 min-w-9 rounded-xl [-webkit-app-region:no-drag]',
               className
             )}
             {...props}
@@ -217,17 +217,16 @@ export function VaultShellSidebar({
           <h2 className="hidden" id="categories-title">
             <Trans>Categories</Trans>
           </h2>
-          <nav className="grid grid-cols-2 gap-2 p-0 pt-px" aria-label={t`Vault categories`}>
+          <nav className="grid gap-0.5 p-0 pt-px" aria-label={t`Vault categories`}>
             {navigation.categories.map((category) => {
               const Icon = category.icon
               return (
                 <SidebarLink
                   key={category.id}
-                  icon={<Icon size={17} />}
+                  icon={<Icon className="size-3.5" />}
                   label={category.label}
                   count={navigation.categoryCounts.get(category.id) ?? 0}
                   active={scope.kind === 'all' && typeFilter === category.id}
-                  variant="tile"
                   tone={category.tone}
                   onClick={() => actions.onSelectType(category.id)}
                 />
@@ -255,7 +254,7 @@ export function VaultShellSidebar({
             <SidebarTooltipIconButton
               variant="sidebar"
               size="icon"
-              className="hover:bg-sidebar-overlay-hover hover:text-foreground border-transparent bg-transparent shadow-none hover:shadow-(--control-highlight) dark:bg-transparent"
+              className="size-7 min-w-7 rounded-lg"
               type="button"
               label={t`Add folder`}
               onClick={actions.onAddFolder}
@@ -365,14 +364,14 @@ export function VaultShellSidebar({
               <Button
                 ref={accountMenuTriggerRef}
                 variant="sidebar"
-                className="text-sidebar-foreground hover:bg-sidebar-overlay-hover data-popup-open:bg-sidebar-overlay-active h-auto min-h-9 w-full justify-start gap-2 rounded-lg px-1.5 py-1"
+                className="bg-card hover:bg-card data-popup-open:bg-card h-auto min-h-11 w-full justify-start gap-2.5 rounded-2xl px-2 py-1.5 shadow-(--keycap-shadow) dark:bg-(--segment-thumb) dark:hover:bg-(--segment-thumb)"
                 type="button"
                 aria-label={t`Open ${sidebarAccountName} menu`}
               />
             }
           >
             <span
-              className="text-muted-foreground grid size-5 flex-none place-items-center [&>svg]:size-5"
+              className="bg-primary text-primary-foreground grid size-7 flex-none place-items-center rounded-full [&>svg]:size-4"
               aria-hidden="true"
             >
               <UserRound />
@@ -449,7 +448,7 @@ export function VaultShellSidebar({
         <SidebarTooltipIconButton
           variant="sidebar"
           size="icon"
-          className="hover:bg-sidebar-overlay-hover hover:text-foreground size-9 rounded-lg border-transparent bg-transparent shadow-none hover:shadow-(--control-highlight) dark:bg-transparent"
+          className="size-11 min-w-11 rounded-2xl"
           type="button"
           label={t`Cloud sync: ${account.syncLabel}`}
           onClick={actions.onOpenSync}

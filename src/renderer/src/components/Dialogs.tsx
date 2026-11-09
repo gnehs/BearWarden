@@ -357,7 +357,7 @@ export function MoveDialog({
         >
           <ModalBody className="grid-cols-[auto_minmax(0,1fr)] items-end">
             <span
-              className="text-primary grid size-11 place-items-center rounded-xl bg-[var(--accent-soft)]"
+              className="text-brand grid size-11 place-items-center rounded-xl bg-[var(--accent-soft)]"
               aria-hidden="true"
             >
               <FolderInput />
@@ -508,7 +508,7 @@ export function RepromptDialog({
       >
         <ModalBody>
           <span
-            className="text-primary grid size-11 place-items-center rounded-xl bg-[var(--accent-soft)]"
+            className="text-brand grid size-11 place-items-center rounded-xl bg-[var(--accent-soft)]"
             aria-hidden="true"
           >
             <KeyRound />

@@ -44,7 +44,7 @@ export function TooltipIconButton({
           <Button
             aria-label={label}
             className={cn(
-              'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-9 min-w-9 rounded-xl shadow-(--control-highlight) transition-[background,color,border-color,transform] duration-150 [-webkit-app-region:no-drag]',
+              'text-muted-foreground hover:text-foreground size-9 min-w-9 rounded-xl [-webkit-app-region:no-drag]',
               className
             )}
             {...props}
@@ -75,44 +75,42 @@ interface SidebarLinkProps {
   label: string
   count: number
   active: boolean
-  variant?: 'row' | 'tile'
   tone?: SidebarTone
   dropTargetId?: string
   onClick: () => void
 }
 
+// Pastel icon chips, one hue per vault category.
 const sidebarToneClasses: Record<SidebarTone, string> = {
-  blue: 'bg-sidebar-primary text-sidebar-primary-foreground',
-  indigo: 'bg-chart-4 text-primary-foreground',
-  green: 'bg-sidebar-primary text-sidebar-primary-foreground',
-  yellow: 'bg-chart-1 text-category-light-foreground',
-  cyan: 'bg-chart-2 text-primary-foreground',
-  red: 'bg-destructive text-destructive-foreground',
-  orange: 'bg-chart-3 text-primary-foreground',
-  gray: 'bg-muted text-foreground'
+  blue: 'bg-sky-100 text-sky-700 dark:bg-sky-400/15 dark:text-sky-300',
+  indigo: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-400/15 dark:text-indigo-300',
+  green: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300',
+  yellow: 'bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300',
+  cyan: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-400/15 dark:text-cyan-300',
+  red: 'bg-rose-100 text-rose-700 dark:bg-rose-400/15 dark:text-rose-300',
+  orange: 'bg-orange-100 text-orange-700 dark:bg-orange-400/15 dark:text-orange-300',
+  gray: 'bg-slate-200/70 text-slate-700 dark:bg-slate-400/15 dark:text-slate-300'
 }
 
-const sidebarLinkClasses = {
-  base: 'h-auto border-none text-left',
-  row: 'grid min-h-10 grid-cols-[auto_1fr_auto] items-center gap-2 rounded-xl border-0 bg-transparent px-3 py-1.5 shadow-[none] hover:shadow-[none]',
-  tile: 'bg-sidebar-overlay grid min-h-18 grid-cols-[1fr_auto] grid-rows-[auto_auto] items-center gap-2 rounded-[1.25rem] px-3 pt-3 pb-2.5 shadow-[var(--sidebar-tile-highlight)] hover:shadow-[var(--sidebar-tile-highlight)]',
-  active: {
-    row: 'text-sidebar-foreground hover:text-sidebar-foreground bg-(--segment-thumb) shadow-(--segment-thumb-shadow) hover:bg-(--segment-thumb) hover:shadow-(--segment-thumb-shadow)',
-    tile: 'text-sidebar-foreground hover:text-sidebar-foreground bg-(--segment-thumb) shadow-[var(--segment-thumb-shadow),0_0_0_1px_var(--surface-ring)] hover:bg-(--segment-thumb) hover:shadow-[var(--segment-thumb-shadow),0_0_0_1px_var(--surface-ring)]'
-  }
-} as const
+/** Sidebar rows sit on the window canvas, so the selected row lifts into a white keycap. */
+export const sidebarRowClassName =
+  'text-sidebar-foreground min-h-9 rounded-xl text-[0.8125rem] font-medium transition-[background-color,box-shadow] duration-150'
+export const sidebarRowSelectedClassName =
+  'bg-card shadow-(--keycap-shadow) dark:bg-(--segment-thumb)'
+export const sidebarRowDropClassName =
+  'bg-sidebar-overlay-active shadow-[inset_0_0_0_1.5px_color-mix(in_oklch,var(--brand)_60%,transparent)] forced-colors:outline-2 forced-colors:-outline-offset-2 forced-colors:outline-[Highlight]'
+export const sidebarCountClassName =
+  'text-muted-foreground grid h-5 min-w-6 place-items-center rounded-md border border-(--surface-ring) bg-(--segment-track) px-1.5 text-[0.6875rem] font-medium tabular-nums'
 
 export function SidebarLink({
   icon,
   label,
   count,
   active,
-  variant = 'row',
   tone,
   dropTargetId,
   onClick
 }: SidebarLinkProps): JSX.Element {
-  const isTile = variant === 'tile'
   const { setNodeRef, isOver } = useDroppable({
     id: dropTargetId ?? `sidebar-link:${label}`,
     disabled: dropTargetId === undefined
@@ -123,11 +121,10 @@ export function SidebarLink({
       ref={dropTargetId ? setNodeRef : undefined}
       variant="sidebar"
       className={cn(
-        sidebarLinkClasses.base,
-        sidebarLinkClasses[variant],
-        active && sidebarLinkClasses.active[variant],
-        isOver &&
-          'bg-sidebar-overlay-active text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-overlay-active hover:text-sidebar-foreground ring-2'
+        sidebarRowClassName,
+        'grid h-auto grid-cols-[auto_1fr_auto] items-center gap-2.5 px-2 py-1 text-left',
+        active && [sidebarRowSelectedClassName, 'hover:bg-card dark:hover:bg-(--segment-thumb)'],
+        isOver && sidebarRowDropClassName
       )}
       type="button"
       aria-current={active ? 'page' : undefined}
@@ -135,37 +132,15 @@ export function SidebarLink({
     >
       <span
         className={cn(
-          'grid place-items-center',
-          isTile
-            ? [
-                'bg-sidebar-primary text-sidebar-primary-foreground col-start-1 row-start-1 size-8 rounded-full',
-                tone && sidebarToneClasses[tone]
-              ]
-            : 'size-6'
+          'grid size-6 place-items-center rounded-lg [&>svg]:size-3.5',
+          tone ? sidebarToneClasses[tone] : 'text-muted-foreground [&>svg]:size-4'
         )}
         aria-hidden="true"
       >
         {icon}
       </span>
-      <strong
-        className={cn(
-          isTile
-            ? 'col-span-2 row-start-2 self-end text-sm leading-tight font-bold'
-            : 'text-xs font-semibold'
-        )}
-      >
-        {label}
-      </strong>
-      <small
-        className={cn(
-          'text-muted-foreground group-hover/button:text-sidebar-foreground',
-          isTile
-            ? 'col-start-2 row-start-1 self-center justify-self-end text-xs font-semibold'
-            : 'text-xs'
-        )}
-      >
-        {count}
-      </small>
+      <span className="truncate">{label}</span>
+      <small className={sidebarCountClassName}>{count}</small>
     </Button>
   )
 }
@@ -184,18 +159,19 @@ export function UnfiledRow({ selected, count, onSelect }: UnfiledRowProps): JSX.
     <li
       ref={setNodeRef}
       className={cn(
-        'text-foreground hover:bg-sidebar-overlay-hover static grid min-h-10 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-xl px-3',
-        selected && 'bg-(--segment-thumb) shadow-(--segment-thumb-shadow)',
-        isOver &&
-          'bg-sidebar-overlay-active text-foreground shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--sidebar-primary)_55%,transparent)] forced-colors:outline-2 forced-colors:-outline-offset-2 forced-colors:outline-[Highlight]'
+        sidebarRowClassName,
+        'static grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2.5 px-2',
+        !selected && 'hover:bg-sidebar-overlay-hover',
+        selected && sidebarRowSelectedClassName,
+        isOver && sidebarRowDropClassName
       )}
     >
-      <span className="grid size-6 place-items-center" aria-hidden="true">
+      <span className="text-muted-foreground grid size-6 place-items-center" aria-hidden="true">
         <Folder size={16} />
       </span>
       <Button
         variant="sidebar"
-        className="[&>small]:text-muted-foreground grid h-9 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-0 bg-transparent p-0 text-left text-inherit shadow-none hover:bg-transparent hover:shadow-none aria-expanded:bg-transparent aria-expanded:shadow-none [&>small]:min-w-[3ch] [&>small]:text-right [&>small]:text-xs [&>small]:tabular-nums [&>span]:truncate [&>span]:text-xs [&>span]:font-semibold"
+        className="grid h-9 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-0 bg-transparent p-0 text-left text-inherit hover:bg-transparent aria-expanded:bg-transparent [&>span]:truncate"
         type="button"
         aria-current={selected ? 'page' : undefined}
         onClick={onSelect}
@@ -203,7 +179,9 @@ export function UnfiledRow({ selected, count, onSelect }: UnfiledRowProps): JSX.
         <span>
           <Trans>Unfiled</Trans>
         </span>
-        <small aria-label={t`${count} items`}>{count}</small>
+        <small className={sidebarCountClassName} aria-label={t`${count} items`}>
+          {count}
+        </small>
       </Button>
     </li>
   )
